@@ -46,6 +46,8 @@ class ScenarioIntent:
 @dataclass
 class TestPlan:
     """Plan de test structuré extrait d'une spécification."""
+    __test__ = False  # pas une classe de test pytest malgré le préfixe « Test »
+
     module_name: str
     models: list[str]
     scenarios: list[ScenarioIntent]
