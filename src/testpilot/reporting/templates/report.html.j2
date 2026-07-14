@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TestPilot — {{ r.title }}</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --ink: #1c2430; --muted: #667085; --line: #e4e7ec;
+    --ok: #0a7b40; --ok-bg: #e7f6ed; --bad: #b42318; --bad-bg: #fde8e6;
+    --warn: #8a5a00; --warn-bg: #fdf2dc; --neutral: #475467; --neutral-bg: #eef1f5;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+         background: var(--bg); color: var(--ink); padding: 32px 16px; }
+  .wrap { max-width: 940px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 20px; margin-bottom: 20px; }
+  .axes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .axes { grid-template-columns: 1fr; } }
+  .axis { border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .axis .k { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .axis .v { font-size: 20px; font-weight: 650; margin-top: 6px; }
+  .axis .note { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .ok { color: var(--ok); background: var(--ok-bg); }
+  .bad { color: var(--bad); background: var(--bad-bg); }
+  .warn { color: var(--warn); background: var(--warn-bg); }
+  .neutral { color: var(--neutral); background: var(--neutral-bg); }
+  .meta { display: flex; flex-wrap: wrap; gap: 20px; font-size: 13px; color: var(--muted); }
+  .meta b { color: var(--ink); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  td.err { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  .banner { border-left: 4px solid var(--warn); background: var(--warn-bg); color: var(--warn);
+            padding: 12px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 20px; }
+  .foot { color: var(--muted); font-size: 12px; text-align: center; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>{{ r.title }}</h1>
+  <div class="sub">Module <b>{{ r.module_name }}</b> · version {{ r.version_number }} · généré le {{ r.generated_at }}</div>
+
+  {% if r.needs_human_confirmation %}
+  <div class="banner">⚠ Confirmation humaine requise : au moins une tentative de réparation attend une validation avant classement définitif (asymétrie §5).</div>
+  {% endif %}
+
+  {# --- Les deux axes, jamais fusionnés --- #}
+  <div class="card">
+    <div class="axes">
+      <div class="axis">
+        <div class="k">Axe exécution</div>
+        <div class="v">
+          <span class="pill {% if r.execution_status == 'success' %}ok{% elif r.execution_status == 'technical_error' %}bad{% else %}neutral{% endif %}">{{ r.execution_label }}</span>
+        </div>
+        <div class="note">Le test a-t-il pu tourner techniquement ?</div>
+      </div>
+      <div class="axis">
+        <div class="k">Axe fonctionnel</div>
+        <div class="v">
+          <span class="pill {% if r.functional_status == 'conforme' %}ok{% elif r.functional_status == 'non_conforme' %}bad{% elif r.functional_status == 'indetermine' %}warn{% else %}neutral{% endif %}">{{ r.functional_label }}</span>
+        </div>
+        <div class="note">L'application s'est-elle comportée conformément au besoin ?</div>
+      </div>
+    </div>
+  </div>
+
+  {# --- Métadonnées de run --- #}
+  <div class="card">
+    <div class="meta">
+      <div>Scénarios : <b>{{ r.scenarios_passed }}/{{ r.scenarios_total }}</b> conformes</div>
+      <div>Échecs : <b>{{ r.scenarios_failed }}</b></div>
+      <div>Itérations : <b>{{ r.iterations }}</b></div>
+      <div>Durée : <b>{{ '%.1f'|format(r.duration_seconds) }} s</b></div>
+      <div>Coût : <b>${{ '%.4f'|format(r.cost_usd) }}</b> <span class="pill neutral">{{ r.cost_source }}</span></div>
+      {% if r.monthly_cost_usd is not none %}
+      <div>Cumul du mois : <b>${{ '%.2f'|format(r.monthly_cost_usd) }}</b> (observation)</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# --- Détail par scénario : deux axes par ligne --- #}
+  <div class="card">
+    <h2>Scénarios</h2>
+    <table>
+      <thead>
+        <tr><th>Scénario</th><th>Exécution</th><th>Fonctionnel</th><th>Cause racine</th><th>Détail</th></tr>
+      </thead>
+      <tbody>
+        {% for s in r.scenarios %}
+        <tr>
+          <td>{{ s.name }}</td>
+          <td><span class="pill {% if s.execution_status == 'success' %}ok{% else %}bad{% endif %}">{{ exec_labels.get(s.execution_status, s.execution_status) }}</span></td>
+          <td><span class="pill {% if s.functional_status == 'conforme' %}ok{% elif s.functional_status == 'non_conforme' %}bad{% elif s.functional_status == 'indetermine' %}warn{% else %}neutral{% endif %}">{{ func_labels.get(s.functional_status, s.functional_status) }}</span></td>
+          <td>{{ s.cause_label or '—' }}</td>
+          <td class="err">{{ s.error or '' }}</td>
+        </tr>
+        {% endfor %}
+        {% if not r.scenarios %}
+        <tr><td colspan="5" class="err">Aucun scénario exécuté.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {# --- Origine des défauts (test à réparer vs vrai bug) --- #}
+  {% if r.repairs %}
+  <div class="card">
+    <h2>Origine des défauts</h2>
+    <table>
+      <thead>
+        <tr><th>Cause racine</th><th>Origine</th><th>Confirmation</th></tr>
+      </thead>
+      <tbody>
+        {% for d in r.repairs %}
+        <tr>
+          <td>{{ d.cause_label or d.cause_category }}</td>
+          <td><span class="pill {% if d.defect_origin == 'vrai_bug' %}bad{% elif d.defect_origin == 'test_a_reparer' %}warn{% else %}neutral{% endif %}">{{ d.defect_origin }}</span></td>
+          <td>{% if d.requires_human_confirmation %}<span class="pill warn">confirmation humaine requise</span>{% else %}<span class="pill neutral">{{ d.confirmation_status }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="foot">TestPilot · rapport à deux axes (§5)</div>
+</div>
+</body>
+</html>
