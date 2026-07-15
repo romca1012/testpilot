@@ -24,13 +24,15 @@ Anthropic (Claude), frontend Vite + Vue 3 + Tailwind (dark, esprit « Linear »)
 par un autre serveur, hors projet). CLI : `testpilot run specs/demande_materiel.md --yes`.
 
 ⚠️ **État de la reprise** :
-- **Écart 3 CORRIGÉ et commité** (§6.1) : `meaningful_error()` dans `execution/behave_result.py`
-  + 3 tests dans `tests/test_errored_steps.py` (**168 verts**). Le message d'erreur porte enfin
-  la cause.
-- **Non commité** : 3 scripts d'enquête du run #2 (`scripts/confirm_ecart_parametres_steps.py`,
-  `scripts/probe_traceback_complet.py`, `scripts/probe_champs_formulaire.py`) — artefacts
-  d'investigation, à garder ou non dans le dépôt (**à décider**).
-- **Écarts 1, 2, 4 : diagnostiqués, non corrigés** (voir §7 pour l'ordre arrêté ; écart 2 suit).
+- **Écart 3 CORRIGÉ et commité** (`c10b754`) : `meaningful_error()`, 3 tests, **168 verts**.
+- **Écart 2 : décision `0008` commitée (`103c212`) ; phase A commitée** (prompt Règle 4 +
+  `[Limite]`), prouvée par re-génération (cas **3**). **Phase C reste à faire.**
+- **Non commité** : scripts d'enquête/preuve (`scripts/confirm_ecart_parametres_steps.py`,
+  `probe_traceback_complet.py`, `probe_champs_formulaire.py`, `prove_A_falsifiabilite.py`) —
+  artefacts, à garder ou non dans le dépôt (**à décider**). Bases `.bak` gitignorées.
+- **Cas 3** = artefact de preuve de A (re-génération), restaurable via
+  `data/testpilot.db.pre-preuve-A.bak` si on veut l'effacer.
+- **Écarts 1, 4 : diagnostiqués, non corrigés** (voir §7).
 
 ---
 
@@ -321,11 +323,13 @@ test, on le voit) ; celui-ci est **silencieux et ment dans le bon sens**. Défau
 généré**, pas du produit — famille distincte de l'écart 1 (l'agent écrit des assertions qui ne
 peuvent pas échouer).
 
-→ **Décision `0008` tranchée** (`docs/decisions/0008-…md`) : **A** (prompt — falsifiabilité +
-`[Limite]` à attendu défini) **+ C** (lint non-bloquant surfacé au gate), **B** non-bloquante en
-entrée de C. **Point structurant** : une tautologie **passe à l'exécution**, donc ni dry-run ni
-run réel ne peuvent l'attraper — seuls prévenir (prompt), détecter statiquement (avant le gate)
-ou faire trancher l'humain (gate) sont possibles. Reste à implémenter (A puis C).
+→ **Décision `0008`** (`docs/decisions/0008-…md`) : **A** (prompt — falsifiabilité + `[Limite]`
+en **disjonction falsifiable**) **+ C** (lint non-bloquant surfacé au gate) **+ extension
+contextuelle**. **Point structurant** : une tautologie **passe à l'exécution**, donc ni dry-run
+ni run réel ne peuvent l'attraper — seuls prévenir (prompt), détecter statiquement (avant le
+gate) ou faire trancher l'humain (gate) sont possibles. **A ✅ fait+prouvé** (re-génération, cas
+3) ; **C ⏭️ reste**. Nuance de racine : la **spec** portait ici l'ambiguïté (l.60-63) — d'où une
+règle de *falsifiabilité*, pas d'attendu unique.
 
 ### ✅ ÉCART 3 — CORRIGÉ (le message d'erreur porte enfin la cause)
 
@@ -370,10 +374,11 @@ produit par le run CLI). L'UI promet un rapport que le runtime ne produit pas �
 pour l'écart 1 (décision + plan écrits avant tout code).
 
 - ✅ **Écart 3 — FAIT** (commit `c10b754`).
-- 🟡 **Écart 2 — DÉCIDÉ (`0008`), à implémenter.** Verdict : **A** (prompt : falsifiabilité +
-  `[Limite]` à attendu défini) **+ C** (lint non-bloquant au gate) ; **B** non-bloquante en
-  entrée de C, jamais de blocage auto de la génération (brief §11.2). Ordre **A puis C**. Plan
-  d'implémentation à valider **avant tout code**. Détail : `docs/decisions/0008-…md`.
+- 🟡 **Écart 2 — DÉCIDÉ (`0008`). A ✅ FAIT + PROUVÉ, C ⏭️ à faire.** A : Règle 4 (falsifiabilité)
+  + `[Limite]` en disjonction falsifiable dans le prompt ; prouvé par re-génération (cas 3). C :
+  lint non-bloquant au gate **+ extension contextuelle** (motif exact de l'écart 2), avec tests
+  (anti-faux-positif étendu aux variantes légitimes du motif + preuve finale sur le contenu exact
+  de l'écart 2). Détail : `docs/decisions/0008-…md`.
 - ⏭️ **Écart 1 / `0007`** : options A/B, décision + plan avant code.
 - ⏭️ **Écart 4** : conditionne la visibilité complète du correctif d'écart 3 à l'écran.
 
@@ -393,7 +398,7 @@ reprise (voir « Suite à donner » du §6).
 | Priorité | Item |
 |---|---|
 | ✅ **FAIT** | **Message d'erreur détruit avant l'écran** (écart 3 du §6) : `meaningful_error()` remonte la cause (message + `Call log` avec le sélecteur) au lieu de la tête du traceback. Prouvé sur l'exécution 3, 168 tests verts. *Reste* : visibilité complète à l'écran (dépend de l'écart 4 + choix d'affichage dans le dépliage). |
-| **1 — décidé, à implémenter** | **Assertion tautologique → faux « conforme »** (écart 2 du §6) : l'agent génère un `assert` qui ne peut jamais échouer ; le scénario est déclaré conforme quoi que fasse l'app. Viole §4.2 et §4.4 (faux-négatif = inacceptable). **Décision `0008` tranchée** : **A** (prompt — falsifiabilité + `[Limite]` avec attendu défini) **+ C** (lint non-bloquant au gate), **B** non-bloquante en entrée de C (jamais de blocage auto de la génération, brief §11.2). Ordre : **A puis C**. **Plan à valider avant de coder.** |
+| **1 — A fait, C à faire** | **Assertion tautologique → faux « conforme »** (écart 2 du §6). Décision `0008`. **A ✅ (prompt : Règle 4 falsifiabilité + `[Limite]` en disjonction falsifiable — pas « attendu unique », car la spec peut être légitimement multi-issues) — PROUVÉ par re-génération (cas 3, `[Limite]` désormais falsifiable).** Reste **C** : lint non-bloquant au gate + **extension contextuelle** (motif exact de l'écart 2), tests dont anti-faux-positif étendu + preuve finale sur le contenu exact de l'écart 2. |
 | **2** | **Sémantique des paramètres de steps** — écart **CONFIRMÉ par exécution** (§6, écart 1). Décision `0007` + plan **avant** de coder. Deux options ouvertes (annoter le catalogue / rendre le step tolérant via `get_by_label`) — cf. §6, la correction du diagnostic **change les options**. |
 | **3** | **Runs API sans rapport** (écart 4 du §6) : `_persist` n'écrit ni `report_json_path` ni `report_html_path`, alors que la CLI le fait → invariant §4.6. Conditionne aussi la visibilité de l'écart 3 dans `ReportView`. |
 | **5** | **Exécution nommée transverse** (§7, JTBD essentiel §3) : regroupement de cas de modules différents, rapport attaché à l'exécution. L'UI laisse déjà la porte ouverte (badge « Cas unique / Suite transverse », champ `suite_name` réservé côté API). C'est **le dernier gros manque du §7**. |

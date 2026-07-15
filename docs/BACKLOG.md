@@ -39,14 +39,18 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   « Raison de la demande * ») → erreur de **paramétrage**, pas un bug applicatif. La taxonomie
   0002 (`ui_timeout` → `wrong_field_name` → `test_a_reparer`) est validée de bout en bout.
   Voir `CONTINUITE.md` §6.1.
-- [ ] **Assertion tautologique → faux « conforme »** (écart 2, **priorité 1 — DÉCIDÉ `0008`,
-  à implémenter**) : l'agent génère un `assert error_visible or "<chemin>" not in current_url`
-  dans une branche `else` où le second opérande est **toujours vrai** → le step ne peut
-  **jamais** échouer, le scénario est déclaré `conforme` quoi que fasse l'application. Viole les
-  invariants §4.2 (statut jamais déclaratif) et §4.4 (faux-négatif inacceptable). Défaut du
-  **code généré**. **Verdict** : **A** (prompt — falsifiabilité + `[Limite]` à attendu défini)
-  **+ C** (lint non-bloquant au gate), **B** non-bloquante en entrée de C (jamais de blocage auto
-  de la génération, brief §11.2). Ordre **A puis C**, plan avant code.
+- [~] **Assertion tautologique → faux « conforme »** (écart 2, **priorité 1 — `0008` ;
+  A ✅ faite+prouvée, C ⏭️ à faire**) : l'agent génère un `assert error_visible or "<chemin>"
+  not in current_url` dans une branche `else` où le second opérande est **toujours vrai** → le
+  step ne peut **jamais** échouer, le scénario est déclaré `conforme` quoi que fasse
+  l'application. Viole §4.2 (statut jamais déclaratif) et §4.4 (faux-négatif inacceptable).
+  - **A ✅** — prompt : Règle 4 (falsifiabilité) + `[Limite]` en **disjonction falsifiable**
+    (pas « attendu unique » : la spec peut être légitimement multi-issues). Prouvé par
+    re-génération réelle (cas 3, `[Limite]` désormais falsifiable).
+  - **C ⏭️** — lint non-bloquant surfacé au gate, **B** non-bloquante en entrée (sous-ensemble
+    trivial) **+ extension contextuelle** (motif exact de l'écart 2). Tests : anti-faux-positif
+    étendu aux variantes légitimes du motif contextuel + preuve finale sur le **contenu exact**
+    de l'écart 2. Filtrer le « `@then` sans assert » par décorateur (un `@when` n'assertit rien).
   → `decisions/0008-generation-assertion-infalsifiable-faux-conforme-inc1.md`.
 - [x] **Message d'erreur détruit avant l'écran** (écart 3) — *fait*. Nouveau helper
   `meaningful_error()` (`execution/behave_result.py`) : repart de la dernière ligne d'exception

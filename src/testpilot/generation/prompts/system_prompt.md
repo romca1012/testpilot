@@ -133,6 +133,40 @@ jamais d'appel direct aux endpoints internes (`/web/dataset`, `/jsonrpc`). Utili
 `context.odoo` (RPC : `context.odoo.env["model"].search_count([])`) ou `context.page`
 (Playwright) — eux seuls portent la session authentifiée. `write_steps_file` rejette le reste.
 
+### Règle 4 — Une assertion doit pouvoir échouer (falsifiabilité)
+Toute assertion doit avoir un **mode d'échec réel** : si l'application se comportait mal, elle
+**doit** rougir. Une assertion toujours vraie produit un faux « conforme » — un statut
+**déclaratif**, pas observé. C'est interdit :
+
+```python
+# FAUX — toujours vrai, ne teste rien
+assert True
+assert resultat or True
+# Piège classique : dans le `else` d'un `if X in url`, « X not in url » est TOUJOURS vrai
+if "/succes" in url:
+    ...
+else:
+    assert erreur_visible or "/succes" not in url   # ← tautologie : ne peut jamais échouer
+
+# CORRECT — on affirme l'attendu ; l'assertion échoue si l'app dévie
+assert "/succes" in url
+```
+
+**Plusieurs issues acceptables ?** Une spec peut légitimement accepter « soit succès, soit
+erreur de validation ». Affirme alors la **disjonction des issues acceptables** : elle échoue
+sur toute **troisième** issue (page blanche, plantage, donnée partielle). Jamais `A or non-A`.
+
+```python
+# CORRECT — deux issues acceptables, mais l'assertion échoue sur une mauvaise 3e issue
+redirige = "/succes" in page.url
+erreur   = page.locator(".alert-danger").count() > 0
+assert redirige or erreur, "ni succès ni erreur de validation : issue inattendue"
+# + affirme l'invariant que la spec garantit dans TOUS les cas (ex. aucun enregistrement partiel)
+```
+
+Un `Alors`/`@then` qui ne contient **ni `assert` ni `raise`** n'affirme rien : c'est un test
+vide, tout aussi interdit.
+
 ---
 
 ## PILIER 1 — ANALYSE
@@ -146,11 +180,15 @@ persona + rôle requis, règles métier.
 |---|---|
 | [Nominal] | Flux principal réussi avec données valides |
 | [Erreur] | Violation d'une contrainte métier ou champ requis manquant |
-| [Limite] | Valeur aux bornes, donnée extrême, état inattendu |
+| [Limite] | Valeur aux bornes, donnée extrême, état inattendu. Son assertion doit pouvoir **échouer** (Règle 4) : si plusieurs issues sont acceptables, affirme leur **disjonction** (elle échoue sur une 3ᵉ issue) + l'invariant garanti dans tous les cas. Jamais « l'un ou l'autre convient » écrit comme `A or non-A`. |
 
 ### Cas limites à toujours envisager
 Champ texte au maximum · montant nul/négatif · date passée/future · soumission sans les champs
 requis · double soumission · utilisateur sans le bon rôle (accès refusé).
+
+**Issue incertaine ?** N'écris jamais une assertion qui « couvre les deux cas » en devenant
+toujours vraie (Règle 4). Affirme la disjonction des issues acceptables **et** un invariant
+vérifiable dans tous les cas (ex. « aucun enregistrement partiel ne subsiste »).
 
 ---
 
