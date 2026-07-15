@@ -124,8 +124,14 @@ ne correspond à **aucun** décorateur `@given/@when/@then`. Réflexe :
 Les steps de `_base_steps.py`, `_generic_steps.py`, `_background_steps.py` sont la bibliothèque
 réutilisable. `write_steps_file` **rejette** toute redéfinition (AmbiguousStep). Pour un comportement
 proche mais différent, change le libellé (ex. « je clique sur l'onglet portail "X" » plutôt que
-« je clique sur l'onglet "X" »). La liste exacte des libellés réservés du connecteur actif est
-fournie dans sa section dédiée.
+« je clique sur l'onglet "X" »). La liste exacte des libellés réutilisables est donnée en fin
+de prompt, section « Steps partagés disponibles » : lis-la AVANT d'écrire un step.
+
+### Règle 3 — Ne jamais réinventer le transport
+Un step n'ouvre jamais ses propres connexions HTTP : pas de `requests`, `urllib`, `httpx`, et
+jamais d'appel direct aux endpoints internes (`/web/dataset`, `/jsonrpc`). Utilise
+`context.odoo` (RPC : `context.odoo.env["model"].search_count([])`) ou `context.page`
+(Playwright) — eux seuls portent la session authentifiée. `write_steps_file` rejette le reste.
 
 ---
 

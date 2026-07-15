@@ -9,12 +9,12 @@ gate de relecture — il ne fait qu'exposer l'information pour que ``verdict`` s
 from __future__ import annotations
 
 import logging
-import re
 
 from testpilot import config
 from testpilot.analysis.plan import TestPlan
 from testpilot.analysis.spec_analyzer import spec_hash
 from testpilot.generation import prompt as prompt_mod
+from testpilot.generation import steps_library
 from testpilot.generation.interfaces import Connector, DryRunner
 from testpilot.generation.react_loop import run_loop
 from testpilot.generation.state import AgentState, GenerationResult
@@ -25,7 +25,6 @@ from testpilot.llm.adapter import LLMAdapter
 
 logger = logging.getLogger(__name__)
 
-_STEP_DECORATOR = re.compile(r"@(?:given|when|then|step)\(\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
 
 
 class GenerationAgent:
@@ -46,15 +45,18 @@ class GenerationAgent:
                  title: str = "", author: str = "") -> GenerationResult:
         state = AgentState(module_name=plan.module_name)
         state.messages.append({"role": "user", "content": prompt_mod.build_initial_message(plan)})
+        # Un seul catalogue pour les deux usages : ce qu'on MONTRE à l'agent (prompt) et ce
+        # qu'on lui REFUSE à l'écriture (redéfinition). Cf. décision 0003.
+        shared_steps = steps_library.catalogue()
         ctx = ToolContext(
             module_name=plan.module_name,
             generated_dir=config.GENERATED_DIR,
             connector=self.connector,
-            reserved_steps=self._reserved_steps(),
+            reserved_steps=frozenset(s.label for s in shared_steps),
         )
         run_loop(
             llm=self.llm,
-            system_prompt=prompt_mod.build_system_prompt(self.connector),
+            system_prompt=prompt_mod.build_system_prompt(self.connector, shared_steps),
             state=state,
             ctx=ctx,
             dry_runner=self.dry_runner,
@@ -120,13 +122,4 @@ class GenerationAgent:
     @staticmethod
     def _reserved_steps() -> frozenset[str]:
         """Libellés de steps de la bibliothèque partagée (best-effort ; vide si absente)."""
-        directory = config.STEPS_LIBRARY_DIR
-        if not directory.exists():
-            return frozenset()
-        reserved: set[str] = set()
-        for path in directory.glob("*.py"):
-            try:
-                reserved.update(m.strip() for m in _STEP_DECORATOR.findall(path.read_text(encoding="utf-8")))
-            except OSError:
-                continue
-        return frozenset(reserved)
+        return steps_library.reserved_labels()

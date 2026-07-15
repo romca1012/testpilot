@@ -19,9 +19,17 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   en liste (qui **crashait** le parser et masquait un vrai bug en « erreur technique ») ;
   symptôme `http_error` → `WRONG_NAVIGATION` pour ne pas confondre une route 404 avec un
   sélecteur introuvable. → `decisions/0002-parser-message-erreur-steps-errored-inc1.md`.
-- [ ] **Fiabilité de la génération** : l'agent doit réutiliser les steps partagés au lieu d'en
-  réinventer (cause racine du coût de génération, §brief). Priorité haute.
+- [x] **Fiabilité de la génération — réutilisation des steps partagés** — *fait (A+B)*. Le
+  catalogue des 43 steps est désormais **montré** à l'agent (il n'en voyait qu'1 : on lui
+  demandait de réutiliser sans jamais lui montrer) ; extraction par AST (la regex tronquait les
+  libellés multi-lignes et en ratait 12) ; `write_steps_file` refuse le transport réinventé
+  (`requests`/`/web/dataset`) en indiquant l'alternative `context.odoo`/`context.page`.
   → `decisions/0003-agent-reutiliser-steps-partages-inc1.md`.
+- [ ] **Quasi-doublons sémantiques (volet C de 0003)** — *en observation*. Détecter un libellé
+  généré « proche » d'un step partagé (même comportement sous un autre nom). Écarté pour
+  l'instant : à reconsidérer avec des exemples concrets après plusieurs runs réels.
+- [ ] **Mesurer 0003 en run réel** : vérifier sur une génération complète que l'agent réutilise
+  bien le step de comptage partagé (l'effet ne se mesure pas hors-ligne).
 - [ ] **Confirmations `pending_human`** : sous-commande / écran de traitement de la file de
   relecture des origines de défaut. → `decisions/0001-report-confirmations-pending-human-inc1.md`.
 - [x] **Runtime branché sur la connexion du projet** — *fait*. L'exécution (run UI et CLI) et

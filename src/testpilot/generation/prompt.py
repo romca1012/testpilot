@@ -1,7 +1,8 @@
 """Assemblage des prompts du pilier generation.
 
 Deux fonctions pures (ou quasi : lecture de fichier) :
-  - ``build_system_prompt`` : socle connector-agnostic + règles du connecteur actif.
+  - ``build_system_prompt`` : socle connector-agnostic + catalogue des steps partagés
+    + règles du connecteur actif.
   - ``build_initial_message`` : convertit le TestPlan en premier message utilisateur.
 """
 
@@ -10,13 +11,26 @@ from __future__ import annotations
 from testpilot import config
 from testpilot.analysis.plan import NavStep, TestPlan
 from testpilot.connectors.base import Connector
+from testpilot.generation import steps_library
+from testpilot.generation.steps_library import SharedStep
 
 _SYSTEM_PROMPT_PATH = config.PROMPTS_DIR / "system_prompt.md"
 
 
-def build_system_prompt(connector: Connector | None = None) -> str:
-    """Charge le prompt système et y ajoute les règles du connecteur actif, s'il y en a."""
+def build_system_prompt(connector: Connector | None = None,
+                        shared_steps: list[SharedStep] | None = None) -> str:
+    """Prompt système + catalogue des steps partagés + règles du connecteur actif.
+
+    Le catalogue est indispensable : le prompt demande de réutiliser la bibliothèque et
+    interdit de la redéfinir, mais l'agent ne pouvait pas la voir — il inventait donc ses
+    propres steps (et son propre transport HTTP). Cf. décision 0003.
+    """
     base = _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+
+    catalogue = steps_library.as_prompt_section(shared_steps or [])
+    if catalogue:
+        base += "\n\n---\n\n## Steps partagés disponibles (à réutiliser)\n\n" + catalogue
+
     rules = connector.rules() if connector else ""
     if rules:
         base += "\n\n---\n\n## Connecteur actif\n\n" + rules
