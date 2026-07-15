@@ -6,13 +6,20 @@ les modules regroupent les cas d'un projet. Aucune auth à ce stade.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from testpilot.api import schemas
 from testpilot.api.deps import get_conn
 from testpilot.store.repositories import ModuleRepo, ProjectRepo
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+
+def _summary_row(conn, project_id: int) -> dict | None:
+    for r in ProjectRepo(conn).list_all():
+        if r["id"] == project_id:
+            return r
+    return None
 
 
 @router.get("", response_model=list[schemas.ProjectSummary])
@@ -26,6 +33,24 @@ def create_project(body: schemas.ProjectIn, conn=Depends(get_conn)):
         raise HTTPException(status_code=422, detail="le nom du projet est requis")
     pid = ProjectRepo(conn).create(name=body.name.strip(), description=body.description)
     return schemas.ProjectSummary(id=pid, name=body.name.strip(), description=body.description)
+
+
+@router.patch("/{project_id}", response_model=schemas.ProjectSummary)
+def rename_project(project_id: int, body: schemas.ProjectIn, conn=Depends(get_conn)):
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    if not body.name.strip():
+        raise HTTPException(status_code=422, detail="le nom du projet est requis")
+    ProjectRepo(conn).rename(project_id, name=body.name.strip(), description=body.description)
+    return schemas.project_summary(_summary_row(conn, project_id))
+
+
+@router.delete("/{project_id}", status_code=204)
+def delete_project(project_id: int, conn=Depends(get_conn)):
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    ProjectRepo(conn).delete(project_id)
+    return Response(status_code=204)
 
 
 @router.get("/{project_id}/modules", response_model=list[schemas.ModuleSummary])

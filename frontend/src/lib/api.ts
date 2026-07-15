@@ -29,6 +29,10 @@ export const api = {
   listProjects: () => request<ProjectSummary[]>('/api/projects'),
   createProject: (name: string, description = '') =>
     request<ProjectSummary>('/api/projects', { method: 'POST', body: JSON.stringify({ name, description }) }),
+  renameProject: (id: number | string, name: string, description = '') =>
+    request<ProjectSummary>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ name, description }) }),
+  deleteProject: (id: number | string) =>
+    request<void>(`/api/projects/${id}`, { method: 'DELETE' }),
   listModules: (projectId: number | string) => request<ModuleSummary[]>(`/api/projects/${projectId}/modules`),
 
   // Cas — toujours scopés par projet (jamais de mélange inter-projets)

@@ -126,6 +126,54 @@ def test_api_case_detail_expose_le_fil_d_ariane(client):
     assert detail["case"]["module"] == "Demande materiel"  # nom métier, pas le slug
 
 
+def test_api_delete_project_cascade(client):
+    conn = get_initialized_db(config.DB_PATH)
+    mid = ensure_default_module(conn, "demande_materiel")
+    pid = ModuleRepo(conn).get(mid)["project_id"]
+    cid = CaseRepo(conn).create(title="Demande", module_id=mid, feature_slug="demande_materiel")
+    from testpilot.store.repositories import ExecutionRepo, VersionRepo
+    vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="h",
+                                   feature_content="", steps_content="")
+    eid = ExecutionRepo(conn).create(test_case_id=cid, version_id=vid)
+    ExecutionRepo(conn).add_scenario_result(execution_id=eid, scenario_name="s",
+                                            execution_status="success", functional_status="conforme")
+    conn.close()
+
+    # Suppression du projet → 204, et plus rien de sa descendance.
+    assert client.delete(f"/api/projects/{pid}").status_code == 204
+    assert all(p["id"] != pid for p in client.get("/api/projects").json())
+    assert client.get(f"/api/cases/{cid}").status_code == 404
+    # Aucune ligne orpheline (module/cas/exécution/scénario).
+    conn = get_initialized_db(config.DB_PATH)
+    for table in ("module", "test_case", "test_case_version", "execution", "scenario_result"):
+        n = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        assert n == 0, f"{table} contient encore {n} ligne(s)"
+    conn.close()
+
+
+def test_api_delete_project_isole_les_autres(client):
+    conn = get_initialized_db(config.DB_PATH)
+    m1 = ensure_default_module(conn, "demande_materiel")
+    p1 = ModuleRepo(conn).get(m1)["project_id"]
+    p2 = ProjectRepo(conn).create(name="Sales CRM")
+    m2 = ModuleRepo(conn).create(project_id=p2, name="Opportunités")
+    CaseRepo(conn).create(title="Garde", module_id=m2, feature_slug="g")
+    conn.close()
+
+    client.delete(f"/api/projects/{p1}")
+    # Le second projet et son cas sont intacts.
+    assert any(p["id"] == p2 for p in client.get("/api/projects").json())
+    assert {c["title"] for c in client.get(f"/api/cases?project_id={p2}").json()} == {"Garde"}
+
+
+def test_api_rename_project(client):
+    p = client.post("/api/projects", json={"name": "Odoo"}).json()
+    r = client.patch(f"/api/projects/{p['id']}", json={"name": "Portail Sapian"})
+    assert r.status_code == 200
+    assert r.json()["name"] == "Portail Sapian"
+    assert any(x["name"] == "Portail Sapian" for x in client.get("/api/projects").json())
+
+
 def test_api_cases_filtre_project_id(client):
     conn = get_initialized_db(config.DB_PATH)
     m_odoo = ensure_default_module(conn, "demande_materiel")

@@ -6,6 +6,7 @@ import { useProjects } from '../lib/useProjects'
 import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
 import Icon from '../components/ui/Icon.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const router = useRouter()
 const { ensureLoaded } = useProjects()
@@ -17,17 +18,18 @@ const creating = ref(false)
 const newName = ref('')
 const createError = ref('')
 
+// Suppression
+const toDelete = ref<ProjectSummary | null>(null)
+const deleting = ref(false)
+
 function open(p: ProjectSummary) {
   router.push(`/projects/${p.id}/cases`)
 }
 
-async function load(autoselect = false) {
+async function load() {
+  loading.value = true
   try {
     projects.value = await api.listProjects()
-    // Auto-sélection si un seul projet : on entre directement dans son contexte.
-    if (autoselect && projects.value.length === 1) {
-      router.replace(`/projects/${projects.value[0].id}/cases`)
-    }
   } catch (e: any) {
     error.value = e?.message || 'Chargement impossible'
   } finally {
@@ -51,25 +53,48 @@ async function create() {
   }
 }
 
-onMounted(() => load(true))
+const deleteMessage = () => {
+  const p = toDelete.value
+  if (!p) return ''
+  const parts = [`« ${p.name} » sera supprimé définitivement.`]
+  if (p.module_count || p.case_count) {
+    parts.push(`Cela supprimera aussi ${p.module_count} module(s) et ${p.case_count} cas de test, avec leurs versions et exécutions.`)
+  }
+  parts.push('Cette action est irréversible.')
+  return parts.join('\n')
+}
+
+async function confirmDelete() {
+  if (!toDelete.value) return
+  deleting.value = true
+  try {
+    await api.deleteProject(toDelete.value.id)
+    toDelete.value = null
+    await ensureLoaded(true)
+    await load()
+  } catch (e: any) {
+    error.value = e?.message || 'Suppression impossible'
+  } finally {
+    deleting.value = false
+  }
+}
+
+onMounted(load)
 </script>
 
 <template>
   <div class="space-y-8">
-    <header class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight">Projets</h1>
-        <p class="mt-1 text-sm text-muted-foreground">
-          Choisissez un projet pour accéder à ses cas de tests et à ses exécutions.
-        </p>
-      </div>
+    <header>
+      <h1 class="text-2xl font-semibold tracking-tight">Projets</h1>
+      <p class="mt-1 text-sm text-muted-foreground">
+        Un projet regroupe les cas de tests et exécutions d'une application testée.
+      </p>
     </header>
 
-    <!-- Création -->
     <Card title="Nouveau projet">
       <form class="flex flex-wrap items-center gap-3" @submit.prevent="create">
         <input
-          v-model="newName" placeholder="Nom du projet (ex. Odoo)"
+          v-model="newName" placeholder="Nom du projet (ex. Portail Sapian)"
           class="h-9 flex-1 min-w-[12rem] rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50"
         />
         <Button type="submit" variant="primary" :loading="creating" :disabled="!newName.trim()">Créer</Button>
@@ -77,7 +102,6 @@ onMounted(() => load(true))
       <p v-if="createError" class="mt-2 text-xs text-destructive">{{ createError }}</p>
     </Card>
 
-    <!-- Liste -->
     <div v-if="loading" class="text-sm text-muted-foreground">Chargement…</div>
     <p v-else-if="error" class="text-sm text-destructive">{{ error }}</p>
     <div v-else-if="!projects.length" class="rounded-xl border border-border bg-card px-5 py-12 text-center">
@@ -85,19 +109,39 @@ onMounted(() => load(true))
     </div>
 
     <div v-else class="grid gap-3 sm:grid-cols-2">
-      <button
+      <div
         v-for="p in projects" :key="p.id"
-        class="group flex items-center justify-between rounded-xl border border-border bg-card p-5 text-left transition-colors hover:border-primary/40 hover:bg-accent/30"
-        @click="open(p)"
+        class="group relative rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40 hover:bg-accent/30"
       >
-        <div class="min-w-0">
-          <div class="font-medium truncate">{{ p.name }}</div>
-          <div class="mt-1 text-xs text-muted-foreground">
-            {{ p.module_count }} module{{ p.module_count > 1 ? 's' : '' }} · {{ p.case_count }} cas
+        <button class="flex w-full items-center justify-between text-left" @click="open(p)">
+          <div class="min-w-0">
+            <div class="font-medium truncate pr-8">{{ p.name }}</div>
+            <div class="mt-1 text-xs text-muted-foreground">
+              {{ p.module_count }} module{{ p.module_count > 1 ? 's' : '' }} · {{ p.case_count }} cas
+            </div>
           </div>
-        </div>
-        <Icon name="chevron" class="h-4 w-4 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
-      </button>
+          <Icon name="chevron" class="h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
+        </button>
+        <button
+          class="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+          title="Supprimer le projet"
+          @click.stop="toDelete = p"
+        >
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v11a2 2 0 002 2h4a2 2 0 002-2V7" />
+          </svg>
+        </button>
+      </div>
     </div>
+
+    <ConfirmDialog
+      :open="!!toDelete"
+      title="Supprimer ce projet ?"
+      :message="deleteMessage()"
+      confirm-label="Supprimer définitivement"
+      :busy="deleting"
+      @confirm="confirmDelete"
+      @cancel="toDelete = null"
+    />
   </div>
 </template>

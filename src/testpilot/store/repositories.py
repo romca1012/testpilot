@@ -54,6 +54,36 @@ class ProjectRepo:
         row = self.conn.execute("SELECT * FROM project WHERE name=?", (name,)).fetchone()
         return dict(row) if row else None
 
+    def rename(self, project_id: int, *, name: str, description: str | None = None) -> None:
+        if description is None:
+            self.conn.execute("UPDATE project SET name=? WHERE id=?", (name, project_id))
+        else:
+            self.conn.execute("UPDATE project SET name=?, description=? WHERE id=?",
+                              (name, description, project_id))
+        self.conn.commit()
+
+    def delete(self, project_id: int) -> None:
+        """Supprime un projet ET toute sa descendance (modules, cas, versions, relectures,
+        exécutions, résultats, réparations, coûts) — dans l'ordre des FK, en une transaction."""
+        mod_sub = "SELECT id FROM module WHERE project_id=?"
+        case_sub = f"SELECT id FROM test_case WHERE module_id IN ({mod_sub})"
+        exec_sub = f"SELECT id FROM execution WHERE test_case_id IN ({case_sub})"
+        cur = self.conn
+        try:
+            cur.execute(f"DELETE FROM scenario_result WHERE execution_id IN ({exec_sub})", (project_id,))
+            cur.execute(f"DELETE FROM repair_attempt  WHERE execution_id IN ({exec_sub})", (project_id,))
+            cur.execute(f"DELETE FROM cost_ledger      WHERE execution_id IN ({exec_sub})", (project_id,))
+            cur.execute(f"DELETE FROM execution        WHERE test_case_id IN ({case_sub})", (project_id,))
+            cur.execute(f"DELETE FROM review_decision  WHERE test_case_id IN ({case_sub})", (project_id,))
+            cur.execute(f"DELETE FROM test_case_version WHERE test_case_id IN ({case_sub})", (project_id,))
+            cur.execute(f"DELETE FROM test_case        WHERE module_id IN ({mod_sub})", (project_id,))
+            cur.execute("DELETE FROM module  WHERE project_id=?", (project_id,))
+            cur.execute("DELETE FROM project WHERE id=?", (project_id,))
+            cur.commit()
+        except Exception:
+            cur.rollback()
+            raise
+
 
 class ModuleRepo:
     def __init__(self, conn: sqlite3.Connection):
