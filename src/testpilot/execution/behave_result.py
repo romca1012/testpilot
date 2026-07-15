@@ -2,8 +2,13 @@
 
 Le format ``--format json`` de Behave est la source fiable (zéro regex sur le happy
 path). Le ``failure_type`` produit reste au niveau SYMPTÔME (ui_timeout, assertion,
-permission, odoorpc, odoo_data, unknown) — sa projection en cause racine est faite par
-``verdict/defect_taxonomy``.
+permission, http_error, odoorpc, odoo_data, unknown) — sa projection en cause racine est
+faite par ``verdict/defect_taxonomy``.
+
+Deux particularités de Behave ≥ 1.3 sont gérées ici :
+- ``Status.error`` (exception) est distinct de ``Status.failed`` (assertion) : son message
+  n'est écrit dans le JSON que grâce au formatter maison (``behave_runtime/tp_json_formatter``) ;
+- ``error_message`` peut être une LISTE de lignes (message multi-ligne) → ``error_text``.
 """
 
 from __future__ import annotations
@@ -57,19 +62,49 @@ class BehaveResult:
         return bool(self.ambiguous_steps)
 
 
+# Statuts d'échec de Behave ≥1.3 : 'failed' = assertion, 'error' = exception inattendue,
+# 'hook_error'/'cleanup_error' = fixture (before/after) en échec.
+_FAILING_STEP_STATUSES = frozenset({"failed", "error", "hook_error", "cleanup_error"})
+_FAILING_SCENARIO_STATUSES = frozenset({"failed", "error", "hook_error", "cleanup_error"})
+
 _TIMEOUT_RE = re.compile(r"TimeoutError.*?:(.+?)(?:\n|$)", re.DOTALL)
 _ASSERT_RE = re.compile(r"AssertionError:\s*(.+?)(?:\n|$)")
 _ODOORPC_RE = re.compile(r"(odoorpc|OdooRPC|xmlrpc)\w*Error.*?:(.+?)(?:\n|$)", re.IGNORECASE)
 _ACCESS_RE = re.compile(r"(AccessError|403|Permission denied)", re.IGNORECASE)
+# Erreur HTTP sur une ROUTE (404/405/5xx, HTTPError requests…) : le test a visé un endpoint
+# qui n'existe pas ou refuse la méthode — un problème de PARCOURS, pas de sélecteur.
+# Placé après _ACCESS_RE : un 403 reste un problème de droit, pas de navigation.
+_HTTP_RE = re.compile(r"HTTPError|\b[45]\d\d\s+(?:client|server)\s+error|Method Not Allowed",
+                      re.IGNORECASE)
+
+
+def error_text(raw) -> str:
+    """Normalise le ``error_message`` de Behave en chaîne.
+
+    Le formatter JSON écrit une LISTE de lignes dès que le message est multi-ligne
+    (``split_text_into_lines`` est vrai par défaut) — typiquement une erreur Playwright
+    (« Call log: … ») ou une assertion détaillée. Sans cette normalisation, la suite du
+    parsing reçoit une liste et lève un TypeError : le run serait alors clos en « erreur
+    technique », masquant un éventuel vrai bug (faux-négatif §5 inacceptable).
+    """
+    if raw is None:
+        return ""
+    if isinstance(raw, (list, tuple)):
+        return "\n".join(str(line) for line in raw)
+    return str(raw)
 
 
 def classify_failure(snippet: str) -> tuple[str, str]:
     """Classe un message d'erreur par SYMPTÔME technique."""
+    snippet = error_text(snippet)
     if _TIMEOUT_RE.search(snippet):
         m = _TIMEOUT_RE.search(snippet)
         return "ui_timeout", f"TimeoutError : {m.group(1)[:150] if m else ''}"
     if _ACCESS_RE.search(snippet):
         return "permission", "AccessError / 403 — profil ou droit manquant"
+    if _HTTP_RE.search(snippet):
+        m = _HTTP_RE.search(snippet)
+        return "http_error", f"Erreur HTTP sur une route : {m.group(0)[:150] if m else ''}"
     if _ODOORPC_RE.search(snippet):
         m = _ODOORPC_RE.search(snippet)
         return "odoorpc", f"OdooRPC error : {m.group(2)[:150] if m else ''}"
@@ -111,9 +146,9 @@ def parse_behave_json(json_output: str, returncode: int, dry_run: bool = False,
                 status = res.get("status", "skipped")
                 duration += res.get("duration", 0.0) or 0.0
                 full_step = f"{step.get('keyword', '').strip()} {step.get('name', '')}".strip()
-                if status in ("failed", "error"):
+                if status in _FAILING_STEP_STATUSES:
                     step_failed += 1
-                    err = res.get("error_message", "") or ""
+                    err = error_text(res.get("error_message"))
                     if not first_error:
                         first_error = err[:300]
                     ftype, summary = classify_failure(err)
@@ -124,10 +159,16 @@ def parse_behave_json(json_output: str, returncode: int, dry_run: bool = False,
                 elif status == "undefined":
                     undefined.add(full_step)
                 elif status == "ambiguous":
-                    result.ambiguous_steps.append((res.get("error_message", "") or full_step)[:200])
+                    result.ambiguous_steps.append(
+                        (error_text(res.get("error_message")) or full_step)[:200])
 
             sc_status = scenario.get("status", "")
-            if sc_status not in ("passed", "failed", "skipped"):
+            # Behave ≥1.3 distingue 'failed' (assertion) de 'error'/'hook_error' (exception,
+            # échec de fixture). Tous sont des scénarios en échec côté verdict : on les
+            # ramène explicitement à 'failed' plutôt que de compter dessus par accident.
+            if sc_status in _FAILING_SCENARIO_STATUSES:
+                sc_status = "failed"
+            elif sc_status not in ("passed", "failed", "skipped"):
                 sc_status = "failed" if step_failed else "passed"
             if sc_status == "passed":
                 result.passed += 1

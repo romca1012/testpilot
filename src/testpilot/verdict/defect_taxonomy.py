@@ -54,6 +54,12 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     WRONG_NAVIGATION: (
         "method not allowed", "route", "get direct", "post-only", "post only",
         "navigation", "page introuvable", "redirect", "mauvaise url", "parcours",
+        # Erreur HTTP sur une route (404/405/5xx). NB : ``normalize_error`` remplace les
+        # nombres par <n> et les URLs par <url> — on matche donc le texte, jamais le code.
+        # Ces motifs doivent primer sur le « not found » de WRONG_FIELD_NAME (un 404 est un
+        # problème de parcours, pas de sélecteur) : WRONG_NAVIGATION précède déjà
+        # WRONG_FIELD_NAME dans CATEGORIES.
+        "httperror", "client error", "server error", "not found for url",
     ),
     WRONG_FIELD_NAME: (
         "timeouterror", "timeout", "locator", "no element", "aucun element",
@@ -77,6 +83,7 @@ _TYPE_FALLBACK = {
     "assertion": ASSERTION_MISMATCH,
     "odoo_data": MISSING_SERVER_CONTEXT,
     "odoorpc": WRONG_NAVIGATION,
+    "http_error": WRONG_NAVIGATION,  # route inexistante / méthode refusée → parcours
 }
 
 

@@ -13,9 +13,12 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
 
 ## Incrément 1 (suite de l'interface / robustesse)
 
-- [ ] **Parser d'exécution — steps « errored »** : capturer le message d'erreur des steps au
-  statut `error` (aujourd'hui perdu → cause `unknown`). Priorité haute : sans ça, tout
-  `technical_error` reste opaque. → `decisions/0002-parser-message-erreur-steps-errored-inc1.md`.
+- [x] **Parser d'exécution — steps « errored »** — *fait*. Formatter maison
+  (`behave_runtime/tp_json_formatter.py`) qui sérialise le message que Behave ≥1.3 omettait
+  pour les statuts `error`/`hook_error` ; normalisation `error_text()` d'un `error_message`
+  en liste (qui **crashait** le parser et masquait un vrai bug en « erreur technique ») ;
+  symptôme `http_error` → `WRONG_NAVIGATION` pour ne pas confondre une route 404 avec un
+  sélecteur introuvable. → `decisions/0002-parser-message-erreur-steps-errored-inc1.md`.
 - [ ] **Fiabilité de la génération** : l'agent doit réutiliser les steps partagés au lieu d'en
   réinventer (cause racine du coût de génération, §brief). Priorité haute.
   → `decisions/0003-agent-reutiliser-steps-partages-inc1.md`.

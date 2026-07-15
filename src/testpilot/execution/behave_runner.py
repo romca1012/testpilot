@@ -23,6 +23,10 @@ from testpilot.execution.behave_result import BehaveResult, parse_behave_json
 
 logger = logging.getLogger(__name__)
 
+# Formatter maison assemblé dans le run_dir (cf. behave_runtime/tp_json_formatter.py).
+_FORMATTER_MODULE = "tp_json_formatter"
+_FULL_FORMATTER = f"{_FORMATTER_MODULE}:FullJSONFormatter"
+
 
 class BehaveRunner:
     def __init__(self, *, runtime_dir: Path | None = None, generated_dir: Path | None = None,
@@ -64,8 +68,11 @@ class BehaveRunner:
         try:
             self._assemble(run_dir, module_name, feature_src)
             json_path = run_dir / "result.json"
+            # Formatter maison : le JSON natif de Behave omet le message des steps « errored »
+            # (cf. tp_json_formatter). Repli sur le formatter natif s'il est indisponible.
+            fmt = _FULL_FORMATTER if (run_dir / f"{_FORMATTER_MODULE}.py").exists() else "json"
             cmd = [sys.executable, "-m", "behave", "--lang", "fr",
-                   "-f", "json", "-o", str(json_path), f"{module_name}.feature"]
+                   "-f", fmt, "-o", str(json_path), f"{module_name}.feature"]
             if dry_run:
                 cmd.append("--dry-run")
             timeout = self.dry_timeout if dry_run else self.real_timeout
@@ -83,10 +90,17 @@ class BehaveRunner:
             shutil.rmtree(run_dir, ignore_errors=True)
 
     def _assemble(self, run_dir: Path, module_name: str, feature_src: Path) -> None:
-        """Recopie environment.py, la bibliothèque de steps + les steps générés, et le .feature."""
+        """Recopie environment.py, le formatter, la bibliothèque de steps + les steps générés,
+        et le .feature."""
         env_src = self.runtime_dir / "environment.py"
         if env_src.exists():
             shutil.copy2(env_src, run_dir / "environment.py")
+
+        # Le formatter vit à la racine du run_dir (= cwd du sous-processus) pour être importable
+        # par son nom de module (``python -m behave`` place le cwd en tête de sys.path).
+        fmt_src = self.runtime_dir / f"{_FORMATTER_MODULE}.py"
+        if fmt_src.exists():
+            shutil.copy2(fmt_src, run_dir / fmt_src.name)
 
         steps_dir = run_dir / "steps"
         steps_dir.mkdir()
