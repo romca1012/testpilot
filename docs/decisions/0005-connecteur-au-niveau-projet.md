@@ -43,11 +43,23 @@ l'API ne le renvoie **jamais** (write-only : accepté en entrée, absent de tout
 **À traiter avant déploiement client réel** : chiffrement au repos ou gestionnaire de
 secrets (hors périmètre Inc. 1.1). La base locale est de toute façon gitignorée.
 
-## Portée / non couvert ici
+## Câblage du runtime (fait — suite de cette décision)
 
-- L'exécution/génération **runtime** utilise encore la connexion globale (config env) pour
-  l'unique instance locale ; **brancher le runtime sur la connexion du projet** (multi-app
-  réelle) est un suivi. Le modèle de données est en place, le câblage runtime non.
+Le modèle seul ne suffisait pas : tant que le runtime tapait la config globale, l'interface
+promettait un multi-projet que l'exécution ne tenait pas — le décalage « affiché ≠ réel » que
+le produit est censé supprimer. Désormais :
+
+- `connectors/runtime_env.py` : projet → variables d'environnement, **selon le
+  `connector_type`** (multi-connecteurs, §8). Valeur vide ⇒ non propagée (repli config).
+- `BehaveRunner(connection=…)` injecte ces variables dans le sous-processus behave. Le harnais
+  appelle `load_dotenv()` **sans `override`** : les variables passées priment donc sur le `.env`.
+- `run_service.resolve_connection(conn, case_id)` : cas → projet → connexion (chemin du run UI).
+- `OdooConnector.from_project(…)` : l'exploration de génération observe l'app **du projet**.
+- CLI : même règle que le rattachement automatique (le premier projet), source unique
+  `ProjectRepo.first()` — sinon un cas serait rangé sous un projet et joué contre un autre.
+- `ODOO_ENV` n'est jamais produit depuis un projet : le garde-fou anti-production reste intact.
+
+## Portée / non couvert ici
 - Édition de la connexion d'un projet existant (l'API `PATCH` ne gère que nom/description) :
   suivi. La création, elle, saisit toute la connexion.
 

@@ -11,6 +11,7 @@ ce qui isole les runs et garde ``behave_runtime/generated`` à sa place (sortie 
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -26,12 +27,25 @@ logger = logging.getLogger(__name__)
 class BehaveRunner:
     def __init__(self, *, runtime_dir: Path | None = None, generated_dir: Path | None = None,
                  steps_library_dir: Path | None = None, dry_timeout: int | None = None,
-                 real_timeout: int | None = None):
+                 real_timeout: int | None = None, connection: dict[str, str] | None = None):
         self.runtime_dir = runtime_dir or config.BEHAVE_RUNTIME_DIR
         self.generated_dir = generated_dir or config.GENERATED_DIR
         self.steps_library_dir = steps_library_dir or config.STEPS_LIBRARY_DIR
         self.dry_timeout = dry_timeout or config.BEHAVE_DRY_TIMEOUT_SECONDS
         self.real_timeout = real_timeout or config.BEHAVE_REAL_TIMEOUT_SECONDS
+        # Connexion du PROJET (variables d'env) injectée dans le sous-processus behave.
+        # Vide → le harnais retombe sur la config globale (.env). Cf. connectors/runtime_env.
+        self.connection = connection or {}
+
+    def _subprocess_env(self) -> dict[str, str] | None:
+        """Environnement du sous-processus : celui du parent + la connexion du projet.
+
+        ``environment.py`` appelle ``load_dotenv()`` sans ``override`` : les variables passées
+        ici priment donc sur le ``.env``. None si aucune connexion propre au projet.
+        """
+        if not self.connection:
+            return None
+        return {**os.environ, **self.connection}
 
     def dry_run(self, module_name: str) -> BehaveResult:
         return self._run(module_name, dry_run=True)
@@ -57,7 +71,8 @@ class BehaveRunner:
             timeout = self.dry_timeout if dry_run else self.real_timeout
             try:
                 proc = subprocess.run(cmd, cwd=str(run_dir), capture_output=True, text=True,
-                                      encoding="utf-8", errors="replace", timeout=timeout)
+                                      encoding="utf-8", errors="replace", timeout=timeout,
+                                      env=self._subprocess_env())
             except subprocess.TimeoutExpired:
                 return BehaveResult(success=False, returncode=-2, dry_run=dry_run,
                                     raw_stderr=f"Timeout ({timeout}s) lors du run behave")

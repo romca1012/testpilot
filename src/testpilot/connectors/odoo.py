@@ -115,6 +115,22 @@ class OdooConnector(Connector):
             headless=overrides.get("headless", True),
         )
 
+    @classmethod
+    def from_project(cls, project: dict | None, **overrides) -> "OdooConnector":
+        """Connecteur branché sur la connexion du PROJET (décision 0005).
+
+        L'exploration doit observer l'application du projet, pas une instance globale.
+        Chaque valeur vide retombe sur la config (projet sans connexion saisie).
+        """
+        project = project or {}
+        return cls.from_config(
+            url=project.get("base_url") or config.ODOO_URL,
+            database=project.get("database") or config.ODOO_DB,
+            user=project.get("username") or config.ODOO_USER,
+            password=project.get("password") or config.ODOO_PASSWORD,
+            **overrides,
+        )
+
     # ── Cycle de vie ──────────────────────────────────────────────────────────
     def connect(self) -> None:
         import odoorpc

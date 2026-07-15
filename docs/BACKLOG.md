@@ -21,9 +21,14 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   → `decisions/0003-agent-reutiliser-steps-partages-inc1.md`.
 - [ ] **Confirmations `pending_human`** : sous-commande / écran de traitement de la file de
   relecture des origines de défaut. → `decisions/0001-report-confirmations-pending-human-inc1.md`.
-- [ ] **Runtime branché sur la connexion du projet** : l'exécution/génération utilise encore la
-  connexion globale (config env) ; brancher sur la connexion propre à chaque projet (vraie
-  multi-application). → `decisions/0005-connecteur-au-niveau-projet.md`.
+- [x] **Runtime branché sur la connexion du projet** — *fait*. L'exécution (run UI et CLI) et
+  l'exploration de génération tapent désormais l'application du projet, plus la config globale :
+  `connectors/runtime_env.py` (projet → variables d'env), injection dans le sous-processus
+  behave, `OdooConnector.from_project`. Repli sur la config si le projet n'a pas de connexion
+  saisie. → `decisions/0005-connecteur-au-niveau-projet.md`.
+- [ ] **Sélection explicite du projet en CLI** : `testpilot run` utilise le *premier* projet
+  (même règle que le rattachement automatique). Ajouter `--project` pour lever l'implicite dès
+  qu'il y aura plusieurs applications réellement testées.
 - [ ] **Édition de la connexion d'un projet** : `PATCH /api/projects/{id}` ne gère que
   nom/description ; permettre d'éditer connecteur + connexion. → `decisions/0005-...`.
 

@@ -11,12 +11,14 @@ import logging
 import time
 
 from testpilot import config
+from testpilot.connectors.runtime_env import project_env
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.execution.executor import Executor
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import (
     CaseRepo,
     ExecutionRepo,
+    ProjectRepo,
     RepairRepo,
     ReviewRepo,
     now_iso,
@@ -65,12 +67,27 @@ def trigger_run(conn, case_id: int) -> tuple[int, str, int, int]:
     return eid, case["feature_slug"], case_id, version_id
 
 
+def resolve_connection(conn, case_id: int) -> dict[str, str]:
+    """Connexion (variables d'env) du PROJET auquel appartient le cas.
+
+    Le run doit taper l'application du projet affiché, pas la config globale — sinon
+    l'interface promettrait un multi-projet que le runtime ne tiendrait pas. Vide si le
+    projet n'a pas de connexion saisie → repli sur la config globale.
+    """
+    case = CaseRepo(conn).get(case_id)
+    project_id = (case or {}).get("project_id")
+    project = ProjectRepo(conn).get(project_id) if project_id else None
+    return project_env(project)
+
+
 def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int) -> None:
     """Tâche de fond : lance Behave réel, calcule + persiste le verdict à deux axes."""
     conn = get_initialized_db(config.DB_PATH)
     try:
         started = time.perf_counter()
-        outcome = Executor(BehaveRunner()).execute(module_name)
+        # Le runtime tape l'application DU PROJET du cas (décision 0005).
+        runner = BehaveRunner(connection=resolve_connection(conn, case_id))
+        outcome = Executor(runner).execute(module_name)
         duration = time.perf_counter() - started
         verdict = derive_verdict(outcome)
         _persist(conn, execution_id, case_id, verdict, outcome, duration)

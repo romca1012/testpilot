@@ -57,6 +57,12 @@ class ProjectRepo:
         row = self.conn.execute("SELECT * FROM project WHERE name=?", (name,)).fetchone()
         return dict(row) if row else None
 
+    def first(self) -> dict | None:
+        """Projet par défaut (le plus ancien). Source unique de la règle « projet courant »
+        hors interface : rattachement automatique ET connexion du runtime en CLI."""
+        row = self.conn.execute("SELECT * FROM project ORDER BY id LIMIT 1").fetchone()
+        return dict(row) if row else None
+
     def rename(self, project_id: int, *, name: str, description: str | None = None) -> None:
         if description is None:
             self.conn.execute("UPDATE project SET name=? WHERE id=?", (name, project_id))
@@ -128,8 +134,8 @@ def ensure_default_module(conn: sqlite3.Connection, feature_slug: str) -> int:
     from testpilot import config as _cfg
 
     modules = ModuleRepo(conn)
-    row = conn.execute("SELECT id FROM project ORDER BY id LIMIT 1").fetchone()
-    project_id = row["id"] if row else ProjectRepo(conn).create(
+    existing = ProjectRepo(conn).first()
+    project_id = existing["id"] if existing else ProjectRepo(conn).create(
         name="Portail Sapian", connector_type="odoo", base_url=_cfg.ODOO_URL,
         database=_cfg.ODOO_DB, username=_cfg.ODOO_USER, password=_cfg.ODOO_PASSWORD)
     name = _prettify_slug(feature_slug)

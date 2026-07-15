@@ -200,18 +200,25 @@ def build_default_deps(conn) -> PipelineDeps:
     Le connecteur Odoo est CONNECTÉ ici et injecté à l'agent : sans lui, la génération
     explorerait à l'aveugle (pas d'``inspect_form``/``get_schema``) — ce qui viderait de son
     sens la perception « boîte noire » du §6. ``main`` le déconnecte en fin de run.
+
+    Génération ET exécution tapent la connexion du PROJET courant (le premier projet, même
+    règle que le rattachement automatique) : sans ça, un cas serait rangé sous un projet mais
+    joué contre une autre instance — l'incohérence exacte que l'outil doit éliminer.
     """
     from testpilot.analysis.spec_analyzer import SpecAnalyzer
     from testpilot.connectors.odoo import OdooConnector
+    from testpilot.connectors.runtime_env import project_env
     from testpilot.execution.behave_runner import BehaveRunner
     from testpilot.execution.executor import Executor
     from testpilot.generation.agent import GenerationAgent
     from testpilot.store.repositories import CaseRepo as _Case
+    from testpilot.store.repositories import ProjectRepo as _Project
     from testpilot.store.repositories import VersionRepo as _Version
 
-    connector = OdooConnector.from_config()
+    project = _Project(conn).first()  # None → config globale (le projet sera créé depuis elle)
+    connector = OdooConnector.from_project(project)
     connector.connect()
-    runner = BehaveRunner()
+    runner = BehaveRunner(connection=project_env(project))
     agent = GenerationAgent(dry_runner=runner, connector=connector,
                             case_repo=_Case(conn), version_repo=_Version(conn))
     return PipelineDeps(analyzer=SpecAnalyzer(), agent=agent,
