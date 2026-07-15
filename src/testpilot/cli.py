@@ -195,21 +195,38 @@ def run_pipeline(deps: PipelineDeps, spec_path: str | Path, *, author: str = "",
 
 
 def build_default_deps(conn) -> PipelineDeps:
-    """Assemble les implémentations réelles des piliers (LLM, Behave, store)."""
+    """Assemble les implémentations réelles des piliers (LLM, Behave, connecteur, store).
+
+    Le connecteur Odoo est CONNECTÉ ici et injecté à l'agent : sans lui, la génération
+    explorerait à l'aveugle (pas d'``inspect_form``/``get_schema``) — ce qui viderait de son
+    sens la perception « boîte noire » du §6. ``main`` le déconnecte en fin de run.
+    """
     from testpilot.analysis.spec_analyzer import SpecAnalyzer
+    from testpilot.connectors.odoo import OdooConnector
     from testpilot.execution.behave_runner import BehaveRunner
     from testpilot.execution.executor import Executor
     from testpilot.generation.agent import GenerationAgent
     from testpilot.store.repositories import CaseRepo as _Case
     from testpilot.store.repositories import VersionRepo as _Version
 
+    connector = OdooConnector.from_config()
+    connector.connect()
     runner = BehaveRunner()
-    agent = GenerationAgent(dry_runner=runner, case_repo=_Case(conn), version_repo=_Version(conn))
+    agent = GenerationAgent(dry_runner=runner, connector=connector,
+                            case_repo=_Case(conn), version_repo=_Version(conn))
     return PipelineDeps(analyzer=SpecAnalyzer(), agent=agent,
                         executor=Executor(runner), conn=conn)
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Sur Windows, la console/redirection est en cp1252 : forcer utf-8 pour ne pas planter
+    # sur les caractères non-latin1 (accents, symboles) de la sortie du pipeline.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     parser = argparse.ArgumentParser(prog="testpilot", description="TestPilot — pipeline de test IA")
     sub = parser.add_subparsers(dest="command", required=True)
     runp = sub.add_parser("run", help="spec → génération → relecture → exécution → rapport")
@@ -223,10 +240,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         config.ensure_dirs()
         conn = get_initialized_db(args.db)
+        connector = None
         try:
             deps = build_default_deps(conn)
+            connector = getattr(deps.agent, "connector", None)
             result = run_pipeline(deps, args.spec, author=args.author, auto_approve=args.yes)
         finally:
+            if connector is not None:
+                try:
+                    connector.disconnect()
+                except Exception:
+                    pass
             conn.close()
         return 0 if result.stopped_stage == STAGE_DONE else 1
     return 2

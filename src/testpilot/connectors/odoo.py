@@ -15,6 +15,7 @@ hors-ligne), la couche réseau est isolée dans des méthodes surchargeables.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import re
 import urllib.error
@@ -102,6 +103,7 @@ class OdooConnector(Connector):
         self._playwright = None
         self._browser = None
         self._page = None         # démarré paresseusement à la 1re inspection UI
+        self._executor = None     # thread dédié Playwright (voir _run_in_browser)
 
     @classmethod
     def from_config(cls, **overrides) -> "OdooConnector":
@@ -124,17 +126,22 @@ class OdooConnector(Connector):
         self._client.login(self._database, self._user, self._password)
 
     def disconnect(self) -> None:
-        if self._browser is not None:
+        # Le navigateur est thread-affine : sa fermeture passe par le thread worker.
+        if self._executor is not None:
+            def _close():
+                if self._browser is not None:
+                    self._browser.close()
+                if self._playwright is not None:
+                    self._playwright.stop()
             try:
-                self._browser.close()
-            finally:
-                self._browser = None
-        if self._playwright is not None:
-            try:
-                self._playwright.stop()
-            finally:
-                self._playwright = None
+                self._executor.submit(_close).result(timeout=30)
+            except Exception as exc:
+                logger.warning("[odoo] fermeture navigateur : %s", exc)
+            self._executor.shutdown(wait=False)
+            self._executor = None
         self._page = None
+        self._browser = None
+        self._playwright = None
         self._client = None
 
     # ── Perception RPC ─────────────────────────────────────────────────────────
@@ -152,16 +159,20 @@ class OdooConnector(Connector):
     def inspect_form(self, page_url: str) -> dict:
         """Observe le vrai formulaire portail rendu (champs réels, champs cachés injectés)."""
         try:
-            page = self._ensure_page()
-            target = page_url if page_url.startswith("http") else urljoin(self._url + "/", page_url.lstrip("/"))
-            page.goto(target)
-            page.wait_for_load_state("networkidle")
-            result = extract_form(page)
-            result["error"] = ""
-            return result
+            return self._run_in_browser(self._inspect_sync, page_url)
         except Exception as exc:  # perception best-effort : jamais fatal pour l'agent
             logger.warning("[odoo] inspect_form a échoué sur %s : %s", page_url, exc)
             return {"fields": [], "submission": {}, "error": str(exc)[:200]}
+
+    def _inspect_sync(self, page_url: str) -> dict:
+        """Séquence Playwright réelle — exécutée DANS le thread worker (voir _run_in_browser)."""
+        page = self._ensure_page()
+        target = page_url if page_url.startswith("http") else urljoin(self._url + "/", page_url.lstrip("/"))
+        page.goto(target)
+        page.wait_for_load_state("networkidle")
+        result = extract_form(page)
+        result["error"] = ""
+        return result
 
     def discover_route(self, path_pattern: str, sample_id: int | None = None) -> dict:
         """Sonde une route en HTTP léger (HEAD puis repli GET) : statut + méthode."""
@@ -177,8 +188,20 @@ class OdooConnector(Connector):
         return True
 
     # ── Interne (réseau isolé, surchargeable en test) ──────────────────────────
+    def _run_in_browser(self, fn, *args):
+        """Exécute une opération Playwright dans un thread dédié SANS boucle asyncio.
+
+        La génération tourne dans une boucle asyncio ; or l'API SYNC de Playwright refuse de
+        s'exécuter dans une boucle active (« Sync API inside the asyncio loop »). On isole donc
+        toutes les interactions navigateur dans un unique thread worker — qui n'a aucune boucle
+        d'événements — et où vivent les objets Playwright (thread-affinité)."""
+        if self._executor is None:
+            self._executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="odoo-playwright")
+        return self._executor.submit(fn, *args).result()
+
     def _ensure_page(self):
-        """Démarre Playwright + session portail authentifiée à la première inspection UI."""
+        """Démarre Playwright + session portail authentifiée (DANS le thread worker)."""
         if self._page is not None:
             return self._page
         from playwright.sync_api import sync_playwright
@@ -186,11 +209,13 @@ class OdooConnector(Connector):
         self._browser = self._playwright.chromium.launch(headless=self._headless)
         page = self._browser.new_context().new_page()
         page.set_default_timeout(self._timeout_ms)
-        # Connexion web Odoo (portail) — nécessaire pour voir les formulaires authentifiés.
-        page.goto(urljoin(self._url + "/", "web/login"))
-        page.fill("input[name='login'], input[type='email']", self._user)
-        page.fill("input[name='password'], input[type='password']", self._password)
-        page.click("button[type='submit']")
+        # Connexion web Odoo (portail). force=True : les inputs de login Odoo ne sont pas
+        # toujours « visibles » au sens Playwright (widgets/overlay) → fill classique timeout.
+        page.goto(f"{self._url}/web/login?db={self._database}")
+        page.wait_for_selector("input[name='login']", state="attached", timeout=self._timeout_ms)
+        page.locator("input[name='login']").fill(self._user, force=True)
+        page.locator("input[name='password']").fill(self._password, force=True)
+        page.locator("input[name='password']").press("Enter")
         page.wait_for_load_state("networkidle")
         self._page = page
         return page
