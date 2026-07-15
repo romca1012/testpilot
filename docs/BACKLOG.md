@@ -32,11 +32,38 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   `POST /api/modules/1/cases` : **16/37** steps partagés réutilisés, **les 3 steps de comptage
   réutilisés**, 4 steps custom seulement (tous légitimes), **aucun transport brut**.
   Voir `CONTINUITE.md` §6.
-- [ ] **Sémantique des paramètres de steps** (écart trouvé au run réel, priorité haute) :
-  l'agent réutilise le bon step mais lui passe le **libellé humain** (« Raison de la demande »)
-  là où le helper attend le **nom technique HTML** (`name`) → `TimeoutError` à l'exécution.
-  Le catalogue montre les libellés mais **rien sur la sémantique des placeholders**. À confirmer
-  par une exécution réelle, puis décision `0007` + plan avant de coder.
+- [x] **Confirmer l'écart par exécution réelle** — *fait, écart CONFIRMÉ*. Version 2 approuvée
+  délibérément (geste de test assumé, tracé en base), exécution 2 → `technical_error /
+  indetermine`. Traceback complet : `TimeoutError … waiting for locator("[name='Raison de la
+  demande']")`. Sonde du formulaire : le champ existe sous `name='name'` (libellé affiché
+  « Raison de la demande * ») → erreur de **paramétrage**, pas un bug applicatif. La taxonomie
+  0002 (`ui_timeout` → `wrong_field_name` → `test_a_reparer`) est validée de bout en bout.
+  Voir `CONTINUITE.md` §6.1.
+- [ ] **Assertion tautologique → faux « conforme »** (écart 2, **priorité 1 recommandée**) :
+  l'agent génère un `assert error_visible or "<chemin>" not in current_url` dans une branche
+  `else` où le second opérande est **toujours vrai** → le step ne peut **jamais** échouer, le
+  scénario est déclaré `conforme` quoi que fasse l'application. Viole les invariants §4.2
+  (statut jamais déclaratif) et §4.4 (faux-négatif inacceptable). Défaut du **code généré**.
+  Famille distincte de `0007` → décision propre probable. Voir `CONTINUITE.md` §6.1.
+- [x] **Message d'erreur détruit avant l'écran** (écart 3) — *fait*. Nouveau helper
+  `meaningful_error()` (`execution/behave_result.py`) : repart de la dernière ligne d'exception
+  jusqu'à la fin (message + `Call log` avec le sélecteur), au lieu de la tête du traceback. Le
+  résumé de `classify_failure` ne suffisait pas (il s'arrête à la 1re ligne, avant le `Call
+  log`). `failure_type`/`raw` inchangés. Prouvé sur l'exécution 3 (le sélecteur
+  `[name='Raison de la demande']` est enfin en base) ; 3 tests de non-régression, **168 verts**.
+  *Reste* : visibilité complète à l'écran (dépend de l'écart 4 pour `ReportView` ; le dépliage
+  `CaseRow` n'affiche pas la cause — choix de design 0006 à trancher). Voir `CONTINUITE.md` §6.1.
+- [ ] **Sémantique des paramètres de steps** — écart **CONFIRMÉ**, décision `0007` + plan avant
+  de coder. ⚠️ Le diagnostic initial (« incohérence interne de l'agent ») était **faux** : le
+  step custom de l'agent utilise `page.get_by_label(field)`, qui résout le libellé humain. Son
+  modèle est **cohérent** (libellé pour l'UI, nom technique pour le RPC) ; c'est le placeholder
+  `{field}` de la bibliothèque qui signifie « attribut HTML `name` » **sans le dire**. Désaccord
+  de **convention**, pas confusion. Deux options ouvertes : **(A)** annoter la sémantique des
+  placeholders dans le catalogue ; **(B)** rendre le step tolérant (repli `get_by_label`). Non
+  exclusives, **rien n'est tranché**. Voir `CONTINUITE.md` §6.1.
+- [ ] **Runs API sans rapport** (écart 4) : `run_service._persist` n'écrit ni `report_json_path`
+  ni `report_html_path` (vides pour l'exécution 2), alors que la CLI les produit. L'UI promet un
+  rapport que le runtime ne fournit pas → invariant §4.6 (« jamais affiché ≠ réel »).
 - [ ] **Confirmations `pending_human`** : sous-commande / écran de traitement de la file de
   relecture des origines de défaut. → `decisions/0001-report-confirmations-pending-human-inc1.md`.
 - [x] **Runtime branché sur la connexion du projet** — *fait*. L'exécution (run UI et CLI) et

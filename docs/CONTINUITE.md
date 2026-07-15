@@ -23,6 +23,15 @@ Anthropic (Claude), frontend Vite + Vue 3 + Tailwind (dark, esprit « Linear »)
 **Lancer** : `python -m uvicorn testpilot.api.app:app --port 8011` (⚠️ le port 8000 est occupé
 par un autre serveur, hors projet). CLI : `testpilot run specs/demande_materiel.md --yes`.
 
+⚠️ **État de la reprise** :
+- **Écart 3 CORRIGÉ et commité** (§6.1) : `meaningful_error()` dans `execution/behave_result.py`
+  + 3 tests dans `tests/test_errored_steps.py` (**168 verts**). Le message d'erreur porte enfin
+  la cause.
+- **Non commité** : 3 scripts d'enquête du run #2 (`scripts/confirm_ecart_parametres_steps.py`,
+  `scripts/probe_traceback_complet.py`, `scripts/probe_champs_formulaire.py`) — artefacts
+  d'investigation, à garder ou non dans le dépôt (**à décider**).
+- **Écarts 1, 2, 4 : diagnostiqués, non corrigés** (voir §7 pour l'ordre arrêté ; écart 2 suit).
+
 ---
 
 ## 2. Décisions structurantes tranchées (NE PAS re-débattre)
@@ -189,17 +198,21 @@ e6aab00  Generation · 73294b6 Analysis · b0b5c01 Socle
 
 ---
 
-## 6. Run e2e réel — TERMINÉ, concluant, **+ 1 nouvel écart trouvé**
+## 6. Runs e2e réels — TERMINÉS, concluants, **4 écarts trouvés (1 corrigé, 3 ouverts)**
+
+Deux passages successifs sur la vraie base et la vraie instance Odoo. Le premier a **généré**
+le cas 2 ; le second l'a **exécuté** pour prouver l'écart que le premier avait fait soupçonner.
+
+### 6.0 Run #1 — génération (`scripts/run_reel_0003_0006.py`)
 
 **But** : valider **en un passage** (a) le flux 0006 « ajouter un cas par spec » et (b) l'effet
 réel de 0003 « l'agent réutilise-t-il les steps partagés ? ».
 
-**Dispositif** : `scripts/run_reel_0003_0006.py` — passe par la **vraie route HTTP**
-(`POST /api/modules/1/cases`) via `TestClient` (qui exécute la tâche de fond de façon
-synchrone), sur la **vraie base**. Spec : `specs/validation_champ_requis.md` (variante réelle
-de `demande_materiel`, ciblée sur la validation d'un champ requis — un besoin qui **exige** le
-comptage de tickets, donc le step partagé). Base sauvegardée :
-`data/testpilot.db.pre-run-reel.bak`. **Rejouable** :
+**Dispositif** : passe par la **vraie route HTTP** (`POST /api/modules/1/cases`) via
+`TestClient` (qui exécute la tâche de fond de façon synchrone), sur la **vraie base**. Spec :
+`specs/validation_champ_requis.md` (variante réelle de `demande_materiel`, ciblée sur la
+validation d'un champ requis — un besoin qui **exige** le comptage de tickets, donc le step
+partagé). Base sauvegardée : `data/testpilot.db.pre-run-reel.bak`. **Rejouable** :
 `PYTHONUTF8=1 python scripts/run_reel_0003_0006.py`.
 
 ### (a) Flux 0006 — ✅ **validé de bout en bout**
@@ -218,56 +231,11 @@ Aucune coquille : le cas naît **avec** sa version, son Gherkin et ses steps.
 |---|---|
 | Steps partagés réutilisés | **16 / 37 libellés uniques** |
 | **Step de comptage partagé réutilisé** | ✅ **OUI** — les trois : `…est enregistré pour comparaison`, `…augmente de 1`, `…n'a pas augmenté` |
-| Steps custom écrits | **4**, tous légitimement spécifiques (chaîne de 300 car., chemin de redirection, `team_id`, cohérence chaîne longue) |
+| Steps custom écrits | **4**, dont l'**existence** est à chaque fois justifiée (chaîne de 300 car., chemin de redirection, `team_id`, cohérence chaîne longue) — ⚠️ mais voir l'**écart 2** du §6.1 : *écrire* un step custom légitime ne veut pas dire le **bien écrire**, et celui de la « cohérence chaîne longue » ne peut jamais échouer |
 | Transport brut (`requests`/`urllib`/`/web/dataset`) | ✅ **Aucun** |
 
 Avant 0003 : l'agent inventait `_count_tickets` avec `requests` → 404, tuant les 3 scénarios.
 Après : il réutilise la bibliothèque et n'écrit du custom que là où c'est justifié.
-
-### ⚠️ NOUVEL ÉCART TROUVÉ (non corrigé, à traiter à la reprise)
-
-**L'agent réutilise le bon step, mais lui passe le mauvais argument.** Le Gherkin généré dit :
-```gherkin
-Et je renseigne le champ "Raison de la demande" avec la valeur "..."
-Et je laisse le champ "Raison de la demande" vide
-```
-Or le helper derrière ce step partagé sélectionne par **attribut HTML `name`** :
-```python
-def fill_field(page, name, value):
-    page.wait_for_selector(f'[name="{name}"]', ...)
-```
-L'agent a passé le **libellé humain** (« Raison de la demande ») là où le step attend le **nom
-technique du champ** (`name`). `[name="Raison de la demande"]` n'existe pas → `TimeoutError` à
-l'exécution réelle.
-
-**Incohérence interne révélatrice** : dans le *même* fichier, pour les vérifications RPC, il
-utilise correctement le nom technique (`un enregistrement avec le champ "name" égal à …`).
-Il confond donc les deux registres **uniquement sur les steps UI**.
-
-**Cause probable** : le catalogue de 0003 expose les **libellés** des steps, mais **rien sur la
-sémantique des placeholders** — `{field}` est-il un libellé humain ou un attribut HTML ? On lui
-a montré *quoi* réutiliser, pas *comment* le paramétrer.
-
-**Statut de la preuve** : **non prouvé par une exécution**. Le dry-run passe (les steps se
-résolvent — il ne vérifie pas la sémantique des arguments) ; le gate bloque l'exécution tant
-que la version n'est pas relue (correctement). L'analyse repose sur la lecture du helper
-`_base_helpers.fill_field`. **À confirmer** en approuvant le cas 2 et en le lançant.
-
-**Note positive** : si ce diagnostic est juste, la chaîne §5 le classera **correctement** —
-`TimeoutError` → `ui_timeout` → `wrong_field_name` → « Champ/sélecteur introuvable » →
-`test_a_reparer`. Ce serait une validation de bout en bout de la taxonomie (0002).
-
-**Piste (à valider avant de coder)** : enrichir le catalogue avec la **sémantique des
-paramètres** (ex. annoter `{field}` = « nom technique du champ HTML, pas son libellé »). C'est
-le prolongement naturel de 0003 — même racine : on montre, mais pas assez.
-
-### Suite à donner (à la reprise)
-1. **Confirmer l'écart** : approuver le cas 2 (gate) et le lancer ; vérifier que l'échec est
-   bien un `ui_timeout` sur `[name="Raison de la demande"]`.
-2. Si confirmé : **ouvrir une décision `0007`** et proposer un plan (sémantique des paramètres
-   dans le catalogue) **avant** de coder.
-3. Le cas 2 est un **vrai cas** du référentiel (base restaurable via
-   `data/testpilot.db.pre-run-reel.bak` si on veut l'effacer).
 
 ### Nuance de mesure à connaître
 `steps_library.catalogue()` renvoie **43 déclarations** pour **37 libellés uniques** : certaines
@@ -276,16 +244,157 @@ chiffres sont corrects, ils ne mesurent pas la même chose.
 
 ---
 
+### 6.1 Run #2 — confirmation de l'écart (`scripts/confirm_ecart_parametres_steps.py`)
+
+**But** : prouver **par une exécution** l'écart soupçonné au run #1, plutôt que par la seule
+lecture du helper (§8.5).
+
+**Manipulation assumée** : la version 2 a été **approuvée délibérément** au gate pour pouvoir
+l'exécuter. Ce n'est **pas** une validation de complaisance — c'est le seul moyen d'exécuter un
+cas qu'on sait cassé. La `review_decision` en base (reviewer `confirmation-ecart`) porte un
+commentaire qui le dit explicitement. Base sauvegardée :
+`data/testpilot.db.pre-confirmation-ecart.bak`.
+
+**Résultat de l'exécution 2** : `technical_error / indetermine`, 3 scénarios (1 passé, 2 en
+échec), ~324 s. Classification obtenue : `ui_timeout` → `wrong_field_name` → « Champ/sélecteur
+introuvable » → `test_a_reparer`. **La taxonomie 0002 est validée de bout en bout.**
+
+### ✅ ÉCART 1 — CONFIRMÉ PAR EXÉCUTION (sémantique des paramètres de steps)
+
+⚠️ **Le verdict seul ne prouvait rien** : d'après `defect_taxonomy.py`, le mot-clé « timeout »
+suffit à produire `wrong_field_name`, et `ui_timeout` y tombe aussi par repli (`_TYPE_FALLBACK`).
+**N'importe quel** timeout aurait donné ce verdict. La preuve a exigé de rejouer le scénario en
+capturant le traceback complet (`scripts/probe_traceback_complet.py`) :
+
+```
+playwright._impl._errors.TimeoutError: Locator.fill: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator("[name='Raison de la demande']")
+```
+
+Et la sonde du formulaire réel (`scripts/probe_champs_formulaire.py`) tranche la dernière
+ambiguïté — le champ **existe**, sous le nom technique `name` :
+
+```
+[visible] name='name'  <input/text>  libellé affiché : 'Raison de la demande *'
+```
+
+→ **erreur de PARAMÉTRAGE** (`test_a_reparer`), **pas** un bug applicatif. Diagnostic clos.
+
+#### ⚠️ Correction du diagnostic initial (le rapport précédent avait tort sur ce point)
+
+Le rapport parlait d'une « incohérence interne » de l'agent. **C'est inexact, et ça change le
+correctif.** Le step *custom* écrit par l'agent fait :
+
+```python
+locator = page.get_by_label(field)   # résout le LIBELLÉ humain — et ça marche
+```
+
+L'agent applique un modèle **cohérent** : libellé humain pour l'UI, nom technique pour le RPC.
+Les deux conventions sont défendables. Le vrai problème : le placeholder `{field}` de la
+bibliothèque partagée signifie « attribut HTML `name` » **sans le dire nulle part**. Ce n'est
+pas une confusion de l'agent, c'est un **désaccord de convention**.
+
+**Conséquence sur les options de correctif** (à trancher en `0007`, rien n'est décidé) :
+- **Option A** — annoter la sémantique des placeholders dans le catalogue (`{field}` = « nom
+  technique HTML, pas le libellé »). Prolongement direct de 0003.
+- **Option B** — rendre le step partagé tolérant : repli `get_by_label` si `[name=…]` est
+  introuvable. Fait converger la bibliothèque vers le modèle **déjà** appliqué par l'agent.
+- Les deux ne s'excluent pas. **Ne pas coder avant décision.**
+
+### ⚠️ ÉCART 2 — un « conforme » qui ne vaut rien (LE PLUS GRAVE, non corrigé)
+
+Le scénario `[Limite]` est passé **`success / conforme`**. Son assertion générée :
+```python
+else:
+    error_visible = (...)
+    assert error_visible or "/your-ticket-has-been-submitted" not in current_url
+```
+Dans la branche `else`, on sait déjà que l'URL **ne contient pas** le chemin de succès : le
+`not in` est **toujours vrai** par construction, donc `error_visible or True` **toujours vrai**.
+L'assertion ne peut **jamais** échouer — et la branche `if` n'assertit rien du tout.
+**Ce step passe quoi que fasse l'application.**
+
+C'est frontalement l'**invariant §4.2** (« un statut n'est jamais déclaratif ») et une fabrique
+à **faux-négatifs** — que le §4.4 déclare **inacceptables**. L'écart 1 est bruyant (il casse le
+test, on le voit) ; celui-ci est **silencieux et ment dans le bon sens**. Défaut du **code
+généré**, pas du produit — famille distincte de l'écart 1 (l'agent écrit des assertions qui ne
+peuvent pas échouer). Mérite probablement sa propre décision.
+
+### ✅ ÉCART 3 — CORRIGÉ (le message d'erreur porte enfin la cause)
+
+**Diagnostic affiné** (le rapport disait « on stocke le début » — c'est vrai mais insuffisant) :
+`behave_result.py` construisait `BehaveScenario.error = err[:300]`, la **tête** du traceback
+(frames internes de Behave/Playwright), inexploitable. Le résumé déjà extrait par
+`classify_failure` **s'arrête à la première ligne** (`(.+?)(?:\n|$)`) — or le sélecteur fautif
+est dans le bloc **`Call log:`** de Playwright, **après** ce retour à la ligne. Réutiliser ce
+résumé n'aurait donc **pas** suffi.
+
+**Correctif** : nouveau helper `meaningful_error()` qui repart de la **dernière ligne
+d'exception** jusqu'à la fin (message + `Call log`), avec repli sur la queue si aucune ligne
+d'exception n'est identifiable. Branché sur le champ scénario. `classify_failure`,
+`failure_type`, `BehaveFailure.raw` **inchangés** (aucune régression du symptôme).
+
+**Preuve (exécution 3, re-run réel du cas 2)** : le sélecteur apparaît maintenant en base et à
+l'API —
+```
+error_summary : playwright…TimeoutError: Locator.fill: Timeout 30000ms exceeded.
+                Call log:
+                  - waiting for locator("[name='Raison de la demande']")
+```
+3 tests de non-régression ajoutés (`tests/test_errored_steps.py`), suite complète **168 verte**.
+
+⚠️ **Visibilité à l'écran — pas encore complète** : le message corrigé remonte au data-layer et
+à l'API. Mais (a) `ReportView` l'affiche (`s.error`) **via le rapport JSON** — absent pour les
+runs déclenchés par l'API tant que l'**écart 4** n'est pas corrigé ; (b) le **dépliage** de la
+page cas (`CaseRow`) n'affiche que les deux axes, **pas** la cause — c'est un choix de design de
+`0006`, pas un bug. Surface l'erreur dans le dépliage = **choix produit à trancher**, non fait.
+
+### ⚠️ ÉCART 4 — les runs déclenchés par l'API ne produisent aucun rapport (non corrigé)
+
+`report_json_path` et `report_html_path` sont **vides** pour l'exécution 2 : `run_service._persist`
+ne les écrit jamais, alors que la **CLI** le fait (cf. `data/reports/demande_materiel_v1.json`,
+produit par le run CLI). L'UI promet un rapport que le runtime ne produit pas → **invariant §4.6**
+(« jamais affiché ≠ réel »).
+
+### Suite à donner — ordre arrêté avec le porteur (2026-07-15)
+
+**Décidé** : traiter **écart 3 d'abord** (correctif pur, sans décision, outille les autres) →
+**puis écart 2** (génération, avec décision une fois le diagnostic fiable) → **puis `0007`**
+pour l'écart 1 (décision + plan écrits avant tout code).
+
+- ✅ **Écart 3 — FAIT** (voir ci-dessus). Prochaine étape : **écart 2**.
+- ⏭️ **Écart 2** : le diagnostic est désormais **fiable** (l'écran/la base portent la vraie
+  cause). Reste à décider le correctif côté **génération** : comment empêcher l'agent d'émettre
+  un `assert` qui ne peut pas échouer (garde-fou de génération ? relecture ciblée ?). **Décision
+  + plan avant de coder.**
+- ⏭️ **Écart 1 / `0007`** : options A/B ci-dessus, décision + plan avant code.
+- ⏭️ **Écart 4** : conditionne la visibilité complète du correctif d'écart 3 à l'écran.
+
+État : cas 2 = **vrai cas** du référentiel, version 2 approuvée (délibérément), **exécutée 3
+fois** (exécutions 2 = confirmation, 3 = preuve du correctif d'écart 3). Bases restaurables :
+`data/testpilot.db.pre-run-reel.bak` (avant génération), `…pre-confirmation-ecart.bak` (avant
+approbation), `…pre-ecart3-verif.bak` (avant re-run de preuve).
+
+---
+
 ## 7. Backlog ouvert (voir `docs/BACKLOG.md`)
+
+⚠️ **L'ordre ci-dessous est une RECOMMANDATION, pas une décision** — les rangs 1 à 3 sortent des
+écarts trouvés au run #2 (§6) et n'ont **pas** été arbitrés par le porteur. À trancher à la
+reprise (voir « Suite à donner » du §6).
 
 | Priorité | Item |
 |---|---|
-| **1 — recommandée** | **Sémantique des paramètres de steps** (nouvel écart du §6) : l'agent réutilise le bon step mais lui passe un libellé humain là où il faut le nom technique du champ → `TimeoutError`. **D'abord confirmer par une exécution réelle**, puis décision `0007` + plan avant de coder. C'est la suite directe de 0003 (même racine : on montre *quoi*, pas *comment le paramétrer*). |
-| **2** | **Exécution nommée transverse** (§7, JTBD essentiel §3) : regroupement de cas de modules différents, rapport attaché à l'exécution. L'UI laisse déjà la porte ouverte (badge « Cas unique / Suite transverse », champ `suite_name` réservé côté API). C'est **le dernier gros manque du §7**. |
-| **3** | **Confirmations `pending_human`** (`0001`) : écran de traitement de la file des origines de défaut. |
-| **4** | **Édition de la connexion d'un projet** : `PATCH /api/projects/{id}` ne gère que nom/description. |
-| **5** | `testpilot run --project` : lever l'implicite (la CLI prend le **premier** projet). Sans effet observable tant qu'il n'y a qu'un projet réel. |
-| **6 — observation** | Quasi-doublons sémantiques (volet C de `0003`) : écarté, à reconsidérer avec des exemples concrets après plusieurs runs. |
+| ✅ **FAIT** | **Message d'erreur détruit avant l'écran** (écart 3 du §6) : `meaningful_error()` remonte la cause (message + `Call log` avec le sélecteur) au lieu de la tête du traceback. Prouvé sur l'exécution 3, 168 tests verts. *Reste* : visibilité complète à l'écran (dépend de l'écart 4 + choix d'affichage dans le dépliage). |
+| **1 — en cours** | **Assertion tautologique → faux « conforme »** (écart 2 du §6) : l'agent génère un `assert` qui ne peut jamais échouer ; le scénario est déclaré conforme quoi que fasse l'app. Viole les invariants §4.2 et §4.4 (faux-négatif = inacceptable). **Silencieux**, donc plus dangereux qu'un test cassé. Correctif côté **génération** → **décision + plan avant de coder**. |
+| **2** | **Sémantique des paramètres de steps** — écart **CONFIRMÉ par exécution** (§6, écart 1). Décision `0007` + plan **avant** de coder. Deux options ouvertes (annoter le catalogue / rendre le step tolérant via `get_by_label`) — cf. §6, la correction du diagnostic **change les options**. |
+| **3** | **Runs API sans rapport** (écart 4 du §6) : `_persist` n'écrit ni `report_json_path` ni `report_html_path`, alors que la CLI le fait → invariant §4.6. Conditionne aussi la visibilité de l'écart 3 dans `ReportView`. |
+| **5** | **Exécution nommée transverse** (§7, JTBD essentiel §3) : regroupement de cas de modules différents, rapport attaché à l'exécution. L'UI laisse déjà la porte ouverte (badge « Cas unique / Suite transverse », champ `suite_name` réservé côté API). C'est **le dernier gros manque du §7**. |
+| **6** | **Confirmations `pending_human`** (`0001`) : écran de traitement de la file des origines de défaut. |
+| **7** | **Édition de la connexion d'un projet** : `PATCH /api/projects/{id}` ne gère que nom/description. |
+| **8** | `testpilot run --project` : lever l'implicite (la CLI prend le **premier** projet). Sans effet observable tant qu'il n'y a qu'un projet réel. |
+| **9 — observation** | Quasi-doublons sémantiques (volet C de `0003`) : écarté, à reconsidérer avec des exemples concrets après plusieurs runs. |
 | **Inc. 2 — bloquant client** | **Mot de passe de connexion en clair** dans SQLite. Atténué (write-only côté API) mais à chiffrer / passer en gestionnaire de secrets **avant tout déploiement client**. |
 
 ---

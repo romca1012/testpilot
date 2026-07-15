@@ -18,6 +18,7 @@ from testpilot.execution.behave_result import (
     BehaveFailure,
     classify_failure,
     error_text,
+    meaningful_error,
     parse_behave_json,
 )
 from testpilot.execution.behave_runner import BehaveRunner
@@ -121,6 +122,54 @@ def test_timeout_playwright_reste_un_selecteur():
 def test_repli_de_symptome_http_error_vers_navigation():
     # Sans mot-clé exploitable dans le texte, le symptôme seul doit suffire.
     assert dt.classify_failure(BehaveFailure("S", "", "http_error", "")) == dt.WRONG_NAVIGATION
+
+
+# ── §6.1 écart 3 : le message montré doit porter la CAUSE, pas la tête du traceback ──
+# Traceback réel du run #2 (cas 2) : le sélecteur fautif est dans le « Call log » de
+# Playwright, à la FIN. Tronquer par la tête (l'ancien err[:300]) le rendait invisible.
+_TRACEBACK_ECART_3 = (
+    "Traceback (most recent call last):\n"
+    '  File ".../behave/model.py", line 1991, in run\n'
+    "    match.run(runner.context)\n"
+    '  File ".../behave/matchers.py", line 105, in run\n'
+    "    self.func(context, *args, **kwargs)\n"
+    '  File "steps\\_generic_steps.py", line 38, in step_leave_empty\n'
+    "    leave_field_empty(context.page, field)\n"
+    '  File ".../_base_helpers.py", line 159, in leave_field_empty\n'
+    "    page.locator(f\"[name='{name}']\").fill(\"\", force=True)\n"
+    "  ... nombreuses frames internes de Playwright ...\n"
+    "playwright._impl._errors.TimeoutError: Locator.fill: Timeout 30000ms exceeded.\n"
+    "Call log:\n"
+    "  - waiting for locator(\"[name='Raison de la demande']\")\n"
+)
+
+
+def test_meaningful_error_garde_la_cause_et_le_selecteur():
+    msg = meaningful_error(_TRACEBACK_ECART_3)
+    # La ligne d'exception ouvre le message ; les frames internes ont disparu.
+    assert msg.startswith("playwright._impl._errors.TimeoutError:")
+    assert "Traceback (most recent call last)" not in msg
+    # Le sélecteur fautif — le seul détail actionnable — est présent.
+    assert "[name='Raison de la demande']" in msg
+
+
+def test_scenario_error_expose_le_selecteur_bout_en_bout():
+    """Garde-fou de l'écart 3 : le champ montré au relecteur (scenario.error) doit porter
+    le sélecteur, sinon un ui_timeout reste indiagnostiquable à l'écran."""
+    result = parse_behave_json(_json_with("error", _TRACEBACK_ECART_3.splitlines()), returncode=1)
+    scenario = result.scenarios[0]
+    assert scenario.status == "failed"
+    assert "[name='Raison de la demande']" in scenario.error
+    # Non-régression : le symptôme reste correctement classé.
+    assert result.failures[0].failure_type == "ui_timeout"
+
+
+def test_meaningful_error_repli_sur_la_queue_sans_ligne_exception():
+    # Message sans ligne d'exception identifiable : la fin reste plus utile que le début.
+    texte = "\n".join(f"ligne {i}" for i in range(200))
+    msg = meaningful_error(texte, limit=40)
+    assert "ligne 199" in msg
+    assert len(msg) <= 40
 
 
 # ── A (intégration) : vrai run behave, formatter maison ───────────────────────

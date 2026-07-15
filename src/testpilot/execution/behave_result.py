@@ -94,6 +94,31 @@ def error_text(raw) -> str:
     return str(raw)
 
 
+# Ligne d'exception d'un traceback Python : ``module.qualifié.XxxError: message`` (ou
+# Exception / Timeout). Ancrée en début de ligne pour ne pas matcher un ``: Error`` au fil
+# du texte. On garde la DERNIÈRE (une chaîne d'exceptions finit sur celle réellement levée).
+_EXCEPTION_LINE_RE = re.compile(r"^[\w.]+(?:Error|Exception|Timeout)\b.*", re.MULTILINE)
+
+
+def meaningful_error(raw, limit: int = 600) -> str:
+    """Partie EXPLOITABLE d'un traceback pour un lecteur humain (message + « Call log »).
+
+    Un traceback Python porte l'information utile à la FIN : la ligne d'exception et son
+    message, suivis — pour Playwright — d'un bloc ``Call log:`` qui contient le sélecteur
+    réellement attendu. Tronquer par la TÊTE (``raw[:N]``) ne garde que les frames internes
+    de Behave/Playwright et jette le message ; c'est ce qui rendait le sélecteur fautif
+    invisible en base et à l'écran (§6.1, écart 3). On repart donc de la dernière ligne
+    d'exception jusqu'à la fin. À défaut de ligne identifiable, la queue reste plus parlante
+    que la tête.
+    """
+    text = error_text(raw).strip()
+    if not text:
+        return ""
+    matches = list(_EXCEPTION_LINE_RE.finditer(text))
+    tail = text[matches[-1].start():].strip() if matches else text[-limit:].strip()
+    return tail[:limit]
+
+
 def classify_failure(snippet: str) -> tuple[str, str]:
     """Classe un message d'erreur par SYMPTÔME technique."""
     snippet = error_text(snippet)
@@ -150,7 +175,9 @@ def parse_behave_json(json_output: str, returncode: int, dry_run: bool = False,
                     step_failed += 1
                     err = error_text(res.get("error_message"))
                     if not first_error:
-                        first_error = err[:300]
+                        # Message EXPLOITABLE (exception + « Call log » avec le sélecteur),
+                        # pas la tête du traceback : cf. meaningful_error (§6.1, écart 3).
+                        first_error = meaningful_error(err)
                     ftype, summary = classify_failure(err)
                     result.failures.append(BehaveFailure(
                         scenario_name=name, step_text=full_step,
