@@ -27,11 +27,11 @@ par un autre serveur, hors projet). CLI : `testpilot run specs/demande_materiel.
 - **Écart 3 CORRIGÉ et commité** (`c10b754`) : `meaningful_error()`, 3 tests, **168 verts**.
 - **Écart 2 : décision `0008` commitée (`103c212`) ; phase A commitée** (prompt Règle 4 +
   `[Limite]`), prouvée par re-génération (cas **3**). **Phase C reste à faire.**
-- **Non commité** : scripts d'enquête/preuve (`scripts/confirm_ecart_parametres_steps.py`,
-  `probe_traceback_complet.py`, `probe_champs_formulaire.py`, `prove_A_falsifiabilite.py`) —
-  artefacts, à garder ou non dans le dépôt (**à décider**). Bases `.bak` gitignorées.
-- **Cas 3** = artefact de preuve de A (re-génération), restaurable via
-  `data/testpilot.db.pre-preuve-A.bak` si on veut l'effacer.
+- **Scripts d'enquête/preuve commités** (reproductibles) : `scripts/confirm_ecart_parametres_steps.py`,
+  `probe_traceback_complet.py`, `probe_champs_formulaire.py`, `prove_A_falsifiabilite.py`.
+  Bases `.bak` gitignorées.
+- **Cas 3** = artefact de preuve de A (re-génération) — **conservé** (décision du porteur).
+  Backup avant sa création : `data/testpilot.db.pre-preuve-A.bak`.
 - **Écarts 1, 4 : diagnostiqués, non corrigés** (voir §7).
 
 ---
