@@ -312,19 +312,22 @@ class ExecutionRepo:
             "SELECT * FROM execution WHERE test_case_id=? ORDER BY id", (test_case_id,)))
 
     def list_recent(self, limit: int = 50, *, project_id: int | None = None) -> list[dict]:
-        """Exécutions récentes (onglet Exécution), plus récentes d'abord.
+        """Exécutions récentes (onglet Exécution), plus récentes d'abord, avec le contexte de
+        ce qui a tourné (titre du cas + module).
 
         Filtrées sur un projet si ``project_id`` est fourni — jamais de mélange inter-projets.
         """
+        select = (
+            "SELECT e.*, tc.title AS case_title, m.name AS module_name"
+            " FROM execution e"
+            " LEFT JOIN test_case tc ON e.test_case_id = tc.id"
+            " LEFT JOIN module m ON tc.module_id = m.id"
+        )
         if project_id is not None:
             return _rows(self.conn.execute(
-                "SELECT e.* FROM execution e"
-                " JOIN test_case tc ON e.test_case_id = tc.id"
-                " JOIN module m ON tc.module_id = m.id"
-                " WHERE m.project_id = ? ORDER BY e.id DESC LIMIT ?",
+                select + " WHERE m.project_id = ? ORDER BY e.id DESC LIMIT ?",
                 (project_id, max(1, limit))))
-        return _rows(self.conn.execute(
-            "SELECT * FROM execution ORDER BY id DESC LIMIT ?", (max(1, limit),)))
+        return _rows(self.conn.execute(select + " ORDER BY e.id DESC LIMIT ?", (max(1, limit),)))
 
     def add_scenario_result(self, *, execution_id: int, scenario_name: str,
                             execution_status: str, functional_status: str,

@@ -7,6 +7,8 @@ import Card from '../components/ui/Card.vue'
 import Spinner from '../components/ui/Spinner.vue'
 import Chip from '../components/ui/Chip.vue'
 import Hint from '../components/ui/Hint.vue'
+import Icon from '../components/ui/Icon.vue'
+import StatTile from '../components/StatTile.vue'
 import StatusPair from '../components/StatusPair.vue'
 import {
   functionalView, executionView, toneClasses,
@@ -27,18 +29,14 @@ onMounted(async () => {
     loading.value = false
   }
 })
-
-function scenarioTone(exec: string, func: string) {
-  // On montre les deux axes du scénario ; la teinte de ligne suit l'axe fonctionnel s'il tranche.
-  return func === 'non_conforme' ? toneClasses('destructive')
-    : exec === 'technical_error' ? toneClasses('warning')
-    : func === 'conforme' ? toneClasses('success') : toneClasses('muted')
-}
 </script>
 
 <template>
   <div class="space-y-6">
-    <RouterLink :to="`/projects/${route.params.pid}/executions`" class="text-xs text-muted-foreground hover:text-foreground">← Exécution</RouterLink>
+    <RouterLink :to="`/projects/${route.params.pid}/executions`"
+                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+      <Icon name="chevron" class="h-3.5 w-3.5 rotate-180" /> Exécution
+    </RouterLink>
 
     <div v-if="loading" class="flex items-center gap-2 text-muted-foreground text-sm">
       <Spinner class="h-4 w-4" /> Chargement…
@@ -47,71 +45,52 @@ function scenarioTone(exec: string, func: string) {
 
     <template v-else-if="report">
       <div>
-        <h1 class="text-xl font-semibold">{{ report.title }}</h1>
-        <p class="text-sm text-muted-foreground">Rapport d'exécution · v{{ report.version_number }}</p>
+        <h1 class="text-2xl font-semibold tracking-tight">{{ report.title }}</h1>
+        <p class="mt-1 text-sm text-muted-foreground">Rapport d'exécution · v{{ report.version_number }}</p>
       </div>
 
       <div v-if="report.needs_human_confirmation"
-           class="rounded-lg border-l-4 border-warning bg-warning/10 text-warning px-4 py-3 text-sm">
-        ⚠ Confirmation humaine requise : au moins une origine de défaut attend une validation.
+           class="flex items-start gap-2 rounded-lg border-l-4 border-warning bg-warning/10 px-4 py-3 text-sm text-warning">
+        <Icon name="half" class="mt-0.5 h-4 w-4 shrink-0" />
+        <span>Confirmation humaine requise : au moins une origine de défaut attend une validation.</span>
       </div>
 
-      <!-- Les deux axes en tête -->
+      <!-- Verdict à deux axes, en tête -->
       <Card>
         <StatusPair :execution-status="report.execution_status" :functional-status="report.functional_status" layout="row" />
       </Card>
 
-      <!-- Métriques -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div class="rounded-lg border border-border p-3">
-          <div class="text-xs text-muted-foreground">Scénarios conformes</div>
-          <div class="text-lg font-semibold">{{ report.scenarios_passed }}/{{ report.scenarios_total }}</div>
-        </div>
-        <div class="rounded-lg border border-border p-3">
-          <div class="text-xs text-muted-foreground">Échecs</div>
-          <div class="text-lg font-semibold">{{ report.scenarios_failed }}</div>
-        </div>
-        <div class="rounded-lg border border-border p-3">
-          <div class="text-xs text-muted-foreground">Durée</div>
-          <div class="text-lg font-semibold">{{ formatDuration(report.duration_seconds) }}</div>
-        </div>
-        <div class="rounded-lg border border-border p-3">
-          <div class="text-xs text-muted-foreground">Coût ({{ costSourceLabel(report.cost_source) }})</div>
-          <div class="text-lg font-semibold">{{ formatCost(report.cost_usd) }}</div>
-        </div>
-      </div>
+      <!-- Métriques (langage StatTile partagé) -->
+      <section class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatTile label="Scénarios conformes" :value="`${report.scenarios_passed}/${report.scenarios_total}`" tone="success" icon="check" />
+        <StatTile label="Échecs" :value="report.scenarios_failed" tone="destructive" icon="x" />
+        <StatTile label="Durée" :value="formatDuration(report.duration_seconds)" tone="muted" icon="dot" />
+        <StatTile :label="`Coût (${costSourceLabel(report.cost_source)})`" :value="formatCost(report.cost_usd)" tone="primary" icon="dot" />
+      </section>
 
-      <!-- Scénarios : deux axes par ligne + cause racine -->
+      <!-- Scénarios : deux axes par carte + cause racine -->
       <Card title="Scénarios">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead class="text-[11px] uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th class="text-left font-medium px-3 py-2">Scénario</th>
-                <th class="text-left font-medium px-3 py-2">Exécution</th>
-                <th class="text-left font-medium px-3 py-2">Fonctionnel</th>
-                <th class="text-left font-medium px-3 py-2">Cause racine</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(s, i) in report.scenarios" :key="i" class="border-t border-border align-top">
-                <td class="px-3 py-2">
-                  <div>{{ s.name }}</div>
-                  <div v-if="s.error" class="text-xs text-muted-foreground font-mono mt-1">{{ s.error }}</div>
-                </td>
-                <td class="px-3 py-2">
-                  <Chip :icon="executionView(s.execution_status).icon" :label="executionView(s.execution_status).label"
-                        :cls="toneClasses(executionView(s.execution_status).tone)" />
-                </td>
-                <td class="px-3 py-2">
-                  <Chip :icon="functionalView(s.functional_status).icon" :label="functionalView(s.functional_status).label"
-                        :cls="toneClasses(functionalView(s.functional_status).tone)" />
-                </td>
-                <td class="px-3 py-2 text-muted-foreground">{{ s.cause_label || '—' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <ul class="space-y-2">
+          <li v-for="(s, i) in report.scenarios" :key="i"
+              class="rounded-lg border border-border bg-surface/40 p-3">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="font-medium text-sm">{{ s.name }}</div>
+                <div v-if="s.error" class="mt-1 text-xs text-muted-foreground font-mono break-all">{{ s.error }}</div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <Chip :icon="executionView(s.execution_status).icon" :label="executionView(s.execution_status).label"
+                      :cls="toneClasses(executionView(s.execution_status).tone)" />
+                <Chip :icon="functionalView(s.functional_status).icon" :label="functionalView(s.functional_status).label"
+                      :cls="toneClasses(functionalView(s.functional_status).tone)" />
+              </div>
+            </div>
+            <div v-if="s.cause_label" class="mt-2 text-xs text-muted-foreground">
+              Cause racine : {{ s.cause_label }}
+            </div>
+          </li>
+          <li v-if="!report.scenarios.length" class="text-sm text-muted-foreground">Aucun scénario exécuté.</li>
+        </ul>
       </Card>
 
       <!-- Origine des défauts (vocabulaire utilisateur — jamais de valeur d'enum brute) -->

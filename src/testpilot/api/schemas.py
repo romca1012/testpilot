@@ -92,6 +92,11 @@ class ExecutionSummary(BaseModel):
     duration_seconds: float = 0.0
     started_at: str = ""
     running: bool = False
+    # Contexte de ce qui a tourné (rempli sur la liste globale). ``suite_name`` est réservé
+    # à l'Exécution nommée transverse (§7) — null tant qu'elle n'est pas implémentée.
+    case_title: str | None = None
+    module_name: str | None = None
+    suite_name: str | None = None
 
 
 class CaseDetail(BaseModel):
@@ -205,6 +210,8 @@ def execution_summary(row: dict, *, running: bool = False) -> ExecutionSummary:
         cost_usd=row.get("cost_usd", 0.0), iterations=row.get("iterations", 0),
         duration_seconds=row.get("duration_seconds", 0.0),
         started_at=row.get("started_at", ""), running=running,
+        case_title=row.get("case_title"), module_name=row.get("module_name"),
+        suite_name=row.get("suite_name"),
     )
 
 

@@ -86,6 +86,7 @@ export interface ExecutionSummary {
   execution_status: string; functional_status: string
   scenarios_total: number; scenarios_passed: number; scenarios_failed: number
   cost_usd: number; iterations: number; duration_seconds: number; started_at: string; running: boolean
+  case_title: string | null; module_name: string | null; suite_name: string | null
 }
 export interface CaseDetail {
   case: CaseSummary; project: Ref | null; module: Ref | null; current_version_id: number | null
