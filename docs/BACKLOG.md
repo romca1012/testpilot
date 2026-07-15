@@ -60,14 +60,19 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   `[name='Raison de la demande']` est enfin en base) ; 3 tests de non-régression, **168 verts**.
   *Reste* : visibilité complète à l'écran (dépend de l'écart 4 pour `ReportView` ; le dépliage
   `CaseRow` n'affiche pas la cause — choix de design 0006 à trancher). Voir `CONTINUITE.md` §6.1.
-- [ ] **Sémantique des paramètres de steps** — écart **CONFIRMÉ**, décision `0007` + plan avant
-  de coder. ⚠️ Le diagnostic initial (« incohérence interne de l'agent ») était **faux** : le
-  step custom de l'agent utilise `page.get_by_label(field)`, qui résout le libellé humain. Son
-  modèle est **cohérent** (libellé pour l'UI, nom technique pour le RPC) ; c'est le placeholder
-  `{field}` de la bibliothèque qui signifie « attribut HTML `name` » **sans le dire**. Désaccord
-  de **convention**, pas confusion. Deux options ouvertes : **(A)** annoter la sémantique des
-  placeholders dans le catalogue ; **(B)** rendre le step tolérant (repli `get_by_label`). Non
-  exclusives, **rien n'est tranché**. Voir `CONTINUITE.md` §6.1.
+- [ ] **Sémantique des paramètres de steps** (écart 1, **`0007` — DÉCIDÉ, à implémenter**) —
+  l'agent passe le **libellé humain** au step UI là où le helper attend le **nom technique**
+  (`[name=…]`) → `TimeoutError`. **Bug déterministe** (reproduit cas 2 **et** cas 3). Racine de
+  **famille commune** avec `0008`/`0003` (le catalogue montre le libellé, pas la sémantique de
+  `{field}`), **mais** remède **technique** possible (un champ est résoluble par `name` *et* par
+  libellé). **Verdict** :
+  - **B porteur** — helpers UI tolérants (`_base_helpers` : `name` d'abord, `get_by_label` en
+    repli). **Repli TRACÉ** et visible en mode dev (§5), **jamais silencieux** — sinon une vraie
+    régression Odoo (champ renommé) serait absorbée. Surfaçage type `lint_warnings` souhaité,
+    non obligatoire.
+  - **A1** — annotation du catalogue (`as_prompt_section`) : `{field}` = attribut HTML `name`,
+    **maintenant** (la reporter recréerait le trou de consigne). A2 (par step) différée.
+  → `decisions/0007-agent-parametre-steps-libelle-vs-nom-technique-inc1.md`.
 - [ ] **Runs API sans rapport** (écart 4) : `run_service._persist` n'écrit ni `report_json_path`
   ni `report_html_path` (vides pour l'exécution 2), alors que la CLI les produit. L'UI promet un
   rapport que le runtime ne fournit pas → invariant §4.6 (« jamais affiché ≠ réel »).

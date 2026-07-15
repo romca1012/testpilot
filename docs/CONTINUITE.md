@@ -33,7 +33,8 @@ par un autre serveur, hors projet). CLI : `testpilot run specs/demande_materiel.
   Bases `.bak` gitignorées.
 - **Cas 3** = artefact de preuve de A (re-génération) — **conservé** (décision du porteur).
   Backup avant sa création : `data/testpilot.db.pre-preuve-A.bak`.
-- **Écarts 1, 4 : diagnostiqués, non corrigés** (voir §7).
+- **Écart 1 : décision `0007` tranchée (B porteur + A1), à implémenter.** **Écart 4 :
+  diagnostiqué, non corrigé** (voir §7).
 
 ---
 
@@ -298,12 +299,14 @@ Les deux conventions sont défendables. Le vrai problème : le placeholder `{fie
 bibliothèque partagée signifie « attribut HTML `name` » **sans le dire nulle part**. Ce n'est
 pas une confusion de l'agent, c'est un **désaccord de convention**.
 
-**Conséquence sur les options de correctif** (à trancher en `0007`, rien n'est décidé) :
-- **Option A** — annoter la sémantique des placeholders dans le catalogue (`{field}` = « nom
-  technique HTML, pas le libellé »). Prolongement direct de 0003.
-- **Option B** — rendre le step partagé tolérant : repli `get_by_label` si `[name=…]` est
-  introuvable. Fait converger la bibliothèque vers le modèle **déjà** appliqué par l'agent.
-- Les deux ne s'excluent pas. **Ne pas coder avant décision.**
+→ **Décision `0007` tranchée** (`docs/decisions/0007-…md`). Racine de **famille commune** avec
+`0008`/`0003` (trou de consigne : le catalogue montre le libellé, pas la sémantique de
+`{field}`), **mais** — contrairement à `0008` — un remède **technique** existe (un champ est
+résoluble par `name` *et* par libellé). **Bug DÉTERMINISTE** : reproduit à l'identique cas 2
+**et** cas 3. Verdict : **B porteur** (helpers UI tolérants, `name` d'abord / libellé en repli,
+**repli TRACÉ** et visible en mode dev §5 — jamais silencieux, sinon une vraie régression Odoo
+serait absorbée) **+ A1** (annotation catalogue `{field}` = attribut HTML `name`, **maintenant**).
+À implémenter (plan à valider).
 
 ### ⚠️ ÉCART 2 — un « conforme » qui ne vaut rien (LE PLUS GRAVE, non corrigé)
 
@@ -379,7 +382,10 @@ pour l'écart 1 (décision + plan écrits avant tout code).
   par re-génération (cas 3). C : lint pur `assertion_lint.py` (dont motif contextuel exact) →
   `GateOut.lint_warnings` + bandeau non-bloquant `ReviewGate.vue`. Preuve réelle : cas 2 signalé,
   cas 3 propre. Détail : `docs/decisions/0008-…md`.
-- ⏭️ **Écart 1 / `0007`** : options A/B, décision + plan avant code. **Prochaine action.**
+- 🟡 **Écart 1 / `0007` — DÉCIDÉ, à implémenter.** Verdict : **B porteur** (helpers UI tolérants,
+  `name`-d'abord/libellé-en-repli, **repli tracé** et visible en mode dev §5 — jamais silencieux,
+  pour ne pas absorber une vraie régression Odoo) **+ A1** (annotation catalogue `{field}` = nom
+  technique, maintenant). Plan à valider **avant tout code**. Détail : `docs/decisions/0007-…md`.
 - ⏭️ **Écart 4** : conditionne la visibilité complète du correctif d'écart 3 à l'écran.
 
 État : cas 2 = **vrai cas** du référentiel, version 2 approuvée (délibérément), **exécutée 3
@@ -399,7 +405,7 @@ reprise (voir « Suite à donner » du §6).
 |---|---|
 | ✅ **FAIT** | **Message d'erreur détruit avant l'écran** (écart 3 du §6) : `meaningful_error()` remonte la cause (message + `Call log` avec le sélecteur) au lieu de la tête du traceback. Prouvé sur l'exécution 3, 168 tests verts. *Reste* : visibilité complète à l'écran (dépend de l'écart 4 + choix d'affichage dans le dépliage). |
 | ✅ **FAIT** | **Assertion tautologique → faux « conforme »** (écart 2 du §6). Décision `0008`, **A + C livrés et prouvés**. **A** : prompt (Règle 4 falsifiabilité + `[Limite]` en disjonction falsifiable). **C** : lint pur `assertion_lint.py` (dont motif contextuel exact de l'écart 2) → `GateOut.lint_warnings`, bandeau non-bloquant dans `ReviewGate.vue`. Preuve réelle : gate du cas 2 signale la tautologie, cas 3 (re-généré) propre. 181 Python + 15 vitest verts. |
-| **2** | **Sémantique des paramètres de steps** — écart **CONFIRMÉ par exécution** (§6, écart 1). Décision `0007` + plan **avant** de coder. Deux options ouvertes (annoter le catalogue / rendre le step tolérant via `get_by_label`) — cf. §6, la correction du diagnostic **change les options**. |
+| **2 — décidé, à implémenter** | **Sémantique des paramètres de steps** — écart **CONFIRMÉ et DÉTERMINISTE** (§6, écart 1 ; reproduit cas 2 **et** cas 3). **Décision `0007` tranchée** : **B porteur** (helpers UI tolérants — `name` d'abord, libellé en repli, **repli TRACÉ**, jamais silencieux, §5) **+ A1** (annotation du catalogue : `{field}` = attribut HTML `name`, **maintenant**). Famille de racine commune avec `0008`/`0003`, mais remède **technique** distinct. **Plan à valider avant de coder.** |
 | **3** | **Runs API sans rapport** (écart 4 du §6) : `_persist` n'écrit ni `report_json_path` ni `report_html_path`, alors que la CLI le fait → invariant §4.6. Conditionne aussi la visibilité de l'écart 3 dans `ReportView`. |
 | **5** | **Exécution nommée transverse** (§7, JTBD essentiel §3) : regroupement de cas de modules différents, rapport attaché à l'exécution. L'UI laisse déjà la porte ouverte (badge « Cas unique / Suite transverse », champ `suite_name` réservé côté API). C'est **le dernier gros manque du §7**. |
 | **6** | **Confirmations `pending_human`** (`0001`) : écran de traitement de la file des origines de défaut. |
