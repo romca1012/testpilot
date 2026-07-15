@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from testpilot import config
@@ -43,9 +44,23 @@ def create_app() -> FastAPI:
     app.include_router(cases.router)
     app.include_router(executions.router)
 
-    # Frontend compilé (prod) : monté à la racine s'il existe. Absent en dev → API seule.
+    # Frontend compilé (prod) : assets hashés + fallback SPA vers index.html pour que les
+    # deep-links client (/cases, /executions/1) fonctionnent au rafraîchissement. Absent en
+    # dev → API seule (le front tourne sous Vite). Monté APRÈS les routers /api.
     if _FRONTEND_DIST.is_dir():
-        app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")
+        assets = _FRONTEND_DIST / "assets"
+        if assets.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(assets)), name="assets")
+        index = _FRONTEND_DIST / "index.html"
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def spa_fallback(full_path: str):
+            if full_path.startswith("api/"):
+                raise HTTPException(status_code=404, detail="not found")
+            candidate = _FRONTEND_DIST / full_path
+            if full_path and candidate.is_file():
+                return FileResponse(candidate)
+            return FileResponse(index)
 
     return app
 

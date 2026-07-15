@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Identité « Linear » — sombre, dense, premium (palette REPRISE de l'ancien front).
+   Accent signature indigo-violet #5e6ad2. Ajout : sémantique des DEUX AXES du §5
+   (exécution / fonctionnel), qui n'existait pas dans l'ancienne charte mono-statut.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer base {
+  :root, .dark {
+    --background: 240 6% 6%;
+    --foreground: 240 6% 93%;
+    --surface: 240 6% 8%;
+    --surface-raised: 240 6% 11%;
+    --surface-overlay: 240 7% 14%;
+    --card: 240 6% 8%;
+    --primary: 232 56% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 14%;
+    --secondary-foreground: 240 6% 90%;
+    --muted: 240 5% 14%;
+    --muted-foreground: 240 5% 55%;
+    --accent: 240 5% 16%;
+    --accent-foreground: 240 6% 95%;
+    --destructive: 0 72% 56%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 56% 46%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 240 6% 10%;
+    --border: 240 5% 15%;
+    --input: 240 5% 17%;
+    --ring: 232 56% 60%;
+    --radius: 0.5rem;
+  }
+
+  * { border-color: hsl(var(--border)); }
+  html { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: InterVariable, Inter, system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 6px;
+    border: 2px solid hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(240 5% 22%); }
+  :focus-visible { outline: 2px solid hsl(var(--ring) / 0.7); outline-offset: 2px; }
+}
+
+@layer components {
+  /* Fond subtilement dégradé pour casser l'« à-plat » générique (repris). */
+  .app-bg {
+    background:
+      radial-gradient(60rem 60rem at 80% -10%, hsl(var(--primary) / 0.08), transparent 60%),
+      radial-gradient(50rem 50rem at -10% 110%, hsl(252 56% 60% / 0.06), transparent 55%),
+      hsl(var(--background));
+  }
+}
