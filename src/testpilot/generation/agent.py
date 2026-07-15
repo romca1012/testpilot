@@ -92,7 +92,7 @@ class GenerationAgent:
             module_id = ensure_default_module(self.case_repo.conn, plan.module_name)
             case_id = self.case_repo.create(
                 title=title or plan.module_name, module_id=module_id, feature_slug=plan.module_name,
-                author=author, description=plan.raw_spec[:500], connector_type=plan.connector_type,
+                author=author, description=plan.raw_spec[:500],
             )
             validation_status = "never_executed"
         else:

@@ -10,11 +10,18 @@
 -- autrefois confondus dans un unique champ texte ``module`` (voir décision 0004).
 
 -- ── Projet (racine de la hiérarchie §7) ──────────────────────────────────────
+-- Un projet = une APPLICATION/ERP sous test. Il porte le CONNECTEUR et ses paramètres
+-- de connexion (décision 0005). « odoo » est une valeur de connecteur, jamais un projet.
 CREATE TABLE IF NOT EXISTS project (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT    NOT NULL,
-    description TEXT    NOT NULL DEFAULT '',
-    created_at  TEXT    NOT NULL
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT    NOT NULL,
+    description    TEXT    NOT NULL DEFAULT '',
+    connector_type TEXT    NOT NULL DEFAULT 'odoo',
+    base_url       TEXT    NOT NULL DEFAULT '',
+    database       TEXT    NOT NULL DEFAULT '',
+    username       TEXT    NOT NULL DEFAULT '',
+    password       TEXT    NOT NULL DEFAULT '',   -- secret : jamais renvoyé par l'API (write-only)
+    created_at     TEXT    NOT NULL
 );
 
 -- ── Module / Fonctionnalité (appartient à un projet) ─────────────────────────
@@ -35,7 +42,7 @@ CREATE TABLE IF NOT EXISTS test_case (
     title                  TEXT    NOT NULL,
     module_id              INTEGER REFERENCES module(id),   -- rangement MÉTIER (§7)
     feature_slug           TEXT    NOT NULL DEFAULT '',      -- nom du .feature (technique)
-    connector_type         TEXT    NOT NULL DEFAULT 'odoo',
+    -- Le connecteur a quitté le cas : il vit sur le PROJET (décision 0005).
     description            TEXT    NOT NULL DEFAULT '',
     origin                 TEXT    NOT NULL DEFAULT 'ia_generated'
                                      CHECK (origin IN ('ia_generated', 'manual_converted')),

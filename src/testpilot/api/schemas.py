@@ -14,6 +14,11 @@ class ProjectSummary(BaseModel):
     id: int
     name: str
     description: str = ""
+    connector_type: str = "odoo"
+    base_url: str = ""
+    database: str = ""
+    username: str = ""
+    # password : jamais exposé par l'API (write-only, cf. décision 0005).
     module_count: int = 0
     case_count: int = 0
 
@@ -122,6 +127,11 @@ class RunResponse(BaseModel):
 class ProjectIn(BaseModel):
     name: str
     description: str = ""
+    connector_type: str = "odoo"
+    base_url: str = ""
+    database: str = ""
+    username: str = ""
+    password: str = ""  # secret : accepté en entrée, jamais relu en sortie
 
 
 class ModuleIn(BaseModel):
@@ -143,8 +153,11 @@ class ReviewResponse(BaseModel):
 
 # ── Mappers dict → DTO ─────────────────────────────────────────────────────────
 def project_summary(row: dict) -> ProjectSummary:
-    return ProjectSummary(id=row["id"], name=row["name"], description=row.get("description", ""),
-                          module_count=row.get("module_count", 0), case_count=row.get("case_count", 0))
+    return ProjectSummary(
+        id=row["id"], name=row["name"], description=row.get("description", ""),
+        connector_type=row.get("connector_type", "odoo"), base_url=row.get("base_url", ""),
+        database=row.get("database", ""), username=row.get("username", ""),
+        module_count=row.get("module_count", 0), case_count=row.get("case_count", 0))
 
 
 def module_summary(row: dict) -> ModuleSummary:

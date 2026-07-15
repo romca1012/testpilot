@@ -15,8 +15,12 @@ const loading = ref(true)
 const error = ref('')
 
 const creating = ref(false)
-const newName = ref('')
 const createError = ref('')
+// Un projet = une application testée, avec son connecteur + sa connexion.
+const form = ref({
+  name: '', connector_type: 'odoo', base_url: '', database: '', username: '', password: '',
+})
+const CONNECTORS = [{ value: 'odoo', label: 'Odoo' }]  // extensible (§8 multi-connecteurs)
 
 // Suppression
 const toDelete = ref<ProjectSummary | null>(null)
@@ -38,12 +42,12 @@ async function load() {
 }
 
 async function create() {
-  if (!newName.value.trim()) return
+  if (!form.value.name.trim()) return
   creating.value = true
   createError.value = ''
   try {
-    const p = await api.createProject(newName.value.trim())
-    newName.value = ''
+    const p = await api.createProject({ ...form.value, name: form.value.name.trim() })
+    form.value = { name: '', connector_type: 'odoo', base_url: '', database: '', username: '', password: '' }
     await ensureLoaded(true)
     router.push(`/projects/${p.id}/cases`)
   } catch (e: any) {
@@ -92,12 +96,39 @@ onMounted(load)
     </header>
 
     <Card title="Nouveau projet">
-      <form class="flex flex-wrap items-center gap-3" @submit.prevent="create">
-        <input
-          v-model="newName" placeholder="Nom du projet (ex. Portail Sapian)"
-          class="h-9 flex-1 min-w-[12rem] rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50"
-        />
-        <Button type="submit" variant="primary" :loading="creating" :disabled="!newName.trim()">Créer</Button>
+      <form class="space-y-4" @submit.prevent="create">
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="block">
+            <span class="text-xs text-muted-foreground">Nom de l'application</span>
+            <input v-model="form.name" placeholder="ex. Portail Sapian"
+                   class="mt-1 h-9 w-full rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
+          </label>
+          <label class="block">
+            <span class="text-xs text-muted-foreground">Connecteur</span>
+            <select v-model="form.connector_type"
+                    class="mt-1 h-9 w-full rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50">
+              <option v-for="c in CONNECTORS" :key="c.value" :value="c.value">{{ c.label }}</option>
+            </select>
+          </label>
+        </div>
+
+        <fieldset class="rounded-lg border border-border p-3">
+          <legend class="px-1 text-[11px] uppercase tracking-wide text-muted-foreground">Connexion</legend>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <input v-model="form.base_url" placeholder="URL (ex. http://localhost:10017)"
+                   class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
+            <input v-model="form.database" placeholder="Base de données"
+                   class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
+            <input v-model="form.username" placeholder="Utilisateur"
+                   class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
+            <input v-model="form.password" type="password" placeholder="Mot de passe"
+                   class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
+          </div>
+        </fieldset>
+
+        <div class="flex items-center justify-end">
+          <Button type="submit" variant="primary" :loading="creating" :disabled="!form.name.trim()">Créer le projet</Button>
+        </div>
       </form>
       <p v-if="createError" class="mt-2 text-xs text-destructive">{{ createError }}</p>
     </Card>

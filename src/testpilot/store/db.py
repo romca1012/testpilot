@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -53,6 +53,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version < 1:
         _migrate_1_project_module(conn)
+    if version < 2:
+        _migrate_2_project_connector(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -91,6 +93,31 @@ def _migrate_1_project_module(conn: sqlite3.Connection) -> None:
                 )
         # 3. Suppression de la colonne obsolète (double rôle éliminé — décision 0004).
         conn.execute("ALTER TABLE test_case DROP COLUMN module")
+
+
+def _migrate_2_project_connector(conn: sqlite3.Connection) -> None:
+    """Le connecteur remonte au PROJET, et quitte le cas de test (décision 0005).
+
+    Ajoute connector_type + paramètres de connexion sur ``project`` ; renomme le projet
+    par défaut « Odoo » (nom de connecteur, erroné) en « Portail Sapian » avec sa connexion
+    reprise de la config ; supprime ``test_case.connector_type``. Idempotent.
+    """
+    pcols = _column_names(conn, "project")
+    for col in ("connector_type", "base_url", "database", "username", "password"):
+        if col not in pcols:
+            default = "'odoo'" if col == "connector_type" else "''"
+            conn.execute(f"ALTER TABLE project ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}")
+
+    # Reprise de la connexion existante (config env) pour le projet par défaut mal nommé.
+    odoo = conn.execute("SELECT id FROM project WHERE name='Odoo'").fetchone()
+    if odoo:
+        conn.execute(
+            "UPDATE project SET name='Portail Sapian', connector_type='odoo',"
+            " base_url=?, database=?, username=?, password=? WHERE id=?",
+            (config.ODOO_URL, config.ODOO_DB, config.ODOO_USER, config.ODOO_PASSWORD, odoo["id"]))
+
+    if "connector_type" in _column_names(conn, "test_case"):
+        conn.execute("ALTER TABLE test_case DROP COLUMN connector_type")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

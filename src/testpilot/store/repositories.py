@@ -30,10 +30,13 @@ class ProjectRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def create(self, *, name: str, description: str = "") -> int:
+    def create(self, *, name: str, description: str = "", connector_type: str = "odoo",
+               base_url: str = "", database: str = "", username: str = "",
+               password: str = "") -> int:
         cur = self.conn.execute(
-            "INSERT INTO project (name, description, created_at) VALUES (?,?,?)",
-            (name, description, now_iso()))
+            "INSERT INTO project (name, description, connector_type, base_url, database,"
+            " username, password, created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (name, description, connector_type, base_url, database, username, password, now_iso()))
         self.conn.commit()
         return int(cur.lastrowid)
 
@@ -117,12 +120,18 @@ class ModuleRepo:
 def ensure_default_module(conn: sqlite3.Connection, feature_slug: str) -> int:
     """Trouve-ou-crée le module métier par défaut pour un slug technique.
 
-    Projet « Odoo » / module nommé d'après le slug (``demande_materiel`` → ``Demande materiel``).
-    Utilisé par la génération/CLI pour rattacher un cas sans imposer de saisie projet/module.
+    Rattache au PREMIER projet existant (le connecteur vit sur le projet — décision 0005) ;
+    si aucun projet n'existe, en crée un depuis la config (connexion env). Module nommé d'après
+    le slug (``demande_materiel`` → ``Demande materiel``). Sert à la génération/CLI sans
+    imposer de saisie projet/module. Ne recrée jamais un projet nommé « Odoo » (un connecteur).
     """
-    projects, modules = ProjectRepo(conn), ModuleRepo(conn)
-    project = projects.find_by_name("Odoo")
-    project_id = project["id"] if project else projects.create(name="Odoo")
+    from testpilot import config as _cfg
+
+    modules = ModuleRepo(conn)
+    row = conn.execute("SELECT id FROM project ORDER BY id LIMIT 1").fetchone()
+    project_id = row["id"] if row else ProjectRepo(conn).create(
+        name="Portail Sapian", connector_type="odoo", base_url=_cfg.ODOO_URL,
+        database=_cfg.ODOO_DB, username=_cfg.ODOO_USER, password=_cfg.ODOO_PASSWORD)
     name = _prettify_slug(feature_slug)
     module = modules.find_by_name(project_id, name)
     return module["id"] if module else modules.create(project_id=project_id, name=name)
@@ -147,14 +156,13 @@ class CaseRepo:
         self.conn = conn
 
     def create(self, *, title: str, module_id: int | None = None, feature_slug: str = "",
-               author: str = "", description: str = "", origin: str = "ia_generated",
-               connector_type: str = "odoo") -> int:
+               author: str = "", description: str = "", origin: str = "ia_generated") -> int:
         ts = now_iso()
         cur = self.conn.execute(
-            "INSERT INTO test_case (title, module_id, feature_slug, connector_type, description,"
+            "INSERT INTO test_case (title, module_id, feature_slug, description,"
             " origin, validation_status, author, created_at, updated_at)"
-            " VALUES (?,?,?,?,?,?, 'never_executed', ?,?,?)",
-            (title, module_id, feature_slug, connector_type, description, origin, author, ts, ts),
+            " VALUES (?,?,?,?,?, 'never_executed', ?,?,?)",
+            (title, module_id, feature_slug, description, origin, author, ts, ts),
         )
         self.conn.commit()
         return int(cur.lastrowid)

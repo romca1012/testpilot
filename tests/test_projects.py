@@ -11,7 +11,11 @@ from fastapi.testclient import TestClient
 
 from testpilot import config
 from testpilot.api import app as app_mod
-from testpilot.store.db import _migrate_1_project_module, get_initialized_db
+from testpilot.store.db import (
+    _migrate_1_project_module,
+    _migrate_2_project_connector,
+    get_initialized_db,
+)
 from testpilot.store.repositories import (
     CaseRepo,
     ModuleRepo,
@@ -28,11 +32,13 @@ def conn(tmp_path):
 
 
 # ── Store ─────────────────────────────────────────────────────────────────────
-def test_ensure_default_module_cree_projet_odoo(conn):
+def test_ensure_default_module_rattache_a_un_projet(conn):
     mid = ensure_default_module(conn, "demande_materiel")
     module = ModuleRepo(conn).get(mid)
     assert module["name"] == "Demande materiel"        # slug prettifié
-    assert module["project_name"] == "Odoo"
+    # Projet par défaut nommé d'après l'application, JAMAIS « Odoo » (un connecteur).
+    assert module["project_name"] == "Portail Sapian"
+    assert ProjectRepo(conn).get(module["project_id"])["connector_type"] == "odoo"
     # Idempotent : même slug → même module, pas de doublon.
     assert ensure_default_module(conn, "demande_materiel") == mid
 
@@ -44,7 +50,7 @@ def test_case_rattache_module_et_conserve_slug_technique(conn):
     assert case["module_id"] == mid
     assert case["feature_slug"] == "demande_materiel"   # technique préservé
     assert case["module_name"] == "Demande materiel"    # métier via jointure
-    assert case["project_name"] == "Odoo"
+    assert case["project_name"] == "Portail Sapian"
 
 
 def test_list_cases_filtre_par_projet_et_module(conn):
@@ -87,7 +93,36 @@ def test_migration_depuis_ancien_schema(tmp_path):
     module = dict(raw.execute("SELECT * FROM module WHERE id=?", (case["module_id"],)).fetchone())
     assert module["name"] == "Demande materiel"
     project = dict(raw.execute("SELECT name FROM project WHERE id=?", (module["project_id"],)).fetchone())
-    assert project["name"] == "Odoo"
+    assert project["name"] == "Odoo"   # migration 1 seule : renommé par la migration 2
+    raw.close()
+
+
+def test_migration_2_connecteur_remonte_au_projet(tmp_path):
+    """Migration 2 : connecteur sur le projet, « Odoo » → « Portail Sapian », connector_type
+    retiré du cas."""
+    db = tmp_path / "v1.db"
+    raw = sqlite3.connect(str(db))
+    raw.row_factory = sqlite3.Row
+    raw.execute("CREATE TABLE project (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,"
+                " description TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT '')")
+    raw.execute("CREATE TABLE test_case (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,"
+                " connector_type TEXT NOT NULL DEFAULT 'odoo')")
+    raw.execute("INSERT INTO project (name) VALUES ('Odoo')")
+    raw.execute("INSERT INTO test_case (title) VALUES ('X')")
+    raw.commit()
+
+    _migrate_2_project_connector(raw)
+    raw.commit()
+
+    pcols = {r["name"] for r in raw.execute("PRAGMA table_info(project)")}
+    assert {"connector_type", "base_url", "database", "username", "password"} <= pcols
+    # « Odoo » (connecteur) devient un vrai nom d'application + sa connexion.
+    proj = dict(raw.execute("SELECT * FROM project WHERE id=1").fetchone())
+    assert proj["name"] == "Portail Sapian"
+    assert proj["connector_type"] == "odoo"
+    assert proj["base_url"]  # repris de la config
+    # Le connecteur a quitté le cas.
+    assert "connector_type" not in {r["name"] for r in raw.execute("PRAGMA table_info(test_case)")}
     raw.close()
 
 
@@ -121,7 +156,7 @@ def test_api_case_detail_expose_le_fil_d_ariane(client):
     conn.close()
 
     detail = client.get(f"/api/cases/{cid}").json()
-    assert detail["project"]["name"] == "Odoo"
+    assert detail["project"]["name"] == "Portail Sapian"
     assert detail["module"]["name"] == "Demande materiel"
     assert detail["case"]["module"] == "Demande materiel"  # nom métier, pas le slug
 

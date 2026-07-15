@@ -31,8 +31,14 @@ def list_projects(conn=Depends(get_conn)):
 def create_project(body: schemas.ProjectIn, conn=Depends(get_conn)):
     if not body.name.strip():
         raise HTTPException(status_code=422, detail="le nom du projet est requis")
-    pid = ProjectRepo(conn).create(name=body.name.strip(), description=body.description)
-    return schemas.ProjectSummary(id=pid, name=body.name.strip(), description=body.description)
+    ProjectRepo(conn).create(
+        name=body.name.strip(), description=body.description, connector_type=body.connector_type,
+        base_url=body.base_url, database=body.database, username=body.username, password=body.password)
+    return schemas.project_summary(_summary_row(conn, _last_project_id(conn)))
+
+
+def _last_project_id(conn) -> int:
+    return conn.execute("SELECT MAX(id) AS m FROM project").fetchone()["m"]
 
 
 @router.patch("/{project_id}", response_model=schemas.ProjectSummary)

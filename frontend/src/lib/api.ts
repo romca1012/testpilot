@@ -27,8 +27,8 @@ export class ApiError extends Error {
 export const api = {
   // Projets / modules (hiérarchie §7)
   listProjects: () => request<ProjectSummary[]>('/api/projects'),
-  createProject: (name: string, description = '') =>
-    request<ProjectSummary>('/api/projects', { method: 'POST', body: JSON.stringify({ name, description }) }),
+  createProject: (payload: ProjectInput) =>
+    request<ProjectSummary>('/api/projects', { method: 'POST', body: JSON.stringify(payload) }),
   renameProject: (id: number | string, name: string, description = '') =>
     request<ProjectSummary>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ name, description }) }),
   deleteProject: (id: number | string) =>
@@ -54,7 +54,13 @@ export const api = {
 
 // ── Types (miroir des DTO backend) ──────────────────────────────────────────
 export interface ProjectSummary {
-  id: number; name: string; description: string; module_count: number; case_count: number
+  id: number; name: string; description: string
+  connector_type: string; base_url: string; database: string; username: string
+  module_count: number; case_count: number
+}
+export interface ProjectInput {
+  name: string; description?: string
+  connector_type: string; base_url: string; database: string; username: string; password: string
 }
 export interface ModuleSummary {
   id: number; project_id: number; name: string; description: string; case_count: number
