@@ -26,28 +26,121 @@ def _rows(cursor: sqlite3.Cursor) -> list[dict]:
     return [dict(r) for r in cursor.fetchall()]
 
 
+class ProjectRepo:
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def create(self, *, name: str, description: str = "") -> int:
+        cur = self.conn.execute(
+            "INSERT INTO project (name, description, created_at) VALUES (?,?,?)",
+            (name, description, now_iso()))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def get(self, project_id: int) -> dict | None:
+        row = self.conn.execute("SELECT * FROM project WHERE id=?", (project_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_all(self) -> list[dict]:
+        """Projets + compteurs de modules et de cas (pour l'accueil / le sélecteur)."""
+        return _rows(self.conn.execute(
+            "SELECT p.*,"
+            " (SELECT COUNT(*) FROM module m WHERE m.project_id=p.id) AS module_count,"
+            " (SELECT COUNT(*) FROM test_case tc JOIN module m ON tc.module_id=m.id"
+            "  WHERE m.project_id=p.id) AS case_count"
+            " FROM project p ORDER BY p.id"))
+
+    def find_by_name(self, name: str) -> dict | None:
+        row = self.conn.execute("SELECT * FROM project WHERE name=?", (name,)).fetchone()
+        return dict(row) if row else None
+
+
+class ModuleRepo:
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def create(self, *, project_id: int, name: str, description: str = "") -> int:
+        cur = self.conn.execute(
+            "INSERT INTO module (project_id, name, description, created_at) VALUES (?,?,?,?)",
+            (project_id, name, description, now_iso()))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def get(self, module_id: int) -> dict | None:
+        row = self.conn.execute(
+            "SELECT m.*, p.name AS project_name FROM module m JOIN project p ON m.project_id=p.id"
+            " WHERE m.id=?", (module_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_for_project(self, project_id: int) -> list[dict]:
+        return _rows(self.conn.execute(
+            "SELECT m.*,"
+            " (SELECT COUNT(*) FROM test_case tc WHERE tc.module_id=m.id) AS case_count"
+            " FROM module m WHERE m.project_id=? ORDER BY m.id", (project_id,)))
+
+    def find_by_name(self, project_id: int, name: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM module WHERE project_id=? AND name=?", (project_id, name)).fetchone()
+        return dict(row) if row else None
+
+
+def ensure_default_module(conn: sqlite3.Connection, feature_slug: str) -> int:
+    """Trouve-ou-crée le module métier par défaut pour un slug technique.
+
+    Projet « Odoo » / module nommé d'après le slug (``demande_materiel`` → ``Demande materiel``).
+    Utilisé par la génération/CLI pour rattacher un cas sans imposer de saisie projet/module.
+    """
+    projects, modules = ProjectRepo(conn), ModuleRepo(conn)
+    project = projects.find_by_name("Odoo")
+    project_id = project["id"] if project else projects.create(name="Odoo")
+    name = _prettify_slug(feature_slug)
+    module = modules.find_by_name(project_id, name)
+    return module["id"] if module else modules.create(project_id=project_id, name=name)
+
+
+def _prettify_slug(slug: str) -> str:
+    s = (slug or "").replace("_", " ").replace("-", " ").strip()
+    return s[:1].upper() + s[1:] if s else "Sans module"
+
+
+# Colonnes cas + jointure métier (module/projet) réutilisées par get/list.
+_CASE_SELECT = (
+    "SELECT tc.*, m.name AS module_name, m.project_id AS project_id, p.name AS project_name"
+    " FROM test_case tc"
+    " LEFT JOIN module m ON tc.module_id = m.id"
+    " LEFT JOIN project p ON m.project_id = p.id"
+)
+
+
 class CaseRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def create(self, *, title: str, module: str, author: str = "", description: str = "",
-               origin: str = "ia_generated", connector_type: str = "odoo") -> int:
+    def create(self, *, title: str, module_id: int | None = None, feature_slug: str = "",
+               author: str = "", description: str = "", origin: str = "ia_generated",
+               connector_type: str = "odoo") -> int:
         ts = now_iso()
         cur = self.conn.execute(
-            "INSERT INTO test_case (title, module, connector_type, description, origin,"
-            " validation_status, author, created_at, updated_at)"
-            " VALUES (?,?,?,?,?, 'never_executed', ?,?,?)",
-            (title, module, connector_type, description, origin, author, ts, ts),
+            "INSERT INTO test_case (title, module_id, feature_slug, connector_type, description,"
+            " origin, validation_status, author, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?, 'never_executed', ?,?,?)",
+            (title, module_id, feature_slug, connector_type, description, origin, author, ts, ts),
         )
         self.conn.commit()
         return int(cur.lastrowid)
 
     def get(self, case_id: int) -> dict | None:
-        row = self.conn.execute("SELECT * FROM test_case WHERE id=?", (case_id,)).fetchone()
+        row = self.conn.execute(_CASE_SELECT + " WHERE tc.id=?", (case_id,)).fetchone()
         return dict(row) if row else None
 
-    def list_all(self) -> list[dict]:
-        return _rows(self.conn.execute("SELECT * FROM test_case ORDER BY id"))
+    def list_all(self, *, project_id: int | None = None, module_id: int | None = None) -> list[dict]:
+        clauses, params = [], []
+        if project_id is not None:
+            clauses.append("m.project_id = ?"); params.append(project_id)
+        if module_id is not None:
+            clauses.append("tc.module_id = ?"); params.append(module_id)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        return _rows(self.conn.execute(_CASE_SELECT + where + " ORDER BY tc.id", params))
 
     def set_current_version(self, case_id: int, version_id: int) -> None:
         self.conn.execute(
@@ -180,8 +273,18 @@ class ExecutionRepo:
         return _rows(self.conn.execute(
             "SELECT * FROM execution WHERE test_case_id=? ORDER BY id", (test_case_id,)))
 
-    def list_recent(self, limit: int = 50) -> list[dict]:
-        """Exécutions récentes tous cas confondus (onglet Exécution), plus récentes d'abord."""
+    def list_recent(self, limit: int = 50, *, project_id: int | None = None) -> list[dict]:
+        """Exécutions récentes (onglet Exécution), plus récentes d'abord.
+
+        Filtrées sur un projet si ``project_id`` est fourni — jamais de mélange inter-projets.
+        """
+        if project_id is not None:
+            return _rows(self.conn.execute(
+                "SELECT e.* FROM execution e"
+                " JOIN test_case tc ON e.test_case_id = tc.id"
+                " JOIN module m ON tc.module_id = m.id"
+                " WHERE m.project_id = ? ORDER BY e.id DESC LIMIT ?",
+                (project_id, max(1, limit))))
         return _rows(self.conn.execute(
             "SELECT * FROM execution ORDER BY id DESC LIMIT ?", (max(1, limit),)))
 

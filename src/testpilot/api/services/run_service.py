@@ -45,7 +45,7 @@ class RunError(Exception):
 
 
 def trigger_run(conn, case_id: int) -> tuple[int, str, int, int]:
-    """Valide le gate et crée la ligne d'exécution. Renvoie (execution_id, module, case_id, version_id)."""
+    """Valide le gate et crée la ligne d'exécution. Renvoie (execution_id, feature_slug, case_id, version_id)."""
     case = CaseRepo(conn).get(case_id)
     if case is None:
         raise RunError("not_found", f"cas {case_id} introuvable")
@@ -61,7 +61,8 @@ def trigger_run(conn, case_id: int) -> tuple[int, str, int, int]:
     trigger = "rerun" if execs.list_for_case(case_id) else "first_run"
     eid = execs.create(test_case_id=case_id, version_id=version_id, trigger=trigger)
     _RUNNING.add(eid)
-    return eid, case["module"], case_id, version_id
+    # feature_slug = nom du .feature (technique), distinct du module métier (§7 / décision 0004).
+    return eid, case["feature_slug"], case_id, version_id
 
 
 def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int) -> None:

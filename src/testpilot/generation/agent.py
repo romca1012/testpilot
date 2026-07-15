@@ -18,6 +18,7 @@ from testpilot.generation import prompt as prompt_mod
 from testpilot.generation.interfaces import Connector, DryRunner
 from testpilot.generation.react_loop import run_loop
 from testpilot.generation.state import AgentState, GenerationResult
+from testpilot.store.repositories import ensure_default_module
 from testpilot.generation.tools import ToolContext
 from testpilot.guardrails.cost_tracker import CostTracker
 from testpilot.llm.adapter import LLMAdapter
@@ -87,8 +88,10 @@ class GenerationAgent:
                  case_id: int | None, title: str, author: str) -> None:
         """Crée/repère le cas, écrit la nouvelle version, pose le statut « à relire »."""
         if case_id is None:
+            # Rattachement métier (§7) : projet/module par défaut d'après le slug technique.
+            module_id = ensure_default_module(self.case_repo.conn, plan.module_name)
             case_id = self.case_repo.create(
-                title=title or plan.module_name, module=plan.module_name,
+                title=title or plan.module_name, module_id=module_id, feature_slug=plan.module_name,
                 author=author, description=plan.raw_spec[:500], connector_type=plan.connector_type,
             )
             validation_status = "never_executed"

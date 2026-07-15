@@ -22,8 +22,9 @@ _RUN_ERROR_STATUS = {"not_found": 404, "no_version": 409, "needs_review": 409}
 
 
 @router.get("", response_model=list[schemas.CaseSummary])
-def list_cases(conn=Depends(get_conn)):
-    return [schemas.case_summary(r) for r in CaseRepo(conn).list_all()]
+def list_cases(project_id: int | None = None, module_id: int | None = None, conn=Depends(get_conn)):
+    rows = CaseRepo(conn).list_all(project_id=project_id, module_id=module_id)
+    return [schemas.case_summary(r) for r in rows]
 
 
 @router.get("/{case_id}", response_model=schemas.CaseDetail)
@@ -31,6 +32,13 @@ def get_case(case_id: int, conn=Depends(get_conn)):
     case = CaseRepo(conn).get(case_id)
     if case is None:
         raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
+
+    # Fil d'Ariane Projet > Module > Cas.
+    project = module = None
+    if case.get("project_id"):
+        project = schemas.ProjectRef(id=case["project_id"], name=case.get("project_name") or "—")
+    if case.get("module_id"):
+        module = schemas.ModuleRef(id=case["module_id"], name=case.get("module_name") or "—")
 
     version_id = case.get("current_version_id")
     gate = None
@@ -44,6 +52,8 @@ def get_case(case_id: int, conn=Depends(get_conn)):
     ]
     return schemas.CaseDetail(
         case=schemas.case_summary(case),
+        project=project,
+        module=module,
         current_version_id=version_id,
         versions=[schemas.version_out(v) for v in VersionRepo(conn).list_for_case(case_id)],
         reviews=[schemas.review_out(r) for r in ReviewRepo(conn).list_for_case(case_id)],

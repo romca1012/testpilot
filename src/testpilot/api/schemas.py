@@ -9,11 +9,40 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
+# ── Projet / Module (hiérarchie §7) ───────────────────────────────────────────
+class ProjectSummary(BaseModel):
+    id: int
+    name: str
+    description: str = ""
+    module_count: int = 0
+    case_count: int = 0
+
+
+class ModuleSummary(BaseModel):
+    id: int
+    project_id: int
+    name: str
+    description: str = ""
+    case_count: int = 0
+
+
+class ProjectRef(BaseModel):
+    id: int
+    name: str
+
+
+class ModuleRef(BaseModel):
+    id: int
+    name: str
+
+
 # ── Cas ───────────────────────────────────────────────────────────────────────
 class CaseSummary(BaseModel):
     id: int
     title: str
-    module: str
+    module: str  # nom métier lisible du module (jamais le slug technique)
+    module_id: int | None = None
+    project_id: int | None = None
     validation_status: str
     last_execution_status: str | None = None
     last_functional_status: str | None = None
@@ -62,6 +91,8 @@ class ExecutionSummary(BaseModel):
 
 class CaseDetail(BaseModel):
     case: CaseSummary
+    project: ProjectRef | None = None   # fil d'Ariane Projet > Module > Cas
+    module: ModuleRef | None = None
     current_version_id: int | None = None
     versions: list[VersionOut] = []
     reviews: list[ReviewOut] = []
@@ -88,6 +119,16 @@ class RunResponse(BaseModel):
     status: str  # "running"
 
 
+class ProjectIn(BaseModel):
+    name: str
+    description: str = ""
+
+
+class ModuleIn(BaseModel):
+    name: str
+    description: str = ""
+
+
 class ReviewIn(BaseModel):
     approved: bool
     reviewer: str = "ui"
@@ -101,9 +142,22 @@ class ReviewResponse(BaseModel):
 
 
 # ── Mappers dict → DTO ─────────────────────────────────────────────────────────
+def project_summary(row: dict) -> ProjectSummary:
+    return ProjectSummary(id=row["id"], name=row["name"], description=row.get("description", ""),
+                          module_count=row.get("module_count", 0), case_count=row.get("case_count", 0))
+
+
+def module_summary(row: dict) -> ModuleSummary:
+    return ModuleSummary(id=row["id"], project_id=row["project_id"], name=row["name"],
+                         description=row.get("description", ""), case_count=row.get("case_count", 0))
+
+
 def case_summary(row: dict) -> CaseSummary:
     return CaseSummary(
-        id=row["id"], title=row["title"], module=row["module"],
+        id=row["id"], title=row["title"],
+        # Nom métier du module (repli sur le slug technique si le cas n'est pas encore rattaché).
+        module=row.get("module_name") or row.get("feature_slug") or "—",
+        module_id=row.get("module_id"), project_id=row.get("project_id"),
         validation_status=row["validation_status"],
         last_execution_status=row.get("last_execution_status"),
         last_functional_status=row.get("last_functional_status"),

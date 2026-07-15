@@ -31,7 +31,7 @@ def test_case_version_review_execution_roundtrip(conn):
     cases, versions = CaseRepo(conn), VersionRepo(conn)
     reviews, execs = ReviewRepo(conn), ExecutionRepo(conn)
 
-    cid = cases.create(title="Demande de matériel", module="demande_materiel", author="qa")
+    cid = cases.create(title="Demande de matériel", feature_slug="demande_materiel", author="qa")
     assert cases.get(cid)["validation_status"] == "never_executed"
 
     vid1 = versions.create(test_case_id=cid, spec_content="spec", spec_hash="abc",
@@ -67,7 +67,7 @@ def test_repair_confirmation_and_cost_ledger(conn):
     cases, versions, execs = CaseRepo(conn), VersionRepo(conn), ExecutionRepo(conn)
     repairs, costs = RepairRepo(conn), CostRepo(conn)
 
-    cid = cases.create(title="t", module="m")
+    cid = cases.create(title="t", feature_slug="m")
     vid = versions.create(test_case_id=cid, spec_content="", spec_hash="",
                           feature_content="", steps_content="")
     eid = execs.create(test_case_id=cid, version_id=vid)
@@ -88,6 +88,6 @@ def test_repair_confirmation_and_cost_ledger(conn):
 
 def test_enum_check_constraint_rejects_invalid_status(conn):
     cases = CaseRepo(conn)
-    cid = cases.create(title="t", module="m")
+    cid = cases.create(title="t", feature_slug="m")
     with pytest.raises(sqlite3.IntegrityError):
         cases.set_validation_status(cid, "bogus")

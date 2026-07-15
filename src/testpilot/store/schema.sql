@@ -4,14 +4,37 @@
 -- timestamps en TEXT ISO-8601 UTC, booléens en INTEGER 0/1, enums en TEXT + CHECK,
 -- JSON éventuel en TEXT. Aucune fonctionnalité propre à SQLite dans la logique métier.
 --
--- Hiérarchie §7 réduite au périmètre Inc. 0 : le module est un champ texte porté par
--- le cas (pas de tables Projet/Module tant qu'on ne cible qu'un module).
+-- Hiérarchie §7 : Projet → Module/Fonctionnalité → Cas de test (relations réelles).
+-- Note : ``test_case.feature_slug`` est le nom TECHNIQUE du fichier .feature (pilotage
+-- Behave), distinct de ``module_id`` qui porte le rangement MÉTIER. Les deux étaient
+-- autrefois confondus dans un unique champ texte ``module`` (voir décision 0004).
+
+-- ── Projet (racine de la hiérarchie §7) ──────────────────────────────────────
+CREATE TABLE IF NOT EXISTS project (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL,
+    description TEXT    NOT NULL DEFAULT '',
+    created_at  TEXT    NOT NULL
+);
+
+-- ── Module / Fonctionnalité (appartient à un projet) ─────────────────────────
+CREATE TABLE IF NOT EXISTS module (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id  INTEGER NOT NULL,
+    name        TEXT    NOT NULL,
+    description TEXT    NOT NULL DEFAULT '',
+    created_at  TEXT    NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES project(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_module_project ON module(project_id);
 
 -- ── Cas de test (socle commun §7) ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS test_case (
     id                     INTEGER PRIMARY KEY AUTOINCREMENT,
     title                  TEXT    NOT NULL,
-    module                 TEXT    NOT NULL,
+    module_id              INTEGER REFERENCES module(id),   -- rangement MÉTIER (§7)
+    feature_slug           TEXT    NOT NULL DEFAULT '',      -- nom du .feature (technique)
     connector_type         TEXT    NOT NULL DEFAULT 'odoo',
     description            TEXT    NOT NULL DEFAULT '',
     origin                 TEXT    NOT NULL DEFAULT 'ia_generated'
@@ -27,6 +50,8 @@ CREATE TABLE IF NOT EXISTS test_case (
     created_at             TEXT    NOT NULL,
     updated_at             TEXT    NOT NULL
 );
+-- (idx_case_module créé par la migration : la colonne module_id peut manquer sur une
+--  base antérieure au moment où schema.sql s'exécute.)
 
 -- ── Historisation des versions (gherkin + script) §7 §4 ──────────────────────
 CREATE TABLE IF NOT EXISTS test_case_version (

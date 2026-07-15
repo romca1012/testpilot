@@ -16,11 +16,9 @@ router = APIRouter(prefix="/api/executions", tags=["executions"])
 
 
 @router.get("", response_model=list[schemas.ExecutionSummary])
-def list_executions(limit: int = 50, conn=Depends(get_conn)):
-    return [
-        schemas.execution_summary(r, running=run_service.is_running(r["id"]))
-        for r in ExecutionRepo(conn).list_recent(limit)
-    ]
+def list_executions(limit: int = 50, project_id: int | None = None, conn=Depends(get_conn)):
+    rows = ExecutionRepo(conn).list_recent(limit, project_id=project_id)
+    return [schemas.execution_summary(r, running=run_service.is_running(r["id"])) for r in rows]
 
 
 @router.get("/{execution_id}", response_model=schemas.ExecutionDetail)

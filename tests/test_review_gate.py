@@ -20,7 +20,7 @@ def repos(tmp_path):
 
 
 def _generated_case(cases, versions):
-    cid = cases.create(title="Demande de matériel", module="demande_materiel")
+    cid = cases.create(title="Demande de matériel", feature_slug="demande_materiel")
     vid = versions.create(test_case_id=cid, spec_content="spec", spec_hash="h1",
                           feature_content="# language: fr", steps_content="from behave import *")
     cases.set_current_version(cid, vid)

@@ -30,7 +30,7 @@ class _FakeExecutor:
 
 
 def _seed_case(conn, *, approved: bool) -> tuple[int, int]:
-    cid = CaseRepo(conn).create(title="Demande de matériel", module="demande_materiel", author="qa")
+    cid = CaseRepo(conn).create(title="Demande de matériel", feature_slug="demande_materiel", author="qa")
     vid = VersionRepo(conn).create(
         test_case_id=cid, spec_content="spec", spec_hash="h1",
         feature_content="# language: fr\nFonctionnalité: Demande de matériel",
@@ -85,7 +85,7 @@ def test_run_refuse_si_non_approuve(client):
 
 def test_run_refuse_si_pas_de_version(client):
     conn = _conn()
-    cid = CaseRepo(conn).create(title="vide", module="vide")
+    cid = CaseRepo(conn).create(title="vide", feature_slug="vide")
     conn.close()
     resp = client.post(f"/api/cases/{cid}/runs")
     assert resp.status_code == 409

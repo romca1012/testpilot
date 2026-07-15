@@ -42,7 +42,7 @@ class FakeAgent:
             return GenerationResult(success=False, module_name=plan.module_name,
                                     stopped_reason="dry_run_stalled", error="parsing KO")
         cid = CaseRepo(self.conn).create(title=title or plan.module_name,
-                                         module=plan.module_name, author=author)
+                                         feature_slug=plan.module_name, author=author)
         vid = VersionRepo(self.conn).create(
             test_case_id=cid, spec_content="spec", spec_hash="h1",
             feature_content="# language: fr\nFonctionnalité: Demande de matériel",

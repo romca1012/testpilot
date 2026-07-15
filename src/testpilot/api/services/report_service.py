@@ -66,7 +66,8 @@ def build_report_for_execution(conn: sqlite3.Connection, execution_id: int):
 
     return report_mod.build_report(
         verdict,
-        module_name=case["module"] if case else "",
+        # Affichage : nom métier du module (repli sur le slug technique si non rattaché).
+        module_name=(case.get("module_name") or case.get("feature_slug") or "") if case else "",
         title=case["title"] if case else "",
         version_number=version["version_number"] if version else 1,
         cost_usd=execution.get("cost_usd", 0.0),
