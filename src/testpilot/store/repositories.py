@@ -138,6 +138,12 @@ class ReviewRepo:
         latest = self.latest_for_version(version_id)
         return bool(latest and latest["decision"] == "approved")
 
+    def list_for_case(self, test_case_id: int) -> list[dict]:
+        """Historique des décisions de relecture d'un cas (toutes versions), anté-chronologique."""
+        return _rows(self.conn.execute(
+            "SELECT * FROM review_decision WHERE test_case_id=? ORDER BY id DESC",
+            (test_case_id,)))
+
 
 class ExecutionRepo:
     def __init__(self, conn: sqlite3.Connection):
@@ -173,6 +179,11 @@ class ExecutionRepo:
     def list_for_case(self, test_case_id: int) -> list[dict]:
         return _rows(self.conn.execute(
             "SELECT * FROM execution WHERE test_case_id=? ORDER BY id", (test_case_id,)))
+
+    def list_recent(self, limit: int = 50) -> list[dict]:
+        """Exécutions récentes tous cas confondus (onglet Exécution), plus récentes d'abord."""
+        return _rows(self.conn.execute(
+            "SELECT * FROM execution ORDER BY id DESC LIMIT ?", (max(1, limit),)))
 
     def add_scenario_result(self, *, execution_id: int, scenario_name: str,
                             execution_status: str, functional_status: str,
