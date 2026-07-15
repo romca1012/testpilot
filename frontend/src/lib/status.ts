@@ -40,7 +40,10 @@ const FUNCTIONAL: Record<string, StatusView> = {
 
 // ── Statut de VALIDATION du cas (cycle de vie) ────────────────────────────────
 const VALIDATION: Record<string, StatusView> = {
-  never_executed: { label: 'Jamais lancé', icon: 'circle', tone: 'muted' },
+  // « Non validé » et non « Jamais lancé » : un cas peut avoir été lancé mais échoué
+  // techniquement — il reste non validé sans pour autant n'avoir jamais tourné (§5).
+  never_executed: { label: 'Non validé', icon: 'circle', tone: 'muted',
+    hint: 'Aucune exécution réussie n\'a encore validé ce cas (jamais lancé, ou lancé sans succès).' },
   validated: { label: 'Validé', icon: 'check', tone: 'success',
     hint: 'Le test a été exécuté au moins une fois en entier, sans interruption technique.' },
   to_review: { label: 'À relire', icon: 'half', tone: 'warning' },

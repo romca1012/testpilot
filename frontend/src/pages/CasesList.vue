@@ -46,7 +46,7 @@ onMounted(async () => {
       <StatTile label="Cas de test" :value="stats.total" tone="primary" icon="dot" />
       <StatTile label="Validés" :value="stats.validated" tone="success" icon="check" />
       <StatTile label="À relire" :value="stats.toReview" tone="warning" icon="half" />
-      <StatTile label="Jamais exécutés" :value="stats.never" tone="muted" icon="circle" />
+      <StatTile label="Non validés" :value="stats.never" tone="muted" icon="circle" />
     </section>
 
     <section class="rounded-xl border border-border bg-card">

@@ -25,7 +25,8 @@ describe('status mapping — deux axes distincts + vocabulaire utilisateur', () 
   it('validation : cycle de vie du cas', () => {
     expect(validationView('validated').label).toBe('Validé')
     expect(validationView('to_review').tone).toBe('warning')
-    expect(validationView('never_executed').label).toBe('Jamais lancé')
+    expect(validationView('never_executed').label).toBe('Non validé')
+    expect(validationView('never_executed').hint).toBeTruthy()
   })
 
   it('origine de défaut : jamais brut, avec aide pour « test à corriger »', () => {
