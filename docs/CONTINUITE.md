@@ -319,7 +319,13 @@ C'est frontalement l'**invariant §4.2** (« un statut n'est jamais déclaratif 
 à **faux-négatifs** — que le §4.4 déclare **inacceptables**. L'écart 1 est bruyant (il casse le
 test, on le voit) ; celui-ci est **silencieux et ment dans le bon sens**. Défaut du **code
 généré**, pas du produit — famille distincte de l'écart 1 (l'agent écrit des assertions qui ne
-peuvent pas échouer). Mérite probablement sa propre décision.
+peuvent pas échouer).
+
+→ **Décision `0008` tranchée** (`docs/decisions/0008-…md`) : **A** (prompt — falsifiabilité +
+`[Limite]` à attendu défini) **+ C** (lint non-bloquant surfacé au gate), **B** non-bloquante en
+entrée de C. **Point structurant** : une tautologie **passe à l'exécution**, donc ni dry-run ni
+run réel ne peuvent l'attraper — seuls prévenir (prompt), détecter statiquement (avant le gate)
+ou faire trancher l'humain (gate) sont possibles. Reste à implémenter (A puis C).
 
 ### ✅ ÉCART 3 — CORRIGÉ (le message d'erreur porte enfin la cause)
 
@@ -363,12 +369,12 @@ produit par le run CLI). L'UI promet un rapport que le runtime ne produit pas �
 **puis écart 2** (génération, avec décision une fois le diagnostic fiable) → **puis `0007`**
 pour l'écart 1 (décision + plan écrits avant tout code).
 
-- ✅ **Écart 3 — FAIT** (voir ci-dessus). Prochaine étape : **écart 2**.
-- ⏭️ **Écart 2** : le diagnostic est désormais **fiable** (l'écran/la base portent la vraie
-  cause). Reste à décider le correctif côté **génération** : comment empêcher l'agent d'émettre
-  un `assert` qui ne peut pas échouer (garde-fou de génération ? relecture ciblée ?). **Décision
-  + plan avant de coder.**
-- ⏭️ **Écart 1 / `0007`** : options A/B ci-dessus, décision + plan avant code.
+- ✅ **Écart 3 — FAIT** (commit `c10b754`).
+- 🟡 **Écart 2 — DÉCIDÉ (`0008`), à implémenter.** Verdict : **A** (prompt : falsifiabilité +
+  `[Limite]` à attendu défini) **+ C** (lint non-bloquant au gate) ; **B** non-bloquante en
+  entrée de C, jamais de blocage auto de la génération (brief §11.2). Ordre **A puis C**. Plan
+  d'implémentation à valider **avant tout code**. Détail : `docs/decisions/0008-…md`.
+- ⏭️ **Écart 1 / `0007`** : options A/B, décision + plan avant code.
 - ⏭️ **Écart 4** : conditionne la visibilité complète du correctif d'écart 3 à l'écran.
 
 État : cas 2 = **vrai cas** du référentiel, version 2 approuvée (délibérément), **exécutée 3
@@ -387,7 +393,7 @@ reprise (voir « Suite à donner » du §6).
 | Priorité | Item |
 |---|---|
 | ✅ **FAIT** | **Message d'erreur détruit avant l'écran** (écart 3 du §6) : `meaningful_error()` remonte la cause (message + `Call log` avec le sélecteur) au lieu de la tête du traceback. Prouvé sur l'exécution 3, 168 tests verts. *Reste* : visibilité complète à l'écran (dépend de l'écart 4 + choix d'affichage dans le dépliage). |
-| **1 — en cours** | **Assertion tautologique → faux « conforme »** (écart 2 du §6) : l'agent génère un `assert` qui ne peut jamais échouer ; le scénario est déclaré conforme quoi que fasse l'app. Viole les invariants §4.2 et §4.4 (faux-négatif = inacceptable). **Silencieux**, donc plus dangereux qu'un test cassé. Correctif côté **génération** → **décision + plan avant de coder**. |
+| **1 — décidé, à implémenter** | **Assertion tautologique → faux « conforme »** (écart 2 du §6) : l'agent génère un `assert` qui ne peut jamais échouer ; le scénario est déclaré conforme quoi que fasse l'app. Viole §4.2 et §4.4 (faux-négatif = inacceptable). **Décision `0008` tranchée** : **A** (prompt — falsifiabilité + `[Limite]` avec attendu défini) **+ C** (lint non-bloquant au gate), **B** non-bloquante en entrée de C (jamais de blocage auto de la génération, brief §11.2). Ordre : **A puis C**. **Plan à valider avant de coder.** |
 | **2** | **Sémantique des paramètres de steps** — écart **CONFIRMÉ par exécution** (§6, écart 1). Décision `0007` + plan **avant** de coder. Deux options ouvertes (annoter le catalogue / rendre le step tolérant via `get_by_label`) — cf. §6, la correction du diagnostic **change les options**. |
 | **3** | **Runs API sans rapport** (écart 4 du §6) : `_persist` n'écrit ni `report_json_path` ni `report_html_path`, alors que la CLI le fait → invariant §4.6. Conditionne aussi la visibilité de l'écart 3 dans `ReportView`. |
 | **5** | **Exécution nommée transverse** (§7, JTBD essentiel §3) : regroupement de cas de modules différents, rapport attaché à l'exécution. L'UI laisse déjà la porte ouverte (badge « Cas unique / Suite transverse », champ `suite_name` réservé côté API). C'est **le dernier gros manque du §7**. |

@@ -39,12 +39,15 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   « Raison de la demande * ») → erreur de **paramétrage**, pas un bug applicatif. La taxonomie
   0002 (`ui_timeout` → `wrong_field_name` → `test_a_reparer`) est validée de bout en bout.
   Voir `CONTINUITE.md` §6.1.
-- [ ] **Assertion tautologique → faux « conforme »** (écart 2, **priorité 1 recommandée**) :
-  l'agent génère un `assert error_visible or "<chemin>" not in current_url` dans une branche
-  `else` où le second opérande est **toujours vrai** → le step ne peut **jamais** échouer, le
-  scénario est déclaré `conforme` quoi que fasse l'application. Viole les invariants §4.2
-  (statut jamais déclaratif) et §4.4 (faux-négatif inacceptable). Défaut du **code généré**.
-  Famille distincte de `0007` → décision propre probable. Voir `CONTINUITE.md` §6.1.
+- [ ] **Assertion tautologique → faux « conforme »** (écart 2, **priorité 1 — DÉCIDÉ `0008`,
+  à implémenter**) : l'agent génère un `assert error_visible or "<chemin>" not in current_url`
+  dans une branche `else` où le second opérande est **toujours vrai** → le step ne peut
+  **jamais** échouer, le scénario est déclaré `conforme` quoi que fasse l'application. Viole les
+  invariants §4.2 (statut jamais déclaratif) et §4.4 (faux-négatif inacceptable). Défaut du
+  **code généré**. **Verdict** : **A** (prompt — falsifiabilité + `[Limite]` à attendu défini)
+  **+ C** (lint non-bloquant au gate), **B** non-bloquante en entrée de C (jamais de blocage auto
+  de la génération, brief §11.2). Ordre **A puis C**, plan avant code.
+  → `decisions/0008-generation-assertion-infalsifiable-faux-conforme-inc1.md`.
 - [x] **Message d'erreur détruit avant l'écran** (écart 3) — *fait*. Nouveau helper
   `meaningful_error()` (`execution/behave_result.py`) : repart de la dernière ligne d'exception
   jusqu'à la fin (message + `Call log` avec le sélecteur), au lieu de la tête du traceback. Le
