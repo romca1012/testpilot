@@ -28,8 +28,15 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
 - [ ] **Quasi-doublons sémantiques (volet C de 0003)** — *en observation*. Détecter un libellé
   généré « proche » d'un step partagé (même comportement sous un autre nom). Écarté pour
   l'instant : à reconsidérer avec des exemples concrets après plusieurs runs réels.
-- [ ] **Mesurer 0003 en run réel** : vérifier sur une génération complète que l'agent réutilise
-  bien le step de comptage partagé (l'effet ne se mesure pas hors-ligne).
+- [x] **Mesurer 0003 en run réel** — *fait, concluant*. Génération réelle via
+  `POST /api/modules/1/cases` : **16/37** steps partagés réutilisés, **les 3 steps de comptage
+  réutilisés**, 4 steps custom seulement (tous légitimes), **aucun transport brut**.
+  Voir `CONTINUITE.md` §6.
+- [ ] **Sémantique des paramètres de steps** (écart trouvé au run réel, priorité haute) :
+  l'agent réutilise le bon step mais lui passe le **libellé humain** (« Raison de la demande »)
+  là où le helper attend le **nom technique HTML** (`name`) → `TimeoutError` à l'exécution.
+  Le catalogue montre les libellés mais **rien sur la sémantique des placeholders**. À confirmer
+  par une exécution réelle, puis décision `0007` + plan avant de coder.
 - [ ] **Confirmations `pending_human`** : sous-commande / écran de traitement de la file de
   relecture des origines de défaut. → `decisions/0001-report-confirmations-pending-human-inc1.md`.
 - [x] **Runtime branché sur la connexion du projet** — *fait*. L'exécution (run UI et CLI) et
