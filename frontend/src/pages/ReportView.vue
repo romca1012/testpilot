@@ -38,7 +38,7 @@ function scenarioTone(exec: string, func: string) {
 
 <template>
   <div class="space-y-6">
-    <RouterLink to="/executions" class="text-xs text-muted-foreground hover:text-foreground">← Exécution</RouterLink>
+    <RouterLink :to="`/projects/${route.params.pid}/executions`" class="text-xs text-muted-foreground hover:text-foreground">← Exécution</RouterLink>
 
     <div v-if="loading" class="flex items-center gap-2 text-muted-foreground text-sm">
       <Spinner class="h-4 w-4" /> Chargement…

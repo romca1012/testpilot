@@ -15,6 +15,7 @@ import GherkinView from '../components/GherkinView.vue'
 const route = useRoute()
 const router = useRouter()
 const caseId = Number(route.params.id)
+const pid = computed(() => route.params.pid as string)
 
 const detail = ref<CaseDetail | null>(null)
 const loading = ref(true)
@@ -65,7 +66,7 @@ function poll(execId: number) {
       const exec = await api.getExecution(execId)
       if (!exec.running) {
         stopPoll(); running.value = false
-        router.push(`/executions/${execId}`)
+        router.push(`/projects/${pid.value}/executions/${execId}`)
       }
     } catch {
       stopPoll(); running.value = false
@@ -84,9 +85,24 @@ onBeforeUnmount(stopPoll)
 
 <template>
   <div class="space-y-6">
-    <RouterLink to="/cases" class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-      <Icon name="chevron" class="h-3.5 w-3.5 rotate-180" /> Gestion des cas
-    </RouterLink>
+    <!-- Fil d'Ariane Projet › Module › Cas (§7) -->
+    <nav class="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+      <RouterLink to="/projects" class="hover:text-foreground">Projets</RouterLink>
+      <template v-if="detail?.project">
+        <Icon name="chevron" class="h-3 w-3 opacity-40" />
+        <RouterLink :to="`/projects/${detail.project.id}/cases`" class="hover:text-foreground">
+          {{ detail.project.name }}
+        </RouterLink>
+      </template>
+      <template v-if="detail?.module">
+        <Icon name="chevron" class="h-3 w-3 opacity-40" />
+        <span>{{ detail.module.name }}</span>
+      </template>
+      <template v-if="detail">
+        <Icon name="chevron" class="h-3 w-3 opacity-40" />
+        <span class="text-foreground">{{ detail.case.title }}</span>
+      </template>
+    </nav>
 
     <div v-if="loading" class="flex items-center gap-2 text-muted-foreground text-sm">
       <Spinner class="h-4 w-4" /> Chargement…
@@ -175,7 +191,7 @@ onBeforeUnmount(stopPoll)
               <ul v-else class="space-y-2">
                 <li v-for="e in executionsFor(v.id)" :key="e.id"
                     class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface/40 px-3 py-2.5 cursor-pointer hover:bg-accent/40 transition-colors"
-                    @click="router.push(`/executions/${e.id}`)">
+                    @click="router.push(`/projects/${pid}/executions/${e.id}`)">
                   <StatusPair :execution-status="e.execution_status" :functional-status="e.functional_status" />
                   <span class="flex items-center gap-2 text-xs text-muted-foreground">
                     {{ formatDate(e.started_at) }} · {{ formatDuration(e.duration_seconds) }}

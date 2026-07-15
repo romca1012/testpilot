@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { api, type ExecutionSummary } from '../lib/api'
 import { formatDate, formatDuration } from '../lib/format'
 import StatusPair from '../components/StatusPair.vue'
 import Spinner from '../components/ui/Spinner.vue'
 
+const route = useRoute()
 const router = useRouter()
+const pid = computed(() => route.params.pid as string)
 const runs = ref<ExecutionSummary[]>([])
 const loading = ref(true)
 const error = ref('')
 
 onMounted(async () => {
   try {
-    runs.value = await api.listExecutions()
+    runs.value = await api.listExecutions(pid.value)   // scopé projet
   } catch (e: any) {
     error.value = e?.message || 'Chargement impossible'
   } finally {
@@ -38,7 +40,7 @@ onMounted(async () => {
     <ul v-else class="rounded-xl border border-border divide-y divide-border">
       <li v-for="r in runs" :key="r.id"
           class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 cursor-pointer hover:bg-accent/40 transition-colors"
-          @click="router.push(`/executions/${r.id}`)">
+          @click="router.push(`/projects/${pid}/executions/${r.id}`)">
         <div class="flex items-center gap-3">
           <Spinner v-if="r.running" class="h-4 w-4 text-primary" />
           <StatusPair :execution-status="r.execution_status" :functional-status="r.functional_status" />

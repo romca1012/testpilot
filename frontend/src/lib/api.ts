@@ -25,7 +25,14 @@ export class ApiError extends Error {
 }
 
 export const api = {
-  listCases: () => request<CaseSummary[]>('/api/cases'),
+  // Projets / modules (hiérarchie §7)
+  listProjects: () => request<ProjectSummary[]>('/api/projects'),
+  createProject: (name: string, description = '') =>
+    request<ProjectSummary>('/api/projects', { method: 'POST', body: JSON.stringify({ name, description }) }),
+  listModules: (projectId: number | string) => request<ModuleSummary[]>(`/api/projects/${projectId}/modules`),
+
+  // Cas — toujours scopés par projet (jamais de mélange inter-projets)
+  listCases: (projectId: number | string) => request<CaseSummary[]>(`/api/cases?project_id=${projectId}`),
   getCase: (id: number | string) => request<CaseDetail>(`/api/cases/${id}`),
   runCase: (id: number | string) => request<RunResponse>(`/api/cases/${id}/runs`, { method: 'POST' }),
   reviewCase: (id: number | string, approved: boolean, comment = '') =>
@@ -33,14 +40,26 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ approved, comment }),
     }),
-  listExecutions: (limit = 50) => request<ExecutionSummary[]>(`/api/executions?limit=${limit}`),
+
+  // Exécutions — scopées par projet
+  listExecutions: (projectId: number | string, limit = 50) =>
+    request<ExecutionSummary[]>(`/api/executions?project_id=${projectId}&limit=${limit}`),
   getExecution: (id: number | string) => request<ExecutionDetail>(`/api/executions/${id}`),
   getReport: (id: number | string) => request<TestReport>(`/api/executions/${id}/report`),
 }
 
 // ── Types (miroir des DTO backend) ──────────────────────────────────────────
+export interface ProjectSummary {
+  id: number; name: string; description: string; module_count: number; case_count: number
+}
+export interface ModuleSummary {
+  id: number; project_id: number; name: string; description: string; case_count: number
+}
+export interface Ref { id: number; name: string }
+
 export interface CaseSummary {
-  id: number; title: string; module: string; validation_status: string
+  id: number; title: string; module: string; module_id: number | null; project_id: number | null
+  validation_status: string
   last_execution_status: string | null; last_functional_status: string | null
   last_executed_at: string | null
 }
@@ -59,7 +78,7 @@ export interface ExecutionSummary {
   cost_usd: number; iterations: number; duration_seconds: number; started_at: string; running: boolean
 }
 export interface CaseDetail {
-  case: CaseSummary; current_version_id: number | null
+  case: CaseSummary; project: Ref | null; module: Ref | null; current_version_id: number | null
   versions: VersionOut[]; reviews: ReviewOut[]; executions: ExecutionSummary[]; gate: GateOut | null
 }
 export interface ScenarioResultOut {

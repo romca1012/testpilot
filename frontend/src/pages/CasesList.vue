@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseSummary } from '../lib/api'
 import { formatDate } from '../lib/format'
 import { AXIS, prettyModule } from '../lib/status'
@@ -10,7 +10,9 @@ import StatTile from '../components/StatTile.vue'
 import Icon from '../components/ui/Icon.vue'
 import Hint from '../components/ui/Hint.vue'
 
+const route = useRoute()
 const router = useRouter()
+const pid = computed(() => route.params.pid as string)
 const cases = ref<CaseSummary[]>([])
 const loading = ref(true)
 const error = ref('')
@@ -22,7 +24,7 @@ const stats = computed(() => {
 
 onMounted(async () => {
   try {
-    cases.value = await api.listCases()
+    cases.value = await api.listCases(pid.value)   // scopé projet — jamais de mélange
   } catch (e: any) {
     error.value = e?.message || 'Chargement impossible'
   } finally {
@@ -101,7 +103,7 @@ onMounted(async () => {
             <tr
               v-for="c in cases" :key="c.id"
               class="group border-t border-border cursor-pointer transition-colors hover:bg-accent/40"
-              @click="router.push(`/cases/${c.id}`)"
+              @click="router.push(`/projects/${pid}/cases/${c.id}`)"
             >
               <td class="px-5 py-4 align-middle">
                 <div class="flex items-center gap-3 min-w-0">
