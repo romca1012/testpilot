@@ -39,18 +39,18 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   « Raison de la demande * ») → erreur de **paramétrage**, pas un bug applicatif. La taxonomie
   0002 (`ui_timeout` → `wrong_field_name` → `test_a_reparer`) est validée de bout en bout.
   Voir `CONTINUITE.md` §6.1.
-- [~] **Assertion tautologique → faux « conforme »** (écart 2, **priorité 1 — `0008` ;
-  A ✅ faite+prouvée, C ⏭️ à faire**) : l'agent génère un `assert error_visible or "<chemin>"
-  not in current_url` dans une branche `else` où le second opérande est **toujours vrai** → le
-  step ne peut **jamais** échouer, le scénario est déclaré `conforme` quoi que fasse
-  l'application. Viole §4.2 (statut jamais déclaratif) et §4.4 (faux-négatif inacceptable).
-  - **A ✅** — prompt : Règle 4 (falsifiabilité) + `[Limite]` en **disjonction falsifiable**
-    (pas « attendu unique » : la spec peut être légitimement multi-issues). Prouvé par
-    re-génération réelle (cas 3, `[Limite]` désormais falsifiable).
-  - **C ⏭️** — lint non-bloquant surfacé au gate, **B** non-bloquante en entrée (sous-ensemble
-    trivial) **+ extension contextuelle** (motif exact de l'écart 2). Tests : anti-faux-positif
-    étendu aux variantes légitimes du motif contextuel + preuve finale sur le **contenu exact**
-    de l'écart 2. Filtrer le « `@then` sans assert » par décorateur (un `@when` n'assertit rien).
+- [x] **Assertion tautologique → faux « conforme »** (écart 2, **`0008` — A + C FAITS**) —
+  *fait*. L'agent générait un `assert error_visible or "<chemin>" not in current_url` dans une
+  branche `else` où le second opérande est **toujours vrai** → step infalsifiable, `conforme`
+  déclaratif (viole §4.2 et §4.4).
+  - **A** — prompt : Règle 4 (falsifiabilité) + `[Limite]` en **disjonction falsifiable** (pas
+    « attendu unique » : la spec peut être légitimement multi-issues). Prouvé par re-génération
+    réelle (cas 3).
+  - **C** — lint pur `generation/assertion_lint.py` (motifs triviaux **+ extension contextuelle**,
+    motif exact de l'écart 2 ; `@then`-sans-assert filtré par décorateur) → `GateOut.lint_warnings`
+    (non-bloquant, n'affecte jamais `allowed`) + bandeau `ReviewGate.vue`. Tests dont
+    anti-faux-positif étendu aux variantes légitimes + preuve sur le contenu exact de l'écart 2,
+    plus preuve API « signalée au gate ». Preuve réelle : cas 2 signalé, cas 3 propre.
   → `decisions/0008-generation-assertion-infalsifiable-faux-conforme-inc1.md`.
 - [x] **Message d'erreur détruit avant l'écran** (écart 3) — *fait*. Nouveau helper
   `meaningful_error()` (`execution/behave_result.py`) : repart de la dernière ligne d'exception

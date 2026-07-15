@@ -121,6 +121,50 @@ def test_gate_actionnable_puis_execution_et_rapport(client):
     assert "Axe exécution" in html and "Axe fonctionnel" in html
 
 
+# Contenu EXACT du step tautologique de l'écart 2 (run #2, cas 2) — cf. test_assertion_lint.
+_ECART_2_STEPS = '''
+from behave import then
+
+@then("le formulaire traite la chaîne longue de manière cohérente")
+def step_long_string_coherent(context):
+    page = context.page
+    current_url = page.url
+    if "/your-ticket-has-been-submitted" in current_url:
+        context.long_string_accepted = True
+    else:
+        error_visible = page.locator(".alert-danger").count() > 0
+        context.long_string_accepted = False
+        assert error_visible or "/your-ticket-has-been-submitted" not in current_url
+'''
+
+
+def test_lint_assertion_infalsifiable_signale_au_gate_sans_bloquer(client):
+    """Décision 0008 phase C : une assertion tautologique (contenu EXACT de l'écart 2) doit
+    remonter comme avertissement AU GATE, sans jamais changer l'état du gate lui-même."""
+    conn = _conn()
+    cid = CaseRepo(conn).create(title="Cas tautologie", feature_slug="tauto", author="qa")
+    vid = VersionRepo(conn).create(
+        test_case_id=cid, spec_content="spec", spec_hash="h",
+        feature_content="# language: fr\nFonctionnalité: x", steps_content=_ECART_2_STEPS)
+    CaseRepo(conn).set_current_version(cid, vid)
+    conn.close()
+
+    gate = client.get(f"/api/cases/{cid}").json()["gate"]
+    kinds = {w["kind"] for w in gate["lint_warnings"]}
+    assert "tautology_negation_in_else" in kinds, "le motif exact de l'écart 2 doit être signalé au gate"
+    # Non-bloquant : l'avertissement n'ouvre PAS le gate (relecture toujours requise).
+    assert gate["allowed"] is False
+    assert gate["needs_review"] is True
+
+
+def test_lint_gate_sans_avertissement_sur_assertion_saine(client):
+    conn = _conn()
+    cid, _ = _seed_case(conn, approved=False)  # steps sains (« from behave import * »)
+    conn.close()
+    gate = client.get(f"/api/cases/{cid}").json()["gate"]
+    assert gate["lint_warnings"] == []
+
+
 def test_rejet_repositionne_le_cas_a_relire(client):
     conn = _conn()
     cid, _ = _seed_case(conn, approved=True)

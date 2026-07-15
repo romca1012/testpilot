@@ -15,7 +15,7 @@
 | **Incrément 1 (reste)** | Backlog documenté (§7). |
 | **Incrément 2** | Sécurité (mot de passe en clair) — bloquant avant tout déploiement client. |
 
-**Tests : 165 Python · 15 vitest · build front OK.** Tout est vert au moment de ce rapport.
+**Tests : 181 Python · 15 vitest · build front OK.** Tout est vert au moment de ce rapport.
 
 **Stack** : Python 3.10, FastAPI + SQLite (portable PostgreSQL), Behave + Playwright + odoorpc,
 Anthropic (Claude), frontend Vite + Vue 3 + Tailwind (dark, esprit « Linear »).
@@ -25,8 +25,9 @@ par un autre serveur, hors projet). CLI : `testpilot run specs/demande_materiel.
 
 ⚠️ **État de la reprise** :
 - **Écart 3 CORRIGÉ et commité** (`c10b754`) : `meaningful_error()`, 3 tests, **168 verts**.
-- **Écart 2 : décision `0008` commitée (`103c212`) ; phase A commitée** (prompt Règle 4 +
-  `[Limite]`), prouvée par re-génération (cas **3**). **Phase C reste à faire.**
+- **Écart 2 : décision `0008` livrée entièrement (A + C).** A = prompt (Règle 4 + `[Limite]`),
+  prouvée par re-génération (cas **3**). C = lint non-bloquant au gate (`assertion_lint.py`,
+  `GateOut.lint_warnings`, bandeau `ReviewGate.vue`). Preuve réelle : cas 2 signalé, cas 3 propre.
 - **Scripts d'enquête/preuve commités** (reproductibles) : `scripts/confirm_ecart_parametres_steps.py`,
   `probe_traceback_complet.py`, `probe_champs_formulaire.py`, `prove_A_falsifiabilite.py`.
   Bases `.bak` gitignorées.
@@ -327,9 +328,9 @@ peuvent pas échouer).
 en **disjonction falsifiable**) **+ C** (lint non-bloquant surfacé au gate) **+ extension
 contextuelle**. **Point structurant** : une tautologie **passe à l'exécution**, donc ni dry-run
 ni run réel ne peuvent l'attraper — seuls prévenir (prompt), détecter statiquement (avant le
-gate) ou faire trancher l'humain (gate) sont possibles. **A ✅ fait+prouvé** (re-génération, cas
-3) ; **C ⏭️ reste**. Nuance de racine : la **spec** portait ici l'ambiguïté (l.60-63) — d'où une
-règle de *falsifiabilité*, pas d'attendu unique.
+gate) ou faire trancher l'humain (gate) sont possibles. **A ✅ + C ✅ livrés et prouvés**
+(prompt + lint non-bloquant au gate ; cas 2 signalé, cas 3 propre). Nuance de racine : la **spec**
+portait ici l'ambiguïté (l.60-63) — d'où une règle de *falsifiabilité*, pas d'attendu unique.
 
 ### ✅ ÉCART 3 — CORRIGÉ (le message d'erreur porte enfin la cause)
 
@@ -374,12 +375,11 @@ produit par le run CLI). L'UI promet un rapport que le runtime ne produit pas �
 pour l'écart 1 (décision + plan écrits avant tout code).
 
 - ✅ **Écart 3 — FAIT** (commit `c10b754`).
-- 🟡 **Écart 2 — DÉCIDÉ (`0008`). A ✅ FAIT + PROUVÉ, C ⏭️ à faire.** A : Règle 4 (falsifiabilité)
-  + `[Limite]` en disjonction falsifiable dans le prompt ; prouvé par re-génération (cas 3). C :
-  lint non-bloquant au gate **+ extension contextuelle** (motif exact de l'écart 2), avec tests
-  (anti-faux-positif étendu aux variantes légitimes du motif + preuve finale sur le contenu exact
-  de l'écart 2). Détail : `docs/decisions/0008-…md`.
-- ⏭️ **Écart 1 / `0007`** : options A/B, décision + plan avant code.
+- ✅ **Écart 2 — FAIT (`0008`, A + C).** A : prompt (Règle 4 + `[Limite]` falsifiable), prouvé
+  par re-génération (cas 3). C : lint pur `assertion_lint.py` (dont motif contextuel exact) →
+  `GateOut.lint_warnings` + bandeau non-bloquant `ReviewGate.vue`. Preuve réelle : cas 2 signalé,
+  cas 3 propre. Détail : `docs/decisions/0008-…md`.
+- ⏭️ **Écart 1 / `0007`** : options A/B, décision + plan avant code. **Prochaine action.**
 - ⏭️ **Écart 4** : conditionne la visibilité complète du correctif d'écart 3 à l'écran.
 
 État : cas 2 = **vrai cas** du référentiel, version 2 approuvée (délibérément), **exécutée 3
@@ -398,7 +398,7 @@ reprise (voir « Suite à donner » du §6).
 | Priorité | Item |
 |---|---|
 | ✅ **FAIT** | **Message d'erreur détruit avant l'écran** (écart 3 du §6) : `meaningful_error()` remonte la cause (message + `Call log` avec le sélecteur) au lieu de la tête du traceback. Prouvé sur l'exécution 3, 168 tests verts. *Reste* : visibilité complète à l'écran (dépend de l'écart 4 + choix d'affichage dans le dépliage). |
-| **1 — A fait, C à faire** | **Assertion tautologique → faux « conforme »** (écart 2 du §6). Décision `0008`. **A ✅ (prompt : Règle 4 falsifiabilité + `[Limite]` en disjonction falsifiable — pas « attendu unique », car la spec peut être légitimement multi-issues) — PROUVÉ par re-génération (cas 3, `[Limite]` désormais falsifiable).** Reste **C** : lint non-bloquant au gate + **extension contextuelle** (motif exact de l'écart 2), tests dont anti-faux-positif étendu + preuve finale sur le contenu exact de l'écart 2. |
+| ✅ **FAIT** | **Assertion tautologique → faux « conforme »** (écart 2 du §6). Décision `0008`, **A + C livrés et prouvés**. **A** : prompt (Règle 4 falsifiabilité + `[Limite]` en disjonction falsifiable). **C** : lint pur `assertion_lint.py` (dont motif contextuel exact de l'écart 2) → `GateOut.lint_warnings`, bandeau non-bloquant dans `ReviewGate.vue`. Preuve réelle : gate du cas 2 signale la tautologie, cas 3 (re-généré) propre. 181 Python + 15 vitest verts. |
 | **2** | **Sémantique des paramètres de steps** — écart **CONFIRMÉ par exécution** (§6, écart 1). Décision `0007` + plan **avant** de coder. Deux options ouvertes (annoter le catalogue / rendre le step tolérant via `get_by_label`) — cf. §6, la correction du diagnostic **change les options**. |
 | **3** | **Runs API sans rapport** (écart 4 du §6) : `_persist` n'écrit ni `report_json_path` ni `report_html_path`, alors que la CLI le fait → invariant §4.6. Conditionne aussi la visibilité de l'écart 3 dans `ReportView`. |
 | **5** | **Exécution nommée transverse** (§7, JTBD essentiel §3) : regroupement de cas de modules différents, rapport attaché à l'exécution. L'UI laisse déjà la porte ouverte (badge « Cas unique / Suite transverse », champ `suite_name` réservé côté API). C'est **le dernier gros manque du §7**. |

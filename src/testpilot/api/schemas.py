@@ -73,10 +73,20 @@ class ReviewOut(BaseModel):
     decided_at: str = ""
 
 
+class LintWarning(BaseModel):
+    step: str
+    line: int
+    kind: str
+    message: str
+
+
 class GateOut(BaseModel):
     allowed: bool
     needs_review: bool
     reason: str
+    # Avertissements NON-bloquants sur les assertions générées (décision 0008). N'affectent
+    # jamais `allowed` : ils informent le relecteur, le gate reste souverain.
+    lint_warnings: list[LintWarning] = []
 
 
 class ExecutionSummary(BaseModel):

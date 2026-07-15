@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from testpilot.api import schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import run_service
+from testpilot.generation import assertion_lint
 from testpilot.store.repositories import (
     CaseRepo,
     ExecutionRepo,
@@ -40,12 +41,18 @@ def get_case(case_id: int, conn=Depends(get_conn)):
     if case.get("module_id"):
         module = schemas.ModuleRef(id=case["module_id"], name=case.get("module_name") or "—")
 
+    version_rows = VersionRepo(conn).list_for_case(case_id)
     version_id = case.get("current_version_id")
     gate = None
     if version_id:
         decision = review_gate.evaluate_gate(ReviewRepo(conn), version_id)
+        # Lint non-bloquant des assertions de la version courante (décision 0008) : informe le
+        # relecteur sans jamais changer `allowed` — le gate reste souverain.
+        current = next((v for v in version_rows if v["id"] == version_id), None)
+        warnings = assertion_lint.lint_steps(current.get("steps_content", "") if current else "")
         gate = schemas.GateOut(allowed=decision.allowed, needs_review=decision.needs_review,
-                               reason=decision.reason)
+                               reason=decision.reason,
+                               lint_warnings=[schemas.LintWarning(**w) for w in warnings])
     executions = [
         schemas.execution_summary(r, running=run_service.is_running(r["id"]))
         for r in ExecutionRepo(conn).list_for_case(case_id)
@@ -55,7 +62,7 @@ def get_case(case_id: int, conn=Depends(get_conn)):
         project=project,
         module=module,
         current_version_id=version_id,
-        versions=[schemas.version_out(v) for v in VersionRepo(conn).list_for_case(case_id)],
+        versions=[schemas.version_out(v) for v in version_rows],
         reviews=[schemas.review_out(r) for r in ReviewRepo(conn).list_for_case(case_id)],
         executions=executions,
         gate=gate,

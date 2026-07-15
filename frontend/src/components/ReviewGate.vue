@@ -39,6 +39,25 @@ async function decide(approved: boolean) {
       <p class="text-sm text-muted-foreground">{{ gate?.reason }}</p>
     </div>
 
+    <!-- Avertissements NON-bloquants sur les assertions générées (décision 0008). Informent le
+         relecteur ; ne désactivent jamais l'approbation — le gate reste souverain. -->
+    <div v-if="gate?.lint_warnings?.length"
+         class="rounded-lg border border-warning/40 bg-warning/10 p-3 space-y-1.5">
+      <p class="flex items-center gap-1.5 text-xs font-medium text-warning">
+        <span aria-hidden="true">⚠</span>
+        Assertion{{ gate.lint_warnings.length > 1 ? 's' : '' }} à vérifier — pourrai{{ gate.lint_warnings.length > 1 ? 'ent' : 't' }} ne jamais échouer
+      </p>
+      <ul class="space-y-1">
+        <li v-for="(w, i) in gate.lint_warnings" :key="i" class="text-xs text-muted-foreground">
+          <span class="font-mono text-foreground/80">« {{ w.step }} »</span>
+          (ligne {{ w.line }}) — {{ w.message }}
+        </li>
+      </ul>
+      <p class="text-[11px] text-muted-foreground/80">
+        Signal indicatif : à vous de juger. L'approbation reste possible.
+      </p>
+    </div>
+
     <div v-if="!gate?.allowed" class="flex gap-2">
       <Button variant="primary" :loading="busy" @click="decide(true)">Approuver la version</Button>
       <Button variant="danger" :disabled="busy" @click="decide(false)">Rejeter</Button>

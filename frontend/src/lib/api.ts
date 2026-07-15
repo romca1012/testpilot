@@ -95,7 +95,11 @@ export interface VersionOut {
 export interface ReviewOut {
   id: number; version_id: number; decision: string; reviewer: string; comment: string; decided_at: string
 }
-export interface GateOut { allowed: boolean; needs_review: boolean; reason: string }
+export interface LintWarning { step: string; line: number; kind: string; message: string }
+export interface GateOut {
+  allowed: boolean; needs_review: boolean; reason: string
+  lint_warnings?: LintWarning[]
+}
 export interface ExecutionSummary {
   id: number; test_case_id: number; version_id: number
   execution_status: string; functional_status: string

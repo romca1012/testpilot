@@ -1,9 +1,8 @@
 # 0008 — Génération : empêcher une assertion infalsifiable (faux « conforme ») — Inc. 1
 
 Date : 2026-07-15
-Statut : **DÉCIDÉ** (arbitrage du porteur, 2026-07-15 — voir § *Verdict*). **A implémenté et
-prouvé** (2026-07-15) ; **C à venir** (avec extension contextuelle). Voir § *Suivi
-d'implémentation*.
+Statut : **DÉCIDÉ et IMPLÉMENTÉ** (arbitrage du porteur, 2026-07-15). **A et C faits et prouvés**
+(prompt + lint non-bloquant au gate avec extension contextuelle). Voir § *Suivi d'implémentation*.
 Priorité : **1** — cf. `BACKLOG.md`
 
 > **Numérotation** : `0007` est réservé à l'**écart 1** (sémantique des paramètres de steps —
@@ -214,8 +213,20 @@ couvre pas le cas exact qui a motivé l'investigation.
   steps d'assertion (`@then`) — un `@when`/`@given` d'action n'assertit légitimement rien. Le
   lint devra filtrer par décorateur.
 
-### C — lint non-bloquant au gate (+ extension contextuelle) — ⏭️ à implémenter
-Voir le plan validé : module pur `generation/assertion_lint.py`, exposition dans `GateOut`,
-bandeau non-bloquant dans `ReviewGate.vue`, tests `tests/test_assertion_lint.py` (dont
-anti-faux-positif **étendu aux variantes légitimes du motif contextuel**, et preuve finale sur
-le **contenu exact de l'écart 2**).
+### C — lint non-bloquant au gate (+ extension contextuelle) — ✅ FAIT et PROUVÉ (2026-07-15)
+- **Module pur** `generation/assertion_lint.py` (`lint_steps` → liste d'avertissements, AST, aucune
+  I/O). Trois motifs : `always_true_constant`, `tautology_negation_in_else` (**motif exact de
+  l'écart 2**), `then_without_assertion` (filtré par décorateur — un `@when` d'action n'est jamais
+  signalé). Négation reconnue par **égalité structurelle stricte** (anti-faux-positif).
+- **API** : `GateOut.lint_warnings` (schéma `LintWarning`), calculé dans `routes/cases.py` depuis
+  les steps de la version courante. **N'affecte jamais `allowed`** — le gate reste souverain.
+- **Front** : bandeau non-bloquant dans `ReviewGate.vue` (ton *warning*, n'empêche pas
+  l'approbation).
+- **Tests** : `tests/test_assertion_lint.py` (11) — dont **anti-faux-positif étendu** aux
+  variantes légitimes du motif contextuel (autre variable / autre comparateur / sans négation /
+  hors `else`) **et** preuve sur le **contenu exact** de l'écart 2 ; plus 2 tests API
+  (`test_api.py`) : le contenu exact de l'écart 2 est **signalé au gate sans bloquer**, et une
+  assertion saine ne produit rien. Suites **181 Python + 15 vitest + build** verts.
+- **Preuve en conditions réelles** (§8.8) : sur la vraie base, le gate du **cas 2** (la
+  tautologie d'origine) affiche `tautology_negation_in_else` (l.101) ; le **cas 3** (re-généré
+  après A) n'affiche **aucun** avertissement. A et C se valident mutuellement.
