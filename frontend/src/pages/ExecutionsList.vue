@@ -44,7 +44,7 @@ onMounted(async () => {
           <StatusPair :execution-status="r.execution_status" :functional-status="r.functional_status" />
         </div>
         <span class="text-xs text-muted-foreground">
-          #{{ r.id }} · {{ formatDuration(r.duration_seconds) }} · {{ formatDate(r.started_at) }}
+          Exécution du {{ formatDate(r.started_at) }} · {{ formatDuration(r.duration_seconds) }}
         </span>
       </li>
     </ul>

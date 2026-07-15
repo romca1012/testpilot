@@ -3,9 +3,10 @@ import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseDetail } from '../lib/api'
 import { formatDate, formatDuration } from '../lib/format'
-import Card from '../components/ui/Card.vue'
+import { prettyModule } from '../lib/status'
 import Button from '../components/ui/Button.vue'
 import Spinner from '../components/ui/Spinner.vue'
+import Icon from '../components/ui/Icon.vue'
 import StatusPair from '../components/StatusPair.vue'
 import ValidationBadge from '../components/ValidationBadge.vue'
 import ReviewGate from '../components/ReviewGate.vue'
@@ -22,9 +23,19 @@ const running = ref(false)
 const runError = ref('')
 let pollTimer: number | undefined
 
-const currentVersion = computed(() =>
-  detail.value?.versions.find((v) => v.id === detail.value?.current_version_id) || detail.value?.versions[0],
+// Versions les plus récentes d'abord (la courante en tête).
+const versionsDesc = computed(() =>
+  [...(detail.value?.versions || [])].sort((a, b) => b.version_number - a.version_number),
 )
+function reviewsFor(versionId: number) {
+  return (detail.value?.reviews || []).filter((r) => r.version_id === versionId)
+}
+function executionsFor(versionId: number) {
+  return (detail.value?.executions || []).filter((e) => e.version_id === versionId)
+}
+function reviewerLabel(reviewer: string) {
+  return reviewer === 'cli' ? 'ligne de commande' : reviewer || '—'
+}
 
 async function load() {
   try {
@@ -44,7 +55,7 @@ async function launch() {
     poll(execution_id)
   } catch (e: any) {
     running.value = false
-    runError.value = e?.message || "Échec du lancement"
+    runError.value = e?.message || 'Échec du lancement'
   }
 }
 
@@ -53,18 +64,15 @@ function poll(execId: number) {
     try {
       const exec = await api.getExecution(execId)
       if (!exec.running) {
-        stopPoll()
-        running.value = false
+        stopPoll(); running.value = false
         router.push(`/executions/${execId}`)
       }
     } catch {
-      stopPoll()
-      running.value = false
+      stopPoll(); running.value = false
       runError.value = 'Suivi de l\'exécution interrompu'
     }
   }, 1500)
 }
-
 function stopPoll() {
   if (pollTimer) window.clearInterval(pollTimer)
   pollTimer = undefined
@@ -76,7 +84,9 @@ onBeforeUnmount(stopPoll)
 
 <template>
   <div class="space-y-6">
-    <RouterLink to="/cases" class="text-xs text-muted-foreground hover:text-foreground">← Gestion des cas</RouterLink>
+    <RouterLink to="/cases" class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+      <Icon name="chevron" class="h-3.5 w-3.5 rotate-180" /> Gestion des cas
+    </RouterLink>
 
     <div v-if="loading" class="flex items-center gap-2 text-muted-foreground text-sm">
       <Spinner class="h-4 w-4" /> Chargement…
@@ -84,84 +94,99 @@ onBeforeUnmount(stopPoll)
     <p v-else-if="error" class="text-sm text-destructive">{{ error }}</p>
 
     <template v-else-if="detail">
+      <!-- En-tête du cas (racine de l'arbre) -->
       <div class="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 class="text-xl font-semibold">{{ detail.case.title }}</h1>
-          <p class="text-sm text-muted-foreground">{{ detail.case.module }}</p>
+        <div class="flex items-center gap-3">
+          <div class="grid h-10 w-10 place-items-center rounded-lg border border-border bg-surface font-mono text-xs text-muted-foreground">
+            {{ detail.case.module.slice(0, 2).toUpperCase() }}
+          </div>
+          <div>
+            <h1 class="text-xl font-semibold tracking-tight">{{ detail.case.title }}</h1>
+            <p class="text-sm text-muted-foreground">{{ prettyModule(detail.case.module) }}</p>
+          </div>
         </div>
         <ValidationBadge :status="detail.case.validation_status" />
       </div>
-
       <StatusPair
         :execution-status="detail.case.last_execution_status"
         :functional-status="detail.case.last_functional_status"
       />
 
-      <!-- Gate de relecture actionnable + lancement -->
-      <Card title="Relecture & exécution">
-        <div class="space-y-4">
-          <ReviewGate :case-id="caseId" :gate="detail.gate" @reviewed="load" />
-          <div class="flex items-center gap-3 pt-1 border-t border-border">
-            <Button variant="primary" :loading="running" :disabled="!detail.gate?.allowed" @click="launch">
-              Lancer une exécution
-            </Button>
-            <span v-if="running" class="text-xs text-muted-foreground">Exécution en cours…</span>
-            <span v-else-if="!detail.gate?.allowed" class="text-xs text-muted-foreground">
-              Approuvez la version pour pouvoir lancer une exécution.
+      <!-- Arbre : versions et, sous chacune, ses relectures / Gherkin / exécutions -->
+      <div class="tree-branch space-y-6 pt-2">
+        <div v-for="v in versionsDesc" :key="v.id" class="tree-node">
+          <!-- Nœud version -->
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-raised px-2.5 py-1 text-sm font-medium">
+              <Icon name="dot" class="h-3 w-3 text-primary" /> Version {{ v.version_number }}
             </span>
+            <span v-if="v.id === detail.current_version_id"
+                  class="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">courante</span>
+            <span class="text-xs text-muted-foreground">créée le {{ formatDate(v.created_at) }}</span>
           </div>
-          <p v-if="runError" class="text-xs text-destructive">{{ runError }}</p>
+
+          <!-- Enfants de la version -->
+          <div class="tree-branch mt-4 space-y-4">
+            <!-- Action : gate + lancement, rattaché à la VERSION COURANTE -->
+            <div v-if="v.id === detail.current_version_id" class="tree-node rounded-lg border border-border bg-card p-4">
+              <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Relecture &amp; exécution</div>
+              <ReviewGate :case-id="caseId" :gate="detail.gate" @reviewed="load" />
+              <div class="mt-4 flex items-center gap-3 border-t border-border pt-3">
+                <Button variant="primary" :loading="running" :disabled="!detail.gate?.allowed" @click="launch">
+                  Lancer une exécution
+                </Button>
+                <span v-if="running" class="text-xs text-muted-foreground">Exécution en cours…</span>
+                <span v-else-if="!detail.gate?.allowed" class="text-xs text-muted-foreground">
+                  Approuvez la version pour pouvoir la lancer.
+                </span>
+              </div>
+              <p v-if="runError" class="mt-2 text-xs text-destructive">{{ runError }}</p>
+            </div>
+
+            <!-- Contenu généré (Gherkin), repliable -->
+            <details class="tree-node group rounded-lg border border-border bg-card" open>
+              <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-sm">
+                <Icon name="chevron" class="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                Contenu généré (Gherkin)
+              </summary>
+              <div class="px-4 pb-4">
+                <GherkinView :content="v.feature_content" />
+              </div>
+            </details>
+
+            <!-- Relectures de cette version -->
+            <div class="tree-node">
+              <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Relectures</div>
+              <p v-if="!reviewsFor(v.id).length" class="text-sm text-muted-foreground">Aucune relecture.</p>
+              <ul v-else class="space-y-1.5">
+                <li v-for="r in reviewsFor(v.id)" :key="r.id" class="flex items-center gap-2 text-sm">
+                  <Icon :name="r.decision === 'approved' ? 'check' : 'x'" class="h-3.5 w-3.5"
+                        :class="r.decision === 'approved' ? 'text-success' : 'text-destructive'" />
+                  <span>{{ r.decision === 'approved' ? 'Approuvée' : 'Rejetée' }}</span>
+                  <span class="text-muted-foreground">par {{ reviewerLabel(r.reviewer) }} · {{ formatDate(r.decided_at) }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <!-- Exécutions de cette version -->
+            <div class="tree-node">
+              <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Exécutions</div>
+              <p v-if="!executionsFor(v.id).length" class="text-sm text-muted-foreground">Aucune exécution pour cette version.</p>
+              <ul v-else class="space-y-2">
+                <li v-for="e in executionsFor(v.id)" :key="e.id"
+                    class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface/40 px-3 py-2.5 cursor-pointer hover:bg-accent/40 transition-colors"
+                    @click="router.push(`/executions/${e.id}`)">
+                  <StatusPair :execution-status="e.execution_status" :functional-status="e.functional_status" />
+                  <span class="flex items-center gap-2 text-xs text-muted-foreground">
+                    {{ formatDate(e.started_at) }} · {{ formatDuration(e.duration_seconds) }}
+                    <Icon name="chevron" class="h-3.5 w-3.5 text-muted-foreground/40" />
+                  </span>
+                </li>
+              </ul>
+            </div>
+          </div>
         </div>
-      </Card>
-
-      <!-- Gherkin de la version courante -->
-      <Card title="Gherkin (version courante)">
-        <GherkinView v-if="currentVersion" :content="currentVersion.feature_content" />
-        <p v-else class="text-sm text-muted-foreground">Aucune version générée.</p>
-      </Card>
-
-      <!-- Versions -->
-      <Card title="Versions">
-        <ul class="divide-y divide-border text-sm">
-          <li v-for="v in detail.versions" :key="v.id" class="flex items-center justify-between py-2">
-            <span>v{{ v.version_number }}
-              <span v-if="v.id === detail.current_version_id" class="ml-2 text-xs text-primary">courante</span>
-            </span>
-            <span class="text-xs text-muted-foreground">{{ formatDate(v.created_at) }}</span>
-          </li>
-        </ul>
-      </Card>
-
-      <!-- Décisions de relecture -->
-      <Card title="Décisions de relecture">
-        <p v-if="!detail.reviews.length" class="text-sm text-muted-foreground">Aucune relecture enregistrée.</p>
-        <ul v-else class="divide-y divide-border text-sm">
-          <li v-for="r in detail.reviews" :key="r.id" class="flex items-center justify-between py-2">
-            <span>
-              <span :class="r.decision === 'approved' ? 'text-success' : 'text-destructive'">
-                {{ r.decision === 'approved' ? 'Approuvée' : 'Rejetée' }}
-              </span>
-              <span class="text-muted-foreground"> · v{{ r.version_id }} · {{ r.reviewer || '—' }}</span>
-            </span>
-            <span class="text-xs text-muted-foreground">{{ formatDate(r.decided_at) }}</span>
-          </li>
-        </ul>
-      </Card>
-
-      <!-- Exécutions du cas -->
-      <Card title="Exécutions">
-        <p v-if="!detail.executions.length" class="text-sm text-muted-foreground">Aucune exécution.</p>
-        <ul v-else class="divide-y divide-border">
-          <li v-for="e in detail.executions" :key="e.id"
-              class="flex flex-wrap items-center justify-between gap-3 py-3 cursor-pointer hover:bg-accent/30 -mx-2 px-2 rounded"
-              @click="router.push(`/executions/${e.id}`)">
-            <StatusPair :execution-status="e.execution_status" :functional-status="e.functional_status" />
-            <span class="text-xs text-muted-foreground">
-              {{ formatDuration(e.duration_seconds) }} · {{ formatDate(e.started_at) }}
-            </span>
-          </li>
-        </ul>
-      </Card>
+      </div>
     </template>
   </div>
 </template>

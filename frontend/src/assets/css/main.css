@@ -64,4 +64,33 @@
       radial-gradient(50rem 50rem at -10% 110%, hsl(252 56% 60% / 0.06), transparent 55%),
       hsl(var(--background));
   }
+
+  /* Arborescence (cas → version → relecture / Gherkin / exécutions) — hiérarchie
+     rendue explicite par indentation + connecteurs façon `tree`. */
+  .tree-branch {
+    position: relative;
+    margin-left: 0.85rem;
+    padding-left: 1.5rem;
+    border-left: 1px solid hsl(var(--border));
+  }
+  .tree-node { position: relative; }
+  .tree-node::before {
+    content: "";
+    position: absolute;
+    left: -1.5rem;
+    top: 0.95rem;
+    width: 1.25rem;
+    height: 1px;
+    background: hsl(var(--border));
+  }
+  /* Masque le prolongement de la ligne verticale sous le dernier nœud. */
+  .tree-node:last-child::after {
+    content: "";
+    position: absolute;
+    left: -1.51rem;
+    top: 0.95rem;
+    bottom: 0;
+    width: 1px;
+    background: hsl(var(--background));
+  }
 }

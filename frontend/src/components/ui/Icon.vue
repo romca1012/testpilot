@@ -1,0 +1,23 @@
+<script setup lang="ts">
+// Jeu d'icônes SVG cohérent (remplace les glyphes unicode ✓✗○◐, qui font « brut »).
+defineProps<{ name: string; class?: string }>()
+
+// Icônes de contour (stroke=currentColor) sauf 'half' qui remplit un demi-disque.
+const STROKE = new Set(['check', 'x', 'circle', 'chevron'])
+</script>
+
+<template>
+  <svg viewBox="0 0 24 24" :class="$props.class" fill="none" aria-hidden="true"
+       :stroke="STROKE.has(name) ? 'currentColor' : 'none'" stroke-width="2.2"
+       stroke-linecap="round" stroke-linejoin="round">
+    <template v-if="name === 'check'"><path d="M5 12.5l4.2 4.2L19 6.8" /></template>
+    <template v-else-if="name === 'x'"><path d="M7 7l10 10M17 7L7 17" /></template>
+    <template v-else-if="name === 'circle'"><circle cx="12" cy="12" r="7.5" /></template>
+    <template v-else-if="name === 'chevron'"><path d="M9 6l6 6-6 6" /></template>
+    <template v-else-if="name === 'half'">
+      <circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="2.2" />
+      <path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor" />
+    </template>
+    <template v-else-if="name === 'dot'"><circle cx="12" cy="12" r="4" fill="currentColor" /></template>
+  </svg>
+</template>

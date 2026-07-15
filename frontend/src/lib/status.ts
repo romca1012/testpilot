@@ -1,38 +1,65 @@
-// Cœur de la représentation des statuts — mapping PUR des codes vers un affichage
-// {label, icône, ton}. Principe (repris de l'ancien front, porté aux DEUX AXES) :
-// jamais la couleur seule — toujours icône + mot + couleur. Les deux axes du §5
-// (exécution / fonctionnel) ne sont JAMAIS fusionnés : ce sont deux mappings distincts.
+// Cœur de la représentation des statuts — mapping PUR des codes techniques vers un
+// affichage UTILISATEUR {label court, icône, ton, hint?}. Règles :
+//  - jamais la couleur seule (icône + mot + couleur) ;
+//  - jamais une valeur d'enum brute à l'écran — tout passe par ces mappings ;
+//  - les explications longues vont dans `hint` (infobulle « i »), pas en libellé.
+// Les deux axes du §5 (exécution / fonctionnel) restent DEUX mappings distincts.
 
 export type Tone = 'success' | 'destructive' | 'warning' | 'muted' | 'primary'
 
 export interface StatusView {
   label: string
-  icon: string
+  icon: string // nom d'icône SVG (voir ui/Icon.vue)
   tone: Tone
+  hint?: string // explication longue → infobulle
 }
 
-const UNKNOWN: StatusView = { label: 'Inconnu', icon: '?', tone: 'muted' }
+const UNKNOWN: StatusView = { label: 'Inconnu', icon: 'circle', tone: 'muted' }
+
+// Étiquettes des DEUX AXES (compréhensibles sans connaître le brief) + leur aide.
+export const AXIS = {
+  execution: { label: 'Déroulement du test', hint: 'Le test a-t-il pu s\'exécuter techniquement (sans crash, timeout ni erreur d\'environnement) ?' },
+  functional: { label: 'Résultat fonctionnel', hint: 'L\'application s\'est-elle comportée comme attendu par le besoin ?' },
+}
 
 // ── Axe EXÉCUTION : le test a-t-il pu tourner techniquement ? ─────────────────
 const EXECUTION: Record<string, StatusView> = {
-  success: { label: 'Exécuté', icon: '✓', tone: 'success' },
-  technical_error: { label: 'Erreur technique', icon: '✗', tone: 'destructive' },
-  not_executed: { label: 'Non exécuté', icon: '○', tone: 'muted' },
+  success: { label: 'A tourné', icon: 'check', tone: 'success' },
+  technical_error: { label: 'Erreur technique', icon: 'x', tone: 'destructive' },
+  not_executed: { label: 'Pas lancé', icon: 'circle', tone: 'muted' },
 }
 
 // ── Axe FONCTIONNEL : l'application est-elle conforme au besoin ? ─────────────
 const FUNCTIONAL: Record<string, StatusView> = {
-  conforme: { label: 'Conforme', icon: '✓', tone: 'success' },
-  non_conforme: { label: 'Non conforme', icon: '✗', tone: 'destructive' },
-  indetermine: { label: 'Indéterminé', icon: '◐', tone: 'warning' },
-  not_evaluated: { label: 'Non évalué', icon: '○', tone: 'muted' },
+  conforme: { label: 'Conforme', icon: 'check', tone: 'success' },
+  non_conforme: { label: 'Non conforme', icon: 'x', tone: 'destructive' },
+  indetermine: { label: 'Indéterminable', icon: 'half', tone: 'warning',
+    hint: 'Le test n\'a pas pu juger le comportement de l\'application (il s\'est interrompu avant).' },
+  not_evaluated: { label: 'Non évalué', icon: 'circle', tone: 'muted' },
 }
 
 // ── Statut de VALIDATION du cas (cycle de vie) ────────────────────────────────
 const VALIDATION: Record<string, StatusView> = {
-  never_executed: { label: 'Jamais exécuté', icon: '○', tone: 'muted' },
-  validated: { label: 'Validé', icon: '✓', tone: 'success' },
-  to_review: { label: 'À relire', icon: '◐', tone: 'warning' },
+  never_executed: { label: 'Jamais lancé', icon: 'circle', tone: 'muted' },
+  validated: { label: 'Validé', icon: 'check', tone: 'success',
+    hint: 'Le test a été exécuté au moins une fois en entier, sans interruption technique.' },
+  to_review: { label: 'À relire', icon: 'half', tone: 'warning' },
+}
+
+// ── Origine d'un défaut (defect_origin) — jamais brut à l'écran ────────────────
+const DEFECT_ORIGIN: Record<string, StatusView> = {
+  vrai_bug: { label: 'Bug dans l\'application', icon: 'x', tone: 'destructive' },
+  test_a_reparer: { label: 'Test à corriger', icon: 'half', tone: 'warning',
+    hint: 'Le défaut vient du test lui-même (parcours, sélecteur, champ…), pas de l\'application.' },
+  indetermine: { label: 'Origine à investiguer', icon: 'circle', tone: 'muted' },
+}
+
+// ── Statut de confirmation (confirmation_status) — not_required → masqué ───────
+const CONFIRMATION: Record<string, StatusView | null> = {
+  pending_human: { label: 'En attente de validation humaine', icon: 'half', tone: 'warning' },
+  confirmed: { label: 'Validé par un humain', icon: 'check', tone: 'success' },
+  rejected: { label: 'Écarté après revue', icon: 'x', tone: 'muted' },
+  not_required: null, // ne rien afficher
 }
 
 export function executionView(code: string | null | undefined): StatusView {
@@ -43,6 +70,25 @@ export function functionalView(code: string | null | undefined): StatusView {
 }
 export function validationView(code: string | null | undefined): StatusView {
   return (code && VALIDATION[code]) || UNKNOWN
+}
+export function defectOriginView(code: string | null | undefined): StatusView {
+  return (code && DEFECT_ORIGIN[code]) || DEFECT_ORIGIN.indetermine
+}
+export function confirmationView(code: string | null | undefined): StatusView | null {
+  return code ? (CONFIRMATION[code] ?? null) : null
+}
+
+// Provenance du coût, en clair.
+export function costSourceLabel(code: string | null | undefined): string {
+  if (code === 'anthropic_api') return 'mesuré via l\'API'
+  return 'estimé'
+}
+
+// Slug de module → libellé lisible ('demande_materiel' → 'Demande materiel').
+export function prettyModule(slug: string | null | undefined): string {
+  if (!slug) return ''
+  const s = slug.replace(/[_-]+/g, ' ').trim()
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
 // Classes Tailwind par ton — bordure + fond léger + texte (jamais fond plein « OK/KO »).

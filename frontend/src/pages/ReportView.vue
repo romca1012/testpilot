@@ -5,8 +5,13 @@ import { api, type TestReport } from '../lib/api'
 import { formatCost, formatDuration } from '../lib/format'
 import Card from '../components/ui/Card.vue'
 import Spinner from '../components/ui/Spinner.vue'
+import Chip from '../components/ui/Chip.vue'
+import Hint from '../components/ui/Hint.vue'
 import StatusPair from '../components/StatusPair.vue'
-import { functionalView, executionView, toneClasses } from '../lib/status'
+import {
+  functionalView, executionView, toneClasses,
+  defectOriginView, confirmationView, costSourceLabel,
+} from '../lib/status'
 
 const route = useRoute()
 const report = ref<TestReport | null>(null)
@@ -71,7 +76,7 @@ function scenarioTone(exec: string, func: string) {
           <div class="text-lg font-semibold">{{ formatDuration(report.duration_seconds) }}</div>
         </div>
         <div class="rounded-lg border border-border p-3">
-          <div class="text-xs text-muted-foreground">Coût ({{ report.cost_source }})</div>
+          <div class="text-xs text-muted-foreground">Coût ({{ costSourceLabel(report.cost_source) }})</div>
           <div class="text-lg font-semibold">{{ formatCost(report.cost_usd) }}</div>
         </div>
       </div>
@@ -95,14 +100,12 @@ function scenarioTone(exec: string, func: string) {
                   <div v-if="s.error" class="text-xs text-muted-foreground font-mono mt-1">{{ s.error }}</div>
                 </td>
                 <td class="px-3 py-2">
-                  <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs" :class="toneClasses(executionView(s.execution_status).tone)">
-                    {{ executionView(s.execution_status).icon }} {{ executionView(s.execution_status).label }}
-                  </span>
+                  <Chip :icon="executionView(s.execution_status).icon" :label="executionView(s.execution_status).label"
+                        :cls="toneClasses(executionView(s.execution_status).tone)" />
                 </td>
                 <td class="px-3 py-2">
-                  <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs" :class="toneClasses(functionalView(s.functional_status).tone)">
-                    {{ functionalView(s.functional_status).icon }} {{ functionalView(s.functional_status).label }}
-                  </span>
+                  <Chip :icon="functionalView(s.functional_status).icon" :label="functionalView(s.functional_status).label"
+                        :cls="toneClasses(functionalView(s.functional_status).tone)" />
                 </td>
                 <td class="px-3 py-2 text-muted-foreground">{{ s.cause_label || '—' }}</td>
               </tr>
@@ -111,14 +114,26 @@ function scenarioTone(exec: string, func: string) {
         </div>
       </Card>
 
-      <!-- Origine des défauts -->
+      <!-- Origine des défauts (vocabulaire utilisateur — jamais de valeur d'enum brute) -->
       <Card v-if="report.repairs.length" title="Origine des défauts">
         <ul class="divide-y divide-border text-sm">
-          <li v-for="(d, i) in report.repairs" :key="i" class="flex flex-wrap items-center justify-between gap-2 py-2">
-            <span>{{ d.cause_label || '—' }} · <span class="text-muted-foreground">{{ d.defect_origin }}</span></span>
-            <span class="text-xs" :class="d.requires_human_confirmation ? 'text-warning' : 'text-muted-foreground'">
-              {{ d.requires_human_confirmation ? 'confirmation humaine requise' : d.confirmation_status }}
-            </span>
+          <li v-for="(d, i) in report.repairs" :key="i" class="flex flex-wrap items-center justify-between gap-3 py-2.5">
+            <div class="flex items-center gap-2">
+              <span class="text-muted-foreground">{{ d.cause_label || 'Cause indéterminée' }}</span>
+              <span class="text-muted-foreground/50">·</span>
+              <Chip
+                :icon="defectOriginView(d.defect_origin).icon"
+                :label="defectOriginView(d.defect_origin).label"
+                :cls="toneClasses(defectOriginView(d.defect_origin).tone)"
+              />
+              <Hint v-if="defectOriginView(d.defect_origin).hint" :text="defectOriginView(d.defect_origin).hint!" />
+            </div>
+            <Chip
+              v-if="confirmationView(d.confirmation_status)"
+              :icon="confirmationView(d.confirmation_status)!.icon"
+              :label="confirmationView(d.confirmation_status)!.label"
+              :cls="toneClasses(confirmationView(d.confirmation_status)!.tone)"
+            />
           </li>
         </ul>
       </Card>
