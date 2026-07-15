@@ -49,6 +49,20 @@ const VALIDATION: Record<string, StatusView> = {
   to_review: { label: 'À relire', icon: 'half', tone: 'warning' },
 }
 
+// ── Priorité de LECTURE d'un cas — surtout pas un ordre d'exécution ───────────
+const PRIORITY: Record<string, StatusView> = {
+  high: { label: 'Haute', icon: 'dot', tone: 'destructive' },
+  medium: { label: 'Moyenne', icon: 'dot', tone: 'muted' },
+  low: { label: 'Basse', icon: 'dot', tone: 'muted' },
+}
+const PRIORITY_HINT =
+  "Priorité de lecture et de traitement. Elle n'impose AUCUN ordre d'exécution : " +
+  "l'ordre réel des scénarios est celui du fichier .feature."
+
+export function priorityView(code: string | null | undefined): StatusView {
+  return { ...((code && PRIORITY[code]) || PRIORITY.medium), hint: PRIORITY_HINT }
+}
+
 // ── Origine d'un défaut (defect_origin) — jamais brut à l'écran ────────────────
 const DEFECT_ORIGIN: Record<string, StatusView> = {
   vrai_bug: { label: 'Bug dans l\'application', icon: 'x', tone: 'destructive' },

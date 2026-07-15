@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -55,6 +55,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_1_project_module(conn)
     if version < 2:
         _migrate_2_project_connector(conn)
+    if version < 3:
+        _migrate_3_case_priority(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -118,6 +120,17 @@ def _migrate_2_project_connector(conn: sqlite3.Connection) -> None:
 
     if "connector_type" in _column_names(conn, "test_case"):
         conn.execute("ALTER TABLE test_case DROP COLUMN connector_type")
+
+
+def _migrate_3_case_priority(conn: sqlite3.Connection) -> None:
+    """Priorité de lecture sur le cas (décision 0006). Idempotent.
+
+    Étiquette assumée (low|medium|high) : elle ne promet AUCUN ordre d'exécution — celui-ci
+    est dicté par l'ordre des scénarios dans le .feature. On n'ajoute donc pas de colonne
+    ``position`` décorative (l'ancien prototype en avait une, jamais alimentée).
+    """
+    if "priority" not in _column_names(conn, "test_case"):
+        conn.execute("ALTER TABLE test_case ADD COLUMN priority TEXT NOT NULL DEFAULT 'medium'")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

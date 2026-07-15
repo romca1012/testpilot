@@ -62,6 +62,33 @@ def get_case(case_id: int, conn=Depends(get_conn)):
     )
 
 
+@router.patch("/{case_id}", response_model=schemas.CaseSummary)
+def update_case(case_id: int, body: schemas.CasePatch, conn=Depends(get_conn)):
+    """Met à jour la priorité de LECTURE d'un cas (étiquette — aucun ordre d'exécution)."""
+    cases = CaseRepo(conn)
+    if cases.get(case_id) is None:
+        raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
+    if body.priority not in ("low", "medium", "high"):
+        raise HTTPException(status_code=422, detail="priorité invalide (low | medium | high)")
+    cases.set_priority(case_id, body.priority)
+    return schemas.case_summary(cases.get(case_id))
+
+
+@router.get("/{case_id}/scenarios", response_model=list[schemas.ScenarioResultOut])
+def get_case_scenarios(case_id: int, conn=Depends(get_conn)):
+    """Scénarios du DERNIER run du cas (dépliage) — vide si jamais exécuté.
+
+    Le scénario n'est pas une entité de premier rang : il n'existe qu'au travers d'une
+    exécution. On expose donc la granularité fine là où elle existe réellement.
+    """
+    execs = ExecutionRepo(conn)
+    runs = execs.list_for_case(case_id)
+    if not runs:
+        return []
+    last = max(runs, key=lambda r: r["id"])
+    return [schemas.scenario_result_out(s) for s in execs.list_scenario_results(last["id"])]
+
+
 @router.post("/{case_id}/runs", response_model=schemas.RunResponse, status_code=202)
 def start_run(case_id: int, background: BackgroundTasks, conn=Depends(get_conn)):
     try:

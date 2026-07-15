@@ -112,7 +112,12 @@ onMounted(async () => {
                   </div>
                   <div class="min-w-0">
                     <div class="font-medium truncate">{{ c.title }}</div>
-                    <div class="text-xs text-muted-foreground truncate">{{ prettyModule(c.module) }}</div>
+                    <!-- Le module mène à sa page de gestion (liste/ajout des cas du module). -->
+                    <button v-if="c.module_id" class="text-xs text-muted-foreground truncate hover:text-primary"
+                            @click.stop="router.push(`/projects/${pid}/modules/${c.module_id}`)">
+                      {{ prettyModule(c.module) }}
+                    </button>
+                    <div v-else class="text-xs text-muted-foreground truncate">{{ prettyModule(c.module) }}</div>
                   </div>
                 </div>
               </td>

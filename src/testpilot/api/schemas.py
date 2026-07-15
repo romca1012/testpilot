@@ -49,6 +49,7 @@ class CaseSummary(BaseModel):
     module_id: int | None = None
     project_id: int | None = None
     validation_status: str
+    priority: str = "medium"  # étiquette de lecture — aucun ordre d'exécution promis
     last_execution_status: str | None = None
     last_functional_status: str | None = None
     last_executed_at: str | None = None
@@ -129,6 +130,30 @@ class RunResponse(BaseModel):
     status: str  # "running"
 
 
+class ModuleDetail(BaseModel):
+    module: ModuleSummary
+    project: ProjectRef
+
+
+class CasePatch(BaseModel):
+    priority: str  # low | medium | high
+
+
+class AddCaseIn(BaseModel):
+    """Ajout d'un cas = fournir une SPEC (jamais une coquille vide — décision 0006)."""
+    spec_content: str = ""
+    spec_path: str = ""
+    title: str = ""
+    author: str = "ui"
+
+
+class GenerationJobOut(BaseModel):
+    job_id: str
+    status: str            # running | done | failed
+    case_id: int | None = None
+    error: str = ""
+
+
 class ProjectIn(BaseModel):
     name: str
     description: str = ""
@@ -177,6 +202,7 @@ def case_summary(row: dict) -> CaseSummary:
         module=row.get("module_name") or row.get("feature_slug") or "—",
         module_id=row.get("module_id"), project_id=row.get("project_id"),
         validation_status=row["validation_status"],
+        priority=row.get("priority", "medium"),
         last_execution_status=row.get("last_execution_status"),
         last_functional_status=row.get("last_functional_status"),
         last_executed_at=row.get("last_executed_at"),

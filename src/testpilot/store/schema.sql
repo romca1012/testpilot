@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS test_case (
                                      CHECK (origin IN ('ia_generated', 'manual_converted')),
     validation_status      TEXT    NOT NULL DEFAULT 'never_executed'
                                      CHECK (validation_status IN ('never_executed', 'validated', 'to_review')),
+    -- Priorité de LECTURE/traitement (étiquette). Volontairement PAS un ordre d'exécution :
+    -- celui-ci est porté par l'ordre des scénarios du .feature (décision 0006).
+    priority               TEXT    NOT NULL DEFAULT 'medium'
+                                     CHECK (priority IN ('low', 'medium', 'high')),
     -- Référence logique vers la version courante (pas de FK dure : cycle case<->version).
     current_version_id     INTEGER,
     last_execution_status  TEXT    CHECK (last_execution_status IN ('success', 'technical_error', 'not_executed')),

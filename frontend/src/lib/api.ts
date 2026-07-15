@@ -34,6 +34,16 @@ export const api = {
   deleteProject: (id: number | string) =>
     request<void>(`/api/projects/${id}`, { method: 'DELETE' }),
   listModules: (projectId: number | string) => request<ModuleSummary[]>(`/api/projects/${projectId}/modules`),
+  getModule: (id: number | string) => request<ModuleDetail>(`/api/modules/${id}`),
+  // Ajouter un cas = fournir une SPEC → analyse/génération/gate (jamais une coquille vide).
+  addCase: (moduleId: number | string, spec_content: string, title = '') =>
+    request<GenerationJob>(`/api/modules/${moduleId}/cases`, {
+      method: 'POST', body: JSON.stringify({ spec_content, title }),
+    }),
+  getGenerationJob: (jobId: string) => request<GenerationJob>(`/api/modules/jobs/${jobId}`),
+  setCasePriority: (id: number | string, priority: string) =>
+    request<CaseSummary>(`/api/cases/${id}`, { method: 'PATCH', body: JSON.stringify({ priority }) }),
+  getCaseScenarios: (id: number | string) => request<ScenarioResultOut[]>(`/api/cases/${id}/scenarios`),
 
   // Cas — toujours scopés par projet (jamais de mélange inter-projets)
   listCases: (projectId: number | string) => request<CaseSummary[]>(`/api/cases?project_id=${projectId}`),
@@ -70,8 +80,13 @@ export interface Ref { id: number; name: string }
 export interface CaseSummary {
   id: number; title: string; module: string; module_id: number | null; project_id: number | null
   validation_status: string
+  priority: string   // étiquette de lecture (low|medium|high) — aucun ordre d'exécution
   last_execution_status: string | null; last_functional_status: string | null
   last_executed_at: string | null
+}
+export interface ModuleDetail { module: ModuleSummary; project: Ref }
+export interface GenerationJob {
+  job_id: string; status: string; case_id: number | null; error: string
 }
 export interface VersionOut {
   id: number; version_number: number; feature_content: string; steps_content: string

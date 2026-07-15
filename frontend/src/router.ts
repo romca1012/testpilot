@@ -7,6 +7,7 @@ const routes = [
   { path: '/', name: 'home', component: () => import('./pages/Home.vue') },
   { path: '/projects', name: 'projects', component: () => import('./pages/ProjectsList.vue') },
   { path: '/projects/:pid/cases', name: 'cases', component: () => import('./pages/CasesList.vue') },
+  { path: '/projects/:pid/modules/:mid', name: 'module-detail', component: () => import('./pages/ModuleDetail.vue') },
   { path: '/projects/:pid/cases/:id', name: 'case-detail', component: () => import('./pages/CaseDetail.vue') },
   { path: '/projects/:pid/executions', name: 'executions', component: () => import('./pages/ExecutionsList.vue') },
   { path: '/projects/:pid/executions/:id', name: 'report', component: () => import('./pages/ReportView.vue') },

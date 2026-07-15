@@ -162,29 +162,47 @@ class CaseRepo:
         self.conn = conn
 
     def create(self, *, title: str, module_id: int | None = None, feature_slug: str = "",
-               author: str = "", description: str = "", origin: str = "ia_generated") -> int:
+               author: str = "", description: str = "", origin: str = "ia_generated",
+               priority: str = "medium") -> int:
         ts = now_iso()
         cur = self.conn.execute(
             "INSERT INTO test_case (title, module_id, feature_slug, description,"
-            " origin, validation_status, author, created_at, updated_at)"
-            " VALUES (?,?,?,?,?, 'never_executed', ?,?,?)",
-            (title, module_id, feature_slug, description, origin, author, ts, ts),
+            " origin, validation_status, priority, author, created_at, updated_at)"
+            " VALUES (?,?,?,?,?, 'never_executed', ?,?,?,?)",
+            (title, module_id, feature_slug, description, origin, priority, author, ts, ts),
         )
         self.conn.commit()
         return int(cur.lastrowid)
+
+    def set_priority(self, case_id: int, priority: str) -> None:
+        self.conn.execute("UPDATE test_case SET priority=?, updated_at=? WHERE id=?",
+                          (priority, now_iso(), case_id))
+        self.conn.commit()
 
     def get(self, case_id: int) -> dict | None:
         row = self.conn.execute(_CASE_SELECT + " WHERE tc.id=?", (case_id,)).fetchone()
         return dict(row) if row else None
 
     def list_all(self, *, project_id: int | None = None, module_id: int | None = None) -> list[dict]:
+        """Cas, triés par PRIORITÉ de lecture (high→low) puis titre.
+
+        Tri de lecture uniquement : il ne préjuge pas de l'ordre d'exécution (décision 0006).
+        """
         clauses, params = [], []
         if project_id is not None:
             clauses.append("m.project_id = ?"); params.append(project_id)
         if module_id is not None:
             clauses.append("tc.module_id = ?"); params.append(module_id)
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
-        return _rows(self.conn.execute(_CASE_SELECT + where + " ORDER BY tc.id", params))
+        order = (" ORDER BY CASE tc.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1"
+                 " ELSE 2 END, tc.title COLLATE NOCASE, tc.id")
+        return _rows(self.conn.execute(_CASE_SELECT + where + order, params))
+
+    def feature_slug_taken(self, slug: str) -> bool:
+        """Un slug = un fichier .feature sur disque : il doit être unique GLOBALEMENT."""
+        row = self.conn.execute("SELECT 1 FROM test_case WHERE feature_slug=? LIMIT 1",
+                                (slug,)).fetchone()
+        return row is not None
 
     def set_current_version(self, case_id: int, version_id: int) -> None:
         self.conn.execute(

@@ -42,7 +42,7 @@ class GenerationAgent:
         self.stall_limit = stall_limit if stall_limit is not None else config.REPAIR_STALL_LIMIT
 
     def generate(self, plan: TestPlan, *, case_id: int | None = None,
-                 title: str = "", author: str = "") -> GenerationResult:
+                 title: str = "", author: str = "", module_id: int | None = None) -> GenerationResult:
         state = AgentState(module_name=plan.module_name)
         state.messages.append({"role": "user", "content": prompt_mod.build_initial_message(plan)})
         # Un seul catalogue pour les deux usages : ce qu'on MONTRE à l'agent (prompt) et ce
@@ -66,7 +66,8 @@ class GenerationAgent:
         )
         result = self._build_result(plan, state)
         if result.success and self.case_repo is not None and self.version_repo is not None:
-            self._persist(plan, result, case_id=case_id, title=title, author=author)
+            self._persist(plan, result, case_id=case_id, title=title, author=author,
+                          module_id=module_id)
         return result
 
     def _build_result(self, plan: TestPlan, state: AgentState) -> GenerationResult:
@@ -87,11 +88,14 @@ class GenerationAgent:
         )
 
     def _persist(self, plan: TestPlan, result: GenerationResult, *,
-                 case_id: int | None, title: str, author: str) -> None:
+                 case_id: int | None, title: str, author: str,
+                 module_id: int | None = None) -> None:
         """Crée/repère le cas, écrit la nouvelle version, pose le statut « à relire »."""
         if case_id is None:
-            # Rattachement métier (§7) : projet/module par défaut d'après le slug technique.
-            module_id = ensure_default_module(self.case_repo.conn, plan.module_name)
+            # Rattachement métier (§7) : module imposé par l'appelant (ajout depuis un module),
+            # sinon projet/module par défaut déduit du slug technique (CLI).
+            if module_id is None:
+                module_id = ensure_default_module(self.case_repo.conn, plan.module_name)
             case_id = self.case_repo.create(
                 title=title or plan.module_name, module_id=module_id, feature_slug=plan.module_name,
                 author=author, description=plan.raw_spec[:500],
