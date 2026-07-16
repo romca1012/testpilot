@@ -104,6 +104,52 @@ def test_catalogue_ne_technicise_pas_les_boutons(*_):
     assert "bouton" in section
 
 
+def test_note_par_step_extraite_de_la_docstring(*_):
+    """Décision 0012 (= A2 de 0007) — le catalogue dit ce qu'un step FAIT, pas seulement son nom.
+
+    La note vient de la DOCSTRING : le code reste la source de vérité, plutôt qu'une table
+    d'annotations à part qui divergerait du comportement réel.
+    """
+    steps = steps_library.extract_steps(
+        'from behave import given\n'
+        '@given("un step qui ment sur son nom")\n'
+        'def s(context):\n'
+        '    """CE QU\'IL FAIT vraiment.\n\n    Détail ignoré (le catalogue est un prompt).\n    """\n'
+        '    pass\n')
+    assert steps[0].note == "CE QU'IL FAIT vraiment."   # 1re ligne seulement
+
+
+def test_step_sans_docstring_na_pas_de_note(*_):
+    # On n'annote que les pièges : 34 des 36 steps n'ont rien à dire de plus que leur libellé.
+    steps = steps_library.extract_steps(
+        'from behave import given\n@given("un step limpide")\ndef s(context):\n    pass\n')
+    assert steps[0].note == ""
+
+
+def test_les_deux_steps_dauthentification_sont_distingues(*_):
+    """LE cas de 0012 : « authentifié » et « connecté » sont synonymes en français courant, mais
+    l'un ne fait que VÉRIFIER la session RPC quand l'autre CONNECTE le navigateur. L'agent avait
+    choisi le premier pour ouvrir une page du portail — session anonyme, page vide, 5 scénarios
+    en échec."""
+    section = steps_library.as_prompt_section(steps_library.catalogue())
+    assert "ne connecte PAS le navigateur" in section
+    assert "CONNECTE réellement le NAVIGATEUR" in section
+
+
+def test_le_prompt_dit_de_lire_les_notes(*_):
+    section = steps_library.as_prompt_section(steps_library.catalogue())
+    assert "LIS-LA" in section   # une note que rien ne signale serait une note ignorée
+
+
+def test_un_step_a_double_decorateur_n_apparait_pas_deux_fois(*_):
+    # `j'attends la soumission du formulaire` porte @when ET @then : une fois par section, jamais
+    # deux fois dans la même.
+    section = steps_library.as_prompt_section(steps_library.catalogue())
+    for bloc in section.split("### "):
+        libelles = [l for l in bloc.splitlines() if l.startswith("- ")]
+        assert len(libelles) == len(set(libelles)), f"doublon dans une section : {bloc[:60]}"
+
+
 def test_prompt_sans_catalogue_reste_valide():
     # Bibliothèque absente → pas de section vide parasite.
     prompt = build_system_prompt(None, [])

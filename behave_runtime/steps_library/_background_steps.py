@@ -25,6 +25,7 @@ def step_env_not_prod(context):
 @given('je suis authentifié en tant qu\'utilisateur défini dans "ODOO_USER" '
        'avec le mot de passe défini dans "ODOO_PASSWORD"')
 def step_authenticated(context):
+    """VÉRIFIE la session RPC (odoorpc) — ne connecte PAS le navigateur : pour ouvrir une page du portail, utilise « je me connecte avec mes identifiants utilisateur »."""
     assert context.odoo.env.uid, "L'utilisateur Odoo n'est pas authentifié."
 
 

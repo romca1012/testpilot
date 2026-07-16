@@ -39,6 +39,11 @@ class SharedStep:
     keyword: str  # given | when | then | step
     label: str
     source: str = ""  # fichier d'origine
+    # Ce que le step FAIT, quand son libellé ne suffit pas à le deviner (décision 0012 / A2 de
+    # 0007). Première ligne de la DOCSTRING de la fonction : le code reste la source de vérité,
+    # plutôt qu'une table d'annotations à part qui divergerait du comportement réel.
+    # Vide pour la grande majorité des steps — on n'annote que les pièges.
+    note: str = ""
 
 
 def _decorator_name(node: ast.expr) -> str:
@@ -60,6 +65,10 @@ def extract_steps(source_code: str, source: str = "") -> list[SharedStep]:
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
+        # Première ligne de la docstring = ce que le step FAIT (0012). Une seule ligne : le
+        # catalogue est un prompt, pas une documentation — le noyer le rendrait moins lu.
+        doc = ast.get_docstring(node) or ""
+        note = doc.strip().splitlines()[0].strip() if doc.strip() else ""
         for deco in node.decorator_list:
             if not isinstance(deco, ast.Call) or not deco.args:
                 continue
@@ -68,7 +77,8 @@ def extract_steps(source_code: str, source: str = "") -> list[SharedStep]:
                 continue
             arg = deco.args[0]
             if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                steps.append(SharedStep(keyword=name, label=arg.value.strip(), source=source))
+                steps.append(SharedStep(keyword=name, label=arg.value.strip(),
+                                        source=source, note=note))
     return steps
 
 
@@ -105,9 +115,11 @@ def as_prompt_section(steps: list[SharedStep]) -> str:
     """
     if not steps:
         return ""
-    by_keyword: dict[str, list[str]] = {}
+    # (libellé, note) — dédupliqué : une fonction à double décorateur (@when ET @then) apparaît
+    # une fois par mot-clé, mais jamais deux fois dans la même section.
+    by_keyword: dict[str, dict[str, str]] = {}
     for step in steps:
-        by_keyword.setdefault(step.keyword, []).append(step.label)
+        by_keyword.setdefault(step.keyword, {}).setdefault(step.label, step.note)
 
     lines = [
         "Ces steps EXISTENT DÉJÀ et sont chargés automatiquement. Réutilise-les en copiant le",
@@ -123,12 +135,18 @@ def as_prompt_section(steps: list[SharedStep]) -> str:
         "En revanche, un bouton, un onglet ou un produit se désigne bien par son libellé VISIBLE",
         "(`{label}`, `{name}`) : ces steps-là résolvent par le texte affiché, pas par un sélecteur.",
         "",
+        "⚠️ **Quand un step porte une note « → … », LIS-LA** : son libellé seul ne suffit pas à",
+        "deviner ce qu'il fait, et deux libellés voisins peuvent agir très différemment.",
+        "",
     ]
     for keyword in ("given", "when", "then", "step"):
-        labels = sorted(by_keyword.get(keyword, []))
-        if not labels:
+        entrees = sorted(by_keyword.get(keyword, {}).items())
+        if not entrees:
             continue
         lines.append(f"### {GHERKIN_KEYWORD[keyword]} (`@{keyword}`)")
-        lines.extend(f"- {label}" for label in labels)
+        for label, note in entrees:
+            lines.append(f"- {label}")
+            if note:
+                lines.append(f"  → {note}")
         lines.append("")
     return "\n".join(lines).rstrip()

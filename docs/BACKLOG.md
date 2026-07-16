@@ -115,6 +115,29 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   le step manquant (libellé vérifié comme présent au catalogue). 9 tests dont un garde AST du
   motif `warn`+`return`, **vérifié comme échouant sur l'ancien code**.
   → `decisions/0011-comptage-sans-snapshot-faux-negatif-inc1.md`.
+- [x] **Catalogue : note par step** (`0012`, = A2 de `0007` activée) — *fait*. **3ᵉ occurrence
+  du motif `0007`** : le libellé ne dit pas le comportement. « je suis **authentifié** … »
+  (vérifie le RPC, ne connecte rien) vs « je me **connecte** … » (connecte le navigateur) —
+  l'agent a pris le premier pour ouvrir une page du portail : session anonyme, **5 scénarios
+  en échec**. Remède : la 1ʳᵉ ligne de la **docstring** devient la note du catalogue (le code
+  reste la source de vérité ; 0/36 steps en avaient une, donc aucun effet de bord ; on
+  n'annote que les pièges). **Prouvé par régénération** : l'agent emploie désormais les deux
+  steps, dans le bon ordre. Protège les 3 modules restants à importer. 5 tests.
+  → `decisions/0012-catalogue-note-par-step-inc1.md`.
+- [ ] **Audit de la taxonomie de diagnostic** — ⚠️ **observation, à garder pour plus tard**
+  (arbitrage du porteur). La taxonomie classe par **mots-clés du message d'erreur**, donc
+  potentiellement par les mots que le **testeur** a écrits, pas par le comportement de
+  l'application. Vu en `0007` (« timeout » → `wrong_field_name`, juste par chance) et
+  **aggravé en `0012`** : « Rôle/permission manquant » venait du mot « role » dans un message
+  d'assertion écrit par l'agent — la vraie cause (session navigateur anonyme) n'avait **rien**
+  à voir. Un diagnostic qui se cite lui-même. Coût réel : deux fausses pistes suivies.
+- [ ] **Teardown : résidus du cas 2 non nettoyés** — *constat (2026-07-16), pas urgent mais ça
+  s'accumule*. Mesuré : **9** tickets `AAAAA…` (chaîne de 300 car. du scénario `[Limite]`) et
+  **6** « Demande test BDD » restants — un de plus par run. Cause : le teardown ne supprime que
+  ce qui passe par `register_created()`, or le cas 2 crée ses tickets **via le formulaire UI**
+  (ID inconnu). Il s'en sort par un nettoyage **en amont**, qui ne couvre pas les `AAAAA…`
+  (leur nom EST la chaîne de test). Le cas 6 fait mieux (préfixe `[TEST]`, 0 résidu). Pollue
+  l'accueil du portail.
 - [ ] **Angle mort du lint : la bibliothèque partagée n'est jamais lintée** — le lint `0008` ne
   regarde que les steps de la **version d'un cas**, au gate. `0010` et `0011` ont été trouvés
   **à la main**. Le brancher sur la bibliothèque suppose d'abord de lui apprendre la
