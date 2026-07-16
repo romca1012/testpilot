@@ -15,7 +15,7 @@
 | **Incrément 1 (reste)** | Backlog documenté (§7). |
 | **Incrément 2** | Sécurité (mot de passe en clair) — bloquant avant tout déploiement client. |
 
-**Tests : 283 Python · 29 vitest · build front OK.** Tout est vert au moment de ce rapport.
+**Tests : 295 Python · 36 vitest · build front OK.** Tout est vert au moment de ce rapport.
 
 **Stack** : Python 3.10, FastAPI + SQLite (portable PostgreSQL), Behave + Playwright + odoorpc,
 Anthropic (Claude), frontend Vite + Vue 3 + Tailwind (dark, esprit « Linear »).
@@ -185,7 +185,7 @@ Chaque décision a sa note détaillée dans `docs/decisions/`.
 
 ---
 
-## 3. Modèle de données actuel (`user_version = 8`)
+## 3. Modèle de données actuel (`user_version = 9`)
 
 ```
 project        id, name, description, created_at,

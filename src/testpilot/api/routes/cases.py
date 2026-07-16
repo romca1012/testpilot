@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
+from testpilot import config
 from testpilot.api import schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import run_service
@@ -52,6 +53,8 @@ def get_case(case_id: int, conn=Depends(get_conn)):
         warnings = assertion_lint.lint_steps(current.get("steps_content", "") if current else "")
         gate = schemas.GateOut(allowed=decision.allowed, needs_review=decision.needs_review,
                                reason=decision.reason,
+                               repair_budget=ReviewRepo(conn).repair_budget_for_version(version_id),
+                               repair_budget_default=config.REPAIR_BUDGET_DEFAULT,
                                lint_warnings=[schemas.LintWarning(**w) for w in warnings])
     executions = [
         schemas.execution_summary(r, running=run_service.is_running(r["id"]))
@@ -117,14 +120,17 @@ def submit_review(case_id: int, body: schemas.ReviewIn, conn=Depends(get_conn)):
 
     decision = run_service.submit_review(
         conn, case_id, version_id, approved=body.approved,
-        reviewer=body.reviewer, comment=body.comment)
+        reviewer=body.reviewer, comment=body.comment, repair_budget=body.repair_budget)
     # Un rejet repositionne le cas « à relire » ; l'approbation n'ouvre que le gate.
     if not body.approved:
         CaseRepo(conn).set_validation_status(case_id, "to_review")
     refreshed = CaseRepo(conn).get(case_id)
+    budget = ReviewRepo(conn).repair_budget_for_version(version_id)
     return schemas.ReviewResponse(
         decision="approved" if body.approved else "rejected",
         validation_status=refreshed["validation_status"],
+        repair_budget=budget,
         gate=schemas.GateOut(allowed=decision.allowed, needs_review=decision.needs_review,
-                             reason=decision.reason),
+                             reason=decision.reason, repair_budget=budget,
+                             repair_budget_default=config.REPAIR_BUDGET_DEFAULT),
     )

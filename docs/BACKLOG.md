@@ -187,7 +187,16 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   avec compteur ; infobulle sur `vrai_bug` disant que c'est une **déduction**. Jamais de blocage,
   jamais de recalcul des deux axes (§4.2, gardé par test). 15 tests.
   → `decisions/0013-arbitrage-humain-des-diagnostics-inc1.md`.
-- [ ] **Réparation (`0014`)** — ⚠️ **PILIER ANNONCÉ QUI N'EXISTE PAS**. Mesuré : les 8
+- [ ] **Réparation (`0014`)** — 🟡 **EN COURS : étapes 1-2 faites, 3-6 à faire.**
+  ✅ **Étape 1** : prompt corrigé (4 outils fantômes) + découpé (`repair_prompt.md`).
+  ✅ **Étape 2** : le **gate autorise un budget** de N réparations (option C, migration 9) —
+  défaut 2, 0 = interdite ; `repair_budget_for_version()` rend 0 sans relecture (§4.3 tenu).
+  ⏭️ **Étape 3** : l'orchestrateur pilote (`circuit.evaluate()` décide, **pas** l'agent —
+  design (b) : lui donner `run_behave` remettrait le contrôle dans les mains du composant
+  qu'on encadre). ⏭️ **4** une tentative = une version + `what_was_tried`. ⏭️ **5** surfaçage.
+  ⏭️ **6** preuve sur les deux chemins : **cas 2** = répare (son `TypeError` est la cible
+  exacte, le cas est à **2/3 vert**), **cas 6** = arrête (faux positif assumé).
+  ⚠️ **PILIER ANNONCÉ QUI N'EXISTE PAS**. Mesuré : les 8
   `repair_attempt` ont `what_was_tried = ''` et **aucun cas n'a de v2**. Ce qui existe :
   `diagnose()` (classe), la table (enregistre), `repair_circuit` (**circuit breaker** anti-boucle
   pour une boucle… qui n'existe pas), `executor.max_retries` (relance à l'identique sur timeout —

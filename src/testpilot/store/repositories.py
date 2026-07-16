@@ -10,6 +10,8 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 
+from testpilot import config
+
 
 class DuplicateName(ValueError):
     """Un nom déjà pris à sa portée d'unicité (projet global, module/projet, cas/module).
@@ -425,14 +427,35 @@ class ReviewRepo:
         self.conn = conn
 
     def create(self, *, test_case_id: int, version_id: int, decision: str,
-               reviewer: str = "", comment: str = "") -> int:
+               reviewer: str = "", comment: str = "",
+               repair_budget: int | None = None) -> int:
+        """Enregistre une décision de relecture.
+
+        `repair_budget` : tentatives de réparation que cette approbation autorise (0014). `None`
+        → le défaut de configuration. Sans objet sur un rejet (rien ne sera exécuté), mais
+        stocké tel quel plutôt que forcé à 0 : la colonne dit ce que le relecteur a autorisé,
+        pas ce que le système en fera.
+        """
+        budget = config.REPAIR_BUDGET_DEFAULT if repair_budget is None else max(0, int(repair_budget))
         cur = self.conn.execute(
             "INSERT INTO review_decision (test_case_id, version_id, decision, reviewer,"
-            " comment, decided_at) VALUES (?,?,?,?,?,?)",
-            (test_case_id, version_id, decision, reviewer, comment, now_iso()),
+            " comment, repair_budget, decided_at) VALUES (?,?,?,?,?,?,?)",
+            (test_case_id, version_id, decision, reviewer, comment, budget, now_iso()),
         )
         self.conn.commit()
         return int(cur.lastrowid)
+
+    def repair_budget_for_version(self, version_id: int) -> int:
+        """Tentatives de réparation autorisées pour cette version — 0 si non approuvée.
+
+        Lit la DERNIÈRE décision : une version rejetée puis ré-approuvée suit la plus récente.
+        Une version non relue rend 0 — pas de gate, pas d'exécution, donc pas de réparation
+        (§4.3). C'est la seule lecture qui ne contourne pas le gate.
+        """
+        latest = self.latest_for_version(version_id)
+        if not latest or latest["decision"] != "approved":
+            return 0
+        return int(latest["repair_budget"] or 0)
 
     def latest_for_version(self, version_id: int) -> dict | None:
         row = self.conn.execute(

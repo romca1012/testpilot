@@ -47,6 +47,13 @@ MAX_ITERATIONS = int(os.getenv("TESTPILOT_MAX_ITERATIONS", "25"))
 REPAIR_STALL_LIMIT = int(os.getenv("TESTPILOT_REPAIR_STALL_LIMIT", "3"))
 COST_LIMIT_PER_RUN_USD = float(os.getenv("TESTPILOT_COST_LIMIT_RUN_USD", "2.00"))
 
+# Tentatives de réparation autorisées PAR DÉFAUT à l'approbation d'une version (décision 0014).
+# Le gate reste souverain : le relecteur peut descendre à 0 pour interdire toute réparation.
+# Défaut à 2 et non à 0 — arbitrage du porteur : le §6 du brief veut une réparation « invisible
+# pour l'utilisateur » ; un défaut à 0 la rendrait opt-in à chaque relecture, ce qui la rendrait
+# visible et manuelle (le ping-pong écarté avec l'option B du cadrage).
+REPAIR_BUDGET_DEFAULT = int(os.getenv("TESTPILOT_REPAIR_BUDGET_DEFAULT", "2"))
+
 # ── Budget mensuel cumulé (§6/§9) ─────────────────────────────────────────────
 # Le brief fixe 50 €/mois ; les coûts LLM arrivent en USD. On tracke tout en USD et
 # on convertit le plafond via un taux configurable (décision de cadrage validée).

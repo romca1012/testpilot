@@ -97,6 +97,12 @@ CREATE TABLE IF NOT EXISTS review_decision (
     decision     TEXT    NOT NULL CHECK (decision IN ('approved', 'rejected')),
     reviewer     TEXT    NOT NULL DEFAULT '',
     comment      TEXT    NOT NULL DEFAULT '',
+    -- Tentatives de réparation que CETTE approbation autorise (décision 0014, option C).
+    -- Réparer exige d'exécuter, et §4.3 exige le gate avant toute exécution : le gate autorise
+    -- donc explicitement un budget, plutôt que d'être contourné par la boucle. 0 = interdite.
+    -- Le défaut réel vient de `config.REPAIR_BUDGET_DEFAULT` (migration 9) ; la valeur ci-dessous
+    -- n'est qu'un filet pour une base créée hors migration.
+    repair_budget INTEGER NOT NULL DEFAULT 2,
     decided_at   TEXT    NOT NULL,
     FOREIGN KEY (test_case_id) REFERENCES test_case(id),
     FOREIGN KEY (version_id)   REFERENCES test_case_version(id)

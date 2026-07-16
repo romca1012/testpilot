@@ -55,10 +55,12 @@ export const api = {
     }),
   getCase: (id: number | string) => request<CaseDetail>(`/api/cases/${id}`),
   runCase: (id: number | string) => request<RunResponse>(`/api/cases/${id}/runs`, { method: 'POST' }),
-  reviewCase: (id: number | string, approved: boolean, comment = '') =>
+  // `repair_budget` : tentatives de réparation que cette approbation autorise (0014, option C).
+  // undefined → le serveur applique son défaut.
+  reviewCase: (id: number | string, approved: boolean, comment = '', repair_budget?: number) =>
     request<ReviewResponse>(`/api/cases/${id}/review`, {
       method: 'POST',
-      body: JSON.stringify({ approved, comment }),
+      body: JSON.stringify({ approved, comment, repair_budget }),
     }),
 
   // Exécutions — scopées par projet
@@ -110,6 +112,9 @@ export interface ReviewOut {
 export interface LintWarning { step: string; line: number; kind: string; message: string }
 export interface GateOut {
   allowed: boolean; needs_review: boolean; reason: string
+  // Réparations autorisées par la relecture en cours (0014) ; 0 = interdite ou non relue.
+  repair_budget: number
+  repair_budget_default: number
   lint_warnings?: LintWarning[]
 }
 export interface ExecutionSummary {

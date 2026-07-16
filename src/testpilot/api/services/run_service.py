@@ -158,8 +158,9 @@ def _finalize_error(conn, execution_id, case_id, message: str) -> None:
 
 
 def submit_review(conn, case_id: int, version_id: int, *, approved: bool,
-                  reviewer: str, comment: str):
+                  reviewer: str, comment: str, repair_budget: int | None = None):
     """Enregistre une décision de relecture et renvoie le gate qui en découle."""
     return review_gate.submit_review(
         ReviewRepo(conn), case_id=case_id, version_id=version_id,
-        approved=approved, reviewer=reviewer, comment=comment)
+        approved=approved, reviewer=reviewer, comment=comment,
+        repair_budget=repair_budget)

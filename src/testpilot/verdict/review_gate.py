@@ -34,11 +34,17 @@ def evaluate_gate(review_repo, version_id: int) -> GateDecision:
 
 
 def submit_review(review_repo, *, case_id: int, version_id: int, approved: bool,
-                  reviewer: str, comment: str = "") -> GateDecision:
-    """Enregistre la décision de relecture et renvoie l'état du gate qui en découle."""
+                  reviewer: str, comment: str = "",
+                  repair_budget: int | None = None) -> GateDecision:
+    """Enregistre la décision de relecture et renvoie l'état du gate qui en découle.
+
+    `repair_budget` : tentatives de réparation que cette approbation autorise (décision 0014,
+    option C). `None` → le défaut de configuration. Réparer exige d'exécuter, et le gate est le
+    seul à pouvoir autoriser une exécution (§4.3) : c'est donc lui qui porte cette autorisation.
+    """
     review_repo.create(test_case_id=case_id, version_id=version_id,
                        decision="approved" if approved else "rejected",
-                       reviewer=reviewer, comment=comment)
+                       reviewer=reviewer, comment=comment, repair_budget=repair_budget)
     return evaluate_gate(review_repo, version_id)
 
 

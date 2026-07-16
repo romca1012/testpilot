@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 8
+_SCHEMA_VERSION = 9
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -79,6 +79,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_7_drop_report_paths(conn)
     if version < 8:
         _migrate_8_verdict_humain(conn)
+    if version < 9:
+        _migrate_9_repair_budget(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -280,6 +282,28 @@ def _migrate_8_verdict_humain(conn: sqlite3.Connection) -> None:
     if "human_comment" not in colonnes:
         # Le POURQUOI — la seule chose qui vaudra encore quelque chose dans six mois.
         conn.execute("ALTER TABLE repair_attempt ADD COLUMN human_comment TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_9_repair_budget(conn: sqlite3.Connection) -> None:
+    """Budget de réparation autorisé à l'approbation (décision 0014, option C). Idempotent.
+
+    **Pourquoi le budget vit sur la RELECTURE et pas ailleurs.** Réparer exige d'exécuter ; or
+    §4.3 impose le gate humain avant la première exécution d'une version générée par IA. Une
+    boucle de réparation exécuterait donc du code IA non relu (option A, écartée), ou imposerait
+    un gate par itération (option B, écartée : ce n'est plus une boucle, c'est un ping-pong).
+    Option C retenue : **le gate autorise explicitement N tentatives**. Le garde-fou reste
+    souverain — il n'est pas contourné, il est *consulté* et il *décide*.
+
+    Défaut = `config.REPAIR_BUDGET_DEFAULT` (2). Les approbations EXISTANTES héritent de ce
+    défaut, et c'est voulu : le défaut est la **politique** appliquée à toute approbation qui ne
+    dit rien du budget — un relecteur qui veut interdire la réparation descend à 0 explicitement.
+    Rétro-appliquer 0 aurait prétendu que ces humains avaient refusé, ce qu'ils n'ont pas fait.
+    """
+    if "repair_budget" in _column_names(conn, "review_decision"):
+        return
+    conn.execute(
+        "ALTER TABLE review_decision ADD COLUMN repair_budget INTEGER NOT NULL DEFAULT "
+        f"{int(config.REPAIR_BUDGET_DEFAULT)}")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

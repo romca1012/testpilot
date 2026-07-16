@@ -88,6 +88,10 @@ class GateOut(BaseModel):
     allowed: bool
     needs_review: bool
     reason: str
+    # Réparations autorisées par la relecture en cours (0014). 0 si non relue ou interdite.
+    repair_budget: int = 0
+    # Le défaut proposé au relecteur qui n'a pas d'avis — affiché, jamais imposé.
+    repair_budget_default: int = 0
     # Avertissements NON-bloquants sur les assertions générées (décision 0008). N'affectent
     # jamais `allowed` : ils informent le relecteur, le gate reste souverain.
     lint_warnings: list[LintWarning] = []
@@ -250,12 +254,20 @@ class ReviewIn(BaseModel):
     approved: bool
     reviewer: str = "ui"
     comment: str = ""
+    # Tentatives de réparation que cette approbation autorise (décision 0014, option C).
+    # None → le défaut de configuration. 0 → réparation interdite pour cette version.
+    # Réparer exige d'exécuter, et §4.3 exige le gate avant toute exécution : c'est donc le
+    # gate qui autorise, explicitement — il n'est pas contourné par la boucle.
+    repair_budget: int | None = None
 
 
 class ReviewResponse(BaseModel):
     decision: str
     validation_status: str
     gate: GateOut
+    # Ce que l'approbation a réellement autorisé — renvoyé pour que l'UI montre la valeur
+    # RETENUE, pas celle envoyée (elles diffèrent si le champ était vide).
+    repair_budget: int = 0
 
 
 # ── Mappers dict → DTO ─────────────────────────────────────────────────────────
