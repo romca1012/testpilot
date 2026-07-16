@@ -180,3 +180,10 @@ CREATE TABLE IF NOT EXISTS cost_ledger (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cost_period ON cost_ledger(period_month);
+
+-- ── Unicité des noms ─────────────────────────────────────────────────────────
+-- Les index UNIQUE (uq_project_name, uq_module_project_name, uq_case_module_title,
+-- uq_case_feature_slug) sont créés par la MIGRATION 5, pas ici : ce fichier s'exécute AVANT
+-- les migrations, or `test_case.module_id`/`feature_slug` peuvent manquer sur une base
+-- antérieure — les indexer ici la ferait planter à l'ouverture (même raison que idx_case_module).
+-- Une base neuve les reçoit quand même : ses migrations tournent toutes (user_version = 0).

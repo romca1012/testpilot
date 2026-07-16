@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 4
+_SCHEMA_VERSION = 5
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -71,6 +71,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_3_case_priority(conn)
     if version < 4:
         _migrate_4_execution_field_fallbacks(conn)
+    if version < 5:
+        _migrate_5_unicite_noms(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -157,6 +159,33 @@ def _migrate_4_execution_field_fallbacks(conn: sqlite3.Connection) -> None:
     """
     if "field_fallbacks" not in _column_names(conn, "execution"):
         conn.execute("ALTER TABLE execution ADD COLUMN field_fallbacks TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_5_unicite_noms(conn: sqlite3.Connection) -> None:
+    """Unicité des noms : projet (global), module (par projet), cas (par module), et
+    `feature_slug` (global). Idempotent (`IF NOT EXISTS`).
+
+    Des INDEX plutôt qu'une contrainte de table : SQLite ne sait pas ajouter un `UNIQUE` par
+    `ALTER TABLE`, et recréer les tables coûterait bien plus cher pour le même effet.
+
+    ⚠️ `COLLATE NOCASE` ne replie que l'**ASCII** : « CAFÉ » et « Café » passeraient cet index.
+    C'est pourquoi la garde applicative des repos (`_key`/`casefold`, qui gère l'Unicode) est
+    la **première** ligne de défense — cet index est le filet de dernier recours, notamment
+    contre une écriture directe en base.
+
+    `feature_slug` : index **partiel** (`WHERE feature_slug != ''`). Le slug nomme le fichier
+    `{slug}.feature` d'un répertoire commun — deux cas au même slug écriraient dans le MÊME
+    fichier. Un slug vide ne produit aucun fichier, donc aucune collision : l'exclure évite de
+    faire échouer des cas légitimement sans `.feature`.
+    """
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_project_name"
+                 " ON project(name COLLATE NOCASE)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_module_project_name"
+                 " ON module(project_id, name COLLATE NOCASE)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_case_module_title"
+                 " ON test_case(module_id, title COLLATE NOCASE)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_case_feature_slug"
+                 " ON test_case(feature_slug) WHERE feature_slug != ''")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

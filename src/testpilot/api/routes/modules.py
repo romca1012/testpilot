@@ -18,7 +18,8 @@ from testpilot.store.repositories import ModuleRepo, ProjectRepo
 
 router = APIRouter(prefix="/api/modules", tags=["modules"])
 
-_ERROR_STATUS = {"not_found": 404, "invalid_spec": 422}
+# 409 pour `duplicate` : la requête est bien formée, c'est l'état du référentiel qui s'y oppose.
+_ERROR_STATUS = {"not_found": 404, "invalid_spec": 422, "duplicate": 409}
 
 
 @router.get("/{module_id}", response_model=schemas.ModuleDetail)

@@ -3,7 +3,7 @@
 defineProps<{ name: string; class?: string }>()
 
 // Icônes de contour (stroke=currentColor) sauf 'half' qui remplit un demi-disque.
-const STROKE = new Set(['check', 'x', 'circle', 'chevron'])
+const STROKE = new Set(['check', 'x', 'circle', 'chevron', 'folder', 'file'])
 </script>
 
 <template>
@@ -19,5 +19,13 @@ const STROKE = new Set(['check', 'x', 'circle', 'chevron'])
       <path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor" />
     </template>
     <template v-else-if="name === 'dot'"><circle cx="12" cy="12" r="4" fill="currentColor" /></template>
+    <!-- 'folder' = conteneur (un module contient des cas). 'file' = feuille (un cas ne se
+         déplie pas dans l'arbre) : deux formes distinctes, parce que la nature diffère. -->
+    <template v-else-if="name === 'folder'">
+      <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+    </template>
+    <template v-else-if="name === 'file'">
+      <path d="M13 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V9m-6-6l6 6m-6-6v6h6" />
+    </template>
   </svg>
 </template>

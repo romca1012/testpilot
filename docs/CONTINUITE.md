@@ -15,7 +15,7 @@
 | **Incrément 1 (reste)** | Backlog documenté (§7). |
 | **Incrément 2** | Sécurité (mot de passe en clair) — bloquant avant tout déploiement client. |
 
-**Tests : 203 Python · 26 vitest · build front OK.** Tout est vert au moment de ce rapport.
+**Tests : 222 Python · 29 vitest · build front OK.** Tout est vert au moment de ce rapport.
 
 **Stack** : Python 3.10, FastAPI + SQLite (portable PostgreSQL), Behave + Playwright + odoorpc,
 Anthropic (Claude), frontend Vite + Vue 3 + Tailwind (dark, esprit « Linear »).
@@ -134,6 +134,33 @@ Chaque décision a sa note détaillée dans `docs/decisions/`.
   tout, donc 200 tests verts ne pouvaient pas le voir. Il a fallu un vrai navigateur chargeant
   l'arbre **en parallèle** de la page. 3 tests de non-régression (`tests/test_conn_threads.py`).
 
+### 2.9 Unicité des noms — un nom réutilisé = une info dupliquée à regrouper (migration 5)
+- **Portées** : **projet** = global · **module** = par projet (deux projets peuvent avoir
+  « Facturation » — ce n'est **pas** une duplication) · **titre de cas** = par module ·
+  **`feature_slug`** = global.
+- **Deux couches complémentaires, pas redondantes** : garde **applicative** dans les repos
+  (`_key`/`casefold`, **Unicode**) qui lève `DuplicateName` → **HTTP 409** avec un message qui
+  nomme le conflit ; **index UNIQUE** en base (`COLLATE NOCASE`) en filet de dernier recours.
+  ⚠️ `COLLATE NOCASE` ne replie que l'**ASCII** : « CAFÉ » vs « Café » n'est attrapé que par la
+  garde applicative. C'est la raison d'être des deux couches.
+- **`feature_slug` global** : il nomme `{slug}.feature` dans un répertoire **commun** — deux cas
+  au même slug écriraient dans le **même fichier**, l'un écrasant les tests de l'autre. Bug
+  **latent** (jamais déclenché : `unique_feature_slug()` déduplique déjà à la génération), du
+  même profil que le bug SQLite de concurrence. Index **partiel** (`WHERE feature_slug != ''`) :
+  un slug vide ne produit aucun fichier, donc aucune collision.
+- **Créer un cas par spec valide le titre AVANT** de lancer la tâche de fond : sinon on paierait
+  un appel LLM de plusieurs minutes pour finir en job « failed » à l'insertion.
+- **Les index vivent dans la migration, pas dans `schema.sql`** : ce fichier s'exécute *avant*
+  les migrations, or `test_case.module_id`/`feature_slug` peuvent manquer sur une base
+  antérieure (même raison que `idx_case_module`).
+- **Ménage du référentiel réel (2026-07-16)** : les « doublons » vus à l'écran n'en étaient pas
+  — trois **titres différents** tronqués par la colonne de l'arbre, dont deux **artefacts de mes
+  propres scripts de preuve** (0007 A1, 0008 A). Audit : **zéro doublon** à tous les niveaux.
+  Sur décision du porteur : cas 1 renommé (`demande_materiel` → « Demande de matériel »), cas 3
+  et 4 supprimés avec leur descendance. Backup : `data/testpilot.db.pre-menage-unicite.bak`.
+  ⚠️ **Leçon** : les scripts de preuve écrivent dans la **vraie** base — c'est ce qui donne des
+  preuves réelles, mais ça laisse des déchets. À nettoyer derrière, ou à isoler.
+
 ### 2.7 Autres décisions actées
 - **Navigation** : le projet est un **contexte porté par l'URL** (`/projects/:pid/...`), au-dessus
   des deux onglets **Gestion des cas / Exécution** (séparation §8 **structurelle**). Aucune vue
@@ -147,7 +174,7 @@ Chaque décision a sa note détaillée dans `docs/decisions/`.
 
 ---
 
-## 3. Modèle de données actuel (`user_version = 4`)
+## 3. Modèle de données actuel (`user_version = 5`)
 
 ```
 project        id, name, description, created_at,
@@ -182,7 +209,7 @@ cost_ledger    id, period_month, execution_id, phase, model, cost_usd, source, c
 
 **Migrations** (`store/db.py`, `PRAGMA user_version`) : 1 = project/module + feature_slug ;
 2 = connecteur sur projet + `Odoo`→`Portail Sapian` ; 3 = `priority` ; 4 = `field_fallbacks`
-sur `execution` (0007 B+).
+sur `execution` (0007 B+) ; 5 = index UNIQUE d'unicité des noms (§2.9).
 Non implémenté du §7 : l'**Exécution nommée transverse**.
 
 ---

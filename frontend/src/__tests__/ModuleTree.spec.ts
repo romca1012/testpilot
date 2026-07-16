@@ -82,6 +82,31 @@ describe('ModuleTree — la structure du projet d\'un coup d\'œil', () => {
     expect(w.emitted('expand-all') || w.emitted('toggle')).toBeTruthy()
   })
 
+  it('rattache les cas par un connecteur tree — ├─ sauf le DERNIER en └─', () => {
+    const w = mountTree({ expanded: [1] })
+    const text = w.text()
+    // Deux cas dans le module 1 : le premier est un intermédiaire, le second ferme la fratrie.
+    expect(text).toContain('├─')
+    expect(text).toContain('└─')
+    expect((text.match(/├─/g) || []).length).toBe(1)
+    expect((text.match(/└─/g) || []).length).toBe(1)
+  })
+
+  it('un cas unique porte directement le coude final └─', () => {
+    const w = mountTree({ cases: [CASES[0]], expanded: [1] })
+    expect(w.text()).toContain('└─')
+    expect(w.text()).not.toContain('├─')
+  })
+
+  it('donne au cas une icône DOCUMENT, au module une icône DOSSIER', () => {
+    // Un cas est une feuille (il ne se déplie pas) : lui mettre un dossier promettrait un
+    // contenu qu'on ne peut pas ouvrir (4.6). Les deux natures ont deux formes distinctes.
+    const w = mountTree({ expanded: [1] })
+    const icons = w.findAllComponents({ name: 'Icon' }).map((c) => c.props('name'))
+    expect(icons).toContain('folder')
+    expect(icons).toContain('file')
+  })
+
   it('expose les cas sans module au lieu de les cacher', () => {
     const orphelin: CaseSummary = { ...CASES[0], id: 99, title: 'Cas orphelin', module_id: null }
     const w = mountTree({ cases: [...CASES, orphelin] })

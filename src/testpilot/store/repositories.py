@@ -11,6 +11,25 @@ import sqlite3
 from datetime import datetime, timezone
 
 
+class DuplicateName(ValueError):
+    """Un nom déjà pris à sa portée d'unicité (projet global, module/projet, cas/module).
+
+    Levée par les repos — donc honorée par l'API *et* la CLI. Les routes la traduisent en
+    HTTP 409 ; l'index UNIQUE en base reste le filet de dernier recours.
+    """
+
+
+def _key(value: str) -> str:
+    """Clé de comparaison des noms : insensible à la casse ET aux accents composés.
+
+    `casefold()` (contrairement à `lower()`) gère l'Unicode — « Café »/« CAFÉ » comparent égal.
+    C'est la raison d'être de cette garde applicative : l'index UNIQUE de la base s'appuie sur
+    `COLLATE NOCASE`, qui ne replie **que l'ASCII** et laisserait donc passer « CAFÉ » à côté de
+    « Café ». Les deux couches sont complémentaires, pas redondantes.
+    """
+    return " ".join(value.split()).casefold()
+
+
 def now_iso() -> str:
     """Horodatage ISO-8601 UTC (format TEXT portable)."""
     return datetime.now(timezone.utc).isoformat()
@@ -30,9 +49,20 @@ class ProjectRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
+    def ensure_name_free(self, name: str, *, excluding: int | None = None) -> None:
+        """Le nom d'un projet est unique GLOBALEMENT. Lève `DuplicateName` sinon.
+
+        `excluding` : l'id à ignorer (renommage — un projet ne rentre pas en conflit avec
+        lui-même).
+        """
+        for row in self.conn.execute("SELECT id, name FROM project"):
+            if row["id"] != excluding and _key(row["name"]) == _key(name):
+                raise DuplicateName(f"un projet nommé « {row['name']} » existe déjà")
+
     def create(self, *, name: str, description: str = "", connector_type: str = "odoo",
                base_url: str = "", database: str = "", username: str = "",
                password: str = "") -> int:
+        self.ensure_name_free(name)
         cur = self.conn.execute(
             "INSERT INTO project (name, description, connector_type, base_url, database,"
             " username, password, created_at) VALUES (?,?,?,?,?,?,?,?)",
@@ -64,6 +94,7 @@ class ProjectRepo:
         return dict(row) if row else None
 
     def rename(self, project_id: int, *, name: str, description: str | None = None) -> None:
+        self.ensure_name_free(name, excluding=project_id)
         if description is None:
             self.conn.execute("UPDATE project SET name=? WHERE id=?", (name, project_id))
         else:
@@ -98,7 +129,15 @@ class ModuleRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
+    def ensure_name_free(self, project_id: int, name: str, *, excluding: int | None = None) -> None:
+        """Le nom d'un module est unique DANS SON PROJET — deux projets peuvent légitimement
+        avoir un module « Facturation », ce n'est pas une duplication. Lève `DuplicateName`."""
+        for row in self.conn.execute("SELECT id, name FROM module WHERE project_id=?", (project_id,)):
+            if row["id"] != excluding and _key(row["name"]) == _key(name):
+                raise DuplicateName(f"ce projet a déjà un module nommé « {row['name']} »")
+
     def create(self, *, project_id: int, name: str, description: str = "") -> int:
+        self.ensure_name_free(project_id, name)
         cur = self.conn.execute(
             "INSERT INTO module (project_id, name, description, created_at) VALUES (?,?,?,?)",
             (project_id, name, description, now_iso()))
@@ -161,9 +200,42 @@ class CaseRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
+    def ensure_title_free(self, module_id: int | None, title: str,
+                          *, excluding: int | None = None) -> None:
+        """Le titre d'un cas est unique DANS SON MODULE. Lève `DuplicateName`.
+
+        `module_id=None` (cas sans module) : aucune portée d'unicité à faire respecter — on ne
+        peut pas parler de « doublon dans un module » quand il n'y en a pas.
+        """
+        if module_id is None:
+            return
+        rows = self.conn.execute("SELECT id, title FROM test_case WHERE module_id=?", (module_id,))
+        for row in rows:
+            if row["id"] != excluding and _key(row["title"]) == _key(title):
+                raise DuplicateName(f"ce module a déjà un cas intitulé « {row['title']} »")
+
+    def ensure_slug_free(self, feature_slug: str, *, excluding: int | None = None) -> None:
+        """Le `feature_slug` est unique GLOBALEMENT : il nomme le fichier `{slug}.feature` dans
+        un répertoire commun. Deux cas au même slug écriraient dans le MÊME fichier — l'un
+        écraserait silencieusement les tests de l'autre. Lève `DuplicateName`.
+
+        Slug vide = pas de fichier, donc pas de collision possible : rien à faire respecter.
+        """
+        if not feature_slug:
+            return
+        rows = self.conn.execute("SELECT id, title FROM test_case WHERE feature_slug=?",
+                                 (feature_slug,))
+        for row in rows:
+            if row["id"] != excluding:
+                raise DuplicateName(
+                    f"le fichier de test « {feature_slug}.feature » est déjà utilisé par le cas "
+                    f"« {row['title']} »")
+
     def create(self, *, title: str, module_id: int | None = None, feature_slug: str = "",
                author: str = "", description: str = "", origin: str = "ia_generated",
                priority: str = "medium") -> int:
+        self.ensure_title_free(module_id, title)
+        self.ensure_slug_free(feature_slug)
         ts = now_iso()
         cur = self.conn.execute(
             "INSERT INTO test_case (title, module_id, feature_slug, description,"
@@ -173,6 +245,37 @@ class CaseRepo:
         )
         self.conn.commit()
         return int(cur.lastrowid)
+
+    def rename(self, case_id: int, title: str) -> None:
+        case = self.get(case_id)
+        module_id = case["module_id"] if case else None
+        self.ensure_title_free(module_id, title, excluding=case_id)
+        self.conn.execute("UPDATE test_case SET title=?, updated_at=? WHERE id=?",
+                          (title, now_iso(), case_id))
+        self.conn.commit()
+
+    def delete(self, case_id: int) -> None:
+        """Supprime un cas ET sa descendance (versions, relectures, exécutions, résultats,
+        réparations, coûts) — dans l'ordre des FK, en une transaction.
+
+        Même patron que `ProjectRepo.delete` : le schéma ne déclare aucun `ON DELETE CASCADE`,
+        la cascade est donc explicite ici. `current_version_id` n'a volontairement pas de FK
+        dure (cycle cas↔version), il n'impose donc pas d'ordre.
+        """
+        cur = self.conn
+        exec_sub = "SELECT id FROM execution WHERE test_case_id=?"
+        try:
+            cur.execute(f"DELETE FROM scenario_result WHERE execution_id IN ({exec_sub})", (case_id,))
+            cur.execute(f"DELETE FROM repair_attempt  WHERE execution_id IN ({exec_sub})", (case_id,))
+            cur.execute(f"DELETE FROM cost_ledger      WHERE execution_id IN ({exec_sub})", (case_id,))
+            cur.execute("DELETE FROM execution         WHERE test_case_id=?", (case_id,))
+            cur.execute("DELETE FROM review_decision   WHERE test_case_id=?", (case_id,))
+            cur.execute("DELETE FROM test_case_version WHERE test_case_id=?", (case_id,))
+            cur.execute("DELETE FROM test_case         WHERE id=?", (case_id,))
+            cur.commit()
+        except Exception:
+            cur.rollback()
+            raise
 
     def set_priority(self, case_id: int, priority: str) -> None:
         self.conn.execute("UPDATE test_case SET priority=?, updated_at=? WHERE id=?",

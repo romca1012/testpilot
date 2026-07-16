@@ -17,7 +17,7 @@ import uuid
 
 from testpilot import config
 from testpilot.store.db import get_initialized_db
-from testpilot.store.repositories import CaseRepo, ModuleRepo
+from testpilot.store.repositories import CaseRepo, DuplicateName, ModuleRepo
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,13 @@ def start_generation(conn, module_id: int, *, spec_content: str, title: str = ""
         raise GenerationError("invalid_spec", "la spécification est vide")
 
     label = (title or "").strip() or f"Cas {module['name']}"
+    # Titre unique DANS le module, vérifié AVANT de lancer la tâche de fond : sinon la
+    # génération partirait (appel LLM payant, plusieurs minutes) pour finir en job « failed »
+    # au moment de l'insertion. Mieux vaut un 409 immédiat et actionnable.
+    try:
+        CaseRepo(conn).ensure_title_free(module_id, label)
+    except DuplicateName as exc:
+        raise GenerationError("duplicate", str(exc)) from exc
     slug = unique_feature_slug(conn, slugify(label))
 
     job_id = uuid.uuid4().hex

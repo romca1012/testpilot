@@ -10,9 +10,18 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 from testpilot.api import schemas
 from testpilot.api.deps import get_conn
-from testpilot.store.repositories import ModuleRepo, ProjectRepo
+from testpilot.store.repositories import DuplicateName, ModuleRepo, ProjectRepo
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+
+def _conflict(exc: DuplicateName) -> HTTPException:
+    """409 — le nom est déjà pris à sa portée d'unicité.
+
+    409 et non 422 : la requête est bien formée, c'est l'état du référentiel qui s'y oppose.
+    Le message du repo nomme le conflit en clair (il est affiché tel quel à l'utilisateur).
+    """
+    return HTTPException(status_code=409, detail=str(exc))
 
 
 def _summary_row(conn, project_id: int) -> dict | None:
@@ -31,9 +40,13 @@ def list_projects(conn=Depends(get_conn)):
 def create_project(body: schemas.ProjectIn, conn=Depends(get_conn)):
     if not body.name.strip():
         raise HTTPException(status_code=422, detail="le nom du projet est requis")
-    ProjectRepo(conn).create(
-        name=body.name.strip(), description=body.description, connector_type=body.connector_type,
-        base_url=body.base_url, database=body.database, username=body.username, password=body.password)
+    try:
+        ProjectRepo(conn).create(
+            name=body.name.strip(), description=body.description,
+            connector_type=body.connector_type, base_url=body.base_url, database=body.database,
+            username=body.username, password=body.password)
+    except DuplicateName as exc:
+        raise _conflict(exc) from exc
     return schemas.project_summary(_summary_row(conn, _last_project_id(conn)))
 
 
@@ -47,7 +60,10 @@ def rename_project(project_id: int, body: schemas.ProjectIn, conn=Depends(get_co
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
     if not body.name.strip():
         raise HTTPException(status_code=422, detail="le nom du projet est requis")
-    ProjectRepo(conn).rename(project_id, name=body.name.strip(), description=body.description)
+    try:
+        ProjectRepo(conn).rename(project_id, name=body.name.strip(), description=body.description)
+    except DuplicateName as exc:
+        raise _conflict(exc) from exc
     return schemas.project_summary(_summary_row(conn, project_id))
 
 
@@ -72,7 +88,10 @@ def create_module(project_id: int, body: schemas.ModuleIn, conn=Depends(get_conn
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
     if not body.name.strip():
         raise HTTPException(status_code=422, detail="le nom du module est requis")
-    mid = ModuleRepo(conn).create(project_id=project_id, name=body.name.strip(),
-                                  description=body.description)
+    try:
+        mid = ModuleRepo(conn).create(project_id=project_id, name=body.name.strip(),
+                                      description=body.description)
+    except DuplicateName as exc:
+        raise _conflict(exc) from exc
     return schemas.ModuleSummary(id=mid, project_id=project_id, name=body.name.strip(),
                                  description=body.description, case_count=0)

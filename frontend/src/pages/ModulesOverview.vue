@@ -81,10 +81,7 @@ const orphanCount = computed(() => cases.value.filter((c) => c.module_id == null
       >
         <div class="flex items-start gap-3">
           <div class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-border bg-surface text-muted-foreground">
-            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-            </svg>
+            <Icon name="folder" class="h-4 w-4" />
           </div>
           <div class="min-w-0 flex-1">
             <div class="truncate font-medium">{{ prettyModule(m.name) }}</div>

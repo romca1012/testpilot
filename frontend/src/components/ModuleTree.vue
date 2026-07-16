@@ -102,10 +102,7 @@ const validation = (status: string | null) => validationView(status)
           </button>
           <RouterLink :to="`/projects/${projectId}/modules/${m.id}`" :title="prettyModule(m.name)"
                       class="flex min-w-0 flex-1 items-center gap-1.5 py-1.5">
-            <svg class="h-3.5 w-3.5 shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-            </svg>
+            <Icon name="folder" class="h-3.5 w-3.5 shrink-0 opacity-60" />
             <span class="truncate">{{ prettyModule(m.name) }}</span>
           </RouterLink>
           <span class="shrink-0 text-[11px] tabular-nums text-muted-foreground/70">
@@ -113,17 +110,26 @@ const validation = (status: string | null) => validationView(status)
           </span>
         </div>
 
-        <!-- Enfants : les CAS du module (ce que le prototype ne montrait pas). -->
-        <ul v-if="isExpanded(m.id)" class="mt-0.5 space-y-0.5">
-          <li v-for="c in casesOf(m.id)" :key="c.id">
+        <!-- Enfants : les CAS du module (ce que le prototype ne montrait pas), rattachés par un
+             connecteur d'arborescence façon `tree` — « ├─ » pour les intermédiaires, « └─ »
+             pour le DERNIER : c'est ce coude final qui ferme visuellement la fratrie. -->
+        <ul v-if="isExpanded(m.id)" class="mt-0.5 space-y-0.5 pl-2.5">
+          <li v-for="(c, i) in casesOf(m.id)" :key="c.id">
             <RouterLink
               :to="`/projects/${projectId}/cases/${c.id}`" :title="c.title"
-              class="flex items-center gap-2 rounded-md py-1.5 pl-7 pr-1.5 text-sm transition-colors"
+              class="flex items-center gap-1.5 rounded-md py-1.5 pr-1.5 text-sm transition-colors"
               :class="selectedCaseId === c.id
                 ? 'bg-primary/15 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.3)]'
                 : 'text-muted-foreground hover:bg-accent/40 hover:text-foreground'"
             >
-              <span class="h-1 w-1 shrink-0 rounded-full bg-current opacity-40" />
+              <span aria-hidden="true"
+                    class="shrink-0 select-none font-mono text-xs leading-none text-muted-foreground/40">
+                {{ i === casesOf(m.id).length - 1 ? '└─' : '├─' }}
+              </span>
+              <!-- Icône DOCUMENT, pas dossier : dans l'arbre un cas est une FEUILLE, il ne se
+                   déplie pas. Un dossier promettrait un contenu qu'on ne peut pas ouvrir
+                   (« affiché ≠ réel », 4.6). L'appartenance est portée par le connecteur. -->
+              <Icon name="file" class="h-3.5 w-3.5 shrink-0 opacity-60" />
               <span class="min-w-0 flex-1 truncate">{{ c.title }}</span>
               <!-- Statut de VALIDATION seulement — mono-axe. Jamais un badge fusionné (4.1). -->
               <span class="shrink-0 rounded-full border p-0.5" :class="toneClasses(validation(c.validation_status).tone)"
@@ -132,7 +138,9 @@ const validation = (status: string | null) => validationView(status)
               </span>
             </RouterLink>
           </li>
-          <li v-if="!casesOf(m.id).length" class="py-1.5 pl-7 text-xs text-muted-foreground/70">
+          <li v-if="!casesOf(m.id).length"
+              class="flex items-center gap-1.5 py-1.5 text-xs text-muted-foreground/70">
+            <span aria-hidden="true" class="select-none font-mono leading-none text-muted-foreground/40">└─</span>
             Aucun cas dans ce module.
           </li>
         </ul>
@@ -142,9 +150,14 @@ const validation = (status: string | null) => validationView(status)
       <li v-if="orphans.length" class="pt-1">
         <div class="px-2 py-1 text-[11px] text-muted-foreground/70">Sans module</div>
         <RouterLink
-          v-for="c in orphans" :key="c.id" :to="`/projects/${projectId}/cases/${c.id}`"
-          class="flex items-center gap-2 rounded-md py-1.5 pl-7 pr-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+          v-for="(c, i) in orphans" :key="c.id" :to="`/projects/${projectId}/cases/${c.id}`" :title="c.title"
+          class="flex items-center gap-1.5 rounded-md py-1.5 pl-2.5 pr-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
         >
+          <span aria-hidden="true"
+                class="shrink-0 select-none font-mono text-xs leading-none text-muted-foreground/40">
+            {{ i === orphans.length - 1 ? '└─' : '├─' }}
+          </span>
+          <Icon name="file" class="h-3.5 w-3.5 shrink-0 opacity-60" />
           <span class="min-w-0 flex-1 truncate">{{ c.title }}</span>
           <span class="shrink-0 rounded-full border p-0.5" :class="toneClasses(validation(c.validation_status).tone)"
                 :title="`Validation : ${validation(c.validation_status).label}`">

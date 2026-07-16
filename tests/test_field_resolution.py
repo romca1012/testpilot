@@ -31,6 +31,7 @@ from behave_runtime.steps_library._base_helpers import (
 from testpilot.execution import behave_result
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.store.db import (
+    _SCHEMA_VERSION,
     _column_names,
     _migrate_4_execution_field_fallbacks,
     get_initialized_db,
@@ -252,7 +253,10 @@ def test_migration_4_ramene_une_base_existante_a_la_cible(tmp_path):
 
     conn = get_initialized_db(db)  # réouverture → migrations en attente
     assert "field_fallbacks" in _column_names(conn, "execution")
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+    # La CIBLE, pas un chiffre en dur : ce test vérifie que les migrations en attente amènent la
+    # base à jour, pas qu'il existe exactement N migrations (sinon toute migration future le
+    # casserait sans qu'aucune régression n'ait eu lieu).
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == _SCHEMA_VERSION
     conn.close()
 
 

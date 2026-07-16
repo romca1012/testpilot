@@ -104,6 +104,14 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   8 vitest + captures. **Bug serveur trouvé au passage** : HTTP 500 intermittent
   (connexion SQLite passée entre threads du pool FastAPI) → `check_same_thread=False`,
   3 tests. Voir `CONTINUITE` §2.8.
+- [x] **Unicité des noms** — *fait (2026-07-16, migration 5)*. Projet unique globalement,
+  module unique par projet, titre de cas unique par module, `feature_slug` unique globalement
+  (bug latent : deux cas au même slug écriraient dans le même `.feature`). Deux couches :
+  garde applicative `casefold` (Unicode) → 409 + message clair, et index UNIQUE `COLLATE
+  NOCASE` (ASCII seulement) en filet. Couvre création, renommage et ajout par spec (validé
+  avant l'appel LLM). Audit préalable : **zéro doublon** — les « doublons » vus à l'écran
+  étaient des titres tronqués + des artefacts de scripts de preuve, nettoyés sur décision du
+  porteur. 19 tests. Voir `CONTINUITE` §2.9.
 - [ ] **Exécution nommée transverse (groupée multi-modules)** — chantier suivant. Contrainte
   actée : référencer les cas **par ID** via une table de liaison **many-to-many** entre
   l'exécution nommée et `test_case` — **jamais** de duplication de cas.
