@@ -152,6 +152,17 @@ Chaque décision a sa note détaillée dans `docs/decisions/`.
   tout, donc 200 tests verts ne pouvaient pas le voir. Il a fallu un vrai navigateur chargeant
   l'arbre **en parallèle** de la page. 3 tests de non-régression (`tests/test_conn_threads.py`).
 
+### 2.10 On n'efface JAMAIS un run — on annote (règle du porteur, 2026-07-16)
+- **Aucune suppression d'exécution, jamais.** Cohérent avec §1/§5 du brief et avec la règle déjà
+  actée pour projets/modules : **archivage, jamais de perte d'historique**.
+- **Un échec est une donnée, pas un déchet.** La chaîne `v1 → v7 cassée → v2 restaurée → v8` est
+  **la preuve que le gate a tenu** pendant que le circuit se trompait (`0014`) : l'effacer
+  supprimerait le fait le plus instructif de la journée.
+- Si le volume devient bruyant : **annoter** (« affecté par le bug X, corrigé »), jamais masquer.
+- ⚠️ **Seule exception, et elle est étroite** : une trace **cassée par accident de manipulation**
+  et **sans valeur de preuve** (l'exécution 10, restée `not_executed` parce qu'une migration a
+  tourné serveur allumé). Décidée **explicitement par le porteur**, jamais par défaut.
+
 ### 2.9 Unicité des noms — un nom réutilisé = une info dupliquée à regrouper (migration 5)
 - **Portées** : **projet** = global · **module** = par projet (deux projets peuvent avoir
   « Facturation » — ce n'est **pas** une duplication) · **titre de cas** = par module ·

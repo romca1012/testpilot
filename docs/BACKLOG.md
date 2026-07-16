@@ -124,34 +124,18 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   n'annote que les pièges). **Prouvé par régénération** : l'agent emploie désormais les deux
   steps, dans le bon ordre. Protège les 3 modules restants à importer. 5 tests.
   → `decisions/0012-catalogue-note-par-step-inc1.md`.
-- [ ] **Audit de la taxonomie de diagnostic** — 🔴 **PRIORITAIRE dès que `0014` est livré**
-  (relevé par le porteur, 2026-07-16 : « le jour où un vrai bug portera par coïncidence un nom
-  de step malheureux, il pourrait être classé réparable à tort »).
-
-  **Le défaut.** `defect_taxonomy.classify_failure()` classe sur
-  `step_text + traceback_summary + raw` — donc en partie sur le **nom du step**, écrit par
-  l'agent, et pas sur le comportement de l'application. Pire, les catégories sont testées **par
-  priorité** : le nom du step **l'emporte** sur l'erreur réelle. **Mesuré** : le `TypeError` du
-  cas 2 est classé `missing_server_context` parce que son step s'appelle `team_id` ; le même
-  `TypeError` **nu** tombe en `unknown` → `indetermine`.
-
-  ⚠️ **Le risque n'est PAS symétrique — c'est ce qui le rend prioritaire.** Jusqu'ici on a vu
-  des faux positifs bénins (`0007` : « timeout » → `wrong_field_name`, juste par chance ;
-  `0012` : « Rôle manquant » venait du mot « role » dans un message écrit par l'agent, la vraie
-  cause n'avait rien à voir — deux fausses pistes suivies). Mais **depuis `0014`, la
-  classification décide de ce qui est RÉPARABLE** : un **vrai bug** dont le step porte par
-  malchance un mot-clé technique (`team_id`, `route`, `timeout`…) serait classé
-  `test_a_reparer` → **le circuit laisserait la boucle réparer un test correct contre une
-  application cassée**. C'est la direction du **faux négatif**, que §4.4 déclare
-  **inacceptable** — l'inverse exact du faux positif toléré.
-
-  **Ce qui protège aujourd'hui** : la règle anti-maquillage du prompt de réparation (l'agent
-  doit refuser d'affaiblir une assertion) et le plafond de budget. C'est-à-dire l'obéissance
-  d'un LLM et un compteur — **pas** un garde-fou déterministe.
-
-  **Piste** : ne classer que sur le **signal d'exécution** (type d'exception, statut HTTP,
-  sélecteur du `Call log`), jamais sur du texte rédigé par l'agent. Le `step_text` peut rester
-  un indice de dernier recours, jamais un critère prioritaire.
+- [ ] 🔴 **Taxonomie : classer sur le SIGNAL, pas sur le texte de l'agent** (`0015` — **note
+  écrite, à arbitrer, PRIORITÉ 1**). La classification lit `step_text` (le libellé Gherkin **écrit
+  par l'agent**) et le message d'`AssertionError` (idem), par mots-clés **prioritaires**. Mesuré :
+  le **même** `TypeError` reçoit **4 classements différents** selon le seul nom du step ; et un
+  **vrai bug** sur un step nommé `…"team_id"…` devient **`test_a_reparer`** → la boucle
+  **réparerait un test correct contre une application cassée** (faux négatif, §4.4).
+  **Urgent depuis `0014`** : la classification décide de ce qui est **réparable**, plus seulement
+  d'un libellé. Seule protection actuelle : l'obéissance d'un LLM + un compteur.
+  Recommandé : classer sur le **type d'exception** (déterministe, produit par le runtime) +
+  catégorie **`broken_test_code`** (un `TypeError` dans notre code n'est jamais un bug de l'app —
+  aujourd'hui il tombe en `indetermine` et **bloque** la réparation).
+  → `decisions/0015-taxonomie-classer-sur-le-signal-pas-sur-le-texte-inc1.md`.
 - [ ] **Teardown : résidus du cas 2 non nettoyés** — *constat (2026-07-16), pas urgent mais ça
   s'accumule*. Mesuré : **9** tickets `AAAAA…` (chaîne de 300 car. du scénario `[Limite]`) et
   **6** « Demande test BDD » restants — un de plus par run. Cause : le teardown ne supprime que
