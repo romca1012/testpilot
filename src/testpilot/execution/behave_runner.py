@@ -19,7 +19,13 @@ import tempfile
 from pathlib import Path
 
 from testpilot import config
-from testpilot.execution.behave_result import BehaveResult, parse_behave_json
+from testpilot.execution.behave_result import (
+    FIELD_FALLBACK_FILE_ENV,
+    FIELD_FALLBACK_FILENAME,
+    BehaveResult,
+    parse_behave_json,
+    read_field_fallbacks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +47,16 @@ class BehaveRunner:
         # Vide → le harnais retombe sur la config globale (.env). Cf. connectors/runtime_env.
         self.connection = connection or {}
 
-    def _subprocess_env(self) -> dict[str, str] | None:
-        """Environnement du sous-processus : celui du parent + la connexion du projet.
+    def _subprocess_env(self, run_dir: Path) -> dict[str, str]:
+        """Environnement du sous-processus : celui du parent + la connexion du projet + le sidecar.
 
         ``environment.py`` appelle ``load_dotenv()`` sans ``override`` : les variables passées
-        ici priment donc sur le ``.env``. None si aucune connexion propre au projet.
+        ici priment donc sur le ``.env``. Connexion vide → le harnais retombe sur la config
+        globale, mais l'environnement reste explicite : le sidecar des replis (0007 B+) doit être
+        désigné à CHAQUE run, connexion propre au projet ou non.
         """
-        if not self.connection:
-            return None
-        return {**os.environ, **self.connection}
+        return {**os.environ, **self.connection,
+                FIELD_FALLBACK_FILE_ENV: str(run_dir / FIELD_FALLBACK_FILENAME)}
 
     def dry_run(self, module_name: str) -> BehaveResult:
         return self._run(module_name, dry_run=True)
@@ -79,13 +86,18 @@ class BehaveRunner:
             try:
                 proc = subprocess.run(cmd, cwd=str(run_dir), capture_output=True, text=True,
                                       encoding="utf-8", errors="replace", timeout=timeout,
-                                      env=self._subprocess_env())
+                                      env=self._subprocess_env(run_dir))
             except subprocess.TimeoutExpired:
                 return BehaveResult(success=False, returncode=-2, dry_run=dry_run,
                                     raw_stderr=f"Timeout ({timeout}s) lors du run behave")
             json_output = json_path.read_text(encoding="utf-8") if json_path.exists() else ""
-            return parse_behave_json(json_output, proc.returncode, dry_run=dry_run,
-                                     combined_log=f"{proc.stdout}\n{proc.stderr}")
+            result = parse_behave_json(json_output, proc.returncode, dry_run=dry_run,
+                                       combined_log=f"{proc.stdout}\n{proc.stderr}")
+            # Replis consignés par les helpers UI (0007 B+). Lu ICI, avant le rmtree du `finally`,
+            # et depuis le fichier — pas depuis la sortie de Behave, qui n'en porte rien sur un
+            # scénario vert (cf. read_field_fallbacks).
+            result.field_fallbacks = read_field_fallbacks(run_dir / FIELD_FALLBACK_FILENAME)
+            return result
         finally:
             shutil.rmtree(run_dir, ignore_errors=True)
 

@@ -60,8 +60,8 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   `[name='Raison de la demande']` est enfin en base) ; 3 tests de non-régression, **168 verts**.
   *Reste* : visibilité complète à l'écran (dépend de l'écart 4 pour `ReportView` ; le dépliage
   `CaseRow` n'affiche pas la cause — choix de design 0006 à trancher). Voir `CONTINUITE.md` §6.1.
-- [x] **Sémantique des paramètres de steps** (écart 1, **`0007` — B, B+ et A1 faits** ; reste la
-  **mesure d'obéissance d'A1**, en attente d'une instance Odoo joignable) —
+- [x] **Sémantique des paramètres de steps** (écart 1, **`0007` — CLOS** : B, B+ et A1 livrés et
+  prouvés en conditions réelles, capture d'écran à l'appui) —
   l'agent passe le **libellé humain** au step UI là où le helper attend le **nom technique**
   (`[name=…]`) → `TimeoutError`. **Bug déterministe** (reproduit cas 2 **et** cas 3). Racine de
   **famille commune** avec `0008`/`0003` (le catalogue montre le libellé, pas la sémantique de
@@ -70,20 +70,25 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   - **B porteur** — ✅ *fait*. Helpers UI tolérants (`_base_helpers` : `name` d'abord,
     `get_by_label` en repli). **Repli TRACÉ** et visible en mode dev (§5), **jamais silencieux** —
     sinon une vraie régression Odoo (champ renommé) serait absorbée.
-  - **B+** — ✅ *fait*. Surfaçage du repli **REQUIS**, pas optionnel (arbitrage complémentaire du
-    verdict `0007` n°2) : Behave masque les logs d'un scénario **vert**, or le pire cas de
-    l'exigence (champ renommé → repli le retrouve → run vert) est justement un succès. Le log
-    seul a donc un **angle mort** que seul le surfaçage ferme. Marqueur capté du log behave →
-    colonne `execution.field_fallbacks` (migration 4) → API → bandeau `FieldFallbackNotice` +
-    pastille d'historique dans `CaseDetail`.
+  - **B+** — ✅ *fait, au 2ᵉ essai*. Surfaçage du repli **REQUIS**, pas optionnel (arbitrage
+    complémentaire du verdict `0007` n°2) : Behave masque les logs d'un scénario **vert**, or le
+    pire cas de l'exigence (champ renommé → repli le retrouve → run vert) est justement un succès.
+    Le log seul a donc un **angle mort** que seul le surfaçage ferme. Chaîne : repli consigné dans
+    un **fichier sidecar** (`TP_FIELD_FALLBACK_FILE`) → `execution.field_fallbacks` (migration 4) →
+    API → bandeau `FieldFallbackNotice` + pastille d'historique dans `CaseDetail` (uniquement sur
+    les runs concernés). ⚠️ **Le 1ᵉʳ jet lisait le marqueur dans la sortie de Behave et était
+    AVEUGLE en run réel** — et son test de garde partageait l'angle mort du code (il omettait
+    `environment.py`). Démasqué par le re-run réel, pas par la suite de tests. Sidecar retenu pour
+    **supprimer** la dépendance au routage de capture de Behave. Détail complet dans la note.
   - **A1** — ✅ *fait*. Contrat écrit dans l'en-tête de `as_prompt_section` : `{field}` = **nom
     technique, jamais le libellé affiché** (attribut HTML `name` côté interface, champ du modèle
     côté vérification Odoo) — formulation **corrigée** à l'implémentation : `{field}` sert dans
     deux registres, et `{name}` (onglet/produit) désigne au contraire un **libellé visible**, donc
     l'annotation exclut explicitement boutons/onglets pour ne pas casser `click_button` par
-    surcorrection. ⏭️ **Mesure d'obéissance en attente** : elle exige une re-génération LLM, or
-    l'agent explore l'application réelle et Odoo est injoignable → la mesure serait invalide.
-    A2 (par step) différée.
+    surcorrection. ✅ **Mesure d'obéissance faite et concluante** : re-génération réelle → l'agent
+    écrit `champ "name"` là où les cas 2 et 3 écrivaient `champ "Raison de la demande"`, sans
+    surcorriger les steps RPC. Réserve : **1 échantillon**, LLM non déterministe. A2 (par step)
+    différée.
   → `decisions/0007-agent-parametre-steps-libelle-vs-nom-technique-inc1.md`.
 - [ ] **Runs API sans rapport** (écart 4) : `run_service._persist` n'écrit ni `report_json_path`
   ni `report_html_path` (vides pour l'exécution 2), alors que la CLI les produit. L'UI promet un

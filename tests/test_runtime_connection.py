@@ -11,6 +11,10 @@ from testpilot import config
 from testpilot.api.services import run_service
 from testpilot.connectors.odoo import OdooConnector
 from testpilot.connectors.runtime_env import project_env
+from testpilot.execution.behave_result import (
+    FIELD_FALLBACK_FILE_ENV,
+    FIELD_FALLBACK_FILENAME,
+)
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo
@@ -54,17 +58,32 @@ def test_project_env_ne_produit_jamais_odoo_env():
 
 
 # ── Injection dans le sous-processus behave ───────────────────────────────────
-def test_runner_injecte_la_connexion_du_projet(monkeypatch):
+def test_runner_injecte_la_connexion_du_projet(monkeypatch, tmp_path):
     monkeypatch.setenv("ODOO_DB", "globale")
     runner = BehaveRunner(connection={"ODOO_DB": "db_du_projet"})
-    env = runner._subprocess_env()
+    env = runner._subprocess_env(tmp_path)
     assert env["ODOO_DB"] == "db_du_projet"       # le projet prime sur l'env globale
     assert "PATH" in env                           # l'environnement parent est conservé
 
 
-def test_runner_sans_connexion_herite_de_l_environnement():
-    # Aucune connexion projet → None = héritage pur (comportement historique préservé).
-    assert BehaveRunner()._subprocess_env() is None
+def test_runner_sans_connexion_herite_de_l_environnement(monkeypatch, tmp_path):
+    """Sans connexion projet, l'environnement parent est transmis à l'identique.
+
+    ⚠️ Contrat CHANGÉ délibérément (décision 0007, phase B+) : `_subprocess_env` ne rend plus
+    `None` (« hériter implicitement »), car le fichier sidecar des replis doit être désigné à
+    CHAQUE run, connexion projet ou non. L'héritage reste entier — on passe explicitement
+    l'environnement parent — donc le comportement historique est préservé, pas le `None`.
+    """
+    monkeypatch.setenv("UNE_VARIABLE_PARENTE", "héritée")
+    env = BehaveRunner()._subprocess_env(tmp_path)
+    assert env["UNE_VARIABLE_PARENTE"] == "héritée"
+    assert "PATH" in env
+
+
+def test_runner_designe_toujours_le_sidecar_des_replis(tmp_path):
+    # Sans cette variable, le helper ne consigne rien et B+ redevient aveugle (0007 B+).
+    env = BehaveRunner()._subprocess_env(tmp_path)
+    assert env[FIELD_FALLBACK_FILE_ENV] == str(tmp_path / FIELD_FALLBACK_FILENAME)
 
 
 def test_connexion_atteint_reellement_le_sous_processus_behave(tmp_path, monkeypatch):

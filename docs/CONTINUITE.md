@@ -15,7 +15,7 @@
 | **Incrément 1 (reste)** | Backlog documenté (§7). |
 | **Incrément 2** | Sécurité (mot de passe en clair) — bloquant avant tout déploiement client. |
 
-**Tests : 196 Python · 18 vitest · build front OK.** Tout est vert au moment de ce rapport.
+**Tests : 200 Python · 18 vitest · build front OK.** Tout est vert au moment de ce rapport.
 
 **Stack** : Python 3.10, FastAPI + SQLite (portable PostgreSQL), Behave + Playwright + odoorpc,
 Anthropic (Claude), frontend Vite + Vue 3 + Tailwind (dark, esprit « Linear »).
@@ -33,12 +33,17 @@ par un autre serveur, hors projet). CLI : `testpilot run specs/demande_materiel.
   Bases `.bak` gitignorées.
 - **Cas 3** = artefact de preuve de A (re-génération) — **conservé** (décision du porteur).
   Backup avant sa création : `data/testpilot.db.pre-preuve-A.bak`.
-- **Écart 1 : décision `0007`. B ✅ et B+ ✅ faits+prouvés.** B : helpers tolérants (cas 2
-  [Nominal] ne timeoute plus sur le champ). B+ : le repli remonte du log behave jusqu'à
-  `execution.field_fallbacks` (migration 4) puis à l'écran, **visible même sur un run vert**.
-  **Reste A1** (annotation du catalogue). Backup avant re-run : `…pre-preuve-B.bak`
-  (exécution 4 = preuve de B). **Écart 4 : diagnostiqué, non corrigé** (voir §7) — **distinct
-  de B+**, dont la cible est l'exécution + l'UI, pas le rapport JSON.
+- **Écart 1 : décision `0007` — CLOSE.** B ✅, B+ ✅ (au **2ᵉ essai**), A1 ✅ **mesuré**. Tout est
+  prouvé **en conditions réelles**, capture d'écran à l'appui (exécution 7 du cas 2).
+  ⚠️ **À lire absolument dans la note** : le **premier jet de B+ était AVEUGLE en run réel** et
+  avait pourtant été livré « prouvé » — il lisait le marqueur dans la sortie de Behave, or Behave
+  capture stdout/stderr/logging et ne les recrache pas sur un scénario vert **dès qu'un
+  `environment.py` est présent** (ce que le runner assemble toujours). Le test de garde avait le
+  **même angle mort que le code** (il omettait `environment.py`) ; seul le **re-run réel exigé par
+  le porteur** l'a démasqué. Correctif : **fichier sidecar** (`TP_FIELD_FALLBACK_FILE`), qui
+  supprime la dépendance au routage de Behave au lieu de la maîtriser.
+  **Écart 4 : diagnostiqué, non corrigé** (voir §7) — **distinct de B+**, dont la cible est
+  l'exécution + l'UI, pas le rapport JSON.
 
 ---
 
@@ -388,23 +393,24 @@ pour l'écart 1 (décision + plan écrits avant tout code).
   par re-génération (cas 3). C : lint pur `assertion_lint.py` (dont motif contextuel exact) →
   `GateOut.lint_warnings` + bandeau non-bloquant `ReviewGate.vue`. Preuve réelle : cas 2 signalé,
   cas 3 propre. Détail : `docs/decisions/0008-…md`.
-- 🟡 **Écart 1 / `0007` — B ✅ et B+ ✅ FAITS + PROUVÉS ; reste A1.** B : helpers UI tolérants
-  (`resolve_field_name`, name-d'abord/libellé-en-repli, repli tracé `[TP_FIELD_FALLBACK]`) ;
-  preuve réelle : cas 2 [Nominal] ne timeoute plus sur le champ (progresse en aval). **B+** :
-  cible **précisée par le porteur** = enregistrement d'exécution + UI, **pas** le rapport JSON →
-  **aucune dépendance sur l'écart 4**. Mesure qui a allégé la conception : le marqueur part sur
-  **stderr** et **survit sur un scénario vert** (behave 1.3.3), et `combined_log` le portait déjà
-  au parseur — ni `environment.py`, ni sidecar. Chaîne : `extract_field_fallbacks` →
-  `execution.field_fallbacks` (migration 4) → API → `FieldFallbackNotice` + pastille d'historique
-  (uniquement sur les runs concernés). **Épinglé par un test de garde** (vrai helper → vrai behave
-  → vrai parseur, scénario vert) sans lequel une montée de behave rendrait B+ aveugle en silence.
-  **A1 ✅** : contrat `{field}` = **nom technique, jamais le libellé** écrit dans l'en-tête du
-  catalogue — formulation **corrigée** à l'implémentation (`{field}` sert dans deux registres :
-  attribut HTML côté UI, champ du modèle côté RPC ; et `{name}` d'onglet/produit est au contraire
-  un **libellé visible**, donc l'annotation exclut boutons/onglets pour ne pas casser
-  `click_button` par surcorrection). ⏭️ **Mesure d'obéissance en attente** : elle exige une
-  re-génération LLM et l'agent **explore l'application réelle** — Odoo injoignable ⇒ mesure
-  invalide, à rejouer instance up. Détail : `docs/decisions/0007-…md`.
+- ✅ **Écart 1 / `0007` — CLOS. B + B+ + A1, tous prouvés en réel.**
+  - **B** : helpers UI tolérants (`resolve_field_name`, name-d'abord/libellé-en-repli, repli
+    tracé). Prouvé : le cas 2 ne timeoute plus sur le champ.
+  - **B+** : le repli remonte jusqu'à l'écran (bandeau + pastille), **au 2ᵉ essai**. Le 1ᵉʳ jet
+    lisait le marqueur dans la sortie de Behave et était **aveugle en run réel** — Behave capture
+    stdout/stderr/logging et ne les recrache pas sur un scénario vert **dès qu'un `environment.py`
+    est présent** (toujours assemblé par le runner). Le **test de garde partageait l'angle mort du
+    code** (il omettait `environment.py`) ; le **re-run réel** l'a démasqué, aucun test ne
+    l'aurait fait. Correctif : **fichier sidecar** `TP_FIELD_FALLBACK_FILE` (arbitrage du porteur :
+    supprimer la dépendance au routage de Behave plutôt que la maîtriser). Garde réécrit sur le
+    **vrai `BehaveRunner`** avec `environment.py` assemblé — **vérifié qu'il échoue sur l'ancienne
+    implémentation**. Preuve : exécution 7 du cas 2 + capture d'écran.
+  - **A1** : contrat `{field}` = nom technique dans le catalogue. **Mesure d'obéissance faite** :
+    l'agent écrit `champ "name"` là où les cas 2 et 3 écrivaient `champ "Raison de la demande"`.
+    Réserve : **1 échantillon**, LLM non déterministe.
+  - Scripts : `measure_A1_nom_technique.py`, `prove_Bplus_repli_surface.py`,
+    `probe_capture_behave_reelle.py`, `probe_marqueur_run_reel.py`, `shot_Bplus_ecran.py`.
+
 - ⏭️ **Écart 4** : conditionne la visibilité complète du correctif d'écart 3 à l'écran. **Distinct
   de B+** (dont la cible est l'exécution + l'UI) : plan à proposer une fois A1 clos.
 
@@ -425,7 +431,7 @@ reprise (voir « Suite à donner » du §6).
 |---|---|
 | ✅ **FAIT** | **Message d'erreur détruit avant l'écran** (écart 3 du §6) : `meaningful_error()` remonte la cause (message + `Call log` avec le sélecteur) au lieu de la tête du traceback. Prouvé sur l'exécution 3, 168 tests verts. *Reste* : visibilité complète à l'écran (dépend de l'écart 4 + choix d'affichage dans le dépliage). |
 | ✅ **FAIT** | **Assertion tautologique → faux « conforme »** (écart 2 du §6). Décision `0008`, **A + C livrés et prouvés**. **A** : prompt (Règle 4 falsifiabilité + `[Limite]` en disjonction falsifiable). **C** : lint pur `assertion_lint.py` (dont motif contextuel exact de l'écart 2) → `GateOut.lint_warnings`, bandeau non-bloquant dans `ReviewGate.vue`. Preuve réelle : gate du cas 2 signale la tautologie, cas 3 (re-généré) propre. 181 Python + 15 vitest verts. |
-| **2 — B et B+ faits, A1 à faire** | **Sémantique des paramètres de steps** — écart **CONFIRMÉ et DÉTERMINISTE** (§6, écart 1 ; reproduit cas 2 **et** cas 3). Décision `0007`. **B ✅** : helpers UI tolérants (`resolve_field_name`, name-d'abord/libellé-en-repli, repli tracé `[TP_FIELD_FALLBACK]`) — prouvé (cas 2 [Nominal] ne timeoute plus sur le champ). **B+ ✅** : repli capté du log behave → `execution.field_fallbacks` (migration 4) → bandeau `FieldFallbackNotice` + pastille d'historique, **visible même sur un run vert** ; cible = exécution + UI (pas le rapport JSON) donc **indépendant de l'écart 4** ; test de garde qui épingle le comportement mesuré de behave. Reste **A1** (annotation catalogue `{field}` = nom technique). |
+| ✅ **FAIT** | **Sémantique des paramètres de steps** (écart 1, `0007` — **CLOS**). **B** : helpers UI tolérants (name-d'abord / libellé-en-repli, repli tracé). **B+** : repli → `execution.field_fallbacks` (migration 4) → bandeau `FieldFallbackNotice` + pastille d'historique, **visible même sur un run vert** ; transport par **fichier sidecar** (`TP_FIELD_FALLBACK_FILE`) — le 1ᵉʳ jet lisait la sortie de Behave et était **aveugle en run réel**, cf. la note. **A1** : contrat `{field}` = nom technique au catalogue, **obéissance mesurée**. Prouvé en réel (exécution 7 du cas 2 + capture). |
 | **3** | **Runs API sans rapport** (écart 4 du §6) : `_persist` n'écrit ni `report_json_path` ni `report_html_path`, alors que la CLI le fait → invariant §4.6. Conditionne aussi la visibilité de l'écart 3 dans `ReportView`. |
 | **5** | **Exécution nommée transverse** (§7, JTBD essentiel §3) : regroupement de cas de modules différents, rapport attaché à l'exécution. L'UI laisse déjà la porte ouverte (badge « Cas unique / Suite transverse », champ `suite_name` réservé côté API). C'est **le dernier gros manque du §7**. |
 | **6** | **Confirmations `pending_human`** (`0001`) : écran de traitement de la file des origines de défaut. |

@@ -1,8 +1,9 @@
 # 0007 — Génération : l'agent passe le libellé humain là où le step attend le nom technique (Inc. 1)
 
 Date : 2026-07-15
-Statut : **DÉCIDÉ** (arbitrage du porteur, 2026-07-15 — voir § *Verdict*). **B, B+ et A1 livrés**
-(2026-07-16). Reste la **mesure d'obéissance d'A1**, en attente d'une instance Odoo joignable.
+Statut : **CLOS** (2026-07-16). **B, B+ et A1 livrés et prouvés en conditions réelles** — B+ au
+**deuxième essai** (le premier était aveugle en run réel : voir le § *B+*, conservé au dossier).
+Mesure d'obéissance d'A1 : **faite, concluante**.
 Priorité : **2** (après `0008`) — cf. `BACKLOG.md`
 
 ---
@@ -180,46 +181,108 @@ du repli au rapport, visible même sur un run vert) → **A1** (annotation catal
   (`TypeError` dans un step RPC de case 2, hors écart 1). La barrière de résolution est levée.
   185 tests verts. *NB* : la visibilité du marqueur en run réel est traitée par B+ (non persisté
   aujourd'hui — c'est précisément l'angle mort que B+ ferme).
-- **B+** — ✅ FAIT. **Cible précisée par le porteur (2026-07-16)** : l'**enregistrement d'exécution
-  + l'UI**, et **non** le rapport JSON au sens littéral — l'intention était « visible par un humain
-  même sur un run vert », ce que l'exécution porte déjà. Donc **aucune dépendance sur l'écart 4**
-  (qui reste ouvert et distinct).
+- **B+** — ✅ FAIT et PROUVÉ À L'ÉCRAN, **au deuxième essai**. **Cible précisée par le porteur
+  (2026-07-16)** : l'**enregistrement d'exécution + l'UI**, et **non** le rapport JSON au sens
+  littéral — l'intention était « visible par un humain même sur un run vert », ce que l'exécution
+  porte déjà. Donc **aucune dépendance sur l'écart 4** (ouvert et distinct).
 
-  **Mesure préalable, qui a contredit l'hypothèse de départ et allégé la conception** : on
-  supposait que Behave masquerait le marqueur sur un scénario vert (d'où l'idée d'un fichier
-  sidecar ou d'un handler dans `environment.py`). Sonde réelle (behave **1.3.3**) : le log du step
-  est réémis préfixé (`LOG_WARNING:<logger>:`) sur **stderr**, et **survit sur un scénario vert**.
-  Or `BehaveRunner` passe déjà `combined_log = stdout + stderr` à `parse_behave_json` : le
-  marqueur **arrivait déjà** jusqu'au parseur. Ni `environment.py`, ni sidecar, ni
-  `--no-logcapture` n'ont été nécessaires.
+  ### ⚠️ Premier jet : livré « prouvé », en réalité AVEUGLE en run réel
 
-  Chaîne livrée : `extract_field_fallbacks()` (sur le log **entier** — `raw_stdout` est tronqué aux
-  3000 derniers caractères — et **avant** les retours anticipés, pour qu'un run au JSON absent ne
-  perde pas ses replis) → `BehaveResult.field_fallbacks` → `run_service._persist` →
-  `execution.field_fallbacks` (**migration 4**, JSON, niveau RUN) → `ExecutionSummary` (un seul
-  champ couvre l'historique du cas *et* le détail d'exécution) → `FieldFallbackNotice.vue`
-  (bandeau non-bloquant sur le dernier résultat) + **pastille d'historique**, cette dernière
-  **uniquement** sur les lignes qui portent un repli (jamais par défaut : le signal doit survivre
-  au run suivant, sinon la détection a posteriori rouvrirait un angle mort **dans le temps** —
-  arbitrage du porteur).
+  À conserver au dossier — c'est le raté le plus instructif de cette décision, et il vise
+  exactement ce que B+ était censé empêcher.
 
-  ⚠️ **Le test qui porte tout le dispositif** : `test_le_marqueur_survit_a_behave_sur_un_scenario_VERT`
-  exerce la chaîne complète (vrai `resolve_field_name` → vrai sous-processus Behave → vrai
-  parseur) sur un scénario **vert**, sans Odoo. Toute la conception repose sur un comportement
-  **mesuré** de Behave que rien ne garantit contractuellement : sans ce test, une montée de
-  version rendrait B+ **aveugle en silence** — précisément l'angle mort qu'il existe pour fermer.
-  Ne pas le neutraliser : s'il casse, corriger la capture.
+  - **Hypothèse de départ, fausse mais « mesurée »** : une sonde avait montré que le marqueur
+    `[TP_FIELD_FALLBACK]` partait sur **stderr** et **survivait sur un scénario vert** (behave
+    1.3.3). Comme `BehaveRunner` passe déjà `combined_log = stdout + stderr` au parseur, on a
+    conclu que le marqueur arrivait « déjà » et qu'il suffisait de l'extraire. Ni sidecar, ni
+    `--no-logcapture`. La conception a été **allégée sur cette base**.
+  - **Ce que la sonde ne reproduisait pas** : elle lançait Behave **sans `environment.py`**. Or
+    `BehaveRunner._assemble` en copie **TOUJOURS** un. Variable isolée après coup :
 
-  Le marqueur est **dupliqué** entre `_base_helpers` et `behave_result` (importer le premier
-  tirerait Playwright dans la couche API pour une constante) : la source unique est tenue par
-  `test_marqueur_identique_des_deux_cotes`. **196 Python + 18 vitest + build verts.**
+    | Condition | Marqueur dans `combined_log` |
+    |---|---|
+    | Sans `environment.py` (la sonde, et le test de garde) | **OUI** |
+    | Avec `environment.py` (le vrai runner) | **non** |
 
-  *Limite de preuve assumée* : le run réel du cas 2 prouve le **surfaçage** ; son `[Nominal]`
-  échoue en aval (`TypeError` hors écart 1), ce n'est donc pas un scénario vert. Le cas **vert** —
-  le cœur de l'exigence — est prouvé par le test de garde synthétique, pas par le cas 2.
-- **A1** — ✅ FAIT (annotation) ; ⏭️ **mesure d'obéissance en attente** (voir plus bas).
-  Contrat écrit dans l'en-tête de `as_prompt_section` : `{field}` = **nom technique, jamais le
-  libellé affiché**.
+  - **Conséquence** : `field_fallbacks` est resté **vide sur tous les runs réels** (exécutions 5
+    et 6 du cas 2), alors que le repli avait bel et bien lieu. Le signal se perdait **précisément
+    sur le cas qu'il doit couvrir**.
+  - **Le test de garde n'a rien vu — parce qu'il avait le même angle mort que le code.** Il avait
+    été écrit *pour* empêcher ça, mais il omettait `environment.py` : il validait un monde qui
+    n'existe pas en production. **Leçon** : un test de garde ne vaut que s'il reproduit la
+    **forme réelle** de l'assemblage ; « vrai Behave » ne suffit pas s'il n'est pas assemblé
+    comme en vrai.
+  - **Ce qui l'a démasqué** : le re-run réel du cas 2 exigé par le porteur. Aucun test de la
+    suite ne l'aurait fait. Confirme §8.8 — *un test vert ne prouve pas qu'un utilisateur voit
+    la bonne chose*.
+
+  ### Cause réelle, mesurée
+
+  Behave capture **stdout, stderr ET le logging**, et ne les recrache **pas** sur un scénario
+  **vert** dès qu'un `environment.py` est présent. Sonde `scripts/probe_capture_behave_reelle.py`,
+  sur l'assemblage RÉEL (vrai `environment.py`, vraie bibliothèque, vrai `.feature` du cas 2,
+  scénario `[Erreur]` vert contre Odoo) :
+
+  ```
+  temoin (drapeaux actuels du runner)    marqueur=non
+  --no-logcapture                        marqueur=non      ← le logging n'est pas seul en cause
+  --no-capture --no-capture-stderr       marqueur=OUI
+        > champ 'Raison de la demande' introuvable par attribut name ; résolu via son libellé -> name='name'
+  ```
+
+  Double enseignement : le repli **a bien lieu** (B fonctionne), et `--no-logcapture` **ne suffit
+  pas** — la capture stdout/stderr compte autant que celle du logging.
+
+  ### Correctif retenu : FICHIER SIDECAR (arbitrage du porteur, 2026-07-16)
+
+  **Option écartée** : drapeaux `--no-capture --no-capture-stderr`. Petit, mais garde la
+  dépendance au routage de capture de Behave.
+  **Option retenue** : un fichier sidecar. **Raison du porteur** : « on vient de se faire piéger
+  deux fois par ce routage (hypothèse initiale fausse, puis trois essais de drapeaux pour trouver
+  la bonne combinaison). Un mécanisme aussi difficile à prévoir n'est pas fiable à long terme pour
+  un dispositif censé garantir qu'un signal n'est jamais silencieusement perdu. L'option 2 élimine
+  la dépendance plutôt que de la maîtriser à ce coup-ci. »
+
+  Chaîne livrée : `resolve_field_name` → `_record_field_fallback()` écrit dans le fichier désigné
+  par `TP_FIELD_FALLBACK_FILE` (posé par `BehaveRunner._subprocess_env` à **chaque** run) →
+  `read_field_fallbacks()` le relit **avant** le `rmtree` du run_dir → `BehaveResult.field_fallbacks`
+  (niveau RUN) → `run_service._persist` → `execution.field_fallbacks` (**migration 4**, JSON) →
+  `ExecutionSummary` (un seul champ couvre l'historique du cas *et* le détail d'exécution) →
+  `FieldFallbackNotice.vue` (bandeau non-bloquant sur le dernier résultat, portant **toujours les
+  deux lectures** : step mal paramétré *ou* champ renommé côté application) + **pastille
+  d'historique**, **uniquement** sur les lignes qui portent un repli (arbitrage du porteur : le
+  signal doit survivre au run **suivant**, sinon la détection a posteriori rouvrirait un angle mort
+  **dans le temps**).
+
+  Le **log** (`logger.warning` + marqueur) est **conservé** : il sert la visibilité en mode dev
+  (§5). Il n'est simplement plus le transport. Deux canaux, deux rôles.
+
+  Effet de bord assumé : `_subprocess_env` ne rend plus `None` (« héritage implicite ») — le
+  sidecar doit être désigné à chaque run. L'héritage reste entier (l'env parent est passé
+  explicitement) ; seul le `None` disparaît. Test mis à jour en conséquence.
+
+  ### Le test de garde, réécrit
+
+  `test_GARDE_le_repli_remonte_dun_run_VERT_avec_environment_py` exerce le **vrai `BehaveRunner`**
+  (plomberie de la variable d'env + lecture du sidecar) sur une aire de run **de forme réelle** —
+  `environment.py` assemblé — avec un scénario **vert**, sans Odoo. **Vérifié : il échoue sur
+  l'ancienne implémentation** (marqueur absent du log) et passe sur la nouvelle — c'est donc un
+  garde-fou réel, pas un test complaisant. Plus son anti-faux-positif (run vert sans repli → aucune
+  entrée), l'accord du nom d'env des deux côtés (dupliqué faute de pouvoir importer `_base_helpers`
+  sans tirer Playwright dans la couche API), et l'écriture/lecture du sidecar.
+
+  ### Preuve réelle, cette fois à l'écran
+
+  Re-run du cas 2 **avec** le correctif (exécution **7**) : `field_fallbacks` porte le repli
+  attendu, et la capture (`scripts/shot_Bplus_ecran.py`, SPA réelle servie par l'API) montre le
+  bandeau avec ses deux lectures **et** la pastille sur la **seule** exécution concernée — les
+  exécutions 3 à 6, antérieures au correctif, n'en portent pas. **200 Python + 18 vitest + build.**
+
+  *Limite conservée* : le `[Nominal]` du cas 2 échoue en aval (`TypeError`, hors écart 1) ; le run
+  n'est donc pas vert dans son ensemble. Le cas **vert** — cœur de l'exigence — est prouvé par le
+  scénario `[Erreur]` (vert, avec repli) et par le test de garde.
+- **A1** — ✅ FAIT et MESURÉ. Contrat écrit dans l'en-tête de `as_prompt_section` : `{field}` =
+  **nom technique, jamais le libellé affiché**.
 
   ⚠️ **Correction du libellé de cette note** (relevé à l'implémentation, §8.4). L'option A1 était
   formulée « un `{field}`/`{name}` de champ est l'attribut HTML `name` ». **Deux inexactitudes**,
@@ -238,12 +301,20 @@ du repli au rapport, visible même sur un run vert) → **A1** (annotation catal
   Gardé par deux tests (`test_catalogue_annonce_la_semantique_de_field`,
   `test_catalogue_ne_technicise_pas_les_boutons`).
 
-  ⏭️ **Mesure d'obéissance NON FAITE — et volontairement pas bâclée.** Elle exige de re-générer un
-  spec (appel LLM réel). Or `GenerationAgent` reçoit un `connector` pour **explorer l'application**,
-  et l'annotation dit à l'agent de *lire le nom technique sur l'application réelle* : avec
-  l'instance Odoo (`localhost:10017`) **injoignable**, l'agent ne peut pas le lire. La mesure
-  serait donc **invalide** (elle testerait l'agent privé de la source que la consigne lui désigne),
-  en plus d'être payante. À rejouer avec Odoo up : re-générer `specs/validation_champ_requis.md` et
-  vérifier que le step UI est paramétré `champ "name"` et non `champ "Raison de la demande"`
-  (cf. `scripts/prove_A_falsifiabilite.py` pour le dispositif). **Sans effet bloquant** : le repli
-  technique (B) rattrape déjà le cas, A1 ne fait que renforcer.
+  ✅ **Mesure d'obéissance FAITE et CONCLUANTE** (2026-07-16, Odoo joignable ;
+  `scripts/measure_A1_nom_technique.py`). Re-génération réelle du même spec :
+
+  ```
+  je laisse le champ "name" vide          ← nom technique
+  ```
+
+  Là où les cas **2 et 3** écrivaient tous deux `champ "Raison de la demande"`. Les assertions RPC
+  restent correctes (`name`, `team_id`) : **aucune surcorrection**, l'exception boutons/onglets
+  tient. Le libellé humain ne subsiste que dans le **titre** de la fonctionnalité, où il est à sa
+  place.
+
+  ⚠️ **Portée de la mesure, à ne pas surinterpréter** : **un** échantillon, sur un LLM **non
+  déterministe**, et cette génération a produit **moins de steps UI** que les cas 2/3 (un seul
+  `{field}` d'interface). Le signal est net et va dans le bon sens, mais il ne vaut pas « prouvé
+  sur N générations ». **Sans effet bloquant de toute façon** : le repli technique (B) rattrape le
+  cas et le trace (B+) ; A1 ne fait que renforcer.

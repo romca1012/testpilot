@@ -17,6 +17,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -123,37 +124,36 @@ def meaningful_error(raw, limit: int = 600) -> str:
     return tail[:limit]
 
 
-# Marqueur émis par ``resolve_field_name`` (behave_runtime/steps_library/_base_helpers.py) quand
-# un champ est résolu par son LIBELLÉ faute d'être trouvé par son attribut `name` (décision 0007).
-# Littéral DUPLIQUÉ volontairement : importer _base_helpers ici tirerait Playwright dans la couche
-# API pour une seule constante. L'égalité des deux valeurs est tenue par test (test_field_resolution).
-FIELD_FALLBACK_MARKER = "[TP_FIELD_FALLBACK]"
-
-# Behave capture les logs des steps et les réémet préfixés (``LOG_WARNING:<logger>: …``) sur
-# STDERR — y compris pour un scénario VERT (mesuré sur behave 1.3.3 ; c'est ce qui rend B+
-# possible sans toucher au harnais). On matche donc le MARQUEUR seul, jamais le nom du logger :
-# celui-ci diffère entre les tests (``behave_runtime.steps_library._base_helpers``) et le run réel
-# (``steps._base_helpers``, layout plat assemblé par BehaveRunner).
-_FIELD_FALLBACK_RE = re.compile(re.escape(FIELD_FALLBACK_MARKER) + r"\s*(.+?)\s*$", re.MULTILINE)
+# Nom du fichier sidecar où les helpers UI consignent leurs replis « libellé → nom technique »
+# (décision 0007, phase B+), et de la variable d'env qui le désigne. Nom DUPLIQUÉ avec
+# ``_base_helpers`` (l'importer tirerait Playwright dans la couche API) : l'accord des deux
+# valeurs est tenu par test (test_field_resolution).
+FIELD_FALLBACK_FILE_ENV = "TP_FIELD_FALLBACK_FILE"
+FIELD_FALLBACK_FILENAME = "field_fallbacks.txt"
 
 _MAX_FIELD_FALLBACKS = 20
 
 
-def extract_field_fallbacks(combined_log: str, limit: int = _MAX_FIELD_FALLBACKS) -> list[str]:
-    """Replis « libellé → nom technique » tracés pendant le run (décision 0007, phase B+).
+def read_field_fallbacks(path, limit: int = _MAX_FIELD_FALLBACKS) -> list[str]:
+    """Replis « libellé → nom technique » consignés pendant le run (décision 0007, phase B+).
 
-    À lire sur le log COMPLET, jamais sur ``raw_stdout`` (tronqué aux 3000 derniers caractères) :
-    un repli est le signal d'un step mal paramétré **ou** d'un champ réellement renommé côté
-    application, et il doit remonter à l'écran même quand le scénario est VERT — c'est
-    précisément le cas que les logs seuls n'exposent pas au relecteur (§4.6, verdict 0007 n°2).
+    ⚠️ **Pourquoi un fichier et non la sortie de Behave.** Le premier jet de B+ lisait le marqueur
+    dans ``combined_log`` : il était **aveugle en run réel**. Mesuré (behave 1.3.3) — Behave capture
+    stdout/stderr/logging et ne les recrache PAS pour un scénario VERT **dès qu'un environment.py
+    est présent**, ce que ``BehaveRunner._assemble`` fait TOUJOURS. Le signal se perdait donc
+    exactement sur le cas qu'il doit couvrir (champ renommé → repli → run vert). Le fichier ne
+    dépend d'aucun routage de Behave : c'est la seule propriété qui compte ici.
 
     Dédupliqué (le même repli se répète à chaque scénario) et plafonné : la liste est persistée.
+    Fichier absent = aucun repli (cas nominal), jamais une erreur.
     """
-    if not combined_log:
+    try:
+        content = Path(path).read_text(encoding="utf-8")
+    except (OSError, ValueError):
         return []
     found: list[str] = []
-    for match in _FIELD_FALLBACK_RE.finditer(combined_log):
-        message = match.group(1).strip()
+    for line in content.splitlines():
+        message = line.strip()
         if message and message not in found:
             found.append(message)
             if len(found) >= limit:
@@ -188,9 +188,6 @@ def parse_behave_json(json_output: str, returncode: int, dry_run: bool = False,
     """Parse la sortie JSON de Behave. Fallback minimal si le JSON est absent/illisible."""
     result = BehaveResult(success=(returncode == 0), returncode=returncode, dry_run=dry_run,
                           raw_stdout=combined_log[-3000:])
-    # AVANT les retours anticipés ci-dessous et sur le log ENTIER (raw_stdout est tronqué) :
-    # un run au JSON absent ou illisible ne doit pas perdre ses replis au passage (0007 B+).
-    result.field_fallbacks = extract_field_fallbacks(combined_log)
     if not (json_output and json_output.strip()):
         return result
 

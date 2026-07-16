@@ -5,6 +5,7 @@ et les encapsule dans ses propres @given/@when/@then.
 """
 
 import logging
+import os
 import sys
 import warnings
 import re
@@ -12,10 +13,38 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 logger = logging.getLogger(__name__)
 
-# Marqueur du repli « libellé → nom technique » (décision 0007). Émis en clair dans la sortie
-# behave pour être (a) visible en mode dev, (b) capté par le rapport (phase B+). Ne pas changer
-# sans mettre à jour le parseur côté rapport.
+# Marqueur du repli « libellé → nom technique » (décision 0007). Émis dans le log pour la
+# visibilité en mode dev (§5). ⚠️ NE PAS s'en servir pour remonter le repli au rapport : Behave
+# capture stdout/stderr/logging et ne les recrache PAS sur un scénario VERT dès qu'un
+# environment.py est présent — ce que le runner assemble TOUJOURS. C'est le fichier sidecar
+# ci-dessous qui porte le repli jusqu'au rapport (phase B+).
 FIELD_FALLBACK_MARKER = "[TP_FIELD_FALLBACK]"
+
+# Chemin du fichier où consigner les replis, posé par BehaveRunner dans l'env du sous-processus.
+# Nom DUPLIQUÉ côté runner (l'importer d'ici tirerait Playwright dans la couche API) : l'accord
+# des deux valeurs est tenu par test (test_field_resolution).
+FIELD_FALLBACK_FILE_ENV = "TP_FIELD_FALLBACK_FILE"
+
+
+def _record_field_fallback(message: str) -> None:
+    """Consigne un repli dans le fichier sidecar, s'il y en a un de désigné.
+
+    Pourquoi un fichier plutôt que le log : le log NE SORT PAS d'un scénario vert (capture de
+    Behave), or le scénario vert est exactement le cas que ce signal doit couvrir — champ
+    réellement renommé → le repli le retrouve par libellé → le run passe au vert → la régression
+    serait absorbée sans témoin (verdict 0007 n°2). Le fichier ne dépend d'aucun routage de Behave.
+
+    Hors run behave (tests unitaires, appel direct), aucune variable n'est posée : on ne fait rien.
+    Une trace ne doit jamais faire échouer un test — d'où le `except OSError` silencieux.
+    """
+    path = os.environ.get(FIELD_FALLBACK_FILE_ENV)
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(message.replace("\n", " ") + "\n")
+    except OSError:
+        pass
 
 
 # ── OdooRPC helpers ──────────────────────────────────────────────────────────
@@ -146,7 +175,9 @@ def resolve_field_name(page, ident):
 
     Le repli est **toujours TRACÉ** (jamais silencieux) : sans ça, un champ réellement renommé
     côté application serait retrouvé par son libellé et la régression passerait inaperçue
-    (§4.6 / §5). Le marqueur permet aussi au rapport de le remonter (phase B+).
+    (§4.6 / §5). Deux canaux, complémentaires et non redondants : le **log** pour la visibilité
+    en mode dev, le **fichier sidecar** pour remonter jusqu'au rapport même sur un run vert
+    (phase B+ — le log, lui, n'y survit pas).
     """
     if page.locator(f'[name="{ident}"]').count() > 0:
         return ident
@@ -154,10 +185,10 @@ def resolve_field_name(page, ident):
     if labelled.count() > 0:
         resolved = labelled.first.get_attribute("name")
         if resolved:
-            logger.warning(
-                "%s champ '%s' introuvable par attribut name ; résolu via son libellé -> "
-                "name='%s'. Paramètre le step par le nom technique du champ.",
-                FIELD_FALLBACK_MARKER, ident, resolved)
+            message = (f"champ '{ident}' introuvable par attribut name ; résolu via son libellé "
+                       f"-> name='{resolved}'. Paramètre le step par le nom technique du champ.")
+            logger.warning("%s %s", FIELD_FALLBACK_MARKER, message)  # mode dev (§5)
+            _record_field_fallback(message)                          # jusqu'au rapport (B+)
             return resolved
     return ident  # ni name ni libellé exploitable : on laisse échouer en aval (message d'origine)
 

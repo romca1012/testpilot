@@ -5,22 +5,31 @@ avec un repli TRACÉ (jamais silencieux). Tests déterministes sans navigateur :
 reproduit juste la surface Playwright utilisée (`locator(sel).count()`,
 `get_by_label(text).count()`, `.first.get_attribute("name")`).
 
-B+ : ce repli tracé remonte jusqu'à l'exécution et à l'écran, y compris sur un run VERT — Behave
-n'affiche pas les logs d'un scénario réussi, or c'est exactement le cas où un champ renommé côté
-application serait absorbé sans que personne ne le voie (verdict 0007 n°2).
+B+ : ce repli tracé remonte jusqu'à l'exécution et à l'écran, y compris sur un run VERT — c'est
+exactement le cas où un champ renommé côté application serait absorbé sans que personne ne le voie
+(verdict 0007 n°2).
+
+⚠️ Le transport passe par un FICHIER SIDECAR, pas par la sortie de Behave. Premier jet de B+ :
+il lisait le marqueur dans `combined_log` et un test de garde lançait Behave SANS `environment.py`
+— ce test passait, et B+ était pourtant AVEUGLE en run réel (`field_fallbacks` toujours vide).
+Cause mesurée : Behave capture stdout/stderr/logging et ne les recrache pas sur un scénario vert
+dès qu'un `environment.py` est présent, ce que `BehaveRunner._assemble` fait TOUJOURS. Le test de
+garde ci-dessous assemble donc un vrai `environment.py` : il échouerait sur l'ancienne
+implémentation.
 """
 
 import logging
-import subprocess
-import sys
+import os
 from pathlib import Path
 
+from behave_runtime.steps_library import _base_helpers
 from behave_runtime.steps_library._base_helpers import (
+    FIELD_FALLBACK_FILE_ENV,
     FIELD_FALLBACK_MARKER,
     resolve_field_name,
 )
 from testpilot.execution import behave_result
-from testpilot.execution.behave_result import extract_field_fallbacks, parse_behave_json
+from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.store.db import (
     _column_names,
     _migrate_4_execution_field_fallbacks,
@@ -98,79 +107,77 @@ def test_libelle_trouve_mais_controle_sans_name_ne_devine_pas(caplog):
     assert FIELD_FALLBACK_MARKER not in caplog.text
 
 
-# ── Phase B+ : du log du run jusqu'à l'exécution ──────────────────────────────
+# ── Phase B+ : du run jusqu'à l'exécution, via le fichier sidecar ─────────────
 
-def test_marqueur_identique_des_deux_cotes():
-    """Source unique du marqueur, tenue par test faute d'import.
+def test_nom_de_la_variable_denv_identique_des_deux_cotes():
+    """Source unique du nom d'env, tenue par test faute d'import.
 
-    Le parseur (couche API) NE PEUT PAS importer `_base_helpers` sans tirer Playwright avec lui :
-    le littéral y est donc dupliqué. C'est ce test — et lui seul — qui empêche les deux valeurs
-    de diverger en silence, ce qui rendrait B+ aveugle.
+    Le runner (couche API) NE PEUT PAS importer `_base_helpers` sans tirer Playwright avec lui :
+    le littéral y est donc dupliqué. C'est ce test — et lui seul — qui empêche les deux valeurs de
+    diverger en silence : le helper écrirait dans un fichier que le runner ne lirait jamais, et le
+    repli redeviendrait invisible sans que rien n'échoue.
     """
-    assert behave_result.FIELD_FALLBACK_MARKER == FIELD_FALLBACK_MARKER
+    assert behave_result.FIELD_FALLBACK_FILE_ENV == FIELD_FALLBACK_FILE_ENV
 
 
-def test_extraction_du_repli_depuis_le_log_behave():
-    # Forme réelle : Behave réémet le log du step préfixé par LOG_<NIVEAU>:<logger>:
-    log = ("LOG_WARNING:steps._base_helpers: [TP_FIELD_FALLBACK] champ 'Raison de la demande' "
-           "introuvable par attribut name ; résolu via son libellé -> name='name'.\n")
-    fallbacks = extract_field_fallbacks(log)
-    assert len(fallbacks) == 1
-    assert "Raison de la demande" in fallbacks[0] and "name='name'" in fallbacks[0]
-    assert FIELD_FALLBACK_MARKER not in fallbacks[0]  # le marqueur est du transport, pas du message
+def test_helper_consigne_le_repli_dans_le_sidecar(tmp_path, monkeypatch):
+    sidecar = tmp_path / "field_fallbacks.txt"
+    monkeypatch.setenv(FIELD_FALLBACK_FILE_ENV, str(sidecar))
+    page = _FakePage(existing_names={"name"}, label_map={"Raison de la demande": "name"})
+
+    assert resolve_field_name(page, "Raison de la demande") == "name"
+
+    contenu = sidecar.read_text(encoding="utf-8")
+    assert "Raison de la demande" in contenu and "name='name'" in contenu
+    # Le marqueur appartient au LOG (mode dev) ; le sidecar porte le message, pas le transport.
+    assert FIELD_FALLBACK_MARKER not in contenu
 
 
-def test_extraction_dedupliquee():
-    # Le même repli se répète à chaque scénario du run : une seule entrée persistée.
-    ligne = "LOG_WARNING:steps._base_helpers: [TP_FIELD_FALLBACK] champ 'X' -> name='x'.\n"
-    assert len(extract_field_fallbacks(ligne * 3)) == 1
+def test_helper_n_ecrit_rien_sans_repli(tmp_path, monkeypatch):
+    # Anti-faux-positif : un champ résolu par son nom technique ne consigne rien.
+    sidecar = tmp_path / "field_fallbacks.txt"
+    monkeypatch.setenv(FIELD_FALLBACK_FILE_ENV, str(sidecar))
+    assert resolve_field_name(_FakePage(existing_names={"name"}), "name") == "name"
+    assert not sidecar.exists()
 
 
-def test_extraction_lit_le_log_entier_pas_la_queue_tronquee():
-    """Le repli survit même si 3000+ caractères le suivent.
-
-    `raw_stdout` ne garde que les 3000 derniers caractères ; extraire depuis ce champ perdrait
-    un repli survenu tôt dans un run bavard.
-    """
-    log = "[TP_FIELD_FALLBACK] champ 'X' -> name='x'.\n" + ("bruit\n" * 2000)
-    result = parse_behave_json("", returncode=0, combined_log=log)
-    assert result.field_fallbacks == ["champ 'X' -> name='x'."]
-    assert FIELD_FALLBACK_MARKER not in result.raw_stdout  # bien hors de la fenêtre tronquée
+def test_helper_sans_variable_denv_ne_casse_pas(monkeypatch, caplog):
+    """Hors run behave (test unitaire, appel direct), aucun sidecar n'est désigné : on trace au
+    log et on continue. Une trace ne doit jamais faire échouer ce qu'elle observe."""
+    monkeypatch.delenv(FIELD_FALLBACK_FILE_ENV, raising=False)
+    page = _FakePage(existing_names={"name"}, label_map={"Raison de la demande": "name"})
+    with caplog.at_level(logging.WARNING):
+        assert resolve_field_name(page, "Raison de la demande") == "name"
+    assert FIELD_FALLBACK_MARKER in caplog.text
 
 
-def test_extraction_meme_sans_json_exploitable():
-    # JSON absent (run planté avant l'écriture) : le repli ne doit pas être perdu au passage.
-    log = "[TP_FIELD_FALLBACK] champ 'X' -> name='x'.\n"
-    assert parse_behave_json("", returncode=1, combined_log=log).field_fallbacks
-    assert parse_behave_json("pas du json", returncode=1, combined_log=log).field_fallbacks
+def test_lecture_du_sidecar_dedupliquee_et_plafonnee(tmp_path):
+    sidecar = tmp_path / "f.txt"
+    sidecar.write_text("champ 'X' -> name='x'.\n" * 3, encoding="utf-8")
+    assert behave_result.read_field_fallbacks(sidecar) == ["champ 'X' -> name='x'."]
+
+    sidecar.write_text("".join(f"repli {i}\n" for i in range(50)), encoding="utf-8")
+    assert len(behave_result.read_field_fallbacks(sidecar, limit=20)) == 20
 
 
-def test_aucun_repli_aucun_bruit():
-    # Anti-faux-positif : un run normal ne remonte aucun repli (sinon la pastille serait partout).
-    assert extract_field_fallbacks("") == []
-    assert extract_field_fallbacks("1 scenario passed, 0 failed\nRien à signaler\n") == []
+def test_lecture_du_sidecar_absent_vaut_aucun_repli(tmp_path):
+    # Cas nominal (aucun repli) : le fichier n'est jamais créé — ce n'est pas une erreur.
+    assert behave_result.read_field_fallbacks(tmp_path / "jamais_ecrit.txt") == []
 
 
-def test_le_marqueur_survit_a_behave_sur_un_scenario_VERT(tmp_path):
-    """GARDE — épingle le comportement de Behave sur lequel repose TOUTE la phase B+.
+def _ecrire_aire_de_run(tmp_path, *, avec_repli: bool):
+    """Aire de run minimale mais de FORME RÉELLE : un environment.py est assemblé, comme le
+    fait toujours BehaveRunner — c'est la condition qui active la capture de Behave."""
+    runtime = tmp_path / "runtime"; runtime.mkdir()
+    (runtime / "environment.py").write_text(
+        "# environment.py minimal : sa PRÉSENCE suffit à activer la capture de Behave.\n"
+        "def before_all(context):\n    pass\n", encoding="utf-8")
 
-    Mesuré sur behave 1.3.3 : le log d'un step part sur **stderr** et survit même quand le
-    scénario est VERT — c'est ce qui permet de capter le repli sans toucher au harnais. Rien ne
-    garantit ce comportement contractuellement : sans ce test, une montée de version de Behave
-    rendrait B+ aveugle **en silence**, soit précisément l'angle mort qu'il existe pour fermer.
-    Ici la chaîne complète est exercée : vrai `resolve_field_name` → vrai Behave → vrai parseur.
-    """
-    repo_root = Path(__file__).resolve().parents[1]
-    (tmp_path / "steps").mkdir()
-    (tmp_path / "vert.feature").write_text(
-        "Feature: garde du repli\n"
-        "  Scenario: un scenario vert qui declenche un repli\n"
-        "    Given un champ resolu par son libelle\n",
-        encoding="utf-8")
-    # Le step passe (scénario VERT) tout en déclenchant un vrai repli via le vrai helper.
-    (tmp_path / "steps" / "repli.py").write_text(
+    lib = tmp_path / "lib"; lib.mkdir()
+    ident = "Raison de la demande" if avec_repli else "name"
+    (lib / "garde_steps.py").write_text(
         "import sys\n"
-        f"sys.path.insert(0, r'{repo_root}')\n"
+        f"sys.path.insert(0, r'{Path(__file__).resolve().parents[1]}')\n"
         "from behave import given\n"
         "from behave_runtime.steps_library._base_helpers import resolve_field_name\n"
         "\n"
@@ -182,31 +189,53 @@ def test_le_marqueur_survit_a_behave_sur_un_scenario_VERT(tmp_path):
         "    def get_attribute(self, attr): return self._n\n"
         "\n"
         "class _P:\n"
-        "    def locator(self, sel): return _L(0)\n"
+        "    # Aucun champ ne répond par [name=...] sauf 'name' ; le libellé, lui, résout.\n"
+        "    def locator(self, sel): return _L(1 if \"name='name'\" in sel or '\"name\"' in sel else 0)\n"
         "    def get_by_label(self, text, exact=False): return _L(1, 'name')\n"
         "\n"
-        "@given('un champ resolu par son libelle')\n"
+        "@given('un champ est resolu')\n"
         "def step_impl(context):\n"
-        "    assert resolve_field_name(_P(), 'Raison de la demande') == 'name'\n",
+        f"    assert resolve_field_name(_P(), {ident!r}) == 'name'\n",
         encoding="utf-8")
 
-    proc = subprocess.run(
-        [sys.executable, "-m", "behave", "-f", "json", "-o", "result.json", "vert.feature"],
-        cwd=str(tmp_path), capture_output=True, text=True, encoding="utf-8",
-        errors="replace", timeout=120)
-    assert proc.returncode == 0, f"le scénario de garde doit être VERT :\n{proc.stdout}\n{proc.stderr}"
+    gen = tmp_path / "gen"; gen.mkdir()
+    (gen / "garde.feature").write_text(
+        "# language: fr\n"
+        "Fonctionnalité: garde du repli\n"
+        "  Scénario: un scenario VERT qui declenche un repli\n"
+        "    Soit un champ est resolu\n", encoding="utf-8")
+    return BehaveRunner(runtime_dir=runtime, generated_dir=gen, steps_library_dir=lib,
+                        real_timeout=120)
 
-    json_path = tmp_path / "result.json"
-    result = parse_behave_json(
-        json_path.read_text(encoding="utf-8") if json_path.exists() else "",
-        proc.returncode, combined_log=f"{proc.stdout}\n{proc.stderr}")
 
-    assert result.passed == 1, "le run de garde doit compter un scénario passé"
+def test_GARDE_le_repli_remonte_dun_run_VERT_avec_environment_py(tmp_path):
+    """GARDE — le test que le premier jet de B+ n'avait pas, et qui l'aurait démasqué.
+
+    Il exerce le VRAI `BehaveRunner` (plomberie de la variable d'env + lecture du sidecar) sur une
+    aire de run de forme réelle — `environment.py` assemblé — avec un scénario VERT, sans Odoo.
+
+    Sur l'implémentation précédente (lecture du marqueur dans `combined_log`), ce test ÉCHOUE :
+    Behave avale le log dès qu'un `environment.py` est présent. C'est précisément l'angle mort qui
+    avait laissé passer un B+ aveugle en run réel, validé par un test de garde qui, lui, omettait
+    `environment.py` et testait donc un monde qui n'existe pas en production.
+    """
+    runner = _ecrire_aire_de_run(tmp_path, avec_repli=True)
+    result = runner.real_run("garde")
+
+    assert result.passed == 1, f"le scénario de garde doit être VERT : {result.raw_stdout}"
     assert result.field_fallbacks, (
         "le repli d'un scénario VERT doit remonter jusqu'à BehaveResult — s'il ne remonte plus, "
-        "Behave a changé sa façon d'exposer les logs et B+ est aveugle : ne pas neutraliser ce "
-        "test, corriger la capture.")
+        "le signal est perdu en silence : corriger le transport, ne pas neutraliser ce test.")
     assert "Raison de la demande" in result.field_fallbacks[0]
+    assert "name='name'" in result.field_fallbacks[0]
+
+
+def test_GARDE_un_run_VERT_sans_repli_ne_remonte_rien(tmp_path):
+    # Anti-faux-positif du même dispositif : sans repli, aucune entrée (donc aucune pastille).
+    runner = _ecrire_aire_de_run(tmp_path, avec_repli=False)
+    result = runner.real_run("garde")
+    assert result.passed == 1
+    assert result.field_fallbacks == []
 
 
 # ── Migration 4 : la colonne qui porte les replis ─────────────────────────────
