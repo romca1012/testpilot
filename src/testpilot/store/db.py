@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -57,6 +57,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_2_project_connector(conn)
     if version < 3:
         _migrate_3_case_priority(conn)
+    if version < 4:
+        _migrate_4_execution_field_fallbacks(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -131,6 +133,18 @@ def _migrate_3_case_priority(conn: sqlite3.Connection) -> None:
     """
     if "priority" not in _column_names(conn, "test_case"):
         conn.execute("ALTER TABLE test_case ADD COLUMN priority TEXT NOT NULL DEFAULT 'medium'")
+
+
+def _migrate_4_execution_field_fallbacks(conn: sqlite3.Connection) -> None:
+    """Replis « libellé → nom technique » attachés à l'exécution (décision 0007, phase B+).
+    Idempotent.
+
+    Liste JSON des replis tracés par les helpers UI pendant le run. Attachée à l'EXÉCUTION (pas
+    au scénario) : le repli doit rester lisible a posteriori, y compris sur un run vert, sinon
+    un champ réellement renommé côté application serait absorbé sans que personne ne le voie.
+    """
+    if "field_fallbacks" not in _column_names(conn, "execution"):
+        conn.execute("ALTER TABLE execution ADD COLUMN field_fallbacks TEXT NOT NULL DEFAULT ''")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

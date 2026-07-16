@@ -60,16 +60,21 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   `[name='Raison de la demande']` est enfin en base) ; 3 tests de non-régression, **168 verts**.
   *Reste* : visibilité complète à l'écran (dépend de l'écart 4 pour `ReportView` ; le dépliage
   `CaseRow` n'affiche pas la cause — choix de design 0006 à trancher). Voir `CONTINUITE.md` §6.1.
-- [ ] **Sémantique des paramètres de steps** (écart 1, **`0007` — DÉCIDÉ, à implémenter**) —
+- [ ] **Sémantique des paramètres de steps** (écart 1, **`0007` — B et B+ faits ; reste A1**) —
   l'agent passe le **libellé humain** au step UI là où le helper attend le **nom technique**
   (`[name=…]`) → `TimeoutError`. **Bug déterministe** (reproduit cas 2 **et** cas 3). Racine de
   **famille commune** avec `0008`/`0003` (le catalogue montre le libellé, pas la sémantique de
   `{field}`), **mais** remède **technique** possible (un champ est résoluble par `name` *et* par
   libellé). **Verdict** :
-  - **B porteur** — helpers UI tolérants (`_base_helpers` : `name` d'abord, `get_by_label` en
-    repli). **Repli TRACÉ** et visible en mode dev (§5), **jamais silencieux** — sinon une vraie
-    régression Odoo (champ renommé) serait absorbée. Surfaçage type `lint_warnings` souhaité,
-    non obligatoire.
+  - **B porteur** — ✅ *fait*. Helpers UI tolérants (`_base_helpers` : `name` d'abord,
+    `get_by_label` en repli). **Repli TRACÉ** et visible en mode dev (§5), **jamais silencieux** —
+    sinon une vraie régression Odoo (champ renommé) serait absorbée.
+  - **B+** — ✅ *fait*. Surfaçage du repli **REQUIS**, pas optionnel (arbitrage complémentaire du
+    verdict `0007` n°2) : Behave masque les logs d'un scénario **vert**, or le pire cas de
+    l'exigence (champ renommé → repli le retrouve → run vert) est justement un succès. Le log
+    seul a donc un **angle mort** que seul le surfaçage ferme. Marqueur capté du log behave →
+    colonne `execution.field_fallbacks` (migration 4) → API → bandeau `FieldFallbackNotice` +
+    pastille d'historique dans `CaseDetail`.
   - **A1** — annotation du catalogue (`as_prompt_section`) : `{field}` = attribut HTML `name`,
     **maintenant** (la reporter recréerait le trou de consigne). A2 (par step) différée.
   → `decisions/0007-agent-parametre-steps-libelle-vs-nom-technique-inc1.md`.

@@ -121,6 +121,56 @@ def test_gate_actionnable_puis_execution_et_rapport(client):
     assert "Axe exécution" in html and "Axe fonctionnel" in html
 
 
+class _FakeExecutorAvecRepli:
+    """Run VERT qui a néanmoins dû résoudre un champ par son libellé (décision 0007 B+)."""
+
+    def __init__(self, runner=None):
+        pass
+
+    def execute(self, module_name):
+        real = BehaveResult(
+            success=True, returncode=0, passed=1,
+            scenarios=[BehaveScenario("cas nominal", "passed")], failures=[],
+            field_fallbacks=["champ 'Raison de la demande' résolu via son libellé -> name='name'"])
+        return ExecutionOutcome(module_name=module_name, dry_run_passed=True, real_run=real)
+
+
+def test_repli_de_champ_visible_meme_sur_un_run_vert(client, monkeypatch):
+    """Le cas que les logs seuls n'exposent pas : run vert + repli (verdict 0007 n°2).
+
+    Behave masque les logs d'un scénario réussi. Si le repli ne remontait pas ici, un champ
+    renommé côté application serait retrouvé par son libellé, le run virerait au vert, et la
+    régression passerait inaperçue.
+    """
+    monkeypatch.setattr(run_service, "Executor", _FakeExecutorAvecRepli)
+    conn = _conn()
+    cid, _ = _seed_case(conn, approved=True)
+    conn.close()
+
+    eid = client.post(f"/api/cases/{cid}/runs").json()["execution_id"]
+    execu = client.get(f"/api/executions/{eid}").json()
+
+    # Le verdict n'est PAS dégradé par le repli (il informe, il ne juge pas)…
+    assert execu["execution_status"] == "success"
+    # … et il reste néanmoins visible.
+    assert execu["field_fallbacks"] == [
+        "champ 'Raison de la demande' résolu via son libellé -> name='name'"]
+
+    # Visible aussi dans l'historique du cas : le signal doit survivre au run SUIVANT, sinon la
+    # détection a posteriori rouvrirait un angle mort dans le temps.
+    case = client.get(f"/api/cases/{cid}").json()
+    assert case["executions"][0]["field_fallbacks"] == execu["field_fallbacks"]
+
+
+def test_run_sans_repli_ne_remonte_rien(client):
+    # Anti-faux-positif : sans repli, aucune pastille (l'exécuteur par défaut n'en produit pas).
+    conn = _conn()
+    cid, _ = _seed_case(conn, approved=True)
+    conn.close()
+    eid = client.post(f"/api/cases/{cid}/runs").json()["execution_id"]
+    assert client.get(f"/api/executions/{eid}").json()["field_fallbacks"] == []
+
+
 # Contenu EXACT du step tautologique de l'écart 2 (run #2, cas 2) — cf. test_assertion_lint.
 _ECART_2_STEPS = '''
 from behave import then

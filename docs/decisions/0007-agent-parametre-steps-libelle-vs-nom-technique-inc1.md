@@ -1,8 +1,8 @@
 # 0007 — Génération : l'agent passe le libellé humain là où le step attend le nom technique (Inc. 1)
 
 Date : 2026-07-15
-Statut : **DÉCIDÉ** (arbitrage du porteur, 2026-07-15 — voir § *Verdict*). **Pas encore
-implémenté** : plan à valider avant tout code.
+Statut : **DÉCIDÉ** (arbitrage du porteur, 2026-07-15 — voir § *Verdict*). **B et B+ livrés et
+prouvés** (2026-07-16) ; **reste A1** (annotation du catalogue).
 Priorité : **2** (après `0008`) — cf. `BACKLOG.md`
 
 ---
@@ -180,6 +180,41 @@ du repli au rapport, visible même sur un run vert) → **A1** (annotation catal
   (`TypeError` dans un step RPC de case 2, hors écart 1). La barrière de résolution est levée.
   185 tests verts. *NB* : la visibilité du marqueur en run réel est traitée par B+ (non persisté
   aujourd'hui — c'est précisément l'angle mort que B+ ferme).
-- **B+** — ⏭️ à faire : capter le marqueur `[TP_FIELD_FALLBACK]` dans la sortie behave →
-  l'attacher à l'exécution → l'afficher au rapport (comparable aux `lint_warnings`).
+- **B+** — ✅ FAIT. **Cible précisée par le porteur (2026-07-16)** : l'**enregistrement d'exécution
+  + l'UI**, et **non** le rapport JSON au sens littéral — l'intention était « visible par un humain
+  même sur un run vert », ce que l'exécution porte déjà. Donc **aucune dépendance sur l'écart 4**
+  (qui reste ouvert et distinct).
+
+  **Mesure préalable, qui a contredit l'hypothèse de départ et allégé la conception** : on
+  supposait que Behave masquerait le marqueur sur un scénario vert (d'où l'idée d'un fichier
+  sidecar ou d'un handler dans `environment.py`). Sonde réelle (behave **1.3.3**) : le log du step
+  est réémis préfixé (`LOG_WARNING:<logger>:`) sur **stderr**, et **survit sur un scénario vert**.
+  Or `BehaveRunner` passe déjà `combined_log = stdout + stderr` à `parse_behave_json` : le
+  marqueur **arrivait déjà** jusqu'au parseur. Ni `environment.py`, ni sidecar, ni
+  `--no-logcapture` n'ont été nécessaires.
+
+  Chaîne livrée : `extract_field_fallbacks()` (sur le log **entier** — `raw_stdout` est tronqué aux
+  3000 derniers caractères — et **avant** les retours anticipés, pour qu'un run au JSON absent ne
+  perde pas ses replis) → `BehaveResult.field_fallbacks` → `run_service._persist` →
+  `execution.field_fallbacks` (**migration 4**, JSON, niveau RUN) → `ExecutionSummary` (un seul
+  champ couvre l'historique du cas *et* le détail d'exécution) → `FieldFallbackNotice.vue`
+  (bandeau non-bloquant sur le dernier résultat) + **pastille d'historique**, cette dernière
+  **uniquement** sur les lignes qui portent un repli (jamais par défaut : le signal doit survivre
+  au run suivant, sinon la détection a posteriori rouvrirait un angle mort **dans le temps** —
+  arbitrage du porteur).
+
+  ⚠️ **Le test qui porte tout le dispositif** : `test_le_marqueur_survit_a_behave_sur_un_scenario_VERT`
+  exerce la chaîne complète (vrai `resolve_field_name` → vrai sous-processus Behave → vrai
+  parseur) sur un scénario **vert**, sans Odoo. Toute la conception repose sur un comportement
+  **mesuré** de Behave que rien ne garantit contractuellement : sans ce test, une montée de
+  version rendrait B+ **aveugle en silence** — précisément l'angle mort qu'il existe pour fermer.
+  Ne pas le neutraliser : s'il casse, corriger la capture.
+
+  Le marqueur est **dupliqué** entre `_base_helpers` et `behave_result` (importer le premier
+  tirerait Playwright dans la couche API pour une constante) : la source unique est tenue par
+  `test_marqueur_identique_des_deux_cotes`. **196 Python + 18 vitest + build verts.**
+
+  *Limite de preuve assumée* : le run réel du cas 2 prouve le **surfaçage** ; son `[Nominal]`
+  échoue en aval (`TypeError` hors écart 1), ce n'est donc pas un scénario vert. Le cas **vert** —
+  le cœur de l'exigence — est prouvé par le test de garde synthétique, pas par le cas 2.
 - **A1** — ⏭️ à faire : ligne dans `as_prompt_section` (`{field}` = attribut HTML `name`).

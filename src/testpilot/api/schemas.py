@@ -6,6 +6,8 @@ réponses stables. La séparation exécution/fonctionnel du §5 est préservée 
 
 from __future__ import annotations
 
+import json
+
 from pydantic import BaseModel
 
 
@@ -103,6 +105,11 @@ class ExecutionSummary(BaseModel):
     duration_seconds: float = 0.0
     started_at: str = ""
     running: bool = False
+    # Replis « libellé → nom technique » tracés pendant le run (décision 0007, phase B+).
+    # Informatif et NON-bloquant, à l'image des `lint_warnings` du gate : signale soit un step
+    # mal paramétré, soit un champ réellement renommé côté application. Présent même sur un run
+    # vert — c'est là que le repli serait autrement invisible.
+    field_fallbacks: list[str] = []
     # Contexte de ce qui a tourné (rempli sur la liste globale). ``suite_name`` est réservé
     # à l'Exécution nommée transverse (§7) — null tant qu'elle n'est pas implémentée.
     case_title: str | None = None
@@ -236,6 +243,21 @@ def review_out(row: dict) -> ReviewOut:
     )
 
 
+def _field_fallbacks(raw) -> list[str]:
+    """Décode la liste JSON des replis (0007 B+). Vide si absente ou illisible.
+
+    Un contenu illisible ne doit jamais casser l'affichage d'une exécution : le repli est une
+    information de confort, le verdict à deux axes reste la donnée souveraine.
+    """
+    if not raw:
+        return []
+    try:
+        decoded = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    return [str(item) for item in decoded] if isinstance(decoded, list) else []
+
+
 def execution_summary(row: dict, *, running: bool = False) -> ExecutionSummary:
     return ExecutionSummary(
         id=row["id"], test_case_id=row["test_case_id"], version_id=row["version_id"],
@@ -246,6 +268,7 @@ def execution_summary(row: dict, *, running: bool = False) -> ExecutionSummary:
         cost_usd=row.get("cost_usd", 0.0), iterations=row.get("iterations", 0),
         duration_seconds=row.get("duration_seconds", 0.0),
         started_at=row.get("started_at", ""), running=running,
+        field_fallbacks=_field_fallbacks(row.get("field_fallbacks")),
         case_title=row.get("case_title"), module_name=row.get("module_name"),
         suite_name=row.get("suite_name"),
     )

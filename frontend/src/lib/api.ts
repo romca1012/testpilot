@@ -105,6 +105,8 @@ export interface ExecutionSummary {
   execution_status: string; functional_status: string
   scenarios_total: number; scenarios_passed: number; scenarios_failed: number
   cost_usd: number; iterations: number; duration_seconds: number; started_at: string; running: boolean
+  // Replis « libellé → nom technique » tracés pendant le run (décision 0007 B+) — non-bloquant.
+  field_fallbacks?: string[]
   case_title: string | null; module_name: string | null; suite_name: string | null
 }
 export interface CaseDetail {

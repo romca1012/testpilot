@@ -115,6 +115,10 @@ CREATE TABLE IF NOT EXISTS execution (
     duration_seconds  REAL    NOT NULL DEFAULT 0,
     report_json_path  TEXT    NOT NULL DEFAULT '',
     report_html_path  TEXT    NOT NULL DEFAULT '',
+    -- Replis « libellé → nom technique » tracés pendant le run (JSON, décision 0007 B+).
+    -- Doit rester visible même sur un run VERT : un repli signale soit un step mal paramétré,
+    -- soit un champ réellement renommé côté application.
+    field_fallbacks   TEXT    NOT NULL DEFAULT '',
     trigger           TEXT    NOT NULL DEFAULT 'first_run'
                                 CHECK (trigger IN ('first_run', 'rerun')),
     started_at        TEXT    NOT NULL,

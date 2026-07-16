@@ -7,6 +7,7 @@ génération ni coût LLM. L'état « en cours » est suivi en mémoire (serveur
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 
@@ -119,12 +120,20 @@ def _persist(conn, execution_id, case_id, verdict, outcome, duration) -> None:
                 cause_category=dv.cause_category, defect_origin=dv.defect_origin,
                 confirmation_status=dv.confirmation_status)
 
+    # Replis « libellé → nom technique » tracés pendant le run (0007 B+). Attachés à l'exécution
+    # pour rester lisibles a posteriori, y compris quand le run est VERT — Behave n'affiche pas
+    # les logs d'un scénario réussi, et c'est justement le cas où un champ renommé côté
+    # application passerait inaperçu (verdict 0007 n°2). Aucun run réel (erreur technique
+    # avant l'exécution) → liste vide.
+    fallbacks = outcome.real_run.field_fallbacks if outcome.real_run is not None else []
+
     execs.finalize(
         execution_id, execution_status=verdict.execution_status,
         functional_status=verdict.functional_status,
         scenarios_total=len(verdict.scenarios),
         scenarios_passed=verdict.scenarios_passed, scenarios_failed=verdict.scenarios_failed,
-        cost_usd=0.0, iterations=0, duration_seconds=duration)
+        cost_usd=0.0, iterations=0, duration_seconds=duration,
+        field_fallbacks=json.dumps(fallbacks, ensure_ascii=False) if fallbacks else "")
 
     cases = CaseRepo(conn)
     prev = cases.get(case_id)

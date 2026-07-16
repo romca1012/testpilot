@@ -12,6 +12,7 @@ import StatusPair from '../components/StatusPair.vue'
 import ValidationBadge from '../components/ValidationBadge.vue'
 import ReviewGate from '../components/ReviewGate.vue'
 import CodeView from '../components/CodeView.vue'
+import FieldFallbackNotice from '../components/FieldFallbackNotice.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -145,6 +146,9 @@ onBeforeUnmount(stopPoll)
           </div>
         </div>
         <p v-else class="text-sm text-muted-foreground">Pas encore exécuté.</p>
+
+        <!-- Repli de champ du dernier run (0007 B+) : non-bloquant, affiché même sur un run vert. -->
+        <FieldFallbackNotice :fallbacks="lastExecution?.field_fallbacks || []" class="mt-3" />
       </Card>
 
       <!-- 2. RELECTURE (validation humaine du contenu généré) — bloc distinct -->
@@ -202,6 +206,14 @@ onBeforeUnmount(stopPoll)
               {{ formatDate(e.started_at) }} · {{ formatDuration(e.duration_seconds) }}
             </span>
             <StatusPair :execution-status="e.execution_status" :functional-status="e.functional_status" />
+            <!-- Pastille de repli (0007 B+) : UNIQUEMENT sur les runs qui en portent un — jamais
+                 par défaut. Le signal doit survivre au run suivant, sinon la détection a
+                 posteriori d'un champ renommé rouvrirait un angle mort dans le temps. -->
+            <span v-if="e.field_fallbacks?.length"
+                  class="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-[11px] text-warning"
+                  :title="`Champ résolu par son libellé, pas par son nom technique :\n${e.field_fallbacks.join('\n')}`">
+              ⚠ Repli de champ
+            </span>
             <Icon name="chevron" class="h-4 w-4 text-muted-foreground/30 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
           </li>
         </ul>
