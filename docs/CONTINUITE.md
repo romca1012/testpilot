@@ -33,6 +33,13 @@ par un autre serveur, hors projet). CLI : `testpilot run specs/demande_materiel.
   Bases `.bak` gitignorées.
 - **Cas 3** = artefact de preuve de A (re-génération) — **conservé** (décision du porteur).
   Backup avant sa création : `data/testpilot.db.pre-preuve-A.bak`.
+- ✅ **`0014` — RÉPARATION AUTOMATIQUE LIVRÉE.** Le pilier annoncé qui n'existait pas : la
+  boucle existe, **les deux chemins sont prouvés en réel**. Cas 2 : `technical_error` (2/3) →
+  1 tentative → **`success / conforme` 3/3** — la **première exécution verte du projet**. v8
+  **ratifiée** par le porteur → cas 2 **`validated`** (le premier). Cas 6 : `vrai_bug` → aucune
+  réparation. ⚠️ **Le gate a tenu pendant que le circuit se trompait** (bug 1 actif : v7 jamais
+  auto-approuvée) — l'architecture en couches a rattrapé une couche défaillante.
+  → `decisions/0014-…md`.
 - **Écart 1 : décision `0007` — CLOSE.** B ✅, B+ ✅ (au **2ᵉ essai**), A1 ✅ **mesuré**. Tout est
   prouvé **en conditions réelles**, capture d'écran à l'appui (exécution 7 du cas 2).
   ⚠️ **À lire absolument dans la note** : le **premier jet de B+ était AVEUGLE en run réel** et

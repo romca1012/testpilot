@@ -208,58 +208,18 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   avec compteur ; infobulle sur `vrai_bug` disant que c'est une **déduction**. Jamais de blocage,
   jamais de recalcul des deux axes (§4.2, gardé par test). 15 tests.
   → `decisions/0013-arbitrage-humain-des-diagnostics-inc1.md`.
-- [ ] **Réparation (`0014`)** — 🟡 **EN COURS : étapes 1-2 faites, 3-6 à faire.**
-  ✅ **Étape 1** : prompt corrigé (4 outils fantômes) + découpé (`repair_prompt.md`).
-  ✅ **Étape 2** : le **gate autorise un budget** de N réparations (option C, migration 9) —
-  défaut 2, 0 = interdite ; `repair_budget_for_version()` rend 0 sans relecture (§4.3 tenu).
-  ✅ **Étape 3** : la **boucle existe** — `repair_service.run_repair_loop()`. Le circuit décide
-  (`evaluate()` était écrit, testé, **jamais appelé** : il l'est) ; l'agent ne fait que proposer
-  (`generation/repair_agent.py`, aucun outil d'exécution). **Modèle B** (une exécution = un run).
-  **Option (i)** : une version réparée devient la référence si résolu, mais **jamais approuvée
-  d'office** → le cas repasse « à relire » pour ratification (§4.3). Budget = plafond du circuit :
-  `budget=0` coupe au 1ᵉʳ tour sans appel LLM. ✅ **Étape 4** faite en chemin (une tentative = une
-  version + `change_summary` + `what_was_tried`). ✅ **Étape 5** : surfaçage
-  (`what_was_tried` au rapport, chaîne de versions avec `change_summary` + badge « réparation
-  automatique » dans `CaseDetail`). 🟡 **Étape 6 — preuve réelle : chemin « arrête » PROUVÉ
-  (cas 6 → `vrai_bug` → aucune réparation, zéro appel LLM) ; chemin « répare » NON PROUVÉ** —
-  le run réel a sorti **3 bugs** que 10 tests avaient laissés passer : (1) `real_run=None` pris
-  pour « aucun échec » → la boucle adoptait une version **cassée** en se déclarant résolue
-  (faux négatif §4.4 — le motif même de `0010`/`0011`/`0013`) ; (2) l'agent rendait un
-  **extrait** de `_steps.py` (4 steps → 1) car le contrat « REMPLACE / rends le fichier
-  ENTIER » n'était écrit **nulle part** ; (3) le **disque divergeait** de la base (le runner lit
-  le disque : le prochain run aurait joué v7 en prétendant v2). **Les 3 corrigés + 6 tests de
-  garde.** ⚠️ **Le gate a tenu** : malgré (1), v7 n'a jamais été auto-approuvée. À rejouer.
-  ⏭️ **6** preuve sur les deux chemins : **cas 2** = répare (son `TypeError` est la cible
-  exacte, le cas est à **2/3 vert**), **cas 6** = arrête (faux positif assumé).
-  ⚠️ **PILIER ANNONCÉ QUI N'EXISTE PAS**. Mesuré : les 8
-  `repair_attempt` ont `what_was_tried = ''` et **aucun cas n'a de v2**. Ce qui existe :
-  `diagnose()` (classe), la table (enregistre), `repair_circuit` (**circuit breaker** anti-boucle
-  pour une boucle… qui n'existe pas), `executor.max_retries` (relance à l'identique sur timeout —
-  ce n'est pas réparer). Ce qui manque : le réparateur. Cadrage à prendre au calme : ce qu'on
-  répare, quand, comment ça finit, et son **articulation avec le gate** (une version réparée par
-  l'IA doit-elle repasser au gate ? §4.3 ne fait pas d'exception). Témoin réel conservé : le
-  **cas 6**, qui échoue de façon riche.
-- [x] **Prompt : quatre outils fantômes** (`0014` étape 1) — *fait*. Le prompt de génération
-  promettait `run_behave`, `recall_memory`, `save_memory`, `list_models` — **aucun n'existe** ;
-  imposait un format `RAPPORT_DEBUT…RAPPORT_FIN` que **rien ne lit** ; annonçait un plafond
-  « ≤15 » quand la boucle coupe à **25** ; et posait un critère de terminaison dont **3
-  conditions sur 4 étaient impossibles** (« run réel vert », `save_memory`). `recall_memory`
-  était même prescrit « toujours en 1er ». Un prompt qui décrit une capacité absente est un
-  « affiché ≠ réel » (§4.6) au niveau du prompt. Corrigé + **découpé** : la doctrine de run
-  réel part dans `prompts/repair_prompt.md` (rien n'est perdu). **Garde du motif** :
-  `test_prompt_honnete.py` échoue si un prompt cite un appel absent de `TOOLS_DEFINITIONS` —
-  il a trouvé un `run_behave` résiduel que j'avais manqué. 9 tests.
-- [ ] **Mémoire inter-modules (`recall_memory` / `save_memory`)** — *retiré du prompt, à
-  décider*. Le prompt la décrivait en détail (« la mémoire n'apprend que d'un succès réel »,
-  `transferable=True` pour les patterns réutilisables entre modules) : c'est une **vision**,
-  pas un oubli. Rien n'était implémenté. Retirée du prompt pour qu'il cesse de mentir — si
-  elle est voulue, c'est un chantier, pas une ligne de prompt.
-- [ ] **Rapport structuré produit par l'agent** — *retiré du prompt, à décider*. Le bloc
-  `RAPPORT_DEBUT…RAPPORT_FIN` (statut, scénarios, coût, FIX par échec, recommandations)
-  n'était **lu par personne** : le rapport réel est reconstruit depuis la base
-  (`reporting/report.py`). Remplacé par « deux ou trois lignes sur ce dont tu n'es pas sûr »,
-  utiles au relecteur. Si un rapport structuré de l'agent est voulu, il faut quelqu'un pour
-  le lire.
+- [x] **Réparation automatique** (`0014`) — ✅ **LIVRÉE et PROUVÉE sur les deux chemins.**
+  Le pilier était **annoncé mais inexistant** : `evaluate()` écrit/testé/**jamais appelé**,
+  `what_was_tried` vide partout, **aucun cas n'avait de v2**, et le prompt promettait un
+  `run_behave` qui n'existait pas. Nœud résolu : réparer exige d'exécuter, exécuter exige le
+  gate → **option C**, le gate **autorise N tentatives** (défaut 2, migration 9). Design **(b)** :
+  le circuit décide, l'agent propose (aucun outil d'exécution). **Modèle B** : une exécution =
+  un run. **Option (i)** : une version réparée n'est **jamais** approuvée d'office → ratification.
+  **Preuve réelle** : cas 6 → `vrai_bug` → aucune réparation (0 appel LLM) ; cas 2 → 1 tentative →
+  `success/conforme` **3/3** — **première exécution verte du projet**, v8 ratifiée, cas
+  **`validated`**. ⚠️ Le run réel a sorti **3 bugs** que 10 tests avaient laissés passer, dont
+  « pas de run » pris pour « ça passe » — **et le gate a tenu pendant que le circuit se
+  trompait**. → `decisions/0014-reparation-automatique-bornee-par-le-gate-inc1.md`.
 - [ ] **`_finalize_error` n'est pas un filet** — *trouvé le 2026-07-16, non corrigé*. Il est censé
   clore un run planté en `technical_error / indetermine` (§4.5), mais il **appelle lui-même
   `finalize()`** : si `finalize()` est la cause du plantage, le filet tombe avec. Constaté sur
