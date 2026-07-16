@@ -143,12 +143,25 @@ def step_no_test_records(context, prefix, model):
 
 
 # ── Assertions négatives ──────────────────────────────────────────────────────
-
-@then('aucun enregistrement inattendu n\'est créé dans aucun modèle Odoo '
-      'comme effet de bord de cette action')
-def step_no_side_effects(context):
-    pass
-
+#
+# ⚠️ SUPPRIMÉ (décision 0010) : le step
+#     @then("aucun enregistrement inattendu n'est créé dans aucun modèle Odoo
+#            comme effet de bord de cette action")
+# faisait `pass` — une VÉRIFICATION qui ne vérifiait rien, donc un « conforme » déclaratif
+# (§4.2) et une fabrique à faux-négatifs (§4.4). Aggravant : il était AU CATALOGUE, donc montré
+# à l'agent et proposé à la réutilisation (0003) — le pipeline invitait à s'appuyer dessus.
+#
+# Il n'a pas été réimplémenté : sa promesse (« aucun modèle Odoo », soit des centaines) n'est
+# pas tenable — un instantané avant/après serait lent et structurellement faux-positif (journaux,
+# séquences, mail.message bougent à chaque action). Le `pass` n'était pas un oubli, c'était la
+# seule façon de faire « passer » une promesse impossible.
+#
+# Le besoin réel est couvert par les steps CIBLÉS ci-dessous et dans _generic_steps, qui eux
+# vérifient vraiment, modèle par modèle :
+#   - « le nombre total d'enregistrements dans le modèle "{model}" n'a pas augmenté »
+#   - « aucun enregistrement partiel avec le champ "{field}" vide … »
+#   - « aucun enregistrement en double avec le champ "{field}" égal à "{value}" … »
+# Ne pas le réintroduire sans lire 0010.
 
 @then('aucun enregistrement partiel avec le champ "{field}" vide n\'est '
       'persisté dans le modèle "{model}"')

@@ -467,16 +467,21 @@ class ExecutionRepo:
     def finalize(self, execution_id: int, *, execution_status: str, functional_status: str,
                  scenarios_total: int, scenarios_passed: int, scenarios_failed: int,
                  cost_usd: float, iterations: int, duration_seconds: float,
-                 report_json_path: str = "", report_html_path: str = "",
                  field_fallbacks: str = "") -> None:
+        """Clôt une exécution avec son verdict.
+
+        ⚠️ `report_json_path`/`report_html_path` ont été **supprimés** (migration 7) : personne ne
+        les alimentait ni ne les lisait. Le rapport est **reconstruit à la demande** depuis la
+        base (`report_service.build_report_for_execution`) — c'est le seul mécanisme réel.
+        """
         self.conn.execute(
             "UPDATE execution SET execution_status=?, functional_status=?, scenarios_total=?,"
             " scenarios_passed=?, scenarios_failed=?, cost_usd=?, iterations=?,"
-            " duration_seconds=?, report_json_path=?, report_html_path=?, field_fallbacks=?"
+            " duration_seconds=?, field_fallbacks=?"
             " WHERE id=?",
             (execution_status, functional_status, scenarios_total, scenarios_passed,
-             scenarios_failed, cost_usd, iterations, duration_seconds, report_json_path,
-             report_html_path, field_fallbacks, execution_id),
+             scenarios_failed, cost_usd, iterations, duration_seconds,
+             field_fallbacks, execution_id),
         )
         self.conn.commit()
 

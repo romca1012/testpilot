@@ -90,9 +90,28 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
     surcorriger les steps RPC. Réserve : **1 échantillon**, LLM non déterministe. A2 (par step)
     différée.
   → `decisions/0007-agent-parametre-steps-libelle-vs-nom-technique-inc1.md`.
-- [ ] **Runs API sans rapport** (écart 4) : `run_service._persist` n'écrit ni `report_json_path`
-  ni `report_html_path` (vides pour l'exécution 2), alors que la CLI les produit. L'UI promet un
-  rapport que le runtime ne fournit pas → invariant §4.6 (« jamais affiché ≠ réel »).
+- [x] **Runs API sans rapport** (écart 4) — ❌ **DIAGNOSTIC FAUX, classé (2026-07-16)**. Le bug
+  n'existait pas. Mesuré : la CLI ne persiste pas ces chemins non plus (son `finalize()` ne les
+  passe pas), et le rapport d'un run API répond **200** — il est reconstruit depuis la base par
+  `build_report_for_execution`, sans fichier. Le vrai défaut était l'inverse :
+  `report_json_path`/`report_html_path` étaient des **colonnes mortes**, jamais alimentées **ni
+  lues** — le `position` décoratif de §2.4. **Supprimées** (migration 7), plutôt qu'écrire du code
+  pour alimenter ce que personne ne lit. 3ᵉ diagnostic corrigé après vérification (après `0002`,
+  `0007`). 5 tests.
+- [x] **Step partagé infalsifiable** (`0010`) — *fait*. `@then("aucun enregistrement inattendu …
+  effet de bord")` faisait `pass` : une **vérification qui ne vérifiait rien**, donc un
+  « conforme » déclaratif (§4.2) et un faux-négatif (§4.4) — **au catalogue**, donc proposé à
+  l'agent (`0003`). Même famille que `0008` mais dans la **bibliothèque partagée** : sa portée
+  était **tout cas futur**, pas un cas. Trouvé en effet de bord de l'audit d'import. **Supprimé**
+  (promesse « aucun modèle Odoo » intenable ; besoin déjà couvert par les steps ciblés par
+  modèle). Dégât nul à ce jour (aucun cas ne l'utilisait). 5 tests de garde du **motif**.
+  → `decisions/0010-step-partage-infalsifiable-bibliotheque-inc1.md`.
+- [ ] **Steps de comptage : repli silencieux quand le snapshot manque** — ⚠️ **trouvé, non
+  corrigé**. `check_count_not_increased` / `check_count_increased_by_one` font
+  `warnings.warn(...) + return` si le snapshot initial n'existe pas → le `@then` **passe sans
+  rien vérifier**. Même famille que `0010`/`0008` (faux-négatif, §4.4) et que `0007` (un repli
+  ne doit jamais être silencieux). À arbitrer **avant l'import** : les 4 modules à régénérer
+  utilisent massivement le comptage.
 - [x] **Navigation en arborescence + vue Modules** — *fait (2026-07-16)*. L'onglet « Gestion
   des cas » devient un EXPLORATEUR : arbre `Modules → Cas` en colonne permanente
   (`ModuleTree`, repliable, tout déplier/replier, état persistant par projet) rendu dans la

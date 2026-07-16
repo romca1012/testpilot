@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 6
+_SCHEMA_VERSION = 7
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -75,6 +75,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_5_unicite_noms(conn)
     if version < 6:
         _migrate_6_case_position(conn)
+    if version < 7:
+        _migrate_7_drop_report_paths(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -221,6 +223,32 @@ def _migrate_6_case_position(conn: sqlite3.Connection) -> None:
             " title COLLATE NOCASE, id", (module_id,))
         for index, row in enumerate(rows.fetchall()):
             conn.execute("UPDATE test_case SET position=? WHERE id=?", (index, row["id"]))
+
+
+def _migrate_7_drop_report_paths(conn: sqlite3.Connection) -> None:
+    """Supprime `execution.report_json_path` / `report_html_path` — colonnes MORTES. Idempotent.
+
+    ⚠️ **Corrige un diagnostic faux** (« écart 4 »), le 3ᵉ de ce projet après 0002 et 0007. La
+    note affirmait que `run_service._persist` ne les écrivait pas « alors que la CLI le fait » et
+    que l'UI promettait donc un rapport absent (§4.6). **Les deux points étaient inexacts**,
+    mesuré : la CLI ne les persiste pas non plus (son `finalize()` ne les passe pas), et le
+    rapport d'un run API répond bien (200) — `report_service.build_report_for_execution` le
+    **reconstruit depuis la base**, sans jamais toucher un fichier. Rien n'était promis qui ne
+    fût tenu.
+
+    Le vrai défaut était l'inverse : ces colonnes n'étaient **jamais alimentées** (ni CLI ni API)
+    **ni jamais lues** (aucun lecteur dans tout le code ; l'API ne les expose même pas). Un champ
+    mort — exactement le `position` décoratif que §2.4 dénonce, et la colonne `module` que 0004 a
+    **supprimée plutôt que laissée inerte**. On supprime donc, au lieu d'écrire du code pour
+    alimenter ce que personne ne lit.
+
+    La CLI continue d'écrire ses fichiers dans `data/reports/` et d'en afficher le chemin : utile
+    là où il n'y a pas de HTTP, et indépendant de ces colonnes.
+    """
+    colonnes = _column_names(conn, "execution")
+    for nom in ("report_json_path", "report_html_path"):
+        if nom in colonnes:
+            conn.execute(f"ALTER TABLE execution DROP COLUMN {nom}")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

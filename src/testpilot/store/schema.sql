@@ -119,8 +119,11 @@ CREATE TABLE IF NOT EXISTS execution (
     cost_usd          REAL    NOT NULL DEFAULT 0,
     iterations        INTEGER NOT NULL DEFAULT 0,
     duration_seconds  REAL    NOT NULL DEFAULT 0,
-    report_json_path  TEXT    NOT NULL DEFAULT '',
-    report_html_path  TEXT    NOT NULL DEFAULT '',
+    -- PAS de report_json_path / report_html_path : supprimés (migration 7). Ils n'étaient
+    -- jamais alimentés (ni CLI ni API) ni jamais lus — un champ mort, comme le `position`
+    -- décoratif que §2.4 dénonce. Le rapport est RECONSTRUIT à la demande depuis la base
+    -- (report_service.build_report_for_execution) ; la CLI écrit ses fichiers dans data/reports/
+    -- indépendamment de toute colonne.
     -- Replis « libellé → nom technique » tracés pendant le run (JSON, décision 0007 B+).
     -- Doit rester visible même sur un run VERT : un repli signale soit un step mal paramétré,
     -- soit un champ réellement renommé côté application.

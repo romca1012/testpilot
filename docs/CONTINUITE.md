@@ -15,7 +15,7 @@
 | **Incrément 1 (reste)** | Backlog documenté (§7). |
 | **Incrément 2** | Sécurité (mot de passe en clair) — bloquant avant tout déploiement client. |
 
-**Tests : 235 Python · 29 vitest · build front OK.** Tout est vert au moment de ce rapport.
+**Tests : 245 Python · 29 vitest · build front OK.** Tout est vert au moment de ce rapport.
 
 **Stack** : Python 3.10, FastAPI + SQLite (portable PostgreSQL), Behave + Playwright + odoorpc,
 Anthropic (Claude), frontend Vite + Vue 3 + Tailwind (dark, esprit « Linear »).
@@ -42,8 +42,10 @@ par un autre serveur, hors projet). CLI : `testpilot run specs/demande_materiel.
   **même angle mort que le code** (il omettait `environment.py`) ; seul le **re-run réel exigé par
   le porteur** l'a démasqué. Correctif : **fichier sidecar** (`TP_FIELD_FALLBACK_FILE`), qui
   supprime la dépendance au routage de Behave au lieu de la maîtriser.
-  **Écart 4 : diagnostiqué, non corrigé** (voir §7) — **distinct de B+**, dont la cible est
-  l'exécution + l'UI, pas le rapport JSON.
+  **Écart 4 : DIAGNOSTIC FAUX, classé** (3ᵉ après `0002` et `0007`) — ce n'était pas un bug.
+  `report_json_path`/`report_html_path` étaient des **colonnes mortes** (jamais alimentées, ni
+  par la CLI ni par l'API ; jamais lues nulle part). **Supprimées** (migration 7). Le rapport
+  d'un run API a toujours fonctionné : il est **reconstruit depuis la base**.
 
 ---
 
@@ -183,7 +185,7 @@ Chaque décision a sa note détaillée dans `docs/decisions/`.
 
 ---
 
-## 3. Modèle de données actuel (`user_version = 6`)
+## 3. Modèle de données actuel (`user_version = 7`)
 
 ```
 project        id, name, description, created_at,
@@ -205,7 +207,7 @@ project        id, name, description, created_at,
              └─ execution          id, test_case_id, version_id,
                                    execution_status, functional_status,   ← LES 2 AXES
                                    scenarios_total/passed/failed, cost_usd, iterations,
-                                   duration_seconds, report_json_path, report_html_path,
+                                   duration_seconds,   ← (report_*_path SUPPRIMÉS, migration 7)
                                    field_fallbacks,    ← replis libellé→name du run (0007 B+)
                                    trigger, started_at
                    ├─ scenario_result  id, execution_id, scenario_name,
@@ -220,7 +222,8 @@ cost_ledger    id, period_month, execution_id, phase, model, cost_usd, source, c
 **Migrations** (`store/db.py`, `PRAGMA user_version`) : 1 = project/module + feature_slug ;
 2 = connecteur sur projet + `Odoo`→`Portail Sapian` ; 3 = `priority` ; 4 = `field_fallbacks`
 sur `execution` (0007 B+) ; 5 = index UNIQUE d'unicité des noms (§2.9) ;
-6 = `test_case.position` (ordre d'affichage manuel, `0009`).
+6 = `test_case.position` (ordre d'affichage manuel, `0009`) ;
+7 = suppression des colonnes mortes `report_*_path` (écart 4 : diagnostic faux).
 Non implémenté du §7 : l'**Exécution nommée transverse**.
 
 ---
@@ -438,7 +441,8 @@ error_summary : playwright…TimeoutError: Locator.fill: Timeout 30000ms exceede
 
 ⚠️ **Visibilité à l'écran — pas encore complète** : le message corrigé remonte au data-layer et
 à l'API. Mais (a) `ReportView` l'affiche (`s.error`) **via le rapport JSON** — absent pour les
-runs déclenchés par l'API tant que l'**écart 4** n'est pas corrigé ; (b) le **dépliage** de la
+runs déclenchés par l'API — ⚠️ **faux** : le rapport est reconstruit depuis la base et répond
+(200), cf. écart 4 « classé » ci-dessous ; (b) le **dépliage** de la
 page cas (`CaseRow`) n'affiche que les deux axes, **pas** la cause — c'est un choix de design de
 `0006`, pas un bug. Surface l'erreur dans le dépliage = **choix produit à trancher**, non fait.
 
@@ -478,8 +482,16 @@ pour l'écart 1 (décision + plan écrits avant tout code).
   - Scripts : `measure_A1_nom_technique.py`, `prove_Bplus_repli_surface.py`,
     `probe_capture_behave_reelle.py`, `probe_marqueur_run_reel.py`, `shot_Bplus_ecran.py`.
 
-- ⏭️ **Écart 4** : conditionne la visibilité complète du correctif d'écart 3 à l'écran. **Distinct
-  de B+** (dont la cible est l'exécution + l'UI) : plan à proposer une fois A1 clos.
+- ❌ **Écart 4 — DIAGNOSTIC FAUX, classé (2026-07-16).** Les deux affirmations de la note étaient
+  inexactes, **mesuré** : (a) « alors que la CLI le fait » → la CLI ne persiste **pas** ces chemins
+  non plus (son `finalize()` ne les passe pas ; elle écrit des fichiers dans `data/reports/` sans
+  les stocker) ; (b) « l'UI promet un rapport que le runtime ne fournit pas » → `GET
+  /api/executions/7/report(.html)` répond **200** pour un run API : `build_report_for_execution`
+  le **reconstruit depuis la base**, sans fichier. Le vrai défaut était l'**inverse** : deux
+  **colonnes mortes**, jamais alimentées **ni lues** (aucun lecteur dans tout le code, l'API ne
+  les exposait même pas) — le `position` décoratif de §2.4, la colonne `module` de `0004`.
+  **Correctif : suppression** (migration 7) plutôt qu'écrire du code pour alimenter ce que
+  personne ne lit. **Leçon** : un diagnostic non vérifié a failli piloter un chantier entier.
 
 État : cas 2 = **vrai cas** du référentiel, version 2 approuvée (délibérément), **exécutée 3
 fois** (exécutions 2 = confirmation, 3 = preuve du correctif d'écart 3). Bases restaurables :
@@ -499,7 +511,7 @@ reprise (voir « Suite à donner » du §6).
 | ✅ **FAIT** | **Message d'erreur détruit avant l'écran** (écart 3 du §6) : `meaningful_error()` remonte la cause (message + `Call log` avec le sélecteur) au lieu de la tête du traceback. Prouvé sur l'exécution 3, 168 tests verts. *Reste* : visibilité complète à l'écran (dépend de l'écart 4 + choix d'affichage dans le dépliage). |
 | ✅ **FAIT** | **Assertion tautologique → faux « conforme »** (écart 2 du §6). Décision `0008`, **A + C livrés et prouvés**. **A** : prompt (Règle 4 falsifiabilité + `[Limite]` en disjonction falsifiable). **C** : lint pur `assertion_lint.py` (dont motif contextuel exact de l'écart 2) → `GateOut.lint_warnings`, bandeau non-bloquant dans `ReviewGate.vue`. Preuve réelle : gate du cas 2 signale la tautologie, cas 3 (re-généré) propre. 181 Python + 15 vitest verts. |
 | ✅ **FAIT** | **Sémantique des paramètres de steps** (écart 1, `0007` — **CLOS**). **B** : helpers UI tolérants (name-d'abord / libellé-en-repli, repli tracé). **B+** : repli → `execution.field_fallbacks` (migration 4) → bandeau `FieldFallbackNotice` + pastille d'historique, **visible même sur un run vert** ; transport par **fichier sidecar** (`TP_FIELD_FALLBACK_FILE`) — le 1ᵉʳ jet lisait la sortie de Behave et était **aveugle en run réel**, cf. la note. **A1** : contrat `{field}` = nom technique au catalogue, **obéissance mesurée**. Prouvé en réel (exécution 7 du cas 2 + capture). |
-| **3** | **Runs API sans rapport** (écart 4 du §6) : `_persist` n'écrit ni `report_json_path` ni `report_html_path`, alors que la CLI le fait → invariant §4.6. Conditionne aussi la visibilité de l'écart 3 dans `ReportView`. |
+| ❌ **CLASSÉ — diagnostic faux** | **Runs API sans rapport** (écart 4) : **le bug n'existait pas**. La CLI ne persistait pas ces chemins non plus, et le rapport d'un run API répond bien (reconstruit depuis la base). `report_json_path`/`report_html_path` étaient des **colonnes mortes** → **supprimées** (migration 7). 3ᵉ diagnostic corrigé après vérification, après `0002` et `0007`. |
 | **5** | **Exécution nommée transverse** (§7, JTBD essentiel §3) : regroupement de cas de modules différents, rapport attaché à l'exécution. L'UI laisse déjà la porte ouverte (badge « Cas unique / Suite transverse », champ `suite_name` réservé côté API). C'est **le dernier gros manque du §7**. |
 | **6** | **Confirmations `pending_human`** (`0001`) : écran de traitement de la file des origines de défaut. |
 | **7** | **Édition de la connexion d'un projet** : `PATCH /api/projects/{id}` ne gère que nom/description. |
