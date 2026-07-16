@@ -12,6 +12,7 @@ import logging
 import time
 
 from testpilot import config
+from testpilot.api.services import repair_service
 from testpilot.connectors.runtime_env import project_env
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.execution.executor import Executor
@@ -82,22 +83,72 @@ def resolve_connection(conn, case_id: int) -> dict[str, str]:
 
 
 def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int) -> None:
-    """Tâche de fond : lance Behave réel, calcule + persiste le verdict à deux axes."""
+    """Tâche de fond : lance Behave réel, calcule + persiste le verdict à deux axes.
+
+    Puis tente une RÉPARATION si le gate l'a autorisée (décision 0014) : la boucle vit dans
+    `repair_service`, c'est le circuit qui décide de continuer ou non — jamais l'agent.
+    """
     conn = get_initialized_db(config.DB_PATH)
     try:
-        started = time.perf_counter()
         # Le runtime tape l'application DU PROJET du cas (décision 0005).
         runner = BehaveRunner(connection=resolve_connection(conn, case_id))
-        outcome = Executor(runner).execute(module_name)
-        duration = time.perf_counter() - started
-        verdict = derive_verdict(outcome)
-        _persist(conn, execution_id, case_id, verdict, outcome, duration)
+        outcome = _execute_and_persist(conn, execution_id, case_id, module_name, runner)
+        _maybe_repair(conn, case_id=case_id, version_id=version_id, module_name=module_name,
+                      outcome=outcome, runner=runner)
     except Exception as exc:  # jamais laisser l'exécution « en cours » sur un plantage
         logger.exception("[run] exécution %s en échec : %s", execution_id, exc)
         _finalize_error(conn, execution_id, case_id, str(exc))
     finally:
         _RUNNING.discard(execution_id)
         conn.close()
+
+
+def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str, runner):
+    """Un run réel + son verdict persisté. `outcome.execution_id` porte la ligne concernée."""
+    started = time.perf_counter()
+    outcome = Executor(runner).execute(module_name)
+    duration = time.perf_counter() - started
+    verdict = derive_verdict(outcome)
+    _persist(conn, execution_id, case_id, verdict, outcome, duration)
+    # Attaché ici plutôt que porté par ExecutionOutcome : le pilier execution ne connaît pas la
+    # base, et n'a pas à la connaître.
+    outcome.execution_id = execution_id
+    return outcome
+
+
+def _maybe_repair(conn, *, case_id: int, version_id: int, module_name: str, outcome, runner):
+    """Répare si le gate l'a autorisé. Chaque tentative rejouée = une nouvelle EXÉCUTION (B)."""
+    def run_once(new_version_id: int):
+        """Rejoue le module après une correction, dans sa PROPRE ligne d'exécution."""
+        eid = ExecutionRepo(conn).create(test_case_id=case_id, version_id=new_version_id,
+                                         trigger="rerun")
+        return _execute_and_persist(conn, eid, case_id, module_name, runner)
+
+    connector = _connector_for(conn, case_id)
+    session = repair_service.run_repair_loop(
+        conn, case_id=case_id, version_id=version_id, module_name=module_name,
+        outcome=outcome, run_once=run_once, connector=connector)
+    if session.attempts:
+        logger.info("[run] réparation : %s tentative(s) → %s (%s)",
+                    session.attempts, session.outcome, session.reason)
+    return session
+
+
+def _connector_for(conn, case_id: int):
+    """Connecteur du projet du cas — l'agent de réparation en a besoin pour ses règles.
+
+    Best-effort : sans connecteur, l'agent répare avec les seules règles génériques plutôt que
+    de faire échouer la réparation.
+    """
+    try:
+        from testpilot.connectors.odoo import OdooConnector
+        case = CaseRepo(conn).get(case_id)
+        project_id = (case or {}).get("project_id")
+        project = ProjectRepo(conn).get(project_id) if project_id else None
+        return OdooConnector.from_project(project) if project else None
+    except Exception:
+        logger.warning("[repair] connecteur indisponible — règles génériques seules", exc_info=True)
+        return None
 
 
 def _persist(conn, execution_id, case_id, verdict, outcome, duration) -> None:

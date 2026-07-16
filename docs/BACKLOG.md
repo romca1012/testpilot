@@ -191,9 +191,13 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   ✅ **Étape 1** : prompt corrigé (4 outils fantômes) + découpé (`repair_prompt.md`).
   ✅ **Étape 2** : le **gate autorise un budget** de N réparations (option C, migration 9) —
   défaut 2, 0 = interdite ; `repair_budget_for_version()` rend 0 sans relecture (§4.3 tenu).
-  ⏭️ **Étape 3** : l'orchestrateur pilote (`circuit.evaluate()` décide, **pas** l'agent —
-  design (b) : lui donner `run_behave` remettrait le contrôle dans les mains du composant
-  qu'on encadre). ⏭️ **4** une tentative = une version + `what_was_tried`. ⏭️ **5** surfaçage.
+  ✅ **Étape 3** : la **boucle existe** — `repair_service.run_repair_loop()`. Le circuit décide
+  (`evaluate()` était écrit, testé, **jamais appelé** : il l'est) ; l'agent ne fait que proposer
+  (`generation/repair_agent.py`, aucun outil d'exécution). **Modèle B** (une exécution = un run).
+  **Option (i)** : une version réparée devient la référence si résolu, mais **jamais approuvée
+  d'office** → le cas repasse « à relire » pour ratification (§4.3). Budget = plafond du circuit :
+  `budget=0` coupe au 1ᵉʳ tour sans appel LLM. ✅ **Étape 4** faite en chemin (une tentative = une
+  version + `change_summary` + `what_was_tried`). ⏭️ **5** surfaçage.
   ⏭️ **6** preuve sur les deux chemins : **cas 2** = répare (son `TypeError` est la cible
   exacte, le cas est à **2/3 vert**), **cas 6** = arrête (faux positif assumé).
   ⚠️ **PILIER ANNONCÉ QUI N'EXISTE PAS**. Mesuré : les 8
