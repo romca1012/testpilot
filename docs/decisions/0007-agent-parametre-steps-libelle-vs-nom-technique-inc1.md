@@ -138,10 +138,13 @@ paramétré au libellé **passe** désormais (via B), et/ou que l'agent bascule 
    comme correctif déterministe ; annotation du catalogue en renfort.
 2. **Le repli name→libellé DOIT TRACER — jamais totalement silencieux.** C'est le point le plus
    important du verdict : la trace évite qu'une **vraie régression** (champ réellement renommé
-   côté Odoo) se fasse **absorber sans que personne ne le remarque**. Exigence : la trace est
-   **visible en mode dev** (logs techniques, §5). **Minimum acceptable** = mode dev. **Bonus de
-   cohérence** = la faire remonter dans un mécanisme comparable aux `lint_warnings` de `0008`
-   (surfaçage à l'écran) — souhaitable, non obligatoire.
+   côté Odoo) se fasse **absorber sans que personne ne le remarque**. Exigence : trace **visible
+   en mode dev** (logs techniques, §5) — **ET surfaçage dans le rapport d'exécution REQUIS**
+   (arbitrage complémentaire) : Behave masque les logs capturés sur un scénario **vert**, or le
+   pire cas de l'exigence (champ renommé → repli le retrouve par libellé → scénario vert) est
+   justement un succès. Le log seul a donc un **angle mort** sur ce cas précis ; le surfaçage au
+   rapport (comparable aux `lint_warnings` de `0008`) le ferme. → **phase B+**, commit séparé
+   après B.
 3. **Annotation du catalogue (`{field}` = attribut HTML `name`) : MAINTENANT**, pas plus tard —
    coût faible, et la reporter **recréerait le trou de consigne** que cette note vient de
    diagnostiquer. (= A1 retenue d'emblée ; A2 par step reste différée.)
@@ -158,7 +161,25 @@ paramétré au libellé **passe** désormais (via B), et/ou que l'agent bascule 
 Conservées pour la traçabilité ; résolues au § *Verdict*.
 
 1. **Quelles options** ? → **B + A1**.
-2. **Le repli doit-il tracer** ? → **Oui, obligatoire**, visible en mode dev (§5) ; surfaçage
-   type `lint_warnings` souhaitable mais non obligatoire.
+2. **Le repli doit-il tracer** ? → **Oui, obligatoire** en mode dev (§5) **ET** surfacé au
+   rapport (arbitrage complémentaire : le log seul a un angle mort sur le scénario vert). → B+.
 3. **A2 (annotation par step)** ? → **Différée** ; **A1 maintenant**.
 4. **Décision propre** ? → **Oui**, `0007`.
+
+## Suivi d'implémentation
+
+Ordre : **B** (helpers tolérants + trace log + tests + preuve réelle cas 2) → **B+** (surfaçage
+du repli au rapport, visible même sur un run vert) → **A1** (annotation catalogue + mesure).
+
+- **B** — ✅ FAIT et PROUVÉ : `resolve_field_name(page, ident)` dans `_base_helpers.py` (name
+  d'abord, libellé en repli, repli tracé via `logger.warning` + marqueur `[TP_FIELD_FALLBACK]`),
+  branché dans `fill_field`/`leave_field_empty`/`select_field_value`. 4 tests à faux `page`
+  (dont le repli tracé via `caplog`). **Preuve réelle** (re-run cas 2, exécution 4) : le
+  `[Nominal]` **ne timeoute plus sur le champ** — avant B il erreurait en `wrong_field_name` sur
+  `[name="Raison de la demande"]`, après B il **progresse** jusqu'à une erreur en aval
+  (`TypeError` dans un step RPC de case 2, hors écart 1). La barrière de résolution est levée.
+  185 tests verts. *NB* : la visibilité du marqueur en run réel est traitée par B+ (non persisté
+  aujourd'hui — c'est précisément l'angle mort que B+ ferme).
+- **B+** — ⏭️ à faire : capter le marqueur `[TP_FIELD_FALLBACK]` dans la sortie behave →
+  l'attacher à l'exécution → l'afficher au rapport (comparable aux `lint_warnings`).
+- **A1** — ⏭️ à faire : ligne dans `as_prompt_section` (`{field}` = attribut HTML `name`).

@@ -4,10 +4,18 @@ Chaque module *steps.py importe les helpers dont il a besoin
 et les encapsule dans ses propres @given/@when/@then.
 """
 
+import logging
 import sys
 import warnings
 import re
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
+logger = logging.getLogger(__name__)
+
+# Marqueur du repli « libellé → nom technique » (décision 0007). Émis en clair dans la sortie
+# behave pour être (a) visible en mode dev, (b) capté par le rapport (phase B+). Ne pas changer
+# sans mettre à jour le parseur côté rapport.
+FIELD_FALLBACK_MARKER = "[TP_FIELD_FALLBACK]"
 
 
 # ── OdooRPC helpers ──────────────────────────────────────────────────────────
@@ -128,7 +136,34 @@ def click_button(page, label):
     raise AssertionError(f"Bouton '{label}' introuvable sur {page.url}")
 
 
+def resolve_field_name(page, ident):
+    """Nom technique (`name`) du champ à cibler, à partir de `ident`.
+
+    Tolérance décidée en 0007 : `ident` peut être l'attribut HTML `name` (cas nominal) OU — parce
+    que l'agent de génération raisonne parfois en libellé UI — le LIBELLÉ humain du champ.
+    Stratégie : `name` d'abord (sélecteur exact, le plus fiable) ; à défaut, on résout `ident`
+    comme un libellé et on lit le `name` du contrôle associé.
+
+    Le repli est **toujours TRACÉ** (jamais silencieux) : sans ça, un champ réellement renommé
+    côté application serait retrouvé par son libellé et la régression passerait inaperçue
+    (§4.6 / §5). Le marqueur permet aussi au rapport de le remonter (phase B+).
+    """
+    if page.locator(f'[name="{ident}"]').count() > 0:
+        return ident
+    labelled = page.get_by_label(ident, exact=False)
+    if labelled.count() > 0:
+        resolved = labelled.first.get_attribute("name")
+        if resolved:
+            logger.warning(
+                "%s champ '%s' introuvable par attribut name ; résolu via son libellé -> "
+                "name='%s'. Paramètre le step par le nom technique du champ.",
+                FIELD_FALLBACK_MARKER, ident, resolved)
+            return resolved
+    return ident  # ni name ni libellé exploitable : on laisse échouer en aval (message d'origine)
+
+
 def fill_field(page, name, value):
+    name = resolve_field_name(page, name)
     safe = value.replace("\\", "\\\\").replace("'", "\\'")
     page.wait_for_selector(f'[name="{name}"]', timeout=10000, state="attached")
     el = page.locator(f'[name="{name}"]').first
@@ -156,10 +191,12 @@ def fill_field(page, name, value):
 
 
 def leave_field_empty(page, name):
+    name = resolve_field_name(page, name)
     page.locator(f"[name='{name}']").fill("", force=True)
 
 
 def select_field_value(page, value, field):
+    field = resolve_field_name(page, field)
     select = page.locator(f"select[name='{field}']")
     if select.count() > 0:
         try:

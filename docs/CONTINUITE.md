@@ -15,7 +15,7 @@
 | **Incrément 1 (reste)** | Backlog documenté (§7). |
 | **Incrément 2** | Sécurité (mot de passe en clair) — bloquant avant tout déploiement client. |
 
-**Tests : 181 Python · 15 vitest · build front OK.** Tout est vert au moment de ce rapport.
+**Tests : 185 Python · 15 vitest · build front OK.** Tout est vert au moment de ce rapport.
 
 **Stack** : Python 3.10, FastAPI + SQLite (portable PostgreSQL), Behave + Playwright + odoorpc,
 Anthropic (Claude), frontend Vite + Vue 3 + Tailwind (dark, esprit « Linear »).
@@ -33,8 +33,9 @@ par un autre serveur, hors projet). CLI : `testpilot run specs/demande_materiel.
   Bases `.bak` gitignorées.
 - **Cas 3** = artefact de preuve de A (re-génération) — **conservé** (décision du porteur).
   Backup avant sa création : `data/testpilot.db.pre-preuve-A.bak`.
-- **Écart 1 : décision `0007` tranchée (B porteur + A1), à implémenter.** **Écart 4 :
-  diagnostiqué, non corrigé** (voir §7).
+- **Écart 1 : décision `0007`. B ✅ fait+prouvé** (helpers tolérants ; cas 2 [Nominal] ne
+  timeoute plus sur le champ). **B+ et A1 restent.** Backup avant re-run : `…pre-preuve-B.bak`
+  (exécution 4 = preuve de B). **Écart 4 : diagnostiqué, non corrigé** (voir §7).
 
 ---
 
@@ -382,10 +383,11 @@ pour l'écart 1 (décision + plan écrits avant tout code).
   par re-génération (cas 3). C : lint pur `assertion_lint.py` (dont motif contextuel exact) →
   `GateOut.lint_warnings` + bandeau non-bloquant `ReviewGate.vue`. Preuve réelle : cas 2 signalé,
   cas 3 propre. Détail : `docs/decisions/0008-…md`.
-- 🟡 **Écart 1 / `0007` — DÉCIDÉ, à implémenter.** Verdict : **B porteur** (helpers UI tolérants,
-  `name`-d'abord/libellé-en-repli, **repli tracé** et visible en mode dev §5 — jamais silencieux,
-  pour ne pas absorber une vraie régression Odoo) **+ A1** (annotation catalogue `{field}` = nom
-  technique, maintenant). Plan à valider **avant tout code**. Détail : `docs/decisions/0007-…md`.
+- 🟡 **Écart 1 / `0007` — en cours. B ✅ FAIT + PROUVÉ, B+ et A1 ⏭️.** B : helpers UI tolérants
+  (`resolve_field_name`, name-d'abord/libellé-en-repli, repli tracé `[TP_FIELD_FALLBACK]`) ;
+  preuve réelle : cas 2 [Nominal] ne timeoute plus sur le champ (progresse en aval). Reste **B+**
+  (surfaçage du repli au rapport, visible même sur run vert — REQUIS, l'angle mort du log-seul) et
+  **A1** (annotation catalogue `{field}` = nom technique). Détail : `docs/decisions/0007-…md`.
 - ⏭️ **Écart 4** : conditionne la visibilité complète du correctif d'écart 3 à l'écran.
 
 État : cas 2 = **vrai cas** du référentiel, version 2 approuvée (délibérément), **exécutée 3
@@ -405,7 +407,7 @@ reprise (voir « Suite à donner » du §6).
 |---|---|
 | ✅ **FAIT** | **Message d'erreur détruit avant l'écran** (écart 3 du §6) : `meaningful_error()` remonte la cause (message + `Call log` avec le sélecteur) au lieu de la tête du traceback. Prouvé sur l'exécution 3, 168 tests verts. *Reste* : visibilité complète à l'écran (dépend de l'écart 4 + choix d'affichage dans le dépliage). |
 | ✅ **FAIT** | **Assertion tautologique → faux « conforme »** (écart 2 du §6). Décision `0008`, **A + C livrés et prouvés**. **A** : prompt (Règle 4 falsifiabilité + `[Limite]` en disjonction falsifiable). **C** : lint pur `assertion_lint.py` (dont motif contextuel exact de l'écart 2) → `GateOut.lint_warnings`, bandeau non-bloquant dans `ReviewGate.vue`. Preuve réelle : gate du cas 2 signale la tautologie, cas 3 (re-généré) propre. 181 Python + 15 vitest verts. |
-| **2 — décidé, à implémenter** | **Sémantique des paramètres de steps** — écart **CONFIRMÉ et DÉTERMINISTE** (§6, écart 1 ; reproduit cas 2 **et** cas 3). **Décision `0007` tranchée** : **B porteur** (helpers UI tolérants — `name` d'abord, libellé en repli, **repli TRACÉ**, jamais silencieux, §5) **+ A1** (annotation du catalogue : `{field}` = attribut HTML `name`, **maintenant**). Famille de racine commune avec `0008`/`0003`, mais remède **technique** distinct. **Plan à valider avant de coder.** |
+| **2 — B fait, B+/A1 à faire** | **Sémantique des paramètres de steps** — écart **CONFIRMÉ et DÉTERMINISTE** (§6, écart 1 ; reproduit cas 2 **et** cas 3). Décision `0007`. **B ✅** : helpers UI tolérants (`resolve_field_name`, name-d'abord/libellé-en-repli, repli tracé `[TP_FIELD_FALLBACK]`) — prouvé (cas 2 [Nominal] ne timeoute plus sur le champ). Restent **B+** (surfaçage du repli au rapport, visible même sur run vert) **+ A1** (annotation catalogue `{field}` = nom technique). |
 | **3** | **Runs API sans rapport** (écart 4 du §6) : `_persist` n'écrit ni `report_json_path` ni `report_html_path`, alors que la CLI le fait → invariant §4.6. Conditionne aussi la visibilité de l'écart 3 dans `ReportView`. |
 | **5** | **Exécution nommée transverse** (§7, JTBD essentiel §3) : regroupement de cas de modules différents, rapport attaché à l'exécution. L'UI laisse déjà la porte ouverte (badge « Cas unique / Suite transverse », champ `suite_name` réservé côté API). C'est **le dernier gros manque du §7**. |
 | **6** | **Confirmations `pending_human`** (`0001`) : écran de traitement de la file des origines de défaut. |
