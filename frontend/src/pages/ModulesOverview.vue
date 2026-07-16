@@ -22,6 +22,24 @@ const cases = ref<CaseSummary[]>([])
 const loading = ref(true)
 const error = ref('')
 
+// Grille (cartes) ou liste compacte. Préférence retenue par utilisateur : la re-choisir à
+// chaque visite ferait perdre son intérêt à l'option. Purement visuel — aucune donnée en jeu.
+type Vue = 'grid' | 'list'
+const VUE_KEY = 'tp.modules.view'
+const vue = ref<Vue>('grid')
+
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem(VUE_KEY)
+    if (saved === 'grid' || saved === 'list') vue.value = saved
+  } catch { /* stockage indisponible : la grille par défaut reste correcte */ }
+})
+
+function setVue(v: Vue) {
+  vue.value = v
+  try { localStorage.setItem(VUE_KEY, v) } catch { /* préférence d'affichage : jamais bloquant */ }
+}
+
 onMounted(async () => {
   try {
     const [m, c] = await Promise.all([api.listModules(pid.value), api.listCases(pid.value)])
@@ -53,11 +71,25 @@ const orphanCount = computed(() => cases.value.filter((c) => c.module_id == null
           La structure du projet. Ouvrez un module pour voir et gérer ses cas de test.
         </p>
       </div>
-      <RouterLink :to="`/projects/${pid}/cases/all`"
-                  class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
-        Tous les cas
-        <Icon name="chevron" class="h-3 w-3" />
-      </RouterLink>
+      <div class="flex items-center gap-2">
+        <!-- Bascule grille / liste — affichage seulement. -->
+        <div class="inline-flex rounded-md border border-border p-0.5" role="group" aria-label="Affichage">
+          <button
+            v-for="opt in ([{ v: 'grid', label: 'Grille' }, { v: 'list', label: 'Liste' }] as const)"
+            :key="opt.v" :aria-pressed="vue === opt.v"
+            class="rounded px-2 py-1 text-xs transition-colors"
+            :class="vue === opt.v ? 'bg-primary/15 text-foreground' : 'text-muted-foreground hover:text-foreground'"
+            @click="setVue(opt.v)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+        <RouterLink :to="`/projects/${pid}/cases/all`"
+                    class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
+          Tous les cas
+          <Icon name="chevron" class="h-3 w-3" />
+        </RouterLink>
+      </div>
     </header>
 
     <div v-if="loading" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -73,6 +105,27 @@ const orphanCount = computed(() => cases.value.filter((c) => c.module_id == null
       </div>
       <p class="text-sm text-muted-foreground">Aucun module dans ce projet.</p>
     </div>
+
+    <!-- Vue LISTE : compacte, lisible quand les modules se multiplient. Mêmes informations que
+         la grille — c'est la densité qui change, pas le contenu. -->
+    <ul v-else-if="vue === 'list'" class="divide-y divide-border rounded-xl border border-border bg-card">
+      <li v-for="m in modules" :key="m.id">
+        <RouterLink :to="`/projects/${pid}/modules/${m.id}`"
+                    class="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/30">
+          <Icon name="folder" class="h-4 w-4 shrink-0 text-muted-foreground" />
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-sm font-medium">{{ prettyModule(m.name) }}</div>
+            <p v-if="m.description" class="truncate text-xs text-muted-foreground">{{ m.description }}</p>
+          </div>
+          <span class="shrink-0 text-xs tabular-nums text-muted-foreground">{{ statsOf(m.id).total }} cas</span>
+          <span v-if="statsOf(m.id).toReview"
+                class="shrink-0 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs text-warning">
+            {{ statsOf(m.id).toReview }} à relire
+          </span>
+          <Icon name="chevron" class="h-4 w-4 shrink-0 text-muted-foreground/30 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
+        </RouterLink>
+      </li>
+    </ul>
 
     <div v-else class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       <RouterLink

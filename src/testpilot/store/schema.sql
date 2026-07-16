@@ -52,6 +52,12 @@ CREATE TABLE IF NOT EXISTS test_case (
     -- celui-ci est porté par l'ordre des scénarios du .feature (décision 0006).
     priority               TEXT    NOT NULL DEFAULT 'medium'
                                      CHECK (priority IN ('low', 'medium', 'high')),
+    -- Ordre d'AFFICHAGE manuel dans le module (glisser-déposer, décision 0009). Réellement
+    -- honoré par le tri (ORDER BY position, id) — c'est ce qui le distingue du `position`
+    -- décoratif refusé en 0006. Ne promet RIEN sur l'ordre d'exécution. Pas de contrainte
+    -- UNIQUE : un glissement décale N voisins, l'unicité ferait échouer les états
+    -- intermédiaires ; les ex æquo sont départagés par `id`.
+    position               INTEGER NOT NULL DEFAULT 0,
     -- Référence logique vers la version courante (pas de FK dure : cycle case<->version).
     current_version_id     INTEGER,
     last_execution_status  TEXT    CHECK (last_execution_status IN ('success', 'technical_error', 'not_executed')),

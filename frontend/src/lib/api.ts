@@ -47,6 +47,12 @@ export const api = {
 
   // Cas — toujours scopés par projet (jamais de mélange inter-projets)
   listCases: (projectId: number | string) => request<CaseSummary[]>(`/api/cases?project_id=${projectId}`),
+  // Ordre d'AFFICHAGE des cas d'un module (décision 0009). En LOT : un glissement change N
+  // positions. Le serveur recalcule les positions et renvoie la liste dans son ordre.
+  reorderCases: (moduleId: number | string, caseIds: number[]) =>
+    request<CaseSummary[]>(`/api/modules/${moduleId}/cases/order`, {
+      method: 'PUT', body: JSON.stringify({ case_ids: caseIds }),
+    }),
   getCase: (id: number | string) => request<CaseDetail>(`/api/cases/${id}`),
   runCase: (id: number | string) => request<RunResponse>(`/api/cases/${id}/runs`, { method: 'POST' }),
   reviewCase: (id: number | string, approved: boolean, comment = '') =>

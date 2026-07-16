@@ -37,7 +37,9 @@ async function toggle() {
 </script>
 
 <template>
-  <li class="border-t border-border">
+  <!-- Racine <div> et non <li> : c'est la LISTE parente qui porte le <li> (elle y ajoute la
+       poignée de réorganisation, décision 0009) — un <li> dans un <li> serait invalide. -->
+  <div class="border-t border-border">
     <div class="group flex flex-wrap items-center gap-4 px-5 py-4 transition-colors hover:bg-accent/40">
       <button class="shrink-0 text-muted-foreground/50 hover:text-foreground" @click="toggle"
               :title="open ? 'Replier les scénarios' : 'Déplier les scénarios'">
@@ -76,5 +78,5 @@ async function toggle() {
         </li>
       </ul>
     </div>
-  </li>
+  </div>
 </template>

@@ -14,7 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from testpilot.api import schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import generation_service
-from testpilot.store.repositories import ModuleRepo, ProjectRepo
+from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo
 
 router = APIRouter(prefix="/api/modules", tags=["modules"])
 
@@ -37,6 +37,26 @@ def get_module(module_id: int, conn=Depends(get_conn)):
 def _case_count(conn, module_id: int) -> int:
     return conn.execute("SELECT COUNT(*) AS n FROM test_case WHERE module_id=?",
                         (module_id,)).fetchone()["n"]
+
+
+@router.put("/{module_id}/cases/order", response_model=list[schemas.CaseSummary])
+def reorder_cases(module_id: int, body: schemas.ReorderCasesIn, conn=Depends(get_conn)):
+    """Fixe l'ordre d'AFFICHAGE des cas du module (décision 0009).
+
+    ⚠️ Ordre de LECTURE, jamais d'exécution : celle-ci suit l'ordre des scénarios du `.feature`.
+    Cet endpoint n'écrit que `position`, lu par le seul affichage.
+
+    En LOT et transactionnel : un glissement change N positions ; N appels laisseraient un ordre
+    incohérent si l'un échouait. La liste doit décrire exactement les cas du module (409 sinon) —
+    une liste partielle laisserait des cas à une position périmée.
+    """
+    if ModuleRepo(conn).get(module_id) is None:
+        raise HTTPException(status_code=404, detail=f"module {module_id} introuvable")
+    try:
+        CaseRepo(conn).reorder(module_id, body.case_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return [schemas.case_summary(r) for r in CaseRepo(conn).list_all(module_id=module_id)]
 
 
 @router.post("/{module_id}/cases", response_model=schemas.GenerationJobOut, status_code=202)

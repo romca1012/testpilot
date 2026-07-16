@@ -71,15 +71,24 @@ def test_priorite_invalide_refusee(client):
     assert client.patch(f"/api/cases/{cid}", json={"priority": "urgent"}).status_code == 422
 
 
-def test_tri_par_priorite_puis_titre(client):
+def test_tri_par_ordre_manuel_pas_par_priorite(client):
+    """⚠️ Contrat CHANGÉ par la décision 0009 (ce test figeait « priorité puis titre »).
+
+    La liste suit désormais l'ORDRE D'AFFICHAGE manuel (glisser-déposer), et la priorité
+    redevient une pure étiquette d'importance qui ne bouscule plus l'ordre — conforme à
+    0006/§2.4 qui la qualifiait déjà d'« étiquette de lecture assumée ». Les deux coexistent,
+    indépendantes. Changement VISIBLE et assumé, pas une régression.
+    """
     conn = _conn(); pid, mid = _seed(conn)
     CaseRepo(conn).create(title="Zebre", module_id=mid, feature_slug="z", priority="high")
     CaseRepo(conn).create(title="Alpha", module_id=mid, feature_slug="a", priority="low")
     CaseRepo(conn).create(title="Beta", module_id=mid, feature_slug="b", priority="high")
     conn.close()
 
+    # Ordre par défaut = ordre de création (chaque cas naît en fin de liste), la priorité n'y
+    # change rien.
     titles = [c["title"] for c in client.get(f"/api/cases?module_id={mid}").json()]
-    assert titles == ["Beta", "Zebre", "Alpha"]  # high (alpha) puis low
+    assert titles == ["Zebre", "Alpha", "Beta"]
 
 
 # ── Dépliage : scénarios du dernier run ───────────────────────────────────────

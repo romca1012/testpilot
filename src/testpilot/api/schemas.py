@@ -128,6 +128,17 @@ class CaseDetail(BaseModel):
     gate: GateOut | None = None
 
 
+class ReorderCasesIn(BaseModel):
+    """Nouvel ordre d'AFFICHAGE des cas d'un module (décision 0009).
+
+    En LOT, pas un PATCH par cas : un glissement change N positions, et N appels laisseraient un
+    ordre incohérent si l'un échouait. Le serveur recalcule les positions — la liste dit le
+    RANG, pas l'index.
+    """
+
+    case_ids: list[int]
+
+
 class ScenarioResultOut(BaseModel):
     scenario_name: str
     execution_status: str

@@ -15,7 +15,7 @@
 | **Incrément 1 (reste)** | Backlog documenté (§7). |
 | **Incrément 2** | Sécurité (mot de passe en clair) — bloquant avant tout déploiement client. |
 
-**Tests : 222 Python · 29 vitest · build front OK.** Tout est vert au moment de ce rapport.
+**Tests : 235 Python · 29 vitest · build front OK.** Tout est vert au moment de ce rapport.
 
 **Stack** : Python 3.10, FastAPI + SQLite (portable PostgreSQL), Behave + Playwright + odoorpc,
 Anthropic (Claude), frontend Vite + Vue 3 + Tailwind (dark, esprit « Linear »).
@@ -79,14 +79,23 @@ Chaque décision a sa note détaillée dans `docs/decisions/`.
 - Migrer vers une granularité scénario impliquerait versioning/gate au niveau scénario :
   refonte lourde **non justifiée**. À revisiter seulement si ça devient réellement limitant.
 
-### 2.4 Priorité de lecture, JAMAIS de `position` décorative — `0006`
+### 2.4 Priorité de lecture, JAMAIS de `position` décorative — `0006` ⚠️ **amendée par `0009`**
 - `test_case.priority` (`low|medium|high`) = **étiquette de lecture** assumée.
-- **Pas de colonne `position`.** Pour un cas automatisé, l'ordre d'exécution réel est celui des
-  scénarios **dans le `.feature`** : un ordre en base promettrait ce que l'exécution n'honore
-  pas (même piège « affiché ≠ réel » que le runtime). L'ancien prototype avait un `position`…
-  **jamais alimenté** (tri réel = date de création).
-- L'infobulle de la priorité **dit explicitement** qu'elle n'ordonne pas l'exécution.
-- Un ordre **réel** viendra avec l'**Exécution nommée transverse** (§7), où il aura un référent.
+- ~~**Pas de colonne `position`.**~~ → **AMENDÉ par `0009`** (2026-07-16, demande du porteur).
+  Ce que 0006 refusait — et qui reste refusé — c'est une position **décorative** : celle de
+  l'ancien prototype existait en base et n'était **jamais alimentée** (tri réel = date de
+  création), promettant un ordre que rien n'honorait. `0009` introduit un ordre **réellement
+  honoré** par le tri (`ORDER BY position, id`) qui ne promet **rien** sur l'exécution. Les deux
+  propriétés sont indissociables : non honoré = le champ mort de 0006 ; pilotant l'exécution =
+  le piège §4.6. **Voir `0009` avant de toucher à ce champ.**
+- Pour un cas automatisé, l'ordre d'exécution réel reste celui des scénarios **dans le
+  `.feature`** — `position` ne l'atteint jamais (gardé par test).
+- L'infobulle de la priorité **dit explicitement** qu'elle n'ordonne pas l'exécution ; celle de
+  l'ordre manuel aussi.
+- ⚠️ Depuis `0009`, **la priorité n'ordonne plus la liste** (elle le faisait avant) : c'est une
+  pure étiquette, ce que ce §2.4 affirmait déjà sans que le tri le reflète.
+- Un ordre **d'exécution** réel viendra avec l'**Exécution nommée transverse** (§7), où il aura un
+  référent — ce sera **sa** décision, elle n'hérite pas de l'ordre d'affichage.
 
 ### 2.5 « Ajouter un cas » = fournir une SPEC — `0006`
 - **Jamais de coquille manuelle inerte.** `POST /api/modules/{id}/cases` accepte
@@ -174,7 +183,7 @@ Chaque décision a sa note détaillée dans `docs/decisions/`.
 
 ---
 
-## 3. Modèle de données actuel (`user_version = 5`)
+## 3. Modèle de données actuel (`user_version = 6`)
 
 ```
 project        id, name, description, created_at,
@@ -184,6 +193,7 @@ project        id, name, description, created_at,
                       module_id,          ← rangement MÉTIER (0004)
                       feature_slug,       ← nom du .feature, TECHNIQUE (0004)
                       priority,           ← étiquette de lecture (0006, migration 3)
+                      position,           ← ordre d'AFFICHAGE manuel (0009, migration 6)
                       current_version_id, last_execution_status,
                       last_functional_status, last_executed_at,
                       author, created_at, updated_at
@@ -209,7 +219,8 @@ cost_ledger    id, period_month, execution_id, phase, model, cost_usd, source, c
 
 **Migrations** (`store/db.py`, `PRAGMA user_version`) : 1 = project/module + feature_slug ;
 2 = connecteur sur projet + `Odoo`→`Portail Sapian` ; 3 = `priority` ; 4 = `field_fallbacks`
-sur `execution` (0007 B+) ; 5 = index UNIQUE d'unicité des noms (§2.9).
+sur `execution` (0007 B+) ; 5 = index UNIQUE d'unicité des noms (§2.9) ;
+6 = `test_case.position` (ordre d'affichage manuel, `0009`).
 Non implémenté du §7 : l'**Exécution nommée transverse**.
 
 ---

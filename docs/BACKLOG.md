@@ -112,6 +112,19 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   avant l'appel LLM). Audit préalable : **zéro doublon** — les « doublons » vus à l'écran
   étaient des titres tronqués + des artefacts de scripts de preuve, nettoyés sur décision du
   porteur. 19 tests. Voir `CONTINUITE` §2.9.
+- [x] **Ordre d'affichage manuel des cas (glisser-déposer)** — *fait (2026-07-16, `0009`,
+  migration 6)*. ⚠️ **Amende `0006`/§2.4** (« pas de colonne `position` ») : 0006 refusait une
+  position DÉCORATIVE (jamais alimentée, promettant un ordre d'exécution) ; celle-ci est
+  RÉELLEMENT honorée par le tri et ne promet rien sur l'exécution — gardé par un test qui
+  échoue si `position` fuit vers `execution/`, `verdict/`, `reporting/` ou `behave_runtime/`.
+  `PUT /api/modules/{id}/cases/order` en lot transactionnel (liste stricte, 409 sinon) ;
+  poignée + drag HTML5 natif dans la liste du module uniquement ; infobulle d'honnêteté.
+  Conséquence assumée : **la priorité n'ordonne plus la liste**. 13 tests + preuve navigateur
+  (glissement réel, ordre persisté). → `decisions/0009-ordre-affichage-manuel-des-cas-inc1.md`.
+- [x] **Vue liste des modules** — *fait*. Bascule Grille/Liste sur `ModulesOverview`,
+  préférence retenue par utilisateur (localStorage). Purement visuel.
+- [ ] **Déplacer un cas entre modules (drag)** — hors périmètre de `0009` (change `module_id`,
+  le rangement métier, pas l'ordre). Chantier séparé, arbitré avec le porteur.
 - [ ] **Exécution nommée transverse (groupée multi-modules)** — chantier suivant. Contrainte
   actée : référencer les cas **par ID** via une table de liaison **many-to-many** entre
   l'exécution nommée et `test_case` — **jamais** de duplication de cas.

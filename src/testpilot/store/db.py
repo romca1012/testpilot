@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 5
+_SCHEMA_VERSION = 6
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -73,6 +73,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_4_execution_field_fallbacks(conn)
     if version < 5:
         _migrate_5_unicite_noms(conn)
+    if version < 6:
+        _migrate_6_case_position(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -186,6 +188,39 @@ def _migrate_5_unicite_noms(conn: sqlite3.Connection) -> None:
                  " ON test_case(module_id, title COLLATE NOCASE)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_case_feature_slug"
                  " ON test_case(feature_slug) WHERE feature_slug != ''")
+
+
+def _migrate_6_case_position(conn: sqlite3.Connection) -> None:
+    """Ordre d'affichage manuel des cas dans leur module (décision 0009). Idempotent.
+
+    ⚠️ **Amende la décision 0006/§2.4** (« pas de colonne `position` »). Ce que 0006 refusait :
+    une position **décorative**, jamais alimentée, laissant croire à un ordre d'exécution — le
+    `position` de l'ancien prototype. Celui-ci est **réellement honoré** par le tri
+    (`ORDER BY position, id`) et ne promet **rien** sur l'exécution, qui reste dictée par l'ordre
+    des scénarios dans le `.feature`. C'est ce qui le rend honnête, et distinct du précédent.
+
+    **PAS de contrainte UNIQUE(module_id, position)** : un glissement décale N voisins, et un
+    index unique ferait échouer les états intermédiaires (il faudrait des positions négatives
+    temporaires ou un ordre d'UPDATE savant, pour aucun bénéfice). Les ex æquo sont départagés
+    par `id` au tri — l'affichage reste donc déterministe, ce qui est le seul invariant qui
+    compte ici.
+
+    **Backfill par le tri EXISTANT** (priorité puis titre) : à la migration, rien ne bouge à
+    l'écran. Une position à 0 partout aurait resorti la liste par `id` — un réordonnancement
+    surprise que personne n'a demandé.
+    """
+    if "position" in _column_names(conn, "test_case"):
+        return
+    conn.execute("ALTER TABLE test_case ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
+    modules = [r["module_id"] for r in conn.execute("SELECT DISTINCT module_id FROM test_case"
+                                                    " WHERE module_id IS NOT NULL")]
+    for module_id in modules:
+        rows = conn.execute(
+            "SELECT id FROM test_case WHERE module_id=?"
+            " ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,"
+            " title COLLATE NOCASE, id", (module_id,))
+        for index, row in enumerate(rows.fetchall()):
+            conn.execute("UPDATE test_case SET position=? WHERE id=?", (index, row["id"]))
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

@@ -239,12 +239,25 @@ class CaseRepo:
         ts = now_iso()
         cur = self.conn.execute(
             "INSERT INTO test_case (title, module_id, feature_slug, description,"
-            " origin, validation_status, priority, author, created_at, updated_at)"
-            " VALUES (?,?,?,?,?, 'never_executed', ?,?,?,?)",
-            (title, module_id, feature_slug, description, origin, priority, author, ts, ts),
+            " origin, validation_status, priority, position, author, created_at, updated_at)"
+            " VALUES (?,?,?,?,?, 'never_executed', ?,?,?,?,?)",
+            (title, module_id, feature_slug, description, origin, priority,
+             self._next_position(module_id), author, ts, ts),
         )
         self.conn.commit()
         return int(cur.lastrowid)
+
+    def _next_position(self, module_id: int | None) -> int:
+        """Place un nouveau cas EN FIN de son module (décision 0009).
+
+        Sans ça, tout nouveau cas naîtrait à 0 et s'empilerait en tête de liste — un ordre que
+        personne n'a choisi, qui plus est instable entre deux créations.
+        """
+        if module_id is None:
+            return 0
+        row = self.conn.execute("SELECT MAX(position) AS m FROM test_case WHERE module_id=?",
+                                (module_id,)).fetchone()
+        return 0 if row["m"] is None else int(row["m"]) + 1
 
     def rename(self, case_id: int, title: str) -> None:
         case = self.get(case_id)
@@ -287,9 +300,18 @@ class CaseRepo:
         return dict(row) if row else None
 
     def list_all(self, *, project_id: int | None = None, module_id: int | None = None) -> list[dict]:
-        """Cas, triés par PRIORITÉ de lecture (high→low) puis titre.
+        """Cas, triés par l'ORDRE D'AFFICHAGE manuel du module (décision 0009), puis `id`.
 
-        Tri de lecture uniquement : il ne préjuge pas de l'ordre d'exécution (décision 0006).
+        Tri de LECTURE uniquement : il ne préjuge pas de l'ordre d'exécution, dicté par l'ordre
+        des scénarios dans le `.feature` (0006). `tc.id` en second critère rend l'affichage
+        **déterministe** malgré l'absence de contrainte UNIQUE sur `position` : sans lui, deux
+        ex æquo pourraient s'afficher dans un ordre différent d'un chargement à l'autre.
+
+        ⚠️ La **priorité n'ordonne plus** la liste (elle le faisait avant 0009) : c'est une
+        étiquette d'importance, pas un tri — conforme à 0006/§2.4 qui la dit « étiquette de
+        lecture assumée ». Les deux coexistent et sont indépendantes.
+        Le tri reste groupé par module sur les vues transverses, sinon des positions propres à
+        chaque module s'entremêleraient en un ordre qui ne veut rien dire.
         """
         clauses, params = [], []
         if project_id is not None:
@@ -297,9 +319,35 @@ class CaseRepo:
         if module_id is not None:
             clauses.append("tc.module_id = ?"); params.append(module_id)
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
-        order = (" ORDER BY CASE tc.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1"
-                 " ELSE 2 END, tc.title COLLATE NOCASE, tc.id")
+        order = " ORDER BY tc.module_id, tc.position, tc.id"
         return _rows(self.conn.execute(_CASE_SELECT + where + order, params))
+
+    def reorder(self, module_id: int, case_ids: list[int]) -> None:
+        """Fixe l'ordre d'affichage des cas d'un module (décision 0009). Transactionnel.
+
+        `case_ids` doit décrire EXACTEMENT l'ensemble des cas du module — ni id étranger, ni
+        manquant, ni doublon. Sinon `ValueError` : accepter une liste partielle laisserait des
+        cas à une position périmée (donc un ordre affiché que personne n'a demandé), et un id
+        étranger déplacerait un cas hors de son module par un endpoint qui ne parle que d'ordre.
+
+        Les positions sont RECALCULÉES ici (0, 1, 2…) : on ne fait pas confiance à des indices
+        envoyés par le client.
+        """
+        actuels = [r["id"] for r in self.conn.execute(
+            "SELECT id FROM test_case WHERE module_id=?", (module_id,))]
+        if sorted(case_ids) != sorted(actuels):
+            raise ValueError(
+                "la liste doit contenir exactement les cas du module "
+                f"(attendu {sorted(actuels)}, reçu {sorted(case_ids)})")
+        try:
+            ts = now_iso()
+            for index, case_id in enumerate(case_ids):
+                self.conn.execute("UPDATE test_case SET position=?, updated_at=? WHERE id=?",
+                                  (index, ts, case_id))
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
 
     def feature_slug_taken(self, slug: str) -> bool:
         """Un slug = un fichier .feature sur disque : il doit être unique GLOBALEMENT."""
