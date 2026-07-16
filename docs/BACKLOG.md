@@ -198,6 +198,27 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   répare, quand, comment ça finit, et son **articulation avec le gate** (une version réparée par
   l'IA doit-elle repasser au gate ? §4.3 ne fait pas d'exception). Témoin réel conservé : le
   **cas 6**, qui échoue de façon riche.
+- [x] **Prompt : quatre outils fantômes** (`0014` étape 1) — *fait*. Le prompt de génération
+  promettait `run_behave`, `recall_memory`, `save_memory`, `list_models` — **aucun n'existe** ;
+  imposait un format `RAPPORT_DEBUT…RAPPORT_FIN` que **rien ne lit** ; annonçait un plafond
+  « ≤15 » quand la boucle coupe à **25** ; et posait un critère de terminaison dont **3
+  conditions sur 4 étaient impossibles** (« run réel vert », `save_memory`). `recall_memory`
+  était même prescrit « toujours en 1er ». Un prompt qui décrit une capacité absente est un
+  « affiché ≠ réel » (§4.6) au niveau du prompt. Corrigé + **découpé** : la doctrine de run
+  réel part dans `prompts/repair_prompt.md` (rien n'est perdu). **Garde du motif** :
+  `test_prompt_honnete.py` échoue si un prompt cite un appel absent de `TOOLS_DEFINITIONS` —
+  il a trouvé un `run_behave` résiduel que j'avais manqué. 9 tests.
+- [ ] **Mémoire inter-modules (`recall_memory` / `save_memory`)** — *retiré du prompt, à
+  décider*. Le prompt la décrivait en détail (« la mémoire n'apprend que d'un succès réel »,
+  `transferable=True` pour les patterns réutilisables entre modules) : c'est une **vision**,
+  pas un oubli. Rien n'était implémenté. Retirée du prompt pour qu'il cesse de mentir — si
+  elle est voulue, c'est un chantier, pas une ligne de prompt.
+- [ ] **Rapport structuré produit par l'agent** — *retiré du prompt, à décider*. Le bloc
+  `RAPPORT_DEBUT…RAPPORT_FIN` (statut, scénarios, coût, FIX par échec, recommandations)
+  n'était **lu par personne** : le rapport réel est reconstruit depuis la base
+  (`reporting/report.py`). Remplacé par « deux ou trois lignes sur ce dont tu n'es pas sûr »,
+  utiles au relecteur. Si un rapport structuré de l'agent est voulu, il faut quelqu'un pour
+  le lire.
 - [ ] **`_finalize_error` n'est pas un filet** — *trouvé le 2026-07-16, non corrigé*. Il est censé
   clore un run planté en `technical_error / indetermine` (§4.5), mais il **appelle lui-même
   `finalize()`** : si `finalize()` est la cause du plantage, le filet tombe avec. Constaté sur
