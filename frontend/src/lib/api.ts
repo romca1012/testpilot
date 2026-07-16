@@ -65,6 +65,12 @@ export const api = {
   listExecutions: (projectId: number | string, limit = 50) =>
     request<ExecutionSummary[]>(`/api/executions?project_id=${projectId}&limit=${limit}`),
   getExecution: (id: number | string) => request<ExecutionDetail>(`/api/executions/${id}`),
+  // Arbitrage humain des diagnostics (décision 0013). `status=all` inclut les `not_required` :
+  // un « vrai bug » déduit à tort doit pouvoir être infirmé.
+  listRepairs: (projectId: number | string, status: 'pending' | 'all' = 'pending') =>
+    request<RepairOut[]>(`/api/repairs?project_id=${projectId}&status=${status}`),
+  setRepairVerdict: (id: number, body: { verdict: string; origin?: string; comment?: string; reviewer?: string }) =>
+    request<RepairOut>(`/api/repairs/${id}/verdict`, { method: 'POST', body: JSON.stringify(body) }),
   getReport: (id: number | string) => request<TestReport>(`/api/executions/${id}/report`),
 }
 
@@ -118,6 +124,21 @@ export interface ExecutionSummary {
 export interface CaseDetail {
   case: CaseSummary; project: Ref | null; module: Ref | null; current_version_id: number | null
   versions: VersionOut[]; reviews: ReviewOut[]; executions: ExecutionSummary[]; gate: GateOut | null
+}
+export interface RepairOut {
+  id: number; execution_id: number
+  test_case_id: number | null; case_title: string | null
+  module_id: number | null; module_name: string | null
+  project_id: number | null; project_name: string | null
+  executed_at: string
+  // Les deux axes du run — informatifs : un arbitrage ne les recalcule JAMAIS (§4.2).
+  execution_status: string; functional_status: string
+  // Ce que la MACHINE a déduit…
+  cause_category: string; cause_label: string; defect_origin: string; confirmation_status: string
+  failure_signature: string
+  // …et ce que l'HUMAIN a tranché, à CÔTÉ (jamais à la place).
+  human_verdict: string; human_origin: string; human_comment: string
+  confirmed_by: string | null; confirmed_at: string | null
 }
 export interface ScenarioResultOut {
   scenario_name: string; execution_status: string; functional_status: string

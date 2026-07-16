@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from testpilot import config
-from testpilot.api.routes import cases, executions, modules, projects
+from testpilot.api.routes import cases, executions, modules, projects, repairs
 
 # Origines du serveur de dev Vite (aucune auth : usage interne, réseau local).
 _DEV_ORIGINS = [
@@ -45,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(modules.router)
     app.include_router(cases.router)
     app.include_router(executions.router)
+    app.include_router(repairs.router)
 
     # Frontend compilé (prod) : assets hashés + fallback SPA vers index.html pour que les
     # deep-links client (/cases, /executions/1) fonctionnent au rafraîchissement. Absent en

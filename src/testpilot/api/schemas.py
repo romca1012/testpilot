@@ -10,6 +10,8 @@ import json
 
 from pydantic import BaseModel
 
+from testpilot.verdict import defect_taxonomy as _dt
+
 
 # ── Projet / Module (hiérarchie §7) ───────────────────────────────────────────
 class ProjectSummary(BaseModel):
@@ -126,6 +128,53 @@ class CaseDetail(BaseModel):
     reviews: list[ReviewOut] = []
     executions: list[ExecutionSummary] = []
     gate: GateOut | None = None
+
+
+class RepairOut(BaseModel):
+    """Un diagnostic soumis à l'arbitrage humain (décision 0013).
+
+    Expose CÔTE À CÔTE ce que la machine a déduit (`defect_origin`) et ce que l'humain a tranché
+    (`human_verdict`/`human_origin`) — jamais l'un à la place de l'autre : c'est l'écart entre
+    les deux qui rend la taxonomie mesurable.
+    """
+
+    id: int
+    execution_id: int
+    test_case_id: int | None = None
+    case_title: str | None = None
+    module_id: int | None = None
+    module_name: str | None = None
+    project_id: int | None = None
+    project_name: str | None = None
+    executed_at: str = ""
+    # Les DEUX axes du run concerné — informatifs ici : un arbitrage ne les recalcule JAMAIS
+    # (§4.2 : un statut est la conséquence d'une exécution réelle, pas d'un avis).
+    execution_status: str = ""
+    functional_status: str = ""
+    # Ce que la MACHINE a déduit.
+    cause_category: str = ""
+    # Libellé lisible de la cause, rendu CÔTÉ SERVEUR via `defect_taxonomy.LABELS` — même source
+    # que le rapport (`report.py`), plutôt qu'un second vocabulaire dans `status.ts` qui
+    # divergerait. Jamais d'enum brute à l'écran (§4.7).
+    cause_label: str = ""
+    defect_origin: str = ""
+    confirmation_status: str = ""
+    failure_signature: str = ""
+    # Ce que l'HUMAIN a tranché (vide tant que non arbitré).
+    human_verdict: str = ""
+    human_origin: str = ""
+    human_comment: str = ""
+    confirmed_by: str | None = None
+    confirmed_at: str | None = None
+
+
+class RepairVerdictIn(BaseModel):
+    """Arbitrage humain. `origin` est requis si `verdict='overturned'` (validé côté repo)."""
+
+    verdict: str          # confirmed | overturned
+    origin: str = ""      # test_a_reparer | vrai_bug | indetermine — si infirmé
+    comment: str = ""
+    reviewer: str = ""    # champ LIBRE : aucune authentification (cohérent avec le gate)
 
 
 class ReorderCasesIn(BaseModel):
@@ -290,4 +339,25 @@ def scenario_result_out(row: dict) -> ScenarioResultOut:
         scenario_name=row["scenario_name"], execution_status=row["execution_status"],
         functional_status=row["functional_status"], cause_category=row.get("cause_category", ""),
         failure_type=row.get("failure_type", ""), error_summary=row.get("error_summary", ""),
+    )
+
+
+def repair_out(row: dict) -> RepairOut:
+    return RepairOut(
+        id=row["id"], execution_id=row["execution_id"],
+        test_case_id=row.get("test_case_id"), case_title=row.get("case_title"),
+        module_id=row.get("module_id"), module_name=row.get("module_name"),
+        project_id=row.get("project_id"), project_name=row.get("project_name"),
+        executed_at=row.get("executed_at") or "",
+        execution_status=row.get("execution_status") or "",
+        functional_status=row.get("functional_status") or "",
+        cause_category=row.get("cause_category", ""),
+        cause_label=_dt.LABELS.get(row.get("cause_category", ""), ""),
+        defect_origin=row.get("defect_origin", ""),
+        confirmation_status=row.get("confirmation_status", ""),
+        failure_signature=row.get("failure_signature", ""),
+        human_verdict=row.get("human_verdict", ""),
+        human_origin=row.get("human_origin", ""),
+        human_comment=row.get("human_comment", ""),
+        confirmed_by=row.get("confirmed_by"), confirmed_at=row.get("confirmed_at"),
     )

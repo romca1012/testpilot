@@ -168,6 +168,17 @@ CREATE TABLE IF NOT EXISTS repair_attempt (
     confirmed_by        TEXT,
     confirmed_at        TEXT,
     what_was_tried      TEXT    NOT NULL DEFAULT '',
+    -- ── Arbitrage HUMAIN (décision 0013, migration 8) ────────────────────────
+    -- Couche DISTINCTE : `defect_origin` ci-dessus (déduction de la MACHINE) n'est jamais
+    -- réécrit. L'humain ne corrige pas le diagnostic, il le JUGE — sinon on perdrait ce que la
+    -- machine avait conclu, donc toute mesure de sa justesse dans le temps.
+    human_verdict       TEXT    NOT NULL DEFAULT ''      -- '' = pas encore tranché
+                                  CHECK (human_verdict IN ('', 'confirmed', 'overturned')),
+    -- L'origine RÉELLE selon l'humain. Obligatoire si `overturned` (contrainte applicative) :
+    -- infirmer sans dire ce que c'était vraiment efface une information sans en produire.
+    human_origin        TEXT    NOT NULL DEFAULT ''
+                                  CHECK (human_origin IN ('', 'test_a_reparer', 'vrai_bug', 'indetermine')),
+    human_comment       TEXT    NOT NULL DEFAULT '',     -- le POURQUOI
     created_at          TEXT    NOT NULL,
     FOREIGN KEY (execution_id) REFERENCES execution(id)
 );

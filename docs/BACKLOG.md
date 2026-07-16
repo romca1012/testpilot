@@ -178,8 +178,33 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
 - [ ] **Exécution nommée transverse (groupée multi-modules)** — chantier suivant. Contrainte
   actée : référencer les cas **par ID** via une table de liaison **many-to-many** entre
   l'exécution nommée et `test_case` — **jamais** de duplication de cas.
-- [ ] **Confirmations `pending_human`** : sous-commande / écran de traitement de la file de
-  relecture des origines de défaut. → `decisions/0001-report-confirmations-pending-human-inc1.md`.
+- [x] **Arbitrage humain des diagnostics** (`0013`, **remplace `0001`**) — *fait*. `0001` était
+  trop étroit : il parlait des `pending_human`, or un **`not_required` faux était IRRÉVOCABLE**.
+  Constat mesuré : **aucun** diagnostic n'était jamais tranché (8/8 avec `confirmed_by = NULL`) —
+  aucun endpoint, aucun écran, alors que l'UI affichait « En attente de validation humaine »
+  (§4.6). §4.4 dit « faux-positif acceptable », pas « **irréversible** » : il l'est parce qu'un
+  humain le corrige. Livré : couche **distincte** (migration 8) qui **n'écrase jamais**
+  `defect_origin` — sinon on perdrait l'écart machine/humain, seul matériau de l'audit de la
+  taxonomie ; `GET /api/repairs` (dont `status=all` pour infirmer un `not_required`) +
+  `POST /api/repairs/{id}/verdict` (409 si déjà tranché) ; onglet **Confirmations** sous Exécution
+  avec compteur ; infobulle sur `vrai_bug` disant que c'est une **déduction**. Jamais de blocage,
+  jamais de recalcul des deux axes (§4.2, gardé par test). 15 tests.
+  → `decisions/0013-arbitrage-humain-des-diagnostics-inc1.md`.
+- [ ] **Réparation (`0014`)** — ⚠️ **PILIER ANNONCÉ QUI N'EXISTE PAS**. Mesuré : les 8
+  `repair_attempt` ont `what_was_tried = ''` et **aucun cas n'a de v2**. Ce qui existe :
+  `diagnose()` (classe), la table (enregistre), `repair_circuit` (**circuit breaker** anti-boucle
+  pour une boucle… qui n'existe pas), `executor.max_retries` (relance à l'identique sur timeout —
+  ce n'est pas réparer). Ce qui manque : le réparateur. Cadrage à prendre au calme : ce qu'on
+  répare, quand, comment ça finit, et son **articulation avec le gate** (une version réparée par
+  l'IA doit-elle repasser au gate ? §4.3 ne fait pas d'exception). Témoin réel conservé : le
+  **cas 6**, qui échoue de façon riche.
+- [ ] **`_finalize_error` n'est pas un filet** — *trouvé le 2026-07-16, non corrigé*. Il est censé
+  clore un run planté en `technical_error / indetermine` (§4.5), mais il **appelle lui-même
+  `finalize()`** : si `finalize()` est la cause du plantage, le filet tombe avec. Constaté sur
+  l'**exécution 10** — restée `not_executed` alors qu'elle a réellement tourné (ses 5
+  `scenario_result` sont en base, corrects). L'écran affiche donc « Pas lancé » pour un run qui a
+  tourné (§4.6). Déclencheur ici : une migration appliquée pendant qu'un serveur tournait avec
+  l'ancien code — mais toute panne pendant `finalize()` produirait le même état menteur.
 - [x] **Runtime branché sur la connexion du projet** — *fait*. L'exécution (run UI et CLI) et
   l'exploration de génération tapent désormais l'application du projet, plus la config globale :
   `connectors/runtime_env.py` (projet → variables d'env), injection dans le sous-processus

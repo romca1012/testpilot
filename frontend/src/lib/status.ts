@@ -65,7 +65,12 @@ export function priorityView(code: string | null | undefined): StatusView {
 
 // ── Origine d'un défaut (defect_origin) — jamais brut à l'écran ────────────────
 const DEFECT_ORIGIN: Record<string, StatusView> = {
-  vrai_bug: { label: 'Bug dans l\'application', icon: 'x', tone: 'destructive' },
+  // ⚠️ DÉDUCTION, pas constat : une assertion qui échoue peut venir de l'application, d'un test
+  // qui attend la mauvaise chose, ou de l'environnement. L'infobulle doit le DIRE — sinon
+  // l'écran affirme ce que la machine a seulement supposé (0013).
+  vrai_bug: { label: 'Bug dans l\'application', icon: 'x', tone: 'destructive',
+    hint: 'Déduit de l\'échec, pas constaté : le test attendait autre chose que ce qu\'il a obtenu. '
+        + 'Peut aussi venir d\'un test qui attend la mauvaise chose. À confirmer ou infirmer.' },
   test_a_reparer: { label: 'Test à corriger', icon: 'half', tone: 'warning',
     hint: 'Le défaut vient du test lui-même (parcours, sélecteur, champ…), pas de l\'application.' },
   indetermine: { label: 'Origine à investiguer', icon: 'circle', tone: 'muted' },

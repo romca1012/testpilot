@@ -22,6 +22,9 @@ const routes = [
 
   { path: '/projects/:pid/executions', name: 'executions', component: () => import('./pages/ExecutionsList.vue') },
   { path: '/projects/:pid/executions/:id', name: 'report', component: () => import('./pages/ReportView.vue') },
+  // Arbitrage humain des diagnostics (0013). SOUS Exécution : on juge le résultat d'un run,
+  // pas le référentiel — la séparation §8 reste structurelle.
+  { path: '/projects/:pid/confirmations', name: 'confirmations', component: () => import('./pages/ConfirmationsList.vue') },
 
   // Rétro-compat : anciens liens sans projet → accueil projets.
   { path: '/cases', redirect: '/projects' },

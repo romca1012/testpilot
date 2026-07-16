@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 7
+_SCHEMA_VERSION = 8
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -77,6 +77,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_6_case_position(conn)
     if version < 7:
         _migrate_7_drop_report_paths(conn)
+    if version < 8:
+        _migrate_8_verdict_humain(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -249,6 +251,35 @@ def _migrate_7_drop_report_paths(conn: sqlite3.Connection) -> None:
     for nom in ("report_json_path", "report_html_path"):
         if nom in colonnes:
             conn.execute(f"ALTER TABLE execution DROP COLUMN {nom}")
+
+
+def _migrate_8_verdict_humain(conn: sqlite3.Connection) -> None:
+    """Arbitrage humain d'un diagnostic — COUCHE DISTINCTE (décision 0013). Idempotent.
+
+    ⚠️ `defect_origin` (ce que la MACHINE a déduit) n'est JAMAIS réécrit. L'humain ne corrige pas
+    le diagnostic, il le JUGE : sans cette séparation, on perdrait ce que la machine avait conclu
+    — donc toute possibilité de mesurer si la taxonomie s'améliore ou dérive. C'est précisément
+    la donnée qui manque pour l'audit de la taxonomie (backlog).
+
+    Pourquoi ce chantier : mesuré sur données réelles, **aucun** diagnostic n'était jamais tranché
+    (les 8 produits avaient `confirmed_by = NULL`). Un `pending_human` attendait une confirmation
+    qui ne pouvait pas arriver ; un `not_required` était définitif et IRRÉVOCABLE, même faux.
+    Or §4.4 dit « faux-positif acceptable », pas « faux-positif irréversible » : il l'est parce
+    qu'un humain le corrige.
+
+    `confirmed_by` / `confirmed_at` existent déjà (jamais alimentés) : on les réutilise.
+    """
+    colonnes = _column_names(conn, "repair_attempt")
+    if "human_verdict" not in colonnes:
+        # confirmed = la machine avait raison ; overturned = elle s'est trompée.
+        # '' = pas encore tranché (les lignes existantes, qui ne l'ont jamais été).
+        conn.execute("ALTER TABLE repair_attempt ADD COLUMN human_verdict TEXT NOT NULL DEFAULT ''")
+    if "human_origin" not in colonnes:
+        # L'origine RÉELLE selon l'humain, quand il infirme. Vide sinon.
+        conn.execute("ALTER TABLE repair_attempt ADD COLUMN human_origin TEXT NOT NULL DEFAULT ''")
+    if "human_comment" not in colonnes:
+        # Le POURQUOI — la seule chose qui vaudra encore quelque chose dans six mois.
+        conn.execute("ALTER TABLE repair_attempt ADD COLUMN human_comment TEXT NOT NULL DEFAULT ''")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

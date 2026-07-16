@@ -7,6 +7,7 @@
 // du projet visible en permanence tout en laissant toute la largeur au contenu.
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { api } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useProjectTree } from '../lib/useProjectTree'
 import ModuleTree from './ModuleTree.vue'
@@ -41,18 +42,32 @@ function syncTree(silent = false) {
   })
 }
 
-onMounted(() => { ensureLoaded(); syncTree() })
-watch(pid, () => { ensureLoaded(); syncTree() })
+onMounted(() => { ensureLoaded(); syncTree(); refreshFile() })
+watch(pid, () => { ensureLoaded(); syncTree(); refreshFile() })
 // Un cas ajouté depuis le contenu (flux 0006) doit apparaître dans l'arbre sans rechargement —
 // rafraîchissement SILENCIEUX, pour que l'arbre ne clignote pas à chaque navigation.
-watch(() => route.fullPath, () => syncTree(true))
+watch(() => route.fullPath, () => { syncTree(true); refreshFile() })
 
 const tabs = computed(() => [
   { to: `/projects/${pid.value}/cases`, label: 'Gestion des cas', match: 'cases',
     icon: 'M4 6a2 2 0 012-2h12a2 2 0 012 2v2H4V6zM4 10h16v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8z' },
   { to: `/projects/${pid.value}/executions`, label: 'Exécution', match: 'executions',
     icon: 'M14.752 11.168l-5.197-3.03A1 1 0 008 9.002v5.996a1 1 0 001.555.832l5.197-3.03a1 1 0 000-1.632z' },
+  // Arbitrage des diagnostics (0013) — SOUS Exécution : on juge le résultat d'un run, pas le
+  // référentiel. Compteur : une file qu'on ne voit pas est une file qu'on ne traite pas — c'est
+  // ce qui a laissé 8 diagnostics jamais tranchés.
+  { to: `/projects/${pid.value}/confirmations`, label: 'Confirmations', match: 'confirmations',
+    icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', badge: true },
 ])
+
+// Compteur de la file — seulement ce qui EXIGE une confirmation (`pending_human`).
+const aConfirmer = ref(0)
+async function refreshFile() {
+  if (!pid.value) return
+  try {
+    aConfirmer.value = (await api.listRepairs(pid.value, 'pending')).length
+  } catch { aConfirmer.value = 0 }   // un compteur indisponible ne casse pas la navigation
+}
 
 function isTabActive(match: string) {
   return route.path.includes(`/${match}`)
@@ -117,7 +132,11 @@ function switchProject(id: number) {
                fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon" />
           </svg>
-          <span>{{ item.label }}</span>
+          <span class="flex-1">{{ item.label }}</span>
+          <span v-if="item.badge && aConfirmer"
+                class="rounded-full bg-warning/20 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-warning">
+            {{ aConfirmer }}
+          </span>
         </RouterLink>
       </nav>
 

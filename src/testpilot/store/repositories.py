@@ -564,6 +564,72 @@ class RepairRepo:
         return _rows(self.conn.execute(
             "SELECT * FROM repair_attempt WHERE confirmation_status='pending_human' ORDER BY id"))
 
+    # ── Arbitrage humain (décision 0013) ──────────────────────────────────────
+
+    _CONTEXTE = (
+        "SELECT r.*, e.test_case_id, e.started_at AS executed_at,"
+        " e.execution_status, e.functional_status,"
+        " tc.title AS case_title, m.id AS module_id, m.name AS module_name,"
+        " m.project_id, p.name AS project_name"
+        " FROM repair_attempt r"
+        " JOIN execution e ON e.id = r.execution_id"
+        " LEFT JOIN test_case tc ON tc.id = e.test_case_id"
+        " LEFT JOIN module m ON m.id = tc.module_id"
+        " LEFT JOIN project p ON p.id = m.project_id"
+    )
+
+    def get(self, attempt_id: int) -> dict | None:
+        row = self.conn.execute(self._CONTEXTE + " WHERE r.id=?", (attempt_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_to_arbitrate(self, *, project_id: int | None = None,
+                          pending_only: bool = True) -> list[dict]:
+        """Diagnostics à trancher, avec leur contexte (cas, module, projet).
+
+        ⚠️ `pending_only=False` renvoie AUSSI les `not_required` : c'est tout l'objet de 0013.
+        Un `not_required` faux était jusqu'ici **irrévocable** — or §4.4 dit « faux-positif
+        acceptable », pas « irréversible » : il l'est parce qu'un humain peut l'infirmer.
+        Les diagnostics DÉJÀ tranchés sont exclus (`human_verdict = ''`).
+        """
+        clauses = ["r.human_verdict = ''"]
+        params: list = []
+        if pending_only:
+            clauses.append("r.confirmation_status = 'pending_human'")
+        if project_id is not None:
+            clauses.append("m.project_id = ?")
+            params.append(project_id)
+        where = " WHERE " + " AND ".join(clauses)
+        return _rows(self.conn.execute(self._CONTEXTE + where + " ORDER BY r.id DESC", params))
+
+    def set_human_verdict(self, attempt_id: int, *, verdict: str, reviewer: str,
+                          origin: str = "", comment: str = "") -> None:
+        """Enregistre l'arbitrage humain SANS toucher à `defect_origin`.
+
+        La déduction de la machine reste intacte : on ajoute un jugement à côté, on n'efface pas
+        ce qui a été conclu. C'est ce qui rend mesurable l'écart machine/humain — matériau du
+        futur audit de la taxonomie.
+
+        `confirmation_status` suit (`confirmed` / `rejected`) pour rester cohérent avec l'enum
+        existante ; il dit « l'humain est passé », `human_verdict` dit « ce qu'il a jugé ».
+        """
+        if verdict not in ("confirmed", "overturned"):
+            raise ValueError(f"verdict inconnu : {verdict!r}")
+        if verdict == "overturned" and not origin:
+            raise ValueError(
+                "infirmer exige l'origine réelle : dire « ce n'est pas ça » sans dire ce que "
+                "c'est efface une information sans en produire")
+        if origin and origin not in ("test_a_reparer", "vrai_bug", "indetermine"):
+            raise ValueError(f"origine inconnue : {origin!r}")
+
+        self.conn.execute(
+            "UPDATE repair_attempt SET human_verdict=?, human_origin=?, human_comment=?,"
+            " confirmation_status=?, confirmed_by=?, confirmed_at=? WHERE id=?",
+            (verdict, origin, comment,
+             "confirmed" if verdict == "confirmed" else "rejected",
+             reviewer, now_iso(), attempt_id),
+        )
+        self.conn.commit()
+
 
 class CostRepo:
     def __init__(self, conn: sqlite3.Connection):
