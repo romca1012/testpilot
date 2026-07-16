@@ -398,7 +398,13 @@ pour l'écart 1 (décision + plan écrits avant tout code).
   `execution.field_fallbacks` (migration 4) → API → `FieldFallbackNotice` + pastille d'historique
   (uniquement sur les runs concernés). **Épinglé par un test de garde** (vrai helper → vrai behave
   → vrai parseur, scénario vert) sans lequel une montée de behave rendrait B+ aveugle en silence.
-  Reste **A1** (annotation catalogue `{field}` = nom technique). Détail : `docs/decisions/0007-…md`.
+  **A1 ✅** : contrat `{field}` = **nom technique, jamais le libellé** écrit dans l'en-tête du
+  catalogue — formulation **corrigée** à l'implémentation (`{field}` sert dans deux registres :
+  attribut HTML côté UI, champ du modèle côté RPC ; et `{name}` d'onglet/produit est au contraire
+  un **libellé visible**, donc l'annotation exclut boutons/onglets pour ne pas casser
+  `click_button` par surcorrection). ⏭️ **Mesure d'obéissance en attente** : elle exige une
+  re-génération LLM et l'agent **explore l'application réelle** — Odoo injoignable ⇒ mesure
+  invalide, à rejouer instance up. Détail : `docs/decisions/0007-…md`.
 - ⏭️ **Écart 4** : conditionne la visibilité complète du correctif d'écart 3 à l'écran. **Distinct
   de B+** (dont la cible est l'exécution + l'UI) : plan à proposer une fois A1 clos.
 

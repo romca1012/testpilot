@@ -80,6 +80,30 @@ def test_prompt_groupe_par_mot_cle_gherkin():
     assert "### Alors (`@then`)" in section
 
 
+def test_catalogue_annonce_la_semantique_de_field(*_):
+    """Décision 0007, A1 — le catalogue dit ce que `{field}` DÉSIGNE, pas seulement le libellé.
+
+    C'est le trou de consigne qui a produit l'écart 1 : montrer `je renseigne le champ "{field}"`
+    sans dire que `{field}` est l'attribut HTML `name` laissait l'agent choisir le libellé humain,
+    convention raisonnable mais fausse.
+    """
+    section = steps_library.as_prompt_section(steps_library.catalogue())
+    assert "`{field}`" in section
+    assert "nom TECHNIQUE" in section and "JAMAIS son libellé" in section
+    assert "`name`" in section  # l'attribut HTML est nommé explicitement
+
+
+def test_catalogue_ne_technicise_pas_les_boutons(*_):
+    """Garde anti-surcorrection : boutons/onglets se résolvent bien par leur texte VISIBLE.
+
+    `click_button` passe par `get_by_role(name=…)` : une consigne « les paramètres sont des noms
+    techniques » sans exception casserait ces steps-là.
+    """
+    section = steps_library.as_prompt_section(steps_library.catalogue())
+    assert "libellé VISIBLE" in section
+    assert "bouton" in section
+
+
 def test_prompt_sans_catalogue_reste_valide():
     # Bibliothèque absente → pas de section vide parasite.
     prompt = build_system_prompt(None, [])

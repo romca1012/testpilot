@@ -60,7 +60,8 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   `[name='Raison de la demande']` est enfin en base) ; 3 tests de non-régression, **168 verts**.
   *Reste* : visibilité complète à l'écran (dépend de l'écart 4 pour `ReportView` ; le dépliage
   `CaseRow` n'affiche pas la cause — choix de design 0006 à trancher). Voir `CONTINUITE.md` §6.1.
-- [ ] **Sémantique des paramètres de steps** (écart 1, **`0007` — B et B+ faits ; reste A1**) —
+- [x] **Sémantique des paramètres de steps** (écart 1, **`0007` — B, B+ et A1 faits** ; reste la
+  **mesure d'obéissance d'A1**, en attente d'une instance Odoo joignable) —
   l'agent passe le **libellé humain** au step UI là où le helper attend le **nom technique**
   (`[name=…]`) → `TimeoutError`. **Bug déterministe** (reproduit cas 2 **et** cas 3). Racine de
   **famille commune** avec `0008`/`0003` (le catalogue montre le libellé, pas la sémantique de
@@ -75,8 +76,14 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
     seul a donc un **angle mort** que seul le surfaçage ferme. Marqueur capté du log behave →
     colonne `execution.field_fallbacks` (migration 4) → API → bandeau `FieldFallbackNotice` +
     pastille d'historique dans `CaseDetail`.
-  - **A1** — annotation du catalogue (`as_prompt_section`) : `{field}` = attribut HTML `name`,
-    **maintenant** (la reporter recréerait le trou de consigne). A2 (par step) différée.
+  - **A1** — ✅ *fait*. Contrat écrit dans l'en-tête de `as_prompt_section` : `{field}` = **nom
+    technique, jamais le libellé affiché** (attribut HTML `name` côté interface, champ du modèle
+    côté vérification Odoo) — formulation **corrigée** à l'implémentation : `{field}` sert dans
+    deux registres, et `{name}` (onglet/produit) désigne au contraire un **libellé visible**, donc
+    l'annotation exclut explicitement boutons/onglets pour ne pas casser `click_button` par
+    surcorrection. ⏭️ **Mesure d'obéissance en attente** : elle exige une re-génération LLM, or
+    l'agent explore l'application réelle et Odoo est injoignable → la mesure serait invalide.
+    A2 (par step) différée.
   → `decisions/0007-agent-parametre-steps-libelle-vs-nom-technique-inc1.md`.
 - [ ] **Runs API sans rapport** (écart 4) : `run_service._persist` n'écrit ni `report_json_path`
   ni `report_html_path` (vides pour l'exécution 2), alors que la CLI les produit. L'UI promet un

@@ -1,8 +1,8 @@
 # 0007 — Génération : l'agent passe le libellé humain là où le step attend le nom technique (Inc. 1)
 
 Date : 2026-07-15
-Statut : **DÉCIDÉ** (arbitrage du porteur, 2026-07-15 — voir § *Verdict*). **B et B+ livrés et
-prouvés** (2026-07-16) ; **reste A1** (annotation du catalogue).
+Statut : **DÉCIDÉ** (arbitrage du porteur, 2026-07-15 — voir § *Verdict*). **B, B+ et A1 livrés**
+(2026-07-16). Reste la **mesure d'obéissance d'A1**, en attente d'une instance Odoo joignable.
 Priorité : **2** (après `0008`) — cf. `BACKLOG.md`
 
 ---
@@ -217,4 +217,33 @@ du repli au rapport, visible même sur un run vert) → **A1** (annotation catal
   *Limite de preuve assumée* : le run réel du cas 2 prouve le **surfaçage** ; son `[Nominal]`
   échoue en aval (`TypeError` hors écart 1), ce n'est donc pas un scénario vert. Le cas **vert** —
   le cœur de l'exigence — est prouvé par le test de garde synthétique, pas par le cas 2.
-- **A1** — ⏭️ à faire : ligne dans `as_prompt_section` (`{field}` = attribut HTML `name`).
+- **A1** — ✅ FAIT (annotation) ; ⏭️ **mesure d'obéissance en attente** (voir plus bas).
+  Contrat écrit dans l'en-tête de `as_prompt_section` : `{field}` = **nom technique, jamais le
+  libellé affiché**.
+
+  ⚠️ **Correction du libellé de cette note** (relevé à l'implémentation, §8.4). L'option A1 était
+  formulée « un `{field}`/`{name}` de champ est l'attribut HTML `name` ». **Deux inexactitudes**,
+  vérifiées sur le catalogue réel :
+  1. **`{field}` sert dans DEUX registres.** Steps d'interface (`je renseigne le champ "{field}"`)
+     → attribut HTML `name`. Steps de vérification Odoo (`le champ "{field}" de cet enregistrement
+     est égal à "{expected}"`) → nom du champ du **modèle**. Écrire « `{field}` = attribut HTML »
+     aurait été **faux** pour la moitié des steps. Le point commun — et donc la règle écrite —
+     est : *nom technique, jamais le libellé*.
+  2. **`{name}` n'est PAS un nom technique.** Il désigne un onglet ou un produit
+     (`je clique sur l'onglet "{name}"`), résolus par leur **texte visible** ; `click_button`
+     passe par `get_by_role(name=…)`. Une consigne « les paramètres sont techniques » sans
+     exception aurait **cassé** ces steps par surcorrection. L'annotation dit donc explicitement
+     que boutons / onglets / produits se désignent par leur **libellé visible**.
+
+  Gardé par deux tests (`test_catalogue_annonce_la_semantique_de_field`,
+  `test_catalogue_ne_technicise_pas_les_boutons`).
+
+  ⏭️ **Mesure d'obéissance NON FAITE — et volontairement pas bâclée.** Elle exige de re-générer un
+  spec (appel LLM réel). Or `GenerationAgent` reçoit un `connector` pour **explorer l'application**,
+  et l'annotation dit à l'agent de *lire le nom technique sur l'application réelle* : avec
+  l'instance Odoo (`localhost:10017`) **injoignable**, l'agent ne peut pas le lire. La mesure
+  serait donc **invalide** (elle testerait l'agent privé de la source que la consigne lui désigne),
+  en plus d'être payante. À rejouer avec Odoo up : re-générer `specs/validation_champ_requis.md` et
+  vérifier que le step UI est paramétré `champ "name"` et non `champ "Raison de la demande"`
+  (cf. `scripts/prove_A_falsifiabilite.py` pour le dispositif). **Sans effet bloquant** : le repli
+  technique (B) rattrape déjà le cas, A1 ne fait que renforcer.
