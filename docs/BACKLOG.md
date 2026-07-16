@@ -106,12 +106,20 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   (promesse « aucun modèle Odoo » intenable ; besoin déjà couvert par les steps ciblés par
   modèle). Dégât nul à ce jour (aucun cas ne l'utilisait). 5 tests de garde du **motif**.
   → `decisions/0010-step-partage-infalsifiable-bibliotheque-inc1.md`.
-- [ ] **Steps de comptage : repli silencieux quand le snapshot manque** — ⚠️ **trouvé, non
-  corrigé**. `check_count_not_increased` / `check_count_increased_by_one` font
-  `warnings.warn(...) + return` si le snapshot initial n'existe pas → le `@then` **passe sans
-  rien vérifier**. Même famille que `0010`/`0008` (faux-négatif, §4.4) et que `0007` (un repli
-  ne doit jamais être silencieux). À arbitrer **avant l'import** : les 4 modules à régénérer
-  utilisent massivement le comptage.
+- [x] **Comptage sans point de comparaison** (`0011`) — *fait, avant l'import (décision du
+  porteur)*. Chaîne de faux-négatif **muette aux deux bouts** : `memorize_record_count` avalait
+  son exception (`warn`) → aucun snapshot ; `check_count_*` faisait `warn` + `return` → aucune
+  assertion ; le `@then` passait → **scénario vert qui n'avait rien vérifié** (§4.2/§4.4, et le
+  motif de `0007` : un repli ne doit jamais être silencieux). Portée : les helpers les **plus
+  réutilisés** (c'est le succès de `0003` qui la donnait). Correctif : **échec explicite** nommant
+  le step manquant (libellé vérifié comme présent au catalogue). 9 tests dont un garde AST du
+  motif `warn`+`return`, **vérifié comme échouant sur l'ancien code**.
+  → `decisions/0011-comptage-sans-snapshot-faux-negatif-inc1.md`.
+- [ ] **Angle mort du lint : la bibliothèque partagée n'est jamais lintée** — le lint `0008` ne
+  regarde que les steps de la **version d'un cas**, au gate. `0010` et `0011` ont été trouvés
+  **à la main**. Le brancher sur la bibliothèque suppose d'abord de lui apprendre la
+  **délégation** (un `@then` qui appelle un helper qui assertit **est** falsifiable), sinon
+  4 faux positifs. À arbitrer.
 - [x] **Navigation en arborescence + vue Modules** — *fait (2026-07-16)*. L'onglet « Gestion
   des cas » devient un EXPLORATEUR : arbre `Modules → Cas` en colonne permanente
   (`ModuleTree`, repliable, tout déplier/replier, état persistant par projet) rendu dans la

@@ -373,33 +373,70 @@ def cleanup_test_records(env, prefix, models):
             Model.unlink(tid)
 
 
+# ── Comptage avant/après (décision 0011) ─────────────────────────────────────
+#
+# ⚠️ Ces trois fonctions formaient une chaîne de faux-négatif MUETTE AUX DEUX BOUTS :
+#   1. `memorize_record_count` avalait son exception (`warn`) → aucun snapshot posé ;
+#   2. `check_count_*` ne trouvait pas le snapshot → `warn` + `return` SANS asserter ;
+#   3. le `@then` passait → scénario VERT qui n'avait rien vérifié.
+# Un `warnings.warn` n'échoue pas un test : le verdict devenait déclaratif (§4.2) et produisait
+# le faux-négatif que §4.4 déclare inacceptable. Même famille que 0010 (vérification creuse dans
+# la bibliothèque partagée) et que 0007 (un repli ne doit JAMAIS être silencieux).
+#
+# Règle désormais : un comptage sans snapshot est un test INCOMPLET, pas un test qui passe. On
+# échoue, avec un message qui nomme le step manquant.
+
+_COUNT_SNAPSHOT_STEP = ('le nombre d\'enregistrements dans le modèle "{model}" '
+                        'est enregistré pour comparaison')
+
+
+def _count_attr(model: str) -> str:
+    return f"_initial_count_{model.replace('.', '_')}"
+
+
 def memorize_record_count(context, model):
-    attr = f"_initial_count_{model.replace('.', '_')}"
+    """Mémorise le nombre d'enregistrements du modèle, pour comparaison après l'action.
+
+    Échoue si le comptage est impossible : sans snapshot, toute vérification en aval serait creuse
+    (cf. `_require_snapshot`). Mieux vaut échouer ICI, où la cause est visible, que laisser le
+    scénario finir au vert sans rien avoir prouvé.
+    """
     try:
-        setattr(context, attr, context.odoo.env[model].search_count([]))
+        setattr(context, _count_attr(model), context.odoo.env[model].search_count([]))
     except Exception as exc:
-        warnings.warn(f"[odoo-autotest] Impossible de mémoriser le count pour {model!r} : {exc}")
+        raise AssertionError(
+            f"Impossible de mémoriser le nombre d'enregistrements de '{model}' : {exc}. "
+            f"Sans ce point de comparaison, les vérifications de comptage ne prouveraient rien."
+        ) from exc
+
+
+def _require_snapshot(context, model) -> int:
+    """Renvoie le snapshot initial, ou ÉCHOUE en nommant le step manquant.
+
+    Ne jamais remplacer par un `return` silencieux : le `@then` appelant passerait sans rien
+    vérifier, et un scénario vert affirmerait un comptage que personne n'a mesuré (§4.2/§4.4).
+    """
+    attr = _count_attr(model)
+    if not hasattr(context, attr):
+        raise AssertionError(
+            f"Aucun point de comparaison pour '{model}' : ce scénario vérifie un comptage sans "
+            f"l'avoir mesuré avant l'action. Ajoutez le step "
+            f"« {_COUNT_SNAPSHOT_STEP.format(model=model)} » avant l'action."
+        )
+    return getattr(context, attr)
 
 
 def check_count_not_increased(context, model):
-    attr = f"_initial_count_{model.replace('.', '_')}"
-    if not hasattr(context, attr):
-        warnings.warn(f"[odoo-autotest] Aucun snapshot initial pour '{model}'.")
-        return
+    initial = _require_snapshot(context, model)
     current = context.odoo.env[model].search_count([])
-    initial = getattr(context, attr)
     assert current <= initial, (
         f"Nombre d'enregistrements dans '{model}' a augmenté ({initial} → {current})."
     )
 
 
 def check_count_increased_by_one(context, model):
-    attr = f"_initial_count_{model.replace('.', '_')}"
-    if not hasattr(context, attr):
-        warnings.warn(f"[odoo-autotest] Aucun snapshot initial pour '{model}'.")
-        return
+    initial = _require_snapshot(context, model)
     current = context.odoo.env[model].search_count([])
-    initial = getattr(context, attr)
     assert current == initial + 1, (
         f"Nombre d'enregistrements dans '{model}' devrait être {initial + 1}, obtenu {current}."
     )
