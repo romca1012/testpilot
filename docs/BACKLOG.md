@@ -175,9 +175,6 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   préférence retenue par utilisateur (localStorage). Purement visuel.
 - [ ] **Déplacer un cas entre modules (drag)** — hors périmètre de `0009` (change `module_id`,
   le rangement métier, pas l'ordre). Chantier séparé, arbitré avec le porteur.
-- [ ] **Exécution nommée transverse (groupée multi-modules)** — chantier suivant. Contrainte
-  actée : référencer les cas **par ID** via une table de liaison **many-to-many** entre
-  l'exécution nommée et `test_case` — **jamais** de duplication de cas.
 - [x] **Arbitrage humain des diagnostics** (`0013`, **remplace `0001`**) — *fait*. `0001` était
   trop étroit : il parlait des `pending_human`, or un **`not_required` faux était IRRÉVOCABLE**.
   Constat mesuré : **aucun** diagnostic n'était jamais tranché (8/8 avec `confirmed_by = NULL`) —
@@ -243,3 +240,11 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   plusieurs modules, avec nom et but propres, et rapport attaché à l'exécution. Classé JTBD
   essentiel (régression transverse, §3 du brief). L'UI de l'onglet Exécution laisse la porte
   ouverte (badge mono/multi-module + nom d'exécution prévus dans les tuiles).
+  **Contrainte actée (porteur, 2026-07-16)** : référencer les cas **par ID**, via une table de
+  liaison **many-to-many** entre l'exécution nommée et `test_case` — **jamais** de duplication
+  de cas. Un cas dupliqué divergerait de son original dès la première régénération (c'est
+  exactement le référentiel scindé de l'ancien prototype, §2.6).
+  ⚠️ **En attente, volontairement** : le porteur a arbitré le focus sur *création → exécution →
+  réparation* (« ça ne sert à rien de rajouter plusieurs modules qui ne marchent pas »). À
+  reprendre quand un cas passe au vert et que `0014` est livré — grouper des cas qui échouent
+  tous ne prouverait rien.

@@ -1,7 +1,15 @@
 # 0001 — Traitement des confirmations `pending_human` reporté à l'Incrément 1
 
 Date : 2026-07-14
-Statut : acté
+Statut : ⛔ **REMPLACÉ par `0013`** (2026-07-16) — conservé pour la traçabilité, ne plus s'y référer.
+
+> **Pourquoi remplacé, et pas seulement « fait ».** Cette note ne visait que la file des
+> `pending_human`. La mesure a montré que le trou était plus large : un diagnostic
+> `not_required` faux était **irrévocable**, faute de toute surface pour l'infirmer. Il ne
+> fallait donc pas une file d'attente mais une **surface d'arbitrage** — un humain doit pouvoir
+> juger un diagnostic **quel que soit son régime**. L'intitulé de cette note orientait vers la
+> mauvaise solution : d'où une décision propre plutôt qu'un `0001` étiré.
+> → `decisions/0013-arbitrage-humain-des-diagnostics-inc1.md`
 
 ## Contexte
 
