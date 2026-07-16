@@ -93,6 +93,20 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
 - [ ] **Runs API sans rapport** (écart 4) : `run_service._persist` n'écrit ni `report_json_path`
   ni `report_html_path` (vides pour l'exécution 2), alors que la CLI les produit. L'UI promet un
   rapport que le runtime ne fournit pas → invariant §4.6 (« jamais affiché ≠ réel »).
+- [x] **Navigation en arborescence + vue Modules** — *fait (2026-07-16)*. L'onglet « Gestion
+  des cas » devient un EXPLORATEUR : arbre `Modules → Cas` en colonne permanente
+  (`ModuleTree`, repliable, tout déplier/replier, état persistant par projet) rendu dans la
+  BARRE LATÉRALE par `AppShell`, sous les onglets — pas de seconde colonne (arbitrage du
+  porteur), donc routes à plat et contenu pleine largeur ; état partagé `useProjectTree`.
+  Première vue du projet = `ModulesOverview` (la structure, pas un mur de cas), table plate
+  conservée en « Tous les cas ». Arbre à 2 niveaux, non récursif (pas de sous-module,
+  `0004`) ; aucun statut fusionné dans l'arbre (`4.1`) ; masqué hors gestion (`4.8`).
+  8 vitest + captures. **Bug serveur trouvé au passage** : HTTP 500 intermittent
+  (connexion SQLite passée entre threads du pool FastAPI) → `check_same_thread=False`,
+  3 tests. Voir `CONTINUITE` §2.8.
+- [ ] **Exécution nommée transverse (groupée multi-modules)** — chantier suivant. Contrainte
+  actée : référencer les cas **par ID** via une table de liaison **many-to-many** entre
+  l'exécution nommée et `test_case` — **jamais** de duplication de cas.
 - [ ] **Confirmations `pending_human`** : sous-commande / écran de traitement de la file de
   relecture des origines de défaut. → `decisions/0001-report-confirmations-pending-human-inc1.md`.
 - [x] **Runtime branché sur la connexion du projet** — *fait*. L'exécution (run UI et CLI) et

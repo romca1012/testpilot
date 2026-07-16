@@ -1,21 +1,51 @@
 <script setup lang="ts">
 // Coque applicative. Le PROJET est le contexte de premier niveau (sélecteur en haut de
 // sidebar) ; SOUS lui, la séparation §8 reste structurelle : deux onglets Gestion / Exécution.
+//
+// L'arbre Modules → Cas vit ICI, sous les onglets, et non dans une seconde colonne : deux
+// bandeaux de navigation côte à côte occupaient de l'espace pour rien. Il rend donc la structure
+// du projet visible en permanence tout en laissant toute la largeur au contenu.
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useProjects } from '../lib/useProjects'
+import { useProjectTree } from '../lib/useProjectTree'
+import ModuleTree from './ModuleTree.vue'
 import Icon from './ui/Icon.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { projects, ensureLoaded, projectById } = useProjects()
+const tree = useProjectTree()
 
 const pid = computed(() => route.params.pid as string | undefined)
 const currentProject = computed(() => projectById(pid.value))
 const menuOpen = ref(false)
 
-onMounted(() => ensureLoaded())
-watch(pid, () => ensureLoaded())
+// ⚠️ L'arbre n'apparaît QUE sous « Gestion des cas ». La séparation Gestion / Exécution est
+// structurelle (§8, invariant 4.8) : un arbre de cas au-dessus d'une vue d'exécution la
+// brouillerait. C'est la raison pour laquelle on filtre par nom de route et non par présence
+// d'un projet.
+const CASES_ROUTES = ['cases', 'cases-all', 'case-detail', 'module-detail']
+const showTree = computed(() => !!pid.value && CASES_ROUTES.includes(String(route.name)))
+
+const selectedCaseId = computed(() =>
+  route.name === 'case-detail' ? Number(route.params.id) : null)
+const selectedModuleId = computed(() =>
+  route.name === 'module-detail' ? Number(route.params.mid) : null)
+
+function syncTree(silent = false) {
+  if (!showTree.value || !pid.value) return
+  tree.load(pid.value, { silent }).then(() => {
+    if (selectedCaseId.value) tree.revealCase(pid.value!, selectedCaseId.value)
+    else if (selectedModuleId.value) tree.revealModule(pid.value!, selectedModuleId.value)
+  })
+}
+
+onMounted(() => { ensureLoaded(); syncTree() })
+watch(pid, () => { ensureLoaded(); syncTree() })
+// Un cas ajouté depuis le contenu (flux 0006) doit apparaître dans l'arbre sans rechargement —
+// rafraîchissement SILENCIEUX, pour que l'arbre ne clignote pas à chaque navigation.
+watch(() => route.fullPath, () => syncTree(true))
 
 const tabs = computed(() => [
   { to: `/projects/${pid.value}/cases`, label: 'Gestion des cas', match: 'cases',
@@ -90,6 +120,22 @@ function switchProject(id: number) {
           <span>{{ item.label }}</span>
         </RouterLink>
       </nav>
+
+      <!-- Arbre Modules → Cas — sous les onglets, uniquement en « Gestion des cas » (4.8). -->
+      <div v-if="showTree" class="hidden md:block border-t border-border px-3 py-3">
+        <div v-if="tree.loading.value && !tree.modules.value.length" class="space-y-2">
+          <div v-for="i in 4" :key="i" class="h-6 rounded bg-secondary animate-pulse" />
+        </div>
+        <p v-else-if="tree.error.value" class="px-2 text-xs text-destructive">{{ tree.error.value }}</p>
+        <ModuleTree
+          v-else
+          :modules="tree.modules.value" :cases="tree.cases.value" :project-id="pid!"
+          :expanded="tree.expanded.value"
+          :selected-case-id="selectedCaseId" :selected-module-id="selectedModuleId"
+          @toggle="tree.toggle(pid!, $event)"
+          @expand-all="tree.expandAll(pid!)" @collapse-all="tree.collapseAll(pid!)"
+        />
+      </div>
     </aside>
 
     <div class="flex-1 flex flex-col min-w-0">

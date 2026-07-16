@@ -21,10 +21,22 @@ _SCHEMA_VERSION = 4
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
-    """Ouvre une connexion SQLite avec les lignes indexables par nom et les FK actives."""
+    """Ouvre une connexion SQLite avec les lignes indexables par nom et les FK actives.
+
+    ``check_same_thread=False`` : FastAPI exécute une dépendance ``yield`` SYNCHRONE dans un
+    thread du pool et l'endpoint dans un AUTRE thread du même pool. La connexion d'``api.deps``
+    est donc *passée* d'un thread à l'autre — jamais partagée par deux threads en même temps
+    (une connexion PAR requête, fermée à la fin). Sans ce drapeau, SQLite refuse ce simple
+    passage de main et la requête tombe en HTTP 500 — de façon **intermittente**, au gré de
+    l'ordonnancement du pool, donc invisible tant qu'aucune requête ne se chevauche.
+
+    ⚠️ Ce drapeau ne rend PAS une connexion partageable entre threads concurrents : il lève le
+    contrôle de propriété, il n'ajoute aucun verrou. L'invariant à tenir reste « une connexion
+    par requête / par tâche », jamais une connexion globale partagée.
+    """
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn

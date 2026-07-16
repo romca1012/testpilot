@@ -15,7 +15,7 @@
 | **Incrément 1 (reste)** | Backlog documenté (§7). |
 | **Incrément 2** | Sécurité (mot de passe en clair) — bloquant avant tout déploiement client. |
 
-**Tests : 200 Python · 18 vitest · build front OK.** Tout est vert au moment de ce rapport.
+**Tests : 203 Python · 26 vitest · build front OK.** Tout est vert au moment de ce rapport.
 
 **Stack** : Python 3.10, FastAPI + SQLite (portable PostgreSQL), Behave + Playwright + odoorpc,
 Anthropic (Claude), frontend Vite + Vue 3 + Tailwind (dark, esprit « Linear »).
@@ -104,6 +104,35 @@ Chaque décision a sa note détaillée dans `docs/decisions/`.
 - Repris : la **palette** (`main.css`), quelques primitives UI, la moitié RPC du connecteur
   Odoo, le harnais Behave (`environment.py` + bibliothèque de steps).
 - Rejeté : son organisation de pages/navigation, son modèle de statut.
+
+### 2.8 « Gestion des cas » est un EXPLORATEUR ; la première vue d'un projet est sa STRUCTURE
+- **Trou constaté (2026-07-16)** : aucune vue ne rendait le niveau **Module**. L'onglet ouvrait
+  la table plate de **tous** les cas, où le module n'était qu'un sous-titre — la hiérarchie
+  `0004` (Projet → Module → Cas) existait en base mais **pas à l'écran**.
+- **Décision** : la première vue d'un projet est **Modules** (`ModulesOverview`) ; on ouvre un
+  module pour voir ses cas. La table plate **survit** en vue transverse « Tous les cas »
+  (`/cases/all`) — elle garde ses compteurs, rien n'est perdu.
+- **Arbre Modules → Cas** (`ModuleTree`) rendu par **`AppShell`, dans la barre latérale**, sous
+  les onglets — **pas** dans une seconde colonne : deux bandeaux de navigation côte à côte
+  gaspillaient l'espace (arbitrage du porteur). Les routes restent donc **à plat** (pas de route
+  layout) et le contenu garde toute sa largeur ; état partagé dans `lib/useProjectTree.ts`.
+- **L'arbre n'apparaît QUE sur les routes de gestion** (`CASES_ROUTES` dans `AppShell`) : un arbre
+  de cas au-dessus d'une vue d'exécution brouillerait la séparation §8 (§4.8).
+- **Deux niveaux, JAMAIS récursif** : il n'existe pas de sous-module (`0004`). Un arbre récursif
+  promettrait une profondeur que le modèle n'a pas (§4.6). *(L'ancien prototype avait des
+  sections récursives — inspiration ponctuelle, pas un modèle : §2.6.)*
+- **Aucun statut fusionné dans l'arbre** : seul `validation_status` (mono-axe par nature) y
+  figure, en **icône + mot en infobulle** — jamais la couleur seule, jamais les deux axes
+  fusionnés (§4.1, §4.7). Les deux axes restent dans la table et le détail.
+- ⚠️ **Bug SERVEUR trouvé au passage, corrigé** : `sqlite3.ProgrammingError: SQLite objects
+  created in a thread can only be used in that same thread` → **HTTP 500 intermittent**. FastAPI
+  exécute une dépendance `yield` **synchrone** (`api.deps.get_conn`) dans un thread du pool et
+  l'endpoint dans un **autre** : la connexion (pourtant une par requête) change de thread en
+  route. Correctif : `check_same_thread=False` dans `db.connect()` — il lève le contrôle de
+  propriété, **n'ajoute aucun verrou** : l'invariant « une connexion par requête » reste ce qui
+  rend l'ensemble correct. **Latent depuis toujours** : `TestClient` est synchrone et sérialise
+  tout, donc 200 tests verts ne pouvaient pas le voir. Il a fallu un vrai navigateur chargeant
+  l'arbre **en parallèle** de la page. 3 tests de non-régression (`tests/test_conn_threads.py`).
 
 ### 2.7 Autres décisions actées
 - **Navigation** : le projet est un **contexte porté par l'URL** (`/projects/:pid/...`), au-dessus
