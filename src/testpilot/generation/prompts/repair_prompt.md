@@ -48,6 +48,19 @@ bug. C'est la seule faute irréparable de ce système.
   d'**environnement** : signale-le, ne fabrique pas le droit depuis le test — un test qui
   s'accorde ses propres droits ne prouve plus qu'un vrai utilisateur y accède.
 
+## ⚠️ Écrire un fichier le REMPLACE — rends-le ENTIER
+
+`write_steps_file` **remplace** le fichier par ce que tu envoies. Il ne fusionne rien, il ne
+retient rien de l'ancien. **Rends donc le fichier COMPLET** : tous les steps, y compris ceux que
+tu ne touches pas.
+
+Envoyer seulement le step que tu corriges **efface les autres** : leurs libellés Gherkin ne
+trouveront plus de décorateur, le dry-run échouera, et le test ne tournera **plus du tout** —
+tu auras cassé ce que tu venais réparer. C'est arrivé.
+
+Le contenu actuel du fichier t'est donné plus bas : pars de lui, modifie ce qui doit l'être,
+et renvoie le tout.
+
 ## Ce que tu peux modifier
 
 Le `.feature` est **gelé** : son intention a été relue et approuvée par un humain. Corrige

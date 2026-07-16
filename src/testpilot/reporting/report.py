@@ -60,6 +60,10 @@ class RepairLine:
     defect_origin: str
     confirmation_status: str
     requires_human_confirmation: bool
+    # Ce que l'agent DIT avoir changé (décision 0014). La colonne existait et était vide
+    # partout : sans elle, une réparation serait une boîte noire — l'humain verrait « v2 » sans
+    # savoir ce qui a bougé, donc sans pouvoir ratifier en connaissance de cause.
+    what_was_tried: str = ""
 
 
 @dataclass
@@ -113,8 +117,10 @@ def build_report(verdict: CaseVerdict, *, module_name: str, title: str = "",
                  generated_at: str | None = None) -> TestReport:
     """Construit un ``TestReport`` depuis un ``CaseVerdict`` et les métadonnées du run.
 
-    ``repairs`` : liste de ``DefectVerdict`` (verdict/defect_origin) — les tentatives dont
-    on veut tracer l'origine et l'éventuelle confirmation humaine en attente.
+    ``repairs`` : tentatives dont on veut tracer l'origine et l'éventuelle confirmation en
+    attente. Tout objet portant les champs d'un ``DefectVerdict`` convient ; `what_was_tried`
+    est lu s'il existe (duck typing) — `DefectVerdict` est un verdict d'ORIGINE, pas une
+    tentative : lui ajouter ce champ mélangerait deux domaines.
     """
     repair_lines = [
         RepairLine(
@@ -123,6 +129,7 @@ def build_report(verdict: CaseVerdict, *, module_name: str, title: str = "",
             defect_origin=r.defect_origin,
             confirmation_status=r.confirmation_status,
             requires_human_confirmation=r.requires_human_confirmation,
+            what_was_tried=getattr(r, "what_was_tried", "") or "",
         )
         for r in (repairs or [])
     ]

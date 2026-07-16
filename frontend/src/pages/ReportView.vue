@@ -96,7 +96,8 @@ onMounted(async () => {
       <!-- Origine des défauts (vocabulaire utilisateur — jamais de valeur d'enum brute) -->
       <Card v-if="report.repairs.length" title="Origine des défauts">
         <ul class="divide-y divide-border text-sm">
-          <li v-for="(d, i) in report.repairs" :key="i" class="flex flex-wrap items-center justify-between gap-3 py-2.5">
+          <li v-for="(d, i) in report.repairs" :key="i" class="py-2.5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-2">
               <span class="text-muted-foreground">{{ d.cause_label || 'Cause indéterminée' }}</span>
               <span class="text-muted-foreground/50">·</span>
@@ -113,6 +114,12 @@ onMounted(async () => {
               :label="confirmationView(d.confirmation_status)!.label"
               :cls="toneClasses(confirmationView(d.confirmation_status)!.tone)"
             />
+            </div>
+            <!-- Ce que l'agent DIT avoir changé (0014). Sans ça, la réparation serait une
+                 boîte noire : « v2 » sans savoir ce qui a bougé. -->
+            <p v-if="d.what_was_tried" class="mt-1.5 text-xs text-muted-foreground">
+              <span class="text-foreground/70">Réparation tentée :</span> {{ d.what_was_tried }}
+            </p>
           </li>
         </ul>
       </Card>

@@ -219,14 +219,26 @@ onBeforeUnmount(stopPoll)
         </ul>
       </Card>
 
-      <!-- Versions (historique du contenu) -->
+      <!-- Versions (historique du contenu) — dit CE QUI A CHANGÉ, pas seulement « v2 ».
+           Une réparation crée une version (0014) : sans son résumé, elle serait une boîte
+           noire et l'humain ratifierait à l'aveugle. -->
       <Card title="Versions">
         <ul class="divide-y divide-border text-sm">
-          <li v-for="v in detail.versions" :key="v.id" class="flex items-center justify-between py-2">
-            <span>v{{ v.version_number }}
-              <span v-if="v.id === detail.current_version_id" class="ml-2 text-xs text-primary">courante</span>
-            </span>
-            <span class="text-xs text-muted-foreground">{{ formatDate(v.created_at) }}</span>
+          <li v-for="v in detail.versions" :key="v.id" class="py-2.5">
+            <div class="flex items-center justify-between gap-3">
+              <span class="flex items-center gap-2">
+                v{{ v.version_number }}
+                <span v-if="v.id === detail.current_version_id" class="text-xs text-primary">courante</span>
+                <span v-if="v.created_by === 'repair-agent'"
+                      class="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-[11px] text-warning">
+                  ⚠ réparation automatique
+                </span>
+              </span>
+              <span class="shrink-0 text-xs text-muted-foreground">{{ formatDate(v.created_at) }}</span>
+            </div>
+            <p v-if="v.change_summary" class="mt-1 text-xs text-muted-foreground">
+              {{ v.change_summary }}
+            </p>
           </li>
         </ul>
       </Card>

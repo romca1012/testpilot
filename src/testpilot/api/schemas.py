@@ -65,6 +65,11 @@ class VersionOut(BaseModel):
     feature_content: str = ""
     steps_content: str = ""
     spec_hash: str = ""
+    # D'où vient cette version, et ce qui a changé (décision 0014). Sans ça, une réparation
+    # serait une boîte noire : l'humain verrait « v2 » sans savoir ce qui a bougé, donc sans
+    # pouvoir ratifier en connaissance de cause.
+    change_summary: str = ""
+    created_by: str = ""
     created_at: str = ""
 
 
@@ -304,6 +309,8 @@ def version_out(row: dict) -> VersionOut:
         feature_content=row.get("feature_content", ""),
         steps_content=row.get("steps_content", ""),
         spec_hash=row.get("spec_hash", ""), created_at=row.get("created_at", ""),
+        change_summary=row.get("change_summary", "") or "",
+        created_by=row.get("created_by", "") or "",
     )
 
 

@@ -8,6 +8,7 @@ par le référentiel plutôt que par un ``ExecutionOutcome`` en mémoire.
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 
 from testpilot.reporting import report as report_mod
 from testpilot.store.repositories import (
@@ -41,12 +42,25 @@ def _verdict_from_db(execution: dict, scenario_rows: list[dict]) -> CaseVerdict:
     )
 
 
+@dataclass
+class _TentativeRapportee(DefectVerdict):
+    """`DefectVerdict` + ce que l'agent a tenté (décision 0014).
+
+    Sous-classe locale plutôt qu'un champ ajouté à `DefectVerdict` : celui-ci est un verdict
+    d'ORIGINE (module pur du pilier verdict), pas une tentative de réparation. Les mélanger
+    ferait remonter une notion de réparation dans un module qui n'en connaît aucune.
+    """
+
+    what_was_tried: str = ""
+
+
 def _repairs_from_db(repair_rows: list[dict]) -> list[DefectVerdict]:
     return [
-        DefectVerdict(
+        _TentativeRapportee(
             cause_category=r.get("cause_category", ""),
             defect_origin=r.get("defect_origin", "indetermine"),
             confirmation_status=r.get("confirmation_status", "not_required"),
+            what_was_tried=r.get("what_was_tried", "") or "",
         )
         for r in repair_rows
     ]

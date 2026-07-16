@@ -30,6 +30,10 @@ from testpilot.store.repositories import CaseRepo, RepairRepo, ReviewRepo, Versi
 
 logger = logging.getLogger(__name__)
 
+# Issue propre à cette boucle : le test n'a pas tourné du tout (le circuit, lui, ne connaît que
+# des ÉCHECS — il n'a aucun moyen de distinguer « aucun échec » de « aucun run »).
+RUN_FAILED = "run_failed"
+
 
 @dataclass
 class RepairSession:
@@ -44,8 +48,25 @@ class RepairSession:
     cost_usd: float = 0.0
 
 
+def a_tourne(outcome) -> bool:
+    """Le test s'est-il RÉELLEMENT exécuté ?
+
+    ⚠️ **Distinction vitale, trouvée en run réel (étape 6).** Quand le dry-run échoue, Behave ne
+    joue rien et `Executor` rend `real_run=None` → `_failures_of` donnait alors une liste vide,
+    **exactement comme un test qui passe**. Le circuit concluait « plus aucun échec — réparation
+    terminée » alors que **le test n'avait jamais tourné** : il adoptait une version cassée en
+    proclamant sa victoire.
+
+    C'est le **faux négatif** que §4.4 déclare inacceptable, et le motif déjà traqué en `0010`,
+    `0011` et `0013` : **l'absence de signal prise pour un signal positif**. Mesuré : l'exécution
+    13 (v7) avait 0 scénario et la réparation s'est déclarée réussie.
+    """
+    return outcome is not None and getattr(outcome, "real_run", None) is not None
+
+
 def _failures_of(outcome) -> list:
-    return list(outcome.real_run.failures) if outcome and outcome.real_run else []
+    """Échecs du run. ⚠️ Vide ne veut RIEN dire sans `a_tourne()` : voir sa docstring."""
+    return list(outcome.real_run.failures) if a_tourne(outcome) else []
 
 
 def _scenarios_of(outcome) -> list:
@@ -73,6 +94,19 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
     failures = _failures_of(outcome)
 
     while True:
+        # ⚠️ AVANT toute évaluation : un test qui n'a pas tourné n'a pas « zéro échec », il n'a
+        # pas de résultat. Laisser `evaluate` voir une liste vide lui ferait conclure
+        # « résolu » — et la boucle adopterait une version cassée (bug trouvé en run réel).
+        if not a_tourne(outcome):
+            session.outcome = RUN_FAILED
+            session.reason = (
+                "le test n'a pas pu s'exécuter (dry-run en échec) — il ne parse plus. "
+                "La réparation l'a cassé, ou la version de départ était déjà injouable."
+            )
+            logger.warning("[repair] cas %s : le test ne tourne plus après %s tentative(s) — "
+                           "aucune adoption", case_id, session.attempts)
+            break
+
         decision = evaluate(circuit, failures)
         session.outcome, session.reason = decision.outcome, decision.reason
         if not decision.should_continue:
@@ -88,6 +122,9 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             module_name=module_name,
             scenarios=_scenarios_of(outcome),
             failures=failures,
+            # Le fichier ACTUEL : `write_steps_file` le REMPLACE, l'agent doit donc partir de
+            # son contenu et le rendre entier — sans lui, il réécrit de mémoire et tronque.
+            steps_content=version["steps_content"] or "",
             connector=connector,
         )
         session.cost_usd = round(session.cost_usd + proposal.cost_usd, 6)
@@ -120,6 +157,8 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
     session.resolved = (session.outcome == "resolved")
     session.final_version_id = current_version_id
 
+    _sync_disque(versions, session, version_id, current_version_id, module_name)
+
     if session.resolved and current_version_id != version_id:
         # La version réparée devient la référence — mais elle n'est PAS approuvée : personne ne
         # l'a relue. Le cas repasse « à relire » pour ratification (§4.3). C'est le prix de
@@ -135,6 +174,40 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
         logger.info("[repair] cas %s non réparé (%s) — v%s reste la référence",
                     case_id, session.outcome, version_id)
     return session
+
+
+def _sync_disque(versions, session: RepairSession, version_id: int,
+                 current_version_id: int, module_name: str) -> None:
+    """Le DISQUE doit toujours refléter la version qui fait référence.
+
+    ⚠️ Le runner lit les fichiers **sur disque** (`BehaveRunner._assemble` les recopie), pas la
+    base. Or `write_steps_file` a écrit la tentative de l'agent sur ce disque. Si la réparation
+    n'est PAS adoptée, la base dit « v1 » et le disque contient « v3 » : **le prochain run
+    exécuterait v3 en prétendant v1** — un « affiché ≠ réel » (§4.6), et le pire genre : le
+    verdict porterait sur un code que personne n'a approuvé.
+
+    On réécrit donc systématiquement la version de référence après la boucle.
+    """
+    if not session.attempts:
+        return   # rien n'a été écrit sur le disque
+    reference = current_version_id if session.resolved else version_id
+    version = versions.get(reference)
+    if version is None:
+        logger.error("[repair] version de référence %s introuvable — disque non resynchronisé",
+                     reference)
+        return
+    try:
+        config.GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+        (config.GENERATED_DIR / f"{module_name}.feature").write_text(
+            version["feature_content"] or "", encoding="utf-8")
+        (config.GENERATED_DIR / f"{module_name}_steps.py").write_text(
+            version["steps_content"] or "", encoding="utf-8")
+        logger.info("[repair] disque resynchronisé sur la version de référence v%s", reference)
+    except OSError:
+        # Laisser un disque divergent serait pire que bruyant : un run futur mentirait.
+        logger.exception("[repair] ÉCHEC de la resynchronisation du disque sur v%s — le prochain "
+                         "run pourrait exécuter un code qui n'est pas celui de la version "
+                         "courante", reference)
 
 
 def _record_attempt(conn, outcome, failures, attempt_number: int, what_was_tried: str) -> None:

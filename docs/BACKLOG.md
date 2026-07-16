@@ -124,13 +124,34 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   n'annote que les pièges). **Prouvé par régénération** : l'agent emploie désormais les deux
   steps, dans le bon ordre. Protège les 3 modules restants à importer. 5 tests.
   → `decisions/0012-catalogue-note-par-step-inc1.md`.
-- [ ] **Audit de la taxonomie de diagnostic** — ⚠️ **observation, à garder pour plus tard**
-  (arbitrage du porteur). La taxonomie classe par **mots-clés du message d'erreur**, donc
-  potentiellement par les mots que le **testeur** a écrits, pas par le comportement de
-  l'application. Vu en `0007` (« timeout » → `wrong_field_name`, juste par chance) et
-  **aggravé en `0012`** : « Rôle/permission manquant » venait du mot « role » dans un message
-  d'assertion écrit par l'agent — la vraie cause (session navigateur anonyme) n'avait **rien**
-  à voir. Un diagnostic qui se cite lui-même. Coût réel : deux fausses pistes suivies.
+- [ ] **Audit de la taxonomie de diagnostic** — 🔴 **PRIORITAIRE dès que `0014` est livré**
+  (relevé par le porteur, 2026-07-16 : « le jour où un vrai bug portera par coïncidence un nom
+  de step malheureux, il pourrait être classé réparable à tort »).
+
+  **Le défaut.** `defect_taxonomy.classify_failure()` classe sur
+  `step_text + traceback_summary + raw` — donc en partie sur le **nom du step**, écrit par
+  l'agent, et pas sur le comportement de l'application. Pire, les catégories sont testées **par
+  priorité** : le nom du step **l'emporte** sur l'erreur réelle. **Mesuré** : le `TypeError` du
+  cas 2 est classé `missing_server_context` parce que son step s'appelle `team_id` ; le même
+  `TypeError` **nu** tombe en `unknown` → `indetermine`.
+
+  ⚠️ **Le risque n'est PAS symétrique — c'est ce qui le rend prioritaire.** Jusqu'ici on a vu
+  des faux positifs bénins (`0007` : « timeout » → `wrong_field_name`, juste par chance ;
+  `0012` : « Rôle manquant » venait du mot « role » dans un message écrit par l'agent, la vraie
+  cause n'avait rien à voir — deux fausses pistes suivies). Mais **depuis `0014`, la
+  classification décide de ce qui est RÉPARABLE** : un **vrai bug** dont le step porte par
+  malchance un mot-clé technique (`team_id`, `route`, `timeout`…) serait classé
+  `test_a_reparer` → **le circuit laisserait la boucle réparer un test correct contre une
+  application cassée**. C'est la direction du **faux négatif**, que §4.4 déclare
+  **inacceptable** — l'inverse exact du faux positif toléré.
+
+  **Ce qui protège aujourd'hui** : la règle anti-maquillage du prompt de réparation (l'agent
+  doit refuser d'affaiblir une assertion) et le plafond de budget. C'est-à-dire l'obéissance
+  d'un LLM et un compteur — **pas** un garde-fou déterministe.
+
+  **Piste** : ne classer que sur le **signal d'exécution** (type d'exception, statut HTTP,
+  sélecteur du `Call log`), jamais sur du texte rédigé par l'agent. Le `step_text` peut rester
+  un indice de dernier recours, jamais un critère prioritaire.
 - [ ] **Teardown : résidus du cas 2 non nettoyés** — *constat (2026-07-16), pas urgent mais ça
   s'accumule*. Mesuré : **9** tickets `AAAAA…` (chaîne de 300 car. du scénario `[Limite]`) et
   **6** « Demande test BDD » restants — un de plus par run. Cause : le teardown ne supprime que
@@ -197,7 +218,17 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   **Option (i)** : une version réparée devient la référence si résolu, mais **jamais approuvée
   d'office** → le cas repasse « à relire » pour ratification (§4.3). Budget = plafond du circuit :
   `budget=0` coupe au 1ᵉʳ tour sans appel LLM. ✅ **Étape 4** faite en chemin (une tentative = une
-  version + `change_summary` + `what_was_tried`). ⏭️ **5** surfaçage.
+  version + `change_summary` + `what_was_tried`). ✅ **Étape 5** : surfaçage
+  (`what_was_tried` au rapport, chaîne de versions avec `change_summary` + badge « réparation
+  automatique » dans `CaseDetail`). 🟡 **Étape 6 — preuve réelle : chemin « arrête » PROUVÉ
+  (cas 6 → `vrai_bug` → aucune réparation, zéro appel LLM) ; chemin « répare » NON PROUVÉ** —
+  le run réel a sorti **3 bugs** que 10 tests avaient laissés passer : (1) `real_run=None` pris
+  pour « aucun échec » → la boucle adoptait une version **cassée** en se déclarant résolue
+  (faux négatif §4.4 — le motif même de `0010`/`0011`/`0013`) ; (2) l'agent rendait un
+  **extrait** de `_steps.py` (4 steps → 1) car le contrat « REMPLACE / rends le fichier
+  ENTIER » n'était écrit **nulle part** ; (3) le **disque divergeait** de la base (le runner lit
+  le disque : le prochain run aurait joué v7 en prétendant v2). **Les 3 corrigés + 6 tests de
+  garde.** ⚠️ **Le gate a tenu** : malgré (1), v7 n'a jamais été auto-approuvée. À rejouer.
   ⏭️ **6** preuve sur les deux chemins : **cas 2** = répare (son `TypeError` est la cible
   exacte, le cas est à **2/3 vert**), **cas 6** = arrête (faux positif assumé).
   ⚠️ **PILIER ANNONCÉ QUI N'EXISTE PAS**. Mesuré : les 8

@@ -59,7 +59,7 @@ def build_repair_prompt(connector: Connector | None = None) -> str:
     return base
 
 
-def _failure_report(scenarios, failures) -> str:
+def _failure_report(scenarios, failures, steps_content: str = "") -> str:
     """L'échec observé, tel qu'on le donne à l'agent. Factuel : ce qui s'est passé, rien de plus.
 
     On ne lui souffle PAS de diagnostic : la taxonomie classe par mots-clés du message (`0012`),
@@ -79,10 +79,20 @@ def _failure_report(scenarios, failures) -> str:
         lignes.append((f.raw or f.traceback_summary or "(aucun détail)")[:1500])
         lignes.append("```")
         lignes.append("")
+    if steps_content:
+        # ⚠️ Sans le contenu ACTUEL, l'agent réécrit de mémoire — et rend un EXTRAIT. Mesuré en
+        # run réel (0014 étape 6) : il n'a renvoyé que le step corrigé, les 3 autres ont disparu,
+        # le dry-run a échoué, le test ne tournait plus.
+        lignes.append("## Contenu ACTUEL de `_steps.py` — pars de lui, renvoie-le ENTIER")
+        lignes.append("```python")
+        lignes.append(steps_content)
+        lignes.append("```")
+        lignes.append("")
     lignes.append(
-        "Corrige la CAUSE en réécrivant `_steps.py` (le `.feature` est gelé, sauf les deux "
-        "exceptions de tes consignes). Si tu conclus que l'application se comporte mal, ne "
-        "maquille rien : dis-le et ne réécris pas.")
+        "Corrige la CAUSE en réécrivant `_steps.py` **EN ENTIER** (le `.feature` est gelé, sauf "
+        "les deux exceptions de tes consignes) : `write_steps_file` REMPLACE le fichier — tout "
+        "step que tu n'écris pas est PERDU et deviendra `undefined`. Si tu conclus que "
+        "l'application se comporte mal, ne maquille rien : dis-le et ne réécris pas.")
     return "\n".join(lignes)
 
 
@@ -101,7 +111,7 @@ def _last_assistant_text(state: AgentState) -> str:
     return ""
 
 
-def propose_fix(*, module_name: str, scenarios, failures,
+def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "",
                 llm: LLMAdapter | None = None, connector: Connector | None = None,
                 dry_runner: DryRunner | None = None,
                 cost_tracker: CostTracker | None = None,
@@ -118,7 +128,8 @@ def propose_fix(*, module_name: str, scenarios, failures,
     # réellement réécrit (le tool `_apply_effect` les remplit).
     state = AgentState(module_name=module_name, feature_written=True, steps_written=True,
                        dry_run_passed=True)
-    state.messages.append({"role": "user", "content": _failure_report(scenarios, failures)})
+    state.messages.append({"role": "user",
+                           "content": _failure_report(scenarios, failures, steps_content)})
 
     shared_steps = steps_library.catalogue()
     ctx = ToolContext(

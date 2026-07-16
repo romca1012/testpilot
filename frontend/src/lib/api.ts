@@ -105,6 +105,9 @@ export interface GenerationJob {
 export interface VersionOut {
   id: number; version_number: number; feature_content: string; steps_content: string
   spec_hash: string; created_at: string
+  // Ce qui a changé et qui l'a fait — `created_by === 'repair-agent'` = version issue d'une
+  // réparation automatique (0014), à ratifier.
+  change_summary: string; created_by: string
 }
 export interface ReviewOut {
   id: number; version_id: number; decision: string; reviewer: string; comment: string; decided_at: string
@@ -157,7 +160,7 @@ export interface TestReport {
   execution_status: string; functional_status: string; execution_label: string; functional_label: string
   scenarios_total: number; scenarios_passed: number; scenarios_failed: number
   scenarios: Array<{ name: string; execution_status: string; functional_status: string; cause_label: string; error: string }>
-  repairs: Array<{ cause_label: string; defect_origin: string; confirmation_status: string; requires_human_confirmation: boolean }>
+  repairs: Array<{ cause_label: string; defect_origin: string; confirmation_status: string; requires_human_confirmation: boolean; what_was_tried: string }>
   cost_usd: number; cost_source: string; iterations: number; duration_seconds: number
   needs_human_confirmation: boolean
 }

@@ -79,7 +79,11 @@ TOOLS_DEFINITIONS: list[dict] = [
     },
     {
         "name": "write_feature_file",
-        "description": "Écrit le fichier .feature (Gherkin français) du module.",
+        # ⚠️ « REMPLACE » et « entier » : sans ce contrat, l'agent rend un EXTRAIT et écrase le
+        # reste. Mesuré en run réel (0014 étape 6) sur le fichier de steps.
+        "description": ("REMPLACE le fichier .feature (Gherkin français) du module par le "
+                        "contenu fourni. Rends le fichier ENTIER : ce que tu n'écris pas est "
+                        "perdu."),
         "input_schema": {
             "type": "object",
             "properties": {"content": {"type": "string"}},
@@ -88,7 +92,13 @@ TOOLS_DEFINITIONS: list[dict] = [
     },
     {
         "name": "write_steps_file",
-        "description": "Écrit le fichier _steps.py du module (validé : ASCII, pas de step partagé redéfini).",
+        # ⚠️ Le contrat n'était écrit NULLE PART (« Écrit le fichier… »). En réparation, l'agent
+        # a rendu le seul step qu'il corrigeait : les 3 autres ont disparu, le dry-run a échoué,
+        # le test ne tournait plus. Mesuré en run réel (0014 étape 6).
+        "description": ("REMPLACE le fichier _steps.py du module par le contenu fourni. Rends le "
+                        "fichier ENTIER — tous les steps, y compris ceux que tu ne modifies pas : "
+                        "ce que tu n'écris pas est PERDU et son step deviendra `undefined`. "
+                        "Validé : ASCII, pas de step partagé redéfini."),
         "input_schema": {
             "type": "object",
             "properties": {"content": {"type": "string"}},
