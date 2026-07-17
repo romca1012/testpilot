@@ -173,12 +173,19 @@ def _scenarios_of(outcome) -> list:
 
 
 def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
-                    outcome, run_once, connector=None) -> RepairSession:
+                    outcome, run_once, connector=None, dry_runner=None) -> RepairSession:
     """Répare tant que le circuit l'autorise. `run_once(version_id) -> outcome` est injecté.
 
     `outcome` est le résultat du run initial (déjà persisté par l'appelant) : la boucle part de
     son échec. `run_once` crée une exécution et la persiste — la boucle ne sait pas comment,
     c'est ce qui la rend testable sans Behave ni Odoo.
+
+    ⚠️ `dry_runner` n'est PAS optionnel en production, malgré son défaut. `repair_agent` promet
+    dans sa docstring que « le dry-run valide le correctif, et seulement ensuite l'orchestrateur
+    le rejoue pour de vrai ». Cette boucle ne le passait pas : la promesse était fausse, et le
+    correctif n'était validé par RIEN avant un run réel de ~300 s. Le défaut à `None` existe pour
+    les tests qui injectent l'agent (ils n'ont ni Behave ni disque) ; `run_service` passe le vrai
+    runner, et un test le garde (`test_repair_dry_run.py`).
     """
     session = RepairSession()
     budget = ReviewRepo(conn).repair_budget_for_version(version_id)
@@ -228,6 +235,13 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             # son contenu et le rendre entier — sans lui, il réécrit de mémoire et tronque.
             steps_content=version["steps_content"] or "",
             connector=connector,
+            # Le dry-run rattrape DANS la session ce qui, sinon, coûte un run réel pour rien :
+            # un correctif qui ne parse plus, ou un step supprimé que le `.feature` réclame
+            # encore. Mesuré au rejeu du 2026-07-17 (v12) : l'agent a retiré son step d'auth sans
+            # toucher au `.feature` → `undefined` → RUN_FAILED. Sans dry-run ici, l'agent n'a
+            # jamais su qu'il avait cassé le test ; avec, il reçoit la liste des steps undefined
+            # et corrige dans le MÊME appel.
+            dry_runner=dry_runner,
         )
         session.cost_usd = round(session.cost_usd + proposal.cost_usd, 6)
         # Le coût est enregistré ICI, avant tout `break` : un agent qui ne propose RIEN a quand

@@ -132,7 +132,10 @@ def _maybe_repair(conn, *, case_id: int, version_id: int, module_name: str, outc
     connector = _connector_for(conn, case_id)
     session = repair_service.run_repair_loop(
         conn, case_id=case_id, version_id=version_id, module_name=module_name,
-        outcome=outcome, run_once=run_once, connector=connector)
+        outcome=outcome, run_once=run_once, connector=connector,
+        # Le MÊME runner que le run réel : le dry-run de l'agent doit valider le correctif dans
+        # l'environnement qui l'exécutera ensuite. Un second runner divergerait (principe 4).
+        dry_runner=runner)
     if session.attempts:
         logger.info("[run] réparation : %s tentative(s) → %s (%s)",
                     session.attempts, session.outcome, session.reason)
