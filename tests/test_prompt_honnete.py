@@ -22,6 +22,14 @@ from testpilot.generation.tools import TOOLS_DEFINITIONS
 _PROMPTS = config.PROMPTS_DIR
 _NOMS_REELS = {t["name"] for t in TOOLS_DEFINITIONS}
 
+
+def _description(nom_outil: str) -> str:
+    """Description RÉELLE d'un outil — celle que l'agent lit."""
+    for outil in TOOLS_DEFINITIONS:
+        if outil["name"] == nom_outil:
+            return outil["description"]
+    raise AssertionError(f"outil {nom_outil} introuvable")
+
 # Un appel d'outil dans le prompt s'écrit `nom(...)` ou `` `nom` ``. On ne retient que les
 # identifiants en snake_case suivis d'une parenthèse : c'est la forme d'un appel.
 _APPEL_RE = re.compile(r"\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\s*\(")
@@ -103,3 +111,81 @@ def test_le_plafond_annonce_est_le_plafond_reel():
     assert f"Plafond dur : {config.MAX_ITERATIONS} tours" in contenu, (
         f"le prompt doit annoncer le vrai plafond ({config.MAX_ITERATIONS}), pas un chiffre "
         f"décoratif.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Principe 6 (docs/PRINCIPES.md) — généralisation du motif
+#
+# `test_aucun_prompt_ne_cite_un_outil_inexistant` gardait UNE promesse : « cet outil existe ».
+# Le principe la généralise : **toute affirmation d'un prompt ou d'une description d'outil sur
+# une capacité, un format ou une contrainte doit être liée par un test au code qui l'applique.**
+#
+# Ces gardes vérifient le COMPORTEMENT, pas le texte : un `grep` dirait seulement que le mot est
+# là, jamais que la règle est appliquée. C'est la différence entre relire le prompt et le prouver.
+# ══════════════════════════════════════════════════════════════════════════════
+
+from testpilot.generation.tools import ToolContext, write as write_tools  # noqa: E402
+
+
+def _ctx(tmp_path, reserved=frozenset()):
+    return ToolContext(module_name="m", generated_dir=tmp_path, reserved_steps=reserved)
+
+
+def test_la_promesse_ASCII_de_la_description_est_REELLEMENT_appliquee(tmp_path):
+    """`write_steps_file` annonce « Validé : ASCII ». Sans ce test, la description pourrait
+    mentir le jour où la validation saute — et l'agent, lui, la croirait."""
+    assert "ASCII" in _description("write_steps_file")
+    r = write_tools.write_steps_file(_ctx(tmp_path), 'x = “bonjour”\n')
+    assert not r.ok and "guillemets typographiques" in r.observation
+
+
+def test_la_promesse_pas_de_step_partage_redefini_est_REELLEMENT_appliquee(tmp_path):
+    assert "pas de step partagé redéfini" in _description("write_steps_file")
+    contenu = ('from behave import given\n\n\n'
+               '@given("je me connecte avec mes identifiants utilisateur")\n'
+               'def step_impl(context):\n    pass\n')
+    r = write_tools.write_steps_file(
+        _ctx(tmp_path, reserved=frozenset({"je me connecte avec mes identifiants utilisateur"})),
+        contenu)
+    assert not r.ok and "bibliothèque partagée" in r.observation
+
+
+def test_la_promesse_REMPLACE_le_fichier_est_REELLEMENT_tenue(tmp_path):
+    """Les deux descriptions annoncent « REMPLACE … rends le fichier ENTIER ».
+
+    Si l'outil AJOUTAIT au lieu de remplacer, la consigne serait fausse et l'agent produirait des
+    doublons de steps. C'est la promesse dont dépend le correctif du bug 2 de `0014`.
+    """
+    for nom in ("write_feature_file", "write_steps_file"):
+        assert "REMPLACE" in _description(nom)
+
+    write_tools.write_steps_file(_ctx(tmp_path), "PREMIER = 1\n")
+    write_tools.write_steps_file(_ctx(tmp_path), "SECOND = 2\n")
+    contenu = (tmp_path / "m_steps.py").read_text(encoding="utf-8")
+    assert contenu == "SECOND = 2\n"
+    assert "PREMIER" not in contenu       # remplacement, pas ajout
+
+
+def test_la_promesse_tu_ne_lances_aucune_execution_est_STRUCTURELLE():
+    """Le prompt de réparation l'affirme ; aucun outil ne doit pouvoir la démentir.
+
+    C'est le design (b) de `0014` — l'agent propose, l'orchestrateur exécute. Rien ne gardait
+    cette affirmation : ajouter un outil `run_behave` demain la rendrait fausse en silence.
+    """
+    contenu = (_PROMPTS / "repair_prompt.md").read_text(encoding="utf-8")
+    assert "Tu ne lances aucune exécution" in contenu
+
+    interdits = ("run", "exec", "behave", "launch", "trigger")
+    coupables = [n for n in _NOMS_REELS if any(mot in n.lower() for mot in interdits)]
+    assert not coupables, (
+        f"le prompt de réparation affirme « Tu ne lances aucune exécution » alors que ces outils "
+        f"existent : {coupables}. Soit l'outil part, soit l'affirmation part — pas les deux.")
+
+
+def test_le_prompt_de_reparation_ne_promet_pas_un_budget_qu_il_ignore():
+    """Le prompt ne doit pas annoncer un nombre de tentatives : c'est le GATE qui le fixe,
+    par version (décision 0014, option C), et il varie d'une relecture à l'autre."""
+    contenu = (_PROMPTS / "repair_prompt.md").read_text(encoding="utf-8")
+    for chiffre in ("2 tentatives", "deux tentatives", "3 tentatives"):
+        assert chiffre not in contenu, (
+            f"le prompt annonce « {chiffre} » alors que le budget vient du gate et varie.")

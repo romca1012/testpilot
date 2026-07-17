@@ -186,6 +186,18 @@ def exception_type(text: str) -> str:
     return matches[-1].split(".")[-1] if matches else ""
 
 
+def runtime_error_text(failure) -> str:
+    """Le texte produit par le RUNTIME pour cet échec : `raw` + `traceback_summary`.
+
+    Un seul endroit définit « ce qui compte comme le texte d'erreur » — `classify_failure` et
+    `repair_circuit.failure_signature` s'en servent tous deux. Le dupliquer les ferait diverger,
+    et la divergence serait à diagnostiquer plus tard (docs/PRINCIPES.md, principe 4).
+
+    ⚠️ N'inclut PAS `step_text` : c'est le libellé écrit par l'agent (décision 0015).
+    """
+    return f"{getattr(failure, 'raw', '') or ''}\n{getattr(failure, 'traceback_summary', '') or ''}"
+
+
 def _message_text(failure) -> str:
     """Le texte de l'ERREUR — sans `step_text`.
 
@@ -202,7 +214,7 @@ def classify_failure(failure) -> str:
 
     Le signal est décisif parce qu'il est le seul que le composant jugé ne produit pas.
     """
-    brut = f"{getattr(failure, 'raw', '') or ''}\n{getattr(failure, 'traceback_summary', '') or ''}"
+    brut = runtime_error_text(failure)
 
     # Le rendu d'assertion de Behave est testé D'ABORD : c'est la forme la plus extérieure et la
     # plus sûre. Sans lui, une assertion dont l'agent écrit « permission refusée » dans son

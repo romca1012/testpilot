@@ -138,6 +138,19 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   signal, testé en premier. Mesuré sur 20 échecs réels : **14/20 décidés par un signal, 9/20
   reclassés**, le faux `missing_role` du cas 6 (`0012`) corrigé.
   → `decisions/0015-…md`, `scripts/prove_0015_signal_vs_texte.py`, `tests/test_taxonomy_signal.py`.
+- [ ] **DETTE — Principe 3 : édition ciblée plutôt que réécriture complète** (`docs/PRINCIPES.md`
+  — *dette assumée, arbitrée le 2026-07-17 : à noter, pas à ouvrir*). Chaque réparation réécrit
+  ~14 000 car. de code **qui marchait** pour corriger un step (`write_steps_file` REMPLACE, et le
+  contrat l'exige — correctif du bug 2 de `0014`). C'est la cause de `0017`.
+  **Ce n'est PAS un sujet de coût** : chiffré sur les tailles réelles (`v9`=13 971, `v10`=12 704,
+  `v11`=13 370 car. ≈ 4 000 tok à $4/M Haiku), un diff économiserait **~$0,015/tentative** — du
+  bruit sur $1,08, annulé par le premier patch qui rate. Le sujet est le **rayon d'explosion**.
+  **Pourquoi ça attend** : le principe 5 (garde de non-régression, livré, coût nul) couvre le même
+  risque **en pratique** — une réparation qui casse ce qui marchait n'est plus adoptée. Le
+  principe 3 réduirait le risque *à la source* plutôt qu'en aval, mais il **rouvre le bug 2 de
+  `0014`** (l'agent rendait 1 step sur 4) : chantier de conception, pas de budget.
+  À rouvrir si le principe 5 se met à refuser des réparations trop souvent — ce serait le signal
+  que le rayon d'explosion coûte vraiment.
 - [ ] 🔴 **L'agent réinvente l'authentification que la bibliothèque résout déjà** (`0017` — **note
   écrite, à arbitrer, PRIORITÉ 1 — bloque la preuve de `0016`**). Mesuré au rejeu du cas 1
   (exec 20-22) : les deux réparations corrigent bien le `HTTPError 404` (le garde-fou transport de

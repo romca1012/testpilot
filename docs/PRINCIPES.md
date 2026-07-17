@@ -30,24 +30,28 @@ Ce document transforme ce constat en règles, et dit **où le projet les respect
 **§9 du brief : moins de 1 € pour la génération + exécution d'un nouveau module.** Avec
 `EUR_USD_RATE = 1.08`, le plafond est **≈ $1,08**.
 
-### Ce qui est mesuré (une seule fois, et c'est le problème)
+### Ce qui est mesuré — ✅ **le §9 est mesurable depuis le 2026-07-17**
 
-| | mesure réelle | source |
+| | mesure réelle | statut |
 |---|---|---|
-| Génération d'un module (cas 1) | **$0,4529** ≈ **0,42 €** | `cost_ledger`, seule ligne existante, 2026-07-15 |
-| Réparation (×5 aujourd'hui : v7→v11) | **non mesurée — $0 enregistré** | `run_service._persist` écrit `cost_usd=0.0` |
+| Génération d'un module (cas 1) | **$0,4529** ≈ **0,42 €** — **42 % du budget** | mesuré |
+| Réparations d'avant le correctif (×5 : v7→v11) | **perdues — aucune trace** | irrécupérable |
+| Réparations à partir de maintenant | comptées, **tentatives ratées comprises** | mesuré |
 
-**Deux défauts que ce document doit nommer avant de juger quoi que ce soit :**
+Les deux défauts que ce document nommait :
 
-1. **Le budget §9 n'est pas mesuré sur le chemin de l'UI.** `run_service._persist` écrit
-   `cost_usd=0.0` en dur et n'alimente **jamais** `cost_ledger`. Les 5 appels à l'agent de
-   réparation d'aujourd'hui ont coûté de l'argent dont il n'existe **aucune trace**. On ne peut
-   donc pas dire, aujourd'hui, si un cas piloté depuis l'écran respecte le §9.
-2. **Le plafond configuré contredit le §9.** `COST_LIMIT_PER_RUN_USD = 2.00` ≈ **1,85 €** — près
-   du **double** du budget annoncé. Le garde-fou de coût n'applique pas la règle du brief.
+1. ~~Le budget §9 n'est pas mesuré sur le chemin de l'UI~~ → **corrigé.**
+   `config.BUDGET_PER_CASE_EUR/_USD` nomme enfin le §9 (il n'existait dans **aucune** constante) ;
+   `repair_service._record_cost` écrit au ledger **avant tout `break`** — un agent qui ne propose
+   **rien** a quand même coûté, et ne compter que les réussites donnerait un budget flatteur ;
+   `CostRepo.total_for_case_usd` / `breakdown_for_case` donnent le total **et** son explication.
+2. **Le plafond configuré contredit toujours le §9.** `COST_LIMIT_PER_RUN_USD = 2.00` ≈ **1,85 €**
+   — près du **double**. **Conservé tel quel, et gardé par un test** : changer un plafond sans
+   mesure serait exactement ce que ce document reproche. À arbitrer une fois qu'on aura des runs
+   mesurés.
 
-> C'est le motif §4.6 (« affiché ≠ réel ») appliqué à l'argent : le brief affiche 1 €, le code
-> plafonne à 1,85 €, et le chemin réel ne mesure rien.
+> Le motif §4.6 appliqué à l'argent : le brief affichait 1 €, le code plafonnait à 1,85 €, et le
+> chemin réel ne mesurait rien. Le troisième terme est réglé ; le deuxième attend une mesure.
 
 ### Tarifs en vigueur (`guardrails/cost_tracker`)
 
@@ -83,23 +87,37 @@ l'agent. Le texte de l'agent **informe un humain** (`what_was_tried`, `change_su
 | `tools/write.py` | AST (imports, labels de steps), ASCII | ✅ |
 | `generation/assertion_lint` | AST | ✅ depuis `0008` C |
 
-### Où c'est violé (vérifié)
+### La violation trouvée — ✅ **corrigée le 2026-07-17**
 
-**`guardrails/repair_circuit.failure_signature`** — la détection de stall :
+**`guardrails/repair_circuit.failure_signature`** indexait la détection de stall sur
+`scenario_name`, **écrit par l'agent** dans le `.feature`. Comme l'agent réécrit le fichier entier
+à chaque tentative, **renommer un scénario suffisait à changer la signature** → l'absence de
+progrès devenait invisible → le budget brûlait sur un test qui n'avance pas. Le garde-fou
+dépendait du composant qu'il encadre.
 
-```python
-cause = dt.dominant_category(failures) or dt.UNKNOWN     # ✅ déterministe depuis 0015
-scenarios = sorted({getattr(f, "scenario_name", "") for f in failures})   # ⚠️ texte de l'agent
-return f"{cause}:{','.join(scenarios)}"
-```
+La signature se dérive maintenant de trois faits que l'agent ne produit pas : la **cause**
+(décidée par le type d'exception depuis `0015`), les **types d'exception** réellement levés, et le
+**nombre** d'échecs (insensible à un renommage).
 
-`scenario_name` vient du `.feature` **écrit par l'agent**. Conséquence : **une réparation qui
-renomme un scénario change la signature** → l'absence de progrès n'est pas détectée → le budget
-brûle sur un test qui n'avance pas. Ce n'est pas théorique : l'agent réécrit le fichier entier à
-chaque tentative (voir principe 3), donc renommer est à sa portée.
+**Un second défaut est tombé avec** : l'ancienne signature ne distinguait pas un `TypeError` d'un
+`AttributeError` (même cause, même scénario → **même signature**). Elle prenait donc un **vrai
+progrès** — une erreur remplacée par une autre — pour un stall. Le correctif tranche dans les deux
+sens.
 
-> Correctif à coût nul : indexer la signature sur un identifiant que l'agent ne choisit pas —
-> l'ordre des scénarios, ou leur empreinte de position dans le `.feature`. À arbitrer.
+**Contrepartie assumée** : la signature est plus grossière → un stall peut être détecté à tort.
+C'est la direction sûre (§4.4) : un faux stall arrête la réparation, un stall manqué dépense pour
+rien.
+
+### 🔎 Trouvé en corrigeant : le stall est un garde-fou **décoratif**
+
+`repair_service` passe `max_iterations = budget` du gate (défaut **2**), alors que `stall_limit`
+vaut **3**. `evaluate` coupe donc sur le plafond d'itérations **avant** que `repeat_count` puisse
+atteindre 3 : **le stall ne se déclenche jamais en dessous d'un budget de 4.**
+
+Même famille que le `position` décoratif de `0006` ou les chemins de rapport de la migration 7.
+**Documenté et gardé par test, volontairement pas « corrigé »** : ajuster une constante sans
+mesure serait précisément ce que ce document reproche. La signature, elle, est désormais correcte
+le jour où un relecteur accorde un budget plus large.
 
 ---
 
@@ -341,13 +359,13 @@ Ma recommandation était « **B porteur + A en renfort** » (garde d'auth + anno
 
 | # | principe | coût | respecté ? | manquement principal |
 |---|---|---|---|---|
-| 1 | Vérité du runtime | **nul** | 🟡 large | `failure_signature` indexe sur `scenario_name` (texte d'agent) |
-| 2 | Structure > prompt | **nul** | 🟡 large *(corrigé)* | `0017` sans garde. **Le contrat « fichier ENTIER » EST gardé** — par le dry-run, deux fois |
-| 3 | Édition ciblée | **~nul** (−$0,015/tentative) | ❌ | réécriture intégrale à chaque réparation |
+| 1 | Vérité du runtime | **nul** | ✅ **livré** | `failure_signature` dérive du runtime (cause + types d'exception + nombre). **Trouvé au passage : le stall est INATTEIGNABLE par défaut** (`stall_limit`=3 > budget=2) |
+| 2 | Structure > prompt | **nul** | 🟡 large | reste **`0017`**, seul manquement. Le contrat « fichier ENTIER » EST gardé — par le dry-run, deux fois |
+| 3 | Édition ciblée | **~nul** (−$0,015/tentative) | 📌 **dette** | couvert *en pratique* par le principe 5 → backlog, pas chantier (arbitré) |
 | 4 | Point de vérité unique | **nul** | ✅ | aucun (vérifié) — mais n'aurait pas empêché `0016` |
-| 5 | Garde de non-régression | **nul** (runs déjà payés) | ❌ | comparaison `exec N` / `exec N+1` jamais faite — **seul filet possible contre la perte SILENCIEUSE d'un scénario** |
-| 6 | Promesses de prompt vérifiées | **nul** | 🟡 partiel | descriptions d'outils, absence d'outil d'exécution |
-| — | **Mesure du budget §9** | **nul** | ❌ | `cost_usd=0.0` sur le chemin API ; plafond à $2,00 ≈ 1,85 € |
+| 5 | Garde de non-régression | **nul** (runs déjà payés) | ✅ **livré** | **seul filet possible contre la perte SILENCIEUSE d'un scénario** |
+| 6 | Promesses de prompt vérifiées | **nul** | ✅ **livré** | promesses liées au COMPORTEMENT réel, pas au texte |
+| — | **Mesure du budget §9** | **nul** | ✅ **livré** | mesuré par cas (cas 1 = $0,4529 = 42 %). Plafond $2,00 ≈ 1,85 € **conservé et gardé par test** |
 
 **Aucun des six principes ne dépasse le budget.** Le coût n'est pas l'obstacle : c'est un
 non-sujet, et le rappeler est le premier résultat de ce document. **Les principes 1, 2, 4, 5 et 6

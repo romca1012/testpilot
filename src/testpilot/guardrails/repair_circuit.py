@@ -35,21 +35,49 @@ MAX_ITERATIONS_REACHED = "max_iterations"
 
 
 def failure_signature(failures) -> str:
-    """Signature stable d'un état d'échec : cause dominante + scénarios concernés.
+    """Signature d'un état d'échec, dérivée du RUNTIME seul (docs/PRINCIPES.md, principe 1).
 
-    Deux runs qui échouent de la même façon produisent la même signature — c'est ce qui
-    permet de détecter l'absence de progrès (stall). Vide s'il n'y a aucun échec.
+    Deux runs qui échouent de la même façon produisent la même signature — c'est ce qui permet
+    de détecter l'absence de progrès (stall). Vide s'il n'y a aucun échec.
+
+    ⚠️ **Cette signature indexait sur `scenario_name`** — le nom du scénario, **écrit par
+    l'agent** dans le `.feature`. Or l'agent réécrit le fichier entier à chaque tentative :
+    **renommer un scénario suffisait à changer la signature**, donc à masquer l'absence de
+    progrès et à laisser le budget brûler sur un test qui n'avance pas. Le garde-fou dépendait
+    du composant qu'il encadre.
+
+    Les trois composantes sont maintenant produites par le runtime, jamais par l'agent :
+      - la **cause** (`dominant_category`) — décidée par le type d'exception depuis `0015` ;
+      - les **types d'exception** réellement levés — Python/Playwright/odoorpc les écrivent ;
+      - le **nombre** d'échecs — un fait de comptage, insensible à un renommage.
+
+    Contrepartie assumée : la signature est plus GROSSIÈRE. Deux échecs différents de même cause,
+    même type et même nombre se ressemblent désormais → un stall peut être détecté à tort. C'est
+    la direction SÛRE : un faux stall arrête la réparation (on garde la version approuvée), là où
+    un stall manqué dépense pour rien. §4.4 tolère le faux positif, pas le faux négatif.
     """
     if not failures:
         return ""
     cause = dt.dominant_category(failures) or dt.UNKNOWN
-    scenarios = sorted({getattr(f, "scenario_name", "") for f in failures})
-    return f"{cause}:{','.join(scenarios)}"
+    types = sorted({t for t in (dt.exception_type(dt.runtime_error_text(f)) for f in failures) if t})
+    return f"{cause}:{'+'.join(types) or 'sans-type'}:{len(failures)}"
 
 
 @dataclass
 class CircuitState:
-    """État accumulé de la boucle de réparation pour un cas."""
+    """État accumulé de la boucle de réparation pour un cas.
+
+    ⚠️ **Le stall est INATTEIGNABLE avec la configuration par défaut** (constaté le 2026-07-17,
+    non corrigé ici). `repair_service` passe `max_iterations = budget` du gate, dont le défaut est
+    **2** (`REPAIR_BUDGET_DEFAULT`), alors que `stall_limit` vaut **3**
+    (`REPAIR_STALL_LIMIT`) : `evaluate` coupe sur le plafond d'itérations bien avant que
+    `repeat_count` puisse atteindre 3. **Le stall ne se déclenche qu'à partir d'un budget ≥ 4.**
+
+    Ce n'est pas un bug — c'est un garde-fou **décoratif** dans le cas nominal, du même genre que
+    le `position` de `0006` ou les chemins de rapport de la migration 7. On le documente plutôt
+    que d'ajuster une constante sans mesure ; la signature ci-dessus est corrigée pour que le
+    garde soit CORRECT le jour où un relecteur accorde un budget plus large.
+    """
     stall_limit: int = config.REPAIR_STALL_LIMIT
     max_iterations: int = config.MAX_ITERATIONS
     iterations: int = 0
