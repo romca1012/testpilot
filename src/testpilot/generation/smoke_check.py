@@ -38,26 +38,66 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-# Le Gherkin des cas générés cible les champs par ces tournures (mesuré sur les 3 cas réels) :
-#     Et le champ demande "types_demandes" est rempli avec "new"
-#     Et le champ "name" est rempli avec "..."
-_CHAMP_VALEUR_RE = re.compile(
-    r'champ\s+(?:demande\s+)?"(?P<champ>[^"]+)"\s+est\s+rempli\s+avec\s+"(?P<valeur>[^"]*)"',
-    re.IGNORECASE)
+# ── Les tournures Gherkin qui posent une VALEUR dans un CHAMP ────────────────
+#
+# ⚠️ **Relevées sur les 3 cas RÉELS, pas imaginées** — et il en fallait plus d'une. Mon premier jet
+# ne couvrait que la tournure du cas 1 (« le champ … est rempli avec … ») : le smoke-check était
+# **muet sur les cas 2 et 6**, soit 2 cas sur 3, et son silence ressemblait à une validation.
+# C'est le motif que ce projet traque — « l'absence de signal prise pour un signal positif ».
+# Vérifié en le branchant sur la vraie base : 12 lignes reconnues sur le cas 1, **0** sur les
+# autres. L'agent n'a aucune raison d'écrire toujours la même phrase : le §6 lui laisse composer.
+#
+# Ordre indifférent (champ→valeur ou valeur→champ), mais chaque motif nomme ses deux groupes.
+_TOURNURES = (
+    # cas 1  : Et le champ demande "types_demandes" est rempli avec "new"
+    re.compile(r'champ\s+(?:demande\s+)?"(?P<champ>[^"]+)"\s+est\s+rempli\s+avec\s+"(?P<valeur>[^"]*)"',
+               re.IGNORECASE),
+    # cas 2/6 : Et je renseigne le champ "denomination" avec la valeur "Peugeot Expert 2024"
+    re.compile(r'renseigne\s+le\s+champ\s+"(?P<champ>[^"]+)"\s+avec\s+(?:la\s+valeur\s+)?"(?P<valeur>[^"]*)"',
+               re.IGNORECASE),
+    # cas 6  : Et je sélectionne "new_aquisition" dans le champ "type_investissement"
+    re.compile(r'(?:sélectionne|selectionne|choisis|choisit)\s+"(?P<valeur>[^"]*)"\s+dans\s+le\s+champ\s+"(?P<champ>[^"]+)"',
+               re.IGNORECASE),
+)
+
+# ⚠️ **Ce qui N'EST PAS matché, volontairement** : les tournures de VÉRIFICATION
+# (« le dernier ticket créé a le champ "team_id" pointant vers … », « … égal à … »). Elles
+# affirment un état APRÈS coup et portent des noms de champs du **modèle Odoo** (RPC), pas des
+# attributs HTML d'un formulaire. Les confondre ferait crier `champ_inconnu` sur des assertions
+# parfaitement valides — un faux positif systématique, exactement ce que la borne du principe 2
+# interdit.
+
+
+def _extraire_champ_valeur(ligne: str):
+    """`(champ, valeur)` si la ligne pose une valeur dans un champ, sinon `None`."""
+    for motif in _TOURNURES:
+        m = motif.search(ligne)
+        if m:
+            return m.group("champ"), m.group("valeur")
+    return None
 
 
 @dataclass
 class SmokeWarning:
-    """Même forme que `LintWarning` (`0008`) : le gate affiche les deux dans le même bandeau."""
+    """Contrat de sortie **identique** à `LintWarning` (`0008`) : `step`, `line`, `kind`, `message`.
+
+    ⚠️ **Les clés ne sont pas « à peu près » les mêmes, elles SONT les mêmes.** La route du gate
+    fait `schemas.LintWarning(**w)` : une clé en trop (`source`) ou un nom différent (`subject`)
+    lève une `ValidationError` et **casse l'affichage du cas**, pour un module dont tout l'objet
+    est d'informer sans nuire. `repair_diff` (`0017`) respecte déjà ce contrat — on ne fabrique pas
+    un troisième format pour le même bandeau (principe 4 : une règle, un point de vérité).
+
+    `step` porte ici le **champ concerné** — c'est ce que `0008` met dans ce slot pour un step, et
+    ce qu'un relecteur cherche : *de quoi parle-t-on ?*
+    """
 
     kind: str
-    subject: str
+    step: str
     message: str
     line: int = 0
 
     def as_dict(self) -> dict:
-        return {"kind": self.kind, "subject": self.subject, "message": self.message,
-                "line": self.line, "source": "smoke_check"}
+        return {"step": self.step, "line": self.line, "kind": self.kind, "message": self.message}
 
 
 def _index_selects(modele: dict) -> dict[str, set[str]]:
@@ -98,10 +138,10 @@ def check_valeurs_de_select(feature_content: str, modele: dict) -> list[dict]:
     date = modele.get("mesure_le", "?")
     warnings: list[SmokeWarning] = []
     for num, ligne in enumerate(feature_content.split("\n"), 1):
-        m = _CHAMP_VALEUR_RE.search(ligne)
-        if not m:
+        trouve = _extraire_champ_valeur(ligne)
+        if not trouve:
             continue
-        champ, valeur = m.group("champ"), m.group("valeur")
+        champ, valeur = trouve
         connues = selects.get(champ)
         if connues is None:
             continue                      # pas un select connu : rien à dire (cf. docstring)
@@ -109,7 +149,7 @@ def check_valeurs_de_select(feature_content: str, modele: dict) -> list[dict]:
             continue
         apercu = ", ".join(sorted(v for v in connues if v)[:6])
         warnings.append(SmokeWarning(
-            kind="valeur_option_inexistante", subject=champ, line=num,
+            kind="valeur_option_inexistante", step=champ, line=num,
             message=(f"« {valeur} » n'est pas une option connue de « {champ} ». "
                      f"Valeurs relevées sur l'application : {apercu}. "
                      f"(modèle mesuré le {date} — à revérifier si l'application a changé)")))
@@ -130,14 +170,14 @@ def check_champs_existants(feature_content: str, modele: dict) -> list[dict]:
     date = modele.get("mesure_le", "?")
     warnings: list[SmokeWarning] = []
     for num, ligne in enumerate(feature_content.split("\n"), 1):
-        m = _CHAMP_VALEUR_RE.search(ligne)
-        if not m:
+        trouve = _extraire_champ_valeur(ligne)
+        if not trouve:
             continue
-        champ = m.group("champ")
+        champ = trouve[0]
         if champ in connus:
             continue
         warnings.append(SmokeWarning(
-            kind="champ_inconnu", subject=champ, line=num,
+            kind="champ_inconnu", step=champ, line=num,
             message=(f"Aucun champ « {champ} » relevé sur l'application. Si c'est un libellé "
                      f"affiché, le nom technique est attendu ({{field}} = attribut HTML `name`, "
                      f"cf. 0007). (modèle mesuré le {date})")))

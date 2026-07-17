@@ -12,6 +12,29 @@ const emit = defineEmits<{ (e: 'reviewed'): void }>()
 const busy = ref(false)
 const error = ref('')
 
+// Le bandeau d'avertissements agrège TROIS familles (0008, 0017, 0021). Sans étiquette, le
+// relecteur ne sait pas s'il lit « ton assertion ne peut pas échouer » ou « ce champ n'existe
+// pas » — deux problèmes qui n'appellent pas la même décision. Le `kind` vient du serveur ;
+// aucune valeur d'enum brute à l'écran (§4.7), d'où cette table.
+const FAMILLES: Record<string, string> = {
+  // 0008 — l'assertion générée ne peut jamais échouer.
+  always_true_constant: 'assertion',
+  tautology_negation_in_else: 'assertion',
+  then_without_assertion: 'assertion',
+  // 0017 — la réparation a touché du code qui marchait.
+  step_modifie: 'réparation',
+  step_supprime: 'réparation',
+  // 0021 — le test référence quelque chose qui n'existe pas dans l'application.
+  valeur_option_inexistante: 'donnée',
+  champ_inconnu: 'donnée',
+}
+
+// Repli explicite : un `kind` inconnu s'affiche quand même. Le taire ferait disparaître un
+// avertissement réel parce que le front ignore son étiquette — l'inverse du but.
+function familleAvis(kind: string): string {
+  return FAMILLES[kind] ?? 'à vérifier'
+}
+
 // Budget de réparation autorisé par CETTE approbation (décision 0014, option C). Réparer exige
 // d'exécuter, et le gate est le seul à pouvoir autoriser une exécution (§4.3) : c'est donc ici
 // que l'autorisation se donne. Pré-rempli au défaut proposé par le serveur — jamais imposé.
@@ -49,18 +72,27 @@ async function decide(approved: boolean) {
       <p class="text-sm text-muted-foreground">{{ gate?.reason }}</p>
     </div>
 
-    <!-- Avertissements NON-bloquants sur les assertions générées (décision 0008). Informent le
-         relecteur ; ne désactivent jamais l'approbation — le gate reste souverain. -->
+    <!-- Avertissements NON-bloquants. Informent le relecteur ; ne désactivent JAMAIS
+         l'approbation — le gate reste souverain. Trois familles y arrivent :
+           0008 : assertion qui ne peut pas échouer (tautologie)
+           0017 : rayon d'explosion d'une réparation (step réécrit / supprimé)
+           0021 : champ ou valeur qui n'existe pas dans l'application (smoke-check)
+         ⚠️ Le titre disait « Assertions à vérifier — pourraient ne jamais échouer » : vrai pour
+         0008 SEUL, faux dès qu'un champ inexistant arrive ici. Un titre qui ment sur son contenu,
+         c'est « affiché ≠ réel » (§4.6) — on nomme donc la famille de chaque avis, ligne à ligne. -->
     <div v-if="gate?.lint_warnings?.length"
          class="rounded-lg border border-warning/40 bg-warning/10 p-3 space-y-1.5">
       <p class="flex items-center gap-1.5 text-xs font-medium text-warning">
         <span aria-hidden="true">⚠</span>
-        Assertion{{ gate.lint_warnings.length > 1 ? 's' : '' }} à vérifier — pourrai{{ gate.lint_warnings.length > 1 ? 'ent' : 't' }} ne jamais échouer
+        {{ gate.lint_warnings.length }} point{{ gate.lint_warnings.length > 1 ? 's' : '' }} à vérifier avant d'approuver
       </p>
       <ul class="space-y-1">
         <li v-for="(w, i) in gate.lint_warnings" :key="i" class="text-xs text-muted-foreground">
+          <span class="mr-1 rounded bg-warning/20 px-1 py-0.5 text-[10px] font-medium text-warning">
+            {{ familleAvis(w.kind) }}
+          </span>
           <span class="font-mono text-foreground/80">« {{ w.step }} »</span>
-          (ligne {{ w.line }}) — {{ w.message }}
+          <template v-if="w.line"> (ligne {{ w.line }})</template> — {{ w.message }}
         </li>
       </ul>
       <p class="text-[11px] text-muted-foreground/80">

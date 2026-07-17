@@ -64,7 +64,7 @@ def test_la_valeur_inventee_de_0019_est_vue_AVANT_le_run():
     assert len(avis) == 1, f"attendu 1 avertissement, obtenu {avis}"
     a = avis[0]
     assert a["kind"] == "valeur_option_inexistante"
-    assert a["subject"] == "types_demandes"
+    assert a["step"] == "types_demandes"
     assert a["line"] == 3
     # Il doit donner DE QUOI CORRIGER — sinon on remplace un timeout obscur par un avis obscur.
     assert "nouvel_entrant" in a["message"] and "remplacement_materiel" in a["message"]
@@ -104,6 +104,50 @@ def test_un_champ_connu_ailleurs_ne_declenche_rien():
     """
     feature = '  Et le champ demande "type_investissement" est rempli avec "remplacement"\n'
     assert smoke_check(feature, modele=MODELE) == []
+
+
+# ── Les TROIS tournures Gherkin réelles ───────────────────────────────────────
+
+def test_les_trois_tournures_reelles_sont_toutes_reconnues():
+    """🔴 Le trou trouvé en branchant : le smoke-check était MUET sur 2 cas sur 3.
+
+    Mon premier jet ne couvrait que la tournure du cas 1. Mesuré sur la vraie base : **12 lignes
+    reconnues sur le cas 1, 0 sur les cas 2 et 6** — et son silence ressemblait à une validation.
+    C'est le motif « l'absence de signal prise pour un signal positif », dans le module même qui
+    existe pour l'éviter.
+
+    L'agent n'a aucune raison d'écrire toujours la même phrase : le §6 lui laisse composer. Les
+    trois tournures ci-dessous sont **relevées sur les cas réels**, pas imaginées.
+    """
+    tournures = [
+        # cas 1
+        '    Et le champ demande "types_demandes" est rempli avec "new"',
+        # cas 2 et 6
+        '    Et je renseigne le champ "types_demandes" avec la valeur "new"',
+        # cas 6
+        '    Et je sélectionne "new" dans le champ "types_demandes"',
+    ]
+    for ligne in tournures:
+        avis = smoke_check(ligne, modele=MODELE)
+        assert len(avis) == 1, f"tournure non reconnue → smoke-check muet : {ligne!r}"
+        assert avis[0]["kind"] == "valeur_option_inexistante"
+        assert avis[0]["step"] == "types_demandes"
+
+
+def test_les_tournures_de_VERIFICATION_ne_sont_PAS_matchees():
+    """Anti-faux-positif : « le dernier ticket créé a le champ … » affirme un état APRÈS coup.
+
+    Ces lignes portent des noms de champs du **modèle Odoo** (RPC), pas des attributs HTML d'un
+    formulaire. Les matcher ferait crier `champ_inconnu` sur des assertions valides — un faux
+    positif systématique, que la borne du principe 2 interdit.
+    """
+    verifications = [
+        '    Et le dernier ticket créé a le champ "team_id" pointant vers "Demandes Matériel"',
+        '    Et le dernier ticket créé a le champ "denomination" égal à "Citroën Berlingo"',
+        '    Et un enregistrement avec le champ "name" égal à "x" existe dans "helpdesk.ticket"',
+    ]
+    for ligne in verifications:
+        assert smoke_check(ligne, modele=MODELE) == [], f"faux positif sur une vérification : {ligne!r}"
 
 
 # ── Ce que le smoke-check NE PEUT PAS faire — dit, pas caché ──────────────────
@@ -146,7 +190,7 @@ def test_le_gherkin_REEL_de_v1_declenche_bien_l_avertissement():
     fautifs = [a for a in avis if a["kind"] == "valeur_option_inexistante"]
 
     assert len(fautifs) == 2, f"les 2 occurrences de « new » doivent être vues : {avis}"
-    assert {a["subject"] for a in fautifs} == {"types_demandes"}
+    assert {a["step"] for a in fautifs} == {"types_demandes"}
     # `destinataire_name` n'est pas dans l'extrait du modèle : il ne doit PAS être signalé comme
     # champ inconnu ici — sinon ce test croirait mesurer 0019 tout en mesurant du bruit.
     assert all(a["kind"] == "valeur_option_inexistante" for a in avis), (

@@ -9,10 +9,11 @@ from testpilot import config
 from testpilot.api import schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import run_service
-from testpilot.generation import assertion_lint, repair_diff
+from testpilot.generation import assertion_lint, domain_model, repair_diff, smoke_check
 from testpilot.store.repositories import (
     CaseRepo,
     ExecutionRepo,
+    ProjectRepo,
     ReviewRepo,
     VersionRepo,
 )
@@ -42,6 +43,32 @@ def _lint_reparation(current: dict | None, version_rows: list[dict]) -> list[dic
     avant = max(precedentes, key=lambda v: v["id"])
     return repair_diff.blast_radius(avant.get("steps_content") or "",
                                     current.get("steps_content") or "")
+
+
+def _smoke_check_domaine(conn, case: dict, current: dict | None) -> list[dict]:
+    """Le Gherkin référence-t-il des champs/valeurs qui existent ? (étape 4 du chantier `0021`).
+
+    Le modèle vit **par connecteur** (`data/domain/odoo.json`) : le domaine d'Odoo n'est pas celui
+    du prochain ERP (§8 — architecture multi-connecteurs dès le départ).
+
+    Rend `[]` dès qu'il n'y a rien à comparer — pas de version, pas de projet, pas de modèle.
+    ⚠️ **Ce silence ne vaut pas validation** : il signifie « je n'ai pas regardé », pas « c'est
+    bon ». Le distinguer d'un vrai « rien à signaler » demanderait de le dire au relecteur — ce
+    que le bandeau ne fait pas encore, et c'est une limite assumée de cette étape.
+
+    Best-effort : un modèle absent ou illisible ne doit **jamais** casser l'affichage d'un cas —
+    ce module informe, il ne gouverne rien.
+    """
+    if not current or not case.get("project_id"):
+        return []
+    projet = ProjectRepo(conn).get(case["project_id"])
+    if not projet:
+        return []
+    modele = domain_model.charger_modele(projet.get("connector_type") or "odoo")
+    if not modele:
+        return []
+    return smoke_check.smoke_check(current.get("feature_content") or "",
+                                   current.get("steps_content") or "", modele=modele)
 
 
 @router.get("", response_model=list[schemas.CaseSummary])
@@ -78,6 +105,13 @@ def get_case(case_id: int, conn=Depends(get_conn)):
         # si la version courante vient de l'agent de réparation ; une version écrite par un
         # humain ou par la génération n'a pas de « avant » à quoi se mesurer.
         warnings += _lint_reparation(current, version_rows)
+        # Le test référence-t-il des champs/valeurs qui EXISTENT ? (étape 4 du chantier `0021`).
+        # Lu dans le modèle du domaine VERSIONNÉ (`data/domain/{connecteur}.json`, crawl
+        # déterministe relu par un humain) — aucun LLM, aucune I/O réseau, coût nul.
+        # Détective comme les deux précédents : `allowed` n'est jamais touché. Le faux positif est
+        # RÉEL (champ apparaissant après interaction, select peuplé en JS, scénario `[ERREUR]` qui
+        # vise volontairement un id invalide) — d'où le §6 du brief et la borne du principe 2.
+        warnings += _smoke_check_domaine(conn, case, current)
         gate = schemas.GateOut(allowed=decision.allowed, needs_review=decision.needs_review,
                                reason=decision.reason,
                                repair_budget=ReviewRepo(conn).repair_budget_for_version(version_id),

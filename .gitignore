@@ -15,6 +15,14 @@ dist/
 # Persistance légère & artefacts générés (source de vérité = SQLite + historisation)
 /data/*
 !/data/.gitkeep
+# ⚠️ EXCEPTION : le modèle du domaine EST du code source, pas un artefact (décision 0021).
+# Produit par `scripts/crawl_domaine.py` (crawl déterministe, aucun LLM), il est la RÉFÉRENCE que
+# le smoke-check consulte — et sa revue humaine passe par le **diff git** : `git diff
+# data/domain/odoo.json` dit exactement quels champs/options/routes l'application a gagnés ou
+# perdus. L'ignorer reviendrait à avoir une « source de vérité versionnée » que rien ne versionne,
+# et une régression de l'application deviendrait la nouvelle vérité sans que personne la voie.
+!/data/domain/
+!/data/domain/*.json
 /behave_runtime/generated/*
 !/behave_runtime/generated/.gitkeep
 
