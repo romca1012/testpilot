@@ -271,27 +271,59 @@ def test_le_ledger_ne_double_compte_pas_les_tentatives(conn, monkeypatch):
 
 # ── Le calibrage, lié au brief ────────────────────────────────────────────────
 
+# Mesures RÉELLES du 2026-07-17 — lues au ledger, pas estimées.
+# `scripts/mesure_cout_cas.py` et `scripts/mesure_generation_chemin_ecran.py` les reproduisent.
+GENERATION_ECRAN = 0.1050    # chemin écran, spec `demande_materiel` — le chemin des utilisateurs
+ANALYSE_ECRAN = 0.0157       # jamais mesurée avant ce jour (SpecAnalyzer sans tracker)
+GENERATION_PIRE = 0.4529     # CLI, 2026-07-15 — AVANT les garde-fous : régime révolu
+REPARATION = 0.2895          # une tentative — périmé à la baisse (mesuré sans dry-run)
+
+
 def test_le_plafond_par_defaut_tient_le_9_avec_le_budget_par_defaut():
     """Le calcul de calibration du 2026-07-17, verrouillé — sinon il dérive en silence.
 
-    Mesures réelles (cas 1) : génération $0,4529, réparation $0,2895/tentative.
-    §9 : moins de 1 € = $1,08. Marge réparations = 1,08 − 0,4529 = $0,6271 → plafond $0,62.
-    Vérification : REPAIR_BUDGET_DEFAULT (2) × $0,2895 = $0,5790 ≤ $0,62. Ça tient.
+    Le plafond de réparation est calibré sur le PIRE observé — c'est ainsi qu'on borne :
+    §9 ($1,08) − génération pire cas ($0,4529) = $0,6271 → $0,62.
+    Vérification : REPAIR_BUDGET_DEFAULT (2) × $0,2895 = $0,5790 ≤ $0,62. Ça tient, donc le
+    budget par défaut RESTE à 2 — la mesure ne demande pas de le descendre à 1.
 
     Si quelqu'un remonte le budget par défaut sans toucher au plafond, ce test le dit.
     """
-    GENERATION_MESUREE = 0.4529
-    REPARATION_MESUREE = 0.2895
-
-    marge = config.BUDGET_PER_CASE_USD - GENERATION_MESUREE
+    marge = config.BUDGET_PER_CASE_USD - GENERATION_PIRE
     assert config.REPAIR_COST_LIMIT_PER_CASE_USD <= marge, (
-        "le plafond de réparation dépasse ce que le §9 laisse après la génération mesurée")
+        "le plafond de réparation dépasse ce que le §9 laisse après la pire génération mesurée")
 
-    cout_attendu = config.REPAIR_BUDGET_DEFAULT * REPARATION_MESUREE
+    cout_attendu = config.REPAIR_BUDGET_DEFAULT * REPARATION
     assert cout_attendu <= config.REPAIR_COST_LIMIT_PER_CASE_USD, (
-        f"{config.REPAIR_BUDGET_DEFAULT} tentatives à ${REPARATION_MESUREE} = ${cout_attendu:.4f} "
+        f"{config.REPAIR_BUDGET_DEFAULT} tentatives à ${REPARATION} = ${cout_attendu:.4f} "
         f"> plafond ${config.REPAIR_COST_LIMIT_PER_CASE_USD} : baisser le budget par défaut "
         f"plutôt que dépasser la cible du §9")
 
-    # Le total d'un cas au pire cas mesuré reste sous le §9.
-    assert GENERATION_MESUREE + cout_attendu <= config.BUDGET_PER_CASE_USD
+    # Même au pire cas historique, le cas complet reste sous le §9.
+    assert GENERATION_PIRE + cout_attendu <= config.BUDGET_PER_CASE_USD
+
+
+def test_le_plafond_de_generation_ne_fait_echouer_aucune_generation_connue():
+    """`COST_LIMIT_PER_RUN_USD` : recalibré de $2,00 à $0,50 sur la mesure du chemin ÉCRAN.
+
+    Un plafond doit couper un emballement, **jamais** une création légitime : on vérifie donc
+    qu'il reste au-dessus de TOUT ce qui a été réellement mesuré — y compris le pire, issu d'un
+    régime (d'avant les garde-fous) où l'agent produisait 7,8× plus de code.
+    """
+    assert config.COST_LIMIT_PER_RUN_USD > GENERATION_PIRE, (
+        "le plafond couperait la pire génération jamais mesurée : il ferait échouer une création")
+    assert config.COST_LIMIT_PER_RUN_USD > GENERATION_ECRAN * 4, (
+        "moins de 4x la marge sur le coût réel : le premier cas un peu plus gros échouerait")
+    # Et il reste très en dessous de l'ancienne valeur absurde ($2,00 = 16,6x le réel).
+    assert config.COST_LIMIT_PER_RUN_USD <= 1.0
+
+
+def test_le_cout_reel_mesure_d_un_cas_tient_le_9():
+    """Le §9 sur les chiffres du chemin réel — la seule mesure qui compte pour le produit."""
+    creation = ANALYSE_ECRAN + GENERATION_ECRAN
+    complet = creation + config.REPAIR_BUDGET_DEFAULT * REPARATION
+
+    assert creation <= config.BUDGET_PER_CASE_USD * 0.15, (
+        f"création mesurée ${creation:.4f} — attendu ~11 % du §9")
+    assert complet <= config.BUDGET_PER_CASE_USD, (
+        f"cas complet mesuré ${complet:.4f} > §9 ${config.BUDGET_PER_CASE_USD:.4f}")

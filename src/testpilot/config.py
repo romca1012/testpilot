@@ -45,7 +45,28 @@ MODEL_REPAIR = os.getenv("TESTPILOT_MODEL_REPAIR", "claude-haiku-4-5-20251001")
 # ── Garde-fous agent (par run) ────────────────────────────────────────────────
 MAX_ITERATIONS = int(os.getenv("TESTPILOT_MAX_ITERATIONS", "25"))
 REPAIR_STALL_LIMIT = int(os.getenv("TESTPILOT_REPAIR_STALL_LIMIT", "3"))
-COST_LIMIT_PER_RUN_USD = float(os.getenv("TESTPILOT_COST_LIMIT_RUN_USD", "2.00"))
+
+# Plafond d'UN run d'agent (génération, analyse) — recalibré le 2026-07-17 sur mesure réelle.
+# Il valait $2,00 ≈ 1,85 EUR : presque le DOUBLE du §9 à lui seul, et **16,6× le coût réel**.
+#
+# LA MESURE (chemin ÉCRAN, la vraie route HTTP, spec `demande_materiel` — la MÊME que la
+# référence CLI, sinon on compare deux charges de travail et pas deux chemins) :
+#     génération (écran, 2026-07-17) = $0,1050
+#     génération (CLI,   2026-07-15) = $0,4529   ← RÉGIME RÉVOLU, voir ci-dessous
+#     analyse    (écran, 2026-07-17) = $0,0157   ← n'avait JAMAIS été mesurée
+#
+# ⚠️ **Le $0,4529 n'est pas « le coût de la génération » : c'est le coût d'AVANT les garde-fous.**
+# Sur la même spec, l'agent d'aujourd'hui produit **1 973 car. de steps contre 15 312** (7,8×
+# moins) — et **plus** de couverture : 4 scénarios / 44 assertions contre 3 scénarios. Il réutilise
+# la bibliothèque au lieu de tout réinventer. C'est le gain **mesuré** du catalogue (`0003`), des
+# notes par step (`0012`) et du contrat `{field}` (`0007` A1). Le travail de prompt des deux
+# derniers jours a coûté 0 € et divisé la génération par ~4.
+#
+# $0,50 = **4,8× le coût réel d'aujourd'hui**, et au-dessus du pire jamais observé ($0,4529) :
+# ce plafond n'aurait fait échouer **aucune** génération jamais mesurée. Il est là pour couper une
+# boucle emballée (25 itérations), pas pour border le travail normal — un plafond qui fait échouer
+# une création légitime coûte plus cher qu'il ne rapporte.
+COST_LIMIT_PER_RUN_USD = float(os.getenv("TESTPILOT_COST_LIMIT_RUN_USD", "0.50"))
 
 # Tentatives de réparation autorisées PAR DÉFAUT à l'approbation d'une version (décision 0014).
 # Le gate reste souverain : le relecteur peut descendre à 0 pour interdire toute réparation.
@@ -78,29 +99,41 @@ BUDGET_PER_CASE_USD = BUDGET_PER_CASE_EUR * EUR_USD_RATE
 # repartait de zéro avec le plafond entier. Le plafond ne bornait pas ce qu'il prétendait borner
 # — un cas pouvait dépenser budget × plafond.
 #
-# LE CALCUL (mesures réelles du 2026-07-17, cas 1) :
+# LE CALCUL — calibré sur le PIRE observé, comme doit l'être un plafond :
 #     §9                          = 1,00 € × 1,08          = $1,0800
-#     − génération mesurée                                 = $0,4529   (42 % du §9)
-#     ────────────────────────────────────────────────────────────────
+#     − génération, PIRE jamais mesuré                     = $0,4529   (régime révolu, cf.
+#     ────────────────────────────────────────────────────────────────  COST_LIMIT_PER_RUN_USD)
 #     = marge disponible pour TOUTES les réparations du cas = $0,6271  → arrondi à $0,62
 #
-# Vérification contre `REPAIR_BUDGET_DEFAULT = 2` : 2 × $0,2895 (réparation mesurée) = $0,5790,
-# soit 93 % de ce plafond. Ça tient — avec 7 % de marge, pas plus.
+# Vérification contre `REPAIR_BUDGET_DEFAULT = 2` : 2 × $0,2895 (réparation mesurée) = $0,5790
+# ≤ $0,62. Ça tient → **le budget par défaut reste à 2** : la mesure ne demande pas de le
+# descendre à 1.
 #
-# ⚠️ RÉSERVE HONNÊTE, à ne pas taire : **un seul échantillon**, et le coût d'une réparation a
-# changé depuis (le dry-run branché rend le chemin heureux à 1 appel LLM au lieu de 2, et le
-# chemin malheureux à N — non mesuré). Ce chiffre est un point de départ mesuré, pas une vérité.
-# À réviser au prochain rejeu réel.
+# ⚠️ RÉSERVES HONNÊTES, à ne pas taire :
+#  • **un seul échantillon** de réparation ;
+#  • le $0,2895 est **périmé À LA BAISSE** : mesuré avec `dry_runner=None`, donc 2 appels LLM par
+#    tentative (l'écriture + un tour perdu). Le fix P0 en supprime un sur le chemin heureux.
+#    Non re-mesuré — ce sera fait au rejeu du cas 1.
+# Point de départ mesuré, pas une vérité.
 REPAIR_COST_LIMIT_PER_CASE_USD = float(
     os.getenv("TESTPILOT_REPAIR_COST_LIMIT_PER_CASE_USD", "0.62"))
 
-# ⚠️ TROU CONNU, NON COMBLÉ ICI (arbitrage en attente) : `COST_LIMIT_PER_RUN_USD` = $2,00 ≈ 1,85 €
-# borne encore la GÉNÉRATION — soit près du double du §9 à elle seule. Le §9 n'est donc pas encore
-# tenu de bout en bout : seul le versant réparation l'est. Le combler suppose de plafonner aussi
-# la génération, or la seule génération mesurée ($0,4529) ne laisserait que 10 % de marge sous
-# $0,50 — un plafond que le premier cas plus gros ferait sauter, en échouant la création. À
-# calibrer sur une 2ᵉ mesure, pas à deviner.
-# Source des coûts : "estimated" (tokens × barème, actif) | "anthropic_api" (stub Inc. 0).
+# ── Le §9 tenu de bout en bout : où en est-on vraiment (2026-07-17) ───────────
+# ✅ Le trou « la génération n'est pas bornée » est COMBLÉ : `COST_LIMIT_PER_RUN_USD` est passé de
+# $2,00 (16,6× le réel) à $0,50, sur mesure du chemin ÉCRAN — celui des utilisateurs.
+#
+# RÉEL MESURÉ (chemin écran, spec `demande_materiel`) :
+#     analyse $0,0157 + génération $0,1050        = **$0,1207**  →  **11 % du §9**
+#     + 2 réparations au tarif mesuré (+$0,5790)  = **$0,6997**  →  **65 % du §9**
+# On est confortablement dessous. Et ce n'est PAS un plafond qui l'obtient : c'est le travail de
+# garde-fous (catalogue `0003`, notes `0012`, contrat `0007` A1) qui a divisé la génération par 4.
+#
+# ⚠️ CE QUE LES PLAFONDS NE GARANTISSENT PAS, et il faut le dire : $0,50 + $0,62 = $1,12, soit
+# **104 % du §9** si les DEUX saturaient simultanément. Ce cas exige que la génération coûte 4,8×
+# sa valeur mesurée — auquel cas le plafond a déjà coupé et un humain est dans la boucle.
+# **Les plafonds sont un filet anti-emballement, pas le mécanisme qui délivre le §9.** Les serrer
+# davantage ferait échouer des créations légitimes : on paierait plus cher que ce qu'on économise.
+#
 # Source des coûts : "estimated" (tokens × barème, actif) | "anthropic_api" (stub Inc. 0).
 COST_SOURCE = os.getenv("TESTPILOT_COST_SOURCE", "estimated")
 

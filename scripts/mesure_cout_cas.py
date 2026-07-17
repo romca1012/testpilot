@@ -31,9 +31,12 @@ def main() -> None:
           f"${config.BUDGET_PER_CASE_USD:.4f}")
     print("=" * 78)
 
+    # ⚠️ On lit `test_case_id` DIRECTEMENT (migration 12), jamais par `JOIN execution` : une
+    # génération n'a pas d'exécution, la jointure la rendrait invisible. Ce script faisait
+    # justement cette erreur — il affichait « cas ? » pour tout ce qui vient de l'écran.
     lignes = list(conn.execute(
-        "SELECT c.id, c.execution_id, c.phase, c.model, c.cost_usd, c.source, e.test_case_id"
-        " FROM cost_ledger c LEFT JOIN execution e ON e.id = c.execution_id ORDER BY c.id"))
+        "SELECT id, test_case_id, execution_id, phase, model, cost_usd, source"
+        " FROM cost_ledger ORDER BY id"))
 
     if not lignes:
         print("\n⚠️  LEDGER VIDE — rien n'a jamais été mesuré. Aucune conclusion possible.")
@@ -41,14 +44,22 @@ def main() -> None:
 
     print("\n-- Lignes réelles du ledger " + "-" * 50)
     for r in lignes:
-        print(f"  #{r['id']:<3} cas {str(r['test_case_id'] or '?'):<3} "
+        cas = r["test_case_id"]
+        # Un `?` ici n'est plus un artefact d'affichage : c'est une dépense ORPHELINE, qui
+        # échappe au §9. À signaler, pas à masquer.
+        marque = str(cas) if cas is not None else "?!"
+        print(f"  #{r['id']:<3} cas {marque:<3} "
               f"{r['phase']:<11} {r['model']:<28} ${r['cost_usd']:.4f}  ({r['source']})")
+    orphelines = [r for r in lignes if r["test_case_id"] is None]
+    if orphelines:
+        print(f"\n  ⚠️  {len(orphelines)} ligne(s) SANS cas rattaché "
+              f"(${sum(r['cost_usd'] for r in orphelines):.4f}) — invisibles au §9.")
 
     print("\n-- Total par cas " + "-" * 61)
     totaux = list(conn.execute(
-        "SELECT e.test_case_id AS cas, ROUND(SUM(c.cost_usd), 6) AS total, COUNT(*) AS n"
-        " FROM cost_ledger c JOIN execution e ON e.id = c.execution_id"
-        " GROUP BY e.test_case_id ORDER BY total DESC"))
+        "SELECT test_case_id AS cas, ROUND(SUM(cost_usd), 6) AS total, COUNT(*) AS n"
+        " FROM cost_ledger WHERE test_case_id IS NOT NULL"
+        " GROUP BY test_case_id ORDER BY total DESC"))
     for r in totaux:
         pct = 100 * r["total"] / config.BUDGET_PER_CASE_USD
         etat = "OK" if r["total"] <= config.BUDGET_PER_CASE_USD else "DEPASSE"
@@ -63,38 +74,57 @@ def main() -> None:
         print(f"  {r['phase']:<12} {r['n']} appel(s)   total ${r['total']:.4f}   "
               f"moyenne ${r['moy']:.4f}")
 
-    gen = conn.execute(
-        "SELECT AVG(cost_usd) AS m, COUNT(*) AS n FROM cost_ledger WHERE phase='generation'"
+    # ⚠️ **On ne MOYENNE PAS les générations.** Le ledger en mêle deux RÉGIMES : celles d'avant
+    # les garde-fous (2026-07-15, l'agent réinventait tout : 15 312 car. de steps → $0,4529) et
+    # celles d'après (catalogue 0003 + notes 0012 + contrat 0007 A1 : 1 973 car. → ~$0,105, avec
+    # PLUS de couverture). Leur moyenne ($0,22) ne décrit aucun régime réel — c'est un chiffre
+    # qui n'est jamais arrivé. On montre donc le DERNIER (ce que ça coûte aujourd'hui) et le PIRE
+    # (ce sur quoi un plafond se calibre).
+    gen_dernier = conn.execute(
+        "SELECT cost_usd FROM cost_ledger WHERE phase='generation' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    gen_pire = conn.execute(
+        "SELECT MAX(cost_usd) AS m, COUNT(*) AS n FROM cost_ledger WHERE phase='generation'"
+    ).fetchone()
+    ana_dernier = conn.execute(
+        "SELECT cost_usd FROM cost_ledger WHERE phase='analysis' ORDER BY id DESC LIMIT 1"
     ).fetchone()
     rep = conn.execute(
         "SELECT AVG(cost_usd) AS m, COUNT(*) AS n FROM cost_ledger WHERE phase='repair'"
     ).fetchone()
 
     print("\n" + "=" * 78)
-    print("CALIBRAGE DU GARDE-FOU (§6/§11.2) — contre les chiffres ci-dessus")
+    print("CALIBRAGE DES GARDE-FOUS (§6/§11.2) — contre les chiffres ci-dessus")
     print("=" * 78)
-    print(f"  Plafond réparations/cas configuré : "
-          f"${config.REPAIR_COST_LIMIT_PER_CASE_USD:.4f}")
-    print(f"  Budget tentatives par défaut      : {config.REPAIR_BUDGET_DEFAULT}")
+    print(f"  Plafond génération / run     : ${config.COST_LIMIT_PER_RUN_USD:.4f}")
+    print(f"  Plafond réparations / cas    : ${config.REPAIR_COST_LIMIT_PER_CASE_USD:.4f}")
+    print(f"  Budget tentatives par défaut : {config.REPAIR_BUDGET_DEFAULT}")
 
-    if gen["n"]:
-        marge = config.BUDGET_PER_CASE_USD - gen["m"]
-        print(f"\n  §9 ${config.BUDGET_PER_CASE_USD:.4f} − génération mesurée ${gen['m']:.4f} "
-              f"= ${marge:.4f} pour TOUTES les réparations du cas")
-        verdict = "OK" if config.REPAIR_COST_LIMIT_PER_CASE_USD <= marge else "TROP HAUT"
-        print(f"  → plafond configuré ${config.REPAIR_COST_LIMIT_PER_CASE_USD:.4f} : [{verdict}]")
+    if gen_dernier:
+        actuel = float(gen_dernier["cost_usd"])
+        pire = float(gen_pire["m"])
+        print(f"\n  Génération — DERNIÈRE mesure : ${actuel:.4f}   (le régime d'aujourd'hui)")
+        print(f"  Génération — PIRE mesurée    : ${pire:.4f}   (régime d'avant les garde-fous)")
+        v = "OK" if config.COST_LIMIT_PER_RUN_USD > pire else "COUPERAIT UNE GÉNÉRATION CONNUE"
+        print(f"  → plafond ${config.COST_LIMIT_PER_RUN_USD:.2f} vs pire mesurée : [{v}]"
+              f"   ({config.COST_LIMIT_PER_RUN_USD / actuel:.1f}x le coût actuel)")
 
     if rep["n"]:
-        pire = config.REPAIR_BUDGET_DEFAULT * rep["m"]
-        print(f"\n  Pire cas au budget par défaut : {config.REPAIR_BUDGET_DEFAULT} x "
-              f"${rep['m']:.4f} = ${pire:.4f}")
-        verdict = "OK" if pire <= config.REPAIR_COST_LIMIT_PER_CASE_USD else "DEPASSE LE PLAFOND"
-        print(f"  → contre le plafond ${config.REPAIR_COST_LIMIT_PER_CASE_USD:.4f} : [{verdict}]")
-        if gen["n"]:
-            total = gen["m"] + pire
+        cout_rep = config.REPAIR_BUDGET_DEFAULT * rep["m"]
+        print(f"\n  Réparations au budget par défaut : {config.REPAIR_BUDGET_DEFAULT} x "
+              f"${rep['m']:.4f} = ${cout_rep:.4f}")
+        v = "OK" if cout_rep <= config.REPAIR_COST_LIMIT_PER_CASE_USD else "DEPASSE LE PLAFOND"
+        print(f"  → contre le plafond ${config.REPAIR_COST_LIMIT_PER_CASE_USD:.4f} : [{v}]")
+
+        if gen_dernier and ana_dernier:
+            creation = float(gen_dernier["cost_usd"]) + float(ana_dernier["cost_usd"])
+            total = creation + cout_rep
             v = "OK" if total <= config.BUDGET_PER_CASE_USD else "DEPASSE LE §9"
-            print(f"  → cas complet extrapolé : ${gen['m']:.4f} + ${pire:.4f} = ${total:.4f}"
-                  f"  ({100 * total / config.BUDGET_PER_CASE_USD:.1f} % du §9)  [{v}]")
+            print(f"\n  CAS COMPLET au régime d'aujourd'hui :")
+            print(f"    création (analyse + génération) = ${creation:.4f}"
+                  f"   ({100 * creation / config.BUDGET_PER_CASE_USD:.0f} % du §9)")
+            print(f"    + 2 réparations                 = ${total:.4f}"
+                  f"   ({100 * total / config.BUDGET_PER_CASE_USD:.0f} % du §9)  [{v}]")
 
     print("\n" + "=" * 78)
     print("CE QUI N'EST PAS MESURÉ — à lire avant de citer un chiffre")

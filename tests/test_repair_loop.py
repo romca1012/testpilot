@@ -676,13 +676,23 @@ def test_chaque_tentative_ajoute_au_cout_du_cas(conn, monkeypatch):
 
 
 def test_le_budget_du_paragraphe_9_est_nomme_dans_la_config():
-    """Le §9 n'existait dans AUCUNE constante : impossible de mesurer contre lui."""
+    """Le §9 n'existait dans AUCUNE constante : impossible de mesurer contre lui.
+
+    ⚠️ **Ce test gardait la contradiction inverse — elle est RÉSOLUE le 2026-07-17.**
+    Il exigeait `COST_LIMIT_PER_RUN_USD > BUDGET_PER_CASE_USD`, pour que le constat gênant « le
+    plafond par run n'applique pas le §9 » ne se perde pas. Il a fait son travail : il a échoué
+    à la seconde où le plafond est passé de $2,00 à $0,50, en renvoyant vers la doc à corriger.
+
+    Le sens s'inverse donc : le plafond de génération est maintenant **sous** le §9, ce qui est
+    l'état voulu. Assertion retournée plutôt que supprimée — un garde qui a servi ne se jette
+    pas, il se met à jour.
+    """
     assert config.BUDGET_PER_CASE_EUR == 1.00
     assert config.BUDGET_PER_CASE_USD == pytest.approx(1.00 * config.EUR_USD_RATE)
-    # Le constat gênant, gardé pour qu'il ne se perde pas : le plafond par run ne l'applique pas.
-    assert config.COST_LIMIT_PER_RUN_USD > config.BUDGET_PER_CASE_USD, (
-        "COST_LIMIT_PER_RUN_USD est passé sous le budget §9 — mettre à jour docs/PRINCIPES.md, "
-        "qui documente la contradiction inverse.")
+    assert config.COST_LIMIT_PER_RUN_USD < config.BUDGET_PER_CASE_USD, (
+        "COST_LIMIT_PER_RUN_USD est repassé AU-DESSUS du §9 : le plafond de génération ne "
+        "l'applique plus. Recalibrer sur une mesure réelle "
+        "(scripts/mesure_generation_chemin_ecran.py), pas à vue.")
 
 
 # ── Principe 5 : aucune adoption si un scénario qui passait ne passe plus ──────
