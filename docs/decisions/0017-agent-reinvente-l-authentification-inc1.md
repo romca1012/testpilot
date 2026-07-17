@@ -1,10 +1,50 @@
 # 0017 — L'agent réinvente l'authentification que la bibliothèque résout déjà
 
 Date : 2026-07-17
-Statut : **À ARBITRER** — note d'abord, aucun code.
+Statut : **ARBITRÉ ET LIVRÉ** *(révisé le 2026-07-17, cf. commit `c1ee857`)*.
 Famille : `0012` (l'agent ignore ce que fait un step partagé) × `0003` (ne pas réinventer ce que
 la bibliothèque fournit).
 **Bloquant de fait pour clore `0016`** — voir « Pourquoi ça bloque » ci-dessous.
+
+---
+
+## ⚠️ Ce qui a été arbitré — à lire avant le reste de la note
+
+> **Révisé le 2026-07-17, cf. commit `c1ee857`.** Le corps de cette note ci-dessous est le
+> **matériau d'enquête** qui a mené à l'arbitrage : il est conservé intact (il a valeur de
+> preuve), mais **sa section « Recommandation » est périmée**. Ce qui a été retenu :
+>
+> | option | verdict |
+> |---|---|
+> | **A — annoter le catalogue** (Q2-a) | ✅ **LIVRÉE.** La note du step d'auth dit désormais « NE RÉIMPLÉMENTE JAMAIS l'authentification… ». Vérifié : l'annotation arrive jusqu'au prompt de réparation. |
+> | **B — garde BLOQUANTE à l'écriture** (rejeter un fichier qui refait l'auth) | ❌ **NON RETENUE.** |
+> | **B′ — garde DÉTECTIVE du rayon d'explosion** (Q1-i) | ✅ **LIVRÉE** — `generation/repair_diff.py`. Compare par AST les corps de steps entre la version réparée et la précédente, et **signale au gate** les steps réécrits ou supprimés. `allowed` n'est jamais touché (prouvé par test API) ; même bandeau que le lint `0008` C. 12 tests, dont 6 anti-faux-positifs. |
+> | **C — abandonner le contrat « fichier ENTIER »** | 📌 **Dette nommée** au backlog (principe 3), pas un chantier ouvert. |
+>
+> **Pourquoi B n'a pas été retenue, et pourquoi c'est structurant.** Le **§6 du brief** est
+> explicite : *« L'agent a le droit d'explorer l'application par lui-même (la spec est un cadre,
+> pas une vérité absolue) »*, et le **§11.2** nomme la mitigation prévue pour le coût :
+> *« bien calibrer le garde-fou tentatives + budget »* — **pas** restreindre ce que l'agent a le
+> droit d'écrire. Une garde bloquante à l'écriture aurait rejeté un cas qui teste légitimement la
+> page de login (« connexion refusée avec un mauvais mot de passe ») — le faux positif que la
+> note elle-même signalait. **La garde détective donne le même signal sans retirer un droit que
+> le brief accorde**, et c'est un humain qui tranche, au gate.
+>
+> ⚠️ **La question 2 de l'arbitrage (« où vit la garde ? ») se dissout avec B′** : `repair_diff`
+> compare des corps de fonctions par AST — il ne connaît ni Odoo, ni l'authentification, ni aucun
+> connecteur. Il ne rejoue donc pas la faute de placement de `0003`
+> (`_FORBIDDEN_ENDPOINTS` Odoo en dur dans un module générique), qui reste une dette ouverte.
+>
+> **Résultat du rejeu réel qui a suivi : ÉCHEC, et il faut le dire.** L'annotation **a porté sur
+> sa cible** (`v12` ne réimplémente plus l'auth), mais le test ne tourne plus du tout : l'agent a
+> **supprimé** son step d'auth **sans** mettre à jour le `.feature`, qui le réclamait encore →
+> step `undefined` → `RUN_FAILED`. Troisième raison distincte en trois rejeux
+> (`404` → `TimeoutError` auth → step `undefined`). **La chaîne de garde-fous a fait son travail :
+> rien de cassé n'a été adopté.** Le chemin positif de `0016` reste **NON PROUVÉ**.
+>
+> ➡️ **Cause trouvée depuis, et corrigée** : le dry-run de la session de réparation n'était
+> **branché sur rien** (`propose_fix` recevait `dry_runner=None`). C'est lui qui aurait rendu la
+> liste des steps `undefined` à l'agent pour qu'il corrige **dans le même appel**. Fix P0 livré.
 
 ---
 
@@ -109,7 +149,14 @@ Coût : **rouvre le bug 2 de `0014`** (l'agent rendait 1 step sur 4, les 3 autre
 **D — Statu quo + budget plus large.** Coût : brûle des appels LLM au hasard, **n'atteint jamais
 zéro erreur technique** (critère 2), et ne clôt pas `0016`.
 
-## Recommandation (à valider — rien n'est tranché)
+## ~~Recommandation (à valider — rien n'est tranché)~~ — ❌ PÉRIMÉE
+
+> **Révisé le 2026-07-17, cf. commit `c1ee857`.** Ce qui suit était ma recommandation **avant**
+> arbitrage. Elle proposait **B** (garde **bloquante** à l'écriture) : **elle n'a pas été
+> retenue**, parce qu'elle retire à l'agent un droit que le **§6 du brief** lui accorde
+> explicitement. C'est **B′** (garde **détective**) qui a été livrée. Conservée telle quelle
+> ci-dessous — une recommandation écartée fait partie du dossier — mais **elle ne s'applique
+> pas**. Voir l'encart « Ce qui a été arbitré » en tête de note.
 
 **B porteur + A en renfort** — la forme exacte du verdict de `0007` (« le correctif technique
 porte, le prompt renforce »). L'argument n'est pas théorique : **`0003` prouve que ce type de

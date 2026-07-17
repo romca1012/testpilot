@@ -1,11 +1,28 @@
 # Principes d'architecture — TestPilot
 
-> **Document permanent**, au même rang que les invariants §4/§5 du brief. Ce n'est **pas** une
-> décision numérotée : les décisions tranchent un cas, ces principes disent ce qu'on ne
-> re-débat plus. Toute décision future doit s'y conformer ou dire explicitement pourquoi elle
-> s'en écarte.
+> **Le brief produit (`docs/brief-produit-outil-test-management-ia.md`) est la seule source de
+> vérité.** Ce document lui est **subordonné**, jamais à son rang. Toute déviation qu'il
+> proposerait doit être signalée comme telle et validée avant implémentation, jamais actée en
+> autonomie.
+>
+> **Document permanent** : ce n'est **pas** une décision numérotée. Les décisions tranchent un
+> cas ; ces principes disent ce qu'on ne re-débat plus. Toute décision future doit s'y conformer
+> ou dire explicitement pourquoi elle s'en écarte.
 >
 > Date : 2026-07-17. Statut : **À VALIDER par le porteur.** Aucun code avant validation.
+
+> ### ⚠️ Deux numérotations se ressemblent — ne pas les confondre *(corrigé le 2026-07-17)*
+>
+> | écriture | désigne | contenu |
+> |---|---|---|
+> | **« §5 du brief »** | `brief-produit-outil-test-management-ia.md` §5 | **Invariants & philosophie du verdict** — la référence produit |
+> | **« §6 / §11.2 du brief »** | le brief | Comportement de l'agent & coûts · Risques |
+> | **« §4.1 », « §4.2 », « §4.6 », « §4.8 »…** | **`CONTINUITE.md` §4** | *Invariants à NE JAMAIS régresser* — la déclinaison **interne**, numérotée à part |
+>
+> ⚠️ **Le §4 du BRIEF est le « Parcours cible », pas des invariants.** Cet en-tête disait
+> « les invariants §4/§5 du brief » : **faux**, corrigé. Partout ailleurs dans ces documents,
+> un renvoi de la forme `§4.x` pointe vers **`CONTINUITE.md`**, jamais vers le brief. En cas de
+> doute, un renvoi au brief est toujours écrit **« du brief »** en toutes lettres.
 
 ---
 
@@ -45,10 +62,22 @@ Les deux défauts que ce document nommait :
    `repair_service._record_cost` écrit au ledger **avant tout `break`** — un agent qui ne propose
    **rien** a quand même coûté, et ne compter que les réussites donnerait un budget flatteur ;
    `CostRepo.total_for_case_usd` / `breakdown_for_case` donnent le total **et** son explication.
-2. **Le plafond configuré contredit toujours le §9.** `COST_LIMIT_PER_RUN_USD = 2.00` ≈ **1,85 €**
-   — près du **double**. **Conservé tel quel, et gardé par un test** : changer un plafond sans
-   mesure serait exactement ce que ce document reproche. À arbitrer une fois qu'on aura des runs
-   mesurés.
+2. ~~**Le plafond configuré contredit toujours le §9.**~~ → **corrigé le 2026-07-17, et le défaut
+   était pire que « trop haut ».** `COST_LIMIT_PER_RUN_USD = 2.00` ne bornait pas **un run** :
+   `propose_fix` créait un `CostTracker()` **neuf à chaque tentative**, donc chacune repartait de
+   $0 avec le plafond entier. Il bornait un **appel**. Le coût réel d'un cas pouvait atteindre
+   **génération ($2) + budget × $2 = jusqu'à $6**, contre $1,08 au §9 — sans qu'aucun garde-fou
+   ne bronche. **Encore un garde-fou décoratif** (le `position` de `0006`, le stall du circuit),
+   cette fois appliqué à l'argent.
+   Correctif : `repair_service` construit **un seul** tracker pour toute la boucle
+   (`REPAIR_COST_LIMIT_PER_CASE_USD = $0,62`, calibré ci-dessous) et le passe à chaque tentative ;
+   le premier seuil atteint escalade vers un humain (`COST_EXCEEDED`), ce que le §6 du brief
+   demande. 5 tests, dont 3 **vérifiés comme échouant** sur le code d'avant.
+   ⚠️ **Trou restant, nommé** : `COST_LIMIT_PER_RUN_USD` borne encore la **génération** à $2 —
+   près du double du §9 à elle seule. Le §9 n'est donc tenu que sur le versant **réparation**. Le
+   combler suppose une 2ᵉ mesure de génération (la seule connue, $0,4529, ne laisserait que 10 %
+   de marge sous un plafond de $0,50 : le premier cas plus gros échouerait à la création). À
+   calibrer sur mesure, pas à deviner.
 
 > Le motif §4.6 appliqué à l'argent : le brief affichait 1 €, le code plafonnait à 1,85 €, et le
 > chemin réel ne mesurait rien. Le troisième terme est réglé ; le deuxième attend une mesure.
@@ -70,15 +99,39 @@ répétée**. La boucle ReAct renvoie tout le contexte à chaque tour — le cat
 partagés **plus** le fichier de 14 000 caractères — et un tour d'agent en compte plusieurs. À
 $0,80/M en entrée, $0,29 représente ~360 000 tokens d'entrée cumulés.
 
-| | coût réel | % du budget §9 ($1,08) |
-|---|---|---|
-| Génération d'un module (cas 1) | $0,4529 | **42 %** |
-| \+ **1** réparation | $0,7424 | **69 %** |
-| \+ **2** réparations *(le budget par défaut)* | **$1,0319** | **96 %** ⚠️ |
+| | coût | % du budget §9 ($1,08) | statut |
+|---|---|---|---|
+| Génération d'un module (cas 1) | $0,4529 | **42 %** | ✅ **mesuré** (ledger #1) |
+| \+ **1** réparation | $0,7424 | **69 %** | ✅ **mesuré** (ledger #2) |
+| \+ **2** réparations *(le budget par défaut)* | **$1,0319** | **96 %** ⚠️ | ⚠️ **EXTRAPOLÉ** — voir ci-dessous |
 
 **Un cas qui utilise son budget de réparation par défaut frôle le plafond du §9.** La marge que
 j'annonçais (« ~46 % ») n'existe pas. Ce n'est pas un dépassement — c'est l'absence de marge, et
 elle était invisible tant que rien ne mesurait.
+
+> ### ⚠️ Le $1,0319 n'est PAS une mesure — et deux défauts distincts sont ici confondus
+>
+> **1. Ce chiffre est une extrapolation.** Il vaut `$0,4529 + 2 × $0,2895`. **Le ledger ne
+> contient qu'UNE réparation réelle** (`scripts/mesure_cout_cas.py` le vérifie) : aucun cas à 2
+> réparations n'a jamais été mesuré. Le citer comme une mesure serait exactement le défaut que ce
+> document traque — un chiffre déclaratif.
+>
+> **2. Le bug du `CostTracker` ne faussait PAS ce chiffre.** Il faut le dire clairement, parce
+> que la tentation inverse est forte : avec un tracker **neuf** à chaque tentative, `total_cost`
+> **était** le coût de cette tentative-là. Chaque ligne du ledger était donc **juste**. Le bug ne
+> corrompait pas le **comptage**, il rendait le **plafond** inopérant. Ce sont deux défauts
+> distincts : **on mesurait juste, on ne bornait rien.** Le correctif ne change donc **aucun**
+> chiffre mesuré — il empêche un cas de dépasser.
+>
+> *(Ironie du correctif : partager le tracker aurait, lui, introduit un vrai double comptage — la
+> tentative 1 recomptée dans la 2. D'où le delta dans `RepairProposal.cost_usd`, et un test qui
+> le garde.)*
+>
+> **3. Le $0,2895 lui-même est désormais périmé — à la baisse.** Il a été mesuré avec
+> `dry_runner=None` : la boucle faisait alors **2 appels LLM** par tentative (l'écriture, puis un
+> tour perdu qui finissait en `incomplete`). Le dry-run étant branché, le chemin heureux n'en fait
+> plus qu'**un**. Le coût réel d'une réparation est probablement **plus bas** — **non mesuré**, à
+> reprendre au prochain rejeu réel. Je ne remplace pas une estimation par une autre.
 
 > **Ce que ça change pour le principe 3** (édition ciblée) : mon argument « le coût est du bruit,
 > seul le rayon d'explosion compte » **était fondé sur le mauvais chiffre**. Un diff réduirait le
@@ -145,6 +198,35 @@ le jour où un relecteur accorde un budget plus large.
 **Règle.** « Ne fais pas X » dans un prompt ne suffit **jamais** seul. Tout comportement interdit
 est soit **rendu impossible**, soit **détecté automatiquement**. Le prompt renforce ; il ne garde
 pas.
+
+### ⚠️ SA BORNE — sans elle, ce principe dérape *(révisé le 2026-07-17, cf. brief §6/§11.2)*
+
+> Ce principe dit **comment** construire une garde. Il ne dit **pas** ce qu'on a le droit
+> d'interdire — et il ne donne **aucun** mandat pour élargir la liste.
+>
+> **Une garde qui empêcherait l'exploration légitime de l'agent doit être DÉTECTIVE, jamais
+> bloquante.** Le **§6 du brief** est une décision prise, pas un oubli :
+> *« L'agent a le droit d'explorer l'application par lui-même (la spec est un cadre, pas une
+> vérité absolue) »*. Et le **§11.2** nomme la mitigation prévue quand ça coûte cher :
+> *« bien calibrer le garde-fou tentatives + budget »* — **pas** restreindre ce que l'agent a le
+> droit d'écrire.
+>
+> **Seule exception : les cas déjà tranchés comme bloquants, explicitement et ailleurs.** À ce
+> jour il n'y en a **qu'un** : le **transport réinventé** (`0003` — `write_steps_file` refuse
+> `requests` / `/web/dataset`). Il est bloquant parce qu'il ne retire aucun droit d'exploration :
+> l'agent garde `context.odoo` et `context.page` pour faire exactement le même travail, en mieux.
+> **Cette liste ne s'allonge pas sans un arbitrage du porteur.**
+>
+> **Le contre-exemple qui a produit cette borne** : `0017` a d'abord recommandé une garde
+> **bloquante** à l'écriture contre la réimplémentation de l'auth. Elle aurait rejeté un cas
+> testant légitimement la page de login. C'est **B′**, la garde **détective**
+> (`repair_diff.py`), qui a été livrée : **même signal, aucun droit retiré, un humain tranche au
+> gate**. La pente est réelle — « rendre impossible » est plus satisfaisant à écrire que
+> « signaler » — et c'est précisément pour ça que la borne est ici et pas dans une note de bas de
+> page.
+>
+> **Test de la borne, avant d'écrire une garde** : *« est-ce que cette garde peut refuser un test
+> légitime ? »* Si oui → détective. Si non → bloquante recevable, à arbitrer.
 
 **Coût : nul.** Validation à l'écriture = code pur, exécuté avant tout appel LLM supplémentaire.
 Mieux : un rejet à l'écriture **économise** un run réel.

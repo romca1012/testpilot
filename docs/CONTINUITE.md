@@ -8,12 +8,23 @@
 
 ## 1. Vue d'ensemble
 
-| Incrément | État |
+> **Révisé le 2026-07-17 — recalage sur le découpage du brief §12.**
+> Le découpage ci-dessous est **celui du brief, littéralement**. L'étiquette
+> « **Incrément 1.1 — Interface** » employée jusqu'ici était une **invention de séance** : elle
+> ne figure nulle part au brief, et elle rangeait sous « Interface » un travail qui est en
+> réalité celui de l'**Incrément 2** (garde-fou tentatives + budget, verdict à deux axes,
+> diagnostic `vrai_bug`/`test_a_reparer`, réparation automatique, suivi des coûts). Ce n'est pas
+> un jugement sur le travail fait — c'est le vocabulaire qui était faux.
+> **Aucun incrément ne s'invente : les seuls noms valides sont ceux du §12.**
+
+| Incrément (§12 du brief) | État |
 |---|---|
-| **Incrément 0 — PoC** | ✅ **Terminé.** Pipeline complet `spec → analyse → génération → gate → exécution → verdict 2 axes → rapport`, prouvé de bout en bout sur un cas réel (`demande_materiel`) contre une instance Odoo neutralisée. |
-| **Incrément 1.1 — Interface** | 🟡 **En cours, largement avancé.** API FastAPI + SPA Vite/Vue livrées et fonctionnelles ; hiérarchie Projet→Module→Cas en place ; 4 pages designées ; page détail module livrée. |
-| **Incrément 1 (reste)** | Backlog documenté (§7). |
-| **Incrément 2** | Sécurité (mot de passe en clair) — bloquant avant tout déploiement client. |
+| **Incrément 0 — Preuve de concept** | ✅ **Terminé.** Pipeline complet `spec → analyse → génération → gate → exécution → verdict 2 axes → rapport`, prouvé de bout en bout sur un cas réel (`demande_materiel`) contre une instance Odoo neutralisée. |
+| **Incrément 1 — Cœur du référentiel & exécution** | 🟡 **En cours.** **Livré** : hiérarchie Projet→Module→Cas (`0004`) + connecteur au projet (`0005`) ; séparation UX Gestion/Exécution (§8) ; historisation (`test_case_version`) ; API FastAPI + SPA Vite/Vue ; explorateur Modules→Cas. **Reste** : **exécutions nommées transverses multi-modules** (le dernier gros manque du §7), archivage, rôles & permissions (QA / lead / admin / client externe). |
+| **Incrément 2 — Fiabilisation & gouvernance du verdict** | 🟡 **En cours, largement avancé** — c'est l'essentiel du travail des 2 derniers jours, longtemps mal étiqueté « Interface ». **Livré** : garde-fou de validation humaine sur les diagnostics (`0013`) ; garde-fous **tentatives + budget** par cas (`0014`, budget porté par le gate) ; réparation automatique (`0014`) ; diagnostic sur signal du runtime (`0015`) ; critère d'adoption à deux axes (`0016`) ; suivi des coûts (`cost_ledger`, `BUDGET_PER_CASE_*`). **Reste** : calibrage des seuils (§6/§11.2) ; mode dev/utilisateur ; tableau de bord des modules « à retester » ; coûts réels Anthropic (aujourd'hui `estimated`). |
+| **Incrément 3 — Élargissement du périmètre validé** | Non commencé. Ordre fixé au brief : (1) gestion de projet type Jira, (2) charge/perf, (3) sécurité, (4) CI/CD. |
+| **Incrément 4 — Extension multi-connecteurs** | Non commencé. L'architecture est posée (`connector_type` au projet, `0005`). |
+| **— Dette transverse, hors découpage §12** | **Mot de passe de connexion en clair** dans SQLite — bloquant avant tout déploiement client. ⚠️ Rangée « Incrément 2 » jusqu'ici : c'était faux, l'Incrément 2 du brief est la **gouvernance du verdict**, pas la sécurité. Cette dette n'appartient à aucun incrément du brief. |
 
 **Tests : 311 Python · 36 vitest · build front OK.** Tout est vert au moment de ce rapport.
 
@@ -267,10 +278,18 @@ Non implémenté du §7 : l'**Exécution nommée transverse**.
    Projet. **Aucun mélange inter-projets**.
 9. **Garde-fou anti-production** : `ODOO_ENV=prod` fait échouer le harnais. Un projet ne peut
    **jamais** produire cette variable.
-10. **Coûts** : cap par-run (`COST_LIMIT_PER_RUN_USD = 2`) + provenance honnête du coût
+10. **Coûts** : cap par-run (`COST_LIMIT_PER_RUN_USD`) + provenance honnête du coût
     (`estimated` vs `anthropic_api` — le label `anthropic_api` **uniquement** si un chiffre réel
-    a été mesuré). ⚠️ Le « budget 50 €/mois » du brief est le **budget de dev du porteur**, pas
-    un garde-fou produit — ne pas le ré-implémenter (malentendu déjà tranché).
+    a été mesuré).
+    **L'unique cible de coût du produit est le §9 du brief : moins de 1 € par nouveau cas de
+    test** (génération + exécution + rapport, **réparations cumulées comprises**). Il n'y en a
+    **pas d'autre**.
+    ✅ **Le « budget 50 €/mois » n'est PAS un garde-fou produit** — c'est le **budget de
+    développement du porteur**. Ne pas le ré-implémenter, ne rien construire dessus.
+    *(Mis à jour le 2026-07-17 : ce point n'est plus une divergence non résolue entre le code et
+    le brief. Le **brief lui-même a été amendé** — §6, §9, §11.2 + journal des amendements en
+    tête — sur arbitrage du porteur. `config.MONTHLY_BUDGET_EUR/_USD` existe et n'est lu par
+    personne : c'est **voulu**, pas un oubli.)*
 
 ---
 
@@ -535,7 +554,7 @@ reprise (voir « Suite à donner » du §6).
 | **7** | **Édition de la connexion d'un projet** : `PATCH /api/projects/{id}` ne gère que nom/description. |
 | **8** | `testpilot run --project` : lever l'implicite (la CLI prend le **premier** projet). Sans effet observable tant qu'il n'y a qu'un projet réel. |
 | **9 — observation** | Quasi-doublons sémantiques (volet C de `0003`) : écarté, à reconsidérer avec des exemples concrets après plusieurs runs. |
-| **Inc. 2 — bloquant client** | **Mot de passe de connexion en clair** dans SQLite. Atténué (write-only côté API) mais à chiffrer / passer en gestionnaire de secrets **avant tout déploiement client**. |
+| **Dette transverse — bloquant client** | **Mot de passe de connexion en clair** dans SQLite. Atténué (write-only côté API) mais à chiffrer / passer en gestionnaire de secrets **avant tout déploiement client**. ⚠️ Étiquetée « Inc. 2 » jusqu'au 2026-07-17 : faux (l'Incrément 2 du brief = gouvernance du verdict). N'appartient à aucun incrément du §12. |
 
 ---
 

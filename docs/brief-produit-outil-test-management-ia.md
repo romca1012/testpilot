@@ -2,7 +2,20 @@
 
 *Document de cadrage — référence pour l'implémentation. Aucune implémentation ne démarre sans validation de ce document.*
 
+> **Ce document est la SEULE source de vérité du projet.** Toute note, tout principe, toute
+> décision d'une session de travail qui le contredit est **caduc**. Une déviation proposée doit
+> être **signalée comme telle et validée** avant implémentation — jamais actée en autonomie.
+
 ---
+
+## Journal des amendements
+
+*Le brief est la référence : il ne se modifie pas en silence. Tout amendement est tracé ici,
+daté, avec sa raison.*
+
+| date | § touchés | amendement | décidé par |
+|---|---|---|---|
+| 2026-07-17 | **§6, §9, §11.2** | **Le plafond « 50 €/mois » est retiré du périmètre produit.** Ce chiffre désignait le **budget de développement du porteur de projet**, pas une limite applicative à implémenter. Il avait été inscrit au brief par confusion entre les deux. **Le seul objectif de coût du produit est, et reste, celui du §9 : moins de 1 € par nouveau cas de test** (génération + exécution + rapport). | Porteur du projet |
 
 ## 1. Vision & promesse
 
@@ -88,7 +101,15 @@ Formalisation de tests pour une fonctionnalité existante jamais testée, toujou
 - L'agent a le droit d'**explorer l'application par lui-même** (la spec est un cadre, pas une vérité absolue — des écarts existent, ex. casse des noms de champs, qui sont la cause racine des itérations de réparation constatées aujourd'hui).
 - **Réparation automatique** des scripts en échec technique : invisible pour l'utilisateur, mais bornée par un **garde-fou combiné tentatives + budget** — le premier seuil atteint déclenche une escalade vers un humain avec un rapport de ce qui a été essayé (chiffres exacts à calibrer en implémentation).
 - **Suivi des coûts** : données réelles récupérées depuis le compte du fournisseur LLM (Anthropic) quand l'API l'expose ; calcul estimé en fallback sinon. Visible **uniquement par les admins**.
-- **Budget plafond global : 50 €/mois** pour l'ensemble de l'outil (génération + exécution + réparations cumulées).
+- ~~**Budget plafond global : 50 €/mois** pour l'ensemble de l'outil (génération + exécution + réparations cumulées).~~
+  > **⚠️ AMENDÉ le 2026-07-17 — ce n'est PAS un garde-fou produit.**
+  > **Le seul plafond de coût produit est le critère du §9 : moins de 1 € par nouveau cas de test.**
+  > Le chiffre de 50 €/mois a pu apparaître dans des échanges de cadrage, mais il désigne le
+  > **budget de développement du porteur de projet** — pas une limite applicative. Aucun code ne
+  > l'implémente, et aucun ne doit l'implémenter : il n'y a **pas** de plafond mensuel produit à
+  > brancher, à mesurer ou à faire respecter par l'outil.
+  > *(Conséquence : `config.MONTHLY_BUDGET_EUR/_USD` existe mais n'est lu par personne. C'est
+  > normal et voulu — non pertinent au produit. Ne pas construire dessus.)*
 
 ---
 
@@ -144,8 +165,8 @@ Formalisation de tests pour une fonctionnalité existante jamais testée, toujou
 |---|---|
 | Temps — nouveau cas de test (spec → Gherkin/script validé → exécution → rapport) | < 5 minutes |
 | Temps — cas de test déjà existant et validé | seule l'exécution compte, temps encore inférieur |
-| Coût — nouveau cas de test (génération + exécution + rapport) | < 1 € |
-| Budget global mensuel | ≤ 50 €/mois, tous usages confondus |
+| **Coût — nouveau cas de test (génération + exécution + rapport)** | **< 1 €** — ⚠️ **l'UNIQUE cible de coût du produit**, sans exception. C'est elle qu'on mesure et qu'on calibre. Elle couvre **les réparations cumulées** du cas. |
+| ~~Budget global mensuel~~ | ~~≤ 50 €/mois, tous usages confondus~~ → **AMENDÉ le 2026-07-17 : retiré.** Budget de **développement du porteur**, pas un critère produit. Voir §6 et le journal des amendements. |
 | Fiabilité — cas « Odoo » (module à retester non traité avant mise en prod) | zéro occurrence sur une période donnée |
 | Fiabilité — faux-négatifs découverts a posteriori (test classé « à réparer » mais vrai bug) | tendre vers zéro |
 | Adoption | non pertinent à ce stade (outil interne, phase de dev) |
@@ -165,7 +186,8 @@ Formalisation de tests pour une fonctionnalité existante jamais testée, toujou
 ## 11. Risques & questions ouvertes
 
 1. **Périmètre V1 très large** (cœur + gestion de projet + charge + sécurité + CI/CD) → risque de dilution de la promesse centrale et d'allongement du délai, malgré la volonté d'aller vite. *Risque assumé.*
-2. **Coût de génération multi-connecteur** : itérations de réparation dues aux écarts spec/réalité (ex. casse des champs) → risque de dépasser le budget de 50 €/mois si le garde-fou tentatives + budget par cas n'est pas bien calibré.
+2. **Coût de génération multi-connecteur** : itérations de réparation dues aux écarts spec/réalité (ex. casse des champs) → **risque de dépasser la cible de moins de 1 € par cas (§9)** si le garde-fou tentatives + budget par cas n'est pas bien calibré. *(Amendé le 2026-07-17 : ce risque visait « le budget de 50 €/mois » — chiffre retiré du périmètre produit, cf. §6. Le risque lui-même est **inchangé et intact**, seule sa cible est renommée : c'est le §9 qu'une réparation mal bornée fait sauter.)*
+   **La mitigation reste celle-ci et pas une autre** : *bien calibrer le garde-fou tentatives + budget*. **Pas** restreindre ce que l'agent a le droit d'écrire — le §6 lui accorde l'exploration, c'est une décision prise.
 3. **Dépendance à l'API de coûts réels d'Anthropic** : si elle n'est pas assez granulaire, le suivi budgétaire retombe sur une estimation moins fiable.
 4. **Garde-fou anti faux-négatif** (validation humaine obligatoire sur les diagnostics « test à réparer ») repose sur la discipline humaine à valider réellement — un humain qui valide sans vérifier recrée le risque qu'on veut éliminer.
 
