@@ -118,16 +118,26 @@ def main() -> None:
 
     # ── LE COÛT, mesuré ───────────────────────────────────────────────────────
     print("\n" + "=" * 78)
-    print("COÛT MESURÉ DU CAS (§9) — lu au ledger, pas extrapolé")
+    print("COÛT MESURÉ — lu au ledger, pas extrapolé")
     print("=" * 78)
     repo = CostRepo(conn)
     for r in repo.breakdown_for_case(CASE_ID):
         print(f"  {r['phase']:<11} {r['model']:<28} ${r['cost_usd']:.4f}  ({r['calls']} appel(s))")
+
+    # ⚠️ DEUX MÉTRIQUES, DEUX QUESTIONS — arbitrage du porteur (2026-07-17).
+    # Ce script comparait `total_for_case_usd` au seuil du §9 et affichait « ⚠️ DÉPASSE » : c'est
+    # EXACTEMENT la fausse alarme qu'on a bannie, et je l'avais laissée ici. Le §9 dit « nouveau
+    # cas de test » : il mesure une CRÉATION, une fois. Le cas 1 cumule 6 sessions de débogage de
+    # l'outil et 10 versions — son total ne se compare à RIEN.
+    creation = repo.creation_cost_usd(CASE_ID)
     total = repo.total_for_case_usd(CASE_ID)
     depense = total - cout_avant
-    print(f"\n  dépensé par CE rejeu : ${depense:.4f}")
-    print(f"  TOTAL du cas 1       : ${total:.4f}  = {100 * total / config.BUDGET_PER_CASE_USD:.1f} %"
-          f" du §9 ({'OK' if total <= config.BUDGET_PER_CASE_USD else '⚠️ DÉPASSE'})")
+    print(f"\n  CRÉATION du cas (§9)  : ${creation:.4f}  = "
+          f"{100 * creation / config.BUDGET_PER_CASE_USD:.1f} % du §9  "
+          f"[{'OK' if creation <= config.BUDGET_PER_CASE_USD else 'DÉPASSE LE §9'}]")
+    print(f"  dépensé par CE rejeu  : ${depense:.4f}")
+    print(f"  total vie du cas      : ${total:.4f}   (télémétrie de debug — AUCUN seuil, "
+          f"ne pas comparer au §9)")
 
     reps = [r for r in repo.breakdown_for_case(CASE_ID) if r["phase"] == "repair"]
     if reps:
@@ -136,26 +146,41 @@ def main() -> None:
               f"→ ${reps[0]['cost_usd'] / n:.4f}/tentative")
         print(f"  (référence d'avant le fix P0 : $0,2895/tentative, avec un tour LLM perdu)")
 
-    # ── LE VERDICT sur 0016 ───────────────────────────────────────────────────
+    # ── LES VERDICTS : 0018 et 0016 sont DEUX questions distinctes ────────────
+    # ⚠️ Ce script les confondait : il titrait « CHEMIN POSITIF DE 0016 » et lisait l'adoption —
+    # or depuis `0018` l'adoption a DEUX voies. Un progrès partiel adopté prouve `0018`, PAS
+    # `0016`. Les mélanger ferait passer une décision livrée pour un échec, ou l'inverse.
     print("\n" + "=" * 78)
-    print("CHEMIN POSITIF DE 0016 — prouvé ?")
+    print("VERDICT 0018 — le PROGRÈS partiel est-il gardé (au lieu de rembobiner) ?")
     print("=" * 78)
     adopte = apres["current_version_id"] != avant["current_version_id"]
-    print(f"  version courante : v{avant['current_version_id']} → v{apres['current_version_id']}"
-          f"   {'✔ ADOPTÉE' if adopte else '✘ inchangée'}")
+    echecs_avant = sum(1 for e in nouvelles[:1] for _ in range(e["scenarios_failed"]))
     dernier = nouvelles[-1] if nouvelles else None
+    print(f"  version courante : v{avant['current_version_id']} → v{apres['current_version_id']}"
+          f"   {'✔ ADOPTÉE — le progrès est GARDÉ' if adopte else '✘ inchangée — rembobinée'}")
+    if nouvelles and dernier:
+        print(f"  scénarios passés : {nouvelles[0]['scenarios_passed']}/{nouvelles[0]['scenarios_total']}"
+              f" (départ) → {dernier['scenarios_passed']}/{dernier['scenarios_total']} (final)")
+    if adopte:
+        print("\n  ✅ 0018 PROUVÉE EN RÉEL : la boucle garde un test à moitié réparé au lieu de le")
+        print("     jeter. Le prochain rejeu repartira d'ICI, pas de v1 — plus de rachat du même")
+        print(f"     travail. Le cas est à '{apres['validation_status']}' : le gate ratifie (§4.3).")
+
+    print("\n" + "=" * 78)
+    print("VERDICT 0016 — le test tourne-t-il ENTIÈREMENT (chemin positif) ?")
+    print("=" * 78)
     if dernier:
         tourne = dernier["execution_status"] == "success"
         print(f"  dernier run      : {dernier['execution_status']} / "
               f"{dernier['functional_status']}   "
-              f"{'✔ LE TEST TOURNE' if tourne else '✘ le test ne tourne pas'}")
-    if adopte and dernier and dernier["execution_status"] == "success":
+              f"{'✔ LE TEST TOURNE' if tourne else '✘ le test ne tourne pas encore entièrement'}")
+    if dernier and dernier["execution_status"] == "success":
         print("\n  ✅ CHEMIN POSITIF PROUVÉ : la réparation rend le test exécutable et elle est")
         print("     adoptée — même si l'axe fonctionnel révèle un vrai bug (c'est le but).")
-        print(f"     Le cas repasse à '{apres['validation_status']}' pour ratification (§4.3).")
     else:
-        print("\n  ❌ CHEMIN POSITIF NON PROUVÉ. Cause à documenter — consigne du porteur :")
-        print("     NE PAS relancer à l'aveugle, remonter pour arbitrage avant tout code.")
+        print("\n  ❌ CHEMIN POSITIF NON PROUVÉ — le test ne tourne pas encore entièrement.")
+        print("     Cause à documenter. Consigne du porteur : NE PAS relancer à l'aveugle,")
+        print("     remonter pour arbitrage avant tout code.")
 
     conn.close()
 

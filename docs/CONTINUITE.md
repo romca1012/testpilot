@@ -36,11 +36,23 @@
 
 > ### 🔴 EN ATTENTE D'ARBITRAGE — à lire avant de reprendre
 >
-> **`0018` — la boucle de réparation rachète les mêmes correctifs à chaque rejeu.** Le rejeu du
-> cas 1 a **échoué** (4ᵉ fois, 4ᵉ cause distincte), mais **tous les garde-fous livrés ont porté**
-> et le test n'a jamais été aussi près de tourner : `v7` fait passer **1 scénario sur 3** (contre
-> 0 pour `v1`). **Elle est jetée quand même**, et le disque rembobiné sur `v1`.
-> → **Aucun code avant arbitrage** (consigne tenue). Voir `decisions/0018-…md`.
+> **`0020` — le test clique un onglet qui est sur une autre page.** 5ᵉ rejeu, 5ᵉ cause distincte.
+> Sondé (coût zéro) : `playwright_login` dépose le test sur `/my/home`, l'onglet « Ordinateurs »
+> vit sur `/myservices` — où il est visible, activé, et **le click réussit**. Le locator est bon,
+> l'application va bien : **étape de navigation manquante**. Le step d'auth **navigue sans le
+> dire** — 4ᵉ occurrence du motif `0012`.
+> **Recommandation : `C + A`** (annoter le catalogue, puis laisser la boucle repartir de `v10`).
+> → **Aucun code avant arbitrage** (consigne tenue). Voir `decisions/0020-…md`.
+>
+> ### ✅ `0018` EST PROUVÉE EN RÉEL — le résultat du rejeu
+>
+> `v8 → v10` **ADOPTÉE** : pour la **première fois**, la boucle garde un test à moitié réparé
+> (1/3 vert) au lieu de le jeter. **Le prochain rejeu repartira de `v10`, pas de `v1`** — le
+> rachat de $0,41 par rejeu s'arrête.
+>
+> ⚠️ **`0016` (chemin positif) reste NON prouvé** : le test ne tourne pas *entièrement* (1/3).
+> **Ce sont deux questions distinctes** — un progrès partiel adopté prouve `0018`, pas `0016`.
+> Le script de rejeu les confondait ; corrigé.
 
 | # | commit | ce que c'est |
 |---|---|---|
@@ -144,14 +156,27 @@ Les serrer davantage ferait échouer des créations légitimes : on paierait plu
 
 ### La suite, dans l'ordre
 
-1. 🔴 **Arbitrer `0018`** — la boucle ne converge pas : elle rachète les mêmes correctifs à chaque
-   rejeu (~$0,41 par rejeu de travail déjà payé). **Bloquant pour le chemin positif de `0016`**,
-   et **aucun code avant arbitrage**. Recommandation : **`A` + garde de couverture** (adopter sur
-   le *progrès* de l'axe exécution, jamais `A` seule — voir le trou mesuré dans la note).
-2. **Rejeu du cas 1**, une fois `0018` tranché — il repartirait de `v7` (1/3 vert) au lieu de `v1`,
-   avec son budget entier pour attaquer `types_demandes`.
+1. 🔴 **Arbitrer `0020`** (navigation manquante). Recommandation : **`C + A`** — `C` d'abord
+   (annoter le catalogue : le step d'auth dépose sur `/my/home`, le catalogue est sur
+   `/myservices`), **puis** `A` (laisser la boucle repartir de `v10` avec son budget entier).
+   L'ordre compte : sans `C`, `A` fait deviner l'agent sur une information que la bibliothèque
+   possède. **Aucun code avant arbitrage.**
+2. **Rejeu du cas 1** une fois `0020` tranché — le **premier** rejeu où observer la boucle
+   *converger* a un sens : elle repart de `v10` (1/3 vert), avec son budget entier.
 3. **Exécution nommée transverse multi-modules** — §12 **Incrément 1**, dernier gros manque du §7.
-   *(À statuer : bascule maintenant, ou après `0018` ?)*
+   *(Décidé : après `0018` — qui est livrée et prouvée. Reste à statuer une fois `0016` clos.)*
+
+### Les 5 rejeux, et pourquoi ils ne se répètent pas
+
+Chaque rejeu descend d'une couche. Ce n'est pas la même erreur qui revient — c'est la suivante :
+
+| # | cause | réglée par |
+|---|---|---|
+| 1 | `HTTPError 404` — transport réinventé | garde AST `0003` |
+| 2 | `TimeoutError [name=login]` — auth réinventée | annotation `0017` |
+| 3 | step `undefined` — `.feature` désynchronisé | **fix P0** (dry-run branché) |
+| 4 | `select_option` — valeur `"new"` inventée | `0019` A + D |
+| 5 | `get_by_role("tab")` — **mauvaise page** | `0020` — **à arbitrer** |
 
 ✅ **Fait** : les cas 7 et 8 (artefacts de mesure) ont été **retirés** du référentiel sur décision
 du porteur — script tracé, garde-fou d'identité, backups conservés. Référentiel : cas 1, 2, 6.
