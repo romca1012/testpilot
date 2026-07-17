@@ -60,12 +60,31 @@ Les deux défauts que ce document nommait :
 | `claude-sonnet-4-6` | génération | $3 / M | $15 / M |
 | `claude-haiku-4-5` | **réparation** | $0,80 / M | $4 / M |
 
-**Ordre de grandeur d'une réparation** (estimé sur les tailles réelles : `v9` = 13 971 car.,
-`v10` = 12 704, `v11` = 13 370 → ~4 000 tokens de sortie) : **~$0,015–0,05 par tentative** sur
-Haiku. Deux tentatives ≈ **$0,03–0,10**.
+### ⚠️ CORRECTION (2026-07-17, première réparation réellement mesurée) — j'étais 10× trop bas
 
-**Budget type d'un module** : génération $0,45 + 2 réparations ~$0,05 ≈ **$0,50 ≈ 0,46 €** —
-**~46 % du plafond**. Il reste donc de la marge, mais elle n'est pas mesurée.
+J'avais estimé une réparation à **$0,015–0,05** en raisonnant sur la taille de la **sortie**
+(~4 000 tokens à $4/M). **Mesuré : $0,2895** pour **une seule** tentative — **~10×** mon chiffre.
+
+**Pourquoi je me suis trompé** : le coût n'est pas dominé par la sortie mais par l'**entrée
+répétée**. La boucle ReAct renvoie tout le contexte à chaque tour — le catalogue des **42** steps
+partagés **plus** le fichier de 14 000 caractères — et un tour d'agent en compte plusieurs. À
+$0,80/M en entrée, $0,29 représente ~360 000 tokens d'entrée cumulés.
+
+| | coût réel | % du budget §9 ($1,08) |
+|---|---|---|
+| Génération d'un module (cas 1) | $0,4529 | **42 %** |
+| \+ **1** réparation | $0,7424 | **69 %** |
+| \+ **2** réparations *(le budget par défaut)* | **$1,0319** | **96 %** ⚠️ |
+
+**Un cas qui utilise son budget de réparation par défaut frôle le plafond du §9.** La marge que
+j'annonçais (« ~46 % ») n'existe pas. Ce n'est pas un dépassement — c'est l'absence de marge, et
+elle était invisible tant que rien ne mesurait.
+
+> **Ce que ça change pour le principe 3** (édition ciblée) : mon argument « le coût est du bruit,
+> seul le rayon d'explosion compte » **était fondé sur le mauvais chiffre**. Un diff réduirait le
+> fichier réinjecté **à chaque tour** de la boucle — donc l'entrée, donc le vrai poste de coût.
+> Le principe 3 pourrait valoir bien plus que les $0,015/tentative annoncés. **Non mesuré** : je
+> ne remplace pas une estimation fausse par une autre. À chiffrer avant de rouvrir la dette.
 
 ---
 

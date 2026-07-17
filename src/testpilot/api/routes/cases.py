@@ -9,7 +9,7 @@ from testpilot import config
 from testpilot.api import schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import run_service
-from testpilot.generation import assertion_lint
+from testpilot.generation import assertion_lint, repair_diff
 from testpilot.store.repositories import (
     CaseRepo,
     ExecutionRepo,
@@ -21,6 +21,27 @@ from testpilot.verdict import review_gate
 router = APIRouter(prefix="/api/cases", tags=["cases"])
 
 _RUN_ERROR_STATUS = {"not_found": 404, "no_version": 409, "needs_review": 409}
+
+# Auteur des versions produites par la boucle de réparation (0014). Une version signée ainsi a
+# forcément un « avant » : celle qu'elle tentait de corriger.
+_AUTEUR_REPARATION = "repair-agent"
+
+
+def _lint_reparation(current: dict | None, version_rows: list[dict]) -> list[dict]:
+    """Rayon d'explosion d'une réparation, comparé à la version qui la précède (0017).
+
+    Rend une liste vide dès que la comparaison n'aurait pas de sens — première version, version
+    écrite par la génération ou par un humain, ou prédécesseur introuvable. **Signaler dans ces
+    cas-là serait une alerte inventée**, aussi nuisible qu'une alerte tue.
+    """
+    if not current or current.get("created_by") != _AUTEUR_REPARATION:
+        return []
+    precedentes = [v for v in version_rows if v["id"] < current["id"]]
+    if not precedentes:
+        return []
+    avant = max(precedentes, key=lambda v: v["id"])
+    return repair_diff.blast_radius(avant.get("steps_content") or "",
+                                    current.get("steps_content") or "")
 
 
 @router.get("", response_model=list[schemas.CaseSummary])
@@ -51,6 +72,12 @@ def get_case(case_id: int, conn=Depends(get_conn)):
         # relecteur sans jamais changer `allowed` — le gate reste souverain.
         current = next((v for v in version_rows if v["id"] == version_id), None)
         warnings = assertion_lint.lint_steps(current.get("steps_content", "") if current else "")
+        # Rayon d'explosion d'une RÉPARATION (0017) : l'agent réécrit le fichier entier, donc il
+        # peut abîmer un step qui marchait — c'est ce qui a coûté deux tentatives au cas 1 le
+        # 2026-07-17. Détective, jamais bloquant : `allowed` n'est pas touché. On ne compare que
+        # si la version courante vient de l'agent de réparation ; une version écrite par un
+        # humain ou par la génération n'a pas de « avant » à quoi se mesurer.
+        warnings += _lint_reparation(current, version_rows)
         gate = schemas.GateOut(allowed=decision.allowed, needs_review=decision.needs_review,
                                reason=decision.reason,
                                repair_budget=ReviewRepo(conn).repair_budget_for_version(version_id),

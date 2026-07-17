@@ -142,11 +142,17 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   — *dette assumée, arbitrée le 2026-07-17 : à noter, pas à ouvrir*). Chaque réparation réécrit
   ~14 000 car. de code **qui marchait** pour corriger un step (`write_steps_file` REMPLACE, et le
   contrat l'exige — correctif du bug 2 de `0014`). C'est la cause de `0017`.
-  **Ce n'est PAS un sujet de coût** : chiffré sur les tailles réelles (`v9`=13 971, `v10`=12 704,
-  `v11`=13 370 car. ≈ 4 000 tok à $4/M Haiku), un diff économiserait **~$0,015/tentative** — du
-  bruit sur $1,08, annulé par le premier patch qui rate. Le sujet est le **rayon d'explosion**.
+  ⚠️ **CORRIGÉ le 2026-07-17 — mon chiffrage était 10× trop bas.** J'avais estimé $0,015/tentative
+  en raisonnant sur la SORTIE. Mesuré sur une réparation réelle : **$0,2895**. Le coût est dominé
+  par l'**entrée répétée** (la boucle ReAct renvoie le catalogue de 42 steps + le fichier de
+  14 000 car. à chaque tour), pas par la sortie. Conséquence : **génération + 2 réparations =
+  $1,0319 = 96 % du budget §9**. Un diff réduirait le fichier réinjecté à chaque tour — donc le
+  vrai poste de coût. **Le principe 3 pourrait donc être un sujet de coût après tout : à chiffrer
+  avant de rouvrir** (ne pas remplacer une estimation fausse par une autre).
   **Pourquoi ça attend** : le principe 5 (garde de non-régression, livré, coût nul) couvre le même
-  risque **en pratique** — une réparation qui casse ce qui marchait n'est plus adoptée. Le
+  risque **en pratique** — une réparation qui casse ce qui marchait n'est plus adoptée. Mais voir
+  la correction de coût ci-dessus : l'argument « ça n'attend que pour le rayon d'explosion » ne
+  tient plus tel quel. Le
   principe 3 réduirait le risque *à la source* plutôt qu'en aval, mais il **rouvre le bug 2 de
   `0014`** (l'agent rendait 1 step sur 4) : chantier de conception, pas de budget.
   À rouvrir si le principe 5 se met à refuser des réparations trop souvent — ce serait le signal
