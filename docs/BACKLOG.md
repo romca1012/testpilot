@@ -138,8 +138,25 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   signal, testé en premier. Mesuré sur 20 échecs réels : **14/20 décidés par un signal, 9/20
   reclassés**, le faux `missing_role` du cas 6 (`0012`) corrigé.
   → `decisions/0015-…md`, `scripts/prove_0015_signal_vs_texte.py`, `tests/test_taxonomy_signal.py`.
+- [ ] 🔴 **L'agent réinvente l'authentification que la bibliothèque résout déjà** (`0017` — **note
+  écrite, à arbitrer, PRIORITÉ 1 — bloque la preuve de `0016`**). Mesuré au rejeu du cas 1
+  (exec 20-22) : les deux réparations corrigent bien le `HTTPError 404` (le garde-fou transport de
+  `0003` les y **force**) mais écrivent leur **propre** step d'auth avec un `fill` nu → timeout
+  Playwright sur `[name="login"]`, « element is not visible ». Le step partagé gère ce piège
+  (`state="attached"` + `force=True`) ; `v9` réussissait parce qu'elle lui **déléguait**.
+  Ce n'est pas de l'aléa : `reserved_steps` bloque la **collision de libellés**, pas la
+  **duplication de comportement**, et rien n'oblige à réutiliser le step d'auth. Racine : le
+  contrat « rends le fichier ENTIER » (correctif du bug 2 de `0014`) force l'agent à réécrire
+  ~14 000 car. de code **qui marchait** pour corriger un step.
+  Bloquant pour `0016` : mesuré, ni le cas 2 (passe → 0 tentative) ni le cas 6 (tourne déjà →
+  circuit arrêté sur `vrai_bug`, 0 tentative) ne peuvent déclencher une réparation.
+  → `decisions/0017-agent-reinvente-l-authentification-inc1.md`.
 - [ ] 🔴 **« Réparée » veut dire « passe au vert » — les deux axes fusionnés dans la boucle**
-  (`0016` — **note écrite, à arbitrer, PRIORITÉ 1**). Mesuré au rejeu réel du 2026-07-17 : la
+  (`0016` — **A + (iii) ARBITRÉS et LIVRÉS le 2026-07-17 ; preuve réelle PARTIELLE**). Chemin
+  négatif prouvé en réel (deux réparations non exécutables → aucune adoption → disque rembobiné
+  sur `v1`). **Chemin positif NON prouvé** : bloqué par `0017`, étranger à `0016`. Sur les données
+  réelles de l'exec 17 (`v9`) : `execution_status=success` → `A` adopte, là où l'ancien critère
+  (2 échecs) jetait — analyse reproductible, pas un bout-en-bout. Mesuré au rejeu réel du 2026-07-17 : la
   réparation du cas 1 (`v9`) a transformé une cécité technique (`HTTPError 404`, 0/3, l'outil ne
   juge rien) en **verdict fonctionnel** (`success/non_conforme`, 1/3) — puis **la version a été
   jetée** parce que `resolved` exige **zéro échec**. Le disque est rembobiné sur `v1` (`import
