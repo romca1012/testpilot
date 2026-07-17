@@ -38,6 +38,10 @@ class RepairProposal:
     feature_content: str = ""
     steps_content: str = ""
     summary: str = ""          # ce que l'agent dit avoir fait — montré à un humain tel quel
+    # Coût de CETTE tentative seule — jamais le cumul du tracker. Le tracker est désormais
+    # PARTAGÉ entre les tentatives d'un cas (pour que le plafond borne le cas, pas l'appel) :
+    # rendre `total_cost` ferait compter la tentative 1 une fois de plus à chaque tentative
+    # suivante, et le ledger comme la session seraient faux à la hausse.
     cost_usd: float = 0.0
     stopped_reason: str = ""
 
@@ -116,9 +120,20 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
                 dry_runner: DryRunner | None = None,
                 cost_tracker: CostTracker | None = None,
                 max_iterations: int | None = None) -> RepairProposal:
-    """Une tentative de correction. Ne lance JAMAIS le test réel (design (b))."""
+    """Une tentative de correction. Ne lance JAMAIS le test réel (design (b)).
+
+    ⚠️ **`cost_tracker` doit être PARTAGÉ entre les tentatives d'un même cas.** Sans lui, on en
+    crée un neuf — donc au plafond entier (`COST_LIMIT_PER_RUN_USD`), donc **remis à zéro à chaque
+    tentative** : le plafond bornait un APPEL, jamais le cas, et un cas pouvait dépenser
+    `budget × plafond` sans qu'aucun garde-fou ne bronche. `repair_service` en construit un seul
+    pour toute la boucle (`REPAIR_COST_LIMIT_PER_CASE_USD`) et le passe à chaque tentative.
+    Le défaut ci-dessous ne sert qu'aux appels isolés (tests).
+    """
     llm = llm or LLMAdapter()
     cost_tracker = cost_tracker or CostTracker()
+    # Le tracker étant partagé, son total contient déjà les tentatives précédentes : on ne rend
+    # que le DELTA, sinon `session.cost_usd` et le ledger double-compteraient.
+    cout_avant = cost_tracker.total_cost
 
     # ⚠️ `feature_written`/`steps_written` à True et `dry_run_passed` à True : les fichiers
     # EXISTENT déjà sur disque et parsent (ils ont été validés à la génération). Sans ça, la
@@ -157,6 +172,6 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
         feature_content=state.feature_content,
         steps_content=state.steps_content,
         summary=_last_assistant_text(state),
-        cost_usd=round(cost_tracker.total_cost, 6),
+        cost_usd=round(cost_tracker.total_cost - cout_avant, 6),
         stopped_reason=state.stopped_reason or "incomplete",
     )

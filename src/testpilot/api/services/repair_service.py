@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 
 from testpilot import config
 from testpilot.generation import repair_agent
+from testpilot.guardrails.cost_tracker import CostTracker
 from testpilot.guardrails.repair_circuit import CircuitState, evaluate, failure_signature
 from testpilot.store.repositories import (
     CaseRepo,
@@ -44,6 +45,11 @@ RUN_FAILED = "run_failed"
 # Le test tourne, mais la réparation a cassé des scénarios qui passaient (principe 5). Distinct de
 # `run_failed` : ici le test s'exécute — c'est la COUVERTURE qui a reculé.
 REGRESSION = "regression"
+# Le §9 du brief est atteint : les réparations CUMULÉES du cas ont épuisé leur marge. Le brief §6
+# veut que « le premier seuil atteint déclenche une escalade vers un humain avec un rapport de ce
+# qui a été essayé » — les deux seuils sont donc tentatives (le circuit) ET budget (celui-ci).
+# Distinct d'`agent_no_fix` : là l'agent n'avait rien à proposer, ici on l'a coupé.
+COST_EXCEEDED = "cost_exceeded"
 
 
 @dataclass
@@ -194,6 +200,14 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
     # (0 >= 0) sans aucun cas particulier. Le garde-fou existant fait le travail.
     circuit = CircuitState(max_iterations=budget, stall_limit=config.REPAIR_STALL_LIMIT)
 
+    # ⚠️ UN SEUL tracker pour TOUT le cas — c'est le correctif du plafond qui ne plafonnait rien.
+    # `propose_fix` en créait un neuf à chaque tentative, donc chacune repartait de $0 avec le
+    # plafond entier : le garde-fou « budget » du brief §6 bornait un APPEL, jamais le cas. Un cas
+    # pouvait donc dépenser `budget × COST_LIMIT_PER_RUN_USD` (jusqu'à $4 avec le défaut de 2),
+    # très au-dessus du §9 ($1,08), sans que rien ne coupe ni ne s'en plaigne.
+    # Partagé, il borne enfin ce que le brief veut borner : le CAS.
+    cost_tracker = CostTracker(limit_usd=config.REPAIR_COST_LIMIT_PER_CASE_USD)
+
     versions = VersionRepo(conn)
     cases = CaseRepo(conn)
     current_version_id = version_id
@@ -242,12 +256,30 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             # jamais su qu'il avait cassé le test ; avec, il reçoit la liste des steps undefined
             # et corrige dans le MÊME appel.
             dry_runner=dry_runner,
+            # Partagé entre les tentatives : c'est LUI qui fait du plafond un plafond de CAS.
+            cost_tracker=cost_tracker,
         )
         session.cost_usd = round(session.cost_usd + proposal.cost_usd, 6)
         # Le coût est enregistré ICI, avant tout `break` : un agent qui ne propose RIEN a quand
         # même coûté. Le compter seulement quand ça marche donnerait un budget flatteur — soit
         # « affiché ≠ réel » (§4.6) appliqué à l'argent.
         _record_cost(conn, getattr(outcome, "execution_id", None), proposal.cost_usd)
+
+        if proposal.stopped_reason == "cost_exceeded" and not proposal.changed:
+            # Le plafond a coupé avant que l'agent n'écrive quoi que ce soit : insister
+            # rebrûlerait sans rien produire. Escalade humaine (§6 du brief), avec le chiffre.
+            session.outcome = COST_EXCEEDED
+            session.reason = (
+                f"plafond de coût des réparations atteint "
+                f"(${cost_tracker.total_cost:.4f} / ${cost_tracker.limit_usd:.2f}) après "
+                f"{session.attempts} tentative(s) — le §9 du brief (moins de 1 €/cas) borne le "
+                f"cas entier. À reprendre par un humain."
+            )
+            logger.warning("[repair] cas %s : budget épuisé (%.4f/%.2f USD) après %s tentative(s)",
+                           case_id, cost_tracker.total_cost, cost_tracker.limit_usd,
+                           session.attempts)
+            break
+
         if not proposal.changed:
             # Aveu utile : l'agent n'a rien réécrit (il ne sait pas, ou il conclut à un bug de
             # l'application). Insister brûlerait le budget pour rien.

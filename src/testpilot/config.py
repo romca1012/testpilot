@@ -54,25 +54,53 @@ COST_LIMIT_PER_RUN_USD = float(os.getenv("TESTPILOT_COST_LIMIT_RUN_USD", "2.00")
 # visible et manuelle (le ping-pong écarté avec l'option B du cadrage).
 REPAIR_BUDGET_DEFAULT = int(os.getenv("TESTPILOT_REPAIR_BUDGET_DEFAULT", "2"))
 
-# ── Budget mensuel cumulé (§6/§9) ─────────────────────────────────────────────
-# Le brief fixe 50 €/mois ; les coûts LLM arrivent en USD. On tracke tout en USD et
-# on convertit le plafond via un taux configurable (décision de cadrage validée).
+# ── Budget mensuel : NON PERTINENT AU PRODUIT (brief amendé le 2026-07-17) ────
+# ⚠️ NE RIEN CONSTRUIRE DESSUS. Le « 50 €/mois » était le budget de DÉVELOPPEMENT du porteur de
+# projet, jamais une limite applicative. Le brief a été AMENDÉ en ce sens (§6, §9, §11.2 +
+# journal des amendements) : il n'y a **pas** de plafond mensuel produit à faire respecter.
+# Ces constantes sont conservées telles quelles et **lues par personne** — c'est voulu, pas un
+# oubli. Le seul objectif de coût du produit est `BUDGET_PER_CASE_*` ci-dessous.
 MONTHLY_BUDGET_EUR = float(os.getenv("TESTPILOT_MONTHLY_BUDGET_EUR", "50"))
 EUR_USD_RATE = float(os.getenv("TESTPILOT_EUR_USD_RATE", "1.08"))
 MONTHLY_BUDGET_USD = MONTHLY_BUDGET_EUR * EUR_USD_RATE
 
-# ── Budget UNITAIRE : § 9 du brief ────────────────────────────────────────────
-# « Moins de 1 € pour la génération + exécution d'un nouveau module. » C'est la seule contrainte
-# de coût chiffrée du brief, et elle n'existait nulle part dans le code : on la nomme ici pour
-# pouvoir la MESURER (`CostRepo.total_for_case`). Repère, pas garde-fou — rien ne coupe sur ce
-# seuil aujourd'hui ; on mesure d'abord, on décidera d'agir ensuite (docs/PRINCIPES.md).
-#
-# ⚠️ `COST_LIMIT_PER_RUN_USD` (2,00 $ ≈ 1,85 €) est presque le DOUBLE de ce plafond : le garde-fou
-# de coût par run n'applique donc pas le §9. Contradiction relevée dans docs/PRINCIPES.md,
-# volontairement NON corrigée ici — changer un plafond sans mesure serait exactement ce que ce
-# document reproche.
+# ── Budget UNITAIRE : § 9 du brief — L'UNIQUE CIBLE DE COÛT DU PRODUIT ────────
+# « Moins de 1 € pour un nouveau cas de test » (génération + exécution + rapport, réparations
+# cumulées comprises). Depuis l'amendement du 2026-07-17, c'est la SEULE contrainte de coût du
+# produit — il n'y en a pas d'autre, et il n'y en a plus de mensuelle.
 BUDGET_PER_CASE_EUR = float(os.getenv("TESTPILOT_BUDGET_PER_CASE_EUR", "1.00"))
 BUDGET_PER_CASE_USD = BUDGET_PER_CASE_EUR * EUR_USD_RATE
+
+# Plafond de coût des RÉPARATIONS CUMULÉES d'un cas — calibré le 2026-07-17 sur mesures réelles.
+#
+# ⚠️ Ce plafond est PARTAGÉ par toutes les tentatives d'un cas, et c'est tout l'objet du
+# correctif : `propose_fix` instanciait un `CostTracker()` NEUF à chaque tentative, donc chacune
+# repartait de zéro avec le plafond entier. Le plafond ne bornait pas ce qu'il prétendait borner
+# — un cas pouvait dépenser budget × plafond.
+#
+# LE CALCUL (mesures réelles du 2026-07-17, cas 1) :
+#     §9                          = 1,00 € × 1,08          = $1,0800
+#     − génération mesurée                                 = $0,4529   (42 % du §9)
+#     ────────────────────────────────────────────────────────────────
+#     = marge disponible pour TOUTES les réparations du cas = $0,6271  → arrondi à $0,62
+#
+# Vérification contre `REPAIR_BUDGET_DEFAULT = 2` : 2 × $0,2895 (réparation mesurée) = $0,5790,
+# soit 93 % de ce plafond. Ça tient — avec 7 % de marge, pas plus.
+#
+# ⚠️ RÉSERVE HONNÊTE, à ne pas taire : **un seul échantillon**, et le coût d'une réparation a
+# changé depuis (le dry-run branché rend le chemin heureux à 1 appel LLM au lieu de 2, et le
+# chemin malheureux à N — non mesuré). Ce chiffre est un point de départ mesuré, pas une vérité.
+# À réviser au prochain rejeu réel.
+REPAIR_COST_LIMIT_PER_CASE_USD = float(
+    os.getenv("TESTPILOT_REPAIR_COST_LIMIT_PER_CASE_USD", "0.62"))
+
+# ⚠️ TROU CONNU, NON COMBLÉ ICI (arbitrage en attente) : `COST_LIMIT_PER_RUN_USD` = $2,00 ≈ 1,85 €
+# borne encore la GÉNÉRATION — soit près du double du §9 à elle seule. Le §9 n'est donc pas encore
+# tenu de bout en bout : seul le versant réparation l'est. Le combler suppose de plafonner aussi
+# la génération, or la seule génération mesurée ($0,4529) ne laisserait que 10 % de marge sous
+# $0,50 — un plafond que le premier cas plus gros ferait sauter, en échouant la création. À
+# calibrer sur une 2ᵉ mesure, pas à deviner.
+# Source des coûts : "estimated" (tokens × barème, actif) | "anthropic_api" (stub Inc. 0).
 # Source des coûts : "estimated" (tokens × barème, actif) | "anthropic_api" (stub Inc. 0).
 COST_SOURCE = os.getenv("TESTPILOT_COST_SOURCE", "estimated")
 
