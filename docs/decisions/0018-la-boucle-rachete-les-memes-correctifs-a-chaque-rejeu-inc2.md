@@ -1,10 +1,64 @@
 # 0018 — La boucle rachète les mêmes correctifs à chaque rejeu
 
 Date : 2026-07-17
-Statut : **À ARBITRER** — note d'abord, aucun code. *(Consigne du porteur : en cas d'échec, ne pas
-relancer à l'aveugle ; documenter la cause et remonter avant tout code.)*
+Statut : **ARBITRÉE ET LIVRÉE** — `A` + garde de couverture, **jamais `A` seule** (arbitrage du
+porteur, 2026-07-17 : *« le trou que vous avez trouvé est disqualifiant en soi — ligne rouge du §5
+du brief. Implémentez A avec la garde de couverture obligatoire dès le départ, pas en deux temps »*).
 Incrément : **2** (§12 du brief — fiabilisation & gouvernance du verdict).
 Famille : prolonge `0016` (les deux axes dans la boucle) et `0017` (le rayon d'explosion).
+
+---
+
+## ✅ Ce qui a été livré
+
+Le critère d'adoption, **dans cet ordre — l'ordre EST le contrat** :
+
+```
+on ADOPTE si   (le test tourne ENTIÈREMENT   [0016, est_executable]
+                OU il tourne MIEUX qu'avant  [0018, progresse])
+  ET PAS de régression        [principe 5 — un scénario vert devenu rouge]
+  ET PAS de couverture perdue [0018       — un scénario DISPARU]
+```
+
+Les deux refus priment sur les deux voies d'adoption. `couverture_perdue` a été livrée **dans le
+même commit** que `progresse` : jamais l'une sans l'autre.
+
+**13 tests** (`tests/test_adoption_progres.py`), dont **les 2 tests de comportement vérifiés comme
+échouant** sur l'ancien critère. Le second a révélé que **l'ancien code adoptait effectivement une
+version supprimant des scénarios** : le trou était réel, pas théorique.
+
+### 🔴 Et j'ai rejoué le principe 1 en écrivant la garde — les tests m'ont attrapé
+
+Mon premier jet de `couverture_perdue` **diffait les noms de scénarios**
+(`sorted(noms_avant - noms_apres)`). Les tests de `0016` ont échoué immédiatement, et **ils avaient
+raison** : un `scenario_name` est **du texte écrit par l'agent**. Il lui suffisait de **renommer**
+un scénario pour que la garde croie à une suppression et **refuse une réparation légitime** —
+bloquant la convergence que cette décision existe précisément pour obtenir.
+
+C'est **exactement** la faute que `failure_signature` avait déjà payée (`PRINCIPES.md`, principe 1 :
+*« renommer un scénario suffisait à changer la signature »*), rejouée à l'identique **dans la garde
+censée protéger la couverture**. La garde **compte** désormais les scénarios — un fait structurel
+du run, insensible aux libellés.
+
+**Limite assumée, à ne pas taire** : supprimer 2 scénarios en échec et en ajouter 2 triviaux
+garderait le compte constant et passerait. Un diff par nom l'attraperait — au prix d'un faux
+positif à **chaque renommage**. **Arbitrage : le faux négatif exotique plutôt que le faux positif
+systématique.** La version est de toute façon relue (`to_review`, §4.3) et le lint `0008` passe au
+gate sur les assertions triviales.
+
+### Un verdict s'est déplacé, et c'est plus juste
+
+`test_une_reparation_qui_SUPPRIME_un_scenario_vert_est_refusee` rendait `REGRESSION` ; il rend
+maintenant `COVERAGE_LOST`. Les deux labels **partitionnent** proprement :
+
+| situation | verdict |
+|---|---|
+| scénario **SUPPRIMÉ** | `COVERAGE_LOST` — il n'en reste aucune trace |
+| scénario **PRÉSENT** mais devenu rouge | `REGRESSION` — il tourne encore, il échoue |
+
+« Ne passe plus » suggère qu'il tourne encore : c'est moins vrai et moins alarmant que « a
+disparu ». `session.regressions` continue de le nommer — rien n'est perdu, et le comportement
+(refus d'adoption) est inchangé.
 
 ---
 

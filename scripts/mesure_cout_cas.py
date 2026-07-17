@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from testpilot import config  # noqa: E402
+from testpilot.store.repositories import CostRepo  # noqa: E402
 
 
 def main() -> None:
@@ -55,16 +56,25 @@ def main() -> None:
         print(f"\n  ⚠️  {len(orphelines)} ligne(s) SANS cas rattaché "
               f"(${sum(r['cost_usd'] for r in orphelines):.4f}) — invisibles au §9.")
 
-    print("\n-- Total par cas " + "-" * 61)
-    totaux = list(conn.execute(
-        "SELECT test_case_id AS cas, ROUND(SUM(cost_usd), 6) AS total, COUNT(*) AS n"
-        " FROM cost_ledger WHERE test_case_id IS NOT NULL"
-        " GROUP BY test_case_id ORDER BY total DESC"))
-    for r in totaux:
-        pct = 100 * r["total"] / config.BUDGET_PER_CASE_USD
-        etat = "OK" if r["total"] <= config.BUDGET_PER_CASE_USD else "DEPASSE"
-        print(f"  cas {r['cas']:<3} ${r['total']:.4f}  =  {pct:5.1f} % du §9   "
-              f"({r['n']} appel(s))  [{etat}]")
+    # ⚠️ DEUX MÉTRIQUES, DEUX QUESTIONS — les confondre fabrique une alarme fausse, et c'est
+    # arrivé : le cas 1 affichait « 107 % du §9 [DEPASSE] » alors que le §9 est tenu à 11 %.
+    #   création = analyse + génération  → CE QUI SE COMPARE AU §9 (le brief dit « nouveau cas »)
+    #   total    = tout depuis toujours  → télémétrie de debug, JAMAIS comparée au seuil
+    print("\n-- Par cas : CRÉATION (le §9) vs TOTAL (télémétrie) " + "-" * 26)
+    print(f"  {'cas':<5} {'création':>10} {'% du §9':>9}  {'':<8} {'total vie':>10}  détail")
+    repo = CostRepo(conn)
+    cas_ids = [r["cas"] for r in conn.execute(
+        "SELECT DISTINCT test_case_id AS cas FROM cost_ledger WHERE test_case_id IS NOT NULL"
+        " ORDER BY test_case_id")]
+    for cid in cas_ids:
+        creation = repo.creation_cost_usd(cid)
+        total = repo.total_for_case_usd(cid)
+        pct = 100 * creation / config.BUDGET_PER_CASE_USD
+        etat = "OK" if creation <= config.BUDGET_PER_CASE_USD else "DEPASSE LE §9"
+        print(f"  {cid:<5} ${creation:>9.4f} {pct:>8.1f} %  [{etat:<6}] ${total:>9.4f}"
+              f"   (dont ${total - creation:.4f} de réparations/debug)")
+    print("\n  Le §9 se juge sur la CRÉATION. Le « total vie » cumule les sessions de débogage")
+    print("  de l'outil : il n'a pas de seuil, et le comparer au §9 alarme à tort.")
 
     # Décomposition par phase — le total sans l'explication n'apprend rien.
     print("\n-- Détail par phase " + "-" * 58)

@@ -86,9 +86,18 @@ EUR_USD_RATE = float(os.getenv("TESTPILOT_EUR_USD_RATE", "1.08"))
 MONTHLY_BUDGET_USD = MONTHLY_BUDGET_EUR * EUR_USD_RATE
 
 # ── Budget UNITAIRE : § 9 du brief — L'UNIQUE CIBLE DE COÛT DU PRODUIT ────────
-# « Moins de 1 € pour un nouveau cas de test » (génération + exécution + rapport, réparations
-# cumulées comprises). Depuis l'amendement du 2026-07-17, c'est la SEULE contrainte de coût du
-# produit — il n'y en a pas d'autre, et il n'y en a plus de mensuelle.
+# « Moins de 1 € pour un nouveau cas de test » (génération + exécution + rapport). Depuis
+# l'amendement du 2026-07-17, c'est la SEULE contrainte de coût du produit — il n'y en a pas
+# d'autre, et il n'y en a plus de mensuelle.
+#
+# ⚠️ **CE SEUIL SE COMPARE À UNE CRÉATION, JAMAIS À UN CUMUL** (arbitrage du porteur, 2026-07-17).
+#   `CostRepo.creation_cost_usd(case)`   → analyse + génération = CE QUI SE COMPARE À CE SEUIL.
+#                                          Mesuré le 2026-07-17 : $0,1207 = 11 % du §9.
+#   `CostRepo.total_for_case_usd(case)`  → tout depuis toujours = TÉLÉMÉTRIE DE DEBUG.
+#                                          Le cas 1 y affiche $1,1552 = « 107 % » — et ce n'est
+#                                          PAS un dépassement : il cumule 5 sessions de débogage
+#                                          de l'outil et 7 versions.
+# Les confondre fabrique une alarme fausse. C'est arrivé, d'où ces lignes.
 BUDGET_PER_CASE_EUR = float(os.getenv("TESTPILOT_BUDGET_PER_CASE_EUR", "1.00"))
 BUDGET_PER_CASE_USD = BUDGET_PER_CASE_EUR * EUR_USD_RATE
 

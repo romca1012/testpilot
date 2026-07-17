@@ -70,6 +70,49 @@ def test_le_cas_est_retrouve_depuis_l_execution_quand_seul_le_run_est_connu(conn
     assert CostRepo(conn).total_for_case_usd(cid) == pytest.approx(0.29)
 
 
+def test_le_9_se_mesure_sur_la_CREATION_pas_sur_le_cumul(conn):
+    """🔴 L'arbitrage du porteur (2026-07-17), gardé par un test.
+
+    Le §9 dit « **nouveau** cas de test (génération + exécution + rapport) < 1 € » : il mesure une
+    **CRÉATION**, une fois. `total_for_case_usd` répond à « combien depuis toujours », réparations
+    et sessions de débogage comprises — **jamais comparable à ce seuil**.
+
+    Les confondre a produit une **alarme fausse** : le cas 1 affichait « 107 % du §9 [DEPASSE] »
+    alors que sa création vaut 11 % du §9 et que le reste est du débogage de l'outil.
+
+    On reproduit exactement cette forme : une création bon marché, un long débogage derrière.
+    """
+    cid = CaseRepo(conn).create(title="Cas", feature_slug="cas")
+    repo = CostRepo(conn)
+    repo.add_entry(phase="analysis", model=config.MODEL_FAST, cost_usd=0.0157,
+                   source="estimated", test_case_id=cid)
+    repo.add_entry(phase="generation", model=config.MODEL_GENERATION, cost_usd=0.1050,
+                   source="estimated", test_case_id=cid)
+    for cout in (0.2895, 0.3088, 0.1041, 0.45):        # cinq sessions de débogage
+        repo.add_entry(phase="repair", model=config.MODEL_REPAIR, cost_usd=cout,
+                       source="estimated", test_case_id=cid)
+
+    creation = repo.creation_cost_usd(cid)
+    total = repo.total_for_case_usd(cid)
+
+    assert creation == pytest.approx(0.1207), "la création = analyse + génération, rien d'autre"
+    assert creation < config.BUDGET_PER_CASE_USD, "le §9 est tenu — c'est CE chiffre qui le juge"
+    assert total > config.BUDGET_PER_CASE_USD, (
+        "mise en scène : le cumul DOIT dépasser le seuil, c'est ce qui rend l'alarme fausse "
+        "crédible")
+    assert total > creation, "le cumul inclut le débogage ; la création non"
+
+
+def test_une_reparation_n_entre_jamais_dans_le_cout_de_creation(conn):
+    """La frontière, en une assertion : `repair` est du coût d'exploitation, pas de création."""
+    cid = CaseRepo(conn).create(title="Cas", feature_slug="cas")
+    CostRepo(conn).add_entry(phase="repair", model=config.MODEL_REPAIR, cost_usd=0.29,
+                             source="estimated", test_case_id=cid)
+
+    assert CostRepo(conn).creation_cost_usd(cid) == 0.0
+    assert CostRepo(conn).total_for_case_usd(cid) == pytest.approx(0.29)
+
+
 def test_le_detail_par_phase_explique_le_total(conn):
     """Le ledger doit dire CE QUI a coûté, pas seulement combien — analyse ≠ génération."""
     cid = CaseRepo(conn).create(title="Cas", feature_slug="cas")

@@ -723,6 +723,18 @@ def test_une_reparation_qui_SUPPRIME_un_scenario_vert_est_refusee(conn, monkeypa
     ENCORE. Si l'agent réécrit les DEUX fichiers et retire un scénario, le dry-run est satisfait
     et le run paraît MEILLEUR : moins de scénarios, moins d'échecs. Seule la comparaison
     avant/après le voit.
+
+    ⚠️ **Le VERDICT a changé le 2026-07-17 (`0018`), pas le comportement.** Ce scénario n'est pas
+    seulement *cassé* : il a **DISPARU** (2 scénarios → 1). La garde de couverture de `0018` est
+    plus précise que le principe 5 sur ce cas, donc c'est elle qui nomme le refus —
+    `COVERAGE_LOST` plutôt que `REGRESSION`. Les deux labels partitionnent proprement :
+
+        scénario SUPPRIMÉ                 → COVERAGE_LOST  (il n'en reste aucune trace)
+        scénario PRÉSENT mais devenu rouge → REGRESSION     (il tourne encore, il échoue)
+
+    « Ne passe plus » suggère qu'il tourne encore : c'est **moins vrai et moins alarmant** que
+    « a disparu ». `session.regressions` continue de le nommer — aucune information n'est perdue.
+    L'essentiel du test est intact : **cette version n'est JAMAIS adoptée**.
     """
     cid, vid, eid = _cas(conn, budget=1)
     _agent(monkeypatch, RepairProposal(changed=True, steps_content="# v2 ampute", summary="fix"))
@@ -736,8 +748,9 @@ def test_une_reparation_qui_SUPPRIME_un_scenario_vert_est_refusee(conn, monkeypa
 
     assert session.executable                       # le test tourne, et il est même tout vert…
     assert session.resolved                         # …au sens « aucun échec » !
-    assert session.regressions == ["[NOMINAL] Demande complète"]
-    assert session.outcome == repair_service.REGRESSION
+    assert session.regressions == ["[NOMINAL] Demande complète"]   # le principe 5 le nomme toujours
+    assert session.couverture_perdue == 1           # …mais il a DISPARU, et c'est plus grave
+    assert session.outcome == repair_service.COVERAGE_LOST
     assert CaseRepo(conn).get(cid)["current_version_id"] == vid, (
         "une réparation qui perd un scénario vert ne doit JAMAIS être adoptée, même verte")
 

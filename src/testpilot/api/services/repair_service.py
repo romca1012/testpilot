@@ -16,6 +16,18 @@ prix est un historique plus fourni ; c'est la trace honnête.
 version réparée **n'est jamais approuvée d'office** — elle repasse « à relire » pour ratification
 avant tout run futur. Fabriquer une `review_decision` signée par l'IA serait l'auto-approbation
 qu'on a écartée.
+
+**Le critère d'adoption, en un coup d'œil** (`0016` + `0018`) — l'ordre est le contrat :
+
+    on ADOPTE si   (le test tourne ENTIÈREMENT   [0016, est_executable]
+                    OU il tourne MIEUX qu'avant  [0018, progresse])
+      ET PAS de régression      [principe 5     — un scénario vert devenu rouge]
+      ET PAS de couverture perdue [0018          — un scénario DISPARU]
+
+Les deux refus priment sur les deux voies d'adoption, et ce n'est pas un détail : « moins d'échecs
+techniques » s'obtient trivialement **en supprimant les scénarios qui échouent**. Le principe 5 ne
+l'attrape pas (il ne surveille que les scénarios *verts*) — c'est `couverture_perdue` qui ferme
+cette porte, et sans elle `progresse` serait une invitation au masquage d'échec (§5 du brief).
 """
 
 from __future__ import annotations
@@ -45,6 +57,10 @@ RUN_FAILED = "run_failed"
 # Le test tourne, mais la réparation a cassé des scénarios qui passaient (principe 5). Distinct de
 # `run_failed` : ici le test s'exécute — c'est la COUVERTURE qui a reculé.
 REGRESSION = "regression"
+# La réparation a SUPPRIMÉ des scénarios (garde de couverture, 0018). Distinct de `regression` :
+# là un scénario vert est devenu rouge (il existe encore, il échoue) ; ici il a DISPARU. Le second
+# est pire — il ne laisse aucune trace, et il améliore les chiffres. Ligne rouge du §5 du brief.
+COVERAGE_LOST = "coverage_lost"
 # Le §9 du brief est atteint : les réparations CUMULÉES du cas ont épuisé leur marge. Le brief §6
 # veut que « le premier seuil atteint déclenche une escalade vers un humain avec un rapport de ce
 # qui a été essayé » — les deux seuils sont donc tentatives (le circuit) ET budget (celui-ci).
@@ -60,12 +76,21 @@ class RepairSession:
     outcome: str = ""              # issue du circuit (resolved | real_bug | stalled | …)
     reason: str = ""
     resolved: bool = False         # run entièrement VERT (axe fonctionnel compris)
-    # Le test TOURNE (axe exécution seul) — première condition d'adoption depuis 0016. Distinct de
+    # Le test TOURNE ENTIÈREMENT (axe exécution seul) — voie d'adoption de 0016. Distinct de
     # `resolved` : un test qui tourne et révèle un vrai bug est réparé, pas raté.
     executable: bool = False
+    # Le test tourne MIEUX qu'au départ (moins d'échecs techniques) — seconde voie d'adoption,
+    # décision 0018. Sans elle, un test à moitié réparé est jeté et le rejeu suivant rachète le
+    # même travail.
+    progresse: bool = False
     # Scénarios qui passaient AVANT et ne passent plus APRÈS (principe 5). Non vide ⇒ pas
-    # d'adoption, quoi que dise `executable`.
+    # d'adoption, quoi que disent `executable`/`progresse`.
     regressions: list[str] = field(default_factory=list)
+    # COMBIEN de scénarios ont DISPARU (garde de couverture, 0018). > 0 ⇒ pas d'adoption, jamais :
+    # c'est la contrepartie obligatoire de `progresse` — supprimer un scénario en échec ferait
+    # sinon « progresser » le compteur. Ligne rouge du §5 du brief.
+    # Un COMPTE, pas des noms : un nom de scénario est écrit par l'agent (principe 1).
+    couverture_perdue: int = 0
     final_version_id: int | None = None
     executions: list[int] = field(default_factory=list)
     cost_usd: float = 0.0
@@ -144,8 +169,104 @@ def regressions(avant, apres) -> list[str]:
     return sorted(_scenarios_verts(avant) - _scenarios_verts(apres))
 
 
+def _nb_scenarios(outcome) -> int:
+    """COMBIEN de scénarios ont été joués. -1 si le test n'a pas tourné (≠ « zéro scénario »)."""
+    if not a_tourne(outcome):
+        return -1
+    return len(outcome.real_run.scenarios)
+
+
+def couverture_perdue(avant, apres) -> int:
+    """Combien de scénarios ont DISPARU entre les deux runs — la garde de couverture (`0018`).
+
+    ⚠️ **Indissociable de `progresse()`. Jamais l'une sans l'autre.** Adopter sur le progrès de
+    l'axe exécution (« moins d'échecs techniques qu'avant ») ouvre une porte béante : **le moyen
+    le plus simple de réduire les échecs est de SUPPRIMER les scénarios qui échouent.** Mesuré
+    avant d'écrire ce code, contre le vrai `regressions()` :
+
+        supprimer un scénario qui PASSAIT    → regressions() rend ['A']  → refusé ✅
+        supprimer un scénario EN ÉCHEC       → regressions() rend []     → ACCEPTÉ ❌
+
+    Le principe 5 ne surveille que les scénarios **verts** : il ne voit pas partir un scénario qui
+    échouait. Sans cette garde, « supprimer la couverture » deviendrait la **stratégie gagnante**
+    de la boucle — et le run suivant paraîtrait parfait. C'est la **ligne rouge du §5 du brief**
+    (« jamais de masquage d'un échec ») et le motif que `PRINCIPES.md` nomme le plus dangereux :
+    *« l'absence de signal prise pour un signal positif, sous sa forme la plus dangereuse, puisque
+    supprimer la couverture améliore les chiffres »*.
+
+    ⚠️ **ON COMPTE, ON NE COMPARE PAS LES NOMS — et c'est le PRINCIPE 1.** Mon premier jet
+    diffait les `scenario_name` : `sorted(noms_avant - noms_apres)`. Les tests de `0016` l'ont
+    immédiatement attrapé, et ils avaient raison — **un nom de scénario est du texte écrit par
+    l'agent**. Il lui suffisait de **renommer** un scénario pour que la garde croie à une
+    suppression et **refuse une réparation légitime**. C'est exactement la faute que
+    `failure_signature` avait déjà payée (`PRINCIPES.md`, principe 1 : *« renommer un scénario
+    suffisait à changer la signature »*) — je l'ai rejouée à l'identique, dans la garde censée
+    protéger la couverture.
+
+    Le **nombre** de scénarios est un fait structurel du run, insensible aux libellés.
+
+    **Limite assumée, à ne pas taire** : un agent qui supprimerait 2 scénarios en échec et en
+    ajouterait 2 triviaux garderait le compte constant et passerait. Un diff par nom l'attraperait
+    — au prix d'un faux positif à chaque renommage, qui bloquerait la convergence que `0018`
+    existe pour obtenir. **Arbitrage assumé : le faux négatif exotique plutôt que le faux positif
+    systématique.** La version est de toute façon relue (`to_review`, §4.3), et le lint `0008`
+    passe au gate sur les assertions triviales.
+
+    **Coût nul** : les deux runs sont déjà faits et payés (comme le principe 5).
+    """
+    n_avant, n_apres = _nb_scenarios(avant), _nb_scenarios(apres)
+    if n_avant < 0 or n_apres < 0:
+        return 0        # pas de run d'un côté : rien à comparer (`a_tourne` tranche ailleurs)
+    return max(0, n_avant - n_apres)
+
+
+def _echecs_techniques(outcome) -> int:
+    """Nombre de scénarios en échec TECHNIQUE (axe exécution). -1 si le test n'a pas tourné.
+
+    `-1` et non `0` : « pas de run » n'est pas « aucun échec ». C'est le piège de `a_tourne()`,
+    et le rendre comparable par erreur ferait passer une version injouable pour un progrès.
+    """
+    if not a_tourne(outcome):
+        return -1
+    return sum(1 for v in derive_verdict(outcome).scenarios
+               if v.execution_status != EXEC_SUCCESS)
+
+
+def progresse(avant, apres) -> bool:
+    """L'axe EXÉCUTION a-t-il progressé ? — le critère d'adoption de `0018`.
+
+    ⚠️ **`0016` avait corrigé « réparée = passe au vert » en « réparée = TOURNE ». Mais « tourne »
+    est resté du TOUT-OU-RIEN** : `est_executable` exige que TOUS les scénarios tournent, donc une
+    version où 1 scénario sur 3 tourne proprement valait exactement une version où 0 sur 3
+    tournent. Le tout-ou-rien est plus tenace que l'axe qu'il habite.
+
+    Mesuré (cas 1, rejeu du 2026-07-17, exécutions 25 → 27) : `v7` délègue l'authentification, ne
+    réinvente aucun transport et fait passer **1 scénario sur 3** là où `v1` en passe **0**. Elle a
+    été **jetée**, le disque rembobiné sur `v1` — et le rejeu suivant a redépensé son budget à
+    re-corriger le `404` et l'auth **déjà corrigés**. **$0,41 de travail racheté par rejeu.** La
+    boucle ne pouvait pas converger : il lui faut ~4 tentatives, elle en a 2, et elle ne gardait
+    rien entre deux sessions.
+
+    Progresser = **strictement moins de scénarios en échec technique qu'au départ**. Un test qui
+    passe de 3 échecs à 2 a avancé : on le garde, et la session suivante repart de là.
+
+    ⚠️ **Ne dit RIEN de l'axe fonctionnel** (§4.1) : un test qui tourne et révèle un vrai bug
+    progresse — c'est même le but de l'outil.
+    """
+    n_avant, n_apres = _echecs_techniques(avant), _echecs_techniques(apres)
+    if n_apres < 0:
+        return False        # le test ne tourne plus du tout : jamais un progrès
+    if n_avant < 0:
+        return True         # il ne tournait pas, il tourne : c'est le progrès maximal
+    return n_apres < n_avant
+
+
 def est_executable(outcome) -> bool:
-    """Le test TOURNE-t-il ? — **une des deux conditions d'adoption** (décision 0016).
+    """Le test TOURNE-t-il ENTIÈREMENT ? — le critère d'adoption de `0016`.
+
+    ⚠️ **Depuis `0018`, ce n'est plus la seule voie d'adoption** : `progresse()` en ouvre une
+    seconde, pour le progrès PARTIEL. Cette fonction reste la définition de « le test tourne »,
+    utilisée pour `session.executable` et le rapport — elle n'est simplement plus le seul juge.
 
     ⚠️ « Tourne » (axe EXÉCUTION) et « passe » (axe FONCTIONNEL) sont deux choses, et §4.1 exige
     qu'elles ne fusionnent jamais. La boucle adoptait une réparation seulement si le run était
@@ -310,13 +431,38 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
     # Décision 0016 : on adopte dès que le test TOURNE — jamais « dès qu'il passe ». `resolved`
     # (run entièrement vert) reste distinct et informatif, mais il ne commande plus rien.
     session.executable = est_executable(outcome)
-    # Principe 5 : « tourne » ne suffit pas — il faut aussi n'avoir RIEN cassé de ce qui marchait.
+    # Décision 0018 : le progrès PARTIEL de l'axe exécution suffit — sinon la boucle jette un test
+    # à moitié réparé et rachète le même travail au rejeu suivant.
+    session.progresse = progresse(outcome_depart, outcome)
+    # Principe 5 : n'avoir rien cassé de ce qui PASSAIT.
     session.regressions = regressions(outcome_depart, outcome)
+    # Garde de couverture (0018) : n'avoir rien SUPPRIMÉ, même en échec. Indissociable du critère
+    # de progrès — sans elle, supprimer les scénarios qui échouent serait la stratégie gagnante.
+    session.couverture_perdue = couverture_perdue(outcome_depart, outcome)
     session.final_version_id = current_version_id
 
-    adopte = (session.executable and not session.regressions
-              and current_version_id != version_id)
-    if session.regressions and session.executable and current_version_id != version_id:
+    a_tente = current_version_id != version_id
+    # ⚠️ L'ORDRE DES GARDES EST LE CONTRAT. Les deux refus passent AVANT toute adoption : une
+    # version qui a perdu de la couverture n'est jamais adoptée, quel que soit son « progrès » —
+    # c'est la ligne rouge du §5 du brief (« jamais de masquage d'un échec »).
+    adopte = ((session.executable or session.progresse)
+              and not session.regressions and not session.couverture_perdue
+              and a_tente)
+
+    if session.couverture_perdue and a_tente:
+        # LE refus qui rend `progresse()` recevable. « Moins d'échecs techniques » s'obtient en
+        # supprimant les scénarios qui échouent : le principe 5 ne le voit pas (il ne surveille
+        # que les scénarios VERTS). Mesuré avant d'écrire ce code, cf. `couverture_perdue`.
+        session.outcome = COVERAGE_LOST
+        session.reason = (
+            f"la réparation SUPPRIME {session.couverture_perdue} scénario(s) "
+            f"({_nb_scenarios(outcome_depart)} → {_nb_scenarios(outcome)}). Moins d'échecs parce "
+            f"que moins de tests — c'est un masquage d'échec (§5 du brief). Non adoptée."
+        )
+        logger.warning("[repair] cas %s : réparation REFUSÉE — %s scénario(s) SUPPRIMÉ(S) "
+                       "(%s → %s)", case_id, session.couverture_perdue,
+                       _nb_scenarios(outcome_depart), _nb_scenarios(outcome))
+    elif session.regressions and (session.executable or session.progresse) and a_tente:
         # Le test tourne, mais il a perdu des scénarios qui passaient : adopter serait troquer une
         # erreur technique visible contre une perte de couverture SILENCIEUSE — le pire échange.
         session.outcome = REGRESSION
@@ -335,10 +481,19 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
         # l'option C : la réparation est invisible PENDANT la session, jamais après.
         cases.set_current_version(case_id, current_version_id)
         cases.set_validation_status(case_id, "to_review")
-        logger.info("[repair] cas %s : test rendu exécutable en %s tentative(s) → v%s "
-                    "(issue : %s), à ratifier",
-                    case_id, session.attempts, current_version_id, session.outcome)
-    elif current_version_id != version_id:
+        if session.executable:
+            logger.info("[repair] cas %s : test rendu exécutable en %s tentative(s) → v%s "
+                        "(issue : %s), à ratifier",
+                        case_id, session.attempts, current_version_id, session.outcome)
+        else:
+            # Adoption sur PROGRÈS (0018) : le test ne tourne pas encore entièrement, mais il
+            # tourne MIEUX. On garde, sinon le prochain rejeu rachète ce travail.
+            logger.info("[repair] cas %s : PROGRÈS partiel gardé → v%s (%s → %s échecs "
+                        "techniques) en %s tentative(s), à ratifier — le test ne tourne pas "
+                        "encore entièrement (issue : %s)",
+                        case_id, current_version_id, _echecs_techniques(outcome_depart),
+                        _echecs_techniques(outcome), session.attempts, session.outcome)
+    elif a_tente:
         # Le test ne tourne toujours pas : la référence reste la version qu'un HUMAIN a
         # approuvée. Les versions tentées demeurent en historique — la trace de ce qui a été
         # essayé.

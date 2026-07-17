@@ -714,13 +714,28 @@ class CostRepo:
         return float(row["total"])
 
     def total_for_case_usd(self, case_id: int) -> float:
-        """Coût LLM CUMULÉ d'un cas : génération + toutes ses réparations — la mesure du §9.
+        """Coût LLM cumulé d'un cas **sur toute sa vie** — TÉLÉMÉTRIE DE DEBUG, PAS le §9.
 
-        Le brief fixe « moins de 1 € pour la génération + exécution d'un nouveau module » : c'est
-        sa seule contrainte de coût chiffrée, et elle n'était **mesurable nulle part**. Le ledger
-        n'était alimenté que par la CLI (`cli.py`) ; tout ce qui passait par l'API — donc par
-        l'écran, donc par la boucle de réparation — coûtait de l'argent sans laisser de trace
-        (`run_service._persist` écrivait `cost_usd=0.0` en dur).
+        ⚠️ **NE JAMAIS COMPARER CE CHIFFRE AU SEUIL DU §9** (arbitrage du porteur, 2026-07-17).
+        Le §9 du brief dit : *« Coût — nouveau cas de test (génération + exécution + rapport) :
+        < 1 € »*. Il mesure une **CRÉATION**, une fois. Cette méthode répond à une **autre**
+        question : « combien ce cas a-t-il coûté **depuis toujours** », réparations et sessions de
+        débogage comprises.
+
+        **Les confondre alarme à tort.** Mesuré : le cas 1 affiche **$1,1552 = 107 % du §9** — et
+        ce n'est **pas** un dépassement du brief : il cumule 5 sessions de débogage de l'outil et
+        7 versions. Une **création réelle** mesurée le 2026-07-17 (chemin écran) vaut **$0,1207 =
+        11 % du §9**. C'est **ça**, le §9, et il est tenu très largement.
+
+        → Pour juger le §9 : **le coût de la création** (phases `analysis` + `generation` du
+        premier passage). Pour comprendre où part l'argent d'un cas qu'on débogue : cette
+        méthode-ci.
+
+        --- Pourquoi elle existe quand même ---
+
+        Le ledger n'était alimenté que par la CLI (`cli.py`) ; tout ce qui passait par l'API —
+        donc par l'écran, donc par la boucle de réparation — coûtait de l'argent sans laisser de
+        trace (`run_service._persist` écrivait `cost_usd=0.0` en dur).
 
         On somme par le ledger et non par `execution.cost_usd` : le ledger porte la phase et le
         modèle, donc il explique le total au lieu de l'asséner.
@@ -732,6 +747,26 @@ class CostRepo:
         """
         row = self.conn.execute(
             "SELECT COALESCE(SUM(cost_usd), 0) AS total FROM cost_ledger WHERE test_case_id = ?",
+            (case_id,)).fetchone()
+        return float(row["total"])
+
+    def creation_cost_usd(self, case_id: int) -> float:
+        """Coût de la CRÉATION d'un cas — **c'est CELUI-CI qui se compare au §9**.
+
+        Le §9 du brief : *« Coût — nouveau cas de test (génération + exécution + rapport) : < 1 € »*.
+        Donc : l'**analyse** de la spec + la **génération**. Les réparations ultérieures et les
+        sessions de débogage sont du coût d'**exploitation** — réel, à suivre
+        (`total_for_case_usd`), mais **hors** de ce seuil (arbitrage du porteur, 2026-07-17).
+
+        Mesuré le 2026-07-17 sur le chemin écran : **$0,1207 = 11 % du §9**.
+
+        On somme les phases de création, pas « tout sauf les réparations » : si une phase
+        s'ajoutait un jour (un `report` payant, par exemple), la nommer serait une décision, pas
+        un effet de bord d'une négation.
+        """
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(cost_usd), 0) AS total FROM cost_ledger"
+            " WHERE test_case_id = ? AND phase IN ('analysis', 'generation')",
             (case_id,)).fetchone()
         return float(row["total"])
 
