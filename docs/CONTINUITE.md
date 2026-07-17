@@ -372,6 +372,29 @@ contexte. Sans elle, le coût de génération du chemin écran n'avait **aucune 
 s'accrocher** et était perdu : le §9 y était structurellement inmesurable.
 Non implémenté du §7 : l'**Exécution nommée transverse**.
 
+### ⚠️ Les bugs que SEUL le réel trouve — une suite verte ne garantit rien sur l'intégration
+
+*Famille de défauts qui partagent une cause : **les tests partent tous d'un monde neuf et
+sérialisé**, alors que la production tourne sur une base existante, en parallèle, avec un vrai
+navigateur. Chaque occurrence a été trouvée par le réel, jamais par la suite. Ce n'est pas une
+critique des tests : c'est la limite structurelle de ce qu'un test peut voir. → méthode §8.8.*
+
+| # | le défaut | pourquoi les tests étaient aveugles | trouvé par |
+|---|---|---|---|
+| **1** | **`schema.sql` : un index sur une colonne de migration** *(2026-07-17)* — `CREATE INDEX … ON cost_ledger(test_case_id)` placé dans `schema.sql`, qui **s'exécute AVANT les migrations** → `no such column: test_case_id` → **toute ouverture d'une base existante plante**, application comprise. | Les **416 tests verts** partent d'un schéma **neuf**, où `CREATE TABLE` crée déjà la colonne. Le défaut n'existe que sur une base **antérieure** — soit **exactement le cas de tous les utilisateurs**. | La **vraie base**, à la première ouverture. Gardé depuis par `test_une_base_SANS_la_colonne_s_ouvre_toujours` (vérifié comme échouant sur le schéma fautif). |
+| **2** | **Connexion SQLite passée entre threads** *(§2.8)* — `sqlite3.ProgrammingError` → **HTTP 500 intermittent**. FastAPI exécute la dépendance `yield` synchrone dans un thread du pool et l'endpoint dans un **autre**. | `TestClient` est **synchrone et sérialise tout** : sans requêtes concurrentes, le pool réutilise le même thread. **200 tests verts** ne pouvaient pas le voir. | Un **vrai navigateur** chargeant l'arbre **en parallèle** de la page. |
+| **3** | **Marqueur de repli aveugle en run réel** *(`0007` B+)* — le 1ᵉʳ jet lisait le repli dans la sortie de Behave, qui **capture stdout/stderr et ne les recrache pas sur un scénario vert** dès qu'un `environment.py` est présent. | Le **test de garde partageait l'angle mort du code** : il omettait `environment.py`, que le runner assemble pourtant toujours. Un test écrit avec la même hypothèse fausse que le code **valide l'erreur**. | Le **re-run réel exigé par le porteur**. Correctif : fichier sidecar — supprimer la dépendance plutôt que la maîtriser. |
+
+> **La leçon commune, et elle vaut pour la suite** : ces trois défauts étaient **invisibles par
+> construction**. Le réflexe « la suite est verte, donc c'est bon » les aurait tous laissés
+> passer — et deux d'entre eux plantaient l'application chez l'utilisateur. **Le seul remède
+> connu reste le §8.8 : vérifier en conditions réelles quand c'est possible.**
+>
+> *(Le n°1 est d'autant plus net que le codebase **documentait déjà la leçon** — les index
+> d'unicité et `idx_case_module` vivent dans leur migration pour cette raison exacte, et le
+> commentaire de `schema.sql` le disait. Je l'ai rejouée quand même : une leçon écrite n'est pas
+> une leçon appliquée — c'est le principe 6 de `PRINCIPES.md`, cette fois contre moi.)*
+
 ---
 
 ## 4. Invariants à NE JAMAIS régresser

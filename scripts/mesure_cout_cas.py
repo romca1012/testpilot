@@ -81,7 +81,8 @@ def main() -> None:
     # qui n'est jamais arrivé. On montre donc le DERNIER (ce que ça coûte aujourd'hui) et le PIRE
     # (ce sur quoi un plafond se calibre).
     gen_dernier = conn.execute(
-        "SELECT cost_usd FROM cost_ledger WHERE phase='generation' ORDER BY id DESC LIMIT 1"
+        "SELECT cost_usd, created_at FROM cost_ledger WHERE phase='generation'"
+        " ORDER BY id DESC LIMIT 1"
     ).fetchone()
     gen_pire = conn.execute(
         "SELECT MAX(cost_usd) AS m, COUNT(*) AS n FROM cost_ledger WHERE phase='generation'"
@@ -102,12 +103,26 @@ def main() -> None:
 
     if gen_dernier:
         actuel = float(gen_dernier["cost_usd"])
+        quand = str(gen_dernier["created_at"])[:10]
         pire = float(gen_pire["m"])
-        print(f"\n  Génération — DERNIÈRE mesure : ${actuel:.4f}   (le régime d'aujourd'hui)")
-        print(f"  Génération — PIRE mesurée    : ${pire:.4f}   (régime d'avant les garde-fous)")
+        print(f"\n  Génération — DERNIÈRE au ledger : ${actuel:.4f}   (mesurée le {quand})")
+        print(f"  Génération — PIRE au ledger     : ${pire:.4f}")
+        # ⚠️ Le ledger peut ne plus contenir AUCUNE mesure du régime actuel : les artefacts de la
+        # mesure du chemin écran (cas 7/8) ont été retirés du référentiel sur décision du porteur,
+        # et leurs lignes sont parties avec — un coût rattaché à un cas supprimé est un mensonge.
+        # Sans ce garde-fou, on lirait « dernière mesure : $0,4529 » et on conclurait que c'est le
+        # coût d'aujourd'hui. C'est le coût d'AVANT les garde-fous.
+        if quand < "2026-07-17":
+            print("\n  ⚠️  CETTE MESURE EST D'AVANT LES GARDE-FOUS — ce n'est PAS le coût actuel.")
+            print("      Régime actuel MESURÉ le 2026-07-17 (chemin écran, spec demande_materiel) :")
+            print("        analyse $0,0157 + génération $0,1050 = $0,1207 = 11 % du §9")
+            print("      Même spec : 1 973 car. de steps contre 15 312, et PLUS de couverture")
+            print("      (4 scénarios / 44 assertions contre 3). Le catalogue (0003), les notes")
+            print("      (0012) et le contrat {field} (0007 A1) ont divisé la génération par ~4.")
+            print("      Ces chiffres vivent dans tests/test_repair_cost_cap.py (gardés par test)")
+            print("      et se reproduisent : scripts/mesure_generation_chemin_ecran.py (~$0,12).")
         v = "OK" if config.COST_LIMIT_PER_RUN_USD > pire else "COUPERAIT UNE GÉNÉRATION CONNUE"
-        print(f"  → plafond ${config.COST_LIMIT_PER_RUN_USD:.2f} vs pire mesurée : [{v}]"
-              f"   ({config.COST_LIMIT_PER_RUN_USD / actuel:.1f}x le coût actuel)")
+        print(f"\n  → plafond ${config.COST_LIMIT_PER_RUN_USD:.2f} vs pire mesurée : [{v}]")
 
     if rep["n"]:
         cout_rep = config.REPAIR_BUDGET_DEFAULT * rep["m"]
