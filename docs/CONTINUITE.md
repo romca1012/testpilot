@@ -1,8 +1,72 @@
 # Rapport de continuité — TestPilot
 
+> # ⚠️ À LIRE AVANT TOUT LE RESTE
+>
+> **Le brief produit (`docs/brief-produit-outil-test-management-ia.md`) est la SEULE source de
+> vérité sur ce qui est voulu pour TestPilot.**
+>
+> **Toute déviation proposée doit être signalée comme telle et validée avant implémentation,
+> jamais actée en autonomie.** Y compris — et surtout — quand elle paraît techniquement
+> évidente, quand un incident du jour semble la réclamer, ou quand c'est *moi* qui la propose.
+>
+> Ce document, `PRINCIPES.md`, le backlog et les décisions `0001`–`0017` sont **subordonnés** au
+> brief. Quand l'un d'eux le contredit : **c'est lui qui est caduc**, et la correction se fait
+> **dans le document**, pas seulement dans la conversation.
+>
+> Le brief ne se modifie pas en silence non plus : il a un **journal des amendements** en tête.
+> Un amendement s'y inscrit, daté et motivé, sur décision du porteur — jamais autrement.
+>
+> **Deux décisions du brief à ne plus re-débattre** (elles ont déjà été rouvertes une fois) :
+> - **§6 — l'agent a le droit d'explorer l'application par lui-même.** La spec est un cadre, pas
+>   une vérité absolue. Le pivot « Gherkin-only depuis une bibliothèque de steps fixe » est
+>   **REJETÉ** *(2026-07-17)*.
+> - **§11.2 — la mitigation du coût est « bien calibrer le garde-fou tentatives + budget »**, pas
+>   restreindre ce que l'agent a le droit d'écrire.
+
 > Document de reprise. À lire en premier après un `/clear`. Il fige **ce qui est décidé**
 > (à ne pas re-débattre), **ce qui est vrai du code aujourd'hui**, et **ce qui reste ouvert**.
-> Date : 2026-07-15.
+>
+> **Version 4 — 2026-07-17.**
+
+---
+
+## 0. Session du 2026-07-17 (v4) — ce qui vient d'être fait
+
+**Trois commits.** Tests : **407 Python · 36 vitest**, tout vert.
+
+| # | commit | ce que c'est |
+|---|---|---|
+| `3a744a4` | **Fix P0 — dry-run branché** | `propose_fix` recevait `dry_runner=None` : **aucun correctif n'était validé par rien** avant un run réel de ~300 s, alors que la docstring de `repair_agent` promet l'inverse. **C'est la cause directe de l'échec du rejeu** (v12 a supprimé son step d'auth sans toucher au `.feature` → `undefined` → `RUN_FAILED`). Effet de bord : le chemin heureux passe de **2 appels LLM à 1**. |
+| `edc4002` | **CostTracker — le plafond borne le CAS** | `propose_fix` créait un tracker **neuf à chaque tentative** : `COST_LIMIT_PER_RUN_USD = $2` bornait un **appel**, pas un run. Un cas pouvait coûter **jusqu'à $6** contre $1,08 au §9. Garde-fou **décoratif**, appliqué à l'argent. Corrigé + calibré : `REPAIR_COST_LIMIT_PER_CASE_USD = $0,62`. |
+| `3f53d0d` | **Recadrage sur le brief** | Brief amendé (budget), pivot rejeté, `0017` re-statué, borne du principe 2, incréments réalignés sur le §12. |
+
+### Ce qu'il faut savoir avant de citer un chiffre de coût
+
+- **Le §9 est l'unique cible de coût du produit** : moins de 1 €/cas. Le « 50 €/mois » est
+  **retiré du périmètre produit** (budget de dev du porteur) — brief amendé, `MONTHLY_BUDGET_*`
+  reste en config **lu par personne**, volontairement.
+- **`$1,0319` n'est PAS une mesure** — c'est une extrapolation (`$0,4529 + 2 × $0,2895`). Le
+  ledger ne contient **qu'une** réparation réelle. Un cas à 2 réparations n'a **jamais** été
+  mesuré.
+- **Le bug du CostTracker ne faussait pas les chiffres.** Avec un tracker neuf, chaque ligne du
+  ledger était **juste**. Il ne corrompait pas le **comptage**, il rendait le **plafond**
+  inopérant. Deux défauts distincts, longtemps confondus.
+- **`$0,2895` est périmé à la baisse** : mesuré avec `dry_runner=None`, donc 2 appels LLM par
+  tentative. Le fix P0 en supprime un. **Non re-mesuré.**
+- Mesure reproductible, sans dépenser un centime : `PYTHONUTF8=1 python scripts/mesure_cout_cas.py`.
+
+### Trou connu, nommé, non comblé
+
+`COST_LIMIT_PER_RUN_USD = $2` borne encore la **génération** — près du **double** du §9 à elle
+seule. **Le §9 n'est donc tenu que sur le versant réparation.** Le combler exige une **2ᵉ mesure
+de génération** : la seule connue ($0,4529) ne laisserait que 10 % de marge sous un plafond de
+$0,50, et le premier cas plus gros échouerait à la création. À calibrer sur mesure, pas à deviner.
+
+### La suite, dans l'ordre
+
+1. **Rejeu réel du cas 1** (`3.3`) — prouver le chemin positif de `0016`, et **re-mesurer** le
+   coût d'une réparation maintenant que le dry-run est branché. Les deux d'un coup.
+2. **Exécution nommée transverse multi-modules** — §12 **Incrément 1**, dernier gros manque du §7.
 
 ---
 

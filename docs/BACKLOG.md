@@ -3,13 +3,56 @@
 Point d'entrée unique des travaux **différés et documentés** (chaque entrée renvoie à sa
 décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
 
-## Incrément 2 (avant tout déploiement client réel)
+> ⚠️ **Le brief produit est la seule source de vérité** ; ce backlog lui est subordonné. Toute
+> déviation doit être signalée et validée, jamais actée en autonomie.
+>
+> **Les noms d'incréments sont ceux du §12 du brief, et eux seuls** — aucun ne s'invente.
+> *(Révisé le 2026-07-17 : les sections ci-dessous portent des étiquettes d'incrément héritées
+> d'un découpage de séance qui ne correspond pas au §12 — notamment « Incrément 1 » pour du
+> travail relevant de l'Incrément 2, cf. `CONTINUITE.md` §1. **Re-sectionner ce fichier suppose
+> une dizaine d'arbitrages limites** — `0008`, `0010`, `0011` sont-ils de la génération ou de la
+> gouvernance du verdict ? — **à trancher avec le porteur, pas seul.** L'étiquetage est faux, le
+> contenu ne l'est pas.)*
+
+## Dette transverse — n'appartient à aucun incrément du §12
+
+*(Révisé le 2026-07-17 : cette section s'appelait « Incrément 2 » — faux, l'Incrément 2 du brief
+est la **gouvernance du verdict**, pas la sécurité.)*
 
 - [ ] **Secret de connexion en clair** — le mot de passe de connexion d'un projet est stocké
   en clair dans SQLite. Acceptable en dev local (instance Odoo neutralisée), **inacceptable
   avant le premier déploiement client**. À traiter : chiffrement au repos ou gestionnaire de
   secrets. Atténuation déjà en place : l'API ne renvoie jamais le mot de passe (write-only).
   → voir `decisions/0005-connecteur-au-niveau-projet.md`.
+
+## Coût — le §9 du brief (moins de 1 €/cas), l'unique cible de coût du produit
+
+- [x] **CostTracker : le plafond bornait un APPEL, pas un cas** — *fait le 2026-07-17*
+  (`edc4002`). `propose_fix` créait un tracker **neuf à chaque tentative** → chacune repartait au
+  plafond entier → un cas pouvait coûter **génération ($2) + budget × $2 = jusqu'à $6**, contre
+  **$1,08** au §9. Garde-fou **décoratif** (le `position` de `0006`, le stall du circuit),
+  appliqué à l'argent. Corrigé : **un seul** tracker partagé pour toute la boucle, escalade
+  humaine au premier seuil (§6). Calibré sur le ledger réel :
+  `REPAIR_COST_LIMIT_PER_CASE_USD = $0,62` (= $1,08 − $0,4529 de génération mesurée) ;
+  `REPAIR_BUDGET_DEFAULT` **reste à 2** (2 × $0,2895 = $0,5790 ≤ $0,62 — la mesure ne demande pas
+  de descendre à 1). 5 tests, dont 3 vérifiés comme échouant sur le code d'avant.
+- [ ] 🔴 **Le §9 n'est PAS tenu sur la génération** — *trou nommé, non comblé, 2026-07-17*.
+  `COST_LIMIT_PER_RUN_USD = $2` ≈ 1,85 € borne encore la génération : **près du double du §9 à
+  elle seule**. Seul le versant réparation est borné. **Bloqué sur une mesure** : la seule
+  génération connue ($0,4529) ne laisserait que 10 % de marge sous un plafond de $0,50 — le
+  premier cas plus gros échouerait à la création. À calibrer sur une **2ᵉ mesure**, pas à deviner.
+- [ ] **Re-mesurer le coût d'une réparation** — *le chiffre en vigueur est périmé à la baisse*.
+  $0,2895 a été mesuré avec `dry_runner=None`, soit **2 appels LLM** par tentative (l'écriture +
+  un tour perdu). Le fix P0 (`3a744a4`) en supprime un sur le chemin heureux. À reprendre au rejeu
+  du cas 1. ⚠️ **Le $1,0319 (« génération + 2 réparations ») n'est pas une mesure** mais une
+  extrapolation : le ledger ne contient qu'**une** réparation réelle.
+  Mesure reproductible : `PYTHONUTF8=1 python scripts/mesure_cout_cas.py`.
+- [ ] **Le coût de génération du chemin API n'est pas au ledger** — *trouvé le 2026-07-17, non
+  corrigé*. `CostRepo.add_entry` n'est appelé que par `cli.py` (génération) et `repair_service`
+  (réparation) : **un cas créé par l'écran ne laisse aucune trace de son coût de génération**.
+  `total_for_case_usd` le sous-évalue donc de tout le poste le plus lourd (42 % du §9 sur le cas
+  1), et la seule ligne de génération du ledger vient d'un run **CLI**. La mesure du §9 est
+  aveugle sur le chemin que les utilisateurs empruntent.
 
 ## Incrément 1 (suite de l'interface / robustesse)
 
@@ -157,8 +200,20 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   `0014`** (l'agent rendait 1 step sur 4) : chantier de conception, pas de budget.
   À rouvrir si le principe 5 se met à refuser des réparations trop souvent — ce serait le signal
   que le rayon d'explosion coûte vraiment.
-- [ ] 🔴 **L'agent réinvente l'authentification que la bibliothèque résout déjà** (`0017` — **note
-  écrite, à arbitrer, PRIORITÉ 1 — bloque la preuve de `0016`**). Mesuré au rejeu du cas 1
+- [x] **L'agent réinvente l'authentification que la bibliothèque résout déjà** (`0017` —
+  **ARBITRÉ ET LIVRÉ**, cf. `c1ee857`). *(Révisé le 2026-07-17 : cette entrée disait « note écrite,
+  à arbitrer » — périmé.)* **Livré** : **A** (annotation du catalogue, vérifiée jusqu'au prompt de
+  réparation) + **B′** (`generation/repair_diff.py`, garde **détective** du rayon d'explosion —
+  signale au gate les steps réécrits/supprimés, `allowed` jamais touché, 12 tests dont 6
+  anti-faux-positifs). **L'option B — garde BLOQUANTE à l'écriture — n'a PAS été retenue** : elle
+  aurait rejeté un cas testant légitimement la page de login, et retiré à l'agent un droit que le
+  **§6 du brief** lui accorde. Voir la borne du principe 2 (`PRINCIPES.md`).
+  ⚠️ **Le rejeu réel qui a suivi a ÉCHOUÉ, et la cause est trouvée depuis** : l'annotation a porté
+  (v12 ne réimplémente plus l'auth), mais l'agent a **supprimé** son step d'auth sans mettre à
+  jour le `.feature` → `undefined` → `RUN_FAILED`. **Le dry-run de la session n'était branché sur
+  rien** (`dry_runner=None`) : c'est lui qui aurait rendu la liste des steps undefined à l'agent
+  pour qu'il corrige dans le même appel. **Fix P0 livré** (`3a744a4`) → **à rejouer**.
+  Historique du diagnostic initial, conservé : mesuré au rejeu du cas 1
   (exec 20-22) : les deux réparations corrigent bien le `HTTPError 404` (le garde-fou transport de
   `0003` les y **force**) mais écrivent leur **propre** step d'auth avec un `fill` nu → timeout
   Playwright sur `[name="login"]`, « element is not visible ». Le step partagé gère ce piège
@@ -173,7 +228,12 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
 - [ ] 🔴 **« Réparée » veut dire « passe au vert » — les deux axes fusionnés dans la boucle**
   (`0016` — **A + (iii) ARBITRÉS et LIVRÉS le 2026-07-17 ; preuve réelle PARTIELLE**). Chemin
   négatif prouvé en réel (deux réparations non exécutables → aucune adoption → disque rembobiné
-  sur `v1`). **Chemin positif NON prouvé** : bloqué par `0017`, étranger à `0016`. Sur les données
+  sur `v1`). **Chemin positif NON prouvé.**
+  ➡️ **Prochaine action (tâche 3.3) : rejouer le cas 1.** *(Révisé le 2026-07-17 : ce point était
+  dit « bloqué par `0017` ». `0017` est livré, et la vraie cause du dernier échec — le dry-run non
+  branché — est corrigée par le fix P0 `3a744a4`. Le rejeu est donc **débloqué**, et il fera
+  d'une pierre deux coups : prouver le chemin positif **et** re-mesurer le coût d'une réparation,
+  dont le chiffre en vigueur est périmé.)* Sur les données
   réelles de l'exec 17 (`v9`) : `execution_status=success` → `A` adopte, là où l'ancien critère
   (2 échecs) jetait — analyse reproductible, pas un bout-en-bout. Mesuré au rejeu réel du 2026-07-17 : la
   réparation du cas 1 (`v9`) a transformé une cécité technique (`HTTPError 404`, 0/3, l'outil ne
