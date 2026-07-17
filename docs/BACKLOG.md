@@ -138,6 +138,19 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   signal, testé en premier. Mesuré sur 20 échecs réels : **14/20 décidés par un signal, 9/20
   reclassés**, le faux `missing_role` du cas 6 (`0012`) corrigé.
   → `decisions/0015-…md`, `scripts/prove_0015_signal_vs_texte.py`, `tests/test_taxonomy_signal.py`.
+- [ ] 🔴 **« Réparée » veut dire « passe au vert » — les deux axes fusionnés dans la boucle**
+  (`0016` — **note écrite, à arbitrer, PRIORITÉ 1**). Mesuré au rejeu réel du 2026-07-17 : la
+  réparation du cas 1 (`v9`) a transformé une cécité technique (`HTTPError 404`, 0/3, l'outil ne
+  juge rien) en **verdict fonctionnel** (`success/non_conforme`, 1/3) — puis **la version a été
+  jetée** parce que `resolved` exige **zéro échec**. Le disque est rembobiné sur `v1` (`import
+  requests` de retour), `current_version_id` vaut `v1` : **un nouveau run refera le 404**.
+  Le critère d'adoption fusionne « le test **tourne** » (axe exécution) et « le test **passe** »
+  (axe fonctionnel) — c'est **§4.1** violé au cœur de `0014`, et dans la direction la plus
+  coûteuse : **un test réparé qui détecte un vrai bug ne peut jamais être adopté**. Le §5 dit
+  pourtant déjà la bonne règle (`validation_status_after_run`).
+  Effet de bord visible : le cas 1 affiche `validated` + `success/non_conforme` obtenus sur `v9`,
+  alors que sa version courante est `v1` — un statut **orphelin** de la version qui l'a produit.
+  → `decisions/0016-reparee-veut-dire-passe-au-vert-inc1.md`.
 - [ ] **Exploiter le STATUT de step de Behave** (`failed` = assertion, `error` = exception) —
   *ouvert par `0015`, non urgent*. C'est un signal plus sûr que le rendu textuel, et il est déjà
   dans le JSON : le parser met aujourd'hui tous les statuts d'échec dans un même sac
