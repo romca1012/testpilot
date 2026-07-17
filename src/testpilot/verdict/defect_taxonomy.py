@@ -113,6 +113,20 @@ _EXCEPTION_TO_CAUSE = {
     "ZeroDivisionError": BROKEN_TEST_CODE,
     "IndentationError": BROKEN_TEST_CODE,
     "SyntaxError": BROKEN_TEST_CODE,
+    # AJOUTÉ le 2026-07-17 (`0019`). Exception levée UNIQUEMENT par la bibliothèque partagée
+    # (`_base_helpers.select_option_strict`) quand le test passe une valeur que l'application
+    # n'offre pas : « la valeur 'new' n'existe pas. Options réelles : … ». L'application va très
+    # bien ; c'est NOTRE code qui est faux — le cas le plus évidemment réparable qui soit.
+    #
+    # ⚠️ **Une classe DÉDIÉE, et surtout pas `ValueError`.** Mon premier jet mappait `ValueError`
+    # → BROKEN_TEST_CODE : `tests/test_taxonomy_signal.py` l'a refusé, et il avait raison —
+    # `0015` a **délibérément** laissé `ValueError` hors du signal parce qu'**odoorpc le lève
+    # légitimement** (« aucun enregistrement » = contexte serveur manquant → jugement humain).
+    # Le type seul ne peut pas distinguer les deux, donc mapper `ValueError` aurait fait réparer
+    # un test contre un vrai problème de données : le faux négatif que §4.4 déclare inacceptable.
+    # Une classe à nous est un signal **non ambigu par construction** — personne d'autre ne la
+    # lève. C'est la forme la plus forte du principe 1 : le signal ne se déduit pas, il se pose.
+    "InvalidOptionValueError": BROKEN_TEST_CODE,
     # Le test affirme, l'application répond autrement → jugement HUMAIN (§4.4). Le message qui
     # suit est écrit par l'agent : on ne le lit pas pour décider.
     # NB : en run réel via Behave, c'est `_BEHAVE_ASSERT_RE` qui attrape ce cas — Behave masque
@@ -125,10 +139,18 @@ _EXCEPTION_TO_CAUSE = {
     "HTTPError": WRONG_NAVIGATION,
 }
 
-# ⚠️ `ValueError` est volontairement ABSENT : il est ambigu (bug de code, mais aussi levé
-# légitimement par odoorpc sur un enregistrement introuvable). Le laisser tomber au symptôme
-# vaut mieux que de le classer à tort — un mauvais classement décide maintenant de la
+# ⚠️ `ValueError` est volontairement ABSENT, et il DOIT le rester : il est ambigu (bug de code,
+# mais aussi levé légitimement par odoorpc sur un enregistrement introuvable). Le laisser tomber
+# au symptôme vaut mieux que de le classer à tort — un mauvais classement décide maintenant de la
 # réparabilité (`0014`).
+#
+# ⚠️ **Tenté le 2026-07-17, et REFUSÉ par `tests/test_taxonomy_signal.py`** : `0019` avait besoin
+# de classer l'erreur « valeur d'option inexistante », et mapper `ValueError` → BROKEN_TEST_CODE
+# était la correction évidente. Elle aurait fait réparer un test contre un vrai problème de
+# données odoorpc — le faux négatif de §4.4, réintroduit par la porte de service.
+# La sortie n'est pas d'arbitrer entre les deux sens d'un type ambigu : c'est de **lever une
+# classe à nous** (`InvalidOptionValueError`), que personne d'autre ne produit. **Quand un signal
+# est ambigu, on n'en devine pas le sens — on en fabrique un qui ne l'est pas.**
 
 
 # ── 2. SYMPTÔME : projection du failure_type du parser ────────────────────────

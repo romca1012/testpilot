@@ -193,6 +193,82 @@ def resolve_field_name(page, ident):
     return ident  # ni name ni libellé exploitable : on laisse échouer en aval (message d'origine)
 
 
+class InvalidOptionValueError(ValueError):
+    """Le test passe à un `<select>` une valeur que l'application n'offre pas (décision `0019`).
+
+    ⚠️ **Une classe DÉDIÉE, et c'est tout l'intérêt.** `defect_taxonomy` classe sur le **type
+    d'exception** (`0015`) : `InvalidOptionValueError` → `broken_test_code` → réparable **sans**
+    confirmation humaine, parce que **seule** la bibliothèque partagée la lève. Le signal ne se
+    déduit pas, il se **pose** — c'est la forme la plus forte du principe 1.
+
+    **Surtout pas un `ValueError` nu** : `0015` l'a délibérément laissé hors du barème parce
+    qu'**odoorpc le lève légitimement** (« aucun enregistrement » = contexte serveur manquant →
+    jugement humain). Le mapper aurait fait réparer un test contre un vrai problème de données —
+    le faux négatif que §4.4 déclare inacceptable. `tests/test_taxonomy_signal.py` a refusé mon
+    premier jet, qui faisait exactement ça.
+
+    Hérite de `ValueError` : un `except ValueError` existant continue de l'attraper.
+    """
+
+
+def _options_of(select_locator):
+    """Les options réelles d'un <select> : [(value, texte), …]. Lecture DOM, aucune attente."""
+    return [tuple(o) for o in select_locator.evaluate(
+        "el => Array.from(el.options).map(o => [o.value, (o.text || '').trim()])")]
+
+
+def select_option_strict(select_locator, value, field=""):
+    """`select_option` qui échoue TOUT DE SUITE et DIT pourquoi (décision 0019).
+
+    ⚠️ **Le problème que ce helper résout n'est pas la lenteur : c'est le MENSONGE.**
+    `select_option(value="new")` sur une option inexistante attend **30 secondes** puis lève :
+
+        Locator.select_option: Timeout 30000ms exceeded.
+        Call log: - waiting for locator("select[name='types_demandes']")
+
+    Le message ne nomme que le **locator du select** — il donne à croire que **le select est
+    introuvable**. Il est là, visible, activé. Playwright attendait l'**option**.
+
+    **Toute la chaîne a cru ce message** (mesuré, rejeu du cas 1, exec 27) : `defect_taxonomy` a
+    classé `ui_timeout → wrong_field_name → « Champ/sélecteur introuvable »`, et l'agent de
+    réparation a cherché un problème de **sélecteur** — donc réparé à côté, et rebrûlé du budget à
+    chaque tentative. C'est `0002` qui se rejoue : *le message d'erreur ne porte pas la vraie
+    cause, et tout ce qui le lit se trompe dans la même direction.*
+
+    On lit donc les options **avant** d'agir, et on lève une erreur qui nomme la cause **et les
+    valeurs possibles** — l'agent reçoit alors de quoi corriger du premier coup, au lieu de deviner.
+
+    **`InvalidOptionValueError` et non `AssertionError`** : c'est le code du test qui est faux, pas
+    l'application qui se comporte mal. Et surtout pas un `ValueError` **nu** — voir la docstring
+    de `InvalidOptionValueError` : odoorpc en lève légitimement, et le confondre ferait réparer un test
+    contre un vrai problème de données (§4.4). Vérifié par test, pas supposé.
+
+    Tolérant comme le reste de la bibliothèque (`0007`) : on accepte une **valeur** d'option ou son
+    **libellé affiché** — l'agent peut légitimement connaître l'un ou l'autre. Un repli n'est
+    jamais silencieux : il est tracé comme les autres.
+    """
+    options = _options_of(select_locator)
+    valeurs = [v for v, _ in options]
+    if value in valeurs:
+        select_locator.select_option(value)
+        return
+    # Repli TOLÉRANT : le libellé affiché plutôt que la valeur technique (même esprit que 0007).
+    for v, texte in options:
+        if texte == value:
+            message = (f"select '{field}' : « {value} » est le LIBELLÉ, la valeur est « {v} » "
+                       f"— repli appliqué")
+            logger.warning("%s %s", FIELD_FALLBACK_MARKER, message)
+            _record_field_fallback(message)
+            select_locator.select_option(v)
+            return
+    # Ni valeur ni libellé : on échoue MAINTENANT, en disant quoi utiliser.
+    inventaire = ", ".join(f"{v!r} ({t})" for v, t in options) or "(aucune option)"
+    raise InvalidOptionValueError(
+        f"select '{field}' : la valeur {value!r} n'existe pas. Options réelles : {inventaire}. "
+        f"Utilise une valeur existante — ne l'invente pas."
+    )
+
+
 def fill_field(page, name, value):
     name = resolve_field_name(page, name)
     safe = value.replace("\\", "\\\\").replace("'", "\\'")
@@ -201,7 +277,7 @@ def fill_field(page, name, value):
     tag = el.evaluate("el => el.tagName.toLowerCase()")
     input_type = el.evaluate("el => (el.type || '').toLowerCase()")
     if tag == "select":
-        el.select_option(value)
+        select_option_strict(el, value, field=name)
     elif input_type == "radio":
         page.locator(f"input[type='radio'][name='{name}'][value='{value}']").first.check(force=True)
     elif input_type == "checkbox":
@@ -227,13 +303,24 @@ def leave_field_empty(page, name):
 
 
 def select_field_value(page, value, field):
+    """⚠️ Même défaut que `fill_field`, en PIRE — corrigé le 2026-07-17 (`0019`).
+
+    L'ancien code faisait `try: select_option(value, timeout=2000) except Exception:
+    select_option(label=value, timeout=5000)`. Trois problèmes, dans l'ordre de gravité :
+
+    1. **`except Exception` avale la CAUSE.** Si les deux tentatives échouent, l'erreur finale
+       parle du **libellé**, et la vraie information (« la valeur n'existe pas, voici celles qui
+       existent ») est perdue. C'est le motif de `0011` : un repli silencieux qui détruit le signal.
+    2. Il **attend 2 s puis 5 s** pour découvrir ce qu'une lecture du DOM donne instantanément.
+    3. Il ne dit **jamais** les options réelles à celui qui doit corriger.
+
+    `select_option_strict` lit les options d'abord : valeur OU libellé (le repli de `0007`, mais
+    **tracé**, jamais muet), et sinon une erreur qui nomme les valeurs possibles.
+    """
     field = resolve_field_name(page, field)
     select = page.locator(f"select[name='{field}']")
     if select.count() > 0:
-        try:
-            select.select_option(value, timeout=2000)
-        except Exception:
-            select.select_option(label=value, timeout=5000)
+        select_option_strict(select.first, value, field=field)
         page.wait_for_timeout(300)
         return
     radio = page.locator(f"input[type='radio'][name='{field}'][value='{value}']")
