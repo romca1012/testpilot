@@ -26,13 +26,21 @@
 > Document de reprise. À lire en premier après un `/clear`. Il fige **ce qui est décidé**
 > (à ne pas re-débattre), **ce qui est vrai du code aujourd'hui**, et **ce qui reste ouvert**.
 >
-> **Version 4 — 2026-07-17.**
+> **Version 5 — 2026-07-17.**
 
 ---
 
-## 0. Session du 2026-07-17 (v4) — ce qui vient d'être fait
+## 0. Session du 2026-07-17 (v5) — ce qui vient d'être fait
 
-**Six commits.** Tests : **419 Python · 36 vitest**, tout vert. **Base migrée : `user_version` 9 → 12.**
+**Huit commits.** Tests : **419 Python · 36 vitest**, tout vert. **Base migrée : `user_version` 9 → 12.**
+
+> ### 🔴 EN ATTENTE D'ARBITRAGE — à lire avant de reprendre
+>
+> **`0018` — la boucle de réparation rachète les mêmes correctifs à chaque rejeu.** Le rejeu du
+> cas 1 a **échoué** (4ᵉ fois, 4ᵉ cause distincte), mais **tous les garde-fous livrés ont porté**
+> et le test n'a jamais été aussi près de tourner : `v7` fait passer **1 scénario sur 3** (contre
+> 0 pour `v1`). **Elle est jetée quand même**, et le disque rembobiné sur `v1`.
+> → **Aucun code avant arbitrage** (consigne tenue). Voir `decisions/0018-…md`.
 
 | # | commit | ce que c'est |
 |---|---|---|
@@ -42,6 +50,36 @@
 | `be14211` | **Rapport de continuité v4** | Le rappel « le brief est la seule source de vérité » en tête de document. |
 | `eccc8f5` | **Le coût du chemin ÉCRAN entre au ledger** *(migration 12)* | `CostRepo.add_entry` n'était appelé que par la CLI et `repair_service` : **un cas créé par l'écran ne traçait aucun coût de génération**. Défaut **structurel** — le ledger reliait un coût à un cas par `JOIN execution`, or une génération **n'a pas d'exécution**. → `test_case_id` devient le lien. **Trouvé en branchant** : `SpecAnalyzer()` était sans tracker → l'**analyse** ne coûtait rien à personne, sur les deux chemins. |
 | `7938b7b` | **Mesure réelle + recalibrage** | La génération coûte **4× moins** que cru. Plafond **$2,00 → $0,50**. |
+| `0fcae0d` | **Docs alignés sur la mesure** | Le §9 est tenu à 65 %, le $0,4529 était un régime révolu. |
+| `904713e` | **Nettoyage + trace** | Cas 7/8 (artefacts de mesure) retirés ; section « les bugs que seul le réel trouve ». |
+
+### Le rejeu du cas 1 — ÉCHEC, et ce qu'il prouve quand même
+
+**Chemin : l'écran** (`POST /api/cases/1/runs`) — le parcours réel, et celui qu'on venait de
+fiabiliser côté mesure.
+
+| exécution | version | verdict | scénarios |
+|---|---|---|---|
+| 25 | v1 | `technical_error / indetermine` | 0/3 |
+| 26 | v6 *(réparation 1)* | `technical_error / indetermine` | 0/3 |
+| 27 | v7 *(réparation 2)* | `technical_error / indetermine` | **1/3** ✅ |
+
+**Tous les garde-fous livrés aujourd'hui ont porté, et c'est mesuré :** `v7` **délègue** l'auth au
+step partagé (annotation `0017`), aucun `import requests` (`0003`), **aucun step `undefined`** (le
+fix P0 — c'était la cause de l'échec précédent), plafond de coût jamais atteint ($0,4129 ≤ $0,62).
+
+**Les causes s'enfoncent, rejeu après rejeu** — chacune plus profonde que la précédente :
+`404` → `TimeoutError` d'auth → step `undefined` → **`select[name='types_demandes']`**.
+Sondé : **ce champ existe et est visible** sur le vrai formulaire → `test_a_reparer` est le bon
+diagnostic, ce n'est **pas** un bug applicatif. Cause exacte **non diagnostiquée** : budget épuisé.
+
+**Le coût d'une réparation, re-mesuré** : **$0,2065/tentative** contre $0,2895 avant le fix P0
+(**−29 %**) — le dry-run supprime un appel LLM perdu. ⚠️ 2 échantillons **très dispersés**
+($0,3088 vs $0,1041) : le coût suit le nombre de tours ReAct, pas un tarif fixe.
+
+⚠️ **Le « TOTAL du cas 1 = $1,1552 = 107 % du §9 » n'est PAS un dépassement du brief.** Le §9
+mesure une **création** ; le cas 1 cumule **5 sessions de débogage de l'outil** et 7 versions. Une
+création réelle mesurée vaut **$0,1207 = 11 %**. → question 2 de `0018`.
 
 ### ⚠️ Le bug que 416 tests verts n'ont pas vu
 
@@ -106,12 +144,17 @@ Les serrer davantage ferait échouer des créations légitimes : on paierait plu
 
 ### La suite, dans l'ordre
 
-1. **Rejeu réel du cas 1** (`3.3`) — prouver le chemin positif de `0016`, et **re-mesurer** le
-   coût d'une réparation maintenant que le dry-run est branché. Les deux d'un coup.
-2. **Exécution nommée transverse multi-modules** — §12 **Incrément 1**, dernier gros manque du §7.
+1. 🔴 **Arbitrer `0018`** — la boucle ne converge pas : elle rachète les mêmes correctifs à chaque
+   rejeu (~$0,41 par rejeu de travail déjà payé). **Bloquant pour le chemin positif de `0016`**,
+   et **aucun code avant arbitrage**. Recommandation : **`A` + garde de couverture** (adopter sur
+   le *progrès* de l'axe exécution, jamais `A` seule — voir le trou mesuré dans la note).
+2. **Rejeu du cas 1**, une fois `0018` tranché — il repartirait de `v7` (1/3 vert) au lieu de `v1`,
+   avec son budget entier pour attaquer `types_demandes`.
+3. **Exécution nommée transverse multi-modules** — §12 **Incrément 1**, dernier gros manque du §7.
+   *(À statuer : bascule maintenant, ou après `0018` ?)*
 
-⚠️ **À arbitrer** : les cas **7** et **8** sont des **artefacts de mesure** créés dans la vraie
-base (c'est le prix d'une mesure réelle). À nettoyer ou à assumer — décision du porteur.
+✅ **Fait** : les cas 7 et 8 (artefacts de mesure) ont été **retirés** du référentiel sur décision
+du porteur — script tracé, garde-fou d'identité, backups conservés. Référentiel : cas 1, 2, 6.
 
 ---
 

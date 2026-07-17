@@ -60,12 +60,29 @@ est la **gouvernance du verdict**, pas la sécurité.)*
   ⚠️ **Les plafonds ne délivrent pas le §9** : $0,50 + $0,62 = $1,12 = 104 % si les deux
   saturaient ensemble. Ce sont des filets anti-emballement ; c'est le travail de garde-fous qui
   tient le §9. Les serrer ferait échouer des créations légitimes.
-- [ ] **Re-mesurer le coût d'une réparation** — *le chiffre en vigueur est périmé à la baisse*.
-  $0,2895 a été mesuré avec `dry_runner=None`, soit **2 appels LLM** par tentative (l'écriture +
-  un tour perdu). Le fix P0 (`3a744a4`) en supprime un sur le chemin heureux. À reprendre au rejeu
-  du cas 1. ⚠️ **Le $1,0319 (« génération + 2 réparations ») n'est pas une mesure** mais une
-  extrapolation — **et sur le mauvais régime** : le ledger ne contient qu'**une** réparation réelle.
-  Mesure reproductible : `PYTHONUTF8=1 python scripts/mesure_cout_cas.py`.
+- [x] **Re-mesurer le coût d'une réparation** — *fait au rejeu du 2026-07-17 (soir)*. **$0,2065/
+  tentative** contre $0,2895 avant le fix P0 : **−29 %**, le dry-run supprime un appel LLM perdu.
+  ⚠️ **2 échantillons très dispersés** ($0,3088 vs $0,1041) : le coût suit le **nombre de tours
+  ReAct**, pas un tarif fixe — ne pas le traiter comme une constante. Le plafond $0,62 reste bon.
+- [ ] 🔴 **La boucle rachète les mêmes correctifs à chaque rejeu** (`0018` — **note écrite, À
+  ARBITRER, PRIORITÉ 1 — aucun code avant arbitrage**). `v7` fait passer **1 scénario sur 3** (v1 :
+  0/3), délègue l'auth, ne réinvente aucun transport — **et elle est jetée**, disque rembobiné sur
+  `v1`. Cause : `est_executable` exige que **TOUS** les scénarios tournent ; 2/3 en
+  `technical_error` ⇒ verdict global `technical_error` ⇒ non adoptée.
+  **`0016` a corrigé « passe au vert » → « tourne », mais « tourne » est resté du tout-ou-rien.**
+  Conséquence chiffrée : chaque rejeu repart de `v1`, dépense son budget à **re-corriger ce qui
+  l'était déjà** (~$0,41 de travail racheté), et jette tout. **La boucle ne peut pas converger** :
+  elle a besoin de ~4 tentatives, elle en a 2, et ne garde rien entre sessions.
+  Recommandation : **`A` + garde de couverture** — ⚠️ **`A` seule a un trou MESURÉ** : supprimer
+  les scénarios **en échec** fait baisser le compteur, et le principe 5 ne surveille que les
+  scénarios **verts** (vérifié : `regressions()` rend `[]`). Sans garde de couverture, `A` fait de
+  « supprimer la couverture » une stratégie gagnante.
+  → `decisions/0018-la-boucle-rachete-les-memes-correctifs-a-chaque-rejeu-inc2.md`.
+- [ ] **Le §9 mesure-t-il une CRÉATION ou une VIE ?** (question 2 de `0018`) —
+  `total_for_case_usd(1)` = **$1,1552 = 107 % du §9**, ce qui **alarme à tort** : c'est le cumul de
+  5 sessions de débogage et 7 versions. Une **création** réelle vaut **$0,1207 = 11 %**. Le brief
+  §9 dit « nouveau cas de test (génération + exécution + rapport) » — donc une création. **Décision
+  produit à trancher**, pas un bug.
 - [ ] **Artefacts de mesure à arbitrer** — les cas **7** et **8** ont été créés dans la vraie base
   pour mesurer le coût réel du chemin écran (c'est ce qui rend la mesure réelle, et ça laisse des
   déchets — leçon du ménage du 2026-07-16). À nettoyer ou à assumer : **décision du porteur**.
