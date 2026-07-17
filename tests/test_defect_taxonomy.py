@@ -50,12 +50,20 @@ def test_chaque_categorie_reconnue_par_un_mot_cle():
 
 # --- PRIORITÉ : plusieurs symptômes dans un même message ------------------------
 
-def test_priorite_cause_forte_gagne_sur_cause_faible_dans_un_meme_message():
-    # Contient à la fois un mot-clé ASSERTION_MISMATCH ("assertionerror") et deux
-    # mots-clés MISSING_SERVER_CONTEXT ("team_id", "reste vide"). L'ordre de CATEGORIES
-    # place MISSING_SERVER_CONTEXT avant ASSERTION_MISMATCH → la cause forte l'emporte.
+def test_le_signal_gagne_sur_les_mots_cles_du_message():
+    """INVERSÉ PAR 0015 — et c'est tout l'objet de la décision.
+
+    Ce test affirmait l'inverse : les mots-clés du message (« reste vide ») l'emportaient sur
+    `AssertionError`. Or ce message est écrit par l'AGENT, tandis que le type d'exception est
+    levé par le RUNTIME. Faire gagner le texte, c'était laisser l'agent choisir son propre
+    verdict — et un vrai bug applicatif devenait `test_a_reparer` (le faux négatif de §4.4).
+
+    Le coût est assumé : une assertion réellement due à un contexte serveur manquant sera
+    désormais classée `vrai_bug` → le circuit s'arrête et un humain tranche. Sur-arrêter est la
+    direction sûre ; réparer un test correct contre une application cassée ne l'est pas.
+    """
     texte = "AssertionError: le champ team_id reste vide"
-    assert dt.classify_failure(_fail(tb=texte)) == dt.MISSING_SERVER_CONTEXT
+    assert dt.classify_failure(_fail(tb=texte)) == dt.ASSERTION_MISMATCH
 
 
 def test_priorite_respecte_l_ordre_declare_de_categories():

@@ -87,7 +87,7 @@ def _persist_run(deps: PipelineDeps, *, case_id: int, version_id: int,
             execution_id=eid, scenario_name=s.name,
             execution_status=s.execution_status, functional_status=s.functional_status,
             failure_type=s.failure_type, cause_category=s.cause_category,
-            error_summary=(s.error or "")[:500],
+            error_summary=(s.error or "")[:500], step_text=s.step_text,
         )
 
     if repairs and outcome.real_run is not None:

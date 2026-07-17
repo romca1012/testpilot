@@ -48,7 +48,21 @@ _ORIGIN_BY_CAUSE = {
     # faux positif (crier au loup) qu'un faux négatif (masquer un vrai bug). Mais « acceptable »
     # suppose qu'un humain puisse INFIRMER — voir la limite ci-dessous.
     dt.ASSERTION_MISMATCH: VRAI_BUG,
-    dt.MISSING_SERVER_CONTEXT: TEST_A_REPARER,
+
+    # Une erreur de PROGRAMMATION dans le code du step (TypeError, AttributeError…) : c'est
+    # NOTRE code qui est faux, l'application n'y est pour rien. Le seul classement dont on soit
+    # certain — et il vient d'un SIGNAL (le type d'exception), pas d'un texte (décision 0015).
+    dt.BROKEN_TEST_CODE: TEST_A_REPARER,
+
+    # ⚠️ VOIE DÉGRADÉE (arbitrage du porteur, 0015 Q4). Cette cause est RÉELLE et documentée
+    # (le champ injecté côté serveur reste vide quand le parcours d'accès est faux), mais
+    # AUCUN type d'exception ne la produit : elle ne peut venir que d'un texte — donc, depuis
+    # 0015, uniquement de l'INDICE de dernier recours. Elle INFORME (le libellé s'affiche) mais
+    # ne doit JAMAIS décider seule de la réparabilité : d'où INDETERMINE → confirmation humaine,
+    # et non TEST_A_REPARER qui autoriserait la boucle de réparation (0014) sur une simple
+    # correspondance de mots.
+    dt.MISSING_SERVER_CONTEXT: INDETERMINE,
+
     dt.WRONG_NAVIGATION: TEST_A_REPARER,
     dt.WRONG_FIELD_NAME: TEST_A_REPARER,
     dt.MISSING_ROLE: TEST_A_REPARER,

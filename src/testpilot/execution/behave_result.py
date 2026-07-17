@@ -73,7 +73,13 @@ _FAILING_STEP_STATUSES = frozenset({"failed", "error", "hook_error", "cleanup_er
 _FAILING_SCENARIO_STATUSES = frozenset({"failed", "error", "hook_error", "cleanup_error"})
 
 _TIMEOUT_RE = re.compile(r"TimeoutError.*?:(.+?)(?:\n|$)", re.DOTALL)
-_ASSERT_RE = re.compile(r"AssertionError:\s*(.+?)(?:\n|$)")
+# ⚠️ « AssertionError: » n'apparaît PAS dans la sortie de Behave : `model.py:1888` (behave 1.3.3)
+# remplace le nom de la classe par son propre préfixe « ASSERT FAILED: ». Cette regex ne voyait
+# donc JAMAIS une assertion en run réel — les 5 assertions de la base sont toutes tombées en
+# `failure_type='unknown'`, et la taxonomie devait les rattraper aux mots-clés (décision 0015).
+# Les deux formes sont acceptées : « ASSERT FAILED » (Behave) et « AssertionError » (appel direct
+# / mode verbose, où Behave joint le traceback).
+_ASSERT_RE = re.compile(r"(?:AssertionError|ASSERT FAILED):\s*(.+?)(?:\n|$)")
 _ODOORPC_RE = re.compile(r"(odoorpc|OdooRPC|xmlrpc)\w*Error.*?:(.+?)(?:\n|$)", re.IGNORECASE)
 _ACCESS_RE = re.compile(r"(AccessError|403|Permission denied)", re.IGNORECASE)
 # Erreur HTTP sur une ROUTE (404/405/5xx, HTTPError requests…) : le test a visé un endpoint
@@ -162,8 +168,18 @@ def read_field_fallbacks(path, limit: int = _MAX_FIELD_FALLBACKS) -> list[str]:
 
 
 def classify_failure(snippet: str) -> tuple[str, str]:
-    """Classe un message d'erreur par SYMPTÔME technique."""
+    """Classe un message d'erreur par SYMPTÔME technique.
+
+    L'assertion est reconnue EN PREMIER : « ASSERT FAILED: » est écrit par Behave lui-même, donc
+    le fait qu'il s'agisse d'une assertion est ACQUIS. Tout ce qui suit est le message rédigé par
+    l'agent — le tester d'abord laisserait un « permission denied » écrit dans une assertion
+    devenir un problème de droits (`permission`), c'est-à-dire un défaut d'environnement à
+    réparer, alors que l'application vient peut-être de répondre faux (§4.4, décision 0015).
+    """
     snippet = error_text(snippet)
+    if _ASSERT_RE.search(snippet):
+        m = _ASSERT_RE.search(snippet)
+        return "assertion", f"Assertion en échec : {m.group(1)[:150] if m else ''}"
     if _TIMEOUT_RE.search(snippet):
         m = _TIMEOUT_RE.search(snippet)
         return "ui_timeout", f"TimeoutError : {m.group(1)[:150] if m else ''}"
@@ -175,9 +191,6 @@ def classify_failure(snippet: str) -> tuple[str, str]:
     if _ODOORPC_RE.search(snippet):
         m = _ODOORPC_RE.search(snippet)
         return "odoorpc", f"OdooRPC error : {m.group(2)[:150] if m else ''}"
-    if _ASSERT_RE.search(snippet):
-        m = _ASSERT_RE.search(snippet)
-        return "assertion", f"AssertionError : {m.group(1)[:150] if m else ''}"
     if "not found" in snippet.lower() or "does not exist" in snippet.lower():
         return "odoo_data", "Enregistrement attendu introuvable"
     return "unknown", snippet[:150]

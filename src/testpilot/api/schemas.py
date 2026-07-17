@@ -204,6 +204,9 @@ class ScenarioResultOut(BaseModel):
     cause_category: str = ""
     failure_type: str = ""
     error_summary: str = ""
+    # Exposé pour rendre `cause_category` AUDITABLE (décision 0015) : sans le step en échec,
+    # relire un classement passé demandait d'ouvrir la base à la main.
+    step_text: str = ""
 
 
 class ExecutionDetail(ExecutionSummary):
@@ -358,6 +361,7 @@ def scenario_result_out(row: dict) -> ScenarioResultOut:
         scenario_name=row["scenario_name"], execution_status=row["execution_status"],
         functional_status=row["functional_status"], cause_category=row.get("cause_category", ""),
         failure_type=row.get("failure_type", ""), error_summary=row.get("error_summary", ""),
+        step_text=row.get("step_text", ""),
     )
 
 

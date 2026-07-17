@@ -144,6 +144,8 @@ CREATE TABLE IF NOT EXISTS execution (
 CREATE INDEX IF NOT EXISTS idx_execution_case ON execution(test_case_id);
 
 -- ── Résultat par scénario (source des deux axes) ─────────────────────────────
+-- NB : `step_text` (le step en échec) est ajouté par la MIGRATION 10 — il sert à AUDITER la
+-- classification (0015), jamais à classer : c'est un texte écrit par l'agent.
 CREATE TABLE IF NOT EXISTS scenario_result (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     execution_id      INTEGER NOT NULL,

@@ -35,6 +35,11 @@ class ScenarioVerdict:
     failure_type: str = ""
     cause_category: str = ""
     error: str = ""
+    # Le step en échec — TRACE, jamais critère. Il est écrit par l'agent : le lire pour classer
+    # revenait à juger l'agent sur son propre texte (décision 0015, `defect_taxonomy`). Il est
+    # transporté puis persisté pour qu'on puisse AUDITER `cause_category` a posteriori — sans
+    # lui, aucune classification passée n'est vérifiable.
+    step_text: str = ""
 
 
 @dataclass
@@ -61,13 +66,14 @@ def scenario_verdict(scenario, failures: list) -> ScenarioVerdict:
     if scenario.status == "failed":
         cause = dt.dominant_category(failures) or dt.UNKNOWN
         failure_type = failures[0].failure_type if failures else ""
+        step_text = failures[0].step_text if failures else ""
         if cause == dt.ASSERTION_MISMATCH:
             # A tourné techniquement, mais le comportement métier est faux → constat produit.
             return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_NON_CONFORME,
-                                   failure_type, cause, scenario.error)
+                                   failure_type, cause, scenario.error, step_text)
         # Cause technique (ou indéterminée) → le test n'a pas pu juger le fonctionnel.
         return ScenarioVerdict(scenario.name, EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE,
-                               failure_type, cause, scenario.error)
+                               failure_type, cause, scenario.error, step_text)
 
     # skipped / autre : n'a pas tourné en entier → interruption technique.
     return ScenarioVerdict(scenario.name, EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE,

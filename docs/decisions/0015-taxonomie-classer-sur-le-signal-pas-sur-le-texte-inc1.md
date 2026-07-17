@@ -1,9 +1,82 @@
 # 0015 — La taxonomie classe sur du texte écrit par l'agent qu'elle juge
 
-Date : 2026-07-16
-Statut : **À ARBITRER** — note d'abord, aucun code. Priorité fixée par le porteur : **avant**
-l'exécution groupée.
+Date : 2026-07-16 · **DÉCIDÉ et LIVRÉ le 2026-07-17**
+Statut : **LIVRÉ** — arbitré point par point par le porteur, puis implémenté, mesuré sur données
+réelles et prouvé (`scripts/prove_0015_signal_vs_texte.py`).
 Famille : suite de `0007` (même fragilité), rendue **urgente** par `0014`.
+
+---
+
+## Arbitrage du porteur (2026-07-16) et ce qui a été livré
+
+| # | Question | Verdict | Livré |
+|---|---|---|---|
+| 1 | A, B ou C ? | **A** — le type d'exception prime, le texte en dernier recours | `classify_failure` : SIGNAL → SYMPTÔME → INDICE ; `step_text` n'est plus lu |
+| 2 | `broken_test_code` ? | **Nouvelle catégorie** | `BROKEN_TEST_CODE` → `test_a_reparer` déterministe |
+| 3 | Persister `step_text` ? | **Oui** (migration 10), *« on ne pourrait sinon jamais auditer si 0015 a vraiment amélioré les choses »* | Migration 10 + remontée parser → verdict → base → API |
+| 4 | Mots-clés de domaine | **Maintenant**. `missing_server_context` : *« voie dégradée, pas de suppression — la cause est réelle et documentée, mais ne doit jamais décider seule de la réparabilité, seulement informer en dernier recours »* | `team_id`/`many2one`/`accesserror`/`group_` retirés ; `MISSING_SERVER_CONTEXT` → `indetermine` |
+
+## ⚠️ Ce que la note ignorait — et qui l'aurait vidée de son effet
+
+La note affirmait : *« un `AssertionError` restera `vrai_bug` quoi qu'écrive l'agent »*. **C'était
+faux en run réel.** Vérifié dans la source de Behave 1.3.3 (`model.py:1888`) :
+
+```python
+schema = u"ERROR: {e_classname}: {e}"
+if isinstance(exception, AssertionError):
+    schema = u"ASSERT FAILED: {e}"        # ← le nom de la classe DISPARAÎT
+...
+if use_traceback:                          # use_traceback = config.verbose
+    schema += u"\n{traceback}"             # ← pas de traceback hors mode verbose
+```
+
+**Behave n'écrit jamais « AssertionError ».** Conséquences mesurées sur les données réelles :
+
+- les **5** assertions en base portent `ASSERT FAILED:` — aucune ne porte `AssertionError` ;
+- la clé `AssertionError` de la carte des signaux était donc **du code mort en run réel** ;
+- `_ASSERT_RE` du parser (`AssertionError:`) était mort aussi → `failure_type = unknown` pour
+  **toutes** les assertions réelles ;
+- signal et symptôme étant aveugles **ensemble**, les assertions retombaient sur les **mots-clés** —
+  exactement la couche que cette décision rétrograde. **La porte du faux négatif restait ouverte
+  là où 0015 prétendait l'avoir fermée** : un `ASSERT FAILED: … permission denied …` écrit par
+  l'agent serait devenu `missing_role` → `test_a_reparer`.
+
+Mon premier test de garde ne l'a pas vu : il testait `AssertionError: …`, une forme que Behave
+n'émet **jamais**. Il passait en validant un monde qui n'existe pas — **la même erreur que
+l'épisode B+ de `0007`**, où le test de garde omettait `environment.py`.
+
+**Correctif.** `ASSERT FAILED:` et le statut de step `failed` sont produits par **Behave**, pas par
+l'agent : ce sont des signaux au même titre qu'un type d'exception. Ils sont désormais reconnus, et
+testés **en premier** — dans la taxonomie comme dans le parser — parce que « c'est une assertion »
+est acquis avant que le message de l'agent ne commence. Les gardes partent maintenant des messages
+**réellement en base** (`tests/test_taxonomy_signal.py`).
+
+## Mesuré sur les données réelles (20 scénarios en échec)
+
+| | Avant | Après |
+|---|---|---|
+| Le même `TypeError`, 4 noms de step | **4 causes** différentes | **1** (`broken_test_code`) |
+| Vrai bug + step `…"team_id"…` | `test_a_reparer` ⚠️ | `vrai_bug` ✔ |
+| Décidé par un signal (Behave/Python) | — | **14/20** |
+| Reclassés | — | **9/20** |
+
+**Le témoin du cas 6 est corrigé** (`scenario_result` #40) : le faux `missing_role` de `0012` —
+qui venait du mot `group_expert_metier` dans un message **écrit par l'agent**, et qui a envoyé
+l'enquête deux fois sur une fausse piste — devient `assertion_mismatch` → `vrai_bug`, le régime
+honnête pour une assertion. La cause réelle (spec périmée) reste à trancher par un humain : c'est
+la limite de `defect_origin`, que seule la file de confirmation (`0001` élargi) lèvera.
+
+**Le coût, assumé et non caché.** Une assertion « sémantique » (l'agent écrit « le champ caché est
+resté vide ») tombait en `test_a_reparer` par mots-clés ; elle devient `vrai_bug` → le circuit
+s'arrête. **On sur-arrête donc plus sur cette voie** — la note promettait « on sur-arrête moins »,
+ce qui n'est vrai que du chemin `TypeError`. Sur-arrêter est la direction sûre (§4.4 tolère le faux
+positif, `0013` permet de l'infirmer) ; réparer un test correct contre une application cassée ne
+l'est pas.
+
+**Ce qui reste au repli par mots-clés : 6/20.** Trois sont des échecs sans aucune erreur stockée ;
+deux (#4, #5) sont des lignes **héritées**, écrites avant le correctif de l'écart 3 — leur
+`error_summary` a été tronqué **par la tête** et la ligne d'exception n'y a jamais été stockée. Ce
+n'est pas une régression : la re-mesure ne peut pas voir un signal absent de la base.
 
 ---
 
@@ -96,7 +169,12 @@ est aussi écrit par l'agent — c'est lui qui a produit le faux « Rôle manqua
 **C — Deux couches : signal (déterministe) + indice (texte), le signal gagnant toujours.**
 Équivalent à A avec une traçabilité explicite de ce qui a décidé.
 
-## Recommandation (à valider — rien n'est tranché)
+## Recommandation (état AVANT arbitrage — conservée telle quelle)
+
+> ⚠️ Deux affirmations de cette section ont été **démenties par la mesure**, et sont corrigées en
+> tête de note : (1) *« un `AssertionError` restera `vrai_bug` quoi qu'écrive l'agent »* — faux en
+> run réel, Behave n'écrit jamais « AssertionError » ; (2) *« on sur-arrête moins »* — vrai du seul
+> chemin `TypeError` ; sur les assertions sémantiques, on sur-arrête **plus**.
 
 **A, avec une nouvelle catégorie.** Le type d'exception prime ; `step_text` n'est plus lu ; le
 message ne sert qu'à affiner. Et surtout : **`broken_test_code`** (`TypeError`, `AttributeError`,
@@ -115,13 +193,23 @@ trancher — c'est un ajout de schéma pour une raison de traçabilité, pas de 
 **`team_id` en dur** : à sortir de la taxonomie générique. Sa place est dans les règles du
 **connecteur**, si elle est quelque part.
 
-## Questions d'arbitrage
+## Questions d'arbitrage — **toutes tranchées** (verdicts en tête de note)
 
-1. **A, B ou C ?**
-2. **`broken_test_code`** : nouvelle catégorie, ou repli sur `wrong_field_name` (moins juste, zéro
-   migration de vocabulaire) ?
-3. **Persister `step_text`** pour rendre la classification auditable ?
-4. **`team_id`** : le sortir maintenant, ou avec l'audit complet des mots-clés ?
+1. ~~**A, B ou C ?**~~ → **A**
+2. ~~**`broken_test_code`** : nouvelle catégorie, ou repli sur `wrong_field_name` ?~~ → **nouvelle catégorie**
+3. ~~**Persister `step_text`** pour rendre la classification auditable ?~~ → **oui, migration 10**
+4. ~~**`team_id`** : maintenant, ou avec l'audit complet ?~~ → **maintenant** ; `missing_server_context` en **voie dégradée**
+
+## Ce qui reste ouvert après 0015
+
+- **6/20 échecs restent classés au repli** (dont 3 sans erreur stockée). Le repli n'est plus
+  décisif, mais il n'est pas vide.
+- **`defect_origin` reste une déduction** : un `assertion_mismatch` → `vrai_bug` peut être une spec
+  périmée (cas 6). Sans la file de confirmation (`0001` élargi), un `not_required` est définitif et
+  irrévocable. **0015 rend le classement honnête ; il ne le rend pas juste.**
+- **Le statut de step de Behave** (`failed` = assertion, `error` = exception) est un signal encore
+  plus sûr que son rendu textuel, et il n'est pas exploité : le parser met tous les statuts
+  d'échec dans le même sac. À reprendre si le rendu textuel montre une autre faille.
 
 ## Le motif, une cinquième fois
 
@@ -129,3 +217,10 @@ Ce défaut est une variante de celui de la journée : **une donnée écrite par 
 à le juger**. `0012` l'avait nommé (« un diagnostic qui se cite lui-même ») ; `0014` lui a donné
 du pouvoir. À surveiller partout ailleurs : la seule protection durable est de ne juger que sur
 des signaux que le composant jugé **ne produit pas**.
+
+**Et son corollaire, appris ici à mes dépens** : un garde-fou qui prétend ne lire que des signaux
+doit être vérifié **contre la sortie réelle du producteur de signaux**, pas contre l'idée qu'on
+s'en fait. `AssertionError:` n'a jamais existé dans nos runs ; deux couches de classement étaient
+mortes sans que rien ne le signale — encore *« l'absence de signal prise pour un signal
+positif »*, cette fois dans le code censé la corriger. C'est la source de Behave qui a tranché,
+pas mon intuition.

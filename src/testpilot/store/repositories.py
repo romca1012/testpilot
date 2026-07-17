@@ -537,13 +537,15 @@ class ExecutionRepo:
     def add_scenario_result(self, *, execution_id: int, scenario_name: str,
                             execution_status: str, functional_status: str,
                             failure_type: str = "", cause_category: str = "",
-                            error_summary: str = "") -> int:
+                            error_summary: str = "", step_text: str = "") -> int:
+        """`step_text` : le step en échec, gardé pour AUDITER `cause_category` (décision 0015).
+        Trace, jamais critère — la taxonomie ne le lit pas."""
         cur = self.conn.execute(
             "INSERT INTO scenario_result (execution_id, scenario_name, execution_status,"
-            " functional_status, failure_type, cause_category, error_summary)"
-            " VALUES (?,?,?,?,?,?,?)",
+            " functional_status, failure_type, cause_category, error_summary, step_text)"
+            " VALUES (?,?,?,?,?,?,?,?)",
             (execution_id, scenario_name, execution_status, functional_status,
-             failure_type, cause_category, error_summary),
+             failure_type, cause_category, error_summary, step_text),
         )
         self.conn.commit()
         return int(cur.lastrowid)

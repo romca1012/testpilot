@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 9
+_SCHEMA_VERSION = 10
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -81,6 +81,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_8_verdict_humain(conn)
     if version < 9:
         _migrate_9_repair_budget(conn)
+    if version < 10:
+        _migrate_10_step_text(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -304,6 +306,21 @@ def _migrate_9_repair_budget(conn: sqlite3.Connection) -> None:
     conn.execute(
         "ALTER TABLE review_decision ADD COLUMN repair_budget INTEGER NOT NULL DEFAULT "
         f"{int(config.REPAIR_BUDGET_DEFAULT)}")
+
+
+def _migrate_10_step_text(conn: sqlite3.Connection) -> None:
+    """Persiste le step en échec — pour AUDITER la classification (décision 0015). Idempotent.
+
+    ⚠️ **Traçabilité, pas fonctionnalité.** Depuis `0015`, `step_text` **ne sert plus à classer**
+    (il est écrit par l'agent : le lire revenait à juger l'agent sur son propre texte). Mais il
+    n'était pas stocké du tout — `scenario_result` ne gardait que `scenario_name` — et **aucune
+    classification passée n'était donc auditable**. Sans lui, on ne pourra jamais mesurer si
+    `0015` a réellement amélioré les choses, ni détecter une dérive de la taxonomie.
+
+    C'est aussi le contexte le plus utile à un humain qui lit un rapport : *quel step* a lâché.
+    """
+    if "step_text" not in _column_names(conn, "scenario_result"):
+        conn.execute("ALTER TABLE scenario_result ADD COLUMN step_text TEXT NOT NULL DEFAULT ''")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

@@ -31,10 +31,15 @@ from testpilot.store.repositories import (
 class _Failure:
     """Fidèle à l'échec RÉEL du cas 2 (exécutions 4 à 7) — le témoin de `0014`.
 
-    ⚠️ Détail qui compte : la cause vient du mot `team_id` dans le **step_text**, pas de
-    l'erreur. Un `TypeError` nu (sans mot-clé) tomberait en `unknown` → `indetermine` → le
-    circuit s'arrêterait pour confirmation. La doublure doit donc porter le vrai libellé, sinon
-    elle testerait un chemin que la réalité n'emprunte pas.
+    ⚠️ Ce commentaire disait exactement l'inverse jusqu'à `0015` : « la cause vient du mot
+    `team_id` dans le **step_text**, pas de l'erreur ; un `TypeError` nu tomberait en
+    `unknown` ». C'était vrai, et c'était le défaut — le classement dépendait d'un libellé
+    **écrit par l'agent**. Depuis `0015`, la cause vient du TYPE d'exception (`raw`) :
+    `TypeError` → `broken_test_code` → réparable, quel que soit le nom du step.
+
+    `step_text` reste ici parce que c'est le vrai libellé du cas 2 (et qu'il est désormais
+    persisté pour l'audit), mais il n'a plus AUCUN effet sur le classement — c'est précisément
+    ce que garde `tests/test_taxonomy_signal.py`.
     """
 
     scenario_name: str = "[Nominal] — Raison de demande renseignée"
@@ -61,6 +66,14 @@ class _Outcome:
     # `real_run=None` = le test n'a PAS tourné (dry-run en échec) — le cas du bug trouvé en réel.
     real_run: _RealRun | None
     execution_id: int | None = None
+
+
+# Un SECOND échec, réellement différent mais toujours porteur d'un signal — ce que produit un
+# vrai run. Les doublures passaient auparavant un texte nu (« encore », « autre erreur ») : sans
+# type d'exception, il n'y a rien à classer, et depuis `0015` un échec inclassable s'arrête pour
+# confirmation humaine (`unknown` → `indetermine`) au lieu d'être réparé sur la foi d'un mot du
+# libellé. Le comportement testé — deux tentatives puis succès — reste le même.
+AUTRE_ERREUR = "AttributeError: 'NoneType' object has no attribute 'id'"
 
 
 def _echec(raw="TypeError: 'int' object is not subscriptable"):
@@ -169,7 +182,7 @@ def test_deux_tentatives_avant_de_reussir(conn, monkeypatch):
 
     session = repair_service.run_repair_loop(
         conn, case_id=cid, version_id=vid, module_name="cas",
-        outcome=depart, run_once=_runner(conn, cid, [_echec("autre erreur"), _succes()]))
+        outcome=depart, run_once=_runner(conn, cid, [_echec(AUTRE_ERREUR), _succes()]))
 
     assert appels["n"] == 2 and session.attempts == 2
     assert session.resolved
@@ -328,7 +341,7 @@ def test_chaque_tentative_rejouee_cree_sa_propre_execution(conn, monkeypatch):
 
     repair_service.run_repair_loop(
         conn, case_id=cid, version_id=vid, module_name="cas",
-        outcome=depart, run_once=_runner(conn, cid, [_echec("encore"), _succes()]))
+        outcome=depart, run_once=_runner(conn, cid, [_echec(AUTRE_ERREUR), _succes()]))
 
     execs = ExecutionRepo(conn).list_for_case(cid)
     assert len(execs) == 3                                  # run initial + 2 rejeux

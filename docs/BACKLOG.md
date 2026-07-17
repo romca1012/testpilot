@@ -124,18 +124,25 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
   n'annote que les pièges). **Prouvé par régénération** : l'agent emploie désormais les deux
   steps, dans le bon ordre. Protège les 3 modules restants à importer. 5 tests.
   → `decisions/0012-catalogue-note-par-step-inc1.md`.
-- [ ] 🔴 **Taxonomie : classer sur le SIGNAL, pas sur le texte de l'agent** (`0015` — **note
-  écrite, à arbitrer, PRIORITÉ 1**). La classification lit `step_text` (le libellé Gherkin **écrit
-  par l'agent**) et le message d'`AssertionError` (idem), par mots-clés **prioritaires**. Mesuré :
-  le **même** `TypeError` reçoit **4 classements différents** selon le seul nom du step ; et un
-  **vrai bug** sur un step nommé `…"team_id"…` devient **`test_a_reparer`** → la boucle
-  **réparerait un test correct contre une application cassée** (faux négatif, §4.4).
-  **Urgent depuis `0014`** : la classification décide de ce qui est **réparable**, plus seulement
-  d'un libellé. Seule protection actuelle : l'obéissance d'un LLM + un compteur.
-  Recommandé : classer sur le **type d'exception** (déterministe, produit par le runtime) +
-  catégorie **`broken_test_code`** (un `TypeError` dans notre code n'est jamais un bug de l'app —
-  aujourd'hui il tombe en `indetermine` et **bloque** la réparation).
-  → `decisions/0015-taxonomie-classer-sur-le-signal-pas-sur-le-texte-inc1.md`.
+- [x] **Taxonomie : classer sur le SIGNAL, pas sur le texte de l'agent** (`0015` — **arbitré et
+  LIVRÉ le 2026-07-17**). La classification lisait `step_text` (le libellé Gherkin **écrit par
+  l'agent**) par mots-clés prioritaires : le **même** `TypeError` recevait **4 classements** selon
+  le seul nom du step, et un **vrai bug** sur un step `…"team_id"…` devenait `test_a_reparer` — la
+  boucle `0014` aurait réparé un test correct contre une application cassée (faux négatif, §4.4).
+  Livré : ordre **SIGNAL → SYMPTÔME → INDICE**, catégorie **`broken_test_code`** → `test_a_reparer`
+  déterministe, mots-clés de domaine retirés, `missing_server_context` en **voie dégradée**
+  (`indetermine`), **migration 10** (`step_text` persisté pour l'audit).
+  **Découvert au passage** : Behave n'écrit **jamais** « AssertionError » (`model.py:1888` →
+  `ASSERT FAILED:`) — la clé de signal ET la regex du parser étaient **mortes en run réel**, et
+  les assertions retombaient sur les mots-clés. Corrigé : le rendu de Behave est reconnu comme
+  signal, testé en premier. Mesuré sur 20 échecs réels : **14/20 décidés par un signal, 9/20
+  reclassés**, le faux `missing_role` du cas 6 (`0012`) corrigé.
+  → `decisions/0015-…md`, `scripts/prove_0015_signal_vs_texte.py`, `tests/test_taxonomy_signal.py`.
+- [ ] **Exploiter le STATUT de step de Behave** (`failed` = assertion, `error` = exception) —
+  *ouvert par `0015`, non urgent*. C'est un signal plus sûr que le rendu textuel, et il est déjà
+  dans le JSON : le parser met aujourd'hui tous les statuts d'échec dans un même sac
+  (`_FAILING_STEP_STATUSES`) et ne s'en sert jamais pour classer. À reprendre si le rendu textuel
+  montre une autre faille.
 - [ ] **Teardown : résidus du cas 2 non nettoyés** — *constat (2026-07-16), pas urgent mais ça
   s'accumule*. Mesuré : **9** tickets `AAAAA…` (chaîne de 300 car. du scénario `[Limite]`) et
   **6** « Demande test BDD » restants — un de plus par run. Cause : le teardown ne supprime que
