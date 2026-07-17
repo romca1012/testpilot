@@ -97,6 +97,11 @@ export interface CaseSummary {
   priority: string   // étiquette de lecture (low|medium|high) — aucun ordre d'exécution
   last_execution_status: string | null; last_functional_status: string | null
   last_executed_at: string | null
+  // Version qui a produit le dernier verdict (décision 0016, option (iii)). Une tentative de
+  // réparation non adoptée écrit quand même les `last_*` : le verdict peut donc décrire une
+  // version rembobinée. On l'affiche plutôt que de le corriger en silence.
+  last_verdict_version_id: number | null
+  verdict_from_other_version: boolean
 }
 export interface ModuleDetail { module: ModuleSummary; project: Ref }
 export interface GenerationJob {

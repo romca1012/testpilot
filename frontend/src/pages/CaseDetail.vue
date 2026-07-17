@@ -9,6 +9,7 @@ import Button from '../components/ui/Button.vue'
 import Spinner from '../components/ui/Spinner.vue'
 import Icon from '../components/ui/Icon.vue'
 import StatusPair from '../components/StatusPair.vue'
+import VerdictVersionNotice from '../components/VerdictVersionNotice.vue'
 import ValidationBadge from '../components/ValidationBadge.vue'
 import ReviewGate from '../components/ReviewGate.vue'
 import CodeView from '../components/CodeView.vue'
@@ -146,6 +147,12 @@ onBeforeUnmount(stopPoll)
           </div>
         </div>
         <p v-else class="text-sm text-muted-foreground">Pas encore exécuté.</p>
+        <!-- Le verdict décrit-il bien la version courante ? (0016) — jamais silencieux. -->
+        <VerdictVersionNotice v-if="detail.case.verdict_from_other_version"
+                              class="mt-3"
+                              :show="detail.case.verdict_from_other_version"
+                              :verdict-version-id="detail.case.last_verdict_version_id"
+                              :current-version-id="detail.current_version_id" />
 
         <!-- Repli de champ du dernier run (0007 B+) : non-bloquant, affiché même sur un run vert. -->
         <FieldFallbackNotice :fallbacks="lastExecution?.field_fallbacks || []" class="mt-3" />

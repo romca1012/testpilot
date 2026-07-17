@@ -57,6 +57,12 @@ class CaseSummary(BaseModel):
     last_execution_status: str | None = None
     last_functional_status: str | None = None
     last_executed_at: str | None = None
+    # Version qui a produit le dernier verdict, et divergence éventuelle avec la version
+    # COURANTE (décision 0016, option (iii)). Une tentative de réparation non adoptée écrit
+    # quand même les `last_*` du cas : le verdict peut donc décrire une version rembobinée.
+    # On le rend VISIBLE — jamais silencieux, et jamais « corrigé » en masquant un run réel.
+    last_verdict_version_id: int | None = None
+    verdict_from_other_version: bool = False
 
 
 class VersionOut(BaseModel):
@@ -306,6 +312,13 @@ def case_summary(row: dict) -> CaseSummary:
         last_execution_status=row.get("last_execution_status"),
         last_functional_status=row.get("last_functional_status"),
         last_executed_at=row.get("last_executed_at"),
+        last_verdict_version_id=row.get("last_verdict_version_id"),
+        # Divergence seulement si les DEUX sont connues : un cas jamais exécuté, ou sans version
+        # courante, ne « diverge » de rien — le dire serait une alerte inventée.
+        verdict_from_other_version=bool(
+            row.get("last_verdict_version_id")
+            and row.get("current_version_id")
+            and row["last_verdict_version_id"] != row["current_version_id"]),
     )
 
 

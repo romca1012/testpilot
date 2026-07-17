@@ -27,6 +27,7 @@ from testpilot import config
 from testpilot.generation import repair_agent
 from testpilot.guardrails.repair_circuit import CircuitState, evaluate, failure_signature
 from testpilot.store.repositories import CaseRepo, RepairRepo, ReviewRepo, VersionRepo
+from testpilot.verdict.status import EXEC_SUCCESS, derive_verdict
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,10 @@ class RepairSession:
     attempts: int = 0
     outcome: str = ""              # issue du circuit (resolved | real_bug | stalled | …)
     reason: str = ""
-    resolved: bool = False
+    resolved: bool = False         # run entièrement VERT (axe fonctionnel compris)
+    # Le test TOURNE (axe exécution seul) — **le critère d'adoption** depuis 0016. Distinct de
+    # `resolved` : un test qui tourne et révèle un vrai bug est réparé, pas raté.
+    executable: bool = False
     final_version_id: int | None = None
     executions: list[int] = field(default_factory=list)
     cost_usd: float = 0.0
@@ -62,6 +66,31 @@ def a_tourne(outcome) -> bool:
     13 (v7) avait 0 scénario et la réparation s'est déclarée réussie.
     """
     return outcome is not None and getattr(outcome, "real_run", None) is not None
+
+
+def est_executable(outcome) -> bool:
+    """Le test TOURNE-t-il ? — **le critère d'adoption** (décision 0016).
+
+    ⚠️ « Tourne » (axe EXÉCUTION) et « passe » (axe FONCTIONNEL) sont deux choses, et §4.1 exige
+    qu'elles ne fusionnent jamais. La boucle adoptait une réparation seulement si le run était
+    **entièrement vert** — elle fusionnait donc les deux axes, dans la direction la plus coûteuse :
+    **un test réparé qui détecte un vrai bug ne pouvait JAMAIS être adopté**. Plus l'application
+    était défectueuse, moins l'outil savait garder ses propres réparations.
+
+    Mesuré (cas 1, exécutions 16 → 17) : `v1` mourait en `HTTPError 404` (0/3, l'outil ne juge
+    rien) ; la réparation `v9` faisait TOURNER le test (`success/non_conforme`, 1/3, deux
+    assertions en échec — un constat sur l'application). `v9` a été jetée, le disque rembobiné,
+    et le run suivant refaisait le 404 — indéfiniment, en rebrûlant le budget à chaque fois.
+
+    On délègue à `derive_verdict` plutôt que de relire les échecs ici : les deux axes doivent se
+    calculer à UN SEUL endroit, sinon ils dérivent — et la dérive serait à diagnostiquer plus tard.
+
+    Le §5 dit déjà exactement cette règle, ailleurs (`review_gate.validation_status_after_run`) :
+    *« un test qui tourne et détecte un vrai bug reste un test validé »*.
+    """
+    if not a_tourne(outcome):
+        return False
+    return derive_verdict(outcome).execution_status == EXEC_SUCCESS
 
 
 def _failures_of(outcome) -> list:
@@ -155,28 +184,34 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
         current_version_id = new_version_id
 
     session.resolved = (session.outcome == "resolved")
+    # Décision 0016 : on adopte dès que le test TOURNE — jamais « dès qu'il passe ». `resolved`
+    # (run entièrement vert) reste distinct et informatif, mais il ne commande plus rien.
+    session.executable = est_executable(outcome)
     session.final_version_id = current_version_id
 
-    _sync_disque(versions, session, version_id, current_version_id, module_name)
+    adopte = session.executable and current_version_id != version_id
+    _sync_disque(versions, adopte, version_id, current_version_id, module_name)
 
-    if session.resolved and current_version_id != version_id:
+    if adopte:
         # La version réparée devient la référence — mais elle n'est PAS approuvée : personne ne
         # l'a relue. Le cas repasse « à relire » pour ratification (§4.3). C'est le prix de
         # l'option C : la réparation est invisible PENDANT la session, jamais après.
         cases.set_current_version(case_id, current_version_id)
         cases.set_validation_status(case_id, "to_review")
-        logger.info("[repair] cas %s réparé en %s tentative(s) → v%s, à ratifier",
-                    case_id, session.attempts, current_version_id)
+        logger.info("[repair] cas %s : test rendu exécutable en %s tentative(s) → v%s "
+                    "(issue : %s), à ratifier",
+                    case_id, session.attempts, current_version_id, session.outcome)
     elif current_version_id != version_id:
-        # Réparation ratée : la référence reste la version qu'un HUMAIN a approuvée. Les
-        # versions tentées demeurent en historique — c'est la trace de ce qui a été essayé.
+        # Le test ne tourne toujours pas : la référence reste la version qu'un HUMAIN a
+        # approuvée. Les versions tentées demeurent en historique — la trace de ce qui a été
+        # essayé.
         session.final_version_id = version_id
         logger.info("[repair] cas %s non réparé (%s) — v%s reste la référence",
                     case_id, session.outcome, version_id)
     return session
 
 
-def _sync_disque(versions, session: RepairSession, version_id: int,
+def _sync_disque(versions, adopte: bool, version_id: int,
                  current_version_id: int, module_name: str) -> None:
     """Le DISQUE doit toujours refléter la version qui fait référence.
 
@@ -187,10 +222,13 @@ def _sync_disque(versions, session: RepairSession, version_id: int,
     verdict porterait sur un code que personne n'a approuvé.
 
     On réécrit donc systématiquement la version de référence après la boucle.
+
+    `adopte` (et non plus `session.resolved`) : c'est le critère d'ADOPTION qui dit quelle version
+    fait référence — depuis `0016`, « le test tourne », pas « le test passe ».
     """
-    if not session.attempts:
-        return   # rien n'a été écrit sur le disque
-    reference = current_version_id if session.resolved else version_id
+    if current_version_id == version_id:
+        return   # aucune tentative retenue : l'agent n'a rien écrit sur le disque
+    reference = current_version_id if adopte else version_id
     version = versions.get(reference)
     if version is None:
         logger.error("[repair] version de référence %s introuvable — disque non resynchronisé",

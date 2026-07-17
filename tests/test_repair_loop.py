@@ -53,19 +53,30 @@ class _Failure:
 class _Scenario:
     name: str = "[Nominal]"
     status: str = "failed"
+    error: str = ""
 
 
 @dataclass
 class _RealRun:
     failures: list = field(default_factory=list)
     scenarios: list = field(default_factory=lambda: [_Scenario()])
+    returncode: int = 1
 
 
 @dataclass
 class _Outcome:
+    """Miroir d'`ExecutionOutcome` — `derive_verdict` le lit pour l'axe EXÉCUTION (0016).
+
+    `dry_run_passed` et `returncode` ne sont pas décoratifs : le critère d'adoption délègue à
+    `derive_verdict`, qui les lit. Une doublure qui les omettrait testerait un objet que la
+    production ne produit jamais.
+    """
+
     # `real_run=None` = le test n'a PAS tourné (dry-run en échec) — le cas du bug trouvé en réel.
     real_run: _RealRun | None
     execution_id: int | None = None
+    dry_run_passed: bool = True
+    module_name: str = "cas"
 
 
 # Un SECOND échec, réellement différent mais toujours porteur d'un signal — ce que produit un
@@ -82,6 +93,26 @@ def _echec(raw="TypeError: 'int' object is not subscriptable"):
 
 def _succes():
     return _Outcome(real_run=_RealRun(failures=[], scenarios=[_Scenario(status="passed")]))
+
+
+def _tourne_mais_bug_applicatif():
+    """Le test TOURNE et révèle un vrai bug — la forme exacte du cas 1 réparé (`v9`, exec 17).
+
+    Un scénario passe, un autre échoue sur une ASSERTION : `derive_verdict` rend donc
+    `success/non_conforme` — l'axe exécution dit « ça tourne », l'axe fonctionnel dit
+    « l'application ne se conforme pas ». C'est un **constat**, ce pour quoi l'outil existe.
+
+    ⚠️ Les noms doivent coïncider entre scénario et échec : `status._failures_by_scenario`
+    regroupe par `scenario_name`.
+    """
+    echec = _Failure(scenario_name="[ERREUR] Produit invalide",
+                     step_text="Alors une erreur est affichée",
+                     failure_type="assertion",
+                     raw="ASSERT FAILED: l'application a accepté un produit invalide")
+    return _Outcome(real_run=_RealRun(
+        failures=[echec],
+        scenarios=[_Scenario(name="[NOMINAL] Demande complète", status="passed"),
+                   _Scenario(name="[ERREUR] Produit invalide", status="failed")]))
 
 
 @pytest.fixture
@@ -449,3 +480,137 @@ def test_une_reparation_reussie_laisse_la_version_adoptee_sur_disque(conn, monke
 
     assert session.resolved
     assert (tmp_path / "cas_steps.py").read_text(encoding="utf-8") == "# v2 corrigé"
+
+
+# ── Décision 0016 : « réparée » = « le test TOURNE », jamais « le test passe » ──
+# Le critère d'adoption fusionnait les deux axes (§4.1) : un test réparé qui détecte un vrai bug
+# ne pouvait JAMAIS être adopté. Mesuré sur le cas 1 (exec 16 → 17) : la réparation `v9` faisait
+# tourner le test et révélait deux vrais échecs d'assertion — elle a été jetée, le disque
+# rembobiné sur la version cassée, et le run suivant refaisait le `HTTPError 404`.
+
+def test_un_test_qui_TOURNE_et_revele_un_vrai_bug_est_ADOPTE(conn, monkeypatch):
+    """LE test de 0016 — il échoue sur le code d'avant (`resolved` exigeait zéro échec).
+
+    C'est le cas d'usage central : un test existant survit à un changement de contrat technique
+    et révèle un vrai problème fonctionnel derrière. La réparation doit être GARDÉE.
+    """
+    cid, vid, eid = _cas(conn, budget=2)
+    _agent(monkeypatch, RepairProposal(changed=True, steps_content="# v2 odoorpc", summary="fix"))
+    depart = _echec(); depart.execution_id = eid
+
+    session = repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_tourne_mais_bug_applicatif()]))
+
+    assert session.executable            # le test tourne : axe EXÉCUTION
+    assert not session.resolved          # mais il n'est PAS vert : axe FONCTIONNEL
+    assert session.outcome == "real_bug"  # le circuit s'est arrêté sur un vrai bug — et c'est bien
+
+    v2 = CaseRepo(conn).get(cid)["current_version_id"]
+    assert v2 != vid, "la réparation qui a révélé le bug doit être ADOPTÉE, pas jetée"
+    assert VersionRepo(conn).get(v2)["steps_content"] == "# v2 odoorpc"
+    # …et elle n'est jamais approuvée d'office : le gate reste souverain (0014, option (i)).
+    assert ReviewRepo(conn).is_version_approved(v2) is False
+    assert CaseRepo(conn).get(cid)["validation_status"] == "to_review"
+
+
+def test_le_disque_porte_la_version_adoptee_meme_si_elle_n_est_pas_verte(conn, monkeypatch, tmp_path):
+    """Le rembobinage du disque suit le critère d'ADOPTION, pas la verdeur du run.
+
+    Sinon la base dirait « v2 » et le disque contiendrait « v1 » — l'inverse exact du défaut que
+    `_sync_disque` corrige.
+    """
+    monkeypatch.setattr(config, "GENERATED_DIR", tmp_path)
+    cid, vid, eid = _cas(conn, budget=1)
+    _agent(monkeypatch, RepairProposal(changed=True, steps_content="# v2 odoorpc", summary="fix"))
+    depart = _echec(); depart.execution_id = eid
+
+    repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_tourne_mais_bug_applicatif()]))
+
+    assert (tmp_path / "cas_steps.py").read_text(encoding="utf-8") == "# v2 odoorpc"
+
+
+def test_un_test_qui_ne_tourne_toujours_pas_n_est_PAS_adopte(conn, monkeypatch):
+    """La contrepartie : `A` n'adopte pas n'importe quoi. Le critère reste l'axe EXÉCUTION."""
+    cid, vid, eid = _cas(conn, budget=1)
+    _agent(monkeypatch, RepairProposal(changed=True, steps_content="# v2 rate", summary="essai"))
+    depart = _echec(); depart.execution_id = eid
+
+    session = repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_echec()]))
+
+    assert not session.executable
+    assert CaseRepo(conn).get(cid)["current_version_id"] == vid   # v1 reste la référence
+
+
+def test_une_reparation_qui_casse_le_parsing_n_est_PAS_adoptee(conn, monkeypatch):
+    """`real_run=None` (dry-run en échec) : le test ne tourne pas → jamais adopté.
+
+    Garde le bug 1 de `0014` fermé : l'absence d'échecs ne vaut pas succès.
+    """
+    cid, vid, eid = _cas(conn, budget=1)
+    _agent(monkeypatch, RepairProposal(changed=True, steps_content="# v2 cassé", summary="essai"))
+    depart = _echec(); depart.execution_id = eid
+
+    session = repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_Outcome(real_run=None)]))
+
+    assert not session.executable
+    assert session.outcome == repair_service.RUN_FAILED
+    assert CaseRepo(conn).get(cid)["current_version_id"] == vid
+
+
+# ── Décision 0016, option (iii) : la divergence est VISIBLE, jamais corrigée en silence ──
+
+def test_la_version_d_origine_du_verdict_est_exposee(conn, monkeypatch):
+    """Les `last_*` d'un cas peuvent décrire une version rembobinée : on le DIT.
+
+    On ne recalcule pas le verdict depuis la version courante (option (ii), écartée) : ce serait
+    masquer un run réel. On surface — ligne du projet depuis 0007 B+, 0008, 0013.
+    """
+    from testpilot.api import schemas
+
+    cid, vid, eid = _cas(conn, budget=1)
+    _agent(monkeypatch, RepairProposal(changed=True, steps_content="# v2 rate", summary="essai"))
+    depart = _echec(); depart.execution_id = eid
+
+    # Réparation qui ne rend PAS le test exécutable → v1 reste la référence, mais le dernier run
+    # (celui de la tentative) a écrit les `last_*` du cas.
+    repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_echec()]))
+
+    row = CaseRepo(conn).get(cid)
+    assert row["current_version_id"] == vid
+    out = schemas.case_summary(row)
+    assert out.last_verdict_version_id != vid       # le verdict vient de la tentative…
+    assert out.verdict_from_other_version is True   # …et on le signale
+
+
+def test_aucune_divergence_signalee_quand_il_n_y_en_a_pas(conn, monkeypatch):
+    """Une alerte inventée serait aussi nuisible qu'une alerte tue."""
+    from testpilot.api import schemas
+
+    cid, vid, eid = _cas(conn, budget=1)
+    _agent(monkeypatch, RepairProposal(changed=True, steps_content="# v2 ok", summary="fix"))
+    depart = _echec(); depart.execution_id = eid
+
+    repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_succes()]))
+
+    out = schemas.case_summary(CaseRepo(conn).get(cid))
+    assert out.verdict_from_other_version is False   # la version adoptée EST celle qui a tourné
+
+
+def test_un_cas_jamais_execute_ne_diverge_de_rien(conn):
+    from testpilot.api import schemas
+
+    cid = CaseRepo(conn).create(title="Neuf", feature_slug="neuf")
+    out = schemas.case_summary(CaseRepo(conn).get(cid))
+    assert out.last_verdict_version_id is None
+    assert out.verdict_from_other_version is False

@@ -190,8 +190,16 @@ def _prettify_slug(slug: str) -> str:
 
 
 # Colonnes cas + jointure métier (module/projet) réutilisées par get/list.
+# `last_verdict_version_id` : la version qui a RÉELLEMENT produit `last_execution_status`
+# (décision 0016, option (iii)). Les `last_*` du cas sont écrits à CHAQUE run — y compris une
+# tentative de réparation qui ne sera pas adoptée. Le statut peut donc décrire une version qui
+# n'est plus la référence : on l'affiche au lieu de le corriger en silence, conformément à la
+# ligne du projet (0007 B+, 0008 lint, 0013). On ne recalcule PAS le statut depuis la version
+# courante : ce serait masquer un run réel.
 _CASE_SELECT = (
-    "SELECT tc.*, m.name AS module_name, m.project_id AS project_id, p.name AS project_name"
+    "SELECT tc.*, m.name AS module_name, m.project_id AS project_id, p.name AS project_name,"
+    " (SELECT e.version_id FROM execution e WHERE e.test_case_id = tc.id"
+    "  ORDER BY e.id DESC LIMIT 1) AS last_verdict_version_id"
     " FROM test_case tc"
     " LEFT JOIN module m ON tc.module_id = m.id"
     " LEFT JOIN project p ON m.project_id = p.id"
