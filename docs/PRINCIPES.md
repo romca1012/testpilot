@@ -49,9 +49,36 @@ Ce document transforme ce constat en règles, et dit **où le projet les respect
 
 ### Ce qui est mesuré — ✅ **le §9 est mesurable depuis le 2026-07-17**
 
+> ### 🔄 RÉVISÉ le 2026-07-17 (soir) — le chemin ÉCRAN a enfin été mesuré, et tout change
+>
+> Ce qui suit dans cette section a été écrit quand **seule la CLI** mesurait quelque chose. Le
+> chemin de l'écran — **celui que les utilisateurs empruntent** — n'écrivait rien au ledger, et
+> le coût de l'**analyse** n'était compté nulle part. Les deux sont corrigés (migration 12 +
+> branchement). Mesures réelles, mêmes spec et route qu'un utilisateur :
+>
+> | | mesure | régime |
+> |---|---|---|
+> | Analyse (jamais mesurée avant) | **$0,0157** | actuel |
+> | Génération (chemin écran) | **$0,1050** | **actuel** |
+> | **Création d'un cas** | **$0,1207** | **11 % du §9** |
+> | + 2 réparations au tarif mesuré | **$0,6997** | **65 % du §9** |
+> | ~~Génération « de référence »~~ | ~~$0,4529~~ | ❌ **régime révolu** |
+>
+> **Le $0,4529 n'est pas « le coût de la génération » : c'est le coût d'AVANT les garde-fous.**
+> Sur la **même spec**, l'agent d'aujourd'hui écrit **1 973 caractères de steps contre 15 312**
+> (7,8× moins) — et couvre **plus** : 4 scénarios / 44 assertions contre 3. Il réutilise la
+> bibliothèque au lieu de tout réinventer.
+>
+> **Le travail de prompt de ces deux jours (catalogue `0003`, notes `0012`, contrat `0007` A1) a
+> coûté 0 € et divisé la génération par ~4.** C'est la première fois qu'on peut le chiffrer —
+> parce que c'est la première fois que le chemin réel mesure quoi que ce soit. Le §9 n'est donc
+> pas tenu par un plafond : il est tenu parce que l'agent travaille mieux.
+>
+> ⚠️ **Ne jamais MOYENNER les deux régimes** : $0,22 est un chiffre qui n'est jamais arrivé.
+
 | | mesure réelle | statut |
 |---|---|---|
-| Génération d'un module (cas 1) | **$0,4529** ≈ **0,42 €** — **42 % du budget** | mesuré |
+| ~~Génération d'un module (cas 1)~~ | ~~**$0,4529** ≈ 0,42 € — 42 % du budget~~ | ❌ **régime révolu** (voir encart) |
 | Réparations d'avant le correctif (×5 : v7→v11) | **perdues — aucune trace** | irrécupérable |
 | Réparations à partir de maintenant | comptées, **tentatives ratées comprises** | mesuré |
 
@@ -73,11 +100,18 @@ Les deux défauts que ce document nommait :
    (`REPAIR_COST_LIMIT_PER_CASE_USD = $0,62`, calibré ci-dessous) et le passe à chaque tentative ;
    le premier seuil atteint escalade vers un humain (`COST_EXCEEDED`), ce que le §6 du brief
    demande. 5 tests, dont 3 **vérifiés comme échouant** sur le code d'avant.
-   ⚠️ **Trou restant, nommé** : `COST_LIMIT_PER_RUN_USD` borne encore la **génération** à $2 —
-   près du double du §9 à elle seule. Le §9 n'est donc tenu que sur le versant **réparation**. Le
-   combler suppose une 2ᵉ mesure de génération (la seule connue, $0,4529, ne laisserait que 10 %
-   de marge sous un plafond de $0,50 : le premier cas plus gros échouerait à la création). À
-   calibrer sur mesure, pas à deviner.
+   ✅ **Trou refermé le 2026-07-17 (soir)** : `COST_LIMIT_PER_RUN_USD` bornait la **génération**
+   à $2 — près du double du §9 à elle seule, et **16,6× le coût réel**. Recalibré à **$0,50** sur
+   la mesure du chemin écran : 4,8× le coût d'aujourd'hui ($0,105) **et** au-dessus du pire jamais
+   mesuré ($0,4529) — ce plafond n'aurait fait échouer **aucune** génération jamais observée.
+   *(Je craignais qu'un plafond à $0,50 ne laisse que 10 % de marge : c'était en croyant que la
+   génération coûtait $0,4529. La mesure a tranché — elle coûte $0,105, donc la marge est de
+   4,8×. Encore un chiffre qu'il fallait mesurer plutôt que raisonner.)*
+   ⚠️ **Ce que les plafonds ne garantissent pas** : $0,50 + $0,62 = $1,12 = **104 % du §9** si les
+   deux saturaient ensemble. Ce cas exige que la génération coûte 4,8× sa valeur mesurée — le
+   plafond a alors déjà coupé et un humain est dans la boucle. **Les plafonds sont un filet
+   anti-emballement, pas le mécanisme qui délivre le §9.** Les serrer davantage ferait échouer des
+   créations légitimes : on paierait plus cher que ce qu'on économise.
 
 > Le motif §4.6 appliqué à l'argent : le brief affichait 1 €, le code plafonnait à 1,85 €, et le
 > chemin réel ne mesurait rien. Le troisième terme est réglé ; le deuxième attend une mesure.
@@ -99,15 +133,21 @@ répétée**. La boucle ReAct renvoie tout le contexte à chaque tour — le cat
 partagés **plus** le fichier de 14 000 caractères — et un tour d'agent en compte plusieurs. À
 $0,80/M en entrée, $0,29 représente ~360 000 tokens d'entrée cumulés.
 
+> **🔄 CE TABLEAU EST PÉRIMÉ — révisé le 2026-07-17 (soir).** Il décrit le **régime d'avant les
+> garde-fous**, seul mesurable à l'époque (chemin CLI). Le tableau à jour est dans l'encart plus
+> haut : **création $0,1207 = 11 % du §9**, et **$0,6997 = 65 %** avec 2 réparations. Conservé
+> tel quel — c'est la trace de ce qu'on croyait, et de ce que les garde-fous ont changé.
+
 | | coût | % du budget §9 ($1,08) | statut |
 |---|---|---|---|
-| Génération d'un module (cas 1) | $0,4529 | **42 %** | ✅ **mesuré** (ledger #1) |
-| \+ **1** réparation | $0,7424 | **69 %** | ✅ **mesuré** (ledger #2) |
-| \+ **2** réparations *(le budget par défaut)* | **$1,0319** | **96 %** ⚠️ | ⚠️ **EXTRAPOLÉ** — voir ci-dessous |
+| ~~Génération d'un module (cas 1)~~ | ~~$0,4529~~ | ~~42 %~~ | ❌ **régime révolu** — vaut $0,1050 aujourd'hui |
+| ~~\+ **1** réparation~~ | ~~$0,7424~~ | ~~69 %~~ | ❌ idem |
+| ~~\+ **2** réparations *(budget par défaut)*~~ | ~~**$1,0319**~~ | ~~96 %~~ | ❌ **extrapolé, ET sur le mauvais régime** |
 
-**Un cas qui utilise son budget de réparation par défaut frôle le plafond du §9.** La marge que
-j'annonçais (« ~46 % ») n'existe pas. Ce n'est pas un dépassement — c'est l'absence de marge, et
-elle était invisible tant que rien ne mesurait.
+~~**Un cas qui utilise son budget de réparation par défaut frôle le plafond du §9.**~~ **Faux
+depuis la mesure du chemin réel** : il en utilise **65 %**. La conclusion « il n'y a pas de
+marge » reposait sur une génération à $0,4529 — un chiffre d'un régime qui n'existe plus.
+**La marge existe, et c'est le travail de garde-fous qui l'a créée.**
 
 > ### ⚠️ Le $1,0319 n'est PAS une mesure — et deux défauts distincts sont ici confondus
 >
@@ -466,7 +506,7 @@ Ma recommandation était « **B porteur + A en renfort** » (garde d'auth + anno
 | 4 | Point de vérité unique | **nul** | ✅ | aucun (vérifié) — mais n'aurait pas empêché `0016` |
 | 5 | Garde de non-régression | **nul** (runs déjà payés) | ✅ **livré** | **seul filet possible contre la perte SILENCIEUSE d'un scénario** |
 | 6 | Promesses de prompt vérifiées | **nul** | ✅ **livré** | promesses liées au COMPORTEMENT réel, pas au texte |
-| — | **Mesure du budget §9** | **nul** | ✅ **livré** | mesuré par cas (cas 1 = $0,4529 = 42 %). Plafond $2,00 ≈ 1,85 € **conservé et gardé par test** |
+| — | **Mesure du budget §9** | **nul** | ✅ **livré, et sur le VRAI chemin** | mesuré par cas **sur le chemin écran** (migration 12 + analyse enfin comptée) : **création $0,1207 = 11 % du §9**, **$0,70 = 65 %** avec 2 réparations. Plafond génération recalibré **$2,00 → $0,50** sur mesure. Le $0,4529 était le régime **d'avant les garde-fous** |
 
 **Aucun des six principes ne dépasse le budget.** Le coût n'est pas l'obstacle : c'est un
 non-sujet, et le rappeler est le premier résultat de ce document. **Les principes 1, 2, 4, 5 et 6

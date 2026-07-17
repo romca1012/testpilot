@@ -32,27 +32,44 @@ est la **gouvernance du verdict**, pas la sécurité.)*
   plafond entier → un cas pouvait coûter **génération ($2) + budget × $2 = jusqu'à $6**, contre
   **$1,08** au §9. Garde-fou **décoratif** (le `position` de `0006`, le stall du circuit),
   appliqué à l'argent. Corrigé : **un seul** tracker partagé pour toute la boucle, escalade
-  humaine au premier seuil (§6). Calibré sur le ledger réel :
-  `REPAIR_COST_LIMIT_PER_CASE_USD = $0,62` (= $1,08 − $0,4529 de génération mesurée) ;
+  humaine au premier seuil (§6). Calibré sur le PIRE observé (c'est ainsi qu'on borne) :
+  `REPAIR_COST_LIMIT_PER_CASE_USD = $0,62` (= $1,08 − $0,4529, la pire génération jamais mesurée) ;
   `REPAIR_BUDGET_DEFAULT` **reste à 2** (2 × $0,2895 = $0,5790 ≤ $0,62 — la mesure ne demande pas
   de descendre à 1). 5 tests, dont 3 vérifiés comme échouant sur le code d'avant.
-- [ ] 🔴 **Le §9 n'est PAS tenu sur la génération** — *trou nommé, non comblé, 2026-07-17*.
-  `COST_LIMIT_PER_RUN_USD = $2` ≈ 1,85 € borne encore la génération : **près du double du §9 à
-  elle seule**. Seul le versant réparation est borné. **Bloqué sur une mesure** : la seule
-  génération connue ($0,4529) ne laisserait que 10 % de marge sous un plafond de $0,50 — le
-  premier cas plus gros échouerait à la création. À calibrer sur une **2ᵉ mesure**, pas à deviner.
+- [x] **Le coût de génération du chemin ÉCRAN n'était pas au ledger** — *fait le 2026-07-17*
+  (`eccc8f5`). `CostRepo.add_entry` n'était appelé que par `cli.py` et `repair_service` : un cas
+  créé par l'écran ne laissait **aucune trace** de son coût de génération. **Défaut structurel** :
+  le ledger reliait un coût à un cas par `JOIN execution`, or une génération **n'a pas
+  d'exécution** — brancher l'appel n'aurait rien donné. → **migration 12** (`test_case_id` devient
+  le lien). **Trouvé en branchant** : `SpecAnalyzer()` était construit **sans tracker** sur les
+  deux chemins → le coût d'**analyse** valait toujours 0. Corrigé des deux côtés. 10 tests, dont
+  8 vérifiés comme échouant avant. ⚠️ **Bug réel commis** : l'index dans `schema.sql` (qui
+  s'exécute avant les migrations) faisait planter **toute ouverture d'une base existante** — 416
+  tests verts ne l'ont pas vu, la vraie base l'a attrapé.
+- [x] 🎉 **Le §9 est tenu, et mesuré sur le VRAI chemin** — *fait le 2026-07-17* (`7938b7b`).
+  Mesure réelle (route HTTP, vraie base, vraie instance Odoo, spec `demande_materiel`) :
+  **analyse $0,0157 + génération $0,1050 = $0,1207 = 11 % du §9** ; avec 2 réparations au tarif
+  mesuré : **$0,6997 = 65 %**.
+  ⚠️ **Le $0,4529 n'est PAS « le coût de la génération » : c'est le coût d'AVANT les garde-fous.**
+  Même spec, l'agent écrit aujourd'hui **1 973 car. de steps contre 15 312** (7,8× moins) et couvre
+  **plus** (4 scénarios / 44 assertions contre 3) : il réutilise la bibliothèque. Le travail de
+  prompt (catalogue `0003`, notes `0012`, contrat `0007` A1) a coûté **0 €** et divisé la
+  génération par ~4. **Ne jamais moyenner les deux régimes** ($0,22 n'est jamais arrivé).
+  `COST_LIMIT_PER_RUN_USD` recalibré **$2,00 → $0,50** (il valait 16,6× le réel) : 4,8× le coût
+  actuel **et** au-dessus du pire jamais mesuré — il n'aurait fait échouer aucune génération connue.
+  ⚠️ **Les plafonds ne délivrent pas le §9** : $0,50 + $0,62 = $1,12 = 104 % si les deux
+  saturaient ensemble. Ce sont des filets anti-emballement ; c'est le travail de garde-fous qui
+  tient le §9. Les serrer ferait échouer des créations légitimes.
 - [ ] **Re-mesurer le coût d'une réparation** — *le chiffre en vigueur est périmé à la baisse*.
   $0,2895 a été mesuré avec `dry_runner=None`, soit **2 appels LLM** par tentative (l'écriture +
   un tour perdu). Le fix P0 (`3a744a4`) en supprime un sur le chemin heureux. À reprendre au rejeu
   du cas 1. ⚠️ **Le $1,0319 (« génération + 2 réparations ») n'est pas une mesure** mais une
-  extrapolation : le ledger ne contient qu'**une** réparation réelle.
+  extrapolation — **et sur le mauvais régime** : le ledger ne contient qu'**une** réparation réelle.
   Mesure reproductible : `PYTHONUTF8=1 python scripts/mesure_cout_cas.py`.
-- [ ] **Le coût de génération du chemin API n'est pas au ledger** — *trouvé le 2026-07-17, non
-  corrigé*. `CostRepo.add_entry` n'est appelé que par `cli.py` (génération) et `repair_service`
-  (réparation) : **un cas créé par l'écran ne laisse aucune trace de son coût de génération**.
-  `total_for_case_usd` le sous-évalue donc de tout le poste le plus lourd (42 % du §9 sur le cas
-  1), et la seule ligne de génération du ledger vient d'un run **CLI**. La mesure du §9 est
-  aveugle sur le chemin que les utilisateurs empruntent.
+- [ ] **Artefacts de mesure à arbitrer** — les cas **7** et **8** ont été créés dans la vraie base
+  pour mesurer le coût réel du chemin écran (c'est ce qui rend la mesure réelle, et ça laisse des
+  déchets — leçon du ménage du 2026-07-16). À nettoyer ou à assumer : **décision du porteur**.
+  Backups : `data/testpilot.db.pre-migration12.bak`, `…pre-mesure-generation.bak`.
 
 ## Incrément 1 (suite de l'interface / robustesse)
 
@@ -188,10 +205,15 @@ est la **gouvernance du verdict**, pas la sécurité.)*
   ⚠️ **CORRIGÉ le 2026-07-17 — mon chiffrage était 10× trop bas.** J'avais estimé $0,015/tentative
   en raisonnant sur la SORTIE. Mesuré sur une réparation réelle : **$0,2895**. Le coût est dominé
   par l'**entrée répétée** (la boucle ReAct renvoie le catalogue de 42 steps + le fichier de
-  14 000 car. à chaque tour), pas par la sortie. Conséquence : **génération + 2 réparations =
-  $1,0319 = 96 % du budget §9**. Un diff réduirait le fichier réinjecté à chaque tour — donc le
-  vrai poste de coût. **Le principe 3 pourrait donc être un sujet de coût après tout : à chiffrer
-  avant de rouvrir** (ne pas remplacer une estimation fausse par une autre).
+  14 000 car. à chaque tour), pas par la sortie. ~~Conséquence : **génération + 2 réparations =
+  $1,0319 = 96 % du budget §9**.~~
+  🔄 **RÉVISÉ le 2026-07-17 (soir) — ce 96 % est faux.** Il reposait sur une génération à $0,4529,
+  mesurée **avant les garde-fous**. Mesure réelle du chemin écran : création $0,1207, et
+  **$0,6997 = 65 % du §9** avec 2 réparations. **L'urgence coût du principe 3 tombe** : il reste
+  un sujet de **rayon d'explosion** (une réparation réécrit du code qui marchait), pas de budget.
+  Un diff réduirait quand même l'entrée réinjectée à chaque tour — **à chiffrer si on rouvre**,
+  jamais à supposer (je me suis trompé deux fois sur ce chiffre : d'abord 10× trop bas, puis sur
+  le mauvais régime).
   **Pourquoi ça attend** : le principe 5 (garde de non-régression, livré, coût nul) couvre le même
   risque **en pratique** — une réparation qui casse ce qui marchait n'est plus adoptée. Mais voir
   la correction de coût ci-dessus : l'argument « ça n'attend que pour le rayon d'explosion » ne

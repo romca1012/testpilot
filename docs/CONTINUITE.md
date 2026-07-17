@@ -32,41 +32,86 @@
 
 ## 0. Session du 2026-07-17 (v4) — ce qui vient d'être fait
 
-**Trois commits.** Tests : **407 Python · 36 vitest**, tout vert.
+**Six commits.** Tests : **419 Python · 36 vitest**, tout vert. **Base migrée : `user_version` 9 → 12.**
 
 | # | commit | ce que c'est |
 |---|---|---|
 | `3a744a4` | **Fix P0 — dry-run branché** | `propose_fix` recevait `dry_runner=None` : **aucun correctif n'était validé par rien** avant un run réel de ~300 s, alors que la docstring de `repair_agent` promet l'inverse. **C'est la cause directe de l'échec du rejeu** (v12 a supprimé son step d'auth sans toucher au `.feature` → `undefined` → `RUN_FAILED`). Effet de bord : le chemin heureux passe de **2 appels LLM à 1**. |
-| `edc4002` | **CostTracker — le plafond borne le CAS** | `propose_fix` créait un tracker **neuf à chaque tentative** : `COST_LIMIT_PER_RUN_USD = $2` bornait un **appel**, pas un run. Un cas pouvait coûter **jusqu'à $6** contre $1,08 au §9. Garde-fou **décoratif**, appliqué à l'argent. Corrigé + calibré : `REPAIR_COST_LIMIT_PER_CASE_USD = $0,62`. |
+| `edc4002` | **CostTracker — le plafond borne le CAS** | `propose_fix` créait un tracker **neuf à chaque tentative** : `COST_LIMIT_PER_RUN_USD = $2` bornait un **appel**, pas un run. Un cas pouvait coûter **jusqu'à $6** contre $1,08 au §9. Garde-fou **décoratif**, appliqué à l'argent. Corrigé + calibré. |
 | `3f53d0d` | **Recadrage sur le brief** | Brief amendé (budget), pivot rejeté, `0017` re-statué, borne du principe 2, incréments réalignés sur le §12. |
+| `be14211` | **Rapport de continuité v4** | Le rappel « le brief est la seule source de vérité » en tête de document. |
+| `eccc8f5` | **Le coût du chemin ÉCRAN entre au ledger** *(migration 12)* | `CostRepo.add_entry` n'était appelé que par la CLI et `repair_service` : **un cas créé par l'écran ne traçait aucun coût de génération**. Défaut **structurel** — le ledger reliait un coût à un cas par `JOIN execution`, or une génération **n'a pas d'exécution**. → `test_case_id` devient le lien. **Trouvé en branchant** : `SpecAnalyzer()` était sans tracker → l'**analyse** ne coûtait rien à personne, sur les deux chemins. |
+| `7938b7b` | **Mesure réelle + recalibrage** | La génération coûte **4× moins** que cru. Plafond **$2,00 → $0,50**. |
+
+### ⚠️ Le bug que 416 tests verts n'ont pas vu
+
+J'ai mis `CREATE INDEX … ON cost_ledger(test_case_id)` dans `schema.sql`. Or **`schema.sql`
+s'exécute AVANT les migrations** : sur une base antérieure la colonne n'existe pas encore →
+`no such column` → **toute ouverture de la base plante**, application comprise. Aucun test ne l'a
+vu : ils partent tous d'un schéma **neuf**. **La vraie base l'a attrapé à la première ouverture.**
+Le codebase documentait déjà la leçon (index d'unicité, `idx_case_module`) — je l'ai rejouée.
+L'index vit maintenant dans la migration seule, et un test reconstruit une base d'avant la colonne.
+*(Méthode §8.8 : un test vert ne prouve pas qu'un utilisateur voit la bonne chose.)*
+
+### 🎉 Le §9 est tenu — et pour la première fois mesuré sur le chemin des utilisateurs
+
+**Mesure réelle** (route HTTP, vraie base, vraie instance Odoo, spec `demande_materiel`) :
+
+| poste | coût | % du §9 ($1,08) |
+|---|---|---|
+| Analyse *(jamais mesurée avant ce jour)* | $0,0157 | 1 % |
+| Génération *(chemin écran)* | $0,1050 | 10 % |
+| **Création d'un cas** | **$0,1207** | **11 %** |
+| + 2 réparations au tarif mesuré | **$0,6997** | **65 %** |
+
+**⚠️ Le `$0,4529` n'est pas « le coût de la génération » : c'est le coût d'AVANT les garde-fous.**
+Sur la **même spec**, l'agent écrit aujourd'hui **1 973 caractères de steps contre 15 312** (7,8×
+moins) et couvre **plus** (4 scénarios / 44 assertions contre 3) : il réutilise la bibliothèque au
+lieu de tout réinventer. **Le travail de prompt (catalogue `0003`, notes `0012`, contrat `0007`
+A1) a coûté 0 € et divisé la génération par ~4.** C'est la première fois qu'on peut le chiffrer.
+
+> **Le §9 n'est pas tenu par un plafond — il est tenu parce que l'agent travaille mieux.**
 
 ### Ce qu'il faut savoir avant de citer un chiffre de coût
 
 - **Le §9 est l'unique cible de coût du produit** : moins de 1 €/cas. Le « 50 €/mois » est
   **retiré du périmètre produit** (budget de dev du porteur) — brief amendé, `MONTHLY_BUDGET_*`
   reste en config **lu par personne**, volontairement.
-- **`$1,0319` n'est PAS une mesure** — c'est une extrapolation (`$0,4529 + 2 × $0,2895`). Le
-  ledger ne contient **qu'une** réparation réelle. Un cas à 2 réparations n'a **jamais** été
-  mesuré.
+- **Ne JAMAIS moyenner les deux régimes** de génération : $0,22 est un chiffre qui n'est jamais
+  arrivé. Le script de mesure montre la **dernière** (le régime actuel) et la **pire** (ce sur
+  quoi un plafond se calibre).
+- **`$1,0319` n'est PAS une mesure** — extrapolation (`$0,4529 + 2 × $0,2895`), **et sur le
+  mauvais régime**. Le ledger ne contient **qu'une** réparation réelle.
 - **Le bug du CostTracker ne faussait pas les chiffres.** Avec un tracker neuf, chaque ligne du
   ledger était **juste**. Il ne corrompait pas le **comptage**, il rendait le **plafond**
   inopérant. Deux défauts distincts, longtemps confondus.
 - **`$0,2895` est périmé à la baisse** : mesuré avec `dry_runner=None`, donc 2 appels LLM par
-  tentative. Le fix P0 en supprime un. **Non re-mesuré.**
-- Mesure reproductible, sans dépenser un centime : `PYTHONUTF8=1 python scripts/mesure_cout_cas.py`.
+  tentative. Le fix P0 en supprime un. **Non re-mesuré** → au rejeu du cas 1.
+- Mesures reproductibles : `scripts/mesure_cout_cas.py` (gratuit, lit le ledger) et
+  `scripts/mesure_generation_chemin_ecran.py` (⚠️ **dépense ~$0,12 et écrit dans la vraie base**).
 
-### Trou connu, nommé, non comblé
+### Les plafonds, et ce qu'ils ne garantissent pas
 
-`COST_LIMIT_PER_RUN_USD = $2` borne encore la **génération** — près du **double** du §9 à elle
-seule. **Le §9 n'est donc tenu que sur le versant réparation.** Le combler exige une **2ᵉ mesure
-de génération** : la seule connue ($0,4529) ne laisserait que 10 % de marge sous un plafond de
-$0,50, et le premier cas plus gros échouerait à la création. À calibrer sur mesure, pas à deviner.
+| plafond | valeur | calibrage |
+|---|---|---|
+| `COST_LIMIT_PER_RUN_USD` *(génération)* | **$0,50** *(était $2,00 = 16,6× le réel)* | 4,8× le coût actuel, **et** au-dessus du pire jamais mesuré → n'aurait fait échouer aucune génération connue |
+| `REPAIR_COST_LIMIT_PER_CASE_USD` | **$0,62** | = $1,08 − $0,4529 (pire génération) — on borne sur le pire |
+| `REPAIR_BUDGET_DEFAULT` | **2** *(inchangé)* | 2 × $0,2895 = $0,5790 ≤ $0,62 : la mesure ne demande pas de descendre à 1 |
+
+⚠️ **$0,50 + $0,62 = $1,12 = 104 % du §9** si les deux saturaient **ensemble**. Ce cas exige que
+la génération coûte 4,8× sa valeur mesurée — le plafond a alors déjà coupé et un humain est dans
+la boucle. **Les plafonds sont un filet anti-emballement, pas le mécanisme qui délivre le §9.**
+Les serrer davantage ferait échouer des créations légitimes : on paierait plus cher que ce qu'on
+économise.
 
 ### La suite, dans l'ordre
 
 1. **Rejeu réel du cas 1** (`3.3`) — prouver le chemin positif de `0016`, et **re-mesurer** le
    coût d'une réparation maintenant que le dry-run est branché. Les deux d'un coup.
 2. **Exécution nommée transverse multi-modules** — §12 **Incrément 1**, dernier gros manque du §7.
+
+⚠️ **À arbitrer** : les cas **7** et **8** sont des **artefacts de mesure** créés dans la vraie
+base (c'est le prix d'une mesure réelle). À nettoyer ou à assumer — décision du porteur.
 
 ---
 
@@ -278,7 +323,7 @@ Chaque décision a sa note détaillée dans `docs/decisions/`.
 
 ---
 
-## 3. Modèle de données actuel (`user_version = 9`)
+## 3. Modèle de données actuel (`user_version = 12`)
 
 ```
 project        id, name, description, created_at,
@@ -309,14 +354,22 @@ project        id, name, description, created_at,
                    └─ repair_attempt   id, execution_id, attempt_number, failure_signature,
                                        cause_category, defect_origin, confirmation_status,
                                        confirmed_by, confirmed_at, what_was_tried, created_at
-cost_ledger    id, period_month, execution_id, phase, model, cost_usd, source, created_at
+cost_ledger    id, period_month, test_case_id,  ← le CAS qui a coûté : le lien du §9 (migration 12)
+                   execution_id,                ← contexte facultatif (une génération n'en a pas)
+                   phase, model, cost_usd, source, created_at
 ```
 
 **Migrations** (`store/db.py`, `PRAGMA user_version`) : 1 = project/module + feature_slug ;
 2 = connecteur sur projet + `Odoo`→`Portail Sapian` ; 3 = `priority` ; 4 = `field_fallbacks`
 sur `execution` (0007 B+) ; 5 = index UNIQUE d'unicité des noms (§2.9) ;
 6 = `test_case.position` (ordre d'affichage manuel, `0009`) ;
-7 = suppression des colonnes mortes `report_*_path` (écart 4 : diagnostic faux).
+7 = suppression des colonnes mortes `report_*_path` (écart 4 : diagnostic faux) ;
+8 = verdict humain sur les diagnostics (`0013`) ; 9 = `review_decision.repair_budget` (`0014`) ;
+10 = `scenario_result.step_text` persisté pour l'audit (`0015`) ;
+11 = `execution.error_message` (la raison d'un plantage, à l'écran) ;
+12 = **`cost_ledger.test_case_id`** — le coût appartient au **cas**, l'exécution n'en est qu'un
+contexte. Sans elle, le coût de génération du chemin écran n'avait **aucune exécution où
+s'accrocher** et était perdu : le §9 y était structurellement inmesurable.
 Non implémenté du §7 : l'**Exécution nommée transverse**.
 
 ---
