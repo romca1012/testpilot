@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 11
+_SCHEMA_VERSION = 12
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -85,6 +85,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_10_step_text(conn)
     if version < 11:
         _migrate_11_execution_error(conn)
+    if version < 12:
+        _migrate_12_cost_case_id(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -335,6 +337,39 @@ def _migrate_11_execution_error(conn: sqlite3.Connection) -> None:
     """
     if "error_message" not in _column_names(conn, "execution"):
         conn.execute("ALTER TABLE execution ADD COLUMN error_message TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_12_cost_case_id(conn: sqlite3.Connection) -> None:
+    """Le coût appartient au CAS ; l'exécution n'en est qu'un contexte. Idempotent.
+
+    ⚠️ **Sans cette colonne, le §9 est structurellement inmesurable sur le chemin de l'écran.**
+    `cost_ledger` ne reliait un coût à un cas qu'à TRAVERS `execution` (`total_for_case_usd`
+    fait `JOIN execution`). Or la génération par l'API se produit **avant toute exécution** :
+    un cas est généré, relu, puis exécuté plus tard — voire jamais. Le coût de génération
+    n'avait donc **aucune exécution où s'accrocher**, et il était simplement perdu.
+
+    La CLI masquait le défaut : elle génère et exécute dans le même pipeline, donc elle avait une
+    exécution sous la main. C'est pour ça que la seule ligne `generation` du ledger vient d'un run
+    CLI — et que le poste le plus lourd du §9 (42 % sur le cas 1) était invisible sur le chemin
+    que les utilisateurs empruntent réellement.
+
+    `test_case_id` devient donc le lien de référence ; `execution_id` reste, mais **facultatif**
+    et purement contextuel (quel run a provoqué cette dépense). Les deux coexistent : le rattacher
+    à l'exécution reste utile pour une réparation, ça ne l'est pas pour une génération.
+
+    **Reprise des lignes existantes** : on remplit `test_case_id` depuis l'exécution liée. Aucune
+    donnée n'est perdue, aucun total ne bouge — les deux lignes réelles (génération + réparation
+    du cas 1) sont rattachées au cas 1, qu'elles décrivaient déjà par ce détour.
+    """
+    if "test_case_id" not in _column_names(conn, "cost_ledger"):
+        conn.execute("ALTER TABLE cost_ledger ADD COLUMN test_case_id INTEGER "
+                     "REFERENCES test_case(id)")
+    # Reprise : ce que le JOIN déduisait, on l'inscrit. Idempotent (WHERE … IS NULL).
+    conn.execute(
+        "UPDATE cost_ledger SET test_case_id = ("
+        "  SELECT e.test_case_id FROM execution e WHERE e.id = cost_ledger.execution_id)"
+        " WHERE test_case_id IS NULL AND execution_id IS NOT NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cost_case ON cost_ledger(test_case_id)")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

@@ -87,6 +87,49 @@ def start_generation(conn, module_id: int, *, spec_content: str, title: str = ""
                     "spec_content": spec_content, "author": author}
 
 
+def _record_generation_cost(conn, *, case_id: int | None, analysis_usd: float,
+                            generation_usd: float) -> None:
+    """Écrit au ledger ce que la création d'un cas a coûté — analyse ET génération.
+
+    ⚠️ **Sans ça, le §9 était inmesurable sur le chemin que les utilisateurs empruntent.**
+    `CostRepo.add_entry` n'était appelé que par `cli.py` et `repair_service` : un cas créé par
+    l'écran ne laissait **aucune trace** de son coût de génération — 42 % du budget cible sur le
+    cas 1, invisible. La seule ligne `generation` du ledger venait d'un run CLI, et on prétendait
+    juger le §9 dessus.
+
+    **Deux lignes, pas une** : le ledger porte la `phase`, donc il doit dire *ce qui* a coûté, pas
+    seulement combien (c'est la raison d'être de `breakdown_for_case`). Elles n'ont pas le même
+    modèle non plus (`MODEL_FAST` pour l'analyse, `MODEL_GENERATION` pour la génération) : les
+    fusionner attribuerait la dépense au mauvais tarif et rendrait le total inexplicable.
+
+    Aucun `execution_id` : **une génération n'a pas d'exécution** — elle la précède, et le cas
+    peut n'être jamais exécuté. C'est précisément pourquoi le lien du ledger devait devenir
+    `test_case_id` (migration 12).
+
+    Best-effort : une écriture de comptabilité ne fait jamais échouer une génération qui a réussi
+    — mais elle ne disparaît pas en silence (§4.6).
+    """
+    if case_id is None:
+        # L'agent n'a pas créé de cas (échec avant persistance) : la dépense est réelle mais n'a
+        # aucun cas où s'accrocher. On le DIT plutôt que de l'imputer à un cas au hasard.
+        if analysis_usd or generation_usd:
+            logger.warning("[generation] $%.4f dépensés sans cas créé — hors ledger (aucun "
+                           "test_case_id où rattacher). Le budget §9 ignore cette dépense.",
+                           analysis_usd + generation_usd)
+        return
+    from testpilot.store.repositories import CostRepo
+    for phase, model, cost in (("analysis", config.MODEL_FAST, analysis_usd),
+                               ("generation", config.MODEL_GENERATION, generation_usd)):
+        if not cost:
+            continue
+        try:
+            CostRepo(conn).add_entry(phase=phase, model=model, cost_usd=cost,
+                                     source=config.COST_SOURCE, test_case_id=case_id)
+        except Exception:
+            logger.exception("[generation] coût %s de %s USD NON enregistré (cas %s) — le budget "
+                             "§9 sera sous-évalué d'autant", phase, cost, case_id)
+
+
 def run_generation(job_id: str, *, module_id: int, slug: str, title: str,
                    spec_content: str, author: str) -> None:
     """Tâche de fond : analyse la spec puis génère le cas DANS le module demandé."""
@@ -95,7 +138,8 @@ def run_generation(job_id: str, *, module_id: int, slug: str, title: str,
     from testpilot.connectors.runtime_env import project_env
     from testpilot.execution.behave_runner import BehaveRunner
     from testpilot.generation.agent import GenerationAgent
-    from testpilot.store.repositories import ProjectRepo, VersionRepo
+    from testpilot.guardrails.cost_tracker import CostTracker
+    from testpilot.store.repositories import CostRepo, ProjectRepo, VersionRepo
 
     conn = get_initialized_db(config.DB_PATH)
     connector = None
@@ -108,10 +152,23 @@ def run_generation(job_id: str, *, module_id: int, slug: str, title: str,
         connector.connect()
         runner = BehaveRunner(connection=project_env(project))
 
-        plan = SpecAnalyzer().analyze_spec_content(slug, spec_content)
+        # ⚠️ L'ANALYSE COÛTE, et son coût n'était compté NULLE PART — ni ici, ni en CLI.
+        # `SpecAnalyzer()` sans `cost_tracker` laisse `plan.cost_usd` à 0.0 : un appel LLM
+        # (MODEL_FAST) invisible sur les deux chemins. Le schéma prévoyait pourtant la phase
+        # `analysis` depuis le début. On lui donne donc un tracker, et on écrit ce qu'il mesure.
+        analysis_tracker = CostTracker()
+        plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(slug, spec_content)
+
         agent = GenerationAgent(dry_runner=runner, connector=connector,
                                 case_repo=CaseRepo(conn), version_repo=VersionRepo(conn))
         result = agent.generate(plan, title=title, author=author, module_id=module_id)
+
+        # Le coût est écrit AVANT tout aiguillage succès/échec : une génération qui échoue a
+        # coûté quand même. Ne compter que les réussites donnerait un budget flatteur — « affiché
+        # ≠ réel » (§4.6) appliqué à l'argent, exactement ce que la boucle de réparation évite.
+        _record_generation_cost(conn, case_id=result.case_id,
+                                analysis_usd=analysis_tracker.total_cost,
+                                generation_usd=result.cost_usd)
 
         if result.success and result.case_id:
             _JOBS[job_id].update(status="done", case_id=result.case_id)

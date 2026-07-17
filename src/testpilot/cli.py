@@ -77,7 +77,8 @@ def _diagnose_repairs(outcome: ExecutionOutcome) -> list:
 
 def _persist_run(deps: PipelineDeps, *, case_id: int, version_id: int,
                  verdict: CaseVerdict, outcome: ExecutionOutcome, repairs: list,
-                 gen_cost_usd: float, iterations: int, duration_seconds: float) -> int:
+                 gen_cost_usd: float, iterations: int, duration_seconds: float,
+                 analysis_cost_usd: float = 0.0) -> int:
     """Persiste exécution + scénarios + tentative de réparation + coût. Renvoie l'execution_id."""
     execs = ExecutionRepo(deps.conn)
     eid = execs.create(test_case_id=case_id, version_id=version_id)
@@ -101,11 +102,17 @@ def _persist_run(deps: PipelineDeps, *, case_id: int, version_id: int,
                 confirmation_status=dv.confirmation_status,
             )
 
-    # Coût de génération au ledger — source 'estimated' (barème tokens, cf. cost_source).
-    CostRepo(deps.conn).add_entry(
-        phase="generation", model=config.MODEL_GENERATION, cost_usd=gen_cost_usd,
-        source="estimated", execution_id=eid,
-    )
+    # Coût au ledger — source 'estimated' (barème tokens, cf. cost_source). Rattaché au CAS
+    # (§9) ; `execution_id` reste comme contexte, il n'est plus le lien de référence.
+    # ⚠️ L'ANALYSE est comptée depuis le 2026-07-17 : son appel LLM existait depuis toujours et
+    # n'apparaissait sur AUCUN chemin (`SpecAnalyzer()` était construit sans tracker). Deux
+    # lignes, deux modèles, deux tarifs : les fusionner rendrait le total inexplicable.
+    ledger = CostRepo(deps.conn)
+    for phase, model, cost in (("analysis", config.MODEL_FAST, analysis_cost_usd),
+                               ("generation", config.MODEL_GENERATION, gen_cost_usd)):
+        if cost:
+            ledger.add_entry(phase=phase, model=model, cost_usd=cost,
+                             source="estimated", execution_id=eid, test_case_id=case_id)
 
     execs.finalize(
         eid, execution_status=verdict.execution_status,
@@ -174,7 +181,8 @@ def run_pipeline(deps: PipelineDeps, spec_path: str | Path, *, author: str = "",
     repairs = _diagnose_repairs(outcome)
     eid = _persist_run(deps, case_id=gen.case_id, version_id=gen.version_id, verdict=verdict,
                        outcome=outcome, repairs=repairs, gen_cost_usd=gen.cost_usd,
-                       iterations=gen.iterations, duration_seconds=duration)
+                       iterations=gen.iterations, duration_seconds=duration,
+                       analysis_cost_usd=plan.cost_usd)
 
     monthly = CostRepo(deps.conn).monthly_total_usd()
     report = report_mod.build_report(
@@ -215,13 +223,18 @@ def build_default_deps(conn) -> PipelineDeps:
     from testpilot.store.repositories import ProjectRepo as _Project
     from testpilot.store.repositories import VersionRepo as _Version
 
+    from testpilot.guardrails.cost_tracker import CostTracker
+
     project = _Project(conn).first()  # None → config globale (le projet sera créé depuis elle)
     connector = OdooConnector.from_project(project)
     connector.connect()
     runner = BehaveRunner(connection=project_env(project))
     agent = GenerationAgent(dry_runner=runner, connector=connector,
                             case_repo=_Case(conn), version_repo=_Version(conn))
-    return PipelineDeps(analyzer=SpecAnalyzer(), agent=agent,
+    # ⚠️ `SpecAnalyzer()` SANS tracker laisse `plan.cost_usd` à 0.0 : l'appel LLM de l'analyse
+    # était invisible ici aussi, pas seulement sur le chemin API. Le §9 couvre la CRÉATION d'un
+    # cas — l'analyse en fait partie. Sans ce tracker, `_persist_run` n'a rien à écrire.
+    return PipelineDeps(analyzer=SpecAnalyzer(cost_tracker=CostTracker()), agent=agent,
                         executor=Executor(runner), conn=conn)
 
 

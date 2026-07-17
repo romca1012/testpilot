@@ -683,12 +683,25 @@ class CostRepo:
         self.conn = conn
 
     def add_entry(self, *, phase: str, model: str, cost_usd: float, source: str,
-                  execution_id: int | None = None, at: str | None = None) -> int:
+                  execution_id: int | None = None, test_case_id: int | None = None,
+                  at: str | None = None) -> int:
+        """Inscrit une dépense LLM. `test_case_id` est le lien qui compte (§9).
+
+        ⚠️ **Passer `test_case_id`, toujours.** `execution_id` ne suffit pas : une génération
+        n'a **aucune exécution** (elle la précède), donc son coût — le poste le plus lourd —
+        n'avait nulle part où s'accrocher et disparaissait. Si seul `execution_id` est fourni,
+        on retrouve le cas par lui : un appelant qui ne connaît que son run reste correct.
+        """
         ts = at or now_iso()
+        if test_case_id is None and execution_id is not None:
+            row = self.conn.execute("SELECT test_case_id FROM execution WHERE id=?",
+                                    (execution_id,)).fetchone()
+            if row:
+                test_case_id = int(row["test_case_id"])
         cur = self.conn.execute(
-            "INSERT INTO cost_ledger (period_month, execution_id, phase, model, cost_usd,"
-            " source, created_at) VALUES (?,?,?,?,?,?,?)",
-            (period_of(ts), execution_id, phase, model, cost_usd, source, ts),
+            "INSERT INTO cost_ledger (period_month, test_case_id, execution_id, phase, model,"
+            " cost_usd, source, created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (period_of(ts), test_case_id, execution_id, phase, model, cost_usd, source, ts),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -711,17 +724,21 @@ class CostRepo:
 
         On somme par le ledger et non par `execution.cost_usd` : le ledger porte la phase et le
         modèle, donc il explique le total au lieu de l'asséner.
+
+        ⚠️ **On lit `c.test_case_id`, plus `JOIN execution`** (migration 12). L'ancienne jointure
+        rendait le total **structurellement aveugle** au coût de génération du chemin API : cette
+        dépense n'a aucune exécution où s'accrocher, donc la jointure l'excluait. Le §9 se mesurait
+        sur un total amputé de son poste le plus lourd, sans que rien ne le signale.
         """
         row = self.conn.execute(
-            "SELECT COALESCE(SUM(c.cost_usd), 0) AS total FROM cost_ledger c"
-            " JOIN execution e ON e.id = c.execution_id WHERE e.test_case_id = ?",
+            "SELECT COALESCE(SUM(cost_usd), 0) AS total FROM cost_ledger WHERE test_case_id = ?",
             (case_id,)).fetchone()
         return float(row["total"])
 
     def breakdown_for_case(self, case_id: int) -> list[dict]:
         """Détail par phase/modèle — ce qui a coûté, pas seulement combien."""
         return _rows(self.conn.execute(
-            "SELECT c.phase, c.model, COUNT(*) AS calls, SUM(c.cost_usd) AS cost_usd"
-            " FROM cost_ledger c JOIN execution e ON e.id = c.execution_id"
-            " WHERE e.test_case_id = ? GROUP BY c.phase, c.model ORDER BY cost_usd DESC",
+            "SELECT phase, model, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd"
+            " FROM cost_ledger WHERE test_case_id = ?"
+            " GROUP BY phase, model ORDER BY cost_usd DESC",
             (case_id,)))

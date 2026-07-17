@@ -198,20 +198,34 @@ CREATE TABLE IF NOT EXISTS repair_attempt (
 CREATE INDEX IF NOT EXISTS idx_repair_execution ON repair_attempt(execution_id);
 
 -- ── Journal des coûts (budget mensuel cumulé §5/§6) ──────────────────────────
+-- Le coût appartient au CAS (c'est l'unité du §9 : « moins de 1 € par nouveau cas de test »).
+-- `execution_id` n'est qu'un CONTEXTE facultatif : une réparation naît d'un run, une génération
+-- n'en a aucun (elle précède toute exécution — et le cas peut n'être jamais exécuté).
+-- ⚠️ `test_case_id` est ajouté par la MIGRATION 12 sur les bases existantes : avant elle, le
+-- lien passait par `JOIN execution`, et le coût de génération du chemin API — sans exécution où
+-- s'accrocher — était tout simplement PERDU.
 CREATE TABLE IF NOT EXISTS cost_ledger (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     period_month TEXT    NOT NULL,               -- 'YYYY-MM'
-    execution_id INTEGER,                         -- NULL pour les appels hors run
+    test_case_id INTEGER,                         -- le CAS qui a coûté (lien de référence, §9)
+    execution_id INTEGER,                         -- contexte : le run concerné, si c'en est un
     phase        TEXT    NOT NULL DEFAULT '',     -- analysis | generation | repair | report
     model        TEXT    NOT NULL DEFAULT '',
     cost_usd     REAL    NOT NULL DEFAULT 0,
     source       TEXT    NOT NULL DEFAULT 'estimated'
                            CHECK (source IN ('estimated', 'anthropic_api')),
     created_at   TEXT    NOT NULL,
-    FOREIGN KEY (execution_id) REFERENCES execution(id)
+    FOREIGN KEY (execution_id) REFERENCES execution(id),
+    FOREIGN KEY (test_case_id) REFERENCES test_case(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_cost_period ON cost_ledger(period_month);
+-- ⚠️ `idx_cost_case` vit dans la MIGRATION 12, PAS ici — même raison que les index d'unicité et
+-- `idx_case_module` : ce fichier s'exécute AVANT les migrations, or `cost_ledger.test_case_id`
+-- n'existe pas encore sur une base antérieure. L'indexer ici fait planter TOUTE ouverture d'une
+-- base existante (`no such column: test_case_id`). Erreur réellement commise le 2026-07-17 :
+-- 416 tests verts ne l'ont pas vue (ils partent tous d'un schéma neuf), la vraie base l'a
+-- attrapée à la première ouverture. Gardé par `test_une_base_SANS_la_colonne_s_ouvre_toujours`.
 
 -- ── Unicité des noms ─────────────────────────────────────────────────────────
 -- Les index UNIQUE (uq_project_name, uq_module_project_name, uq_case_module_title,
