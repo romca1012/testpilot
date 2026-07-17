@@ -88,8 +88,12 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
     Puis tente une RÉPARATION si le gate l'a autorisée (décision 0014) : la boucle vit dans
     `repair_service`, c'est le circuit qui décide de continuer ou non — jamais l'agent.
     """
-    conn = get_initialized_db(config.DB_PATH)
+    # ⚠️ L'ouverture est DANS le try : hors de lui, un échec de connexion sautait à la fois le
+    # filet (`_finalize_error`) et le `finally` — l'exécution restait « en cours » pour toujours
+    # dans `_RUNNING`, et sa ligne `not_executed` sans le moindre message.
+    conn = None
     try:
+        conn = get_initialized_db(config.DB_PATH)
         # Le runtime tape l'application DU PROJET du cas (décision 0005).
         runner = BehaveRunner(connection=resolve_connection(conn, case_id))
         outcome = _execute_and_persist(conn, execution_id, case_id, module_name, runner)
@@ -100,7 +104,8 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
         _finalize_error(conn, execution_id, case_id, str(exc))
     finally:
         _RUNNING.discard(execution_id)
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str, runner):
@@ -194,18 +199,58 @@ def _persist(conn, execution_id, case_id, verdict, outcome, duration) -> None:
                               functional_status=verdict.functional_status, executed_at=now_iso())
 
 
-def _finalize_error(conn, execution_id, case_id, message: str) -> None:
-    """Clôt une exécution plantée comme erreur technique (verdict honnête, jamais 'conforme')."""
+def _ecrire_erreur(conn, execution_id: int, case_id: int, message: str) -> bool:
+    """Écrit le verdict d'échec. Rend False si l'écriture n'a PAS abouti — jamais d'exception."""
     try:
         ExecutionRepo(conn).finalize(
             execution_id, execution_status=EXEC_TECHNICAL_ERROR,
             functional_status=FUNC_INDETERMINE, scenarios_total=0, scenarios_passed=0,
-            scenarios_failed=0, cost_usd=0.0, iterations=0, duration_seconds=0.0)
+            scenarios_failed=0, cost_usd=0.0, iterations=0, duration_seconds=0.0,
+            error_message=(message or "")[:1000])
         CaseRepo(conn).update_last_outcome(
             case_id, execution_status=EXEC_TECHNICAL_ERROR,
             functional_status=FUNC_INDETERMINE, executed_at=now_iso())
+        return True
     except Exception:
         logger.exception("[run] échec de la clôture d'erreur pour %s", execution_id)
+        return False
+
+
+def _finalize_error(conn, execution_id, case_id, message: str) -> None:
+    """Clôt une exécution plantée comme erreur technique (verdict honnête, jamais 'conforme').
+
+    ⚠️ **Le filet ne doit pas tomber avec ce qu'il rattrape.** Ce code écrivait avec la connexion
+    du run — celle-là même qui peut être la CAUSE du plantage (base verrouillée, connexion
+    fermée, thread). L'échec de l'écriture était alors avalé par un `except` muet, et la ligne
+    restait `not_executed` **alors que le test avait tourné** : « affiché ≠ réel » (§4.6), et un
+    statut qui n'est pas la conséquence d'une exécution réelle (§4.2).
+
+    C'est encore *« l'absence de signal prise pour un signal positif »* : une ligne restée
+    `not_executed` se lit « n'a jamais tourné » — l'état le plus rassurant — alors qu'elle
+    signifie ici « a tourné, a planté, et on a perdu le verdict ».
+
+    D'où : une seconde tentative sur une connexion NEUVE, puis, en dernier ressort, un log
+    `CRITICAL` — bruyant et non un `exception` noyé dans le flux. Jamais de silence.
+    """
+    if _ecrire_erreur(conn, execution_id, case_id, message):
+        return
+
+    try:
+        secours = get_initialized_db(config.DB_PATH)
+    except Exception:
+        logger.critical(
+            "[run] exécution %s : le verdict d'échec est PERDU (connexion de secours "
+            "impossible). La ligne reste 'not_executed' alors que le test a tourné. Cause "
+            "initiale : %s", execution_id, message)
+        return
+    try:
+        if not _ecrire_erreur(secours, execution_id, case_id, message):
+            logger.critical(
+                "[run] exécution %s : le verdict d'échec est PERDU malgré une connexion neuve. "
+                "La ligne reste 'not_executed' alors que le test a tourné. Cause initiale : %s",
+                execution_id, message)
+    finally:
+        secours.close()
 
 
 def submit_review(conn, case_id: int, version_id: int, *, approved: bool,

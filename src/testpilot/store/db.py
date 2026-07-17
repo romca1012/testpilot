@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 10
+_SCHEMA_VERSION = 11
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -83,6 +83,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_9_repair_budget(conn)
     if version < 10:
         _migrate_10_step_text(conn)
+    if version < 11:
+        _migrate_11_execution_error(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -321,6 +323,18 @@ def _migrate_10_step_text(conn: sqlite3.Connection) -> None:
     """
     if "step_text" not in _column_names(conn, "scenario_result"):
         conn.execute("ALTER TABLE scenario_result ADD COLUMN step_text TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_11_execution_error(conn: sqlite3.Connection) -> None:
+    """Raison d'une exécution PLANTÉE, à l'écran plutôt que dans les logs. Idempotent.
+
+    ``_finalize_error`` recevait le message de l'exception et ne l'écrivait **nulle part** — un
+    paramètre mort. L'écran affichait donc « erreur technique » sans le moindre pourquoi, et la
+    seule trace vivait dans les logs du serveur. Or c'est exactement ce qu'un humain doit lire
+    pour décider si le défaut vient du test, de l'outil, ou de l'application.
+    """
+    if "error_message" not in _column_names(conn, "execution"):
+        conn.execute("ALTER TABLE execution ADD COLUMN error_message TEXT NOT NULL DEFAULT ''")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

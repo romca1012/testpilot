@@ -490,8 +490,11 @@ class ExecutionRepo:
     def finalize(self, execution_id: int, *, execution_status: str, functional_status: str,
                  scenarios_total: int, scenarios_passed: int, scenarios_failed: int,
                  cost_usd: float, iterations: int, duration_seconds: float,
-                 field_fallbacks: str = "") -> None:
+                 field_fallbacks: str = "", error_message: str = "") -> None:
         """Clôt une exécution avec son verdict.
+
+        `error_message` : raison d'un plantage AVANT tout scénario (migration 11) — sans elle,
+        l'écran affiche « erreur technique » sans dire pourquoi.
 
         ⚠️ `report_json_path`/`report_html_path` ont été **supprimés** (migration 7) : personne ne
         les alimentait ni ne les lisait. Le rapport est **reconstruit à la demande** depuis la
@@ -500,11 +503,11 @@ class ExecutionRepo:
         self.conn.execute(
             "UPDATE execution SET execution_status=?, functional_status=?, scenarios_total=?,"
             " scenarios_passed=?, scenarios_failed=?, cost_usd=?, iterations=?,"
-            " duration_seconds=?, field_fallbacks=?"
+            " duration_seconds=?, field_fallbacks=?, error_message=?"
             " WHERE id=?",
             (execution_status, functional_status, scenarios_total, scenarios_passed,
              scenarios_failed, cost_usd, iterations, duration_seconds,
-             field_fallbacks, execution_id),
+             field_fallbacks, error_message, execution_id),
         )
         self.conn.commit()
 

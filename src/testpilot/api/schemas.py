@@ -121,6 +121,9 @@ class ExecutionSummary(BaseModel):
     # mal paramétré, soit un champ réellement renommé côté application. Présent même sur un run
     # vert — c'est là que le repli serait autrement invisible.
     field_fallbacks: list[str] = []
+    # Raison d'un plantage AVANT tout scénario (migration 11). Vide sur un run normal : un
+    # échec de scénario s'explique par ses `scenario_results`, pas par ce champ.
+    error_message: str = ""
     # Contexte de ce qui a tourné (rempli sur la liste globale). ``suite_name`` est réservé
     # à l'Exécution nommée transverse (§7) — null tant qu'elle n'est pas implémentée.
     case_title: str | None = None
@@ -351,6 +354,7 @@ def execution_summary(row: dict, *, running: bool = False) -> ExecutionSummary:
         duration_seconds=row.get("duration_seconds", 0.0),
         started_at=row.get("started_at", ""), running=running,
         field_fallbacks=_field_fallbacks(row.get("field_fallbacks")),
+        error_message=row.get("error_message", "") or "",
         case_title=row.get("case_title"), module_name=row.get("module_name"),
         suite_name=row.get("suite_name"),
     )

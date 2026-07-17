@@ -134,6 +134,10 @@ CREATE TABLE IF NOT EXISTS execution (
     -- Doit rester visible même sur un run VERT : un repli signale soit un step mal paramétré,
     -- soit un champ réellement renommé côté application.
     field_fallbacks   TEXT    NOT NULL DEFAULT '',
+    -- Raison d'un plantage survenu AVANT tout scénario (migration 11) : `_finalize_error`
+    -- recevait ce message et ne l'écrivait nulle part. L'écran disait « erreur technique » sans
+    -- le pourquoi, seul le log du serveur le savait.
+    error_message     TEXT    NOT NULL DEFAULT '',
     trigger           TEXT    NOT NULL DEFAULT 'first_run'
                                 CHECK (trigger IN ('first_run', 'rerun')),
     started_at        TEXT    NOT NULL,
