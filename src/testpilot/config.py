@@ -60,6 +60,19 @@ REPAIR_BUDGET_DEFAULT = int(os.getenv("TESTPILOT_REPAIR_BUDGET_DEFAULT", "2"))
 MONTHLY_BUDGET_EUR = float(os.getenv("TESTPILOT_MONTHLY_BUDGET_EUR", "50"))
 EUR_USD_RATE = float(os.getenv("TESTPILOT_EUR_USD_RATE", "1.08"))
 MONTHLY_BUDGET_USD = MONTHLY_BUDGET_EUR * EUR_USD_RATE
+
+# ── Budget UNITAIRE : § 9 du brief ────────────────────────────────────────────
+# « Moins de 1 € pour la génération + exécution d'un nouveau module. » C'est la seule contrainte
+# de coût chiffrée du brief, et elle n'existait nulle part dans le code : on la nomme ici pour
+# pouvoir la MESURER (`CostRepo.total_for_case`). Repère, pas garde-fou — rien ne coupe sur ce
+# seuil aujourd'hui ; on mesure d'abord, on décidera d'agir ensuite (docs/PRINCIPES.md).
+#
+# ⚠️ `COST_LIMIT_PER_RUN_USD` (2,00 $ ≈ 1,85 €) est presque le DOUBLE de ce plafond : le garde-fou
+# de coût par run n'applique donc pas le §9. Contradiction relevée dans docs/PRINCIPES.md,
+# volontairement NON corrigée ici — changer un plafond sans mesure serait exactement ce que ce
+# document reproche.
+BUDGET_PER_CASE_EUR = float(os.getenv("TESTPILOT_BUDGET_PER_CASE_EUR", "1.00"))
+BUDGET_PER_CASE_USD = BUDGET_PER_CASE_EUR * EUR_USD_RATE
 # Source des coûts : "estimated" (tokens × barème, actif) | "anthropic_api" (stub Inc. 0).
 COST_SOURCE = os.getenv("TESTPILOT_COST_SOURCE", "estimated")
 

@@ -26,14 +26,24 @@ from dataclasses import dataclass, field
 from testpilot import config
 from testpilot.generation import repair_agent
 from testpilot.guardrails.repair_circuit import CircuitState, evaluate, failure_signature
-from testpilot.store.repositories import CaseRepo, RepairRepo, ReviewRepo, VersionRepo
-from testpilot.verdict.status import EXEC_SUCCESS, derive_verdict
+from testpilot.store.repositories import (
+    CaseRepo,
+    CostRepo,
+    ExecutionRepo,
+    RepairRepo,
+    ReviewRepo,
+    VersionRepo,
+)
+from testpilot.verdict.status import EXEC_SUCCESS, FUNC_CONFORME, derive_verdict
 
 logger = logging.getLogger(__name__)
 
 # Issue propre à cette boucle : le test n'a pas tourné du tout (le circuit, lui, ne connaît que
 # des ÉCHECS — il n'a aucun moyen de distinguer « aucun échec » de « aucun run »).
 RUN_FAILED = "run_failed"
+# Le test tourne, mais la réparation a cassé des scénarios qui passaient (principe 5). Distinct de
+# `run_failed` : ici le test s'exécute — c'est la COUVERTURE qui a reculé.
+REGRESSION = "regression"
 
 
 @dataclass
@@ -44,9 +54,12 @@ class RepairSession:
     outcome: str = ""              # issue du circuit (resolved | real_bug | stalled | …)
     reason: str = ""
     resolved: bool = False         # run entièrement VERT (axe fonctionnel compris)
-    # Le test TOURNE (axe exécution seul) — **le critère d'adoption** depuis 0016. Distinct de
+    # Le test TOURNE (axe exécution seul) — première condition d'adoption depuis 0016. Distinct de
     # `resolved` : un test qui tourne et révèle un vrai bug est réparé, pas raté.
     executable: bool = False
+    # Scénarios qui passaient AVANT et ne passent plus APRÈS (principe 5). Non vide ⇒ pas
+    # d'adoption, quoi que dise `executable`.
+    regressions: list[str] = field(default_factory=list)
     final_version_id: int | None = None
     executions: list[int] = field(default_factory=list)
     cost_usd: float = 0.0
@@ -68,8 +81,65 @@ def a_tourne(outcome) -> bool:
     return outcome is not None and getattr(outcome, "real_run", None) is not None
 
 
+def _record_cost(conn, execution_id: int | None, cost_usd: float) -> None:
+    """Écrit le coût d'un appel de réparation au ledger ET sur l'exécution qui l'a provoqué.
+
+    ⚠️ **Le §9 du brief — « moins de 1 € pour la génération + exécution d'un module » — n'était
+    pas mesurable sur ce chemin.** `cost_ledger` n'était alimenté que par la CLI ; tout ce qui
+    passe par l'API (donc par l'écran, donc par cette boucle) dépensait sans laisser de trace, et
+    `run_service._persist` écrit `cost_usd=0.0` en dur. Cinq appels à l'agent le 2026-07-17
+    (v7→v11) n'ont produit **aucune ligne** de ledger.
+
+    On rattache le coût à l'exécution qui a **provoqué** la proposition (l'échec à réparer) : elle
+    existe toujours, alors que la version proposée peut n'être jamais exécutée. Le total par cas
+    se lit ensuite par `CostRepo.total_for_case_usd`.
+
+    Best-effort : une écriture de comptabilité ne doit jamais faire échouer une réparation qui,
+    elle, a réussi — mais elle ne doit pas non plus disparaître en silence (§4.6).
+    """
+    if not cost_usd:
+        return
+    try:
+        CostRepo(conn).add_entry(phase="repair", model=config.MODEL_REPAIR,
+                                 cost_usd=cost_usd, source=config.COST_SOURCE,
+                                 execution_id=execution_id)
+        if execution_id is not None:
+            ExecutionRepo(conn).add_cost(execution_id, cost_usd)
+    except Exception:
+        logger.exception("[repair] coût de %s USD NON enregistré (exécution %s) — le budget §9 "
+                         "sera sous-évalué d'autant", cost_usd, execution_id)
+
+
+def _scenarios_verts(outcome) -> set[str]:
+    """Noms des scénarios `success/conforme` d'un run. Vide si le test n'a pas tourné."""
+    if not a_tourne(outcome):
+        return set()
+    return {v.name for v in derive_verdict(outcome).scenarios
+            if v.execution_status == EXEC_SUCCESS and v.functional_status == FUNC_CONFORME}
+
+
+def regressions(avant, apres) -> list[str]:
+    """Scénarios qui passaient AVANT la réparation et ne passent plus APRÈS (principe 5).
+
+    ⚠️ **Coût marginal NUL** : la boucle exécute déjà le test avant et après — les deux runs sont
+    faits et payés. Comparer est une lecture, pas une exécution de plus. C'est ce qui rend cette
+    garde inconditionnelle : elle n'a aucun prix.
+
+    Elle attrape ce qu'AUCUNE analyse statique ne peut voir : un scénario **supprimé**. Un step
+    n'est `undefined` (donc rattrapé par le dry-run) que si le `.feature` le réclame ENCORE. Si
+    l'agent réécrit les DEUX fichiers et retire un scénario avec son step, le dry-run est
+    satisfait — et le run paraît **meilleur** : moins de scénarios, donc moins d'échecs. C'est
+    « l'absence de signal prise pour un signal positif » sous sa forme la plus dangereuse, puisque
+    supprimer la couverture **améliore** les chiffres.
+
+    Un scénario disparu compte donc comme une régression : il passait, il ne passe plus — ne plus
+    exister n'est pas une réussite.
+    """
+    return sorted(_scenarios_verts(avant) - _scenarios_verts(apres))
+
+
 def est_executable(outcome) -> bool:
-    """Le test TOURNE-t-il ? — **le critère d'adoption** (décision 0016).
+    """Le test TOURNE-t-il ? — **une des deux conditions d'adoption** (décision 0016).
 
     ⚠️ « Tourne » (axe EXÉCUTION) et « passe » (axe FONCTIONNEL) sont deux choses, et §4.1 exige
     qu'elles ne fusionnent jamais. La boucle adoptait une réparation seulement si le run était
@@ -121,6 +191,9 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
     cases = CaseRepo(conn)
     current_version_id = version_id
     failures = _failures_of(outcome)
+    # État de départ, figé AVANT toute réparation : c'est la référence de non-régression
+    # (principe 5). Gratuit — ce run est déjà fait et déjà payé.
+    outcome_depart = outcome
 
     while True:
         # ⚠️ AVANT toute évaluation : un test qui n'a pas tourné n'a pas « zéro échec », il n'a
@@ -157,6 +230,10 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             connector=connector,
         )
         session.cost_usd = round(session.cost_usd + proposal.cost_usd, 6)
+        # Le coût est enregistré ICI, avant tout `break` : un agent qui ne propose RIEN a quand
+        # même coûté. Le compter seulement quand ça marche donnerait un budget flatteur — soit
+        # « affiché ≠ réel » (§4.6) appliqué à l'argent.
+        _record_cost(conn, getattr(outcome, "execution_id", None), proposal.cost_usd)
         if not proposal.changed:
             # Aveu utile : l'agent n'a rien réécrit (il ne sait pas, ou il conclut à un bug de
             # l'application). Insister brûlerait le budget pour rien.
@@ -187,9 +264,23 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
     # Décision 0016 : on adopte dès que le test TOURNE — jamais « dès qu'il passe ». `resolved`
     # (run entièrement vert) reste distinct et informatif, mais il ne commande plus rien.
     session.executable = est_executable(outcome)
+    # Principe 5 : « tourne » ne suffit pas — il faut aussi n'avoir RIEN cassé de ce qui marchait.
+    session.regressions = regressions(outcome_depart, outcome)
     session.final_version_id = current_version_id
 
-    adopte = session.executable and current_version_id != version_id
+    adopte = (session.executable and not session.regressions
+              and current_version_id != version_id)
+    if session.regressions and session.executable and current_version_id != version_id:
+        # Le test tourne, mais il a perdu des scénarios qui passaient : adopter serait troquer une
+        # erreur technique visible contre une perte de couverture SILENCIEUSE — le pire échange.
+        session.outcome = REGRESSION
+        session.reason = (
+            "la réparation fait tourner le test mais casse "
+            f"{len(session.regressions)} scénario(s) qui passaient : "
+            f"{', '.join(session.regressions)}. Non adoptée."
+        )
+        logger.warning("[repair] cas %s : réparation REFUSÉE — régression sur %s",
+                       case_id, session.regressions)
     _sync_disque(versions, adopte, version_id, current_version_id, module_name)
 
     if adopte:

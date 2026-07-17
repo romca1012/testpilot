@@ -614,3 +614,179 @@ def test_un_cas_jamais_execute_ne_diverge_de_rien(conn):
     out = schemas.case_summary(CaseRepo(conn).get(cid))
     assert out.last_verdict_version_id is None
     assert out.verdict_from_other_version is False
+
+
+# ── Mesure du budget §9 : « moins de 1 € pour la génération + exécution d'un module » ──
+# Seule contrainte de coût CHIFFRÉE du brief, et elle n'était mesurable nulle part : `cost_ledger`
+# n'était alimenté que par la CLI, et `run_service._persist` écrit `cost_usd=0.0` en dur. Les 5
+# appels à l'agent du 2026-07-17 (v7→v11) n'ont laissé AUCUNE trace.
+
+def test_le_cout_d_une_reparation_est_enregistre(conn, monkeypatch):
+    from testpilot.store.repositories import CostRepo
+
+    cid, vid, eid = _cas(conn, budget=1)
+    _agent(monkeypatch, RepairProposal(changed=True, steps_content="# v2", summary="fix",
+                                       cost_usd=0.0231))
+    depart = _echec(); depart.execution_id = eid
+
+    session = repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_succes()]))
+
+    assert session.cost_usd == pytest.approx(0.0231)
+    assert CostRepo(conn).total_for_case_usd(cid) == pytest.approx(0.0231)
+    # …et le détail explique le total plutôt que de l'asséner.
+    detail = CostRepo(conn).breakdown_for_case(cid)
+    assert detail and detail[0]["phase"] == "repair"
+    assert detail[0]["calls"] == 1
+
+
+def test_un_agent_qui_ne_propose_RIEN_a_quand_meme_coute(conn, monkeypatch):
+    """Ne compter que les réparations réussies donnerait un budget flatteur — §4.6 sur l'argent."""
+    from testpilot.store.repositories import CostRepo
+
+    cid, vid, eid = _cas(conn, budget=2)
+    _agent(monkeypatch, RepairProposal(changed=False, summary="je ne sais pas", cost_usd=0.0198))
+    depart = _echec(); depart.execution_id = eid
+
+    session = repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_succes()]))
+
+    assert session.outcome == "agent_no_fix"
+    assert CostRepo(conn).total_for_case_usd(cid) == pytest.approx(0.0198)
+
+
+def test_chaque_tentative_ajoute_au_cout_du_cas(conn, monkeypatch):
+    """Le coût s'ACCUMULE : `finalize` écrit une fois, la réparation dépense après — écraser
+    perdrait l'un ou l'autre."""
+    from testpilot.store.repositories import CostRepo
+
+    cid, vid, eid = _cas(conn, budget=2)
+    _agent(monkeypatch,
+           RepairProposal(changed=True, steps_content="# v2", summary="a", cost_usd=0.02),
+           RepairProposal(changed=True, steps_content="# v3", summary="b", cost_usd=0.03))
+    depart = _echec(); depart.execution_id = eid
+
+    repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_echec(AUTRE_ERREUR), _succes()]))
+
+    assert CostRepo(conn).total_for_case_usd(cid) == pytest.approx(0.05)
+
+
+def test_le_budget_du_paragraphe_9_est_nomme_dans_la_config():
+    """Le §9 n'existait dans AUCUNE constante : impossible de mesurer contre lui."""
+    assert config.BUDGET_PER_CASE_EUR == 1.00
+    assert config.BUDGET_PER_CASE_USD == pytest.approx(1.00 * config.EUR_USD_RATE)
+    # Le constat gênant, gardé pour qu'il ne se perde pas : le plafond par run ne l'applique pas.
+    assert config.COST_LIMIT_PER_RUN_USD > config.BUDGET_PER_CASE_USD, (
+        "COST_LIMIT_PER_RUN_USD est passé sous le budget §9 — mettre à jour docs/PRINCIPES.md, "
+        "qui documente la contradiction inverse.")
+
+
+# ── Principe 5 : aucune adoption si un scénario qui passait ne passe plus ──────
+# Coût marginal NUL : les deux runs (avant/après) sont déjà faits et déjà payés par la boucle.
+
+def _run(verts=(), rouges=(), techniques=()):
+    """Un run réel. `verts` passent ; `rouges` échouent sur une ASSERTION ; `techniques` sur un
+    `TypeError`.
+
+    ⚠️ La distinction n'est pas cosmétique : une assertion → `vrai_bug` → le circuit s'arrête à
+    **0 tentative** (§4.4) et aucune réparation n'a lieu. Pour exercer la boucle, le run de DÉPART
+    doit porter un échec **technique** — c'est ce qui la déclenche. Ma première version de ces
+    tests l'ignorait et ne réparait jamais rien.
+    """
+    scenarios = [_Scenario(name=n, status="passed") for n in verts]
+    scenarios += [_Scenario(name=n, status="failed") for n in list(rouges) + list(techniques)]
+    failures = [_Failure(scenario_name=n, failure_type="assertion",
+                         raw="ASSERT FAILED: l'application répond faux") for n in rouges]
+    failures += [_Failure(scenario_name=n, failure_type="unknown",
+                          raw="TypeError: 'int' object is not subscriptable") for n in techniques]
+    return _Outcome(real_run=_RealRun(failures=failures, scenarios=scenarios))
+
+
+def test_une_reparation_qui_SUPPRIME_un_scenario_vert_est_refusee(conn, monkeypatch):
+    """LE test du principe 5 — et le seul filet possible contre ce cas.
+
+    Un step n'est `undefined` (donc rattrapé par le dry-run) que si le `.feature` le réclame
+    ENCORE. Si l'agent réécrit les DEUX fichiers et retire un scénario, le dry-run est satisfait
+    et le run paraît MEILLEUR : moins de scénarios, moins d'échecs. Seule la comparaison
+    avant/après le voit.
+    """
+    cid, vid, eid = _cas(conn, budget=1)
+    _agent(monkeypatch, RepairProposal(changed=True, steps_content="# v2 ampute", summary="fix"))
+    depart = _run(verts=["[NOMINAL] Demande complète"], techniques=["[ERREUR] Produit invalide"])
+    depart.execution_id = eid
+
+    # Après : le scénario en échec est « corrigé »… en supprimant le scénario NOMINAL qui passait.
+    session = repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_run(verts=["[ERREUR] Produit invalide"])]))
+
+    assert session.executable                       # le test tourne, et il est même tout vert…
+    assert session.resolved                         # …au sens « aucun échec » !
+    assert session.regressions == ["[NOMINAL] Demande complète"]
+    assert session.outcome == repair_service.REGRESSION
+    assert CaseRepo(conn).get(cid)["current_version_id"] == vid, (
+        "une réparation qui perd un scénario vert ne doit JAMAIS être adoptée, même verte")
+
+
+def test_une_reparation_qui_CASSE_un_scenario_vert_est_refusee(conn, monkeypatch):
+    """Variante : le scénario existe toujours mais ne passe plus."""
+    cid, vid, eid = _cas(conn, budget=1)
+    _agent(monkeypatch, RepairProposal(changed=True, steps_content="# v2", summary="fix"))
+    depart = _run(verts=["A"], techniques=["B"]); depart.execution_id = eid
+
+    # Après : B est réparé, mais A échoue désormais sur une assertion — le test TOURNE toujours
+    # (success/non_conforme), donc `executable` est vrai : seule la non-régression le rattrape.
+    session = repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_run(verts=["B"], rouges=["A"])]))
+
+    assert session.executable                       # le test tourne…
+    assert session.regressions == ["A"]             # …mais A ne passe plus
+    assert session.outcome == repair_service.REGRESSION
+    assert CaseRepo(conn).get(cid)["current_version_id"] == vid
+
+
+def test_le_disque_revient_a_la_reference_quand_la_reparation_regresse(conn, monkeypatch, tmp_path):
+    """Refuser l'adoption sans rembobiner le disque ferait exécuter v2 en prétendant v1 (§4.6)."""
+    monkeypatch.setattr(config, "GENERATED_DIR", tmp_path)
+    cid, vid, eid = _cas(conn, budget=1)
+    _agent(monkeypatch, RepairProposal(changed=True, steps_content="# v2 ampute", summary="fix"))
+    depart = _run(verts=["A"], techniques=["B"]); depart.execution_id = eid
+
+    repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_run(verts=["B"])]))
+
+    assert (tmp_path / "cas_steps.py").read_text(encoding="utf-8") == "# steps v1"
+
+
+def test_aucune_regression_signalee_quand_la_reparation_ne_perd_rien(conn, monkeypatch):
+    """Le cas 1 réel : 0 scénario vert avant → rien à protéger → l'adoption reste possible.
+
+    Une garde qui refuserait ici bloquerait la réparation la plus utile du projet.
+    """
+    cid, vid, eid = _cas(conn, budget=1)
+    _agent(monkeypatch, RepairProposal(changed=True, steps_content="# v2 odoorpc", summary="fix"))
+    depart = _echec(); depart.execution_id = eid      # 0 scénario vert (technical_error)
+
+    session = repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_tourne_mais_bug_applicatif()]))
+
+    assert session.regressions == []
+    assert session.executable
+    assert CaseRepo(conn).get(cid)["current_version_id"] != vid   # adoptée : rien n'a régressé
+
+
+def test_regressions_est_une_fonction_pure_et_gratuite():
+    """Aucun run, aucun LLM : deux `outcome` déjà en main suffisent."""
+    avant = _run(verts=["A", "B"], techniques=["C"])
+    apres = _run(verts=["A"], techniques=["C"])
+    assert repair_service.regressions(avant, apres) == ["B"]
+    assert repair_service.regressions(avant, avant) == []
+    # Un run qui n'a pas tourné n'a aucun scénario vert : rien à comparer, aucune régression.
+    assert repair_service.regressions(_Outcome(real_run=None), apres) == []

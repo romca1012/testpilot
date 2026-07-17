@@ -119,26 +119,44 @@ Mieux : un rejet à l'écriture **économise** un run réel.
 | « n'utilise pas `requests` » | **garde AST** (`_FORBIDDEN_IMPORTS`, `_FORBIDDEN_ENDPOINTS`) | `v10`/`v11` **ont corrigé** le `HTTPError 404` — l'agent n'avait pas le choix |
 | « réutilise les steps partagés » | **prompt + catalogue** | `v10`/`v11` **ont réinventé l'auth** → timeout (`0017`) |
 
-### La violation la plus coûteuse, et la moins chère à corriger
+### ⚠️ CORRECTION (2026-07-17, après vérification) — mon exemple phare était faux
 
-Le correctif du **bug 2 de `0014`** est une **instruction de prompt** :
+J'avais écrit ici que le correctif du **bug 2 de `0014`** (« rends le fichier ENTIER ») n'était
+qu'une **instruction de prompt**, et qu'« un agent qui rend 1 step sur 4 est arrêté par sa bonne
+volonté ». **C'est faux, vérifié dans le code :**
 
-> *« Rends le fichier ENTIER — tous les steps, y compris ceux que tu ne modifies pas : ce que tu
-> n'écris pas est PERDU et son step deviendra `undefined`. »*
+- `react_loop.py:127` et `:131` — toute écriture remet `state.dry_run_passed = False`
+  (« le contenu a changé : revalider ») ;
+- `react_loop._maybe_dry_run` échoue si `result.undefined_steps` et **renvoie la liste à l'agent**
+  pour qu'il corrige dans la **même** session ;
+- `executor.execute` refait la vérification : `if not (dry.success and not dry.undefined_steps …)`
+  → `dry_run_passed=False`.
 
-Or la vérification déterministe est **triviale et gratuite** : `write_steps_file` connaît déjà le
-fichier précédent (il écrit à `generated_dir / f"{module_name}_steps.py"`) et `steps_library`
-sait extraire les steps par AST. Comparer l'avant et l'après, refuser si des steps ont **disparu**
-— **zéro appel LLM, zéro run**. Aujourd'hui, un agent qui rend 1 step sur 4 est arrêté par… sa
-bonne volonté.
+Un step perdu est donc **déjà** rattrapé par un garde-fou déterministe, **deux fois**. La phrase
+du prompt est un *indice* utile à l'agent, pas le garde-fou — et c'est exactement la forme que le
+principe 2 demande. **Le principe 2 est mieux respecté que je ne l'ai écrit.**
 
-C'est le principe 2 dans sa forme la plus nette : **une promesse d'obéissance là où une
-impossibilité est gratuite.**
+*(Le bug 2 de `0014` a fait des dégâts parce que le **bug 1** — `real_run=None` lu comme « aucun
+échec » — masquait l'échec du dry-run. Bug 1 est corrigé ; le filet fonctionne.)*
 
-### Autres violations connues
+### Le trou réel, que le dry-run ne peut PAS voir
+
+Un step n'est `undefined` que si le `.feature` le **réclame encore**. Si l'agent réécrit **les deux
+fichiers** et **supprime un scénario avec son step**, le dry-run est **satisfait** — rien n'est
+undefined. Le test perd un scénario **en silence**, et le run suivant paraît *meilleur* :
+moins de scénarios, donc moins d'échecs.
+
+> C'est **« l'absence de signal prise pour un signal positif »**, à nouveau — et sous sa forme la
+> plus dangereuse, puisque supprimer la couverture **améliore** les chiffres.
+
+Aucune analyse statique du seul fichier de steps ne le voit : il faut comparer le **run d'avant**
+au **run d'après**. C'est exactement le **principe 5**, et c'est gratuit (les deux runs existent).
+
+### Violation confirmée
 
 - **`0017`** : rien n'empêche de réinventer l'authentification. `reserved_steps` bloque la
-  **collision de libellés**, pas la **duplication de comportement**.
+  **collision de libellés**, pas la **duplication de comportement**. C'est le manquement réel du
+  principe 2 — et le seul.
 
 ---
 
@@ -324,10 +342,10 @@ Ma recommandation était « **B porteur + A en renfort** » (garde d'auth + anno
 | # | principe | coût | respecté ? | manquement principal |
 |---|---|---|---|---|
 | 1 | Vérité du runtime | **nul** | 🟡 large | `failure_signature` indexe sur `scenario_name` (texte d'agent) |
-| 2 | Structure > prompt | **nul** | 🟡 partiel | contrat « fichier ENTIER » = prompt seul ; `0017` sans garde |
+| 2 | Structure > prompt | **nul** | 🟡 large *(corrigé)* | `0017` sans garde. **Le contrat « fichier ENTIER » EST gardé** — par le dry-run, deux fois |
 | 3 | Édition ciblée | **~nul** (−$0,015/tentative) | ❌ | réécriture intégrale à chaque réparation |
 | 4 | Point de vérité unique | **nul** | ✅ | aucun (vérifié) — mais n'aurait pas empêché `0016` |
-| 5 | Garde de non-régression | **nul** (runs déjà payés) | ❌ | comparaison `exec N` / `exec N+1` jamais faite |
+| 5 | Garde de non-régression | **nul** (runs déjà payés) | ❌ | comparaison `exec N` / `exec N+1` jamais faite — **seul filet possible contre la perte SILENCIEUSE d'un scénario** |
 | 6 | Promesses de prompt vérifiées | **nul** | 🟡 partiel | descriptions d'outils, absence d'outil d'exécution |
 | — | **Mesure du budget §9** | **nul** | ❌ | `cost_usd=0.0` sur le chemin API ; plafond à $2,00 ≈ 1,85 € |
 

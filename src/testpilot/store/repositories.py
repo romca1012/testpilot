@@ -561,6 +561,17 @@ class ExecutionRepo:
         self.conn.commit()
         return int(cur.lastrowid)
 
+    def add_cost(self, execution_id: int, cost_usd: float) -> None:
+        """AJOUTE un coût LLM à une exécution (jamais un remplacement).
+
+        `finalize` écrit `cost_usd` une fois, à la clôture ; une réparation, elle, dépense APRÈS
+        cette clôture (l'agent propose, puis on rejoue). Écraser perdrait l'un ou l'autre — d'où
+        un cumul explicite.
+        """
+        self.conn.execute("UPDATE execution SET cost_usd = cost_usd + ? WHERE id=?",
+                          (float(cost_usd), execution_id))
+        self.conn.commit()
+
     def list_scenario_results(self, execution_id: int) -> list[dict]:
         return _rows(self.conn.execute(
             "SELECT * FROM scenario_result WHERE execution_id=? ORDER BY id", (execution_id,)))
@@ -688,3 +699,29 @@ class CostRepo:
             "SELECT COALESCE(SUM(cost_usd), 0) AS total FROM cost_ledger WHERE period_month=?",
             (target,)).fetchone()
         return float(row["total"])
+
+    def total_for_case_usd(self, case_id: int) -> float:
+        """Coût LLM CUMULÉ d'un cas : génération + toutes ses réparations — la mesure du §9.
+
+        Le brief fixe « moins de 1 € pour la génération + exécution d'un nouveau module » : c'est
+        sa seule contrainte de coût chiffrée, et elle n'était **mesurable nulle part**. Le ledger
+        n'était alimenté que par la CLI (`cli.py`) ; tout ce qui passait par l'API — donc par
+        l'écran, donc par la boucle de réparation — coûtait de l'argent sans laisser de trace
+        (`run_service._persist` écrivait `cost_usd=0.0` en dur).
+
+        On somme par le ledger et non par `execution.cost_usd` : le ledger porte la phase et le
+        modèle, donc il explique le total au lieu de l'asséner.
+        """
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(c.cost_usd), 0) AS total FROM cost_ledger c"
+            " JOIN execution e ON e.id = c.execution_id WHERE e.test_case_id = ?",
+            (case_id,)).fetchone()
+        return float(row["total"])
+
+    def breakdown_for_case(self, case_id: int) -> list[dict]:
+        """Détail par phase/modèle — ce qui a coûté, pas seulement combien."""
+        return _rows(self.conn.execute(
+            "SELECT c.phase, c.model, COUNT(*) AS calls, SUM(c.cost_usd) AS cost_usd"
+            " FROM cost_ledger c JOIN execution e ON e.id = c.execution_id"
+            " WHERE e.test_case_id = ? GROUP BY c.phase, c.model ORDER BY cost_usd DESC",
+            (case_id,)))
