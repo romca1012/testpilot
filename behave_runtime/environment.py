@@ -43,6 +43,33 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# ── Appariement des steps TOLÉRANT AUX ACCENTS (voir steps/_accent_matcher.py) ─
+# Behave apparie le texte du .feature aux libellés @when(...) À L'EXACT. Un tirage LLM qui écrit
+# le .feature sans accents (« le modele » vs la bibliothèque « le modèle ») rend TOUS les steps
+# partagés accentués `undefined` → dry-run en échec → génération `dry_run_stalled` (mesuré le
+# 2026-07-19). On installe un matcher qui décide sans accents mais préserve les valeurs capturées.
+#
+# ⚠️ MODULE-LEVEL, PAS DANS UN HOOK : le matcher doit être choisi AVANT que les step files ne
+# s'enregistrent. Behave charge environment.py puis les steps, et le documente lui-même
+# (« Default matcher can be overridden in environment.py hook »). Le fichier _accent_matcher.py
+# est copié dans steps/ par le runner (_assemble) ; on l'y trouve relativement à ce fichier.
+def _install_accent_tolerant_matcher() -> None:
+    import importlib.util
+    matcher_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "steps", "_accent_matcher.py")
+    if not os.path.exists(matcher_path):
+        return  # bibliothèque non assemblée (contexte inattendu) : on ne casse rien.
+    spec = importlib.util.spec_from_file_location("_accent_matcher", matcher_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    from behave.matchers import register_step_matcher_class, use_step_matcher
+    register_step_matcher_class("accent_tolerant", module.AccentTolerantParseMatcher)
+    use_step_matcher("accent_tolerant")
+
+
+_install_accent_tolerant_matcher()
+
+
 # ── SHIM D'ALIAS features.* → layout plat (voir docstring du module) ──────────
 def _install_features_alias() -> None:
     """Enregistre les alias ``features.*``. Appelé EN FIN DE FICHIER (voir plus bas).
