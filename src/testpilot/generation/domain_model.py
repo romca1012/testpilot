@@ -67,6 +67,53 @@ def charger_modele(connector_type: str = "odoo") -> dict | None:
         return None
 
 
+def _meme_route(route_modele: str, url: str) -> bool:
+    """`/formulaire/{id}` correspond-il à `/formulaire/78` ou à une URL absolue ? (placeholders
+    joker, comparaison par segments)."""
+    a = [s for s in route_modele.strip("/").split("/") if s]
+    b = [s for s in url.split("?")[0].rstrip("/").split("/") if s and "://" not in s]
+    b = b[-len(a):] if len(b) >= len(a) else b
+    if len(a) != len(b):
+        return False
+    return all(x.startswith("{") or x == y for x, y in zip(a, b))
+
+
+def formulaires_requis(modele: dict | None, routes) -> list[dict]:
+    """Les formulaires visés par `routes`, avec leurs champs REQUIS — la contrainte à donner au
+    générateur (`[{route, requis: [{name, tag, options}]}]`).
+
+    ⚠️ **C'est la donnée que la génération n'avait jamais.** L'annuaire porte `required` par champ
+    depuis qu'il existe, mais **seul le gate le lisait** : le prompt disait à l'agent « observe le
+    formulaire réel pour connaître les champs requis » — une consigne qui dépend de l'exploration,
+    donc du tirage. Mesuré (2026-07-19) : sur la même spec, une génération a rempli 6 champs +
+    soumission explicite, la suivante **2 champs sur 8** sans soumission — donc un test qui ne
+    crée rien et 4 scénarios `non_conforme`. On donne désormais la liste au lieu de la faire
+    deviner (motif `0021` : *lire plutôt que deviner*).
+
+    Dédupliqué par ensemble de champs requis : deux routes qui exigent exactement la même chose
+    (mesuré : `/formulaire/{id}` et `/product/{id}/accessories`) ne sont pas répétées.
+    """
+    if not modele or not modele.get("pages"):
+        return []
+    trouves, vus = [], set()
+    for route, infos in (modele.get("pages") or {}).items():
+        if not any(_meme_route(route, str(u)) for u in routes or []):
+            continue
+        requis = [c for c in (infos.get("champs") or []) if c.get("name") and c.get("required")]
+        if not requis:
+            continue
+        signature = frozenset(c["name"] for c in requis)
+        if signature in vus:
+            continue
+        vus.add(signature)
+        trouves.append({
+            "route": route,
+            "requis": [{"name": c["name"], "tag": c.get("tag", ""),
+                        "options": [v for v, _ in (c.get("options") or [])]} for c in requis],
+        })
+    return trouves
+
+
 def resume(modele: dict | None) -> str:
     """Une ligne pour un humain : ce que le modèle couvre, et de quand il date."""
     if not modele or not modele.get("pages"):

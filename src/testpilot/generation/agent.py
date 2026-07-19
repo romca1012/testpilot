@@ -13,6 +13,7 @@ import logging
 from testpilot import config
 from testpilot.analysis.plan import TestPlan
 from testpilot.analysis.spec_analyzer import spec_hash
+from testpilot.generation import domain_model
 from testpilot.generation import prompt as prompt_mod
 from testpilot.generation import steps_library
 from testpilot.generation.interfaces import Connector, DryRunner
@@ -44,7 +45,13 @@ class GenerationAgent:
     def generate(self, plan: TestPlan, *, case_id: int | None = None,
                  title: str = "", author: str = "", module_id: int | None = None) -> GenerationResult:
         state = AgentState(module_name=plan.module_name)
-        state.messages.append({"role": "user", "content": prompt_mod.build_initial_message(plan)})
+        # L'annuaire du domaine alimente la CONTRAINTE de complétude (champs requis + obligation
+        # de soumettre). Jusqu'ici seul le GATE le lisait : la génération devait deviner les
+        # champs requis « par observation », d'où sa variabilité (2 champs sur 8 au tirage du
+        # 2026-07-19). Best-effort : absent ⇒ message d'avant, aucune contrainte inventée.
+        modele = domain_model.charger_modele(plan.connector_type)
+        state.messages.append({"role": "user",
+                               "content": prompt_mod.build_initial_message(plan, modele)})
         # Un seul catalogue pour les deux usages : ce qu'on MONTRE à l'agent (prompt) et ce
         # qu'on lui REFUSE à l'écriture (redéfinition). Cf. décision 0003.
         shared_steps = steps_library.catalogue()

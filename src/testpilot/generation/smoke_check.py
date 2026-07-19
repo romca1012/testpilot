@@ -126,6 +126,179 @@ def _index_champs(modele: dict) -> set[str]:
             for c in (i.get("champs") or [])}
 
 
+_ROUTE_NAV = re.compile(r'navigue\s+vers\s+(?:l\'URL\s+du\s+portail\s+)?"(?P<url>[^"]+)"', re.IGNORECASE)
+
+# Un scénario qui AFFIRME une création : c'est là, et seulement là, qu'une soumission est due.
+_AFFIRME_CREATION = (
+    re.compile(r"augmente\s+de\s+1", re.IGNORECASE),
+    re.compile(r'existe\s+dans\s+le\s+modèle\s+"', re.IGNORECASE),
+)
+
+# Steps qui SOUMETTENT réellement (action), par opposition à l'attente passive.
+_SOUMET = (
+    re.compile(r'\b(?:soumets?|soumis|soumet|envoie|envoi|valide)\b', re.IGNORECASE),
+    re.compile(r'clique[^"\n]*"(?:Envoyer|Soumettre|Valider|Submit)"', re.IGNORECASE),
+)
+# ⚠️ « j'attends la soumission du formulaire » N'EST PAS une soumission : le helper partagé
+# (`wait_form_submission`) ne fait qu'ATTENDRE, il ne clique rien. C'est la cause exacte du
+# ticket jamais créé de v20 — le scénario remplissait puis « attendait » un envoi que personne
+# n'avait déclenché. Il faut donc l'exclure explicitement, sinon le contrôle se tait dessus.
+_ATTENTE_PASSIVE = re.compile(r"attends?\s+la\s+soumission", re.IGNORECASE)
+
+
+def _index_formulaires(modele: dict) -> list[tuple[str, set[str], set[str]]]:
+    """`[(route, tous_les_champs, champs_requis)]` pour chaque page portant des champs."""
+    formulaires = []
+    for route, infos in (modele.get("pages") or {}).items():
+        champs = infos.get("champs") or []
+        if not champs:
+            continue
+        noms = {c["name"] for c in champs if c.get("name")}
+        requis = {c["name"] for c in champs if c.get("name") and c.get("required")}
+        if requis:
+            formulaires.append((route, noms, requis))
+    return formulaires
+
+
+def forme_cible(champs_remplis: set[str], routes: list[str], modele: dict):
+    """Quel formulaire le scénario remplit-il ? → `(route, champs_requis)`, ou `None` si on ne
+    peut pas le dire — **le silence est la position par défaut** (§4.4 : faux négatif acceptable,
+    faux positif non-bloquant à éviter absolument sur un signal détectif).
+
+    Clé principale : le **sous-ensemble des champs remplis** (le scénario arrive souvent au
+    formulaire par des CLICS, sans jamais nommer sa route — c'est le cas de v20, d'où le refus
+    d'exiger une route explicite). On retient les formulaires dont les champs **contiennent tous**
+    ceux que le scénario remplit ; la route sert de **désambiguïsation**.
+
+    ⚠️ **Raffinement décidé sur les données réelles, et il est indispensable.** L'ambiguïté n'est
+    dirimante que si les candidats **ne s'accordent pas**. Mesuré : les champs de v20
+    (`name` + `types_demandes`) désignent DEUX routes — `/formulaire/{id}` et
+    `/product/{id}/accessories` — qui exigent **exactement les mêmes 8 champs**. Se taire là serait
+    se taire sur le cas même qu'on veut attraper, alors qu'aucune information ne manque : peu
+    importe laquelle des deux, la réponse est la même. On ne se tait donc que si les candidats
+    **divergent** sur l'ensemble requis.
+    """
+    if not champs_remplis:
+        return None
+    candidats = [(r, req) for r, noms, req in _index_formulaires(modele)
+                 if champs_remplis <= noms]
+    if not candidats:
+        return None
+    if len(candidats) > 1:
+        # Désambiguïsation par la route explicitement visitée, quand il y en a une.
+        cible = [(r, req) for r, req in candidats
+                 if any(_meme_route(r, u) for u in routes)]
+        if len(cible) == 1:
+            return cible[0]
+        # Sinon : tolérable UNIQUEMENT si tous les candidats exigent la même chose.
+        requis = {frozenset(req) for _, req in candidats}
+        if len(requis) != 1:
+            return None
+        return " ou ".join(r for r, _ in candidats), set(candidats[0][1])
+    return candidats[0]
+
+
+def _meme_route(route_modele: str, url: str) -> bool:
+    """`/formulaire/{id}` correspond-il à `…/formulaire/78` ? (segments, placeholders joker)."""
+    a = [s for s in route_modele.strip("/").split("/") if s]
+    b = [s for s in url.split("?")[0].rstrip("/").split("/") if s and "://" not in s]
+    b = b[-len(a):] if len(b) >= len(a) else b
+    if len(a) != len(b):
+        return False
+    return all(x.startswith("{") or x == y for x, y in zip(a, b))
+
+
+def _scenarios(feature_content: str) -> list[tuple[str, int, list[str]]]:
+    """Découpe le `.feature` en `(titre, ligne_de_début, lignes)`. Le Contexte est ignoré :
+    il ne remplit pas de formulaire."""
+    scenarios, courant = [], None
+    for num, ligne in enumerate(feature_content.split("\n"), 1):
+        if re.match(r"\s*(?:Scénario|Scenario)\b", ligne):
+            courant = (ligne.strip().split(":", 1)[-1].strip() or "sans titre", num, [])
+            scenarios.append(courant)
+        elif courant is not None:
+            courant[2].append(ligne)
+    return scenarios
+
+
+def check_champs_requis_remplis(feature_content: str, modele: dict) -> list[dict]:
+    """Le scénario remplit-il TOUS les champs requis du formulaire qu'il vise ? — le motif de v20.
+
+    Mesuré : v20 remplissait **2 champs sur 8 requis** puis affirmait qu'un ticket était créé. Le
+    formulaire refuse la soumission (validation navigateur) → aucun ticket → 4 scénarios
+    `non_conforme`, diagnostiqués à la main pour $0. Ce contrôle le dit **avant le run**, en
+    nommant les champs manquants — jamais un générique « formulaire incomplet ».
+    """
+    date = modele.get("mesure_le", "?")
+    warnings: list[SmokeWarning] = []
+    for titre, ligne0, lignes in _scenarios(feature_content):
+        # ⚠️ **Uniquement les scénarios qui AFFIRMENT une création** — borne trouvée sur les
+        # données réelles, pas en théorie. Le scénario « [ERREUR] Soumission du formulaire sans
+        # remplir le champ obligatoire » de v20 omet un champ requis **exprès** : c'est tout son
+        # objet (§ couverture minimale : « champ requis manquant »). L'alerter serait le faux
+        # positif systématique que la borne du principe 2 interdit — on crierait sur le scénario
+        # le mieux écrit du lot. Un scénario qui ne prétend rien créer n'a aucune obligation de
+        # complétude.
+        corps = "\n".join(lignes)
+        if not any(m.search(corps) for m in _AFFIRME_CREATION):
+            continue
+        remplis, routes = set(), []
+        for ligne in lignes:
+            trouve = _extraire_champ_valeur(ligne)
+            if trouve:
+                remplis.add(trouve[0])
+            nav = _ROUTE_NAV.search(ligne)
+            if nav:
+                routes.append(nav.group("url"))
+        cible = forme_cible(remplis, routes, modele)
+        if cible is None:
+            continue                        # formulaire non identifié → on se tait
+        route, requis = cible
+        manquants = sorted(requis - remplis)
+        if not manquants:
+            continue
+        warnings.append(SmokeWarning(
+            kind="champs_requis_manquants", step=titre[:60], line=ligne0,
+            message=(f"Le formulaire {route} exige {len(requis)} champs requis ; "
+                     f"{len(manquants)} ne sont pas remplis : {', '.join(manquants)}. "
+                     f"Un formulaire incomplet est refusé à la soumission — le scénario ne créera "
+                     f"rien, et son assertion de création échouera. "
+                     f"(modèle mesuré le {date})")))
+    return [w.as_dict() for w in warnings]
+
+
+def check_step_soumission(feature_content: str) -> list[dict]:
+    """Un scénario qui AFFIRME une création soumet-il vraiment ? — l'autre moitié du motif v20.
+
+    ⚠️ **« j'attends la soumission du formulaire » ne soumet RIEN** : le helper partagé se contente
+    d'attendre. v20 remplissait, attendait, puis affirmait « le nombre augmente de 1 » — sans que
+    rien n'ait jamais été envoyé. Vérifié en réel (sonde HTTP/RPC) : **aucun POST**, delta 0.
+
+    On ne se déclenche que si le scénario **affirme une création** : un scénario de consultation
+    n'a rien à soumettre, l'alerter serait un faux positif systématique.
+
+    **Limite assumée** : une tournure de soumission très exotique passerait inaperçue (faux
+    négatif). Direction sûre — §4.4 tolère le faux négatif ici, jamais le faux positif bloquant.
+    """
+    warnings: list[SmokeWarning] = []
+    for titre, ligne0, lignes in _scenarios(feature_content):
+        corps = "\n".join(lignes)
+        if not any(m.search(corps) for m in _AFFIRME_CREATION):
+            continue
+        actives = [l for l in lignes
+                   if any(m.search(l) for m in _SOUMET) and not _ATTENTE_PASSIVE.search(l)]
+        if actives:
+            continue
+        passif = " Le scénario « attend » la soumission, ce qui n'envoie rien." \
+            if _ATTENTE_PASSIVE.search(corps) else ""
+        warnings.append(SmokeWarning(
+            kind="soumission_absente", step=titre[:60], line=ligne0,
+            message=(f"Ce scénario affirme qu'un enregistrement est créé, mais aucun step ne "
+                     f"SOUMET le formulaire.{passif} Ajoute un step qui déclenche l'envoi "
+                     f"(clic sur « Envoyer »), sinon rien ne sera créé et l'assertion échouera.")))
+    return [w.as_dict() for w in warnings]
+
+
 def check_valeurs_de_select(feature_content: str, modele: dict) -> list[dict]:
     """Les valeurs passées aux `<select>` existent-elles ? — le motif `0019`, vu avant le run.
 
@@ -196,4 +369,9 @@ def smoke_check(feature_content: str, steps_content: str = "", modele: dict | No
     if not modele or not modele.get("pages"):
         return []
     return (check_valeurs_de_select(feature_content, modele)
-            + check_champs_existants(feature_content, modele))
+            + check_champs_existants(feature_content, modele)
+            + check_champs_requis_remplis(feature_content, modele)
+            # Seul contrôle qui ne consulte PAS le modèle (il lit la structure du scénario) : il
+            # reste sous le garde « pas de modèle ⇒ pas d'avis » pour que le gate ait un
+            # comportement unique, jamais un demi-avis selon la présence de l'annuaire.
+            + check_step_soumission(feature_content))
