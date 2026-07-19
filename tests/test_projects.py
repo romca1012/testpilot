@@ -18,8 +18,11 @@ from testpilot.store.db import (
 )
 from testpilot.store.repositories import (
     CaseRepo,
+    CostRepo,
+    ExecutionRepo,
     ModuleRepo,
     ProjectRepo,
+    VersionRepo,
     ensure_default_module,
 )
 
@@ -166,7 +169,6 @@ def test_api_delete_project_cascade(client):
     mid = ensure_default_module(conn, "demande_materiel")
     pid = ModuleRepo(conn).get(mid)["project_id"]
     cid = CaseRepo(conn).create(title="Demande", module_id=mid, feature_slug="demande_materiel")
-    from testpilot.store.repositories import ExecutionRepo, VersionRepo
     vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="h",
                                    feature_content="", steps_content="")
     eid = ExecutionRepo(conn).create(test_case_id=cid, version_id=vid)
@@ -199,6 +201,49 @@ def test_api_delete_project_isole_les_autres(client):
     # Le second projet et son cas sont intacts.
     assert any(p["id"] == p2 for p in client.get("/api/projects").json())
     assert {c["title"] for c in client.get(f"/api/cases?project_id={p2}").json()} == {"Garde"}
+
+
+def test_delete_project_emporte_le_cout_de_generation_sans_execution(client):
+    """Régression migration 12 : une ligne de coût de GÉNÉRATION n'a pas d'exécution
+    (elle la précède, cf. `CostRepo.add_entry`). La cascade la nettoyait par `execution_id`
+    seul → elle survivait à son projet, orpheline, et faussait le §9. Ce test échoue sur
+    l'ancienne cascade (le coût de génération reste), passe depuis le correctif `test_case_id`."""
+    conn = get_initialized_db(config.DB_PATH)
+    mid = ensure_default_module(conn, "demande_materiel")
+    pid = ModuleRepo(conn).get(mid)["project_id"]
+    cid = CaseRepo(conn).create(title="Demande", module_id=mid, feature_slug="demande_materiel")
+    # Le coût de génération : test_case_id renseigné, AUCUNE exécution (c'est tout le sujet).
+    CostRepo(conn).add_entry(phase="generation", model="claude", cost_usd=0.10,
+                             source="estimated", test_case_id=cid)
+    conn.close()
+
+    assert client.delete(f"/api/projects/{pid}").status_code == 204
+
+    conn = get_initialized_db(config.DB_PATH)
+    n = conn.execute("SELECT COUNT(*) FROM cost_ledger").fetchone()[0]
+    conn.close()
+    assert n == 0, f"cost_ledger contient encore {n} ligne(s) orpheline(s) après suppression du projet"
+
+
+def test_delete_case_emporte_le_cout_de_generation_sans_execution(conn):
+    """Même régression, au niveau `CaseRepo.delete` : le coût de génération d'un cas
+    supprimé ne doit pas survivre. La ligne à exécution rattachée part aussi."""
+    mid = ensure_default_module(conn, "demande_materiel")
+    cid = CaseRepo(conn).create(title="Demande", module_id=mid, feature_slug="demande_materiel")
+    vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="h",
+                                   feature_content="", steps_content="")
+    eid = ExecutionRepo(conn).create(test_case_id=cid, version_id=vid)
+    # Deux postes : génération (sans exécution) ET réparation (rattachée à une exécution).
+    CostRepo(conn).add_entry(phase="generation", model="claude", cost_usd=0.10,
+                             source="estimated", test_case_id=cid)
+    CostRepo(conn).add_entry(phase="repair", model="claude", cost_usd=0.05,
+                             source="estimated", execution_id=eid)
+    assert conn.execute("SELECT COUNT(*) FROM cost_ledger").fetchone()[0] == 2
+
+    CaseRepo(conn).delete(cid)
+
+    n = conn.execute("SELECT COUNT(*) FROM cost_ledger").fetchone()[0]
+    assert n == 0, f"cost_ledger contient encore {n} ligne(s) après suppression du cas"
 
 
 def test_api_rename_project(client):

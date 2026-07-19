@@ -114,7 +114,11 @@ class ProjectRepo:
         try:
             cur.execute(f"DELETE FROM scenario_result WHERE execution_id IN ({exec_sub})", (project_id,))
             cur.execute(f"DELETE FROM repair_attempt  WHERE execution_id IN ({exec_sub})", (project_id,))
-            cur.execute(f"DELETE FROM cost_ledger      WHERE execution_id IN ({exec_sub})", (project_id,))
+            # Par test_case_id AUSSI : une ligne de génération n'a pas d'exécution (migration 12).
+            # Sans ce OR, la FK cost_ledger→test_case bloque le DELETE du cas. Même correctif
+            # que `CaseRepo.delete`, même raison, même preuve (test de cascade projet).
+            cur.execute(f"DELETE FROM cost_ledger      WHERE execution_id IN ({exec_sub})"
+                        f"    OR test_case_id IN ({case_sub})", (project_id, project_id))
             cur.execute(f"DELETE FROM execution        WHERE test_case_id IN ({case_sub})", (project_id,))
             cur.execute(f"DELETE FROM review_decision  WHERE test_case_id IN ({case_sub})", (project_id,))
             cur.execute(f"DELETE FROM test_case_version WHERE test_case_id IN ({case_sub})", (project_id,))
@@ -284,13 +288,24 @@ class CaseRepo:
         Même patron que `ProjectRepo.delete` : le schéma ne déclare aucun `ON DELETE CASCADE`,
         la cascade est donc explicite ici. `current_version_id` n'a volontairement pas de FK
         dure (cycle cas↔version), il n'impose donc pas d'ordre.
+
+        ⚠️ **Le coût se supprime par `test_case_id`, PAS par `execution_id`** — corrigé le
+        2026-07-17. La migration 12 a fait de `test_case_id` le lien de référence du ledger,
+        précisément parce qu'une **génération n'a pas d'exécution** (elle la précède). Cette
+        cascade, écrite avant, ne nettoyait que par `execution_id` : la ligne de coût de
+        génération d'un cas créé par l'écran ne matchait aucun `execution_id`. Comme la colonne
+        porte une FK vers `test_case` (migration 12) sous `PRAGMA foreign_keys = ON`, le `DELETE
+        FROM test_case` final **échouait en `IntegrityError`** — le cas devenait insupprimable.
+        Prouvé par `test_delete_case_emporte_le_cout_de_generation_sans_execution` (rouge sur
+        l'ancienne cascade).
         """
         cur = self.conn
         exec_sub = "SELECT id FROM execution WHERE test_case_id=?"
         try:
             cur.execute(f"DELETE FROM scenario_result WHERE execution_id IN ({exec_sub})", (case_id,))
             cur.execute(f"DELETE FROM repair_attempt  WHERE execution_id IN ({exec_sub})", (case_id,))
-            cur.execute(f"DELETE FROM cost_ledger      WHERE execution_id IN ({exec_sub})", (case_id,))
+            cur.execute(f"DELETE FROM cost_ledger      WHERE execution_id IN ({exec_sub})"
+                        "    OR test_case_id = ?", (case_id, case_id))
             cur.execute("DELETE FROM execution         WHERE test_case_id=?", (case_id,))
             cur.execute("DELETE FROM review_decision   WHERE test_case_id=?", (case_id,))
             cur.execute("DELETE FROM test_case_version WHERE test_case_id=?", (case_id,))
