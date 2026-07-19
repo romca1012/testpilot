@@ -126,7 +126,8 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
     crée un neuf — donc au plafond entier (`COST_LIMIT_PER_RUN_USD`), donc **remis à zéro à chaque
     tentative** : le plafond bornait un APPEL, jamais le cas, et un cas pouvait dépenser
     `budget × plafond` sans qu'aucun garde-fou ne bronche. `repair_service` en construit un seul
-    pour toute la boucle (`REPAIR_COST_LIMIT_PER_CASE_USD`) et le passe à chaque tentative.
+    pour toute la boucle, **amorcé du cumul déjà dépensé par le cas et plafonné au §9**
+    (`BUDGET_PER_CASE_USD`) — génération + toutes les réparations sous une enveloppe unique.
     Le défaut ci-dessous ne sert qu'aux appels isolés (tests).
     """
     llm = llm or LLMAdapter()

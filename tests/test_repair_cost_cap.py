@@ -12,10 +12,13 @@ contre la cible du **§9 du brief : moins de 1 €/cas** (= $1,08 à `EUR_USD_RA
 un plafond neuf. C'est le motif du projet une fois de plus — **un garde-fou décoratif**, comme le
 `position` de `0006` ou le stall du circuit — mais appliqué à l'argent.
 
-LE CORRECTIF. `repair_service` construit **un seul** `CostTracker` pour toute la boucle
-(`REPAIR_COST_LIMIT_PER_CASE_USD`) et le passe à chaque tentative. Deux conséquences testées ici :
+LE CORRECTIF (2026-07-17, étendu le 2026-07-19). `repair_service` construit **un seul**
+`CostTracker` pour toute la boucle. Depuis le 2026-07-19 il est **amorcé du cumul déjà dépensé par
+le cas (génération + réparations, lu au ledger) et plafonné au §9** (`BUDGET_PER_CASE_USD`) : le
+sous-plafond réparations-seules (`REPAIR_COST_LIMIT_PER_CASE_USD`) est supersédé, car deux
+sous-plafonds indépendants pouvaient s'additionner au-dessus du §9. Conséquences testées ici :
 
-1. le plafond **cumule** entre tentatives et coupe le cas (escalade humaine, §6 du brief) ;
+1. le plafond **cumule** génération + tentatives et coupe le cas au §9 (escalade humaine, §6) ;
 2. `RepairProposal.cost_usd` rend le **delta** de la tentative, jamais le total du tracker —
    sinon partager le tracker ferait **double-compter** la tentative 1 dans la 2, et le ledger
    comme `session.cost_usd` mentiraient **à la hausse**. Un correctif de comptage qui fausse le
@@ -166,7 +169,7 @@ def test_le_plafond_cumule_entre_tentatives_et_coupe_le_cas(conn, monkeypatch):
     Avant le correctif, la tentative 2 repartait de $0 et passait tranquillement : le cas
     dépensait $0,60 sous un plafond de $0,50, sans que rien ne bronche.
     """
-    monkeypatch.setattr(config, "REPAIR_COST_LIMIT_PER_CASE_USD", 0.50)
+    monkeypatch.setattr(config, "BUDGET_PER_CASE_USD", 0.50)  # le plafond CUMULÉ du cas (§9)
     cid, vid, eid = _cas(conn, budget=3)
     depart = _Outcome(real_run=_RealRun(), execution_id=eid)
 
@@ -190,6 +193,48 @@ def test_le_plafond_cumule_entre_tentatives_et_coupe_le_cas(conn, monkeypatch):
     assert session.cost_usd == pytest.approx(0.60), "le coût réellement dépensé doit être dit"
 
 
+def test_le_plafond_cumule_generation_ET_reparations_contre_le_9(conn, monkeypatch):
+    """L'INVARIANT demandé : le plafond borne le CUMUL du cas — génération + TOUTES les
+    réparations — contre le §9 global, MÊME si chaque poste reste sous son propre sous-seuil.
+
+    Sur le code d'avant, la boucle ne bornait QUE les réparations ($0,62) et IGNORAIT la
+    génération : un cas dont la génération a coûté $0,50 pouvait encore dépenser $0,62 de
+    réparations = $1,12 > §9, sans que rien ne coupe. On FIGE le §9 à $0,90, on inscrit au ledger
+    une génération de $0,50 (comme le chemin écran, migration 12), et chaque réparation coûte
+    $0,25 — chacune trivialement sous tout sous-seuil. Le cumul doit couper :
+
+        seed génération $0,50  +  réparation 1 $0,25 = $0,75  → passe
+                                +  réparation 2 $0,25 = $1,00  → COUPÉ (> $0,90)
+
+    Seul le CUMUL coupe : aucune réparation individuelle n'a franchi quoi que ce soit.
+    """
+    monkeypatch.setattr(config, "BUDGET_PER_CASE_USD", 0.90)  # §9 figé pour le test
+    cid, vid, eid = _cas(conn, budget=5)
+    # La génération du cas est DÉJÀ au ledger (elle précède toute réparation).
+    CostRepo(conn).add_entry(phase="generation", model="claude", cost_usd=0.50,
+                             source="estimated", test_case_id=cid)
+    depart = _Outcome(real_run=_RealRun(), execution_id=eid)
+
+    llm = FakeLLM([_ecrit()], cost_par_appel=0.25)
+    monkeypatch.setattr(repair_agent, "LLMAdapter", lambda: llm)
+
+    def run_once(new_version_id):
+        eid2 = ExecutionRepo(conn).create(test_case_id=cid, version_id=new_version_id,
+                                          trigger="rerun")
+        return _Outcome(real_run=_RealRun(), execution_id=eid2)
+
+    session = repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas", outcome=depart,
+        run_once=run_once, dry_runner=FakeDryRunner())
+
+    assert session.outcome == repair_service.COST_EXCEEDED, (
+        f"le cumul génération+réparations doit couper au §9 — issue : {session.outcome}")
+    # Une seule réparation RETENUE ($0,75 cumulé) ; la 2ᵉ ($1,00) franchit $0,90 → coupée.
+    assert session.attempts == 1
+    # 2 réparations TENTÉES à $0,25 : la boucle a bien compté la génération dans l'enveloppe.
+    assert session.cost_usd == pytest.approx(0.50)
+
+
 def test_le_cout_coupe_le_cas_quand_le_circuit_ne_coupe_pas(conn, monkeypatch):
     """Le §9 quand le budget de TENTATIVES ne suffit pas à protéger : c'est le coût qui borne.
 
@@ -210,7 +255,7 @@ def test_le_cout_coupe_le_cas_quand_le_circuit_ne_coupe_pas(conn, monkeypatch):
 
     Budget 5 × $0,10 = $0,50 possible ; plafond $0,35 → coupé à la 4ᵉ ($0,40).
     """
-    monkeypatch.setattr(config, "REPAIR_COST_LIMIT_PER_CASE_USD", 0.35)
+    monkeypatch.setattr(config, "BUDGET_PER_CASE_USD", 0.35)  # le plafond CUMULÉ du cas (§9)
     cid, vid, eid = _cas(conn, budget=5)
     depart = _Outcome(real_run=_RealRun(), execution_id=eid)
 
@@ -247,7 +292,7 @@ def test_le_ledger_ne_double_compte_pas_les_tentatives(conn, monkeypatch):
     tracker partagé, chaque tentative écrirait au ledger le cumul depuis le début : 2 tentatives
     à $0,10 donneraient $0,10 + $0,20 = $0,30 au lieu de $0,20.
     """
-    monkeypatch.setattr(config, "REPAIR_COST_LIMIT_PER_CASE_USD", 5.0)
+    monkeypatch.setattr(config, "BUDGET_PER_CASE_USD", 5.0)  # cap haut : on teste le ledger, pas la coupe
     cid, vid, eid = _cas(conn, budget=2)
     depart = _Outcome(real_run=_RealRun(), execution_id=eid)
 
@@ -279,28 +324,24 @@ GENERATION_PIRE = 0.4529     # CLI, 2026-07-15 — AVANT les garde-fous : régim
 REPARATION = 0.2895          # une tentative — périmé à la baisse (mesuré sans dry-run)
 
 
-def test_le_plafond_par_defaut_tient_le_9_avec_le_budget_par_defaut():
-    """Le calcul de calibration du 2026-07-17, verrouillé — sinon il dérive en silence.
+def test_le_budget_par_defaut_ne_fait_pas_sauter_le_9_en_cumul():
+    """Le budget de tentatives par défaut ne peut pas, à lui seul, faire franchir le §9 en cumul.
 
-    Le plafond de réparation est calibré sur le PIRE observé — c'est ainsi qu'on borne :
-    §9 ($1,08) − génération pire cas ($0,4529) = $0,6271 → $0,62.
-    Vérification : REPAIR_BUDGET_DEFAULT (2) × $0,2895 = $0,5790 ≤ $0,62. Ça tient, donc le
-    budget par défaut RESTE à 2 — la mesure ne demande pas de le descendre à 1.
+    ⚠️ Depuis le 2026-07-19, le garde-fou borne le CUMUL (génération + toutes les réparations) au
+    §9 (`BUDGET_PER_CASE_USD`) directement — le sous-plafond `REPAIR_COST_LIMIT_PER_CASE_USD` est
+    SUPERSÉDÉ et n'est plus lu. Ce test ne verrouille donc plus une constante morte : il vérifie
+    que la calibration du BUDGET (nombre de tentatives) reste cohérente avec l'enveloppe §9 —
+    sinon la coupe deviendrait la norme au lieu de l'exception.
 
-    Si quelqu'un remonte le budget par défaut sans toucher au plafond, ce test le dit.
+    Au PIRE mesuré : génération pire ($0,4529) + REPAIR_BUDGET_DEFAULT (2) × réparation ($0,2895)
+    doit tenir sous le §9. Si quelqu'un remonte le budget par défaut, ce test le dit.
     """
-    marge = config.BUDGET_PER_CASE_USD - GENERATION_PIRE
-    assert config.REPAIR_COST_LIMIT_PER_CASE_USD <= marge, (
-        "le plafond de réparation dépasse ce que le §9 laisse après la pire génération mesurée")
-
-    cout_attendu = config.REPAIR_BUDGET_DEFAULT * REPARATION
-    assert cout_attendu <= config.REPAIR_COST_LIMIT_PER_CASE_USD, (
-        f"{config.REPAIR_BUDGET_DEFAULT} tentatives à ${REPARATION} = ${cout_attendu:.4f} "
-        f"> plafond ${config.REPAIR_COST_LIMIT_PER_CASE_USD} : baisser le budget par défaut "
-        f"plutôt que dépasser la cible du §9")
-
-    # Même au pire cas historique, le cas complet reste sous le §9.
-    assert GENERATION_PIRE + cout_attendu <= config.BUDGET_PER_CASE_USD
+    cout_reparations = config.REPAIR_BUDGET_DEFAULT * REPARATION
+    cumul_pire = GENERATION_PIRE + cout_reparations
+    assert cumul_pire <= config.BUDGET_PER_CASE_USD, (
+        f"génération pire (${GENERATION_PIRE}) + {config.REPAIR_BUDGET_DEFAULT} réparations "
+        f"(${cout_reparations:.4f}) = ${cumul_pire:.4f} > §9 (${config.BUDGET_PER_CASE_USD:.4f}) : "
+        f"baisser le budget par défaut plutôt que laisser le cumul franchir le §9")
 
 
 def test_le_plafond_de_generation_ne_fait_echouer_aucune_generation_connue():

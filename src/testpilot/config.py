@@ -101,12 +101,16 @@ MONTHLY_BUDGET_USD = MONTHLY_BUDGET_EUR * EUR_USD_RATE
 BUDGET_PER_CASE_EUR = float(os.getenv("TESTPILOT_BUDGET_PER_CASE_EUR", "1.00"))
 BUDGET_PER_CASE_USD = BUDGET_PER_CASE_EUR * EUR_USD_RATE
 
-# Plafond de coût des RÉPARATIONS CUMULÉES d'un cas — calibré le 2026-07-17 sur mesures réelles.
+# ⚠️ SUPERSÉDÉ le 2026-07-19 — plus lu par le garde-fou. La boucle de réparation borne désormais
+# le CUMUL du cas (génération + TOUTES les réparations) au **§9** (`BUDGET_PER_CASE_USD`), en
+# amorçant son `CostTracker` avec ce que le cas a déjà dépensé (`total_for_case_usd`). Deux
+# sous-plafonds indépendants ($0,50 génération + $0,62 réparations) pouvaient s'additionner
+# au-dessus du §9 ($1,12 = 104 %) alors que chacun restait sous son seuil : l'enveloppe cumulée
+# unique ferme ce trou. Cette constante est conservée pour compat d'env, mais **plus personne ne
+# la lit** — même statut que `MONTHLY_BUDGET_*`. Ne rien reconstruire dessus.
 #
-# ⚠️ Ce plafond est PARTAGÉ par toutes les tentatives d'un cas, et c'est tout l'objet du
-# correctif : `propose_fix` instanciait un `CostTracker()` NEUF à chaque tentative, donc chacune
-# repartait de zéro avec le plafond entier. Le plafond ne bornait pas ce qu'il prétendait borner
-# — un cas pouvait dépenser budget × plafond.
+# --- Historique (calibrage du 2026-07-17, désormais caduc comme garde) ---
+# Plafond de coût des RÉPARATIONS CUMULÉES d'un cas — calibré sur mesures réelles.
 #
 # LE CALCUL — calibré sur le PIRE observé, comme doit l'être un plafond :
 #     §9                          = 1,00 € × 1,08          = $1,0800

@@ -321,13 +321,26 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
     # (0 >= 0) sans aucun cas particulier. Le garde-fou existant fait le travail.
     circuit = CircuitState(max_iterations=budget, stall_limit=config.REPAIR_STALL_LIMIT)
 
-    # ⚠️ UN SEUL tracker pour TOUT le cas — c'est le correctif du plafond qui ne plafonnait rien.
-    # `propose_fix` en créait un neuf à chaque tentative, donc chacune repartait de $0 avec le
-    # plafond entier : le garde-fou « budget » du brief §6 bornait un APPEL, jamais le cas. Un cas
-    # pouvait donc dépenser `budget × COST_LIMIT_PER_RUN_USD` (jusqu'à $4 avec le défaut de 2),
-    # très au-dessus du §9 ($1,08), sans que rien ne coupe ni ne s'en plaigne.
-    # Partagé, il borne enfin ce que le brief veut borner : le CAS.
-    cost_tracker = CostTracker(limit_usd=config.REPAIR_COST_LIMIT_PER_CASE_USD)
+    # ⚠️ PLAFOND CUMULÉ PAR CAS = génération + TOUTES les réparations, borné au §9 (BUDGET_PER_CASE
+    # — l'unique cible de coût du produit, « réparations cumulées comprises »).
+    #
+    # Deux trous comblés ici, au-delà du « un seul tracker par session » déjà en place :
+    #  1. le tracker repartait de $0 à CHAQUE appel de la boucle (nouveau `CostTracker`), donc les
+    #     réparations d'une session ignoraient celles des sessions précédentes du même cas ;
+    #  2. il ne comptait QUE les réparations : la GÉNÉRATION n'entrait jamais dans le plafond.
+    # Résultat : deux sous-plafonds indépendants ($0,50 génération + $0,62 réparations) pouvaient
+    # s'additionner AU-DESSUS du §9 ($1,12 = 104 %) alors que chaque poste restait sous son seuil.
+    #
+    # On SEEDE donc le tracker avec ce que le cas a DÉJÀ dépensé (génération + réparations
+    # antérieures, lues au ledger) et on plafonne au §9 : le cumul vivant ne peut plus franchir le
+    # plafond global, quelle que soit la répartition entre postes. `REPAIR_COST_LIMIT_PER_CASE_USD`
+    # (sous-plafond réparations-seules) est SUPERSÉDÉ par cette enveloppe unique.
+    #
+    # ⚠️ Cela lit `total_for_case_usd` — que le §9-KPI ne doit PAS lire (arbitrage porteur : le KPI
+    # se compare à la CRÉATION, cf. `creation_cost_usd`). Ici ce n'est pas le KPI, c'est le
+    # GARDE-FOU de dépense : borner le cumul au §9 est une enveloppe de sécurité, pas une mesure.
+    deja_depense = CostRepo(conn).total_for_case_usd(case_id)
+    cost_tracker = CostTracker(limit_usd=config.BUDGET_PER_CASE_USD, initial_cost=deja_depense)
 
     versions = VersionRepo(conn)
     cases = CaseRepo(conn)

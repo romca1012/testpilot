@@ -43,9 +43,14 @@ class CallRecord:
 class CostTracker:
     """Accumule le coût estimé des appels d'un run et coupe au plafond par-run."""
 
-    def __init__(self, limit_usd: float | None = None):
+    def __init__(self, limit_usd: float | None = None, initial_cost: float = 0.0):
+        """`initial_cost` AMORCE le cumul avec ce que le contexte a DÉJÀ dépensé — c'est ce qui
+        permet de borner un CUMUL (ex. génération + réparations d'un cas) et pas seulement les
+        appels de CE tracker. `calls` ne contient que les appels suivis ici (le seed n'y figure
+        pas) ; `total_cost`, lui, part du seed et grossit à chaque appel — c'est lui que le
+        plafond surveille."""
         self.limit_usd = config.COST_LIMIT_PER_RUN_USD if limit_usd is None else limit_usd
-        self.total_cost: float = 0.0
+        self.total_cost: float = initial_cost
         self.calls: list[CallRecord] = []
 
     @staticmethod

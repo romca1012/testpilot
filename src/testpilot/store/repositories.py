@@ -746,6 +746,12 @@ class CostRepo:
         premier passage). Pour comprendre où part l'argent d'un cas qu'on débogue : cette
         méthode-ci.
 
+        ✅ **UN usage légitime de ce cumul comme SEUIL** (ajouté le 2026-07-19) : amorcer le
+        GARDE-FOU de dépense de la boucle de réparation. Là, borner « génération + toutes les
+        réparations » au §9 est une **enveloppe de sécurité** (empêcher un cas d'emballer la
+        dépense), PAS le KPI §9. La distinction tient : le KPI juge une création, le garde-fou
+        borne un cumul. Ne pas confondre les deux — l'un mesure, l'autre coupe.
+
         --- Pourquoi elle existe quand même ---
 
         Le ledger n'était alimenté que par la CLI (`cli.py`) ; tout ce qui passait par l'API —
