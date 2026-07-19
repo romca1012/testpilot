@@ -10,6 +10,9 @@ import sys
 
 from behave import given, then, when
 
+# Import à PLAT (layout d'exécution sans package features/ — cf. environment.py), comme _generic_steps.
+from _base_helpers import click_first_actionable
+
 
 # ── Nettoyage de données de test ─────────────────────────────────────────────
 
@@ -177,20 +180,22 @@ def step_no_partial_record(context, field, model):
 @given('je navigue vers le menu Odoo "{menu_path}"')
 @when('je navigue vers le menu Odoo "{menu_path}"')
 def step_navigate_menu(context, menu_path):
-    context.page.goto(context.odoo_url)
+    context.page.goto(context.odoo_url, wait_until="domcontentloaded")
     for part in [p.strip() for p in menu_path.split(">")]:
-        context.page.get_by_text(part, exact=True).first.click()
-        context.page.wait_for_load_state("networkidle")
+        # clic auto-attendu (actionnabilité) ; pas de networkidle entre les niveaux.
+        context.page.get_by_text(part, exact=True).first.click(timeout=8000)
 
 
 def _playwright_login(context):
     login_url = f"{context.odoo_url.rstrip('/')}/web/login?db={context.odoo_db}"
-    context.page.goto(login_url)
+    context.page.goto(login_url, wait_until="domcontentloaded")
     context.page.wait_for_selector("input[name='login']", state="attached", timeout=15000)
     context.page.locator("input[name='login']").fill(context.odoo_user, force=True)
     context.page.locator("input[name='password']").fill(context.odoo_password, force=True)
     context.page.locator("input[name='password']").press("Enter")
-    context.page.wait_for_load_state("networkidle")
+    # Post-condition CONCRÈTE d'un login réussi : on a QUITTÉ la page de login (session établie).
+    # Remplace `networkidle`, que le bus long-polling d'Odoo ne stabilise jamais.
+    context.page.wait_for_url(lambda url: "/web/login" not in url, timeout=15000)
 
 
 @given('je navigue vers l\'URL du portail "{url}"')
@@ -199,8 +204,8 @@ def step_navigate_url(context, url):
     full_url = url if url.startswith("http") else f"{context.odoo_url.rstrip('/')}{url}"
     if context.page.url in ("about:blank", ""):
         _playwright_login(context)
-    context.page.goto(full_url)
-    context.page.wait_for_load_state("networkidle")
+    # domcontentloaded (fiable) ; l'interaction suivante auto-attendra sa cible.
+    context.page.goto(full_url, wait_until="domcontentloaded")
 
 
 @given('je me connecte avec mes identifiants utilisateur')
@@ -208,8 +213,7 @@ def step_navigate_url(context, url):
 def step_login_portal(context):
     """CONNECTE réellement le NAVIGATEUR (Playwright) et TERMINE sur l'accueil du portail (context.odoo_url), PAS sur le catalogue : pour cliquer un onglet de service (ex. « Ordinateurs », qui vit sur /myservices), NAVIGUE d'abord vers sa page avec « je navigue vers l'URL du portail "…" » — sinon le clic expire, l'onglet n'est pas là où le step d'auth t'a déposé (0020). Indispensable AVANT toute navigation sur une page du portail, sinon la session est anonyme et la page ne se rend pas. NE RÉIMPLÉMENTE JAMAIS l'authentification : le champ `input[name='login']` existe mais n'est PAS visible, un `fill()` nu expire au bout de 30 s — ce step le sait (`state="attached"` + `force=True`). Réutilise-le, ne le recopie pas."""
     _playwright_login(context)
-    context.page.goto(context.odoo_url)
-    context.page.wait_for_load_state("networkidle")
+    context.page.goto(context.odoo_url, wait_until="domcontentloaded")
 
 
 @when('j\'accède à la section "{section_name}" du portail')
@@ -224,53 +228,44 @@ def step_access_portal_section(context, section_name):
             "Vérifiez que des produits avec portal_active=True et la catégorie correspondante "
             "existent dans Odoo."
         )
-    context.page.wait_for_load_state("networkidle")
 
 
 # ── Navigation portail — steps génériques ────────────────────────────────────
 
+_PRODUCT_PATHS = ("/description/", "/product/", "/detail/", "/formulaire-applicatif/")
+
+
 @given('je clique sur l\'onglet "{name}"')
 @when('je clique sur l\'onglet "{name}"')
 def step_click_portal_onglet(context, name):
-    link = context.page.locator(f"a:has-text('{name}')").first
-    assert link.count() > 0, f"Onglet '{name}' introuvable sur {context.page.url}"
-    link.click()
-    context.page.wait_for_load_state("networkidle")
+    click_first_actionable(context.page, [
+        f".nav-link:has-text('{name}')", f".nav-item a:has-text('{name}')",
+        f"[role='tab']:has-text('{name}')", f"li a:has-text('{name}')",
+        f"a:has-text('{name}')", f"button:has-text('{name}')",
+    ], quoi=f"Onglet '{name}'")
 
 
 @when('je sélectionne le produit "{name}" dans la liste')
 def step_select_product_in_list(context, name):
-    for path in ["/description/", "/product/", "/detail/", "/formulaire-applicatif/"]:
-        link = context.page.locator(f"a[href*='{path}']:has-text('{name}')").first
-        if link.count() > 0:
-            link.click()
-            context.page.wait_for_load_state("networkidle")
-            return
-    raise AssertionError(f"Produit '{name}' introuvable dans la liste")
+    click_first_actionable(context.page,
+        [f"a[href*='{p}']:has-text('{name}')" for p in _PRODUCT_PATHS],
+        quoi=f"Produit '{name}'")
 
 
 @when('je sélectionne le produit dans la liste contenant "{partial}"')
 def step_select_product_partial(context, partial):
-    for path in ["/description/", "/product/", "/detail/", "/formulaire-applicatif/"]:
-        links = context.page.locator(f"a[href*='{path}']")
-        for i in range(links.count()):
-            link = links.nth(i)
-            if partial in link.inner_text():
-                link.click()
-                context.page.wait_for_load_state("networkidle")
-                return
-    raise AssertionError(f"Aucun produit contenant '{partial}' trouvé dans la liste")
+    # `:has-text` fait le « contient » (sous-chaîne, insensible à la casse) — plus tolérant que
+    # l'ancien `partial in inner_text`, et sans course au rendu.
+    click_first_actionable(context.page,
+        [f"a[href*='{p}']:has-text('{partial}')" for p in _PRODUCT_PATHS],
+        quoi=f"Produit contenant '{partial}'")
 
 
 @when('je clique sur le bouton "{label}" avec accessoires')
 def step_click_button_with_accessoires(context, label):
-    for selector in [f".btn-{label}", f"text={label}", f"button:has-text('{label}')", f"a:has-text('{label}')"]:
-        btn = context.page.locator(selector)
-        if btn.count() > 0 and btn.first.is_visible():
-            btn.first.click()
-            context.page.wait_for_load_state("networkidle")
-            return
-    raise AssertionError(f"Aucun bouton '{label}' avec accessoires trouvé sur {context.page.url}")
+    click_first_actionable(context.page,
+        [f".btn-{label}", f":is(button, a):has-text('{label}')"],
+        quoi=f"Bouton '{label}' (accessoires)")
 
 
 @then('une notification d\'erreur de validation est affichée dans l\'interface Odoo')

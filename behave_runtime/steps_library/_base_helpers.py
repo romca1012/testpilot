@@ -131,38 +131,62 @@ def field_m2o_contains(env, model, record_id, field, partial):
 
 def playwright_login(context):
     login_url = f"{context.odoo_url.rstrip('/')}/web/login?db={context.odoo_db}"
-    context.page.goto(login_url)
+    context.page.goto(login_url, wait_until="domcontentloaded")
     context.page.wait_for_selector("input[name='login']", state="attached", timeout=15000)
     context.page.locator("input[name='login']").fill(context.odoo_user, force=True)
     context.page.locator("input[name='password']").fill(context.odoo_password, force=True)
     context.page.locator("input[name='password']").press("Enter")
-    context.page.wait_for_load_state("networkidle")
+    # Post-condition CONCRÈTE d'un login réussi : on a QUITTÉ la page de login (session établie).
+    # Remplace `networkidle`, que le bus long-polling d'Odoo ne stabilise jamais.
+    context.page.wait_for_url(lambda url: "/web/login" not in url, timeout=15000)
 
 
 def navigate(context, url):
     full_url = url if url.startswith("http") else f"{context.odoo_url.rstrip('/')}{url}"
     if context.page.url in ("about:blank", ""):
         playwright_login(context)
-    context.page.goto(full_url)
-    context.page.wait_for_load_state("networkidle")
+    # domcontentloaded (fiable) au lieu de networkidle : l'interaction suivante auto-attendra sa cible.
+    context.page.goto(full_url, wait_until="domcontentloaded")
+
+
+def click_first_actionable(page, candidats, *, quoi, timeout=8000):
+    """Clique le PREMIER candidat qui devient ACTIONNABLE — l'attente est ancrée sur l'ÉLÉMENT,
+    jamais sur le réseau.
+
+    Généralisé depuis `click_button`. `candidats` est une liste de sélecteurs CSS (`str`) et/ou de
+    `Locator` déjà construits (ex. `page.get_by_role(...)`, pour garder la correspondance par nom
+    accessible). Pour chacun, `loc.first.click(timeout=…)` s'appuie sur l'**auto-attente
+    d'actionnabilité** de Playwright (visible + stable + activé + reçoit les events) — ce qui
+    couvre un widget rendu en JS *après* l'arrivée sur la page.
+
+    ⚠️ **On NE garde JAMAIS par `count()`.** `count()` lit le DOM à l'instant t sans rien attendre :
+    sur un onglet/bouton construit en JuS, il renvoie 0 et fait échouer AVANT que Playwright ait pu
+    attendre — c'est l'anti-motif que ce helper remplace (cause plausible du timeout d'exec 30 :
+    un `get_by_role("tab")` cherché sur un onglet pas encore rendu).
+
+    Budget borné et réparti : chaque candidat reçoit au moins 2 s ; le total ne dépasse pas
+    `max(2000, timeout/len)`·len. Tous les candidats épuisés → `AssertionError` qui nomme `quoi`
+    ET l'URL — pour que le diagnostic porte la vraie cause, pas un « introuvable » trompeur (§0002).
+    """
+    par_candidat = max(2000, timeout // max(1, len(candidats)))
+    for c in candidats:
+        loc = page.locator(c) if isinstance(c, str) else c
+        try:
+            loc.first.click(timeout=par_candidat)
+            return
+        except PlaywrightTimeout:
+            continue
+    raise AssertionError(f"{quoi} : aucun élément actionnable sur {page.url}")
 
 
 def click_button(page, label):
-    strategies = [
+    click_first_actionable(page, [
         page.get_by_role("button", name=label, exact=True),
         page.get_by_role("link", name=label, exact=True),
         page.get_by_role("button", name=label, exact=False),
         page.get_by_role("link", name=label, exact=False),
-        page.locator(f':is(a, button, input[type="submit"]):has-text("{label}")'),
-    ]
-    for loc in strategies:
-        try:
-            loc.first.click(timeout=5000)
-            page.wait_for_load_state("networkidle")
-            return
-        except PlaywrightTimeout:
-            continue
-    raise AssertionError(f"Bouton '{label}' introuvable sur {page.url}")
+        f':is(a, button, input[type="submit"]):has-text("{label}")',
+    ], quoi=f"Bouton '{label}'")
 
 
 def resolve_field_name(page, ident):
@@ -319,70 +343,70 @@ def select_field_value(page, value, field):
     """
     field = resolve_field_name(page, field)
     select = page.locator(f"select[name='{field}']")
+    radio = page.locator(f"input[type='radio'][name='{field}'][value='{value}']")
+    # Ancré sur l'ÉLÉMENT : on attend que le select OU le radio soit présent, au lieu d'un `count()`
+    # instantané qui perd la course si le champ est rendu en JS. `count()` ne sert plus qu'à
+    # BRANCHER une fois le champ là (plus une course). Plus de `wait_for_timeout` fixe.
+    try:
+        page.locator(
+            f"select[name='{field}'], input[type='radio'][name='{field}']"
+        ).first.wait_for(state="attached", timeout=8000)
+    except PlaywrightTimeout:
+        raise AssertionError(
+            f"Champ select ou radio '{field}' introuvable sur {page.url} (valeur: '{value}')")
     if select.count() > 0:
         select_option_strict(select.first, value, field=field)
-        page.wait_for_timeout(300)
         return
-    radio = page.locator(f"input[type='radio'][name='{field}'][value='{value}']")
     if radio.count() > 0:
-        radio.first.click(force=True)
-        page.wait_for_timeout(300)
+        radio.first.check(force=True)
         return
-    raise AssertionError(f"Champ select ou radio '{field}' introuvable (valeur: '{value}')")
+    raise AssertionError(
+        f"Radio '{field}' présent mais sans l'option '{value}' sur {page.url}")
+
+
+_PRODUCT_PATHS = ("/description/", "/product/", "/detail/", "/formulaire-applicatif/")
 
 
 def select_first_service_in_list(page):
-    for path in ["/formulaire-applicatif/", "/description/", "/product/"]:
-        links = page.locator(f"a[href*='{path}']")
-        if links.count() > 0:
-            links.first.click()
-            page.wait_for_load_state("networkidle")
-            return
-    raise AssertionError("Aucun service trouvé dans la liste")
+    click_first_actionable(page,
+        [f"a[href*='{p}']" for p in ("/formulaire-applicatif/", "/description/", "/product/")],
+        quoi="Service dans la liste")
 
 
 def select_product_in_list(page, name):
-    for path in ["/description/", "/product/", "/detail/", "/formulaire-applicatif/"]:
-        link = page.locator(f"a[href*='{path}']:has-text('{name}')").first
-        if link.count() > 0:
-            link.click()
-            page.wait_for_load_state("networkidle")
-            return
-    raise AssertionError(f"Produit '{name}' introuvable dans la liste")
+    click_first_actionable(page,
+        [f"a[href*='{p}']:has-text('{name}')" for p in _PRODUCT_PATHS],
+        quoi=f"Produit '{name}'")
 
 
 def select_product_partial(page, partial):
-    for path in ["/description/", "/product/", "/detail/", "/formulaire-applicatif/"]:
-        links = page.locator(f"a[href*='{path}']")
-        for i in range(links.count()):
-            link = links.nth(i)
-            if partial in link.inner_text():
-                link.click()
-                page.wait_for_load_state("networkidle")
-                return
-    raise AssertionError(f"Aucun produit contenant '{partial}' trouvé dans la liste")
+    # `:has-text` fait le « contient » (sous-chaîne), désormais insensible à la casse — plus
+    # tolérant que l'ancien `partial in inner_text`, et surtout sans course au rendu.
+    click_first_actionable(page,
+        [f"a[href*='{p}']:has-text('{partial}')" for p in _PRODUCT_PATHS],
+        quoi=f"Produit contenant '{partial}'")
 
 
 def click_onglet(page, name):
-    link = page.locator(f"a:has-text('{name}')").first
-    assert link.count() > 0, f"Onglet '{name}' introuvable"
-    link.click()
-    page.wait_for_load_state("networkidle")
+    click_first_actionable(page, [
+        f".nav-link:has-text('{name}')", f".nav-item a:has-text('{name}')",
+        f"[role='tab']:has-text('{name}')", f"li a:has-text('{name}')",
+        f"a:has-text('{name}')", f"button:has-text('{name}')",
+    ], quoi=f"Onglet '{name}'")
 
 
 def click_button_with_accessoires(page, label):
-    for selector in [f".btn-{label}", f"text={label}", f"button:has-text('{label}')", f"a:has-text('{label}')"]:
-        btn = page.locator(selector)
-        if btn.count() > 0 and btn.first.is_visible():
-            btn.first.click()
-            page.wait_for_load_state("networkidle")
-            return
-    raise AssertionError(f"Aucun bouton '{label}' avec accessoires trouvé")
+    click_first_actionable(page,
+        [f".btn-{label}", f":is(button, a):has-text('{label}')"],
+        quoi=f"Bouton '{label}' (accessoires)")
 
 
 def force_name_field(page, value):
     """Set the hidden name field using the JS native setter to bypass Odoo auto-generation."""
     safe = value.replace("\\", "\\\\").replace("'", "\\'")
+    # Ancré sur l'élément : sans cette attente, un champ rendu tardivement → `querySelector` nul →
+    # le setter ne faisait RIEN, en silence (le nom restait celui auto-généré par Odoo).
+    page.locator('[name="name"]').wait_for(state="attached", timeout=8000)
     page.evaluate(f"""
         (() => {{
             const el = document.querySelector('[name="name"]');
@@ -398,23 +422,29 @@ def force_name_field(page, value):
 
 def select_first_agence(page):
     select = page.locator("select[name='agence']")
-    assert select.count() > 0, "Champ 'agence' introuvable"
+    # Ancré sur l'élément (plus de `count()` instantané ni de sleep fixe).
+    try:
+        select.first.wait_for(state="attached", timeout=8000)
+    except PlaywrightTimeout:
+        raise AssertionError(f"Champ 'agence' introuvable sur {page.url}")
     options = select.locator("option")
     for i in range(options.count()):
         val = options.nth(i).get_attribute("value")
         if val and val.strip():
-            select.select_option(val)
-            page.wait_for_timeout(300)
+            select.first.select_option(val)
             return
-    raise AssertionError("Aucune option disponible dans le champ 'agence'")
+    raise AssertionError(f"Aucune option disponible dans le champ 'agence' sur {page.url}")
 
 
 def wait_form_submission(page):
+    """Stabilisation APRÈS soumission — le SEUL point où une vraie attente RPC est justifiée
+    (le serveur traite l'enregistrement avant qu'on l'asserte). `networkidle` **borné et jamais
+    fatal** : le bus d'Odoo ne l'atteint pas toujours, on ne bloque donc pas au-delà de la borne
+    et on ne le remplace PAS par un sleep fixe (l'attente elle-même sert de stabilisation)."""
     try:
         page.wait_for_load_state("networkidle", timeout=10000)
-        page.wait_for_timeout(1000)
     except PlaywrightTimeout:
-        page.wait_for_timeout(3000)
+        pass
 
 
 def validation_error_inline(page):
@@ -436,10 +466,10 @@ def no_error_with_keywords(page, keyword1, keyword2):
 
 
 def navigate_menu(context, menu_path):
-    context.page.goto(context.odoo_url)
+    context.page.goto(context.odoo_url, wait_until="domcontentloaded")
     for part in [p.strip() for p in menu_path.split(">")]:
-        context.page.get_by_text(part, exact=True).first.click()
-        context.page.wait_for_load_state("networkidle")
+        # clic auto-attendu (actionnabilité) ; pas de networkidle entre les niveaux.
+        context.page.get_by_text(part, exact=True).first.click(timeout=8000)
 
 
 def access_portal_section(page, section_name):
@@ -449,7 +479,6 @@ def access_portal_section(page, section_name):
         raise AssertionError(
             f"PRÉREQUIS MANQUANT : la section '{section_name}' est absente de {page.url}."
         )
-    page.wait_for_load_state("networkidle")
 
 
 def cleanup_test_records(env, prefix, models):
