@@ -7,6 +7,7 @@ et les encapsule dans ses propres @given/@when/@then.
 import logging
 import os
 import sys
+import time
 import warnings
 import re
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
@@ -542,17 +543,61 @@ def _require_snapshot(context, model) -> int:
     return getattr(context, attr)
 
 
+# Fenêtre pendant laquelle on considère que la création asynchrone a « eu le temps de se
+# stabiliser ». ⚠️ **PARTAGÉE par le comptage positif ET négatif, volontairement** : le ticket est
+# créé par le NAVIGATEUR (soumission web, création asynchrone), le comptage lit par RPC — il y a un
+# délai entre les deux. Le positif attend que le ticket APPARAISSE (jusqu'à ce délai) ; le négatif
+# doit attendre EXACTEMENT le même délai avant de conclure « rien n'a été créé ». Deux fenêtres
+# différentes rouvriraient un faux négatif : une création tardive à tort pourrait surgir après une
+# fenêtre courte côté négatif mais avant la fenêtre longue côté positif (§4.4).
+COUNT_SETTLE_TIMEOUT = float(os.getenv("TESTPILOT_COUNT_SETTLE_TIMEOUT", "8.0"))
+
+
+def _poll_until(lire, predicat, *, timeout=None, intervalle=0.3, _clock=None, _sleep=None):
+    """Relit `lire()` jusqu'à ce que `predicat(valeur)` soit vrai, ou expiration de `timeout`.
+
+    Attente ACTIVE et BORNÉE : on sort DÈS que la condition est vraie (aucun délai gaspillé) et
+    JAMAIS au-delà de `timeout` (aucune course). Remplace la lecture unique instantanée — qui, face
+    à une écriture asynchrone, est toujours une course — et le sleep fixe qui la « gagnait » à
+    l'aveugle. Rend `(predicat_satisfait, dernière_valeur_lue)`.
+
+    ⚠️ `timeout`, `_clock`, `_sleep` sont résolus À L'APPEL (`None` ⇒ valeur de module) et NON
+    figés en valeurs par défaut : une valeur par défaut fige la référence à la définition, si bien
+    que régler `COUNT_SETTLE_TIMEOUT` ou monkeypatcher `time.sleep` n'aurait aucun effet.
+    """
+    timeout = COUNT_SETTLE_TIMEOUT if timeout is None else timeout
+    _clock = _clock or time.monotonic
+    _sleep = _sleep or time.sleep
+    debut = _clock()
+    valeur = lire()
+    while True:
+        if predicat(valeur):
+            return True, valeur
+        if _clock() - debut >= timeout:
+            return False, valeur
+        _sleep(intervalle)
+        valeur = lire()
+
+
 def check_count_not_increased(context, model):
+    """Le négatif attend TOUTE la fenêtre : on cherche une augmentation pendant `COUNT_SETTLE_TIMEOUT`
+    ; si aucune n'apparaît, on conclut « rien créé ». Attendre moins laisserait passer une création
+    tardive à tort (faux négatif, §4.4 inacceptable)."""
     initial = _require_snapshot(context, model)
-    current = context.odoo.env[model].search_count([])
-    assert current <= initial, (
+    augmente, current = _poll_until(
+        lambda: context.odoo.env[model].search_count([]), lambda c: c > initial)
+    assert not augmente, (
         f"Nombre d'enregistrements dans '{model}' a augmenté ({initial} → {current})."
     )
 
 
 def check_count_increased_by_one(context, model):
+    """Le positif attend que le ticket APPARAISSE (jusqu'à `COUNT_SETTLE_TIMEOUT`). S'il n'apparaît
+    pas dans la fenêtre, l'assertion échoue avec le message d'origine — un vrai « non créé » reste
+    détecté, seule la course disparaît."""
     initial = _require_snapshot(context, model)
-    current = context.odoo.env[model].search_count([])
-    assert current == initial + 1, (
+    ok, current = _poll_until(
+        lambda: context.odoo.env[model].search_count([]), lambda c: c == initial + 1)
+    assert ok, (
         f"Nombre d'enregistrements dans '{model}' devrait être {initial + 1}, obtenu {current}."
     )
