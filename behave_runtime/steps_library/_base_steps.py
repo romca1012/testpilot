@@ -206,7 +206,7 @@ def step_navigate_url(context, url):
 @given('je me connecte avec mes identifiants utilisateur')
 @when('je me connecte avec mes identifiants utilisateur')
 def step_login_portal(context):
-    """CONNECTE réellement le NAVIGATEUR (Playwright) : indispensable AVANT toute navigation sur une page du portail, sinon la session est anonyme et la page ne se rend pas. NE RÉIMPLÉMENTE JAMAIS l'authentification : le champ `input[name='login']` existe mais n'est PAS visible, un `fill()` nu expire au bout de 30 s — ce step le sait (`state="attached"` + `force=True`). Réutilise-le, ne le recopie pas."""
+    """CONNECTE réellement le NAVIGATEUR (Playwright) et TERMINE sur l'accueil du portail (context.odoo_url), PAS sur le catalogue : pour cliquer un onglet de service (ex. « Ordinateurs », qui vit sur /myservices), NAVIGUE d'abord vers sa page avec « je navigue vers l'URL du portail "…" » — sinon le clic expire, l'onglet n'est pas là où le step d'auth t'a déposé (0020). Indispensable AVANT toute navigation sur une page du portail, sinon la session est anonyme et la page ne se rend pas. NE RÉIMPLÉMENTE JAMAIS l'authentification : le champ `input[name='login']` existe mais n'est PAS visible, un `fill()` nu expire au bout de 30 s — ce step le sait (`state="attached"` + `force=True`). Réutilise-le, ne le recopie pas."""
     _playwright_login(context)
     context.page.goto(context.odoo_url)
     context.page.wait_for_load_state("networkidle")
