@@ -113,6 +113,50 @@ def test_une_reparation_n_entre_jamais_dans_le_cout_de_creation(conn):
     assert CostRepo(conn).total_for_case_usd(cid) == pytest.approx(0.29)
 
 
+def test_le_cout_de_RUN_est_suivi_distinct_de_la_creation(conn):
+    """Le coût de RUN (réparations) est suivi séparément — SANS seuil (arbitrage 2026-07-19 :
+    mesurer d'abord, calibrer plus tard). Distinct de la création (le §9) et du total."""
+    cid = CaseRepo(conn).create(title="Cas", feature_slug="cas")
+    repo = CostRepo(conn)
+    repo.add_entry(phase="analysis", model=config.MODEL_FAST, cost_usd=0.02,
+                   source="estimated", test_case_id=cid)
+    repo.add_entry(phase="generation", model=config.MODEL_GENERATION, cost_usd=0.13,
+                   source="estimated", test_case_id=cid)
+    repo.add_entry(phase="repair", model=config.MODEL_REPAIR, cost_usd=0.21,
+                   source="estimated", test_case_id=cid)
+    repo.add_entry(phase="repair", model=config.MODEL_REPAIR, cost_usd=0.19,
+                   source="estimated", test_case_id=cid)
+
+    assert repo.run_cost_usd(cid) == pytest.approx(0.40), "run = somme des réparations, rien d'autre"
+    assert repo.creation_cost_usd(cid) == pytest.approx(0.15), "la création exclut le run"
+    # création + run == total : aucune dépense n'échappe à l'une des deux catégories.
+    assert repo.run_cost_usd(cid) + repo.creation_cost_usd(cid) == pytest.approx(
+        repo.total_for_case_usd(cid))
+
+
+def test_un_run_PROPRE_coute_zero(conn):
+    """Un cas jamais réparé a un coût de run de $0 — un fait, pas un trou : le run lui-même
+    (Behave/Playwright/odoorpc) et le diagnostic déterministe n'appellent aucun LLM."""
+    cid = CaseRepo(conn).create(title="Cas", feature_slug="cas")
+    CostRepo(conn).add_entry(phase="generation", model=config.MODEL_GENERATION, cost_usd=0.13,
+                             source="estimated", test_case_id=cid)
+
+    assert CostRepo(conn).run_cost_usd(cid) == 0.0
+
+
+def test_le_cout_run_est_lisible_par_execution(conn):
+    """Le coût run par run (pas seulement cumulé par cas) — pour la future calibration."""
+    cid = CaseRepo(conn).create(title="Cas", feature_slug="cas")
+    vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="h",
+                                   feature_content="", steps_content="")
+    eid = ExecutionRepo(conn).create(test_case_id=cid, version_id=vid)
+    CostRepo(conn).add_entry(phase="repair", model=config.MODEL_REPAIR, cost_usd=0.21,
+                             source="estimated", execution_id=eid)
+
+    assert CostRepo(conn).run_cost_for_execution_usd(eid) == pytest.approx(0.21)
+    assert CostRepo(conn).run_cost_for_execution_usd(9999) == 0.0  # exécution sans coût
+
+
 def test_le_detail_par_phase_explique_le_total(conn):
     """Le ledger doit dire CE QUI a coûté, pas seulement combien — analyse ≠ génération."""
     cid = CaseRepo(conn).create(title="Cas", feature_slug="cas")

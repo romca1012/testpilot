@@ -60,21 +60,22 @@ def main() -> None:
     # arrivé : le cas 1 affichait « 107 % du §9 [DEPASSE] » alors que le §9 est tenu à 11 %.
     #   création = analyse + génération  → CE QUI SE COMPARE AU §9 (le brief dit « nouveau cas »)
     #   total    = tout depuis toujours  → télémétrie de debug, JAMAIS comparée au seuil
-    print("\n-- Par cas : CRÉATION (le §9) vs TOTAL (télémétrie) " + "-" * 26)
-    print(f"  {'cas':<5} {'création':>10} {'% du §9':>9}  {'':<8} {'total vie':>10}  détail")
+    print("\n-- Par cas : CRÉATION (le §9) vs RUN (exécution, SANS seuil) vs TOTAL " + "-" * 8)
+    print(f"  {'cas':<5} {'création':>10} {'% du §9':>9}  {'':<8} {'run (exéc.)':>12}  {'total vie':>10}")
     repo = CostRepo(conn)
     cas_ids = [r["cas"] for r in conn.execute(
         "SELECT DISTINCT test_case_id AS cas FROM cost_ledger WHERE test_case_id IS NOT NULL"
         " ORDER BY test_case_id")]
     for cid in cas_ids:
         creation = repo.creation_cost_usd(cid)
+        run = repo.run_cost_usd(cid)
         total = repo.total_for_case_usd(cid)
         pct = 100 * creation / config.BUDGET_PER_CASE_USD
         etat = "OK" if creation <= config.BUDGET_PER_CASE_USD else "DEPASSE LE §9"
-        print(f"  {cid:<5} ${creation:>9.4f} {pct:>8.1f} %  [{etat:<6}] ${total:>9.4f}"
-              f"   (dont ${total - creation:.4f} de réparations/debug)")
-    print("\n  Le §9 se juge sur la CRÉATION. Le « total vie » cumule les sessions de débogage")
-    print("  de l'outil : il n'a pas de seuil, et le comparer au §9 alarme à tort.")
+        print(f"  {cid:<5} ${creation:>9.4f} {pct:>8.1f} %  [{etat:<6}] ${run:>11.4f}  ${total:>9.4f}")
+    print("\n  Le §9 se juge sur la CRÉATION. Le RUN (réparations) est SUIVI mais SANS seuil cible")
+    print("  — on mesure d'abord, on calibrera après plusieurs runs de cas distincts. Un run PROPRE")
+    print("  coûte $0 (aucun LLM) : Behave/Playwright/odoorpc et le diagnostic ne dépensent rien.")
 
     # Décomposition par phase — le total sans l'explication n'apprend rien.
     print("\n-- Détail par phase " + "-" * 58)

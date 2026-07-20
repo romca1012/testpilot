@@ -791,6 +791,36 @@ class CostRepo:
             (case_id,)).fetchone()
         return float(row["total"])
 
+    # Phases de RUN (exécution). Aujourd'hui la seule dépense LLM d'un run est la réparation : le
+    # run lui-même (Behave/Playwright/odoorpc) et le diagnostic (déterministe) ne coûtent rien.
+    # ⚠️ Nommées POSITIVEMENT, comme `creation_cost_usd` : si un jour un run engage un autre appel
+    # LLM (un re-diagnostic payant, par ex.), l'ajouter ICI est une DÉCISION, pas l'effet de bord
+    # d'un « tout sauf la création ».
+    _RUN_PHASES = ("repair",)
+
+    def run_cost_usd(self, case_id: int) -> float:
+        """Coût LLM des RUNS d'un cas — **suivi, SANS seuil cible** (arbitrage du porteur,
+        2026-07-19 : mesurer d'abord, calibrer plus tard, jamais un seuil sans données).
+
+        Distinct de `creation_cost_usd` (le §9) et de `total_for_case_usd` (tout). Ce qu'un cas a
+        coûté à être RE-joué : la somme des réparations. `0` pour un cas jamais réparé — c'est un
+        fait, pas un trou. Se lit au ledger (la seule trace réelle), par `test_case_id`.
+        """
+        marqueurs = ",".join("?" * len(self._RUN_PHASES))
+        row = self.conn.execute(
+            f"SELECT COALESCE(SUM(cost_usd), 0) AS total FROM cost_ledger"
+            f" WHERE test_case_id = ? AND phase IN ({marqueurs})",
+            (case_id, *self._RUN_PHASES)).fetchone()
+        return float(row["total"])
+
+    def run_cost_for_execution_usd(self, execution_id: int) -> float:
+        """Coût LLM attribué à UN run précis (l'exécution qui a provoqué la réparation). Permet de
+        lire le coût run par run, pas seulement cumulé par cas — utile pour la future calibration."""
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(cost_usd), 0) AS total FROM cost_ledger WHERE execution_id = ?",
+            (execution_id,)).fetchone()
+        return float(row["total"])
+
     def breakdown_for_case(self, case_id: int) -> list[dict]:
         """Détail par phase/modèle — ce qui a coûté, pas seulement combien."""
         return _rows(self.conn.execute(
