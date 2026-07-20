@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 12
+_SCHEMA_VERSION = 13
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -87,6 +87,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_11_execution_error(conn)
     if version < 12:
         _migrate_12_cost_case_id(conn)
+    if version < 13:
+        _migrate_13_case_group(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -370,6 +372,74 @@ def _migrate_12_cost_case_id(conn: sqlite3.Connection) -> None:
         "  SELECT e.test_case_id FROM execution e WHERE e.id = cost_ledger.execution_id)"
         " WHERE test_case_id IS NULL AND execution_id IS NOT NULL")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cost_case ON cost_ledger(test_case_id)")
+
+
+def _migrate_13_case_group(conn: sqlite3.Connection) -> None:
+    """La situation testée devient un cas indépendant, regroupé sous une SPÉCIFICATION (2026-07-19,
+    décision du porteur — rouvre 0006). Idempotent, gardé par introspection.
+
+    On introduit `case_group` (le regroupement) et deux colonnes sur `test_case` : `group_id`
+    (propriétaire, RENDU obligatoire une fois les groupes créés) et `angle` (étiquette libre).
+    **Rien ne bouge en aval** : `test_case` reste l'unité versionnée/gatée/exécutée/facturée, donc
+    aucune FK de `test_case_version`/`review_decision`/`execution`/`cost_ledger` n'est repointée.
+
+    LEGACY ENVELOPPÉ 1:1 (choix du porteur) : chaque cas existant reçoit SA PROPRE spécification
+    (un groupe par cas), `angle='legacy'`. On ne fusionne rien, on ne devine rien — les cas 9/10
+    sont des artefacts de débogage, pas un référentiel à réorganiser. Historique intact.
+
+    UNICITÉ : le titre de cas devient unique PAR GROUPE (plus par module) — deux spécifications
+    peuvent chacune avoir un « Nominal ». On retire donc `uq_case_module_title`. Les groupes legacy
+    étant à un seul cas, aucun conflit possible à la reprise.
+    """
+    cols = _column_names(conn, "test_case")
+    if "group_id" not in cols:
+        conn.execute("ALTER TABLE test_case ADD COLUMN group_id INTEGER REFERENCES case_group(id)")
+    if "angle" not in cols:
+        conn.execute("ALTER TABLE test_case ADD COLUMN angle TEXT NOT NULL DEFAULT ''")
+
+    # La spec (le DOCUMENT) vit sur le groupe (source unique, 2026-07-19). Guard-add : une base où
+    # `case_group` existe déjà sans ces colonnes (schema.sql l'a créée avant qu'on les ajoute).
+    gcols = _column_names(conn, "case_group")
+    if "spec_content" not in gcols:
+        conn.execute("ALTER TABLE case_group ADD COLUMN spec_content TEXT NOT NULL DEFAULT ''")
+    if "spec_hash" not in gcols:
+        conn.execute("ALTER TABLE case_group ADD COLUMN spec_hash TEXT NOT NULL DEFAULT ''")
+
+    # Enveloppe 1:1 : un groupe par cas encore orphelin (idempotent via WHERE group_id IS NULL).
+    # ⚠️ `module_id IS NOT NULL` : une spécification a besoin d'un module (FK NOT NULL). Un cas
+    # SANS module n'a pas de place dans la hiérarchie — on le laisse sans groupe, comme le fait
+    # `CaseRepo.create`. C'est un cas de bord (hors arbre), pas le chemin de production.
+    #
+    # REMONTÉE DE LA SPEC LEGACY : on copie la spec de la version COURANTE du cas dans son groupe
+    # (source établie, rien de perdu). `version.spec_content` subsiste (déprécié) jusqu'à l'étape 3.
+    now = datetime.now(timezone.utc).isoformat()
+    orphelins = conn.execute(
+        "SELECT id, module_id, title FROM test_case"
+        " WHERE group_id IS NULL AND module_id IS NOT NULL").fetchall()
+    has_versions = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='test_case_version'").fetchone()
+    for cas in orphelins:
+        spec = conn.execute(
+            "SELECT spec_content, spec_hash FROM test_case_version"
+            " WHERE test_case_id=? ORDER BY id DESC LIMIT 1", (cas["id"],)).fetchone() \
+            if has_versions else None
+        spec_content = spec["spec_content"] if spec else ""
+        spec_hash = spec["spec_hash"] if spec else ""
+        cur = conn.execute(
+            "INSERT INTO case_group (module_id, title, description, spec_content, spec_hash,"
+            " position, created_at, updated_at) VALUES (?,?,?,?,?,0,?,?)",
+            (cas["module_id"], cas["title"], "Spécification (cas existant, migration 13)",
+             spec_content, spec_hash, now, now))
+        conn.execute("UPDATE test_case SET group_id=?, angle='legacy' WHERE id=?",
+                     (cur.lastrowid, cas["id"]))
+
+    # Unicité : par groupe désormais. On retire l'ancien index par module s'il existe.
+    conn.execute("DROP INDEX IF EXISTS uq_case_module_title")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_group_module_title"
+                 " ON case_group(module_id, title COLLATE NOCASE)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_case_group_title"
+                 " ON test_case(group_id, title COLLATE NOCASE)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_case_group ON test_case(group_id)")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

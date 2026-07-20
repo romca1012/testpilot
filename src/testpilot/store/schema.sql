@@ -36,11 +36,36 @@ CREATE TABLE IF NOT EXISTS module (
 
 CREATE INDEX IF NOT EXISTS idx_module_project ON module(project_id);
 
+-- ── Spécification : conteneur d'un GROUPE de cas testant la même fonctionnalité ─
+-- Rouvre 0006 (décision du porteur, 2026-07-19) : chaque situation testée (nominal/erreur/limite/
+-- autre) devient un CAS indépendant. La spécification EST LE DOCUMENT fourni par l'utilisateur —
+-- la spec complète du module/de la fonctionnalité, donnée UNE FOIS — à partir de laquelle plusieurs
+-- cas indépendants sont générés (un par angle). Elle ne porte NI statut, NI version, NI gate, NI
+-- coût (tout cela reste sur le cas), mais elle porte la SPEC : c'est la SOURCE UNIQUE, jamais
+-- recopiée dans chaque version (un cas la RÉFÉRENCE par `spec_hash`). Libellé UI : « Spécification ».
+CREATE TABLE IF NOT EXISTS case_group (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    module_id    INTEGER NOT NULL,
+    title        TEXT    NOT NULL,
+    description  TEXT    NOT NULL DEFAULT '',      -- résumé court affiché en liste (≠ la spec)
+    spec_content TEXT    NOT NULL DEFAULT '',      -- LE DOCUMENT complet — source unique (2026-07-19)
+    spec_hash    TEXT    NOT NULL DEFAULT '',      -- empreinte de la spec courante (détection « dépassée »)
+    position     INTEGER NOT NULL DEFAULT 0,       -- ordre d'affichage dans le module (cf. 0009)
+    created_at   TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL,
+    FOREIGN KEY (module_id) REFERENCES module(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_module ON case_group(module_id);
+
 -- ── Cas de test (socle commun §7) ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS test_case (
     id                     INTEGER PRIMARY KEY AUTOINCREMENT,
     title                  TEXT    NOT NULL,
     module_id              INTEGER REFERENCES module(id),   -- rangement MÉTIER (§7)
+    group_id               INTEGER REFERENCES case_group(id), -- Spécification propriétaire (2026-07-19)
+    -- Angle testé : ÉTIQUETTE LIBRE (nominal/erreur/limite/autre/legacy…), PAS un triptyque imposé.
+    angle                  TEXT    NOT NULL DEFAULT '',
     feature_slug           TEXT    NOT NULL DEFAULT '',      -- nom du .feature (technique)
     -- Le connecteur a quitté le cas : il vit sur le PROJET (décision 0005).
     description            TEXT    NOT NULL DEFAULT '',
@@ -75,6 +100,15 @@ CREATE TABLE IF NOT EXISTS test_case_version (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     test_case_id    INTEGER NOT NULL,
     version_number  INTEGER NOT NULL,
+    -- 🔴 DETTE EXPLICITE À SOLDER À L'ÉTAPE 3 (contractée le 2026-07-19). `spec_content` est un
+    -- SURSIS TECHNIQUE, PAS une duplication permanente qu'on accepte : la spec est la SOURCE UNIQUE
+    -- portée par `case_group`. Ce champ n'existe encore que parce que la génération/réparation
+    -- l'écrivent/le lisent, et les recâbler est l'étape 3 (« un angle par appel »).
+    -- ENGAGEMENT : à l'étape 3, la génération lira/écrira la spec sur `case_group.spec_content`,
+    -- ce champ deviendra VIDE et INUTILISÉ, puis sera SUPPRIMÉ (migration dédiée). Il ne doit
+    -- JAMAIS redevenir une source de vérité. Tant qu'il porte du texte, c'est une copie legacy.
+    -- `spec_hash` RESTE : c'est la RÉFÉRENCE (quelle version de la spec a produit ce cas →
+    -- détecter un cas généré depuis une spec dépassée, sans recopier le texte).
     spec_content    TEXT    NOT NULL DEFAULT '',
     spec_hash       TEXT    NOT NULL DEFAULT '',
     feature_content TEXT    NOT NULL DEFAULT '',
@@ -228,8 +262,10 @@ CREATE INDEX IF NOT EXISTS idx_cost_period ON cost_ledger(period_month);
 -- attrapée à la première ouverture. Gardé par `test_une_base_SANS_la_colonne_s_ouvre_toujours`.
 
 -- ── Unicité des noms ─────────────────────────────────────────────────────────
--- Les index UNIQUE (uq_project_name, uq_module_project_name, uq_case_module_title,
--- uq_case_feature_slug) sont créés par la MIGRATION 5, pas ici : ce fichier s'exécute AVANT
--- les migrations, or `test_case.module_id`/`feature_slug` peuvent manquer sur une base
--- antérieure — les indexer ici la ferait planter à l'ouverture (même raison que idx_case_module).
--- Une base neuve les reçoit quand même : ses migrations tournent toutes (user_version = 0).
+-- Les index UNIQUE (uq_project_name, uq_module_project_name, uq_case_feature_slug, et depuis la
+-- migration 13 uq_group_module_title + uq_case_group_title) sont créés par MIGRATION, pas ici : ce
+-- fichier s'exécute AVANT les migrations, or `test_case.module_id`/`feature_slug`/`group_id`
+-- peuvent manquer sur une base antérieure — les indexer ici la ferait planter à l'ouverture (même
+-- raison que idx_case_module). Une base neuve les reçoit quand même (ses migrations tournent toutes).
+-- ⚠️ Le titre de cas est unique PAR GROUPE (migration 13), plus par module : deux spécifications
+-- peuvent chacune avoir un cas « Nominal ». L'ancien uq_case_module_title est donc RETIRÉ.

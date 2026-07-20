@@ -18,6 +18,7 @@ from testpilot import config
 from testpilot.api import app as app_mod
 from testpilot.store.db import _migrate_5_unicite_noms, get_initialized_db
 from testpilot.store.repositories import (
+    CaseGroupRepo,
     CaseRepo,
     DuplicateName,
     ModuleRepo,
@@ -135,14 +136,28 @@ def test_cas_sans_module_na_pas_de_portee_dunicite(conn):
 
 
 def test_renommer_un_cas_vers_un_titre_pris_refuse(conn):
+    """Depuis la migration 13, l'unicité du titre est PAR SPÉCIFICATION (plus par module). On crée
+    donc les deux cas dans LA MÊME spécification pour que le conflit s'y produise."""
     pid = ProjectRepo(conn).create(name="P")
     mid = ModuleRepo(conn).create(project_id=pid, name="M")
-    CaseRepo(conn).create(title="A", module_id=mid, feature_slug="a")
-    cid = CaseRepo(conn).create(title="B", module_id=mid, feature_slug="b")
+    gid = CaseGroupRepo(conn).create(module_id=mid, title="Spéc")
+    CaseRepo(conn).create(title="A", module_id=mid, group_id=gid, feature_slug="a")
+    cid = CaseRepo(conn).create(title="B", module_id=mid, group_id=gid, feature_slug="b")
     with pytest.raises(DuplicateName):
         CaseRepo(conn).rename(cid, "A")
     CaseRepo(conn).rename(cid, "B corrigé")   # un vrai renommage passe
     assert CaseRepo(conn).get(cid)["title"] == "B corrigé"
+
+
+def test_deux_cas_de_MEME_titre_dans_deux_specifications_passent(conn):
+    """Le pendant de la décision : par groupe, plus par module. Deux spécifications d'un même
+    module peuvent chacune avoir un « Nominal »."""
+    pid = ProjectRepo(conn).create(name="P")
+    mid = ModuleRepo(conn).create(project_id=pid, name="M")
+    g1 = CaseGroupRepo(conn).create(module_id=mid, title="Demande")
+    g2 = CaseGroupRepo(conn).create(module_id=mid, title="Retour")
+    CaseRepo(conn).create(title="Nominal", module_id=mid, group_id=g1, feature_slug="dn")
+    CaseRepo(conn).create(title="Nominal", module_id=mid, group_id=g2, feature_slug="rn")  # OK
 
 
 # ── L'index base : le filet quand on court-circuite les repos ─────────────────
@@ -159,8 +174,13 @@ def test_migration_5_idempotente(conn):
     _migrate_5_unicite_noms(conn)
     noms = {r["name"] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'uq_%'")}
-    assert noms == {"uq_project_name", "uq_module_project_name",
-                    "uq_case_module_title", "uq_case_feature_slug"}
+    # Idempotence de la migration 5 : ses PROPRES index sont présents, sans erreur ni doublon.
+    # On assert un SOUS-ENSEMBLE, pas un jeu exact : `conn` applique aussi la migration 13, qui
+    # ajoute l'unicité par groupe (uq_case_group_title, uq_group_module_title). ⚠️ En vrai, la
+    # migration 5 ne se rejoue JAMAIS après la 13 (garde `version < N`) — ce test la rejoue seule,
+    # ce qui ressuscite uq_case_module_title ; c'est un artefact du test, pas de la production.
+    assert {"uq_project_name", "uq_module_project_name",
+            "uq_case_module_title", "uq_case_feature_slug"} <= noms
 
 
 # ── API : 409 + message clair ─────────────────────────────────────────────────

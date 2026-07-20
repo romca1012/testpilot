@@ -25,6 +25,41 @@ est la **gouvernance du verdict**, pas la sécurité.)*
   secrets. Atténuation déjà en place : l'API ne renvoie jamais le mot de passe (write-only).
   → voir `decisions/0005-connecteur-au-niveau-projet.md`.
 
+- [ ] 🔴 **`test_case_version.spec_content` à SUPPRIMER — dette contractée à l'étape 1 de la
+  séparation (migration 13, 2026-07-19).** La spec est désormais la **source unique** portée par
+  `case_group.spec_content` ; `version.spec_content` n'est plus qu'une **copie legacy**, gardée
+  uniquement parce que la génération/réparation l'écrivent/le lisent encore. **À solder à l'étape 3**
+  (génération « un angle par appel » recâblée sur `case_group.spec_content`) : le champ deviendra
+  vide et inutilisé, puis **supprimé par migration dédiée**. Il ne doit **jamais** redevenir une
+  source de vérité. `spec_hash` reste (référence de la spec ayant produit le cas). → décision de
+  séparation (à consigner en `decisions/` à l'étape 2).
+
+## Séparation « Spécification → cas par angle » (rouvre 0006, décision du porteur 2026-07-19)
+
+Étape 1 (schéma) **livrée** : `case_group` (la Spécification, qui porte le document `spec_content`
++ `spec_hash`), colonnes `group_id`/`angle` sur `test_case`, migration 13 (legacy 1:1). Restent :
+
+- [ ] **Étape 3 — génération « un angle par appel ».** Chaque cas naît de son propre appel
+  `découverte → confirmation de périmètre → génération` (§4bis), lisant la spec depuis
+  `case_group.spec_content`. Supprime le prompt « triptyque 3 scénarios ». **Solde la dette
+  `spec_content`** (ci-dessus). Cohérence inter-cas garantie par l'annuaire (contrainte champs
+  requis déjà livrée), pas par un contexte LLM partagé.
+  - 🔴 **Le TITRE d'un cas = une phrase MÉTIER décrivant ce qui est vérifié, JAMAIS un préfixe
+    d'angle brut.** Pas de `[NOMINAL]`/`[ERREUR]`/`[LIMITE]` dans le titre (exemple TestRail réel
+    fourni : titre « Réception et délivrance d'une commande »). `angle` reste une **métadonnée
+    interne** (nominal/erreur/limite/autre), jamais affichée dans le titre — utile pour une vue de
+    couverture ou suggérer les angles manquants d'une spécification.
+
+- [ ] **Étape 2 — UI/API de la Spécification.** CRUD Spécification ; écran module = Spécifications
+  → cas ; vocabulaire métier (« étapes », plus « scénario » — cf. le point vocabulaire).
+  - **Disposition d'un cas, inspirée de TestRail** (exemple réel fourni) : **ID + titre** en
+    en-tête ; un **bloc métadonnées** (état, priorité si pertinent) ; puis **sections séparées** :
+    **Préconditions** (contexte en langage clair) · **Étapes** numérotées simples (« 1. Ouvrir…,
+    2. Aller dans… » — PAS du Gherkin Given/When/Then affiché) · **Résultat attendu** = UNE phrase
+    de verdict global (« La commande est réservée puis délivrée. »), pas un résultat par étape.
+  - Le **Gherkin technique reste réservé au mode dev** (§5 du brief : mode dev vs mode utilisateur).
+  - À consigner en `decisions/` (numéro à attribuer) au démarrage de l'étape 2.
+
 ## Coût — le §9 du brief (moins de 1 €/cas), l'unique cible de coût du produit
 
 - [x] **CostTracker : le plafond bornait un APPEL, pas un cas** — *fait le 2026-07-17*

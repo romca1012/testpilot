@@ -123,6 +123,8 @@ class ProjectRepo:
             cur.execute(f"DELETE FROM review_decision  WHERE test_case_id IN ({case_sub})", (project_id,))
             cur.execute(f"DELETE FROM test_case_version WHERE test_case_id IN ({case_sub})", (project_id,))
             cur.execute(f"DELETE FROM test_case        WHERE module_id IN ({mod_sub})", (project_id,))
+            # case_group AVANT module : FK case_group→module sous foreign_keys=ON (migration 13).
+            cur.execute(f"DELETE FROM case_group        WHERE module_id IN ({mod_sub})", (project_id,))
             cur.execute("DELETE FROM module  WHERE project_id=?", (project_id,))
             cur.execute("DELETE FROM project WHERE id=?", (project_id,))
             cur.commit()
@@ -193,6 +195,49 @@ def _prettify_slug(slug: str) -> str:
     return s[:1].upper() + s[1:] if s else "Sans module"
 
 
+class CaseGroupRepo:
+    """La SPÉCIFICATION (décision 2026-07-19, rouvre 0006) : un regroupement organisationnel de
+    cas testant la même fonctionnalité. Conteneur SIMPLE — ni statut, ni version, ni gate, ni
+    coût (tout cela reste sur le cas). Libellé UI : « Spécification »."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def ensure_title_free(self, module_id: int, title: str, *, excluding: int | None = None) -> None:
+        """Titre de spécification unique DANS SON MODULE (comme les modules dans leur projet)."""
+        for row in self.conn.execute("SELECT id, title FROM case_group WHERE module_id=?",
+                                     (module_id,)):
+            if row["id"] != excluding and _key(row["title"]) == _key(title):
+                raise DuplicateName(f"ce module a déjà une spécification « {row['title']} »")
+
+    def create(self, *, module_id: int, title: str, description: str = "",
+               spec_content: str = "", spec_hash: str = "") -> int:
+        """Crée une spécification. `spec_content` est LE DOCUMENT source (2026-07-19) ; `spec_hash`
+        son empreinte, que chaque cas généré référencera. Vides à l'auto-enveloppement d'un cas
+        (la spec vit encore sur la version jusqu'à l'étape 3)."""
+        self.ensure_title_free(module_id, title)
+        ts = now_iso()
+        row = self.conn.execute("SELECT MAX(position) AS m FROM case_group WHERE module_id=?",
+                                (module_id,)).fetchone()
+        position = 0 if row["m"] is None else int(row["m"]) + 1
+        cur = self.conn.execute(
+            "INSERT INTO case_group (module_id, title, description, spec_content, spec_hash,"
+            " position, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+            (module_id, title, description, spec_content, spec_hash, position, ts, ts))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def get(self, group_id: int) -> dict | None:
+        row = self.conn.execute("SELECT * FROM case_group WHERE id=?", (group_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_for_module(self, module_id: int) -> list[dict]:
+        return _rows(self.conn.execute(
+            "SELECT g.*,"
+            " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id) AS case_count"
+            " FROM case_group g WHERE g.module_id=? ORDER BY g.position, g.id", (module_id,)))
+
+
 # Colonnes cas + jointure métier (module/projet) réutilisées par get/list.
 # `last_verdict_version_id` : la version qui a RÉELLEMENT produit `last_execution_status`
 # (décision 0016, option (iii)). Les `last_*` du cas sont écrits à CHAQUE run — y compris une
@@ -214,19 +259,19 @@ class CaseRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def ensure_title_free(self, module_id: int | None, title: str,
+    def ensure_title_free(self, group_id: int | None, title: str,
                           *, excluding: int | None = None) -> None:
-        """Le titre d'un cas est unique DANS SON MODULE. Lève `DuplicateName`.
+        """Le titre d'un cas est unique DANS SA SPÉCIFICATION (plus par module, décision 2026-07-19).
+        Deux spécifications peuvent chacune avoir un « Nominal ». Lève `DuplicateName`.
 
-        `module_id=None` (cas sans module) : aucune portée d'unicité à faire respecter — on ne
-        peut pas parler de « doublon dans un module » quand il n'y en a pas.
+        `group_id=None` : aucune portée d'unicité à faire respecter (rien à quoi comparer).
         """
-        if module_id is None:
+        if group_id is None:
             return
-        rows = self.conn.execute("SELECT id, title FROM test_case WHERE module_id=?", (module_id,))
+        rows = self.conn.execute("SELECT id, title FROM test_case WHERE group_id=?", (group_id,))
         for row in rows:
             if row["id"] != excluding and _key(row["title"]) == _key(title):
-                raise DuplicateName(f"ce module a déjà un cas intitulé « {row['title']} »")
+                raise DuplicateName(f"cette spécification a déjà un cas intitulé « {row['title']} »")
 
     def ensure_slug_free(self, feature_slug: str, *, excluding: int | None = None) -> None:
         """Le `feature_slug` est unique GLOBALEMENT : il nomme le fichier `{slug}.feature` dans
@@ -245,17 +290,28 @@ class CaseRepo:
                     f"le fichier de test « {feature_slug}.feature » est déjà utilisé par le cas "
                     f"« {row['title']} »")
 
-    def create(self, *, title: str, module_id: int | None = None, feature_slug: str = "",
-               author: str = "", description: str = "", origin: str = "ia_generated",
-               priority: str = "medium") -> int:
-        self.ensure_title_free(module_id, title)
+    def create(self, *, title: str, module_id: int | None = None, group_id: int | None = None,
+               angle: str = "", feature_slug: str = "", author: str = "", description: str = "",
+               origin: str = "ia_generated", priority: str = "medium") -> int:
+        """Crée un cas. `group_id` OBLIGATOIRE pour tout cas RANGÉ dans un module : s'il n'est pas
+        fourni mais qu'un module l'est, on AUTO-ENVELOPPE le cas dans sa propre spécification 1:1
+        (même geste que la migration legacy). L'appelant historique (la génération) continue donc
+        de marcher sans changement — l'étape 3 lui fera passer un `group_id` explicite.
+
+        Un cas SANS module (module_id=None) reste sans groupe : il n'a pas de place dans la
+        hiérarchie Module→Spécification→Cas, donc aucune spécification à lui donner. C'est un cas
+        de bord (hors arbre), pas le chemin de production — qui passe toujours par un module.
+        """
+        if group_id is None and module_id is not None:
+            group_id = CaseGroupRepo(self.conn).create(module_id=module_id, title=title)
+        self.ensure_title_free(group_id, title)
         self.ensure_slug_free(feature_slug)
         ts = now_iso()
         cur = self.conn.execute(
-            "INSERT INTO test_case (title, module_id, feature_slug, description,"
+            "INSERT INTO test_case (title, module_id, group_id, angle, feature_slug, description,"
             " origin, validation_status, priority, position, author, created_at, updated_at)"
-            " VALUES (?,?,?,?,?, 'never_executed', ?,?,?,?,?)",
-            (title, module_id, feature_slug, description, origin, priority,
+            " VALUES (?,?,?,?,?,?,?, 'never_executed', ?,?,?,?,?)",
+            (title, module_id, group_id, angle, feature_slug, description, origin, priority,
              self._next_position(module_id), author, ts, ts),
         )
         self.conn.commit()
@@ -275,8 +331,8 @@ class CaseRepo:
 
     def rename(self, case_id: int, title: str) -> None:
         case = self.get(case_id)
-        module_id = case["module_id"] if case else None
-        self.ensure_title_free(module_id, title, excluding=case_id)
+        group_id = case["group_id"] if case else None
+        self.ensure_title_free(group_id, title, excluding=case_id)
         self.conn.execute("UPDATE test_case SET title=?, updated_at=? WHERE id=?",
                           (title, now_iso(), case_id))
         self.conn.commit()
