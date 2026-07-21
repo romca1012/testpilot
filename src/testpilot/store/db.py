@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 13
+_SCHEMA_VERSION = 14
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -89,6 +89,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_12_cost_case_id(conn)
     if version < 13:
         _migrate_13_case_group(conn)
+    if version < 14:
+        _migrate_14_champs_metier(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -440,6 +442,51 @@ def _migrate_13_case_group(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_case_group_title"
                  " ON test_case(group_id, title COLLATE NOCASE)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_case_group ON test_case(group_id)")
+
+
+def _migrate_14_champs_metier(conn: sqlite3.Connection) -> None:
+    """Le contenu MÉTIER d'un cas devient une donnée de première classe, VERSIONNÉE avec le
+    technique (décision `0022`, n°3 et n°10). Idempotent, gardé par introspection.
+
+    ⚠️ **Jusqu'ici, préconditions / étapes / résultat attendu n'existaient PAS.** L'écran les
+    dérivait du Gherkin à la volée, en provisoire — ce qui rangeait parfois une vérification
+    technique dans « Étapes » (mesuré sur le cas 9 : *« le champ partner_id … n'est pas vide »*
+    affiché comme une étape métier). Ils deviennent de vrais champs, éditables.
+
+    **Une version = LE CAS ENTIER** : le métier est figé dans `test_case_version` en même temps
+    que le Gherkin. C'est ce qui permet l'historique à diffs, et ce que le gate approuve (5.c).
+    `test_case.title`/`angle` restent des COPIES courantes pour les listes — **la version fait
+    foi** en cas de divergence (même règle que le raccourci de résultat).
+
+    **Aucun remplissage automatique** (arbitrage du porteur, A.1) : les versions existantes
+    gardent leurs champs métier VIDES. L'écran continue d'afficher la dérivation provisoire tant
+    qu'ils le sont — on ne stocke pas du texte machine qui aurait ensuite l'air rédigé.
+
+    `refs` (et non `references`, mot-clé SQL) et `estimate` vivent sur le CAS : ce sont des
+    métadonnées qui ne changent pas ce que le test vérifie, les versionner gonflerait l'historique.
+    """
+    vcols = _column_names(conn, "test_case_version")
+    for col in ("title", "preconditions", "test_steps", "expected_result", "angle"):
+        if col not in vcols:
+            conn.execute(f"ALTER TABLE test_case_version ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+
+    ccols = _column_names(conn, "test_case")
+    for col in ("refs", "estimate"):
+        if col not in ccols:
+            conn.execute(f"ALTER TABLE test_case ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+
+    # Reprise MINIMALE et non inventée : le titre et l'angle des versions existantes sont ceux
+    # du cas (on ne les connaît pas autrement — aucune version n'a jamais porté de titre).
+    # Les champs de CONTENU (préconditions/étapes/résultat) restent vides : les dériver ici
+    # reviendrait à fabriquer du texte, ce que A.1 a explicitement écarté.
+    conn.execute(
+        "UPDATE test_case_version SET title = ("
+        "  SELECT tc.title FROM test_case tc WHERE tc.id = test_case_version.test_case_id)"
+        " WHERE title = ''")
+    conn.execute(
+        "UPDATE test_case_version SET angle = ("
+        "  SELECT tc.angle FROM test_case tc WHERE tc.id = test_case_version.test_case_id)"
+        " WHERE angle = ''")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

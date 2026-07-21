@@ -33,7 +33,10 @@ def test_base_neuve_a_case_group_et_les_colonnes(conn):
     assert "case_group" in tables
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(test_case)")}
     assert {"group_id", "angle"} <= cols
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+    # ⚠️ On compare à `_SCHEMA_VERSION`, jamais à un nombre en dur : figer « 13 » faisait échouer
+    # ce test à chaque migration suivante, pour une raison sans rapport avec ce qu'il vérifie.
+    from testpilot.store.db import _SCHEMA_VERSION
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == _SCHEMA_VERSION
 
 
 # ── Migration 13 : legacy enveloppé 1:1, angle='legacy' ───────────────────────

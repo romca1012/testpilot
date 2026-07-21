@@ -83,6 +83,11 @@ CREATE TABLE IF NOT EXISTS test_case (
     -- UNIQUE : un glissement décale N voisins, l'unicité ferait échouer les états
     -- intermédiaires ; les ex æquo sont départagés par `id`.
     position               INTEGER NOT NULL DEFAULT 0,
+    -- ── Métadonnées NON versionnées (décision 0022 n°3b) ─────────────────────
+    -- Elles ne changent pas ce que le test VÉRIFIE : les versionner gonflerait l'historique
+    -- pour rien. `refs` et non `references` : REFERENCES est un mot-clé SQL.
+    refs                   TEXT    NOT NULL DEFAULT '',   -- tickets externes (Jira, GitHub…)
+    estimate               TEXT    NOT NULL DEFAULT '',   -- estimation de durée (alimente le burndown)
     -- Référence logique vers la version courante (pas de FK dure : cycle case<->version).
     current_version_id     INTEGER,
     last_execution_status  TEXT    CHECK (last_execution_status IN ('success', 'technical_error', 'not_executed')),
@@ -111,6 +116,22 @@ CREATE TABLE IF NOT EXISTS test_case_version (
     -- détecter un cas généré depuis une spec dépassée, sans recopier le texte).
     spec_content    TEXT    NOT NULL DEFAULT '',
     spec_hash       TEXT    NOT NULL DEFAULT '',
+    -- ── Contenu MÉTIER de cette version (décisions 0022 n°3 et n°10) ──────────
+    -- Une version = LE CAS ENTIER : le métier est figé ici EN MÊME TEMPS que le technique.
+    -- C'est ce qui rend possible l'historique à diffs (« titre : X → Y ») et permet au gate
+    -- d'approuver un couple métier/technique cohérent.
+    -- ⚠️ `test_case` porte des COPIES de `title`/`angle` (valeurs courantes, pour les listes) :
+    -- en cas de divergence, C'EST LA VERSION QUI FAIT FOI — même règle que le raccourci de
+    -- résultat sur le cas.
+    title           TEXT    NOT NULL DEFAULT '',   -- le titre AU MOMENT de cette version
+    preconditions   TEXT    NOT NULL DEFAULT '',   -- contexte nécessaire, en langage clair
+    -- Étapes MÉTIER : liste JSON (`["Se connecter", "Aller sur …"]`), une entrée par étape.
+    -- ⚠️ NE PAS confondre avec `steps_content` ci-dessous, qui est le FICHIER PYTHON technique.
+    -- JSON et non texte multi-lignes : déplacer/supprimer une étape doit rester trivial, et un
+    -- retour à la ligne parasite ne doit pas fabriquer une étape fantôme.
+    test_steps      TEXT    NOT NULL DEFAULT '',
+    expected_result TEXT    NOT NULL DEFAULT '',   -- UNE phrase de verdict global (décision 3.a)
+    angle           TEXT    NOT NULL DEFAULT '',   -- snapshot de l'angle (l'historique le diffe)
     feature_content TEXT    NOT NULL DEFAULT '',
     steps_content   TEXT    NOT NULL DEFAULT '',
     feature_path    TEXT    NOT NULL DEFAULT '',

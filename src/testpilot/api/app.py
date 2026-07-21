@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from testpilot import config
-from testpilot.api.routes import cases, executions, modules, projects, repairs
+from testpilot.api.routes import cases, executions, groups, modules, projects, repairs
 
 # Origines du serveur de dev Vite (aucune auth : usage interne, réseau local).
 _DEV_ORIGINS = [
@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
 
     app.include_router(projects.router)
     app.include_router(modules.router)
+    app.include_router(groups.router)
     app.include_router(cases.router)
     app.include_router(executions.router)
     app.include_router(repairs.router)

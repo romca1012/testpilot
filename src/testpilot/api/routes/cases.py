@@ -12,6 +12,7 @@ from testpilot.api.services import run_service
 from testpilot.generation import assertion_lint, domain_model, repair_diff, smoke_check
 from testpilot.store.repositories import (
     CaseRepo,
+    DuplicateName,
     ExecutionRepo,
     ProjectRepo,
     ReviewRepo,
@@ -64,7 +65,8 @@ def _smoke_check_domaine(conn, case: dict, current: dict | None) -> list[dict]:
     projet = ProjectRepo(conn).get(case["project_id"])
     if not projet:
         return []
-    modele = domain_model.charger_modele(projet.get("connector_type") or "odoo")
+    # L'annuaire est propre au PROJET (son instance), plus au type de connecteur.
+    modele = domain_model.charger_modele(projet)
     if not modele:
         return []
     return smoke_check.smoke_check(current.get("feature_content") or "",
@@ -143,6 +145,28 @@ def update_case(case_id: int, body: schemas.CasePatch, conn=Depends(get_conn)):
         raise HTTPException(status_code=422, detail="priorité invalide (low | medium | high)")
     cases.set_priority(case_id, body.priority)
     return schemas.case_summary(cases.get(case_id))
+
+
+@router.patch("/{case_id}/metier", response_model=schemas.CaseMetierOut)
+def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(get_conn)):
+    """Édite le contenu MÉTIER d'un cas. Un champ versionné modifié → **nouvelle version**.
+
+    Le contenu technique (Gherkin) est recopié tel quel : éditer le métier ne régénère rien
+    (décision `0022` n°6). Conséquence voulue : la nouvelle version n'étant pas approuvée, le gate
+    bloque l'exécution jusqu'à relecture — l'invariant §4.3 s'applique sans règle supplémentaire.
+    """
+    cases = CaseRepo(conn)
+    if cases.get(case_id) is None:
+        raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
+    try:
+        version_id = cases.update_metier(
+            case_id, title=body.title, preconditions=body.preconditions,
+            test_steps=body.test_steps, expected_result=body.expected_result,
+            angle=body.angle, refs=body.refs, estimate=body.estimate, editor=body.editor)
+    except DuplicateName as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return schemas.CaseMetierOut(case=schemas.case_summary(cases.get(case_id)),
+                                 version_id=version_id, version_created=version_id is not None)
 
 
 @router.get("/{case_id}/scenarios", response_model=list[schemas.ScenarioResultOut])

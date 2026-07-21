@@ -21,6 +21,16 @@ class DuplicateName(ValueError):
     """
 
 
+class NotEmpty(ValueError):
+    """Un conteneur qu'on refuse de supprimer parce qu'il porte encore des enfants.
+
+    Levée par les repos, traduite en HTTP 409 par les routes. Le refus est DÉLIBÉRÉ et non un
+    manque : supprimer une spécification en cascade emporterait des cas qui portent des versions,
+    des exécutions et des coûts — c'est-à-dire de l'historique, que le projet ne détruit jamais
+    en silence (§2.10 : « on n'efface jamais un run, on annote »). L'utilisateur vide d'abord.
+    """
+
+
 def _key(value: str) -> str:
     """Clé de comparaison des noms : insensible à la casse ET aux accents composés.
 
@@ -102,6 +112,35 @@ class ProjectRepo:
         else:
             self.conn.execute("UPDATE project SET name=?, description=? WHERE id=?",
                               (name, description, project_id))
+        self.conn.commit()
+
+    # Champs de connexion éditables. Le `connector_type` en fait partie : changer d'ERP sur un
+    # projet existant est rare, mais l'interdire obligerait à recréer le projet — donc à perdre
+    # ses modules, ses cas et son historique. On préfère l'autoriser et le tracer.
+    _CONNEXION = ("connector_type", "base_url", "database", "username")
+
+    def update_connection(self, project_id: int, **champs) -> None:
+        """Édite la connexion d'un projet (décision `0005` : elle vit sur le PROJET).
+
+        ⚠️ **Le mot de passe suit une règle à part** : `None` ou absent = « ne touche pas ».
+        L'API ne renvoie JAMAIS le mot de passe (write-only), donc un écran d'édition le raffiche
+        forcément vide — et renvoyer ce vide effacerait le secret enregistré. Un formulaire ouvert
+        puis enregistré sans y toucher casserait toutes les exécutions du projet. Pour vider
+        volontairement le mot de passe, il faut donc passer une chaîne vide EXPLICITEMENT ;
+        `None` ne le fait jamais.
+        """
+        sets, params = [], []
+        for col in self._CONNEXION:
+            if champs.get(col) is not None:
+                sets.append(f"{col}=?")
+                params.append(champs[col])
+        if champs.get("password") is not None:
+            sets.append("password=?")
+            params.append(champs["password"])
+        if not sets:
+            return
+        params.append(project_id)
+        self.conn.execute(f"UPDATE project SET {', '.join(sets)} WHERE id=?", params)
         self.conn.commit()
 
     def delete(self, project_id: int) -> None:
@@ -237,6 +276,75 @@ class CaseGroupRepo:
             " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id) AS case_count"
             " FROM case_group g WHERE g.module_id=? ORDER BY g.position, g.id", (module_id,)))
 
+    def list_for_project(self, project_id: int) -> list[dict]:
+        """Toutes les spécifications d'un projet (jointes au module), pour l'arbre latéral."""
+        return _rows(self.conn.execute(
+            "SELECT g.id, g.module_id, g.title, g.position,"
+            " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id) AS case_count"
+            " FROM case_group g JOIN module m ON g.module_id=m.id"
+            " WHERE m.project_id=? ORDER BY g.module_id, g.position, g.id", (project_id,)))
+
+    def case_count(self, group_id: int) -> int:
+        return int(self.conn.execute("SELECT COUNT(*) AS n FROM test_case WHERE group_id=?",
+                                     (group_id,)).fetchone()["n"])
+
+    def update(self, group_id: int, *, title: str | None = None, description: str | None = None,
+               spec_content: str | None = None) -> None:
+        """Édition partielle : seul ce qui est fourni change (None = « ne touche pas »).
+
+        ⚠️ `spec_hash` n'est JAMAIS reçu de l'appelant — il est RECALCULÉ ici dès que le document
+        change. Laisser passer un couple (contenu, empreinte) fourni de l'extérieur permettrait à
+        l'empreinte de mentir sur le document qu'elle référence, et c'est exactement ce que le
+        hash sert à détecter (« ce cas est né d'une spec dépassée »). Un champ dont la valeur peut
+        contredire la réalité est le `position` décoratif de `0006`, appliqué à la traçabilité.
+
+        La spécification est un conteneur SIMPLE : éditer son document ne crée aucune version et
+        ne rebloque aucun gate — le versionnement et le gate vivent sur le CAS (décision `0022`
+        n°10). C'est la RÉGÉNÉRATION d'un cas depuis cette spec qui portera la conséquence, via
+        l'écart de `spec_hash` (décision `0022` n°6, patron déjà éprouvé).
+        """
+        current = self.get(group_id)
+        if current is None:
+            raise ValueError(f"spécification {group_id} introuvable")
+
+        sets, params = [], []
+        if title is not None:
+            # `excluding=group_id` est le SEUL mécanisme qui autorise une ligne à garder son
+            # propre nom (renommage à l'identique, changement de casse). Pas de pré-comparaison
+            # `_key` ici : elle ferait le même travail en doublon et rendrait ce garde-ci
+            # inatteignable — donc non testé, donc libre de pourrir. Un seul chemin, éprouvé.
+            self.ensure_title_free(current["module_id"], title, excluding=group_id)
+            sets.append("title=?")
+            params.append(title)
+        if description is not None:
+            sets.append("description=?")
+            params.append(description)
+        if spec_content is not None:
+            from testpilot.analysis.spec_analyzer import spec_hash
+            sets.extend(["spec_content=?", "spec_hash=?"])
+            params.extend([spec_content, spec_hash(spec_content)])
+        if not sets:
+            return
+
+        sets.append("updated_at=?")
+        params.extend([now_iso(), group_id])
+        self.conn.execute(f"UPDATE case_group SET {', '.join(sets)} WHERE id=?", params)
+        self.conn.commit()
+
+    def delete(self, group_id: int) -> None:
+        """Supprime une spécification VIDE. Refuse (NotEmpty) tant qu'elle porte des cas.
+
+        Pas de cascade : un cas porte des versions, des exécutions, des résultats et des lignes de
+        coût. Les emporter sur la suppression de leur conteneur détruirait de l'historique sans
+        que personne l'ait demandé — le contraire de la ligne du projet (§2.10). L'utilisateur
+        supprime (ou déplace) ses cas d'abord ; le refus dit combien il en reste.
+        """
+        n = self.case_count(group_id)
+        if n:
+            raise NotEmpty(f"cette spécification porte encore {n} cas — supprimez-les d'abord")
+        self.conn.execute("DELETE FROM case_group WHERE id=?", (group_id,))
+        self.conn.commit()
+
 
 # Colonnes cas + jointure métier (module/projet) réutilisées par get/list.
 # `last_verdict_version_id` : la version qui a RÉELLEMENT produit `last_execution_status`
@@ -247,11 +355,13 @@ class CaseGroupRepo:
 # courante : ce serait masquer un run réel.
 _CASE_SELECT = (
     "SELECT tc.*, m.name AS module_name, m.project_id AS project_id, p.name AS project_name,"
+    " g.title AS group_title,"
     " (SELECT e.version_id FROM execution e WHERE e.test_case_id = tc.id"
     "  ORDER BY e.id DESC LIMIT 1) AS last_verdict_version_id"
     " FROM test_case tc"
     " LEFT JOIN module m ON tc.module_id = m.id"
     " LEFT JOIN project p ON m.project_id = p.id"
+    " LEFT JOIN case_group g ON tc.group_id = g.id"
 )
 
 
@@ -371,6 +481,85 @@ class CaseRepo:
             cur.rollback()
             raise
 
+    def update_metier(self, case_id: int, *, title: str | None = None,
+                      preconditions: str | None = None, test_steps: str | None = None,
+                      expected_result: str | None = None, angle: str | None = None,
+                      refs: str | None = None, estimate: str | None = None,
+                      editor: str = "ui") -> int | None:
+        """Édite le contenu métier d'un cas → **crée une NOUVELLE version** (décision `0022` n°10).
+
+        ⚠️ **Jamais un `UPDATE` en place sur la version courante.** Une version est un état figé :
+        l'écraser détruirait l'historique que l'onglet Historique doit pouvoir differ, et
+        modifierait sous ses pieds un contenu que le gate a peut-être déjà approuvé.
+
+        Le contenu TECHNIQUE (Gherkin + steps) est **recopié tel quel** : éditer le métier ne
+        régénère rien (décision `0022` n°6 — on signale la divergence, l'humain régénère quand il
+        veut). Conséquence voulue : la nouvelle version n'étant pas approuvée, **le gate bloque
+        l'exécution** jusqu'à relecture — automatiquement, sans règle supplémentaire.
+
+        `refs`/`estimate` sont des métadonnées : elles vivent sur le CAS et ne créent pas de
+        version (elles ne changent pas ce que le test vérifie).
+
+        Rend l'id de la nouvelle version, ou `None` si aucun champ versionné n'a changé.
+        """
+        case = self.get(case_id)
+        if case is None:
+            return None
+        versions = VersionRepo(self.conn)
+        current = versions.get(case.get("current_version_id")) if case.get("current_version_id") else None
+
+        # Métadonnées : simple mise à jour sur le cas, sans version.
+        meta = {k: v for k, v in (("refs", refs), ("estimate", estimate)) if v is not None}
+        if meta:
+            sets = ", ".join(f"{k}=?" for k in meta)
+            self.conn.execute(f"UPDATE test_case SET {sets}, updated_at=? WHERE id=?",
+                              (*meta.values(), now_iso(), case_id))
+            self.conn.commit()
+
+        # Contenu versionné : valeur fournie, sinon celle de la version courante (repli sur le cas
+        # pour titre/angle, car les versions d'avant la migration 14 n'en portaient pas).
+        def pick(new, key, fallback):
+            if new is not None:
+                return new
+            return (current or {}).get(key) or fallback
+
+        new_title = pick(title, "title", case.get("title", ""))
+        new_pre = pick(preconditions, "preconditions", "")
+        new_steps = pick(test_steps, "test_steps", "")
+        new_expected = pick(expected_result, "expected_result", "")
+        new_angle = pick(angle, "angle", case.get("angle", ""))
+
+        inchange = (current is not None
+                    and new_title == (current.get("title") or case.get("title", ""))
+                    and new_pre == (current.get("preconditions") or "")
+                    and new_steps == (current.get("test_steps") or "")
+                    and new_expected == (current.get("expected_result") or "")
+                    and new_angle == (current.get("angle") or case.get("angle", "")))
+        if inchange:
+            return None   # rien de versionné n'a bougé : pas de version fantôme
+
+        if title is not None and title != case.get("title"):
+            self.ensure_title_free(case.get("group_id"), title, excluding=case_id)
+
+        version_id = versions.create(
+            test_case_id=case_id,
+            spec_content=(current or {}).get("spec_content", ""),
+            spec_hash=(current or {}).get("spec_hash", ""),
+            feature_content=(current or {}).get("feature_content", ""),
+            steps_content=(current or {}).get("steps_content", ""),
+            change_summary="Édition manuelle du contenu métier",
+            created_by=editor,
+            title=new_title, preconditions=new_pre, test_steps=new_steps,
+            expected_result=new_expected, angle=new_angle,
+        )
+        # Le CAS porte des COPIES courantes (titre/angle) pour les listes et les filtres.
+        # La VERSION fait foi — même règle que le raccourci de résultat.
+        self.conn.execute(
+            "UPDATE test_case SET title=?, angle=?, current_version_id=?, updated_at=? WHERE id=?",
+            (new_title, new_angle, version_id, now_iso(), case_id))
+        self.conn.commit()
+        return version_id
+
     def set_priority(self, case_id: int, priority: str) -> None:
         self.conn.execute("UPDATE test_case SET priority=?, updated_at=? WHERE id=?",
                           (priority, now_iso(), case_id))
@@ -466,7 +655,15 @@ class VersionRepo:
 
     def create(self, *, test_case_id: int, spec_content: str, spec_hash: str,
                feature_content: str, steps_content: str, feature_path: str = "",
-               steps_path: str = "", change_summary: str = "", created_by: str = "") -> int:
+               steps_path: str = "", change_summary: str = "", created_by: str = "",
+               title: str = "", preconditions: str = "", test_steps: str = "",
+               expected_result: str = "", angle: str = "") -> int:
+        """Crée une version — **le CAS ENTIER**, métier ET technique (décision `0022` n°10).
+
+        Les champs métier (`title`, `preconditions`, `test_steps`, `expected_result`, `angle`)
+        sont figés ici avec le Gherkin : c'est ce qui rend l'historique diffable et ce que le gate
+        approuve d'un seul geste. `test_steps` est une **liste JSON**, pas du texte multi-lignes.
+        """
         number = self.conn.execute(
             "SELECT COALESCE(MAX(version_number), 0) + 1 AS n"
             " FROM test_case_version WHERE test_case_id=?",
@@ -475,9 +672,12 @@ class VersionRepo:
         cur = self.conn.execute(
             "INSERT INTO test_case_version (test_case_id, version_number, spec_content,"
             " spec_hash, feature_content, steps_content, feature_path, steps_path,"
-            " change_summary, created_at, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            " change_summary, created_at, created_by,"
+            " title, preconditions, test_steps, expected_result, angle)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (test_case_id, number, spec_content, spec_hash, feature_content, steps_content,
-             feature_path, steps_path, change_summary, now_iso(), created_by),
+             feature_path, steps_path, change_summary, now_iso(), created_by,
+             title, preconditions, test_steps, expected_result, angle),
         )
         self.conn.commit()
         return int(cur.lastrowid)

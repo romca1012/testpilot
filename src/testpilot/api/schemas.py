@@ -46,12 +46,29 @@ class ModuleRef(BaseModel):
 
 
 # ── Cas ───────────────────────────────────────────────────────────────────────
+class GroupSummary(BaseModel):
+    """Spécification (case_group) — conteneur d'affichage : id, module, titre, nb de cas."""
+    id: int
+    module_id: int
+    title: str
+    case_count: int = 0
+
+
 class CaseSummary(BaseModel):
     id: int
     title: str
     module: str  # nom métier lisible du module (jamais le slug technique)
     module_id: int | None = None
     project_id: int | None = None
+    # Spécification (case_group) propriétaire + angle testé — séparation 2026-07-19. `angle` est
+    # une étiquette LIBRE (nominal/erreur/limite/autre/legacy), affichée en libellé métier côté UI.
+    group_id: int | None = None
+    group_title: str | None = None
+    angle: str = ""
+    # Métadonnées non versionnées (décision 0022 n°3b) : elles ne changent pas ce que le test
+    # vérifie. `refs` = tickets externes ; `estimate` alimentera le burndown.
+    refs: str = ""
+    estimate: str = ""
     validation_status: str
     priority: str = "medium"  # étiquette de lecture — aucun ordre d'exécution promis
     last_execution_status: str | None = None
@@ -68,6 +85,13 @@ class CaseSummary(BaseModel):
 class VersionOut(BaseModel):
     id: int
     version_number: int
+    # Contenu MÉTIER figé dans cette version (décision 0022 n°10) — c'est ce que l'écran affiche
+    # et ce que l'historique diffe. `test_steps` est une liste JSON sérialisée.
+    title: str = ""
+    preconditions: str = ""
+    test_steps: str = ""
+    expected_result: str = ""
+    angle: str = ""
     feature_content: str = ""
     steps_content: str = ""
     spec_hash: str = ""
@@ -237,6 +261,26 @@ class CasePatch(BaseModel):
     priority: str  # low | medium | high
 
 
+class CaseMetierIn(BaseModel):
+    """Édition du contenu MÉTIER d'un cas (décision `0022`). Chaque champ est optionnel : seul ce
+    qui est fourni change. Une modification d'un champ VERSIONNÉ crée une nouvelle version — jamais
+    un écrasement (n°10). `refs`/`estimate` sont des métadonnées et n'en créent pas."""
+    title: str | None = None
+    preconditions: str | None = None
+    test_steps: str | None = None      # liste JSON sérialisée
+    expected_result: str | None = None
+    angle: str | None = None
+    refs: str | None = None
+    estimate: str | None = None
+    editor: str = "ui"
+
+
+class CaseMetierOut(BaseModel):
+    case: CaseSummary
+    version_id: int | None = None      # None = rien de versionné n'a changé
+    version_created: bool = False
+
+
 class AddCaseIn(BaseModel):
     """Ajout d'un cas = fournir une SPEC (jamais une coquille vide — décision 0006)."""
     spec_content: str = ""
@@ -245,11 +289,38 @@ class AddCaseIn(BaseModel):
     author: str = "ui"
 
 
+class MetierDraftOut(BaseModel):
+    """Le document métier proposé par l'IA — à valider ou corriger avant l'écriture du Gherkin."""
+    title: str = ""
+    preconditions: str = ""
+    steps: list[str] = []
+    expected_result: str = ""
+    angle: str = ""
+
+
 class GenerationJobOut(BaseModel):
     job_id: str
-    status: str            # running | done | failed
+    # running | awaiting_metier | done | failed
+    # ⚠️ `awaiting_metier` n'est PAS un état d'attente technique : le job est arrêté et n'ira
+    # nulle part tant qu'un humain n'aura pas validé le document métier (décision `0022` n°5).
+    status: str
     case_id: int | None = None
     error: str = ""
+    # Rempli uniquement en `awaiting_metier`.
+    metier: MetierDraftOut | None = None
+
+
+class MetierValidationIn(BaseModel):
+    """Le document métier tel que l'humain le valide — corrections comprises.
+
+    C'est CE contenu qui fera foi pour l'écriture du Gherkin, pas la proposition de l'IA :
+    l'humain peut tout réécrire, c'est l'intérêt de la pause.
+    """
+    title: str
+    preconditions: str = ""
+    steps: list[str]
+    expected_result: str
+    angle: str = ""
 
 
 class ProjectIn(BaseModel):
@@ -262,9 +333,87 @@ class ProjectIn(BaseModel):
     password: str = ""  # secret : accepté en entrée, jamais relu en sortie
 
 
+class ProjectPatch(BaseModel):
+    """Édition d'un projet, connexion COMPRISE (décision `0005`).
+
+    ⚠️ Défauts à `None`, pas à `""` — contrairement à `ProjectIn`. Sur un PATCH, `""` veut dire
+    « vide ce champ » et `None` « n'y touche pas » : les confondre ferait effacer la connexion
+    d'un projet à chaque renommage. C'est vital pour `password`, que l'API ne renvoie jamais —
+    un écran d'édition l'affiche donc toujours vide, et le réenvoyer tel quel détruirait le
+    secret enregistré.
+    """
+    name: str | None = None
+    description: str | None = None
+    connector_type: str | None = None
+    base_url: str | None = None
+    database: str | None = None
+    username: str | None = None
+    password: str | None = None  # secret : accepté en entrée, jamais relu en sortie
+
+
+class ExplorationOut(BaseModel):
+    """L'état de la cartographie d'un projet — ce que l'écran montre avant/après exploration.
+
+    ⚠️ `mesure_le` est affiché systématiquement : la cartographie est une PHOTO qui vieillit, et
+    tout ce qui la consomme doit dire de quand elle date (cf. `domain_model`).
+    """
+    explored: bool = False
+    running: bool = False
+    job_id: str = ""
+    mesure_le: str = ""
+    pages: int = 0
+    transitions: int = 0
+    champs: int = 0
+    resume: str = ""
+    error: str = ""
+
+
 class ModuleIn(BaseModel):
     name: str
     description: str = ""
+
+
+class GroupIn(BaseModel):
+    """Création d'une Spécification. `spec_content` est LE DOCUMENT source (décision `0022`).
+
+    ⚠️ Pas de `spec_hash` : l'empreinte est recalculée par le repo depuis le document, jamais
+    reçue de l'appelant — sinon elle pourrait mentir sur ce qu'elle référence.
+    """
+    title: str
+    description: str = ""
+    spec_content: str = ""
+
+
+class GroupPatch(BaseModel):
+    """Édition partielle : `None` = « ne touche pas à ce champ » (≠ « vide-le »)."""
+    title: str | None = None
+    description: str | None = None
+    spec_content: str | None = None
+
+
+class GroupDetail(BaseModel):
+    """La Spécification AVEC son document — la vue de l'écran d'édition.
+
+    `GroupSummary` (sans le document) reste la vue des listes et de l'arbre : une liste de
+    spécifications n'a pas à charger N documents complets.
+    """
+    id: int
+    module_id: int
+    title: str
+    description: str = ""
+    spec_content: str = ""
+    spec_hash: str = ""
+    case_count: int = 0
+    created_at: str = ""
+    updated_at: str = ""
+
+
+def group_detail(row: dict) -> GroupDetail:
+    return GroupDetail(
+        id=row["id"], module_id=row["module_id"], title=row["title"],
+        description=row.get("description", ""), spec_content=row.get("spec_content", ""),
+        spec_hash=row.get("spec_hash", ""), case_count=row.get("case_count", 0),
+        created_at=row.get("created_at", ""), updated_at=row.get("updated_at", ""))
 
 
 class ReviewIn(BaseModel):
@@ -307,6 +456,9 @@ def case_summary(row: dict) -> CaseSummary:
         # Nom métier du module (repli sur le slug technique si le cas n'est pas encore rattaché).
         module=row.get("module_name") or row.get("feature_slug") or "—",
         module_id=row.get("module_id"), project_id=row.get("project_id"),
+        group_id=row.get("group_id"), group_title=row.get("group_title"),
+        angle=row.get("angle", "") or "",
+        refs=row.get("refs", "") or "", estimate=row.get("estimate", "") or "",
         validation_status=row["validation_status"],
         priority=row.get("priority", "medium"),
         last_execution_status=row.get("last_execution_status"),
@@ -330,6 +482,11 @@ def version_out(row: dict) -> VersionOut:
         spec_hash=row.get("spec_hash", ""), created_at=row.get("created_at", ""),
         change_summary=row.get("change_summary", "") or "",
         created_by=row.get("created_by", "") or "",
+        title=row.get("title", "") or "",
+        preconditions=row.get("preconditions", "") or "",
+        test_steps=row.get("test_steps", "") or "",
+        expected_result=row.get("expected_result", "") or "",
+        angle=row.get("angle", "") or "",
     )
 
 
