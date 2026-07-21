@@ -6,13 +6,18 @@ les modules regroupent les cas d'un projet. Aucune auth à ce stade.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 
 from testpilot.api import schemas
 from testpilot.api.deps import get_conn
-from testpilot.store.repositories import DuplicateName, ModuleRepo, ProjectRepo
+from testpilot.api.services import exploration_service
+from testpilot.store.repositories import CaseGroupRepo, DuplicateName, ModuleRepo, ProjectRepo
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+# 409 pour `already_running` : la requête est bien formée, c'est l'état qui s'y oppose.
+# 422 pour `no_connection` : il manque une donnée que l'utilisateur doit fournir.
+_EXPLORATION_STATUS = {"not_found": 404, "no_connection": 422, "already_running": 409}
 
 
 def _conflict(exc: DuplicateName) -> HTTPException:
@@ -55,15 +60,32 @@ def _last_project_id(conn) -> int:
 
 
 @router.patch("/{project_id}", response_model=schemas.ProjectSummary)
-def rename_project(project_id: int, body: schemas.ProjectIn, conn=Depends(get_conn)):
+def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get_conn)):
+    """Édite un projet : nom, description **et connexion** (décision `0005`).
+
+    ⚠️ La connexion était jusqu'ici **non éditable** — le corps était accepté avec ses champs de
+    connecteur, et la route les jetait en silence. Une faute de frappe dans l'URL obligeait à
+    supprimer le projet, donc à perdre modules, cas et historique. C'est aussi le préalable à
+    l'exploration : on ne cartographie pas une application qu'on ne peut pas corriger.
+
+    Seuls les champs FOURNIS changent (`None` = « n'y touche pas ») — voir `ProjectPatch`.
+    """
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
-    if not body.name.strip():
+    if body.name is not None and not body.name.strip():
         raise HTTPException(status_code=422, detail="le nom du projet est requis")
+    repo = ProjectRepo(conn)
     try:
-        ProjectRepo(conn).rename(project_id, name=body.name.strip(), description=body.description)
+        if body.name is not None:
+            repo.rename(project_id, name=body.name.strip(), description=body.description)
+        elif body.description is not None:
+            current = repo.get(project_id)
+            repo.rename(project_id, name=current["name"], description=body.description)
     except DuplicateName as exc:
         raise _conflict(exc) from exc
+    repo.update_connection(
+        project_id, connector_type=body.connector_type, base_url=body.base_url,
+        database=body.database, username=body.username, password=body.password)
     return schemas.project_summary(_summary_row(conn, project_id))
 
 
@@ -75,11 +97,49 @@ def delete_project(project_id: int, conn=Depends(get_conn)):
     return Response(status_code=204)
 
 
+@router.get("/{project_id}/exploration", response_model=schemas.ExplorationOut)
+def get_exploration(project_id: int, conn=Depends(get_conn)):
+    """La cartographie du projet : existe-t-elle, de quand date-t-elle, que couvre-t-elle."""
+    projet = ProjectRepo(conn).get(project_id)
+    if projet is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    etat = exploration_service.etat(project_id, projet)
+    job = exploration_service.get_job(etat["job_id"]) if etat["job_id"] else None
+    return schemas.ExplorationOut(**etat, error=(job or {}).get("error", ""))
+
+
+@router.post("/{project_id}/exploration", response_model=schemas.ExplorationOut, status_code=202)
+def start_exploration(project_id: int, background: BackgroundTasks, conn=Depends(get_conn)):
+    """Explore l'application du projet et construit SA cartographie (aucun LLM).
+
+    Payé une fois par projet : toutes les générations suivantes liront cette mesure au lieu de
+    deviner routes et champs. Déclenchement EXPLICITE — comme le lancement d'un run (`0022`
+    n°8.c.1), une opération longue ne doit jamais partir sans qu'on l'ait demandée.
+    """
+    try:
+        job_id, params = exploration_service.start_exploration(conn, project_id)
+    except exploration_service.ExplorationError as err:
+        raise HTTPException(status_code=_EXPLORATION_STATUS.get(err.code, 400), detail=err.detail)
+
+    background.add_task(exploration_service.run_exploration, job_id, **params)
+    return schemas.ExplorationOut(running=True, job_id=job_id)
+
+
 @router.get("/{project_id}/modules", response_model=list[schemas.ModuleSummary])
 def list_modules(project_id: int, conn=Depends(get_conn)):
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
     return [schemas.module_summary(r) for r in ModuleRepo(conn).list_for_project(project_id)]
+
+
+@router.get("/{project_id}/groups", response_model=list[schemas.GroupSummary])
+def list_groups(project_id: int, conn=Depends(get_conn)):
+    """Les spécifications (case_group) du projet, pour l'arbre latéral et les compteurs."""
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    return [schemas.GroupSummary(id=r["id"], module_id=r["module_id"], title=r["title"],
+                                 case_count=r.get("case_count", 0))
+            for r in CaseGroupRepo(conn).list_for_project(project_id)]
 
 
 @router.post("/{project_id}/modules", response_model=schemas.ModuleSummary, status_code=201)

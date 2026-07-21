@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { api, type ProjectSummary } from '../lib/api'
+import { api, type Exploration, type ProjectSummary } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
@@ -25,6 +25,103 @@ const CONNECTORS = [{ value: 'odoo', label: 'Odoo' }]  // extensible (§8 multi-
 // Suppression
 const toDelete = ref<ProjectSummary | null>(null)
 const deleting = ref(false)
+
+// ── Édition d'un projet et de SA CONNEXION (décision 0005) ────────────────────
+// Manquait entièrement : on pouvait créer un projet et le supprimer, pas le corriger. Une faute
+// de frappe dans l'URL obligeait à tout recréer — donc à perdre modules, cas et historique.
+// C'est aussi le préalable à l'exploration : on ne cartographie pas une application dont on ne
+// peut pas rectifier l'adresse.
+const editing = ref<ProjectSummary | null>(null)
+const saving = ref(false)
+const editError = ref('')
+const edit = ref({
+  name: '', connector_type: 'odoo', base_url: '', database: '', username: '', password: '',
+})
+
+function startEdit(p: ProjectSummary) {
+  editing.value = p
+  editError.value = ''
+  edit.value = {
+    name: p.name, connector_type: p.connector_type || 'odoo', base_url: p.base_url || '',
+    database: p.database || '', username: p.username || '',
+    // ⚠️ TOUJOURS vide : l'API ne renvoie jamais le mot de passe (write-only). Le champ vide
+    // signifie « inchangé », jamais « efface-le » — d'où le filtrage à l'enregistrement.
+    password: '',
+  }
+}
+
+// ── Exploration : cartographier l'application du projet ──────────────────────
+// Étape 2 du flux produit : projet → connecteur → EXPLORATION → génération. Payée une fois par
+// projet ; ensuite la génération lit cette mesure au lieu de deviner routes et champs.
+const explorations = ref<Record<number, Exploration>>({})
+const exploring = ref<number | null>(null)
+let pollTimer: number | undefined
+
+async function loadExplorations() {
+  for (const p of projects.value) {
+    try {
+      explorations.value[p.id] = await api.getExploration(p.id)
+    } catch { /* best-effort : l'état de la carto ne doit jamais casser la liste des projets */ }
+  }
+}
+
+async function explore(p: ProjectSummary) {
+  exploring.value = p.id
+  error.value = ''
+  try {
+    const e = await api.startExploration(p.id)
+    explorations.value[p.id] = e
+    pollExploration(p.id)
+  } catch (e: any) {
+    exploring.value = null
+    error.value = e?.message || 'Exploration impossible'
+  }
+}
+
+function pollExploration(id: number) {
+  pollTimer = window.setInterval(async () => {
+    try {
+      const e = await api.getExploration(id)
+      explorations.value[id] = e
+      if (e.running) return
+      window.clearInterval(pollTimer)
+      exploring.value = null
+      // L'échec est REMONTÉ, jamais avalé : une carto absente rend la génération aveugle.
+      if (e.error) error.value = e.error
+    } catch {
+      window.clearInterval(pollTimer)
+      exploring.value = null
+    }
+  }, 3000)
+}
+
+onUnmounted(() => { if (pollTimer) window.clearInterval(pollTimer) })
+
+async function saveEdit() {
+  if (!editing.value || !edit.value.name.trim()) return
+  saving.value = true
+  editError.value = ''
+  try {
+    const patch: Record<string, string> = {
+      name: edit.value.name.trim(),
+      connector_type: edit.value.connector_type,
+      base_url: edit.value.base_url,
+      database: edit.value.database,
+      username: edit.value.username,
+    }
+    // Le mot de passe n'est envoyé QUE s'il a été saisi. L'omettre laisse le secret intact ;
+    // envoyer "" l'effacerait — et toutes les exécutions du projet échoueraient ensuite.
+    if (edit.value.password) patch.password = edit.value.password
+    await api.updateProject(editing.value.id, patch)
+    editing.value = null
+    await ensureLoaded(true)
+    await load()
+  } catch (e: any) {
+    editError.value = e?.message || 'Enregistrement impossible'
+  } finally {
+    saving.value = false
+  }
+}
 
 function open(p: ProjectSummary) {
   router.push(`/projects/${p.id}/cases`)
@@ -83,7 +180,7 @@ async function confirmDelete() {
   }
 }
 
-onMounted(load)
+onMounted(async () => { await load(); await loadExplorations() })
 </script>
 
 <template>
@@ -153,6 +250,53 @@ onMounted(load)
           </div>
           <Icon name="chevron" class="h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
         </button>
+        <!-- Connexion en clair sur la carte : c'est ce qui distingue deux projets du même
+             connecteur, et ce qu'on vient vérifier quand une exécution tape la mauvaise instance. -->
+        <div v-if="p.base_url" class="mt-2 truncate text-[11px] text-muted-foreground/70" :title="p.base_url">
+          {{ p.connector_type }} · {{ p.base_url }}<span v-if="p.database"> · {{ p.database }}</span>
+        </div>
+        <div v-else class="mt-2 text-[11px] text-warning">Aucune connexion configurée</div>
+
+        <!-- ══ Cartographie de l'application (étape 2 du flux) ══
+             La DATE est toujours affichée : c'est une photo, et elle vieillit. Un projet non
+             exploré le dit clairement plutôt que de laisser croire que la génération sait où
+             elle va. -->
+        <div class="mt-3 flex items-center gap-2 border-t border-border/60 pt-2.5">
+          <div class="min-w-0 flex-1 text-[11px]">
+            <template v-if="explorations[p.id]?.running || exploring === p.id">
+              <span class="text-primary">Exploration en cours… (quelques minutes)</span>
+            </template>
+            <template v-else-if="explorations[p.id]?.explored">
+              <span class="text-muted-foreground">
+                {{ explorations[p.id].pages }} routes · {{ explorations[p.id].transitions }} transitions
+                · {{ explorations[p.id].champs }} champs
+              </span>
+              <span class="text-muted-foreground/60"> — mesuré le {{ explorations[p.id].mesure_le }}</span>
+            </template>
+            <template v-else>
+              <span class="text-muted-foreground/70">Application non explorée</span>
+            </template>
+          </div>
+          <button
+            class="shrink-0 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="!p.base_url || explorations[p.id]?.running || exploring === p.id"
+            :title="!p.base_url ? 'Renseignez d\'abord la connexion du projet'
+                    : explorations[p.id]?.explored ? 'Re-mesurer l\'application' : 'Cartographier l\'application'"
+            @click.stop="explore(p)"
+          >
+            {{ explorations[p.id]?.explored ? 'Ré-explorer' : 'Explorer' }}
+          </button>
+        </div>
+
+        <button
+          class="absolute right-10 top-3 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+          title="Modifier le projet et sa connexion"
+          @click.stop="startEdit(p)"
+        >
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 4H4v16h16v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z" />
+          </svg>
+        </button>
         <button
           class="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
           title="Supprimer le projet"
@@ -162,6 +306,62 @@ onMounted(load)
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v11a2 2 0 002 2h4a2 2 0 002-2V7" />
           </svg>
         </button>
+      </div>
+    </div>
+
+    <!-- ════════ Édition d'un projet et de sa connexion ════════ -->
+    <div v-if="editing" class="fixed inset-0 z-40 grid place-items-center bg-black/50 p-4" @click.self="editing = null">
+      <div class="w-full max-w-lg rounded-xl border border-border bg-card p-5 shadow-2xl">
+        <h2 class="text-lg font-semibold">Modifier « {{ editing.name }} »</h2>
+        <p class="mt-1 text-xs text-muted-foreground">
+          La connexion désigne l'application réellement testée : c'est elle que les exécutions
+          et l'exploration utiliseront.
+        </p>
+
+        <form class="mt-4 space-y-3" @submit.prevent="saveEdit">
+          <label class="block">
+            <span class="text-sm font-medium">Nom <span class="text-destructive">*</span></span>
+            <input v-model="edit.name" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium">Connecteur</span>
+            <select v-model="edit.connector_type" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2">
+              <option v-for="c in CONNECTORS" :key="c.value" :value="c.value">{{ c.label }}</option>
+            </select>
+          </label>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block">
+              <span class="text-sm font-medium">URL</span>
+              <input v-model="edit.base_url" placeholder="http://localhost:10017"
+                     class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+            </label>
+            <label class="block">
+              <span class="text-sm font-medium">Base de données</span>
+              <input v-model="edit.database"
+                     class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+            </label>
+            <label class="block">
+              <span class="text-sm font-medium">Utilisateur</span>
+              <input v-model="edit.username"
+                     class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+            </label>
+            <label class="block">
+              <span class="text-sm font-medium">Mot de passe</span>
+              <input v-model="edit.password" type="password" placeholder="Inchangé"
+                     class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+            </label>
+          </div>
+          <p class="text-[11px] text-muted-foreground">
+            Le mot de passe n'est jamais réaffiché. Laissez ce champ vide pour le conserver tel quel.
+          </p>
+
+          <p v-if="editError" class="text-sm text-destructive">{{ editError }}</p>
+
+          <div class="flex items-center gap-3 pt-1">
+            <Button type="submit" variant="primary" :loading="saving" :disabled="!edit.name.trim()">Enregistrer</Button>
+            <button type="button" class="rounded-md border border-border px-4 py-2 text-sm hover:border-primary/40" @click="editing = null">Annuler</button>
+          </div>
+        </form>
       </div>
     </div>
 

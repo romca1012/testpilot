@@ -185,7 +185,14 @@ def test_le_modele_odoo_est_bien_en_depot_et_lisible():
     la revue humaine du graphe. Ce test garde le fichier ; un test ne peut pas garder la règle
     gitignore elle-même, mais son absence sauterait ici au prochain clone.
     """
-    modele = domain_model.charger_modele("odoo")
+    # ⚠️ Lu par son chemin LEGACY : depuis le rangement par projet, `charger_modele` prend un
+    # projet et cherche `projet-{id}.json`. Le fichier de référence en dépôt reste `odoo.json`
+    # tant que le projet réel n'a pas été ré-exploré — et c'est LUI que ce test garde
+    # (la règle `.gitignore` qui le rend versionnable). Le rangement par projet a ses propres
+    # tests dans `test_annuaire_par_projet.py`.
+    import json as _json
+    chemin = domain_model.chemin_legacy("odoo")
+    modele = _json.loads(chemin.read_text(encoding="utf-8")) if chemin.exists() else None
 
     assert modele is not None, (
         "data/domain/odoo.json est absent : le smoke-check est muet en production")

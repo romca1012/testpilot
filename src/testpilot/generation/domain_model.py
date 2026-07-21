@@ -34,8 +34,24 @@ logger = logging.getLogger(__name__)
 DOMAIN_DIR = config.DATA_DIR / "domain"
 
 
-def chemin_du_modele(connector_type: str = "odoo") -> Path:
-    """Un modèle PAR CONNECTEUR : le domaine d'Odoo n'est pas celui du prochain ERP (§8)."""
+def chemin_du_modele(project_id: int) -> Path:
+    """Un modèle PAR PROJET — décision `0005` appliquée à ce qui lui avait échappé.
+
+    ⚠️ **C'était un modèle par TYPE DE CONNECTEUR** (`odoo.json`), et c'est le défaut exact que
+    `0005` a corrigé pour le runtime : deux projets sur Odoo mais deux **instances** différentes
+    (le portail d'un client, puis celui d'un autre) partageaient une seule cartographie. Les
+    tests du second auraient été générés depuis les routes et les champs du premier — « affiché
+    ≠ réel » (§4.6) appliqué à la connaissance du domaine, et une source d'erreurs techniques
+    impossible à diagnostiquer.
+
+    Le domaine appartient à l'**application testée**, pas à la famille de logiciel. Deux projets
+    Odoo peuvent avoir des modules, des champs et des routes différents.
+    """
+    return DOMAIN_DIR / f"projet-{int(project_id)}.json"
+
+
+def chemin_legacy(connector_type: str = "odoo") -> Path:
+    """L'ancien emplacement, indexé par connecteur. Lu en REPLI, jamais écrit."""
     return DOMAIN_DIR / f"{(connector_type or 'odoo').lower()}.json"
 
 
@@ -49,22 +65,54 @@ def _charger(chemin: str, mtime: float) -> dict:
     return json.loads(Path(chemin).read_text(encoding="utf-8"))
 
 
-def charger_modele(connector_type: str = "odoo") -> dict | None:
-    """Le modèle du connecteur, ou `None` s'il n'y en a pas.
+def charger_modele(projet: dict | None) -> dict | None:
+    """Le modèle du PROJET, ou `None` s'il n'y en a pas.
 
     **`None` n'est pas une erreur** : tant qu'aucun modèle n'est mesuré ni relu, le smoke-check se
     tait. Best-effort — un modèle illisible ne doit jamais casser l'affichage d'un cas, mais il ne
     doit pas non plus disparaître en silence (§4.6) : on le journalise.
+
+    **Repli sur l'ancien fichier par connecteur**, et il est STRICT : le fichier legacy porte la
+    `base_url` de l'instance qu'il a mesurée, et on ne l'accepte que si elle correspond à celle du
+    projet. Sans cette vérification, le repli réintroduirait exactement le bug qu'on corrige — un
+    projet servi par la cartographie d'une autre instance. Mieux vaut aucun modèle qu'un faux.
     """
-    chemin = chemin_du_modele(connector_type)
-    if not chemin.exists():
+    if not projet:
         return None
+    chemin = chemin_du_modele(projet["id"])
+    if not chemin.exists():
+        chemin = _legacy_utilisable(projet)
+        if chemin is None:
+            return None
     try:
         return _charger(str(chemin), chemin.stat().st_mtime)
     except (OSError, json.JSONDecodeError):
         logger.exception("[domaine] modèle %s illisible — le smoke-check sera muet sur ce cas",
                          chemin)
         return None
+
+
+def _normalise_url(url: str) -> str:
+    return (url or "").strip().rstrip("/").lower()
+
+
+def _legacy_utilisable(projet: dict) -> Path | None:
+    """L'ancien `{connecteur}.json`, mais SEULEMENT s'il a mesuré la même instance."""
+    chemin = chemin_legacy(projet.get("connector_type") or "odoo")
+    if not chemin.exists():
+        return None
+    try:
+        mesure = json.loads(chemin.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if _normalise_url(mesure.get("base_url")) == _normalise_url(projet.get("base_url")):
+        logger.info("[domaine] projet %s : repli sur l'ancien modèle %s (même instance) — "
+                    "relancer l'exploration le rangera au bon endroit", projet["id"], chemin.name)
+        return chemin
+    logger.warning("[domaine] projet %s : l'ancien modèle %s décrit une AUTRE instance (%s ≠ %s) "
+                   "— ignoré. Lancez l'exploration de ce projet.", projet["id"], chemin.name,
+                   mesure.get("base_url"), projet.get("base_url"))
+    return None
 
 
 def _meme_route(route_modele: str, url: str) -> bool:
