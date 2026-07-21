@@ -60,27 +60,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -250,27 +250,27 @@
           "role": null
         },
         {
-          "href": "http://localhost:10017/en/formulaire/104",
-          "text": "PC Portable HP 14\" (VIP)",
-          "role": null
-        },
-        {
-          "href": "http://localhost:10017/en/formulaire/78",
-          "text": "PC Portable HP",
-          "role": null
-        },
-        {
-          "href": "http://localhost:10017/en/formulaire/104",
-          "text": "PC Portable HP 14\" (VIP)",
-          "role": null
-        },
-        {
-          "href": "http://localhost:10017/en/formulaire/78",
+          "href": "http://localhost:10017/product/78/accessories",
           "text": "PC Portable HP",
           "role": null
         },
         {
           "href": "http://localhost:10017/product/78/accessories",
+          "text": "PC Portable HP",
+          "role": null
+        },
+        {
+          "href": "http://localhost:10017/product/78/accessories",
+          "text": "PC Portable HP",
+          "role": null
+        },
+        {
+          "href": "http://localhost:10017/en/formulaire/104",
+          "text": "PC Portable HP 14\" (VIP)",
+          "role": null
+        },
+        {
+          "href": "http://localhost:10017/en/formulaire/78",
           "text": "PC Portable HP",
           "role": null
         },
@@ -302,7 +302,8 @@
           "champs": 2
         }
       ],
-      "titre": "Portail SAPIAN | Sapian"
+      "titre": "Portail SAPIAN | Sapian",
+      "url_exemple": "/my/home"
     },
     "/myservices": {
       "champs": [
@@ -442,27 +443,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -738,7 +739,8 @@
         }
       ],
       "formulaires": [],
-      "titre": "MyServices | Sapian"
+      "titre": "MyServices | Sapian",
+      "url_exemple": "/myservices"
     },
     "/en": {
       "champs": [
@@ -794,27 +796,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -984,27 +986,27 @@
           "role": null
         },
         {
-          "href": "http://localhost:10017/en/formulaire/104",
-          "text": "PC Portable HP 14\" (VIP)",
-          "role": null
-        },
-        {
-          "href": "http://localhost:10017/en/formulaire/78",
-          "text": "PC Portable HP",
-          "role": null
-        },
-        {
-          "href": "http://localhost:10017/en/formulaire/104",
-          "text": "PC Portable HP 14\" (VIP)",
-          "role": null
-        },
-        {
-          "href": "http://localhost:10017/en/formulaire/78",
+          "href": "http://localhost:10017/product/78/accessories",
           "text": "PC Portable HP",
           "role": null
         },
         {
           "href": "http://localhost:10017/product/78/accessories",
+          "text": "PC Portable HP",
+          "role": null
+        },
+        {
+          "href": "http://localhost:10017/product/78/accessories",
+          "text": "PC Portable HP",
+          "role": null
+        },
+        {
+          "href": "http://localhost:10017/en/formulaire/104",
+          "text": "PC Portable HP 14\" (VIP)",
+          "role": null
+        },
+        {
+          "href": "http://localhost:10017/en/formulaire/78",
           "text": "PC Portable HP",
           "role": null
         },
@@ -1036,7 +1038,8 @@
           "champs": 2
         }
       ],
-      "titre": "Portail SAPIAN | Sapian"
+      "titre": "Portail SAPIAN | Sapian",
+      "url_exemple": "/en"
     },
     "/my_dashboard": {
       "champs": [],
@@ -1077,27 +1080,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -1283,7 +1286,8 @@
         }
       ],
       "formulaires": [],
-      "titre": "Dashboard | Sapian"
+      "titre": "Dashboard | Sapian",
+      "url_exemple": "/my_dashboard"
     },
     "/connaissance": {
       "champs": [],
@@ -1324,27 +1328,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -1525,7 +1529,8 @@
         }
       ],
       "formulaires": [],
-      "titre": "connaissance | Sapian"
+      "titre": "connaissance | Sapian",
+      "url_exemple": "/connaissance"
     },
     "/my/ticket/{id}": {
       "champs": [
@@ -1572,7 +1577,7 @@
           "role": null
         },
         {
-          "href": "http://localhost:10017/@/en/my/ticket/30254",
+          "href": "http://localhost:10017/@/en/my/ticket/30262",
           "text": "Editor",
           "role": null
         },
@@ -1602,6 +1607,21 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
@@ -1612,21 +1632,6 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
           "href": "/en/shop/cart",
           "text": "0",
           "role": null
@@ -1637,12 +1642,12 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30254",
+          "href": "/en/my/ticket/30262",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/my/ticket/30254",
+          "href": "/my/ticket/30262",
           "text": "Français",
           "role": null
         },
@@ -1722,12 +1727,12 @@
           "role": "menuitem"
         },
         {
-          "href": "/en/my/ticket/30254",
+          "href": "/en/my/ticket/30262",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/my/ticket/30254",
+          "href": "/my/ticket/30262",
           "text": "Français",
           "role": null
         },
@@ -1737,13 +1742,18 @@
           "role": null
         },
         {
-          "href": "/web#model=helpdesk.ticket&id=30254&view_type=form",
+          "href": "/web#model=helpdesk.ticket&id=30262&view_type=form",
           "text": "Back to edit mode",
           "role": null
         },
         {
-          "href": "/en/demande_materiel/ticket/30254",
-          "text": "PROBE-SUBMIT-DIAG 1784488865\n           ",
+          "href": "/en/my/ticket/close/30262/4022a2e4-cc27-4112-b0c8-18051b74048b",
+          "text": "Close Ticket",
+          "role": "button"
+        },
+        {
+          "href": "/en/demande_materiel/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
           "role": null
         },
         {
@@ -1757,11 +1767,6 @@
           "role": null
         },
         {
-          "href": "#",
-          "text": "Clôturé",
-          "role": null
-        },
-        {
           "href": "/en",
           "text": "",
           "role": null
@@ -1772,12 +1777,12 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30254",
+          "href": "/en/my/ticket/30262",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/my/ticket/30254",
+          "href": "/my/ticket/30262",
           "text": "Français",
           "role": null
         }
@@ -1794,7 +1799,8 @@
           "champs": 3
         }
       ],
-      "titre": "PROBE-SUBMIT-DIAG 1784488865"
+      "titre": "Demande test BDD - validation champ requis",
+      "url_exemple": "/my/ticket/30262"
     },
     "/shop/cart": {
       "champs": [],
@@ -1835,27 +1841,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -1991,7 +1997,8 @@
         }
       ],
       "formulaires": [],
-      "titre": "Shopping Cart | Sapian"
+      "titre": "Shopping Cart | Sapian",
+      "url_exemple": "/shop/cart"
     },
     "/user/account": {
       "champs": [
@@ -2068,27 +2075,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -2230,7 +2237,8 @@
           "champs": 2
         }
       ],
-      "titre": "Mon compte | Sapian"
+      "titre": "Mon compte | Sapian",
+      "url_exemple": "/user/account"
     },
     "/my": {
       "champs": [
@@ -2286,27 +2294,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -2476,27 +2484,27 @@
           "role": null
         },
         {
-          "href": "http://localhost:10017/en/formulaire/104",
-          "text": "PC Portable HP 14\" (VIP)",
-          "role": null
-        },
-        {
-          "href": "http://localhost:10017/en/formulaire/78",
-          "text": "PC Portable HP",
-          "role": null
-        },
-        {
-          "href": "http://localhost:10017/en/formulaire/104",
-          "text": "PC Portable HP 14\" (VIP)",
-          "role": null
-        },
-        {
-          "href": "http://localhost:10017/en/formulaire/78",
+          "href": "http://localhost:10017/product/78/accessories",
           "text": "PC Portable HP",
           "role": null
         },
         {
           "href": "http://localhost:10017/product/78/accessories",
+          "text": "PC Portable HP",
+          "role": null
+        },
+        {
+          "href": "http://localhost:10017/product/78/accessories",
+          "text": "PC Portable HP",
+          "role": null
+        },
+        {
+          "href": "http://localhost:10017/en/formulaire/104",
+          "text": "PC Portable HP 14\" (VIP)",
+          "role": null
+        },
+        {
+          "href": "http://localhost:10017/en/formulaire/78",
           "text": "PC Portable HP",
           "role": null
         },
@@ -2528,7 +2536,8 @@
           "champs": 2
         }
       ],
-      "titre": "Portail SAPIAN | Sapian"
+      "titre": "Portail SAPIAN | Sapian",
+      "url_exemple": "/my"
     },
     "/services-applicatifs": {
       "champs": [],
@@ -2569,27 +2578,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -2795,7 +2804,8 @@
         }
       ],
       "formulaires": [],
-      "titre": "MyServices | Sapian"
+      "titre": "MyServices | Sapian",
+      "url_exemple": "/services-applicatifs"
     },
     "/servicemetiers": {
       "champs": [],
@@ -2836,27 +2846,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -3127,7 +3137,8 @@
         }
       ],
       "formulaires": [],
-      "titre": "ServicesMetiers | Sapian"
+      "titre": "ServicesMetiers | Sapian",
+      "url_exemple": "/servicemetiers"
     },
     "/services-entreprises": {
       "champs": [
@@ -3210,27 +3221,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -3412,7 +3423,8 @@
           "champs": 3
         }
       ],
-      "titre": "ServicesEntreprises | Sapian"
+      "titre": "ServicesEntreprises | Sapian",
+      "url_exemple": "/services-entreprises"
     },
     "/formulaire-applicatif/{id}": {
       "champs": [
@@ -3543,27 +3555,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -3735,7 +3747,8 @@
           "champs": 11
         }
       ],
-      "titre": "MyServices | Sapian"
+      "titre": "MyServices | Sapian",
+      "url_exemple": "/formulaire-applicatif/22"
     },
     "/my/tickets": {
       "champs": [
@@ -3784,27 +3797,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -4074,7 +4087,17 @@
           "role": null
         },
         {
-          "href": "/en/helpdesk/ticket/30250",
+          "href": "/en/helpdesk/ticket/30262",
+          "text": "#\n                                      ",
+          "role": null
+        },
+        {
+          "href": "/en/helpdesk/ticket/30261",
+          "text": "#\n                                      ",
+          "role": null
+        },
+        {
+          "href": "/en/helpdesk/ticket/30259",
           "text": "#\n                                      ",
           "role": null
         },
@@ -4276,7 +4299,8 @@
           "champs": 1
         }
       ],
-      "titre": "Tickets | Sapian"
+      "titre": "Tickets | Sapian",
+      "url_exemple": "/my/tickets"
     },
     "/my/alltickets": {
       "champs": [
@@ -4325,27 +4349,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -4637,7 +4661,8 @@
           "champs": 1
         }
       ],
-      "titre": "Tickets | Sapian"
+      "titre": "Tickets | Sapian",
+      "url_exemple": "/my/alltickets"
     },
     "/my/tickets_to_close": {
       "champs": [
@@ -4686,27 +4711,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -5023,1418 +5048,8 @@
           "champs": 1
         }
       ],
-      "titre": "Tickets | Sapian"
-    },
-    "/formulaire/{id}": {
-      "champs": [
-        {
-          "name": "partner_name",
-          "tag": "input",
-          "type": "text",
-          "required": true,
-          "visible": true
-        },
-        {
-          "name": "name",
-          "tag": "input",
-          "type": "text",
-          "required": true,
-          "visible": true
-        },
-        {
-          "name": "partner_email",
-          "tag": "input",
-          "type": "email",
-          "required": true,
-          "visible": false
-        },
-        {
-          "name": "fonction_materiel",
-          "tag": "select",
-          "type": "select-one",
-          "required": false,
-          "visible": true,
-          "options": [
-            [
-              "technicien_polyvalent",
-              "Technicien Polyvalent"
-            ],
-            [
-              "technicien_interimaire",
-              "Technicien Intérimaire"
-            ],
-            [
-              "structure",
-              "Structure"
-            ]
-          ]
-        },
-        {
-          "name": "types_demandes",
-          "tag": "select",
-          "type": "select-one",
-          "required": true,
-          "visible": true,
-          "options": [
-            [
-              "nouvel_entrant",
-              "Demande de nouvel entrant"
-            ],
-            [
-              "remplacement_materiel",
-              "Remplacement de matériel existant"
-            ]
-          ]
-        },
-        {
-          "name": "request_for_other",
-          "tag": "input",
-          "type": "checkbox",
-          "required": false,
-          "visible": true
-        },
-        {
-          "name": "destinataire_name",
-          "tag": "input",
-          "type": "text",
-          "required": true,
-          "visible": false
-        },
-        {
-          "name": "is_not_adr_agence",
-          "tag": "input",
-          "type": "checkbox",
-          "required": false,
-          "visible": true
-        },
-        {
-          "name": "street",
-          "tag": "input",
-          "type": "text",
-          "required": true,
-          "visible": false
-        },
-        {
-          "name": "street2",
-          "tag": "input",
-          "type": "text",
-          "required": false,
-          "visible": false
-        },
-        {
-          "name": "city",
-          "tag": "input",
-          "type": "text",
-          "required": true,
-          "visible": false
-        },
-        {
-          "name": "state_id",
-          "tag": "select",
-          "type": "select-one",
-          "required": false,
-          "visible": false,
-          "options": []
-        },
-        {
-          "name": "zip",
-          "tag": "input",
-          "type": "text",
-          "required": true,
-          "visible": false
-        },
-        {
-          "name": "country_id",
-          "tag": "select",
-          "type": "select-one",
-          "required": false,
-          "visible": false,
-          "options": [
-            [
-              "75",
-              "France"
-            ],
-            [
-              "3",
-              "Afghanistan"
-            ],
-            [
-              "6",
-              "Albania"
-            ],
-            [
-              "62",
-              "Algeria"
-            ],
-            [
-              "11",
-              "American Samoa"
-            ],
-            [
-              "1",
-              "Andorra"
-            ],
-            [
-              "8",
-              "Angola"
-            ],
-            [
-              "5",
-              "Anguilla"
-            ],
-            [
-              "9",
-              "Antarctica"
-            ],
-            [
-              "4",
-              "Antigua and Barbuda"
-            ],
-            [
-              "10",
-              "Argentina"
-            ],
-            [
-              "7",
-              "Armenia"
-            ],
-            [
-              "14",
-              "Aruba"
-            ],
-            [
-              "13",
-              "Australia"
-            ],
-            [
-              "12",
-              "Austria"
-            ],
-            [
-              "16",
-              "Azerbaijan"
-            ],
-            [
-              "32",
-              "Bahamas"
-            ],
-            [
-              "23",
-              "Bahrain"
-            ],
-            [
-              "19",
-              "Bangladesh"
-            ],
-            [
-              "18",
-              "Barbados"
-            ],
-            [
-              "36",
-              "Belarus"
-            ],
-            [
-              "20",
-              "Belgium"
-            ],
-            [
-              "37",
-              "Belize"
-            ],
-            [
-              "25",
-              "Benin"
-            ],
-            [
-              "27",
-              "Bermuda"
-            ],
-            [
-              "33",
-              "Bhutan"
-            ],
-            [
-              "29",
-              "Bolivia"
-            ],
-            [
-              "30",
-              "Bonaire, Sint Eustatius and Saba"
-            ],
-            [
-              "17",
-              "Bosnia and Herzegovina"
-            ],
-            [
-              "35",
-              "Botswana"
-            ],
-            [
-              "34",
-              "Bouvet Island"
-            ],
-            [
-              "31",
-              "Brazil"
-            ],
-            [
-              "105",
-              "British Indian Ocean Territory"
-            ],
-            [
-              "28",
-              "Brunei Darussalam"
-            ],
-            [
-              "22",
-              "Bulgaria"
-            ],
-            [
-              "21",
-              "Burkina Faso"
-            ],
-            [
-              "24",
-              "Burundi"
-            ],
-            [
-              "116",
-              "Cambodia"
-            ],
-            [
-              "47",
-              "Cameroon"
-            ],
-            [
-              "38",
-              "Canada"
-            ],
-            [
-              "52",
-              "Cape Verde"
-            ],
-            [
-              "123",
-              "Cayman Islands"
-            ],
-            [
-              "40",
-              "Central African Republic"
-            ],
-            [
-              "214",
-              "Chad"
-            ],
-            [
-              "46",
-              "Chile"
-            ],
-            [
-              "48",
-              "China"
-            ],
-            [
-              "54",
-              "Christmas Island"
-            ],
-            [
-              "39",
-              "Cocos (Keeling) Islands"
-            ],
-            [
-              "49",
-              "Colombia"
-            ],
-            [
-              "118",
-              "Comoros"
-            ],
-            [
-              "42",
-              "Congo"
-            ],
-            [
-              "45",
-              "Cook Islands"
-            ],
-            [
-              "50",
-              "Costa Rica"
-            ],
-            [
-              "97",
-              "Croatia"
-            ],
-            [
-              "51",
-              "Cuba"
-            ],
-            [
-              "53",
-              "Curaçao"
-            ],
-            [
-              "55",
-              "Cyprus"
-            ],
-            [
-              "56",
-              "Czech Republic"
-            ],
-            [
-              "44",
-              "Côte d'Ivoire"
-            ],
-            [
-              "41",
-              "Democratic Republic of the Congo"
-            ],
-            [
-              "59",
-              "Denmark"
-            ],
-            [
-              "58",
-              "Djibouti"
-            ],
-            [
-              "60",
-              "Dominica"
-            ],
-            [
-              "61",
-              "Dominican Republic"
-            ],
-            [
-              "63",
-              "Ecuador"
-            ],
-            [
-              "65",
-              "Egypt"
-            ],
-            [
-              "209",
-              "El Salvador"
-            ],
-            [
-              "87",
-              "Equatorial Guinea"
-            ],
-            [
-              "67",
-              "Eritrea"
-            ],
-            [
-              "64",
-              "Estonia"
-            ],
-            [
-              "212",
-              "Eswatini"
-            ],
-            [
-              "69",
-              "Ethiopia"
-            ],
-            [
-              "72",
-              "Falkland Islands"
-            ],
-            [
-              "74",
-              "Faroe Islands"
-            ],
-            [
-              "71",
-              "Fiji"
-            ],
-            [
-              "70",
-              "Finland"
-            ],
-            [
-              "75",
-              "France"
-            ],
-            [
-              "79",
-              "French Guiana"
-            ],
-            [
-              "174",
-              "French Polynesia"
-            ],
-            [
-              "215",
-              "French Southern Territories"
-            ],
-            [
-              "76",
-              "Gabon"
-            ],
-            [
-              "84",
-              "Gambia"
-            ],
-            [
-              "78",
-              "Georgia"
-            ],
-            [
-              "57",
-              "Germany"
-            ],
-            [
-              "80",
-              "Ghana"
-            ],
-            [
-              "81",
-              "Gibraltar"
-            ],
-            [
-              "88",
-              "Greece"
-            ],
-            [
-              "83",
-              "Greenland"
-            ],
-            [
-              "77",
-              "Grenada"
-            ],
-            [
-              "86",
-              "Guadeloupe"
-            ],
-            [
-              "91",
-              "Guam"
-            ],
-            [
-              "90",
-              "Guatemala"
-            ],
-            [
-              "82",
-              "Guernsey"
-            ],
-            [
-              "85",
-              "Guinea"
-            ],
-            [
-              "92",
-              "Guinea-Bissau"
-            ],
-            [
-              "93",
-              "Guyana"
-            ],
-            [
-              "98",
-              "Haiti"
-            ],
-            [
-              "95",
-              "Heard Island and McDonald Islands"
-            ],
-            [
-              "236",
-              "Holy See (Vatican City State)"
-            ],
-            [
-              "96",
-              "Honduras"
-            ],
-            [
-              "94",
-              "Hong Kong"
-            ],
-            [
-              "99",
-              "Hungary"
-            ],
-            [
-              "108",
-              "Iceland"
-            ],
-            [
-              "104",
-              "India"
-            ],
-            [
-              "100",
-              "Indonesia"
-            ],
-            [
-              "107",
-              "Iran"
-            ],
-            [
-              "106",
-              "Iraq"
-            ],
-            [
-              "101",
-              "Ireland"
-            ],
-            [
-              "103",
-              "Isle of Man"
-            ],
-            [
-              "102",
-              "Israel"
-            ],
-            [
-              "109",
-              "Italy"
-            ],
-            [
-              "111",
-              "Jamaica"
-            ],
-            [
-              "113",
-              "Japan"
-            ],
-            [
-              "110",
-              "Jersey"
-            ],
-            [
-              "112",
-              "Jordan"
-            ],
-            [
-              "124",
-              "Kazakhstan"
-            ],
-            [
-              "114",
-              "Kenya"
-            ],
-            [
-              "117",
-              "Kiribati"
-            ],
-            [
-              "250",
-              "Kosovo"
-            ],
-            [
-              "122",
-              "Kuwait"
-            ],
-            [
-              "115",
-              "Kyrgyzstan"
-            ],
-            [
-              "125",
-              "Laos"
-            ],
-            [
-              "134",
-              "Latvia"
-            ],
-            [
-              "126",
-              "Lebanon"
-            ],
-            [
-              "131",
-              "Lesotho"
-            ],
-            [
-              "130",
-              "Liberia"
-            ],
-            [
-              "135",
-              "Libya"
-            ],
-            [
-              "128",
-              "Liechtenstein"
-            ],
-            [
-              "132",
-              "Lithuania"
-            ],
-            [
-              "133",
-              "Luxembourg"
-            ],
-            [
-              "147",
-              "Macau"
-            ],
-            [
-              "141",
-              "Madagascar"
-            ],
-            [
-              "155",
-              "Malawi"
-            ],
-            [
-              "157",
-              "Malaysia"
-            ],
-            [
-              "154",
-              "Maldives"
-            ],
-            [
-              "144",
-              "Mali"
-            ],
-            [
-              "152",
-              "Malta"
-            ],
-            [
-              "142",
-              "Marshall Islands"
-            ],
-            [
-              "149",
-              "Martinique"
-            ],
-            [
-              "150",
-              "Mauritania"
-            ],
-            [
-              "153",
-              "Mauritius"
-            ],
-            [
-              "246",
-              "Mayotte"
-            ],
-            [
-              "156",
-              "Mexico"
-            ],
-            [
-              "73",
-              "Micronesia"
-            ],
-            [
-              "138",
-              "Moldova"
-            ],
-            [
-              "137",
-              "Monaco"
-            ],
-            [
-              "146",
-              "Mongolia"
-            ],
-            [
-              "139",
-              "Montenegro"
-            ],
-            [
-              "151",
-              "Montserrat"
-            ],
-            [
-              "136",
-              "Morocco"
-            ],
-            [
-              "158",
-              "Mozambique"
-            ],
-            [
-              "145",
-              "Myanmar"
-            ],
-            [
-              "159",
-              "Namibia"
-            ],
-            [
-              "168",
-              "Nauru"
-            ],
-            [
-              "167",
-              "Nepal"
-            ],
-            [
-              "165",
-              "Netherlands"
-            ],
-            [
-              "160",
-              "New Caledonia"
-            ],
-            [
-              "170",
-              "New Zealand"
-            ],
-            [
-              "164",
-              "Nicaragua"
-            ],
-            [
-              "161",
-              "Niger"
-            ],
-            [
-              "163",
-              "Nigeria"
-            ],
-            [
-              "169",
-              "Niue"
-            ],
-            [
-              "162",
-              "Norfolk Island"
-            ],
-            [
-              "120",
-              "North Korea"
-            ],
-            [
-              "143",
-              "North Macedonia"
-            ],
-            [
-              "148",
-              "Northern Mariana Islands"
-            ],
-            [
-              "166",
-              "Norway"
-            ],
-            [
-              "171",
-              "Oman"
-            ],
-            [
-              "177",
-              "Pakistan"
-            ],
-            [
-              "184",
-              "Palau"
-            ],
-            [
-              "172",
-              "Panama"
-            ],
-            [
-              "175",
-              "Papua New Guinea"
-            ],
-            [
-              "185",
-              "Paraguay"
-            ],
-            [
-              "173",
-              "Peru"
-            ],
-            [
-              "176",
-              "Philippines"
-            ],
-            [
-              "180",
-              "Pitcairn Islands"
-            ],
-            [
-              "178",
-              "Poland"
-            ],
-            [
-              "183",
-              "Portugal"
-            ],
-            [
-              "181",
-              "Puerto Rico"
-            ],
-            [
-              "186",
-              "Qatar"
-            ],
-            [
-              "188",
-              "Romania"
-            ],
-            [
-              "190",
-              "Russian Federation"
-            ],
-            [
-              "191",
-              "Rwanda"
-            ],
-            [
-              "187",
-              "Réunion"
-            ],
-            [
-              "26",
-              "Saint Barthélémy"
-            ],
-            [
-              "198",
-              "Saint Helena, Ascension and Tristan da Cunha"
-            ],
-            [
-              "119",
-              "Saint Kitts and Nevis"
-            ],
-            [
-              "127",
-              "Saint Lucia"
-            ],
-            [
-              "140",
-              "Saint Martin (French part)"
-            ],
-            [
-              "179",
-              "Saint Pierre and Miquelon"
-            ],
-            [
-              "237",
-              "Saint Vincent and the Grenadines"
-            ],
-            [
-              "244",
-              "Samoa"
-            ],
-            [
-              "203",
-              "San Marino"
-            ],
-            [
-              "192",
-              "Saudi Arabia"
-            ],
-            [
-              "204",
-              "Senegal"
-            ],
-            [
-              "189",
-              "Serbia"
-            ],
-            [
-              "194",
-              "Seychelles"
-            ],
-            [
-              "202",
-              "Sierra Leone"
-            ],
-            [
-              "197",
-              "Singapore"
-            ],
-            [
-              "210",
-              "Sint Maarten (Dutch part)"
-            ],
-            [
-              "201",
-              "Slovakia"
-            ],
-            [
-              "199",
-              "Slovenia"
-            ],
-            [
-              "193",
-              "Solomon Islands"
-            ],
-            [
-              "205",
-              "Somalia"
-            ],
-            [
-              "247",
-              "South Africa"
-            ],
-            [
-              "89",
-              "South Georgia and the South Sandwich Islands"
-            ],
-            [
-              "121",
-              "South Korea"
-            ],
-            [
-              "207",
-              "South Sudan"
-            ],
-            [
-              "68",
-              "Spain"
-            ],
-            [
-              "129",
-              "Sri Lanka"
-            ],
-            [
-              "182",
-              "State of Palestine"
-            ],
-            [
-              "195",
-              "Sudan"
-            ],
-            [
-              "206",
-              "Suriname"
-            ],
-            [
-              "200",
-              "Svalbard and Jan Mayen"
-            ],
-            [
-              "196",
-              "Sweden"
-            ],
-            [
-              "43",
-              "Switzerland"
-            ],
-            [
-              "211",
-              "Syria"
-            ],
-            [
-              "208",
-              "São Tomé and Príncipe"
-            ],
-            [
-              "227",
-              "Taiwan"
-            ],
-            [
-              "218",
-              "Tajikistan"
-            ],
-            [
-              "228",
-              "Tanzania"
-            ],
-            [
-              "217",
-              "Thailand"
-            ],
-            [
-              "223",
-              "Timor-Leste"
-            ],
-            [
-              "216",
-              "Togo"
-            ],
-            [
-              "219",
-              "Tokelau"
-            ],
-            [
-              "222",
-              "Tonga"
-            ],
-            [
-              "225",
-              "Trinidad and Tobago"
-            ],
-            [
-              "221",
-              "Tunisia"
-            ],
-            [
-              "224",
-              "Turkey"
-            ],
-            [
-              "220",
-              "Turkmenistan"
-            ],
-            [
-              "213",
-              "Turks and Caicos Islands"
-            ],
-            [
-              "226",
-              "Tuvalu"
-            ],
-            [
-              "232",
-              "USA Minor Outlying Islands"
-            ],
-            [
-              "230",
-              "Uganda"
-            ],
-            [
-              "229",
-              "Ukraine"
-            ],
-            [
-              "2",
-              "United Arab Emirates"
-            ],
-            [
-              "231",
-              "United Kingdom"
-            ],
-            [
-              "233",
-              "United States"
-            ],
-            [
-              "234",
-              "Uruguay"
-            ],
-            [
-              "235",
-              "Uzbekistan"
-            ],
-            [
-              "242",
-              "Vanuatu"
-            ],
-            [
-              "238",
-              "Venezuela"
-            ],
-            [
-              "241",
-              "Vietnam"
-            ],
-            [
-              "239",
-              "Virgin Islands (British)"
-            ],
-            [
-              "240",
-              "Virgin Islands (USA)"
-            ],
-            [
-              "243",
-              "Wallis and Futuna"
-            ],
-            [
-              "66",
-              "Western Sahara"
-            ],
-            [
-              "245",
-              "Yemen"
-            ],
-            [
-              "248",
-              "Zambia"
-            ],
-            [
-              "249",
-              "Zimbabwe"
-            ],
-            [
-              "15",
-              "Åland Islands"
-            ]
-          ]
-        },
-        {
-          "name": "product",
-          "tag": "select",
-          "type": "select-one",
-          "required": false,
-          "visible": true,
-          "options": [
-            [
-              "104",
-              "PC Portable HP 14\" (VIP)"
-            ]
-          ]
-        },
-        {
-          "name": "priority",
-          "tag": "input",
-          "type": "radio",
-          "required": false,
-          "visible": true
-        },
-        {
-          "name": "priority",
-          "tag": "input",
-          "type": "radio",
-          "required": false,
-          "visible": true
-        },
-        {
-          "name": "priority",
-          "tag": "input",
-          "type": "radio",
-          "required": false,
-          "visible": true
-        },
-        {
-          "name": "description",
-          "tag": "textarea",
-          "type": "textarea",
-          "required": false,
-          "visible": true
-        },
-        {
-          "name": "team_id",
-          "tag": "input",
-          "type": "hidden",
-          "required": false,
-          "visible": false
-        }
-      ],
-      "liens": [
-        {
-          "href": "/web",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "http://localhost:10017/@/en/formulaire/104",
-          "text": "Editor",
-          "role": null
-        },
-        {
-          "href": "/en/my/home",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "/en",
-          "text": "Accueil",
-          "role": null
-        },
-        {
-          "href": "/en/my_dashboard",
-          "text": "Mon dashboard",
-          "role": null
-        },
-        {
-          "href": "/en/connaissance",
-          "text": "Connaissances",
-          "role": null
-        },
-        {
-          "href": "/web/#action=206&model=helpdesk.team&view_type=kanban&cids=1&menu_id=118",
-          "text": "Administration",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30254",
-          "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/shop/cart",
-          "text": "0",
-          "role": null
-        },
-        {
-          "href": "/en",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "/en/formulaire/104",
-          "text": "English (US)",
-          "role": null
-        },
-        {
-          "href": "/formulaire/104",
-          "text": "Français",
-          "role": null
-        },
-        {
-          "href": "#",
-          "text": "MyServices SAPIAN",
-          "role": "button"
-        },
-        {
-          "href": "/web",
-          "text": "Apps",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/user/account",
-          "text": "My Account",
-          "role": "menuitem"
-        },
-        {
-          "href": "/web/#action=206&model=helpdesk.team&view_type=kanban&cids=1&menu_id=118",
-          "text": "Administration",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/my/delegation",
-          "text": "Délégations",
-          "role": "menuitem"
-        },
-        {
-          "href": "/web/session/logout?redirect=/",
-          "text": "Logout",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/home",
-          "text": "Faire une demande",
-          "role": null
-        },
-        {
-          "href": "/en/shop/cart",
-          "text": "0",
-          "role": null
-        },
-        {
-          "href": "/en",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "#",
-          "text": "MyServices SAPIAN",
-          "role": "button"
-        },
-        {
-          "href": "/web",
-          "text": "Apps",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/user/account",
-          "text": "My Account",
-          "role": "menuitem"
-        },
-        {
-          "href": "/web/#action=206&model=helpdesk.team&view_type=kanban&cids=1&menu_id=118",
-          "text": "Administration",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/my/delegation",
-          "text": "Délégations",
-          "role": "menuitem"
-        },
-        {
-          "href": "/web/session/logout?redirect=/",
-          "text": "Logout",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/formulaire/104",
-          "text": "English (US)",
-          "role": null
-        },
-        {
-          "href": "/formulaire/104",
-          "text": "Français",
-          "role": null
-        },
-        {
-          "href": "/en/home",
-          "text": "Faire une demande",
-          "role": null
-        },
-        {
-          "href": "javascript:void(0);",
-          "text": "",
-          "role": "tab"
-        },
-        {
-          "href": "/en/myservices",
-          "text": "Demande Matériel ​",
-          "role": "tab"
-        },
-        {
-          "href": "/en/services-applicatifs",
-          "text": "Services Applicatifs",
-          "role": "tab"
-        },
-        {
-          "href": "/en/servicemetiers",
-          "text": "Services Métiers",
-          "role": "tab"
-        },
-        {
-          "href": "/en/services-entreprises",
-          "text": "Services Entreprise",
-          "role": "tab"
-        },
-        {
-          "href": "#",
-          "text": "Envoyer",
-          "role": "button"
-        },
-        {
-          "href": "/en",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "/en/contactus",
-          "text": "Contactez-nous",
-          "role": null
-        },
-        {
-          "href": "/en/formulaire/104",
-          "text": "English (US)",
-          "role": null
-        },
-        {
-          "href": "/formulaire/104",
-          "text": "Français",
-          "role": null
-        }
-      ],
-      "formulaires": [
-        {
-          "action": "/website/form/",
-          "method": "post",
-          "champs": 20
-        }
-      ],
-      "titre": "Formulaire portail service | Sapian"
+      "titre": "Tickets | Sapian",
+      "url_exemple": "/my/tickets_to_close"
     },
     "/product/{id}/accessories": {
       "champs": [
@@ -7653,27 +6268,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -7845,7 +6460,1420 @@
           "champs": 20
         }
       ],
-      "titre": "Formulaire portail service | Sapian"
+      "titre": "Formulaire portail service | Sapian",
+      "url_exemple": "/product/78/accessories"
+    },
+    "/formulaire/{id}": {
+      "champs": [
+        {
+          "name": "partner_name",
+          "tag": "input",
+          "type": "text",
+          "required": true,
+          "visible": true
+        },
+        {
+          "name": "name",
+          "tag": "input",
+          "type": "text",
+          "required": true,
+          "visible": true
+        },
+        {
+          "name": "partner_email",
+          "tag": "input",
+          "type": "email",
+          "required": true,
+          "visible": false
+        },
+        {
+          "name": "fonction_materiel",
+          "tag": "select",
+          "type": "select-one",
+          "required": false,
+          "visible": true,
+          "options": [
+            [
+              "technicien_polyvalent",
+              "Technicien Polyvalent"
+            ],
+            [
+              "technicien_interimaire",
+              "Technicien Intérimaire"
+            ],
+            [
+              "structure",
+              "Structure"
+            ]
+          ]
+        },
+        {
+          "name": "types_demandes",
+          "tag": "select",
+          "type": "select-one",
+          "required": true,
+          "visible": true,
+          "options": [
+            [
+              "nouvel_entrant",
+              "Demande de nouvel entrant"
+            ],
+            [
+              "remplacement_materiel",
+              "Remplacement de matériel existant"
+            ]
+          ]
+        },
+        {
+          "name": "request_for_other",
+          "tag": "input",
+          "type": "checkbox",
+          "required": false,
+          "visible": true
+        },
+        {
+          "name": "destinataire_name",
+          "tag": "input",
+          "type": "text",
+          "required": true,
+          "visible": false
+        },
+        {
+          "name": "is_not_adr_agence",
+          "tag": "input",
+          "type": "checkbox",
+          "required": false,
+          "visible": true
+        },
+        {
+          "name": "street",
+          "tag": "input",
+          "type": "text",
+          "required": true,
+          "visible": false
+        },
+        {
+          "name": "street2",
+          "tag": "input",
+          "type": "text",
+          "required": false,
+          "visible": false
+        },
+        {
+          "name": "city",
+          "tag": "input",
+          "type": "text",
+          "required": true,
+          "visible": false
+        },
+        {
+          "name": "state_id",
+          "tag": "select",
+          "type": "select-one",
+          "required": false,
+          "visible": false,
+          "options": []
+        },
+        {
+          "name": "zip",
+          "tag": "input",
+          "type": "text",
+          "required": true,
+          "visible": false
+        },
+        {
+          "name": "country_id",
+          "tag": "select",
+          "type": "select-one",
+          "required": false,
+          "visible": false,
+          "options": [
+            [
+              "75",
+              "France"
+            ],
+            [
+              "3",
+              "Afghanistan"
+            ],
+            [
+              "6",
+              "Albania"
+            ],
+            [
+              "62",
+              "Algeria"
+            ],
+            [
+              "11",
+              "American Samoa"
+            ],
+            [
+              "1",
+              "Andorra"
+            ],
+            [
+              "8",
+              "Angola"
+            ],
+            [
+              "5",
+              "Anguilla"
+            ],
+            [
+              "9",
+              "Antarctica"
+            ],
+            [
+              "4",
+              "Antigua and Barbuda"
+            ],
+            [
+              "10",
+              "Argentina"
+            ],
+            [
+              "7",
+              "Armenia"
+            ],
+            [
+              "14",
+              "Aruba"
+            ],
+            [
+              "13",
+              "Australia"
+            ],
+            [
+              "12",
+              "Austria"
+            ],
+            [
+              "16",
+              "Azerbaijan"
+            ],
+            [
+              "32",
+              "Bahamas"
+            ],
+            [
+              "23",
+              "Bahrain"
+            ],
+            [
+              "19",
+              "Bangladesh"
+            ],
+            [
+              "18",
+              "Barbados"
+            ],
+            [
+              "36",
+              "Belarus"
+            ],
+            [
+              "20",
+              "Belgium"
+            ],
+            [
+              "37",
+              "Belize"
+            ],
+            [
+              "25",
+              "Benin"
+            ],
+            [
+              "27",
+              "Bermuda"
+            ],
+            [
+              "33",
+              "Bhutan"
+            ],
+            [
+              "29",
+              "Bolivia"
+            ],
+            [
+              "30",
+              "Bonaire, Sint Eustatius and Saba"
+            ],
+            [
+              "17",
+              "Bosnia and Herzegovina"
+            ],
+            [
+              "35",
+              "Botswana"
+            ],
+            [
+              "34",
+              "Bouvet Island"
+            ],
+            [
+              "31",
+              "Brazil"
+            ],
+            [
+              "105",
+              "British Indian Ocean Territory"
+            ],
+            [
+              "28",
+              "Brunei Darussalam"
+            ],
+            [
+              "22",
+              "Bulgaria"
+            ],
+            [
+              "21",
+              "Burkina Faso"
+            ],
+            [
+              "24",
+              "Burundi"
+            ],
+            [
+              "116",
+              "Cambodia"
+            ],
+            [
+              "47",
+              "Cameroon"
+            ],
+            [
+              "38",
+              "Canada"
+            ],
+            [
+              "52",
+              "Cape Verde"
+            ],
+            [
+              "123",
+              "Cayman Islands"
+            ],
+            [
+              "40",
+              "Central African Republic"
+            ],
+            [
+              "214",
+              "Chad"
+            ],
+            [
+              "46",
+              "Chile"
+            ],
+            [
+              "48",
+              "China"
+            ],
+            [
+              "54",
+              "Christmas Island"
+            ],
+            [
+              "39",
+              "Cocos (Keeling) Islands"
+            ],
+            [
+              "49",
+              "Colombia"
+            ],
+            [
+              "118",
+              "Comoros"
+            ],
+            [
+              "42",
+              "Congo"
+            ],
+            [
+              "45",
+              "Cook Islands"
+            ],
+            [
+              "50",
+              "Costa Rica"
+            ],
+            [
+              "97",
+              "Croatia"
+            ],
+            [
+              "51",
+              "Cuba"
+            ],
+            [
+              "53",
+              "Curaçao"
+            ],
+            [
+              "55",
+              "Cyprus"
+            ],
+            [
+              "56",
+              "Czech Republic"
+            ],
+            [
+              "44",
+              "Côte d'Ivoire"
+            ],
+            [
+              "41",
+              "Democratic Republic of the Congo"
+            ],
+            [
+              "59",
+              "Denmark"
+            ],
+            [
+              "58",
+              "Djibouti"
+            ],
+            [
+              "60",
+              "Dominica"
+            ],
+            [
+              "61",
+              "Dominican Republic"
+            ],
+            [
+              "63",
+              "Ecuador"
+            ],
+            [
+              "65",
+              "Egypt"
+            ],
+            [
+              "209",
+              "El Salvador"
+            ],
+            [
+              "87",
+              "Equatorial Guinea"
+            ],
+            [
+              "67",
+              "Eritrea"
+            ],
+            [
+              "64",
+              "Estonia"
+            ],
+            [
+              "212",
+              "Eswatini"
+            ],
+            [
+              "69",
+              "Ethiopia"
+            ],
+            [
+              "72",
+              "Falkland Islands"
+            ],
+            [
+              "74",
+              "Faroe Islands"
+            ],
+            [
+              "71",
+              "Fiji"
+            ],
+            [
+              "70",
+              "Finland"
+            ],
+            [
+              "75",
+              "France"
+            ],
+            [
+              "79",
+              "French Guiana"
+            ],
+            [
+              "174",
+              "French Polynesia"
+            ],
+            [
+              "215",
+              "French Southern Territories"
+            ],
+            [
+              "76",
+              "Gabon"
+            ],
+            [
+              "84",
+              "Gambia"
+            ],
+            [
+              "78",
+              "Georgia"
+            ],
+            [
+              "57",
+              "Germany"
+            ],
+            [
+              "80",
+              "Ghana"
+            ],
+            [
+              "81",
+              "Gibraltar"
+            ],
+            [
+              "88",
+              "Greece"
+            ],
+            [
+              "83",
+              "Greenland"
+            ],
+            [
+              "77",
+              "Grenada"
+            ],
+            [
+              "86",
+              "Guadeloupe"
+            ],
+            [
+              "91",
+              "Guam"
+            ],
+            [
+              "90",
+              "Guatemala"
+            ],
+            [
+              "82",
+              "Guernsey"
+            ],
+            [
+              "85",
+              "Guinea"
+            ],
+            [
+              "92",
+              "Guinea-Bissau"
+            ],
+            [
+              "93",
+              "Guyana"
+            ],
+            [
+              "98",
+              "Haiti"
+            ],
+            [
+              "95",
+              "Heard Island and McDonald Islands"
+            ],
+            [
+              "236",
+              "Holy See (Vatican City State)"
+            ],
+            [
+              "96",
+              "Honduras"
+            ],
+            [
+              "94",
+              "Hong Kong"
+            ],
+            [
+              "99",
+              "Hungary"
+            ],
+            [
+              "108",
+              "Iceland"
+            ],
+            [
+              "104",
+              "India"
+            ],
+            [
+              "100",
+              "Indonesia"
+            ],
+            [
+              "107",
+              "Iran"
+            ],
+            [
+              "106",
+              "Iraq"
+            ],
+            [
+              "101",
+              "Ireland"
+            ],
+            [
+              "103",
+              "Isle of Man"
+            ],
+            [
+              "102",
+              "Israel"
+            ],
+            [
+              "109",
+              "Italy"
+            ],
+            [
+              "111",
+              "Jamaica"
+            ],
+            [
+              "113",
+              "Japan"
+            ],
+            [
+              "110",
+              "Jersey"
+            ],
+            [
+              "112",
+              "Jordan"
+            ],
+            [
+              "124",
+              "Kazakhstan"
+            ],
+            [
+              "114",
+              "Kenya"
+            ],
+            [
+              "117",
+              "Kiribati"
+            ],
+            [
+              "250",
+              "Kosovo"
+            ],
+            [
+              "122",
+              "Kuwait"
+            ],
+            [
+              "115",
+              "Kyrgyzstan"
+            ],
+            [
+              "125",
+              "Laos"
+            ],
+            [
+              "134",
+              "Latvia"
+            ],
+            [
+              "126",
+              "Lebanon"
+            ],
+            [
+              "131",
+              "Lesotho"
+            ],
+            [
+              "130",
+              "Liberia"
+            ],
+            [
+              "135",
+              "Libya"
+            ],
+            [
+              "128",
+              "Liechtenstein"
+            ],
+            [
+              "132",
+              "Lithuania"
+            ],
+            [
+              "133",
+              "Luxembourg"
+            ],
+            [
+              "147",
+              "Macau"
+            ],
+            [
+              "141",
+              "Madagascar"
+            ],
+            [
+              "155",
+              "Malawi"
+            ],
+            [
+              "157",
+              "Malaysia"
+            ],
+            [
+              "154",
+              "Maldives"
+            ],
+            [
+              "144",
+              "Mali"
+            ],
+            [
+              "152",
+              "Malta"
+            ],
+            [
+              "142",
+              "Marshall Islands"
+            ],
+            [
+              "149",
+              "Martinique"
+            ],
+            [
+              "150",
+              "Mauritania"
+            ],
+            [
+              "153",
+              "Mauritius"
+            ],
+            [
+              "246",
+              "Mayotte"
+            ],
+            [
+              "156",
+              "Mexico"
+            ],
+            [
+              "73",
+              "Micronesia"
+            ],
+            [
+              "138",
+              "Moldova"
+            ],
+            [
+              "137",
+              "Monaco"
+            ],
+            [
+              "146",
+              "Mongolia"
+            ],
+            [
+              "139",
+              "Montenegro"
+            ],
+            [
+              "151",
+              "Montserrat"
+            ],
+            [
+              "136",
+              "Morocco"
+            ],
+            [
+              "158",
+              "Mozambique"
+            ],
+            [
+              "145",
+              "Myanmar"
+            ],
+            [
+              "159",
+              "Namibia"
+            ],
+            [
+              "168",
+              "Nauru"
+            ],
+            [
+              "167",
+              "Nepal"
+            ],
+            [
+              "165",
+              "Netherlands"
+            ],
+            [
+              "160",
+              "New Caledonia"
+            ],
+            [
+              "170",
+              "New Zealand"
+            ],
+            [
+              "164",
+              "Nicaragua"
+            ],
+            [
+              "161",
+              "Niger"
+            ],
+            [
+              "163",
+              "Nigeria"
+            ],
+            [
+              "169",
+              "Niue"
+            ],
+            [
+              "162",
+              "Norfolk Island"
+            ],
+            [
+              "120",
+              "North Korea"
+            ],
+            [
+              "143",
+              "North Macedonia"
+            ],
+            [
+              "148",
+              "Northern Mariana Islands"
+            ],
+            [
+              "166",
+              "Norway"
+            ],
+            [
+              "171",
+              "Oman"
+            ],
+            [
+              "177",
+              "Pakistan"
+            ],
+            [
+              "184",
+              "Palau"
+            ],
+            [
+              "172",
+              "Panama"
+            ],
+            [
+              "175",
+              "Papua New Guinea"
+            ],
+            [
+              "185",
+              "Paraguay"
+            ],
+            [
+              "173",
+              "Peru"
+            ],
+            [
+              "176",
+              "Philippines"
+            ],
+            [
+              "180",
+              "Pitcairn Islands"
+            ],
+            [
+              "178",
+              "Poland"
+            ],
+            [
+              "183",
+              "Portugal"
+            ],
+            [
+              "181",
+              "Puerto Rico"
+            ],
+            [
+              "186",
+              "Qatar"
+            ],
+            [
+              "188",
+              "Romania"
+            ],
+            [
+              "190",
+              "Russian Federation"
+            ],
+            [
+              "191",
+              "Rwanda"
+            ],
+            [
+              "187",
+              "Réunion"
+            ],
+            [
+              "26",
+              "Saint Barthélémy"
+            ],
+            [
+              "198",
+              "Saint Helena, Ascension and Tristan da Cunha"
+            ],
+            [
+              "119",
+              "Saint Kitts and Nevis"
+            ],
+            [
+              "127",
+              "Saint Lucia"
+            ],
+            [
+              "140",
+              "Saint Martin (French part)"
+            ],
+            [
+              "179",
+              "Saint Pierre and Miquelon"
+            ],
+            [
+              "237",
+              "Saint Vincent and the Grenadines"
+            ],
+            [
+              "244",
+              "Samoa"
+            ],
+            [
+              "203",
+              "San Marino"
+            ],
+            [
+              "192",
+              "Saudi Arabia"
+            ],
+            [
+              "204",
+              "Senegal"
+            ],
+            [
+              "189",
+              "Serbia"
+            ],
+            [
+              "194",
+              "Seychelles"
+            ],
+            [
+              "202",
+              "Sierra Leone"
+            ],
+            [
+              "197",
+              "Singapore"
+            ],
+            [
+              "210",
+              "Sint Maarten (Dutch part)"
+            ],
+            [
+              "201",
+              "Slovakia"
+            ],
+            [
+              "199",
+              "Slovenia"
+            ],
+            [
+              "193",
+              "Solomon Islands"
+            ],
+            [
+              "205",
+              "Somalia"
+            ],
+            [
+              "247",
+              "South Africa"
+            ],
+            [
+              "89",
+              "South Georgia and the South Sandwich Islands"
+            ],
+            [
+              "121",
+              "South Korea"
+            ],
+            [
+              "207",
+              "South Sudan"
+            ],
+            [
+              "68",
+              "Spain"
+            ],
+            [
+              "129",
+              "Sri Lanka"
+            ],
+            [
+              "182",
+              "State of Palestine"
+            ],
+            [
+              "195",
+              "Sudan"
+            ],
+            [
+              "206",
+              "Suriname"
+            ],
+            [
+              "200",
+              "Svalbard and Jan Mayen"
+            ],
+            [
+              "196",
+              "Sweden"
+            ],
+            [
+              "43",
+              "Switzerland"
+            ],
+            [
+              "211",
+              "Syria"
+            ],
+            [
+              "208",
+              "São Tomé and Príncipe"
+            ],
+            [
+              "227",
+              "Taiwan"
+            ],
+            [
+              "218",
+              "Tajikistan"
+            ],
+            [
+              "228",
+              "Tanzania"
+            ],
+            [
+              "217",
+              "Thailand"
+            ],
+            [
+              "223",
+              "Timor-Leste"
+            ],
+            [
+              "216",
+              "Togo"
+            ],
+            [
+              "219",
+              "Tokelau"
+            ],
+            [
+              "222",
+              "Tonga"
+            ],
+            [
+              "225",
+              "Trinidad and Tobago"
+            ],
+            [
+              "221",
+              "Tunisia"
+            ],
+            [
+              "224",
+              "Turkey"
+            ],
+            [
+              "220",
+              "Turkmenistan"
+            ],
+            [
+              "213",
+              "Turks and Caicos Islands"
+            ],
+            [
+              "226",
+              "Tuvalu"
+            ],
+            [
+              "232",
+              "USA Minor Outlying Islands"
+            ],
+            [
+              "230",
+              "Uganda"
+            ],
+            [
+              "229",
+              "Ukraine"
+            ],
+            [
+              "2",
+              "United Arab Emirates"
+            ],
+            [
+              "231",
+              "United Kingdom"
+            ],
+            [
+              "233",
+              "United States"
+            ],
+            [
+              "234",
+              "Uruguay"
+            ],
+            [
+              "235",
+              "Uzbekistan"
+            ],
+            [
+              "242",
+              "Vanuatu"
+            ],
+            [
+              "238",
+              "Venezuela"
+            ],
+            [
+              "241",
+              "Vietnam"
+            ],
+            [
+              "239",
+              "Virgin Islands (British)"
+            ],
+            [
+              "240",
+              "Virgin Islands (USA)"
+            ],
+            [
+              "243",
+              "Wallis and Futuna"
+            ],
+            [
+              "66",
+              "Western Sahara"
+            ],
+            [
+              "245",
+              "Yemen"
+            ],
+            [
+              "248",
+              "Zambia"
+            ],
+            [
+              "249",
+              "Zimbabwe"
+            ],
+            [
+              "15",
+              "Åland Islands"
+            ]
+          ]
+        },
+        {
+          "name": "product",
+          "tag": "select",
+          "type": "select-one",
+          "required": false,
+          "visible": true,
+          "options": [
+            [
+              "104",
+              "PC Portable HP 14\" (VIP)"
+            ]
+          ]
+        },
+        {
+          "name": "priority",
+          "tag": "input",
+          "type": "radio",
+          "required": false,
+          "visible": true
+        },
+        {
+          "name": "priority",
+          "tag": "input",
+          "type": "radio",
+          "required": false,
+          "visible": true
+        },
+        {
+          "name": "priority",
+          "tag": "input",
+          "type": "radio",
+          "required": false,
+          "visible": true
+        },
+        {
+          "name": "description",
+          "tag": "textarea",
+          "type": "textarea",
+          "required": false,
+          "visible": true
+        },
+        {
+          "name": "team_id",
+          "tag": "input",
+          "type": "hidden",
+          "required": false,
+          "visible": false
+        }
+      ],
+      "liens": [
+        {
+          "href": "/web",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://localhost:10017/@/en/formulaire/104",
+          "text": "Editor",
+          "role": null
+        },
+        {
+          "href": "/en/my/home",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/en",
+          "text": "Accueil",
+          "role": null
+        },
+        {
+          "href": "/en/my_dashboard",
+          "text": "Mon dashboard",
+          "role": null
+        },
+        {
+          "href": "/en/connaissance",
+          "text": "Connaissances",
+          "role": null
+        },
+        {
+          "href": "/web/#action=206&model=helpdesk.team&view_type=kanban&cids=1&menu_id=118",
+          "text": "Administration",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30254",
+          "text": "PROBE-SUBMIT-DIAG 1784488865",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30253",
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "role": null
+        },
+        {
+          "href": "/en/shop/cart",
+          "text": "0",
+          "role": null
+        },
+        {
+          "href": "/en",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/en/formulaire/104",
+          "text": "English (US)",
+          "role": null
+        },
+        {
+          "href": "/formulaire/104",
+          "text": "Français",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "MyServices SAPIAN",
+          "role": "button"
+        },
+        {
+          "href": "/web",
+          "text": "Apps",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/user/account",
+          "text": "My Account",
+          "role": "menuitem"
+        },
+        {
+          "href": "/web/#action=206&model=helpdesk.team&view_type=kanban&cids=1&menu_id=118",
+          "text": "Administration",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/my/delegation",
+          "text": "Délégations",
+          "role": "menuitem"
+        },
+        {
+          "href": "/web/session/logout?redirect=/",
+          "text": "Logout",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/home",
+          "text": "Faire une demande",
+          "role": null
+        },
+        {
+          "href": "/en/shop/cart",
+          "text": "0",
+          "role": null
+        },
+        {
+          "href": "/en",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "MyServices SAPIAN",
+          "role": "button"
+        },
+        {
+          "href": "/web",
+          "text": "Apps",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/user/account",
+          "text": "My Account",
+          "role": "menuitem"
+        },
+        {
+          "href": "/web/#action=206&model=helpdesk.team&view_type=kanban&cids=1&menu_id=118",
+          "text": "Administration",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/my/delegation",
+          "text": "Délégations",
+          "role": "menuitem"
+        },
+        {
+          "href": "/web/session/logout?redirect=/",
+          "text": "Logout",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/formulaire/104",
+          "text": "English (US)",
+          "role": null
+        },
+        {
+          "href": "/formulaire/104",
+          "text": "Français",
+          "role": null
+        },
+        {
+          "href": "/en/home",
+          "text": "Faire une demande",
+          "role": null
+        },
+        {
+          "href": "javascript:void(0);",
+          "text": "",
+          "role": "tab"
+        },
+        {
+          "href": "/en/myservices",
+          "text": "Demande Matériel ​",
+          "role": "tab"
+        },
+        {
+          "href": "/en/services-applicatifs",
+          "text": "Services Applicatifs",
+          "role": "tab"
+        },
+        {
+          "href": "/en/servicemetiers",
+          "text": "Services Métiers",
+          "role": "tab"
+        },
+        {
+          "href": "/en/services-entreprises",
+          "text": "Services Entreprise",
+          "role": "tab"
+        },
+        {
+          "href": "#",
+          "text": "Envoyer",
+          "role": "button"
+        },
+        {
+          "href": "/en",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/en/contactus",
+          "text": "Contactez-nous",
+          "role": null
+        },
+        {
+          "href": "/en/formulaire/104",
+          "text": "English (US)",
+          "role": null
+        },
+        {
+          "href": "/formulaire/104",
+          "text": "Français",
+          "role": null
+        }
+      ],
+      "formulaires": [
+        {
+          "action": "/website/form/",
+          "method": "post",
+          "champs": 20
+        }
+      ],
+      "titre": "Formulaire portail service | Sapian",
+      "url_exemple": "/formulaire/104"
     },
     "/contactus": {
       "champs": [
@@ -7978,27 +8006,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -8145,7 +8173,8 @@
           "champs": 8
         }
       ],
-      "titre": "Contact Us | Sapian"
+      "titre": "Contact Us | Sapian",
+      "url_exemple": "/contactus"
     },
     "/description/{id}": {
       "champs": [
@@ -8194,27 +8223,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -8380,13 +8409,285 @@
         }
       ],
       "formulaires": [],
-      "titre": "Description produit | Sapian"
+      "titre": "Description produit | Sapian",
+      "url_exemple": "/description/71"
     },
     "/web": {
       "champs": [],
       "liens": [],
       "formulaires": [],
-      "titre": "Odoo"
+      "titre": "Odoo",
+      "url_exemple": "/web"
+    },
+    "/my/ticket/{id}/4022a2e4-cc27-4112-b0c8-18051b74048b": {
+      "champs": [
+        {
+          "name": "ticket_id",
+          "tag": "input",
+          "type": "text",
+          "required": false,
+          "visible": false
+        },
+        {
+          "name": "csrf_token",
+          "tag": "input",
+          "type": "hidden",
+          "required": false,
+          "visible": false
+        },
+        {
+          "name": "ticket_id",
+          "tag": "input",
+          "type": "hidden",
+          "required": false,
+          "visible": false
+        },
+        {
+          "name": "new_destinataire",
+          "tag": "input",
+          "type": "text",
+          "required": true,
+          "visible": false
+        },
+        {
+          "name": "message",
+          "tag": "textarea",
+          "type": "textarea",
+          "required": false,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "/web",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://localhost:10017/@/en/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
+          "text": "Editor",
+          "role": null
+        },
+        {
+          "href": "/en/my/home",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/en",
+          "text": "Accueil",
+          "role": null
+        },
+        {
+          "href": "/en/my_dashboard",
+          "text": "Mon dashboard",
+          "role": null
+        },
+        {
+          "href": "/en/connaissance",
+          "text": "Connaissances",
+          "role": null
+        },
+        {
+          "href": "",
+          "text": "Administration",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30254",
+          "text": "PROBE-SUBMIT-DIAG 1784488865",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30253",
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "role": null
+        },
+        {
+          "href": "/en/shop/cart",
+          "text": "0",
+          "role": null
+        },
+        {
+          "href": "/en",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
+          "text": "English (US)",
+          "role": null
+        },
+        {
+          "href": "/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
+          "text": "Français",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "MyServices SAPIAN",
+          "role": "button"
+        },
+        {
+          "href": "/web",
+          "text": "Apps",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/user/account",
+          "text": "My Account",
+          "role": "menuitem"
+        },
+        {
+          "href": "",
+          "text": "Administration",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/my/delegation",
+          "text": "Délégations",
+          "role": "menuitem"
+        },
+        {
+          "href": "/web/session/logout?redirect=/",
+          "text": "Logout",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/home",
+          "text": "Faire une demande",
+          "role": null
+        },
+        {
+          "href": "/en/shop/cart",
+          "text": "0",
+          "role": null
+        },
+        {
+          "href": "/en",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "MyServices SAPIAN",
+          "role": "button"
+        },
+        {
+          "href": "/web",
+          "text": "Apps",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/user/account",
+          "text": "My Account",
+          "role": "menuitem"
+        },
+        {
+          "href": "",
+          "text": "Administration",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/my/delegation",
+          "text": "Délégations",
+          "role": "menuitem"
+        },
+        {
+          "href": "/web/session/logout?redirect=/",
+          "text": "Logout",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
+          "text": "English (US)",
+          "role": null
+        },
+        {
+          "href": "/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
+          "text": "Français",
+          "role": null
+        },
+        {
+          "href": "/en/home",
+          "text": "Faire une demande",
+          "role": null
+        },
+        {
+          "href": "/web#model=helpdesk.ticket&id=30262&view_type=form",
+          "text": "Back to edit mode",
+          "role": null
+        },
+        {
+          "href": "/en/demande_materiel/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "Nouveau",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "Ouvert",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "Clôturé",
+          "role": null
+        },
+        {
+          "href": "/en",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/en/contactus",
+          "text": "Contactez-nous",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
+          "text": "English (US)",
+          "role": null
+        },
+        {
+          "href": "/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
+          "text": "Français",
+          "role": null
+        }
+      ],
+      "formulaires": [
+        {
+          "action": "",
+          "method": "get",
+          "champs": 0
+        },
+        {
+          "action": "/en/change_destinataire/submit",
+          "method": "post",
+          "champs": 3
+        }
+      ],
+      "titre": "Demande test BDD - validation champ requis",
+      "url_exemple": "/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b"
     },
     "/demande_materiel/ticket/{id}": {
       "champs": [
@@ -8426,7 +8727,7 @@
           "role": null
         },
         {
-          "href": "http://localhost:10017/@/en/demande_materiel/ticket/30254",
+          "href": "http://localhost:10017/@/en/demande_materiel/ticket/30262",
           "text": "Editor",
           "role": null
         },
@@ -8456,6 +8757,21 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
@@ -8466,21 +8782,6 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
           "href": "/en/shop/cart",
           "text": "0",
           "role": null
@@ -8491,12 +8792,12 @@
           "role": null
         },
         {
-          "href": "/en/demande_materiel/ticket/30254",
+          "href": "/en/demande_materiel/ticket/30262",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/demande_materiel/ticket/30254",
+          "href": "/demande_materiel/ticket/30262",
           "text": "Français",
           "role": null
         },
@@ -8576,12 +8877,12 @@
           "role": "menuitem"
         },
         {
-          "href": "/en/demande_materiel/ticket/30254",
+          "href": "/en/demande_materiel/ticket/30262",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/demande_materiel/ticket/30254",
+          "href": "/demande_materiel/ticket/30262",
           "text": "Français",
           "role": null
         },
@@ -8591,7 +8892,7 @@
           "role": null
         },
         {
-          "href": "/en/helpdesk/ticket/30254",
+          "href": "/en/helpdesk/ticket/30262",
           "text": "Retour au ticket",
           "role": "button"
         },
@@ -8606,12 +8907,12 @@
           "role": null
         },
         {
-          "href": "/en/demande_materiel/ticket/30254",
+          "href": "/en/demande_materiel/ticket/30262",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/demande_materiel/ticket/30254",
+          "href": "/demande_materiel/ticket/30262",
           "text": "Français",
           "role": null
         }
@@ -8623,7 +8924,8 @@
           "champs": 4
         }
       ],
-      "titre": "Demande materiel | Sapian"
+      "titre": "Demande materiel | Sapian",
+      "url_exemple": "/demande_materiel/ticket/30262"
     },
     "/mutation/{id}": {
       "champs": [
@@ -8777,27 +9079,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -8974,7 +9276,8 @@
           "champs": 13
         }
       ],
-      "titre": "Demande mutation | Sapian"
+      "titre": "Demande mutation | Sapian",
+      "url_exemple": "/mutation/67"
     },
     "/lettrage/{id}": {
       "champs": [
@@ -9132,27 +9435,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -9329,7 +9632,8 @@
           "champs": 11
         }
       ],
-      "titre": "Formulaire lettrage | Sapian"
+      "titre": "Formulaire lettrage | Sapian",
+      "url_exemple": "/lettrage/65"
     },
     "/desistement/{id}": {
       "champs": [
@@ -9497,27 +9801,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -9694,7 +9998,8 @@
           "champs": 15
         }
       ],
-      "titre": "Formulaire de désistement | Sapian"
+      "titre": "Formulaire de désistement | Sapian",
+      "url_exemple": "/desistement/69"
     },
     "/remboursement/{id}": {
       "champs": [
@@ -9950,27 +10255,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -10147,7 +10452,8 @@
           "champs": 25
         }
       ],
-      "titre": "MyServices | Sapian"
+      "titre": "MyServices | Sapian",
+      "url_exemple": "/remboursement/64"
     },
     "/annulation_piece/{id}": {
       "champs": [
@@ -10330,27 +10636,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -10527,7 +10833,8 @@
           "champs": 14
         }
       ],
-      "titre": "Formulaire Demande d'annulation de pièce | Sapian"
+      "titre": "Formulaire Demande d'annulation de pièce | Sapian",
+      "url_exemple": "/annulation_piece/70"
     },
     "/fournisseur/creation/{id}": {
       "champs": [
@@ -11846,27 +12153,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -12043,7 +12350,8 @@
           "champs": 28
         }
       ],
-      "titre": "Formulaire creation fournisseur | Sapian"
+      "titre": "Formulaire creation fournisseur | Sapian",
+      "url_exemple": "/fournisseur/creation/66"
     },
     "/sinistre_client/{id}": {
       "champs": [
@@ -12279,27 +12587,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -12476,7 +12784,8 @@
           "champs": 24
         }
       ],
-      "titre": "Formulaire sinistre client | Sapian"
+      "titre": "Formulaire sinistre client | Sapian",
+      "url_exemple": "/sinistre_client/87"
     },
     "/demande_avoir/{id}": {
       "champs": [
@@ -12719,27 +13028,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -12916,7 +13225,8 @@
           "champs": 20
         }
       ],
-      "titre": "Formulaire Avoir | Sapian"
+      "titre": "Formulaire Avoir | Sapian",
+      "url_exemple": "/demande_avoir/117"
     },
     "/client_contentieux/{id}": {
       "champs": [
@@ -13098,27 +13408,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -13295,7 +13605,8 @@
           "champs": 17
         }
       ],
-      "titre": "Formulaire client contentieux | Sapian"
+      "titre": "Formulaire client contentieux | Sapian",
+      "url_exemple": "/client_contentieux/75"
     },
     "/creance_douteux/{id}": {
       "champs": [
@@ -13484,27 +13795,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -13681,7 +13992,8 @@
           "champs": 18
         }
       ],
-      "titre": "Formulaire client contentieux | Sapian"
+      "titre": "Formulaire client contentieux | Sapian",
+      "url_exemple": "/creance_douteux/76"
     },
     "/prelevements/{id}": {
       "champs": [
@@ -13828,27 +14140,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -14025,7 +14337,8 @@
           "champs": 12
         }
       ],
-      "titre": "Formulaire demande de prélèvement | Sapian"
+      "titre": "Formulaire demande de prélèvement | Sapian",
+      "url_exemple": "/prelevements/85"
     },
     "/retenue_garantie/{id}": {
       "champs": [
@@ -14214,27 +14527,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -14411,7 +14724,8 @@
           "champs": 18
         }
       ],
-      "titre": "Formulaire retenue de garantie | Sapian"
+      "titre": "Formulaire retenue de garantie | Sapian",
+      "url_exemple": "/retenue_garantie/86"
     },
     "/achat_siege/{id}": {
       "champs": [
@@ -14623,27 +14937,27 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
           "role": null
         },
         {
           "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
           "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
@@ -14820,7 +15134,8 @@
           "champs": 17
         }
       ],
-      "titre": "Formulaire achats siege | Sapian"
+      "titre": "Formulaire achats siege | Sapian",
+      "url_exemple": "/achat_siege/113"
     },
     "/helpdesk/ticket/{id}": {
       "champs": [
@@ -14867,7 +15182,7 @@
           "role": null
         },
         {
-          "href": "http://localhost:10017/@/en/helpdesk/ticket/30250",
+          "href": "http://localhost:10017/@/en/helpdesk/ticket/30262",
           "text": "Editor",
           "role": null
         },
@@ -14897,267 +15212,18 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30254",
-          "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
+          "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
         },
         {
-          "href": "/en/my/ticket/30249",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/shop/cart",
-          "text": "0",
-          "role": null
-        },
-        {
-          "href": "/en",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "/en/helpdesk/ticket/30250",
-          "text": "English (US)",
-          "role": null
-        },
-        {
-          "href": "/helpdesk/ticket/30250",
-          "text": "Français",
-          "role": null
-        },
-        {
-          "href": "#",
-          "text": "MyServices SAPIAN",
-          "role": "button"
-        },
-        {
-          "href": "/web",
-          "text": "Apps",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/user/account",
-          "text": "My Account",
-          "role": "menuitem"
-        },
-        {
-          "href": "",
-          "text": "Administration",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/my/delegation",
-          "text": "Délégations",
-          "role": "menuitem"
-        },
-        {
-          "href": "/web/session/logout?redirect=/",
-          "text": "Logout",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/home",
-          "text": "Faire une demande",
-          "role": null
-        },
-        {
-          "href": "/en/shop/cart",
-          "text": "0",
-          "role": null
-        },
-        {
-          "href": "/en",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "#",
-          "text": "MyServices SAPIAN",
-          "role": "button"
-        },
-        {
-          "href": "/web",
-          "text": "Apps",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/user/account",
-          "text": "My Account",
-          "role": "menuitem"
-        },
-        {
-          "href": "",
-          "text": "Administration",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/my/delegation",
-          "text": "Délégations",
-          "role": "menuitem"
-        },
-        {
-          "href": "/web/session/logout?redirect=/",
-          "text": "Logout",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/helpdesk/ticket/30250",
-          "text": "English (US)",
-          "role": null
-        },
-        {
-          "href": "/helpdesk/ticket/30250",
-          "text": "Français",
-          "role": null
-        },
-        {
-          "href": "/en/home",
-          "text": "Faire une demande",
-          "role": null
-        },
-        {
-          "href": "/web#model=helpdesk.ticket&id=30250&view_type=form",
-          "text": "Back to edit mode",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/close/30250/81112f08-a219-4a78-855e-bd8370a6aab7",
-          "text": "Close Ticket",
-          "role": "button"
-        },
-        {
-          "href": "/en/demande_materiel/ticket/30250",
+          "href": "/en/my/ticket/30261",
           "text": "Demande test BDD - validation champ requ",
           "role": null
         },
         {
-          "href": "#",
-          "text": "Ouvert",
-          "role": null
-        },
-        {
-          "href": "/en",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "/en/contactus",
-          "text": "Contactez-nous",
-          "role": null
-        },
-        {
-          "href": "/en/helpdesk/ticket/30250",
-          "text": "English (US)",
-          "role": null
-        },
-        {
-          "href": "/helpdesk/ticket/30250",
-          "text": "Français",
-          "role": null
-        }
-      ],
-      "formulaires": [
-        {
-          "action": "",
-          "method": "get",
-          "champs": 0
-        },
-        {
-          "action": "/en/change_destinataire/submit",
-          "method": "post",
-          "champs": 3
-        }
-      ],
-      "titre": "Demande test BDD - validation champ requis"
-    },
-    "/my/ticket/{id}/81112f08-a219-4a78-855e-bd8370a6aab7": {
-      "champs": [
-        {
-          "name": "ticket_id",
-          "tag": "input",
-          "type": "text",
-          "required": false,
-          "visible": false
-        },
-        {
-          "name": "csrf_token",
-          "tag": "input",
-          "type": "hidden",
-          "required": false,
-          "visible": false
-        },
-        {
-          "name": "ticket_id",
-          "tag": "input",
-          "type": "hidden",
-          "required": false,
-          "visible": false
-        },
-        {
-          "name": "new_destinataire",
-          "tag": "input",
-          "type": "text",
-          "required": true,
-          "visible": false
-        },
-        {
-          "name": "message",
-          "tag": "textarea",
-          "type": "textarea",
-          "required": false,
-          "visible": true
-        }
-      ],
-      "liens": [
-        {
-          "href": "/web",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "http://localhost:10017/@/en/my/ticket/30250/81112f08-a219-4a78-855e-bd8370a6aab7?ticket_closed=1",
-          "text": "Editor",
-          "role": null
-        },
-        {
-          "href": "/en/my/home",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "/en",
-          "text": "Accueil",
-          "role": null
-        },
-        {
-          "href": "/en/my_dashboard",
-          "text": "Mon dashboard",
-          "role": null
-        },
-        {
-          "href": "/en/connaissance",
-          "text": "Connaissances",
-          "role": null
-        },
-        {
-          "href": "",
-          "text": "Administration",
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
           "role": null
         },
         {
@@ -15171,21 +15237,6 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30251",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30250",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30249",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
           "href": "/en/shop/cart",
           "text": "0",
           "role": null
@@ -15196,12 +15247,12 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30250/81112f08-a219-4a78-855e-bd8370a6aab7?ticket_closed=1",
+          "href": "/en/helpdesk/ticket/30262",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/my/ticket/30250/81112f08-a219-4a78-855e-bd8370a6aab7?ticket_closed=1",
+          "href": "/helpdesk/ticket/30262",
           "text": "Français",
           "role": null
         },
@@ -15281,12 +15332,12 @@
           "role": "menuitem"
         },
         {
-          "href": "/en/my/ticket/30250/81112f08-a219-4a78-855e-bd8370a6aab7?ticket_closed=1",
+          "href": "/en/helpdesk/ticket/30262",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/my/ticket/30250/81112f08-a219-4a78-855e-bd8370a6aab7?ticket_closed=1",
+          "href": "/helpdesk/ticket/30262",
           "text": "Français",
           "role": null
         },
@@ -15296,13 +15347,18 @@
           "role": null
         },
         {
-          "href": "/web#model=helpdesk.ticket&id=30250&view_type=form",
+          "href": "/web#model=helpdesk.ticket&id=30262&view_type=form",
           "text": "Back to edit mode",
           "role": null
         },
         {
-          "href": "/en/demande_materiel/ticket/30250",
+          "href": "/en/demande_materiel/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "Nouveau",
           "role": null
         },
         {
@@ -15326,12 +15382,12 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30250/81112f08-a219-4a78-855e-bd8370a6aab7?ticket_closed=1",
+          "href": "/en/helpdesk/ticket/30262",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/my/ticket/30250/81112f08-a219-4a78-855e-bd8370a6aab7?ticket_closed=1",
+          "href": "/helpdesk/ticket/30262",
           "text": "Français",
           "role": null
         }
@@ -15348,7 +15404,8 @@
           "champs": 3
         }
       ],
-      "titre": "Demande test BDD - validation champ requis"
+      "titre": "Demande test BDD - validation champ requis",
+      "url_exemple": "/helpdesk/ticket/30262"
     }
   },
   "transitions": {
@@ -15441,6 +15498,7 @@
       "/home",
       "/my/delegation",
       "/my/home",
+      "/my/ticket/close/{id}/4022a2e4-cc27-4112-b0c8-18051b74048b",
       "/my_dashboard",
       "/shop/cart",
       "/ticket/{id}",
@@ -15606,7 +15664,7 @@
       "/tickets_to_close",
       "/user/account"
     ],
-    "/formulaire/{id}": [
+    "/product/{id}/accessories": [
       "/connaissance",
       "/contactus",
       "/en",
@@ -15622,7 +15680,7 @@
       "/shop/cart",
       "/user/account"
     ],
-    "/product/{id}/accessories": [
+    "/formulaire/{id}": [
       "/connaissance",
       "/contactus",
       "/en",
@@ -15664,6 +15722,20 @@
       "/services-applicatifs",
       "/services-entreprises",
       "/shop/cart",
+      "/user/account"
+    ],
+    "/my/ticket/{id}/4022a2e4-cc27-4112-b0c8-18051b74048b": [
+      "/connaissance",
+      "/contactus",
+      "/demande_materiel/ticket/{id}",
+      "/en",
+      "/home",
+      "/my/delegation",
+      "/my/home",
+      "/my/ticket/{id}",
+      "/my_dashboard",
+      "/shop/cart",
+      "/ticket/{id}/4022a2e4-cc27-4112-b0c8-18051b74048b",
       "/user/account"
     ],
     "/demande_materiel/ticket/{id}": [
@@ -15895,24 +15967,9 @@
       "/home",
       "/my/delegation",
       "/my/home",
-      "/my/ticket/close/{id}/81112f08-a219-4a78-855e-bd8370a6aab7",
       "/my/ticket/{id}",
       "/my_dashboard",
       "/shop/cart",
-      "/user/account"
-    ],
-    "/my/ticket/{id}/81112f08-a219-4a78-855e-bd8370a6aab7": [
-      "/connaissance",
-      "/contactus",
-      "/demande_materiel/ticket/{id}",
-      "/en",
-      "/home",
-      "/my/delegation",
-      "/my/home",
-      "/my/ticket/{id}",
-      "/my_dashboard",
-      "/shop/cart",
-      "/ticket/{id}/81112f08-a219-4a78-855e-bd8370a6aab7",
       "/user/account"
     ]
   },
@@ -15939,7 +15996,6 @@
       "MyServices SAPIAN"
     ],
     "/my/ticket/{id}": [
-      "Clôturé",
       "MyServices SAPIAN",
       "Nouveau",
       "Ouvert"
@@ -16005,11 +16061,11 @@
       "Search in Reference",
       "Search in Stage"
     ],
-    "/formulaire/{id}": [
+    "/product/{id}/accessories": [
       "Envoyer",
       "MyServices SAPIAN"
     ],
-    "/product/{id}/accessories": [
+    "/formulaire/{id}": [
       "Envoyer",
       "MyServices SAPIAN"
     ],
@@ -16019,6 +16075,12 @@
     ],
     "/description/{id}": [
       "MyServices SAPIAN"
+    ],
+    "/my/ticket/{id}/4022a2e4-cc27-4112-b0c8-18051b74048b": [
+      "Clôturé",
+      "MyServices SAPIAN",
+      "Nouveau",
+      "Ouvert"
     ],
     "/demande_materiel/ticket/{id}": [
       "MyServices SAPIAN"
@@ -16076,12 +16138,9 @@
       "MyServices SAPIAN"
     ],
     "/helpdesk/ticket/{id}": [
-      "MyServices SAPIAN",
-      "Ouvert"
-    ],
-    "/my/ticket/{id}/81112f08-a219-4a78-855e-bd8370a6aab7": [
       "Clôturé",
       "MyServices SAPIAN",
+      "Nouveau",
       "Ouvert"
     ]
   }

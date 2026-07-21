@@ -164,7 +164,11 @@ def crawler(ctx, nav, base_url, max_pages):
         # URL RÉELLE. Sans cet exemple, l'agent INVENTE un identifiant : mesuré, il a écrit
         # `/demande_avoir/29789` — une page qui ne rend pas le formulaire, d'où un `TimeoutError`
         # sur un champ pourtant visible. Le crawl connaissait l'URL et la jetait.
-        infos["url_exemple"] = urlparse(page.url).path or reelle
+        # ⚠️ Le préfixe de LANGUE est retiré (`/en/achat_siege/113` → `/achat_siege/113`).
+        # Le crawl arrive souvent sur la version anglaise ; y envoyer un test ferait échouer
+        # tous les steps à libellé français (« Envoyer » devient « Send »). On garde l'identifiant
+        # concret — la seule chose qui manquait — sans imposer une locale.
+        infos["url_exemple"] = _LANG_PREFIX.sub("", urlparse(page.url).path or reelle) or reelle
         pages[reelle] = infos
         print(f"  {len(pages):>3}. {reelle:<42} {len(infos['champs']):>2} champs  "
               f"{len(infos['formulaires'])} form")

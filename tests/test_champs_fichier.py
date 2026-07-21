@@ -250,3 +250,31 @@ def test_pas_d_exemple_pour_une_route_SANS_identifiant():
     s = pm._section_domaine_mesure(_plan(["/myservices"]), modele)
 
     assert "URL réelle" not in s
+
+
+def test_l_URL_d_exemple_n_impose_JAMAIS_une_locale():
+    """⚠️ Piège évité de justesse (2026-07-21) : le crawl arrive souvent sur la version anglaise
+    (`/en/achat_siege/113`). Y envoyer un test ferait échouer TOUS les steps à libellé français
+    — « Envoyer » devient « Send ». Mon propre correctif d'URL aurait introduit la cause suivante.
+
+    On garde l'identifiant concret (la seule chose qui manquait) sans imposer de locale."""
+    modele = {"mesure_le": "2026-07-21", "transitions": {}, "onglets_internes": {},
+              "pages": {"/achat_siege/{id}": {"champs": [],
+                                              "url_exemple": "/achat_siege/113"}}}
+
+    s = pm._section_domaine_mesure(_plan(["/achat_siege/{id}"]), modele)
+
+    assert "/achat_siege/113" in s
+    assert "/en/" not in s, "aucune URL d'exemple ne doit imposer une locale"
+
+
+def test_l_annuaire_REEL_ne_contient_aucune_URL_localisee():
+    chemin = Path("data/domain/projet-1.json")
+    if not chemin.exists():
+        pytest.skip("annuaire réel absent")
+    modele = json.loads(chemin.read_text(encoding="utf-8"))
+
+    localisees = [r for r, i in modele["pages"].items()
+                  if (i.get("url_exemple") or "").startswith(("/en/", "/fr/"))]
+
+    assert not localisees, f"URL d'exemple localisées : {localisees[:5]}"
