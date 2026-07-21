@@ -12,15 +12,32 @@ const routes = [
   { path: '/', name: 'home', component: () => import('./pages/Home.vue') },
   { path: '/projects', name: 'projects', component: () => import('./pages/ProjectsList.vue') },
 
-  // Première vue d'un projet : sa STRUCTURE (les modules), pas un mur de cas.
-  { path: '/projects/:pid/cases', name: 'cases', component: () => import('./pages/ModulesOverview.vue') },
-  // Vue secondaire, transverse aux modules : le référentiel à plat + ses compteurs.
-  // Déclarée avant `cases/:id` par lisibilité (le segment statique l'emporte de toute façon).
-  { path: '/projects/:pid/cases/all', name: 'cases-all', component: () => import('./pages/CasesList.vue') },
-  { path: '/projects/:pid/cases/:id', name: 'case-detail', component: () => import('./pages/CaseDetail.vue') },
-  { path: '/projects/:pid/modules/:mid', name: 'module-detail', component: () => import('./pages/ModuleDetail.vue') },
+  // Première vue d'un projet : la LISTE des cas façon TestRail (option (a), 2026-07-20). Le shell
+  // « Cas de test » (CasesShell) est choisi par App.vue pour ces routes.
+  { path: '/projects/:pid/cases', name: 'cases', component: () => import('./pages/TestCasesList.vue') },
+  // Création d'un cas (spec → analyse → génération → gate). Atteignable depuis le bouton
+  // « Ajouter un cas de test » de la barre latérale.
+  { path: '/projects/:pid/cases/new', name: 'case-new', component: () => import('./pages/AddTestCase.vue') },
+  // Onglets de nav non couverts par ce lot (Aperçu, Tâche à faire, Jalons, Rapports) → « à venir ».
+  { path: '/projects/:pid/cases/soon', name: 'cases-soon', component: () => import('./pages/CasesSoon.vue') },
+  { path: '/projects/:pid/cases/:id', name: 'case-detail', component: () => import('./pages/CaseDetailTR.vue') },
 
-  { path: '/projects/:pid/executions', name: 'executions', component: () => import('./pages/ExecutionsList.vue') },
+  // ── Routes HÉRITÉES, redirigées vers leur équivalent actuel ──────────────────────────────
+  // Règle posée le 2026-07-20 : toute route doit être atteignable par un chemin CLAIR depuis
+  // l'interface. Ces deux-là ne l'étaient plus (aucun lien nulle part) — les laisser vivantes
+  // aurait maintenu deux interfaces concurrentes pour la même chose.
+  //   • `cases/all` : la liste plate est désormais LA liste des cas.
+  //   • `modules/:mid` : le module se consulte via l'arbre, qui filtre la liste.
+  { path: '/projects/:pid/cases/all', redirect: (to: any) => ({ name: 'cases', params: { pid: to.params.pid } }) },
+  { path: '/projects/:pid/modules/:mid',
+    redirect: (to: any) => ({ name: 'cases', params: { pid: to.params.pid },
+                              query: { module: String(to.params.mid) } }) },
+
+  // « Exécutions et résultats de test » — module TestRail (Aperçu / détail run / formulaires).
+  { path: '/projects/:pid/executions', name: 'executions', component: () => import('./pages/RunsOverview.vue') },
+  { path: '/projects/:pid/executions/new', name: 'run-new', component: () => import('./pages/AddTestRunForm.vue') },
+  { path: '/projects/:pid/plans/new', name: 'plan-new', component: () => import('./pages/AddTestPlanForm.vue') },
+  { path: '/projects/:pid/runs/:id', name: 'run-detail', component: () => import('./pages/RunDetail.vue') },
   { path: '/projects/:pid/executions/:id', name: 'report', component: () => import('./pages/ReportView.vue') },
   // Arbitrage humain des diagnostics (0013). SOUS Exécution : on juge le résultat d'un run,
   // pas le référentiel — la séparation §8 reste structurelle.

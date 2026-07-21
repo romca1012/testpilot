@@ -1,0 +1,349 @@
+<script setup lang="ts">
+// Shell « Cas de test » — disposition inspirée de TestRail, palette sombre du projet.
+// Adopté comme SHELL des routes de gestion des cas (option (a) validée le 2026-07-20). La
+// Spécification (case_group) apparaît ICI dans l'arbre (Module → Spécification), sans être un
+// concept qu'on impose ailleurs. Les boutons/onglets non couverts par ce lot mènent à « à venir ».
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { api, type CaseSummary, type GroupSummary, type ModuleSummary } from '../lib/api'
+import { useProjects } from '../lib/useProjects'
+
+const route = useRoute()
+const router = useRouter()
+const { projects, ensureLoaded, projectById } = useProjects()
+
+const pid = computed(() => route.params.pid as string | undefined)
+const currentProject = computed(() => projectById(pid.value))
+const menuOpen = ref(false)
+
+const modules = ref<ModuleSummary[]>([])
+const groups = ref<GroupSummary[]>([])
+const cases = ref<CaseSummary[]>([])
+const expanded = ref<number[]>([])
+
+async function load() {
+  if (!pid.value) return
+  const [m, g, c] = await Promise.all([
+    api.listModules(pid.value), api.listGroups(pid.value), api.listCases(pid.value),
+  ])
+  modules.value = m
+  groups.value = g
+  cases.value = c
+  if (!expanded.value.length) expanded.value = m.map((x) => x.id) // tout déplié au départ
+}
+
+onMounted(() => { ensureLoaded(); load(); refreshFile() })
+watch(pid, () => { ensureLoaded(); load(); refreshFile() })
+// Un cas ajouté ou un diagnostic tranché doit se refléter sans rechargement manuel.
+watch(() => route.fullPath, () => { load(); refreshFile() })
+
+// Compteur de la file d'arbitrage (0013) — seulement ce qui EXIGE une confirmation humaine.
+// Une file qu'on ne voit pas est une file qu'on ne traite pas.
+const aConfirmer = ref(0)
+async function refreshFile() {
+  if (!pid.value) return
+  try { aConfirmer.value = (await api.listRepairs(pid.value, 'pending')).length }
+  catch { aConfirmer.value = 0 }   // un compteur indisponible ne casse pas la navigation
+}
+
+const specCount = computed(() => groups.value.length)
+const caseCount = computed(() => cases.value.length)
+const initial = computed(() => (currentProject.value?.name || '?').trim().charAt(0).toUpperCase())
+
+function groupsOf(moduleId: number) {
+  return groups.value.filter((g) => g.module_id === moduleId)
+}
+function toggle(moduleId: number) {
+  expanded.value = expanded.value.includes(moduleId)
+    ? expanded.value.filter((id) => id !== moduleId)
+    : [...expanded.value, moduleId]
+}
+const activeGroupId = computed(() =>
+  route.name === 'cases' ? Number(route.query.spec) || null : null)
+const activeModuleId = computed(() =>
+  route.name === 'cases' ? Number(route.query.module) || null : null)
+
+function openSpec(groupId: number) {
+  router.push({ name: 'cases', params: { pid: pid.value }, query: { spec: String(groupId) } })
+}
+
+// ── Sous-navigation d'un cas — NICHÉE sous « Cas de test » (pas une colonne à part) ──
+const caseId = computed(() => (route.name === 'case-detail' ? Number(route.params.id) : null))
+const currentCase = computed(() => cases.value.find((c) => c.id === caseId.value) || null)
+const caseTab = computed(() => (route.query.tab as string) || 'details')
+const subtabs = [
+  { key: 'details', label: 'Détails' },
+  { key: 'tests', label: 'Tests & Résultats' },
+  { key: 'defauts', label: 'Défauts' },
+  { key: 'historique', label: 'Historique' },
+]
+function goSubTab(key: string) {
+  if (!caseId.value) return
+  router.push({ name: 'case-detail', params: { pid: pid.value, id: String(caseId.value) },
+    query: key === 'details' ? {} : { tab: key } })
+}
+
+// ── Sous-navigation d'un RUN — NICHÉE sous « Exécutions et résultats de test » (même patron) ──
+const runId = computed(() => (route.name === 'run-detail' ? Number(route.params.id) : null))
+const runTab = computed(() => (route.query.tab as string) || 'tests')
+const runSubtabs = [
+  { key: 'tests', label: 'Tests & Résultats', ready: true },
+  { key: 'activite', label: 'Activité', ready: false },
+  { key: 'progression', label: 'Progression', ready: false },
+  { key: 'defauts', label: 'Défauts', ready: false },
+]
+function goRunTab(key: string) {
+  if (!runId.value) return
+  router.push({ name: 'run-detail', params: { pid: pid.value, id: String(runId.value) },
+    query: key === 'tests' ? {} : { tab: key } })
+}
+
+// Les pages « Cas de test » (liste + détail) se paginent elles-mêmes (barres pleine largeur) ;
+// les pages héritées (exécutions, rapport, confirmations…) reçoivent un cadre paddé du shell.
+const fullBleed = computed(() => ['cases', 'case-detail'].includes(String(route.name)))
+
+// ── Contexte « Exécutions » : filtres portés par l'URL, lus par RunsOverview (état partagé) ──
+const execGroup = computed(() => (route.query.group as string) || 'month')
+const execSort = computed(() => (route.query.sort as string) || 'date')
+function setExecQuery(key: 'group' | 'sort', value: string) {
+  router.replace({ name: 'executions', params: { pid: pid.value }, query: { ...route.query, [key]: value } })
+}
+function goRoute(name: 'run-new' | 'plan-new') {
+  router.push({ name, params: { pid: pid.value } })
+}
+// « Ajouter un cas de test » — le module courant (si l'arbre en a un d'ouvert) est pré-sélectionné.
+function goCaseNew(moduleId?: number) {
+  router.push({ name: 'case-new', params: { pid: pid.value },
+                query: moduleId ? { module: String(moduleId) } : {} })
+}
+// Filtrer la liste sur un MODULE : c'est ce que faisait l'ancienne page module, désormais
+// redirigée ici. Cliquer un module de l'arbre a donc un effet, pas seulement déplier.
+function openModule(moduleId: number) {
+  router.push({ name: 'cases', params: { pid: pid.value }, query: { module: String(moduleId) } })
+}
+
+// Nav principale. Seul « Cas de test » est fonctionnel dans ce lot ; le reste mène à « à venir »
+// (placeholder), sauf « Exécutions » qui pointe vers l'écran d'exécution existant.
+const nav = computed(() => [
+  { key: 'apercu', label: 'Aperçu', to: soon('apercu'),
+    icon: 'M4 5h16M4 12h16M4 19h10' },
+  { key: 'todo', label: 'Tâche à faire', to: soon('todo'),
+    icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11' },
+  { key: 'cases', label: 'Cas de test', to: { name: 'cases', params: { pid: pid.value } },
+    icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+  { key: 'exec', label: 'Exécutions et résultats de test', to: { name: 'executions', params: { pid: pid.value } },
+    icon: 'M14.7 11.2l-5.2-3a1 1 0 00-1.5.8v6a1 1 0 001.5.9l5.2-3a1 1 0 000-1.7z' },
+  { key: 'jalons', label: 'Jalons', to: soon('jalons'),
+    icon: 'M5 3v18M5 4h11l-2 3 2 3H5' },
+  { key: 'rapports', label: 'Rapports', to: soon('rapports'),
+    icon: 'M9 17v-6M12 17V7M15 17v-3M4 5a2 2 0 012-2h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2z' },
+])
+function soon(tab: string) {
+  return { name: 'cases-soon', params: { pid: pid.value }, query: { tab } }
+}
+function isActive(key: string) {
+  const n = String(route.name)
+  if (key === 'cases') return ['cases', 'case-detail', 'cases-all', 'module-detail'].includes(n)
+  if (key === 'exec') return ['executions', 'report', 'confirmations', 'run-detail', 'run-new', 'plan-new'].includes(n)
+  return n === 'cases-soon' && route.query.tab === key
+}
+function comingSoon(what: string) {
+  window.alert(`${what} — à venir.`)
+}
+function switchProject(id: number) {
+  menuOpen.value = false
+  router.push({ name: 'cases', params: { pid: String(id) } })
+}
+</script>
+
+<template>
+  <div class="app-bg min-h-screen flex">
+    <aside class="w-[270px] shrink-0 border-r border-border bg-surface/60 backdrop-blur-sm flex flex-col">
+      <!-- En-tête projet -->
+      <div class="relative">
+        <button class="h-14 w-full flex items-center gap-2.5 px-3.5 border-b border-border hover:bg-accent/40 transition-colors"
+                @click="menuOpen = !menuOpen">
+          <span class="h-[30px] w-[30px] rounded-lg bg-primary text-white grid place-items-center font-bold text-[15px]">{{ initial }}</span>
+          <span class="font-semibold flex-1 text-left truncate tracking-tight">{{ currentProject?.name || '…' }}</span>
+          <svg class="w-4 h-4 text-muted-foreground shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div v-if="menuOpen" class="absolute left-3 right-3 z-30 mt-1 rounded-md border border-border bg-surface-overlay py-1 shadow-xl">
+          <button v-for="p in projects" :key="p.id"
+                  class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent/60"
+                  :class="p.id === Number(pid) ? 'text-primary' : 'text-foreground'"
+                  @click="switchProject(p.id)">
+            <span class="truncate">{{ p.name }}</span>
+          </button>
+          <!-- Sans ce lien, la page projets devenait INATTEIGNABLE : on ne pouvait plus créer,
+               renommer ni configurer un projet depuis l'interface. -->
+          <div class="my-1 border-t border-border"></div>
+          <RouterLink to="/projects" class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                      @click="menuOpen = false">Gérer les projets…</RouterLink>
+        </div>
+      </div>
+
+      <!-- Nav principale (+ sous-navigation d'un cas, nichée sous « Cas de test ») -->
+      <nav class="p-2.5 flex flex-col gap-0.5">
+        <template v-for="item in nav" :key="item.key">
+          <component :is="typeof item.to === 'string' ? 'button' : 'RouterLink'"
+                     :to="typeof item.to === 'string' ? undefined : item.to"
+                     class="group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-left transition-colors"
+                     :class="isActive(item.key) ? 'bg-primary/15 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.3)]' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'">
+            <svg class="w-4 h-4 shrink-0" :class="isActive(item.key) && 'text-primary'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path :d="item.icon"/></svg>
+            <span class="flex-1">{{ item.label }}</span>
+          </component>
+
+          <!-- Sous-nav du cas ouvert — apparaît SOUS « Cas de test », indentée -->
+          <div v-if="item.key === 'cases' && caseId" class="ml-4 pl-3 border-l border-border flex flex-col gap-0.5 py-1">
+            <span class="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Aperçu</span>
+            <button v-for="t in subtabs" :key="t.key"
+                    class="text-left rounded-md px-2.5 py-1.5 text-[13px] transition-colors"
+                    :class="caseTab === t.key ? 'bg-primary/15 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.3)]' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'"
+                    @click="goSubTab(t.key)">{{ t.label }}</button>
+            <p v-if="currentCase" class="px-2 pt-1.5 text-[11px] text-muted-foreground leading-relaxed">
+              Dans la section
+              <button class="text-primary hover:underline" @click="openSpec(currentCase.group_id!)">{{ currentCase.group_title || currentCase.module }}</button>.
+            </p>
+          </div>
+
+          <!-- Sous-nav du RUN ouvert — apparaît SOUS « Exécutions et résultats de test », indentée -->
+          <div v-if="item.key === 'exec' && runId" class="ml-4 pl-3 border-l border-border flex flex-col gap-0.5 py-1">
+            <span class="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Aperçu</span>
+            <button v-for="t in runSubtabs" :key="t.key"
+                    class="text-left rounded-md px-2.5 py-1.5 text-[13px] transition-colors flex items-center justify-between"
+                    :class="runTab === t.key ? 'bg-primary/15 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.3)]' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'"
+                    @click="goRunTab(t.key)">
+              {{ t.label }}<span v-if="!t.ready" class="text-[9px] uppercase text-muted">à venir</span>
+            </button>
+            <div class="px-2 pt-1.5 text-[11px] text-muted-foreground leading-relaxed space-y-1">
+              <p>Jalon : <span class="text-muted">à venir</span></p>
+              <p>Références : <span class="text-muted">aucune</span></p>
+            </div>
+          </div>
+        </template>
+      </nav>
+
+      <!-- ══ SIDEBAR CONTEXTUELLE : le contenu change selon le module actif ══ -->
+
+      <!-- Contexte « Cas de test » : boutons cas + arbre Module → Spécification -->
+      <template v-if="isActive('cases')">
+      <div class="px-3 pb-3 flex flex-col gap-2">
+        <button class="rounded-md bg-primary text-white font-semibold px-3 py-2.5 flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors"
+                @click="goCaseNew()">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Ajouter un cas de test
+        </button>
+        <button class="rounded-md bg-surface-raised border border-border px-3 py-2.5 flex items-center gap-2 hover:border-primary/40 transition-colors"
+                @click="comingSoon('Générer des cas de test')">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/></svg>
+          Générer des cas de test
+          <span class="ml-auto rounded bg-[hsl(340_75%_62%/0.2)] text-[hsl(340_75%_68%)] text-[9px] font-bold px-1.5 py-0.5 tracking-wide">BETA</span>
+        </button>
+      </div>
+
+      <!-- Info spécifications / cas -->
+      <div class="px-3.5 pb-3 text-xs leading-relaxed">
+        <div class="flex items-center gap-1.5 text-muted-foreground">
+          Contient {{ specCount }} spécification{{ specCount > 1 ? 's' : '' }} et {{ caseCount }} cas.
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+        </div>
+        <button class="text-primary hover:underline" @click="comingSoon('Modifier la description')">Modifier la description</button>
+      </div>
+
+      <!-- Bandeau + sous-barre -->
+      <div class="flex items-center justify-between px-3.5 py-2.5 border-y border-border text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Cas de test
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 13l5 5 5-5M7 6l5 5 5-5"/></svg>
+      </div>
+      <div class="flex items-center gap-2 px-3.5 py-2 text-xs">
+        <span class="flex items-center gap-1.5 rounded-md border border-border bg-surface-raised px-2 py-1">Tous
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span>
+        <button class="text-primary hover:underline" @click="comingSoon('Ajouter une section')">+ Ajouter une section</button>
+      </div>
+
+      <!-- Arbre Module → Spécification -->
+      <div class="px-2 pb-4 overflow-y-auto">
+        <template v-for="m in modules" :key="m.id">
+          <div class="flex w-full items-center gap-1 rounded-md px-1.5 py-1.5 hover:bg-accent/40"
+               :class="activeModuleId === m.id && 'bg-primary/10'">
+            <button class="shrink-0 p-0.5" :title="expanded.includes(m.id) ? 'Replier' : 'Déplier'" @click.stop="toggle(m.id)">
+              <svg class="w-3 h-3 text-muted-foreground transition-transform" :class="expanded.includes(m.id) ? 'rotate-90' : ''" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5l8 7-8 7z"/></svg>
+            </button>
+            <!-- Le NOM filtre la liste sur ce module (ce que faisait l'ancienne page module). -->
+            <button class="flex min-w-0 flex-1 items-center gap-1.5 text-left font-semibold" @click="openModule(m.id)">
+              <svg class="w-4 h-4 text-warning shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+              <span class="truncate">{{ m.name }}</span>
+            </button>
+            <button class="shrink-0 p-0.5 text-muted-foreground hover:text-primary" title="Ajouter un cas dans ce module" @click.stop="goCaseNew(m.id)">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </div>
+          <template v-if="expanded.includes(m.id)">
+            <button v-for="g in groupsOf(m.id)" :key="g.id"
+                    class="flex w-full items-center gap-1.5 rounded-md pl-7 pr-1.5 py-1.5 text-left hover:bg-accent/40 text-[13px]"
+                    :class="activeGroupId === g.id ? 'text-primary bg-primary/10' : 'text-primary/90'"
+                    @click="openSpec(g.id)">
+              <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+              <span class="truncate">{{ g.title }}</span>
+            </button>
+          </template>
+        </template>
+      </div>
+      </template>
+
+      <!-- Contexte « Exécutions et résultats de test » : actions run/plan + filtres -->
+      <template v-else-if="isActive('exec')">
+      <div class="px-3 pb-3 flex flex-col gap-2">
+        <button class="rounded-md bg-primary text-white font-semibold px-3 py-2.5 flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors"
+                @click="goRoute('run-new')">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Ajouter une exécution de test
+        </button>
+        <button class="rounded-md bg-primary text-white font-semibold px-3 py-2.5 flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors"
+                @click="goRoute('plan-new')">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Ajouter un plan de test
+        </button>
+      </div>
+      <!-- Arbitrage des diagnostics (0013). Il vit SOUS Exécutions : on juge le résultat d'un run,
+           pas le référentiel. Sans ce lien, la file d'arbitrage était devenue inatteignable — et
+           une file qu'on ne voit pas est une file qu'on ne traite pas. -->
+      <div class="px-3.5 pb-3">
+        <RouterLink :to="{ name: 'confirmations', params: { pid } }"
+                    class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors"
+                    :class="String(route.name) === 'confirmations' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'">
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span class="flex-1">Confirmations</span>
+          <span v-if="aConfirmer" class="rounded-full bg-warning/20 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-warning">{{ aConfirmer }}</span>
+        </RouterLink>
+      </div>
+
+      <div class="px-3.5 pb-4 space-y-3 text-sm">
+        <label class="block">
+          <span class="text-xs text-muted-foreground">Grouper par</span>
+          <select :value="execGroup" @change="setExecQuery('group', ($event.target as HTMLSelectElement).value)"
+                  class="mt-1 w-full rounded-md bg-surface-raised border border-border px-2 py-1.5">
+            <option value="month">Mois</option>
+            <option value="milestone" disabled>Jalon (à venir)</option>
+            <option value="assignee" disabled>Assigné à (à venir)</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-xs text-muted-foreground">Trier par</span>
+          <select :value="execSort" @change="setExecQuery('sort', ($event.target as HTMLSelectElement).value)"
+                  class="mt-1 w-full rounded-md bg-surface-raised border border-border px-2 py-1.5">
+            <option value="date">Date</option>
+            <option value="name">Nom</option>
+            <option value="pass">% de réussite</option>
+          </select>
+        </label>
+      </div>
+      </template>
+    </aside>
+
+    <div class="flex-1 min-w-0 overflow-y-auto">
+      <slot v-if="fullBleed" />
+      <div v-else class="mx-auto max-w-6xl p-6 md:p-8"><slot /></div>
+    </div>
+  </div>
+</template>

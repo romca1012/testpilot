@@ -100,6 +100,57 @@ export function confirmationView(code: string | null | undefined): StatusView | 
   return code ? (CONFIRMATION[code] ?? null) : null
 }
 
+// ── Angle testé d'un cas — étiquette LIBRE, en libellé métier (jamais le code brut) ──
+// Métadonnée interne (séparation 2026-07-19) : jamais dans le titre du cas, seulement en
+// métadonnée. 'legacy' = cas d'avant la séparation (repris tel quel).
+const ANGLE: Record<string, string> = {
+  nominal: 'Cas nominal',
+  erreur: 'Cas d\'erreur',
+  limite: 'Cas limite',
+  autre: 'Autre angle',
+  legacy: 'Cas repris',
+}
+export function angleLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return ANGLE[code] || code
+}
+
+// ── Statut de test « façon TestRail » — DÉRIVÉ des DEUX axes, pas une fusion ─────────────────
+// Passed / Failed / Retest / Blocked / Untested. ⚠️ Ce n'est PAS un badge « OK/KO » qui cache les
+// axes (§4.1) : c'est un RÉSUMÉ pour la vue run/liste, tandis que le détail à deux axes reste
+// visible dans l'onglet Tests & Résultats du cas. Dérivation documentée (déroulement + fonctionnel),
+// jamais devinée — « Untested » par défaut quand l'info ne permet pas de trancher.
+export type TestStatusCode = 'passed' | 'failed' | 'retest' | 'blocked' | 'untested'
+
+const TEST_STATUS: Record<TestStatusCode, { label: string; color: string; badge: string }> = {
+  passed:   { label: 'Passed',   color: 'var(--success)',         badge: 'bg-success/15 text-success' },
+  failed:   { label: 'Failed',   color: 'var(--destructive)',     badge: 'bg-destructive/15 text-destructive' },
+  retest:   { label: 'Retest',   color: 'var(--warning)',         badge: 'bg-warning/15 text-warning' },
+  blocked:  { label: 'Blocked',  color: 'var(--muted-foreground)', badge: 'bg-secondary text-muted-foreground' },
+  untested: { label: 'Untested', color: 'var(--untested)',        badge: 'bg-[hsl(var(--untested)/0.15)] text-[hsl(var(--untested))]' },
+}
+// Ordre canonique (légende du donut, colonnes de filtre).
+export const TEST_STATUS_ORDER: TestStatusCode[] = ['passed', 'blocked', 'retest', 'failed', 'untested']
+
+export function testStatusCode(execution: string | null | undefined,
+                               functional: string | null | undefined): TestStatusCode {
+  if (functional === 'conforme') return 'passed'
+  if (functional === 'non_conforme') return 'failed'
+  // Fonctionnel indéterminé : ran-mais-pas-jugé → Retest ; jamais lancé → Untested.
+  if (functional === 'indetermine') return execution === 'not_executed' ? 'untested' : 'retest'
+  // Aucun verdict fonctionnel (not_evaluated / null) : c'est le déroulement qui parle.
+  if (execution === 'technical_error') return 'blocked'
+  if (execution === 'success') return 'passed'
+  return 'untested'
+}
+
+export function testStatusMeta(code: TestStatusCode) { return TEST_STATUS[code] }
+
+export function testStatusView(execution: string | null | undefined,
+                               functional: string | null | undefined) {
+  return TEST_STATUS[testStatusCode(execution, functional)]
+}
+
 // Provenance du coût, en clair.
 export function costSourceLabel(code: string | null | undefined): string {
   if (code === 'anthropic_api') return 'mesuré via l\'API'

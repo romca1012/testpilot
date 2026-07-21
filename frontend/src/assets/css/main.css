@@ -29,6 +29,8 @@
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 55%;
     --warning-foreground: 240 6% 10%;
+    /* Bleu clair « non testé » — utilisé par les graphiques d'activité/défauts (onglets cas). */
+    --untested: 204 70% 57%;
     --border: 240 5% 15%;
     --input: 240 5% 17%;
     --ring: 232 56% 60%;

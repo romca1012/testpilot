@@ -45,7 +45,7 @@ onMounted(async () => {
 <template>
   <div class="space-y-8">
     <header>
-      <h1 class="text-2xl font-semibold tracking-tight">Exécution</h1>
+      <h1 class="text-2xl font-semibold tracking-tight">Exécutions et résultats de test</h1>
       <p class="mt-1 text-sm text-muted-foreground">
         Historique des exécutions — verdict à deux axes de chaque run.
       </p>
