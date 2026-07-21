@@ -209,6 +209,25 @@ def validate_metier(job_id: str, metier: dict) -> dict:
     return {**job["_resume"], "metier": validated}
 
 
+def _auto_approuver(conn, case_id: int, version_id: int | None) -> None:
+    """Approuve la version au titre de la validation métier (amendement §4.3, 2026-07-21).
+
+    Le porteur a tranché que la validation du métier à la création vaut relecture : il n'y a plus
+    de gate humain séparé. On approuve donc la version dès qu'elle est produite — TRACÉ (reviewer
+    `validation-metier`), jamais silencieux. Sans ça, un run resterait bloqué faute d'approbation.
+    """
+    if version_id is None:
+        return
+    from testpilot.store.repositories import ReviewRepo
+    from testpilot.verdict import review_gate
+    try:
+        review_gate.auto_approve_metier(ReviewRepo(conn), case_id=case_id, version_id=version_id,
+                                        repair_budget=config.REPAIR_BUDGET_DEFAULT)
+    except Exception:
+        logger.exception("[generation] auto-approbation de la version %s (cas %s) échouée — "
+                         "le cas restera à relire", version_id, case_id)
+
+
 def _spec_from_metier(metier: dict) -> str:
     """Reconstruit une spécification textuelle depuis le métier d'un cas manuel, pour que
     l'analyse en extraie la matière technique (routes, modèles). Le métier EST l'intention validée
@@ -298,6 +317,7 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
                                 generation_usd=result.cost_usd)
 
         if result.success:
+            _auto_approuver(conn, case_id, result.version_id)
             _JOBS[job_id].update(status="done", case_id=case_id)
         else:
             _JOBS[job_id].update(status="failed",
@@ -358,6 +378,7 @@ def resume_generation(job_id: str, *, module_id: int, slug: str, title: str,
                                 generation_usd=result.cost_usd)
 
         if result.success and result.case_id:
+            _auto_approuver(conn, result.case_id, result.version_id)
             _JOBS[job_id].update(status="done", case_id=result.case_id)
         else:
             _JOBS[job_id].update(status="failed",

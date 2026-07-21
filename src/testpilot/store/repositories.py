@@ -203,6 +203,19 @@ class ModuleRepo:
             " (SELECT COUNT(*) FROM test_case tc WHERE tc.module_id=m.id) AS case_count"
             " FROM module m WHERE m.project_id=? ORDER BY m.id", (project_id,)))
 
+    def rename(self, module_id: int, *, name: str, description: str | None = None) -> None:
+        """Renomme un module (bouton « Éditer la section »). Nom unique DANS le projet (§2.9)."""
+        current = self.get(module_id)
+        if current is None:
+            raise ValueError(f"module {module_id} introuvable")
+        self.ensure_name_free(current["project_id"], name, excluding=module_id)
+        if description is None:
+            self.conn.execute("UPDATE module SET name=? WHERE id=?", (name, module_id))
+        else:
+            self.conn.execute("UPDATE module SET name=?, description=? WHERE id=?",
+                              (name, description, module_id))
+        self.conn.commit()
+
     def delete(self, module_id: int) -> None:
         """Supprime un module ET toute sa descendance (spécifications, cas, versions, exécutions,
         résultats, réparations, coûts) — en réutilisant la cascade éprouvée de `CaseRepo.delete`

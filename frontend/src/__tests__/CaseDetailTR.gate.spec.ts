@@ -78,30 +78,31 @@ async function page(gate: GateOut) {
 
 beforeEach(() => { getCase.mockReset(); runCase.mockReset() })
 
-describe('CaseDetailTR — la relecture reste sur le cas, le lancement part vers Run/Plan', () => {
-  it('affiche le gate de relecture (invariant §4.3)', async () => {
-    const w = await page(A_RELIRE)
-    // Le gate est le garde-fou annoncé par le produit : s'il n'est pas à l'écran, la promesse
-    // « relecture humaine obligatoire » n'est plus tenable par l'utilisateur.
-    expect(w.text()).toContain('Relecture')
-    expect(w.findComponent({ name: 'ReviewGate' }).exists()).toBe(true)
+// Amendement §4.3 (2026-07-21) : la validation métier à la création vaut relecture. Plus de gate
+// humain ni de budget de réparation sur la page du cas — le smoke-check reste, en INFORMATION.
+describe('CaseDetailTR — plus de gate ; vigilance en info + renvoi vers Run/Plan', () => {
+  it('ne propose PLUS d\'étape de relecture à approuver', async () => {
+    const w = await page(APPROUVE)
+    expect(w.findComponent({ name: 'ReviewGate' }).exists()).toBe(false)
+    // Aucun bouton d'approbation ni de budget de réparation sur le cas.
+    expect(w.text()).not.toContain('tentatives de réparation')
   })
 
-  it('ne propose PLUS de « Lancer une exécution » sur le cas (2026-07-21)', async () => {
-    // Un cas ne s'exécute pas seul : l'exécution vit dans un Run. Un bouton « Lancer » par cas
-    // contredisait le modèle cible (`0022`) — il a été retiré.
+  it('ne propose PLUS de « Lancer une exécution » sur le cas', async () => {
     const w = await page(APPROUVE)
     const btn = w.findAll('button').find((b) => b.text().includes('Lancer une exécution'))
     expect(btn).toBeUndefined()
   })
 
-  it('quand le gate REFUSE, dit qu\'un cas non relu bloque le run', async () => {
-    const w = await page(A_RELIRE)
-    expect(w.text()).toContain('Approuvez la version en relecture')
+  it('affiche les points de vigilance du smoke-check EN INFORMATION', async () => {
+    // Les alertes restent visibles (« ce test pourrait ne rien créer »), mais sans décision.
+    const w = await page({ ...APPROUVE, lint_warnings: [
+      { step: '[NOMINAL] X', line: 14, kind: 'soumission_absente', message: 'aucun step ne SOUMET le formulaire' }] })
+    expect(w.text()).toContain('Points de vigilance')
+    expect(w.text()).toContain('aucun step ne SOUMET le formulaire')
   })
 
-  it('quand le gate AUTORISE, renvoie vers « Exécutions et résultats de test »', async () => {
-    // On indique OÙ se lance l'exécution (dans un run), plutôt que de la proposer ici.
+  it('renvoie vers « Exécutions et résultats de test »', async () => {
     const w = await page(APPROUVE)
     expect(w.text()).toContain('Exécutions et résultats de test')
     expect(runCase).not.toHaveBeenCalled()

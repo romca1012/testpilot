@@ -20,7 +20,6 @@ const barMax = computed(() => Math.max(1, ...metrics.value.map((m) => m.value)))
 
 const W = 320, BH = 22, GAP = 18, PAD_L = 4, PAD_R = 30
 function barW(v: number) { return (v / barMax.value) * (W - PAD_L - PAD_R) }
-function soon(w: string) { window.alert(`${w} — à venir.`) }
 </script>
 
 <template>
@@ -46,13 +45,7 @@ function soon(w: string) { window.alert(`${w} — à venir.`) }
 
       <!-- stats -->
       <div class="lg:w-56 shrink-0 w-full">
-        <div class="flex items-center justify-between">
-          <p class="text-sm text-muted-foreground">Tests et défauts :</p>
-          <div class="flex items-center gap-2 text-muted-foreground">
-            <button title="Exporter en image" class="hover:text-foreground" @click="soon('Export image')"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/></svg></button>
-            <button title="Exporter en CSV" class="hover:text-foreground" @click="soon('Export CSV')"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v4a1 1 0 001 1h4M9 13v5m3-3l-3 3-3-3M8 3h6l5 5v11a2 2 0 01-2 2H8a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg></button>
-          </div>
-        </div>
+        <p class="text-sm text-muted-foreground">Tests et défauts :</p>
         <ul class="mt-3 space-y-3">
           <li v-for="m in metrics" :key="m.key">
             <div class="flex items-center gap-2">

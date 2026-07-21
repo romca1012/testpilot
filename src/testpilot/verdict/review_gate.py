@@ -48,6 +48,27 @@ def submit_review(review_repo, *, case_id: int, version_id: int, approved: bool,
     return evaluate_gate(review_repo, version_id)
 
 
+def auto_approve_metier(review_repo, *, case_id: int, version_id: int,
+                        repair_budget: int | None = None) -> GateDecision:
+    """Approbation AUTOMATIQUE au titre de la validation métier (amendement §4.3, 2026-07-21).
+
+    Décision du porteur : la validation du **métier** à la création (la pause en 2 passes, ou la
+    saisie manuelle) **vaut relecture**. Il n'y a plus de gate humain séparé sur le Gherkin — une
+    version produite depuis un métier validé est prête dès qu'elle existe.
+
+    ⚠️ **Ce n'est pas un contournement silencieux du §4.3** : l'approbation est TRACÉE (reviewer
+    `validation-metier`, commentaire explicite), exactement comme le projet trace la provenance
+    des coûts (`estimated` vs `anthropic_api`). On sait toujours d'où vient l'autorisation.
+    Le smoke-check reste affiché comme signal de vigilance — l'amendement retire le geste
+    d'approbation, pas la mise en garde technique.
+    """
+    return submit_review(
+        review_repo, case_id=case_id, version_id=version_id, approved=True,
+        reviewer="validation-metier",
+        comment="Approuvé au titre de la validation métier à la création (amendement §4.3, 2026-07-21).",
+        repair_budget=repair_budget)
+
+
 def validation_status_after_run(prev_status: str, execution_status: str) -> str:
     """Transition du statut de validation d'un cas après une exécution (§5).
 

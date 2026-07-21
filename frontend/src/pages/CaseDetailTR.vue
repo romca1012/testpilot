@@ -14,7 +14,6 @@ import CaseHeader from '../components/case/CaseHeader.vue'
 import TestsResultsTab from '../components/case/TestsResultsTab.vue'
 import DefectsTab from '../components/case/DefectsTab.vue'
 import HistoryTab from '../components/case/HistoryTab.vue'
-import ReviewGate from '../components/ReviewGate.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -38,6 +37,7 @@ async function load() {
     ])
     detail.value = d
     scenarios.value = sc
+    loadSiblings(d.case?.module_id)
   } catch {
     error.value = 'Impossible de charger ce cas.'
   } finally {
@@ -46,6 +46,26 @@ async function load() {
 }
 onMounted(load)
 watch(caseId, load)
+
+// ── Navigation entre cas (Précédent / Suivant), bornée au MODULE du cas ───────
+// Chargée à part (best-effort) : une fratrie indisponible ne casse pas la page, elle désactive
+// juste les flèches.
+const siblings = ref<number[]>([])
+async function loadSiblings(moduleId: number | null | undefined) {
+  if (!moduleId) { siblings.value = []; return }
+  try {
+    const all = await api.listCases(pid.value)
+    siblings.value = all.filter((x) => x.module_id === moduleId).map((x) => x.id).sort((a, b) => a - b)
+  } catch { siblings.value = [] }
+}
+const siblingIndex = computed(() => siblings.value.indexOf(caseId.value))
+const prevId = computed(() => siblingIndex.value > 0 ? siblings.value[siblingIndex.value - 1] : null)
+const nextId = computed(() =>
+  siblingIndex.value >= 0 && siblingIndex.value < siblings.value.length - 1
+    ? siblings.value[siblingIndex.value + 1] : null)
+function goCase(id: number) {
+  router.push({ name: 'case-detail', params: { pid: pid.value, id: String(id) } })
+}
 
 const currentVersion = computed(() => {
   const d = detail.value
@@ -235,17 +255,12 @@ async function deleteCase() {
 
 const c = computed(() => detail.value?.case ?? null)
 
-// ── Relecture (gate) ──────────────────────────────────────────────────────────
-// Le gate approuve une VERSION avant exécution (invariant §4.3). Il reste sur le cas : c'est ici
-// qu'on relit. ⚠️ Le LANCEMENT d'exécution a été RETIRÉ de cette page (2026-07-21) : dans le
-// modèle cible (`0022`), un cas ne s'exécute pas seul — l'exécution vit dans un Run (« Exécutions
-// et résultats de test »). Un bouton « Lancer » par cas contredisait cette architecture.
-const currentReview = computed(() =>
-  (detail.value?.reviews || []).find((r) => r.version_id === detail.value?.current_version_id))
-
-function reviewerLabel(reviewer: string) {
-  return reviewer === 'cli' ? 'ligne de commande' : reviewer || '—'
-}
+// ── Points de vigilance (smoke-check) ─────────────────────────────────────────
+// ⚠️ Amendement §4.3 (2026-07-21) : la validation métier à la création vaut relecture. Plus de
+// gate humain ni de budget de réparation ICI (la réparation est gérée au niveau du Run). On garde
+// seulement les SIGNAUX du smoke-check, en information — ils disent « ce test pourrait ne rien
+// créer », sans plus rien à approuver.
+const lintWarnings = computed(() => detail.value?.gate?.lint_warnings || [])
 
 onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
 </script>
@@ -266,7 +281,8 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
          sous « Cas de test » — ici on ne rend que le CONTENU de l'onglet actif. -->
     <div class="min-w-0 p-6 md:p-8 max-w-5xl">
       <CaseHeader :c="c" :can-automate="!hasGherkin" :automating="automating"
-                  @back="backToList" @edit="startEdit" @delete="deleteCase" @automate="automate" />
+                  :prev-id="prevId" :next-id="nextId"
+                  @back="backToList" @edit="startEdit" @delete="deleteCase" @automate="automate" @go="goCase" />
 
       <!-- ====== DÉTAILS ====== -->
       <template v-if="tab === 'details'">
@@ -356,46 +372,43 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
             <p v-else class="mt-3 text-muted-foreground">Aucun résultat attendu renseigné.</p>
           </section>
 
-          <!-- Cas MANUEL (aucun Gherkin) : ni gate ni exécution — le test technique n'existe pas
-               encore. On le DIT au lieu de proposer un « Lancer » qui échouerait (§4.6). -->
+          <!-- Cas MANUEL (aucun Gherkin) : le test technique n'existe pas encore. -->
           <section v-if="!hasGherkin" class="mt-8">
             <h2 class="font-semibold pb-2 border-b border-border">Test technique</h2>
             <div class="mt-3 rounded-lg border border-border bg-primary/[0.04] p-4 text-sm text-muted-foreground">
               Ce cas a été saisi à la main : il décrit ce qui doit être vérifié, mais son test
-              technique n'a pas encore été généré. Il ne peut donc pas être exécuté en l'état.
+              technique n'a pas encore été généré (bouton « Automatiser avec l'IA » ci-dessus).
             </div>
           </section>
 
-          <!-- ════════ RELECTURE (gate) ════════
-               Invariant §4.3 : une version générée par IA doit être relue par un humain AVANT
-               sa première exécution. Bloc distinct du lancement, et placé AVANT lui : l'ordre à
-               l'écran dit l'ordre réel du produit. -->
-          <section v-if="hasGherkin" class="mt-8">
-            <h2 class="font-semibold pb-2 border-b border-border">Relecture</h2>
-            <div class="mt-3 space-y-3">
-              <ReviewGate :case-id="caseId" :gate="detail.gate" @reviewed="load" />
-              <p v-if="currentReview" class="text-xs text-muted-foreground">
-                Dernière décision : {{ currentReview.decision === 'approved' ? 'approuvée' : 'rejetée' }}
-                par {{ reviewerLabel(currentReview.reviewer) }} · {{ currentReview.decided_at }}
-              </p>
-            </div>
+          <!-- ════════ POINTS DE VIGILANCE (info seule, PLUS un gate) ════════
+               Amendement §4.3 (2026-07-21) : la validation métier à la création vaut relecture —
+               il n'y a plus d'étape d'approbation ici. Mais le smoke-check reste AFFICHÉ : ces
+               alertes disent « ce test pourrait ne rien créer ». Information, pas décision. -->
+          <section v-if="hasGherkin && lintWarnings.length" class="mt-8">
+            <h2 class="font-semibold pb-2 border-b border-border flex items-center gap-2">
+              Points de vigilance
+              <span class="rounded-full bg-warning/15 text-warning text-xs font-semibold px-2 py-0.5">{{ lintWarnings.length }}</span>
+            </h2>
+            <p class="mt-2 text-xs text-muted-foreground">
+              Signaux relevés automatiquement sur ce test (cartographie mesurée). Indicatifs — à ton appréciation.
+            </p>
+            <ul class="mt-3 space-y-2">
+              <li v-for="(w, i) in lintWarnings" :key="i" class="rounded-md border border-warning/30 bg-warning/[0.05] p-3 text-sm">
+                <div class="text-xs font-semibold text-warning/90">{{ w.step }} <span v-if="w.line" class="text-muted-foreground">· ligne {{ w.line }}</span></div>
+                <div class="mt-1 text-foreground/85">{{ w.message }}</div>
+              </li>
+            </ul>
           </section>
 
-          <!-- ════════ EXÉCUTION ════════
-               Le LANCEMENT a été retiré d'ici (2026-07-21) : un cas ne s'exécute pas seul, il se
-               joue dans un Run (« Exécutions et résultats de test »). On indique où, plutôt que
-               de proposer un « Lancer » qui contredirait le modèle. -->
+          <!-- ════════ EXÉCUTION — renvoi vers Run/Plan ════════
+               Un cas ne s'exécute pas seul : il se joue dans un Run. On indique où. -->
           <section v-if="hasGherkin" class="mt-8">
             <h2 class="font-semibold pb-2 border-b border-border">Exécution</h2>
             <div class="mt-3 rounded-lg border border-border bg-primary/[0.04] p-4 text-sm text-muted-foreground">
-              <template v-if="detail.gate?.allowed">
-                Ce cas est relu et prêt à être joué. Les exécutions se lancent depuis
-                <RouterLink :to="{ name: 'executions', params: { pid } }" class="text-primary hover:underline">Exécutions et résultats de test</RouterLink>,
-                dans un run qui regroupe les cas à jouer ensemble.
-              </template>
-              <template v-else>
-                Approuvez la version en relecture ci-dessus : un cas non relu bloque tout run qui le contient.
-              </template>
+              Ce test est prêt. Les exécutions se lancent depuis
+              <RouterLink :to="{ name: 'executions', params: { pid } }" class="text-primary hover:underline">Exécutions et résultats de test</RouterLink>,
+              dans un run qui regroupe les cas à jouer ensemble.
             </div>
           </section>
         </template>

@@ -56,6 +56,8 @@ export const api = {
     request<ModuleSummary>(`/api/projects/${projectId}/modules`, {
       method: 'POST', body: JSON.stringify({ name, description }),
     }),
+  renameModule: (moduleId: number | string, name: string) =>
+    request<ModuleSummary>(`/api/modules/${moduleId}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   deleteModule: (moduleId: number | string) =>
     request<void>(`/api/modules/${moduleId}`, { method: 'DELETE' }),
   // « Ajouter un cas de test » = saisie MANUELLE (sans IA), à distinguer de addCase (l'IA).

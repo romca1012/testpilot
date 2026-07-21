@@ -182,8 +182,9 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
     """Édite le contenu MÉTIER d'un cas. Un champ versionné modifié → **nouvelle version**.
 
     Le contenu technique (Gherkin) est recopié tel quel : éditer le métier ne régénère rien
-    (décision `0022` n°6). Conséquence voulue : la nouvelle version n'étant pas approuvée, le gate
-    bloque l'exécution jusqu'à relecture — l'invariant §4.3 s'applique sans règle supplémentaire.
+    (décision `0022` n°6). ⚠️ **Amendement §4.3 (2026-07-21)** : éditer et enregistrer le métier
+    VAUT relecture — la nouvelle version est donc approuvée automatiquement (tracé), et non plus
+    laissée « à relire ». Plus de gate humain séparé sur le Gherkin.
     """
     cases = CaseRepo(conn)
     if cases.get(case_id) is None:
@@ -195,6 +196,9 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
             angle=body.angle, refs=body.refs, estimate=body.estimate, editor=body.editor)
     except DuplicateName as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if version_id is not None:
+        review_gate.auto_approve_metier(ReviewRepo(conn), case_id=case_id, version_id=version_id,
+                                        repair_budget=config.REPAIR_BUDGET_DEFAULT)
     return schemas.CaseMetierOut(case=schemas.case_summary(cases.get(case_id)),
                                  version_id=version_id, version_created=version_id is not None)
 

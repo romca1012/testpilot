@@ -95,6 +95,22 @@ def create_group(module_id: int, body: schemas.GroupIn, conn=Depends(get_conn)):
     return schemas.group_detail(CaseGroupRepo(conn).get(gid) | {"case_count": 0})
 
 
+@router.patch("/{module_id}", response_model=schemas.ModuleSummary)
+def rename_module(module_id: int, body: schemas.ModuleIn, conn=Depends(get_conn)):
+    """Renomme un module (« Éditer la section »). Nom unique par projet (409 sinon)."""
+    module = ModuleRepo(conn).get(module_id)
+    if module is None:
+        raise HTTPException(status_code=404, detail=f"module {module_id} introuvable")
+    if not body.name.strip():
+        raise HTTPException(status_code=422, detail="le nom du module est requis")
+    try:
+        ModuleRepo(conn).rename(module_id, name=body.name.strip(), description=body.description)
+    except DuplicateName as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    updated = ModuleRepo(conn).get(module_id)
+    return schemas.module_summary(updated | {"case_count": _case_count(conn, module_id)})
+
+
 @router.delete("/{module_id}", status_code=204)
 def delete_module(module_id: int, conn=Depends(get_conn)):
     """Supprime un module et TOUTE sa descendance (spécifications, cas, versions, exécutions…).

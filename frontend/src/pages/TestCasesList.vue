@@ -70,6 +70,19 @@ function openCase(id: number) {
 }
 function comingSoon(what: string) { window.alert(`${what} — à venir.`) }
 
+// Renommer un module (« Éditer la section »). Prompt simple : une seule valeur, pas besoin d'une
+// modale. Le serveur refuse un nom déjà pris (409) — on remonte le message.
+async function renameSection(m: ModuleSummary) {
+  const nom = window.prompt('Renommer le module', m.name)
+  if (!nom || !nom.trim() || nom.trim() === m.name) return
+  try {
+    await api.renameModule(m.id, nom.trim())
+    await load()
+  } catch (e: any) {
+    window.alert(e?.message || 'Renommage impossible.')
+  }
+}
+
 // Barre d'icônes du haut. « Importer » retiré (décision porteur) ; « Exporter » branché (CSV).
 const topIcons = [
   { d: 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3', t: 'Exporter (CSV)' },
@@ -168,7 +181,7 @@ function goRunNew() { router.push({ name: 'run-new', params: { pid: pid.value } 
           </button>
           <span class="font-bold italic tracking-tight">{{ s.module.name }}</span>
           <span class="rounded-full bg-primary/15 text-primary text-[11px] font-semibold px-2.5 py-0.5 tabular-nums">{{ s.rows.length }}</span>
-          <button class="text-muted-foreground hover:text-foreground" title="Éditer" @click="comingSoon('Éditer la section')">
+          <button class="text-muted-foreground hover:text-foreground" title="Renommer le module" @click="renameSection(s.module)">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>
           </button>
         </div>

@@ -152,3 +152,29 @@ def test_api_automate_cas_inconnu_404(tmp_path, monkeypatch):
     client = TestClient(app_mod.app)
 
     assert client.post("/api/cases/999/automate").status_code == 404
+
+
+# ── Amendement §4.3 (2026-07-21) : la validation métier vaut relecture ─────────
+
+def test_une_version_produite_est_AUTO_APPROUVEE_sans_clic_humain(conn):
+    """Amendement §4.3 : plus de gate humain séparé — la validation du métier à la création vaut
+    relecture. Une version approuvée automatiquement ouvre le gate (le run n'est plus bloqué),
+    et c'est TRACÉ (reviewer explicite), jamais silencieux."""
+    from testpilot.store.repositories import CaseRepo, ReviewRepo, VersionRepo
+    from testpilot.verdict import review_gate
+
+    mid = ensure_default_module(conn, "m")
+    cid = CaseRepo(conn).create(title="C", module_id=mid, feature_slug="c1")
+    vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="h",
+                                   feature_content="# f", steps_content="# s")
+
+    # Avant : le gate bloque (aucune relecture).
+    assert review_gate.evaluate_gate(ReviewRepo(conn), vid).allowed is False
+
+    review_gate.auto_approve_metier(ReviewRepo(conn), case_id=cid, version_id=vid)
+
+    decision = review_gate.evaluate_gate(ReviewRepo(conn), vid)
+    assert decision.allowed is True, "le run n'est plus bloqué"
+    # L'approbation est tracée : on sait d'où elle vient.
+    latest = ReviewRepo(conn).latest_for_version(vid)
+    assert latest["reviewer"] == "validation-metier"

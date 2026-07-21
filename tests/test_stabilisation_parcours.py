@@ -137,6 +137,34 @@ def test_supprimer_module_ou_cas_inconnu_404(client):
     assert client.delete("/api/cases/999").status_code == 404
 
 
+# ── Renommer un module (« Éditer la section ») ────────────────────────────────
+
+def test_renommer_un_module(client):
+    _, mid = _module(client)
+
+    r = client.patch(f"/api/modules/{mid}", json={"name": "Nouveau nom"})
+
+    assert r.status_code == 200
+    assert r.json()["name"] == "Nouveau nom"
+    assert client.get(f"/api/modules/{mid}").json()["module"]["name"] == "Nouveau nom"
+
+
+def test_renommer_vers_un_nom_deja_pris_dans_le_projet_409(client):
+    pid = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    client.post(f"/api/projects/{pid}/modules", json={"name": "Alpha"})
+    m2 = client.post(f"/api/projects/{pid}/modules", json={"name": "Beta"}).json()["id"]
+
+    r = client.patch(f"/api/modules/{m2}", json={"name": "alpha"})
+
+    assert r.status_code == 409
+
+
+def test_renommer_module_inconnu_404_et_nom_vide_422(client):
+    _, mid = _module(client)
+    assert client.patch("/api/modules/999", json={"name": "X"}).status_code == 404
+    assert client.patch(f"/api/modules/{mid}", json={"name": "  "}).status_code == 422
+
+
 # ── Import de fichier (bouton « Générer ») ────────────────────────────────────
 
 def test_extraction_txt_et_md():
