@@ -63,7 +63,9 @@ def test_case_version_review_execution_roundtrip(conn):
     assert len(execs.list_scenario_results(eid)) == 1
 
 
-def test_repair_confirmation_and_cost_ledger(conn):
+def test_repair_attempt_and_cost_ledger(conn):
+    """La réparation auto (`0014`) crée une tentative et trace son coût. (Le confirmation humain
+    `0013` a été retiré — plus de list_pending/confirm.)"""
     cases, versions, execs = CaseRepo(conn), VersionRepo(conn), ExecutionRepo(conn)
     repairs, costs = RepairRepo(conn), CostRepo(conn)
 
@@ -72,12 +74,10 @@ def test_repair_confirmation_and_cost_ledger(conn):
                           feature_content="", steps_content="")
     eid = execs.create(test_case_id=cid, version_id=vid)
 
-    rid = repairs.create(execution_id=eid, attempt_number=1, failure_signature="sig",
-                         cause_category="wrong_navigation", defect_origin="test_a_reparer",
-                         confirmation_status="pending_human", what_was_tried="essai 1")
-    assert len(repairs.list_pending()) == 1
-    repairs.confirm(rid, confirmation_status="confirmed", confirmed_by="qa")
-    assert repairs.list_pending() == []
+    repairs.create(execution_id=eid, attempt_number=1, failure_signature="sig",
+                   cause_category="wrong_navigation", defect_origin="test_a_reparer",
+                   confirmation_status="not_required", what_was_tried="essai 1")
+    assert len(repairs.list_for_execution(eid)) == 1
 
     costs.add_entry(phase="generation", model="claude-sonnet-4-6", cost_usd=0.5,
                     source="estimated", execution_id=eid)

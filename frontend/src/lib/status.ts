@@ -76,14 +76,6 @@ const DEFECT_ORIGIN: Record<string, StatusView> = {
   indetermine: { label: 'Origine à investiguer', icon: 'circle', tone: 'muted' },
 }
 
-// ── Statut de confirmation (confirmation_status) — not_required → masqué ───────
-const CONFIRMATION: Record<string, StatusView | null> = {
-  pending_human: { label: 'En attente de validation humaine', icon: 'half', tone: 'warning' },
-  confirmed: { label: 'Validé par un humain', icon: 'check', tone: 'success' },
-  rejected: { label: 'Écarté après revue', icon: 'x', tone: 'muted' },
-  not_required: null, // ne rien afficher
-}
-
 export function executionView(code: string | null | undefined): StatusView {
   return (code && EXECUTION[code]) || EXECUTION.not_executed
 }
@@ -95,9 +87,6 @@ export function validationView(code: string | null | undefined): StatusView {
 }
 export function defectOriginView(code: string | null | undefined): StatusView {
   return (code && DEFECT_ORIGIN[code]) || DEFECT_ORIGIN.indetermine
-}
-export function confirmationView(code: string | null | undefined): StatusView | null {
-  return code ? (CONFIRMATION[code] ?? null) : null
 }
 
 // ── Angle testé d'un cas — étiquette LIBRE, en libellé métier (jamais le code brut) ──

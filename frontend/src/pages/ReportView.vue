@@ -12,7 +12,7 @@ import StatTile from '../components/StatTile.vue'
 import StatusPair from '../components/StatusPair.vue'
 import {
   functionalView, executionView, toneClasses,
-  defectOriginView, confirmationView, costSourceLabel,
+  defectOriginView, costSourceLabel,
 } from '../lib/status'
 
 const route = useRoute()
@@ -47,12 +47,6 @@ onMounted(async () => {
       <div>
         <h1 class="text-2xl font-semibold tracking-tight">{{ report.title }}</h1>
         <p class="mt-1 text-sm text-muted-foreground">Rapport d'exécution · v{{ report.version_number }}</p>
-      </div>
-
-      <div v-if="report.needs_human_confirmation"
-           class="flex items-start gap-2 rounded-lg border-l-4 border-warning bg-warning/10 px-4 py-3 text-sm text-warning">
-        <Icon name="half" class="mt-0.5 h-4 w-4 shrink-0" />
-        <span>Confirmation humaine requise : au moins une origine de défaut attend une validation.</span>
       </div>
 
       <!-- Verdict à deux axes, en tête -->
@@ -108,12 +102,6 @@ onMounted(async () => {
               />
               <Hint v-if="defectOriginView(d.defect_origin).hint" :text="defectOriginView(d.defect_origin).hint!" />
             </div>
-            <Chip
-              v-if="confirmationView(d.confirmation_status)"
-              :icon="confirmationView(d.confirmation_status)!.icon"
-              :label="confirmationView(d.confirmation_status)!.label"
-              :cls="toneClasses(confirmationView(d.confirmation_status)!.tone)"
-            />
             </div>
             <!-- Ce que l'agent DIT avoir changé (0014). Sans ça, la réparation serait une
                  boîte noire : « v2 » sans savoir ce qui a bougé. -->

@@ -32,19 +32,10 @@ async function load() {
   if (!expanded.value.length) expanded.value = m.map((x) => x.id) // tout déplié au départ
 }
 
-onMounted(() => { ensureLoaded(); load(); refreshFile() })
-watch(pid, () => { ensureLoaded(); load(); refreshFile() })
+onMounted(() => { ensureLoaded(); load() })
+watch(pid, () => { ensureLoaded(); load() })
 // Un cas ajouté ou un diagnostic tranché doit se refléter sans rechargement manuel.
-watch(() => route.fullPath, () => { load(); refreshFile() })
-
-// Compteur de la file d'arbitrage (0013) — seulement ce qui EXIGE une confirmation humaine.
-// Une file qu'on ne voit pas est une file qu'on ne traite pas.
-const aConfirmer = ref(0)
-async function refreshFile() {
-  if (!pid.value) return
-  try { aConfirmer.value = (await api.listRepairs(pid.value, 'pending')).length }
-  catch { aConfirmer.value = 0 }   // un compteur indisponible ne casse pas la navigation
-}
+watch(() => route.fullPath, () => { load() })
 
 const specCount = computed(() => groups.value.length)
 const caseCount = computed(() => cases.value.length)
@@ -99,7 +90,7 @@ function goRunTab(key: string) {
 }
 
 // Les pages « Cas de test » (liste + détail) se paginent elles-mêmes (barres pleine largeur) ;
-// les pages héritées (exécutions, rapport, confirmations…) reçoivent un cadre paddé du shell.
+// les pages héritées (exécutions, rapport…) reçoivent un cadre paddé du shell.
 const fullBleed = computed(() => ['cases', 'case-detail'].includes(String(route.name)))
 
 // ── Contexte « Exécutions » : filtres portés par l'URL, lus par RunsOverview (état partagé) ──
@@ -167,7 +158,7 @@ function soon(tab: string) {
 function isActive(key: string) {
   const n = String(route.name)
   if (key === 'cases') return ['cases', 'case-detail', 'cases-all', 'module-detail'].includes(n)
-  if (key === 'exec') return ['executions', 'report', 'confirmations', 'run-detail', 'run-new', 'plan-new'].includes(n)
+  if (key === 'exec') return ['executions', 'report', 'run-detail', 'run-new', 'plan-new'].includes(n)
   if (key === 'qualite') return n === 'quality'
   return n === 'cases-soon' && route.query.tab === key
 }
@@ -334,19 +325,6 @@ function switchProject(id: number) {
           Ajouter un plan de test
         </button>
       </div>
-      <!-- Arbitrage des diagnostics (0013). Il vit SOUS Exécutions : on juge le résultat d'un run,
-           pas le référentiel. Sans ce lien, la file d'arbitrage était devenue inatteignable — et
-           une file qu'on ne voit pas est une file qu'on ne traite pas. -->
-      <div class="px-3.5 pb-3">
-        <RouterLink :to="{ name: 'confirmations', params: { pid } }"
-                    class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors"
-                    :class="String(route.name) === 'confirmations' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'">
-          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          <span class="flex-1">Confirmations</span>
-          <span v-if="aConfirmer" class="rounded-full bg-warning/20 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-warning">{{ aConfirmer }}</span>
-        </RouterLink>
-      </div>
-
       <div class="px-3.5 pb-4 space-y-3 text-sm">
         <label class="block">
           <span class="text-xs text-muted-foreground">Grouper par</span>

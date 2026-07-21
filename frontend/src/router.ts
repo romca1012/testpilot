@@ -41,9 +41,6 @@ const routes = [
   { path: '/projects/:pid/plans/new', name: 'plan-new', component: () => import('./pages/AddTestPlanForm.vue') },
   { path: '/projects/:pid/runs/:id', name: 'run-detail', component: () => import('./pages/RunDetail.vue') },
   { path: '/projects/:pid/executions/:id', name: 'report', component: () => import('./pages/ReportView.vue') },
-  // Arbitrage humain des diagnostics (0013). SOUS Exécution : on juge le résultat d'un run,
-  // pas le référentiel — la séparation §8 reste structurelle.
-  { path: '/projects/:pid/confirmations', name: 'confirmations', component: () => import('./pages/ConfirmationsList.vue') },
 
   // Qualité de génération : l'évolution de l'outil (taux de réussite technique au premier jet),
   // dérivée des vraies exécutions. Onglet de suivi, jamais un chiffre fabriqué.
