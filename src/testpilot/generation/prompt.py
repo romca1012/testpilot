@@ -105,11 +105,144 @@ def _section_champs_requis(plan: TestPlan, modele: dict | None) -> str:
     return "\n".join(lignes)
 
 
-def build_initial_message(plan: TestPlan, modele: dict | None = None) -> str:
+# Un libellé présent sur beaucoup de pages est un élément de GABARIT, pas un repère de
+# navigation : il ne dit rien sur « où aller ». Mesuré sur l'annuaire réel — `Envoyer` (le bouton
+# de soumission des formulaires) apparaît sur 17 routes sur 37, `MyServices SAPIAN` (le logo) sur
+# presque toutes. À 50 % ils passaient tous les deux, ajoutant 17 lignes qui n'apprennent rien.
+# À 25 %, il ne reste que ce qui DISCRIMINE : `/myservices : Ordinateurs, Périphériques…` —
+# exactement le fait qui manquait à `0020`.
+_SEUIL_UBIQUITE = 0.25
+# Bornes de taille : le prompt est payé à chaque tour de la boucle ReAct, pas une fois — c'est
+# l'entrée répétée qui domine le coût (leçon mesurée du principe 3 : $0,2895/réparation, dominé
+# par le renvoi du catalogue et du fichier à chaque tour).
+# MESURÉ sur l'annuaire réel (38 routes) avec ces plafonds :
+#   routes 974 car. · onglets 1 120 car. · selects 1 590 car. → 3 684 car. ≈ 920 tokens.
+# Assumé : c'est le prix de faits qui remplacent de l'exploration payante et faillible. À
+# resserrer si une mesure montre que la génération dérive — pas avant.
+_MAX_ROUTES = 40
+_MAX_SELECTS = 20
+
+
+def _onglets_distinctifs(modele: dict) -> dict[str, list[str]]:
+    """Les onglets propres à une route, débarrassés du gabarit commun à toutes les pages."""
+    onglets = {k: v for k, v in (modele.get("onglets_internes") or {}).items() if v}
+    if not onglets:
+        return {}
+    freq: dict[str, int] = {}
+    for libelles in onglets.values():
+        for lib in set(libelles):
+            freq[lib] = freq.get(lib, 0) + 1
+    plafond = max(1, int(len(onglets) * _SEUIL_UBIQUITE))
+    retenus = {}
+    for route, libelles in onglets.items():
+        propres = sorted({lib for lib in libelles if freq.get(lib, 0) <= plafond})
+        if propres:
+            retenus[route] = propres
+    return retenus
+
+
+def _section_domaine_mesure(plan: TestPlan, modele: dict | None) -> str:
+    """Les FAITS mesurés sur l'application : routes réelles, onglets, valeurs de listes.
+
+    ⚠️ **Pourquoi cette section existe.** Ces faits étaient mesurés depuis le 2026-07-17
+    (`data/domain/…json`, crawl déterministe sans LLM) et **lus par personne** : seuls les champs
+    requis en sortaient. L'agent devait donc redécouvrir par exploration ce que le dépôt savait
+    déjà — en payant, et en se trompant. Deux des cinq causes d'échec du cas 1 sont exactement là :
+
+    - `0020` — le test cliquait l'onglet « Ordinateurs » depuis `/my/home`, où il n'existe pas.
+      L'annuaire sait qu'il vit sur `/myservices`. C'est **la** donnée qui manquait.
+    - `0019` — l'agent inventait la valeur `"new"` pour un `<select>`. L'annuaire connaît les
+      options réelles (`new_aquisition`, `remplacement`).
+
+    ⚠️ **Les transitions brutes ne sont PAS injectées**, délibérément. Mesuré : 36 des 38 routes
+    pointent vers `/home`, `/contactus`, `/my/home`… — c'est le menu global, présent partout. Les
+    déverser ajouterait des centaines de lignes qui ne discriminent rien, et diluerait les faits
+    utiles. On ne paie pas un prompt pour du bruit.
+
+    C'est une **photo datée** : la section le dit, et le gate reste le garant vivant (borne du
+    principe 2). Modèle absent ⇒ section vide : on n'invente jamais un fait.
+    """
+    pages = (modele or {}).get("pages") or {}
+    if not pages:
+        return ""
+
+    date = modele.get("mesure_le", "?")
+    lignes = [f"## L'application, telle qu'elle a été MESURÉE (crawl du {date}, aucun LLM)", ""]
+
+    routes = sorted(pages)[:_MAX_ROUTES]
+    lignes.append(f"**Routes réelles** ({len(pages)} mesurées) — n'en invente aucune autre :")
+    lignes.append("  " + ", ".join(f"`{r}`" for r in routes))
+    if len(pages) > _MAX_ROUTES:
+        lignes.append(f"  *(+{len(pages) - _MAX_ROUTES} autres)*")
+    lignes.append("")
+
+    onglets = _onglets_distinctifs(modele)
+    if onglets:
+        lignes += [
+            "**Où vivent les onglets** — un onglet n'existe QUE sur sa page. Pour cliquer l'un "
+            "d'eux, il faut d'abord être sur la route qui le porte :",
+        ]
+        for route in sorted(onglets):
+            lignes.append(f"  - `{route}` : {', '.join(onglets[route])}")
+        lignes.append("")
+
+    # Les listes déroulantes : priorité aux routes que le plan vise, puis complément borné.
+    vises = {r for r in (list(plan.portal_routes or []) + [plan.entry_url or ""]) if r}
+    selects = [(route, ch) for route, infos in pages.items()
+               for ch in (infos.get("champs") or [])
+               if ch.get("tag") == "select" and ch.get("options")]
+    selects.sort(key=lambda rc: (0 if any(v in rc[0] or rc[0] in v for v in vises) else 1, rc[0]))
+    if selects:
+        lignes += [
+            "**Valeurs RÉELLES des listes déroulantes** — n'invente jamais une valeur d'option, "
+            "l'application refuse celles qui n'existent pas :",
+        ]
+        for route, ch in selects[:_MAX_SELECTS]:
+            valeurs = ", ".join(f"`{v}`" for v, _ in (ch["options"] or [])[:6])
+            suite = " …" if len(ch["options"] or []) > 6 else ""
+            lignes.append(f"  - `{route}` · `{ch['name']}` : {valeurs}{suite}")
+        lignes.append("")
+
+    lignes.append("*(Mesure datée : si l'application a changé depuis, le gate le signalera.)*")
+    lignes.append("")
+    return "\n".join(lignes)
+
+
+def _section_metier(metier: dict) -> str:
+    """Le document métier VALIDÉ PAR UN HUMAIN — la source du Gherkin (décision `0022` n°5/6).
+
+    Quand il est présent, il REMPLACE la liste des scénarios du plan : l'agent n'a plus à choisir
+    quoi couvrir, un humain l'a déjà tranché. C'est tout l'intérêt des deux passes — le technique
+    est écrit pour une intention **déjà validée**, jamais pour une intention supposée.
+
+    Correspondance imposée par `0022` n°6 : **1 cas = 1 scénario**. Les préconditions deviennent
+    le `Contexte`, les étapes les actions, le résultat attendu l'assertion finale.
+    """
+    etapes = "\n".join(f"{i}. {s}" for i, s in enumerate(metier.get("steps") or [], start=1))
+    lines = [
+        "## LE CAS À AUTOMATISER — document validé par un humain",
+        "",
+        "⚠️ Ce document fait FOI. N'invente pas d'autre scénario, n'en ajoute pas, n'en retire pas.",
+        "Écris **UN SEUL scénario** qui implémente exactement ce qui suit.",
+        "",
+        f"**Titre** : {metier.get('title', '')}",
+    ]
+    if metier.get("preconditions"):
+        lines += ["", f"**Préconditions** (→ `Contexte:`) : {metier['preconditions']}"]
+    lines += ["", "**Étapes** (→ les actions du scénario) :", etapes,
+              "", f"**Résultat attendu** (→ l'assertion FINALE) : {metier.get('expected_result', '')}"]
+    return "\n".join(lines)
+
+
+def build_initial_message(plan: TestPlan, modele: dict | None = None,
+                          metier: dict | None = None) -> str:
     """Message utilisateur initial : le plan mis en forme pour la boucle ReAct.
 
     `modele` — l'annuaire du domaine (`domain_model.charger_modele`). Optionnel : sans lui, le
-    message est celui d'avant (aucune contrainte de complétude n'est inventée)."""
+    message est celui d'avant (aucune contrainte de complétude n'est inventée).
+
+    `metier` — le document métier validé (passe 4b de `0022`). Présent, il remplace la liste des
+    scénarios : le périmètre n'est plus déduit par l'agent, il est donné."""
     lines = [
         f"# Génère les tests Behave pour le module « {plan.module_name} »",
         "",
@@ -127,10 +260,27 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None) -> str:
     if plan.risks:
         lines.append("Ambiguïtés signalées : " + "; ".join(plan.risks))
 
+    # Les FAITS mesurés d'abord : routes réelles, où vivent les onglets, valeurs des listes. Ils
+    # cadrent tout le reste — un scénario écrit contre une route inexistante est perdu quel que
+    # soit son contenu, et c'est la cause de 2 des 5 échecs du cas 1 (`0019`, `0020`).
+    domaine = _section_domaine_mesure(plan, modele)
+    if domaine:
+        lines.append("\n" + domaine)
+
     # La contrainte de complétude AVANT les scénarios : elle conditionne la façon de les écrire.
     contrainte = _section_champs_requis(plan, modele)
     if contrainte:
         lines.append("\n" + contrainte)
+
+    # Le document métier validé PRIME sur les scénarios déduits par l'analyse : les deux listés
+    # ensemble donneraient à l'agent deux périmètres concurrents, et c'est le non-validé qui
+    # risquerait de gagner (il est plus détaillé). Un seul périmètre, celui qu'un humain a signé.
+    if metier:
+        lines.append("\n" + _section_metier(metier))
+        if plan.raw_spec:
+            lines.append("\n## Spécification originale (contexte)\n")
+            lines.append(plan.raw_spec[:3000])
+        return "\n".join(lines)
 
     lines.append("\n## Scénarios à couvrir\n")
     for s in plan.scenarios:

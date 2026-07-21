@@ -234,6 +234,17 @@ def test_le_spec_analyzer_recoit_un_tracker_sur_les_deux_chemins():
     assert "SpecAnalyzer(cost_tracker=" in source_api, (
         "le chemin écran construit un SpecAnalyzer sans tracker : le coût d'analyse retombe à 0")
 
+    # ⚠️ La génération en DEUX PASSES (`0022` n°5) a déplacé l'écriture du coût : `run_generation`
+    # s'arrête à la pause métier, c'est `resume_generation` qui persiste le cas — donc le seul
+    # moment où un `test_case_id` existe pour porter la dépense. Cette garde a failli être perdue
+    # au découpage : elle ne surveillait qu'une des deux fonctions, et serait restée verte
+    # pendant que la seconde ne comptait plus rien.
+    source_resume = inspect.getsource(generation_service.resume_generation)
+    assert "SpecAnalyzer(cost_tracker=" in source_resume, (
+        "la passe Gherkin construit un SpecAnalyzer sans tracker : le coût d'analyse retombe à 0")
+    assert "_record_generation_cost(" in source_resume, (
+        "la passe Gherkin n'écrit plus au ledger : le coût de création devient invisible (§9)")
+
 
 # ── La migration 12 ───────────────────────────────────────────────────────────
 
