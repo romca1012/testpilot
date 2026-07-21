@@ -86,19 +86,94 @@ def normalise(path: str) -> str:
 
 
 def _inspecter_page(page):
-    """Champs, options, liens, onglets — lu au DOM, en UN aller-retour."""
+    """Champs, options, liens, onglets — lu au DOM, en UN aller-retour.
+
+    ⚠️ **Deux familles d'informations, deux usages** (enrichissement du 2026-07-21) :
+
+    - **l'identité ACCESSIBLE** (`role`, `label`) — ce qu'un utilisateur voit. C'est ce que
+      `getByRole`/`getByLabel` interrogent, et c'est **universel** : tout connecteur web en a une.
+      Elle survit aux refontes de gabarit, là où un attribut `name` peut changer.
+    - **le nom TECHNIQUE** (`name`) — indispensable pour VÉRIFIER l'état par RPC (il porte le
+      champ du modèle Odoo). Propre au connecteur.
+
+    Et les **CONTRAINTES** (`pattern`, `minlength`, `maxlength`, `min`, `max`, `step`) : sans
+    elles, une valeur générée peut être refusée par le formulaire — et on diagnostiquerait à tort
+    « l'application est cassée » alors que c'est la donnée du test qui l'est.
+    """
     return page.evaluate("""() => {
+        // Le libellé visible d'un champ : <label for=…>, label englobant, aria-label,
+        // aria-labelledby, ou placeholder. Ordre = celui de la spec d'accessibilité.
+        // ⚠️ Espaces NORMALISÉS : le HTML indenté rend un libellé suivi d'un retour à la ligne
+        // et de vingt espaces. (Ne JAMAIS écrire de séquence d'échappement dans ce commentaire :
+        // la chaîne est un littéral Python, qui la convertirait et couperait le commentaire JS.)
+        // Un libellé non nettoyé ne correspondrait à aucun `getByLabel` et polluerait le prompt.
+        // L'étoile des champs requis (« Montant HT * ») est retirée : elle n'appartient pas au nom.
+        const propre = (t) => (t || '').replace(/\s+/g, ' ').replace(/\s*\*\s*$/, '').trim();
+        const libelle = (el) => {
+            if (el.getAttribute('aria-label')) return propre(el.getAttribute('aria-label'));
+            const par = el.getAttribute('aria-labelledby');
+            if (par) {
+                const cible = document.getElementById(par);
+                if (cible) return propre(cible.textContent);
+            }
+            if (el.id) {
+                const lab = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+                if (lab) return propre(lab.textContent);
+            }
+            const englobant = el.closest('label');
+            if (englobant) return propre(englobant.textContent);
+            return propre(el.getAttribute('placeholder'));
+        };
+        // Le rôle ARIA effectif — explicite s'il est posé, sinon déduit du type d'élément.
+        const role = (el) => {
+            if (el.getAttribute('role')) return el.getAttribute('role');
+            const tag = el.tagName.toLowerCase();
+            if (tag === 'select') return el.multiple ? 'listbox' : 'combobox';
+            if (tag === 'textarea') return 'textbox';
+            const t = (el.type || '').toLowerCase();
+            return ({checkbox: 'checkbox', radio: 'radio', file: 'button', number: 'spinbutton',
+                     email: 'textbox', tel: 'textbox', url: 'textbox', search: 'searchbox',
+                     password: 'textbox', date: 'textbox', text: 'textbox'})[t] || 'textbox';
+        };
+
         const champs = [];
         document.querySelectorAll('input[name], select[name], textarea[name]').forEach(el => {
             const tag = el.tagName.toLowerCase();
             const entry = {name: el.getAttribute('name'), tag,
                            type: (el.type || '').toLowerCase(),
                            required: el.required === true,
-                           visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)};
+                           visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+                           // ── Identité ACCESSIBLE (universelle, résiste aux refontes) ──
+                           role: role(el),
+                           label: libelle(el).slice(0, 120)};
+            // ── CONTRAINTES de saisie : ce qui rend une valeur ACCEPTABLE ──
+            const c = {};
+            if (el.getAttribute('pattern')) c.pattern = el.getAttribute('pattern');
+            if (el.getAttribute('minlength')) c.minlength = +el.getAttribute('minlength');
+            if (el.getAttribute('maxlength')) c.maxlength = +el.getAttribute('maxlength');
+            if (el.getAttribute('min') !== null) c.min = el.getAttribute('min');
+            if (el.getAttribute('max') !== null) c.max = el.getAttribute('max');
+            if (el.getAttribute('step')) c.step = el.getAttribute('step');
+            if (el.getAttribute('accept')) c.accept = el.getAttribute('accept');
+            if (Object.keys(c).length) entry.contraintes = c;
             if (tag === 'select') {
                 entry.options = Array.from(el.options).map(o => [o.value, (o.text||'').trim()]);
             }
             champs.push(entry);
+        });
+        // ── Éléments ACTIONNABLES (boutons, soumissions) — par leur identité accessible ──
+        // Sans eux, l'agent devait deviner le libellé du bouton d'envoi. Mesuré : « soumission
+        // absente » était l'un des deux motifs d'alerte les plus fréquents au smoke-check.
+        const actions = [];
+        document.querySelectorAll(
+            'button, input[type=submit], input[type=button], a[role=button], [role=button]'
+        ).forEach(el => {
+            const nom = propre(el.getAttribute('aria-label') || el.value || el.textContent);
+            if (!nom) return;
+            actions.push({role: 'button', label: nom.slice(0, 80),
+                          soumet: (el.type || '').toLowerCase() === 'submit'
+                                  || el.closest('form') !== null,
+                          visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)});
         });
         const liens = [];
         document.querySelectorAll('a[href]').forEach(a => {
@@ -109,7 +184,7 @@ def _inspecter_page(page):
             action: f.getAttribute('action') || '', method: (f.method||'get').toLowerCase(),
             champs: f.querySelectorAll('input[name], select[name], textarea[name]').length,
         }));
-        return {champs, liens, formulaires, titre: document.title};
+        return {champs, actions, liens, formulaires, titre: document.title};
     }""")
 
 
