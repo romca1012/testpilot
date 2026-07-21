@@ -1,6 +1,6 @@
 # PLAN — état réel et route jusqu'au produit fini
 
-> **Version 1 — 2026-07-21.** Document de référence **vivant** : il dit ce qui EST vrai
+> **Version 2 — 2026-07-21 (soir).** Document de référence **vivant** : il dit ce qui EST vrai
 > aujourd'hui, ce qui est DÉCIDÉ, et ce qui RESTE. À mettre à jour à chaque jalon.
 >
 > ⚠️ **Pourquoi ce fichier existe.** Un plan validé oralement (le « A/B/C ») s'est **perdu entre
@@ -75,6 +75,136 @@ assertions trop strictes est **une autre question, non instrumentée**.
 
 ---
 
+## 2bis. 🔴 PROPOSITION D'ARCHITECTURE — *en attente d'arbitrage du porteur*
+
+> **Statut : PROPOSÉE, PAS ACTÉE.** Rien n'a été implémenté. Ce chapitre existe pour que la
+> réflexion ne se perde pas — c'est le plus gros changement envisagé depuis le début.
+
+### Le problème qu'elle résout
+
+Huit causes d'échec technique trouvées, **huit correctifs un par un**. Six relèvent du même motif
+(*l'annuaire savait, personne ne transmettait*), deux sont des trous d'outil. Et les trois filets
+existants — smoke-check, dry-run, boucle de réparation — **n'en ont attrapé aucune**.
+
+Ce n'est pas huit bugs : c'est **un défaut de conception répété**.
+
+**La cause racine** : le LLM écrit lui-même les sélecteurs et les noms de champs
+(`je renseigne le champ "partner_email"`). Chaque fait de l'application qu'il ignore devient une
+panne. On lui a enseigné huit faits ; il en reste un nombre inconnu.
+
+### L'inversion proposée
+
+> **Le LLM produit une INTENTION. Une couche déterministe la résout en actions, en lisant le
+> modèle mesuré.**
+
+```gherkin
+Quand je remplis le formulaire de demande d'avoir avec des données valides
+Et je soumets le formulaire
+Alors un enregistrement « helpdesk.ticket » a été créé
+```
+
+Le résolveur lit l'annuaire : il remplit **tous** les champs requis visibles, avec des valeurs du
+**bon type**, téléverse pour les fichiers, choisit une **vraie** option, ignore les champs cachés,
+clique le vrai bouton. **Le LLM ne nomme plus jamais un champ — il ne peut donc plus se tromper
+dessus.** Les huit causes deviennent structurellement impossibles.
+
+### Ce que la recherche a confirmé (2026-07-21)
+
+| Constat | Source |
+|---|---|
+| La guérison **par intention** rattrape **75-90 %** des échecs, contre **40-70 %** pour le rattrapage de sélecteurs | [Keysight — Self-healing 2026](https://www.keysight.com/blogs/en/tech/software-testing/2026-self-healing-test-automation-beyond-locator-patching) |
+| Les locateurs **orientés utilisateur** (`getByRole`, `getByLabel`) survivent aux refontes ; CSS/attributs sont un dernier recours | [Playwright — Best Practices](https://playwright.dev/docs/best-practices) |
+| L'**arbre d'accessibilité** est ce que lisent `getByRole`, les lecteurs d'écran **et les agents IA** (Playwright MCP l'expose en YAML) | [TestDino — Accessibility tree](https://testdino.com/blog/accessibility-tree) |
+| En *model-based testing*, **l'exactitude du modèle est tout** — un modèle inexact produit des tests trompeurs | [Sauce Labs — MBT](https://saucelabs.com/resources/blog/the-challenges-and-benefits-of-model-based-testing) |
+| Un crawler doit **extraire les contraintes de validation** ; toute donnée générée doit être validée contre les règles réelles | [testRigor — Test data generation](https://testrigor.com/blog/test-data-generation-automation/) |
+| Vérifier l'**état persisté** (API/base) prouve ce qu'un message d'écran ne prouve pas | [API testing & DB integration](https://tenjinonline.com/blog/api-testing/api-testing-database-integration-guide/) |
+
+### Les quatre composants
+
+**1. Enrichir le modèle mesuré** *(gratuit, sans LLM, conditionne tout le reste)*
+
+| Ce qu'on capture | Usage | Portabilité |
+|---|---|---|
+| **rôle + nom accessible** | AGIR (cliquer, remplir) — résiste aux refontes | **universel**, tout connecteur web |
+| **nom technique** (`partner_email`) | VÉRIFIER l'état par RPC/API | propre au connecteur |
+| **contraintes** (`pattern`, `min/max`, `maxlength`, `type`, options) | générer des valeurs **conformes** | universel |
+
+⚠️ Aujourd'hui on ne capture **que** le nom technique — la couche fragile, et la seule qui soit
+spécifique à Odoo. C'est ce qui empêche la portabilité.
+
+**2. Steps métier + résolveur déterministe.** Le LLM fournit le **sens** (valeurs métier
+plausibles) ; le déterministe garantit la **forme** (conformité aux contraintes mesurées).
+
+**3. Vérification par l'ÉTAT, pas par l'écran.** Nos 8 succès sont tous `non_conforme` —
+probablement des assertions sur du texte affiché. Un verdict honnête vérifie que la donnée existe.
+
+**4. Un QUATRIÈME verdict.**
+
+```
+le test n'a pas pu tourner              → erreur technique
+le test a tourné, l'app est conforme    → conforme
+le test a tourné, l'app ne l'est pas    → non conforme
+le test a tourné, ses DONNÉES refusées  → test à corriger   ← MANQUANT
+```
+
+Sans lui, une donnée mal formée fait dire à l'outil « votre application est cassée ». **C'est le
+pire mensonge possible pour un outil de test** — et la machinerie existe déjà
+(`test_a_reparer` vs `vrai_bug`), elle n'est simplement pas branchée sur ce cas.
+
+### Ce que ça garantit — et ce que ça ne garantit PAS
+
+**Ça ne donne pas « zéro erreur technique ».** Ça change la NATURE de ce qui reste :
+
+> Aujourd'hui : « le modèle a inventé quelque chose » — surface **illimitée**, imprévisible.
+> Après : « le modèle mesuré est incomplet ou périmé » — surface **bornée, détectable, réparable**.
+
+**Limites qui subsistent, quoi qu'on fasse** :
+- les **états dynamiques** (champs conditionnels, assistants, modales) — le crawl reste une photo ;
+- les **règles métier absentes du HTML** (« l'IBAN doit correspondre au client ») — d'où le 4ᵉ verdict ;
+- le **périmètre exploré** : on ne valide que ce qu'on a mesuré. Le back-office Odoo
+  (`/web`, `/odoo`) est **hors périmètre du crawl** — l'y étendre serait un autre produit,
+  **décision du porteur**.
+
+### Écarté, et pourquoi
+
+**Un agent IA qui pilote le navigateur en direct** (Playwright MCP, outils « agentic ») : coût par
+exécution, non-déterminisme **à chaque run**, et surtout **aucun artefact versionnable**. Un outil
+de gestion de tests a besoin d'un test **stable, relisible, rejouable**. On garde la génération
+d'un test statique — mais on **explore** via l'arbre d'accessibilité.
+
+### Impact sur l'existant
+
+| | |
+|---|---|
+| **Inchangé** | toute l'interface · le parcours (spec → pause métier → validation → test → campagne) · le référentiel · les campagnes multi-modules · l'onglet Qualité · le suivi des coûts |
+| **Enrichi** | l'exploration relève plus d'informations → **ré-explorer** (gratuit, sans LLM) |
+| **Interne** | la façon dont le test est écrit sous le capot — **invisible pour l'utilisateur** |
+| **Devient inutile** | les 8 « leçons » enseignées au prompt : elles ne deviennent pas fausses, elles ne servent plus |
+
+⚠️ **Les tests déjà générés continuent de fonctionner** : on ajoute une façon d'écrire, on ne
+retire pas l'ancienne. Deux générations cohabiteront — sans danger.
+
+**Risque : faible** (on ajoute une couche, le socle reste). **Effort : réel** — le plus gros
+chantier depuis le début.
+
+### Ordre imposé
+
+1. **Enrichir le modèle** *(gratuit, sans risque)* ;
+2. **Steps métier + résolveur** ;
+3. **Vérification par l'état + 4ᵉ verdict** ;
+4. **Contrat de connecteur**, extrait de ce que le résolveur exige ;
+5. **Validateur pré-exécution** — en filet, plus en pièce maîtresse.
+
+> **1 avant 2, impérativement** : le résolveur ne peut pas être meilleur que le modèle qu'il lit.
+
+### Critère d'acceptation
+
+Un **corpus de non-régression des 8 causes historiques** : les 8 Gherkin qui ont échoué doivent
+être rejetés — ou rendus impossibles à produire. Vérifiable, falsifiable, et interdit qu'une cause
+revienne.
+
+---
+
 ## 3. Ce qui RESTE — la route jusqu'au produit fini
 
 ### Phase 1 — Consolider *(en cours)*
@@ -84,8 +214,11 @@ assertions trop strictes est **une autre question, non instrumentée**.
 - [x] **`demande_avoir`** — résolu : l'agent inventait l'identifiant de route.
 - [x] **`sinistre_client`** — résolu : `leave_field_empty` aveugle au `<select>`.
 - [ ] **Remesurer** après ces deux derniers correctifs (le banc dira s'ils portent).
+- [ ] 🔴 **ARBITRER la proposition d'architecture du §2bis** — c'est la décision qui commande la
+      suite. Tant qu'elle n'est pas tranchée, on continue de corriger cause par cause.
 - [ ] **Non instrumenté** : les tests trouvent des écarts fonctionnels (`non_conforme`) — sont-ils
-      RÉELS, ou dus à des assertions trop strictes ? Question distincte de la fiabilité technique.
+      RÉELS, ou dus à des assertions trop strictes ? Le §2bis y répond (vérification par l'état
+      + 4ᵉ verdict), mais l'ampleur du faux positif n'est **toujours pas mesurée**.
 
 ### Phase 2 — Rendre déployable
 

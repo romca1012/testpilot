@@ -2,6 +2,10 @@
 
 > # 📍 CE DOCUMENT EST PÉRIMÉ — LIRE `docs/PLAN.md` D'ABORD
 >
+> 🔴 **UNE DÉCISION ATTEND LE PORTEUR** : `PLAN.md` §2bis — proposition d'architecture
+> (« le LLM produit une intention, un résolveur déterministe l'exécute »). Elle commande toute
+> la suite : **tant qu'elle n'est pas tranchée, on corrige les erreurs cause par cause**.
+>
 > **`docs/PLAN.md` (2026-07-21) est le point d'entrée à la reprise.** Il dit l'état RÉEL, les
 > décisions prises, et la route jusqu'au produit fini. Ce rapport-ci s'arrête au 2026-07-17 : il
 > garde sa valeur d'**historique** (les leçons, les bugs trouvés, les décisions `0001`–`0022`),
