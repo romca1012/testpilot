@@ -60,6 +60,11 @@ export const api = {
   // ne lance rien, lancer est un geste explicite).
   launchRun: (runId: number | string) =>
     request<RunSummary>(`/api/runs/${runId}/launch`, { method: 'POST' }),
+  // Clôt (ou rouvre) une campagne : archivée = lecture seule. Réversible, rien n'est effacé.
+  archiveRun: (runId: number | string, archived = true) =>
+    request<RunSummary>(`/api/runs/${runId}/archive`, {
+      method: 'POST', body: JSON.stringify({ archived }),
+    }),
   startExploration: (id: number | string) =>
     request<Exploration>(`/api/projects/${id}/exploration`, { method: 'POST' }),
   listModules: (projectId: number | string) => request<ModuleSummary[]>(`/api/projects/${projectId}/modules`),
@@ -163,7 +168,8 @@ export interface Quality {
 export interface RunSummary {
   id: number; project_id: number; name: string
   status: string            // draft | running | completed
-  selection_mode: string; case_count: number; tested_count: number; created_at: string
+  selection_mode: string; case_count: number; tested_count: number
+  is_archived: boolean; created_at: string
 }
 /** Un cas DANS un run, avec son résultat (ou null = non testé). */
 export interface RunCaseResult {

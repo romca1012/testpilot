@@ -2,8 +2,9 @@
 // « Ajouter une exécution de test » — création d'un RUN (campagne de N cas, décision 0022 n°8).
 //
 // Créer NE LANCE RIEN (8.c.1) : le run naît en brouillon, le lancement est un geste séparé. Deux
-// sélections seulement : « tous les cas » (VIVANTE — les nouveaux cas rejoignent) et « cas
-// spécifiques » (FIGÉE). Le filtrage dynamique est REPORTÉ (8.a) : on le dit, on ne le simule pas.
+// sélections : « tous les cas » (VIVANTE — les nouveaux cas rejoignent) et « cas spécifiques »
+// (FIGÉE, transverse multi-modules §7). Le filtrage dynamique est reporté (8.a) et n'est plus
+// proposé du tout à l'écran — le serveur le refuse toujours explicitement.
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseSummary } from '../lib/api'
@@ -184,18 +185,6 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
             </div>
           </label>
 
-          <!-- Filtrage dynamique : REPORTÉ (0022 8.a). Affiché désactivé et EXPLIQUÉ, plutôt que
-               proposé puis refusé par le serveur (« affiché ≠ réel »). -->
-          <div class="flex gap-3 rounded-md border border-border/60 p-3 opacity-50">
-            <input type="radio" disabled class="mt-1" />
-            <div>
-              <div class="text-sm font-medium">Filtrage dynamique <span class="text-xs font-normal">(pas encore disponible)</span></div>
-              <p class="text-xs text-muted-foreground mt-0.5">
-                Les cas rejoindraient l'exécution selon des critères. Reporté : cela demande de
-                réévaluer chaque exécution à chaque modification de cas.
-              </p>
-            </div>
-          </div>
         </div>
       </div>
 

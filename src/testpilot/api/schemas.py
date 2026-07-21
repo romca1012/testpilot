@@ -378,6 +378,12 @@ class RunCaseResult(BaseModel):
     execution_id: int | None = None
 
 
+class RunArchiveIn(BaseModel):
+    """Clôture (ou réouverture) d'une campagne. Réversible : une clôture par erreur ne doit pas
+    être irrattrapable."""
+    archived: bool = True
+
+
 class RunSummary(BaseModel):
     id: int
     project_id: int
@@ -386,6 +392,9 @@ class RunSummary(BaseModel):
     selection_mode: str
     case_count: int = 0
     tested_count: int = 0  # cas ayant un résultat dans ce run → % de complétion
+    # Archivé = LECTURE SEULE (on ne relance plus). Distinct du statut : `completed` dit où en
+    # est l'exécution, `is_archived` dit si on a le droit d'y toucher.
+    is_archived: bool = False
     created_at: str = ""
 
 

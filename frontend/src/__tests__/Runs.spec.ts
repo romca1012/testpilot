@@ -15,6 +15,7 @@ const createRun = vi.fn()
 const listRuns = vi.fn()
 const getRun = vi.fn()
 const launchRun = vi.fn()
+const archiveRun = vi.fn()
 const push = vi.fn()
 
 vi.mock('../lib/api', () => ({
@@ -24,6 +25,7 @@ vi.mock('../lib/api', () => ({
     listRuns: (...a: any[]) => listRuns(...a),
     getRun: (...a: any[]) => getRun(...a),
     launchRun: (...a: any[]) => launchRun(...a),
+    archiveRun: (...a: any[]) => archiveRun(...a),
   },
 }))
 vi.mock('vue-router', () => ({
@@ -47,9 +49,10 @@ beforeEach(() => {
   createRun.mockResolvedValue({ id: 7, name: 'R', status: 'draft', case_count: 2 })
   listRuns.mockResolvedValue([])
   launchRun.mockResolvedValue({ id: 7, status: 'running' })
+  archiveRun.mockResolvedValue({ id: 7, is_archived: true })
   getRun.mockResolvedValue({
     run: { id: 7, project_id: 1, name: 'Campagne', status: 'draft', selection_mode: 'frozen',
-           case_count: 2, tested_count: 1, created_at: '2026-07-21T10:00:00' },
+           case_count: 2, tested_count: 1, is_archived: false, created_at: '2026-07-21T10:00:00' },
     description: '', refs: '',
     cases: [
       { id: 1, title: 'Cas A', execution_status: 'success', functional_status: 'conforme', execution_id: 30 },
@@ -83,12 +86,6 @@ describe('AddTestRunForm — création d\'une campagne', () => {
     await w.find('input[type="checkbox"]').setValue(true)
     await flushPromises()
     expect(submit.attributes('disabled')).toBeUndefined()
-  })
-
-  it('dit que le filtrage dynamique n\'est pas disponible (jamais simulé)', async () => {
-    const w = mount(AddTestRunForm)
-    await flushPromises()
-    expect(w.text()).toContain('pas encore disponible')
   })
 
   it('permet une sélection TRANSVERSE : cas de plusieurs modules (§7)', async () => {
@@ -127,7 +124,7 @@ describe('RunsOverview — liste des campagnes', () => {
   it('affiche le % de complétion (note fonctionnelle)', async () => {
     listRuns.mockResolvedValue([{ id: 7, project_id: 1, name: 'Campagne', status: 'running',
                                   selection_mode: 'all', case_count: 4, tested_count: 1,
-                                  created_at: '2026-07-21T10:00:00' }])
+                                  is_archived: false, created_at: '2026-07-21T10:00:00' }])
     const w = mount(RunsOverview)
     await flushPromises()
 
@@ -170,7 +167,7 @@ describe('RunDetail — lancement de la campagne', () => {
   it("pendant l'exécution : pas de bouton, avancement affiché", async () => {
     getRun.mockResolvedValue({
       run: { id: 7, project_id: 1, name: 'C', status: 'running', selection_mode: 'frozen',
-             case_count: 2, tested_count: 1, created_at: '2026-07-21T10:00:00' },
+             case_count: 2, tested_count: 1, is_archived: false, created_at: '2026-07-21T10:00:00' },
       description: '', refs: '',
       cases: [
         { id: 1, title: 'A', execution_status: 'success', functional_status: 'conforme', execution_id: 30 },
@@ -187,7 +184,7 @@ describe('RunDetail — lancement de la campagne', () => {
   it('propose « Relancer » quand la campagne est terminée', async () => {
     getRun.mockResolvedValue({
       run: { id: 7, project_id: 1, name: 'C', status: 'completed', selection_mode: 'frozen',
-             case_count: 1, tested_count: 1, created_at: '2026-07-21T10:00:00' },
+             case_count: 1, tested_count: 1, is_archived: false, created_at: '2026-07-21T10:00:00' },
       description: '', refs: '',
       cases: [{ id: 1, title: 'A', execution_status: 'success', functional_status: 'conforme', execution_id: 30 }],
     })
@@ -195,5 +192,53 @@ describe('RunDetail — lancement de la campagne', () => {
     await flushPromises()
 
     expect(w.findAll('button').find((b) => b.text().includes('Relancer'))).toBeDefined()
+  })
+})
+
+describe('RunDetail — archivage (lecture seule, reversible)', () => {
+  it('cloture la campagne', async () => {
+    const w = mount(RunDetail)
+    await flushPromises()
+
+    await w.findAll('button').find((b) => b.text() === 'Clôturer')!.trigger('click')
+    await flushPromises()
+
+    expect(archiveRun).toHaveBeenCalledWith(7, true)
+  })
+
+  it('archivee : bandeau affiche, plus de bouton Lancer, « Rouvrir » propose', async () => {
+    getRun.mockResolvedValue({
+      run: { id: 7, project_id: 1, name: 'C', status: 'completed', selection_mode: 'frozen',
+             case_count: 1, tested_count: 1, is_archived: true, created_at: '2026-07-21T10:00:00' },
+      description: '', refs: '',
+      cases: [{ id: 1, title: 'A', execution_status: 'success', functional_status: 'conforme', execution_id: 30 }],
+    })
+    const w = mount(RunDetail)
+    await flushPromises()
+
+    expect(w.text()).toContain('archivée')
+    expect(w.findAll('button').find((b) => b.text().includes('Relancer'))).toBeUndefined()
+    expect(w.findAll('button').find((b) => b.text() === 'Rouvrir')).toBeDefined()
+  })
+})
+
+describe('RunsOverview — les archivees ne polluent pas la vue de travail', () => {
+  it('separe les archivees, repliees par defaut', async () => {
+    listRuns.mockResolvedValue([
+      { id: 7, project_id: 1, name: 'Active', status: 'draft', selection_mode: 'all',
+        case_count: 2, tested_count: 0, is_archived: false, created_at: '2026-07-21T10:00:00' },
+      { id: 8, project_id: 1, name: 'Ancienne', status: 'completed', selection_mode: 'all',
+        case_count: 2, tested_count: 2, is_archived: true, created_at: '2026-07-20T10:00:00' },
+    ])
+    const w = mount(RunsOverview)
+    await flushPromises()
+
+    expect(w.text()).toContain('Active')
+    expect(w.text()).toContain('Archivées (1)')
+    expect(w.text()).not.toContain('Ancienne')   // repliee
+
+    await w.findAll('button').find((b) => b.text().includes('Archivées'))!.trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('Ancienne')
   })
 })

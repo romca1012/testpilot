@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 15
+_SCHEMA_VERSION = 16
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -93,6 +93,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_14_champs_metier(conn)
     if version < 15:
         _migrate_15_test_run(conn)
+    if version < 16:
+        _migrate_16_run_archive(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -536,6 +538,21 @@ def _migrate_15_test_run(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_run_project ON test_run(project_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_runcase_run ON test_run_case(run_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_execution_run ON execution(run_id)")
+
+
+def _migrate_16_run_archive(conn: sqlite3.Connection) -> None:
+    """Archivage d'une campagne : un run clos passe en LECTURE SEULE (note fonctionnelle).
+
+    `is_archived` et non un statut de plus : le cycle `draft/running/completed` dit OÙ EN EST
+    l'exécution, l'archivage dit si on a le droit d'y toucher. Les fondre ferait qu'un run
+    terminé serait automatiquement gelé — or on veut pouvoir relancer une campagne terminée.
+
+    ⚠️ Archivage ≠ suppression (§2.10) : rien n'est effacé, tout reste consultable. Le SNAPSHOT
+    des cas à la clôture (décision n°2 de la note) reste REPORTÉ — un cas modifié après coup
+    s'affichera dans son état actuel, écart connu et assumé.
+    """
+    if "is_archived" not in _column_names(conn, "test_run"):
+        conn.execute("ALTER TABLE test_run ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

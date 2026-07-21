@@ -1051,6 +1051,22 @@ class RunRepo:
             out.append(row)
         return out
 
+    def archive(self, run_id: int, archived: bool = True) -> None:
+        """Clôt (ou rouvre) une campagne. Un run archivé est en LECTURE SEULE : on ne le relance
+        plus, ses résultats sont figés (note fonctionnelle — « bandeau exécution archivée »).
+
+        ⚠️ **Archivage ≠ suppression** : rien n'est effacé, le run et ses résultats restent
+        consultables (§2.10). Réversible aussi : une clôture faite par erreur ne doit pas être
+        irrattrapable — c'est la même logique que l'arbitrage réversible d'un diagnostic.
+
+        ⚠️ **Pas de SNAPSHOT des cas ici** (décision n°2 de la note fonctionnelle, reportée) : un
+        cas modifié après la clôture s'affichera dans son état actuel. C'est un écart connu et
+        assumé, pas un oubli.
+        """
+        self.conn.execute("UPDATE test_run SET is_archived=? WHERE id=?",
+                          (1 if archived else 0, run_id))
+        self.conn.commit()
+
     def set_status(self, run_id: int, status: str, *, launched: bool = False,
                    completed: bool = False) -> None:
         sets, params = ["status=?"], [status]

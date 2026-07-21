@@ -41,6 +41,12 @@ def start_campaign(conn, run_id: int) -> dict:
         raise CampaignError("not_found", f"exécution {run_id} introuvable")
     if run["status"] == "running":
         raise CampaignError("already_running", "cette exécution est déjà en cours")
+    if run.get("is_archived"):
+        # Garde CÔTÉ SERVEUR, pas seulement à l'écran (note fonctionnelle) : un run archivé est
+        # en lecture seule, ses résultats sont figés. Le bloquer uniquement dans l'UI laisserait
+        # l'API le relancer et réécrire un historique clos.
+        raise CampaignError("archived",
+                            "cette exécution est archivée (lecture seule) — rouvrez-la pour la relancer")
     case_ids = repo.case_ids(run_id)
     if not case_ids:
         # Lancer une campagne vide produirait un run « terminé » sans rien avoir testé — un

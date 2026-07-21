@@ -41,8 +41,14 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 }
 function statusOf(r: RunSummary) { return STATUS[r.status] || STATUS.draft }
 
+// Archivés SÉPARÉS des actifs (note fonctionnelle) : l'historique ne doit pas polluer la vue de
+// travail. Repliés par défaut — visibles, mais pas au premier plan.
+const actifs = computed(() => runs.value.filter((r) => !r.is_archived))
+const archives = computed(() => runs.value.filter((r) => r.is_archived))
+const showArchived = ref(false)
+
 const sorted = computed(() => {
-  const arr = [...runs.value]
+  const arr = [...actifs.value]
   if (sortBy.value === 'name') arr.sort((a, b) => a.name.localeCompare(b.name))
   else if (sortBy.value === 'pass') arr.sort((a, b) => completion(b) - completion(a))
   else arr.sort((a, b) => b.created_at.localeCompare(a.created_at))
@@ -112,6 +118,29 @@ function goNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) 
             </div>
           </div>
         </button>
+      </div>
+
+      <!-- Archivées : repliées par défaut. Rien n'est caché — juste rangé. -->
+      <div v-if="archives.length" class="mt-8">
+        <button class="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+                @click="showArchived = !showArchived">
+          <svg class="w-3.5 h-3.5 transition-transform" :class="showArchived ? 'rotate-90' : ''" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5l8 7-8 7z"/></svg>
+          Archivées ({{ archives.length }})
+        </button>
+        <div v-if="showArchived" class="mt-2">
+          <button v-for="r in archives" :key="r.id"
+                  class="w-full text-left flex items-center gap-4 py-3 border-b border-border/40 hover:bg-accent/30 rounded-md px-2 -mx-2 opacity-75"
+                  @click="openRun(r.id)">
+            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-semibold shrink-0 bg-secondary text-muted-foreground">
+              Archivée
+            </span>
+            <div class="min-w-0 flex-1">
+              <div class="text-sm text-primary truncate">R{{ r.id }} — {{ r.name }}</div>
+              <div class="text-xs text-muted-foreground mt-0.5">{{ r.tested_count }}/{{ r.case_count }} cas testés</div>
+            </div>
+            <span class="text-xs tabular-nums text-muted-foreground shrink-0">{{ completion(r) }} %</span>
+          </button>
+        </div>
       </div>
 
       <!-- Plans de test : conteneur de runs, non construit (incrément 2) — dit, jamais fabriqué. -->

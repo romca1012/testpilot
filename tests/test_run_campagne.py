@@ -291,3 +291,51 @@ def test_api_lancer_un_run_vide_est_REFUSE(client):
 
 def test_api_lancer_un_run_inconnu_404(client):
     assert client.post("/api/runs/999/launch").status_code == 404
+
+
+# ── Archivage (clôture = lecture seule) ───────────────────────────────────────
+
+def test_archiver_un_run_le_passe_en_LECTURE_SEULE(client):
+    """Un run archivé ne se relance plus — garde CÔTÉ SERVEUR, pas seulement à l'écran : sinon
+    l'API pourrait réécrire un historique clos."""
+    pid, ids = _projet_avec_cas(client, 1)
+    rid = client.post(f"/api/projects/{pid}/runs", json={
+        "name": "R", "selection_mode": "frozen", "case_ids": ids}).json()["id"]
+
+    r = client.post(f"/api/runs/{rid}/archive", json={"archived": True})
+    assert r.status_code == 200
+    assert r.json()["is_archived"] is True
+
+    lance = client.post(f"/api/runs/{rid}/launch")
+    assert lance.status_code == 409
+    assert "archivée" in lance.json()["detail"]
+
+
+def test_archiver_est_REVERSIBLE(client):
+    """Une clôture par erreur ne doit pas être irrattrapable (§2.10 : rien n'est détruit)."""
+    pid, ids = _projet_avec_cas(client, 1)
+    rid = client.post(f"/api/projects/{pid}/runs", json={
+        "name": "R", "selection_mode": "frozen", "case_ids": ids}).json()["id"]
+    client.post(f"/api/runs/{rid}/archive", json={"archived": True})
+
+    r = client.post(f"/api/runs/{rid}/archive", json={"archived": False})
+
+    assert r.json()["is_archived"] is False
+    # Et le run redevient lançable (le refus n'était pas définitif).
+    assert client.post(f"/api/runs/{rid}/launch").status_code in (202, 409)
+
+
+def test_archiver_n_efface_RIEN(client):
+    """Archivage ≠ suppression : le run et ses cas restent consultables."""
+    pid, ids = _projet_avec_cas(client, 2)
+    rid = client.post(f"/api/projects/{pid}/runs", json={
+        "name": "R", "selection_mode": "frozen", "case_ids": ids}).json()["id"]
+    client.post(f"/api/runs/{rid}/archive", json={"archived": True})
+
+    detail = client.get(f"/api/runs/{rid}")
+    assert detail.status_code == 200
+    assert len(detail.json()["cases"]) == 2
+
+
+def test_api_archiver_un_run_inconnu_404(client):
+    assert client.post("/api/runs/999/archive", json={"archived": True}).status_code == 404

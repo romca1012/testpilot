@@ -16,14 +16,15 @@ from testpilot.store.repositories import ProjectRepo, RunRepo
 
 router = APIRouter(tags=["runs"])
 
-_LAUNCH_STATUS = {"not_found": 404, "empty": 422, "already_running": 409}
+_LAUNCH_STATUS = {"not_found": 404, "empty": 422, "already_running": 409, "archived": 409}
 
 
 def _summary(run: dict, case_count: int) -> schemas.RunSummary:
     return schemas.RunSummary(
         id=run["id"], project_id=run["project_id"], name=run["name"], status=run["status"],
         selection_mode=run["selection_mode"], case_count=case_count,
-        tested_count=run.get("tested_count", 0), created_at=run.get("created_at", ""))
+        tested_count=run.get("tested_count", 0), is_archived=bool(run.get("is_archived")),
+        created_at=run.get("created_at", ""))
 
 
 @router.post("/api/projects/{project_id}/runs", response_model=schemas.RunSummary, status_code=201)
@@ -73,6 +74,20 @@ def launch_run(run_id: int, background: BackgroundTasks, conn=Depends(get_conn))
         raise HTTPException(status_code=_LAUNCH_STATUS.get(err.code, 400), detail=err.detail)
     background.add_task(campaign_service.run_campaign, **params)
     repo = RunRepo(conn)
+    return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
+
+
+@router.post("/api/runs/{run_id}/archive", response_model=schemas.RunSummary)
+def archive_run(run_id: int, body: schemas.RunArchiveIn, conn=Depends(get_conn)):
+    """Clôt (ou rouvre) une campagne. Archivée = LECTURE SEULE : on ne la relance plus.
+
+    Réversible : une clôture par erreur ne doit pas être irrattrapable. Rien n'est effacé —
+    archivage ≠ suppression (§2.10).
+    """
+    repo = RunRepo(conn)
+    if repo.get(run_id) is None:
+        raise HTTPException(status_code=404, detail=f"exécution {run_id} introuvable")
+    repo.archive(run_id, body.archived)
     return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
 
 
