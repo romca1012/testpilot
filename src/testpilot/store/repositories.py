@@ -970,6 +970,99 @@ class ExecutionRepo:
             "SELECT * FROM scenario_result WHERE execution_id=? ORDER BY id", (execution_id,)))
 
 
+class RunRepo:
+    """Le RUN — une campagne de N cas (décision `0022` n°8). Un run REGROUPE des cas à jouer
+    ensemble ; le résultat d'un cas DANS un run est une `execution` rattachée (`run_id`).
+
+    Deux modes de sélection : `all` (VIVANT — les cas du projet, recalculés à la lecture) et
+    `frozen` (FIGÉ — la liste choisie, matérialisée dans `test_run_case`). Le filtrage dynamique
+    est reporté (`0022` 8.a)."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def create(self, *, project_id: int, name: str, description: str = "", refs: str = "",
+               selection_mode: str = "frozen", case_ids: list[int] | None = None) -> int:
+        """Crée un run en BROUILLON (jamais lancé à la création — `0022` 8.c.1).
+
+        `case_ids` n'est matérialisé que pour `frozen` : en mode `all`, la sélection est vivante,
+        la stocker figerait ce qu'on veut justement garder mouvant.
+        """
+        ts = now_iso()
+        cur = self.conn.execute(
+            "INSERT INTO test_run (project_id, name, description, refs, selection_mode, status,"
+            " created_at) VALUES (?,?,?,?,?,'draft',?)",
+            (project_id, name, description, refs, selection_mode, ts))
+        run_id = int(cur.lastrowid)
+        if selection_mode == "frozen":
+            for cid in dict.fromkeys(case_ids or []):  # dédup en gardant l'ordre
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO test_run_case (run_id, case_id) VALUES (?,?)",
+                    (run_id, cid))
+        self.conn.commit()
+        return run_id
+
+    def get(self, run_id: int) -> dict | None:
+        row = self.conn.execute("SELECT * FROM test_run WHERE id=?", (run_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_for_project(self, project_id: int) -> list[dict]:
+        # `tested_count` = cas DISTINCTS ayant au moins une exécution dans ce run — la base du
+        # « % de complétion » de l'écran Aperçu (note fonctionnelle). Le total dépend du mode
+        # (figé = frozen_count ; vivant = calculé par l'appelant), d'où les deux exposés.
+        return _rows(self.conn.execute(
+            "SELECT r.*,"
+            " (SELECT COUNT(*) FROM test_run_case rc WHERE rc.run_id=r.id) AS frozen_count,"
+            " (SELECT COUNT(DISTINCT e.test_case_id) FROM execution e WHERE e.run_id=r.id)"
+            "     AS tested_count"
+            " FROM test_run r WHERE r.project_id=? ORDER BY r.id DESC", (project_id,)))
+
+    def case_ids(self, run_id: int) -> list[int]:
+        """Les cas du run : recalculés (mode `all`) ou lus dans la liaison figée (`frozen`)."""
+        run = self.get(run_id)
+        if run is None:
+            return []
+        if run["selection_mode"] == "all":
+            return [r["id"] for r in self.conn.execute(
+                "SELECT tc.id FROM test_case tc JOIN module m ON tc.module_id=m.id"
+                " WHERE m.project_id=? ORDER BY tc.id", (run["project_id"],))]
+        return [r["case_id"] for r in self.conn.execute(
+            "SELECT case_id FROM test_run_case WHERE run_id=? ORDER BY case_id", (run_id,))]
+
+    def cases_with_results(self, run_id: int) -> list[dict]:
+        """Chaque cas du run + son résultat DANS CE run (la dernière exécution rattachée).
+
+        C'est le cœur de `0022` n°4 : le résultat vit sur le cas × run. Un cas sans exécution
+        dans ce run est « Non testé » — on l'expose quand même (il fait partie de la campagne).
+        """
+        out = []
+        for cid in self.case_ids(run_id):
+            case = self.conn.execute(
+                "SELECT id, title, last_execution_status, last_functional_status"
+                " FROM test_case WHERE id=?", (cid,)).fetchone()
+            if case is None:
+                continue  # cas supprimé depuis (mode all) — on ne fabrique rien
+            ex = self.conn.execute(
+                "SELECT id, execution_status, functional_status, scenarios_total,"
+                " scenarios_passed, started_at FROM execution"
+                " WHERE run_id=? AND test_case_id=? ORDER BY id DESC LIMIT 1", (run_id, cid)).fetchone()
+            row = dict(case)
+            row["result"] = dict(ex) if ex else None
+            out.append(row)
+        return out
+
+    def set_status(self, run_id: int, status: str, *, launched: bool = False,
+                   completed: bool = False) -> None:
+        sets, params = ["status=?"], [status]
+        if launched:
+            sets.append("launched_at=?"); params.append(now_iso())
+        if completed:
+            sets.append("completed_at=?"); params.append(now_iso())
+        params.append(run_id)
+        self.conn.execute(f"UPDATE test_run SET {', '.join(sets)} WHERE id=?", params)
+        self.conn.commit()
+
+
 class RepairRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn

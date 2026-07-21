@@ -408,6 +408,42 @@ class SpecExtractOut(BaseModel):
     filename: str = ""
 
 
+class RunIn(BaseModel):
+    """Création d'un run (campagne). `case_ids` n'est utilisé qu'en mode `frozen`."""
+    name: str
+    description: str = ""
+    refs: str = ""
+    selection_mode: str = "frozen"  # all | frozen
+    case_ids: list[int] = []
+
+
+class RunCaseResult(BaseModel):
+    """Un cas DANS un run, avec son résultat (dernière exécution rattachée) ou None si non testé."""
+    id: int
+    title: str
+    execution_status: str | None = None
+    functional_status: str | None = None
+    execution_id: int | None = None
+
+
+class RunSummary(BaseModel):
+    id: int
+    project_id: int
+    name: str
+    status: str            # draft | running | completed
+    selection_mode: str
+    case_count: int = 0
+    tested_count: int = 0  # cas ayant un résultat dans ce run → % de complétion
+    created_at: str = ""
+
+
+class RunDetailOut(BaseModel):
+    run: RunSummary
+    description: str = ""
+    refs: str = ""
+    cases: list[RunCaseResult] = []
+
+
 class ModuleIn(BaseModel):
     name: str
     description: str = ""

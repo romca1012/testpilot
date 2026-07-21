@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 14
+_SCHEMA_VERSION = 15
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -91,6 +91,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_13_case_group(conn)
     if version < 14:
         _migrate_14_champs_metier(conn)
+    if version < 15:
+        _migrate_15_test_run(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -487,6 +489,53 @@ def _migrate_14_champs_metier(conn: sqlite3.Connection) -> None:
         "UPDATE test_case_version SET angle = ("
         "  SELECT tc.angle FROM test_case tc WHERE tc.id = test_case_version.test_case_id)"
         " WHERE angle = ''")
+
+
+def _migrate_15_test_run(conn: sqlite3.Connection) -> None:
+    """Le RUN — une campagne de N cas (décision `0022` n°8, incrément 1). Idempotent.
+
+    Jusqu'ici, une `execution` était un run **mono-cas** : un cas s'exécutait seul. La cible : un
+    `test_run` est une **campagne nommée**, une liste de cas à jouer ensemble ; le résultat d'un
+    cas DANS un run est une `execution` rattachée (`run_id`). `run_id` NULL = les exécutions
+    mono-cas de l'ancien modèle, conservées telles quelles (aucune donnée perdue).
+
+    - `test_run.selection_mode` : `all` (VIVANT — les cas du projet, recalculés) ou `frozen`
+      (FIGÉ — matérialisé dans `test_run_case`). Le filtrage dynamique est REPORTÉ (`0022` 8.a).
+    - `test_run_case` : liaison par **id** (contrainte §7 — jamais de copie de cas).
+    - `plan_id` : colonne simple (le conteneur `test_plan` viendra à l'incrément 2), sans FK dure
+      pour ne pas dépendre d'une table encore absente.
+
+    Index dans la MIGRATION, jamais dans `schema.sql` : `run_id` n'existe pas sur une base
+    antérieure, l'indexer avant la migration ferait planter l'ouverture (leçon du bug d'index).
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS test_run ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " project_id INTEGER NOT NULL,"
+        " name TEXT NOT NULL,"
+        " description TEXT NOT NULL DEFAULT '',"
+        " refs TEXT NOT NULL DEFAULT '',"
+        " selection_mode TEXT NOT NULL DEFAULT 'frozen'"
+        "     CHECK (selection_mode IN ('all', 'frozen')),"
+        " status TEXT NOT NULL DEFAULT 'draft'"
+        "     CHECK (status IN ('draft', 'running', 'completed')),"
+        " plan_id INTEGER,"
+        " created_at TEXT NOT NULL,"
+        " launched_at TEXT,"
+        " completed_at TEXT,"
+        " FOREIGN KEY (project_id) REFERENCES project(id))")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS test_run_case ("
+        " run_id INTEGER NOT NULL,"
+        " case_id INTEGER NOT NULL,"
+        " PRIMARY KEY (run_id, case_id),"
+        " FOREIGN KEY (run_id) REFERENCES test_run(id),"
+        " FOREIGN KEY (case_id) REFERENCES test_case(id))")
+    if "run_id" not in _column_names(conn, "execution"):
+        conn.execute("ALTER TABLE execution ADD COLUMN run_id INTEGER")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_run_project ON test_run(project_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_runcase_run ON test_run_case(run_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_execution_run ON execution(run_id)")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:
