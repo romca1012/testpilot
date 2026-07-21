@@ -6,7 +6,7 @@ from behave import given, when, then
 # Import mis au PLAT (layout d'exécution sans package features/ — voir environment.py).
 from _base_helpers import (
     fill_field, select_field_value, click_button,
-    leave_field_empty,
+    attach_file, leave_field_empty,
     memorize_record_count, check_count_not_increased, check_count_increased_by_one,
     no_duplicate, no_error_with_keywords, validation_error_inline,
     wait_form_submission, force_name_field,
@@ -21,6 +21,17 @@ def step_record_count(context, model):
 @when('je renseigne le champ "{field}" avec la valeur "{value}"')
 def step_fill(context, field, value):
     fill_field(context.page, field, value)
+
+
+@when('je joins un fichier au champ "{field}"')
+def step_attach(context, field):
+    """Téléverse une pièce jointe de test dans un champ fichier (`<input type="file">`).
+
+    ⚠️ Un champ fichier ne se remplit PAS avec « je renseigne le champ … avec la valeur … » au
+    sens d'un texte : le navigateur refuse (`InvalidStateError`). Utilise CE step pour toute
+    pièce jointe — 13 des 37 routes du portail en exigent une.
+    """
+    attach_file(context.page, field)
 
 
 @when('je sélectionne "{value}" dans le champ "{field}"')

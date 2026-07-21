@@ -81,13 +81,25 @@ def _section_champs_requis(plan: TestPlan, modele: dict | None) -> str:
         noms = [c["name"] for c in form["requis"]]
         lignes.append(f"Le formulaire `{form['route']}` EXIGE ces {len(noms)} champs requis. "
                       f"Tout scénario qui prétend CRÉER un enregistrement DOIT les remplir TOUS :")
+        fichiers = []
         for champ in form["requis"]:
             detail = ""
-            if champ["options"]:
+            if champ.get("type") == "file":
+                # ⚠️ Le TYPE change la façon de remplir : un champ fichier refuse le texte.
+                detail = " — **CHAMP FICHIER** : utilise `je joins un fichier au champ \"…\"`"
+                fichiers.append(champ["name"])
+            elif champ["options"]:
                 detail = f" — valeurs possibles : {', '.join(champ['options'][:6])}"
             elif champ["tag"]:
                 detail = f" ({champ['tag']})"
             lignes.append(f"  - `{champ['name']}`{detail}")
+        if fichiers:
+            lignes.append("")
+            lignes.append(
+                f"⚠️ **{len(fichiers)} champ(s) FICHIER** ({', '.join(f'`{f}`' for f in fichiers)}) : "
+                "un `<input type=\"file\">` **n'accepte pas de texte** — écrire dedans lève "
+                "`InvalidStateError` et le scénario échoue techniquement. Emploie le step partagé "
+                "`je joins un fichier au champ \"<nom>\"`, qui téléverse une pièce jointe de test.")
         lignes.append("")
     lignes += [
         "**Deux obligations, non négociables :**",

@@ -310,6 +310,13 @@ def fill_field(page, name, value):
             el.check(force=True)
         else:
             el.uncheck(force=True)
+    elif input_type == "file":
+        # ⚠️ Un <input type="file"> ne se remplit PAS comme du texte : le navigateur l'interdit
+        # (« InvalidStateError: This input element accepts a filename »). Mesuré le 2026-07-21 :
+        # c'était 2 échecs techniques sur 3 sur les formulaires à pièce jointe — et 13 des
+        # 37 routes du portail en ont un, presque toujours REQUIS. L'agent ne pouvait pas
+        # réussir : l'outil n'existait pas. On téléverse un vrai fichier de test.
+        attach_file(page, name, value)
     else:
         # Utiliser JS pour contourner les widgets Odoo et cibler le bon type d'élément
         page.evaluate(f"""
@@ -320,6 +327,39 @@ def fill_field(page, name, value):
                 el.dispatchEvent(new Event('change', {{ bubbles: true }}));
             }}
         """)
+
+
+def attach_file(page, name, value=""):
+    """Téléverse un fichier dans un `<input type="file">`.
+
+    `value` sert de NOM de fichier quand il ressemble à un nom (`rib.pdf`) ; sinon on génère
+    `piece-jointe-{champ}.pdf`. Le contenu est un PDF minimal mais VALIDE — un fichier vide ou
+    un `.txt` déguisé peut être rejeté par une validation de type côté application, et on
+    diagnostiquerait alors un faux « champ introuvable ».
+
+    Le fichier est créé dans un répertoire temporaire du système : il n'a pas à survivre au run,
+    et l'écrire dans le dépôt polluerait l'arborescence à chaque exécution.
+    """
+    import re
+    import tempfile
+    from pathlib import Path
+
+    nom = value.strip() if re.search(r"\.[A-Za-z0-9]{2,5}$", value.strip() or "") else ""
+    if not nom:
+        nom = f"piece-jointe-{re.sub(r'[^A-Za-z0-9_-]+', '-', name)}.pdf"
+    chemin = Path(tempfile.gettempdir()) / "testpilot-uploads" / nom
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    if nom.lower().endswith(".pdf"):
+        # PDF minimal valide (en-tête + trailer) — accepté par un contrôle de type courant.
+        chemin.write_bytes(
+            b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+            b"2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n"
+            b"trailer<</Root 1 0 R>>\n%%EOF\n")
+    else:
+        chemin.write_text("Fichier de test TestPilot.\n", encoding="utf-8")
+
+    page.wait_for_selector(f'[name="{name}"]', timeout=10000, state="attached")
+    page.locator(f'[name="{name}"]').first.set_input_files(str(chemin))
 
 
 def leave_field_empty(page, name):

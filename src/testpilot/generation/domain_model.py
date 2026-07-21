@@ -156,7 +156,10 @@ def formulaires_requis(modele: dict | None, routes) -> list[dict]:
         vus.add(signature)
         trouves.append({
             "route": route,
-            "requis": [{"name": c["name"], "tag": c.get("tag", ""),
+            # `type` exposé depuis le 2026-07-21 : sans lui, l'agent traitait un
+            # `<input type="file">` comme du texte → `InvalidStateError`, 2 échecs techniques
+            # sur 3 mesurés. L'annuaire le connaissait ; personne ne le transmettait.
+            "requis": [{"name": c["name"], "tag": c.get("tag", ""), "type": c.get("type", ""),
                         "options": [v for v, _ in (c.get("options") or [])]} for c in requis],
         })
     return trouves
