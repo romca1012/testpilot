@@ -7,13 +7,16 @@ un geste explicite (incrément 1b). Ici : créer / lister / détailler.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from testpilot.api import schemas
 from testpilot.api.deps import get_conn
+from testpilot.api.services import campaign_service
 from testpilot.store.repositories import ProjectRepo, RunRepo
 
 router = APIRouter(tags=["runs"])
+
+_LAUNCH_STATUS = {"not_found": 404, "empty": 422, "already_running": 409}
 
 
 def _summary(run: dict, case_count: int) -> schemas.RunSummary:
@@ -55,6 +58,22 @@ def list_runs(project_id: int, conn=Depends(get_conn)):
         count = run["frozen_count"] if run["selection_mode"] == "frozen" else len(repo.case_ids(run["id"]))
         out.append(_summary(run, count))
     return out
+
+
+@router.post("/api/runs/{run_id}/launch", response_model=schemas.RunSummary, status_code=202)
+def launch_run(run_id: int, background: BackgroundTasks, conn=Depends(get_conn)):
+    """LANCE la campagne : exécute ses cas EN SÉQUENCE (tâche de fond).
+
+    Geste explicite (`0022` 8.c.1) — créer un run ne lance rien. Un run vide est refusé : il
+    finirait « terminé » sans avoir rien testé, un succès trompeur.
+    """
+    try:
+        params = campaign_service.start_campaign(conn, run_id)
+    except campaign_service.CampaignError as err:
+        raise HTTPException(status_code=_LAUNCH_STATUS.get(err.code, 400), detail=err.detail)
+    background.add_task(campaign_service.run_campaign, **params)
+    repo = RunRepo(conn)
+    return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
 
 
 @router.get("/api/runs/{run_id}", response_model=schemas.RunDetailOut)

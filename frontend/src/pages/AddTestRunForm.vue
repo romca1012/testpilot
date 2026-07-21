@@ -40,6 +40,33 @@ function toggleCase(id: number) {
 function selectAll() { selected.value = cases.value.map((c) => c.id) }
 function selectNone() { selected.value = [] }
 
+// ── Sélection TRANSVERSE (§7) ────────────────────────────────────────────────
+// Une exécution nommée peut regrouper des cas de PLUSIEURS modules — c'est le JTBD « régression
+// transverse ». Le backend le permet (référence par ID, sans contrainte de module) ; l'écran doit
+// le RENDRE VISIBLE, sinon l'utilisateur ne sait pas qu'il peut le faire.
+const byModule = computed(() => {
+  const map = new Map<string, CaseSummary[]>()
+  for (const c of cases.value) {
+    const k = c.module || 'Sans module'
+    if (!map.has(k)) map.set(k, [])
+    map.get(k)!.push(c)
+  }
+  return [...map.entries()].map(([module, rows]) => ({ module, rows }))
+})
+function toggleModule(rows: CaseSummary[]) {
+  const ids = rows.map((c) => c.id)
+  const tousCoches = ids.every((id) => selected.value.includes(id))
+  selected.value = tousCoches
+    ? selected.value.filter((id) => !ids.includes(id))
+    : [...new Set([...selected.value, ...ids])]
+}
+// Combien de modules la sélection couvre — pour dire « transverse » quand c'est le cas.
+const modulesCouverts = computed(() => {
+  const mods = new Set(cases.value.filter((c) => selected.value.includes(c.id))
+                                  .map((c) => c.module || 'Sans module'))
+  return mods.size
+})
+
 async function submit() {
   if (!canSubmit.value) return
   saving.value = true
@@ -116,24 +143,42 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
                 Sélection <strong class="text-foreground">figée</strong> : aucun ajout automatique ensuite.
               </p>
 
-              <!-- La liste n'apparaît QUE si ce mode est choisi : pas de bruit sinon. -->
+              <!-- La liste n'apparaît QUE si ce mode est choisi : pas de bruit sinon.
+                   Groupée PAR MODULE : une exécution peut être TRANSVERSE (§7) — on le montre. -->
               <div v-if="form.selection === 'frozen'" class="mt-3">
-                <div class="flex items-center gap-3 text-xs">
+                <div class="flex items-center gap-3 text-xs flex-wrap">
                   <button type="button" class="text-primary hover:underline" @click="selectAll">Tout cocher</button>
                   <button type="button" class="text-primary hover:underline" @click="selectNone">Tout décocher</button>
                   <span class="text-muted-foreground">{{ selected.length }} sélectionné(s)</span>
+                  <span v-if="modulesCouverts > 1"
+                        class="rounded-full bg-primary/15 text-primary px-2 py-0.5 font-medium">
+                    Transverse — {{ modulesCouverts }} modules
+                  </span>
                 </div>
+                <p class="mt-1 text-xs text-muted-foreground">
+                  Vous pouvez piocher dans <strong class="text-foreground">plusieurs modules</strong> :
+                  c'est ce qui permet une campagne de régression transverse.
+                </p>
                 <p v-if="!cases.length" class="mt-2 text-xs text-muted-foreground">
                   Aucun cas de test dans ce projet — créez-en un d'abord.
                 </p>
-                <div v-else class="mt-2 max-h-56 overflow-y-auto rounded-md border border-border divide-y divide-border/60">
-                  <label v-for="c in cases" :key="c.id"
-                         class="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent/30 cursor-pointer">
-                    <input type="checkbox" :checked="selected.includes(c.id)" @change="toggleCase(c.id)"
-                           class="accent-[hsl(var(--primary))]" />
-                    <span class="text-muted-foreground tabular-nums text-xs">C{{ c.id }}</span>
-                    <span class="truncate">{{ c.title }}</span>
-                  </label>
+                <div v-else class="mt-2 max-h-64 overflow-y-auto rounded-md border border-border">
+                  <div v-for="g in byModule" :key="g.module">
+                    <button type="button"
+                            class="w-full flex items-center gap-2 bg-surface-raised/70 px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground border-b border-border/60"
+                            @click="toggleModule(g.rows)">
+                      <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+                      {{ g.module }}
+                      <span class="ml-auto font-normal normal-case">{{ g.rows.length }} cas — tout (dé)cocher</span>
+                    </button>
+                    <label v-for="c in g.rows" :key="c.id"
+                           class="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent/30 cursor-pointer border-b border-border/40">
+                      <input type="checkbox" :checked="selected.includes(c.id)" @change="toggleCase(c.id)"
+                             class="accent-[hsl(var(--primary))]" />
+                      <span class="text-muted-foreground tabular-nums text-xs">C{{ c.id }}</span>
+                      <span class="truncate">{{ c.title }}</span>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>

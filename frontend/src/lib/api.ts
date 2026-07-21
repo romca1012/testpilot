@@ -56,6 +56,10 @@ export const api = {
   listRuns: (projectId: number | string) =>
     request<RunSummary[]>(`/api/projects/${projectId}/runs`),
   getRun: (runId: number | string) => request<RunDetail>(`/api/runs/${runId}`),
+  // Lance la campagne : ses cas sont exécutés EN SÉQUENCE en tâche de fond (0022 8.c.1 — créer
+  // ne lance rien, lancer est un geste explicite).
+  launchRun: (runId: number | string) =>
+    request<RunSummary>(`/api/runs/${runId}/launch`, { method: 'POST' }),
   startExploration: (id: number | string) =>
     request<Exploration>(`/api/projects/${id}/exploration`, { method: 'POST' }),
   listModules: (projectId: number | string) => request<ModuleSummary[]>(`/api/projects/${projectId}/modules`),

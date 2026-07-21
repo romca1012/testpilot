@@ -8,7 +8,7 @@
 // Le statut d'un cas est DÉRIVÉ des deux axes réels (Passed/Failed/Retest/Blocked/Untested) :
 // jamais un badge unique qui masque l'un des deux (§4.1). Un cas sans exécution dans ce run est
 // « Untested » — on ne fabrique aucun résultat.
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type RunDetail as RunDetailDto, type RunCaseResult } from '../lib/api'
 import { testStatusCode, testStatusMeta, TEST_STATUS_ORDER, type TestStatusCode } from '../lib/status'
@@ -51,6 +51,47 @@ const STATUS_RUN: Record<string, { label: string; cls: string }> = {
   completed: { label: 'Terminé', cls: 'bg-success/15 text-success' },
 }
 
+// ── Lancement de la campagne ─────────────────────────────────────────────────
+// Geste EXPLICITE (0022 8.c.1). Les cas sont joués en séquence côté serveur ; on rafraîchit
+// périodiquement pour voir les résultats tomber un par un, jusqu'à la clôture du run.
+const launching = ref(false)
+const launchError = ref('')
+let pollTimer: number | undefined
+
+const enCours = computed(() => detail.value?.run.status === 'running')
+
+async function launch() {
+  launchError.value = ''
+  launching.value = true
+  try {
+    await api.launchRun(runId.value)
+    await load()
+    poll()
+  } catch (e: any) {
+    launchError.value = e?.message || 'Lancement impossible.'
+  } finally {
+    launching.value = false
+  }
+}
+
+function poll() {
+  stopPoll()
+  pollTimer = window.setInterval(async () => {
+    try {
+      const d = await api.getRun(runId.value)
+      detail.value = d
+      if (d.run.status !== 'running') stopPoll()   // campagne close
+    } catch { stopPoll() }
+  }, 4000)
+}
+function stopPoll() {
+  if (pollTimer) window.clearInterval(pollTimer)
+  pollTimer = undefined
+}
+// Si on ouvre une campagne déjà en cours, on suit son avancement sans avoir à la relancer.
+watch(enCours, (v) => { if (v) poll(); else stopPoll() })
+onBeforeUnmount(stopPoll)
+
 // Cliquer un cas : vers son RAPPORT s'il a été exécuté ici, sinon vers le cas lui-même.
 function openCase(c: RunCaseResult) {
   if (c.execution_id) {
@@ -82,7 +123,24 @@ function backToList() { router.push({ name: 'executions', params: { pid: pid.val
             :class="(STATUS_RUN[detail.run.status] || STATUS_RUN.draft).cls">
         {{ (STATUS_RUN[detail.run.status] || STATUS_RUN.draft).label }}
       </span>
+
+      <!-- Lancer : geste EXPLICITE. Désactivé pendant l'exécution ; réaffiché « Relancer »
+           une fois la campagne close (rejouer une campagne est légitime). -->
+      <button v-if="!enCours" class="ml-auto rounded-md bg-success text-white font-semibold px-4 py-2 text-sm flex items-center gap-2 hover:bg-success/90 disabled:opacity-50"
+              :disabled="launching || !total" @click="launch">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        {{ launching ? 'Lancement…' : (detail.run.status === 'completed' ? 'Relancer' : 'Lancer l\'exécution') }}
+      </button>
+      <span v-else class="ml-auto flex items-center gap-2 text-sm text-warning">
+        <span class="inline-block h-3.5 w-3.5 rounded-full border-2 border-warning border-t-transparent animate-spin"></span>
+        Exécution en cours — {{ tested }} / {{ total }} cas
+      </span>
     </div>
+    <p v-if="launchError" class="mt-2 text-sm text-destructive">{{ launchError }}</p>
+    <p v-if="enCours" class="mt-1 text-xs text-muted-foreground">
+      Les cas sont joués l'un après l'autre contre l'application réelle — les résultats
+      apparaissent au fur et à mesure.
+    </p>
     <button class="mt-1 text-primary/90 text-sm hover:underline" @click="backToList">Exécutions et résultats de test</button>
 
     <p v-if="detail.description" class="mt-3 text-sm text-foreground/85 whitespace-pre-wrap">{{ detail.description }}</p>

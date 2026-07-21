@@ -108,6 +108,31 @@ def test_cases_avec_resultats_rattache_l_execution_DU_run(conn):
     assert cases[0]["result"]["execution_status"] == "success"
 
 
+def test_un_run_est_TRANSVERSE_multi_modules(conn):
+    """⚠️ Le JTBD essentiel du §7 : « exécution nommée transverse multi-modules ». Un run
+    référence des cas PAR ID, sans contrainte de module — une campagne de régression pioche donc
+    dans plusieurs modules. C'est ce que l'ancien modèle (un cas = un run) rendait impossible."""
+    from testpilot.store.repositories import ModuleRepo, ProjectRepo
+
+    pid = ProjectRepo(conn).create(name="Projet transverse")
+    m1 = ModuleRepo(conn).create(project_id=pid, name="Facturation")
+    m2 = ModuleRepo(conn).create(project_id=pid, name="Livraison")
+    c1 = CaseRepo(conn).create(title="Facture", module_id=m1, feature_slug="fact")
+    c2 = CaseRepo(conn).create(title="Livraison", module_id=m2, feature_slug="livr")
+
+    repo = RunRepo(conn)
+    rid = repo.create(project_id=pid, name="Régression transverse",
+                      selection_mode="frozen", case_ids=[c1, c2])
+
+    assert repo.case_ids(rid) == sorted([c1, c2])
+    modules = {CaseRepo(conn).get(c["id"])["module_name"] for c in repo.cases_with_results(rid)}
+    assert modules == {"Facturation", "Livraison"}, "le run couvre PLUSIEURS modules"
+
+    # Et le mode « tous les cas » balaie aussi tous les modules du projet.
+    rid_all = repo.create(project_id=pid, name="Tout", selection_mode="all")
+    assert repo.case_ids(rid_all) == sorted([c1, c2])
+
+
 def test_un_cas_sans_execution_dans_le_run_est_non_teste(conn):
     mid = ensure_default_module(conn, "m")
     c1 = _cas(conn, mid, "a")
@@ -177,3 +202,92 @@ def test_api_filtrage_dynamique_refuse_clairement(client):
 def test_api_run_ou_projet_inconnu_404(client):
     assert client.get("/api/runs/999").status_code == 404
     assert client.post("/api/projects/999/runs", json={"name": "R", "selection_mode": "all"}).status_code == 404
+
+
+# ── Lancement de la campagne (incrément 1b) ───────────────────────────────────
+
+def test_lancer_execute_les_cas_EN_SEQUENCE_et_les_rattache(conn, monkeypatch):
+    """Chaque cas joué produit une exécution RATTACHÉE au run (`run_id`) — c'est ce lien qui fait
+    exister « le résultat du cas DANS ce run » (`0022` n°4). Behave est simulé."""
+    from testpilot.api.services import campaign_service, run_service
+    from testpilot.store.repositories import VersionRepo
+
+    mid = ensure_default_module(conn, "m")
+    c1, c2 = _cas(conn, mid, "a"), _cas(conn, mid, "b")
+    for c in (c1, c2):
+        vid = VersionRepo(conn).create(test_case_id=c, spec_content="", spec_hash="h",
+                                       feature_content="# f", steps_content="# s")
+        CaseRepo(conn).set_current_version(c, vid)
+        # Gate ouvert (amendement §4.3 : la validation métier vaut relecture).
+        from testpilot.store.repositories import ReviewRepo
+        from testpilot.verdict import review_gate
+        review_gate.auto_approve_metier(ReviewRepo(conn), case_id=c, version_id=vid)
+
+    repo = RunRepo(conn)
+    rid = repo.create(project_id=1, name="Campagne", selection_mode="frozen", case_ids=[c1, c2])
+
+    joues: list[int] = []
+    monkeypatch.setattr(run_service, "run_execution",
+                        lambda eid, slug, cid, vid: joues.append(cid))
+    monkeypatch.setattr(config, "DB_PATH", conn.execute("PRAGMA database_list").fetchone()[2])
+
+    params = campaign_service.start_campaign(conn, rid)
+    assert repo.get(rid)["status"] == "running", "le run passe EN COURS au lancement"
+    campaign_service.run_campaign(**params)
+
+    assert joues == [c1, c2], "les cas sont joués en séquence, dans l'ordre"
+    conn2 = get_initialized_db(config.DB_PATH)
+    rattachees = conn2.execute("SELECT COUNT(*) c FROM execution WHERE run_id=?", (rid,)).fetchone()["c"]
+    assert rattachees == 2, "chaque exécution est rattachée au run"
+    assert RunRepo(conn2).get(rid)["status"] == "completed", "la campagne est close à la fin"
+    conn2.close()
+
+
+def test_un_cas_en_echec_n_arrete_pas_la_campagne(conn, monkeypatch):
+    """Une campagne dit OÙ on en est sur l'ensemble : s'arrêter au premier échec cacherait
+    l'état des cas suivants."""
+    from testpilot.api.services import campaign_service, run_service
+    from testpilot.store.repositories import ReviewRepo, VersionRepo
+    from testpilot.verdict import review_gate
+
+    mid = ensure_default_module(conn, "m")
+    c1, c2 = _cas(conn, mid, "a"), _cas(conn, mid, "b")
+    for c in (c1, c2):
+        vid = VersionRepo(conn).create(test_case_id=c, spec_content="", spec_hash="h",
+                                       feature_content="# f", steps_content="# s")
+        CaseRepo(conn).set_current_version(c, vid)
+        review_gate.auto_approve_metier(ReviewRepo(conn), case_id=c, version_id=vid)
+    rid = RunRepo(conn).create(project_id=1, name="C", selection_mode="frozen", case_ids=[c1, c2])
+
+    joues: list[int] = []
+
+    def boum(eid, slug, cid, vid):
+        joues.append(cid)
+        if cid == c1:
+            raise RuntimeError("navigateur mort")
+    monkeypatch.setattr(run_service, "run_execution", boum)
+    monkeypatch.setattr(config, "DB_PATH", conn.execute("PRAGMA database_list").fetchone()[2])
+
+    params = campaign_service.start_campaign(conn, rid)
+    campaign_service.run_campaign(**params)
+
+    assert joues == [c1, c2], "le second cas est joué malgré l'échec du premier"
+
+
+def test_api_lancer_un_run_vide_est_REFUSE(client):
+    """Un run vide finirait « terminé » sans rien avoir testé — un succès trompeur."""
+    pid, _ = _projet_avec_cas(client, 1)
+    # Mode `all` sur un projet dont on retire les cas → run sans cas.
+    rid = client.post(f"/api/projects/{pid}/runs", json={
+        "name": "Vide", "selection_mode": "all"}).json()["id"]
+    for c in client.get(f"/api/cases?project_id={pid}").json():
+        client.delete(f"/api/cases/{c['id']}")
+
+    r = client.post(f"/api/runs/{rid}/launch")
+
+    assert r.status_code == 422
+    assert "aucun cas" in r.json()["detail"]
+
+
+def test_api_lancer_un_run_inconnu_404(client):
+    assert client.post("/api/runs/999/launch").status_code == 404
