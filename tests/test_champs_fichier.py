@@ -222,3 +222,31 @@ def test_sur_l_annuaire_REEL_les_champs_fichier_sont_signales():
 
     assert "justificatifs_mutation" in s
     assert "CHAMP FICHIER" in s, "le champ fichier requis de /mutation doit être signalé"
+
+
+# ── URL réelle vs route normalisée (6ᵉ occurrence du motif) ──────────────────
+
+def test_le_prompt_donne_l_URL_REELLE_quand_la_route_a_un_identifiant():
+    """⚠️ Mesuré le 2026-07-21 : l'agent a écrit `/demande_avoir/29789` — un identifiant INVENTÉ.
+    La page ne rendait pas le formulaire → `TimeoutError` sur `partner_name`, pourtant visible.
+
+    Les routes de l'annuaire sont NORMALISÉES (`{id}`) pour dédupliquer ; un test doit naviguer
+    vers une URL RÉELLE. Le crawl connaissait l'URL concrète et la jetait."""
+    modele = {"mesure_le": "2026-07-21", "transitions": {}, "onglets_internes": {},
+              "pages": {"/demande_avoir/{id}": {"champs": [],
+                                                "url_exemple": "/demande_avoir/12345"}}}
+
+    s = pm._section_domaine_mesure(_plan(["/demande_avoir/{id}"]), modele)
+
+    assert "/demande_avoir/12345" in s
+    assert "n'invente JAMAIS un numéro" in s
+
+
+def test_pas_d_exemple_pour_une_route_SANS_identifiant():
+    """Une route fixe (`/myservices`) n'a pas besoin d'exemple — le bruit dilue le signal."""
+    modele = {"mesure_le": "2026-07-21", "transitions": {}, "onglets_internes": {},
+              "pages": {"/myservices": {"champs": [], "url_exemple": "/myservices"}}}
+
+    s = pm._section_domaine_mesure(_plan(["/myservices"]), modele)
+
+    assert "URL réelle" not in s

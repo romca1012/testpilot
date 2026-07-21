@@ -202,6 +202,21 @@ def _section_domaine_mesure(plan: TestPlan, modele: dict | None) -> str:
         lignes.append(f"  *(+{len(pages) - _MAX_ROUTES} autres)*")
     lignes.append("")
 
+    # ⚠️ Les routes ci-dessus sont NORMALISÉES (`{id}`). Un test doit naviguer vers une URL
+    # RÉELLE : sans exemple, l'agent invente un identifiant (mesuré : `/demande_avoir/29789`,
+    # page qui ne rend pas le formulaire → `TimeoutError` sur un champ pourtant visible).
+    # On ne donne les exemples que pour les routes VISÉES : les donner toutes noierait le signal.
+    vises = {r for r in (list(plan.portal_routes or []) + [plan.entry_url or ""]) if r}
+    exemples = [(r, i["url_exemple"]) for r, i in pages.items()
+                if i.get("url_exemple") and i["url_exemple"] != r
+                and any(v in r or r in v for v in vises)]
+    if exemples:
+        lignes.append("**URL réelles à utiliser** — ces routes contiennent un identifiant : "
+                      "emploie l'exemple mesuré, n'invente JAMAIS un numéro :")
+        for route, exemple in exemples[:8]:
+            lignes.append(f"  - `{route}` → naviguer vers `{exemple}`")
+        lignes.append("")
+
     onglets = _onglets_distinctifs(modele)
     if onglets:
         lignes += [

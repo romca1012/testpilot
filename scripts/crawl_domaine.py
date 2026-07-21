@@ -159,6 +159,12 @@ def crawler(ctx, nav, base_url, max_pages):
         if reelle in pages:
             continue
         infos = _inspecter_page(page)
+        # ⚠️ On garde l'URL CONCRÈTE qui a réellement fonctionné (2026-07-21). La route est
+        # normalisée (`/demande_avoir/{id}`) pour dédupliquer, mais un test doit naviguer vers une
+        # URL RÉELLE. Sans cet exemple, l'agent INVENTE un identifiant : mesuré, il a écrit
+        # `/demande_avoir/29789` — une page qui ne rend pas le formulaire, d'où un `TimeoutError`
+        # sur un champ pourtant visible. Le crawl connaissait l'URL et la jetait.
+        infos["url_exemple"] = urlparse(page.url).path or reelle
         pages[reelle] = infos
         print(f"  {len(pages):>3}. {reelle:<42} {len(infos['champs']):>2} champs  "
               f"{len(infos['formulaires'])} form")
