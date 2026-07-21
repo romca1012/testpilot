@@ -185,6 +185,9 @@ export interface RunDetail {
 export interface Exploration {
   explored: boolean; running: boolean; job_id: string; mesure_le: string
   pages: number; transitions: number; champs: number; resume: string; error: string
+  // Règles de validation mesurées (motif, longueur, bornes) : le seul signe visible qu'une
+  // cartographie est fraîche. Zéro règle sur un portail qui en a = mesure à refaire.
+  contraintes: number
 }
 export interface ProjectInput {
   name: string; description?: string

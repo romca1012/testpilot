@@ -316,6 +316,10 @@ class ExplorationOut(BaseModel):
     pages: int = 0
     transitions: int = 0
     champs: int = 0
+    # Les règles de validation mesurées (motif, longueur, bornes). Affichées parce qu'elles sont le
+    # seul indicateur VISIBLE qu'une cartographie est fraîche : routes et champs bougent peu, les
+    # règles n'apparaissent qu'avec la mesure enrichie (cf. `exploration_service.etat`).
+    contraintes: int = 0
     resume: str = ""
     error: str = ""
 

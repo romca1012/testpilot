@@ -149,6 +149,28 @@ describe("ProjectsList — exploration de l'application (étape 2 du flux)", () 
     expect(w.text()).toContain('2026-07-20')
   })
 
+  it('affiche les RÈGLES DE SAISIE mesurées', async () => {
+    // ⚠️ Le 2026-07-21, une ré-exploration lancée depuis cet écran a réécrit la cartographie À
+    // L'IDENTIQUE — code de crawl périmé encore chargé en mémoire — en affichant « terminée ».
+    // Mêmes routes, mêmes champs : RIEN à l'écran ne pouvait le trahir. Les règles de saisie sont
+    // le seul compteur qui distingue une mesure fraîche d'une mesure périmée.
+    getExploration.mockResolvedValue({ ...EXPLORE, contraintes: 36 })
+    const w = mount(ProjectsList, { global: { stubs } })
+    await flushPromises()
+
+    expect(w.text()).toContain('36 règles de saisie')
+  })
+
+  it("N'AFFICHE PAS un compteur de règles à zéro", async () => {
+    // « 0 règles de saisie » se lirait comme « ce portail n'en a pas », alors que ça veut dire
+    // « on ne les a pas mesurées ». Mieux vaut se taire que d'affirmer une absence non vérifiée.
+    getExploration.mockResolvedValue({ ...EXPLORE, contraintes: 0 })
+    const w = mount(ProjectsList, { global: { stubs } })
+    await flushPromises()
+
+    expect(w.text()).not.toContain('règles de saisie')
+  })
+
   it("DÉSACTIVE le bouton tant qu'aucune connexion n'est saisie", async () => {
     // « Affiché ≠ réel » : ne jamais proposer une action que le serveur refusera (422).
     listProjects.mockResolvedValue([{ ...PROJET, base_url: '' }])

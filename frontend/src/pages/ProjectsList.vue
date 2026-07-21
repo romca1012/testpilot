@@ -271,6 +271,13 @@ onMounted(async () => { await load(); await loadExplorations() })
                 {{ explorations[p.id].pages }} routes · {{ explorations[p.id].transitions }} transitions
                 · {{ explorations[p.id].champs }} champs
               </span>
+              <!-- Les RÈGLES DE VALIDATION lues dans les formulaires (« 7 chiffres exactement »,
+                   « 25 caractères max »…). Affichées parce qu'elles sont ce qui empêche l'IA
+                   d'écrire une valeur que le formulaire refuse — auquel cas le test accuserait
+                   l'application à tort. Zéro règle sur un portail qui en a = mesure à refaire. -->
+              <span v-if="explorations[p.id].contraintes" class="text-muted-foreground">
+                · {{ explorations[p.id].contraintes }} règles de saisie
+              </span>
               <span class="text-muted-foreground/60"> — mesuré le {{ explorations[p.id].mesure_le }}</span>
             </template>
             <template v-else>

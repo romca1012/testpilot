@@ -68,6 +68,7 @@ def etat(project_id: int, projet: dict | None = None) -> dict:
     job_id = job_en_cours(project_id)
     pages = (modele or {}).get("pages") or {}
     transitions = (modele or {}).get("transitions") or {}
+    champs = [c for i in pages.values() for c in (i.get("champs") or [])]
     return {
         "explored": bool(pages),
         "running": job_id is not None,
@@ -75,7 +76,14 @@ def etat(project_id: int, projet: dict | None = None) -> dict:
         "mesure_le": (modele or {}).get("mesure_le", ""),
         "pages": len(pages),
         "transitions": sum(len(v) for v in transitions.values()),
-        "champs": sum(len(i.get("champs") or []) for i in pages.values()),
+        "champs": len(champs),
+        # ⚠️ Le compte des RÈGLES DE VALIDATION est affiché parce qu'il est le seul signe VISIBLE
+        # qu'une cartographie est à jour. Le 2026-07-21, une ré-exploration lancée depuis
+        # l'interface a réécrit l'annuaire à l'identique — code de crawl périmé chargé en mémoire —
+        # en affichant « terminée » : 37 routes, 373 champs, exactement comme avant. Rien à l'écran
+        # ne pouvait le trahir. Les routes et les champs bougent peu ; les règles, elles, n'existent
+        # que depuis la mesure enrichie. Zéro règle sur un portail qui en a = mesure à refaire.
+        "contraintes": sum(1 for c in champs if c.get("contraintes")),
         "resume": domain_model.resume(modele),
     }
 
