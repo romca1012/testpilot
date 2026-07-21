@@ -1,27 +1,26 @@
 <script setup lang="ts">
-// « Exécutions et résultats de test » — Aperçu (disposition TestRail, palette sombre).
-// OPTION 1 (porteur, 2026-07-20) : liste bâtie sur les VRAIES exécutions (ce sont des runs
-// mono-cas). Les concepts absents du modèle — Plans de test, jalons, assignation, configurations
-// — sont affichés « à venir », JAMAIS fabriqués (règle « affiché ≠ réel »).
+// « Exécutions et résultats de test » — Aperçu des RUNS (campagnes, décision 0022 n°8).
+//
+// Auparavant, cette page listait les `execution` (des runs MONO-cas) faute de modèle de campagne.
+// Elle liste maintenant les vrais `test_run`. Les exécutions mono-cas héritées restent en base
+// et gardent leur rapport ; elles n'ont simplement pas de campagne — on ne les mélange plus ici.
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type ExecutionSummary } from '../lib/api'
-import { testStatusView } from '../lib/status'
+import { api, type RunSummary } from '../lib/api'
 
 const route = useRoute()
 const router = useRouter()
 const pid = computed(() => route.params.pid as string)
 
-const runs = ref<ExecutionSummary[]>([])
+const runs = ref<RunSummary[]>([])
 const loading = ref(true)
 const error = ref('')
-// Tri porté par l'URL, piloté depuis la SIDEBAR contextuelle du shell (état partagé).
 const sortBy = computed(() => (route.query.sort as string) || 'date')
 
 async function load() {
   loading.value = true; error.value = ''
   try {
-    runs.value = await api.listExecutions(pid.value, 100)
+    runs.value = await api.listRuns(pid.value)
   } catch {
     error.value = 'Impossible de charger les exécutions.'
   } finally {
@@ -31,27 +30,32 @@ async function load() {
 onMounted(load)
 watch(pid, load)
 
-function title(r: ExecutionSummary) { return r.case_title || `Exécution #${r.id}` }
-function passPct(r: ExecutionSummary) {
-  return r.scenarios_total ? Math.round((r.scenarios_passed / r.scenarios_total) * 100) : 0
+// % de complétion = cas ayant un résultat / cas du run (note fonctionnelle, écran Aperçu).
+function completion(r: RunSummary) {
+  return r.case_count ? Math.round((r.tested_count / r.case_count) * 100) : 0
 }
+const STATUS: Record<string, { label: string; cls: string }> = {
+  draft: { label: 'Brouillon', cls: 'bg-secondary text-muted-foreground' },
+  running: { label: 'En cours', cls: 'bg-warning/15 text-warning' },
+  completed: { label: 'Terminé', cls: 'bg-success/15 text-success' },
+}
+function statusOf(r: RunSummary) { return STATUS[r.status] || STATUS.draft }
+
+const sorted = computed(() => {
+  const arr = [...runs.value]
+  if (sortBy.value === 'name') arr.sort((a, b) => a.name.localeCompare(b.name))
+  else if (sortBy.value === 'pass') arr.sort((a, b) => completion(b) - completion(a))
+  else arr.sort((a, b) => b.created_at.localeCompare(a.created_at))
+  return arr
+})
 function monthLabel(iso: string) {
   const s = new Date(iso).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
-
-const sorted = computed(() => {
-  const arr = [...runs.value]
-  if (sortBy.value === 'name') arr.sort((a, b) => title(a).localeCompare(title(b)))
-  else if (sortBy.value === 'pass') arr.sort((a, b) => passPct(b) - passPct(a))
-  else arr.sort((a, b) => b.started_at.localeCompare(a.started_at))
-  return arr
-})
-// Groupés par mois (comme TestRail groupe par date/statut).
 const groups = computed(() => {
-  const map = new Map<string, ExecutionSummary[]>()
+  const map = new Map<string, RunSummary[]>()
   for (const r of sorted.value) {
-    const k = monthLabel(r.started_at)
+    const k = monthLabel(r.created_at)
     if (!map.has(k)) map.set(k, [])
     map.get(k)!.push(r)
   }
@@ -61,21 +65,16 @@ const groups = computed(() => {
 function openRun(id: number) {
   router.push({ name: 'run-detail', params: { pid: pid.value, id: String(id) } })
 }
-function comingSoon(w: string) { window.alert(`${w} — à venir.`) }
+function goNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) }
 </script>
 
 <template>
-  <!-- Les actions (Ajouter run/plan) et les filtres (Grouper/Trier) vivent dans la SIDEBAR
-       contextuelle du shell — ici, uniquement le titre et la liste. -->
   <div>
     <div class="flex-1 min-w-0">
       <div class="flex items-center justify-between">
         <h1 class="text-[26px] font-semibold tracking-tight">Exécutions et résultats de test</h1>
-        <div class="flex items-center gap-3 text-muted-foreground">
-          <button title="Afficher les données de test (à venir)" class="hover:text-foreground" @click="comingSoon('Afficher les données de test')">
-            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 118 0v4"/></svg>
-          </button>
-        </div>
+        <button class="rounded-md bg-primary text-white font-semibold px-3 py-1.5 text-sm hover:bg-primary/90"
+                @click="goNew">+ Ajouter une exécution</button>
       </div>
 
       <div v-if="loading" class="mt-6 space-y-2">
@@ -86,7 +85,7 @@ function comingSoon(w: string) { window.alert(`${w} — à venir.`) }
         <button class="mt-3 rounded-md border border-border px-3 py-1.5 text-sm hover:border-primary/40" @click="load">Réessayer</button>
       </div>
       <p v-else-if="!runs.length" class="mt-10 text-center text-sm text-muted-foreground">
-        Aucune exécution pour ce projet. Créez-en une avec « Ajouter une exécution de test ».
+        Aucune exécution pour ce projet. Créez-en une avec « Ajouter une exécution ».
       </p>
 
       <div v-for="g in groups" :key="g.month" class="mt-5">
@@ -94,32 +93,33 @@ function comingSoon(w: string) { window.alert(`${w} — à venir.`) }
         <button v-for="r in g.rows" :key="r.id"
                 class="w-full text-left flex items-center gap-4 py-3 border-b border-border/40 hover:bg-accent/30 rounded-md px-2 -mx-2"
                 @click="openRun(r.id)">
-          <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold shrink-0" :class="testStatusView(r.execution_status, r.functional_status).badge">
-            {{ testStatusView(r.execution_status, r.functional_status).label }}
+          <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-semibold shrink-0" :class="statusOf(r).cls">
+            {{ statusOf(r).label }}
           </span>
           <div class="min-w-0 flex-1">
-            <div class="text-sm text-primary truncate">R{{ r.id }} — {{ title(r) }}</div>
+            <div class="text-sm text-primary truncate">R{{ r.id }} — {{ r.name }}</div>
             <div class="text-xs text-muted-foreground mt-0.5">
-              {{ r.scenarios_passed }}/{{ r.scenarios_total }} scénarios Passed · Cas unique — aucun plan
+              {{ r.tested_count }}/{{ r.case_count }} cas testés ·
+              {{ r.selection_mode === 'all' ? 'tous les cas (vivante)' : 'sélection figée' }}
             </div>
           </div>
           <div class="shrink-0 w-28 hidden sm:block">
             <div class="flex items-center gap-2">
               <div class="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
-                <div class="h-full rounded-full bg-success" :style="{ width: passPct(r) + '%' }"></div>
+                <div class="h-full rounded-full bg-success" :style="{ width: completion(r) + '%' }"></div>
               </div>
-              <span class="text-xs tabular-nums text-muted-foreground">{{ passPct(r) }} %</span>
+              <span class="text-xs tabular-nums text-muted-foreground">{{ completion(r) }} %</span>
             </div>
           </div>
         </button>
       </div>
 
-      <!-- Plans de test : concept non construit → « à venir », jamais fabriqué -->
+      <!-- Plans de test : conteneur de runs, non construit (incrément 2) — dit, jamais fabriqué. -->
       <div class="mt-8 rounded-lg border border-dashed border-border p-5">
         <div class="text-sm font-medium">Plans de test</div>
         <p class="mt-1 text-xs text-muted-foreground">
-          Un plan regroupe plusieurs exécutions (une par configuration). Cette fonctionnalité
-          arrivera avec l'Exécution nommée transverse — aucun plan n'existe encore.
+          Un plan regroupera plusieurs exécutions (par exemple une par configuration).
+          Pas encore construit — aucun plan n'existe.
         </p>
       </div>
     </div>
