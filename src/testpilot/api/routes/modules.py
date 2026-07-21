@@ -9,11 +9,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Response,
+    UploadFile,
+)
 
 from testpilot.api import schemas
 from testpilot.api.deps import get_conn
-from testpilot.api.services import generation_service
+from testpilot.api.services import generation_service, spec_extract
 from testpilot.store.repositories import (
     CaseGroupRepo,
     CaseRepo,
@@ -85,6 +93,64 @@ def create_group(module_id: int, body: schemas.GroupIn, conn=Depends(get_conn)):
     if body.spec_content:
         CaseGroupRepo(conn).update(gid, spec_content=body.spec_content)
     return schemas.group_detail(CaseGroupRepo(conn).get(gid) | {"case_count": 0})
+
+
+@router.delete("/{module_id}", status_code=204)
+def delete_module(module_id: int, conn=Depends(get_conn)):
+    """Supprime un module et TOUTE sa descendance (spécifications, cas, versions, exécutions…).
+
+    Cascade sur demande explicite (l'écran confirme en montrant ce qui partira). §2.10 interdit
+    d'effacer un run *en silence*, pas sur une action claire de l'utilisateur.
+    """
+    if ModuleRepo(conn).get(module_id) is None:
+        raise HTTPException(status_code=404, detail=f"module {module_id} introuvable")
+    ModuleRepo(conn).delete(module_id)
+    return Response(status_code=204)
+
+
+@router.post("/{module_id}/cases/manual", response_model=schemas.CaseSummary, status_code=201)
+def create_manual_case(module_id: int, body: schemas.ManualCaseIn, conn=Depends(get_conn)):
+    """Crée un cas À LA MAIN — le bouton « Ajouter un cas de test », SANS IA (décision `0022`).
+
+    Le cas naît avec son document métier (titre, préconditions, étapes, résultat attendu) mais
+    sans Gherkin : il n'est pas exécutable tant qu'un test technique n'a pas été généré. C'est
+    l'inverse du bouton « Générer », qui lance l'IA.
+    """
+    if ModuleRepo(conn).get(module_id) is None:
+        raise HTTPException(status_code=404, detail=f"module {module_id} introuvable")
+    steps = [s.strip() for s in body.test_steps if s.strip()]
+    if not (body.title.strip() and steps and body.expected_result.strip()):
+        raise HTTPException(status_code=422,
+                            detail="titre, étapes et résultat attendu sont obligatoires")
+    import json
+    try:
+        cid = CaseRepo(conn).create_manual(
+            module_id=module_id, title=body.title.strip(),
+            preconditions=body.preconditions, test_steps=json.dumps(steps, ensure_ascii=False),
+            expected_result=body.expected_result.strip(), angle=body.angle)
+    except DuplicateName as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return schemas.case_summary(CaseRepo(conn).get(cid))
+
+
+@router.post("/{module_id}/cases/extract", response_model=schemas.SpecExtractOut)
+async def extract_spec(module_id: int, file: UploadFile = File(...), conn=Depends(get_conn)):
+    """Extrait le TEXTE d'un fichier téléversé (.txt/.md/.docx) pour pré-remplir la génération.
+
+    On ne devine pas le format à l'extension seule : `spec_extract` lève une erreur claire pour
+    un type non géré (PDF nécessiterait une dépendance) — jamais un texte vide silencieux.
+    """
+    if ModuleRepo(conn).get(module_id) is None:
+        raise HTTPException(status_code=404, detail=f"module {module_id} introuvable")
+    data = await file.read()
+    try:
+        text = spec_extract.extract_text(file.filename or "", data)
+    except spec_extract.UnsupportedFormat as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not text.strip():
+        raise HTTPException(status_code=422,
+                            detail="le fichier ne contient aucun texte exploitable")
+    return schemas.SpecExtractOut(text=text, filename=file.filename or "")
 
 
 @router.put("/{module_id}/cases/order", response_model=list[schemas.CaseSummary])

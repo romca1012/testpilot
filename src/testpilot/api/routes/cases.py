@@ -3,12 +3,12 @@ déclenchement d'exécution, et action de relecture (gate actionnable depuis l'U
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 
 from testpilot import config
 from testpilot.api import schemas
 from testpilot.api.deps import get_conn
-from testpilot.api.services import run_service
+from testpilot.api.services import generation_service, run_service
 from testpilot.generation import assertion_lint, domain_model, repair_diff, smoke_check
 from testpilot.store.repositories import (
     CaseRepo,
@@ -77,6 +77,36 @@ def _smoke_check_domaine(conn, case: dict, current: dict | None) -> list[dict]:
 def list_cases(project_id: int | None = None, module_id: int | None = None, conn=Depends(get_conn)):
     rows = CaseRepo(conn).list_all(project_id=project_id, module_id=module_id)
     return [schemas.case_summary(r) for r in rows]
+
+
+@router.post("/{case_id}/automate", response_model=schemas.GenerationJobOut, status_code=202)
+def automate_case(case_id: int, background: BackgroundTasks, conn=Depends(get_conn)):
+    """AUTOMATISER un cas manuel : générer son test technique DEPUIS son métier (décision `0022`
+    n°6). L'IA lit le titre/préconditions/étapes/résultat déjà saisis et écrit le Gherkin.
+
+    Tâche de fond (LLM, quelques minutes), suivie via `GET /api/modules/jobs/{id}` — comme la
+    génération. Le front ne propose ce bouton que pour un cas SANS test technique.
+    """
+    try:
+        job_id, params = generation_service.start_automation(conn, case_id)
+    except generation_service.GenerationError as err:
+        code = {"not_found": 404, "invalid_metier": 422}.get(err.code, 400)
+        raise HTTPException(status_code=code, detail=err.detail)
+    background.add_task(generation_service.run_automation, job_id, **params)
+    return schemas.GenerationJobOut(job_id=job_id, status="running")
+
+
+@router.delete("/{case_id}", status_code=204)
+def delete_case(case_id: int, conn=Depends(get_conn)):
+    """Supprime un cas et toute sa descendance (versions, exécutions, résultats, coûts).
+
+    Sur demande explicite de l'utilisateur (§2.10 interdit d'effacer un run *en silence*, pas de
+    l'effacer quand on le demande). L'écran confirme d'abord.
+    """
+    if CaseRepo(conn).get(case_id) is None:
+        raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
+    CaseRepo(conn).delete(case_id)
+    return Response(status_code=204)
 
 
 @router.get("/{case_id}", response_model=schemas.CaseDetail)

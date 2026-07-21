@@ -209,6 +209,111 @@ def validate_metier(job_id: str, metier: dict) -> dict:
     return {**job["_resume"], "metier": validated}
 
 
+def _spec_from_metier(metier: dict) -> str:
+    """Reconstruit une spécification textuelle depuis le métier d'un cas manuel, pour que
+    l'analyse en extraie la matière technique (routes, modèles). Le métier EST l'intention validée
+    par l'humain : on va donc droit à l'écriture du Gherkin, sans découverte ni pause."""
+    lignes = [f"# {metier.get('title', '')}", ""]
+    if metier.get("preconditions"):
+        lignes += ["## Préconditions", str(metier["preconditions"]), ""]
+    lignes.append("## Étapes")
+    for i, s in enumerate(metier.get("steps") or [], start=1):
+        lignes.append(f"{i}. {s}")
+    lignes += ["", "## Résultat attendu", str(metier.get("expected_result", ""))]
+    return "\n".join(lignes)
+
+
+def start_automation(conn, case_id: int) -> tuple[str, dict]:
+    """Prépare l'AUTOMATISATION d'un cas manuel : générer son test technique depuis son métier.
+
+    Le cas manuel naît sans `feature_slug` (pas de .feature). On lui en attribue un ici — un run
+    le retrouve par ce champ (§7). La génération écrira `{slug}.feature` et une NOUVELLE version
+    portant le Gherkin, sur le MÊME cas (décision `0022` n°6).
+    """
+    import json as _json
+
+    from testpilot.store.repositories import VersionRepo
+
+    case = CaseRepo(conn).get(case_id)
+    if case is None:
+        raise GenerationError("not_found", f"cas {case_id} introuvable")
+    version = VersionRepo(conn).get(case.get("current_version_id")) or {}
+    try:
+        steps = [str(s) for s in _json.loads(version.get("test_steps") or "[]")]
+    except Exception:
+        steps = []
+    metier = {
+        "title": version.get("title") or case["title"],
+        "preconditions": version.get("preconditions", ""),
+        "steps": steps,
+        "expected_result": version.get("expected_result", ""),
+        "angle": version.get("angle", "") or case.get("angle", ""),
+    }
+    if not (metier["title"] and metier["steps"] and metier["expected_result"]):
+        raise GenerationError(
+            "invalid_metier",
+            "ce cas doit avoir un titre, des étapes et un résultat attendu pour être automatisé")
+
+    slug = case.get("feature_slug") or unique_feature_slug(conn, slugify(metier["title"]))
+    CaseRepo(conn).set_feature_slug(case_id, slug)
+
+    job_id = uuid.uuid4().hex
+    _JOBS[job_id] = {"status": "running", "case_id": None, "error": "",
+                     "module_id": case["module_id"]}
+    return job_id, {"case_id": case_id, "module_id": case["module_id"], "slug": slug,
+                    "spec_content": _spec_from_metier(metier), "metier": metier}
+
+
+def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
+                   spec_content: str, metier: dict, author: str = "ui") -> None:
+    """Tâche de fond : écrit le Gherkin d'un cas manuel DEPUIS son métier, sur le cas existant."""
+    from testpilot.analysis.spec_analyzer import SpecAnalyzer
+    from testpilot.connectors.odoo import OdooConnector
+    from testpilot.connectors.runtime_env import project_env
+    from testpilot.execution.behave_runner import BehaveRunner
+    from testpilot.generation.agent import GenerationAgent
+    from testpilot.guardrails.cost_tracker import CostTracker
+    from testpilot.store.repositories import ProjectRepo, VersionRepo
+
+    conn = get_initialized_db(config.DB_PATH)
+    connector = None
+    try:
+        module = ModuleRepo(conn).get(module_id)
+        project = ProjectRepo(conn).get(module["project_id"]) if module else None
+        connector = OdooConnector.from_project(project)
+        connector.connect()
+        runner = BehaveRunner(connection=project_env(project))
+
+        analysis_tracker = CostTracker()
+        plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(slug, spec_content)
+
+        agent = GenerationAgent(dry_runner=runner, connector=connector,
+                                case_repo=CaseRepo(conn), version_repo=VersionRepo(conn))
+        # `case_id` fourni → une NOUVELLE version est créée sur le cas EXISTANT (re-versioning),
+        # avec le métier conservé et le Gherkin fraîchement écrit. Le gate rebloque (§4.3).
+        result = agent.generate(plan, case_id=case_id, metier=metier, author=author, projet=project)
+
+        _record_generation_cost(conn, case_id=case_id,
+                                analysis_usd=analysis_tracker.total_cost,
+                                generation_usd=result.cost_usd)
+
+        if result.success:
+            _JOBS[job_id].update(status="done", case_id=case_id)
+        else:
+            _JOBS[job_id].update(status="failed",
+                                 error=result.error or result.stopped_reason or "automatisation échouée")
+    except Exception as exc:
+        logger.exception("[automation] job %s en échec : %s", job_id, exc)
+        _JOBS[job_id].update(status="failed", error=str(exc)[:300])
+    finally:
+        if connector is not None:
+            try:
+                connector.disconnect()
+            except Exception:
+                pass
+        conn.close()
+
+
 def resume_generation(job_id: str, *, module_id: int, slug: str, title: str,
                       spec_content: str, author: str, metier: dict) -> None:
     """PASSE 4b — écrit le Gherkin DEPUIS le métier validé, puis persiste le cas ENTIER."""

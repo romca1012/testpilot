@@ -368,6 +368,46 @@ class ExplorationOut(BaseModel):
     error: str = ""
 
 
+class QualityDayOut(BaseModel):
+    jour: str
+    success: int = 0
+    technical_error: int = 0
+    not_executed: int = 0
+
+
+class QualityOut(BaseModel):
+    """Santé technique de la génération, dans le temps — le suivi de l'évolution de l'outil.
+
+    Axe EXÉCUTION uniquement (un test qui tourne et trouve un bug est un succès technique).
+    `ran_rate` = None quand aucune mesure : « rien mesuré » ≠ « 0 % de réussite ».
+    """
+    total: int = 0
+    ran: int = 0
+    technical_error: int = 0
+    not_executed: int = 0
+    ran_rate: float | None = None
+    by_day: list[QualityDayOut] = []
+
+
+class ManualCaseIn(BaseModel):
+    """Création d'un cas À LA MAIN (bouton « Ajouter un cas de test », sans IA).
+
+    Titre + étapes + résultat attendu obligatoires (décision `0022` n°3.c) — un cas sans eux ne
+    décrit rien. `test_steps` = liste JSON, comme partout ailleurs.
+    """
+    title: str
+    preconditions: str = ""
+    test_steps: list[str] = []
+    expected_result: str = ""
+    angle: str = ""
+
+
+class SpecExtractOut(BaseModel):
+    """Texte extrait d'un fichier téléversé, pour pré-remplir la zone de génération."""
+    text: str
+    filename: str = ""
+
+
 class ModuleIn(BaseModel):
     name: str
     description: str = ""

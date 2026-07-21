@@ -203,6 +203,26 @@ class ModuleRepo:
             " (SELECT COUNT(*) FROM test_case tc WHERE tc.module_id=m.id) AS case_count"
             " FROM module m WHERE m.project_id=? ORDER BY m.id", (project_id,)))
 
+    def delete(self, module_id: int) -> None:
+        """Supprime un module ET toute sa descendance (spécifications, cas, versions, exécutions,
+        résultats, réparations, coûts) — en réutilisant la cascade éprouvée de `CaseRepo.delete`
+        cas par cas, puis en retirant les spécifications devenues vides, puis le module.
+
+        Cascade et non refus-si-non-vide (contrairement à la Spécification) : le porteur veut
+        pouvoir supprimer un module même peuplé. La perte d'historique reste EXPLICITE — l'écran
+        confirme en montrant ce qui partira (même dispositif que la suppression de projet). §2.10
+        interdit d'effacer un run *en silence*, pas de l'effacer sur demande claire.
+        """
+        case_ids = [r["id"] for r in self.conn.execute(
+            "SELECT id FROM test_case WHERE module_id=?", (module_id,))]
+        cases = CaseRepo(self.conn)
+        for cid in case_ids:
+            cases.delete(cid)
+        # Les spécifications du module n'ont plus de cas (on vient de tous les retirer).
+        self.conn.execute("DELETE FROM case_group WHERE module_id=?", (module_id,))
+        self.conn.execute("DELETE FROM module WHERE id=?", (module_id,))
+        self.conn.commit()
+
     def find_by_name(self, project_id: int, name: str) -> dict | None:
         row = self.conn.execute(
             "SELECT * FROM module WHERE project_id=? AND name=?", (project_id, name)).fetchone()
@@ -427,6 +447,35 @@ class CaseRepo:
         self.conn.commit()
         return int(cur.lastrowid)
 
+    def create_manual(self, *, module_id: int, title: str, preconditions: str = "",
+                      test_steps: str = "", expected_result: str = "", angle: str = "",
+                      author: str = "ui") -> int:
+        """Crée un cas À LA MAIN — le bouton « Ajouter un cas de test », SANS IA (décision `0022`).
+
+        Le cas naît avec son **document métier** (titre, préconditions, étapes, résultat attendu)
+        mais **sans Gherkin** : il n'est donc pas exécutable tant qu'un test technique n'a pas été
+        généré (décision `0022` n°6, bouton « Régénérer le test technique » à venir). Ce n'est PAS
+        le « cas fantôme » que `0006` refusait — un cas fantôme ne testait rien *et* ne décrivait
+        rien ; celui-ci porte une intention métier lisible, assumée par un humain (décision n°7).
+
+        `origin='manual_converted'` : marque un cas d'origine humaine (par opposition à
+        `ia_generated`), la seule valeur non-IA que le schéma autorise. Une version est créée
+        d'emblée : c'est elle qui porte le métier (le métier vit sur la version, décision n°10).
+        """
+        cid = self.create(title=title, module_id=module_id, author=author,
+                          origin="manual_converted", feature_slug="")
+        VersionRepo(self.conn).create(
+            test_case_id=cid, spec_content="", spec_hash="",
+            feature_content="", steps_content="",   # pas de Gherkin : cas non exécutable en l'état
+            change_summary="Création manuelle", created_by=author,
+            title=title, preconditions=preconditions, test_steps=test_steps,
+            expected_result=expected_result, angle=angle)
+        # `set_current_version` pointe le cas sur la version qu'on vient d'écrire.
+        vid = self.conn.execute("SELECT id FROM test_case_version WHERE test_case_id=?"
+                                " ORDER BY id DESC LIMIT 1", (cid,)).fetchone()["id"]
+        self.set_current_version(cid, vid)
+        return cid
+
     def _next_position(self, module_id: int | None) -> int:
         """Place un nouveau cas EN FIN de son module (décision 0009).
 
@@ -632,6 +681,15 @@ class CaseRepo:
         )
         self.conn.commit()
 
+    def set_feature_slug(self, case_id: int, feature_slug: str) -> None:
+        """Assigne le nom du fichier `.feature`. Utilisé quand on AUTOMATISE un cas manuel : il
+        naît sans slug (pas de test technique), et un run le retrouve par ce champ (§7 / `0004`).
+        L'unicité GLOBALE est garantie par l'appelant (`unique_feature_slug`)."""
+        self.ensure_slug_free(feature_slug, excluding=case_id)
+        self.conn.execute("UPDATE test_case SET feature_slug=?, updated_at=? WHERE id=?",
+                          (feature_slug, now_iso(), case_id))
+        self.conn.commit()
+
     def set_validation_status(self, case_id: int, status: str) -> None:
         self.conn.execute(
             "UPDATE test_case SET validation_status=?, updated_at=? WHERE id=?",
@@ -756,6 +814,57 @@ class ReviewRepo:
 class ExecutionRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
+
+    def quality_summary(self, *, project_id: int | None = None) -> dict:
+        """Santé TECHNIQUE de la génération : un test fraîchement produit TOURNE-T-IL ?
+
+        ⚠️ On mesure l'axe EXÉCUTION (`execution_status`), jamais le fonctionnel — un test qui
+        tourne et détecte un vrai bug est un SUCCÈS technique (§5, invariant des deux axes). C'est
+        exactement la question « faire les tests sans erreur technique » : `success` = a tourné,
+        `technical_error` = n'a pas pu, `not_executed` = interrompu avant de tourner.
+
+        **Restreint aux `first_run`** : c'est le signal de la qualité de GÉNÉRATION. Une tentative
+        de réparation ou un rejeu mesureraient autre chose (le filet, pas le premier jet). Les
+        mélanger gonflerait ou masquerait le vrai taux.
+
+        ⚠️ **Rien n'est déclaratif ici** (invariant §4.2) : chaque ligne agrégée est une exécution
+        RÉELLE qui a eu lieu. Le tableau de bord ne fabrique aucun chiffre — il compte des runs.
+        """
+        where = "WHERE e.trigger = 'first_run'"
+        params: tuple = ()
+        if project_id is not None:
+            where += (" AND e.test_case_id IN (SELECT tc.id FROM test_case tc"
+                      " JOIN module m ON tc.module_id = m.id WHERE m.project_id = ?)")
+            params = (project_id,)
+
+        def _compte(sql_extra: str) -> list[dict]:
+            return _rows(self.conn.execute(
+                f"SELECT substr(e.started_at, 1, 10) AS jour, e.execution_status AS statut,"
+                f" COUNT(*) AS n FROM execution e {where}{sql_extra}"
+                f" GROUP BY jour, statut ORDER BY jour", params))
+
+        lignes = _compte("")
+        total = {"success": 0, "technical_error": 0, "not_executed": 0}
+        par_jour: dict[str, dict] = {}
+        for r in lignes:
+            statut = r["statut"] if r["statut"] in total else "not_executed"
+            total[statut] += r["n"]
+            jour = par_jour.setdefault(r["jour"], {"jour": r["jour"], "success": 0,
+                                                   "technical_error": 0, "not_executed": 0})
+            jour[statut] += r["n"]
+
+        n = sum(total.values())
+        # `ran_rate` reste None (et non 0.0) sans donnée : « aucune mesure » n'est pas « 0 % de
+        # réussite » — le motif du repli silencieux qu'on refuse partout (§4.6).
+        ran_rate = (total["success"] / n) if n else None
+        return {
+            "total": n,
+            "ran": total["success"],
+            "technical_error": total["technical_error"],
+            "not_executed": total["not_executed"],
+            "ran_rate": ran_rate,
+            "by_day": sorted(par_jour.values(), key=lambda d: d["jour"]),
+        }
 
     def create(self, *, test_case_id: int, version_id: int, trigger: str = "first_run") -> int:
         cur = self.conn.execute(
