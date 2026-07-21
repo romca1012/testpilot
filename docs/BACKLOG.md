@@ -1,5 +1,9 @@
 # Backlog — reports assumés
 
+> 📍 **Pour l'état courant et la route à suivre, lire `docs/PLAN.md` (2026-07-21).** Ce backlog
+> reste la mémoire détaillée des travaux différés, décision par décision ; le plan dit **où on en
+> est** et **dans quel ordre** on avance.
+
 Point d'entrée unique des travaux **différés et documentés** (chaque entrée renvoie à sa
 décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
 

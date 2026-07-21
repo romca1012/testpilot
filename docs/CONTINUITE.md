@@ -1,5 +1,12 @@
 # Rapport de continuité — TestPilot
 
+> # 📍 CE DOCUMENT EST PÉRIMÉ — LIRE `docs/PLAN.md` D'ABORD
+>
+> **`docs/PLAN.md` (2026-07-21) est le point d'entrée à la reprise.** Il dit l'état RÉEL, les
+> décisions prises, et la route jusqu'au produit fini. Ce rapport-ci s'arrête au 2026-07-17 : il
+> garde sa valeur d'**historique** (les leçons, les bugs trouvés, les décisions `0001`–`0022`),
+> mais son §3 (modèle de données) et sa section « la suite » sont **caducs**.
+
 > # ⚠️ À LIRE AVANT TOUT LE RESTE
 >
 > **Le brief produit (`docs/brief-produit-outil-test-management-ia.md`) est la SEULE source de
