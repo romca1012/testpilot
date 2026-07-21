@@ -12,6 +12,7 @@ technique » est atteint — et il alimente l'onglet Qualité (les runs y sont c
 Les cas créés sont des artefacts de mesure (projet 1) — à arbitrer après lecture du résultat.
 """
 
+import json
 import sys
 import time
 from pathlib import Path
@@ -27,11 +28,43 @@ from testpilot.store.repositories import CostRepo, ExecutionRepo  # noqa: E402
 
 MID = 1
 SPECS = sorted(Path("specs/mesure").glob("*.md"))
+# Les cas créés par la mesure précédente, pour pouvoir REJOUER le banc.
+ARTEFACTS = Path("specs/mesure/.artefacts.json")
+
+
+def _nettoyer_mesure_precedente(client) -> None:
+    """Supprime les cas créés par la mesure PRÉCÉDENTE.
+
+    ⚠️ Sans ça, le banc n'est **pas rejouable** : l'IA regénère les mêmes titres métier, et
+    l'unicité par spécification (§2.9) fait échouer la persistance — la mesure s'arrête sur une
+    erreur qui n'a rien à voir avec ce qu'elle mesure. Or un banc qu'on ne peut pas rejouer ne
+    sert à rien pour suivre une évolution.
+
+    On ne supprime QUE ce que la mesure a créé (ids tracés dans `.artefacts.json`) — jamais un
+    balayage par titre, qui emporterait des cas légitimes du référentiel.
+    """
+    if not ARTEFACTS.exists():
+        return
+    try:
+        ids = json.loads(ARTEFACTS.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    supprimes = 0
+    for cid in ids:
+        if client.delete(f"/api/cases/{cid}").status_code == 204:
+            supprimes += 1
+    print(f"  nettoyage : {supprimes}/{len(ids)} cas de la mesure précédente supprimés", flush=True)
 
 
 def main() -> int:
     client = TestClient(app)
     resultats = []
+    crees: list[int] = []
+
+    print("=" * 70, flush=True)
+    print("NETTOYAGE DU BANC (mesure précédente)", flush=True)
+    print("=" * 70, flush=True)
+    _nettoyer_mesure_precedente(client)
 
     for spec in SPECS:
         nom = spec.stem
@@ -59,6 +92,7 @@ def main() -> int:
             resultats.append((nom, None, "gherkin_ko"))
             continue
         case_id = job["case_id"]
+        crees.append(case_id)
 
         # Gate, budget réparation 0 (premier jet uniquement), puis RUN réel
         client.post(f"/api/cases/{case_id}/review",
@@ -78,6 +112,9 @@ def main() -> int:
         print(f"  cas {case_id} → {es} / {fs} — {time.time() - t0:.0f}s", flush=True)
         if prem.get("error_message"):
             print(f"    {prem['error_message'][:160]}", flush=True)
+
+    # Trace des cas créés : la PROCHAINE mesure les supprimera (banc rejouable).
+    ARTEFACTS.write_text(json.dumps(crees), encoding="utf-8")
 
     # ── Le verdict ────────────────────────────────────────────────────────────
     print(f"\n{'=' * 70}\nTAUX D'ERREUR TECHNIQUE AU PREMIER JET\n{'=' * 70}", flush=True)

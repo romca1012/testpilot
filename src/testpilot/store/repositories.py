@@ -535,6 +535,13 @@ class CaseRepo:
             cur.execute(f"DELETE FROM cost_ledger      WHERE execution_id IN ({exec_sub})"
                         "    OR test_case_id = ?", (case_id, case_id))
             cur.execute("DELETE FROM execution         WHERE test_case_id=?", (case_id,))
+            # ⚠️ L'appartenance à une CAMPAGNE doit partir aussi (migration 15). Oubliée à
+            # l'ajout de `test_run_case`, elle rendait tout cas inclus dans un run
+            # **INSUPPRIMABLE** (`FOREIGN KEY constraint failed`) — exactement le défaut décrit
+            # plus haut pour `cost_ledger`, rejoué un mois plus tard. Trouvé par le banc de
+            # mesure, qui supprime ses artefacts : une suite verte ne l'avait pas vu.
+            # Supprimer un cas le RETIRE des campagnes ; le run survit avec ses autres cas.
+            cur.execute("DELETE FROM test_run_case     WHERE case_id=?", (case_id,))
             cur.execute("DELETE FROM review_decision   WHERE test_case_id=?", (case_id,))
             cur.execute("DELETE FROM test_case_version WHERE test_case_id=?", (case_id,))
             cur.execute("DELETE FROM test_case         WHERE id=?", (case_id,))

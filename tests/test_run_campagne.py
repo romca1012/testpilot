@@ -339,3 +339,24 @@ def test_archiver_n_efface_RIEN(client):
 
 def test_api_archiver_un_run_inconnu_404(client):
     assert client.post("/api/runs/999/archive", json={"archived": True}).status_code == 404
+
+
+def test_un_cas_inclus_dans_un_run_reste_SUPPRIMABLE(conn):
+    """⚠️ Régression réelle (2026-07-21) : `test_run_case` référence `test_case`, et la cascade de
+    `CaseRepo.delete` ne la nettoyait pas → `FOREIGN KEY constraint failed`, le cas devenait
+    **insupprimable** dès qu'il appartenait à une campagne.
+
+    C'est le MÊME défaut que celui déjà documenté pour `cost_ledger` (2026-07-17), rejoué un mois
+    plus tard en ajoutant une table. Aucune suite verte ne l'a vu — c'est le banc de mesure, qui
+    supprime ses artefacts, qui l'a fait tomber. Supprimer un cas le RETIRE de ses campagnes ; le
+    run survit avec ses autres cas.
+    """
+    mid = ensure_default_module(conn, "m")
+    c1, c2 = _cas(conn, mid, "a"), _cas(conn, mid, "b")
+    repo = RunRepo(conn)
+    rid = repo.create(project_id=1, name="R", selection_mode="frozen", case_ids=[c1, c2])
+
+    CaseRepo(conn).delete(c1)   # échouait avant le correctif
+
+    assert CaseRepo(conn).get(c1) is None
+    assert repo.case_ids(rid) == [c2], "le run survit, sans le cas supprimé"
