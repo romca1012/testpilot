@@ -14,6 +14,46 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
 > gouvernance du verdict ? — **à trancher avec le porteur, pas seul.** L'étiquetage est faux, le
 > contenu ne l'est pas.)*
 
+## Plan validé (porteur, 2026-07-20) — l'ordre à suivre à la reprise
+
+Suite au front TestRail livré et à `0022` (structure figée), 4 chantiers restent — ordonnés par
+**dépendance et rayon d'explosion croissant** (1-2 ne touchent que le pipeline de création ; 3-4
+touchent l'exécution/le rapport, code partagé par tout le référentiel existant) :
+
+1. **CRUD Spécification minimal** (fin de l'étape 2). 🟡 **Backend LIVRÉ (2026-07-20)**, front à
+   faire. Avant : seul `GET /projects/{id}/groups` (lecture) — on ne pouvait ni créer, ni éditer,
+   ni supprimer une spécification, donc l'étape 3 n'avait aucun document à lire.
+   **Livré** : `CaseGroupRepo.update()` (partiel, `None` = « ne touche pas ») / `.delete()` /
+   `.case_count()` ; routes `GET|POST /api/modules/{id}/groups`, `GET|PATCH|DELETE
+   /api/groups/{id}` ; schémas `GroupIn`/`GroupPatch`/`GroupDetail`. 13 tests
+   (`tests/test_specification_crud.py`), **537 verts**.
+   - **`spec_hash` est RECALCULÉ par le repo, jamais reçu de l'appelant.** Une empreinte fournie
+     de l'extérieur pourrait mentir sur le document qu'elle référence — or c'est précisément elle
+     qui détectera « ce cas est né d'une spec dépassée » (`0022` n°6). *(Falsifié : le test échoue
+     si le hash n'est pas recalculé.)*
+   - **Créer une spécification ne génère aucun cas et ne dépense rien** — elle nomme un document.
+     C'est l'étape 3 qui le lira, après confirmation humaine des angles (§4bis). Même principe que
+     le lancement explicite d'un run (`0022` n°8.c.1). Test de garde dédié.
+   - **Supprimer une spécification qui porte des cas → 409, pas de cascade.** Un cas porte
+     versions, exécutions et coûts : de l'historique, que le projet ne détruit jamais en silence
+     (§2.10). Le message dit combien de cas bloquent. ⚠️ **Défaut pris par moi faute d'arbitrage** —
+     à confirmer par le porteur ; l'alternative (cascade) est un changement local.
+   - **`GroupSummary` reste sans le document** (les listes ne transportent pas N specs complètes) ;
+     `GroupDetail` le porte pour l'écran d'édition.
+   - ⚠️ **Reste** : le front (`AddTestCase.vue` crée toujours un cas isolé, 1 groupe auto-créé par
+     cas, format legacy) et l'écran « module = liste de spécifications ».
+2. **Étape 3 — génération un angle par appel** (structure figée dans `0022` : découverte →
+   confirmation de périmètre en langage métier → génération en 2 passes → gate sur le cas
+   entier). Solde la dette `spec_content`.
+3. **Modèle Run/Plan** (décision `0022` n°8) — reprise de l'**exécution nommée transverse**
+   (§7/§3, JTBD essentiel), en attente depuis le 2026-07-16 sous condition *« un cas passe au
+   vert et `0014` livré »* — **condition remplie** (0014 livré, cas 2 validé en vert). `0022`
+   donne la forme définitive (Run/Plan, cas non exécutable seul), pour ne pas construire puis
+   refaire.
+4. **Backend des 3 onglets** (défauts, historique en diffs, snapshot de run clos) — 5 décisions
+   à trancher d'abord (`docs/notes-fonctionnelles-onglets-cas.md`), puis construction. En
+   dernier : le snapshot « run archivé » n'a de sens qu'une fois qu'un vrai Run (3) existe.
+
 ## Dette transverse — n'appartient à aucun incrément du §12
 
 *(Révisé le 2026-07-17 : cette section s'appelait « Incrément 2 » — faux, l'Incrément 2 du brief
@@ -39,11 +79,29 @@ est la **gouvernance du verdict**, pas la sécurité.)*
 Étape 1 (schéma) **livrée** : `case_group` (la Spécification, qui porte le document `spec_content`
 + `spec_hash`), colonnes `group_id`/`angle` sur `test_case`, migration 13 (legacy 1:1). Restent :
 
-- [ ] **Étape 3 — génération « un angle par appel ».** Chaque cas naît de son propre appel
-  `découverte → confirmation de périmètre → génération` (§4bis), lisant la spec depuis
-  `case_group.spec_content`. Supprime le prompt « triptyque 3 scénarios ». **Solde la dette
-  `spec_content`** (ci-dessus). Cohérence inter-cas garantie par l'annuaire (contrainte champs
-  requis déjà livrée), pas par un contexte LLM partagé.
+- [x] **Anatomie du cas + versioning du métier** (décision `0022` n°3 et n°10) — *fait, non
+  encore inscrit ici avant ce jour*. `test_case_version` porte désormais `title` /
+  `preconditions` / `test_steps` (JSON) / `expected_result` / `angle` **versionnés avec le
+  Gherkin** (migration 14) ; `test_case` porte `refs`/`estimate` (métadonnées NON versionnées,
+  décision 3b). `CaseRepo.update_metier()` : éditer un champ versionné **crée une nouvelle
+  version** (jamais d'écrasement), recopie le technique tel quel (décision 6 : pas de
+  régénération automatique), **rebloque le gate** (§4.3 s'applique sans règle supplémentaire).
+  Migration idempotente, **ne fabrique aucun contenu** (arbitrage A.1 : les versions
+  existantes gardent leurs champs de contenu vides plutôt que de dériver le Gherkin et lui
+  donner l'air rédigé). `PATCH /api/cases/{id}/metier` exposé, front `CaseDetailTR.vue` déjà
+  branché (édition + repli sur l'affichage dérivé tant que les champs sont vides). 19 tests
+  (`tests/test_champs_metier.py`), 524 tests globaux verts.
+  **Ne solde PAS la dette `spec_content`** (ci-dessus) : ça reste le travail de l'étape 3
+  (génération recâblée sur `case_group.spec_content`).
+
+- [ ] **Étape 3 — génération « un angle par appel ».** 🔴 **Structure figée le 2026-07-20 :
+  → `decisions/0022-structure-cas-run-et-resultats-inc1.md`** (8 décisions tranchées par le
+  porteur : anatomie du cas, flux de génération en 2 passes, où vit le résultat, modèle du run,
+  saisie manuelle étiquetée). **C'est le document de référence pour construire le backend.**
+  Chaque cas naît de son propre appel `découverte → confirmation de périmètre → génération`
+  (§4bis), lisant la spec depuis `case_group.spec_content`. Supprime le prompt « triptyque
+  3 scénarios ». **Solde la dette `spec_content`** (ci-dessus). Cohérence inter-cas garantie par
+  l'annuaire (contrainte champs requis déjà livrée), pas par un contexte LLM partagé.
   - 🔴 **Le TITRE d'un cas = une phrase MÉTIER décrivant ce qui est vérifié, JAMAIS un préfixe
     d'angle brut.** Pas de `[NOMINAL]`/`[ERREUR]`/`[LIMITE]` dans le titre (exemple TestRail réel
     fourni : titre « Réception et délivrance d'une commande »). `angle` reste une **métadonnée
@@ -59,6 +117,19 @@ est la **gouvernance du verdict**, pas la sécurité.)*
     de verdict global (« La commande est réservée puis délivrée. »), pas un résultat par étape.
   - Le **Gherkin technique reste réservé au mode dev** (§5 du brief : mode dev vs mode utilisateur).
   - À consigner en `decisions/` (numéro à attribuer) au démarrage de l'étape 2.
+  - **Front livré (2026-07-20)** : shell TestRail (nav Cas de test / Exécutions et résultats / …,
+    ancien shell retiré), liste des cas (statut fonctionnel seul), détail avec 4 onglets — Détails
+    (aperçu provisoire dérivé du Gherkin), Tests & Résultats, Défauts, Historique — **branchés sur
+    les VRAIES données** (exécutions, scénarios, versions), aucun mock. Endpoints ajoutés :
+    `GET /api/projects/{id}/groups`, champs `group_id`/`angle`/`group_title` sur les cas.
+
+- [ ] **Backend des 3 onglets (Tests & Résultats / Défauts / Historique).** Conception cadrée par
+  `docs/notes-fonctionnelles-onglets-cas.md` (fourni par le porteur le 2026-07-20) : pour chaque
+  élément UI, son utilité et son implication backend. **5 décisions à trancher** y sont listées
+  (versioning des cas, snapshot des runs clos, modèle de liaison des défauts interne vs. réf.
+  externe, permissions, fréquence de rafraîchissement des agrégats). La note donne aussi la
+  correspondance avec notre modèle actuel (plan = Exécution nommée transverse §7 non construite ;
+  results = `scenario_result` ; versioning = `test_case_version` ; défauts = pas de table dédiée).
 
 ## Coût — le §9 du brief (moins de 1 €/cas), l'unique cible de coût du produit
 

@@ -28,6 +28,25 @@
 >
 > **Version 5 — 2026-07-17.**
 
+> ### ⚠️ Ce document est PÉRIMÉ au-delà du 2026-07-17 (schéma, décisions, backlog)
+>
+> Rien n'a été rétro-corrigé ci-dessous (chantier trop lourd pour sa valeur) — **le §3 (modèle
+> de données) dit `user_version = 12`, la base réelle est à `14`** ; les décisions `0018` à
+> `0022` n'y figurent pas. **Pour l'état courant, se fier à `docs/BACKLOG.md`** (source vivante,
+> mise à jour le 2026-07-20) et à `docs/decisions/0022-structure-cas-run-et-resultats-inc1.md`
+> (la structure cible : cas/run/résultats, qui **remplace** la lecture du §3 ci-dessous sur ces
+> points). Résumé de ce qui s'est passé depuis la v5 de ce document :
+> - Front TestRail livré (`CasesShell`, liste + détail 4 onglets, module Exécutions) branché sur
+>   les vraies données, rien de fabriqué pour ce qui n'existe pas encore (Plans, jalons…).
+> - `0022` : 8 décisions du porteur figeant l'anatomie du cas, le flux de génération en 2 passes,
+>   le modèle Run/Plan, le versioning (le cas ENTIER, métier + technique, dans une version).
+> - Livré depuis (migration 14) : les champs métier (préconditions/étapes/résultat attendu)
+>   existent en base, versionnés avec le Gherkin, éditables (`PATCH /cases/{id}/metier`).
+> - **Plan validé (porteur, 2026-07-20)**, voir `BACKLOG.md` § « Plan validé » : (1) CRUD
+>   Spécification minimal, (2) génération un angle par appel (étape 3, structure dans `0022`),
+>   (3) modèle Run/Plan (exécution nommée transverse, débloquée), (4) backend des 3 onglets
+>   (défauts/historique/snapshot).
+
 ---
 
 ## 0. Session du 2026-07-17 (v5) — ce qui vient d'être fait
