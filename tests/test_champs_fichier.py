@@ -278,3 +278,75 @@ def test_l_annuaire_REEL_ne_contient_aucune_URL_localisee():
                   if (i.get("url_exemple") or "").startswith(("/en/", "/fr/"))]
 
     assert not localisees, f"URL d'exemple localisées : {localisees[:5]}"
+
+
+# ── Laisser vide un <select> (8ᵉ cause mesurée) ──────────────────────────────
+
+class _FauxSelect:
+    """Un `<select>` : `fill()` y lève l'erreur Playwright qu'on veut éviter."""
+
+    def __init__(self, journal, valeurs):
+        self.journal = journal
+        self.valeurs = valeurs
+        self.first = self
+
+    def evaluate(self, script, *a):
+        if "tagName" in script:
+            return "select"
+        if "options" in script:
+            return self.valeurs
+        return ""
+
+    def select_option(self, v): self.journal.append(("select_option", v))
+    def fill(self, *a, **kw): raise AssertionError("fill() ne doit JAMAIS être appelé sur un select")
+
+
+class _PageSelect:
+    def __init__(self, valeurs):
+        self.journal: list = []
+        self.valeurs = valeurs
+
+    def wait_for_selector(self, *a, **kw): pass
+    def locator(self, sel): return _FauxSelect(self.journal, self.valeurs)
+    def evaluate(self, *a, **kw): return None
+
+
+def test_laisser_vide_un_SELECT_choisit_son_option_vide():
+    """⚠️ Mesuré le 2026-07-21 (`sinistre_client`) : `leave_field_empty` faisait `fill("")` sur un
+    `<select>` → « Element is not an <input>… », erreur cryptique qui fait échouer techniquement
+    un scénario légitime. Même famille que les champs fichier : un type d'élément ignoré."""
+    import _base_helpers as H
+
+    page = _PageSelect(["", "paris", "lyon"])
+    original = H.resolve_field_name
+    H.resolve_field_name = lambda p, n: n
+    try:
+        H.leave_field_empty(page, "agence")
+    finally:
+        H.resolve_field_name = original
+
+    assert page.journal == [("select_option", "")], "on sélectionne l'option vide"
+
+
+def test_un_select_SANS_option_vide_le_dit_clairement():
+    """Sans option vide, le champ NE PEUT PAS être laissé vide. On le dit, plutôt que de laisser
+    une erreur de bas niveau qu'on diagnostiquerait en « champ introuvable »."""
+    import _base_helpers as H
+
+    page = _PageSelect(["paris", "lyon"])
+    original = H.resolve_field_name
+    H.resolve_field_name = lambda p, n: n
+    try:
+        with pytest.raises(AssertionError, match="ne peut pas"):
+            H.leave_field_empty(page, "agence")
+    finally:
+        H.resolve_field_name = original
+
+
+def test_le_prompt_INTERDIT_de_vider_un_champ_requis_en_nominal():
+    modele = _modele([{"name": "agence", "required": True, "tag": "select", "type": "",
+                       "visible": True}])
+
+    s = pm._section_champs_requis(_plan(["/form/{id}"]), modele)
+
+    assert "Mais UNIQUEMENT là" in s

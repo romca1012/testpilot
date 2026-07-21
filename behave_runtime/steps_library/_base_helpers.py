@@ -363,8 +363,37 @@ def attach_file(page, name, value=""):
 
 
 def leave_field_empty(page, name):
+    """Laisse un champ VIDE — pour un scénario qui teste l'omission d'un champ requis.
+
+    ⚠️ **Ne gérait que les champs texte** (mesuré le 2026-07-21) : sur un `<select>`,
+    `fill("")` lève « Element is not an <input>, <textarea> or [contenteditable] » — une erreur
+    Playwright cryptique qui fait échouer techniquement un scénario par ailleurs légitime.
+    Même famille que les champs fichier : le helper ignorait un type d'élément.
+
+    Un `<select>` se vide en choisissant son option vide (`value=""`), quand elle existe. Si elle
+    n'existe pas, le champ **ne PEUT pas** être laissé vide : on le dit clairement plutôt que de
+    laisser une erreur de bas niveau, qu'on diagnostiquerait à tort en « champ introuvable ».
+    """
     name = resolve_field_name(page, name)
-    page.locator(f"[name='{name}']").fill("", force=True)
+    page.wait_for_selector(f'[name="{name}"]', timeout=10000, state="attached")
+    el = page.locator(f'[name="{name}"]').first
+    tag = el.evaluate("el => el.tagName.toLowerCase()")
+    input_type = el.evaluate("el => (el.type || '').toLowerCase()")
+
+    if tag == "select":
+        valeurs = el.evaluate("el => Array.from(el.options).map(o => o.value)")
+        if "" not in valeurs:
+            raise AssertionError(
+                f"le champ « {name} » est une liste déroulante SANS option vide : il ne peut pas "
+                f"être laissé vide. Valeurs possibles : {', '.join(v for v in valeurs if v)}")
+        el.select_option("")
+    elif input_type == "checkbox":
+        el.uncheck(force=True)
+    elif input_type == "file":
+        # Un champ fichier vide = aucun fichier téléversé : c'est son état naturel, rien à faire.
+        return
+    else:
+        el.fill("", force=True)
 
 
 def select_field_value(page, value, field):

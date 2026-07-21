@@ -127,6 +127,11 @@ def _section_champs_requis(plan: TestPlan, modele: dict | None) -> str:
         "*(Exception légitime : un scénario `[ERREUR]` qui teste précisément l'omission d'un champ "
         "requis — là, l'omission est le sujet du test et doit être assumée comme telle.)*",
         "",
+        "⚠️ **Mais UNIQUEMENT là.** Dans un scénario qui prétend CRÉER un enregistrement, "
+        "`je laisse le champ \"…\" vide` sur un champ requis est une contradiction : le formulaire "
+        "sera refusé et l'assertion de création échouera. "
+        "*(Mesuré le 2026-07-21 : un scénario `[Nominal]` laissait vide un `<select>` requis.)*",
+        "",
     ]
     return "\n".join(lignes)
 
