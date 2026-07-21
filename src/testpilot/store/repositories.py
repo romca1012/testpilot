@@ -528,6 +528,10 @@ class CaseRepo:
         l'ancienne cascade).
         """
         cur = self.conn
+        # Retenu AVANT la suppression : après, le cas n'existe plus pour dire à quelle
+        # spécification il appartenait.
+        row = cur.execute("SELECT group_id FROM test_case WHERE id=?", (case_id,)).fetchone()
+        group_id = row["group_id"] if row else None
         exec_sub = "SELECT id FROM execution WHERE test_case_id=?"
         try:
             cur.execute(f"DELETE FROM scenario_result WHERE execution_id IN ({exec_sub})", (case_id,))
@@ -545,10 +549,34 @@ class CaseRepo:
             cur.execute("DELETE FROM review_decision   WHERE test_case_id=?", (case_id,))
             cur.execute("DELETE FROM test_case_version WHERE test_case_id=?", (case_id,))
             cur.execute("DELETE FROM test_case         WHERE id=?", (case_id,))
+            self._nettoyer_specification_orpheline(group_id)
             cur.commit()
         except Exception:
             cur.rollback()
             raise
+
+    def _nettoyer_specification_orpheline(self, group_id: int | None) -> None:
+        """Supprime la Spécification devenue VIDE **si elle n'était qu'une enveloppe automatique**.
+
+        ⚠️ **Le défaut que ça corrige** (mesuré le 2026-07-21) : `create()` auto-enveloppe un cas
+        sans `group_id` dans sa propre Spécification 1:1. `delete()` retirait le cas mais **pas
+        cette enveloppe** — d'où des Spécifications fantômes à 0 cas (8 constatées dans la vraie
+        base), visibles dans l'arbre latéral, et qui **bloquaient toute regénération du même
+        titre** (unicité par module, §2.9). Le banc de mesure est tombé dessus deux fois.
+
+        ⚠️ **Règle prudente** : on ne supprime QUE si la spécification ne porte **aucun document**
+        (`spec_content` vide). Une Spécification rédigée par un humain est un actif : elle doit
+        survivre à ses cas — on peut vouloir en regénérer depuis elle. C'est ce qui distingue
+        « résidu technique » et « conteneur voulu ».
+        """
+        if group_id is None:
+            return
+        row = self.conn.execute(
+            "SELECT g.spec_content,"
+            " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id) AS n"
+            " FROM case_group g WHERE g.id=?", (group_id,)).fetchone()
+        if row and row["n"] == 0 and not (row["spec_content"] or "").strip():
+            self.conn.execute("DELETE FROM case_group WHERE id=?", (group_id,))
 
     def update_metier(self, case_id: int, *, title: str | None = None,
                       preconditions: str | None = None, test_steps: str | None = None,

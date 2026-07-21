@@ -100,6 +100,42 @@ def test_supprimer_un_cas_emporte_sa_descendance(client):
     assert client.get(f"/api/cases/{cid}").status_code == 404
 
 
+def test_supprimer_un_cas_emporte_sa_specification_AUTO(conn):
+    """⚠️ Défaut réel (2026-07-21) : `create()` auto-enveloppe un cas dans sa propre Spécification
+    1:1, mais `delete()` laissait cette enveloppe VIDE derrière lui. Résultat : des Spécifications
+    fantômes à 0 cas (8 dans la vraie base), visibles dans l'arbre, et qui **bloquaient la
+    regénération du même titre** (unicité par module). Le banc de mesure l'a fait tomber."""
+    from testpilot.store.repositories import CaseGroupRepo
+
+    mid = ensure_default_module(conn, "m")
+    cid = CaseRepo(conn).create_manual(module_id=mid, title="Jetable",
+                                       test_steps=json.dumps(["a"]), expected_result="r")
+    gid = CaseRepo(conn).get(cid)["group_id"]
+    assert CaseGroupRepo(conn).get(gid) is not None
+
+    CaseRepo(conn).delete(cid)
+
+    assert CaseGroupRepo(conn).get(gid) is None, "l'enveloppe automatique part avec son cas"
+    # …et le titre redevient disponible : c'est ce qui débloquait la regénération.
+    CaseRepo(conn).create_manual(module_id=mid, title="Jetable",
+                                 test_steps=json.dumps(["a"]), expected_result="r")
+
+
+def test_une_specification_AVEC_DOCUMENT_survit_a_ses_cas(conn):
+    """Règle prudente : une Spécification rédigée par un humain est un ACTIF — on peut vouloir
+    regénérer depuis elle. Seule l'enveloppe technique vide est un résidu."""
+    from testpilot.store.repositories import CaseGroupRepo
+
+    mid = ensure_default_module(conn, "m")
+    gid = CaseGroupRepo(conn).create(module_id=mid, title="Spec rédigée",
+                                     spec_content="Le document complet de la spec")
+    cid = CaseRepo(conn).create(title="Cas", module_id=mid, group_id=gid, feature_slug="c")
+
+    CaseRepo(conn).delete(cid)
+
+    assert CaseGroupRepo(conn).get(gid) is not None, "un document rédigé ne se perd pas"
+
+
 def test_supprimer_un_module_emporte_ses_cas(client):
     _, mid = _module(client)
     client.post(f"/api/modules/{mid}/cases/manual", json={
