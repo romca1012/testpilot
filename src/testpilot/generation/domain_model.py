@@ -162,8 +162,15 @@ def formulaires_requis(modele: dict | None, routes) -> list[dict]:
             # • sans `visible`, on lui demandait de remplir des champs CACHÉS (injectés par le
             #   serveur) : impossible par l'interface → `TimeoutError` sur le sélecteur.
             # L'annuaire portait les deux depuis toujours ; personne ne les transmettait.
+            # `contraintes` et `label` exposés le 2026-07-21. ⚠️ Sans les contraintes, la valeur
+            # générée peut être REFUSÉE par le formulaire : mesuré sur `/remboursement`, le champ
+            # `code_client1` impose `\d{7}` et le test y écrivait « TEST_REMB_CLI001 » — le
+            # navigateur bloque la soumission, rien n'est créé, et le verdict tombe en
+            # « non conforme » alors que c'est la DONNÉE DU TEST qui est invalide.
             "requis": [{"name": c["name"], "tag": c.get("tag", ""), "type": c.get("type", ""),
                         "visible": c.get("visible", True),
+                        "label": c.get("label", ""),
+                        "contraintes": c.get("contraintes") or {},
                         "options": [v for v, _ in (c.get("options") or [])]} for c in requis],
         })
     return trouves

@@ -8,6 +8,8 @@ Deux fonctions pures (ou quasi : lecture de fichier) :
 
 from __future__ import annotations
 
+import re
+
 from testpilot import config
 from testpilot.analysis.plan import NavStep, TestPlan
 from testpilot.connectors.base import Connector
@@ -50,6 +52,63 @@ def _nav_to_gherkin_hint(navigation: list[NavStep]) -> str:
         elif step.kind == "js_trigger":
             hints.append(f'déclenche "{step.target}"')
     return " → ".join(hints)
+
+
+def _borne_exploitable(valeur) -> bool:
+    """Une borne `min`/`max` qui n'est ni un nombre ni une date est INEXPLOITABLE — on la tait.
+
+    ⚠️ Mesuré le 2026-07-21 sur `/creance_douteux` : `<input type="date" max="date_now">`. C'est un
+    **placeholder de gabarit qui a fui non résolu** dans le HTML de l'application testée. Le
+    navigateur ignore une borne invalide ; nous, on aurait écrit « valeur ≤ date_now » à l'agent —
+    une consigne impossible à satisfaire, qui l'aurait fait tourner en rond sur un champ valide.
+
+    Le principe est le même que pour tout le reste : **ne transmettre que ce qui est actionnable**.
+    Une mesure fidèle n'oblige pas à répéter le bruit qu'elle a capté.
+    (Le placeholder lui-même est un vrai défaut de l'application — il reste dans l'annuaire, où un
+    humain peut le voir ; il ne descend simplement pas dans la consigne.)
+    """
+    texte = str(valeur).strip()
+    if not texte:
+        return False
+    try:
+        float(texte)
+        return True
+    except ValueError:
+        return bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}([T ].*)?", texte))
+
+
+def _format_contraintes(champ: dict) -> str:
+    """Rend les contraintes de saisie d'un champ, en IMPÉRATIF.
+
+    ⚠️ **Pourquoi c'est décisif** (mesuré le 2026-07-21) : `/remboursement` impose à
+    `code_client1` le motif `\\d{7}` — sept chiffres, exactement. Le test généré y écrivait
+    « TEST_REMB_CLI001 » : le navigateur **refuse la soumission**, rien n'est créé, l'assertion de
+    création échoue, et le verdict tombe en `non_conforme`. **L'application n'y est pour rien** —
+    c'est la donnée du test qui est invalide. Un outil de test qui accuse l'application à tort est
+    pire qu'un outil qui ne teste rien.
+    """
+    c = champ.get("contraintes") or {}
+    if not c:
+        return ""
+    c = {k: v for k, v in c.items() if k not in ("min", "max") or _borne_exploitable(v)}
+    bouts = []
+    if c.get("pattern"):
+        bouts.append(f"doit correspondre EXACTEMENT au motif `{c['pattern']}`")
+    if c.get("minlength") and c.get("maxlength"):
+        bouts.append(f"entre {c['minlength']} et {c['maxlength']} caractères")
+    elif c.get("maxlength"):
+        bouts.append(f"{c['maxlength']} caractères maximum")
+    elif c.get("minlength"):
+        bouts.append(f"{c['minlength']} caractères minimum")
+    if c.get("min") is not None and c.get("max") is not None:
+        bouts.append(f"valeur entre {c['min']} et {c['max']}")
+    elif c.get("min") is not None:
+        bouts.append(f"valeur ≥ {c['min']}")
+    elif c.get("max") is not None:
+        bouts.append(f"valeur ≤ {c['max']}")
+    if c.get("accept"):
+        bouts.append(f"fichier de type {c['accept']}")
+    return f"\n      ⚠️ CONTRAINTE : {' · '.join(bouts)}" if bouts else ""
 
 
 def _section_champs_requis(plan: TestPlan, modele: dict | None) -> str:
@@ -99,7 +158,11 @@ def _section_champs_requis(plan: TestPlan, modele: dict | None) -> str:
                 detail = f" — valeurs possibles : {', '.join(champ['options'][:6])}"
             elif champ["tag"]:
                 detail = f" ({champ['tag']})"
-            lignes.append(f"  - `{champ['name']}`{detail}")
+            # Le libellé VISIBLE aide à choisir une valeur qui a du SENS (« Montant » → un
+            # nombre, « IBAN client » → un IBAN) — le nom technique seul ne le dit pas toujours.
+            if champ.get("label"):
+                detail += f" — *« {champ['label']} »*"
+            lignes.append(f"  - `{champ['name']}`{detail}{_format_contraintes(champ)}")
         if fichiers:
             lignes.append("")
             lignes.append(
@@ -107,6 +170,14 @@ def _section_champs_requis(plan: TestPlan, modele: dict | None) -> str:
                 "un `<input type=\"file\">` **n'accepte pas de texte** — écrire dedans lève "
                 "`InvalidStateError` et le scénario échoue techniquement. Emploie le step partagé "
                 "`je joins un fichier au champ \"<nom>\"`, qui téléverse une pièce jointe de test.")
+        contraints = [c["name"] for c in saisissables if c.get("contraintes")]
+        if contraints:
+            lignes.append("")
+            lignes.append(
+                "⚠️ **Les CONTRAINTES ci-dessus sont vérifiées par le navigateur AVANT l'envoi.** "
+                "Une valeur qui ne les respecte pas **bloque la soumission** : rien n'est créé, "
+                "et le test conclut à tort que l'application est en faute. Choisis des valeurs "
+                "qui satisfont le motif exact — pas un texte de test générique.")
         if caches:
             lignes.append("")
             lignes.append(

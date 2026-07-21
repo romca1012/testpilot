@@ -13,13 +13,67 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
+          "visible": false,
+          "role": "textbox",
+          "label": ""
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "×",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Enregistrer",
+          "soumet": false,
           "visible": false
         }
       ],
@@ -60,6 +114,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -77,11 +136,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -265,13 +319,13 @@
           "role": null
         },
         {
-          "href": "http://localhost:10017/en/formulaire/104",
-          "text": "PC Portable HP 14\" (VIP)",
+          "href": "http://localhost:10017/product/78/accessories",
+          "text": "PC Portable HP",
           "role": null
         },
         {
-          "href": "http://localhost:10017/en/formulaire/78",
-          "text": "PC Portable HP",
+          "href": "http://localhost:10017/en/formulaire/104",
+          "text": "PC Portable HP 14\" (VIP)",
           "role": null
         },
         {
@@ -312,97 +366,163 @@
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "product-3",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
         },
         {
           "name": "product-6",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
         },
         {
           "name": "product-119",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
         },
         {
           "name": "product-96",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
         },
         {
           "name": "product-1",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
         },
         {
           "name": "product-72",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
         },
         {
           "name": "product-84",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
         },
         {
           "name": "product-247",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
         },
         {
           "name": "product-107",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
         },
         {
           "name": "product-79",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
         },
         {
           "name": "product-118",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
         },
         {
           "name": "product-82",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
         },
         {
           "name": "product-248",
           "tag": "input",
           "type": "checkbox",
           "required": false,
+          "visible": false,
+          "role": "checkbox",
+          "label": ""
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
           "visible": false
         }
       ],
@@ -443,6 +563,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -460,11 +585,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -749,13 +869,67 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
+          "visible": false,
+          "role": "textbox",
+          "label": ""
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "×",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Enregistrer",
+          "soumet": false,
           "visible": false
         }
       ],
@@ -796,6 +970,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -813,11 +992,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -1001,13 +1175,13 @@
           "role": null
         },
         {
-          "href": "http://localhost:10017/en/formulaire/104",
-          "text": "PC Portable HP 14\" (VIP)",
+          "href": "http://localhost:10017/product/78/accessories",
+          "text": "PC Portable HP",
           "role": null
         },
         {
-          "href": "http://localhost:10017/en/formulaire/78",
-          "text": "PC Portable HP",
+          "href": "http://localhost:10017/en/formulaire/104",
+          "text": "PC Portable HP 14\" (VIP)",
           "role": null
         },
         {
@@ -1043,6 +1217,50 @@
     },
     "/my_dashboard": {
       "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "All",
+          "soumet": true,
+          "visible": true
+        }
+      ],
       "liens": [
         {
           "href": "/web",
@@ -1080,6 +1298,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -1097,11 +1320,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -1291,6 +1509,44 @@
     },
     "/connaissance": {
       "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        }
+      ],
       "liens": [
         {
           "href": "/web",
@@ -1328,6 +1584,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -1345,11 +1606,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -1539,34 +1795,136 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "csrf_token",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "ticket_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "new_destinataire",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Nouveau nom du destinataire"
         },
         {
           "name": "message",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Write a message..."
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Enregistrer",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Fermer",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Sélectionner",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Fermer",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Valider",
+          "soumet": true,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Annuler",
+          "soumet": true,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Send",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -1577,7 +1935,7 @@
           "role": null
         },
         {
-          "href": "http://localhost:10017/@/en/my/ticket/30262",
+          "href": "http://localhost:10017/@/en/my/ticket/30263",
           "text": "Editor",
           "role": null
         },
@@ -1607,6 +1965,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -1627,11 +1990,6 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
           "href": "/en/shop/cart",
           "text": "0",
           "role": null
@@ -1642,12 +2000,12 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30262",
+          "href": "/en/my/ticket/30263",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/my/ticket/30262",
+          "href": "/my/ticket/30263",
           "text": "Français",
           "role": null
         },
@@ -1727,12 +2085,12 @@
           "role": "menuitem"
         },
         {
-          "href": "/en/my/ticket/30262",
+          "href": "/en/my/ticket/30263",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/my/ticket/30262",
+          "href": "/my/ticket/30263",
           "text": "Français",
           "role": null
         },
@@ -1742,17 +2100,12 @@
           "role": null
         },
         {
-          "href": "/web#model=helpdesk.ticket&id=30262&view_type=form",
+          "href": "/web#model=helpdesk.ticket&id=30263&view_type=form",
           "text": "Back to edit mode",
           "role": null
         },
         {
-          "href": "/en/my/ticket/close/30262/4022a2e4-cc27-4112-b0c8-18051b74048b",
-          "text": "Close Ticket",
-          "role": "button"
-        },
-        {
-          "href": "/en/demande_materiel/ticket/30262",
+          "href": "/en/demande_materiel/ticket/30263",
           "text": "Demande test BDD - validation champ requ",
           "role": null
         },
@@ -1767,6 +2120,11 @@
           "role": null
         },
         {
+          "href": "#",
+          "text": "Clôturé",
+          "role": null
+        },
+        {
           "href": "/en",
           "text": "",
           "role": null
@@ -1777,12 +2135,12 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30262",
+          "href": "/en/my/ticket/30263",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/my/ticket/30262",
+          "href": "/my/ticket/30263",
           "text": "Français",
           "role": null
         }
@@ -1800,10 +2158,54 @@
         }
       ],
       "titre": "Demande test BDD - validation champ requis",
-      "url_exemple": "/my/ticket/30262"
+      "url_exemple": "/my/ticket/30263"
     },
     "/shop/cart": {
       "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Review Order",
+          "soumet": false,
+          "visible": false
+        }
+      ],
       "liens": [
         {
           "href": "/web",
@@ -1841,6 +2243,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -1858,11 +2265,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -2007,34 +2409,82 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "tabs",
           "tag": "input",
           "type": "radio",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "radio",
+          "label": "💼 Informations professionnelles"
         },
         {
           "name": "tabs",
           "tag": "input",
           "type": "radio",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "radio",
+          "label": "👤 Informations personnelles"
         },
         {
           "name": "tabs",
           "tag": "input",
           "type": "radio",
           "required": false,
+          "visible": false,
+          "role": "radio",
+          "label": "🔧 Mes équipements"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
           "visible": false
         }
       ],
@@ -2075,6 +2525,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -2092,11 +2547,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -2247,13 +2697,67 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
+          "visible": false,
+          "role": "textbox",
+          "label": ""
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "×",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Enregistrer",
+          "soumet": false,
           "visible": false
         }
       ],
@@ -2294,6 +2798,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -2311,11 +2820,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -2499,13 +3003,13 @@
           "role": null
         },
         {
-          "href": "http://localhost:10017/en/formulaire/104",
-          "text": "PC Portable HP 14\" (VIP)",
+          "href": "http://localhost:10017/product/78/accessories",
+          "text": "PC Portable HP",
           "role": null
         },
         {
-          "href": "http://localhost:10017/en/formulaire/78",
-          "text": "PC Portable HP",
+          "href": "http://localhost:10017/en/formulaire/104",
+          "text": "PC Portable HP 14\" (VIP)",
           "role": null
         },
         {
@@ -2541,6 +3045,44 @@
     },
     "/services-applicatifs": {
       "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        }
+      ],
       "liens": [
         {
           "href": "/web",
@@ -2578,6 +3120,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -2595,11 +3142,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -2809,6 +3351,44 @@
     },
     "/servicemetiers": {
       "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        }
+      ],
       "liens": [
         {
           "href": "/web",
@@ -2846,6 +3426,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -2863,11 +3448,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -3147,7 +3727,9 @@
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "type_demande",
@@ -3155,6 +3737,8 @@
           "type": "select-one",
           "required": true,
           "visible": false,
+          "role": "combobox",
+          "label": "Type de Demande",
           "options": [
             [
               "",
@@ -3176,12 +3760,76 @@
           "type": "select-one",
           "required": true,
           "visible": false,
+          "role": "combobox",
+          "label": "Rôle",
           "options": [
             [
               "",
               "Sélectionner un type d'abord"
             ]
           ]
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Fermer",
+          "soumet": true,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Valider",
+          "soumet": true,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Nouvel arrivant",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Prolongation de compte",
+          "soumet": false,
+          "visible": true
         }
       ],
       "liens": [
@@ -3221,6 +3869,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -3238,11 +3891,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -3433,7 +4081,9 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Demandeur"
         },
         {
           "name": "product_service",
@@ -3441,6 +4091,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "22",
@@ -3454,6 +4106,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "",
           "options": [
             [
               "22",
@@ -3466,56 +4120,116 @@
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Raison de la demande"
         },
         {
           "name": "priority",
           "tag": "input",
           "type": "radio",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "radio",
+          "label": "Standard"
         },
         {
           "name": "priority",
           "tag": "input",
           "type": "radio",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "radio",
+          "label": "Elévé"
         },
         {
           "name": "priority",
           "tag": "input",
           "type": "radio",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "radio",
+          "label": "Urgent"
         },
         {
           "name": "description",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Description"
         },
         {
           "name": "Piece jointe",
           "tag": "input",
           "type": "file",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "Piece jointe"
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
+          "visible": false,
+          "role": "textbox",
+          "label": ""
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
           "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
+          "visible": true
         }
       ],
       "liens": [
@@ -3555,6 +4269,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -3572,11 +4291,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -3757,6 +4471,70 @@
           "tag": "input",
           "type": "text",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Search"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Toggle filters",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Date de Création",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Tickets actifs",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "None",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -3797,6 +4575,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -3814,11 +4597,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -4087,11 +4865,6 @@
           "role": null
         },
         {
-          "href": "/en/helpdesk/ticket/30262",
-          "text": "#\n                                      ",
-          "role": null
-        },
-        {
           "href": "/en/helpdesk/ticket/30261",
           "text": "#\n                                      ",
           "role": null
@@ -4309,6 +5082,70 @@
           "tag": "input",
           "type": "text",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Search"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Toggle filters",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Date de Création",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "All",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "None",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -4349,6 +5186,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -4366,11 +5208,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -4671,6 +5508,70 @@
           "tag": "input",
           "type": "text",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Search"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Toggle filters",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Date de Création",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "All",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "None",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -4711,6 +5612,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -4728,11 +5634,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -5058,21 +5959,27 @@
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Demandeur"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Raison de la demande"
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "fonction_materiel",
@@ -5080,6 +5987,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Fonction",
           "options": [
             [
               "technicien_polyvalent",
@@ -5101,6 +6010,8 @@
           "type": "select-one",
           "required": true,
           "visible": true,
+          "role": "combobox",
+          "label": "Type de demande",
           "options": [
             [
               "nouvel_entrant",
@@ -5117,42 +6028,54 @@
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "checkbox",
+          "label": "Demande pour une autre personne ?"
         },
         {
           "name": "destinataire_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Destinataire"
         },
         {
           "name": "is_not_adr_agence",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "checkbox",
+          "label": "Livrer à une adresse différente ?"
         },
         {
           "name": "street",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Rue"
         },
         {
           "name": "street2",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Rue 2"
         },
         {
           "name": "city",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Ville"
         },
         {
           "name": "state_id",
@@ -5160,6 +6083,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "État / Région",
           "options": []
         },
         {
@@ -5167,7 +6092,9 @@
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Code Postal"
         },
         {
           "name": "country_id",
@@ -5175,6 +6102,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Pays",
           "options": [
             [
               "75",
@@ -6188,6 +7117,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Matériel",
           "options": [
             [
               "78",
@@ -6200,35 +7131,89 @@
           "tag": "input",
           "type": "radio",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "radio",
+          "label": "Standard"
         },
         {
           "name": "priority",
           "tag": "input",
           "type": "radio",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "radio",
+          "label": "Elévé"
         },
         {
           "name": "priority",
           "tag": "input",
           "type": "radio",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "radio",
+          "label": "Urgent"
         },
         {
           "name": "description",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Description"
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
+          "visible": false,
+          "role": "textbox",
+          "label": ""
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
           "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
+          "visible": true
         }
       ],
       "liens": [
@@ -6268,6 +7253,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -6285,11 +7275,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -6470,21 +7455,27 @@
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Demandeur"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Raison de la demande"
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "fonction_materiel",
@@ -6492,6 +7483,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Fonction",
           "options": [
             [
               "technicien_polyvalent",
@@ -6513,6 +7506,8 @@
           "type": "select-one",
           "required": true,
           "visible": true,
+          "role": "combobox",
+          "label": "Type de demande",
           "options": [
             [
               "nouvel_entrant",
@@ -6529,42 +7524,54 @@
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "checkbox",
+          "label": "Demande pour une autre personne ?"
         },
         {
           "name": "destinataire_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Destinataire"
         },
         {
           "name": "is_not_adr_agence",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "checkbox",
+          "label": "Livrer à une adresse différente ?"
         },
         {
           "name": "street",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Rue"
         },
         {
           "name": "street2",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Rue 2"
         },
         {
           "name": "city",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Ville"
         },
         {
           "name": "state_id",
@@ -6572,6 +7579,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "État / Région",
           "options": []
         },
         {
@@ -6579,7 +7588,9 @@
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Code Postal"
         },
         {
           "name": "country_id",
@@ -6587,6 +7598,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Pays",
           "options": [
             [
               "75",
@@ -7600,6 +8613,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Matériel",
           "options": [
             [
               "104",
@@ -7612,35 +8627,89 @@
           "tag": "input",
           "type": "radio",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "radio",
+          "label": "Standard"
         },
         {
           "name": "priority",
           "tag": "input",
           "type": "radio",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "radio",
+          "label": "Elévé"
         },
         {
           "name": "priority",
           "tag": "input",
           "type": "radio",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "radio",
+          "label": "Urgent"
         },
         {
           "name": "description",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Description"
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
+          "visible": false,
+          "role": "textbox",
+          "label": ""
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
           "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
+          "visible": true
         }
       ],
       "liens": [
@@ -7680,6 +8749,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -7697,11 +8771,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -7882,91 +8951,161 @@
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "header_color",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "header_text_color",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "header_visible",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "footer_visible",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Name"
         },
         {
           "name": "phone",
           "tag": "input",
           "type": "tel",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Phone Number"
         },
         {
           "name": "email_from",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "company",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Company"
         },
         {
           "name": "subject",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Subject"
         },
         {
           "name": "description",
           "tag": "textarea",
           "type": "textarea",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Question"
         },
         {
           "name": "email_to",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email To"
         },
         {
           "name": "website_form_signature",
           "tag": "input",
           "type": "hidden",
           "required": false,
+          "visible": false,
+          "role": "textbox",
+          "label": ""
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
           "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Submit",
+          "soumet": true,
+          "visible": true
         }
       ],
       "liens": [
@@ -8006,6 +9145,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -8023,11 +9167,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -8183,6 +9322,46 @@
           "tag": "input",
           "type": "hidden",
           "required": false,
+          "visible": false,
+          "role": "textbox",
+          "label": ""
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
           "visible": false
         }
       ],
@@ -8223,6 +9402,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -8240,11 +9424,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -8414,280 +9593,11 @@
     },
     "/web": {
       "champs": [],
+      "actions": [],
       "liens": [],
       "formulaires": [],
       "titre": "Odoo",
       "url_exemple": "/web"
-    },
-    "/my/ticket/{id}/4022a2e4-cc27-4112-b0c8-18051b74048b": {
-      "champs": [
-        {
-          "name": "ticket_id",
-          "tag": "input",
-          "type": "text",
-          "required": false,
-          "visible": false
-        },
-        {
-          "name": "csrf_token",
-          "tag": "input",
-          "type": "hidden",
-          "required": false,
-          "visible": false
-        },
-        {
-          "name": "ticket_id",
-          "tag": "input",
-          "type": "hidden",
-          "required": false,
-          "visible": false
-        },
-        {
-          "name": "new_destinataire",
-          "tag": "input",
-          "type": "text",
-          "required": true,
-          "visible": false
-        },
-        {
-          "name": "message",
-          "tag": "textarea",
-          "type": "textarea",
-          "required": false,
-          "visible": true
-        }
-      ],
-      "liens": [
-        {
-          "href": "/web",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "http://localhost:10017/@/en/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
-          "text": "Editor",
-          "role": null
-        },
-        {
-          "href": "/en/my/home",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "/en",
-          "text": "Accueil",
-          "role": null
-        },
-        {
-          "href": "/en/my_dashboard",
-          "text": "Mon dashboard",
-          "role": null
-        },
-        {
-          "href": "/en/connaissance",
-          "text": "Connaissances",
-          "role": null
-        },
-        {
-          "href": "",
-          "text": "Administration",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30262",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30261",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30259",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30254",
-          "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
-          "href": "/en/shop/cart",
-          "text": "0",
-          "role": null
-        },
-        {
-          "href": "/en",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
-          "text": "English (US)",
-          "role": null
-        },
-        {
-          "href": "/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
-          "text": "Français",
-          "role": null
-        },
-        {
-          "href": "#",
-          "text": "MyServices SAPIAN",
-          "role": "button"
-        },
-        {
-          "href": "/web",
-          "text": "Apps",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/user/account",
-          "text": "My Account",
-          "role": "menuitem"
-        },
-        {
-          "href": "",
-          "text": "Administration",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/my/delegation",
-          "text": "Délégations",
-          "role": "menuitem"
-        },
-        {
-          "href": "/web/session/logout?redirect=/",
-          "text": "Logout",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/home",
-          "text": "Faire une demande",
-          "role": null
-        },
-        {
-          "href": "/en/shop/cart",
-          "text": "0",
-          "role": null
-        },
-        {
-          "href": "/en",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "#",
-          "text": "MyServices SAPIAN",
-          "role": "button"
-        },
-        {
-          "href": "/web",
-          "text": "Apps",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/user/account",
-          "text": "My Account",
-          "role": "menuitem"
-        },
-        {
-          "href": "",
-          "text": "Administration",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/my/delegation",
-          "text": "Délégations",
-          "role": "menuitem"
-        },
-        {
-          "href": "/web/session/logout?redirect=/",
-          "text": "Logout",
-          "role": "menuitem"
-        },
-        {
-          "href": "/en/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
-          "text": "English (US)",
-          "role": null
-        },
-        {
-          "href": "/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
-          "text": "Français",
-          "role": null
-        },
-        {
-          "href": "/en/home",
-          "text": "Faire une demande",
-          "role": null
-        },
-        {
-          "href": "/web#model=helpdesk.ticket&id=30262&view_type=form",
-          "text": "Back to edit mode",
-          "role": null
-        },
-        {
-          "href": "/en/demande_materiel/ticket/30262",
-          "text": "Demande test BDD - validation champ requ",
-          "role": null
-        },
-        {
-          "href": "#",
-          "text": "Nouveau",
-          "role": null
-        },
-        {
-          "href": "#",
-          "text": "Ouvert",
-          "role": null
-        },
-        {
-          "href": "#",
-          "text": "Clôturé",
-          "role": null
-        },
-        {
-          "href": "/en",
-          "text": "",
-          "role": null
-        },
-        {
-          "href": "/en/contactus",
-          "text": "Contactez-nous",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
-          "text": "English (US)",
-          "role": null
-        },
-        {
-          "href": "/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b?ticket_closed=1",
-          "text": "Français",
-          "role": null
-        }
-      ],
-      "formulaires": [
-        {
-          "action": "",
-          "method": "get",
-          "champs": 0
-        },
-        {
-          "action": "/en/change_destinataire/submit",
-          "method": "post",
-          "champs": 3
-        }
-      ],
-      "titre": "Demande test BDD - validation champ requis",
-      "url_exemple": "/my/ticket/30262/4022a2e4-cc27-4112-b0c8-18051b74048b"
     },
     "/demande_materiel/ticket/{id}": {
       "champs": [
@@ -8696,27 +9606,79 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Demandeur"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Raison de la demande"
         },
         {
           "name": "fonction_materiel",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Fonction"
         },
         {
           "name": "product",
           "tag": "input",
           "type": "text",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Matériel"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Retour au ticket",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -8727,7 +9689,7 @@
           "role": null
         },
         {
-          "href": "http://localhost:10017/@/en/demande_materiel/ticket/30262",
+          "href": "http://localhost:10017/@/en/demande_materiel/ticket/30263",
           "text": "Editor",
           "role": null
         },
@@ -8757,6 +9719,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -8777,11 +9744,6 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
           "href": "/en/shop/cart",
           "text": "0",
           "role": null
@@ -8792,12 +9754,12 @@
           "role": null
         },
         {
-          "href": "/en/demande_materiel/ticket/30262",
+          "href": "/en/demande_materiel/ticket/30263",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/demande_materiel/ticket/30262",
+          "href": "/demande_materiel/ticket/30263",
           "text": "Français",
           "role": null
         },
@@ -8877,12 +9839,12 @@
           "role": "menuitem"
         },
         {
-          "href": "/en/demande_materiel/ticket/30262",
+          "href": "/en/demande_materiel/ticket/30263",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/demande_materiel/ticket/30262",
+          "href": "/demande_materiel/ticket/30263",
           "text": "Français",
           "role": null
         },
@@ -8892,7 +9854,7 @@
           "role": null
         },
         {
-          "href": "/en/helpdesk/ticket/30262",
+          "href": "/en/helpdesk/ticket/30263",
           "text": "Retour au ticket",
           "role": "button"
         },
@@ -8907,12 +9869,12 @@
           "role": null
         },
         {
-          "href": "/en/demande_materiel/ticket/30262",
+          "href": "/en/demande_materiel/ticket/30263",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/demande_materiel/ticket/30262",
+          "href": "/demande_materiel/ticket/30263",
           "text": "Français",
           "role": null
         }
@@ -8925,7 +9887,7 @@
         }
       ],
       "titre": "Demande materiel | Sapian",
-      "url_exemple": "/demande_materiel/ticket/30262"
+      "url_exemple": "/demande_materiel/ticket/30263"
     },
     "/mutation/{id}": {
       "champs": [
@@ -8934,21 +9896,27 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "product",
@@ -8956,6 +9924,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "67",
@@ -8969,6 +9939,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Agence",
           "options": []
         },
         {
@@ -8976,69 +9948,139 @@
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du demandeur"
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "code_client1",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Code payeur actuel",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "nom_client",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom de payeur actuel"
         },
         {
           "name": "mutation_code_client",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Code du payeur cible",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "nouveau_nom_client",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du payeur cible"
         },
         {
           "name": "date_mutation_client",
           "tag": "input",
           "type": "date",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date effective de mutation demandée par le client"
         },
         {
           "name": "justificatifs_mutation",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": ""
         },
         {
           "name": "description",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": ""
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -9079,6 +10121,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -9096,11 +10143,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -9286,21 +10328,27 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "product",
@@ -9308,6 +10356,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "65",
@@ -9321,6 +10371,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Agence",
           "options": []
         },
         {
@@ -9328,28 +10380,36 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date de la demande"
         },
         {
           "name": "partner_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du demandeur"
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "type_lettrage",
@@ -9357,6 +10417,8 @@
           "type": "select-one",
           "required": true,
           "visible": true,
+          "role": "combobox",
+          "label": "",
           "options": [
             [
               "",
@@ -9381,20 +10443,73 @@
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Code client",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "description",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "piece_jointe_lettrage",
           "tag": "input",
           "type": "file",
           "required": false,
+          "visible": true,
+          "role": "button",
+          "label": "Joindre fichier"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -9435,6 +10550,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -9452,11 +10572,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -9642,35 +10757,45 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "product",
@@ -9678,6 +10803,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "69",
@@ -9691,6 +10818,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Agence",
           "options": []
         },
         {
@@ -9698,69 +10827,146 @@
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du demandeur"
         },
         {
           "name": "email_client",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Email client"
         },
         {
           "name": "code_client1",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Code client",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "nom_client",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du client"
         },
         {
           "name": "numero_facture1",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Numéro de facture",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "numero_cheque",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Numéro de chèque",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "nom_banque",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom de la Banque"
         },
         {
           "name": "date_emission_cheque",
           "tag": "input",
           "type": "date",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date d’émission du chèque"
         },
         {
           "name": "montant_cheque",
           "tag": "input",
           "type": "number",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "spinbutton",
+          "label": "Montant du chèque",
+          "contraintes": {
+            "min": "0",
+            "step": "any"
+          }
         },
         {
           "name": "description",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Description"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -9801,6 +11007,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -9818,11 +11029,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -10008,21 +11214,27 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "product",
@@ -10030,6 +11242,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "64",
@@ -10043,6 +11257,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Agence",
           "options": []
         },
         {
@@ -10050,42 +11266,61 @@
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du demandeur"
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "code_client1",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Code client",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "nom_client",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du client"
         },
         {
           "name": "montant_remboursement",
           "tag": "input",
           "type": "number",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "spinbutton",
+          "label": "Montant du remboursement",
+          "contraintes": {
+            "min": "0",
+            "step": "any"
+          }
         },
         {
           "name": "motif",
@@ -10093,6 +11328,8 @@
           "type": "select-one",
           "required": true,
           "visible": true,
+          "role": "combobox",
+          "label": "",
           "options": [
             [
               "",
@@ -10117,104 +11354,181 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Numéro avoir"
         },
         {
           "name": "date_avoir",
           "tag": "input",
           "type": "date",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Date avoir"
         },
         {
           "name": "numero_facture_origine",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Numéro facture origine"
         },
         {
           "name": "date_facture",
           "tag": "input",
           "type": "date",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Date facture"
         },
         {
           "name": "reference_piece",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "date_reglement_client",
           "tag": "input",
           "type": "date",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Date règlement client"
         },
         {
           "name": "justificatif_double_reglement",
           "tag": "input",
           "type": "file",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "button",
+          "label": "Joindre impérativement un justificatif de double règlement (avis de virement client)"
         },
         {
           "name": "reference_acompte",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "date_acompte",
           "tag": "input",
           "type": "date",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Date acompte"
         },
         {
           "name": "nom_banque",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom banque"
         },
         {
           "name": "iban_client",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "IBAN client"
         },
         {
           "name": "bic_client",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "BIC client",
+          "contraintes": {
+            "pattern": "[A-Za-z0-9]{8,11}"
+          }
         },
         {
           "name": "rib_client",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "Joindre impérativement un RIB original du client"
         },
         {
           "name": "certifie_rib",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "checkbox",
+          "label": "Je certifie avoir procédé aux vérifications de validité du RIB, selon la procédure"
         },
         {
           "name": "nom_prenom",
           "tag": "input",
           "type": "text",
           "required": true,
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom et prénom"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -10255,6 +11569,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -10272,11 +11591,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -10462,35 +11776,45 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "product",
@@ -10498,6 +11822,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "70",
@@ -10511,6 +11837,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Agence",
           "options": []
         },
         {
@@ -10518,42 +11846,64 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date de la demande"
         },
         {
           "name": "partner_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du demandeur"
         },
         {
           "name": "numero_fournisseur",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "N° du fournisseur",
+          "contraintes": {
+            "pattern": "\\d{6}"
+          }
         },
         {
           "name": "nom_fournisseur",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom fournisseur"
         },
         {
           "name": "numero_facture_annulation",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "N° de la facture",
+          "contraintes": {
+            "pattern": "[a-zA-Z0-9]{1,10}"
+          }
         },
         {
           "name": "montant_ttc",
           "tag": "input",
           "type": "number",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "spinbutton",
+          "label": "Montant TTC de la pièce",
+          "contraintes": {
+            "min": "0",
+            "step": "any"
+          }
         },
         {
           "name": "motif_annulation",
@@ -10561,6 +11911,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Motif",
           "options": [
             [
               "double_saisie",
@@ -10589,13 +11941,64 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "N° nouveau compte fournisseur",
+          "contraintes": {
+            "pattern": "\\d{6}"
+          }
         },
         {
           "name": "piece_jointe_facture",
           "tag": "input",
           "type": "file",
           "required": true,
+          "visible": true,
+          "role": "button",
+          "label": "Copie de la facture ou de l'avoir"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -10636,6 +12039,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -10653,11 +12061,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -10843,21 +12246,27 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "product",
@@ -10865,6 +12274,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "66",
@@ -10878,6 +12289,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Agence",
           "options": []
         },
         {
@@ -10885,70 +12298,90 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date de la demande"
         },
         {
           "name": "partner_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du demandeur"
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "nom_fournisseur",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom fournisseur"
         },
         {
           "name": "raison_sociale",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Raison sociale"
         },
         {
           "name": "adresse_id",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Adresse"
         },
         {
           "name": "adresse_fournisseur2",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Adresse (suite)"
         },
         {
           "name": "cp_id",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "CP"
         },
         {
           "name": "city",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Ville"
         },
         {
           "name": "country_id",
@@ -10956,6 +12389,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "",
           "options": [
             [
               "75",
@@ -11968,14 +13403,21 @@
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "SIRET",
+          "contraintes": {
+            "pattern": "\\d{9} \\d{5}"
+          }
         },
         {
           "name": "tva_intracommunautaire",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "N° de TVA intracommunautaire"
         },
         {
           "name": "categorie_achats",
@@ -11983,6 +13425,8 @@
           "type": "select-one",
           "required": true,
           "visible": true,
+          "role": "combobox",
+          "label": "",
           "options": [
             [
               "",
@@ -12012,6 +13456,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "",
           "options": [
             [
               "virement",
@@ -12028,21 +13474,27 @@
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "RIB certifié par le fournisseur"
         },
         {
           "name": "piece_jointe_kbis",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "joindre KBIS original"
         },
         {
           "name": "email_envoi_avis",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Email envoi avis de virement"
         },
         {
           "name": "delai_de_reglement",
@@ -12050,6 +13502,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "",
           "options": [
             [
               "j_60_date_de_facture",
@@ -12078,41 +13532,100 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Autre délai"
         },
         {
           "name": "piece_jointe",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "Facture proforma avec les CGV"
         },
         {
           "name": "nom_contact_comptable",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom contact comptable"
         },
         {
           "name": "fonction_contact_comptable",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Fonction"
         },
         {
           "name": "phone_contact_comptable",
           "tag": "input",
           "type": "tel",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Téléphone",
+          "contraintes": {
+            "pattern": "\\+?[0-9\\s\\-\\(\\)]{10,}"
+          }
         },
         {
           "name": "email_contact_comptable",
           "tag": "input",
           "type": "email",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Email"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -12153,6 +13666,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -12170,11 +13688,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -12360,35 +13873,45 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "product",
@@ -12396,6 +13919,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "87",
@@ -12409,6 +13934,8 @@
           "type": "select-one",
           "required": true,
           "visible": true,
+          "role": "combobox",
+          "label": "Agence",
           "options": [
             [
               "",
@@ -12421,132 +13948,221 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date de la demande"
         },
         {
           "name": "partner_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du demandeur"
         },
         {
           "name": "code_client1",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Code client",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "nom_client",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du client"
         },
         {
           "name": "description",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Description"
         },
         {
           "name": "info_sinistre_ids",
           "tag": "input",
           "type": "checkbox",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "checkbox",
+          "label": "Preuve d’achat"
         },
         {
           "name": "info_sinistre_ids",
           "tag": "input",
           "type": "checkbox",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "checkbox",
+          "label": "Rapport d’intervention"
         },
         {
           "name": "info_sinistre_ids",
           "tag": "input",
           "type": "checkbox",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "checkbox",
+          "label": "Échanges mail avec le client"
         },
         {
           "name": "info_sinistre_ids",
           "tag": "input",
           "type": "checkbox",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "checkbox",
+          "label": "Rapport d’expertise"
         },
         {
           "name": "justificatifs_mutation",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": ""
         },
         {
           "name": "amount_sinistre",
           "tag": "input",
           "type": "number",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "spinbutton",
+          "label": "Montant TTC du remboursement",
+          "contraintes": {
+            "min": "0",
+            "step": "0.01"
+          }
         },
         {
           "name": "nom_cheque",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Chèque à établir à l’ordre de"
         },
         {
           "name": "destinataire_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Destinataire du chèque"
         },
         {
           "name": "adresse_id",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Adresse"
         },
         {
           "name": "cp_id",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "CP"
         },
         {
           "name": "city",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Ville"
         },
         {
           "name": "reference_sinistre1",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nos Références"
         },
         {
           "name": "reference_sinistre2",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Vos Références"
         },
         {
           "name": "objet",
           "tag": "input",
           "type": "text",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Objet"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -12587,6 +14203,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -12604,11 +14225,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -12794,28 +14410,36 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "csrf_token",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "product",
@@ -12823,6 +14447,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "117",
@@ -12835,14 +14461,18 @@
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "agence",
@@ -12850,6 +14480,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Agence",
           "options": []
         },
         {
@@ -12857,56 +14489,87 @@
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du demandeur"
         },
         {
           "name": "compte_client",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "N compte client",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "customer_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom client"
         },
         {
           "name": "invoice_number[]",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "7 chiffres"
         },
         {
           "name": "montant_ttc[]",
           "tag": "input",
           "type": "number",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "spinbutton",
+          "label": ">= 5000",
+          "contraintes": {
+            "step": "0.01"
+          }
         },
         {
           "name": "montant_ht[]",
           "tag": "input",
           "type": "number",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "spinbutton",
+          "label": "0.00",
+          "contraintes": {
+            "step": "0.01"
+          }
         },
         {
           "name": "montant_ht_avoir[]",
           "tag": "input",
           "type": "number",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "spinbutton",
+          "label": "0.00",
+          "contraintes": {
+            "step": "0.01"
+          }
         },
         {
           "name": "montant_ht_refact[]",
           "tag": "input",
           "type": "number",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "spinbutton",
+          "label": "0.00",
+          "contraintes": {
+            "step": "0.01"
+          }
         },
         {
           "name": "type[]",
@@ -12914,6 +14577,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "",
           "options": [
             [
               "",
@@ -12943,6 +14608,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "",
           "options": [
             [
               "",
@@ -12956,6 +14623,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "",
           "options": [
             [
               "",
@@ -12969,6 +14638,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "",
           "options": [
             [
               "",
@@ -12981,13 +14652,67 @@
           "tag": "textarea",
           "type": "textarea",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "motif_anulation_avoir",
           "tag": "input",
           "type": "file",
           "required": true,
+          "visible": true,
+          "role": "button",
+          "label": "Fichiers motifs"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Ajouter une ligne",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -13028,6 +14753,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -13045,11 +14775,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -13235,21 +14960,27 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "product",
@@ -13257,6 +14988,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "75",
@@ -13270,6 +15003,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Agence",
           "options": []
         },
         {
@@ -13277,97 +15012,179 @@
           "tag": "input",
           "type": "date",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date"
         },
         {
           "name": "partner_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "code_client1",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Code client",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "name_customer",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du client"
         },
         {
           "name": "siren",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Numéro SIREN",
+          "contraintes": {
+            "pattern": "\\d{9}"
+          }
         },
         {
           "name": "amount_creance",
           "tag": "input",
           "type": "number",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "spinbutton",
+          "label": "Montant total créances TTC",
+          "contraintes": {
+            "min": "0",
+            "step": "0.01"
+          }
         },
         {
           "name": "ref_doc",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Référence du document"
         },
         {
           "name": "copy_doc",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "Copie du document"
         },
         {
           "name": "numero_facture1",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Numéro facture"
         },
         {
           "name": "copy_invoice_part",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "Copie facture"
         },
         {
           "name": "supporting_document",
           "tag": "input",
           "type": "file",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "Mails de relance / courriers avec le client"
         },
         {
           "name": "description",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Commentaires"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -13408,6 +15225,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -13425,11 +15247,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -13615,21 +15432,27 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "product",
@@ -13637,6 +15460,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "76",
@@ -13650,6 +15475,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Agence",
           "options": []
         },
         {
@@ -13657,104 +15484,191 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date"
         },
         {
           "name": "partner_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du demandeur"
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "code_client1",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Code client",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "name_customer",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du client"
         },
         {
           "name": "siren",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Numéro SIREN",
+          "contraintes": {
+            "pattern": "\\d{9}"
+          }
         },
         {
           "name": "date_proc",
           "tag": "input",
           "type": "date",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date Procédure Collective/PCI",
+          "contraintes": {
+            "max": "date_now"
+          }
         },
         {
           "name": "amount_creance",
           "tag": "input",
           "type": "number",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "spinbutton",
+          "label": "Montant total créances TTC",
+          "contraintes": {
+            "min": "0",
+            "step": "0.01"
+          }
         },
         {
           "name": "ref_doc",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Référence du document"
         },
         {
           "name": "numero_facture1",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Numéro facture"
         },
         {
           "name": "copy_invoice_part",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "Copie facture Pièce à télécharger"
         },
         {
           "name": "is_contrat",
           "tag": "input",
           "type": "checkbox",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "checkbox",
+          "label": "Si contrat, joindre courrier RAR envoyé à l’administrateur concernant la poursuite du contrat"
         },
         {
           "name": "copy_doc",
           "tag": "input",
           "type": "file",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "button",
+          "label": "Courrier RAR à télécharger"
         },
         {
           "name": "description",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Commentaires"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -13795,6 +15709,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -13812,11 +15731,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -14002,35 +15916,45 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "product",
@@ -14038,6 +15962,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "85",
@@ -14051,6 +15977,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Agence",
           "options": []
         },
         {
@@ -14058,48 +15986,109 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date de la demande"
         },
         {
           "name": "partner_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du demandeur"
         },
         {
           "name": "code_client1",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Code client",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "nom_client",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du client"
         },
         {
           "name": "piece_jointe_facture",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "Formulaire de prélèvement signé et tamponné par le client"
         },
         {
           "name": "rib_original",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "RIB Original"
         },
         {
           "name": "description",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Commentaires"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -14140,6 +16129,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -14157,11 +16151,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -14347,35 +16336,45 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "partner_email",
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "product",
@@ -14383,6 +16382,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "86",
@@ -14396,6 +16397,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Agence",
           "options": []
         },
         {
@@ -14403,90 +16406,170 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date de la demande"
         },
         {
           "name": "partner_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du demandeur"
         },
         {
           "name": "code_client1",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Code client",
+          "contraintes": {
+            "pattern": "\\d{7}"
+          }
         },
         {
           "name": "nom_client",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du client"
         },
         {
           "name": "numero_siren",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "SIREN",
+          "contraintes": {
+            "pattern": "\\d{9}"
+          }
         },
         {
           "name": "montant_ttc_marche",
           "tag": "input",
           "type": "number",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "spinbutton",
+          "label": "Montant TTC de la pièce",
+          "contraintes": {
+            "min": "0",
+            "step": "any"
+          }
         },
         {
           "name": "date_debut",
           "tag": "input",
           "type": "date",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date début du marché"
         },
         {
           "name": "date_fin",
           "tag": "input",
           "type": "date",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Date de fin du marché"
         },
         {
           "name": "piece_jointe_facture",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "Copie document contractuel signé par les deux parties"
         },
         {
           "name": "rib_original",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "Copie PV de réception de travaux sans réserve"
         },
         {
           "name": "numero_facture1",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Numéro de facture"
         },
         {
           "name": "copy_invoice_part",
           "tag": "input",
           "type": "file",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "button",
+          "label": "Copie facture Pièce à télécharger :"
         },
         {
           "name": "description",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Commentaires"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -14527,6 +16610,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -14544,11 +16632,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -14734,35 +16817,45 @@
           "tag": "input",
           "type": "search",
           "required": false,
-          "visible": true
+          "visible": true,
+          "role": "searchbox",
+          "label": "Rechercher un service"
         },
         {
           "name": "order",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "substate_investment",
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sous-statut"
         },
         {
           "name": "investment",
           "tag": "input",
           "type": "number",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "spinbutton",
+          "label": "Investissement"
         },
         {
           "name": "team_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "product",
@@ -14770,6 +16863,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "Service",
           "options": [
             [
               "113",
@@ -14782,14 +16877,18 @@
           "tag": "input",
           "type": "email",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Email"
         },
         {
           "name": "name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Sujet"
         },
         {
           "name": "agence",
@@ -14797,6 +16896,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "",
           "options": []
         },
         {
@@ -14804,14 +16905,21 @@
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du demandeur"
         },
         {
           "name": "denomination",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Dénomination",
+          "contraintes": {
+            "maxlength": 25
+          }
         },
         {
           "name": "type_investissement",
@@ -14819,6 +16927,8 @@
           "type": "select-one",
           "required": true,
           "visible": true,
+          "role": "combobox",
+          "label": "Type investissement",
           "options": [
             [
               "new_aquisition",
@@ -14836,6 +16946,8 @@
           "type": "select-one",
           "required": false,
           "visible": false,
+          "role": "combobox",
+          "label": "",
           "options": [
             [
               "non",
@@ -14852,21 +16964,30 @@
           "tag": "textarea",
           "type": "textarea",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Justification de la demande / descriptif technique"
         },
         {
           "name": "amount_ht",
           "tag": "input",
           "type": "number",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "spinbutton",
+          "label": "Montant HT",
+          "contraintes": {
+            "step": "0.01"
+          }
         },
         {
           "name": "supplier_name",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": true
+          "visible": true,
+          "role": "textbox",
+          "label": "Nom du fournisseur"
         },
         {
           "name": "referenced_supplier",
@@ -14874,6 +16995,8 @@
           "type": "select-one",
           "required": false,
           "visible": true,
+          "role": "combobox",
+          "label": "Fournisseur référencé",
           "options": [
             [
               "non",
@@ -14890,13 +17013,61 @@
           "tag": "input",
           "type": "number",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "spinbutton",
+          "label": "Code fournisseur"
         },
         {
           "name": "quote_file",
           "tag": "input",
           "type": "file",
           "required": true,
+          "visible": true,
+          "role": "button",
+          "label": "Devis"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Envoyer",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -14937,6 +17108,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -14954,11 +17130,6 @@
         {
           "href": "/en/my/ticket/30254",
           "text": "PROBE-SUBMIT-DIAG 1784488865",
-          "role": null
-        },
-        {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "role": null
         },
         {
@@ -15144,34 +17315,160 @@
           "tag": "input",
           "type": "text",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "csrf_token",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "ticket_id",
           "tag": "input",
           "type": "hidden",
           "required": false,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": ""
         },
         {
           "name": "new_destinataire",
           "tag": "input",
           "type": "text",
           "required": true,
-          "visible": false
+          "visible": false,
+          "role": "textbox",
+          "label": "Nouveau nom du destinataire"
         },
         {
           "name": "message",
           "tag": "textarea",
           "type": "textarea",
           "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Write a message..."
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close Ticket",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Discard",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Enregistrer",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Fermer",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Sélectionner",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Saisir le nom",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Fermer",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Valider",
+          "soumet": true,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Annuler",
+          "soumet": true,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Send",
+          "soumet": true,
           "visible": true
         }
       ],
@@ -15182,7 +17479,7 @@
           "role": null
         },
         {
-          "href": "http://localhost:10017/@/en/helpdesk/ticket/30262",
+          "href": "http://localhost:10017/@/en/helpdesk/ticket/30261",
           "text": "Editor",
           "role": null
         },
@@ -15212,6 +17509,11 @@
           "role": null
         },
         {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
           "href": "/en/my/ticket/30262",
           "text": "Demande test BDD - validation champ requ",
           "role": null
@@ -15232,11 +17534,6 @@
           "role": null
         },
         {
-          "href": "/en/my/ticket/30253",
-          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "role": null
-        },
-        {
           "href": "/en/shop/cart",
           "text": "0",
           "role": null
@@ -15247,12 +17544,12 @@
           "role": null
         },
         {
-          "href": "/en/helpdesk/ticket/30262",
+          "href": "/en/helpdesk/ticket/30261",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/helpdesk/ticket/30262",
+          "href": "/helpdesk/ticket/30261",
           "text": "Français",
           "role": null
         },
@@ -15332,12 +17629,12 @@
           "role": "menuitem"
         },
         {
-          "href": "/en/helpdesk/ticket/30262",
+          "href": "/en/helpdesk/ticket/30261",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/helpdesk/ticket/30262",
+          "href": "/helpdesk/ticket/30261",
           "text": "Français",
           "role": null
         },
@@ -15347,12 +17644,384 @@
           "role": null
         },
         {
-          "href": "/web#model=helpdesk.ticket&id=30262&view_type=form",
+          "href": "/web#model=helpdesk.ticket&id=30261&view_type=form",
           "text": "Back to edit mode",
           "role": null
         },
         {
-          "href": "/en/demande_materiel/ticket/30262",
+          "href": "/en/my/ticket/close/30261/7d57289e-5548-4617-8950-db433143388d",
+          "text": "Close Ticket",
+          "role": "button"
+        },
+        {
+          "href": "/en/demande_materiel/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "Nouveau",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "Ouvert",
+          "role": null
+        },
+        {
+          "href": "/en",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/en/contactus",
+          "text": "Contactez-nous",
+          "role": null
+        },
+        {
+          "href": "/en/helpdesk/ticket/30261",
+          "text": "English (US)",
+          "role": null
+        },
+        {
+          "href": "/helpdesk/ticket/30261",
+          "text": "Français",
+          "role": null
+        }
+      ],
+      "formulaires": [
+        {
+          "action": "",
+          "method": "get",
+          "champs": 0
+        },
+        {
+          "action": "/en/change_destinataire/submit",
+          "method": "post",
+          "champs": 3
+        }
+      ],
+      "titre": "Demande test BDD - validation champ requis",
+      "url_exemple": "/helpdesk/ticket/30261"
+    },
+    "/my/ticket/{id}/7d57289e-5548-4617-8950-db433143388d": {
+      "champs": [
+        {
+          "name": "ticket_id",
+          "tag": "input",
+          "type": "text",
+          "required": false,
+          "visible": false,
+          "role": "textbox",
+          "label": ""
+        },
+        {
+          "name": "csrf_token",
+          "tag": "input",
+          "type": "hidden",
+          "required": false,
+          "visible": false,
+          "role": "textbox",
+          "label": ""
+        },
+        {
+          "name": "ticket_id",
+          "tag": "input",
+          "type": "hidden",
+          "required": false,
+          "visible": false,
+          "role": "textbox",
+          "label": ""
+        },
+        {
+          "name": "new_destinataire",
+          "tag": "input",
+          "type": "text",
+          "required": true,
+          "visible": false,
+          "role": "textbox",
+          "label": "Nouveau nom du destinataire"
+        },
+        {
+          "name": "message",
+          "tag": "textarea",
+          "type": "textarea",
+          "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Write a message..."
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Toggle navigation",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "MyServices SAPIAN",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "English (US)",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Close",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Enregistrer",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Fermer",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Sélectionner",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Fermer",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Valider",
+          "soumet": true,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Annuler",
+          "soumet": true,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Send",
+          "soumet": true,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "/web",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://localhost:10017/@/en/my/ticket/30261/7d57289e-5548-4617-8950-db433143388d?ticket_closed=1",
+          "text": "Editor",
+          "role": null
+        },
+        {
+          "href": "/en/my/home",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/en",
+          "text": "Accueil",
+          "role": null
+        },
+        {
+          "href": "/en/my_dashboard",
+          "text": "Mon dashboard",
+          "role": null
+        },
+        {
+          "href": "/en/connaissance",
+          "text": "Connaissances",
+          "role": null
+        },
+        {
+          "href": "",
+          "text": "Administration",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30263",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30262",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30259",
+          "text": "Demande test BDD - validation champ requ",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30254",
+          "text": "PROBE-SUBMIT-DIAG 1784488865",
+          "role": null
+        },
+        {
+          "href": "/en/shop/cart",
+          "text": "0",
+          "role": null
+        },
+        {
+          "href": "/en",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/en/my/ticket/30261/7d57289e-5548-4617-8950-db433143388d?ticket_closed=1",
+          "text": "English (US)",
+          "role": null
+        },
+        {
+          "href": "/my/ticket/30261/7d57289e-5548-4617-8950-db433143388d?ticket_closed=1",
+          "text": "Français",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "MyServices SAPIAN",
+          "role": "button"
+        },
+        {
+          "href": "/web",
+          "text": "Apps",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/user/account",
+          "text": "My Account",
+          "role": "menuitem"
+        },
+        {
+          "href": "",
+          "text": "Administration",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/my/delegation",
+          "text": "Délégations",
+          "role": "menuitem"
+        },
+        {
+          "href": "/web/session/logout?redirect=/",
+          "text": "Logout",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/home",
+          "text": "Faire une demande",
+          "role": null
+        },
+        {
+          "href": "/en/shop/cart",
+          "text": "0",
+          "role": null
+        },
+        {
+          "href": "/en",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "MyServices SAPIAN",
+          "role": "button"
+        },
+        {
+          "href": "/web",
+          "text": "Apps",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/user/account",
+          "text": "My Account",
+          "role": "menuitem"
+        },
+        {
+          "href": "",
+          "text": "Administration",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/my/delegation",
+          "text": "Délégations",
+          "role": "menuitem"
+        },
+        {
+          "href": "/web/session/logout?redirect=/",
+          "text": "Logout",
+          "role": "menuitem"
+        },
+        {
+          "href": "/en/my/ticket/30261/7d57289e-5548-4617-8950-db433143388d?ticket_closed=1",
+          "text": "English (US)",
+          "role": null
+        },
+        {
+          "href": "/my/ticket/30261/7d57289e-5548-4617-8950-db433143388d?ticket_closed=1",
+          "text": "Français",
+          "role": null
+        },
+        {
+          "href": "/en/home",
+          "text": "Faire une demande",
+          "role": null
+        },
+        {
+          "href": "/web#model=helpdesk.ticket&id=30261&view_type=form",
+          "text": "Back to edit mode",
+          "role": null
+        },
+        {
+          "href": "/en/demande_materiel/ticket/30261",
           "text": "Demande test BDD - validation champ requ",
           "role": null
         },
@@ -15382,12 +18051,12 @@
           "role": null
         },
         {
-          "href": "/en/helpdesk/ticket/30262",
+          "href": "/en/my/ticket/30261/7d57289e-5548-4617-8950-db433143388d?ticket_closed=1",
           "text": "English (US)",
           "role": null
         },
         {
-          "href": "/helpdesk/ticket/30262",
+          "href": "/my/ticket/30261/7d57289e-5548-4617-8950-db433143388d?ticket_closed=1",
           "text": "Français",
           "role": null
         }
@@ -15405,7 +18074,7 @@
         }
       ],
       "titre": "Demande test BDD - validation champ requis",
-      "url_exemple": "/helpdesk/ticket/30262"
+      "url_exemple": "/my/ticket/30261/7d57289e-5548-4617-8950-db433143388d"
     }
   },
   "transitions": {
@@ -15498,7 +18167,6 @@
       "/home",
       "/my/delegation",
       "/my/home",
-      "/my/ticket/close/{id}/4022a2e4-cc27-4112-b0c8-18051b74048b",
       "/my_dashboard",
       "/shop/cart",
       "/ticket/{id}",
@@ -15724,20 +18392,6 @@
       "/shop/cart",
       "/user/account"
     ],
-    "/my/ticket/{id}/4022a2e4-cc27-4112-b0c8-18051b74048b": [
-      "/connaissance",
-      "/contactus",
-      "/demande_materiel/ticket/{id}",
-      "/en",
-      "/home",
-      "/my/delegation",
-      "/my/home",
-      "/my/ticket/{id}",
-      "/my_dashboard",
-      "/shop/cart",
-      "/ticket/{id}/4022a2e4-cc27-4112-b0c8-18051b74048b",
-      "/user/account"
-    ],
     "/demande_materiel/ticket/{id}": [
       "/connaissance",
       "/contactus",
@@ -15967,9 +18621,24 @@
       "/home",
       "/my/delegation",
       "/my/home",
+      "/my/ticket/close/{id}/7d57289e-5548-4617-8950-db433143388d",
       "/my/ticket/{id}",
       "/my_dashboard",
       "/shop/cart",
+      "/user/account"
+    ],
+    "/my/ticket/{id}/7d57289e-5548-4617-8950-db433143388d": [
+      "/connaissance",
+      "/contactus",
+      "/demande_materiel/ticket/{id}",
+      "/en",
+      "/home",
+      "/my/delegation",
+      "/my/home",
+      "/my/ticket/{id}",
+      "/my_dashboard",
+      "/shop/cart",
+      "/ticket/{id}/7d57289e-5548-4617-8950-db433143388d",
       "/user/account"
     ]
   },
@@ -15996,6 +18665,7 @@
       "MyServices SAPIAN"
     ],
     "/my/ticket/{id}": [
+      "Clôturé",
       "MyServices SAPIAN",
       "Nouveau",
       "Ouvert"
@@ -16076,12 +18746,6 @@
     "/description/{id}": [
       "MyServices SAPIAN"
     ],
-    "/my/ticket/{id}/4022a2e4-cc27-4112-b0c8-18051b74048b": [
-      "Clôturé",
-      "MyServices SAPIAN",
-      "Nouveau",
-      "Ouvert"
-    ],
     "/demande_materiel/ticket/{id}": [
       "MyServices SAPIAN"
     ],
@@ -16138,6 +18802,11 @@
       "MyServices SAPIAN"
     ],
     "/helpdesk/ticket/{id}": [
+      "MyServices SAPIAN",
+      "Nouveau",
+      "Ouvert"
+    ],
+    "/my/ticket/{id}/7d57289e-5548-4617-8950-db433143388d": [
       "Clôturé",
       "MyServices SAPIAN",
       "Nouveau",
