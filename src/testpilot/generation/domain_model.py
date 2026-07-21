@@ -156,10 +156,14 @@ def formulaires_requis(modele: dict | None, routes) -> list[dict]:
         vus.add(signature)
         trouves.append({
             "route": route,
-            # `type` exposé depuis le 2026-07-21 : sans lui, l'agent traitait un
-            # `<input type="file">` comme du texte → `InvalidStateError`, 2 échecs techniques
-            # sur 3 mesurés. L'annuaire le connaissait ; personne ne le transmettait.
+            # `type` ET `visible` exposés depuis le 2026-07-21 — même motif, deux fois :
+            # • sans `type`, l'agent traitait un `<input type="file">` comme du texte
+            #   (`InvalidStateError`, 2 échecs sur 3) ;
+            # • sans `visible`, on lui demandait de remplir des champs CACHÉS (injectés par le
+            #   serveur) : impossible par l'interface → `TimeoutError` sur le sélecteur.
+            # L'annuaire portait les deux depuis toujours ; personne ne les transmettait.
             "requis": [{"name": c["name"], "tag": c.get("tag", ""), "type": c.get("type", ""),
+                        "visible": c.get("visible", True),
                         "options": [v for v, _ in (c.get("options") or [])]} for c in requis],
         })
     return trouves

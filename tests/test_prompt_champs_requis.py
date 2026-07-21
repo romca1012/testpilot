@@ -83,7 +83,10 @@ def test_la_contrainte_est_IMPERATIVE_et_exige_une_soumission_explicite():
     « j'attends la soumission » n'envoie rien (la cause prouvée du ticket jamais créé)."""
     msg = prompt.build_initial_message(_plan(), MODELE)
 
-    assert "DOIT les remplir TOUS" in msg
+    # Formulation ajustée le 2026-07-21 (« … DOIT remplir TOUS ceux-ci ») quand la contrainte a
+    # commencé à distinguer champs saisissables et champs cachés. Ce test garde le caractère
+    # IMPÉRATIF, pas une tournure exacte : on assertit donc les deux mots qui le portent.
+    assert "DOIT remplir TOUS" in msg
     assert "Soumettre EXPLICITEMENT" in msg
     assert "n'envoie RIEN" in msg, "l'attente passive doit être dénoncée nommément"
 

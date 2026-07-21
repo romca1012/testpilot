@@ -78,11 +78,18 @@ def _section_champs_requis(plan: TestPlan, modele: dict | None) -> str:
     date = (modele or {}).get("mesure_le", "?")
     lignes = [f"## Champs OBLIGATOIRES du formulaire — CONTRAINTE (annuaire mesuré le {date})", ""]
     for form in formulaires:
-        noms = [c["name"] for c in form["requis"]]
-        lignes.append(f"Le formulaire `{form['route']}` EXIGE ces {len(noms)} champs requis. "
-                      f"Tout scénario qui prétend CRÉER un enregistrement DOIT les remplir TOUS :")
+        # ⚠️ Un champ requis CACHÉ (`visible=False`) est injecté par le SERVEUR : le remplir par
+        # l'interface est impossible (`TimeoutError` sur le sélecteur). Mesuré le 2026-07-21 sur
+        # `/demande_avoir` (`partner_email`, `name`). On ne demande donc QUE les champs saisissables,
+        # et on NOMME les autres pour que l'agent sache qu'ils sont couverts — sans quoi il croirait
+        # la liste incomplète et tenterait de les remplir quand même.
+        saisissables = [c for c in form["requis"] if c.get("visible", True)]
+        caches = [c["name"] for c in form["requis"] if not c.get("visible", True)]
+        lignes.append(f"Le formulaire `{form['route']}` EXIGE {len(form['requis'])} champs requis, "
+                      f"dont **{len(saisissables)} à remplir par l'interface**. Tout scénario qui "
+                      f"prétend CRÉER un enregistrement DOIT remplir TOUS ceux-ci :")
         fichiers = []
-        for champ in form["requis"]:
+        for champ in saisissables:
             detail = ""
             if champ.get("type") == "file":
                 # ⚠️ Le TYPE change la façon de remplir : un champ fichier refuse le texte.
@@ -100,6 +107,13 @@ def _section_champs_requis(plan: TestPlan, modele: dict | None) -> str:
                 "un `<input type=\"file\">` **n'accepte pas de texte** — écrire dedans lève "
                 "`InvalidStateError` et le scénario échoue techniquement. Emploie le step partagé "
                 "`je joins un fichier au champ \"<nom>\"`, qui téléverse une pièce jointe de test.")
+        if caches:
+            lignes.append("")
+            lignes.append(
+                f"⚠️ **NE tente PAS de remplir** {', '.join(f'`{c}`' for c in caches)} : "
+                "ces champs requis sont **cachés** (`visible=false`) et **renseignés par le "
+                "serveur**. Les chercher dans l'interface provoque un `TimeoutError` et fait "
+                "échouer le scénario techniquement — alors qu'ils sont déjà couverts.")
         lignes.append("")
     lignes += [
         "**Deux obligations, non négociables :**",

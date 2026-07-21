@@ -154,6 +154,53 @@ def test_sans_champ_fichier_aucune_alerte_inutile():
     assert "CHAMP FICHIER" not in s
 
 
+# ── Champs requis CACHÉS (5ᵉ occurrence du même motif) ───────────────────────
+
+def test_un_champ_requis_CACHE_n_est_pas_demande():
+    """⚠️ Mesuré le 2026-07-21 sur `/demande_avoir` : `partner_email` et `name` sont requis mais
+    `visible=false` — injectés par le SERVEUR. Le prompt exigeait de remplir TOUS les champs
+    requis → l'agent les cherchait dans l'interface → `TimeoutError`, échec technique.
+
+    On ne demande QUE les champs saisissables, et on NOMME les cachés : sans ça, l'agent croirait
+    la liste incomplète et tenterait de les remplir quand même."""
+    modele = _modele([
+        {"name": "visible_1", "required": True, "tag": "input", "type": "text", "visible": True},
+        {"name": "cache_serveur", "required": True, "tag": "input", "type": "email",
+         "visible": False},
+    ])
+
+    s = pm._section_champs_requis(_plan(["/form/{id}"]), modele)
+
+    assert "2 champs requis, dont **1 à remplir par l'interface**" in s
+    assert "NE tente PAS de remplir" in s
+    assert "`cache_serveur`" in s
+    # Le champ caché ne doit PAS figurer dans la liste à remplir.
+    liste = s.split("DOIT remplir TOUS ceux-ci :")[1].split("⚠️")[0]
+    assert "cache_serveur" not in liste
+    assert "visible_1" in liste
+
+
+def test_sans_champ_cache_aucune_mise_en_garde_inutile():
+    modele = _modele([{"name": "a", "required": True, "tag": "input", "type": "text",
+                       "visible": True}])
+
+    s = pm._section_champs_requis(_plan(["/form/{id}"]), modele)
+
+    assert "NE tente PAS" not in s
+
+
+def test_sur_l_annuaire_REEL_les_champs_caches_de_demande_avoir_sont_ecartes():
+    chemin = Path("data/domain/projet-1.json")
+    if not chemin.exists():
+        pytest.skip("annuaire réel absent")
+    modele = json.loads(chemin.read_text(encoding="utf-8"))
+
+    s = pm._section_champs_requis(_plan(["/demande_avoir/{id}"]), modele)
+
+    assert "NE tente PAS de remplir" in s
+    assert "`partner_email`" in s, "le champ qui a fait échouer le run doit être écarté nommément"
+
+
 def test_le_type_est_expose_par_l_annuaire():
     """La donnée manquante, à la source : `formulaires_requis` n'exposait pas `type`."""
     modele = _modele([{"name": "rib", "required": True, "tag": "input", "type": "file"}])
