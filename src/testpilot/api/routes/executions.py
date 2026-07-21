@@ -21,6 +21,16 @@ def list_executions(limit: int = 50, project_id: int | None = None, conn=Depends
     return [schemas.execution_summary(r, running=run_service.is_running(r["id"])) for r in rows]
 
 
+@router.get("/quality/summary", response_model=schemas.QualityOut)
+def quality_summary(project_id: int | None = None, conn=Depends(get_conn)):
+    """Santé technique de la génération dans le temps — l'évolution de l'outil.
+
+    Dérivé des VRAIES exécutions (premier jet), jamais fabriqué : le tableau de bord compte des
+    runs réels. `/quality/summary` et non `/quality` pour ne pas heurter `/{execution_id}`.
+    """
+    return schemas.QualityOut(**ExecutionRepo(conn).quality_summary(project_id=project_id))
+
+
 @router.get("/{execution_id}", response_model=schemas.ExecutionDetail)
 def get_execution(execution_id: int, conn=Depends(get_conn)):
     execs = ExecutionRepo(conn)
