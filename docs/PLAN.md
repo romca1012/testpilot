@@ -38,10 +38,25 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 
 | | |
 |---|---|
-| Tests | **630 Python · 73 vitest** |
+| Tests | **639 Python · 73 vitest** |
 | Schéma | `user_version = 16` |
-| Fiabilité — réussite technique au 1ᵉʳ jet | **75 %** sur le banc (n=4), **80 %** cumulé projet |
+| Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), **90 %** cumulé projet |
 | Coût d'un cas (analyse + génération) | ~0,11 $ |
+
+### La progression, mesurée (et non supposée)
+
+```
+25 %  (4 specs)  →  correctif champs FICHIER          (13 routes sur 37 concernées)
+75 %  (4 specs)  →  champs CACHÉS + URL RÉELLE
+88 %  (8 specs)  →  banc DOUBLÉ, et plus dur (jusqu'à 17 champs requis, 3 fichiers)
+```
+
+⚠️ **Je m'attendais à une baisse sur un banc plus dur — c'est monté.** Les correctifs étaient
+plus structurels que prévu : les 4 formulaires ajoutés sont passés du premier coup.
+
+⚠️ **Nuance non mesurée** : les 7 succès sont tous `success / non_conforme` — les tests
+**tournent** et trouvent des écarts fonctionnels. Savoir si ces écarts sont réels ou dus à des
+assertions trop strictes est **une autre question, non instrumentée**.
 
 ---
 
@@ -65,11 +80,12 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 ### Phase 1 — Consolider *(en cours)*
 
 - [x] **Écrire ce plan** + réalignement de la documentation.
-- [ ] **Finir la fiabilité** :
-  - [ ] `demande_avoir` — dernier échec du banc (`partner_email` introuvable, timeout). Cause
-        différente des champs fichier, non diagnostiquée.
-  - [ ] **Élargir le banc à ~8 specs.** ⚠️ **n = 4 n'est pas un chiffre solide** : c'est une
-        tendance, pas une statistique.
+- [x] **Élargir le banc à 8 specs** — n=4 n'était pas un chiffre défendable.
+- [x] **`demande_avoir`** — résolu : l'agent inventait l'identifiant de route.
+- [x] **`sinistre_client`** — résolu : `leave_field_empty` aveugle au `<select>`.
+- [ ] **Remesurer** après ces deux derniers correctifs (le banc dira s'ils portent).
+- [ ] **Non instrumenté** : les tests trouvent des écarts fonctionnels (`non_conforme`) — sont-ils
+      RÉELS, ou dus à des assertions trop strictes ? Question distincte de la fiabilité technique.
 
 ### Phase 2 — Rendre déployable
 
@@ -131,6 +147,19 @@ Quatre fois le même schéma, à chaque fois coûteux :
 | `0020` | onglet cliqué depuis la mauvaise page | où vit chaque onglet |
 | champs requis | 2 champs remplis sur 8 | les 8 champs requis |
 | champs fichier | texte écrit dans un champ fichier | le `type` du champ |
+| champs cachés | cherche un champ `visible=false` | la **visibilité** du champ |
+| identifiant de route | `/demande_avoir/29789` **inventé** | l'URL concrète visitée par le crawl |
+
+**Et deux trous d'OUTIL** — l'agent ne pouvait pas réussir, quelle que soit la consigne :
+
+| Trou | Conséquence |
+|---|---|
+| Aucun step d'**upload**, `fill_field` aveugle au type `file` | 13 routes sur 37 inatteignables |
+| `leave_field_empty` aveugle au `<select>` | erreur Playwright cryptique sur un scénario légitime |
+
+⚠️ **Un piège évité de justesse** : le correctif « URL réelle » stockait `/en/achat_siege/113` —
+la version **anglaise**. Il aurait fait échouer tous les steps à libellé français (« Envoyer » →
+« Send »). **Mon propre correctif allait introduire la cause suivante.**
 
 **Réflexe à garder** : avant d'améliorer un prompt, vérifier si **la donnée est déjà mesurée** —
 et si l'agent a seulement l'**outil** pour l'appliquer.
