@@ -111,10 +111,31 @@ function setExecQuery(key: 'group' | 'sort', value: string) {
 function goRoute(name: 'run-new' | 'plan-new') {
   router.push({ name, params: { pid: pid.value } })
 }
-// « Ajouter un cas de test » — le module courant (si l'arbre en a un d'ouvert) est pré-sélectionné.
+// « Ajouter un cas de test » = saisie MANUELLE (sans IA). Le module courant (si l'arbre en a un
+// d'ouvert) est pré-sélectionné.
 function goCaseNew(moduleId?: number) {
+  router.push({ name: 'case-manual', params: { pid: pid.value },
+                query: moduleId ? { module: String(moduleId) } : {} })
+}
+// « Générer des cas de test » = l'IA depuis une spec (texte ou fichier).
+function goGenerate(moduleId?: number) {
   router.push({ name: 'case-new', params: { pid: pid.value },
                 query: moduleId ? { module: String(moduleId) } : {} })
+}
+// Suppression d'un module — CASCADE (cas, versions, exécutions). Confirmation EXPLICITE avec le
+// compte de ce qui partira : §2.10 interdit d'effacer un run en silence, pas sur demande claire.
+async function deleteModule(m: ModuleSummary) {
+  const n = cases.value.filter((c) => c.module_id === m.id).length
+  const detail = n ? ` et ses ${n} cas de test (avec leurs exécutions)` : ''
+  if (!window.confirm(`Supprimer le module « ${m.name} »${detail} ? Cette action est irréversible.`)) return
+  try {
+    await api.deleteModule(m.id)
+    // Si on était sur une page filtrée par ce module, revenir à la liste complète.
+    router.push({ name: 'cases', params: { pid: pid.value } })
+    await load()
+  } catch (e: any) {
+    window.alert(e?.message || 'Suppression impossible.')
+  }
 }
 // Filtrer la liste sur un MODULE : c'est ce que faisait l'ancienne page module, désormais
 // redirigée ici. Cliquer un module de l'arbre a donc un effet, pas seulement déplier.
@@ -133,6 +154,8 @@ const nav = computed(() => [
     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
   { key: 'exec', label: 'Exécutions et résultats de test', to: { name: 'executions', params: { pid: pid.value } },
     icon: 'M14.7 11.2l-5.2-3a1 1 0 00-1.5.8v6a1 1 0 001.5.9l5.2-3a1 1 0 000-1.7z' },
+  { key: 'qualite', label: 'Qualité de génération', to: { name: 'quality', params: { pid: pid.value } },
+    icon: 'M3 3v18h18M7 15l3-4 3 3 4-6' },
   { key: 'jalons', label: 'Jalons', to: soon('jalons'),
     icon: 'M5 3v18M5 4h11l-2 3 2 3H5' },
   { key: 'rapports', label: 'Rapports', to: soon('rapports'),
@@ -145,6 +168,7 @@ function isActive(key: string) {
   const n = String(route.name)
   if (key === 'cases') return ['cases', 'case-detail', 'cases-all', 'module-detail'].includes(n)
   if (key === 'exec') return ['executions', 'report', 'confirmations', 'run-detail', 'run-new', 'plan-new'].includes(n)
+  if (key === 'qualite') return n === 'quality'
   return n === 'cases-soon' && route.query.tab === key
 }
 function comingSoon(what: string) {
@@ -228,16 +252,18 @@ function switchProject(id: number) {
       <!-- Contexte « Cas de test » : boutons cas + arbre Module → Spécification -->
       <template v-if="isActive('cases')">
       <div class="px-3 pb-3 flex flex-col gap-2">
+        <!-- « Ajouter un cas de test » = SAISIE MANUELLE (sans IA). « Générer » = l'IA depuis une
+             spec. Les deux étaient confondus : « Ajouter » lançait l'IA, « Générer » ne faisait
+             rien. Correction du porteur (2026-07-21). -->
         <button class="rounded-md bg-primary text-white font-semibold px-3 py-2.5 flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors"
                 @click="goCaseNew()">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           Ajouter un cas de test
         </button>
         <button class="rounded-md bg-surface-raised border border-border px-3 py-2.5 flex items-center gap-2 hover:border-primary/40 transition-colors"
-                @click="comingSoon('Générer des cas de test')">
+                @click="goGenerate()">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/></svg>
           Générer des cas de test
-          <span class="ml-auto rounded bg-[hsl(340_75%_62%/0.2)] text-[hsl(340_75%_68%)] text-[9px] font-bold px-1.5 py-0.5 tracking-wide">BETA</span>
         </button>
       </div>
 
@@ -264,7 +290,7 @@ function switchProject(id: number) {
       <!-- Arbre Module → Spécification -->
       <div class="px-2 pb-4 overflow-y-auto">
         <template v-for="m in modules" :key="m.id">
-          <div class="flex w-full items-center gap-1 rounded-md px-1.5 py-1.5 hover:bg-accent/40"
+          <div class="group flex w-full items-center gap-1 rounded-md px-1.5 py-1.5 hover:bg-accent/40"
                :class="activeModuleId === m.id && 'bg-primary/10'">
             <button class="shrink-0 p-0.5" :title="expanded.includes(m.id) ? 'Replier' : 'Déplier'" @click.stop="toggle(m.id)">
               <svg class="w-3 h-3 text-muted-foreground transition-transform" :class="expanded.includes(m.id) ? 'rotate-90' : ''" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5l8 7-8 7z"/></svg>
@@ -276,6 +302,9 @@ function switchProject(id: number) {
             </button>
             <button class="shrink-0 p-0.5 text-muted-foreground hover:text-primary" title="Ajouter un cas dans ce module" @click.stop="goCaseNew(m.id)">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+            <button class="shrink-0 p-0.5 text-muted-foreground/50 opacity-0 group-hover:opacity-100 hover:text-destructive" title="Supprimer ce module" @click.stop="deleteModule(m)">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v11a2 2 0 002 2h4a2 2 0 002-2V7"/></svg>
             </button>
           </div>
           <template v-if="expanded.includes(m.id)">

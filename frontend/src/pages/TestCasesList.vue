@@ -27,14 +27,33 @@ async function load() {
 onMounted(load)
 watch(pid, load)
 
-// Cases visibles : filtrées par spécification si l'arbre en a sélectionné une.
-const visibleCases = computed(() =>
-  specFilter.value ? cases.value.filter((c) => c.group_id === specFilter.value) : cases.value)
+// Tri et filtre CÔTÉ CLIENT (préférences de lecture, pas de rechargement).
+const sortKey = ref<'id' | 'title' | 'status'>('id')
+const filterStatus = ref('')  // '' = tous
 
-// Sections = modules qui portent au moins un cas visible.
+function statusOf(c: CaseSummary) {
+  return testStatusCode(c.last_execution_status, c.last_functional_status)
+}
+
+// Cases visibles : filtrées par spécification (arbre) PUIS par statut (barre d'outils).
+const visibleCases = computed(() => {
+  let list = specFilter.value ? cases.value.filter((c) => c.group_id === specFilter.value) : cases.value
+  if (filterStatus.value) list = list.filter((c) => statusOf(c) === filterStatus.value)
+  return list
+})
+
+function sortRows(rows: CaseSummary[]): CaseSummary[] {
+  const copy = [...rows]
+  if (sortKey.value === 'title') copy.sort((a, b) => a.title.localeCompare(b.title))
+  else if (sortKey.value === 'status') copy.sort((a, b) => statusOf(a).localeCompare(statusOf(b)))
+  else copy.sort((a, b) => a.id - b.id)
+  return copy
+}
+
+// Sections = modules qui portent au moins un cas visible (triés).
 const sections = computed(() =>
   modules.value
-    .map((m) => ({ module: m, rows: visibleCases.value.filter((c) => c.module_id === m.id) }))
+    .map((m) => ({ module: m, rows: sortRows(visibleCases.value.filter((c) => c.module_id === m.id)) }))
     .filter((s) => s.rows.length > 0))
 
 const activeSpecTitle = computed(() => {
@@ -51,13 +70,39 @@ function openCase(id: number) {
 }
 function comingSoon(what: string) { window.alert(`${what} — à venir.`) }
 
-// Barre d'icônes du haut (visuelles). `play` et `ai` ont un accent de couleur.
+// Barre d'icônes du haut. « Importer » retiré (décision porteur) ; « Exporter » branché (CSV).
 const topIcons = [
-  { d: 'M9 9h11v11H9zM5 15V5a2 2 0 012-2h10', t: 'Dupliquer' },
-  { d: 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3', t: 'Exporter' },
-  { d: 'M3 15v4a2 2 0 002 2h14a2 2 0 002-2v-4M17 8l-5-5-5 5M12 3v12', t: 'Importer' },
-  { d: 'M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z', t: 'Imprimer' },
+  { d: 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3', t: 'Exporter (CSV)' },
 ]
+function topAction(t: string) {
+  if (t.startsWith('Exporter')) return exportCsv()
+  comingSoon(t)
+}
+
+// Export CSV des cas visibles — universel (Excel, partage avec la QA non technique). Côté client :
+// les données sont déjà chargées, aucun aller-retour serveur. Un champ contenant `;`/`"`/saut de
+// ligne est échappé (guillemets doublés) — sinon le CSV se décale silencieusement.
+function csvCell(v: unknown): string {
+  const s = String(v ?? '')
+  return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+function exportCsv() {
+  const entetes = ['ID', 'Titre', 'Module', 'Type', 'Priorité', 'Statut']
+  const lignes = visibleCases.value.map((c) => [
+    `C${c.id}`, c.title, c.module || '', c.angle || '', c.priority || '',
+    testStatusMeta(testStatusCode(c.last_execution_status, c.last_functional_status)).label,
+  ].map(csvCell).join(';'))
+  // BOM UTF-8 : sans lui, Excel lit « é » de travers.
+  const contenu = '﻿' + [entetes.join(';'), ...lignes].join('\r\n')
+  const blob = new Blob([contenu], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `cas-de-test-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+function goRunNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) }
 </script>
 
 <template>
@@ -66,22 +111,38 @@ const topIcons = [
     <div class="flex items-center justify-between px-6 pt-6 pb-2">
       <h1 class="text-[26px] font-semibold tracking-tight">Cas de test</h1>
       <div class="flex items-center gap-3.5 text-muted-foreground">
-        <button v-for="ic in topIcons" :key="ic.t" :title="ic.t" class="hover:text-foreground" @click="comingSoon(ic.t)">
+        <button v-for="ic in topIcons" :key="ic.t" :title="ic.t" class="hover:text-foreground" @click="topAction(ic.t)">
           <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path :d="ic.d"/></svg>
         </button>
-        <button title="Générer avec l'IA" class="grid place-items-center w-7 h-7 rounded-full bg-success/15 text-success hover:bg-success/25" @click="comingSoon('Génération IA')">
+        <button title="Générer des cas de test avec l'IA" class="grid place-items-center w-7 h-7 rounded-full bg-success/15 text-success hover:bg-success/25"
+                @click="router.push({ name: 'case-new', params: { pid } })">
           <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/></svg>
         </button>
-        <button title="Lancer" class="grid place-items-center w-[30px] h-[30px] rounded-full bg-success text-white hover:bg-success/90" @click="comingSoon('Lancer une exécution')">
+        <button title="Lancer une exécution (créer un run)" class="grid place-items-center w-[30px] h-[30px] rounded-full bg-success text-white hover:bg-success/90" @click="goRunNew">
           <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </button>
       </div>
     </div>
 
-    <!-- Barre d'outils secondaire -->
+    <!-- Barre d'outils secondaire — tri et filtre CÔTÉ CLIENT (les cas sont déjà chargés). -->
     <div class="flex items-center gap-4 px-6 py-2 border-y border-border bg-surface-raised/50 text-xs text-muted-foreground">
-      <span>Trier : <button class="text-foreground border-b border-dotted border-muted-foreground" @click="comingSoon('Tri')">Section</button></span>
-      <span>Filtre : <button class="text-foreground border-b border-dotted border-muted-foreground" @click="comingSoon('Filtre')">Aucun</button></span>
+      <label class="flex items-center gap-1.5">Trier :
+        <select v-model="sortKey" class="bg-transparent text-foreground border-b border-dotted border-muted-foreground outline-none cursor-pointer">
+          <option value="id">ID</option>
+          <option value="title">Titre</option>
+          <option value="status">Statut</option>
+        </select>
+      </label>
+      <label class="flex items-center gap-1.5">Filtre :
+        <select v-model="filterStatus" class="bg-transparent text-foreground border-b border-dotted border-muted-foreground outline-none cursor-pointer">
+          <option value="">Tous</option>
+          <option value="passed">Passed</option>
+          <option value="failed">Failed</option>
+          <option value="retest">Retest</option>
+          <option value="blocked">Blocked</option>
+          <option value="untested">Untested</option>
+        </select>
+      </label>
       <span class="flex-1"></span>
       <span v-if="activeSpecTitle" class="flex items-center gap-1.5 text-primary">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>

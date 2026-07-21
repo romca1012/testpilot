@@ -9,7 +9,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseDetail, type ScenarioResultOut } from '../lib/api'
-import { angleLabel, validationView } from '../lib/status'
+import { angleLabel, priorityView, validationView } from '../lib/status'
 import CaseHeader from '../components/case/CaseHeader.vue'
 import TestsResultsTab from '../components/case/TestsResultsTab.vue'
 import DefectsTab from '../components/case/DefectsTab.vue'
@@ -52,6 +52,9 @@ const currentVersion = computed(() => {
   if (!d) return null
   return d.versions.find((v) => v.id === d.current_version_id) || d.versions[0] || null
 })
+// Un cas MANUEL n'a pas de Gherkin : pas de relecture ni d'exécution tant qu'aucun test
+// technique n'a été généré. `feature_content` vide = pas de test exécutable.
+const hasGherkin = computed(() => !!(currentVersion.value?.feature_content || '').trim())
 
 // ── Dérivation PROVISOIRE depuis le Gherkin (à remplacer par les champs métier, étape 3) ──
 const GHERKIN_KW = /^\s*(Soit|Étant donné(?:e|s)?|Etant donné(?:e|s)?|Quand|Alors|Et|Mais|Given|When|Then|And|But)\b\s*/i
@@ -119,7 +122,13 @@ const hasMetier = computed(() =>
 const editing = ref(false)
 const saving = ref(false)
 const saveError = ref('')
-const form = ref({ title: '', preconditions: '', steps: [] as string[], expected: '', refs: '', estimate: '' })
+const form = ref({ title: '', preconditions: '', steps: [] as string[], expected: '', refs: '', estimate: '', angle: '' })
+const ANGLES = [
+  { value: 'nominal', label: 'Cas nominal' },
+  { value: 'erreur', label: 'Cas d\'erreur' },
+  { value: 'limite', label: 'Cas limite' },
+  { value: 'autre', label: 'Autre angle' },
+]
 
 function startEdit() {
   const v = currentVersion.value
@@ -133,6 +142,7 @@ function startEdit() {
     expected: v?.expected_result || derived.value.expected.join(' '),
     refs: c.value?.refs || '',
     estimate: c.value?.estimate || '',
+    angle: c.value?.angle || '',
   }
   saveError.value = ''
   editing.value = true
@@ -151,6 +161,7 @@ async function save() {
       expected_result: form.value.expected,
       refs: form.value.refs,
       estimate: form.value.estimate,
+      angle: form.value.angle,
     })
     editing.value = false
     await load()
@@ -163,18 +174,72 @@ async function save() {
 
 function backToList() { router.push({ name: 'cases', params: { pid: pid.value } }) }
 
+// Automatiser un cas MANUEL : générer son test technique depuis le métier saisi. Tâche de fond
+// (LLM), suivie par le même mécanisme de job que la génération. Au bout, le cas a un Gherkin →
+// `hasGherkin` devient vrai, le bouton disparaît, le gate + l'exécution apparaissent.
+const automating = ref(false)
+let autoTimer: number | undefined
+async function automate() {
+  automating.value = true
+  error.value = ''
+  try {
+    const job = await api.automateCase(caseId.value)
+    autoTimer = window.setInterval(async () => {
+      try {
+        const j = await api.getGenerationJob(job.job_id)
+        if (j.status === 'running') return
+        window.clearInterval(autoTimer)
+        automating.value = false
+        if (j.status === 'done') await load()
+        else error.value = j.error || 'Automatisation échouée.'
+      } catch {
+        window.clearInterval(autoTimer)
+        automating.value = false
+        error.value = 'Suivi de l\'automatisation interrompu.'
+      }
+    }, 2000)
+  } catch (e: any) {
+    automating.value = false
+    error.value = e?.message || 'Automatisation impossible.'
+  }
+}
+
+// Priorité éditable EN LIGNE (endpoint dédié, ne crée pas de version, ne rebloque pas le gate).
+const priorityHint = priorityView('medium').hint
+const savingPriority = ref(false)
+async function onPriority(value: string) {
+  savingPriority.value = true
+  try {
+    await api.setCasePriority(caseId.value, value)
+    await load()
+  } catch (e: any) {
+    error.value = e?.message || 'Changement de priorité impossible.'
+  } finally {
+    savingPriority.value = false
+  }
+}
+
+// Suppression du cas — CASCADE (versions, exécutions, résultats). Confirmation explicite : §2.10
+// interdit d'effacer un run en silence, pas sur demande claire de l'utilisateur.
+async function deleteCase() {
+  const nb = detail.value?.executions?.length || 0
+  const detailTxt = nb ? ` et ses ${nb} exécution${nb > 1 ? 's' : ''}` : ''
+  if (!window.confirm(`Supprimer le cas « ${c.value?.title } »${detailTxt} ? Cette action est irréversible.`)) return
+  try {
+    await api.deleteCase(caseId.value)
+    router.push({ name: 'cases', params: { pid: pid.value } })
+  } catch (e: any) {
+    error.value = e?.message || 'Suppression impossible.'
+  }
+}
+
 const c = computed(() => detail.value?.case ?? null)
 
-// ── Relecture (gate) et lancement d'exécution ─────────────────────────────────
-// ⚠️ REPORTÉS depuis l'ancienne page `CaseDetail.vue`, devenue orpheline quand cet écran l'a
-// remplacée. Les deux backends fonctionnaient, mais plus AUCUN bouton ne les atteignait : on ne
-// pouvait plus ni approuver une version, ni lancer un test depuis l'interface. Le gate est
-// pourtant l'invariant §4.3 (relecture humaine obligatoire avant la première exécution) — le
-// perdre revenait à retirer du produit la garantie qu'il annonce.
-const running = ref(false)
-const runError = ref('')
-let pollTimer: number | undefined
-
+// ── Relecture (gate) ──────────────────────────────────────────────────────────
+// Le gate approuve une VERSION avant exécution (invariant §4.3). Il reste sur le cas : c'est ici
+// qu'on relit. ⚠️ Le LANCEMENT d'exécution a été RETIRÉ de cette page (2026-07-21) : dans le
+// modèle cible (`0022`), un cas ne s'exécute pas seul — l'exécution vit dans un Run (« Exécutions
+// et résultats de test »). Un bouton « Lancer » par cas contredisait cette architecture.
 const currentReview = computed(() =>
   (detail.value?.reviews || []).find((r) => r.version_id === detail.value?.current_version_id))
 
@@ -182,37 +247,7 @@ function reviewerLabel(reviewer: string) {
   return reviewer === 'cli' ? 'ligne de commande' : reviewer || '—'
 }
 
-async function launch() {
-  runError.value = ''
-  running.value = true
-  try {
-    const { execution_id } = await api.runCase(caseId.value)
-    poll(execution_id)
-  } catch (e: any) {
-    running.value = false
-    runError.value = e?.message || 'Échec du lancement'
-  }
-}
-
-function poll(execId: number) {
-  pollTimer = window.setInterval(async () => {
-    try {
-      const exec = await api.getExecution(execId)
-      if (!exec.running) {
-        stopPoll(); running.value = false
-        router.push({ name: 'report', params: { pid: pid.value, id: String(execId) } })
-      }
-    } catch {
-      stopPoll(); running.value = false
-      runError.value = 'Suivi de l\'exécution interrompu'
-    }
-  }, 1500)
-}
-function stopPoll() {
-  if (pollTimer) window.clearInterval(pollTimer)
-  pollTimer = undefined
-}
-onBeforeUnmount(stopPoll)
+onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
 </script>
 
 <template>
@@ -230,19 +265,59 @@ onBeforeUnmount(stopPoll)
     <!-- La sous-navigation (Détails / Tests & Résultats / …) vit dans la barre latérale du shell,
          sous « Cas de test » — ici on ne rend que le CONTENU de l'onglet actif. -->
     <div class="min-w-0 p-6 md:p-8 max-w-5xl">
-      <CaseHeader :c="c" @back="backToList" @edit="startEdit" />
+      <CaseHeader :c="c" :can-automate="!hasGherkin" :automating="automating"
+                  @back="backToList" @edit="startEdit" @delete="deleteCase" @automate="automate" />
 
       <!-- ====== DÉTAILS ====== -->
       <template v-if="tab === 'details'">
-        <!-- Métadonnées -->
+        <!-- Métadonnées — vraies valeurs (avant : « Aucun » en dur, données ignorées). Priorité
+             éditable EN LIGNE ; les autres champs métier via « Modifier ». L'État est SYSTÈME
+             (dérivé des exécutions, non modifiable à la main) : l'infobulle le dit + liste ses
+             valeurs possibles, pour répondre au « je ne vois pas les options ». -->
         <div class="mt-4 rounded-lg border border-border bg-primary/[0.05] p-4 grid grid-cols-4 gap-y-4 gap-x-6">
-          <div><div class="text-xs font-semibold text-muted-foreground">Type</div><div class="mt-0.5">{{ angleLabel(c.angle) }}</div></div>
-          <div><div class="text-xs font-semibold text-muted-foreground">État</div><div class="mt-0.5">{{ validationView(c.validation_status).label }}</div></div>
-          <div><div class="text-xs font-semibold text-muted-foreground">Priorité</div><div class="mt-0.5 text-muted-foreground">Aucun</div></div>
-          <div><div class="text-xs font-semibold text-muted-foreground">Estimation</div><div class="mt-0.5 text-muted-foreground">Aucun</div></div>
-          <div><div class="text-xs font-semibold text-muted-foreground">Références</div><div class="mt-0.5 text-muted-foreground">Aucun</div></div>
-          <div><div class="text-xs font-semibold text-muted-foreground">Test automatisé par IA</div><div class="mt-0.5 text-muted-foreground">Aucun</div></div>
-          <div></div><div></div>
+          <div>
+            <div class="text-xs font-semibold text-muted-foreground">Type</div>
+            <div class="mt-0.5">{{ angleLabel(c.angle) }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+              État
+              <span class="cursor-help text-muted-foreground/50"
+                    :title="validationView(c.validation_status).hint + ' Valeurs possibles : Non validé · À relire · Validé. Ce statut est DÉRIVÉ des exécutions, il ne se change pas à la main.'">ⓘ</span>
+            </div>
+            <div class="mt-0.5">{{ validationView(c.validation_status).label }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+              Priorité
+              <span class="cursor-help text-muted-foreground/50" :title="priorityHint">ⓘ</span>
+            </div>
+            <select :value="c.priority" :disabled="savingPriority"
+                    @change="onPriority(($event.target as HTMLSelectElement).value)"
+                    class="mt-0.5 -ml-1 bg-transparent rounded px-1 py-0.5 hover:bg-accent/40 focus:bg-surface-raised focus:border-primary border border-transparent outline-none cursor-pointer">
+              <option value="high">Haute</option>
+              <option value="medium">Moyenne</option>
+              <option value="low">Basse</option>
+            </select>
+          </div>
+          <div>
+            <div class="text-xs font-semibold text-muted-foreground">Estimation</div>
+            <div class="mt-0.5" :class="!c.estimate && 'text-muted-foreground/70 italic'">{{ c.estimate || 'Non renseignée' }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-semibold text-muted-foreground">Références</div>
+            <div class="mt-0.5" :class="!c.refs && 'text-muted-foreground/70 italic'">{{ c.refs || 'Aucune' }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+              Test automatisé
+              <span class="cursor-help text-muted-foreground/50" title="« Oui » quand un test technique (Gherkin) existe et peut être exécuté. Un cas saisi à la main est « Non » tant qu'on n'a pas généré son test.">ⓘ</span>
+            </div>
+            <div class="mt-0.5">{{ hasGherkin ? 'Oui' : 'Non' }}</div>
+          </div>
+          <div class="col-span-2 self-end text-xs text-muted-foreground/70">
+            Estimation, références et type se modifient via « Modifier ».
+          </div>
         </div>
 
         <p v-if="!hasMetier && !editing" class="mt-3 text-xs text-muted-foreground italic">
@@ -281,11 +356,21 @@ onBeforeUnmount(stopPoll)
             <p v-else class="mt-3 text-muted-foreground">Aucun résultat attendu renseigné.</p>
           </section>
 
+          <!-- Cas MANUEL (aucun Gherkin) : ni gate ni exécution — le test technique n'existe pas
+               encore. On le DIT au lieu de proposer un « Lancer » qui échouerait (§4.6). -->
+          <section v-if="!hasGherkin" class="mt-8">
+            <h2 class="font-semibold pb-2 border-b border-border">Test technique</h2>
+            <div class="mt-3 rounded-lg border border-border bg-primary/[0.04] p-4 text-sm text-muted-foreground">
+              Ce cas a été saisi à la main : il décrit ce qui doit être vérifié, mais son test
+              technique n'a pas encore été généré. Il ne peut donc pas être exécuté en l'état.
+            </div>
+          </section>
+
           <!-- ════════ RELECTURE (gate) ════════
                Invariant §4.3 : une version générée par IA doit être relue par un humain AVANT
                sa première exécution. Bloc distinct du lancement, et placé AVANT lui : l'ordre à
                l'écran dit l'ordre réel du produit. -->
-          <section class="mt-8">
+          <section v-if="hasGherkin" class="mt-8">
             <h2 class="font-semibold pb-2 border-b border-border">Relecture</h2>
             <div class="mt-3 space-y-3">
               <ReviewGate :case-id="caseId" :gate="detail.gate" @reviewed="load" />
@@ -297,24 +382,21 @@ onBeforeUnmount(stopPoll)
           </section>
 
           <!-- ════════ EXÉCUTION ════════
-               Le bouton est DÉSACTIVÉ tant que le gate n'autorise pas : l'interface ne propose
-               jamais une action que le backend refusera (« affiché ≠ réel », invariant §4.6), et
-               le message dit POURQUOI plutôt que de laisser deviner. -->
-          <section class="mt-8">
+               Le LANCEMENT a été retiré d'ici (2026-07-21) : un cas ne s'exécute pas seul, il se
+               joue dans un Run (« Exécutions et résultats de test »). On indique où, plutôt que
+               de proposer un « Lancer » qui contredirait le modèle. -->
+          <section v-if="hasGherkin" class="mt-8">
             <h2 class="font-semibold pb-2 border-b border-border">Exécution</h2>
-            <div class="mt-3 flex flex-wrap items-center gap-3">
-              <button class="rounded-md bg-primary text-white font-semibold px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      :disabled="running || !detail.gate?.allowed" @click="launch">
-                {{ running ? 'Exécution en cours…' : 'Lancer une exécution' }}
-              </button>
-              <span v-if="running" class="text-xs text-muted-foreground">
-                Le test tourne réellement contre l'application — cela prend quelques minutes.
-              </span>
-              <span v-else-if="!detail.gate?.allowed" class="text-xs text-muted-foreground">
-                Approuvez la version en relecture pour pouvoir la lancer.
-              </span>
+            <div class="mt-3 rounded-lg border border-border bg-primary/[0.04] p-4 text-sm text-muted-foreground">
+              <template v-if="detail.gate?.allowed">
+                Ce cas est relu et prêt à être joué. Les exécutions se lancent depuis
+                <RouterLink :to="{ name: 'executions', params: { pid } }" class="text-primary hover:underline">Exécutions et résultats de test</RouterLink>,
+                dans un run qui regroupe les cas à jouer ensemble.
+              </template>
+              <template v-else>
+                Approuvez la version en relecture ci-dessus : un cas non relu bloque tout run qui le contient.
+              </template>
             </div>
-            <p v-if="runError" class="mt-2 text-xs text-destructive">{{ runError }}</p>
           </section>
         </template>
 
@@ -353,7 +435,14 @@ onBeforeUnmount(stopPoll)
               <textarea v-model="form.expected" rows="2" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none"></textarea>
             </label>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-3 gap-4">
+              <label class="block">
+                <span class="text-sm font-medium">Type</span>
+                <select v-model="form.angle" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none">
+                  <option value="">—</option>
+                  <option v-for="a in ANGLES" :key="a.value" :value="a.value">{{ a.label }}</option>
+                </select>
+              </label>
               <label class="block">
                 <span class="text-sm font-medium">Références</span>
                 <input v-model="form.refs" placeholder="JIRA-123…" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />

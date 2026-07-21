@@ -15,9 +15,11 @@ const routes = [
   // Première vue d'un projet : la LISTE des cas façon TestRail (option (a), 2026-07-20). Le shell
   // « Cas de test » (CasesShell) est choisi par App.vue pour ces routes.
   { path: '/projects/:pid/cases', name: 'cases', component: () => import('./pages/TestCasesList.vue') },
-  // Création d'un cas (spec → analyse → génération → gate). Atteignable depuis le bouton
-  // « Ajouter un cas de test » de la barre latérale.
+  // « Générer des cas de test » = l'IA depuis une spec (texte ou fichier) → analyse → génération
+  // en 2 passes → gate.
   { path: '/projects/:pid/cases/new', name: 'case-new', component: () => import('./pages/AddTestCase.vue') },
+  // « Ajouter un cas de test » = saisie MANUELLE (métier, sans IA).
+  { path: '/projects/:pid/cases/manual', name: 'case-manual', component: () => import('./pages/AddManualCase.vue') },
   // Onglets de nav non couverts par ce lot (Aperçu, Tâche à faire, Jalons, Rapports) → « à venir ».
   { path: '/projects/:pid/cases/soon', name: 'cases-soon', component: () => import('./pages/CasesSoon.vue') },
   { path: '/projects/:pid/cases/:id', name: 'case-detail', component: () => import('./pages/CaseDetailTR.vue') },
@@ -42,6 +44,10 @@ const routes = [
   // Arbitrage humain des diagnostics (0013). SOUS Exécution : on juge le résultat d'un run,
   // pas le référentiel — la séparation §8 reste structurelle.
   { path: '/projects/:pid/confirmations', name: 'confirmations', component: () => import('./pages/ConfirmationsList.vue') },
+
+  // Qualité de génération : l'évolution de l'outil (taux de réussite technique au premier jet),
+  // dérivée des vraies exécutions. Onglet de suivi, jamais un chiffre fabriqué.
+  { path: '/projects/:pid/quality', name: 'quality', component: () => import('./pages/QualityDashboard.vue') },
 
   // Rétro-compat : anciens liens sans projet → accueil projets.
   { path: '/cases', redirect: '/projects' },

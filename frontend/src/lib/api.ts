@@ -40,6 +40,10 @@ export const api = {
     request<void>(`/api/projects/${id}`, { method: 'DELETE' }),
   // Exploration : cartographie l'application DU PROJET (crawl déterministe, aucun LLM).
   // Payée une fois par projet ; la génération lira ensuite cette mesure au lieu de deviner.
+  // Santé technique de la génération dans le temps — dérivée des vraies exécutions, jamais
+  // fabriquée. C'est le suivi de l'évolution de l'outil.
+  getQuality: (projectId: number | string) =>
+    request<Quality>(`/api/executions/quality/summary?project_id=${projectId}`),
   getExploration: (id: number | string) =>
     request<Exploration>(`/api/projects/${id}/exploration`),
   startExploration: (id: number | string) =>
@@ -52,6 +56,29 @@ export const api = {
     request<ModuleSummary>(`/api/projects/${projectId}/modules`, {
       method: 'POST', body: JSON.stringify({ name, description }),
     }),
+  deleteModule: (moduleId: number | string) =>
+    request<void>(`/api/modules/${moduleId}`, { method: 'DELETE' }),
+  // « Ajouter un cas de test » = saisie MANUELLE (sans IA), à distinguer de addCase (l'IA).
+  createManualCase: (moduleId: number | string, body: {
+    title: string; preconditions?: string; test_steps: string[]; expected_result: string; angle?: string
+  }) => request<CaseSummary>(`/api/modules/${moduleId}/cases/manual`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  deleteCase: (caseId: number | string) =>
+    request<void>(`/api/cases/${caseId}`, { method: 'DELETE' }),
+  // Automatiser un cas MANUEL : générer son test technique depuis son métier. Tâche de fond,
+  // suivie via getGenerationJob (même mécanique que la génération).
+  automateCase: (caseId: number | string) =>
+    request<GenerationJob>(`/api/cases/${caseId}/automate`, { method: 'POST' }),
+  // Import d'un fichier de spec (.txt/.md/.docx) pour pré-remplir la génération. multipart —
+  // pas de JSON, donc pas via `request()`.
+  extractSpec: async (moduleId: number | string, file: File): Promise<{ text: string; filename: string }> => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch(`/api/modules/${moduleId}/cases/extract`, { method: 'POST', body: fd })
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Import impossible.')
+    return res.json()
+  },
   // Spécifications (case_group) du projet — pour l'arbre latéral et les compteurs.
   listGroups: (projectId: number | string) => request<GroupSummary[]>(`/api/projects/${projectId}/groups`),
   getModule: (id: number | string) => request<ModuleDetail>(`/api/modules/${id}`),
@@ -112,6 +139,16 @@ export interface ProjectSummary {
   connector_type: string; base_url: string; database: string; username: string
   module_count: number; case_count: number
 }
+/** Santé technique de la génération (axe EXÉCUTION, premier jet). `ran_rate` = null quand aucune
+ *  mesure : « rien mesuré » n'est pas « 0 % de réussite ». */
+export interface QualityDay {
+  jour: string; success: number; technical_error: number; not_executed: number
+}
+export interface Quality {
+  total: number; ran: number; technical_error: number; not_executed: number
+  ran_rate: number | null; by_day: QualityDay[]
+}
+
 /** État de la cartographie d'un projet. `mesure_le` est affiché systématiquement : c'est une
  *  PHOTO qui vieillit, et tout ce qui la consomme doit dire de quand elle date. */
 export interface Exploration {

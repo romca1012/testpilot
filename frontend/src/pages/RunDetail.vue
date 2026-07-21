@@ -91,7 +91,6 @@ function comingSoon(w: string) { window.alert(`${w} — à venir.`) }
         <h1 class="text-2xl font-semibold tracking-tight truncate">{{ run.case_title || `Exécution #${run.id}` }}</h1>
         <div class="ml-auto flex items-center gap-1.5 text-muted-foreground">
           <button class="hover:text-foreground p-1" title="Partager" @click="comingSoon('Partager')"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v14"/></svg></button>
-          <button class="hover:text-foreground p-1" title="Imprimer" @click="comingSoon('Imprimer')"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg></button>
           <button class="rounded-md border border-border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:border-primary/40 text-primary" @click="comingSoon('Relancer')">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Relancer</button>
         </div>

@@ -46,14 +46,17 @@ function detail(gate: GateOut) {
       refs: '', estimate: '',
     },
     current_version_id: 7,
-    versions: [{ id: 7, version_number: 1, feature_content: '', preconditions: '', test_steps: '', expected_result: '' }],
+    // Cas GÉNÉRÉ par IA : il a du Gherkin — donc gate + exécution s'affichent (un cas MANUEL,
+    // sans feature_content, montrerait « test technique non généré » à la place).
+    versions: [{ id: 7, version_number: 1, feature_content: '# language: fr\nScénario: x',
+                 preconditions: '', test_steps: '', expected_result: '' }],
     reviews: [], executions: [], gate,
   }
 }
 
 const stubs = {
   CaseHeader: true, TestsResultsTab: true, DefectsTab: true, HistoryTab: true,
-  RouterLink: true,
+  RouterLink: { template: '<a><slot/></a>' },  // rend le slot pour vérifier le texte du lien
 }
 const mocks = {
   $route: { params: { pid: '1', id: '1' }, query: {} },
@@ -75,7 +78,7 @@ async function page(gate: GateOut) {
 
 beforeEach(() => { getCase.mockReset(); runCase.mockReset() })
 
-describe('CaseDetailTR — relecture et exécution sont ATTEIGNABLES depuis la page', () => {
+describe('CaseDetailTR — la relecture reste sur le cas, le lancement part vers Run/Plan', () => {
   it('affiche le gate de relecture (invariant §4.3)', async () => {
     const w = await page(A_RELIRE)
     // Le gate est le garde-fou annoncé par le produit : s'il n'est pas à l'écran, la promesse
@@ -84,33 +87,23 @@ describe('CaseDetailTR — relecture et exécution sont ATTEIGNABLES depuis la p
     expect(w.findComponent({ name: 'ReviewGate' }).exists()).toBe(true)
   })
 
-  it('affiche le bouton de lancement', async () => {
+  it('ne propose PLUS de « Lancer une exécution » sur le cas (2026-07-21)', async () => {
+    // Un cas ne s'exécute pas seul : l'exécution vit dans un Run. Un bouton « Lancer » par cas
+    // contredisait le modèle cible (`0022`) — il a été retiré.
     const w = await page(APPROUVE)
     const btn = w.findAll('button').find((b) => b.text().includes('Lancer une exécution'))
-    expect(btn).toBeDefined()
+    expect(btn).toBeUndefined()
   })
 
-  it('DÉSACTIVE le lancement tant que le gate refuse, et dit pourquoi', async () => {
-    // « Affiché ≠ réel » (invariant §4.6) : ne jamais proposer une action que le backend
-    // refusera. Et le message doit dire QUOI FAIRE, pas seulement que c'est interdit.
+  it('quand le gate REFUSE, dit qu\'un cas non relu bloque le run', async () => {
     const w = await page(A_RELIRE)
-    const btn = w.findAll('button').find((b) => b.text().includes('Lancer une exécution'))!
-    expect(btn.attributes('disabled')).toBeDefined()
     expect(w.text()).toContain('Approuvez la version en relecture')
   })
 
-  it('ACTIVE le lancement une fois la version approuvée', async () => {
+  it('quand le gate AUTORISE, renvoie vers « Exécutions et résultats de test »', async () => {
+    // On indique OÙ se lance l'exécution (dans un run), plutôt que de la proposer ici.
     const w = await page(APPROUVE)
-    const btn = w.findAll('button').find((b) => b.text().includes('Lancer une exécution'))!
-    expect(btn.attributes('disabled')).toBeUndefined()
-  })
-
-  it('cliquer « Lancer » appelle réellement le backend', async () => {
-    // Sans cette assertion, un bouton présent mais débranché passerait les tests ci-dessus —
-    // exactement le défaut qu'on répare ici.
-    runCase.mockResolvedValue({ execution_id: 42 })
-    const w = await page(APPROUVE)
-    await w.findAll('button').find((b) => b.text().includes('Lancer une exécution'))!.trigger('click')
-    expect(runCase).toHaveBeenCalledWith(1)
+    expect(w.text()).toContain('Exécutions et résultats de test')
+    expect(runCase).not.toHaveBeenCalled()
   })
 })

@@ -122,6 +122,38 @@ function poll() {
 function addStep() { metier.value.steps.push('') }
 function removeStep(i: number) { metier.value.steps.splice(i, 1) }
 
+// ── Import d'un fichier de spec → remplit la zone de texte ────────────────────
+const importing = ref(false)
+const importedName = ref('')
+const importError = ref('')
+async function onFile(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  // L'extraction .docx a besoin du serveur ; on l'appelle sur le module visé (créé si besoin).
+  importError.value = ''
+  importing.value = true
+  try {
+    let cible = moduleId.value
+    if (creatingModule.value) {
+      if (!newModuleName.value.trim()) {
+        importError.value = 'Nommez d\'abord le module, puis réimportez le fichier.'
+        return
+      }
+      const m = await api.createModule(pid.value, newModuleName.value.trim())
+      modules.value.push(m); cible = m.id; moduleId.value = m.id
+    }
+    if (!cible) return
+    const { text, filename } = await api.extractSpec(cible, file)
+    spec.value = text
+    importedName.value = filename
+  } catch (err: any) {
+    importError.value = err?.message || 'Import impossible.'
+  } finally {
+    importing.value = false
+    ;(e.target as HTMLInputElement).value = ''  // permet de réimporter le même fichier
+  }
+}
+
 async function validerMetier() {
   if (!metierComplet.value) return
   error.value = ''
@@ -144,7 +176,7 @@ function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } 
 
 <template>
   <div class="p-6 md:p-8 max-w-[760px]">
-    <h1 class="text-[26px] font-semibold tracking-tight">Ajouter un cas de test</h1>
+    <h1 class="text-[26px] font-semibold tracking-tight">Générer des cas de test</h1>
 
     <!-- ══════════ 1. LA SPÉCIFICATION ══════════ -->
     <template v-if="etape === 'form' || etape === 'analyse'">
@@ -181,10 +213,24 @@ function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } 
         </label>
 
         <label class="block">
-          <span class="text-sm font-medium">Spécification <span class="text-destructive">*</span></span>
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium">Spécification <span class="text-destructive">*</span></span>
+            <!-- Zone de texte OU fichier (demande du porteur). Le fichier est juste un moyen de
+                 REMPLIR la zone : son texte est extrait côté serveur (.txt/.md/.docx) puis
+                 déposé ici, éditable ensuite. -->
+            <label class="text-xs text-primary hover:underline cursor-pointer">
+              <input type="file" class="hidden" accept=".txt,.md,.markdown,.docx,.feature,.text"
+                     @change="onFile" />
+              {{ importing ? 'Import…' : '📎 Importer un fichier (.txt, .md, .docx)' }}
+            </label>
+          </div>
           <textarea v-model="spec" rows="14" required
-                    placeholder="Décrivez la fonctionnalité à tester : le parcours, les données attendues, les règles…"
+                    placeholder="Décrivez la fonctionnalité à tester : le parcours, les données attendues, les règles… — ou importez un fichier."
                     class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 font-mono text-[13px] focus:border-primary outline-none"></textarea>
+          <p v-if="importedName" class="mt-1 text-xs text-muted-foreground">
+            Importé depuis <strong class="text-foreground">{{ importedName }}</strong> — vous pouvez le corriger avant de générer.
+          </p>
+          <p v-if="importError" class="mt-1 text-xs text-destructive">{{ importError }}</p>
         </label>
 
         <p v-if="etape === 'analyse'" class="text-sm text-primary">
