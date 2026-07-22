@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 17
+_SCHEMA_VERSION = 18
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -97,6 +97,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_16_run_archive(conn)
     if version < 17:
         _migrate_17_specification_auto_enveloppe(conn)
+    if version < 18:
+        _migrate_18_corriger_provenance_enveloppes(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -583,6 +585,42 @@ def _migrate_17_specification_auto_enveloppe(conn: sqlite3.Connection) -> None:
         "UPDATE case_group SET auto_enveloppe = 1"
         " WHERE TRIM(COALESCE(spec_content, '')) = ''"
         "   AND NOT EXISTS (SELECT 1 FROM test_case tc WHERE tc.group_id = case_group.id)")
+
+
+def _migrate_18_corriger_provenance_enveloppes(conn: sqlite3.Connection) -> None:
+    """Rattrape la reprise FAUTIVE de la migration 17 — qui a cassé le nettoyage des fantômes.
+
+    ⚠️ **Ce que la 17 a raté, et ce que ça a coûté.** Sa reprise ne marquait comme enveloppes que
+    les spécifications **déjà vides** au moment où elle tournait. Or celles qui portaient encore un
+    cas ont été déclarées « délibérées » — définitivement. Quand leur cas a été supprimé ensuite,
+    le nettoyage automatique ne s'est plus déclenché : **6 fantômes d'un coup**, et la campagne de
+    mesure suivante bloquée sur 6 spécifications au lieu de 1. J'ai aggravé le défaut que je
+    corrigeais.
+
+    ⚠️ **La leçon** : une reprise de données ne doit pas classer sur l'état INSTANTANÉ quand elle
+    peut classer sur une SIGNATURE stable. `CaseRepo.create` fabrique une enveloppe 1:1 en lui
+    donnant **le titre exact de son cas** — c'est ça, la signature, et elle reste vraie que le cas
+    existe encore ou non.
+
+    Deux règles, toutes deux bornées par « aucun document » (un document reste un actif) :
+
+    1. **signature d'enveloppe** — le groupe n'a que des cas portant son propre titre ;
+    2. **déjà vide** — la règle de la 17, réappliquée pour rattraper ceux qu'elle a manqués depuis.
+
+    La règle 2 peut se tromper sur une spécification qu'un humain aurait créée et laissée vide au
+    moment précis où cette migration passe. Le risque est borné : elle ne s'exécute **qu'une fois**,
+    et rien n'est supprimé ici — le groupe devient seulement *récupérable* si un homonyme réclame
+    son titre. Un fantôme qui bloque toute regénération coûte plus cher que ce risque-là.
+    """
+    conn.execute(
+        "UPDATE case_group SET auto_enveloppe = 1"
+        " WHERE auto_enveloppe = 0"
+        "   AND TRIM(COALESCE(spec_content, '')) = ''"
+        "   AND ("
+        "        NOT EXISTS (SELECT 1 FROM test_case tc WHERE tc.group_id = case_group.id)"
+        "     OR NOT EXISTS (SELECT 1 FROM test_case tc WHERE tc.group_id = case_group.id"
+        "                      AND tc.title <> case_group.title)"
+        "   )")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

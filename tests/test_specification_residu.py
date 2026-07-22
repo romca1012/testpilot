@@ -182,6 +182,28 @@ def test_supprimer_le_dernier_cas_emporte_l_enveloppe(conn, module_id):
     assert conn.execute("SELECT COUNT(*) FROM case_group WHERE id=?", (gid,)).fetchone()[0] == 0
 
 
+def test_le_CYCLE_COMPLET_est_rejouable(conn, module_id):
+    """Créer → supprimer → **recréer le même titre**, trois fois. C'est ce que fait le banc à
+    chaque campagne, et aucun test ne parcourait ce cycle en entier.
+
+    ⚠️ **Honnêteté sur ce que ce test vaut** : vérifié par sabotage, il **n'aurait PAS attrapé** le
+    défaut du 2026-07-22. Sur une base neuve, `CaseRepo.create` pose la provenance correctement dès
+    la création — le cycle passe donc, bug ou pas. Le défaut ne vivait que dans la **reprise de
+    l'existant**, et c'est `test_la_reprise_reconnait_une_enveloppe_A_SON_TITRE` qui le tient.
+
+    Il garde sa valeur de garde du cycle nominal ; il ne faut simplement pas lui prêter une
+    couverture qu'il n'a pas. **Un test dont on surestime la portée est pire qu'un test absent** :
+    on croit le terrain couvert.
+    """
+    for tour in range(3):
+        cid = _cas(conn, module_id, TITRE)
+        CaseRepo(conn).delete(cid)
+        restants = conn.execute(
+            "SELECT COUNT(*) FROM case_group WHERE module_id=? AND title=?",
+            (module_id, TITRE)).fetchone()[0]
+        assert restants == 0, f"tour {tour + 1} : une enveloppe fantôme est restée"
+
+
 def test_supprimer_le_dernier_cas_PRESERVE_une_specification_documentee(conn, module_id):
     gid = CaseGroupRepo(conn).create(module_id=module_id, title="Documentée",
                                      spec_content="# Le document")
@@ -192,3 +214,54 @@ def test_supprimer_le_dernier_cas_PRESERVE_une_specification_documentee(conn, mo
     CaseRepo(conn).delete(cid)
 
     assert conn.execute("SELECT COUNT(*) FROM case_group WHERE id=?", (gid,)).fetchone()[0] == 1
+
+
+# ── La reprise de l'existant (migration 18) ──────────────────────────────────
+
+def test_la_reprise_reconnait_une_enveloppe_A_SON_TITRE(conn, module_id):
+    """⚠️ La leçon de la migration 17 : ne pas classer sur l'état INSTANTANÉ quand une SIGNATURE
+    stable existe. Une enveloppe porte le titre exact de son cas — vrai que le cas existe ou non.
+
+    Ici on simule une base d'avant la colonne : provenance perdue, cas encore présent. La 17
+    l'aurait déclarée « délibérée » pour toujours ; la 18 la reconnaît."""
+    from testpilot.store.db import _migrate_18_corriger_provenance_enveloppes
+
+    cid = _cas(conn, module_id, TITRE)
+    gid = conn.execute("SELECT group_id FROM test_case WHERE id=?", (cid,)).fetchone()[0]
+    conn.execute("UPDATE case_group SET auto_enveloppe = 0 WHERE id=?", (gid,))  # comme la 17
+    conn.commit()
+
+    _migrate_18_corriger_provenance_enveloppes(conn)
+
+    assert conn.execute("SELECT auto_enveloppe FROM case_group WHERE id=?",
+                        (gid,)).fetchone()[0] == 1
+    CaseRepo(conn).delete(cid)
+    assert conn.execute("SELECT COUNT(*) FROM case_group WHERE id=?", (gid,)).fetchone()[0] == 0
+
+
+def test_la_reprise_NE_TOUCHE_PAS_une_specification_documentee(conn, module_id):
+    from testpilot.store.db import _migrate_18_corriger_provenance_enveloppes
+
+    gid = CaseGroupRepo(conn).create(module_id=module_id, title=TITRE, spec_content="# Document")
+
+    _migrate_18_corriger_provenance_enveloppes(conn)
+
+    assert conn.execute("SELECT auto_enveloppe FROM case_group WHERE id=?",
+                        (gid,)).fetchone()[0] == 0
+
+
+def test_la_reprise_NE_TOUCHE_PAS_une_specification_a_PLUSIEURS_cas(conn, module_id):
+    """Plusieurs cas sous un même conteneur, c'est le modèle VOULU (un document, N angles) —
+    l'inverse exact d'une enveloppe 1:1."""
+    from testpilot.store.db import _migrate_18_corriger_provenance_enveloppes
+
+    gid = CaseGroupRepo(conn).create(module_id=module_id, title=TITRE)
+    for titre in ("angle nominal", "angle erreur"):
+        cid = _cas(conn, module_id, titre)
+        conn.execute("UPDATE test_case SET group_id=? WHERE id=?", (gid, cid))
+    conn.commit()
+
+    _migrate_18_corriger_provenance_enveloppes(conn)
+
+    assert conn.execute("SELECT auto_enveloppe FROM case_group WHERE id=?",
+                        (gid,)).fetchone()[0] == 0

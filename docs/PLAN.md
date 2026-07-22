@@ -138,8 +138,41 @@ dessus.** Les huit causes deviennent structurellement impossibles.
 | **nom technique** (`partner_email`) | VÉRIFIER l'état par RPC/API | propre au connecteur |
 | **contraintes** (`pattern`, `min/max`, `maxlength`, `type`, options) | générer des valeurs **conformes** | universel |
 
-⚠️ Aujourd'hui on ne capture **que** le nom technique — la couche fragile, et la seule qui soit
-spécifique à Odoo. C'est ce qui empêche la portabilité.
+✅ **FAIT le 2026-07-21.** L'annuaire du projet 1 porte désormais **373 rôles / 373 champs**,
+**287 libellés** et **36 règles de saisie**, sur 37 routes. Le compteur de règles est affiché sur
+la carte du projet — c'est le seul témoin visible qu'une cartographie est fraîche.
+
+🔴 **MAIS ce composant a un PLAFOND STRUCTUREL, découvert le 2026-07-22 et à ne pas oublier.**
+Sur `/fournisseur/creation`, le champ `tva_intracommunautaire` n'a **aucune contrainte HTML** —
+l'annuaire le voit « libre ». À l'exécution, le navigateur le refuse : *« Le numéro de TVA doit
+contenir uniquement des chiffres. »* La règle est appliquée en **JavaScript**.
+
+**Aucun crawl statique ne verra jamais une règle écrite en JavaScript.** Enrichir davantage
+l'annuaire ne corrigera pas ça — c'est une limite de la méthode, pas de son implémentation.
+
+**Conséquence directe sur la stratégie** : *prévenir* ne peut pas être exhaustif ; *détecter à
+l'exécution*, si. Le navigateur rapporte son verdict que la règle vienne d'un attribut ou d'un
+script (`checkValidity()` / `validationMessage`). D'où le composant A ci-dessous, qui n'était pas
+prévu et qui s'avère plus fondamental que le reste.
+
+**A (non prévu, FAIT le 2026-07-22). Lire la page au lieu d'accuser.**
+
+Quand le comptage n'augmente pas, `diagnostic_soumission` interroge la page : validation native
+d'abord (si un champ est `:invalid`, l'envoi n'a **jamais eu lieu**), puis les messages affichés,
+puis le silence — nommé comme tel. **Aucun statut ne change** ; on explique.
+
+Résultat sur 3 exécutions réelles :
+
+| Cas | Diagnostic |
+|---|---|
+| `fournisseur_creation` | **notre donnée** — `tva_intracommunautaire` refusé par le navigateur |
+| `achat_siege` | refus **SILENCIEUX** |
+| `demande_avoir` | refus **SILENCIEUX** |
+
+⚠️ **Les deux silences sont le vrai résultat.** Aucun raffinement du verdict ne fera parler une
+page muette : c'est ce qui rend le composant 3 (vérification par l'état) nécessaire, et pas
+seulement souhaitable. On ne le savait pas avant A ; on l'aurait découvert après avoir construit
+B et C dessus.
 
 **2. Steps métier + résolveur déterministe.** Le LLM fournit le **sens** (valeurs métier
 plausibles) ; le déterministe garantit la **forme** (conformité aux contraintes mesurées).

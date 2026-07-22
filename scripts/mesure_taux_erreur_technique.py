@@ -56,6 +56,27 @@ def _nettoyer_mesure_precedente(client) -> None:
     print(f"  nettoyage : {supprimes}/{len(ids)} cas de la mesure précédente supprimés", flush=True)
 
 
+def _raison_de_l_echec(conn, execution_id: int) -> str:
+    """La RAISON de l'échec, là où elle vit réellement.
+
+    ⚠️ Le banc lisait `execution.error_message` — **vide pour un échec fonctionnel** : le détail
+    (message, cause, step fautif) est porté par `scenario_result`. Le banc n'a donc jamais montré
+    *pourquoi* un scénario échouait ; il fallait aller le chercher en base à la main après coup.
+
+    C'est le même motif que celui qu'on traque partout ailleurs : **la donnée existait, personne
+    ne la transmettait**. Un instrument de mesure qui tait la cause oblige à re-diagnostiquer à
+    chaque campagne ce qu'il savait déjà.
+    """
+    lignes = conn.execute(
+        "SELECT error_summary FROM scenario_result"
+        " WHERE execution_id=? AND functional_status <> 'conforme'", (execution_id,)).fetchall()
+    for ligne in lignes:
+        texte = " ".join((ligne["error_summary"] or "").split())
+        if texte:
+            return texte[:300]
+    return ""
+
+
 def main() -> int:
     client = TestClient(app)
     resultats = []
@@ -102,34 +123,59 @@ def main() -> int:
         conn = get_initialized_db(config.DB_PATH)
         execs = ExecutionRepo(conn).list_for_case(case_id)
         prem = min(execs, key=lambda e: e["id"]) if execs else None
+        raison = _raison_de_l_echec(conn, prem["id"]) if prem else ""
         conn.close()
         if prem is None:
             resultats.append((nom, None, "aucun_run"))
             print("  aucun run", flush=True)
             continue
         es, fs = prem["execution_status"], prem["functional_status"]
-        resultats.append((nom, es, fs))
+        resultats.append((nom, es, fs, raison))
         print(f"  cas {case_id} → {es} / {fs} — {time.time() - t0:.0f}s", flush=True)
-        if prem.get("error_message"):
-            print(f"    {prem['error_message'][:160]}", flush=True)
+        if raison:
+            print(f"    {raison}", flush=True)
 
     # Trace des cas créés : la PROCHAINE mesure les supprimera (banc rejouable).
     ARTEFACTS.write_text(json.dumps(crees), encoding="utf-8")
 
     # ── Le verdict ────────────────────────────────────────────────────────────
     print(f"\n{'=' * 70}\nTAUX D'ERREUR TECHNIQUE AU PREMIER JET\n{'=' * 70}", flush=True)
-    tourne = sum(1 for _, es, _ in resultats if es == "success")
-    erreur = sum(1 for _, es, _ in resultats if es == "technical_error")
+    tourne = sum(1 for r in resultats if r[1] == "success")
+    erreur = sum(1 for r in resultats if r[1] == "technical_error")
     autre = len(resultats) - tourne - erreur
-    for nom, es, fs in resultats:
+    for nom, es, fs, *reste in resultats:
         marque = "OK " if es == "success" else ("ERR" if es == "technical_error" else "?? ")
-        print(f"  [{marque}] {nom:<16} {es or '—'} / {fs or '—'}", flush=True)
+        print(f"  [{marque}] {nom:<20} {es or '—'} / {fs or '—'}", flush=True)
+        if reste and reste[0]:
+            print(f"          ↳ {reste[0][:200]}", flush=True)
     print(f"\n  ONT TOURNÉ (succès technique)  : {tourne}/{len(resultats)}", flush=True)
     print(f"  ERREUR TECHNIQUE               : {erreur}/{len(resultats)}", flush=True)
     if autre:
         print(f"  autre (job échoué, etc.)       : {autre}/{len(resultats)}", flush=True)
     if resultats:
         print(f"  → taux de réussite technique   : {tourne / len(resultats) * 100:.0f} %", flush=True)
+
+    # ── À QUI la faute ? — la question que le composant A rend enfin posable ──
+    # ⚠️ Un taux de réussite technique ne dit RIEN de la justesse des verdicts. Tant qu'on ne
+    # savait pas distinguer « notre donnée est invalide » de « l'application est en défaut », un
+    # `non_conforme` n'était pas une information : c'était une accusation non instruite.
+    familles = {"notre donnée (navigateur a refusé)": 0, "refus applicatif EXPLIQUÉ": 0,
+                "refus SILENCIEUX — indécidable": 0}
+    for _, _, fs, *reste in resultats:
+        raison = (reste[0] if reste else "") or ""
+        if fs != "non_conforme":
+            continue
+        if "LE NAVIGATEUR A REFUSÉ" in raison:
+            familles["notre donnée (navigateur a refusé)"] += 1
+        elif "L'APPLICATION A REFUSÉ" in raison:
+            familles["refus applicatif EXPLIQUÉ"] += 1
+        else:
+            familles["refus SILENCIEUX — indécidable"] += 1
+    if any(familles.values()):
+        print(f"\n  RÉPARTITION DES « non conforme » :", flush=True)
+        for libelle, n in familles.items():
+            if n:
+                print(f"    {n} × {libelle}", flush=True)
 
     conn = get_initialized_db(config.DB_PATH)
     print(f"\n  (onglet Qualité mis à jour — vérifiable dans l'interface)", flush=True)
