@@ -188,6 +188,76 @@ def click_button(page, label):
         page.get_by_role("link", name=label, exact=False),
         f':is(a, button, input[type="submit"]):has-text("{label}")',
     ], quoi=f"Bouton '{label}'")
+    verifier_soumission_non_bloquee(page)
+
+
+def verifier_soumission_non_bloquee(page) -> None:
+    """Le navigateur a-t-il REFUSÉ d'envoyer le formulaire ? — le contrôle qui empêche le faux
+    verdict au lieu de l'expliquer après coup.
+
+    ⚠️ **Pourquoi APRÈS le clic, et pas avant.** C'était mon erreur d'analyse, corrigée par une
+    sonde sur le portail réel (2026-07-22). Sur `/fournisseur/creation`, le champ
+    `tva_intracommunautaire` est **valide avant le clic** — aucun `pattern`, aucun `title`, rien.
+    Après le clic il devient invalide : *« Le numéro de TVA doit contenir uniquement des
+    chiffres. »* La règle est posée par `setCustomValidity()` **dans le gestionnaire de
+    soumission**. Elle n'existe pas avant. Une vérification « avant envoi » ne l'aurait jamais vue.
+
+    Après le clic, en revanche, le navigateur a tout évalué et **nomme** ce qui cloche :
+    - `valueMissing` — un champ devenu obligatoire par un choix précédent (champs conditionnels) ;
+    - `patternMismatch` — un format non respecté ;
+    - `customError` — une règle métier posée en JavaScript, dont c'est la SEULE trace.
+
+    ⚠️ **Ce que ça change pour le verdict.** Sans ce contrôle, la soumission n'a pas lieu, rien
+    n'est créé, l'assertion de comptage échoue, et le test conclut **« l'application est non
+    conforme »**. C'est l'accusation injuste qu'on traque depuis le début. Ici on échoue
+    immédiatement, en disant l'inverse : **c'est notre jeu de données qui est refusé**.
+
+    ⚠️ **Borné aux boutons qui SOUMETTENT.** `click_button` sert aussi à naviguer, ouvrir un
+    onglet, dérouler une section. Un champ invalide ailleurs dans la page ne doit pas faire échouer
+    un clic qui n'a rien à voir : on ne regarde que si un formulaire s'est **réellement opposé** à
+    son propre envoi, et on se tait dans tous les autres cas.
+    """
+    try:
+        invalides = page.evaluate("""() => {
+            // On ne parle QUE des formulaires qui refusent leur propre soumission.
+            const formulaires = Array.from(document.querySelectorAll('form'))
+                .filter(f => f.checkValidity && !f.checkValidity());
+            if (!formulaires.length) return [];
+            const out = [];
+            for (const f of formulaires) {
+                for (const el of f.querySelectorAll('input, select, textarea')) {
+                    if (el.willValidate && !el.checkValidity()) {
+                        out.push({nom: el.name || el.id || '?',
+                                  valeur: String(el.value || '').slice(0, 40),
+                                  msg: el.validationMessage || '',
+                                  manquant: el.validity.valueMissing === true});
+                    }
+                }
+            }
+            return out.slice(0, 6);
+        }""") or []
+    except Exception:
+        return  # un contrôle de sûreté ne fait jamais tomber un scénario par lui-même
+    if not invalides:
+        return
+
+    manquants = [c["nom"] for c in invalides if c["manquant"]]
+    details = " · ".join(
+        f"{c['nom']}" + (f" (={c['valeur']!r})" if c["valeur"] else "") + f" : {c['msg']}"
+        for c in invalides)
+    indice = ""
+    if manquants:
+        # Cas mesuré sur `/remboursement` : choisir `motif = "avoir"` rend 4 champs obligatoires
+        # qui ne l'étaient pas au moment du crawl. L'annuaire les donnait « non requis » — et le
+        # prompt disait même de NE PAS les remplir. Le dire explicitement évite de rechercher.
+        indice = (f"\n{len(manquants)} champ(s) OBLIGATOIRE(S) non renseigné(s) : "
+                  f"{', '.join(manquants)}. Un choix fait plus haut (liste déroulante, case) a "
+                  f"pu les rendre obligatoires alors qu'ils ne l'étaient pas au départ.")
+    raise AssertionError(
+        f"LE NAVIGATEUR A REFUSÉ D'ENVOYER le formulaire : {len(invalides)} champ(s) invalide(s) "
+        f"— {details}.{indice}\n"
+        f"⚠️ L'APPLICATION N'EST PAS EN CAUSE : c'est le jeu de données du test qui est "
+        f"irrecevable. Corrige ces valeurs, ne conclus pas à un défaut applicatif.")
 
 
 def resolve_field_name(page, ident):
