@@ -7,10 +7,13 @@ font autorité dans ``verdict/status.py`` ; la base les reflète via des CHECK (
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from datetime import datetime, timezone
 
 from testpilot import config
+
+logger = logging.getLogger(__name__)
 
 
 class DuplicateName(ValueError):
@@ -275,18 +278,67 @@ class CaseGroupRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
+    def est_residu(self, group_id: int) -> bool:
+        """Cette Spécification n'est-elle qu'une **enveloppe technique abandonnée** ?
+
+        Trois conditions, toutes nécessaires : **créée automatiquement**, **aucun cas**, **aucun
+        document**. C'est LA règle qui distingue un déchet d'un actif, et elle vit ici, en un seul
+        endroit : la suppression d'un cas s'en sert pour ne pas laisser de fantôme, la création
+        s'en sert pour ne pas se laisser bloquer par un.
+
+        ⚠️ **« Vide » ne suffit PAS, et c'est le piège dans lequel je suis tombé** (2026-07-22).
+        Une Spécification que l'utilisateur vient de créer depuis l'écran est vide elle aussi :
+        avec le seul critère du vide, créer un homonyme l'**effaçait en silence** au lieu de
+        refuser le doublon. Quatre tests existants l'ont attrapé. C'est la PROVENANCE qui décide —
+        d'où `auto_enveloppe` (migration 17).
+
+        ⚠️ **Une Spécification qui porte un document est un ACTIF**, même sans aucun cas : on peut
+        vouloir en regénérer. Elle survit à ses cas — c'est voulu, pas un oubli.
+        """
+        row = self.conn.execute(
+            "SELECT g.spec_content, g.auto_enveloppe,"
+            " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id) AS n"
+            " FROM case_group g WHERE g.id=?", (group_id,)).fetchone()
+        return (bool(row) and bool(row["auto_enveloppe"]) and row["n"] == 0
+                and not (row["spec_content"] or "").strip())
+
     def ensure_title_free(self, module_id: int, title: str, *, excluding: int | None = None) -> None:
-        """Titre de spécification unique DANS SON MODULE (comme les modules dans leur projet)."""
+        """Titre de spécification unique DANS SON MODULE (comme les modules dans leur projet).
+
+        ⚠️ **Un résidu ne bloque pas : il est RÉCUPÉRÉ.** Mesuré le 2026-07-22 — le banc de mesure
+        s'est arrêté sur « ce module a déjà une spécification "Création d'une demande de
+        remboursement…" » alors que cette Spécification n'avait **ni cas ni document** : une
+        enveloppe vide laissée par une suppression antérieure au nettoyage automatique.
+
+        Le nettoyage à la suppression ne fait que **prévenir les nouveaux fantômes** ; il n'efface
+        pas ceux d'avant. Récupérer ici rend la correction **rétroactive et auto-guérissante** :
+        chaque résidu disparaît le jour où son titre est réclamé, sans migration ni balayage.
+
+        C'est la **troisième fois** que le banc bute sur sa propre non-rejouabilité. Un instrument
+        de mesure qu'on ne peut pas relancer ne mesure pas une évolution — il ne dit rien.
+        """
         for row in self.conn.execute("SELECT id, title FROM case_group WHERE module_id=?",
                                      (module_id,)):
-            if row["id"] != excluding and _key(row["title"]) == _key(title):
-                raise DuplicateName(f"ce module a déjà une spécification « {row['title']} »")
+            if row["id"] == excluding or _key(row["title"]) != _key(title):
+                continue
+            if self.est_residu(row["id"]):
+                logger.info("[spécification] résidu #%s « %s » récupéré : ni cas ni document",
+                            row["id"], row["title"])
+                self.conn.execute("DELETE FROM case_group WHERE id=?", (row["id"],))
+                continue
+            raise DuplicateName(f"ce module a déjà une spécification « {row['title']} »")
 
     def create(self, *, module_id: int, title: str, description: str = "",
-               spec_content: str = "", spec_hash: str = "") -> int:
+               spec_content: str = "", spec_hash: str = "", auto_enveloppe: bool = False) -> int:
         """Crée une spécification. `spec_content` est LE DOCUMENT source (2026-07-19) ; `spec_hash`
         son empreinte, que chaque cas généré référencera. Vides à l'auto-enveloppement d'un cas
-        (la spec vit encore sur la version jusqu'à l'étape 3)."""
+        (la spec vit encore sur la version jusqu'à l'étape 3).
+
+        ⚠️ `auto_enveloppe=True` **uniquement** depuis `CaseRepo.create`, qui fabrique un conteneur
+        1:1 autour d'un cas qui n'en avait pas. Ce drapeau donne à cette enveloppe le droit d'être
+        récupérée quand son cas disparaît. Par défaut **False** : tout ce qui vient de l'écran est
+        délibéré, donc protégé — en cas de doute, on protège (migration 17).
+        """
         self.ensure_title_free(module_id, title)
         ts = now_iso()
         row = self.conn.execute("SELECT MAX(position) AS m FROM case_group WHERE module_id=?",
@@ -294,8 +346,9 @@ class CaseGroupRepo:
         position = 0 if row["m"] is None else int(row["m"]) + 1
         cur = self.conn.execute(
             "INSERT INTO case_group (module_id, title, description, spec_content, spec_hash,"
-            " position, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
-            (module_id, title, description, spec_content, spec_hash, position, ts, ts))
+            " position, auto_enveloppe, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (module_id, title, description, spec_content, spec_hash, position,
+             int(auto_enveloppe), ts, ts))
         self.conn.commit()
         return int(cur.lastrowid)
 
@@ -446,7 +499,8 @@ class CaseRepo:
         de bord (hors arbre), pas le chemin de production — qui passe toujours par un module.
         """
         if group_id is None and module_id is not None:
-            group_id = CaseGroupRepo(self.conn).create(module_id=module_id, title=title)
+            group_id = CaseGroupRepo(self.conn).create(module_id=module_id, title=title,
+                                                       auto_enveloppe=True)
         self.ensure_title_free(group_id, title)
         self.ensure_slug_free(feature_slug)
         ts = now_iso()
@@ -568,14 +622,15 @@ class CaseRepo:
         (`spec_content` vide). Une Spécification rédigée par un humain est un actif : elle doit
         survivre à ses cas — on peut vouloir en regénérer depuis elle. C'est ce qui distingue
         « résidu technique » et « conteneur voulu ».
+
+        La règle elle-même vit dans `CaseGroupRepo.est_residu` — un seul endroit, parce que la
+        création s'en sert aussi (`ensure_title_free` récupère un résidu au lieu de refuser le
+        titre). Deux copies de cette règle divergeraient, et l'écart serait invisible : l'une
+        laisserait un fantôme que l'autre refuserait d'effacer.
         """
         if group_id is None:
             return
-        row = self.conn.execute(
-            "SELECT g.spec_content,"
-            " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id) AS n"
-            " FROM case_group g WHERE g.id=?", (group_id,)).fetchone()
-        if row and row["n"] == 0 and not (row["spec_content"] or "").strip():
+        if CaseGroupRepo(self.conn).est_residu(group_id):
             self.conn.execute("DELETE FROM case_group WHERE id=?", (group_id,))
 
     def update_metier(self, case_id: int, *, title: str | None = None,

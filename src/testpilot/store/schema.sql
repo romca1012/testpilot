@@ -51,6 +51,12 @@ CREATE TABLE IF NOT EXISTS case_group (
     spec_content TEXT    NOT NULL DEFAULT '',      -- LE DOCUMENT complet — source unique (2026-07-19)
     spec_hash    TEXT    NOT NULL DEFAULT '',      -- empreinte de la spec courante (détection « dépassée »)
     position     INTEGER NOT NULL DEFAULT 0,       -- ordre d'affichage dans le module (cf. 0009)
+    -- 1 = ENVELOPPE AUTOMATIQUE créée par `CaseRepo.create` autour d'un cas sans spécification.
+    -- 0 = créée DÉLIBÉRÉMENT par un humain (bouton « Ajouter une spécification »).
+    -- ⚠️ Sans cette distinction, « vide » était le seul critère disponible — et il confond un
+    -- résidu technique avec une spécification que l'utilisateur vient de créer et n'a pas encore
+    -- remplie. Les deux sont vides ; une seule est jetable (2026-07-22).
+    auto_enveloppe INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT    NOT NULL,
     updated_at   TEXT    NOT NULL,
     FOREIGN KEY (module_id) REFERENCES module(id)

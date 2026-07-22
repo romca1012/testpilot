@@ -191,13 +191,30 @@ def test_la_generation_par_l_ecran_ecrit_analyse_ET_generation_au_ledger(conn):
     assert CostRepo(conn).total_for_case_usd(cid) == pytest.approx(0.4652)
 
 
-def test_une_depense_sans_cas_cree_est_signalee_pas_imputee_au_hasard(conn, caplog):
-    """Un échec de génération a coûté. Sans cas, on le DIT — on n'invente pas de rattachement."""
+def test_une_depense_sans_cas_cree_est_INSCRITE_mais_imputee_a_personne(conn, caplog):
+    """Un échec de génération a coûté. Sans cas, on le DIT — et on n'invente pas de rattachement.
+
+    ⚠️ **Attente RÉVISÉE le 2026-07-22.** Ce test exigeait `COUNT(*) == 0` : ne rien écrire du
+    tout. L'intention était bonne — ne pas imputer la dépense à un cas au hasard — mais la
+    conséquence ne l'était pas : mesuré sur le banc, `sinistre_client` a brûlé 0,14 $ **invisibles
+    au budget §9**, et une génération qui cale en boucle pourrait en brûler beaucoup sans qu'aucun
+    compteur ne bouge.
+
+    *Ne pas imputer à un cas* et *ne rien inscrire* sont deux choses différentes. `test_case_id`
+    est nullable et le total mensuel somme la période sans filtrer sur le cas : la ligne compte au
+    budget **sans polluer aucun coût par cas**. L'invariant que ce test gardait vraiment — aucun
+    rattachement inventé — est ci-dessous, et il tient toujours.
+    """
+    cid = CaseRepo(conn).create(title="Un autre cas", feature_slug="autre")
+
     generation_service._record_generation_cost(
         conn, case_id=None, analysis_usd=0.01, generation_usd=0.20)
 
-    assert conn.execute("SELECT COUNT(*) FROM cost_ledger").fetchone()[0] == 0
-    assert "sans cas créé" in caplog.text
+    assert CostRepo(conn).monthly_total_usd() == pytest.approx(0.21), "comptée au budget §9"
+    assert CostRepo(conn).total_for_case_usd(cid) == 0.0, "imputée à AUCUN cas"
+    assert conn.execute(
+        "SELECT COUNT(*) FROM cost_ledger WHERE test_case_id IS NULL").fetchone()[0] == 2
+    assert "SANS cas créé" in caplog.text
 
 
 def test_un_cout_nul_n_ecrit_aucune_ligne(conn):

@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 16
+_SCHEMA_VERSION = 17
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -95,6 +95,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_15_test_run(conn)
     if version < 16:
         _migrate_16_run_archive(conn)
+    if version < 17:
+        _migrate_17_specification_auto_enveloppe(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -553,6 +555,34 @@ def _migrate_16_run_archive(conn: sqlite3.Connection) -> None:
     """
     if "is_archived" not in _column_names(conn, "test_run"):
         conn.execute("ALTER TABLE test_run ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0")
+
+
+def _migrate_17_specification_auto_enveloppe(conn: sqlite3.Connection) -> None:
+    """Distinguer une ENVELOPPE AUTOMATIQUE d'une Spécification voulue par un humain.
+
+    ⚠️ **Le problème que ça tranche.** `CaseRepo.create` auto-enveloppe un cas sans spécification
+    dans un conteneur 1:1. Quand le cas est supprimé, l'enveloppe doit partir avec lui — sinon
+    elle devient un fantôme qui **bloque toute regénération du même titre** (§2.9). Le banc de
+    mesure y a buté **trois fois**.
+
+    Jusqu'ici le seul critère disponible était « vide » (ni cas ni document). Il est **faux** : une
+    Spécification que l'utilisateur vient de créer depuis l'écran est vide elle aussi, et la traiter
+    comme un déchet la ferait **effacer en silence** au profit d'un homonyme. Vide ne veut pas dire
+    jetable ; c'est la PROVENANCE qui décide.
+
+    ⚠️ **Reprise de l'existant.** On ne peut pas reconstituer la provenance après coup. On marque
+    donc comme enveloppes automatiques exactement les résidus **constatés aujourd'hui** — ni cas
+    ni document — car dans une base vécue, une Spécification restée vide et sans document est le
+    reliquat d'un cas supprimé. Toutes les autres sont déclarées délibérées : en cas de doute, on
+    protège. Une Spécification conservée à tort est un désordre ; supprimée à tort, une perte.
+    """
+    if "auto_enveloppe" in _column_names(conn, "case_group"):
+        return
+    conn.execute("ALTER TABLE case_group ADD COLUMN auto_enveloppe INTEGER NOT NULL DEFAULT 0")
+    conn.execute(
+        "UPDATE case_group SET auto_enveloppe = 1"
+        " WHERE TRIM(COALESCE(spec_content, '')) = ''"
+        "   AND NOT EXISTS (SELECT 1 FROM test_case tc WHERE tc.group_id = case_group.id)")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

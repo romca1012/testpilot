@@ -108,15 +108,19 @@ def _record_generation_cost(conn, *, case_id: int | None, analysis_usd: float,
 
     Best-effort : une écriture de comptabilité ne fait jamais échouer une génération qui a réussi
     — mais elle ne disparaît pas en silence (§4.6).
+
+    ⚠️ **Une génération RATÉE coûte quand même, et elle s'inscrit quand même** (2026-07-22). Le
+    code refusait d'écrire quand aucun cas n'avait été créé — pour ne pas imputer la dépense à un
+    cas au hasard. Le raisonnement était juste, sa conséquence ne l'était pas : mesuré sur le banc,
+    `sinistre_client` a brûlé **0,14 $ invisibles au budget**. Une génération qui cale en boucle
+    pourrait en brûler beaucoup sans qu'aucun compteur ne bouge — exactement le risque que le §9
+    est censé borner.
+
+    `test_case_id` est **nullable**, et le total mensuel somme la période **sans filtrer sur le
+    cas** : une ligne orpheline compte donc au budget, sans polluer aucun coût par cas. Ne pas
+    imputer à un cas et ne rien inscrire du tout sont deux choses différentes — on avait pris la
+    seconde en croyant prendre la première.
     """
-    if case_id is None:
-        # L'agent n'a pas créé de cas (échec avant persistance) : la dépense est réelle mais n'a
-        # aucun cas où s'accrocher. On le DIT plutôt que de l'imputer à un cas au hasard.
-        if analysis_usd or generation_usd:
-            logger.warning("[generation] $%.4f dépensés sans cas créé — hors ledger (aucun "
-                           "test_case_id où rattacher). Le budget §9 ignore cette dépense.",
-                           analysis_usd + generation_usd)
-        return
     from testpilot.store.repositories import CostRepo
     for phase, model, cost in (("analysis", config.MODEL_FAST, analysis_usd),
                                ("generation", config.MODEL_GENERATION, generation_usd)):
@@ -128,6 +132,11 @@ def _record_generation_cost(conn, *, case_id: int | None, analysis_usd: float,
         except Exception:
             logger.exception("[generation] coût %s de %s USD NON enregistré (cas %s) — le budget "
                              "§9 sera sous-évalué d'autant", phase, cost, case_id)
+    if case_id is None and (analysis_usd or generation_usd):
+        # Inscrit, mais sans propriétaire : on le DIT, pour que la dépense soit explicable.
+        logger.warning("[generation] $%.4f dépensés SANS cas créé — inscrits au ledger sans "
+                       "test_case_id (comptés au budget §9, imputés à aucun cas)",
+                       analysis_usd + generation_usd)
 
 
 def run_generation(job_id: str, *, module_id: int, slug: str, title: str,
