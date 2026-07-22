@@ -38,10 +38,11 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 
 | | |
 |---|---|
-| Tests | **639 Python · 73 vitest** |
+| Tests | **665 Python · 75 vitest** |
 | Schéma | `user_version = 16` |
 | Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), **90 %** cumulé projet |
 | Coût d'un cas (analyse + génération) | ~0,11 $ |
+| Annuaire projet 1 | 37 routes · 373 champs · **373 rôles · 287 libellés · 36 règles de saisie** |
 
 ### La progression, mesurée (et non supposée)
 
@@ -57,6 +58,14 @@ plus structurels que prévu : les 4 formulaires ajoutés sont passés du premier
 ⚠️ **Nuance non mesurée** : les 7 succès sont tous `success / non_conforme` — les tests
 **tournent** et trouvent des écarts fonctionnels. Savoir si ces écarts sont réels ou dus à des
 assertions trop strictes est **une autre question, non instrumentée**.
+
+🔴 **Cette nuance a trouvé sa réponse le 2026-07-21, et elle est mauvaise pour nous.** Au moins une
+partie de ces `non_conforme` n'était **pas** un écart de l'application : le test écrivait une
+valeur que le formulaire **refuse** (motif `\d{7}` violé), la soumission n'avait jamais lieu, et
+l'assertion de création échouait mécaniquement. 12 des 21 routes à champ requis étaient exposées.
+Correctif en place (9ᵉ cause, §5) ; **re-mesure lancée le 2026-07-22 pour établir l'écart réel.**
+Tant que ce chiffre n'est pas tombé, le 88 % reste vrai sur l'axe *exécution* — et le
+`non_conforme` reste **non crédible** sur l'axe *fonctionnel*.
 
 ---
 
@@ -264,6 +273,13 @@ la mesure précédente. C'est ce qui permet de mesurer une **évolution**, pas u
    le **même** défaut que celui déjà documenté pour `cost_ledger`, rejoué un mois plus tard.
 3. **Supprimer un cas laissait sa Spécification orpheline**, ce qui bloquait la regénération du
    même titre. 8 fantômes dans la vraie base.
+4. **Le faux `non_conforme`** (9ᵉ cause, §5) : le banc a produit 8 verdicts « application non
+   conforme » qui accusaient l'application à tort. Aucun test unitaire ne pouvait le voir — le
+   code faisait exactement ce qu'on lui demandait ; c'est la **donnée** envoyée à un vrai
+   navigateur qui était irrecevable. **Seule une exécution réelle pouvait le révéler.**
+5. **Un défaut de l'application testée** : `<input type="date" max="date_now">` sur
+   `/creance_douteux` — un placeholder de gabarit qui a fui non résolu dans le HTML livré. Trouvé
+   *en passant*, par la cartographie. C'est exactement ce qu'un outil de test doit savoir dire.
 
 > **La leçon, répétée trois fois** : ces défauts n'existent que sur une **base vécue**. Les tests
 > partent tous d'un monde neuf — c'est leur limite structurelle, pas leur faiblesse (§8.8).
@@ -282,6 +298,21 @@ Quatre fois le même schéma, à chaque fois coûteux :
 | champs fichier | texte écrit dans un champ fichier | le `type` du champ |
 | champs cachés | cherche un champ `visible=false` | la **visibilité** du champ |
 | identifiant de route | `/demande_avoir/29789` **inventé** | l'URL concrète visitée par le crawl |
+| **règles de saisie** | `"TEST_REMB_CLI001"` dans un champ `\d{7}` | le `pattern` de l'attribut HTML |
+
+⚠️ **La 9ᵉ est d'une autre nature — et c'est la plus grave.** Les huit premières font TOMBER le
+scénario, avec une trace lisible : on sait qu'on a un problème. Celle-ci le laisse se dérouler
+proprement jusqu'au bout, puis **conclut « l'application est non conforme » alors que
+l'application a raison**. Le navigateur refuse silencieusement d'envoyer un formulaire dont un
+champ viole son `pattern` ; rien n'est créé ; l'assertion de création échoue ; verdict
+`non_conforme`. C'est **la donnée du test** qui était invalide.
+
+**Un outil de test qui accuse à tort est pire qu'un outil qui ne teste rien** — il détruit la
+confiance dans ses propres verdicts, y compris les justes.
+
+Portée mesurée (2026-07-21, après ré-exploration enrichie) : **12 des 21 routes** portant un champ
+requis ont au moins un motif strict — **57 % de la surface testable**. Plus de 20 champs requis
+concernés (`\d{7}`, `\d{6}`, `\d{9}`, BIC `[A-Za-z0-9]{8,11}`, téléphones, montants `min=0`).
 
 **Et deux trous d'OUTIL** — l'agent ne pouvait pas réussir, quelle que soit la consigne :
 
@@ -294,8 +325,28 @@ Quatre fois le même schéma, à chaque fois coûteux :
 la version **anglaise**. Il aurait fait échouer tous les steps à libellé français (« Envoyer » →
 « Send »). **Mon propre correctif allait introduire la cause suivante.**
 
+⚠️ **Un second piège, dans l'application testée elle-même** : `/creance_douteux` sert
+`<input type="date" max="date_now">` — un placeholder de gabarit qui a fui **non résolu** dans le
+HTML. Le navigateur ignore une borne invalide ; nous allions écrire « valeur ≤ date_now » à
+l'agent, une consigne impossible à satisfaire sur un champ pourtant valide. Toute borne ni
+numérique ni date est désormais **tue**. Le placeholder reste dans l'annuaire — c'est un vrai
+défaut de leur portail, qu'un humain doit pouvoir voir — mais il ne descend pas dans la consigne.
+**Une mesure fidèle n'oblige pas à répéter le bruit qu'elle a capté.**
+
+⚠️ **Et une fois sur NOTRE propre outil.** Une ré-exploration lancée depuis l'interface a réécrit
+l'annuaire **à l'identique** — le serveur avait encore l'ancien module de crawl en mémoire — tout
+en affichant « terminée ». Mêmes 37 routes, mêmes 373 champs : **rien à l'écran ne pouvait le
+trahir**. Corrigé en affichant le compteur de **règles de saisie** sur la carte du projet : routes
+et champs bougent peu d'une mesure à l'autre, les règles n'existent que depuis la mesure enrichie.
+Zéro règle sur un portail qui en a = mesure à refaire. *(Un compteur à zéro n'est pas affiché :
+« 0 règles » se lirait « ce portail n'en a pas » au lieu de « on n'a pas mesuré ».)*
+
 **Réflexe à garder** : avant d'améliorer un prompt, vérifier si **la donnée est déjà mesurée** —
 et si l'agent a seulement l'**outil** pour l'appliquer.
+
+**Second réflexe, ajouté par la 9ᵉ** : quand un verdict accuse l'application, se demander d'abord
+si **notre donnée de test était recevable**. Un `non_conforme` n'est crédible que si la soumission
+a réellement eu lieu.
 
 ---
 

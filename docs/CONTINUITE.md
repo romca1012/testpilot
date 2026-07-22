@@ -6,6 +6,13 @@
 > (« le LLM produit une intention, un résolveur déterministe l'exécute »). Elle commande toute
 > la suite : **tant qu'elle n'est pas tranchée, on corrige les erreurs cause par cause**.
 >
+> 🔴 **DERNIER FAIT MARQUANT (2026-07-22)** : on a découvert que nos verdicts « application non
+> conforme » **accusaient l'application à tort**. Le test écrivait une valeur que le formulaire
+> refuse (motif `\d{7}` sur un code client) ; le navigateur bloque l'envoi en silence ; rien n'est
+> créé ; le test en conclut un défaut applicatif. **12 des 21 routes à champ requis étaient
+> exposées.** Corrigé (§5 de `PLAN.md`, 9ᵉ cause) ; **re-mesure en cours pour chiffrer l'écart.**
+> ⚠️ Tant que ce chiffre n'est pas tombé, **ne citer aucun `non_conforme` comme un défaut avéré**.
+>
 > **`docs/PLAN.md` (2026-07-21) est le point d'entrée à la reprise.** Il dit l'état RÉEL, les
 > décisions prises, et la route jusqu'au produit fini. Ce rapport-ci s'arrête au 2026-07-17 : il
 > garde sa valeur d'**historique** (les leçons, les bugs trouvés, les décisions `0001`–`0022`),
