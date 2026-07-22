@@ -660,13 +660,105 @@ def check_count_not_increased(context, model):
     )
 
 
+# Ce que la PAGE dit quand rien n'a été créé — par ordre de force du signal.
+_SELECTEURS_ERREUR = (
+    ".o_notification.border-danger",   # notification Odoo
+    ".alert-danger",                   # bandeau Bootstrap
+    "[role='alert']",                  # rôle d'accessibilité
+    ".invalid-feedback",               # message de champ Bootstrap
+    ".o_has_error .text-danger",       # champ Odoo en erreur
+)
+
+
+# ⚠️ Le diagnostic est BORNÉ. `run_service` coupe `error_summary` à 500 caractères ; un diagnostic
+# bavard se ferait amputer par la queue — donc amputer de sa conclusion, la partie qui porte le
+# sens. On garde de la marge pour le constat qui le précède (« devrait être N, obtenu M »).
+_DIAGNOSTIC_MAX = 380
+
+
+def _borner(texte: str) -> str:
+    return texte if len(texte) <= _DIAGNOSTIC_MAX else texte[:_DIAGNOSTIC_MAX - 1].rstrip() + "…"
+
+
+def diagnostic_soumission(page) -> str:
+    """Pourquoi la soumission n'a-t-elle rien créé ? — **lire la page au lieu d'accuser**.
+
+    ⚠️ **Le défaut que ça corrige** (mesuré le 2026-07-22). Quand le compteur n'augmente pas, le
+    test concluait « l'application est non conforme », point. Or trois causes très différentes
+    produisent ce même symptôme :
+
+    1. **le navigateur a refusé d'envoyer** — une valeur viole la validation HTML native
+       (`pattern`, `min`…) : la donnée DU TEST est invalide, l'application n'y est pour rien ;
+    2. **le serveur a refusé** pour une raison métier (SIRET incohérent, doublon…) : l'application
+       fait exactement son travail ;
+    3. **l'application est réellement en défaut** — le seul cas où le verdict est mérité.
+
+    Les confondre, c'est accuser à tort deux fois sur trois. **Un outil de test qui accuse à tort
+    est pire qu'un outil qui ne teste rien** : il détruit la confiance dans ses verdicts justes.
+
+    ⚠️ **Ce diagnostic ne CHANGE aucun statut** — il explique. La distinction des trois cas en
+    verdicts distincts est une décision de modèle (le « 4ᵉ verdict »), qui appartient au porteur.
+    Ici on se contente de rapporter ce que la page dit, ce qui est déjà ce qui manquait pour
+    trancher.
+
+    ⚠️ **Best-effort ABSOLU : ne lève jamais.** Un diagnostic qui plante transformerait un échec
+    fonctionnel lisible en erreur technique — il détruirait précisément l'information qu'il est
+    censé apporter. Toute panne ici se solde par une chaîne vide.
+    """
+    try:
+        # 1. La validation NATIVE du navigateur. Signal le plus décisif : si un champ est
+        #    `:invalid`, l'envoi n'a jamais eu lieu — inutile de chercher plus loin côté serveur.
+        invalides = page.evaluate("""() => {
+            const out = [];
+            for (const el of document.querySelectorAll('input, select, textarea')) {
+                if (el.willValidate && !el.checkValidity()) {
+                    out.push({nom: el.name || el.id || '?', msg: el.validationMessage || ''});
+                }
+            }
+            return out.slice(0, 5);
+        }""") or []
+        if invalides:
+            details = " · ".join(f"{c['nom']} : {c['msg']}".strip(" :") for c in invalides)
+            return _borner(
+                "LE NAVIGATEUR A REFUSÉ D'ENVOYER le formulaire — la donnée du test viole la "
+                f"validation de {len(invalides)} champ(s) : {details}. "
+                "⚠️ L'application n'est PAS en cause ici.")
+
+        # 2. Ce que le serveur a répondu, s'il a répondu quelque chose de lisible.
+        for selecteur in _SELECTEURS_ERREUR:
+            elements = page.locator(selecteur)
+            for i in range(min(elements.count(), 3)):
+                el = elements.nth(i)
+                if not el.is_visible():
+                    continue
+                texte = " ".join((el.inner_text() or "").split())[:200]
+                if texte:
+                    return _borner(
+                        f"L'APPLICATION A REFUSÉ la soumission et l'affiche : « {texte} ». "
+                        "⚠️ Vérifier si ce refus est légitime avant de conclure au défaut.")
+
+        return ("Aucun message d'erreur affiché par la page après soumission — le refus est "
+                "SILENCIEUX. Rien ne permet de distinguer un rejet métier d'un défaut applicatif.")
+    except Exception as exc:  # un diagnostic ne casse JAMAIS le scénario qu'il éclaire
+        return f"(diagnostic de soumission indisponible : {type(exc).__name__})"
+
+
 def check_count_increased_by_one(context, model):
     """Le positif attend que le ticket APPARAISSE (jusqu'à `COUNT_SETTLE_TIMEOUT`). S'il n'apparaît
     pas dans la fenêtre, l'assertion échoue avec le message d'origine — un vrai « non créé » reste
-    détecté, seule la course disparaît."""
+    détecté, seule la course disparaît.
+
+    ⚠️ **Le message d'échec porte désormais le DIAGNOSTIC de la page** (2026-07-22) : « rien n'a
+    été créé » est un constat, pas une explication, et c'est sur ce constat nu qu'on a accusé
+    l'application à tort pendant toute une campagne de mesure. Voir `diagnostic_soumission`.
+    """
     initial = _require_snapshot(context, model)
     ok, current = _poll_until(
         lambda: context.odoo.env[model].search_count([]), lambda c: c == initial + 1)
-    assert ok, (
+    if ok:
+        return
+    page = getattr(context, "page", None)
+    pourquoi = diagnostic_soumission(page) if page is not None else ""
+    raise AssertionError(
         f"Nombre d'enregistrements dans '{model}' devrait être {initial + 1}, obtenu {current}."
-    )
+        + (f"\n{pourquoi}" if pourquoi else ""))
