@@ -155,6 +155,13 @@ def _inspecter_page(page):
             if (el.getAttribute('max') !== null) c.max = el.getAttribute('max');
             if (el.getAttribute('step')) c.step = el.getAttribute('step');
             if (el.getAttribute('accept')) c.accept = el.getAttribute('accept');
+            // ⚠️ `title` porte la REGLE EN FRANÇAIS, et c'est souvent le SEUL endroit ou elle
+            // existe. Mesure du 2026-07-22 : `numero_facture1` n'a AUCUN `pattern`, mais son
+            // title dit « Veuillez saisir des groupes de sept chiffres. » L'agent y ecrivait
+            // « FAC-TEST-001 » ; le champ filtre les non-chiffres, il reste « 001 », le
+            // navigateur refuse, et le verdict accusait l'application. La regle etait ecrite
+            // dans la page, lisible, en clair — et le crawl la jetait.
+            if (el.getAttribute('title')) c.regle_lisible = el.getAttribute('title').slice(0, 200);
             if (Object.keys(c).length) entry.contraintes = c;
             if (tag === 'select') {
                 entry.options = Array.from(el.options).map(o => [o.value, (o.text||'').trim()]);

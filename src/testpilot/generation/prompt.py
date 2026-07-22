@@ -92,6 +92,12 @@ def _format_contraintes(champ: dict) -> str:
         return ""
     c = {k: v for k, v in c.items() if k not in ("min", "max") or _borne_exploitable(v)}
     bouts = []
+    # ⚠️ La règle EN FRANÇAIS d'abord (attribut `title`) : c'est la formulation que l'application
+    # destine à un humain, et souvent la SEULE trace de la règle. Mesuré le 2026-07-22 :
+    # `numero_facture1` n'a aucun `pattern`, mais son title dit « groupes de sept chiffres ».
+    # Un motif regex est exact ; une phrase est compréhensible. Les deux valent mieux qu'aucun.
+    if c.get("regle_lisible"):
+        bouts.append(f"**{c['regle_lisible']}**")
     if c.get("pattern"):
         bouts.append(f"doit correspondre EXACTEMENT au motif `{c['pattern']}`")
     if c.get("minlength") and c.get("maxlength"):
@@ -147,13 +153,24 @@ def _section_champs_requis(plan: TestPlan, modele: dict | None) -> str:
         lignes.append(f"Le formulaire `{form['route']}` EXIGE {len(form['requis'])} champs requis, "
                       f"dont **{len(saisissables)} à remplir par l'interface**. Tout scénario qui "
                       f"prétend CRÉER un enregistrement DOIT remplir TOUS ceux-ci :")
-        fichiers = []
+        fichiers, cases = [], []
         for champ in saisissables:
             detail = ""
             if champ.get("type") == "file":
                 # ⚠️ Le TYPE change la façon de remplir : un champ fichier refuse le texte.
                 detail = " — **CHAMP FICHIER** : utilise `je joins un fichier au champ \"…\"`"
                 fichiers.append(champ["name"])
+            elif champ.get("type") in ("checkbox", "radio"):
+                # ⚠️ Mesuré le 2026-07-22 sur `/sinistre_client` : `info_sinistre_ids` est une CASE
+                # À COCHER obligatoire. Son nom évoque des documents ; l'agent a écrit `je joins un
+                # fichier` quatre fois. Playwright a cherché 30 s un champ fichier inexistant, puis
+                # a échoué — l'unique erreur technique de la campagne.
+                # ⚠️ Ce n'était PAS un trou d'outil : `fill_field` sait cocher depuis toujours. Le
+                # prompt ne signalait que le type `file` et se taisait sur tous les autres, donc
+                # l'agent devinait d'après le NOM. 10ᵉ fois que l'annuaire savait sans transmettre.
+                detail = (" — **CASE À COCHER** : ne joins RIEN et n'écris pas de texte ; "
+                          "`je renseigne le champ \"…\" avec la valeur \"oui\"` la coche")
+                cases.append(champ["name"])
             elif champ["options"]:
                 detail = f" — valeurs possibles : {', '.join(champ['options'][:6])}"
             elif champ["tag"]:
@@ -170,6 +187,13 @@ def _section_champs_requis(plan: TestPlan, modele: dict | None) -> str:
                 "un `<input type=\"file\">` **n'accepte pas de texte** — écrire dedans lève "
                 "`InvalidStateError` et le scénario échoue techniquement. Emploie le step partagé "
                 "`je joins un fichier au champ \"<nom>\"`, qui téléverse une pièce jointe de test.")
+        if cases:
+            lignes.append("")
+            lignes.append(
+                f"⚠️ **{len(cases)} CASE(S) À COCHER** ({', '.join(f'`{c}`' for c in cases)}) : "
+                "leur nom peut évoquer des pièces jointes — **ce n'en sont pas**. `je joins un "
+                "fichier` sur une case à cocher fait chercher 30 secondes un champ qui n'existe "
+                "pas, puis échouer techniquement. On les COCHE, avec la valeur `\"oui\"`.")
         contraints = [c["name"] for c in saisissables if c.get("contraintes")]
         if contraints:
             lignes.append("")

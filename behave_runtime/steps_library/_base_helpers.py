@@ -327,6 +327,44 @@ def fill_field(page, name, value):
                 el.dispatchEvent(new Event('change', {{ bubbles: true }}));
             }}
         """)
+        _verifier_valeur_retenue(page, name, value)
+
+
+def _verifier_valeur_retenue(page, name, ecrit) -> None:
+    """Le champ a-t-il GARDÉ ce qu'on a écrit ? — un contrôle sans aucune connaissance de règle.
+
+    ⚠️ **Le défaut qu'il ferme** (mesuré le 2026-07-22 sur `/client_contentieux` et
+    `/retenue_garantie`). Le champ `numero_facture1` porte un filtre JavaScript qui **supprime les
+    caractères non numériques**. L'agent y écrivait `FAC-TEST-001` ; le champ retenait `001`. Trois
+    chiffres au lieu des sept exigés → soumission bloquée → rien créé → verdict `non_conforme`.
+    **L'application avait raison ; notre valeur avait été mutilée en silence.**
+
+    ⚠️ **La force de ce contrôle est qu'il ne connaît RIEN.** Il ne lit ni `pattern`, ni `title`,
+    ni la moindre cartographie : il compare ce qu'on a écrit à ce que le champ contient. Il attrape
+    donc les filtres JavaScript, les masques de saisie et les normalisations — tout ce qu'un crawl
+    statique ne verra jamais. C'est le complément exact du plafond de l'annuaire.
+
+    ⚠️ **Il échoue TÔT et pour ce qu'il est** : « ma donnée a été refusée », pas « l'application est
+    en défaut ». C'est précisément la confusion qu'on traque.
+
+    Tolérant sur ce qui n'est pas une mutilation : espaces de bordure, et normalisations de casse
+    (certains champs majusculisent) — les signaler produirait du bruit sans défaut réel.
+    """
+    try:
+        retenu = page.evaluate(
+            "(n) => { const el = document.querySelector(`[name=\"${n}\"]`);"
+            " return el ? String(el.value) : null; }", name)
+    except Exception:
+        return  # un contrôle de sûreté ne fait jamais tomber un scénario par lui-même
+    if retenu is None:
+        return
+    attendu = str(ecrit).strip()
+    if retenu.strip() == attendu or retenu.strip().lower() == attendu.lower():
+        return
+    raise AssertionError(
+        f"Le champ « {name} » a MODIFIÉ la valeur saisie : écrit {attendu!r}, retenu {retenu!r}. "
+        f"Un filtre de saisie l'a transformée — la valeur du test est donc INADAPTÉE à ce champ "
+        f"(ce n'est pas un défaut de l'application). Choisis une valeur conforme à son format.")
 
 
 def attach_file(page, name, value=""):
@@ -359,7 +397,27 @@ def attach_file(page, name, value=""):
         chemin.write_text("Fichier de test TestPilot.\n", encoding="utf-8")
 
     page.wait_for_selector(f'[name="{name}"]', timeout=10000, state="attached")
-    page.locator(f'[name="{name}"]').first.set_input_files(str(chemin))
+    cible = page.locator(f'[name="{name}"]').first
+
+    # ⚠️ Refuser TOUT DE SUITE une cible qui n'est pas un champ fichier (2026-07-22).
+    # Mesuré sur `/sinistre_client` : `info_sinistre_ids` est une CASE À COCHER dont le nom évoque
+    # des documents. L'agent y a « joint un fichier » ; `set_input_files` a attendu **30 secondes**
+    # un élément téléversable, puis échoué sur une trace Playwright illisible. Trente secondes
+    # perdues, et un diagnostic qui ne nommait pas la vraie cause.
+    #
+    # Le type est connu en une milliseconde. On le lit, et on dit CE QU'IL FAUT FAIRE À LA PLACE —
+    # un message d'erreur qui n'indique pas l'issue oblige à re-diagnostiquer à chaque fois.
+    reel = (cible.evaluate("el => (el.type || '').toLowerCase()") or "")
+    if reel != "file":
+        equivalent = {
+            "checkbox": f'je renseigne le champ "{name}" avec la valeur "oui"  (pour la cocher)',
+            "radio": f'je renseigne le champ "{name}" avec la valeur "<option>"',
+        }.get(reel, f'je renseigne le champ "{name}" avec la valeur "<valeur>"')
+        raise AssertionError(
+            f"Le champ « {name} » n'est PAS un champ fichier (type={reel or 'inconnu'}) : on ne "
+            f"peut rien y téléverser. Emploie plutôt :\n    {equivalent}")
+
+    cible.set_input_files(str(chemin))
 
 
 def leave_field_empty(page, name):
