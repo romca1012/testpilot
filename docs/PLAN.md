@@ -313,6 +313,21 @@ la mesure précédente. C'est ce qui permet de mesurer une **évolution**, pas u
 5. **Un défaut de l'application testée** : `<input type="date" max="date_now">` sur
    `/creance_douteux` — un placeholder de gabarit qui a fui non résolu dans le HTML livré. Trouvé
    *en passant*, par la cartographie. C'est exactement ce qu'un outil de test doit savoir dire.
+6. **Une régression introduite par un correctif du jour même** (2026-07-22). La migration 17,
+   censée débloquer le banc, a classé « délibérées » les Spécifications qui portaient encore un
+   cas au moment où elle tournait — elle ne pouvait voir que celles *déjà* vides. Cas supprimés
+   ensuite, le nettoyage ne s'est plus déclenché : **6 fantômes là où le défaut d'origine en
+   produisait 1**. La suite de tests était **verte** (685 au moment du commit).
+
+   ⚠️ **Règle qui en sort** : *une reprise de données ne classe pas sur l'état INSTANTANÉ quand
+   une SIGNATURE stable existe.* Une enveloppe automatique porte le titre exact de son cas — vrai
+   que le cas existe encore ou non. C'est ce que fait la migration 18.
+
+   ⚠️ **Et une règle sur les tests eux-mêmes** : j'ai écrit un test « cycle complet » présenté
+   comme celui qui manquait. Sabotage à l'appui, **il n'attrape pas ce défaut** — sur une base
+   neuve la provenance est correcte dès la création. Seul le test de *reprise* le tient. **Un test
+   dont on surestime la portée est pire qu'un test absent** : on croit le terrain couvert.
+   Vérifier par sabotage *quel* test tombe, pas seulement *qu'il* tombe.
 
 > **La leçon, répétée trois fois** : ces défauts n'existent que sur une **base vécue**. Les tests
 > partent tous d'un monde neuf — c'est leur limite structurelle, pas leur faiblesse (§8.8).
