@@ -9,7 +9,7 @@ from _base_helpers import (
     attach_file, leave_field_empty,
     memorize_record_count, check_count_not_increased, check_count_increased_by_one,
     no_duplicate, no_error_with_keywords, validation_error_inline,
-    wait_form_submission, force_name_field,
+    wait_form_submission, force_name_field, remplir_formulaire_valide,
 )
 
 
@@ -21,6 +21,14 @@ def step_record_count(context, model):
 @when('je renseigne le champ "{field}" avec la valeur "{value}"')
 def step_fill(context, field, value):
     fill_field(context.page, field, value)
+
+
+@when('je remplis le formulaire de "{route}" avec des données valides')
+def step_remplir_formulaire_valide(context, route):
+    """Chemin NOMINAL (§2bis) : le déterministe remplit tout — le LLM ne nomme aucun champ.
+    Pour un scénario NÉGATIF (tester un refus), on garde les steps fins « je renseigne le
+    champ … avec la valeur … », où la mauvaise valeur EST le sujet du test."""
+    remplir_formulaire_valide(context, route)
 
 
 @when('je joins un fichier au champ "{field}"')

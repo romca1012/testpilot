@@ -253,7 +253,7 @@ def verifier_soumission_non_bloquee(page) -> None:
         indice = (f"\n{len(manquants)} champ(s) OBLIGATOIRE(S) non renseigné(s) : "
                   f"{', '.join(manquants)}. Un choix fait plus haut (liste déroulante, case) a "
                   f"pu les rendre obligatoires alors qu'ils ne l'étaient pas au départ.")
-    raise AssertionError(
+    raise DonneeRefuseeError(
         f"LE NAVIGATEUR A REFUSÉ D'ENVOYER le formulaire : {len(invalides)} champ(s) invalide(s) "
         f"— {details}.{indice}\n"
         f"⚠️ L'APPLICATION N'EST PAS EN CAUSE : c'est le jeu de données du test qui est "
@@ -301,6 +301,26 @@ class InvalidOptionValueError(ValueError):
     jugement humain). Le mapper aurait fait réparer un test contre un vrai problème de données —
     le faux négatif que §4.4 déclare inacceptable. `tests/test_taxonomy_signal.py` a refusé mon
     premier jet, qui faisait exactement ça.
+
+    Hérite de `ValueError` : un `except ValueError` existant continue de l'attraper.
+    """
+
+
+class DonneeRefuseeError(ValueError):
+    """La DONNÉE du test a été refusée — l'application n'est PAS en cause (§2bis, 4ᵉ verdict).
+
+    ⚠️ **Le signal du 4ᵉ verdict `donnee_invalide`, posé au lieu d'être deviné.** Trois situations
+    disent la même chose : « ce n'est pas l'app qui est en défaut, c'est notre jeu de données » —
+    le navigateur refuse une valeur qui viole sa validation, un filtre JS a mutilé la saisie, ou le
+    test emploie le mauvais type de champ. Avant, ces cas levaient une `AssertionError` → Behave
+    l'affiche « ASSERT FAILED: » → la taxonomie la classait `assertion_mismatch` → verdict
+    **`non_conforme`** : on accusait l'application à tort, exactement le défaut que le §2bis traque.
+
+    ⚠️ **Sous-classe de `ValueError`, PAS de `AssertionError`** — et c'est tout l'intérêt. Behave
+    ne masque le nom de la classe QUE pour les `AssertionError` (« ASSERT FAILED: »). Une
+    exception dédiée s'affiche « ERROR: DonneeRefuseeError: … » : `defect_taxonomy` la reconnaît
+    au type (comme `InvalidOptionValueError` en 0019) et la projette sur `donnee_invalide`. Le
+    signal se POSE, il ne se déduit pas — forme la plus forte du principe 1.
 
     Hérite de `ValueError` : un `except ValueError` existant continue de l'attraper.
     """
@@ -431,10 +451,89 @@ def _verifier_valeur_retenue(page, name, ecrit) -> None:
     attendu = str(ecrit).strip()
     if retenu.strip() == attendu or retenu.strip().lower() == attendu.lower():
         return
-    raise AssertionError(
+    # ⚠️ Tolérer un REFORMATAGE cosmétique qui n'ajoute/ne retire que des ESPACES : un IBAN
+    # « FR76…189 » que le champ réaffiche « FR76 3000 …189 » reste valide, la soumission passe
+    # (mesuré au rejeu 2026-07-23). Ça n'affaiblit PAS la détection d'une vraie mutilation : un
+    # filtre qui SUPPRIME des caractères (« FAC-TEST-001 » → « 001 ») diffère encore une fois les
+    # espaces retirés des deux côtés.
+    if re.sub(r"\s+", "", retenu).lower() == re.sub(r"\s+", "", attendu).lower():
+        return
+    raise DonneeRefuseeError(
         f"Le champ « {name} » a MODIFIÉ la valeur saisie : écrit {attendu!r}, retenu {retenu!r}. "
         f"Un filtre de saisie l'a transformée — la valeur du test est donc INADAPTÉE à ce champ "
         f"(ce n'est pas un défaut de l'application). Choisis une valeur conforme à son format.")
+
+
+class ResolveurIncompletError(RuntimeError):
+    """Le RÉSOLVEUR n'a pas pu construire le test — l'application n'est ni jugée ni accusée.
+
+    ⚠️ **Le verdict HONNÊTE d'un test non constructible** (raffinement 2026-07-23, cas `agence`).
+    Quand le déterministe ne peut pas remplir un champ requis (liste déroulante sans option
+    sélectionnable, annuaire absent, formulaire introuvable), le test n'a jamais tourné contre le
+    comportement de l'application : on ne peut RIEN en conclure. Avant, une `AssertionError` faisait
+    tomber ce cas en `non_conforme` — ça **accusait l'application** d'un défaut qu'on n'a pas
+    observé. Une exception dédiée (ni `AssertionError`, ni `DonneeRefuseeError`) le classe en
+    `technical_error / indetermine` : le test à instruire, pas l'application à blâmer.
+
+    Sous-classe de `RuntimeError` — Behave affiche « ERROR: ResolveurIncompletError: … », la
+    taxonomie la reconnaît au type (signal posé, jamais deviné — même patron que `0019`).
+    """
+
+
+def remplir_formulaire_valide(context, route):
+    """RÉSOLVEUR DÉTERMINISTE (§2bis, composant 2) — remplit tous les champs requis VISIBLES du
+    formulaire courant avec des valeurs garanties recevables, lues dans l'annuaire mesuré.
+
+    ⚠️ **Le renversement.** Sur le chemin nominal, le LLM ne nomme plus aucun champ ni ne saisit
+    aucune valeur : il dit l'INTENTION (« remplis le formulaire avec des données valides »), et
+    cette couche fabrique la FORME. Les causes historiques (valeur qui viole `\\d{7}`, champ requis
+    oublié, upload dans une case, option de select inventée) deviennent structurellement
+    impossibles — le LLM n'a plus la main dessus. Mesuré le 2026-07-22 : c'est exactement ce que
+    l'injection des contraintes dans le prompt ne suffisait PAS à garantir.
+
+    L'annuaire est choisi par PROJET (`context.project_id`, posé par le runner) puis apparié à la
+    page RÉELLE (`context.page.url`) — plus fiable que le libellé `route` du scénario, qui peut
+    différer de l'URL concrète. `route` reste le repli et nourrit le message d'erreur.
+
+    Ce que le résolveur a saisi est mémorisé sur `context.saisie_resolveur` — l'étape 3
+    (vérification par l'état) s'en servira pour asserter que la donnée a réellement atterri.
+    """
+    # Imports DIFFÉRÉS : la bibliothèque doit s'importer à la collecte (dry-run) sans exiger le
+    # paquet `testpilot` ; il n'est requis qu'à l'EXÉCUTION réelle du step (PYTHONPATH posé par
+    # BehaveRunner). `testpilot.generation.__init__` est paresseux : aucun tirage d'anthropic ici.
+    from testpilot.generation import domain_model
+    from testpilot.generation import valeur_conforme as vc
+
+    project_id = getattr(context, "project_id", None)
+    modele = domain_model.charger_par_projet_id(project_id)
+    if not modele:
+        raise ResolveurIncompletError(
+            f"résolveur: aucun annuaire pour ce projet (project_id={project_id!r}). "
+            "Lancez l'exploration du projet avant de générer un cas nominal.")
+
+    url = getattr(getattr(context, "page", None), "url", "") or ""
+    formulaires = (domain_model.formulaires_requis(modele, [url])
+                   or domain_model.formulaires_requis(modele, [route]))
+    if not formulaires:
+        raise ResolveurIncompletError(
+            f"résolveur: formulaire introuvable dans l'annuaire pour route='{route}' "
+            f"(url réelle '{url}'). L'annuaire est-il à jour pour cette page ?")
+
+    saisie = {}
+    for form in formulaires:
+        for champ in form["requis"]:
+            if not champ.get("visible", True):
+                continue  # champ requis CACHÉ (injecté serveur) : jamais saisi par l'interface (5ᵉ cause)
+            try:
+                valeur = vc.valeur_pour(champ)
+            except vc.ValeurNonSynthetisable as exc:
+                raise ResolveurIncompletError(
+                    f"résolveur: champ requis '{champ['name']}' non synthétisable ({exc}). "
+                    "Contrainte hors du périmètre déterministe — cas à instruire.") from exc
+            fill_field(page=context.page, name=champ["name"], value=valeur)
+            saisie[champ["name"]] = valeur
+
+    context.saisie_resolveur = saisie
 
 
 def attach_file(page, name, value=""):
@@ -483,7 +582,7 @@ def attach_file(page, name, value=""):
             "checkbox": f'je renseigne le champ "{name}" avec la valeur "oui"  (pour la cocher)',
             "radio": f'je renseigne le champ "{name}" avec la valeur "<option>"',
         }.get(reel, f'je renseigne le champ "{name}" avec la valeur "<valeur>"')
-        raise AssertionError(
+        raise DonneeRefuseeError(
             f"Le champ « {name} » n'est PAS un champ fichier (type={reel or 'inconnu'}) : on ne "
             f"peut rien y téléverser. Emploie plutôt :\n    {equivalent}")
 
@@ -808,6 +907,28 @@ def _borner(texte: str) -> str:
     return texte if len(texte) <= _DIAGNOSTIC_MAX else texte[:_DIAGNOSTIC_MAX - 1].rstrip() + "…"
 
 
+def _refus_par_le_navigateur(page) -> list:
+    """Les champs que la VALIDATION NATIVE du navigateur refuse (best-effort, ne lève JAMAIS).
+
+    Non vide ⇒ la donnée du test est refusée par le navigateur (`pattern`, `min`, champ requis
+    devenu obligatoire…) : **l'application n'est pas en cause**, c'est le signal du 4ᵉ verdict
+    (`donnee_invalide`). Partagé par `diagnostic_soumission` (qui l'EXPLIQUE) et par le comptage
+    (qui en fait un `DonneeRefuseeError`) — une seule sonde, deux usages.
+    """
+    try:
+        return page.evaluate("""() => {
+            const out = [];
+            for (const el of document.querySelectorAll('input, select, textarea')) {
+                if (el.willValidate && !el.checkValidity()) {
+                    out.push({nom: el.name || el.id || '?', msg: el.validationMessage || ''});
+                }
+            }
+            return out.slice(0, 5);
+        }""") or []
+    except Exception:
+        return []
+
+
 def diagnostic_soumission(page) -> str:
     """Pourquoi la soumission n'a-t-elle rien créé ? — **lire la page au lieu d'accuser**.
 
@@ -836,15 +957,7 @@ def diagnostic_soumission(page) -> str:
     try:
         # 1. La validation NATIVE du navigateur. Signal le plus décisif : si un champ est
         #    `:invalid`, l'envoi n'a jamais eu lieu — inutile de chercher plus loin côté serveur.
-        invalides = page.evaluate("""() => {
-            const out = [];
-            for (const el of document.querySelectorAll('input, select, textarea')) {
-                if (el.willValidate && !el.checkValidity()) {
-                    out.push({nom: el.name || el.id || '?', msg: el.validationMessage || ''});
-                }
-            }
-            return out.slice(0, 5);
-        }""") or []
+        invalides = _refus_par_le_navigateur(page)
         if invalides:
             details = " · ".join(f"{c['nom']} : {c['msg']}".strip(" :") for c in invalides)
             return _borner(
@@ -886,6 +999,13 @@ def check_count_increased_by_one(context, model):
     if ok:
         return
     page = getattr(context, "page", None)
+    # ⚠️ §2bis 4ᵉ verdict — AVANT d'accuser l'application. Si rien n'a été créé PARCE QUE le
+    # navigateur a refusé notre donnée (validation native), le verdict est `donnee_invalide`, pas
+    # `non_conforme` : c'est notre jeu de données qui était irrecevable. Mesuré le 2026-07-22 —
+    # 4 des 6 faux `non_conforme` passaient par ICI (l'assertion de comptage), pas par le clic.
+    if page is not None and _refus_par_le_navigateur(page):
+        raise DonneeRefuseeError(diagnostic_soumission(page))
+    # Sinon (refus serveur affiché, ou silence indécidable) : constat de comptage + explication.
     pourquoi = diagnostic_soumission(page) if page is not None else ""
     raise AssertionError(
         f"Nombre d'enregistrements dans '{model}' devrait être {initial + 1}, obtenu {current}."

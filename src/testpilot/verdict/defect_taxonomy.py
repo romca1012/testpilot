@@ -47,25 +47,29 @@ def normalize_error(text: str) -> str:
 
 # Causes racines — ordre = priorité (sévérité décroissante), tranche les égalités.
 MISSING_SERVER_CONTEXT = "missing_server_context"
+DONNEE_REFUSEE = "donnee_refusee"
 BROKEN_TEST_CODE = "broken_test_code"
 WRONG_NAVIGATION = "wrong_navigation"
 WRONG_FIELD_NAME = "wrong_field_name"
 MISSING_ROLE = "missing_role"
 ASSERTION_MISMATCH = "assertion_mismatch"
+RESOLVEUR_INCOMPLET = "resolveur_incomplet"
 UNKNOWN = "unknown"
 
 CATEGORIES = (
-    MISSING_SERVER_CONTEXT, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
-    MISSING_ROLE, ASSERTION_MISMATCH, UNKNOWN,
+    MISSING_SERVER_CONTEXT, DONNEE_REFUSEE, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
+    MISSING_ROLE, ASSERTION_MISMATCH, RESOLVEUR_INCOMPLET, UNKNOWN,
 )
 
 LABELS = {
     MISSING_SERVER_CONTEXT: "Contexte serveur manquant",
+    DONNEE_REFUSEE: "Donnée du test refusée (à corriger)",
     BROKEN_TEST_CODE: "Erreur dans le code du test",
     WRONG_NAVIGATION: "Navigation erronée",
     WRONG_FIELD_NAME: "Champ/sélecteur introuvable",
     MISSING_ROLE: "Rôle/permission manquant",
     ASSERTION_MISMATCH: "Assertion métier en échec",
+    RESOLVEUR_INCOMPLET: "Test non automatisable (résolveur)",
     UNKNOWN: "Indéterminé",
 }
 
@@ -127,6 +131,18 @@ _EXCEPTION_TO_CAUSE = {
     # Une classe à nous est un signal **non ambigu par construction** — personne d'autre ne la
     # lève. C'est la forme la plus forte du principe 1 : le signal ne se déduit pas, il se pose.
     "InvalidOptionValueError": BROKEN_TEST_CODE,
+    # AJOUTÉ (§2bis, 4ᵉ verdict). Exception levée UNIQUEMENT par la bibliothèque partagée quand la
+    # DONNÉE du test est refusée (validation native du navigateur, filtre JS, mauvais type de
+    # champ) : l'application n'est PAS en cause → `donnee_invalide`, jamais `non_conforme`. Même
+    # patron que `InvalidOptionValueError` : une classe DÉDIÉE, non ambiguë par construction —
+    # personne d'autre ne la lève. Sous-classe de `ValueError`, donc Behave ne la masque pas en
+    # « ASSERT FAILED: » (réservé aux `AssertionError`) et son nom survit jusqu'ici.
+    "DonneeRefuseeError": DONNEE_REFUSEE,
+    # AJOUTÉ (raffinement 2026-07-23). Le résolveur déterministe n'a pas pu construire le test
+    # (select requis sans option, annuaire absent…). Ni l'app ni notre donnée : le test n'a jamais
+    # tourné → `indetermine`, jamais `non_conforme` (qui accuserait l'application non observée).
+    # Classe dédiée, non ambiguë par construction (personne d'autre ne la lève).
+    "ResolveurIncompletError": RESOLVEUR_INCOMPLET,
     # Le test affirme, l'application répond autrement → jugement HUMAIN (§4.4). Le message qui
     # suit est écrit par l'agent : on ne le lit pas pour décider.
     # NB : en run réel via Behave, c'est `_BEHAVE_ASSERT_RE` qui attrape ce cas — Behave masque
@@ -172,6 +188,20 @@ _TYPE_FALLBACK = {
 # `accesserror` → Odoo/Sapian) : ce module se déclare « connector-agnostic », et les y laisser
 # aurait été du code mort dans un module qui ment sur sa portée.
 _KEYWORDS: dict[str, tuple[str, ...]] = {
+    # §2bis 4ᵉ verdict — filet si le nom de classe ne survivait pas dans un rendu Behave donné.
+    # Phrases TRÈS spécifiques aux messages de `DonneeRefuseeError` : aucun risque de collision.
+    DONNEE_REFUSEE: (
+        "le navigateur a refusé", "le navigateur a refuse",
+        "jeu de données du test", "jeu de donnees du test",
+        "inadaptée à ce champ", "inadaptee a ce champ",
+        "n'est pas un champ fichier",
+    ),
+    # Filet si le nom de classe ne survivait pas — phrases propres aux messages du résolveur.
+    RESOLVEUR_INCOMPLET: (
+        "non synthétisable", "non synthetisable",
+        "sans option sélectionnable", "sans option selectionnable",
+        "aucun annuaire pour ce projet",
+    ),
     MISSING_SERVER_CONTEXT: (
         "hidden_field_empty", "server_injected", "champ cache", "champ caché",
         "reste vide", "resté vide", "valeur injectee", "valeur injectée",

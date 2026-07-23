@@ -310,7 +310,8 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
         project = ProjectRepo(conn).get(module["project_id"]) if module else None
         connector = OdooConnector.from_project(project)
         connector.connect()
-        runner = BehaveRunner(connection=project_env(project))
+        runner = BehaveRunner(connection=project_env(project),
+                              project_id=(project or {}).get("id"))
 
         analysis_tracker = CostTracker()
         plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(slug, spec_content)
@@ -363,7 +364,8 @@ def resume_generation(job_id: str, *, module_id: int, slug: str, title: str,
         # Génération ET dry-run tapent l'application DU PROJET du module (décision 0005).
         connector = OdooConnector.from_project(project)
         connector.connect()
-        runner = BehaveRunner(connection=project_env(project))
+        runner = BehaveRunner(connection=project_env(project),
+                              project_id=(project or {}).get("id"))
 
         # L'analyse est refaite ici : elle alimente l'agent en matière technique (modèles, routes,
         # champs requis) que le document métier ne porte pas — et un `TestPlan` n'est pas

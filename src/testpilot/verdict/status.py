@@ -25,6 +25,10 @@ FUNC_CONFORME = "conforme"
 FUNC_NON_CONFORME = "non_conforme"
 FUNC_INDETERMINE = "indetermine"
 FUNC_NOT_EVALUATED = "not_evaluated"
+# 4ᵉ verdict (§2bis) : le test a TOURNÉ (exécution=success) mais sa DONNÉE a été refusée —
+# l'application n'est pas en cause, c'est le test à corriger. Nouvelle VALEUR de l'axe
+# fonctionnel, jamais un 3ᵉ axe : l'invariant « les deux axes ne fusionnent jamais » tient.
+FUNC_DONNEE_INVALIDE = "donnee_invalide"
 
 
 @dataclass
@@ -71,6 +75,11 @@ def scenario_verdict(scenario, failures: list) -> ScenarioVerdict:
             # A tourné techniquement, mais le comportement métier est faux → constat produit.
             return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_NON_CONFORME,
                                    failure_type, cause, scenario.error, step_text)
+        if cause == dt.DONNEE_REFUSEE:
+            # A tourné techniquement ; c'est la DONNÉE du test qui a été refusée (4ᵉ verdict) —
+            # l'application n'est PAS en cause. On n'accuse plus : on nomme un test à corriger.
+            return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_DONNEE_INVALIDE,
+                                   failure_type, cause, scenario.error, step_text)
         # Cause technique (ou indéterminée) → le test n'a pas pu juger le fonctionnel.
         return ScenarioVerdict(scenario.name, EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE,
                                failure_type, cause, scenario.error, step_text)
@@ -109,7 +118,11 @@ def aggregate(verdicts: list[ScenarioVerdict]) -> CaseVerdict:
         execution_status = EXEC_SUCCESS
 
     if any(v.functional_status == FUNC_NON_CONFORME for v in verdicts):
-        functional_status = FUNC_NON_CONFORME  # un vrai constat produit surface toujours
+        functional_status = FUNC_NON_CONFORME  # un vrai constat (défaut applicatif) surface toujours
+    elif any(v.functional_status == FUNC_DONNEE_INVALIDE for v in verdicts):
+        # Sous le non_conforme, au-DESSUS du conforme : un scénario dont la donnée a été refusée
+        # n'a rien pu prouver — il ne doit pas être masqué par les scénarios verts (§2bis).
+        functional_status = FUNC_DONNEE_INVALIDE
     elif not verdicts:
         functional_status = FUNC_NOT_EVALUATED
     elif execution_status == EXEC_SUCCESS and all(v.functional_status == FUNC_CONFORME for v in verdicts):

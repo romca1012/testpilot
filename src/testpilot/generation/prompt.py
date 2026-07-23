@@ -142,6 +142,31 @@ def _section_champs_requis(plan: TestPlan, modele: dict | None) -> str:
 
     date = (modele or {}).get("mesure_le", "?")
     lignes = [f"## Champs OBLIGATOIRES du formulaire — CONTRAINTE (annuaire mesuré le {date})", ""]
+    # ── §2bis : la façon RECOMMANDÉE de créer un enregistrement — le step d'INTENTION ──────
+    # Le déterministe garantit la FORME (motifs, formats, options) que le LLM ne sait pas
+    # produire de façon fiable (re-mesuré le 2026-07-22 : contraintes dans le prompt, valeurs
+    # invalides quand même). Sur le chemin nominal, on ne fait plus nommer les champs à l'agent.
+    routes_visees = [form["route"] for form in formulaires]
+    exemple_route = routes_visees[0] if routes_visees else "<route>"
+    lignes += [
+        "### Créer un enregistrement valide — UN SEUL step (chemin recommandé)",
+        "",
+        "Pour un scénario qui CRÉE un enregistrement, **n'énumère pas les champs** : emploie",
+        "",
+        f'    Quand je remplis le formulaire de "{exemple_route}" avec des données valides',
+        "",
+        "Ce step remplit **tous** les champs requis visibles avec des valeurs déterministes "
+        "garanties recevables (il lit les contraintes réelles — motifs `\\d{7}`, formats, "
+        "options de listes — que tu ne peux pas deviner sans risque). Tu n'as ni à nommer les "
+        "champs, ni à choisir leurs valeurs. Il te reste à **soumettre** (« Envoyer ») puis à "
+        "**vérifier** le résultat.",
+        "",
+        "⚠️ **La liste détaillée ci-dessous est une RÉFÉRENCE**, utile surtout pour un scénario "
+        "NÉGATIF : là, tu nommes UN champ précis avec `je renseigne le champ \"…\" avec la valeur "
+        "\"…\"` et lui donnes délibérément une mauvaise valeur — c'est le sujet du test. Sur le "
+        "chemin nominal, laisse le step d'intention faire le remplissage.",
+        "",
+    ]
     for form in formulaires:
         # ⚠️ Un champ requis CACHÉ (`visible=False`) est injecté par le SERVEUR : le remplir par
         # l'interface est impossible (`TimeoutError` sur le sélecteur). Mesuré le 2026-07-21 sur
@@ -212,9 +237,11 @@ def _section_champs_requis(plan: TestPlan, modele: dict | None) -> str:
         lignes.append("")
     lignes += [
         "**Deux obligations, non négociables :**",
-        "1. **Remplir TOUS les champs requis ci-dessus** avant de soumettre. Un formulaire "
-        "incomplet est refusé par l'application : rien n'est créé, et l'assertion de création "
-        "échoue. Remplir un sous-ensemble produit un test qui ne teste rien.",
+        "1. **TOUS les champs requis doivent être remplis** avant de soumettre. Sur le chemin "
+        "nominal, le step d'intention ci-dessus s'en charge — ne remplis à la main que dans un "
+        "scénario négatif. Un formulaire incomplet est refusé par l'application : rien n'est créé, "
+        "et l'assertion de création échoue. Remplir un sous-ensemble produit un test qui ne teste "
+        "rien.",
         "2. **Soumettre EXPLICITEMENT** par un step qui déclenche l'envoi (clic sur « Envoyer »). "
         "⚠️ « j'attends la soumission du formulaire » **n'envoie RIEN** — ce step se contente "
         "d'attendre. Un scénario qui remplit puis « attend » ne crée jamais rien.",

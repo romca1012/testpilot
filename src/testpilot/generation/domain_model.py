@@ -92,6 +92,26 @@ def charger_modele(projet: dict | None) -> dict | None:
         return None
 
 
+def charger_par_projet_id(project_id) -> dict | None:
+    """Le modèle d'un projet à partir de son SEUL id — pour le RUNTIME du résolveur (§2bis).
+
+    Le sous-processus Behave n'a pas le projet complet en main : il ne reçoit que son id (par
+    l'environnement, `TESTPILOT_PROJECT_ID`). Cette variante charge directement
+    `data/domain/projet-{id}.json`, sans repli legacy (le repli par `base_url` exige le projet
+    complet, absent ici). `None` si aucun modèle : le résolveur le dira clairement.
+    """
+    if project_id in (None, ""):
+        return None
+    chemin = chemin_du_modele(project_id)
+    if not chemin.exists():
+        return None
+    try:
+        return _charger(str(chemin), chemin.stat().st_mtime)
+    except (OSError, json.JSONDecodeError):
+        logger.exception("[domaine] modèle %s illisible (runtime résolveur)", chemin)
+        return None
+
+
 def _normalise_url(url: str) -> str:
     return (url or "").strip().rstrip("/").lower()
 

@@ -35,6 +35,11 @@ const FUNCTIONAL: Record<string, StatusView> = {
   non_conforme: { label: 'Non conforme', icon: 'x', tone: 'destructive' },
   indetermine: { label: 'Indéterminable', icon: 'half', tone: 'warning',
     hint: 'Le test n\'a pas pu juger le comportement de l\'application (il s\'est interrompu avant).' },
+  // 4ᵉ verdict (§2bis) : le test a bien tourné, mais SA donnée a été refusée — l'application
+  // n'est PAS en cause. On nomme un test à corriger, on n'accuse plus l'application à tort.
+  donnee_invalide: { label: 'Donnée du test invalide', icon: 'half', tone: 'warning',
+    hint: 'Le test a tourné, mais sa donnée a été refusée (format attendu, champ requis, filtre de saisie…). '
+        + 'L\'application n\'est PAS en cause : c\'est le TEST qu\'il faut corriger, pas l\'application.' },
   not_evaluated: { label: 'Non évalué', icon: 'circle', tone: 'muted' },
 }
 
@@ -125,6 +130,9 @@ export function testStatusCode(execution: string | null | undefined,
                                functional: string | null | undefined): TestStatusCode {
   if (functional === 'conforme') return 'passed'
   if (functional === 'non_conforme') return 'failed'
+  // 4ᵉ verdict : donnée du test refusée → Retest (test à corriger), JAMAIS Failed (qui
+  // accuserait l'application) ni Passed (rien n'a été prouvé).
+  if (functional === 'donnee_invalide') return 'retest'
   // Fonctionnel indéterminé : ran-mais-pas-jugé → Retest ; jamais lancé → Untested.
   if (functional === 'indetermine') return execution === 'not_executed' ? 'untested' : 'retest'
   // Aucun verdict fonctionnel (not_evaluated / null) : c'est le déroulement qui parle.

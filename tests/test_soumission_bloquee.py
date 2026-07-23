@@ -28,7 +28,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "behave_runtime" / "steps_library"))
 
-from _base_helpers import verifier_soumission_non_bloquee  # noqa: E402
+from _base_helpers import DonneeRefuseeError, verifier_soumission_non_bloquee  # noqa: E402
 
 
 class _Page:
@@ -50,7 +50,7 @@ def test_un_refus_du_navigateur_fait_echouer_le_scenario():
                          "Le numéro de TVA doit contenir uniquement des chiffres.",
                          "FR12345678901")])
 
-    with pytest.raises(AssertionError, match="LE NAVIGATEUR A REFUSÉ"):
+    with pytest.raises(DonneeRefuseeError, match="LE NAVIGATEUR A REFUSÉ"):
         verifier_soumission_non_bloquee(page)
 
 
@@ -59,7 +59,7 @@ def test_le_message_DISCULPE_explicitement_l_application():
     qui ne teste rien : il détruit la confiance dans ses verdicts justes."""
     page = _Page([_champ("tva_intracommunautaire", "uniquement des chiffres", "FR123")])
 
-    with pytest.raises(AssertionError) as err:
+    with pytest.raises(DonneeRefuseeError) as err:
         verifier_soumission_non_bloquee(page)
 
     message = str(err.value)
@@ -71,7 +71,7 @@ def test_le_message_NOMME_le_champ_sa_valeur_et_la_raison():
     """Un diagnostic qui ne dit pas quoi corriger oblige à rouvrir la page à la main."""
     page = _Page([_champ("code_client1", "Veuillez respecter le format demandé.", "TEST_CLI")])
 
-    with pytest.raises(AssertionError) as err:
+    with pytest.raises(DonneeRefuseeError) as err:
         verifier_soumission_non_bloquee(page)
 
     message = str(err.value)
@@ -92,7 +92,7 @@ def test_les_champs_devenus_obligatoires_sont_EXPLIQUES():
         _champ("date_avoir", "Please fill out this field.", manquant=True),
     ])
 
-    with pytest.raises(AssertionError) as err:
+    with pytest.raises(DonneeRefuseeError) as err:
         verifier_soumission_non_bloquee(page)
 
     message = str(err.value)
@@ -107,7 +107,7 @@ def test_sans_champ_manquant_aucune_explication_hors_sujet():
     """Un format invalide n'est pas un champ oublié : mélanger les deux égare."""
     page = _Page([_champ("code_client1", "format invalide", "abc")])
 
-    with pytest.raises(AssertionError) as err:
+    with pytest.raises(DonneeRefuseeError) as err:
         verifier_soumission_non_bloquee(page)
 
     assert "OBLIGATOIRE(S) non renseigné" not in str(err.value)

@@ -88,6 +88,19 @@ def run_loop(*, llm, system_prompt: str, state: AgentState, ctx: ToolContext,
             state.stopped_reason = "cost_exceeded"
             return state
 
+        # ⚠️ §2bis A3 — un tour TRONQUÉ ou DÉCLINÉ n'est pas un tour valide. On l'intercepte AVANT
+        # de l'ajouter à l'historique : ne pas prendre un Gherkin coupé pour un succès (le défaut
+        # que le durcissement `stop_reason` ferme), ni dispatcher un tool_use partiel.
+        if resp.raw_stop_reason == "refusal":
+            logger.warning("[react] tour DÉCLINÉ par le modèle (refusal) — génération interrompue")
+            state.stopped_reason = "refusal"
+            return state
+        if resp.raw_stop_reason == "max_tokens":
+            logger.warning("[react] tour TRONQUÉ (max_tokens) — sortie incomplète, arrêt "
+                           "(augmenter max_tokens ou resserrer le périmètre)")
+            state.stopped_reason = "max_tokens_truncated"
+            return state
+
         state.messages.append(_assistant_message(resp, raw))
 
         if resp.stop_reason == "tool_use":

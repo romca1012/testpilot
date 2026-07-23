@@ -82,6 +82,14 @@ def resolve_connection(conn, case_id: int) -> dict[str, str]:
     return project_env(project)
 
 
+def resolve_project_id(conn, case_id: int) -> int | None:
+    """L'id du PROJET du cas — que le runner passe au résolveur déterministe (§2bis) pour
+    charger le bon annuaire. Séparé de `resolve_connection` : le projet peut n'avoir aucune
+    connexion saisie (→ config globale) tout en ayant un annuaire mesuré."""
+    case = CaseRepo(conn).get(case_id)
+    return (case or {}).get("project_id")
+
+
 def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int) -> None:
     """Tâche de fond : lance Behave réel, calcule + persiste le verdict à deux axes.
 
@@ -95,7 +103,8 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
     try:
         conn = get_initialized_db(config.DB_PATH)
         # Le runtime tape l'application DU PROJET du cas (décision 0005).
-        runner = BehaveRunner(connection=resolve_connection(conn, case_id))
+        runner = BehaveRunner(connection=resolve_connection(conn, case_id),
+                              project_id=resolve_project_id(conn, case_id))
         outcome = _execute_and_persist(conn, execution_id, case_id, module_name, runner)
         _maybe_repair(conn, case_id=case_id, version_id=version_id, module_name=module_name,
                       outcome=outcome, runner=runner)

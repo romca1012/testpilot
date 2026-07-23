@@ -236,7 +236,15 @@ def parse_behave_json(json_output: str, returncode: int, dry_run: bool = False,
                     ftype, summary = classify_failure(err)
                     result.failures.append(BehaveFailure(
                         scenario_name=name, step_text=full_step,
-                        failure_type=ftype, traceback_summary=summary[:300], raw=err[:500],
+                        # ⚠️ `raw` = la QUEUE utile du traceback (`meaningful_error`), PAS sa tête
+                        # (`err[:500]`). La tête ne contient que les frames de Behave/Playwright ;
+                        # le NOM de la classe d'exception est en fin de traceback. `defect_taxonomy`
+                        # lit `raw` pour reconnaître le type (`DonneeRefuseeError`,
+                        # `InvalidOptionValueError`…) : avec la tête, il ne le voyait JAMAIS en run
+                        # réel (le 4ᵉ verdict ne se déclenchait pas — trouvé au rejeu du 2026-07-23).
+                        # Cohérent avec `first_error` ci-dessus, qui prend déjà la queue.
+                        failure_type=ftype, traceback_summary=summary[:300],
+                        raw=meaningful_error(err),
                     ))
                 elif status == "undefined":
                     undefined.add(full_step)

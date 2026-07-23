@@ -29,6 +29,42 @@ _SYSTEM = ("Tu rédiges des cas de test fonctionnels pour des testeurs métier. 
            "Tu écris en français clair, jamais en langage technique. "
            "Réponds uniquement en JSON valide.")
 
+# Schéma des SORTIES STRUCTURÉES (§2bis A2) : quand le modèle les honore, l'API garantit un JSON
+# conforme — plus de regex `{…}` + `json.loads` qui échoue sur une virgule en trop ou du texte
+# autour. `additionalProperties: false` + tous `required` sont imposés par la fonctionnalité.
+_METIER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "preconditions": {"type": "string"},
+        "steps": {"type": "array", "items": {"type": "string"}},
+        "expected_result": {"type": "string"},
+        "angle": {"type": "string"},
+    },
+    "required": ["title", "preconditions", "steps", "expected_result", "angle"],
+    "additionalProperties": False,
+}
+
+
+def _data_metier(llm, plan: TestPlan, angle: str, model: str, cost_tracker) -> dict:
+    """Le dict du document métier. Sorties structurées si l'adaptateur les expose (`call_json`),
+    sinon parsing tolérant — ce qui garde inchangés les adaptateurs minimaux (fakes de test)."""
+    user = _build_prompt(plan, angle)
+    modele = model or config.MODEL_FAST
+    if hasattr(llm, "call_json"):
+        return llm.call_json(system_prompt=_SYSTEM, user_content=user, schema=_METIER_SCHEMA,
+                             model=modele, max_tokens=2000, cost_tracker=cost_tracker,
+                             label="metier") or {}
+    raw = llm.call_simple(system_prompt=_SYSTEM, user_content=user, model=modele,
+                          max_tokens=2000, cost_tracker=cost_tracker, label="metier")
+    match = re.search(r"\{.*\}", raw or "", re.DOTALL)
+    if not match:
+        return {}
+    try:
+        return json.loads(match.group(0))
+    except Exception:
+        return {}
+
 # Angles connus. `angle` reste une ÉTIQUETTE LIBRE en base (décision 0022 n°9) : cette liste
 # guide le modèle sans l'enfermer — une valeur hors liste est acceptée telle quelle.
 _ANGLES = ("nominal", "erreur", "limite", "autre")
@@ -135,22 +171,9 @@ def propose_metier(plan: TestPlan, *, angle: str = "nominal", llm: LLMAdapter | 
     l'arbitrage A.1 de la migration 14, qui a refusé de dériver le métier du Gherkin.
     """
     llm = llm or LLMAdapter()
-    raw = llm.call_simple(
-        system_prompt=_SYSTEM,
-        user_content=_build_prompt(plan, angle),
-        model=model or config.MODEL_FAST,
-        max_tokens=2000,
-        cost_tracker=cost_tracker,
-        label="metier",
-    )
-    match = re.search(r"\{.*\}", raw or "", re.DOTALL)
-    if not match:
-        logger.warning("[metier] aucune réponse JSON exploitable — brouillon vide")
-        return MetierDraft(angle=angle)
-    try:
-        data = json.loads(match.group(0))
-    except Exception:
-        logger.warning("[metier] JSON illisible — brouillon vide")
+    data = _data_metier(llm, plan, angle, model, cost_tracker)
+    if not data:
+        logger.warning("[metier] aucune donnée JSON exploitable — brouillon vide")
         return MetierDraft(angle=angle)
 
     steps = [_clean_step(s) for s in (data.get("steps") or []) if str(s or "").strip()]

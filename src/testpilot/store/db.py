@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 18
+_SCHEMA_VERSION = 19
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -99,6 +99,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_17_specification_auto_enveloppe(conn)
     if version < 18:
         _migrate_18_corriger_provenance_enveloppes(conn)
+    if version < 19:
+        _migrate_19_verdict_donnee_invalide(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -621,6 +623,71 @@ def _migrate_18_corriger_provenance_enveloppes(conn: sqlite3.Connection) -> None
         "     OR NOT EXISTS (SELECT 1 FROM test_case tc WHERE tc.group_id = case_group.id"
         "                      AND tc.title <> case_group.title)"
         "   )")
+
+
+def _migrate_19_verdict_donnee_invalide(conn: sqlite3.Connection) -> None:
+    """Ajoute la valeur `donnee_invalide` aux CHECK de `functional_status` (4ᵉ verdict, §2bis).
+
+    ⚠️ **Le défaut, trouvé par le RÉEL** (re-rejeu du 2026-07-23). Le 4ᵉ verdict a été branché dans
+    toute la couche Python (`status.FUNC_DONNEE_INVALIDE`), mais **les CHECK de la base n'ont pas
+    été migrés** : `scenario_result`/`execution`/`test_case.last_functional_status` n'acceptaient que
+    les anciennes valeurs. Résultat mesuré : un cas correctement jugé `donnee_invalide` (la
+    classification marchait) **plantait à la persistance** (`IntegrityError`) → retombait en
+    `technical_error`. Mes tests de statut exerçaient la DÉRIVATION du verdict, jamais la
+    PERSISTANCE de la nouvelle valeur — l'angle mort §8.8, une fois de plus.
+
+    SQLite ne sait pas modifier un CHECK par `ALTER TABLE` : on RECONSTRUIT chaque table (procédé
+    en 12 étapes), en réutilisant son propre `CREATE TABLE` (lu depuis `sqlite_master`) avec un
+    remplacement CIBLÉ de la liste `functional_status` — pas de re-transcription manuelle, source
+    d'erreur. `foreign_keys=OFF` pendant le remplacement (les 3 tables ont des FK entrantes) ;
+    `foreign_key_check` après ; **atomique et idempotent par table** (une table déjà migrée, ou
+    dont aucune liste n'est reconnue, est sautée → une reprise partielle se rattrape seule).
+    """
+    tables = ("execution", "scenario_result", "test_case")
+    conn.commit()  # aucune transaction ouverte : PRAGMA foreign_keys est un no-op en transaction
+    old_iso = conn.isolation_level
+    conn.isolation_level = None  # autocommit : on gère BEGIN/COMMIT nous-mêmes (DDL+DML atomique)
+    try:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        for tbl in tables:
+            row = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (tbl,)).fetchone()
+            sql = row["sql"] if row else ""
+            if not sql or "donnee_invalide" in sql:
+                continue  # table absente, ou déjà migrée → idempotent
+            new_sql = sql.replace(
+                "'indetermine', 'not_evaluated')",
+                "'indetermine', 'not_evaluated', 'donnee_invalide')",
+            ).replace(
+                "'non_conforme', 'indetermine')",  # scenario_result n'a pas 'not_evaluated'
+                "'non_conforme', 'indetermine', 'donnee_invalide')",
+            )
+            if new_sql == sql:
+                continue  # aucune liste functional_status reconnue : ne rien casser en silence
+            tmp = f"{tbl}__migr19"
+            create_tmp = new_sql.replace(f"CREATE TABLE {tbl}", f"CREATE TABLE {tmp}", 1)
+            aux = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE tbl_name=? AND type IN ('index','trigger')"
+                " AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%'", (tbl,)).fetchall()
+            conn.execute("BEGIN")
+            try:
+                conn.execute(f"DROP TABLE IF EXISTS {tmp}")
+                conn.execute(create_tmp)
+                conn.execute(f"INSERT INTO {tmp} SELECT * FROM {tbl}")  # colonnes identiques (seul le CHECK change)
+                conn.execute(f"DROP TABLE {tbl}")
+                conn.execute(f"ALTER TABLE {tmp} RENAME TO {tbl}")
+                for a in aux:
+                    conn.execute(a["sql"])  # index/triggers recréés (dropés avec l'ancienne table)
+                violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+                if violations:
+                    raise RuntimeError(f"FK cassées après reconstruction de {tbl} : {violations}")
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        conn.execute("PRAGMA foreign_keys = ON")
+    finally:
+        conn.isolation_level = old_iso
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

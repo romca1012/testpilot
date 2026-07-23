@@ -8,7 +8,9 @@ au tour suivant (coût ~linéaire au lieu de quadratique).
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 from testpilot import config
@@ -27,7 +29,12 @@ class ToolUseBlock:
 @dataclass
 class LLMResponse:
     """Réponse LLM normalisée + usage tokens (pour le suivi de coût)."""
-    stop_reason: str  # "end_turn" | "tool_use"
+    stop_reason: str  # "end_turn" | "tool_use" — signal de FLUX (y a-t-il un tool à exécuter ?)
+    # ⚠️ Le stop_reason BRUT de l'API (`end_turn` | `tool_use` | `max_tokens` | `refusal` | …),
+    # distinct du signal de flux ci-dessus qui l'écrasait. `max_tokens` = réponse TRONQUÉE : un
+    # Gherkin coupé ne doit pas passer pour un test valide (§2bis A3). `refusal` = décliné par
+    # sécurité. Sans ce champ, les deux étaient masqués en `end_turn` et pris pour un succès.
+    raw_stop_reason: str = ""
     text_blocks: list[str] = field(default_factory=list)
     tool_calls: list[ToolUseBlock] = field(default_factory=list)
     input_tokens: int = 0
@@ -114,7 +121,69 @@ class LLMAdapter:
             messages=[{"role": "user", "content": user_content}],
         )
         self._track(cost_tracker, resp, model_id, label)
+        # Réponse tronquée : la sortie (souvent du JSON à parser) peut être incomplète. On le
+        # SIGNALE plutôt que de rendre en silence un texte coupé qui échouera au parsing avec une
+        # cause obscure. (Le durcissement dur vit dans la boucle ReAct — §2bis A3.)
+        if getattr(resp, "stop_reason", "") == "max_tokens":
+            logger.warning("call_simple[%s] : réponse TRONQUÉE (max_tokens=%s) — "
+                           "sortie possiblement incomplète", label, max_tokens)
         return resp.content[0].text if resp.content else ""
+
+    def call_json(self, *, system_prompt: str = "", user_content: str = "", schema: dict,
+                  model: str = "", max_tokens: int = 2000, cost_tracker=None,
+                  label: str = "call_json") -> dict:
+        """Rend un DICT — via SORTIES STRUCTURÉES quand le modèle les honore (§2bis A2).
+
+        `output_config.format` fait GARANTIR par l'API un JSON conforme au `schema` : une classe
+        entière d'échecs de parsing (JSON tronqué, texte autour, virgule en trop) disparaît.
+
+        ⚠️ **Repli TRANSPARENT, zéro régression.** Les sorties structurées sont bornées à certains
+        modèles (Haiku 4.5, Sonnet 5, Opus 4.8 ; PAS garanti sur Sonnet 4.6). Si l'API refuse
+        `output_config` (400 / paramètre inconnu), on retombe EXACTEMENT sur le comportement
+        d'avant : `call_simple` + extraction tolérante `{…}`. Le repli n'est pris que sur un échec
+        de REQUÊTE (aucun double coût) ; une requête honorée n'est facturée qu'une fois.
+        """
+        model_id = model or config.MODEL_FAST
+        try:
+            resp = self._client_().messages.create(
+                model=model_id,
+                max_tokens=max_tokens,
+                system=[{"type": "text", "text": system_prompt or "Réponds en JSON."}],
+                messages=[{"role": "user", "content": user_content}],
+                output_config={"format": {"type": "json_schema", "schema": schema}},
+            )
+        except Exception as exc:  # output_config refusé (modèle/version) → repli, sans surcoût
+            logger.warning("call_json[%s] : sortie structurée indisponible (%s) — repli parsing "
+                           "tolérant", label, type(exc).__name__)
+            return self._json_par_repli(system_prompt, user_content, model_id, max_tokens,
+                                        cost_tracker, label)
+        self._track(cost_tracker, resp, model_id, label)
+        if getattr(resp, "stop_reason", "") == "max_tokens":
+            logger.warning("call_json[%s] : réponse TRONQUÉE (max_tokens=%s) — JSON possiblement "
+                           "incomplet", label, max_tokens)
+        text = next((b.text for b in resp.content
+                     if getattr(b, "type", "") == "text"), "") if resp.content else ""
+        try:
+            return json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            # output_config honoré mais JSON illisible (ne devrait pas arriver) : extraction de
+            # secours, SANS re-appeler (pas de double coût).
+            m = re.search(r"\{.*\}", text or "", re.DOTALL)
+            return json.loads(m.group(0)) if m else {}
+
+    def _json_par_repli(self, system_prompt, user_content, model_id, max_tokens,
+                        cost_tracker, label) -> dict:
+        """Le comportement d'AVANT : appel simple + extraction tolérante du premier objet JSON."""
+        raw = self.call_simple(system_prompt=system_prompt, user_content=user_content,
+                               model=model_id, max_tokens=max_tokens, cost_tracker=cost_tracker,
+                               label=label)
+        m = re.search(r"\{.*\}", raw or "", re.DOTALL)
+        if not m:
+            return {}
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            return {}
 
     def call_with_tools(self, *, system_prompt: str, messages: list[dict], tools: list[dict],
                         model: str = "", max_tokens: int = 8000, cost_tracker=None,
@@ -143,6 +212,7 @@ class LLMAdapter:
         usage = resp.usage
         return LLMResponse(
             stop_reason="tool_use" if calls else "end_turn",
+            raw_stop_reason=getattr(resp, "stop_reason", "") or "",
             text_blocks=texts,
             tool_calls=calls,
             input_tokens=getattr(usage, "input_tokens", 0),

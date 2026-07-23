@@ -129,11 +129,11 @@ def test_televerser_sur_un_NON_FICHIER_echoue_IMMEDIATEMENT(type_reel):
     """⚠️ L'essentiel n'est pas que ça échoue — ça échouait déjà — mais que ça échoue **tout de
     suite** et **lisiblement**. 30 secondes d'attente Playwright suivies d'une trace cryptique
     coûtent du temps de run ET du temps de diagnostic."""
-    from _base_helpers import attach_file
+    from _base_helpers import attach_file, DonneeRefuseeError
 
     page = _Page(type_reel)
 
-    with pytest.raises(AssertionError, match="n'est PAS un champ fichier"):
+    with pytest.raises(DonneeRefuseeError, match="n'est PAS un champ fichier"):
         attach_file(page, "info_sinistre_ids", "doc.pdf")
 
     assert page.journal == [], "aucun téléversement ne doit être tenté"
@@ -141,9 +141,9 @@ def test_televerser_sur_un_NON_FICHIER_echoue_IMMEDIATEMENT(type_reel):
 
 def test_le_message_INDIQUE_l_issue_pour_une_case_a_cocher():
     """Un message qui ne dit pas quoi faire oblige à re-diagnostiquer à chaque occurrence."""
-    from _base_helpers import attach_file
+    from _base_helpers import attach_file, DonneeRefuseeError
 
-    with pytest.raises(AssertionError) as err:
+    with pytest.raises(DonneeRefuseeError) as err:
         attach_file(_Page("checkbox"), "info_sinistre_ids", "doc.pdf")
 
     message = str(err.value)

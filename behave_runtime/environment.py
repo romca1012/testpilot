@@ -159,6 +159,10 @@ def before_all(context):
     context.odoo_db       = _ODOO_DB
     context.odoo_user     = _ODOO_USER
     context.odoo_password = _ODOO_PASSWORD
+    # Projet du run (§2bis) : le résolveur déterministe s'en sert pour charger le bon annuaire.
+    # Posé par BehaveRunner dans l'environnement du sous-processus ; absent hors run piloté.
+    _pid = os.environ.get("TESTPILOT_PROJECT_ID")
+    context.project_id = int(_pid) if _pid and _pid.isdigit() else None
 
 
 def before_scenario(context, scenario):

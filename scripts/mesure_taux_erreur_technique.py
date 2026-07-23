@@ -155,27 +155,30 @@ def main() -> int:
     if resultats:
         print(f"  → taux de réussite technique   : {tourne / len(resultats) * 100:.0f} %", flush=True)
 
-    # ── À QUI la faute ? — la question que le composant A rend enfin posable ──
-    # ⚠️ Un taux de réussite technique ne dit RIEN de la justesse des verdicts. Tant qu'on ne
-    # savait pas distinguer « notre donnée est invalide » de « l'application est en défaut », un
-    # `non_conforme` n'était pas une information : c'était une accusation non instruite.
-    familles = {"notre donnée (navigateur a refusé)": 0, "refus applicatif EXPLIQUÉ": 0,
-                "refus SILENCIEUX — indécidable": 0}
+    # ── À QUI la faute ? — désormais lu sur le VERDICT, plus sur le texte ──
+    # ⚠️ §2bis 4ᵉ verdict. « notre donnée refusée » a maintenant son propre statut fonctionnel
+    # (`donnee_invalide`) : on ne le devine plus dans le message, on le LIT. Un `non_conforme` qui
+    # subsiste est donc un constat instruit — soit un refus applicatif expliqué, soit un silence
+    # indécidable (que la vérification par l'état, 3a, doit encore lever).
+    invalide = sum(1 for r in resultats if len(r) >= 3 and r[2] == "donnee_invalide")
+    familles = {"refus applicatif EXPLIQUÉ": 0, "refus SILENCIEUX — indécidable": 0}
     for _, _, fs, *reste in resultats:
-        raison = (reste[0] if reste else "") or ""
         if fs != "non_conforme":
             continue
-        if "LE NAVIGATEUR A REFUSÉ" in raison:
-            familles["notre donnée (navigateur a refusé)"] += 1
-        elif "L'APPLICATION A REFUSÉ" in raison:
+        raison = (reste[0] if reste else "") or ""
+        if "L'APPLICATION A REFUSÉ" in raison:
             familles["refus applicatif EXPLIQUÉ"] += 1
         else:
             familles["refus SILENCIEUX — indécidable"] += 1
-    if any(familles.values()):
-        print(f"\n  RÉPARTITION DES « non conforme » :", flush=True)
+    if invalide or any(familles.values()):
+        print(f"\n  RÉPARTITION DES VERDICTS NON VERTS :", flush=True)
+        if invalide:
+            print(f"    {invalide} × donnée du test invalide (à corriger — l'app n'est PAS en "
+                  f"cause)", flush=True)
         for libelle, n in familles.items():
             if n:
                 print(f"    {n} × {libelle}", flush=True)
+    # Cible §2bis : 0 « notre donnée » cachée en non_conforme, 0 silence indécidable.
 
     conn = get_initialized_db(config.DB_PATH)
     print(f"\n  (onglet Qualité mis à jour — vérifiable dans l'interface)", flush=True)

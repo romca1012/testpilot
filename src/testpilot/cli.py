@@ -228,7 +228,8 @@ def build_default_deps(conn) -> PipelineDeps:
     project = _Project(conn).first()  # None → config globale (le projet sera créé depuis elle)
     connector = OdooConnector.from_project(project)
     connector.connect()
-    runner = BehaveRunner(connection=project_env(project))
+    runner = BehaveRunner(connection=project_env(project),
+                          project_id=(project or {}).get("id"))
     agent = GenerationAgent(dry_runner=runner, connector=connector,
                             case_repo=_Case(conn), version_repo=_Version(conn))
     # ⚠️ `SpecAnalyzer()` SANS tracker laisse `plan.cost_usd` à 0.0 : l'appel LLM de l'analyse

@@ -66,6 +66,13 @@ _ORIGIN_BY_CAUSE = {
     dt.WRONG_NAVIGATION: TEST_A_REPARER,
     dt.WRONG_FIELD_NAME: TEST_A_REPARER,
     dt.MISSING_ROLE: TEST_A_REPARER,
+
+    # Le résolveur n'a pas pu construire le test (select vide, annuaire manquant). INDETERMINE, PAS
+    # TEST_A_REPARER : réécrire le Gherkin n'y changerait rien (la boucle 0014 brûlerait du budget
+    # pour rien) — un humain doit décider si c'est un formulaire dynamique à instruire ou un vrai
+    # défaut du portail. Confirmation humaine, jamais réparation auto.
+    dt.RESOLVEUR_INCOMPLET: INDETERMINE,
+
     dt.UNKNOWN: INDETERMINE,
 }
 

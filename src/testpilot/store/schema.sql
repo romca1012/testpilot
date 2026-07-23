@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS test_case (
     -- Référence logique vers la version courante (pas de FK dure : cycle case<->version).
     current_version_id     INTEGER,
     last_execution_status  TEXT    CHECK (last_execution_status IN ('success', 'technical_error', 'not_executed')),
-    last_functional_status TEXT    CHECK (last_functional_status IN ('conforme', 'non_conforme', 'indetermine', 'not_evaluated')),
+    last_functional_status TEXT    CHECK (last_functional_status IN ('conforme', 'non_conforme', 'indetermine', 'not_evaluated', 'donnee_invalide')),
     last_executed_at       TEXT,
     author                 TEXT    NOT NULL DEFAULT '',
     created_at             TEXT    NOT NULL,
@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS execution (
     execution_status  TEXT    NOT NULL DEFAULT 'not_executed'
                                 CHECK (execution_status IN ('success', 'technical_error', 'not_executed')),
     functional_status TEXT    NOT NULL DEFAULT 'not_evaluated'
-                                CHECK (functional_status IN ('conforme', 'non_conforme', 'indetermine', 'not_evaluated')),
+                                CHECK (functional_status IN ('conforme', 'non_conforme', 'indetermine', 'not_evaluated', 'donnee_invalide')),
     scenarios_total   INTEGER NOT NULL DEFAULT 0,
     scenarios_passed  INTEGER NOT NULL DEFAULT 0,
     scenarios_failed  INTEGER NOT NULL DEFAULT 0,
@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS scenario_result (
     execution_status  TEXT    NOT NULL
                                 CHECK (execution_status IN ('success', 'technical_error')),
     functional_status TEXT    NOT NULL
-                                CHECK (functional_status IN ('conforme', 'non_conforme', 'indetermine')),
+                                CHECK (functional_status IN ('conforme', 'non_conforme', 'indetermine', 'donnee_invalide')),
     failure_type      TEXT    NOT NULL DEFAULT '',
     cause_category    TEXT    NOT NULL DEFAULT '',
     error_summary     TEXT    NOT NULL DEFAULT '',

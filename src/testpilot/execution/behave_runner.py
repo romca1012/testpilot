@@ -37,7 +37,8 @@ _FULL_FORMATTER = f"{_FORMATTER_MODULE}:FullJSONFormatter"
 class BehaveRunner:
     def __init__(self, *, runtime_dir: Path | None = None, generated_dir: Path | None = None,
                  steps_library_dir: Path | None = None, dry_timeout: int | None = None,
-                 real_timeout: int | None = None, connection: dict[str, str] | None = None):
+                 real_timeout: int | None = None, connection: dict[str, str] | None = None,
+                 project_id: int | None = None):
         self.runtime_dir = runtime_dir or config.BEHAVE_RUNTIME_DIR
         self.generated_dir = generated_dir or config.GENERATED_DIR
         self.steps_library_dir = steps_library_dir or config.STEPS_LIBRARY_DIR
@@ -46,6 +47,8 @@ class BehaveRunner:
         # Connexion du PROJET (variables d'env) injectée dans le sous-processus behave.
         # Vide → le harnais retombe sur la config globale (.env). Cf. connectors/runtime_env.
         self.connection = connection or {}
+        # Projet du run : le résolveur déterministe (§2bis) lit son annuaire au runtime.
+        self.project_id = project_id
 
     def _subprocess_env(self, run_dir: Path) -> dict[str, str]:
         """Environnement du sous-processus : celui du parent + la connexion du projet + le sidecar.
@@ -55,8 +58,20 @@ class BehaveRunner:
         globale, mais l'environnement reste explicite : le sidecar des replis (0007 B+) doit être
         désigné à CHAQUE run, connexion propre au projet ou non.
         """
-        return {**os.environ, **self.connection,
-                FIELD_FALLBACK_FILE_ENV: str(run_dir / FIELD_FALLBACK_FILENAME)}
+        env = {**os.environ, **self.connection,
+               FIELD_FALLBACK_FILE_ENV: str(run_dir / FIELD_FALLBACK_FILENAME)}
+        # `src` importable dans le sous-processus : le résolveur déterministe (§2bis) importe
+        # `testpilot.generation.{valeur_conforme,domain_model}`. Sans ça, `python -m behave`
+        # (cwd = run_dir jetable) ne voit pas le paquet `testpilot`. On PRÉPEND pour primer sur
+        # un éventuel PYTHONPATH parent.
+        src_root = str(config.SRC_DIR.parent)
+        ancien = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = src_root + (os.pathsep + ancien if ancien else "")
+        # L'id du projet, que le résolveur lit pour charger le BON annuaire (0005 : un annuaire
+        # par instance). Absent → le résolveur le dira ; les steps fins classiques marchent sans.
+        if self.project_id is not None:
+            env["TESTPILOT_PROJECT_ID"] = str(self.project_id)
+        return env
 
     def dry_run(self, module_name: str) -> BehaveResult:
         return self._run(module_name, dry_run=True)

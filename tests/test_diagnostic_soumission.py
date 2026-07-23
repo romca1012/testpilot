@@ -186,17 +186,35 @@ class _Context:
         self._initial_count_helpdesk_ticket = 26222
 
 
-def test_l_assertion_d_echec_PORTE_le_diagnostic(monkeypatch):
-    """Le diagnostic ne sert à rien s'il n'atteint pas le rapport. Ce test relie les deux bouts :
-    le constat nu (« devrait être N, obtenu M ») ET l'explication."""
+def test_donnee_refusee_nativement_leve_le_4e_verdict_au_comptage(monkeypatch):
+    """§2bis 4ᵉ verdict. Quand rien n'est créé PARCE QUE le navigateur a refusé notre donnée, le
+    comptage lève `DonneeRefuseeError` (→ `donnee_invalide`), pas une `AssertionError` (→
+    `non_conforme`). C'est ICI que passaient 4 des 6 faux `non_conforme` de la re-mesure."""
     import _base_helpers as H
 
     monkeypatch.setattr(H, "COUNT_SETTLE_TIMEOUT", 0.01, raising=False)
     ctx = _Context(_Page(invalides=[{"nom": "code_client1", "msg": "format attendu"}]))
 
+    with pytest.raises(H.DonneeRefuseeError) as err:
+        H.check_count_increased_by_one(ctx, "helpdesk.ticket")
+
+    message = str(err.value)
+    assert "LE NAVIGATEUR A REFUSÉ" in message
+    assert "code_client1" in message, "le champ fautif est nommé"
+
+
+def test_un_refus_SILENCIEUX_reste_un_constat_de_comptage(monkeypatch):
+    """Sans champ invalide natif (refus serveur silencieux), on ne peut pas disculper la donnée :
+    ça reste une `AssertionError` (constat + « SILENCIEUX »). L'indécidable est levé par la
+    vérification par l'état (3a), pas ici."""
+    import _base_helpers as H
+
+    monkeypatch.setattr(H, "COUNT_SETTLE_TIMEOUT", 0.01, raising=False)
+    ctx = _Context(_Page(invalides=[]))  # aucun champ :invalid → refus silencieux
+
     with pytest.raises(AssertionError) as err:
         H.check_count_increased_by_one(ctx, "helpdesk.ticket")
 
     message = str(err.value)
-    assert "devrait être 26223, obtenu 26222" in message, "le constat d'origine est préservé"
-    assert "LE NAVIGATEUR A REFUSÉ" in message, "et il est désormais EXPLIQUÉ"
+    assert "devrait être 26223, obtenu 26222" in message, "le constat de comptage est préservé"
+    assert "SILENCIEUX" in message
