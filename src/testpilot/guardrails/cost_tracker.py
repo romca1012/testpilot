@@ -89,4 +89,21 @@ class CostTracker:
             entry = by_model.setdefault(c.model, {"calls": 0, "cost_usd": 0.0})
             entry["calls"] += 1
             entry["cost_usd"] = round(entry["cost_usd"] + c.cost_usd, 6)
-        return {"total_cost_usd": round(self.total_cost, 6), "calls": len(self.calls), "by_model": by_model}
+        # Visibilité du CACHE de prompt (§2bis A4). Le patron est correct (préfixe système stable,
+        # volatil dans les messages utilisateur) — encore faut-il pouvoir le VÉRIFIER. Un
+        # `cache_hit_ratio` à 0 sur un run à plusieurs tours révèle un invalidateur silencieux
+        # (horodatage/UUID dans le préfixe, ordre d'outils changeant). C'est le témoin que le plan
+        # demande de surveiller.
+        cache_read = sum(c.cache_read_tokens for c in self.calls)
+        cache_write = sum(c.cache_write_tokens for c in self.calls)
+        uncached_in = sum(c.input_tokens for c in self.calls)
+        lu = cache_read + uncached_in
+        return {
+            "total_cost_usd": round(self.total_cost, 6),
+            "calls": len(self.calls),
+            "by_model": by_model,
+            "cache_read_tokens": cache_read,
+            "cache_write_tokens": cache_write,
+            # Part de l'entrée servie par le cache (0 = cache inopérant, à investiguer).
+            "cache_hit_ratio": round(cache_read / lu, 4) if lu else 0.0,
+        }
