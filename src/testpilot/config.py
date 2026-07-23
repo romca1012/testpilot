@@ -38,12 +38,15 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 # Clé Admin (optionnelle) — nécessaire uniquement pour les coûts réels (stubés en Inc. 0).
 ANTHROPIC_ADMIN_KEY = os.getenv("ANTHROPIC_ADMIN_KEY", "")
 
-# ⚠️ Basculé sur Sonnet 5 le 2026-07-23 (GO porteur), après mesure du tokenizer
-# (`scripts/mesure_cout_tokenizer.py`) : +29,2 % de tokens d'entrée sur nos prompts, mais le §9
-# (< 1 €/cas) tient largement (cache de prompt + ~0,06 $/cas mesuré). L'adaptateur est model-aware
-# (`llm/adapter._params_echantillonnage`) : Sonnet 5 reçoit la pensée adaptative + `effort`, jamais
-# `temperature` (qui ferait un 400). Revenir à Sonnet 4.6 = une variable d'env, sans changement de code.
-MODEL_GENERATION = os.getenv("TESTPILOT_MODEL_GENERATION", "claude-sonnet-5")
+# ⚠️ REVENU à Sonnet 4.6 le 2026-07-23, sur PREUVE. Le flip Sonnet 5 avait été acté (coût §9 tenu,
+# mesuré), mais le rejeu RÉEL du banc l'a infirmé côté qualité : 2 régressions de génération (un
+# module Odoo halluciné sur `mutation`, un dry-run bloqué sur `remboursement`), taux technique
+# 88 % → 75 %, et coût ~×2 (la pensée adaptative de Sonnet 5 ajoute des tokens de sortie que la
+# mesure du seul tokenizer d'entrée n'avait pas vus). La doc de migration prévenait : Sonnet 5 suit
+# les instructions plus littéralement, un prompt réglé pour 4.6 doit être re-tuné avant de rebasculer.
+# La READINESS est conservée (adaptateur model-aware, barème, script de mesure) : rebascule = une
+# variable d'env `TESTPILOT_MODEL_GENERATION=claude-sonnet-5`, sans changement de code.
+MODEL_GENERATION = os.getenv("TESTPILOT_MODEL_GENERATION", "claude-sonnet-4-6")
 MODEL_FAST = os.getenv("TESTPILOT_MODEL_FAST", "claude-haiku-4-5-20251001")
 MODEL_REPAIR = os.getenv("TESTPILOT_MODEL_REPAIR", "claude-haiku-4-5-20251001")
 

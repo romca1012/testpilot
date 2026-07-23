@@ -160,17 +160,17 @@ def main() -> int:
     # (`donnee_invalide`) : on ne le devine plus dans le message, on le LIT. Un `non_conforme` qui
     # subsiste est donc un constat instruit — soit un refus applicatif expliqué, soit un silence
     # indécidable (que la vérification par l'état, 3a, doit encore lever).
+    # Clés en constantes : renommer un libellé sans toucher l'incrément produisait un KeyError
+    # qui plantait tout le récap en fin de banc (mesuré le 2026-07-23).
+    K_APP = "refus applicatif EXPLIQUÉ"
+    K_SILENCE = "refus SILENCIEUX — indécidable (l'outil n'accuse pas sans preuve)"
     invalide = sum(1 for r in resultats if len(r) >= 3 and r[2] == "donnee_invalide")
-    familles = {"refus applicatif EXPLIQUÉ": 0,
-                "refus SILENCIEUX — indécidable (l'outil n'accuse pas sans preuve)": 0}
+    familles = {K_APP: 0, K_SILENCE: 0}
     for _, _, fs, *reste in resultats:
         if fs != "non_conforme":
             continue
         raison = (reste[0] if reste else "") or ""
-        if "L'APPLICATION A REFUSÉ" in raison:
-            familles["refus applicatif EXPLIQUÉ"] += 1
-        else:
-            familles["refus SILENCIEUX — indécidable"] += 1
+        familles[K_APP if "L'APPLICATION A REFUSÉ" in raison else K_SILENCE] += 1
     if invalide or any(familles.values()):
         print(f"\n  RÉPARTITION DES VERDICTS NON VERTS :", flush=True)
         if invalide:
