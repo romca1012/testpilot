@@ -76,6 +76,29 @@ def with_history_cache(messages: list[dict]) -> list[dict]:
     return out
 
 
+# Modèles qui REJETTENT `temperature` (400) et veulent la pensée adaptative + `effort`
+# (doc API Claude : Sonnet 5, Opus 4.8/4.7, Fable 5). Les autres (Haiku 4.5, Sonnet 4.6) gardent
+# `temperature`. On teste par PRÉFIXE : les alias n'ont pas de suffixe de date, mais on veut aussi
+# couvrir un éventuel id daté.
+_MODELES_ADAPTATIFS = ("claude-sonnet-5", "claude-opus-4-8", "claude-opus-4-7", "claude-fable-5",
+                       "claude-mythos-5")
+
+
+def _params_echantillonnage(model: str, *, temperature: float, effort: str = "high") -> dict:
+    """Les BONS paramètres d'échantillonnage selon le modèle (migration Sonnet 5, gated).
+
+    ⚠️ **Pourquoi model-aware et pas un simple `temperature=`.** Sonnet 5 et Opus 4.8/4.7 rejettent
+    `temperature` par un **400** ; ils veulent `thinking:{type:"adaptive"}` + `output_config:{effort}`.
+    Haiku 4.5 et Sonnet 4.6 (notre défaut ACTUEL) l'acceptent. Ce helper rend l'un ou l'autre — donc
+    **zéro régression sur le défaut** (Sonnet 4.6 reste dans la branche `temperature`), et le code est
+    prêt le jour où le porteur bascule la génération sur Sonnet 5.
+    """
+    m = (model or "").lower()
+    if any(m.startswith(p) for p in _MODELES_ADAPTATIFS):
+        return {"thinking": {"type": "adaptive"}, "output_config": {"effort": effort}}
+    return {"temperature": temperature}
+
+
 class LLMAdapter:
     """Interface unifiée pour les appels Anthropic avec ou sans outils."""
 
@@ -116,7 +139,7 @@ class LLMAdapter:
         resp = self._client_().messages.create(
             model=model_id,
             max_tokens=max_tokens,
-            temperature=0.1,
+            **_params_echantillonnage(model_id, temperature=0.1),
             system=[{"type": "text", "text": system_prompt or "Réponds de façon concise."}],
             messages=[{"role": "user", "content": user_content}],
         )
@@ -193,7 +216,7 @@ class LLMAdapter:
         resp = self._client_().messages.create(
             model=model_id,
             max_tokens=max_tokens,
-            temperature=0.2,
+            **_params_echantillonnage(model_id, temperature=0.2),
             system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
             tools=tools,
             messages=with_history_cache(messages),

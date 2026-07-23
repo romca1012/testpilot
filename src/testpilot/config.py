@@ -38,7 +38,12 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 # Clé Admin (optionnelle) — nécessaire uniquement pour les coûts réels (stubés en Inc. 0).
 ANTHROPIC_ADMIN_KEY = os.getenv("ANTHROPIC_ADMIN_KEY", "")
 
-MODEL_GENERATION = os.getenv("TESTPILOT_MODEL_GENERATION", "claude-sonnet-4-6")
+# ⚠️ Basculé sur Sonnet 5 le 2026-07-23 (GO porteur), après mesure du tokenizer
+# (`scripts/mesure_cout_tokenizer.py`) : +29,2 % de tokens d'entrée sur nos prompts, mais le §9
+# (< 1 €/cas) tient largement (cache de prompt + ~0,06 $/cas mesuré). L'adaptateur est model-aware
+# (`llm/adapter._params_echantillonnage`) : Sonnet 5 reçoit la pensée adaptative + `effort`, jamais
+# `temperature` (qui ferait un 400). Revenir à Sonnet 4.6 = une variable d'env, sans changement de code.
+MODEL_GENERATION = os.getenv("TESTPILOT_MODEL_GENERATION", "claude-sonnet-5")
 MODEL_FAST = os.getenv("TESTPILOT_MODEL_FAST", "claude-haiku-4-5-20251001")
 MODEL_REPAIR = os.getenv("TESTPILOT_MODEL_REPAIR", "claude-haiku-4-5-20251001")
 

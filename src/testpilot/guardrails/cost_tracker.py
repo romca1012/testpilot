@@ -18,8 +18,14 @@ logger = logging.getLogger(__name__)
 # USD par million de tokens.
 PRICING: dict[str, dict[str, float]] = {
     "claude-sonnet-4-6": {"input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.30},
+    # Sonnet 5 : même tarif AFFICHÉ que 4.6 (3/15) — le prix par token ne change pas, c'est le
+    # NOMBRE de tokens qui augmente (tokenizer, ≈ +30 %). Tarif intro 2/10 jusqu'au 2026-08-31 non
+    # retenu ici : on borne le §9 sur le tarif plein, plus prudent.
+    "claude-sonnet-5": {"input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.30},
     "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0, "cache_write": 1.0, "cache_read": 0.08},
-    "claude-opus-4-8": {"input": 15.0, "output": 75.0, "cache_write": 18.75, "cache_read": 1.50},
+    # ⚠️ Corrigé (2026-07-23) : était 15/75 — c'est l'ancien tarif Opus 4.0/4.1. Opus 4.8 = 5/25
+    # (doc API Claude). L'erreur surestimait le coût d'un run Opus de 3×.
+    "claude-opus-4-8": {"input": 5.0, "output": 25.0, "cache_write": 6.25, "cache_read": 0.50},
 }
 _PRICING_FALLBACK = "claude-sonnet-4-6"
 
