@@ -3,9 +3,9 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, type Exploration, type ProjectSummary } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
-import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
 import Icon from '../components/ui/Icon.vue'
+import Modal from '../components/ui/Modal.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const router = useRouter()
@@ -14,8 +14,17 @@ const projects = ref<ProjectSummary[]>([])
 const loading = ref(true)
 const error = ref('')
 
+// Création : une modale déclenchée par un bouton (façon TestRail « Add Project »), au lieu d'un
+// formulaire toujours déplié qui poussait la liste des projets vers le bas.
+const showCreate = ref(false)
 const creating = ref(false)
 const createError = ref('')
+
+function openCreate() {
+  form.value = { name: '', connector_type: 'odoo', base_url: '', database: '', username: '', password: '' }
+  createError.value = ''
+  showCreate.value = true
+}
 // Un projet = une application testée, avec son connecteur + sa connexion.
 const form = ref({
   name: '', connector_type: 'odoo', base_url: '', database: '', username: '', password: '',
@@ -144,7 +153,7 @@ async function create() {
   createError.value = ''
   try {
     const p = await api.createProject({ ...form.value, name: form.value.name.trim() })
-    form.value = { name: '', connector_type: 'odoo', base_url: '', database: '', username: '', password: '' }
+    showCreate.value = false
     await ensureLoaded(true)
     router.push(`/projects/${p.id}/cases`)
   } catch (e: any) {
@@ -185,55 +194,29 @@ onMounted(async () => { await load(); await loadExplorations() })
 
 <template>
   <div class="space-y-8">
-    <header>
-      <h1 class="text-2xl font-semibold tracking-tight">Projets</h1>
-      <p class="mt-1 text-sm text-muted-foreground">
-        Un projet regroupe les cas de tests et exécutions d'une application testée.
-      </p>
+    <header class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight">Projets</h1>
+        <p class="mt-1 text-sm text-muted-foreground">
+          Un projet regroupe les cas de tests et exécutions d'une application testée.
+        </p>
+      </div>
+      <Button variant="primary" @click="openCreate">
+        <Icon name="plus" class="h-4 w-4" /> Nouveau projet
+      </Button>
     </header>
-
-    <Card title="Nouveau projet">
-      <form class="space-y-4" @submit.prevent="create">
-        <div class="grid gap-3 sm:grid-cols-2">
-          <label class="block">
-            <span class="text-xs text-muted-foreground">Nom de l'application</span>
-            <input v-model="form.name" placeholder="ex. Portail Sapian"
-                   class="mt-1 h-9 w-full rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
-          </label>
-          <label class="block">
-            <span class="text-xs text-muted-foreground">Connecteur</span>
-            <select v-model="form.connector_type"
-                    class="mt-1 h-9 w-full rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50">
-              <option v-for="c in CONNECTORS" :key="c.value" :value="c.value">{{ c.label }}</option>
-            </select>
-          </label>
-        </div>
-
-        <fieldset class="rounded-lg border border-border p-3">
-          <legend class="px-1 text-[11px] uppercase tracking-wide text-muted-foreground">Connexion</legend>
-          <div class="grid gap-3 sm:grid-cols-2">
-            <input v-model="form.base_url" placeholder="URL (ex. http://localhost:10017)"
-                   class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
-            <input v-model="form.database" placeholder="Base de données"
-                   class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
-            <input v-model="form.username" placeholder="Utilisateur"
-                   class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
-            <input v-model="form.password" type="password" placeholder="Mot de passe"
-                   class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
-          </div>
-        </fieldset>
-
-        <div class="flex items-center justify-end">
-          <Button type="submit" variant="primary" :loading="creating" :disabled="!form.name.trim()">Créer le projet</Button>
-        </div>
-      </form>
-      <p v-if="createError" class="mt-2 text-xs text-destructive">{{ createError }}</p>
-    </Card>
 
     <div v-if="loading" class="text-sm text-muted-foreground">Chargement…</div>
     <p v-else-if="error" class="text-sm text-destructive">{{ error }}</p>
-    <div v-else-if="!projects.length" class="rounded-xl border border-border bg-card px-5 py-12 text-center">
-      <p class="text-sm text-muted-foreground">Aucun projet. Créez-en un pour commencer.</p>
+    <div v-else-if="!projects.length"
+         class="flex flex-col items-center gap-3 rounded-xl border border-border bg-card px-5 py-16 text-center">
+      <div class="grid h-12 w-12 place-items-center rounded-full border border-border bg-surface text-muted-foreground">
+        <Icon name="folder" class="h-5 w-5" />
+      </div>
+      <p class="text-sm text-muted-foreground">Aucun projet pour le moment.</p>
+      <Button variant="primary" @click="openCreate">
+        <Icon name="plus" class="h-4 w-4" /> Créer le premier projet
+      </Button>
     </div>
 
     <div v-else class="grid gap-3 sm:grid-cols-2">
@@ -316,61 +299,101 @@ onMounted(async () => { await load(); await loadExplorations() })
       </div>
     </div>
 
-    <!-- ════════ Édition d'un projet et de sa connexion ════════ -->
-    <div v-if="editing" class="fixed inset-0 z-40 grid place-items-center bg-black/50 p-4" @click.self="editing = null">
-      <div class="w-full max-w-lg rounded-xl border border-border bg-card p-5 shadow-2xl">
-        <h2 class="text-lg font-semibold">Modifier « {{ editing.name }} »</h2>
-        <p class="mt-1 text-xs text-muted-foreground">
-          La connexion désigne l'application réellement testée : c'est elle que les exécutions
-          et l'exploration utiliseront.
-        </p>
-
-        <form class="mt-4 space-y-3" @submit.prevent="saveEdit">
+    <!-- ════════ Création d'un projet (façon TestRail « Add Project », + notre CONNEXION) ════════ -->
+    <Modal :open="showCreate" title="Nouveau projet"
+           subtitle="Un projet = une application testée, avec le connecteur et la connexion que l'exploration et les exécutions utiliseront."
+           @close="showCreate = false">
+      <form id="form-create-project" class="space-y-4" @submit.prevent="create">
+        <div class="grid gap-3 sm:grid-cols-2">
           <label class="block">
-            <span class="text-sm font-medium">Nom <span class="text-destructive">*</span></span>
-            <input v-model="edit.name" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+            <span class="text-xs text-muted-foreground">Nom de l'application <span class="text-destructive">*</span></span>
+            <input v-model="form.name" placeholder="ex. Portail Sapian" autofocus
+                   class="mt-1 h-9 w-full rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
           </label>
           <label class="block">
-            <span class="text-sm font-medium">Connecteur</span>
-            <select v-model="edit.connector_type" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2">
+            <span class="text-xs text-muted-foreground">Connecteur</span>
+            <select v-model="form.connector_type"
+                    class="mt-1 h-9 w-full rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50">
               <option v-for="c in CONNECTORS" :key="c.value" :value="c.value">{{ c.label }}</option>
             </select>
           </label>
-          <div class="grid grid-cols-2 gap-3">
-            <label class="block">
-              <span class="text-sm font-medium">URL</span>
-              <input v-model="edit.base_url" placeholder="http://localhost:10017"
-                     class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
-            </label>
-            <label class="block">
-              <span class="text-sm font-medium">Base de données</span>
-              <input v-model="edit.database"
-                     class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
-            </label>
-            <label class="block">
-              <span class="text-sm font-medium">Utilisateur</span>
-              <input v-model="edit.username"
-                     class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
-            </label>
-            <label class="block">
-              <span class="text-sm font-medium">Mot de passe</span>
-              <input v-model="edit.password" type="password" placeholder="Inchangé"
-                     class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
-            </label>
+        </div>
+
+        <fieldset class="rounded-lg border border-border p-3">
+          <legend class="px-1 text-[11px] uppercase tracking-wide text-muted-foreground">Connexion</legend>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <input v-model="form.base_url" placeholder="URL (ex. http://localhost:10017)"
+                   class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
+            <input v-model="form.database" placeholder="Base de données"
+                   class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
+            <input v-model="form.username" placeholder="Utilisateur"
+                   class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
+            <input v-model="form.password" type="password" placeholder="Mot de passe"
+                   class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
           </div>
-          <p class="text-[11px] text-muted-foreground">
-            Le mot de passe n'est jamais réaffiché. Laissez ce champ vide pour le conserver tel quel.
+          <p class="mt-2 text-[11px] text-muted-foreground">
+            Facultatif ici — vous pourrez la renseigner et la corriger ensuite. Sans elle, aucune
+            exploration ni exécution n'est possible.
           </p>
+        </fieldset>
 
-          <p v-if="editError" class="text-sm text-destructive">{{ editError }}</p>
+        <p v-if="createError" class="text-xs text-destructive">{{ createError }}</p>
+      </form>
 
-          <div class="flex items-center gap-3 pt-1">
-            <Button type="submit" variant="primary" :loading="saving" :disabled="!edit.name.trim()">Enregistrer</Button>
-            <button type="button" class="rounded-md border border-border px-4 py-2 text-sm hover:border-primary/40" @click="editing = null">Annuler</button>
-          </div>
-        </form>
-      </div>
-    </div>
+      <template #footer>
+        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="showCreate = false">Annuler</button>
+        <Button type="submit" form="form-create-project" variant="primary" :loading="creating" :disabled="!form.name.trim()">Créer le projet</Button>
+      </template>
+    </Modal>
+
+    <!-- ════════ Édition d'un projet et de sa connexion ════════ -->
+    <Modal :open="!!editing" :title="editing ? `Modifier « ${editing.name} »` : ''"
+           subtitle="La connexion désigne l'application réellement testée : c'est elle que les exécutions et l'exploration utiliseront."
+           @close="editing = null">
+      <form id="form-edit-project" class="space-y-3" @submit.prevent="saveEdit">
+        <label class="block">
+          <span class="text-sm font-medium">Nom <span class="text-destructive">*</span></span>
+          <input v-model="edit.name" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium">Connecteur</span>
+          <select v-model="edit.connector_type" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2">
+            <option v-for="c in CONNECTORS" :key="c.value" :value="c.value">{{ c.label }}</option>
+          </select>
+        </label>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block">
+            <span class="text-sm font-medium">URL</span>
+            <input v-model="edit.base_url" placeholder="http://localhost:10017"
+                   class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium">Base de données</span>
+            <input v-model="edit.database"
+                   class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium">Utilisateur</span>
+            <input v-model="edit.username"
+                   class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium">Mot de passe</span>
+            <input v-model="edit.password" type="password" placeholder="Inchangé"
+                   class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+          </label>
+        </div>
+        <p class="text-[11px] text-muted-foreground">
+          Le mot de passe n'est jamais réaffiché. Laissez ce champ vide pour le conserver tel quel.
+        </p>
+        <p v-if="editError" class="text-sm text-destructive">{{ editError }}</p>
+      </form>
+
+      <template #footer>
+        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="editing = null">Annuler</button>
+        <Button type="submit" form="form-edit-project" variant="primary" :loading="saving" :disabled="!edit.name.trim()">Enregistrer</Button>
+      </template>
+    </Modal>
 
     <ConfirmDialog
       :open="!!toDelete"

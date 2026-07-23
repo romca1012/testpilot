@@ -7,10 +7,39 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseSummary, type GroupSummary, type ModuleSummary } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
+import { useModuleCreate } from '../lib/useModuleCreate'
+import Modal from './ui/Modal.vue'
+import Button from './ui/Button.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { projects, ensureLoaded, projectById } = useProjects()
+
+// Modale UNIQUE de création de module (déclenchée d'ici « + Ajouter une section », et depuis la
+// liste des cas). Le shell est toujours présent sur les routes de gestion : c'est son bon hôte.
+const mc = useModuleCreate()
+const nm = ref({ name: '', description: '' })
+const creatingModule = ref(false)
+const moduleError = ref('')
+
+watch(() => mc.open.value, (o) => { if (o) { nm.value = { name: '', description: '' }; moduleError.value = '' } })
+
+async function submitModule() {
+  const name = nm.value.name.trim()
+  if (!name) return
+  creatingModule.value = true
+  moduleError.value = ''
+  try {
+    await api.createModule(mc.pid.value || (pid.value as string), name, nm.value.description.trim())
+    mc.close()
+    mc.markCreated()   // prévient les pages qui listent les modules (elles rechargent)
+    await load()       // rafraîchit l'arbre de la barre latérale
+  } catch (e: any) {
+    moduleError.value = e?.message || 'Création impossible'
+  } finally {
+    creatingModule.value = false
+  }
+}
 
 const pid = computed(() => route.params.pid as string | undefined)
 const currentProject = computed(() => projectById(pid.value))
@@ -172,7 +201,11 @@ function switchProject(id: number) {
 </script>
 
 <template>
-  <div class="app-bg min-h-screen flex">
+  <!-- ⚠️ Garde `pid` : le shell ne se rend JAMAIS sans projet. Pendant une transition
+       shell→hors-shell, `route.params.pid` passe à undefined le temps d'un tick ; sans cette
+       garde, les RouterLinks de la nav (`{name:'cases', params:{pid: undefined}}`) lèvent
+       « Missing required param "pid" », qui cascade en « emitsOptions null » et corrompt l'écran. -->
+  <div v-if="pid" class="app-bg min-h-screen flex">
     <aside class="w-[270px] shrink-0 border-r border-border bg-surface/60 backdrop-blur-sm flex flex-col">
       <!-- En-tête projet -->
       <div class="relative">
@@ -275,7 +308,7 @@ function switchProject(id: number) {
       <div class="flex items-center gap-2 px-3.5 py-2 text-xs">
         <span class="flex items-center gap-1.5 rounded-md border border-border bg-surface-raised px-2 py-1">Tous
           <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span>
-        <button class="text-primary hover:underline" @click="comingSoon('Ajouter une section')">+ Ajouter une section</button>
+        <button class="text-primary hover:underline" @click="mc.openFor(pid as string)">+ Ajouter une section</button>
       </div>
 
       <!-- Arbre Module → Spécification -->
@@ -352,5 +385,28 @@ function switchProject(id: number) {
       <slot v-if="fullBleed" />
       <div v-else class="mx-auto max-w-6xl p-6 md:p-8"><slot /></div>
     </div>
+
+    <!-- ════════ Création d'un module (TestRail « Add Section », thème sombre) — modale UNIQUE ════════ -->
+    <Modal :open="mc.open.value" title="Nouveau module"
+           subtitle="Un module regroupe des cas de test par domaine fonctionnel de l'application."
+           @close="mc.close()">
+      <form id="form-create-module" class="space-y-3" @submit.prevent="submitModule">
+        <label class="block">
+          <span class="text-sm font-medium">Nom <span class="text-destructive">*</span></span>
+          <input v-model="nm.name" placeholder="ex. Facturation" autofocus
+                 class="mt-1 h-9 w-full rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium">Description <span class="text-muted-foreground">(facultatif)</span></span>
+          <textarea v-model="nm.description" rows="3" placeholder="À quoi sert ce module ?"
+                    class="mt-1 w-full rounded-md border border-border bg-surface-raised px-3 py-2 text-sm outline-none focus:border-primary/50" />
+        </label>
+        <p v-if="moduleError" class="text-sm text-destructive">{{ moduleError }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="mc.close()">Annuler</button>
+        <Button type="submit" form="form-create-module" variant="primary" :loading="creatingModule" :disabled="!nm.name.trim()">Créer le module</Button>
+      </template>
+    </Modal>
   </div>
 </template>

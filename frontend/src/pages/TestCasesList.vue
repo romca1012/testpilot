@@ -6,6 +6,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseSummary, type ModuleSummary } from '../lib/api'
 import { testStatusMeta, testStatusCode } from '../lib/status'
+import { useModuleCreate } from '../lib/useModuleCreate'
+import Button from '../components/ui/Button.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,6 +28,13 @@ async function load() {
 }
 onMounted(load)
 watch(pid, load)
+
+// ── Création d'un module (modale partagée, rendue par CasesShell) ──────────────
+// On ne fait que DÉCLENCHER l'ouverture et ÉCOUTER le succès : la modale unique vit dans le shell
+// (qui porte aussi le « + Ajouter une section » de la barre latérale). `createdAt` bumpe après une
+// création → on recharge pour voir le nouveau module (vide, donc invisible sans le rechargement).
+const { openFor: openCreateModule, createdAt } = useModuleCreate()
+watch(createdAt, load)
 
 // Tri et filtre CÔTÉ CLIENT (préférences de lecture, pas de rechargement).
 const sortKey = ref<'id' | 'title' | 'status'>('id')
@@ -50,11 +59,15 @@ function sortRows(rows: CaseSummary[]): CaseSummary[] {
   return copy
 }
 
-// Sections = modules qui portent au moins un cas visible (triés).
-const sections = computed(() =>
-  modules.value
+// Sections = modules avec leurs cas visibles. On MONTRE les modules vides quand aucun filtre n'est
+// actif — sinon un module qu'on vient de créer resterait invisible (et l'écran mentirait sur la
+// structure). Sous un filtre (spec/statut), on masque au contraire ce qui n'a rien à montrer.
+const sections = computed(() => {
+  const filtering = !!specFilter.value || !!filterStatus.value
+  return modules.value
     .map((m) => ({ module: m, rows: sortRows(visibleCases.value.filter((c) => c.module_id === m.id)) }))
-    .filter((s) => s.rows.length > 0))
+    .filter((s) => !filtering || s.rows.length > 0)
+})
 
 const activeSpecTitle = computed(() => {
   if (!specFilter.value) return null
@@ -124,6 +137,9 @@ function goRunNew() { router.push({ name: 'run-new', params: { pid: pid.value } 
     <div class="flex items-center justify-between px-6 pt-6 pb-2">
       <h1 class="text-[26px] font-semibold tracking-tight">Cas de test</h1>
       <div class="flex items-center gap-3.5 text-muted-foreground">
+        <button title="Nouveau module" class="hover:text-foreground" @click="openCreateModule(pid)">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M12 10v5M9.5 12.5h5"/></svg>
+        </button>
         <button v-for="ic in topIcons" :key="ic.t" :title="ic.t" class="hover:text-foreground" @click="topAction(ic.t)">
           <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path :d="ic.d"/></svg>
         </button>
@@ -169,9 +185,12 @@ function goRunNew() { router.push({ name: 'run-new', params: { pid: pid.value } 
         <div v-for="i in 3" :key="i" class="h-12 rounded-md bg-secondary animate-pulse"></div>
       </div>
 
-      <p v-else-if="!sections.length" class="pt-10 text-sm text-muted-foreground">
-        Aucun cas de test {{ specFilter ? 'dans cette spécification' : 'pour ce projet' }}.
-      </p>
+      <div v-else-if="!sections.length" class="flex flex-col items-center gap-3 pt-16 text-center">
+        <p class="text-sm text-muted-foreground">
+          {{ specFilter || filterStatus ? 'Aucun cas de test ne correspond au filtre.' : 'Aucun module dans ce projet.' }}
+        </p>
+        <Button v-if="!specFilter && !filterStatus" variant="primary" @click="openCreateModule(pid)">Créer le premier module</Button>
+      </div>
 
       <div v-for="s in sections" :key="s.module.id" class="mt-4">
         <!-- En-tête de section (module) -->
@@ -186,7 +205,12 @@ function goRunNew() { router.push({ name: 'run-new', params: { pid: pid.value } 
           </button>
         </div>
 
-        <table v-if="!collapsed.includes(s.module.id)" class="w-full border-collapse">
+        <p v-if="!collapsed.includes(s.module.id) && !s.rows.length"
+           class="pl-8 py-2 text-xs italic text-muted-foreground/70">
+          Aucun cas dans ce module — générez-en avec l'IA ou ajoutez-en un.
+        </p>
+
+        <table v-if="!collapsed.includes(s.module.id) && s.rows.length" class="w-full border-collapse">
           <thead>
             <tr class="text-[11px] uppercase tracking-wider text-muted-foreground">
               <th class="w-6"></th>
