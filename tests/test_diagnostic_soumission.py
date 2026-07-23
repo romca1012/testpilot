@@ -129,12 +129,13 @@ def test_un_message_vide_ne_compte_pas():
 
 def test_un_refus_SILENCIEUX_est_nomme_comme_tel():
     """⚠️ Le résultat le plus utile pour la suite. Si les formulaires ne disent rien, aucun
-    raffinement du verdict n'y changera quoi que ce soit — il faudra une autre approche. Mieux
-    vaut le savoir maintenant que l'apprendre après avoir construit dessus."""
+    raffinement du verdict n'y changera quoi que ce soit — c'est un trou d'observabilité du
+    portail, pas une panne du test. Le message le REVENDIQUE (l'outil n'accuse pas sans preuve)."""
     d = diagnostic_soumission(_Page())
 
     assert "SILENCIEUX" in d
-    assert "distinguer un rejet métier d'un défaut applicatif" in d
+    assert "NE conclut PAS à un défaut sans preuve" in d
+    assert "Verdict honnête" in d
 
 
 # ── L'invariant non négociable : ne JAMAIS casser le scénario ────────────────

@@ -1007,8 +1007,11 @@ def diagnostic_soumission(page) -> str:
                         f"L'APPLICATION A REFUSÉ la soumission et l'affiche : « {texte} ». "
                         "⚠️ Vérifier si ce refus est légitime avant de conclure au défaut.")
 
-        return ("Aucun message d'erreur affiché par la page après soumission — le refus est "
-                "SILENCIEUX. Rien ne permet de distinguer un rejet métier d'un défaut applicatif.")
+        return _borner(
+            "REFUS SILENCIEUX : rien créé, et NI la page NI le serveur n'ont donné de raison "
+            "lisible. Rejet métier légitime, défaut applicatif ou trou d'observabilité : "
+            "indistinguables. Verdict honnête — l'outil NE conclut PAS à un défaut sans preuve. "
+            "À instruire côté application (logs serveur du POST).")
     except Exception as exc:  # un diagnostic ne casse JAMAIS le scénario qu'il éclaire
         return f"(diagnostic de soumission indisponible : {type(exc).__name__})"
 

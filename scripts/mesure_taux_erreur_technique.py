@@ -161,7 +161,8 @@ def main() -> int:
     # subsiste est donc un constat instruit — soit un refus applicatif expliqué, soit un silence
     # indécidable (que la vérification par l'état, 3a, doit encore lever).
     invalide = sum(1 for r in resultats if len(r) >= 3 and r[2] == "donnee_invalide")
-    familles = {"refus applicatif EXPLIQUÉ": 0, "refus SILENCIEUX — indécidable": 0}
+    familles = {"refus applicatif EXPLIQUÉ": 0,
+                "refus SILENCIEUX — indécidable (l'outil n'accuse pas sans preuve)": 0}
     for _, _, fs, *reste in resultats:
         if fs != "non_conforme":
             continue
