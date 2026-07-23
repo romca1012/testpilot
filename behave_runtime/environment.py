@@ -165,11 +165,42 @@ def before_all(context):
     context.project_id = int(_pid) if _pid and _pid.isdigit() else None
 
 
+def _capturer_reponse_formulaire(context):
+    """Capte la réponse SERVEUR de la soumission du formulaire (§2bis, étape 3a).
+
+    ⚠️ **Le signal qui manquait pour lever les refus SILENCIEUX.** Quand une soumission ne crée
+    rien et que la page reste muette, on ne pouvait pas distinguer « notre donnée refusée par une
+    règle serveur » d'un « vrai défaut applicatif ». Odoo poste vers `/website/form/…` et renvoie
+    pourtant un JSON (`{"id": N}` créé ; `{"error_fields": […]}` / `{"error": …}` refusé) — on ne
+    lisait QUE la page. On capte donc la réponse : c'est « vérifier par l'état » au niveau réseau.
+
+    Best-effort ABSOLU : un handler qui plante ne doit jamais faire échouer le scénario qu'il
+    éclaire. On stocke le dernier JSON `/website/form/` sur `context.reponse_formulaire` (un
+    scénario = une soumission). Réinitialisé ici à chaque scénario.
+    """
+    context.reponse_formulaire = None
+
+    def _on_response(response):
+        try:
+            if "/website/form/" not in response.url:
+                return
+            # Corps JSON attendu ; si ce n'en est pas (redirect HTML…), on ignore silencieusement.
+            context.reponse_formulaire = response.json()
+        except Exception:
+            pass  # jamais fatal — l'absence de capture retombe sur le comportement muet d'avant
+
+    try:
+        context.page.on("response", _on_response)
+    except Exception:
+        pass
+
+
 def before_scenario(context, scenario):
     """Initialise le registre de teardown et ouvre les connexions du scénario."""
     context.created = {}
     use_fixture(odoo_session, context)
     use_fixture(playwright_browser, context)
+    _capturer_reponse_formulaire(context)
 
 
 def after_scenario(context, scenario):

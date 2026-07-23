@@ -929,6 +929,35 @@ def _refus_par_le_navigateur(page) -> list:
         return []
 
 
+def _refus_serveur(context):
+    """La réponse SERVEUR de la soumission (§2bis, étape 3a), capturée par `environment.py`.
+
+    Rend un tuple `(genre, detail)` — jamais lève :
+      - `("champs", "champ1, champ2")` : le serveur a nommé des champs refusés (`error_fields`).
+        C'est NOTRE donnée qui viole une règle serveur (le plafond JS enfin capté) → donnee_invalide.
+      - `("generique", "message")` : le serveur a refusé sans nommer de champ (`error` seul, ou
+        pas d'`id`). Une saisie valide côté navigateur rejetée en silence = défaut de comportement
+        de l'app (arbitrage porteur 2026-07-23) → non_conforme, message serveur affiché.
+      - `("cree", id)` : le serveur a renvoyé un `id` — l'enregistrement a été créé côté serveur.
+      - `None` : aucune réponse exploitable captée (le silence subsiste).
+    """
+    rep = getattr(context, "reponse_formulaire", None)
+    if not isinstance(rep, dict):
+        return None
+    champs = rep.get("error_fields")
+    if champs:
+        noms = ", ".join(str(c) for c in champs) if isinstance(champs, (list, tuple)) \
+            else ", ".join(map(str, champs)) if isinstance(champs, dict) else str(champs)
+        return ("champs", noms)
+    if rep.get("id"):
+        return ("cree", rep["id"])
+    err = rep.get("error") or rep.get("message")
+    if err is not None:
+        return ("generique", " ".join(str(err).split())[:200] or "(sans détail)")
+    # Un dict sans id ni erreur reconnaissable : refus non nommé.
+    return ("generique", "le serveur a refusé la soumission sans détail exploitable")
+
+
 def diagnostic_soumission(page) -> str:
     """Pourquoi la soumission n'a-t-elle rien créé ? — **lire la page au lieu d'accuser**.
 
@@ -1005,7 +1034,29 @@ def check_count_increased_by_one(context, model):
     # 4 des 6 faux `non_conforme` passaient par ICI (l'assertion de comptage), pas par le clic.
     if page is not None and _refus_par_le_navigateur(page):
         raise DonneeRefuseeError(diagnostic_soumission(page))
-    # Sinon (refus serveur affiché, ou silence indécidable) : constat de comptage + explication.
+
+    # ⚠️ §2bis étape 3a — la RÉPONSE SERVEUR, quand le navigateur n'a rien bloqué. C'est ce qui
+    # lève les refus SILENCIEUX (rien créé, page muette) : la page ne dit rien, le serveur si.
+    refus = _refus_serveur(context)
+    if refus is not None:
+        genre, detail = refus
+        if genre == "champs":
+            # Le serveur a nommé DES CHAMPS : c'est notre donnée qui viole une règle serveur (le
+            # plafond JS enfin capté côté serveur) → donnee_invalide, l'app n'est pas en cause.
+            raise DonneeRefuseeError(
+                f"LE SERVEUR A REFUSÉ D'ENREGISTRER — champ(s) invalide(s) : {detail}. "
+                f"⚠️ L'APPLICATION N'EST PAS EN CAUSE : c'est le jeu de données du test.")
+        if genre == "generique":
+            # Refus serveur sans champ nommé, sur une saisie valide côté navigateur : l'app rejette
+            # en silence une donnée recevable = défaut de comportement (arbitrage porteur 2026-07-23).
+            raise AssertionError(
+                f"Nombre d'enregistrements dans '{model}' devrait être {initial + 1}, obtenu "
+                f"{current}.\nLE SERVEUR A REFUSÉ la soumission sans nommer de champ : « {detail} ». "
+                f"La donnée était pourtant acceptée par le navigateur.")
+        # genre == "cree" : le serveur dit avoir créé (id), mais le compteur ne le voit pas — modèle
+        # différent, ou délai au-delà de la fenêtre. On tombe sur le constat de comptage ci-dessous.
+
+    # Sinon (refus serveur affiché à l'écran, ou silence total) : constat de comptage + explication.
     pourquoi = diagnostic_soumission(page) if page is not None else ""
     raise AssertionError(
         f"Nombre d'enregistrements dans '{model}' devrait être {initial + 1}, obtenu {current}."
