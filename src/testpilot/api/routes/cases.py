@@ -6,7 +6,7 @@ from __future__ import annotations
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 
 from testpilot import config
-from testpilot.api import access, schemas
+from testpilot.api import erreurs, access, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import generation_service, run_service
 from testpilot.generation import assertion_lint, domain_model, repair_diff, smoke_check
@@ -21,9 +21,6 @@ from testpilot.store.repositories import (
 from testpilot.verdict import review_gate
 
 router = APIRouter(prefix="/api/cases", tags=["cases"])
-
-_RUN_ERROR_STATUS = {"not_found": 404, "no_version": 409, "needs_review": 409,
-                     "no_connection": 409}
 
 # Auteur des versions produites par la boucle de réparation (0014). Une version signée ainsi a
 # forcément un « avant » : celle qu'elle tentait de corriger.
@@ -91,8 +88,7 @@ def automate_case(case_id: int, background: BackgroundTasks, conn=Depends(get_co
     try:
         job_id, params = generation_service.start_automation(conn, case_id)
     except generation_service.GenerationError as err:
-        code = {"not_found": 404, "invalid_metier": 422, "no_connection": 409}.get(err.code, 400)
-        raise HTTPException(status_code=code, detail=err.detail)
+        raise erreurs.depuis_service(err.code, err.detail)
     background.add_task(generation_service.run_automation, job_id, **params)
     return schemas.GenerationJobOut(job_id=job_id, status="running")
 
@@ -196,7 +192,7 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
             test_steps=body.test_steps, expected_result=body.expected_result,
             angle=body.angle, refs=body.refs, estimate=body.estimate, editor=body.editor)
     except DuplicateName as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
     if version_id is not None:
         review_gate.auto_approve_metier(ReviewRepo(conn), case_id=case_id, version_id=version_id,
                                         repair_budget=config.REPAIR_BUDGET_DEFAULT)
@@ -224,7 +220,9 @@ def start_run(case_id: int, background: BackgroundTasks, conn=Depends(get_conn))
     try:
         eid, module, cid, vid = run_service.trigger_run(conn, case_id)
     except run_service.RunError as err:
-        raise HTTPException(status_code=_RUN_ERROR_STATUS.get(err.code, 400), detail=err.detail)
+        # Le code du service TRAVERSE la frontière HTTP (lot B) : le client teste `code`,
+        # jamais la phrase française de `detail`.
+        raise erreurs.depuis_service(err.code, err.detail)
     background.add_task(run_service.run_execution, eid, module, cid, vid)
     return schemas.RunResponse(execution_id=eid, status="running")
 

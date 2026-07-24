@@ -20,7 +20,7 @@ from fastapi import (
     UploadFile,
 )
 
-from testpilot.api import access, schemas
+from testpilot.api import erreurs, access, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import generation_service, spec_extract
 from testpilot.store.repositories import (
@@ -32,11 +32,6 @@ from testpilot.store.repositories import (
 )
 
 router = APIRouter(prefix="/api/modules", tags=["modules"])
-
-# 409 pour `duplicate` : la requête est bien formée, c'est l'état du référentiel qui s'y oppose.
-_ERROR_STATUS = {"not_found": 404, "invalid_spec": 422, "duplicate": 409,
-                 "invalid_metier": 422, "invalid_state": 409, "no_connection": 409}
-
 
 @router.get("/{module_id}", response_model=schemas.ModuleDetail)
 def get_module(module_id: int, conn=Depends(get_conn)):
@@ -89,7 +84,7 @@ def create_group(module_id: int, body: schemas.GroupIn, conn=Depends(get_conn)):
         gid = CaseGroupRepo(conn).create(module_id=module_id, title=body.title.strip(),
                                          description=body.description)
     except DuplicateName as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
     # Le document passe par `update()` : c'est LUI qui calcule `spec_hash`, en un seul endroit.
     if body.spec_content:
         CaseGroupRepo(conn).update(gid, spec_content=body.spec_content)
@@ -107,7 +102,7 @@ def rename_module(module_id: int, body: schemas.ModuleIn, conn=Depends(get_conn)
     try:
         ModuleRepo(conn).rename(module_id, name=body.name.strip(), description=body.description)
     except DuplicateName as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
     updated = ModuleRepo(conn).get(module_id)
     return schemas.module_summary(updated | {"case_count": _case_count(conn, module_id)})
 
@@ -148,7 +143,7 @@ def create_manual_case(module_id: int, body: schemas.ManualCaseIn, request: Requ
             expected_result=body.expected_result.strip(), angle=body.angle,
             author=access.utilisateur_de(request) or "ui")
     except DuplicateName as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
     return schemas.case_summary(CaseRepo(conn).get(cid))
 
 
@@ -209,7 +204,7 @@ def add_case(module_id: int, body: schemas.AddCaseIn, background: BackgroundTask
             conn, module_id, spec_content=spec, title=body.title,
             author=access.utilisateur_de(request) or body.author)
     except generation_service.GenerationError as err:
-        raise HTTPException(status_code=_ERROR_STATUS.get(err.code, 400), detail=err.detail)
+        raise erreurs.depuis_service(err.code, err.detail)
 
     background.add_task(generation_service.run_generation, job_id, **params)
     return schemas.GenerationJobOut(job_id=job_id, status="running")
@@ -237,7 +232,7 @@ def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: B
     try:
         params = generation_service.validate_metier(job_id, body.model_dump())
     except generation_service.GenerationError as err:
-        raise HTTPException(status_code=_ERROR_STATUS.get(err.code, 400), detail=err.detail)
+        raise erreurs.depuis_service(err.code, err.detail)
 
     background.add_task(generation_service.resume_generation, job_id, **params)
     return schemas.GenerationJobOut(job_id=job_id, status="running")

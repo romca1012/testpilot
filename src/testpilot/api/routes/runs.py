@@ -9,16 +9,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
-from testpilot.api import schemas
+from testpilot.api import erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import campaign_service
 from testpilot.store.repositories import ProjectRepo, RunRepo
 
 router = APIRouter(tags=["runs"])
-
-_LAUNCH_STATUS = {"not_found": 404, "empty": 422, "already_running": 409, "archived": 409,
-                  "no_connection": 409}
-
 
 def _summary(run: dict, case_count: int) -> schemas.RunSummary:
     return schemas.RunSummary(
@@ -72,7 +68,7 @@ def launch_run(run_id: int, background: BackgroundTasks, conn=Depends(get_conn))
     try:
         params = campaign_service.start_campaign(conn, run_id)
     except campaign_service.CampaignError as err:
-        raise HTTPException(status_code=_LAUNCH_STATUS.get(err.code, 400), detail=err.detail)
+        raise erreurs.depuis_service(err.code, err.detail)
     background.add_task(campaign_service.run_campaign, **params)
     repo = RunRepo(conn)
     return _summary(repo.get(run_id), len(repo.case_ids(run_id)))

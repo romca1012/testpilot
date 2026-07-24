@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from testpilot import config
-from testpilot.api import access
+from testpilot.api import access, erreurs
 from testpilot.api.routes import auth, cases, executions, groups, modules, projects, runs
 
 # Origines du serveur de dev Vite (aucune auth : usage interne, réseau local).
@@ -56,6 +56,12 @@ def create_app() -> FastAPI:
         return await call_next(request)
 
     access.journaliser_l_etat_au_demarrage()
+
+    # Contrat d'erreur unique (RFC 9457, lot B). Les DEUX gestionnaires sont posés : les erreurs
+    # métier converties, et les `HTTPException` restantes — sinon un client devrait gérer deux
+    # formats selon la route qu'il appelle, ce qui est exactement ce qu'un contrat doit éviter.
+    app.add_exception_handler(erreurs.ErreurMetier, erreurs.gerer_erreur_metier)
+    app.add_exception_handler(HTTPException, erreurs.gerer_http_exception)
 
     @app.get("/api/health", tags=["meta"])
     def health():

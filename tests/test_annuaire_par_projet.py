@@ -134,7 +134,12 @@ def test_explorer_SANS_connexion_est_refuse_AVANT_de_lancer_un_navigateur(client
 
     r = client.post(f"/api/projects/{pid}/exploration")
 
-    assert r.status_code == 422
+    # ⚠️ 409 depuis le contrat d'erreur du 2026-07-24, et non plus 422. La MÊME situation métier
+    # (« connexion du projet incomplète ») renvoyait 422 ici et 409 sur les trois autres portes :
+    # un client aurait dû connaître la route pour savoir quoi tester. Une situation, un code, un
+    # statut — c'est tout l'intérêt d'un catalogue unique.
+    assert r.status_code == 409
+    assert r.json()["code"] == "connexion_incomplete"
     # Depuis le 2026-07-24, la garde couvre les QUATRE éléments (adresse, base, utilisateur, mot
     # de passe) et non plus la seule URL : explorer avec une connexion partielle produisait un
     # annuaire mesuré sur l'instance par défaut de la machine — un modèle qui ne décrit PAS ce

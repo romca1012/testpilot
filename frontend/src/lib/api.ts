@@ -20,20 +20,36 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   })
   if (!resp.ok) {
     let detail = `HTTP ${resp.status}`
+    let code = ''
     try {
       const body = await resp.json()
       if (body?.detail) detail = body.detail
+      // RFC 9457 (lot B) : `code` est le contrat stable. `detail` reste la phrase pour l'humain.
+      if (body?.code) code = body.code
     } catch { /* réponse non-JSON */ }
     // La connexion elle-même peut répondre 401 (mot de passe faux) : c'est le formulaire qui le
     // dit, il ne faut pas le confondre avec une session expirée.
     if (resp.status === 401 && !path.startsWith('/api/auth/')) onUnauthorized?.()
-    throw new ApiError(resp.status, detail)
+    throw new ApiError(resp.status, detail, code)
   }
   return resp.status === 204 ? (undefined as T) : resp.json()
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  /**
+   * `code` — l'identifiant STABLE de la cause (RFC 9457, lot B du 2026-07-24).
+   *
+   * ⚠️ **C'est lui qu'on teste pour décider, jamais `message`.** Ce message est une phrase
+   * française destinée à un humain : elle doit rester libre d'évoluer (corriger une tournure ne
+   * doit casser aucun écran). Un écran qui branche sur le texte se casse à la première
+   * reformulation, et personne ne le voit venir.
+   *
+   * Codes existants : `introuvable`, `nom_deja_pris`, `conteneur_non_vide`,
+   * `connexion_incomplete`, `aucune_version`, `relecture_requise`, `specification_vide`,
+   * `metier_incomplet`, `etat_incompatible`, `campagne_vide`, `campagne_en_cours`,
+   * `campagne_archivee`, `exploration_en_cours`, `requete_invalide`, `non_gere`.
+   */
+  constructor(public status: number, message: string, public code: string = '') {
     super(message)
   }
 }

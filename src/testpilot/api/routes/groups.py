@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
-from testpilot.api import schemas
+from testpilot.api import erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.store.repositories import CaseGroupRepo, DuplicateName, NotEmpty
 
@@ -48,7 +48,7 @@ def update_group(group_id: int, body: schemas.GroupPatch, conn=Depends(get_conn)
             description=body.description,
             spec_content=body.spec_content)
     except DuplicateName as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
     return schemas.group_detail(_load(conn, group_id))
 
 
@@ -63,5 +63,5 @@ def delete_group(group_id: int, conn=Depends(get_conn)):
     try:
         CaseGroupRepo(conn).delete(group_id)
     except NotEmpty as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise erreurs.ErreurMetier("conteneur_non_vide", str(exc)) from exc
     return Response(status_code=204)

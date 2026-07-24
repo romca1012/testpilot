@@ -8,25 +8,27 @@ from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 
-from testpilot.api import schemas
+from testpilot.api import erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import exploration_service
 from testpilot.store.repositories import CaseGroupRepo, DuplicateName, ModuleRepo, ProjectRepo
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
-# 409 pour `already_running` : la requête est bien formée, c'est l'état qui s'y oppose.
-# 422 pour `no_connection` : il manque une donnée que l'utilisateur doit fournir.
-_EXPLORATION_STATUS = {"not_found": 404, "no_connection": 422, "already_running": 409}
 
 
-def _conflict(exc: DuplicateName) -> HTTPException:
-    """409 — le nom est déjà pris à sa portée d'unicité.
+def _conflict(exc: DuplicateName) -> erreurs.ErreurMetier:
+    """409 `nom_deja_pris` — le nom est déjà pris à sa portée d'unicité.
 
     409 et non 422 : la requête est bien formée, c'est l'état du référentiel qui s'y oppose.
-    Le message du repo nomme le conflit en clair (il est affiché tel quel à l'utilisateur).
+    Le message du repo nomme le conflit en clair (il est affiché tel quel à l'utilisateur), et
+    le **code** permet au client de réagir sans lire cette phrase.
+
+    ⚠️ Cette fonction d'aide avait été OUBLIÉE par la conversion du lot B, qui cherchait le motif
+    `raise HTTPException(...)` : les doublons de projet et de module retombaient donc sur le code
+    générique `etat_incompatible`. Trouvé par le test du contrat, pas à la relecture.
     """
-    return HTTPException(status_code=409, detail=str(exc))
+    return erreurs.ErreurMetier("nom_deja_pris", str(exc))
 
 
 def _summary_row(conn, project_id: int) -> dict | None:
@@ -119,7 +121,9 @@ def start_exploration(project_id: int, background: BackgroundTasks, conn=Depends
     try:
         job_id, params = exploration_service.start_exploration(conn, project_id)
     except exploration_service.ExplorationError as err:
-        raise HTTPException(status_code=_EXPLORATION_STATUS.get(err.code, 400), detail=err.detail)
+        raise erreurs.depuis_service(err.code, err.detail,
+                                     defaut="exploration_en_cours" if err.code == "already_running"
+                                            else "non_gere")
 
     background.add_task(exploration_service.run_exploration, job_id, **params)
     return schemas.ExplorationOut(running=True, job_id=job_id)

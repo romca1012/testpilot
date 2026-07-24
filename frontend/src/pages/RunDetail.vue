@@ -56,6 +56,10 @@ const STATUS_RUN: Record<string, { label: string; cls: string }> = {
 // périodiquement pour voir les résultats tomber un par un, jusqu'à la clôture du run.
 const launching = ref(false)
 const launchError = ref('')
+// Le CODE de l'erreur, pas sa phrase (contrat RFC 9457, lot B). C'est lui qui décide si l'écran
+// peut proposer une action de réparation — brancher sur le texte français casserait à la
+// première reformulation du message, sans que personne le voie venir.
+const launchErrorCode = ref('')
 let pollTimer: number | undefined
 
 const enCours = computed(() => detail.value?.run.status === 'running')
@@ -69,6 +73,7 @@ async function launch() {
     poll()
   } catch (e: any) {
     launchError.value = e?.message || 'Lancement impossible.'
+    launchErrorCode.value = e?.code || ''
   } finally {
     launching.value = false
   }
@@ -163,7 +168,13 @@ function backToList() { router.push({ name: 'executions', params: { pid: pid.val
         elle ne peut plus être relancée. Rien n'a été supprimé — « Rouvrir » la rend à nouveau modifiable.
       </span>
     </div>
-    <p v-if="launchError" class="mt-2 text-sm text-destructive">{{ launchError }}</p>
+    <p v-if="launchError" class="mt-2 text-sm text-destructive">
+      {{ launchError }}
+      <!-- Une connexion incomplète se CORRIGE : on emmène là où on la corrige, plutôt que de
+           laisser l'utilisateur chercher l'écran. Décidé sur le code, jamais sur la phrase. -->
+      <RouterLink v-if="launchErrorCode === 'connexion_incomplete'" to="/projects"
+                  class="ml-1 underline hover:text-foreground">Corriger la connexion du projet</RouterLink>
+    </p>
     <p v-if="enCours" class="mt-1 text-xs text-muted-foreground">
       Les cas sont joués l'un après l'autre contre l'application réelle — les résultats
       apparaissent au fur et à mesure.
