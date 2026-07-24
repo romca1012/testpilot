@@ -77,67 +77,18 @@ def _raison_de_l_echec(conn, execution_id: int) -> str:
     return ""
 
 
-def main() -> int:
-    client = TestClient(app)
-    resultats = []
-    crees: list[int] = []
+def recapituler(resultats: list[tuple], duree: dict[str, float]) -> dict:
+    """Le récapitulatif de fin de banc — **extrait en fonction le 2026-07-24, pour être testable**.
 
-    print("=" * 70, flush=True)
-    print("NETTOYAGE DU BANC (mesure précédente)", flush=True)
-    print("=" * 70, flush=True)
-    _nettoyer_mesure_precedente(client)
+    ⚠️ **Ce code a déjà planté une fois, en fin de banc, APRÈS la dépense** (2026-07-23 : une clé
+    de dictionnaire renommée sans toucher l'incrément → `KeyError`). Perdre le récapitulatif après
+    avoir payé la génération de huit cas et exécuté huit runs réels contre l'application est le
+    pire moment pour un défaut trivial. Inline dans `main()`, il n'était atteignable qu'en
+    relançant un banc complet ; en fonction, un test le couvre pour rien.
 
-    for spec in SPECS:
-        nom = spec.stem
-        print(f"\n{'=' * 70}\n{nom}\n{'=' * 70}", flush=True)
-        t0 = time.time()
-
-        # Passe 4a → 4b (validation métier sans correction : on mesure la génération, pas l'humain)
-        r = client.post(f"/api/modules/{MID}/cases",
-                        json={"spec_content": spec.read_text(encoding="utf-8"),
-                              "title": f"Mesure {nom}"})
-        if r.status_code != 202:
-            print(f"  démarrage KO : {r.status_code} {r.text[:150]}", flush=True)
-            resultats.append((nom, None, "demarrage_ko"))
-            continue
-        job_id = r.json()["job_id"]
-        job = client.get(f"/api/modules/jobs/{job_id}").json()
-        if job["status"] != "awaiting_metier":
-            print(f"  passe 4a KO : {job.get('error')!r}", flush=True)
-            resultats.append((nom, None, "metier_ko"))
-            continue
-        client.post(f"/api/modules/jobs/{job_id}/metier", json=job["metier"])
-        job = client.get(f"/api/modules/jobs/{job_id}").json()
-        if job["status"] != "done":
-            print(f"  passe 4b KO : {job.get('error')!r}", flush=True)
-            resultats.append((nom, None, "gherkin_ko"))
-            continue
-        case_id = job["case_id"]
-        crees.append(case_id)
-
-        # Gate, budget réparation 0 (premier jet uniquement), puis RUN réel
-        client.post(f"/api/cases/{case_id}/review",
-                    json={"approved": True, "reviewer": "mesure", "repair_budget": 0})
-        client.post(f"/api/cases/{case_id}/runs")
-
-        conn = get_initialized_db(config.DB_PATH)
-        execs = ExecutionRepo(conn).list_for_case(case_id)
-        prem = min(execs, key=lambda e: e["id"]) if execs else None
-        raison = _raison_de_l_echec(conn, prem["id"]) if prem else ""
-        conn.close()
-        if prem is None:
-            resultats.append((nom, None, "aucun_run"))
-            print("  aucun run", flush=True)
-            continue
-        es, fs = prem["execution_status"], prem["functional_status"]
-        resultats.append((nom, es, fs, raison))
-        print(f"  cas {case_id} → {es} / {fs} — {time.time() - t0:.0f}s", flush=True)
-        if raison:
-            print(f"    {raison}", flush=True)
-
-    # Trace des cas créés : la PROCHAINE mesure les supprimera (banc rejouable).
-    ARTEFACTS.write_text(json.dumps(crees), encoding="utf-8")
-
+    Fonction PURE : elle n'ouvre ni base ni réseau. Elle rend ses chiffres en plus de les
+    imprimer — c'est ce qui permet de les vérifier.
+    """
     # ── Le verdict ────────────────────────────────────────────────────────────
     print(f"\n{'=' * 70}\nTAUX D'ERREUR TECHNIQUE AU PREMIER JET\n{'=' * 70}", flush=True)
     tourne = sum(1 for r in resultats if r[1] == "success")
@@ -154,6 +105,32 @@ def main() -> int:
         print(f"  autre (job échoué, etc.)       : {autre}/{len(resultats)}", flush=True)
     if resultats:
         print(f"  → taux de réussite technique   : {tourne / len(resultats) * 100:.0f} %", flush=True)
+
+    # ── Les deux critères du §9 qui n'étaient pas restitués (ajoutés le 2026-07-24) ──────────
+    #
+    # 1. VERDICTS CONCLUANTS. Le taux technique dit « le test a-t-il pu tourner ». Il ne dit PAS
+    #    si l'outil a réussi à TRANCHER : une erreur technique et une donnée de test invalide
+    #    laissent l'utilisateur sans réponse sur son application. C'est la mesure du §5bis, celle
+    #    qu'on veut voir monter vers 100 %.
+    concluants = sum(1 for r in resultats
+                     if len(r) >= 3 and r[2] in ("conforme", "non_conforme"))
+    if resultats:
+        print(f"\n  VERDICTS CONCLUANTS (§5bis)    : {concluants}/{len(resultats)}"
+              f"  → {concluants / len(resultats) * 100:.0f} %", flush=True)
+        print("    (conforme + non conforme : les cas où l'outil a tranché. Une erreur technique",
+              flush=True)
+        print("     ou une donnée invalide laisse l'utilisateur sans réponse sur SON application.)",
+              flush=True)
+
+    # 2. TEMPS PAR CAS. Cible du §9 : moins de 5 minutes, spec → verdict.
+    if duree:
+        valeurs = sorted(duree.values())
+        median = valeurs[len(valeurs) // 2]
+        pire_nom = max(duree, key=duree.get)
+        tenus = sum(1 for v in valeurs if v < 300)
+        print(f"\n  TEMPS PAR CAS (§9 : < 5 min)   : médiane {median / 60:.1f} min · "
+              f"pire {duree[pire_nom] / 60:.1f} min ({pire_nom})", flush=True)
+        print(f"    cible tenue sur {tenus}/{len(valeurs)} cas", flush=True)
 
     # ── À QUI la faute ? — désormais lu sur le VERDICT, plus sur le texte ──
     # ⚠️ §2bis 4ᵉ verdict. « notre donnée refusée » a maintenant son propre statut fonctionnel
@@ -180,6 +157,84 @@ def main() -> int:
             if n:
                 print(f"    {n} × {libelle}", flush=True)
     # Cible §2bis : 0 « notre donnée » cachée en non_conforme, 0 silence indécidable.
+
+    return {"tourne": tourne, "erreur": erreur, "autre": autre,
+            "concluants": concluants, "total": len(resultats),
+            "donnee_invalide": invalide, "familles": familles}
+
+
+def main() -> int:
+    client = TestClient(app)
+    resultats = []
+    crees: list[int] = []
+    # Temps par cas (§9 : « moins de 5 minutes »). ⚠️ Ce critère du brief n'avait JAMAIS été
+    # mesuré : le banc chronométrait déjà chaque cas et jetait le chiffre après l'avoir affiché.
+    # Un critère de succès jamais mesuré est exactement le « statut déclaratif » que ce produit
+    # reproche à TestRail (inscrit au brief le 2026-07-24).
+    duree: dict[str, float] = {}
+
+    print("=" * 70, flush=True)
+    print("NETTOYAGE DU BANC (mesure précédente)", flush=True)
+    print("=" * 70, flush=True)
+    _nettoyer_mesure_precedente(client)
+
+    for spec in SPECS:
+        nom = spec.stem
+        print(f"\n{'=' * 70}\n{nom}\n{'=' * 70}", flush=True)
+        t0 = time.time()
+
+        # Passe 4a → 4b (validation métier sans correction : on mesure la génération, pas l'humain)
+        r = client.post(f"/api/modules/{MID}/cases",
+                        json={"spec_content": spec.read_text(encoding="utf-8"),
+                              "title": f"Mesure {nom}"})
+        if r.status_code != 202:
+            print(f"  démarrage KO : {r.status_code} {r.text[:150]}", flush=True)
+            duree[nom] = time.time() - t0
+            resultats.append((nom, None, "demarrage_ko"))
+            continue
+        job_id = r.json()["job_id"]
+        job = client.get(f"/api/modules/jobs/{job_id}").json()
+        if job["status"] != "awaiting_metier":
+            print(f"  passe 4a KO : {job.get('error')!r}", flush=True)
+            duree[nom] = time.time() - t0
+            resultats.append((nom, None, "metier_ko"))
+            continue
+        client.post(f"/api/modules/jobs/{job_id}/metier", json=job["metier"])
+        job = client.get(f"/api/modules/jobs/{job_id}").json()
+        if job["status"] != "done":
+            print(f"  passe 4b KO : {job.get('error')!r}", flush=True)
+            duree[nom] = time.time() - t0
+            resultats.append((nom, None, "gherkin_ko"))
+            continue
+        case_id = job["case_id"]
+        crees.append(case_id)
+
+        # Gate, budget réparation 0 (premier jet uniquement), puis RUN réel
+        client.post(f"/api/cases/{case_id}/review",
+                    json={"approved": True, "reviewer": "mesure", "repair_budget": 0})
+        client.post(f"/api/cases/{case_id}/runs")
+
+        conn = get_initialized_db(config.DB_PATH)
+        execs = ExecutionRepo(conn).list_for_case(case_id)
+        prem = min(execs, key=lambda e: e["id"]) if execs else None
+        raison = _raison_de_l_echec(conn, prem["id"]) if prem else ""
+        conn.close()
+        if prem is None:
+            duree[nom] = time.time() - t0
+            resultats.append((nom, None, "aucun_run"))
+            print("  aucun run", flush=True)
+            continue
+        es, fs = prem["execution_status"], prem["functional_status"]
+        duree[nom] = time.time() - t0
+        resultats.append((nom, es, fs, raison))
+        print(f"  cas {case_id} → {es} / {fs} — {time.time() - t0:.0f}s", flush=True)
+        if raison:
+            print(f"    {raison}", flush=True)
+
+    # Trace des cas créés : la PROCHAINE mesure les supprimera (banc rejouable).
+    ARTEFACTS.write_text(json.dumps(crees), encoding="utf-8")
+
+    recapituler(resultats, duree)
 
     conn = get_initialized_db(config.DB_PATH)
     print(f"\n  (onglet Qualité mis à jour — vérifiable dans l'interface)", flush=True)

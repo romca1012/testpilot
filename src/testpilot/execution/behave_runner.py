@@ -49,6 +49,23 @@ class BehaveRunner:
         self.connection = connection or {}
         # Projet du run : le résolveur déterministe (§2bis) lit son annuaire au runtime.
         self.project_id = project_id
+        # Où CONSERVER la trace brute de ce run (2026-07-24). None → rien n'est gardé, comme avant.
+        self.artifacts_dir: Path | None = None
+
+    def cibler_artefacts(self, chemin: Path | None) -> None:
+        """Désigne le dossier où archiver la trace brute du PROCHAIN run.
+
+        ⚠️ **Pourquoi ça n'existait pas.** Chaque run est assemblé dans un dossier temporaire
+        détruit en sortie (`rmtree` ci-dessous) : la sortie de Behave, son JSON, le `.feature` et
+        les steps réellement joués **disparaissaient**. Le rapport était reconstruit depuis la
+        base — ce qui suffit pour lire un verdict, jamais pour *instruire* un résultat non
+        concluant. Un testeur devant « erreur technique » n'avait rien à ouvrir.
+
+        Le runner est réutilisé d'une tentative de réparation à l'autre, chacune ayant sa propre
+        ligne d'exécution : la cible se redésigne donc **avant chaque run**, sinon deux exécutions
+        écriraient dans le même dossier et la seconde écraserait la première.
+        """
+        self.artifacts_dir = chemin
 
     def _subprocess_env(self, run_dir: Path) -> dict[str, str]:
         """Environnement du sous-processus : celui du parent + la connexion du projet + le sidecar.
@@ -103,9 +120,17 @@ class BehaveRunner:
                                       encoding="utf-8", errors="replace", timeout=timeout,
                                       env=self._subprocess_env(run_dir))
             except subprocess.TimeoutExpired:
+                # ⚠️ Un timeout est le cas où la trace est la PLUS utile (« qu'a-t-il fait pendant
+                # 15 minutes ? ») — et c'est justement celui où il n'y a pas de `proc`. On archive
+                # ce qui existe : le JSON partiel s'il a été écrit, et le contexte du timeout.
+                self._archiver(run_dir, module_name, dry_run=dry_run,
+                               journal=f"Timeout ({timeout}s) lors du run behave — le "
+                                       f"sous-processus a été interrompu, sa sortie est perdue.")
                 return BehaveResult(success=False, returncode=-2, dry_run=dry_run,
                                     raw_stderr=f"Timeout ({timeout}s) lors du run behave")
             json_output = json_path.read_text(encoding="utf-8") if json_path.exists() else ""
+            self._archiver(run_dir, module_name, dry_run=dry_run,
+                           journal=f"{proc.stdout}\n{proc.stderr}")
             result = parse_behave_json(json_output, proc.returncode, dry_run=dry_run,
                                        combined_log=f"{proc.stdout}\n{proc.stderr}")
             # Replis consignés par les helpers UI (0007 B+). Lu ICI, avant le rmtree du `finally`,
@@ -115,6 +140,40 @@ class BehaveRunner:
             return result
         finally:
             shutil.rmtree(run_dir, ignore_errors=True)
+
+    def _archiver(self, run_dir: Path, module_name: str, *, dry_run: bool, journal: str) -> None:
+        """Recopie la trace brute du run hors du dossier temporaire, avant sa destruction.
+
+        Ce qu'on garde, et pourquoi chaque pièce :
+
+        - le **journal** (sortie et erreur du sous-processus) : ce que la machine a vu dérouler ;
+        - le **JSON de Behave** : le détail par scénario et par step, avec les messages d'erreur ;
+        - le **.feature** et les **steps** RÉELLEMENT joués : le cas a pu changer depuis, et un
+          résultat qu'on relit six mois plus tard doit être lisible avec le test de son époque ;
+        - les **replis de champ** consignés pendant le run, s'il y en a eu.
+
+        ⚠️ **Best-effort, jamais bloquant.** Un disque plein ou un droit manquant ne doit pas
+        transformer un run réussi en échec : l'archivage échoue en silence journalisé. L'inverse
+        — faire tomber une exécution réelle (qui a créé des données dans l'application testée)
+        pour un problème d'archivage — serait une régression bien pire que l'absence de trace.
+        """
+        if self.artifacts_dir is None:
+            return
+        prefixe = "dry-run" if dry_run else "execution"
+        try:
+            self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+            (self.artifacts_dir / f"{prefixe}.log").write_text(journal or "", encoding="utf-8")
+            for source, cible in (
+                (run_dir / "result.json", f"{prefixe}.behave.json"),
+                (run_dir / f"{module_name}.feature", f"{module_name}.feature"),
+                (run_dir / "steps" / f"{module_name}_steps.py", f"{module_name}_steps.py"),
+                (run_dir / FIELD_FALLBACK_FILENAME, f"{prefixe}.replis-de-champ.json"),
+            ):
+                if source.exists():
+                    shutil.copy2(source, self.artifacts_dir / cible)
+        except OSError:
+            logger.warning("[artefacts] archivage impossible vers %s — le run, lui, est intact",
+                           self.artifacts_dir, exc_info=True)
 
     def _assemble(self, run_dir: Path, module_name: str, feature_src: Path) -> None:
         """Recopie environment.py, le formatter, la bibliothèque de steps + les steps générés,

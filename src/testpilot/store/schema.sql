@@ -210,6 +210,12 @@ CREATE TABLE IF NOT EXISTS execution (
     target_url        TEXT    NOT NULL DEFAULT '',
     target_database   TEXT    NOT NULL DEFAULT '',
     target_username   TEXT    NOT NULL DEFAULT '',
+    -- Où sont rangés les ARTEFACTS BRUTS de ce run (migration 22) : journal du moteur, JSON de
+    -- Behave, .feature et steps réellement joués. Le dossier de run était jusqu'ici DÉTRUIT en
+    -- fin d'exécution : un « erreur technique » n'avait rien à ouvrir pour être instruit.
+    -- Chemin STOCKÉ et non déduit de l'id : le répertoire de données est configurable.
+    -- Vide = aucun artefact conservé (toutes les exécutions antérieures).
+    artifacts_path    TEXT    NOT NULL DEFAULT '',
     started_at        TEXT    NOT NULL,
     FOREIGN KEY (test_case_id) REFERENCES test_case(id),
     FOREIGN KEY (version_id)   REFERENCES test_case_version(id)

@@ -171,11 +171,21 @@ export const api = {
     request<ExecutionSummary[]>(`/api/executions?project_id=${projectId}&limit=${limit}`),
   getExecution: (id: number | string) => request<ExecutionDetail>(`/api/executions/${id}`),
   getReport: (id: number | string) => request<TestReport>(`/api/executions/${id}/report`),
+  // Trace BRUTE d'une exécution : ce que la machine a vu. C'est ce qui permet d'INSTRUIRE un
+  // résultat non concluant au lieu de seulement le constater.
+  listArtifacts: (id: number | string) => request<Artifacts>(`/api/executions/${id}/artifacts`),
+  artifactUrl: (id: number | string, nom: string) =>
+    `${API_BASE}/api/executions/${id}/artifacts/${encodeURIComponent(nom)}`,
 }
 
 // ── Types (miroir des DTO backend) ──────────────────────────────────────────
 /** État du verrou d'instance. `lock_enabled=false` → aucun verrou configuré (poste isolé). */
 export interface Session { lock_enabled: boolean; authenticated: boolean; name: string }
+
+/** Trace brute d'une exécution. `available=false` porte TOUJOURS sa raison : « pas de fichier »
+ *  et « aucune trace conservée » ne se disent pas pareil. */
+export interface Artifact { name: string; size: number; label: string }
+export interface Artifacts { available: boolean; reason: string; files: Artifact[] }
 
 export interface ProjectSummary {
   id: number; name: string; description: string

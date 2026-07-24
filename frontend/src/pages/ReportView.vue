@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { api, type TestReport } from '../lib/api'
+import { api, type Artifacts, type TestReport } from '../lib/api'
 import { formatCost, formatDuration } from '../lib/format'
 import Card from '../components/ui/Card.vue'
 import Spinner from '../components/ui/Spinner.vue'
@@ -20,6 +20,17 @@ const report = ref<TestReport | null>(null)
 const loading = ref(true)
 const error = ref('')
 
+// Trace brute du run (2026-07-24). Chargée à part du rapport : son absence ne doit jamais
+// empêcher de lire un verdict — beaucoup d'exécutions anciennes n'en ont pas.
+const artefacts = ref<Artifacts | null>(null)
+
+function lienArtefact(nom: string) {
+  return api.artifactUrl(route.params.id as string, nom)
+}
+function taille(octets: number) {
+  return octets < 1024 ? `${octets} o` : `${Math.round(octets / 1024)} ko`
+}
+
 onMounted(async () => {
   try {
     report.value = await api.getReport(route.params.id as string)
@@ -27,6 +38,11 @@ onMounted(async () => {
     error.value = e?.message || 'Rapport indisponible'
   } finally {
     loading.value = false
+  }
+  try {
+    artefacts.value = await api.listArtifacts(route.params.id as string)
+  } catch {
+    artefacts.value = null   // silencieux : le rapport reste lisible sans sa trace
   }
 })
 </script>
@@ -96,6 +112,25 @@ onMounted(async () => {
           </li>
           <li v-if="!report.scenarios.length" class="text-sm text-muted-foreground">Aucun scénario exécuté.</li>
         </ul>
+      </Card>
+
+      <!-- TRACE BRUTE (2026-07-24) : ce que la machine a réellement vu.
+           C'est ce qui permet d'INSTRUIRE un verdict au lieu de seulement le constater — et le
+           déploiement se fait en sachant que tous les verdicts ne sont pas encore concluants. -->
+      <Card v-if="artefacts" title="Trace de l'exécution">
+        <ul v-if="artefacts.available" class="divide-y divide-border text-sm">
+          <li v-for="f in artefacts.files" :key="f.name" class="py-2.5 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <a :href="lienArtefact(f.name)" target="_blank" rel="noopener"
+                 class="text-primary hover:underline">{{ f.label }}</a>
+              <div class="text-xs text-muted-foreground font-mono truncate">{{ f.name }}</div>
+            </div>
+            <span class="shrink-0 text-xs text-muted-foreground tabular-nums">{{ taille(f.size) }}</span>
+          </li>
+        </ul>
+        <!-- ⚠️ On DIT pourquoi il n'y a rien : « aucun fichier » et « aucune trace conservée »
+             ne veulent pas dire la même chose. -->
+        <p v-else class="text-sm text-muted-foreground">{{ artefacts.reason }}</p>
       </Card>
 
       <!-- Origine des défauts (vocabulaire utilisateur — jamais de valeur d'enum brute) -->

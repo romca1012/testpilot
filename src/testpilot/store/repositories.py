@@ -1003,6 +1003,12 @@ class ExecutionRepo:
         self.conn.commit()
         return int(cur.lastrowid)
 
+    def set_artifacts_path(self, execution_id: int, chemin: str) -> None:
+        """Enregistre où la trace brute de cette exécution a été archivée (migration 22)."""
+        self.conn.execute("UPDATE execution SET artifacts_path=? WHERE id=?",
+                          (str(chemin or ""), execution_id))
+        self.conn.commit()
+
     def finalize(self, execution_id: int, *, execution_status: str, functional_status: str,
                  scenarios_total: int, scenarios_passed: int, scenarios_failed: int,
                  cost_usd: float, iterations: int, duration_seconds: float,

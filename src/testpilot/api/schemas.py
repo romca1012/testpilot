@@ -204,6 +204,26 @@ class ExecutionDetail(ExecutionSummary):
     scenarios: list[ScenarioResultOut] = []
 
 
+class ArtifactOut(BaseModel):
+    """Un fichier de la trace brute. `label` est le libellé MÉTIER — le nom technique reste
+    disponible, mais ce n'est pas ce qu'on montre d'abord (§8 du brief)."""
+    name: str
+    size: int = 0
+    label: str = ""
+
+
+class ArtifactsOut(BaseModel):
+    """La trace d'une exécution.
+
+    ⚠️ `available=False` **avec sa raison** plutôt qu'une liste vide : « il n'y a pas de fichier »
+    et « aucune trace n'a été conservée » ne veulent pas dire la même chose. Les confondre, c'est
+    prendre une absence de signal pour un signal — le motif que ce projet traque partout.
+    """
+    available: bool
+    reason: str = ""
+    files: list[ArtifactOut] = []
+
+
 # ── Actions ───────────────────────────────────────────────────────────────────
 class RunResponse(BaseModel):
     execution_id: int

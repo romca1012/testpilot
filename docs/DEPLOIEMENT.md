@@ -120,7 +120,14 @@ Tout l'état tient dans **`data/`** :
 |---|---|
 | `data/testpilot.db` | référentiel complet : projets, cas, versions, exécutions, coûts |
 | `data/domain/projet-*.json` | la cartographie mesurée de chaque application |
+| `data/executions/<id>/` | la **trace brute** de chaque exécution (journal du moteur, détail par scénario, test joué) |
 | `data/.secret_key` | la clé de chiffrement, **si** elle n'est pas dans l'environnement |
+
+> 📈 **`data/executions/` grandit** — quelques dizaines de kilo-octets par exécution. Rien ne le
+> purge automatiquement, et c'est délibéré : le projet n'efface jamais d'historique en silence
+> (§7 du brief). Surveillez la taille ; pour faire de la place, archivez puis retirez les dossiers
+> les plus anciens — l'interface dira alors « la trace a été archivée mais son dossier est
+> introuvable », ce qui est la vérité, plutôt que de faire croire qu'aucune trace n'a existé.
 
 ```bash
 tar czf testpilot-$(date +%F).tar.gz data/

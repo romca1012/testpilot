@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 21
+_SCHEMA_VERSION = 22
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -108,6 +108,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_20_execution_cible(conn)
     if version < 21:
         _migrate_21_chiffrer_secrets(conn)
+    if version < 22:
+        _migrate_22_execution_artefacts(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -754,6 +756,19 @@ def _migrate_21_chiffrer_secrets(conn: sqlite3.Connection) -> None:
             "[migration 21] les secrets de connexion N'ONT PAS PU être chiffrés : ils restent EN "
             "CLAIR dans la base. Vérifiez `cryptography` et l'accès en écriture au répertoire de "
             "données, puis rouvrez la base.", exc_info=True)
+
+
+def _migrate_22_execution_artefacts(conn: sqlite3.Connection) -> None:
+    """Où sont rangés les ARTEFACTS BRUTS d'une exécution (2026-07-24).
+
+    Le chemin est stocké plutôt que déduit de l'id : le répertoire de données est configurable
+    (`TESTPILOT_DATA_DIR`), et une base déplacée entre deux machines ne doit pas se mettre à
+    désigner des dossiers qui n'ont jamais existé. Vide = **aucun artefact conservé** — le cas de
+    toutes les exécutions antérieures, et le seul honnête : on n'invente pas une trace qu'on n'a
+    pas gardée.
+    """
+    if "artifacts_path" not in _column_names(conn, "execution"):
+        conn.execute("ALTER TABLE execution ADD COLUMN artifacts_path TEXT NOT NULL DEFAULT ''")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

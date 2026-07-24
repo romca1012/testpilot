@@ -40,8 +40,8 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 
 | | |
 |---|---|
-| Tests | **847 Python · 75 vitest** — tous verts |
-| Schéma | `user_version = 21` |
+| Tests | **865 Python · 75 vitest** — tous verts |
+| Schéma | `user_version = 22` |
 | Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), re-confirmé au rejeu du 2026-07-23 |
 | Verdicts | **0 fausse accusation par invention de champ** ; 4ᵉ verdict `donnee_invalide` déclenché en réel |
 | Coût d'un cas (analyse + génération) | **~0,08 à 0,11 $** — modèle **Sonnet 4.6** |
@@ -331,14 +331,21 @@ revienne.
 
 ### Phase 2bis — Ce que le brief a tranché le 2026-07-24 *(détail en tête de `BACKLOG.md`)*
 
+- [x] **Artefacts bruts d'exécution conservés** — **fait le 2026-07-24** (migration 22). Le dossier
+      de run était **détruit** en sortie (`rmtree`) : journal du moteur, détail par scénario,
+      `.feature` et steps joués partaient avec. Ils sont désormais archivés dans
+      `data/executions/<id>/` et consultables depuis le rapport. Archivage **best-effort** : un
+      disque plein ne fait pas tomber une exécution qui a créé de vraies données.
+      *« Aucune trace conservée » et « dossier introuvable » sont deux messages distincts — une
+      absence de signal n'est pas un signal.*
+- [x] **Temps et taux de verdicts concluants** affichés au banc — **fait le 2026-07-24**. Le
+      récapitulatif de fin de banc a été **extrait en fonction pure et couvert par des tests** :
+      il avait planté une fois *après* la dépense, et n'était atteignable qu'en repayant un banc.
 - [ ] 🔴 **Tableau de bord « modules à retester »** — le JTBD 2, la promesse qui justifie l'outil.
       Sans lui, un critère du §9 reste non observable.
 - [ ] **Template de spécification** fourni à l'utilisateur.
-- [ ] **Artefacts bruts d'exécution conservés** — un test qui passait reste consultable avec ce que
-      la machine a vu.
 - [ ] **Provenance d'un résultat (exécuté / déclaré)** — promis au brief le 2026-07-20, jamais bâti.
 - [ ] **Mode dev / mode utilisateur.**
-- [ ] **Temps et taux de verdicts concluants** affichés au banc.
 - **Hors V1, arbitré** : comptes/rôles/client externe (prérequis déploiement client) · Jira, charge,
   sécurité, CI-CD (V2) · abstraction multi-connecteurs (au 2ᵉ connecteur).
 

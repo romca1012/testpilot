@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from pathlib import Path
 
 from testpilot import config
 from testpilot.api.services import repair_service
@@ -136,9 +137,21 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
             conn.close()
 
 
+def dossier_artefacts(execution_id: int) -> Path:
+    """Où archiver la trace brute d'une exécution : `data/executions/<id>/`."""
+    return Path(config.DATA_DIR) / "executions" / str(execution_id)
+
+
 def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str, runner):
     """Un run réel + son verdict persisté. `outcome.execution_id` porte la ligne concernée."""
     started = time.perf_counter()
+    # ⚠️ Redésigné AVANT chaque run, pas une fois à la construction : le même runner sert les
+    # tentatives de réparation, qui ont chacune leur propre ligne d'exécution. Une cible figée
+    # ferait écrire toutes les tentatives dans le dossier de la première.
+    chemin = dossier_artefacts(execution_id)
+    if hasattr(runner, "cibler_artefacts"):   # les runners de test n'archivent pas
+        runner.cibler_artefacts(chemin)
+        ExecutionRepo(conn).set_artifacts_path(execution_id, str(chemin))
     outcome = Executor(runner).execute(module_name)
     duration = time.perf_counter() - started
     verdict = derive_verdict(outcome)
