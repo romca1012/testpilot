@@ -67,11 +67,6 @@ export const api = {
   listProjects: () => request<ProjectSummary[]>('/api/projects'),
   createProject: (payload: ProjectInput) =>
     request<ProjectSummary>('/api/projects', { method: 'POST', body: JSON.stringify(payload) }),
-  renameProject: (id: number | string, name: string, description = '') =>
-    request<ProjectSummary>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ name, description }) }),
-  // Édite un projet, CONNEXION comprise (décision 0005). ⚠️ N'envoyer que les champs modifiés :
-  // côté serveur `null`/absent = « ne touche pas ». C'est vital pour `password`, que l'API ne
-  // renvoie jamais — envoyer la chaîne vide d'un formulaire raffiché effacerait le secret.
   updateProject: (id: number | string, patch: Partial<ProjectInput>) =>
     request<ProjectSummary>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteProject: (id: number | string) =>
@@ -153,8 +148,6 @@ export const api = {
   // ── La SPÉCIFICATION : le document source, d'où naissent 1 à N cas (décision 0022) ──
   // ⚠️ Créer une spécification ne génère AUCUN cas et ne dépense RIEN : elle nomme un document.
   // C'est la génération qui le lira, après confirmation humaine des angles (§4bis du brief).
-  listModuleGroups: (moduleId: number | string) =>
-    request<GroupSummary[]>(`/api/modules/${moduleId}/groups`),
   createGroup: (moduleId: number | string, body: { title: string; description?: string; spec_content?: string }) =>
     request<GroupDetail>(`/api/modules/${moduleId}/groups`, { method: 'POST', body: JSON.stringify(body) }),
   getGroup: (groupId: number | string) => request<GroupDetail>(`/api/groups/${groupId}`),
@@ -164,8 +157,6 @@ export const api = {
   // 409 tant que la spécification porte des cas — pas de cascade : un cas porte de l'historique.
   deleteGroup: (groupId: number | string) =>
     request<void>(`/api/groups/${groupId}`, { method: 'DELETE' }),
-  getModule: (id: number | string) => request<ModuleDetail>(`/api/modules/${id}`),
-  // Ajouter un cas = fournir une SPEC → analyse/génération/gate (jamais une coquille vide).
   addCase: (moduleId: number | string, spec_content: string, title = '') =>
     request<GenerationJob>(`/api/modules/${moduleId}/cases`, {
       method: 'POST', body: JSON.stringify({ spec_content, title }),
@@ -209,9 +200,6 @@ export const api = {
   // et le gate rebloque l'exécution jusqu'à relecture. `refs`/`estimate` ne versionnent pas.
   updateCaseMetier: (id: number | string, body: CaseMetierIn) =>
     request<CaseMetierOut>(`/api/cases/${id}/metier`, { method: 'PATCH', body: JSON.stringify(body) }),
-  runCase: (id: number | string) => request<RunResponse>(`/api/cases/${id}/runs`, { method: 'POST' }),
-  // `repair_budget` : tentatives de réparation que cette approbation autorise (0014, option C).
-  // undefined → le serveur applique son défaut.
   reviewCase: (id: number | string, approved: boolean, comment = '', repair_budget?: number) =>
     request<ReviewResponse>(`/api/cases/${id}/review`, {
       method: 'POST',
@@ -219,9 +207,6 @@ export const api = {
     }),
 
   // Exécutions — scopées par projet
-  listExecutions: (projectId: number | string, limit = 50) =>
-    request<ExecutionSummary[]>(`/api/executions?project_id=${projectId}&limit=${limit}`),
-  getExecution: (id: number | string) => request<ExecutionDetail>(`/api/executions/${id}`),
   getReport: (id: number | string) => request<TestReport>(`/api/executions/${id}/report`),
   // ── La CORBEILLE (§7 : rien n'est détruit sans filet) ──
   // Supprimer MASQUE ; restaurer annule ; purger détruit, et n'est possible que sur ce qui est
@@ -236,6 +221,8 @@ export const api = {
   // Trace BRUTE d'une exécution : ce que la machine a vu. C'est ce qui permet d'INSTRUIRE un
   // résultat non concluant au lieu de seulement le constater.
   listArtifacts: (id: number | string) => request<Artifacts>(`/api/executions/${id}/artifacts`),
+  // Rapport HTML autonome — imprimable et partageable hors de l'outil.
+  rapportImprimable: (id: number | string) => `${API_BASE}/api/executions/${id}/report.html`,
   artifactUrl: (id: number | string, nom: string) =>
     `${API_BASE}/api/executions/${id}/artifacts/${encodeURIComponent(nom)}`,
 }

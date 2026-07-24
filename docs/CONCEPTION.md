@@ -250,3 +250,40 @@ taper puis `Entrée` ouvre le bon cas · `Échap` ferme · une modale garde le f
   workers ou plusieurs instances seront nécessaires (voir constat n°11).
 - **Le fond fonctionnel** : le tableau « modules à retester », les six mécanismes du §5bis, le
   Plan (conteneur de runs) restent au `BACKLOG.md`. Ce document ne parle que de **fabrication**.
+
+---
+
+## 6. Audit « ne garder que ce qui sert » (2026-07-24, après la pagination)
+
+Trois demandes du porteur, trois volets. Le détail vit dans **`docs/LOGIQUE.md`** ; voici ce qu'il
+faut en retenir ici.
+
+### « Toute route inutile ne doit pas exister »
+
+53 routes passées au crible en suivant la **chaîne complète** — route ← méthode du client ← écran.
+L'analyse statique seule se trompe dans les deux sens : elle déclare morte une route d'exploitation,
+et vivante une route que seule la documentation cite.
+
+Retirés : `useProjectTree.ts`, 3 composants jamais montés, 6 méthodes du client, 1 route en doublon.
+**Gardés à raison** : `/api/health` (l'exploitation s'en sert), `logout` — qui n'était pas du code
+mort mais une **fonctionnalité manquante**, le bouton a été ajouté — et le rapport imprimable, réel
+et testé, auquel il manquait seulement un lien.
+
+⏳ **Un seul point reste ouvert** : `PUT /api/modules/{id}/cases/order`, le glisser-déposer de la
+décision `0009`. Son écran a disparu. Le supprimer reviendrait à **revenir sur une décision
+produit** — ce n'est pas au développeur de trancher.
+
+### « Les processus doivent suivre leur cours »
+
+La table des conséquences, énumérée **au même endroit** (`tests/test_chaine_des_consequences.py`).
+Elle a trouvé **trois défauts réels**, dont un grave : une campagne appartenant à un projet supprimé
+référençait toujours ses cas et **les aurait exécutés contre la vraie application**. Le troisième
+était le retour, un étage plus haut, d'un défaut déjà corrigé au niveau du cas — la démonstration
+qu'une cascade éparpillée se réintroduit toute seule.
+
+### « La logique doit être claire »
+
+`docs/LOGIQUE.md` dit où vit chaque règle et pourquoi. La règle qui structure le reste :
+**une décision se prend d'un seul côté, et c'est le serveur ; le frontend affiche, il ne juge pas.**
+Quand la même valeur doit exister sous deux formes (Python et SQL), un test les compare
+exhaustivement.

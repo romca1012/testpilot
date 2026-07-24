@@ -40,7 +40,7 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 
 | | |
 |---|---|
-| Tests | **908 Python · 110 vitest** — tous verts |
+| Tests | **915 Python · 110 vitest** — tous verts |
 | Schéma | `user_version = 24` |
 | Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), re-confirmé au rejeu du 2026-07-23 |
 | Verdicts | **0 fausse accusation par invention de champ** ; 4ᵉ verdict `donnee_invalide` déclenché en réel |
@@ -393,6 +393,22 @@ porteur : **E → A → B → C → D**.
       enfermé, rendu) ; palette de commandes `Ctrl/⌘+K`. ⚠️ L'anneau de focus était à **2,69:1**,
       sous le seuil WCAG de 3:1 — calculé, pas vu. Opaque : **4,31:1**.
       Vérifié **au clavier seul** dans un vrai navigateur.
+
+### Phase 2quater — Audit « ne garder que ce qui sert » *(fait le 2026-07-24 → `docs/LOGIQUE.md`)*
+
+- [x] **Inventaire du mort**, en suivant la chaîne route ← méthode du client ← écran (une route
+      citée par un document n'a pas d'appelant pour autant). Retirés : `useProjectTree.ts`,
+      3 composants jamais montés, 6 méthodes du client, 1 route en doublon.
+      **Gardés à raison** : `/api/health` (exploitation), `logout` (fonctionnalité *manquante*, le
+      bouton a été ajouté), le rapport imprimable (il manquait un lien).
+      ⏳ `PUT /cases/order` (glisser-déposer, décision `0009`) : son écran a disparu — **le
+      supprimer reviendrait à revenir sur une décision produit, c'est ton arbitrage.**
+- [x] **La chaîne des conséquences**, énumérée en un seul endroit et testée. Elle a trouvé
+      **trois défauts** : 🔴 une campagne d'un projet supprimé référençait toujours ses cas (la
+      lancer les aurait **exécutés** contre la vraie application) ; une spécification restait
+      consultable par son identifiant ; la purge d'un projet échouait sur une clé étrangère
+      oubliée — **le même défaut qu'un mois plus tôt, revenu un étage plus haut**.
+- [x] **Carte de la logique** : où vit chaque règle, et pourquoi (`docs/LOGIQUE.md`).
 
 ### Phase 3 — Compléter *(confort, pas essentiel)*
 

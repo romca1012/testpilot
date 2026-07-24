@@ -5,6 +5,7 @@
 // concept qu'on impose ailleurs. Les boutons/onglets non couverts par ce lot mènent à « à venir ».
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { api } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useModuleCreate } from '../lib/useModuleCreate'
 // Couche de données (lot A, 2026-07-24) : plus de `load()` maison ici. Le shell et la page
@@ -247,6 +248,14 @@ function isActive(key: string) {
 function comingSoon(what: string) {
   window.alert(`${what} — à venir.`)
 }
+async function seDeconnecter() {
+  menuOpen.value = false
+  try { await api.logout() } catch { /* déjà déconnecté : le rechargement suffit */ }
+  // Rechargement complet plutôt qu'une navigation : il vide le cache de la couche de données,
+  // sinon les cas du projet resteraient lisibles en mémoire après la déconnexion.
+  window.location.reload()
+}
+
 function switchProject(id: number) {
   menuOpen.value = false
   router.push({ name: 'cases', params: { pid: String(id) } })
@@ -285,6 +294,11 @@ function switchProject(id: number) {
           <RouterLink :to="{ name: 'corbeille', params: { pid } }"
                       class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                       @click="menuOpen = false">Corbeille…</RouterLink>
+          <!-- ⚠️ Le verrou d'instance repose sur un mot de passe PARTAGÉ : sans moyen de quitter
+               sa session, un poste commun reste ouvert au suivant qui s'y assied. La route
+               existait depuis le lot 2 ; aucun écran ne l'appelait. -->
+          <button class="block w-full px-3 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                  @click="seDeconnecter">Se déconnecter</button>
         </div>
       </div>
 

@@ -50,20 +50,6 @@ def _case_count(conn, module_id: int) -> int:
                         (module_id,)).fetchone()["n"]
 
 
-@router.get("/{module_id}/groups", response_model=list[schemas.GroupSummary])
-def list_groups(module_id: int, conn=Depends(get_conn)):
-    """Les spécifications du module — la vue « module = liste de spécifications » (`0022`).
-
-    Volontairement SANS le document (`GroupSummary`) : une liste n'a pas à charger N specs
-    complètes. L'écran d'édition le récupère par `GET /api/groups/{id}`.
-    """
-    if ModuleRepo(conn).get(module_id) is None:
-        raise HTTPException(status_code=404, detail=f"module {module_id} introuvable")
-    return [schemas.GroupSummary(id=r["id"], module_id=r["module_id"], title=r["title"],
-                                 case_count=r.get("case_count", 0))
-            for r in CaseGroupRepo(conn).list_for_module(module_id)]
-
-
 @router.post("/{module_id}/groups", response_model=schemas.GroupDetail, status_code=201)
 def create_group(module_id: int, body: schemas.GroupIn, conn=Depends(get_conn)):
     """Crée une Spécification — un DOCUMENT nommé, et rien d'autre.

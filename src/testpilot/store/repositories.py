@@ -255,6 +255,12 @@ class ProjectRepo:
             cur.execute(f"DELETE FROM cost_ledger      WHERE execution_id IN ({exec_sub})"
                         f"    OR test_case_id IN ({case_sub})", (project_id, project_id))
             cur.execute(f"DELETE FROM execution        WHERE test_case_id IN ({case_sub})", (project_id,))
+            # ⚠️ `test_run_case` : la liaison campagne ↔ cas. Sans elle, le `DELETE FROM test_case`
+            # échoue sur la clé étrangère et TOUTE la purge est annulée. C'est le MÊME défaut que
+            # celui déjà corrigé au niveau du cas en 2026-07 — revenu au niveau du projet, parce
+            # que personne ne tenait la liste des conséquences au même endroit.
+            cur.execute(f"DELETE FROM test_run_case    WHERE case_id IN ({case_sub})", (project_id,))
+            cur.execute("DELETE FROM test_run          WHERE project_id=?", (project_id,))
             cur.execute(f"DELETE FROM review_decision  WHERE test_case_id IN ({case_sub})", (project_id,))
             cur.execute(f"DELETE FROM test_case_version WHERE test_case_id IN ({case_sub})", (project_id,))
             cur.execute(f"DELETE FROM test_case        WHERE module_id IN ({mod_sub})", (project_id,))
@@ -476,8 +482,15 @@ class CaseGroupRepo:
         return int(cur.lastrowid)
 
     def get(self, group_id: int) -> dict | None:
-        row = self.conn.execute(f"SELECT * FROM case_group WHERE id=? AND {_VIVANT}",
-                                (group_id,)).fetchone()
+        # Visibilité HIÉRARCHIQUE, comme partout : une spécification dont le module ou le projet
+        # est à la corbeille n'existe plus pour l'écran. Sans ces jointures, elle restait
+        # accessible par son identifiant — un lien direct rouvrait un document censé avoir disparu.
+        row = self.conn.execute(
+            "SELECT g.* FROM case_group g"
+            " JOIN module m ON g.module_id=m.id"
+            " JOIN project p ON m.project_id=p.id"
+            " WHERE g.id=? AND g.deleted_at='' AND m.deleted_at='' AND p.deleted_at=''",
+            (group_id,)).fetchone()
         return dict(row) if row else None
 
     def list_for_module(self, module_id: int) -> list[dict]:
@@ -1410,8 +1423,10 @@ class RunRepo:
             "SELECT trc.case_id FROM test_run_case trc"
             " JOIN test_case tc ON trc.case_id=tc.id"
             " LEFT JOIN module m ON tc.module_id=m.id"
+            " LEFT JOIN project p ON m.project_id=p.id"
             " WHERE trc.run_id=? AND tc.deleted_at=''"
-            " AND (m.id IS NULL OR m.deleted_at='') ORDER BY trc.case_id", (run_id,))]
+            " AND (m.id IS NULL OR m.deleted_at='')"
+            " AND (p.id IS NULL OR p.deleted_at='') ORDER BY trc.case_id", (run_id,))]
 
     def cases_with_results(self, run_id: int) -> list[dict]:
         """Chaque cas du run + son résultat DANS CE run (la dernière exécution rattachée).

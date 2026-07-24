@@ -151,7 +151,11 @@ def test_api_cycle_complet_creer_lire_editer_supprimer(client):
     gid = created.json()["id"]
     assert created.json()["spec_hash"] == spec_hash("Le document source complet")
 
-    assert client.get(f"/api/modules/{mid}/groups").json()[0]["title"] == "Demande de matériel"
+    # ⚠️ `GET /api/modules/{id}/groups` a été retiré le 2026-07-24 : il faisait doublon avec la
+    # liste du PROJET, qui rend la même chose et porte `module_id`. Aucun écran ne l'appelait.
+    pid = client.get("/api/projects").json()[0]["id"]
+    specs = client.get(f"/api/projects/{pid}/groups").json()
+    assert [g for g in specs if g["module_id"] == mid][0]["title"] == "Demande de matériel"
 
     detail = client.get(f"/api/groups/{gid}")
     assert detail.status_code == 200
@@ -233,6 +237,9 @@ def test_api_la_liste_ne_transporte_PAS_les_documents(client):
     mid = _module(client)
     client.post(f"/api/modules/{mid}/groups", json={"title": "Demande", "spec_content": "x" * 5000})
 
-    row = client.get(f"/api/modules/{mid}/groups").json()[0]
+    # Même remarque : la liste des spécifications passe par le projet depuis le 2026-07-24.
+    pid = client.get("/api/projects").json()[0]["id"]
+    row = [g for g in client.get(f"/api/projects/{pid}/groups").json()
+           if g["module_id"] == mid][0]
 
     assert "spec_content" not in row

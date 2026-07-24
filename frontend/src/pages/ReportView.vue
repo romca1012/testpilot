@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, type Artifacts, type TestReport } from '../lib/api'
 import { formatCost, formatDuration } from '../lib/format'
@@ -27,6 +27,7 @@ const artefacts = ref<Artifacts | null>(null)
 function lienArtefact(nom: string) {
   return api.artifactUrl(route.params.id as string, nom)
 }
+const lienImprimable = computed(() => api.rapportImprimable(route.params.id as string))
 function taille(octets: number) {
   return octets < 1024 ? `${octets} o` : `${Math.round(octets / 1024)} ko`
 }
@@ -62,7 +63,13 @@ onMounted(async () => {
     <template v-else-if="report">
       <div>
         <h1 class="text-2xl font-semibold tracking-tight">{{ report.title }}</h1>
-        <p class="mt-1 text-sm text-muted-foreground">Rapport d'exécution · v{{ report.version_number }}</p>
+        <p class="mt-1 text-sm text-muted-foreground">
+          Rapport d'exécution · v{{ report.version_number }}
+          <!-- Version imprimable / partageable : elle existait côté serveur depuis toujours,
+               sans qu'aucun écran n'y mène. -->
+          · <a :href="lienImprimable" target="_blank" rel="noopener"
+               class="text-primary hover:underline">version imprimable</a>
+        </p>
         <!-- Contre QUOI ce verdict a été rendu. Un « conforme » sans sa cible ne prouve rien —
              et sur un serveur partagé, plusieurs instances coexistent. -->
         <p v-if="report.target_url" class="mt-1 text-sm text-muted-foreground">
