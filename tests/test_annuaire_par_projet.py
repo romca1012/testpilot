@@ -135,7 +135,12 @@ def test_explorer_SANS_connexion_est_refuse_AVANT_de_lancer_un_navigateur(client
     r = client.post(f"/api/projects/{pid}/exploration")
 
     assert r.status_code == 422
-    assert "URL de connexion" in r.json()["detail"]
+    # Depuis le 2026-07-24, la garde couvre les QUATRE éléments (adresse, base, utilisateur, mot
+    # de passe) et non plus la seule URL : explorer avec une connexion partielle produisait un
+    # annuaire mesuré sur l'instance par défaut de la machine — un modèle qui ne décrit PAS ce
+    # projet, et que rien à l'écran ne distinguait d'une vraie mesure.
+    assert "l'adresse de l'application" in r.json()["detail"]
+    assert "incomplète" in r.json()["detail"]
 
 
 def test_deux_explorations_simultanees_sont_refusees(client, monkeypatch):

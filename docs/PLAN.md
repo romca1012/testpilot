@@ -1,6 +1,6 @@
 # PLAN — état réel et route jusqu'au produit fini
 
-> **Version 2 — 2026-07-21 (soir).** Document de référence **vivant** : il dit ce qui EST vrai
+> **Version 3 — 2026-07-24.** Document de référence **vivant** : il dit ce qui EST vrai
 > aujourd'hui, ce qui est DÉCIDÉ, et ce qui RESTE. À mettre à jour à chaque jalon.
 >
 > ⚠️ **Pourquoi ce fichier existe.** Un plan validé oralement (le « A/B/C ») s'est **perdu entre
@@ -31,18 +31,21 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
    →  suivre la qualité dans le temps (onglet « Qualité de génération »)
 ```
 
-**Chaque maillon est prouvé en réel**, pas seulement testé. Coût mesuré : **~0,11 $ par cas**
+**Chaque maillon est prouvé en réel**, pas seulement testé. Coût mesuré : **~0,08 à 0,11 $ par cas**
 (≈ 10 % de la cible du §9).
 
 ### Les chiffres du jour
 
+*(Vérifiés le 2026-07-24 en relançant les deux suites.)*
+
 | | |
 |---|---|
-| Tests | **665 Python · 75 vitest** |
-| Schéma | `user_version = 16` |
-| Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), **90 %** cumulé projet |
-| Coût d'un cas (analyse + génération) | ~0,11 $ |
-| Annuaire projet 1 | 37 routes · 373 champs · **373 rôles · 287 libellés · 36 règles de saisie** |
+| Tests | **827 Python · 75 vitest** — tous verts |
+| Schéma | `user_version = 20` |
+| Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), re-confirmé au rejeu du 2026-07-23 |
+| Verdicts | **0 fausse accusation par invention de champ** ; 4ᵉ verdict `donnee_invalide` déclenché en réel |
+| Coût d'un cas (analyse + génération) | **~0,08 à 0,11 $** — modèle **Sonnet 4.6** |
+| Annuaire projet 1 | 37 routes · 373 champs · **373 rôles · 287 libellés · 21 règles de saisie en français** |
 
 ### La progression, mesurée (et non supposée)
 
@@ -84,10 +87,24 @@ Tant que ce chiffre n'est pas tombé, le 88 % reste vrai sur l'axe *exécution* 
 
 ---
 
-## 2bis. 🔴 PROPOSITION D'ARCHITECTURE — *en attente d'arbitrage du porteur*
+## 2bis. ✅ ARCHITECTURE — *arbitrée et LIVRÉE (22-23/07), inscrite au brief le 24/07*
 
-> **Statut : PROPOSÉE, PAS ACTÉE.** Rien n'a été implémenté. Ce chapitre existe pour que la
-> réflexion ne se perde pas — c'est le plus gros changement envisagé depuis le début.
+> **Statut au 2026-07-24 : LIVRÉE pour l'essentiel.** Composants **1** (annuaire enrichi), **A**
+> (lire la page au lieu d'accuser), **2** (résolveur déterministe), **3** (vérification par l'état
+> + réponse serveur) et **4** (4ᵉ verdict) sont en production dans l'outil. **Restent** : le
+> **contrat de connecteur** (repoussé au 2ᵉ connecteur, décision du 24/07) et le **validateur
+> pré-exécution** (en filet).
+>
+> **Forme retenue, plus précise que la proposition initiale** : le step d'intention est le chemin
+> **imposé sur le scénario nominal** ; l'agent nomme encore un champ quand ce champ **est le sujet
+> du test** (scénario négatif) ou quand l'annuaire ne couvre pas la situation. Le brief porte cette
+> rédaction (§6, amendement du 2026-07-24) — pas la version absolue « le LLM ne nomme plus jamais
+> un champ », qui aurait promis plus que le produit ne tient.
+>
+> ⚠️ **Ce que ça a changé, mesuré** : le taux technique **n'a pas bougé** (88 % avant, 88 % après).
+> Le gain est ailleurs — zéro fausse accusation par invention, et un verdict honnête là où l'outil
+> accusait l'application à tort. *Ne pas raconter cette architecture comme un gain de fiabilité
+> technique : ce serait faux.*
 
 ### Le problème qu'elle résout
 
@@ -255,23 +272,64 @@ revienne.
 - [x] **Élargir le banc à 8 specs** — n=4 n'était pas un chiffre défendable.
 - [x] **`demande_avoir`** — résolu : l'agent inventait l'identifiant de route.
 - [x] **`sinistre_client`** — résolu : `leave_field_empty` aveugle au `<select>`.
-- [ ] **Remesurer** après ces deux derniers correctifs (le banc dira s'ils portent).
-- [ ] 🔴 **ARBITRER la proposition d'architecture du §2bis** — c'est la décision qui commande la
-      suite. Tant qu'elle n'est pas tranchée, on continue de corriger cause par cause.
-- [ ] **Non instrumenté** : les tests trouvent des écarts fonctionnels (`non_conforme`) — sont-ils
-      RÉELS, ou dus à des assertions trop strictes ? Le §2bis y répond (vérification par l'état
-      + 4ᵉ verdict), mais l'ampleur du faux positif n'est **toujours pas mesurée**.
+- [x] **Remesurer** — fait le 2026-07-23 : 88 % technique, 0 fausse accusation par invention.
+- [x] 🔴 **ARBITRER la proposition d'architecture du §2bis** — arbitrée ET livrée (22-23/07).
+- [x] **Le doute sur les `non_conforme`** — tranché : une partie n'était pas un écart de
+      l'application mais **notre donnée refusée**. D'où le 4ᵉ verdict. Le reste (« l'app rejette en
+      silence une saisie valide ») est désormais **nommé** au lieu d'être converti en défaut.
+- [x] **Auditer le brief contre le code réel** — fait le 2026-07-24 : **17 écarts** relevés, tranchés
+      un par un par le porteur, **11 amendements** inscrits au journal du brief. Le travail qui en
+      découle est en tête de `BACKLOG.md`.
+- [ ] **Mettre en œuvre le §5bis du brief** — « zéro verdict non concluant », 6 mécanismes.
+      Le premier (la **règle apprise à chaque refus**) est le plus rentable : il attaque les règles
+      JavaScript, seul angle mort structurel de l'annuaire.
 
 ### Phase 2 — Rendre déployable
 
-- [ ] 🔴 **Mot de passe de connexion en clair** dans SQLite — **bloquant avant tout usage client**.
-- [ ] **Repli silencieux vers `localhost:10017` / `admin`** quand un projet n'a pas de connexion :
-      un run peut réussir contre **une autre application que celle affichée**.
-- [ ] **La cible n'est pas tracée dans l'historique** : `execution` n'enregistre aucune URL — un
-      rapport ne dit pas contre quoi il a tourné.
+> **Cible arrêtée le 2026-07-24** : un **serveur interne**, **plusieurs testeurs**, pour des tests
+> complets — même si les verdicts ne sont pas encore tous concluants. L'ordre suivi est : lot 1
+> *savoir contre quoi on teste* → lot 2 *sortir de la machine* → lot 3 *rendre les résultats non
+> concluants exploitables* → lot 4 *écran Spécification*.
+
+- [x] **Repli silencieux vers `localhost:10017` / `admin`** — **levé le 2026-07-24**. Un projet dont
+      la connexion est incomplète (adresse, base, utilisateur ou mot de passe) fait désormais
+      **refuser** le lancement d'un cas, d'une campagne, d'une exploration et d'une génération, avec
+      un message qui dit **quoi corriger**. `project_env` reste un traducteur sans jugement pour la
+      ligne de commande ; `verifier_connexion` est la garde de l'API. *Un test qui figeait le repli
+      comme comportement voulu a été réécrit — il documentait le défaut.*
+- [x] **La cible n'est plus absente de l'historique** — **fait le 2026-07-24** (migration 20).
+      `execution` porte `target_url` / `target_database` / `target_username` — **jamais le mot de
+      passe** — écrits à l'ouverture de la ligne, exposés par l'API, affichés dans le rapport, la
+      liste des exécutions et l'onglet Tests & Résultats. Les exécutions antérieures restent vides :
+      *« on ne sait pas »* est la vérité ; une cible reconstituée depuis la configuration du jour
+      serait une supposition présentée comme un fait.
+- [ ] 🔴 **Mot de passe de connexion en clair** dans SQLite — **bloquant**, et plus seulement « avant
+      usage client » : la cible est un serveur interne partagé (lot 2).
+- [ ] **Verrou d'accès minimal** (mot de passe d'instance) — pas le système de rôles, qui est hors
+      V1 : dès que l'outil quitte un poste, il est joignable par qui passe sur le réseau.
+- [ ] **Procédure de déploiement** : build du front (déjà servi par l'API), navigateurs Playwright,
+      emplacement de `data/`, sauvegarde. ⚠️ **README et `.env.example` périmés** — le README annonce
+      encore l'Incrément 0, « frontend hors périmètre » et la relecture obligatoire ; le `.env`
+      d'exemple porte le budget de 50 € retiré du produit.
+- [ ] **Qui a fait quoi** : sans comptes, l'auteur d'un cas et le lanceur d'une campagne sont
+      inconnus sur un serveur partagé. Palliatif à quelques heures — un nom saisi à l'arrivée, qui
+      alimente les champs `author` déjà présents — à décider au lot 2.
 - [ ] **Une seule identité pour trois usages** (navigateur, RPC de test, RPC d'exploration).
       Conséquence produit : impossible de tester « un employé ne doit pas voir la page admin » —
       ça bloque toute une famille de cas « erreur / permission ».
+
+### Phase 2bis — Ce que le brief a tranché le 2026-07-24 *(détail en tête de `BACKLOG.md`)*
+
+- [ ] 🔴 **Tableau de bord « modules à retester »** — le JTBD 2, la promesse qui justifie l'outil.
+      Sans lui, un critère du §9 reste non observable.
+- [ ] **Template de spécification** fourni à l'utilisateur.
+- [ ] **Artefacts bruts d'exécution conservés** — un test qui passait reste consultable avec ce que
+      la machine a vu.
+- [ ] **Provenance d'un résultat (exécuté / déclaré)** — promis au brief le 2026-07-20, jamais bâti.
+- [ ] **Mode dev / mode utilisateur.**
+- [ ] **Temps et taux de verdicts concluants** affichés au banc.
+- **Hors V1, arbitré** : comptes/rôles/client externe (prérequis déploiement client) · Jira, charge,
+  sécurité, CI-CD (V2) · abstraction multi-connecteurs (au 2ᵉ connecteur).
 
 ### Phase 3 — Compléter *(confort, pas essentiel)*
 

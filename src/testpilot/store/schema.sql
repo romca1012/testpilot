@@ -201,6 +201,15 @@ CREATE TABLE IF NOT EXISTS execution (
     error_message     TEXT    NOT NULL DEFAULT '',
     trigger           TEXT    NOT NULL DEFAULT 'first_run'
                                 CHECK (trigger IN ('first_run', 'rerun')),
+    -- CONTRE QUOI ce test a tourné (migration 20). Un rapport qui ne nomme pas l'application
+    -- qu'il a jugée ne prouve rien : deux runs verts du même cas, l'un contre la recette et
+    -- l'autre contre une démo, étaient indiscernables. **Jamais le mot de passe** — un secret
+    -- n'a rien à faire dans une ligne d'historique qu'on lit, exporte et affiche.
+    -- Vide sur les exécutions antérieures à la migration : « on ne sait pas » est la vérité,
+    -- une cible devinée depuis la configuration du jour serait un mensonge.
+    target_url        TEXT    NOT NULL DEFAULT '',
+    target_database   TEXT    NOT NULL DEFAULT '',
+    target_username   TEXT    NOT NULL DEFAULT '',
     started_at        TEXT    NOT NULL,
     FOREIGN KEY (test_case_id) REFERENCES test_case(id),
     FOREIGN KEY (version_id)   REFERENCES test_case_version(id)

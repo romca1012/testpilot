@@ -13,7 +13,7 @@ import time
 
 from testpilot import config
 from testpilot.api.services import repair_service
-from testpilot.connectors.runtime_env import project_env
+from testpilot.connectors.runtime_env import ConnexionIncomplete, cible_de, verifier_connexion
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.execution.executor import Executor
 from testpilot.store.db import get_initialized_db
@@ -44,8 +44,15 @@ class RunError(Exception):
 
     def __init__(self, code: str, detail: str):
         super().__init__(detail)
-        self.code = code       # not_found | no_version | needs_review
+        self.code = code       # not_found | no_version | needs_review | no_connection
         self.detail = detail
+
+
+def project_du_cas(conn, case_id: int) -> dict | None:
+    """Le PROJET auquel appartient le cas — porteur de la connexion (décision 0005)."""
+    case = CaseRepo(conn).get(case_id)
+    project_id = (case or {}).get("project_id")
+    return ProjectRepo(conn).get(project_id) if project_id else None
 
 
 def trigger_run(conn, case_id: int) -> tuple[int, str, int, int]:
@@ -61,9 +68,20 @@ def trigger_run(conn, case_id: int) -> tuple[int, str, int, int]:
     if not gate.allowed:
         raise RunError("needs_review", gate.reason)
 
+    # ⚠️ **Savoir contre quoi on teste, AVANT de tester** (2026-07-24). Sans connexion complète, le
+    # runtime retombait sur la configuration globale de la machine : l'écran montrait un projet, le
+    # navigateur en testait un autre, et le résultat était faux **sans laisser de trace**. On
+    # refuse, et on dit quoi corriger.
+    project = project_du_cas(conn, case_id)
+    try:
+        verifier_connexion(project)
+    except ConnexionIncomplete as err:
+        raise RunError("no_connection", err.message()) from err
+
     execs = ExecutionRepo(conn)
     trigger = "rerun" if execs.list_for_case(case_id) else "first_run"
-    eid = execs.create(test_case_id=case_id, version_id=version_id, trigger=trigger)
+    eid = execs.create(test_case_id=case_id, version_id=version_id, trigger=trigger,
+                       cible=cible_de(project))
     _RUNNING.add(eid)
     # feature_slug = nom du .feature (technique), distinct du module métier (§7 / décision 0004).
     return eid, case["feature_slug"], case_id, version_id
@@ -73,13 +91,14 @@ def resolve_connection(conn, case_id: int) -> dict[str, str]:
     """Connexion (variables d'env) du PROJET auquel appartient le cas.
 
     Le run doit taper l'application du projet affiché, pas la config globale — sinon
-    l'interface promettrait un multi-projet que le runtime ne tiendrait pas. Vide si le
-    projet n'a pas de connexion saisie → repli sur la config globale.
+    l'interface promettrait un multi-projet que le runtime ne tiendrait pas.
+
+    ⚠️ **Lève si la connexion est incomplète** (2026-07-24), au lieu de rendre un dictionnaire vide
+    qui laissait la configuration globale s'appliquer en silence. Le garde est déjà passé au
+    déclenchement ; celui-ci est le second verrou, sur le chemin de fond — mieux vaut une erreur
+    technique explicite qu'un verdict obtenu contre la mauvaise application.
     """
-    case = CaseRepo(conn).get(case_id)
-    project_id = (case or {}).get("project_id")
-    project = ProjectRepo(conn).get(project_id) if project_id else None
-    return project_env(project)
+    return verifier_connexion(project_du_cas(conn, case_id))
 
 
 def resolve_project_id(conn, case_id: int) -> int | None:
@@ -132,10 +151,12 @@ def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str
 
 def _maybe_repair(conn, *, case_id: int, version_id: int, module_name: str, outcome, runner):
     """Répare si le gate l'a autorisé. Chaque tentative rejouée = une nouvelle EXÉCUTION (B)."""
+    cible = cible_de(project_du_cas(conn, case_id))
+
     def run_once(new_version_id: int):
         """Rejoue le module après une correction, dans sa PROPRE ligne d'exécution."""
         eid = ExecutionRepo(conn).create(test_case_id=case_id, version_id=new_version_id,
-                                         trigger="rerun")
+                                         trigger="rerun", cible=cible)
         return _execute_and_persist(conn, eid, case_id, module_name, runner)
 
     connector = _connector_for(conn, case_id)

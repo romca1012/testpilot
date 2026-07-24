@@ -122,10 +122,10 @@ def test_resolve_connection_depuis_le_cas(conn, monkeypatch):
 
 def test_resolve_connection_isole_deux_projets(conn):
     """Deux projets = deux instances : chaque cas doit viser la sienne."""
-    p1 = ProjectRepo(conn).create(name="App A", connector_type="odoo",
-                                  base_url="http://a:8069", database="db_a")
-    p2 = ProjectRepo(conn).create(name="App B", connector_type="odoo",
-                                  base_url="http://b:8069", database="db_b")
+    p1 = ProjectRepo(conn).create(name="App A", connector_type="odoo", base_url="http://a:8069",
+                                  database="db_a", username="u", password="p")
+    p2 = ProjectRepo(conn).create(name="App B", connector_type="odoo", base_url="http://b:8069",
+                                  database="db_b", username="u", password="p")
     m1 = ModuleRepo(conn).create(project_id=p1, name="M")
     m2 = ModuleRepo(conn).create(project_id=p2, name="M")
     c1 = CaseRepo(conn).create(title="A", module_id=m1, feature_slug="a")
@@ -135,11 +135,22 @@ def test_resolve_connection_isole_deux_projets(conn):
     assert run_service.resolve_connection(conn, c2)["ODOO_DB"] == "db_b"
 
 
-def test_resolve_connection_projet_sans_connexion_retombe_sur_config(conn):
+def test_resolve_connection_projet_sans_connexion_REFUSE(conn):
+    """⚠️ **Ce test disait l'inverse jusqu'au 2026-07-24** : il figeait le repli sur la config
+    globale comme un comportement voulu (« → config globale »).
+
+    C'était le plus dangereux des défauts connus : l'écran affichait un projet, le navigateur
+    testait l'instance par défaut de la machine, et **rien ne pouvait le trahir** — une campagne
+    verte contre la mauvaise application. Le repli devient un refus explicite ; `project_env`
+    garde la traduction sans jugement pour la ligne de commande (test ci-dessus).
+    """
+    from testpilot.connectors.runtime_env import ConnexionIncomplete
+
     pid = ProjectRepo(conn).create(name="Sans connexion")  # aucun paramètre saisi
     mid = ModuleRepo(conn).create(project_id=pid, name="M")
     cid = CaseRepo(conn).create(title="C", module_id=mid, feature_slug="c")
-    assert run_service.resolve_connection(conn, cid) == {}  # → config globale
+    with pytest.raises(ConnexionIncomplete):
+        run_service.resolve_connection(conn, cid)
 
 
 # ── Connecteur d'exploration (génération) ─────────────────────────────────────

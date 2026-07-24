@@ -107,6 +107,11 @@ onMounted(async () => {
             <div class="text-xs text-muted-foreground truncate">
               <template v-if="r.module_name">{{ r.module_name }} · </template>{{ formatDate(r.started_at) }} · {{ formatDuration(r.duration_seconds) }}
             </div>
+            <!-- Contre QUOI ce résultat a été obtenu. Sur un serveur partagé, deux campagnes du
+                 même cas contre deux instances différentes étaient indiscernables ici. -->
+            <div v-if="r.target_url" class="text-[11px] text-muted-foreground/70 truncate">
+              contre {{ r.target_url }}<template v-if="r.target_database"> · {{ r.target_database }}</template>
+            </div>
           </div>
 
           <StatusPair :execution-status="r.execution_status" :functional-status="r.functional_status" />

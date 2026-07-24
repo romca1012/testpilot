@@ -16,7 +16,8 @@ from testpilot.store.repositories import ProjectRepo, RunRepo
 
 router = APIRouter(tags=["runs"])
 
-_LAUNCH_STATUS = {"not_found": 404, "empty": 422, "already_running": 409, "archived": 409}
+_LAUNCH_STATUS = {"not_found": 404, "empty": 422, "already_running": 409, "archived": 409,
+                  "no_connection": 409}
 
 
 def _summary(run: dict, case_count: int) -> schemas.RunSummary:

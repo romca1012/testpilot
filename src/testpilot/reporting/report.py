@@ -88,6 +88,13 @@ class TestReport:
     generated_at: str = ""
     # Observation seule (budget mensuel = suivi, ne bloque rien en Inc. 0).
     monthly_cost_usd: float | None = None
+    # CONTRE QUOI ce verdict a été rendu (2026-07-24). Un rapport qui ne nomme pas l'application
+    # qu'il a jugée ne prouve rien : « conforme » n'a de sens que rapporté à une cible. Vide sur
+    # les exécutions antérieures à la migration 20 — et l'affichage le dit, plutôt que de laisser
+    # croire que le champ n'existe pas. **Jamais le mot de passe.**
+    target_url: str = ""
+    target_database: str = ""
+    target_username: str = ""
 
     @property
     def needs_human_confirmation(self) -> bool:
@@ -114,7 +121,9 @@ def build_report(verdict: CaseVerdict, *, module_name: str, title: str = "",
                  cost_source: str = "estimated", iterations: int = 0,
                  duration_seconds: float = 0.0, repairs: list | None = None,
                  monthly_cost_usd: float | None = None,
-                 generated_at: str | None = None) -> TestReport:
+                 generated_at: str | None = None,
+                 target_url: str = "", target_database: str = "",
+                 target_username: str = "") -> TestReport:
     """Construit un ``TestReport`` depuis un ``CaseVerdict`` et les métadonnées du run.
 
     ``repairs`` : tentatives dont on veut tracer l'origine et l'éventuelle confirmation en
@@ -152,6 +161,7 @@ def build_report(verdict: CaseVerdict, *, module_name: str, title: str = "",
         duration_seconds=round(duration_seconds, 3),
         generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
         monthly_cost_usd=(round(monthly_cost_usd, 6) if monthly_cost_usd is not None else None),
+        target_url=target_url, target_database=target_database, target_username=target_username,
     )
 
 

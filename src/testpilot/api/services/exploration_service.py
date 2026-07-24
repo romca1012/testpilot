@@ -93,12 +93,15 @@ def start_exploration(conn, project_id: int) -> tuple[str, dict]:
     projet = ProjectRepo(conn).get(project_id)
     if projet is None:
         raise ExplorationError("not_found", f"projet {project_id} introuvable")
-    if not (projet.get("base_url") or "").strip():
-        # On refuse AVANT de lancer un navigateur : sans adresse, le crawl échouerait après
-        # plusieurs secondes sur une erreur réseau incompréhensible. Le message dit quoi faire.
-        raise ExplorationError(
-            "no_connection",
-            "ce projet n'a pas d'URL de connexion — renseignez-la avant d'explorer")
+    # On refuse AVANT de lancer un navigateur : sans connexion complète, le crawl échouerait après
+    # plusieurs secondes sur une erreur réseau incompréhensible — ou pire, explorerait l'instance
+    # par défaut de la machine et écrirait un annuaire qui ne décrit PAS ce projet (2026-07-24).
+    # Le message dit quoi corriger.
+    from testpilot.connectors.runtime_env import ConnexionIncomplete, verifier_connexion
+    try:
+        verifier_connexion(projet)
+    except ConnexionIncomplete as err:
+        raise ExplorationError("no_connection", err.message()) from err
     if job_en_cours(project_id):
         # Deux crawls simultanés écriraient le même fichier : le dernier gagnerait, et la mesure
         # rendue serait un mélange de deux passages.

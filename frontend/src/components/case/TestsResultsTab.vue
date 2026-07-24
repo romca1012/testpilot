@@ -82,6 +82,10 @@ function openPlan(e: ExecutionSummary) {
               <div class="text-xs text-muted-foreground mt-0.5">
                 Déroulement : {{ executionView(e.execution_status).label }} · {{ e.scenarios_passed }}/{{ e.scenarios_total }} scénarios · {{ Math.round(e.duration_seconds) }} s
               </div>
+              <!-- La cible du run : un verdict ne veut rien dire sans l'application qu'il a jugée. -->
+              <div v-if="e.target_url" class="text-[11px] text-muted-foreground/70 mt-0.5 truncate">
+                contre {{ e.target_url }}<template v-if="e.target_database"> · {{ e.target_database }}</template>
+              </div>
             </div>
             <div class="text-right shrink-0 hidden sm:block">
               <!-- Plan de test = Exécution nommée transverse (§7). Le nom quand il existe, un lien

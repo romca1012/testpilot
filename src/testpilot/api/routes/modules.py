@@ -34,7 +34,7 @@ router = APIRouter(prefix="/api/modules", tags=["modules"])
 
 # 409 pour `duplicate` : la requête est bien formée, c'est l'état du référentiel qui s'y oppose.
 _ERROR_STATUS = {"not_found": 404, "invalid_spec": 422, "duplicate": 409,
-                 "invalid_metier": 422, "invalid_state": 409}
+                 "invalid_metier": 422, "invalid_state": 409, "no_connection": 409}
 
 
 @router.get("/{module_id}", response_model=schemas.ModuleDetail)

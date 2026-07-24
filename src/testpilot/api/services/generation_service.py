@@ -71,6 +71,16 @@ def start_generation(conn, module_id: int, *, spec_content: str, title: str = ""
     if not (spec_content or "").strip():
         raise GenerationError("invalid_spec", "la spécification est vide")
 
+    # ⚠️ La génération OBSERVE l'application (dry-run, smoke-check) : sans connexion complète, elle
+    # observerait l'instance par défaut de la machine et écrirait un test taillé pour elle
+    # (2026-07-24). On refuse avant le premier appel LLM — donc avant la première dépense.
+    from testpilot.connectors.runtime_env import ConnexionIncomplete, verifier_connexion
+    from testpilot.store.repositories import ProjectRepo
+    try:
+        verifier_connexion(ProjectRepo(conn).get(module["project_id"]))
+    except ConnexionIncomplete as err:
+        raise GenerationError("no_connection", err.message()) from err
+
     label = (title or "").strip() or f"Cas {module['name']}"
     # Titre unique DANS le module, vérifié AVANT de lancer la tâche de fond : sinon la
     # génération partirait (appel LLM payant, plusieurs minutes) pour finir en job « failed »
@@ -265,6 +275,16 @@ def start_automation(conn, case_id: int) -> tuple[str, dict]:
     case = CaseRepo(conn).get(case_id)
     if case is None:
         raise GenerationError("not_found", f"cas {case_id} introuvable")
+
+    # Même garde que la génération : écrire un test technique suppose d'observer l'application
+    # DU projet, pas celle que la machine a par défaut (2026-07-24).
+    from testpilot.connectors.runtime_env import ConnexionIncomplete, verifier_connexion
+    from testpilot.store.repositories import ProjectRepo
+    try:
+        verifier_connexion(ProjectRepo(conn).get(case.get("project_id")))
+    except ConnexionIncomplete as err:
+        raise GenerationError("no_connection", err.message()) from err
+
     version = VersionRepo(conn).get(case.get("current_version_id")) or {}
     try:
         steps = [str(s) for s in _json.loads(version.get("test_steps") or "[]")]

@@ -6,9 +6,23 @@ Le harnais Behave (``behave_runtime/environment.py``) lit sa connexion dans l'en
 
 Règles :
 - le mapping dépend du ``connector_type`` (architecture multi-connecteurs, §8) ;
-- une valeur vide n'est PAS propagée : le runtime retombe alors sur la config globale
-  (compatibilité avec les projets sans connexion saisie) ;
+- une valeur vide n'est PAS propagée : le runtime retombe alors sur la config globale ;
 - ``ODOO_ENV`` n'est jamais produit ici — le garde-fou anti-production reste intact.
+
+⚠️ **Le repli sur la config globale est un PIÈGE quand il est silencieux** (levé le 2026-07-24).
+Un projet sans connexion saisie faisait tourner ses tests contre ``ODOO_URL`` par défaut —
+``localhost:10017`` / ``admin``. L'interface affichait un projet, le navigateur en testait un
+autre, **et rien à l'écran ne pouvait le trahir** : une campagne entière pouvait être verte
+contre la mauvaise application. C'est le seul défaut connu qui rend les résultats faux **sans
+laisser de trace** ; tous les autres se voient.
+
+D'où la séparation :
+
+- :func:`project_env` reste le **traducteur pur** (projet → variables), sans jugement. La CLI
+  l'utilise ainsi : là, la connexion vient délibérément du ``.env`` de la machine.
+- :func:`verifier_connexion` est la **garde**, appelée par l'API avant tout geste qui touche
+  l'application d'un projet (lancer un cas, lancer une campagne, explorer, générer). Elle
+  **refuse** au lieu de retomber en silence.
 """
 
 from __future__ import annotations
@@ -26,6 +40,68 @@ _MAPPINGS: dict[str, dict[str, str]] = {
         "ODOO_PASSWORD": "password",
     },
 }
+
+# Libellés MÉTIER des colonnes manquantes — le message va à un QA, pas à un développeur (§8 du
+# brief : jamais un nom de colonne brut en premier plan).
+_LIBELLES = {
+    "base_url": "l'adresse de l'application",
+    "database": "la base de données",
+    "username": "l'utilisateur",
+    "password": "le mot de passe",
+}
+
+
+class ConnexionIncomplete(Exception):
+    """La connexion du projet ne permet pas de savoir contre QUOI on testerait.
+
+    Porte la liste des éléments manquants pour que l'écran dise quoi corriger, et non un
+    « impossible de lancer » sans suite.
+    """
+
+    def __init__(self, project: dict | None, manquants: list[str]):
+        self.manquants = manquants
+        self.project_name = (project or {}).get("name") or "ce projet"
+        super().__init__(self.message())
+
+    def message(self) -> str:
+        details = ", ".join(self.manquants)
+        return (f"La connexion du projet « {self.project_name} » est incomplète : {details}. "
+                f"Renseignez-la dans l'écran Projets avant de lancer un test — sans elle, "
+                f"l'outil ne sait pas contre quelle application il travaille.")
+
+
+def verifier_connexion(project: dict | None) -> dict[str, str]:
+    """Rend les variables d'environnement du projet, ou **lève** si elles ne suffisent pas.
+
+    Jamais de repli silencieux : mieux vaut un refus explicite qu'un résultat obtenu contre une
+    application que personne n'a choisie.
+    """
+    if not project:
+        raise ConnexionIncomplete(project, ["aucun projet rattaché"])
+
+    connector = (project.get("connector_type") or "").lower()
+    mapping = _MAPPINGS.get(connector)
+    if mapping is None:
+        raise ConnexionIncomplete(
+            project, [f"le type de connecteur « {connector or 'non renseigné'} » n'est pas géré"])
+
+    manquants = [_LIBELLES.get(colonne, colonne)
+                 for colonne in mapping.values() if not project.get(colonne)]
+    if manquants:
+        raise ConnexionIncomplete(project, manquants)
+
+    return project_env(project)
+
+
+def cible_de(project: dict | None) -> dict[str, str]:
+    """Ce contre quoi on va tourner, pour l'INSCRIRE dans l'historique — **jamais le mot de
+    passe**. Un rapport qui ne dit pas quelle application il a jugée ne prouve rien."""
+    p = project or {}
+    return {
+        "target_url": str(p.get("base_url") or ""),
+        "target_database": str(p.get("database") or ""),
+        "target_username": str(p.get("username") or ""),
+    }
 
 
 def project_env(project: dict | None) -> dict[str, str]:

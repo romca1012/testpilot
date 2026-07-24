@@ -17,7 +17,7 @@ from testpilot import config
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 19
+_SCHEMA_VERSION = 20
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -101,6 +101,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_18_corriger_provenance_enveloppes(conn)
     if version < 19:
         _migrate_19_verdict_donnee_invalide(conn)
+    if version < 20:
+        _migrate_20_execution_cible(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -688,6 +690,30 @@ def _migrate_19_verdict_donnee_invalide(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA foreign_keys = ON")
     finally:
         conn.isolation_level = old_iso
+
+
+def _migrate_20_execution_cible(conn: sqlite3.Connection) -> None:
+    """Inscrit dans l'exécution **contre quoi** le test a tourné (2026-07-24).
+
+    ⚠️ **Un rapport qui ne dit pas quelle application il a jugée ne prouve rien.** La table
+    `execution` ne portait aucune trace de la cible : deux campagnes vertes du même cas, l'une
+    contre la recette et l'autre contre une instance de démo, étaient **indiscernables** dans
+    l'historique. Sur un serveur partagé par plusieurs testeurs, c'est le genre d'ambiguïté qui
+    ruine la confiance dans l'ensemble du référentiel.
+
+    Trois colonnes, jamais le **mot de passe** : un secret n'a rien à faire dans une ligne
+    d'historique qu'on lit, exporte et affiche.
+
+    Les exécutions ANTÉRIEURES restent vides — et c'est volontaire : on ne **reconstitue** pas une
+    cible qu'on n'a pas mesurée. Un champ vide se lit « on ne sait pas » ; une valeur devinée
+    depuis la configuration d'aujourd'hui se lirait « c'était ça », ce qui serait un mensonge —
+    exactement le motif « affiché ≠ réel » que le projet refuse partout (et la leçon de la
+    migration 17, qui avait classé sur l'état instantané au lieu d'une signature stable).
+    """
+    cols = _column_names(conn, "execution")
+    for nom in ("target_url", "target_database", "target_username"):
+        if nom not in cols:
+            conn.execute(f"ALTER TABLE execution ADD COLUMN {nom} TEXT NOT NULL DEFAULT ''")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

@@ -158,6 +158,12 @@ class ExecutionSummary(BaseModel):
     case_title: str | None = None
     module_name: str | None = None
     suite_name: str | None = None
+    # CONTRE QUOI ce test a tourné (migration 20). Vide sur les exécutions antérieures : « on ne
+    # sait pas » est la vérité, une cible reconstituée depuis la configuration du jour serait un
+    # mensonge. **Jamais le mot de passe.**
+    target_url: str = ""
+    target_database: str = ""
+    target_username: str = ""
 
 
 class CaseDetail(BaseModel):
@@ -568,6 +574,9 @@ def execution_summary(row: dict, *, running: bool = False) -> ExecutionSummary:
         error_message=row.get("error_message", "") or "",
         case_title=row.get("case_title"), module_name=row.get("module_name"),
         suite_name=row.get("suite_name"),
+        target_url=row.get("target_url", "") or "",
+        target_database=row.get("target_database", "") or "",
+        target_username=row.get("target_username", "") or "",
     )
 
 

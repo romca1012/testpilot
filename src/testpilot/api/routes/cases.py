@@ -22,7 +22,8 @@ from testpilot.verdict import review_gate
 
 router = APIRouter(prefix="/api/cases", tags=["cases"])
 
-_RUN_ERROR_STATUS = {"not_found": 404, "no_version": 409, "needs_review": 409}
+_RUN_ERROR_STATUS = {"not_found": 404, "no_version": 409, "needs_review": 409,
+                     "no_connection": 409}
 
 # Auteur des versions produites par la boucle de réparation (0014). Une version signée ainsi a
 # forcément un « avant » : celle qu'elle tentait de corriger.
@@ -90,7 +91,7 @@ def automate_case(case_id: int, background: BackgroundTasks, conn=Depends(get_co
     try:
         job_id, params = generation_service.start_automation(conn, case_id)
     except generation_service.GenerationError as err:
-        code = {"not_found": 404, "invalid_metier": 422}.get(err.code, 400)
+        code = {"not_found": 404, "invalid_metier": 422, "no_connection": 409}.get(err.code, 400)
         raise HTTPException(status_code=code, detail=err.detail)
     background.add_task(generation_service.run_automation, job_id, **params)
     return schemas.GenerationJobOut(job_id=job_id, status="running")

@@ -30,7 +30,11 @@ def client(tmp_path, monkeypatch):
 
 
 def _seed(conn) -> tuple[int, int]:
-    pid = ProjectRepo(conn).create(name="Portail Sapian", connector_type="odoo")
+    # Connexion complète : depuis le 2026-07-24, déclencher une génération sans elle est refusé
+    # (on ne saurait pas contre quelle application le test est écrit).
+    pid = ProjectRepo(conn).create(name="Portail Sapian", connector_type="odoo",
+                                   base_url="http://recette:8069", database="db",
+                                   username="qa", password="p")
     mid = ModuleRepo(conn).create(project_id=pid, name="Demande matériel")
     return pid, mid
 

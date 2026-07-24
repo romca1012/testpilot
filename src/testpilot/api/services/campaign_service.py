@@ -29,7 +29,7 @@ class CampaignError(Exception):
 
     def __init__(self, code: str, detail: str):
         super().__init__(detail)
-        self.code = code  # not_found | empty | already_running
+        self.code = code  # not_found | empty | already_running | archived | no_connection
         self.detail = detail
 
 
@@ -52,6 +52,19 @@ def start_campaign(conn, run_id: int) -> dict:
         # Lancer une campagne vide produirait un run « terminé » sans rien avoir testé — un
         # succès trompeur. On refuse et on le dit.
         raise CampaignError("empty", "cette exécution ne contient aucun cas de test")
+
+    # ⚠️ La connexion se vérifie UNE FOIS ici, et non cas par cas : un run lancé sans savoir
+    # contre quelle application il tourne produirait N verdicts faux d'un coup. Vérifié AVANT de
+    # passer le run « en cours », pour qu'un refus ne laisse pas une campagne bloquée en course —
+    # et APRÈS le contrôle « campagne vide », qui est le diagnostic le plus précis quand les deux
+    # sont vrais (dire « connexion incomplète » sur une campagne sans cas enverrait corriger la
+    # mauvaise chose).
+    from testpilot.connectors.runtime_env import ConnexionIncomplete, verifier_connexion
+    from testpilot.store.repositories import ProjectRepo
+    try:
+        verifier_connexion(ProjectRepo(conn).get(run["project_id"]))
+    except ConnexionIncomplete as err:
+        raise CampaignError("no_connection", err.message()) from err
 
     repo.set_status(run_id, "running", launched=True)
     return {"run_id": run_id, "case_ids": case_ids}

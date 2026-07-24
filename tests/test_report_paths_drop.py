@@ -89,8 +89,16 @@ def test_le_rapport_dun_run_API_marche_SANS_ces_colonnes(client):
     Il est reconstruit à la demande depuis la base — c'est le seul mécanisme réel, et il tient
     sans les colonnes supprimées.
     """
+    from testpilot.store.repositories import ModuleRepo, ProjectRepo
+
     conn = get_initialized_db(config.DB_PATH)
-    cid = CaseRepo(conn).create(title="Cas", feature_slug="cas", author="qa")
+    # Un cas rattaché à un projet CONNECTÉ : depuis le 2026-07-24, un cas sans cible connue
+    # n'est plus exécutable (on ne saurait pas contre quelle application le lancer).
+    pid = ProjectRepo(conn).create(name="Recette", connector_type="odoo",
+                                   base_url="http://recette:8069", database="db",
+                                   username="qa", password="p")
+    mid = ModuleRepo(conn).create(project_id=pid, name="M")
+    cid = CaseRepo(conn).create(title="Cas", module_id=mid, feature_slug="cas", author="qa")
     vid = VersionRepo(conn).create(test_case_id=cid, spec_content="s", spec_hash="h",
                                    feature_content="# language: fr\nFonctionnalité: X",
                                    steps_content="from behave import *")

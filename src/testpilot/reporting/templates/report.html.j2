@@ -45,6 +45,14 @@
 <div class="wrap">
   <h1>{{ r.title }}</h1>
   <div class="sub">Module <b>{{ r.module_name }}</b> · version {{ r.version_number }} · généré le {{ r.generated_at }}</div>
+  {# Contre QUOI ce verdict a été rendu. « Conforme » ne veut rien dire sans sa cible. #}
+  <div class="sub">
+    {% if r.target_url %}
+      Testé contre <b>{{ r.target_url }}</b>{% if r.target_database %} · base <b>{{ r.target_database }}</b>{% endif %}{% if r.target_username %} · utilisateur <b>{{ r.target_username }}</b>{% endif %}
+    {% else %}
+      Cible non tracée — exécution antérieure à l'enregistrement de la cible (on ne la reconstitue pas : ce serait une supposition).
+    {% endif %}
+  </div>
 
   {% if r.needs_human_confirmation %}
   <div class="banner">⚠ Confirmation humaine requise : au moins une tentative de réparation attend une validation avant classement définitif (asymétrie §5).</div>

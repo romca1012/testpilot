@@ -14,7 +14,13 @@ from testpilot.api.services import run_service
 from testpilot.execution.behave_result import BehaveResult, BehaveScenario
 from testpilot.execution.executor import ExecutionOutcome
 from testpilot.store.db import get_initialized_db
-from testpilot.store.repositories import CaseRepo, ReviewRepo, VersionRepo
+from testpilot.store.repositories import (
+    CaseRepo,
+    ModuleRepo,
+    ProjectRepo,
+    ReviewRepo,
+    VersionRepo,
+)
 
 
 class _FakeExecutor:
@@ -29,8 +35,23 @@ class _FakeExecutor:
         return ExecutionOutcome(module_name=module_name, dry_run_passed=True, real_run=real)
 
 
+def _module_connecte(conn) -> int:
+    """Un module dont le PROJET porte une connexion complète.
+
+    ⚠️ Requis depuis le 2026-07-24 : un cas rattaché à aucun projet — ou à un projet sans
+    connexion — n'est plus exécutable, parce qu'on ne sait pas contre quelle application il
+    tournerait. Ces tests exercent le câblage de l'API, pas ce refus : ils lui donnent donc une
+    cible explicite (`tests/test_cible_et_repli_silencieux.py` couvre le refus lui-même).
+    """
+    pid = ProjectRepo(conn).create(name="Recette", connector_type="odoo",
+                                   base_url="http://recette:8069", database="db",
+                                   username="qa", password="p")
+    return ModuleRepo(conn).create(project_id=pid, name="Demandes")
+
+
 def _seed_case(conn, *, approved: bool) -> tuple[int, int]:
-    cid = CaseRepo(conn).create(title="Demande de matériel", feature_slug="demande_materiel", author="qa")
+    cid = CaseRepo(conn).create(title="Demande de matériel", module_id=_module_connecte(conn),
+                                feature_slug="demande_materiel", author="qa")
     vid = VersionRepo(conn).create(
         test_case_id=cid, spec_content="spec", spec_hash="h1",
         feature_content="# language: fr\nFonctionnalité: Demande de matériel",

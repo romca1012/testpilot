@@ -90,4 +90,10 @@ def build_report_for_execution(conn: sqlite3.Connection, execution_id: int):
         duration_seconds=execution.get("duration_seconds", 0.0),
         repairs=repairs,
         generated_at=execution.get("started_at"),
+        # Contre quoi ce verdict a été rendu (migration 20). Lu depuis l'exécution — jamais depuis
+        # la configuration courante : le projet a pu changer d'adresse depuis, le rapport doit
+        # dire ce qui a été testé CE JOUR-LÀ.
+        target_url=execution.get("target_url", "") or "",
+        target_database=execution.get("target_database", "") or "",
+        target_username=execution.get("target_username", "") or "",
     )

@@ -969,11 +969,20 @@ class ExecutionRepo:
             "by_day": sorted(par_jour.values(), key=lambda d: d["jour"]),
         }
 
-    def create(self, *, test_case_id: int, version_id: int, trigger: str = "first_run") -> int:
+    def create(self, *, test_case_id: int, version_id: int, trigger: str = "first_run",
+               cible: dict | None = None) -> int:
+        """Ouvre une ligne d'exécution.
+
+        `cible` (migration 20) : contre quelle application on va tourner — adresse, base,
+        utilisateur, **jamais le mot de passe**. Écrite à l'OUVERTURE et non à la clôture : une
+        exécution qui plante avant la fin doit tout de même dire ce qu'elle visait.
+        """
+        c = cible or {}
         cur = self.conn.execute(
-            "INSERT INTO execution (test_case_id, version_id, trigger, started_at)"
-            " VALUES (?,?,?,?)",
-            (test_case_id, version_id, trigger, now_iso()),
+            "INSERT INTO execution (test_case_id, version_id, trigger, target_url,"
+            " target_database, target_username, started_at) VALUES (?,?,?,?,?,?,?)",
+            (test_case_id, version_id, trigger, str(c.get("target_url") or ""),
+             str(c.get("target_database") or ""), str(c.get("target_username") or ""), now_iso()),
         )
         self.conn.commit()
         return int(cur.lastrowid)

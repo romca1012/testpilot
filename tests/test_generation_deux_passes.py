@@ -18,6 +18,13 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+# ⚠️ Une connexion COMPLÈTE est requise depuis le 2026-07-24 : générer un cas fait observer
+# l'application du projet (dry-run, smoke-check). Sans elle, la génération observait l'instance
+# par défaut de la machine et écrivait un test taillé pour elle. Ces tests portent sur la pause
+# métier, pas sur ce refus (couvert par `tests/test_cible_et_repli_silencieux.py`).
+_PROJET_CONNECTE = {"name": "P", "base_url": "http://recette:8069", "database": "db",
+                    "username": "qa", "password": "p"}
+
 from testpilot import config
 from testpilot.analysis.plan import ScenarioIntent, TestPlan
 from testpilot.api import app as app_mod
@@ -228,7 +235,7 @@ def test_la_passe_4a_S_ARRETE_et_ne_cree_AUCUN_cas(client, stub_passe_metier, mo
     monkeypatch.setattr(metier_writer, "propose_metier",
                         lambda plan, **kw: propose_metier(plan, llm=FakeLLM(_BON_JSON)))
 
-    pid = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
 
     job = client.post(f"/api/modules/{mid}/cases",
@@ -255,7 +262,7 @@ def test_le_document_CORRIGE_par_l_humain_fait_foi(client, monkeypatch):
     monkeypatch.setattr(generation_service, "resume_generation",
                         lambda job_id, **kw: recu.update(kw))
 
-    pid = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
     job_id = client.post(f"/api/modules/{mid}/cases",
                          json={"spec_content": "La spec", "title": "T"}).json()["job_id"]
@@ -281,7 +288,7 @@ def test_un_metier_incomplet_est_REFUSE(client, monkeypatch):
     monkeypatch.setattr(metier_writer, "propose_metier",
                         lambda plan, **kw: propose_metier(plan, llm=FakeLLM(_BON_JSON)))
 
-    pid = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
     job_id = client.post(f"/api/modules/{mid}/cases",
                          json={"spec_content": "La spec", "title": "T"}).json()["job_id"]
@@ -302,7 +309,7 @@ def test_valider_deux_fois_est_REFUSE(client, monkeypatch):
                         lambda plan, **kw: propose_metier(plan, llm=FakeLLM(_BON_JSON)))
     monkeypatch.setattr(generation_service, "resume_generation", lambda job_id, **kw: None)
 
-    pid = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
     job_id = client.post(f"/api/modules/{mid}/cases",
                          json={"spec_content": "La spec", "title": "T"}).json()["job_id"]
@@ -321,7 +328,7 @@ def test_un_document_incomplet_fait_ECHOUER_le_job_sans_creer_de_cas(client, mon
     monkeypatch.setattr(metier_writer, "propose_metier",
                         lambda plan, **kw: MetierDraft(angle="nominal"))
 
-    pid = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
     job_id = client.post(f"/api/modules/{mid}/cases",
                          json={"spec_content": "La spec", "title": "T"}).json()["job_id"]

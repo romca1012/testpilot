@@ -18,6 +18,55 @@ décision détaillée dans `docs/decisions/`). Ordonné par incrément cible.
 > gouvernance du verdict ? — **à trancher avec le porteur, pas seul.** L'étiquetage est faux, le
 > contenu ne l'est pas.)*
 
+> 🏷️ **AVERTISSEMENT — les étiquettes d'incrément de ce fichier sont FAUSSES.** Elles sont héritées
+> d'un découpage de séance et ne correspondent pas au §12 du brief (notamment « Incrément 1 » pour du
+> travail relevant de l'Incrément 2). **Seul le §12 du brief fait foi.** Arbitré le 2026-07-24 :
+> on ne re-sectionne pas (une dizaine d'arbitrages limites pour un gain nul), on avertit. *Le
+> contenu, lui, n'a jamais été faux.*
+
+## Décidé le 2026-07-24 — remise en cohérence du brief (17 écarts tranchés)
+
+Audit du brief contre le code réel. **11 amendements inscrits au journal du brief** ; ce qui en
+découle comme travail est listé ici. Détail des arbitrages : journal du brief, entrées `2026-07-24`.
+
+**Nouveau travail, issu des arbitrages :**
+
+- [ ] **Modèle (template) de spécification** proposé à l'utilisateur (§4.2). La spec reste un
+  document libre — le template cadre ce qu'on y écrit, pour que la génération parte d'une matière
+  régulière au lieu de dépendre de la qualité du texte collé.
+- [ ] 🔴 **Tableau de bord « modules à retester »** (JTBD 2, §9). *La promesse qui justifie l'outil* :
+  dès qu'une spec change ou qu'un cas est créé, le module est marqué. Socle déjà là (`spec_hash`).
+  Sans lui, le critère « zéro occurrence du cas Odoo » du §9 n'est pas observable.
+- [ ] **Conserver les artefacts bruts d'exécution** (§7) : sortie et journal du moteur sur disque,
+  référencés en base, pour qu'un test qui passait reste consultable **avec ce que la machine a vu**.
+  ⚠️ Attention à la migration 7, qui avait supprimé des colonnes de chemins jamais alimentées : ici
+  on écrit vraiment les fichiers, sinon le défaut se rejoue à l'identique.
+- [ ] **Provenance d'un résultat (exécuté vs déclaré) + statut « validé manuellement »** — amendement
+  du 2026-07-20, **écrit au brief et jamais construit**. Le schéma n'a aucune provenance de résultat.
+- [ ] **Mode dev / mode utilisateur** (§5) — jamais construit ; l'affichage unique actuel montre du
+  technique à un public que le §8 dit non technique.
+- [ ] **Instrumenter le TEMPS au banc** (§9) : le banc chronomètre déjà chaque étape sans la
+  restituer. Un critère de succès jamais mesuré est le « statut déclaratif » qu'on reproche ailleurs.
+- [ ] **Afficher le taux de verdicts concluants** au banc (§9, nouveau critère).
+- [ ] 🔴 **Les six mécanismes du « zéro verdict non concluant »** (§5bis) — dans l'ordre de rendement :
+  1. **la règle apprise** : chaque refus (navigateur ou serveur) enrichit l'annuaire du projet, pour
+     que le résolveur ne puisse plus produire cette valeur. *Seul moyen d'atteindre les règles
+     écrites en JavaScript, invisibles au crawl.* **Le plus rentable — à faire en premier.**
+  2. rejeu immédiat après correction, dans le run, borné par le budget existant ;
+  3. préconditions montées par RPC, l'interface ne pilotant que ce qui est sous test ;
+  4. oracle sur l'**état**, jamais sur l'écran ;
+  5. rejeu déterministe + quarantaine **bornée** pour séparer l'instable du vrai défaut ;
+  6. gate de recevabilité du verdict (généralisation du refus silencieux).
+
+**Reclassements de périmètre (pas du travail — des décisions) :**
+
+- **Comptes, rôles, vue client externe** → **hors V1**, mais **prérequis à tout déploiement client**,
+  avec le chiffrement du secret de connexion (voir « Dette transverse » ci-dessous).
+- **Jira / charge / sécurité / CI-CD** → **V2** (ordre de priorité conservé).
+- **Abstraction multi-connecteurs** → **au 2ᵉ connecteur**, jamais avant.
+- **Arbitrage humain des diagnostics « test à réparer »** → **retiré définitivement** ; le 4ᵉ verdict
+  et la doctrine « jamais d'accusation sans preuve » le remplacent.
+
 ## Plan validé (porteur, 2026-07-20) — l'ordre à suivre à la reprise
 
 Suite au front TestRail livré et à `0022` (structure figée), 4 chantiers restent — ordonnés par

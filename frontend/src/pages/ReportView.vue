@@ -47,6 +47,17 @@ onMounted(async () => {
       <div>
         <h1 class="text-2xl font-semibold tracking-tight">{{ report.title }}</h1>
         <p class="mt-1 text-sm text-muted-foreground">Rapport d'exécution · v{{ report.version_number }}</p>
+        <!-- Contre QUOI ce verdict a été rendu. Un « conforme » sans sa cible ne prouve rien —
+             et sur un serveur partagé, plusieurs instances coexistent. -->
+        <p v-if="report.target_url" class="mt-1 text-sm text-muted-foreground">
+          Testé contre <span class="text-foreground/90">{{ report.target_url }}</span>
+          <template v-if="report.target_database"> · base <span class="text-foreground/90">{{ report.target_database }}</span></template>
+          <template v-if="report.target_username"> · utilisateur <span class="text-foreground/90">{{ report.target_username }}</span></template>
+        </p>
+        <p v-else class="mt-1 text-sm text-muted-foreground/70">
+          Cible non tracée — exécution antérieure à son enregistrement. Elle n'est pas reconstituée :
+          ce serait une supposition présentée comme un fait.
+        </p>
       </div>
 
       <!-- Verdict à deux axes, en tête -->
