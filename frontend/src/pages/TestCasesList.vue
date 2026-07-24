@@ -176,6 +176,10 @@ function goRunNew() { router.push({ name: 'run-new', params: { pid: pid.value } 
       <span v-if="activeSpecTitle" class="flex items-center gap-1.5 text-primary">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
         {{ activeSpecTitle }}
+        <!-- Filtrer sur une spécification et pouvoir LIRE cette spécification sont deux besoins
+             distincts : la liste montre ses cas, le lien montre le document dont ils sont nés. -->
+        <RouterLink :to="{ name: 'spec-detail', params: { pid, id: String(specFilter) } }"
+                    class="hover:underline" title="Ouvrir la spécification">voir le document</RouterLink>
         <RouterLink :to="{ name: 'cases', params: { pid } }" class="hover:text-foreground" title="Retirer le filtre">✕</RouterLink>
       </span>
     </div>

@@ -23,6 +23,12 @@ const routes = [
   // Onglets de nav non couverts par ce lot (Aperçu, Tâche à faire, Jalons, Rapports) → « à venir ».
   { path: '/projects/:pid/cases/soon', name: 'cases-soon', component: () => import('./pages/CasesSoon.vue') },
   { path: '/projects/:pid/cases/:id', name: 'case-detail', component: () => import('./pages/CaseDetailTR.vue') },
+  // La SPÉCIFICATION : le document source, d'où naissent 1 à N cas (décision 0022). Son CRUD
+  // existait côté serveur depuis le 2026-07-20 sans qu'aucun écran ne l'appelle — le modèle
+  // « une spec → plusieurs angles » était donc inatteignable par l'interface.
+  // Chemin `specs/` distinct de `cases/` : sous `cases/`, il serait entré en concurrence avec
+  // `cases/:id` (une spécification n'est pas un cas, et l'URL doit le dire).
+  { path: '/projects/:pid/specs/:id', name: 'spec-detail', component: () => import('./pages/SpecDetail.vue') },
 
   // ── Routes HÉRITÉES, redirigées vers leur équivalent actuel ──────────────────────────────
   // Règle posée le 2026-07-20 : toute route doit être atteignable par un chemin CLAIR depuis

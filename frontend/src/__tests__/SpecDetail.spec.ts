@@ -1,0 +1,130 @@
+/**
+ * L'écran de la SPÉCIFICATION — lot 4 du déploiement (2026-07-24).
+ *
+ * Le CRUD existait côté serveur depuis le 2026-07-20 sans qu'aucun écran ne l'appelle : un
+ * utilisateur ne pouvait ni créer ni relire une spécification. Les seules qui existaient étaient
+ * les « enveloppes » créées automatiquement par la génération, une par cas — le modèle du brief
+ * (une spec → N cas, un par angle) était donc inatteignable par l'interface.
+ *
+ * Ce que ces tests figent :
+ *   • éditer le document ne génère RIEN et ne dépense RIEN (la génération reste un geste séparé) ;
+ *   • un modèle vierge n'est pas une spécification : on refuse de lancer une génération dessus ;
+ *   • le refus de suppression (409, la spec porte des cas) est affiché TEL QUEL — il dit combien.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+
+const getGroup = vi.fn()
+const updateGroup = vi.fn()
+const deleteGroup = vi.fn()
+const listCases = vi.fn()
+const push = vi.fn()
+
+vi.mock('../lib/api', () => ({
+  api: {
+    getGroup: (...a: any[]) => getGroup(...a),
+    updateGroup: (...a: any[]) => updateGroup(...a),
+    deleteGroup: (...a: any[]) => deleteGroup(...a),
+    listCases: (...a: any[]) => listCases(...a),
+  },
+}))
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ params: { pid: '1', id: '7' }, query: {} }),
+  useRouter: () => ({ push }),
+  RouterLink: { template: '<a><slot/></a>' },
+}))
+
+import SpecDetail from '../pages/SpecDetail.vue'
+import { MODELE_SPECIFICATION } from '../lib/modeleSpecification'
+
+const SPEC = {
+  id: 7, module_id: 3, title: 'Déclaration de sinistre', description: '',
+  spec_content: 'Un employé déclare un sinistre.', spec_hash: 'abc123def456789',
+  case_count: 2, created_at: '', updated_at: '',
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  getGroup.mockResolvedValue({ ...SPEC })
+  listCases.mockResolvedValue([
+    { id: 11, title: 'Sinistre déclaré', group_id: 7, last_execution_status: 'success',
+      last_functional_status: 'conforme' },
+    { id: 12, title: 'Sinistre sans pièce jointe', group_id: 7, last_execution_status: null,
+      last_functional_status: null },
+    { id: 13, title: 'Autre cas', group_id: 99, last_execution_status: null,
+      last_functional_status: null },
+  ])
+})
+
+async function monter() {
+  const w = mount(SpecDetail)
+  await flushPromises()
+  return w
+}
+
+describe('la fiche de la spécification', () => {
+  it('affiche le document et les cas QUI EN SONT NÉS, pas les autres', async () => {
+    const w = await monter()
+    expect(w.find('textarea').element.value).toBe('Un employé déclare un sinistre.')
+    expect(w.text()).toContain('Sinistre déclaré')
+    expect(w.text()).toContain('Sinistre sans pièce jointe')
+    expect(w.text()).not.toContain('Autre cas')   // appartient à une autre spécification
+  })
+
+  it('n\'enregistre RIEN tant que rien n\'a changé', async () => {
+    const w = await monter()
+    const bouton = w.findAll('button').find((b) => b.text() === 'Enregistrer')!
+    expect(bouton.attributes('disabled')).toBeDefined()
+  })
+
+  it('enregistre le document SANS rien générer ni dépenser', async () => {
+    updateGroup.mockResolvedValue({ ...SPEC, spec_content: 'Nouveau texte' })
+    const w = await monter()
+    await w.find('textarea').setValue('Nouveau texte')
+    await w.findAll('button').find((b) => b.text() === 'Enregistrer')!.trigger('click')
+    await flushPromises()
+
+    expect(updateGroup).toHaveBeenCalledWith(7, expect.objectContaining({ spec_content: 'Nouveau texte' }))
+    // ⚠️ La garde : aucune navigation vers la génération, aucun appel qui dépenserait.
+    expect(push).not.toHaveBeenCalled()
+    expect(w.text()).toContain('Spécification enregistrée.')
+  })
+
+  it('propose le MODÈLE quand le document est vide, et pas quand il est rédigé', async () => {
+    getGroup.mockResolvedValue({ ...SPEC, spec_content: '' })
+    const w = await monter()
+    const lien = w.findAll('button').find((b) => b.text().includes('Partir du modèle'))!
+    await lien.trigger('click')
+    expect(w.find('textarea').element.value).toBe(MODELE_SPECIFICATION)
+  })
+
+  it('REFUSE de lancer une génération sur un modèle vierge', async () => {
+    // Un modèle non rempli contient des consignes, pas une spécification : générer dessus
+    // produirait un test écrit d'après « Décrivez en une ou deux phrases… ».
+    getGroup.mockResolvedValue({ ...SPEC, spec_content: MODELE_SPECIFICATION })
+    const w = await monter()
+    const bouton = w.findAll('button').find((b) => b.text().includes('Générer un cas'))!
+    expect(bouton.attributes('disabled')).toBeDefined()
+    expect(w.text()).toContain('Rédigez d\'abord le document')
+  })
+
+  it('emmène vers la génération AVEC la spécification, en un geste explicite', async () => {
+    const w = await monter()
+    await w.findAll('button').find((b) => b.text().includes('Générer un cas'))!.trigger('click')
+    expect(push).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'case-new', query: { spec: '7' },
+    }))
+  })
+
+  it('affiche le refus de suppression TEL QUEL — il dit combien de cas bloquent', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    deleteGroup.mockRejectedValue(
+      Object.assign(new Error('cette spécification porte encore 2 cas'), { status: 409 }))
+    const w = await monter()
+    await w.findAll('button').find((b) => b.text().includes('Supprimer'))!.trigger('click')
+    await flushPromises()
+
+    expect(w.text()).toContain('porte encore 2 cas')
+    expect(push).not.toHaveBeenCalled()   // on reste sur la fiche : rien n'a été supprimé
+  })
+})

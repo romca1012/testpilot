@@ -79,7 +79,44 @@ function toggle(moduleId: number) {
     : [...expanded.value, moduleId]
 }
 const activeGroupId = computed(() =>
-  route.name === 'cases' ? Number(route.query.spec) || null : null)
+  route.name === 'spec-detail' ? Number(route.params.id) || null
+  : route.name === 'cases' ? Number(route.query.spec) || null : null)
+
+// ── Créer une SPÉCIFICATION (lot 4, 2026-07-24) ───────────────────────────────
+// ⚠️ Créer ici ne génère AUCUN cas et ne dépense RIEN : on nomme un document, on l'écrit sur sa
+// fiche, et c'est un geste séparé qui lance la génération (§4bis du brief).
+const specModule = ref<number | null>(null)
+const nouvelleSpec = ref({ title: '' })
+const creatingSpec = ref(false)
+const specError = ref('')
+
+function ouvrirCreationSpec(moduleId: number) {
+  specModule.value = moduleId
+  nouvelleSpec.value = { title: '' }
+  specError.value = ''
+}
+
+async function submitSpec() {
+  const titre = nouvelleSpec.value.title.trim()
+  if (!titre || specModule.value == null) return
+  creatingSpec.value = true
+  specError.value = ''
+  try {
+    const creee = await api.createGroup(specModule.value, { title: titre })
+    specModule.value = null
+    await load()   // l'arbre doit montrer la spécification tout de suite
+    // On emmène sur sa fiche : une spécification vide qu'on ne rédige pas ne sert à rien.
+    router.push({ name: 'spec-detail', params: { pid: pid.value, id: String(creee.id) } })
+  } catch (e: any) {
+    specError.value = e?.message || 'Création impossible'
+  } finally {
+    creatingSpec.value = false
+  }
+}
+
+function ouvrirFicheSpec(groupId: number) {
+  router.push({ name: 'spec-detail', params: { pid: pid.value, id: String(groupId) } })
+}
 const activeModuleId = computed(() =>
   route.name === 'cases' ? Number(route.query.module) || null : null)
 
@@ -186,7 +223,8 @@ function soon(tab: string) {
 }
 function isActive(key: string) {
   const n = String(route.name)
-  if (key === 'cases') return ['cases', 'case-detail', 'cases-all', 'module-detail'].includes(n)
+  if (key === 'cases') return ['cases', 'case-detail', 'cases-all', 'module-detail',
+                               'spec-detail', 'case-new', 'case-manual'].includes(n)
   if (key === 'exec') return ['executions', 'report', 'run-detail', 'run-new', 'plan-new'].includes(n)
   if (key === 'qualite') return n === 'quality'
   return n === 'cases-soon' && route.query.tab === key
@@ -324,6 +362,12 @@ function switchProject(id: number) {
               <svg class="w-4 h-4 text-warning shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
               <span class="truncate">{{ m.name }}</span>
             </button>
+            <!-- Créer une SPÉCIFICATION (le document source) : le geste qui manquait à
+                 l'interface — le CRUD existait côté serveur sans qu'aucun écran ne l'appelle. -->
+            <button class="shrink-0 p-0.5 text-muted-foreground hover:text-primary"
+                    title="Ajouter une spécification dans ce module" @click.stop="ouvrirCreationSpec(m.id)">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M12 12v6M9 15h6"/></svg>
+            </button>
             <button class="shrink-0 p-0.5 text-muted-foreground hover:text-primary" title="Ajouter un cas dans ce module" @click.stop="goCaseNew(m.id)">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             </button>
@@ -332,13 +376,22 @@ function switchProject(id: number) {
             </button>
           </div>
           <template v-if="expanded.includes(m.id)">
-            <button v-for="g in groupsOf(m.id)" :key="g.id"
-                    class="flex w-full items-center gap-1.5 rounded-md pl-7 pr-1.5 py-1.5 text-left hover:bg-accent/40 text-[13px]"
-                    :class="activeGroupId === g.id ? 'text-primary bg-primary/10' : 'text-primary/90'"
-                    @click="openSpec(g.id)">
-              <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
-              <span class="truncate">{{ g.title }}</span>
-            </button>
+            <!-- Le NOM filtre la liste sur cette spécification (comportement d'origine) ;
+                 l'icône de droite ouvre sa FICHE — le document lui-même. Deux gestes distincts
+                 pour deux intentions distinctes : « montre-moi ses cas » et « montre-moi ce
+                 qu'elle dit ». -->
+            <div v-for="g in groupsOf(m.id)" :key="g.id"
+                 class="group/spec flex w-full items-center gap-1.5 rounded-md pl-7 pr-1.5 py-1.5 hover:bg-accent/40 text-[13px]"
+                 :class="activeGroupId === g.id ? 'text-primary bg-primary/10' : 'text-primary/90'">
+              <button class="flex min-w-0 flex-1 items-center gap-1.5 text-left" @click="openSpec(g.id)">
+                <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+                <span class="truncate">{{ g.title }}</span>
+              </button>
+              <button class="shrink-0 p-0.5 text-muted-foreground/60 opacity-0 group-hover/spec:opacity-100 hover:text-primary"
+                      title="Ouvrir la spécification (le document)" @click.stop="ouvrirFicheSpec(g.id)">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M8 13h8M8 17h5"/></svg>
+              </button>
+            </div>
           </template>
         </template>
       </div>
@@ -406,6 +459,28 @@ function switchProject(id: number) {
       <template #footer>
         <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="mc.close()">Annuler</button>
         <Button type="submit" form="form-create-module" variant="primary" :loading="creatingModule" :disabled="!nm.name.trim()">Créer le module</Button>
+      </template>
+    </Modal>
+
+    <!-- ════════ Création d'une SPÉCIFICATION (le document source, décision 0022) ════════ -->
+    <Modal :open="specModule !== null" title="Nouvelle spécification"
+           subtitle="Un document décrivant une fonctionnalité. Il servira à écrire un ou plusieurs cas de test — un par angle."
+           @close="specModule = null">
+      <form id="form-create-spec" class="space-y-3" @submit.prevent="submitSpec">
+        <label class="block">
+          <span class="text-sm font-medium">Titre <span class="text-destructive">*</span></span>
+          <input v-model="nouvelleSpec.title" placeholder="ex. Déclaration d'un sinistre client" autofocus
+                 class="mt-1 h-9 w-full rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
+        </label>
+        <p class="text-sm text-muted-foreground">
+          Rien n'est généré ni dépensé à la création : vous rédigerez le document à l'étape
+          suivante, et la génération restera un geste explicite.
+        </p>
+        <p v-if="specError" class="text-sm text-destructive">{{ specError }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="specModule = null">Annuler</button>
+        <Button type="submit" form="form-create-spec" variant="primary" :loading="creatingSpec" :disabled="!nouvelleSpec.title.trim()">Créer la spécification</Button>
       </template>
     </Modal>
   </div>

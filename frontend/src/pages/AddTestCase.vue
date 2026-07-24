@@ -13,6 +13,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type MetierDraft, type ModuleSummary } from '../lib/api'
+import { MODELE_SPECIFICATION } from '../lib/modeleSpecification'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,12 +51,33 @@ const metierComplet = computed(() =>
   && metier.value.steps.some((s) => s.trim())
   && !!metier.value.expected_result.trim())
 
+// Une SPÉCIFICATION peut fournir le document (`?spec=`, depuis sa fiche, lot 4 du 2026-07-24) :
+// on part alors du texte déjà rédigé plutôt que de le recoller à la main — c'était le chaînon
+// manquant entre le document et les cas qu'il engendre.
+const specSource = ref<{ id: number; title: string } | null>(null)
+
 onMounted(async () => {
   modules.value = await api.listModules(pid.value)
   // Pré-sélection : le module visé par l'URL, sinon le premier.
   const wanted = Number(route.query.module)
   moduleId.value = modules.value.find((m) => m.id === wanted)?.id ?? modules.value[0]?.id ?? null
+
+  const depuisSpec = Number(route.query.spec)
+  if (depuisSpec) {
+    try {
+      const s = await api.getGroup(depuisSpec)
+      spec.value = s.spec_content
+      specSource.value = { id: s.id, title: s.title }
+      // Le module de la spécification prime : générer un cas ailleurs que dans le module de son
+      // document en ferait un orphelin de fait.
+      if (modules.value.some((m) => m.id === s.module_id)) moduleId.value = s.module_id
+    } catch { /* spécification illisible : l'écran reste utilisable en saisie libre */ }
+  }
 })
+
+function partirDuModele() {
+  spec.value = MODELE_SPECIFICATION
+}
 onUnmounted(stopPoll)
 
 function stopPoll() { if (timer) window.clearInterval(timer); timer = undefined }
@@ -218,12 +240,25 @@ function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } 
             <!-- Zone de texte OU fichier (demande du porteur). Le fichier est juste un moyen de
                  REMPLIR la zone : son texte est extrait côté serveur (.txt/.md/.docx) puis
                  déposé ici, éditable ensuite. -->
-            <label class="text-xs text-primary hover:underline cursor-pointer">
-              <input type="file" class="hidden" accept=".txt,.md,.markdown,.docx,.feature,.text"
-                     @change="onFile" />
-              {{ importing ? 'Import…' : '📎 Importer un fichier (.txt, .md, .docx)' }}
-            </label>
+            <div class="flex items-center gap-3">
+              <!-- Le MODÈLE (amendement §4.2 du 2026-07-24) : le document reste libre, mais
+                   l'outil dit ce qu'il attend. Sans repère, deux specs du même auteur n'ont pas
+                   la même forme et la génération part d'une matière irrégulière. -->
+              <button v-if="!spec.trim()" type="button" class="text-xs text-primary hover:underline"
+                      @click="partirDuModele">🧭 Partir du modèle</button>
+              <label class="text-xs text-primary hover:underline cursor-pointer">
+                <input type="file" class="hidden" accept=".txt,.md,.markdown,.docx,.feature,.text"
+                       @change="onFile" />
+                {{ importing ? 'Import…' : '📎 Importer un fichier (.txt, .md, .docx)' }}
+              </label>
+            </div>
           </div>
+          <p v-if="specSource" class="mt-1 text-xs text-muted-foreground">
+            Document repris de la spécification
+            <RouterLink :to="{ name: 'spec-detail', params: { pid, id: String(specSource.id) } }"
+                        class="text-primary hover:underline">{{ specSource.title }}</RouterLink>
+            — le corriger ici ne modifie pas la spécification d'origine.
+          </p>
           <textarea v-model="spec" rows="14" required
                     placeholder="Décrivez la fonctionnalité à tester : le parcours, les données attendues, les règles… — ou importez un fichier."
                     class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 font-mono text-[13px] focus:border-primary outline-none"></textarea>

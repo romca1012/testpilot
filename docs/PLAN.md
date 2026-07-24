@@ -40,7 +40,7 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 
 | | |
 |---|---|
-| Tests | **865 Python · 75 vitest** — tous verts |
+| Tests | **865 Python · 82 vitest** — tous verts |
 | Schéma | `user_version = 22` |
 | Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), re-confirmé au rejeu du 2026-07-23 |
 | Verdicts | **0 fausse accusation par invention de champ** ; 4ᵉ verdict `donnee_invalide` déclenché en réel |
@@ -341,9 +341,15 @@ revienne.
 - [x] **Temps et taux de verdicts concluants** affichés au banc — **fait le 2026-07-24**. Le
       récapitulatif de fin de banc a été **extrait en fonction pure et couvert par des tests** :
       il avait planté une fois *après* la dépense, et n'était atteignable qu'en repayant un banc.
+- [x] **Écran de la Spécification + modèle de spécification** — **fait le 2026-07-24**. Le CRUD
+      existait côté serveur depuis le 2026-07-20 **sans qu'aucun écran ne l'appelle** : personne ne
+      pouvait créer ni relire une spécification, et les seules existantes étaient les enveloppes
+      auto-créées par la génération (une par cas). Le modèle du brief — *une spec → N cas, un par
+      angle* — était donc **inatteignable par l'interface**. Désormais : création depuis l'arbre,
+      fiche avec le document, cas qui en sont nés, génération **depuis** la spec, et un **modèle**
+      proposé quand la page est blanche. Éditer ne génère rien et ne dépense rien.
 - [ ] 🔴 **Tableau de bord « modules à retester »** — le JTBD 2, la promesse qui justifie l'outil.
       Sans lui, un critère du §9 reste non observable.
-- [ ] **Template de spécification** fourni à l'utilisateur.
 - [ ] **Provenance d'un résultat (exécuté / déclaré)** — promis au brief le 2026-07-20, jamais bâti.
 - [ ] **Mode dev / mode utilisateur.**
 - **Hors V1, arbitré** : comptes/rôles/client externe (prérequis déploiement client) · Jira, charge,

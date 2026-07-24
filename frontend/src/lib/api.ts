@@ -127,6 +127,20 @@ export const api = {
   },
   // Spécifications (case_group) du projet — pour l'arbre latéral et les compteurs.
   listGroups: (projectId: number | string) => request<GroupSummary[]>(`/api/projects/${projectId}/groups`),
+  // ── La SPÉCIFICATION : le document source, d'où naissent 1 à N cas (décision 0022) ──
+  // ⚠️ Créer une spécification ne génère AUCUN cas et ne dépense RIEN : elle nomme un document.
+  // C'est la génération qui le lira, après confirmation humaine des angles (§4bis du brief).
+  listModuleGroups: (moduleId: number | string) =>
+    request<GroupSummary[]>(`/api/modules/${moduleId}/groups`),
+  createGroup: (moduleId: number | string, body: { title: string; description?: string; spec_content?: string }) =>
+    request<GroupDetail>(`/api/modules/${moduleId}/groups`, { method: 'POST', body: JSON.stringify(body) }),
+  getGroup: (groupId: number | string) => request<GroupDetail>(`/api/groups/${groupId}`),
+  // Édition partielle : n'envoyer que ce qui change (`null`/absent = « ne touche pas »).
+  updateGroup: (groupId: number | string, patch: { title?: string; description?: string; spec_content?: string }) =>
+    request<GroupDetail>(`/api/groups/${groupId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  // 409 tant que la spécification porte des cas — pas de cascade : un cas porte de l'historique.
+  deleteGroup: (groupId: number | string) =>
+    request<void>(`/api/groups/${groupId}`, { method: 'DELETE' }),
   getModule: (id: number | string) => request<ModuleDetail>(`/api/modules/${id}`),
   // Ajouter un cas = fournir une SPEC → analyse/génération/gate (jamais une coquille vide).
   addCase: (moduleId: number | string, spec_content: string, title = '') =>
@@ -238,6 +252,13 @@ export interface Ref { id: number; name: string }
 
 export interface GroupSummary {
   id: number; module_id: number; title: string; case_count: number
+}
+/** La Spécification AVEC son document. `spec_hash` est l'empreinte du document tel qu'il est —
+ *  c'est elle qui dira un jour qu'un cas est né d'une version dépassée de sa spec (0022 n°6). */
+export interface GroupDetail {
+  id: number; module_id: number; title: string; description: string
+  spec_content: string; spec_hash: string; case_count: number
+  created_at: string; updated_at: string
 }
 
 export interface CaseMetierIn {
