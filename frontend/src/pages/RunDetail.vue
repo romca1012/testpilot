@@ -173,6 +173,21 @@ function backToList() { router.push({ name: 'executions', params: { pid: pid.val
     <p v-if="detail.description" class="mt-3 text-sm text-foreground/85 whitespace-pre-wrap">{{ detail.description }}</p>
     <p v-if="detail.refs" class="mt-1 text-xs text-muted-foreground">Références : {{ detail.refs }}</p>
 
+    <!-- CONTRE QUOI cette campagne a tourné — lu sur ses exécutions, jamais sur la connexion
+         actuelle du projet (elle a pu changer depuis). Des résultats sans leur cible ne prouvent
+         rien, et sur un serveur partagé plusieurs instances coexistent. -->
+    <p v-if="detail.target_url" class="mt-1 text-xs text-muted-foreground">
+      Testé contre <span class="text-foreground/90">{{ detail.target_url }}</span>
+      <template v-if="detail.target_database"> · base <span class="text-foreground/90">{{ detail.target_database }}</span></template>
+    </p>
+    <!-- Deux cibles dans une même campagne = la connexion a bougé en cours de route : ses
+         résultats ne sont plus comparables entre eux. On le dit, on n'en choisit pas une. -->
+    <p v-if="detail.target_mixed" class="mt-1 text-xs text-warning">
+      ⚠️ Cette campagne a tourné contre <strong>plusieurs applications différentes</strong> : la
+      connexion du projet a changé pendant son déroulement. Ses résultats ne sont pas comparables
+      entre eux.
+    </p>
+
     <!-- Avancement -->
     <div class="mt-6 flex flex-wrap items-center gap-6 rounded-lg border border-border bg-surface/60 p-4">
       <div>

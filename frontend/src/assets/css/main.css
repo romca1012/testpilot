@@ -6,6 +6,28 @@
    Identité « Linear » — sombre, dense, premium (palette REPRISE de l'ancien front).
    Accent signature indigo-violet #5e6ad2. Ajout : sémantique des DEUX AXES du §5
    (exécution / fonctionnel), qui n'existait pas dans l'ancienne charte mono-statut.
+
+   ── LE SYSTÈME DE JETONS (documenté le 2026-07-24, `docs/CONCEPTION.md` §1.6) ────────────
+   Trois couches, et la règle qui va avec :
+
+     1. BRUT        les valeurs HSL ci-dessous (`240 6% 6%`)      ← ne JAMAIS s'écrire en dur
+                                                                    dans un composant
+     2. SÉMANTIQUE  `--primary`, `--destructive`, `--surface`     ← ce qu'on utilise partout
+                    `--success`, `--warning`, `--untested`
+     3. COMPOSANT   les classes de `components/ui/*.vue`          ← là où un composant fige son
+                                                                    apparence, une seule fois
+
+   ⚠️ **Un composant n'écrit jamais une couleur brute.** Une valeur en dur (`#5e6ad2`,
+   `bg-indigo-600`) échappe au thème : elle survivra à un changement de charte et l'écran
+   deviendra incohérent sans que rien ne le signale. Les statuts, eux, ne se décident pas ici :
+   ils vivent dans `lib/status.ts`, source unique du libellé ET de la couleur d'un verdict.
+
+   ⚠️ **`components/ui/` est la bibliothèque de référence** (Button, Card, Chip, Hint, Icon,
+   Modal, Spinner). Aucun écran ne réinvente un bouton : ce qui manque s'ajoute LÀ, pour tout le
+   monde à la fois. C'est ce qui empêche la dérive d'un écran à l'autre.
+
+   *(Thème sombre uniquement, assumé : `color-scheme: dark` ci-dessous. Un thème clair se
+   construirait en dupliquant la couche SÉMANTIQUE, jamais en retouchant les composants.)*
    ═══════════════════════════════════════════════════════════════════════════ */
 @layer base {
   :root, .dark {

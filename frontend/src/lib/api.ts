@@ -230,6 +230,9 @@ export interface RunCaseResult {
 }
 export interface RunDetail {
   run: RunSummary; description: string; refs: string; cases: RunCaseResult[]
+  /** Contre quoi la campagne a RÉELLEMENT tourné (lu sur ses exécutions). `target_mixed` = la
+   *  connexion a changé en cours de campagne : ses résultats ne sont plus comparables. */
+  target_url: string; target_database: string; target_mixed: boolean
 }
 
 /** État de la cartographie d'un projet. `mesure_le` est affiché systématiquement : c'est une

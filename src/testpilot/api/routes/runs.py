@@ -105,6 +105,10 @@ def get_run(run_id: int, conn=Depends(get_conn)):
         functional_status=(c["result"] or {}).get("functional_status") if c["result"] else None,
         execution_id=(c["result"] or {}).get("id") if c["result"] else None)
         for c in repo.cases_with_results(run_id)]
+    cibles = repo.cibles_du_run(run_id)
     return schemas.RunDetailOut(
         run=_summary(run, len(cases)), description=run.get("description", ""),
-        refs=run.get("refs", ""), cases=cases)
+        refs=run.get("refs", ""), cases=cases,
+        target_url=cibles[0]["target_url"] if cibles else "",
+        target_database=cibles[0]["target_database"] if cibles else "",
+        target_mixed=len(cibles) > 1)

@@ -433,6 +433,13 @@ class RunDetailOut(BaseModel):
     description: str = ""
     refs: str = ""
     cases: list[RunCaseResult] = []
+    # Contre quoi cette campagne a RÉELLEMENT tourné, lu sur ses exécutions (jamais sur la
+    # connexion actuelle du projet, qui a pu changer depuis). Vide = aucun cas encore joué.
+    # `target_mixed` : plusieurs cibles distinctes — la connexion a bougé en cours de campagne,
+    # ce qui rend les résultats non comparables entre eux. On le DIT au lieu d'en choisir une.
+    target_url: str = ""
+    target_database: str = ""
+    target_mixed: bool = False
 
 
 class ModuleIn(BaseModel):

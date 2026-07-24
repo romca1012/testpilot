@@ -1172,6 +1172,21 @@ class RunRepo:
             out.append(row)
         return out
 
+    def cibles_du_run(self, run_id: int) -> list[dict]:
+        """Contre quelle(s) application(s) cette campagne a RÉELLEMENT tourné.
+
+        ⚠️ Lu sur les **exécutions de la campagne**, jamais sur la connexion actuelle du projet :
+        celle-ci a pu changer depuis, et afficher la cible d'aujourd'hui sur des résultats d'hier
+        serait précisément le mensonge que la migration 20 sert à empêcher.
+
+        Rend la liste des cibles **distinctes** — normalement une seule. Plusieurs signifie que la
+        connexion du projet a été modifiée en cours de campagne : c'est anormal, et l'écran doit
+        le dire plutôt que d'en choisir une au hasard.
+        """
+        return _rows(self.conn.execute(
+            "SELECT DISTINCT target_url, target_database FROM execution"
+            " WHERE run_id=? AND target_url <> ''", (run_id,)))
+
     def archive(self, run_id: int, archived: bool = True) -> None:
         """Clôt (ou rouvre) une campagne. Un run archivé est en LECTURE SEULE : on ne le relance
         plus, ses résultats sont figés (note fonctionnelle — « bandeau exécution archivée »).

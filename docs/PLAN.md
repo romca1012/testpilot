@@ -40,7 +40,7 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 
 | | |
 |---|---|
-| Tests | **865 Python · 82 vitest** — tous verts |
+| Tests | **867 Python · 82 vitest** — tous verts |
 | Schéma | `user_version = 22` |
 | Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), re-confirmé au rejeu du 2026-07-23 |
 | Verdicts | **0 fausse accusation par invention de champ** ; 4ᵉ verdict `donnee_invalide` déclenché en réel |
@@ -354,6 +354,28 @@ revienne.
 - [ ] **Mode dev / mode utilisateur.**
 - **Hors V1, arbitré** : comptes/rôles/client externe (prérequis déploiement client) · Jira, charge,
   sécurité, CI-CD (V2) · abstraction multi-connecteurs (au 2ᵉ connecteur).
+
+### Phase 2ter — Conception : rendre l'application tenable *(→ `docs/CONCEPTION.md`)*
+
+Revue des pratiques de conception + **audit du code réel** (2026-07-24). Ordre arbitré par le
+porteur : **E → A → B → C → D**.
+
+- [x] **Lot E — nettoyer le terrain** *(fait le 2026-07-24)*. 5 pages **jamais routées**
+      supprimées (`CaseDetail`, `CasesList`, `ExecutionsList`, `ModuleDetail`, `ModulesOverview`).
+      ⚠️ **Le code mort trompe, et j'en suis la preuve** : l'affichage « testé contre… » du lot 1
+      avait été ajouté dans `ExecutionsList.vue`, une page morte. Remis sur l'écran **vivant** —
+      le détail d'une campagne — et lu sur ses **exécutions réelles**, jamais sur la connexion
+      actuelle du projet. Deux cibles dans une même campagne sont **signalées**, pas arbitrées.
+      Système de jetons documenté en 3 couches (aucune couleur en dur : vérifié, 0 occurrence).
+- [ ] **Lot A — une couche de données unique** (`@tanstack/vue-query`) : 22 pages appellent l'API
+      en direct, le shell et la page rechargent les mêmes données à chaque navigation.
+- [ ] **Lot B — le contrat d'API** : erreurs RFC 9457 + code métier stable (le front lit du
+      français pour décider), pagination par curseur, `/api/v1` — **et la suppression douce**,
+      qui aligne enfin le produit sur son propre §7 (`delete_project` détruit sans filet).
+- [ ] **Lot C — le quotidien du QA** : recherche, sélection multiple + actions en lot, densité,
+      colonnes, vues sauvegardées.
+- [ ] **Lot D — clavier et accessibilité** : 21 attributs `aria`/`role` pour 91 boutons ; puis
+      palette de commandes.
 
 ### Phase 3 — Compléter *(confort, pas essentiel)*
 

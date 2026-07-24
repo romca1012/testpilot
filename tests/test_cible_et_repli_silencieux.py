@@ -202,6 +202,42 @@ def test_une_execution_ancienne_dit_ne_pas_savoir_plutot_que_de_deviner(conn):
     assert ligne["target_url"] == ""
 
 
+def test_la_campagne_dit_contre_quoi_elle_a_tourne(conn):
+    """La cible remonte sur l'écran d'une CAMPAGNE — celui qu'on lit pour décider d'un go/no-go.
+
+    ⚠️ Lue sur les **exécutions de la campagne**, jamais sur la connexion actuelle du projet :
+    afficher la cible d'aujourd'hui sur des résultats d'hier serait exactement le mensonge que la
+    migration 20 sert à empêcher.
+    """
+    pid = _projet(conn)
+    cid = _cas_pret(conn, pid)
+    rid = RunRepo(conn).create(project_id=pid, name="Campagne", description="", refs="",
+                               selection_mode="frozen", case_ids=[cid])
+    eid, _, _, _ = run_service.trigger_run(conn, cid)
+    conn.execute("UPDATE execution SET run_id=? WHERE id=?", (rid, eid))
+    conn.commit()
+
+    cibles = RunRepo(conn).cibles_du_run(rid)
+    assert cibles == [{"target_url": "http://recette:8069", "target_database": "recette_db"}]
+
+
+def test_deux_cibles_dans_une_campagne_sont_SIGNALEES_pas_arbitrees(conn):
+    """Si la connexion a changé en cours de campagne, ses résultats ne sont plus comparables.
+    En choisir une au hasard donnerait à la campagne une cohérence qu'elle n'a pas."""
+    pid = _projet(conn)
+    cid = _cas_pret(conn, pid)
+    rid = RunRepo(conn).create(project_id=pid, name="Campagne", description="", refs="",
+                               selection_mode="frozen", case_ids=[cid])
+    vid = CaseRepo(conn).get(cid)["current_version_id"]
+    for url in ("http://recette:8069", "http://demo:8069"):
+        eid = ExecutionRepo(conn).create(test_case_id=cid, version_id=vid,
+                                         cible={"target_url": url, "target_database": "db"})
+        conn.execute("UPDATE execution SET run_id=? WHERE id=?", (rid, eid))
+    conn.commit()
+
+    assert len(RunRepo(conn).cibles_du_run(rid)) == 2
+
+
 def test_la_cible_remonte_jusqu_a_l_api_et_au_rapport(client):
     """Écrite mais non exposée, elle ne servirait à rien : c'est l'écran qui doit la dire."""
     from testpilot.api.services import report_service
