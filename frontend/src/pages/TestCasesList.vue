@@ -2,13 +2,16 @@
 // Liste des cas de test — disposition TestRail (palette sombre). Groupée par SECTION = MODULE.
 // La colonne « Statut » n'affiche QUE le statut FONCTIONNEL (conforme / non conforme), jamais
 // l'exécution technique ni les deux mêlés (consigne du porteur). Titre sans préfixe d'angle.
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseSummary, type ModuleSummary } from '../lib/api'
 import { testStatusMeta, testStatusCode } from '../lib/status'
 import { useModuleCreate } from '../lib/useModuleCreate'
 import { cles, useCas, useModules } from '../lib/donnees'
 import { useQueryClient } from '@tanstack/vue-query'
+import {
+  COLONNES_MASQUABLES, HAUTEUR_LIGNE, usePreferencesListe, type Colonne,
+} from '../lib/preferencesListe'
 import Button from '../components/ui/Button.vue'
 
 const route = useRoute()
@@ -36,8 +39,54 @@ const qc = useQueryClient()
 const { openFor: openCreateModule } = useModuleCreate()
 
 // Tri et filtre CÔTÉ CLIENT (préférences de lecture, pas de rechargement).
-const sortKey = ref<'id' | 'title' | 'status'>('id')
 const filterStatus = ref('')  // '' = tous
+
+// ── Préférences d'affichage, conservées PAR PROJET (lot C) ───────────────────
+// Densité, colonnes et tri sont des préférences de LECTURE : elles n'ont rien à faire dans la
+// couche de données (personne d'autre n'est concerné par la densité que je choisis).
+const { prefs, reinitialiser, estModifie } = usePreferencesListe(() => pid.value)
+const sortKey = computed({
+  get: () => prefs.value.tri,
+  set: (v: 'id' | 'title' | 'status') => { prefs.value.tri = v },
+})
+function colonneVisible(c: Colonne) { return prefs.value.colonnes.includes(c) }
+function basculerColonne(c: Colonne) {
+  prefs.value.colonnes = colonneVisible(c)
+    ? prefs.value.colonnes.filter((x) => x !== c)
+    : [...prefs.value.colonnes, c]
+}
+const menuColonnes = ref(false)
+
+// Libellés MÉTIER de la priorité : `high` ne s'affiche jamais tel quel (§8 du brief).
+const PRIORITE: Record<string, string> = { high: 'Haute', medium: 'Moyenne', low: 'Basse' }
+
+// ── RECHERCHE ────────────────────────────────────────────────────────────────
+// Instantanée et côté client : les cas du projet sont déjà en cache, un aller-retour serveur
+// n'apporterait qu'une latence. Elle porte sur ce qu'on lit à l'écran — titre, identifiant,
+// module, spécification : chercher « C12 » ou « sinistre » doit marcher pareil.
+const recherche = ref('')
+function correspond(c: CaseSummary) {
+  const q = recherche.value.trim().toLowerCase()
+  if (!q) return true
+  return [`c${c.id}`, String(c.id), c.title, c.module || '', c.group_title || '']
+    .some((champ) => champ.toLowerCase().includes(q))
+}
+
+// ── SÉLECTION MULTIPLE ───────────────────────────────────────────────────────
+const selection = ref<number[]>([])
+function estSelectionne(id: number) { return selection.value.includes(id) }
+function basculer(id: number) {
+  selection.value = estSelectionne(id)
+    ? selection.value.filter((x) => x !== id) : [...selection.value, id]
+}
+function toutSelectionner(ids: number[], coche: boolean) {
+  selection.value = coche
+    ? [...new Set([...selection.value, ...ids])]
+    : selection.value.filter((x) => !ids.includes(x))
+}
+// ⚠️ La sélection est vidée quand la liste change de contenu (filtre, recherche, projet) :
+// garder des cases cochées invisibles ferait agir sur ce qu'on ne voit plus.
+watch([recherche, filterStatus, pid, specFilter], () => { selection.value = [] })
 
 function statusOf(c: CaseSummary) {
   return testStatusCode(c.last_execution_status, c.last_functional_status)
@@ -47,7 +96,7 @@ function statusOf(c: CaseSummary) {
 const visibleCases = computed(() => {
   let list = specFilter.value ? cases.value.filter((c) => c.group_id === specFilter.value) : cases.value
   if (filterStatus.value) list = list.filter((c) => statusOf(c) === filterStatus.value)
-  return list
+  return list.filter(correspond)
 })
 
 function sortRows(rows: CaseSummary[]): CaseSummary[] {
@@ -129,10 +178,105 @@ function exportCsv() {
   URL.revokeObjectURL(url)
 }
 function goRunNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) }
+
+// ── ACTIONS EN LOT ───────────────────────────────────────────────────────────
+// Le geste que ce lot vise : 20 cas cochés, une action. Chaque action rend un COMPTE RENDU
+// (`traites` / `ignores`) — un cas peut avoir disparu entre l'affichage et le clic, et le taire
+// ferait croire à un succès complet.
+const actionEnCours = ref(false)
+const messageLot = ref('')
+
+function bilan(r: { traites: number; ignores: number }, verbe: string) {
+  messageLot.value = r.ignores
+    ? `${r.traites} cas ${verbe}, ${r.ignores} ignoré(s) — ils n'existaient plus.`
+    : `${r.traites} cas ${verbe}.`
+}
+
+async function prioriteEnLot(priority: string) {
+  actionEnCours.value = true
+  messageLot.value = ''
+  try {
+    bilan(await api.prioriteEnLot(selection.value, priority), 'mis à jour')
+    await qc.invalidateQueries({ queryKey: cles.cas(pid.value) })
+    selection.value = []
+  } catch (e: any) {
+    messageLot.value = e?.message || 'Action impossible.'
+  } finally {
+    actionEnCours.value = false
+  }
+}
+
+async function supprimerEnLot() {
+  const n = selection.value.length
+  if (!window.confirm(
+    `Supprimer ${n} cas de test ?\n\nRien n'est détruit : ils partent à la corbeille et `
+    + `restent restaurables.`)) return
+  actionEnCours.value = true
+  messageLot.value = ''
+  try {
+    bilan(await api.supprimerEnLot(selection.value), 'supprimés')
+    await qc.invalidateQueries({ queryKey: cles.projet(pid.value) })
+    selection.value = []
+  } catch (e: any) {
+    messageLot.value = e?.message || 'Suppression impossible.'
+  } finally {
+    actionEnCours.value = false
+  }
+}
+
+async function campagneDepuisSelection() {
+  const nom = window.prompt('Nom de la campagne', `Campagne du ${new Date().toLocaleDateString('fr-FR')}`)
+  if (!nom || !nom.trim()) return
+  actionEnCours.value = true
+  messageLot.value = ''
+  try {
+    // Sélection FIGÉE : la campagne doit contenir ces cas-là, pas « les cas du projet au moment
+    // du lancement » — sinon elle changerait sous les pieds de celui qui l'a composée.
+    const run = await api.createRun(pid.value, {
+      name: nom.trim(), selection_mode: 'frozen', case_ids: selection.value,
+    })
+    selection.value = []
+    router.push({ name: 'run-detail', params: { pid: pid.value, id: String(run.id) } })
+  } catch (e: any) {
+    messageLot.value = e?.message || 'Création impossible.'
+  } finally {
+    actionEnCours.value = false
+  }
+}
 </script>
 
 <template>
   <div>
+    <!-- BARRE D'ACTIONS EN LOT — n'apparaît QUE lorsqu'il y a une sélection.
+         L'afficher en permanence encombrerait un écran déjà dense de boutons inutilisables :
+         les actions de masse se révèlent au moment où elles ont un sens. -->
+    <div v-if="selection.length"
+         class="sticky top-0 z-20 flex flex-wrap items-center gap-3 border-b border-primary/30 bg-primary/10 px-6 py-2.5 text-sm backdrop-blur">
+      <span class="font-semibold">{{ selection.length }} cas sélectionné{{ selection.length > 1 ? 's' : '' }}</span>
+      <button class="text-primary hover:underline disabled:opacity-50" :disabled="actionEnCours"
+              @click="campagneDepuisSelection">Créer une campagne</button>
+      <span class="text-muted-foreground/50">·</span>
+      <span class="text-muted-foreground">Priorité :</span>
+      <button v-for="p in ['high', 'medium', 'low']" :key="p"
+              class="text-primary hover:underline disabled:opacity-50" :disabled="actionEnCours"
+              @click="prioriteEnLot(p)">{{ PRIORITE[p] }}</button>
+      <span class="text-muted-foreground/50">·</span>
+      <button class="text-destructive hover:underline disabled:opacity-50" :disabled="actionEnCours"
+              @click="supprimerEnLot">Supprimer</button>
+      <span class="flex-1"></span>
+      <button class="text-muted-foreground hover:text-foreground" @click="selection = []">Tout décocher</button>
+    </div>
+
+    <!-- ⚠️ Le compte rendu vit HORS de la barre de sélection : celle-ci disparaît dès que
+         l'action aboutit (la sélection est vidée), et le message s'effaçait donc à l'instant
+         précis où il fallait le lire. « 18 traités, 2 ignorés » n'était jamais vu. -->
+    <div v-if="messageLot"
+         class="flex items-center gap-3 border-b border-border bg-surface-raised/70 px-6 py-2 text-sm">
+      <span>{{ messageLot }}</span>
+      <button class="text-muted-foreground hover:text-foreground" aria-label="Masquer le message"
+              @click="messageLot = ''">✕</button>
+    </div>
+
     <!-- En-tête -->
     <div class="flex items-center justify-between px-6 pt-6 pb-2">
       <h1 class="text-[26px] font-semibold tracking-tight">Cas de test</h1>
@@ -172,6 +316,35 @@ function goRunNew() { router.push({ name: 'run-new', params: { pid: pid.value } 
           <option value="untested">Untested</option>
         </select>
       </label>
+      <!-- RECHERCHE : le geste le plus fréquent, donc le plus accessible. -->
+      <label class="flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input v-model="recherche" type="search" placeholder="Rechercher un cas…"
+               aria-label="Rechercher un cas de test"
+               class="w-52 bg-transparent text-foreground placeholder:text-muted-foreground/70 outline-none border-b border-dotted border-muted-foreground focus:border-primary" />
+      </label>
+      <label class="flex items-center gap-1.5">Densité :
+        <select v-model="prefs.densite" class="bg-transparent text-foreground border-b border-dotted border-muted-foreground outline-none cursor-pointer">
+          <option value="compacte">Compacte</option>
+          <option value="normale">Normale</option>
+          <option value="aeree">Aérée</option>
+        </select>
+      </label>
+      <!-- COLONNES : on ne peut masquer ni le titre ni le statut — une liste de cas sans eux
+           ne montrerait plus rien. -->
+      <div class="relative">
+        <button class="hover:text-foreground" @click="menuColonnes = !menuColonnes">Colonnes ▾</button>
+        <div v-if="menuColonnes" class="absolute z-30 mt-1 w-40 rounded-md border border-border bg-surface-overlay py-1 shadow-xl">
+          <label v-for="col in COLONNES_MASQUABLES" :key="col.cle"
+                 class="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-accent/60">
+            <input type="checkbox" :checked="colonneVisible(col.cle)" @change="basculerColonne(col.cle)" />
+            <span class="text-foreground">{{ col.label }}</span>
+          </label>
+        </div>
+      </div>
+      <button v-if="estModifie()" class="hover:text-foreground underline" @click="reinitialiser">
+        Réinitialiser l'affichage
+      </button>
       <span class="flex-1"></span>
       <span v-if="activeSpecTitle" class="flex items-center gap-1.5 text-primary">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
@@ -217,28 +390,53 @@ function goRunNew() { router.push({ name: 'run-new', params: { pid: pid.value } 
         <table v-if="!collapsed.includes(s.module.id) && s.rows.length" class="w-full border-collapse">
           <thead>
             <tr class="text-[11px] uppercase tracking-wider text-muted-foreground">
-              <th class="w-6"></th>
-              <th class="w-16 text-left font-semibold py-2 pl-3 relative">
+              <th class="w-8 py-2 pl-1">
+                <!-- « Tout sélectionner » porte sur CETTE section, pas sur la liste entière :
+                     cocher 400 cas invisibles d'un clic est un piège, pas un raccourci. -->
+                <input type="checkbox" :aria-label="`Sélectionner les cas de ${s.module.name}`"
+                       :checked="s.rows.length > 0 && s.rows.every((c) => estSelectionne(c.id))"
+                       @change="toutSelectionner(s.rows.map((c) => c.id), ($event.target as HTMLInputElement).checked)" />
+              </th>
+              <th v-if="colonneVisible('id')" class="w-16 text-left font-semibold py-2 pl-3 relative">
                 <span class="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded bg-primary"></span>ID
               </th>
               <th class="text-left font-semibold py-2 px-2.5">Titre</th>
+              <th v-if="colonneVisible('module')" class="w-40 text-left font-semibold py-2 px-2.5">Module</th>
+              <th v-if="colonneVisible('type')" class="w-28 text-left font-semibold py-2 px-2.5">Type</th>
+              <!-- Priorité à DROITE avec le statut : ce sont les colonnes qu'on balaie
+                   verticalement, et un balayage se fait sur un bord aligné. -->
+              <th v-if="colonneVisible('priorite')" class="w-24 text-right font-semibold py-2 px-2.5">Priorité</th>
               <th class="w-44 text-right font-semibold py-2 px-2.5">Statut</th>
               <th class="w-8"></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="c in s.rows" :key="c.id" class="group border-t border-border/60 hover:bg-accent/30 cursor-pointer" @click="openCase(c.id)">
-              <td class="py-3 pl-1">
-                <svg class="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.3"/><circle cx="15" cy="6" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="9" cy="18" r="1.3"/><circle cx="15" cy="18" r="1.3"/></svg>
+            <tr v-for="c in s.rows" :key="c.id"
+                class="group border-t border-border/60 hover:bg-accent/30 cursor-pointer"
+                :class="estSelectionne(c.id) && 'bg-primary/10'"
+                @click="openCase(c.id)">
+              <!-- ⚠️ `@click.stop` sur la case : sans lui, cocher ouvrirait aussi le cas — le
+                   clic remonterait à la ligne. Sélectionner et ouvrir sont deux intentions. -->
+              <td class="pl-1" :class="HAUTEUR_LIGNE[prefs.densite]" @click.stop>
+                <input type="checkbox" :aria-label="`Sélectionner ${c.title}`"
+                       :checked="estSelectionne(c.id)" @change="basculer(c.id)" />
               </td>
-              <td class="py-3 pl-3 font-bold tabular-nums whitespace-nowrap">C{{ c.id }}</td>
-              <td class="py-3 px-2.5 text-primary group-hover:underline leading-snug">{{ c.title }}</td>
-              <td class="py-3 px-2.5 text-right">
+              <td v-if="colonneVisible('id')" class="pl-3 font-bold tabular-nums whitespace-nowrap"
+                  :class="HAUTEUR_LIGNE[prefs.densite]">C{{ c.id }}</td>
+              <td class="px-2.5 text-primary group-hover:underline leading-snug"
+                  :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.title }}</td>
+              <td v-if="colonneVisible('module')" class="px-2.5 text-muted-foreground truncate"
+                  :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.module }}</td>
+              <td v-if="colonneVisible('type')" class="px-2.5 text-muted-foreground"
+                  :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.angle || '—' }}</td>
+              <td v-if="colonneVisible('priorite')" class="px-2.5 text-right text-muted-foreground"
+                  :class="HAUTEUR_LIGNE[prefs.densite]">{{ PRIORITE[c.priority] || c.priority }}</td>
+              <td class="px-2.5 text-right" :class="HAUTEUR_LIGNE[prefs.densite]">
                 <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] font-semibold" :class="testStatusMeta(testStatusCode(c.last_execution_status, c.last_functional_status)).badge">
                   {{ testStatusMeta(testStatusCode(c.last_execution_status, c.last_functional_status)).label }}
                 </span>
               </td>
-              <td class="py-3 text-muted-foreground">
+              <td class="text-muted-foreground" :class="HAUTEUR_LIGNE[prefs.densite]">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
               </td>
             </tr>

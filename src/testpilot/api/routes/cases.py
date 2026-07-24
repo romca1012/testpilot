@@ -77,6 +77,65 @@ def list_cases(project_id: int | None = None, module_id: int | None = None, conn
     return [schemas.case_summary(r) for r in rows]
 
 
+# ── Actions en LOT (lot C, 2026-07-24) ───────────────────────────────────────────────────────
+# ⚠️ Ces routes sont déclarées AVANT `/{case_id}` : sinon FastAPI ferait correspondre « lot » au
+# paramètre `case_id`, la conversion en entier échouerait, et l'écran recevrait une erreur de
+# validation incompréhensible au lieu de son action.
+
+_LOT_MAX = 500
+
+
+def _ids_valides(case_ids: list[int]) -> list[int]:
+    """Dédoublonne, borne, et refuse une demande vide.
+
+    La borne n'est pas décorative : une requête sans limite deviendrait, sur un référentiel de
+    plusieurs milliers de cas, une transaction longue qui bloque la base pour tout le monde.
+    """
+    uniques = list(dict.fromkeys(case_ids))
+    if not uniques:
+        raise erreurs.ErreurMetier("requete_invalide", "aucun cas sélectionné")
+    if len(uniques) > _LOT_MAX:
+        raise erreurs.ErreurMetier(
+            "requete_invalide",
+            f"{len(uniques)} cas sélectionnés — le maximum est {_LOT_MAX} par action")
+    return uniques
+
+
+@router.patch("/lot", response_model=schemas.LotOut)
+def priorite_en_lot(body: schemas.LotPrioriteIn, conn=Depends(get_conn)):
+    """Change la priorité de N cas en UNE requête.
+
+    ⚠️ **Les cas introuvables sont IGNORÉS, pas fatals** — et comptés à part. Entre l'affichage
+    de la liste et le clic, un cas a pu être supprimé par quelqu'un d'autre : refuser toute
+    l'action pour un élément disparu ferait perdre les 19 autres. Le compte rendu dit ce qui
+    s'est réellement passé.
+    """
+    if body.priority not in ("low", "medium", "high"):
+        raise erreurs.ErreurMetier("requete_invalide", "priorité invalide (low | medium | high)")
+    cases = CaseRepo(conn)
+    traites = 0
+    for cid in _ids_valides(body.case_ids):
+        if cases.get(cid) is None:
+            continue
+        cases.set_priority(cid, body.priority)
+        traites += 1
+    return schemas.LotOut(traites=traites, ignores=len(set(body.case_ids)) - traites)
+
+
+@router.post("/lot/suppression", response_model=schemas.LotOut)
+def supprimer_en_lot(body: schemas.LotCasIn, request: Request, conn=Depends(get_conn)):
+    """Met N cas à la corbeille en UNE requête. Rien n'est détruit (§7) — tout est restaurable."""
+    cases = CaseRepo(conn)
+    par = access.utilisateur_de(request)
+    traites = 0
+    for cid in _ids_valides(body.case_ids):
+        if cases.get(cid) is None:
+            continue
+        cases.delete(cid, par=par)
+        traites += 1
+    return schemas.LotOut(traites=traites, ignores=len(set(body.case_ids)) - traites)
+
+
 @router.post("/{case_id}/automate", response_model=schemas.GenerationJobOut, status_code=202)
 def automate_case(case_id: int, background: BackgroundTasks, conn=Depends(get_conn)):
     """AUTOMATISER un cas manuel : générer son test technique DEPUIS son métier (décision `0022`

@@ -125,6 +125,13 @@ export const api = {
   }),
   deleteCase: (caseId: number | string) =>
     request<void>(`/api/cases/${caseId}`, { method: 'DELETE' }),
+  // ── Actions en LOT (lot C) : une action, une requête, un compte rendu ──
+  // ⚠️ `traites` et `ignores` sont séparés : demander 20 cas et en traiter 18 n'est pas un
+  // succès complet — l'écran doit pouvoir le dire plutôt que d'annoncer « fait ».
+  prioriteEnLot: (case_ids: number[], priority: string) =>
+    request<LotOut>('/api/cases/lot', { method: 'PATCH', body: JSON.stringify({ case_ids, priority }) }),
+  supprimerEnLot: (case_ids: number[]) =>
+    request<LotOut>('/api/cases/lot/suppression', { method: 'POST', body: JSON.stringify({ case_ids }) }),
   // Automatiser un cas MANUEL : générer son test technique depuis son métier. Tâche de fond,
   // suivie via getGenerationJob (même mécanique que la génération).
   automateCase: (caseId: number | string) =>
@@ -226,6 +233,9 @@ export interface Session { lock_enabled: boolean; authenticated: boolean; name: 
  *  et « aucune trace conservée » ne se disent pas pareil. */
 /** Un élément à la corbeille. `deleted_by` est une signature déclarée, pas une identité
  *  vérifiée (lot 2) — l'écran doit le présenter comme telle. */
+/** Compte rendu d'une action en lot. `ignores` = des cas ont disparu entre l'affichage et le
+ *  clic (supprimés par quelqu'un d'autre) — à dire, jamais à taire. */
+export interface LotOut { traites: number; ignores: number }
 export interface ElementCorbeille {
   type: string; id: number; titre: string; deleted_at: string; deleted_by: string
 }

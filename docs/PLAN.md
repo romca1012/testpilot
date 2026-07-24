@@ -40,7 +40,7 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 
 | | |
 |---|---|
-| Tests | **888 Python · 86 vitest** — tous verts |
+| Tests | **897 Python · 100 vitest** — tous verts |
 | Schéma | `user_version = 24` |
 | Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), re-confirmé au rejeu du 2026-07-23 |
 | Verdicts | **0 fausse accusation par invention de champ** ; 4ᵉ verdict `donnee_invalide` déclenché en réel |
@@ -377,8 +377,10 @@ porteur : **E → A → B → C → D**.
       catalogue de codes stables ; ✅ **suppression douce + corbeille** (migrations 23-24) — le
       produit tient enfin son §7, `delete_project` ne détruit plus rien sans filet.
       ⏳ Restent la **pagination par curseur** et le préfixe **`/api/v1`**.
-- [ ] **Lot C — le quotidien du QA** : recherche, sélection multiple + actions en lot, densité,
-      colonnes, vues sauvegardées.
+- [x] **Lot C — le quotidien du QA** *(fait le 2026-07-24)*. Recherche instantanée, sélection
+      multiple, actions en lot (campagne à sélection figée, priorité, suppression), densité,
+      colonnes, préférences conservées + réinitialisation. **Mesuré au navigateur sur 20 cas** :
+      recherche = 0 requête ; composer une campagne de 20 cas = **1 requête** au lieu de 20 gestes.
 - [ ] **Lot D — clavier et accessibilité** : 21 attributs `aria`/`role` pour 91 boutons ; puis
       palette de commandes.
 

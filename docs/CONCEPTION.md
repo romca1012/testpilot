@@ -166,11 +166,25 @@ suites et le build tournent avant chaque commit.
 > application ; le nettoyage de l'enveloppe automatique avait disparu en réécrivant la
 > suppression ; et le refus « cette spécification porte encore des cas » avec lui.
 
-### Lot C — Le quotidien du QA *(~2,5 j)*
+### Lot C — Le quotidien du QA — ✅ **LIVRÉ le 2026-07-24**
 
-Recherche globale · sélection multiple + actions en lot (ajouter à une campagne, changer la
-priorité, supprimer) · densité réglable · choix de colonnes · vues sauvegardées · tri complet —
-préférences conservées, bouton « réinitialiser ».
+- **Recherche** instantanée, côté client (les cas sont déjà en cache) : titre, identifiant tel
+  qu'affiché (`C12`), module, spécification.
+- **Sélection multiple + actions en lot** : créer une campagne à sélection **figée**, changer la
+  priorité, supprimer. Une action = **une requête**, avec un **compte rendu** qui distingue
+  `traites` de `ignores` — un cas peut disparaître entre l'affichage et le clic, et le taire
+  ferait croire à un succès complet.
+- **Densité** réglable, **choix des colonnes** (ni le titre ni le statut ne sont masquables — une
+  liste sans eux ne montre plus rien), **préférences conservées par projet** et bouton
+  **réinitialiser**, affiché seulement quand quelque chose a été modifié.
+
+**Mesuré au navigateur** sur 20 cas réels : recherche → **0 requête serveur** ; « tout
+sélectionner » puis « créer une campagne » → **1 requête**, campagne à 20 cas en sélection figée.
+*Avant : 20 gestes.*
+
+⚠️ **Un défaut trouvé par un test, à l'endroit exact qu'il visait** : le compte rendu vivait
+dans la barre de sélection — laquelle disparaît dès que l'action aboutit (la sélection est
+vidée). « 18 traités, 2 ignorés » s'effaçait donc à l'instant précis où il fallait le lire.
 
 ### Lot D — Clavier et accessibilité *(~2 j)*
 

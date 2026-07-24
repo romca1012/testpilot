@@ -21,6 +21,9 @@ export function monter(composant: any, options: any = {}) {
     global: {
       ...(options.global || {}),
       plugins: [...(options.global?.plugins || []), [VueQueryPlugin, { queryClient: client }]],
+      // `RouterLink` est fourni par le routeur, que les tests simulent : sans ce remplacement,
+      // Vue avertit à chaque montage et ce bruit finit par masquer les vrais échecs.
+      stubs: { RouterLink: { template: '<a><slot/></a>' }, ...(options.global?.stubs || {}) },
     },
   })
 }

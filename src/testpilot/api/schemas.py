@@ -616,3 +616,30 @@ def scenario_result_out(row: dict) -> ScenarioResultOut:
     )
 
 
+
+
+# ── Actions en LOT (lot C, 2026-07-24) ────────────────────────────────────────
+class LotCasIn(BaseModel):
+    """Une action sur PLUSIEURS cas à la fois.
+
+    ⚠️ **Pourquoi un endpoint plutôt que N appels depuis l'écran.** Composer une campagne de
+    20 cas demandait 20 gestes ; le faire en 20 requêtes déplacerait le problème sans le
+    résoudre — la moitié pourrait échouer et laisser le référentiel dans un état que personne
+    n'a voulu. Une action, une requête, un compte rendu.
+    """
+    case_ids: list[int]
+
+
+class LotPrioriteIn(LotCasIn):
+    priority: str   # low | medium | high
+
+
+class LotOut(BaseModel):
+    """Compte rendu d'une action en lot.
+
+    ⚠️ `traites` et `ignores` sont SÉPARÉS : demander 20 cas et en traiter 18 n'est pas un
+    succès complet, et l'écran doit pouvoir le dire. Rendre un simple « OK » masquerait deux
+    cas disparus entre l'affichage de la liste et le clic.
+    """
+    traites: int
+    ignores: int = 0
