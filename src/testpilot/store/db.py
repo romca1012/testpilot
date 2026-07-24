@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 22
+_SCHEMA_VERSION = 24
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -110,6 +110,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_21_chiffrer_secrets(conn)
     if version < 22:
         _migrate_22_execution_artefacts(conn)
+    if version < 23:
+        _migrate_23_suppression_douce(conn)
+    if version < 24:
+        _migrate_24_unicite_parmi_les_vivants(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -769,6 +773,61 @@ def _migrate_22_execution_artefacts(conn: sqlite3.Connection) -> None:
     """
     if "artifacts_path" not in _column_names(conn, "execution"):
         conn.execute("ALTER TABLE execution ADD COLUMN artifacts_path TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_23_suppression_douce(conn: sqlite3.Connection) -> None:
+    """La suppression cesse de DÉTRUIRE (2026-07-24) — §7 du brief enfin tenu.
+
+    Le §7 interdit qu'une purge soit une « suppression sèche » : tout nettoyage doit être précédé
+    d'une sauvegarde récupérable. Or supprimer un projet exécutait **douze `DELETE FROM` en
+    cascade** — projet, modules, spécifications, cas, versions, relectures, exécutions, résultats,
+    réparations, coûts. Un clic, et des mois d'historique partaient sans retour. C'était le seul
+    endroit du produit où son propre principe était violé.
+
+    Quatre tables reçoivent `deleted_at` / `deleted_by` : les CONTENEURS et les cas. Les versions,
+    exécutions et coûts n'en ont pas besoin — ils appartiennent à un cas, et masquer le cas les
+    masque avec lui. Leur en donner un créerait deux façons d'être supprimé pour la même chose.
+
+    `deleted_by` est le nom déclaré à la connexion (lot 2) : une signature, pas une identité
+    vérifiée. Sur un serveur partagé, savoir QUI a supprimé vaut mieux que rien.
+
+    Vide = vivant. On n'utilise pas NULL : `WHERE deleted_at = ''` se lit et s'indexe, là où
+    `IS NULL` s'oublie plus facilement dans une condition composée.
+    """
+    for table in ("project", "module", "case_group", "test_case"):
+        cols = _column_names(conn, table)
+        if "deleted_at" not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN deleted_at TEXT NOT NULL DEFAULT ''")
+        if "deleted_by" not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN deleted_by TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_24_unicite_parmi_les_vivants(conn: sqlite3.Connection) -> None:
+    """Les index UNIQUE cessent de compter les elements a la corbeille (2026-07-24).
+
+    ⚠️ **Trouve par un test, pas a la relecture.** La suppression douce filtrait bien cote
+    Python, mais les index UNIQUE de la base, eux, voyaient toujours les lignes supprimees : un
+    nom restait pris par un module que plus personne ne voit. L'utilisateur butait sur « nom deja
+    utilise » sans aucun moyen de comprendre pourquoi — le pire genre de blocage.
+
+    SQLite gere les index PARTIELS : l'unicite ne s'applique qu'aux lignes vivantes. Deux modules
+    « Facturation » peuvent donc coexister si l'un est a la corbeille — et si on restaure celui-ci
+    alors qu'un homonyme vivant existe, l'index refusera la restauration. C'est le bon
+    comportement : mieux vaut un refus explicite qu'un doublon silencieux dans l'arbre.
+    """
+    partiels = [
+        ("uq_project_name", "project(name COLLATE NOCASE)"),
+        ("uq_module_project_name", "module(project_id, name COLLATE NOCASE)"),
+        ("uq_group_module_title", "case_group(module_id, title COLLATE NOCASE)"),
+        ("uq_case_group_title", "test_case(group_id, title COLLATE NOCASE)"),
+    ]
+    for nom, colonnes in partiels:
+        conn.execute(f"DROP INDEX IF EXISTS {nom}")
+        conn.execute(f"CREATE UNIQUE INDEX {nom} ON {colonnes} WHERE deleted_at = ''")
+    # Le slug technique suit la meme regle (il portait deja une condition partielle).
+    conn.execute("DROP INDEX IF EXISTS uq_case_feature_slug")
+    conn.execute("CREATE UNIQUE INDEX uq_case_feature_slug ON test_case(feature_slug)"
+                 " WHERE feature_slug != '' AND deleted_at = ''")
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

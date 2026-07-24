@@ -16,7 +16,9 @@ from fastapi.staticfiles import StaticFiles
 
 from testpilot import config
 from testpilot.api import access, erreurs
-from testpilot.api.routes import auth, cases, executions, groups, modules, projects, runs
+from testpilot.api.routes import (
+    auth, cases, corbeille, executions, groups, modules, projects, runs,
+)
 
 # Origines du serveur de dev Vite (aucune auth : usage interne, réseau local).
 _DEV_ORIGINS = [
@@ -82,6 +84,7 @@ def create_app() -> FastAPI:
                 "access_lock": access.verrou_actif()}
 
     app.include_router(auth.router)
+    app.include_router(corbeille.router)
     app.include_router(projects.router)
     app.include_router(modules.router)
     app.include_router(groups.router)

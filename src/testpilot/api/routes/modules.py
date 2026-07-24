@@ -108,7 +108,7 @@ def rename_module(module_id: int, body: schemas.ModuleIn, conn=Depends(get_conn)
 
 
 @router.delete("/{module_id}", status_code=204)
-def delete_module(module_id: int, conn=Depends(get_conn)):
+def delete_module(module_id: int, request: Request, conn=Depends(get_conn)):
     """Supprime un module et TOUTE sa descendance (spécifications, cas, versions, exécutions…).
 
     Cascade sur demande explicite (l'écran confirme en montrant ce qui partira). §2.10 interdit
@@ -116,7 +116,7 @@ def delete_module(module_id: int, conn=Depends(get_conn)):
     """
     if ModuleRepo(conn).get(module_id) is None:
         raise HTTPException(status_code=404, detail=f"module {module_id} introuvable")
-    ModuleRepo(conn).delete(module_id)
+    ModuleRepo(conn).delete(module_id, par=access.utilisateur_de(request))
     return Response(status_code=204)
 
 

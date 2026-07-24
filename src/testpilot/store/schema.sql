@@ -21,6 +21,11 @@ CREATE TABLE IF NOT EXISTS project (
     database       TEXT    NOT NULL DEFAULT '',
     username       TEXT    NOT NULL DEFAULT '',
     password       TEXT    NOT NULL DEFAULT '',   -- secret : jamais renvoyé par l'API (write-only)
+    -- Suppression DOUCE (migration 23, §7 du brief) : vide = vivant. Supprimer marque la date
+    -- et l'auteur ; l'élément quitte toutes les listes et tous les compteurs, et se restaure.
+    -- La destruction définitive existe (`purger()`), mais c'est un geste distinct et explicite.
+    deleted_at    TEXT    NOT NULL DEFAULT '',
+    deleted_by    TEXT    NOT NULL DEFAULT '',
     created_at     TEXT    NOT NULL
 );
 
@@ -30,6 +35,11 @@ CREATE TABLE IF NOT EXISTS module (
     project_id  INTEGER NOT NULL,
     name        TEXT    NOT NULL,
     description TEXT    NOT NULL DEFAULT '',
+    -- Suppression DOUCE (migration 23, §7 du brief) : vide = vivant. Supprimer marque la date
+    -- et l'auteur ; l'élément quitte toutes les listes et tous les compteurs, et se restaure.
+    -- La destruction définitive existe (`purger()`), mais c'est un geste distinct et explicite.
+    deleted_at    TEXT    NOT NULL DEFAULT '',
+    deleted_by    TEXT    NOT NULL DEFAULT '',
     created_at  TEXT    NOT NULL,
     FOREIGN KEY (project_id) REFERENCES project(id)
 );
@@ -57,6 +67,11 @@ CREATE TABLE IF NOT EXISTS case_group (
     -- résidu technique avec une spécification que l'utilisateur vient de créer et n'a pas encore
     -- remplie. Les deux sont vides ; une seule est jetable (2026-07-22).
     auto_enveloppe INTEGER NOT NULL DEFAULT 0,
+    -- Suppression DOUCE (migration 23, §7 du brief) : vide = vivant. Supprimer marque la date
+    -- et l'auteur ; l'élément quitte toutes les listes et tous les compteurs, et se restaure.
+    -- La destruction définitive existe (`purger()`), mais c'est un geste distinct et explicite.
+    deleted_at    TEXT    NOT NULL DEFAULT '',
+    deleted_by    TEXT    NOT NULL DEFAULT '',
     created_at   TEXT    NOT NULL,
     updated_at   TEXT    NOT NULL,
     FOREIGN KEY (module_id) REFERENCES module(id)
@@ -100,6 +115,11 @@ CREATE TABLE IF NOT EXISTS test_case (
     last_functional_status TEXT    CHECK (last_functional_status IN ('conforme', 'non_conforme', 'indetermine', 'not_evaluated', 'donnee_invalide')),
     last_executed_at       TEXT,
     author                 TEXT    NOT NULL DEFAULT '',
+    -- Suppression DOUCE (migration 23, §7 du brief) : vide = vivant. Supprimer marque la date
+    -- et l'auteur ; l'élément quitte toutes les listes et tous les compteurs, et se restaure.
+    -- La destruction définitive existe (`purger()`), mais c'est un geste distinct et explicite.
+    deleted_at    TEXT    NOT NULL DEFAULT '',
+    deleted_by    TEXT    NOT NULL DEFAULT '',
     created_at             TEXT    NOT NULL,
     updated_at             TEXT    NOT NULL
 );

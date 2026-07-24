@@ -145,9 +145,11 @@ def test_supprimer_un_module_emporte_ses_cas(client):
 
     assert client.delete(f"/api/modules/{mid}").status_code == 204
 
+    # ⚠️ Les LIGNES restent (§7) : ce qui compte est qu'elles ne soient plus VISIBLES.
     conn = get_initialized_db(config.DB_PATH)
-    assert conn.execute("SELECT COUNT(*) FROM test_case").fetchone()[0] == 0
-    assert conn.execute("SELECT COUNT(*) FROM case_group").fetchone()[0] == 0
+    assert CaseRepo(conn).list_all(module_id=mid) == []
+    assert ModuleRepo(conn).get(mid) is None
+    assert conn.execute("SELECT COUNT(*) FROM test_case").fetchone()[0] == 2   # conservées
     conn.close()
 
 
@@ -163,6 +165,9 @@ def test_supprimer_un_module_avec_des_RUNS_les_emporte_aussi(conn):
                                  duration_seconds=1.0, iterations=0, cost_usd=0.0)
 
     ModuleRepo(conn).delete(mid)
+    assert ModuleRepo(conn).get(mid) is None            # masqué (§7)
+
+    ModuleRepo(conn).purger(mid)                        # la cascade, geste distinct
 
     assert conn.execute("SELECT COUNT(*) FROM execution").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM module WHERE id=?", (mid,)).fetchone()[0] == 0

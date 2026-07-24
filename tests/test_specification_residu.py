@@ -111,8 +111,12 @@ def test_un_RESIDU_ne_bloque_plus_le_titre(conn, module_id):
     nouveau = CaseGroupRepo(conn).create(module_id=module_id, title=TITRE)
 
     assert nouveau != fantome
-    reste = conn.execute("SELECT COUNT(*) FROM case_group WHERE id=?", (fantome,)).fetchone()[0]
-    assert reste == 0, "le résidu doit être récupéré, pas laissé en double"
+    # ⚠️ Depuis la suppression douce (2026-07-24), le résidu récupéré part à la corbeille au lieu
+    # d'être détruit — §7 ne fait pas d'exception pour les détails techniques. Ce qui compte est
+    # inchangé : il ne doit plus être VISIBLE, sinon l'arbre montrerait deux fois le même titre.
+    assert CaseGroupRepo(conn).get(fantome) is None
+    titres = [g["title"] for g in CaseGroupRepo(conn).list_for_module(module_id)]
+    assert titres.count(TITRE) == 1, "le résidu doit être récupéré, pas laissé en double"
 
 
 def test_une_specification_VOULUE_refuse_TOUJOURS_le_doublon(conn, module_id):
@@ -150,7 +154,7 @@ def test_la_recuperation_est_LOCALE_a_son_module(conn, module_id):
 
     CaseGroupRepo(conn).create(module_id=module_id, title=TITRE)
 
-    survit = conn.execute("SELECT COUNT(*) FROM case_group WHERE id=?", (ailleurs,)).fetchone()[0]
+    survit = 1 if CaseGroupRepo(conn).get(ailleurs) else 0
     assert survit == 1, "on ne touche pas au module voisin"
 
 
@@ -162,10 +166,8 @@ def test_renommer_vers_le_titre_d_un_residu_est_possible(conn, module_id):
 
     CaseGroupRepo(conn).update(autre, title=TITRE)
 
-    assert conn.execute("SELECT title FROM case_group WHERE id=?",
-                        (autre,)).fetchone()[0] == TITRE
-    assert conn.execute("SELECT COUNT(*) FROM case_group WHERE id=?",
-                        (fantome,)).fetchone()[0] == 0
+    assert CaseGroupRepo(conn).get(autre)["title"] == TITRE
+    assert CaseGroupRepo(conn).get(fantome) is None   # récupéré → à la corbeille (§7)
 
 
 # ── Cohérence avec la suppression (une seule règle, deux appelants) ──────────
@@ -179,7 +181,10 @@ def test_supprimer_le_dernier_cas_emporte_l_enveloppe(conn, module_id):
 
     CaseRepo(conn).delete(cid)
 
-    assert conn.execute("SELECT COUNT(*) FROM case_group WHERE id=?", (gid,)).fetchone()[0] == 0
+    # ⚠️ Depuis la suppression douce (2026-07-24), la LIGNE reste — et c'est voulu (§7). Ce qui
+    # comptait n'a pas changé : l'enveloppe ne doit plus être visible nulle part.
+    assert CaseGroupRepo(conn).get(gid) is None
+    assert CaseGroupRepo(conn).list_for_module(module_id) == []
 
 
 def test_le_CYCLE_COMPLET_est_rejouable(conn, module_id):
@@ -198,10 +203,11 @@ def test_le_CYCLE_COMPLET_est_rejouable(conn, module_id):
     for tour in range(3):
         cid = _cas(conn, module_id, TITRE)
         CaseRepo(conn).delete(cid)
-        restants = conn.execute(
-            "SELECT COUNT(*) FROM case_group WHERE module_id=? AND title=?",
-            (module_id, TITRE)).fetchone()[0]
-        assert restants == 0, f"tour {tour + 1} : une enveloppe fantôme est restée"
+        # Aucune enveloppe VISIBLE ne doit rester — c'est elle qui bloquait la regénération du
+        # même titre. (La ligne subsiste à la corbeille : suppression douce, §7.)
+        visibles = [g for g in CaseGroupRepo(conn).list_for_module(module_id)
+                    if g["title"] == TITRE]
+        assert visibles == [], f"tour {tour + 1} : une enveloppe fantôme est restée"
 
 
 def test_supprimer_le_dernier_cas_PRESERVE_une_specification_documentee(conn, module_id):
@@ -213,7 +219,7 @@ def test_supprimer_le_dernier_cas_PRESERVE_une_specification_documentee(conn, mo
 
     CaseRepo(conn).delete(cid)
 
-    assert conn.execute("SELECT COUNT(*) FROM case_group WHERE id=?", (gid,)).fetchone()[0] == 1
+    assert CaseGroupRepo(conn).get(gid) is not None   # une spec DOCUMENTÉE survit à ses cas
 
 
 # ── La reprise de l'existant (migration 18) ──────────────────────────────────
@@ -236,7 +242,7 @@ def test_la_reprise_reconnait_une_enveloppe_A_SON_TITRE(conn, module_id):
     assert conn.execute("SELECT auto_enveloppe FROM case_group WHERE id=?",
                         (gid,)).fetchone()[0] == 1
     CaseRepo(conn).delete(cid)
-    assert conn.execute("SELECT COUNT(*) FROM case_group WHERE id=?", (gid,)).fetchone()[0] == 0
+    assert CaseGroupRepo(conn).get(gid) is None      # invisible (ligne conservée, §7)
 
 
 def test_la_reprise_NE_TOUCHE_PAS_une_specification_documentee(conn, module_id):

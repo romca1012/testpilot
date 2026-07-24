@@ -6,9 +6,9 @@ les modules regroupent les cas d'un projet. Aucune auth à ce stade.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 
-from testpilot.api import erreurs, schemas
+from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import exploration_service
 from testpilot.store.repositories import CaseGroupRepo, DuplicateName, ModuleRepo, ProjectRepo
@@ -92,10 +92,10 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
 
 
 @router.delete("/{project_id}", status_code=204)
-def delete_project(project_id: int, conn=Depends(get_conn)):
+def delete_project(project_id: int, request: Request, conn=Depends(get_conn)):
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
-    ProjectRepo(conn).delete(project_id)
+    ProjectRepo(conn).delete(project_id, par=access.utilisateur_de(request))
     return Response(status_code=204)
 
 

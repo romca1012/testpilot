@@ -40,8 +40,8 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 
 | | |
 |---|---|
-| Tests | **867 Python · 86 vitest** — tous verts |
-| Schéma | `user_version = 22` |
+| Tests | **888 Python · 86 vitest** — tous verts |
+| Schéma | `user_version = 24` |
 | Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), re-confirmé au rejeu du 2026-07-23 |
 | Verdicts | **0 fausse accusation par invention de champ** ; 4ᵉ verdict `donnee_invalide` déclenché en réel |
 | Coût d'un cas (analyse + génération) | **~0,08 à 0,11 $** — modèle **Sonnet 4.6** |
@@ -373,9 +373,10 @@ porteur : **E → A → B → C → D**.
       **Mesuré au navigateur** sur l'application compilée : **0 requête redondante** sur 6
       navigations internes (les 3 listes de l'arbre + les campagnes). ⚠️ Ma première mesure était
       fausse — elle naviguait par rechargement de page, ce qui détruit le cache à chaque fois.
-- [ ] **Lot B — le contrat d'API** : erreurs RFC 9457 + code métier stable (le front lit du
-      français pour décider), pagination par curseur, `/api/v1` — **et la suppression douce**,
-      qui aligne enfin le produit sur son propre §7 (`delete_project` détruit sans filet).
+- 🟡 **Lot B — le contrat d'API** *(2 tiers faits le 2026-07-24)*. ✅ Erreurs **RFC 9457** avec un
+      catalogue de codes stables ; ✅ **suppression douce + corbeille** (migrations 23-24) — le
+      produit tient enfin son §7, `delete_project` ne détruit plus rien sans filet.
+      ⏳ Restent la **pagination par curseur** et le préfixe **`/api/v1`**.
 - [ ] **Lot C — le quotidien du QA** : recherche, sélection multiple + actions en lot, densité,
       colonnes, vues sauvegardées.
 - [ ] **Lot D — clavier et accessibilité** : 21 attributs `aria`/`role` pour 91 boutons ; puis

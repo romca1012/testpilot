@@ -147,14 +147,24 @@ rétrocompatibilité Vue 2), que npm tente de résoudre et qui fait échouer l'i
 npm cesse de vérifier les dépendances de pair **pour tous les paquets**. Contre-mesure : les deux
 suites et le build tournent avant chaque commit.
 
-### Lot B — Le contrat d'API *(~2 j — casse le front, donc juste après A)*
+### Lot B — Le contrat d'API — ✅ **LIVRÉ le 2026-07-24** *(sauf pagination et `/v1`)*
 
-- **RFC 9457** + **code métier stable** (`connexion_incomplete`, `nom_deja_pris`, `spec_non_vide`…).
-- **Pagination par curseur** sur cas / exécutions / spécifications.
-- Filtres et tri normalisés ; préfixe `/api/v1`.
-- **Greffé ici : la suppression douce** (même migration) — `deleted_at` + auteur sur les entités
-  porteuses d'historique, corbeille, restauration, purge définitive comme geste séparé.
-  *Aligne enfin le produit sur son propre §7.*
+- ✅ **RFC 9457 + catalogue de codes stables.** Un code absent du catalogue lève à la
+  construction — un code inventé passerait sinon en production, et un client bâtirait sa logique
+  dessus. Le comble : **les codes existaient déjà** dans les services ; les routes les jetaient.
+  *Une incohérence révélée au passage : la même situation métier répondait 422 sur une porte et
+  409 sur les trois autres.*
+- ✅ **Suppression douce + corbeille** (migrations 23 et 24) — `deleted_at` + auteur, visibilité
+  **hiérarchique** (un cas dont le module est à la corbeille est invisible), restauration, purge
+  définitive comme geste distinct, index UNIQUE devenus **partiels** (un nom supprimé se
+  réutilise). Écran `Corbeille.vue` : sans lui, « restaurer » n'existerait pas pour l'utilisateur.
+- [ ] **Pagination par curseur** sur cas / exécutions / spécifications — **reste à faire**.
+- [ ] Filtres et tri normalisés ; préfixe `/api/v1` — **reste à faire**.
+
+> ⚠️ **Trois défauts trouvés pendant ce lot, tous par des tests, aucun à la relecture** :
+> une campagne en mode « tous les cas » aurait **exécuté des cas supprimés** contre la vraie
+> application ; le nettoyage de l'enveloppe automatique avait disparu en réécrivant la
+> suppression ; et le refus « cette spécification porte encore des cas » avec lui.
 
 ### Lot C — Le quotidien du QA *(~2,5 j)*
 

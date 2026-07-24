@@ -201,6 +201,16 @@ export const api = {
     request<ExecutionSummary[]>(`/api/executions?project_id=${projectId}&limit=${limit}`),
   getExecution: (id: number | string) => request<ExecutionDetail>(`/api/executions/${id}`),
   getReport: (id: number | string) => request<TestReport>(`/api/executions/${id}/report`),
+  // ── La CORBEILLE (§7 : rien n'est détruit sans filet) ──
+  // Supprimer MASQUE ; restaurer annule ; purger détruit, et n'est possible que sur ce qui est
+  // déjà à la corbeille — sinon elle serait décorative.
+  listerCorbeille: (projectId: number | string) =>
+    request<ElementCorbeille[]>(`/api/projects/${projectId}/corbeille`),
+  restaurer: (type: string, id: number) =>
+    request<void>(`/api/corbeille/${type}/${id}/restaurer`, { method: 'POST' }),
+  purger: (type: string, id: number) =>
+    request<void>(`/api/corbeille/${type}/${id}`, { method: 'DELETE' }),
+
   // Trace BRUTE d'une exécution : ce que la machine a vu. C'est ce qui permet d'INSTRUIRE un
   // résultat non concluant au lieu de seulement le constater.
   listArtifacts: (id: number | string) => request<Artifacts>(`/api/executions/${id}/artifacts`),
@@ -214,6 +224,11 @@ export interface Session { lock_enabled: boolean; authenticated: boolean; name: 
 
 /** Trace brute d'une exécution. `available=false` porte TOUJOURS sa raison : « pas de fichier »
  *  et « aucune trace conservée » ne se disent pas pareil. */
+/** Un élément à la corbeille. `deleted_by` est une signature déclarée, pas une identité
+ *  vérifiée (lot 2) — l'écran doit le présenter comme telle. */
+export interface ElementCorbeille {
+  type: string; id: number; titre: string; deleted_at: string; deleted_by: string
+}
 export interface Artifact { name: string; size: number; label: string }
 export interface Artifacts { available: boolean; reason: string; files: Artifact[] }
 

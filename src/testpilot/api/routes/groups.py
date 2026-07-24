@@ -11,9 +11,9 @@ dépense rien. La génération (« un angle par appel ») est l'étape 3, et ell
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from testpilot.api import erreurs, schemas
+from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.store.repositories import CaseGroupRepo, DuplicateName, NotEmpty
 
@@ -53,7 +53,7 @@ def update_group(group_id: int, body: schemas.GroupPatch, conn=Depends(get_conn)
 
 
 @router.delete("/{group_id}", status_code=204)
-def delete_group(group_id: int, conn=Depends(get_conn)):
+def delete_group(group_id: int, request: Request, conn=Depends(get_conn)):
     """Supprime une spécification VIDE ; 409 tant qu'elle porte des cas.
 
     Pas de cascade, délibérément : un cas porte versions, exécutions et coûts — de l'historique,
@@ -61,7 +61,7 @@ def delete_group(group_id: int, conn=Depends(get_conn)):
     """
     _load(conn, group_id)
     try:
-        CaseGroupRepo(conn).delete(group_id)
+        CaseGroupRepo(conn).delete(group_id, par=access.utilisateur_de(request))
     except NotEmpty as exc:
         raise erreurs.ErreurMetier("conteneur_non_vide", str(exc)) from exc
     return Response(status_code=204)

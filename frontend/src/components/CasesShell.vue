@@ -234,7 +234,7 @@ function soon(tab: string) {
 function isActive(key: string) {
   const n = String(route.name)
   if (key === 'cases') return ['cases', 'case-detail', 'cases-all', 'module-detail',
-                               'spec-detail', 'case-new', 'case-manual'].includes(n)
+                               'spec-detail', 'case-new', 'case-manual', 'corbeille'].includes(n)
   if (key === 'exec') return ['executions', 'report', 'run-detail', 'run-new', 'plan-new'].includes(n)
   if (key === 'qualite') return n === 'quality'
   return n === 'cases-soon' && route.query.tab === key
@@ -275,6 +275,11 @@ function switchProject(id: number) {
           <div class="my-1 border-t border-border"></div>
           <RouterLink to="/projects" class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                       @click="menuOpen = false">Gérer les projets…</RouterLink>
+          <!-- La corbeille doit être ATTEIGNABLE : une suppression douce qu'on ne peut pas
+               annuler depuis l'interface ne vaut pas mieux qu'une destruction. -->
+          <RouterLink :to="{ name: 'corbeille', params: { pid } }"
+                      class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                      @click="menuOpen = false">Corbeille…</RouterLink>
         </div>
       </div>
 

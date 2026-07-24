@@ -94,7 +94,7 @@ def automate_case(case_id: int, background: BackgroundTasks, conn=Depends(get_co
 
 
 @router.delete("/{case_id}", status_code=204)
-def delete_case(case_id: int, conn=Depends(get_conn)):
+def delete_case(case_id: int, request: Request, conn=Depends(get_conn)):
     """Supprime un cas et toute sa descendance (versions, exécutions, résultats, coûts).
 
     Sur demande explicite de l'utilisateur (§2.10 interdit d'effacer un run *en silence*, pas de
@@ -102,7 +102,7 @@ def delete_case(case_id: int, conn=Depends(get_conn)):
     """
     if CaseRepo(conn).get(case_id) is None:
         raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
-    CaseRepo(conn).delete(case_id)
+    CaseRepo(conn).delete(case_id, par=access.utilisateur_de(request))
     return Response(status_code=204)
 
 

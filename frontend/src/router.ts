@@ -29,6 +29,8 @@ const routes = [
   // Chemin `specs/` distinct de `cases/` : sous `cases/`, il serait entré en concurrence avec
   // `cases/:id` (une spécification n'est pas un cas, et l'URL doit le dire).
   { path: '/projects/:pid/specs/:id', name: 'spec-detail', component: () => import('./pages/SpecDetail.vue') },
+  // La CORBEILLE (§7) : supprimer masque, restaurer annule, détruire est un geste à part.
+  { path: '/projects/:pid/corbeille', name: 'corbeille', component: () => import('./pages/Corbeille.vue') },
 
   // ── Routes HÉRITÉES, redirigées vers leur équivalent actuel ──────────────────────────────
   // Règle posée le 2026-07-20 : toute route doit être atteignable par un chemin CLAIR depuis

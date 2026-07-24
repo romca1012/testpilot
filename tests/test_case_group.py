@@ -182,7 +182,12 @@ def test_supprimer_un_projet_emporte_ses_specifications(conn):
     g = CaseGroupRepo(conn).create(module_id=mid, title="Demande")
     CaseRepo(conn).create(title="Nominal", module_id=mid, group_id=g, feature_slug="n")
 
+    # Supprimer MASQUE (§7, 2026-07-24) ; purger DÉTRUIT. Les deux sont testés : le premier
+    # est le geste de l'utilisateur, le second l'ordre des suppressions sous les FK.
     ProjectRepo(conn).delete(pid)
+    assert CaseGroupRepo(conn).list_for_project(pid) == []   # invisible immédiatement
+
+    ProjectRepo(conn).purger(pid)
 
     assert conn.execute("SELECT COUNT(*) FROM case_group").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM test_case").fetchone()[0] == 0

@@ -176,12 +176,17 @@ def test_api_delete_project_cascade(client):
                                             execution_status="success", functional_status="conforme")
     conn.close()
 
-    # Suppression du projet → 204, et plus rien de sa descendance.
+    # Suppression du projet → 204, et toute sa descendance QUITTE LES ÉCRANS.
     assert client.delete(f"/api/projects/{pid}").status_code == 204
     assert all(p["id"] != pid for p in client.get("/api/projects").json())
     assert client.get(f"/api/cases/{cid}").status_code == 404
-    # Aucune ligne orpheline (module/cas/exécution/scénario).
+
+    # ⚠️ Depuis le 2026-07-24, les LIGNES sont conservées (§7 : jamais de destruction sèche).
+    # La cascade destructive existe toujours — c'est `purger()` — et c'est elle que ce test doit
+    # exercer : il couvre l'ORDRE des suppressions sous les clés étrangères.
     conn = get_initialized_db(config.DB_PATH)
+    assert conn.execute("SELECT COUNT(*) FROM test_case").fetchone()[0] == 1   # conservé
+    ProjectRepo(conn).purger(pid)
     for table in ("module", "test_case", "test_case_version", "execution", "scenario_result"):
         n = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         assert n == 0, f"{table} contient encore {n} ligne(s)"
@@ -219,10 +224,12 @@ def test_delete_project_emporte_le_cout_de_generation_sans_execution(client):
 
     assert client.delete(f"/api/projects/{pid}").status_code == 204
 
+    # La purge est le geste qui DÉTRUIT (§7) : c'est lui qui doit emporter le coût orphelin.
     conn = get_initialized_db(config.DB_PATH)
+    ProjectRepo(conn).purger(pid)
     n = conn.execute("SELECT COUNT(*) FROM cost_ledger").fetchone()[0]
     conn.close()
-    assert n == 0, f"cost_ledger contient encore {n} ligne(s) orpheline(s) après suppression du projet"
+    assert n == 0, f"cost_ledger contient encore {n} ligne(s) orpheline(s) après purge du projet"
 
 
 def test_delete_case_emporte_le_cout_de_generation_sans_execution(conn):
@@ -240,10 +247,15 @@ def test_delete_case_emporte_le_cout_de_generation_sans_execution(conn):
                              source="estimated", execution_id=eid)
     assert conn.execute("SELECT COUNT(*) FROM cost_ledger").fetchone()[0] == 2
 
+    # Supprimer masque ; purger détruit. Le coût orphelin est le sujet de ce test, donc c'est
+    # la purge qu'il exerce — la couverture de la régression « migration 12 » est préservée.
     CaseRepo(conn).delete(cid)
+    assert conn.execute("SELECT COUNT(*) FROM cost_ledger").fetchone()[0] == 2   # rien détruit
+
+    CaseRepo(conn).purger(cid)
 
     n = conn.execute("SELECT COUNT(*) FROM cost_ledger").fetchone()[0]
-    assert n == 0, f"cost_ledger contient encore {n} ligne(s) après suppression du cas"
+    assert n == 0, f"cost_ledger contient encore {n} ligne(s) après purge du cas"
 
 
 def test_api_rename_project(client):

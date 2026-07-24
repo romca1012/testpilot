@@ -17,6 +17,16 @@ from testpilot.store import secrets as secrets_mod
 logger = logging.getLogger(__name__)
 
 
+# ── Suppression douce (§7 du brief, 2026-07-24) ───────────────────────────────
+# `deleted_at` vide = VIVANT. On n'utilise pas NULL : `deleted_at = ''` s'oublie moins
+# facilement dans une condition composee que `IS NULL`, et s'indexe aussi bien.
+#
+# ⚠️ La visibilite est HIERARCHIQUE : un element n'est visible que si ni lui, ni aucun de ses
+# parents n'est a la corbeille. Masquer un module sans masquer ses cas laisserait des cas
+# orphelins visibles dans la liste du projet — un etat qui n'existe dans aucun ecran.
+_VIVANT = "deleted_at = ''"
+
+
 class DuplicateName(ValueError):
     """Un nom déjà pris à sa portée d'unicité (projet global, module/projet, cas/module).
 
@@ -71,7 +81,7 @@ class ProjectRepo:
         `excluding` : l'id à ignorer (renommage — un projet ne rentre pas en conflit avec
         lui-même).
         """
-        for row in self.conn.execute("SELECT id, name FROM project"):
+        for row in self.conn.execute(f"SELECT id, name FROM project WHERE {_VIVANT}"):
             if row["id"] != excluding and _key(row["name"]) == _key(name):
                 raise DuplicateName(f"un projet nommé « {row['name']} » existe déjà")
 
@@ -102,26 +112,31 @@ class ProjectRepo:
         return projet
 
     def get(self, project_id: int) -> dict | None:
-        row = self.conn.execute("SELECT * FROM project WHERE id=?", (project_id,)).fetchone()
+        row = self.conn.execute(f"SELECT * FROM project WHERE id=? AND {_VIVANT}",
+                                (project_id,)).fetchone()
         return self._en_clair(row) if row else None
 
     def list_all(self) -> list[dict]:
         """Projets + compteurs de modules et de cas (pour l'accueil / le sélecteur)."""
         return [self._en_clair(r) for r in self.conn.execute(
             "SELECT p.*,"
-            " (SELECT COUNT(*) FROM module m WHERE m.project_id=p.id) AS module_count,"
+            " (SELECT COUNT(*) FROM module m WHERE m.project_id=p.id AND m.deleted_at='')"
+            "   AS module_count,"
             " (SELECT COUNT(*) FROM test_case tc JOIN module m ON tc.module_id=m.id"
-            "  WHERE m.project_id=p.id) AS case_count"
-            " FROM project p ORDER BY p.id")]
+            "  WHERE m.project_id=p.id AND tc.deleted_at='' AND m.deleted_at='')"
+            "   AS case_count"
+            " FROM project p WHERE p.deleted_at='' ORDER BY p.id")]
 
     def find_by_name(self, name: str) -> dict | None:
-        row = self.conn.execute("SELECT * FROM project WHERE name=?", (name,)).fetchone()
+        row = self.conn.execute(f"SELECT * FROM project WHERE name=? AND {_VIVANT}",
+                                (name,)).fetchone()
         return self._en_clair(row) if row else None
 
     def first(self) -> dict | None:
         """Projet par défaut (le plus ancien). Source unique de la règle « projet courant »
         hors interface : rattachement automatique ET connexion du runtime en CLI."""
-        row = self.conn.execute("SELECT * FROM project ORDER BY id LIMIT 1").fetchone()
+        row = self.conn.execute(
+            f"SELECT * FROM project WHERE {_VIVANT} ORDER BY id LIMIT 1").fetchone()
         return self._en_clair(row) if row else None
 
     def rename(self, project_id: int, *, name: str, description: str | None = None) -> None:
@@ -162,9 +177,71 @@ class ProjectRepo:
         self.conn.execute(f"UPDATE project SET {', '.join(sets)} WHERE id=?", params)
         self.conn.commit()
 
-    def delete(self, project_id: int) -> None:
-        """Supprime un projet ET toute sa descendance (modules, cas, versions, relectures,
-        exécutions, résultats, réparations, coûts) — dans l'ordre des FK, en une transaction."""
+    def delete(self, project_id: int, par: str = "") -> None:
+        """Met le projet A LA CORBEILLE — lui et toute sa descendance disparaissent des ecrans.
+
+        ⚠️ **Ne DÉTRUIT rien** (§7 du brief, 2026-07-24) : la ligne reste, marquee de la date et
+        de l'auteur. Elle disparait de toutes les listes et de tous les compteurs, et se restaure.
+        La destruction definitive existe — c'est `purger()`, un geste distinct et explicite.
+
+        Les enfants ne sont PAS marques un par un : leur visibilite est hierarchique (un cas dont
+        le projet est a la corbeille est invisible). Les marquer aussi rendrait la restauration
+        ambigue — il faudrait savoir lesquels etaient deja supprimes AVANT.
+        """
+        self.conn.execute("UPDATE project SET deleted_at=?, deleted_by=? WHERE id=?",
+                          (now_iso(), par, project_id))
+        self.conn.commit()
+
+    def restaurer(self, project_id: int) -> None:
+        """Sort le projet de la corbeille. Sa descendance redevient visible avec lui."""
+        self.conn.execute("UPDATE project SET deleted_at='', deleted_by='' WHERE id=?",
+                          (project_id,))
+        self.conn.commit()
+
+    def corbeille(self, project_id: int) -> list[dict]:
+        """Ce qui a ete supprime DANS ce projet — le projet lui-meme, ses modules, ses
+        specifications et ses cas.
+
+        ⚠️ On ne liste que ce qui a ete supprime EXPLICITEMENT. Un cas masque parce que son
+        module est a la corbeille n'y figure pas : le montrer laisserait croire qu'on peut le
+        restaurer seul, alors qu'il resterait invisible tant que son module l'est.
+        """
+        requetes = [
+            ("projet", "SELECT id, name AS titre, deleted_at, deleted_by FROM project"
+                       " WHERE id=? AND deleted_at<>''"),
+            ("module", "SELECT id, name AS titre, deleted_at, deleted_by FROM module"
+                       " WHERE project_id=? AND deleted_at<>''"),
+            # ⚠️ Les ENVELOPPES AUTOMATIQUES sont exclues : ce sont des artefacts techniques
+            # que l'utilisateur n'a jamais créés (la génération les fabrique autour d'un cas).
+            # Les montrer exposerait un concept interne (§8 du brief) et proposerait de
+            # « restaurer » un objet dont la restauration seule n'a aucun sens.
+            ("specification", "SELECT g.id, g.title AS titre, g.deleted_at, g.deleted_by"
+                              " FROM case_group g JOIN module m ON g.module_id=m.id"
+                              " WHERE m.project_id=? AND g.deleted_at<>''"
+                              " AND g.auto_enveloppe=0"),
+            ("cas", "SELECT tc.id, tc.title AS titre, tc.deleted_at, tc.deleted_by"
+                    " FROM test_case tc JOIN module m ON tc.module_id=m.id"
+                    " WHERE m.project_id=? AND tc.deleted_at<>''"),
+        ]
+        out = []
+        for type_, sql in requetes:
+            for r in self.conn.execute(sql, (project_id,)):
+                out.append(dict(r) | {"type": type_})
+        return sorted(out, key=lambda e: e["deleted_at"], reverse=True)
+
+    def purger(self, project_id: int) -> None:
+        """DETRUIT definitivement un projet et toute sa descendance — dans l'ordre des FK.
+
+        ⚠️ Refuse un projet qui n'est pas DEJA a la corbeille : purger directement contournerait
+        la suppression douce et la rendrait decorative. Detruire reste possible ; jamais comme
+        effet de bord d'une suppression ordinaire.
+        """
+        ligne = self.conn.execute("SELECT deleted_at FROM project WHERE id=?",
+                                  (project_id,)).fetchone()
+        if ligne is None:
+            return
+        if not ligne["deleted_at"]:
+            raise ValueError("ce projet n'est pas a la corbeille : supprimez-le d'abord")
         mod_sub = "SELECT id FROM module WHERE project_id=?"
         case_sub = f"SELECT id FROM test_case WHERE module_id IN ({mod_sub})"
         exec_sub = f"SELECT id FROM execution WHERE test_case_id IN ({case_sub})"
@@ -198,7 +275,8 @@ class ModuleRepo:
     def ensure_name_free(self, project_id: int, name: str, *, excluding: int | None = None) -> None:
         """Le nom d'un module est unique DANS SON PROJET — deux projets peuvent légitimement
         avoir un module « Facturation », ce n'est pas une duplication. Lève `DuplicateName`."""
-        for row in self.conn.execute("SELECT id, name FROM module WHERE project_id=?", (project_id,)):
+        for row in self.conn.execute(
+                f"SELECT id, name FROM module WHERE project_id=? AND {_VIVANT}", (project_id,)):
             if row["id"] != excluding and _key(row["name"]) == _key(name):
                 raise DuplicateName(f"ce projet a déjà un module nommé « {row['name']} »")
 
@@ -213,14 +291,18 @@ class ModuleRepo:
     def get(self, module_id: int) -> dict | None:
         row = self.conn.execute(
             "SELECT m.*, p.name AS project_name FROM module m JOIN project p ON m.project_id=p.id"
+            " AND m.deleted_at='' AND p.deleted_at=''"
             " WHERE m.id=?", (module_id,)).fetchone()
         return dict(row) if row else None
 
     def list_for_project(self, project_id: int) -> list[dict]:
         return _rows(self.conn.execute(
             "SELECT m.*,"
-            " (SELECT COUNT(*) FROM test_case tc WHERE tc.module_id=m.id) AS case_count"
-            " FROM module m WHERE m.project_id=? ORDER BY m.id", (project_id,)))
+            " (SELECT COUNT(*) FROM test_case tc WHERE tc.module_id=m.id AND tc.deleted_at='')"
+            "   AS case_count"
+            " FROM module m JOIN project p ON m.project_id=p.id"
+            " WHERE m.project_id=? AND m.deleted_at='' AND p.deleted_at='' ORDER BY m.id",
+        (project_id,)))
 
     def rename(self, module_id: int, *, name: str, description: str | None = None) -> None:
         """Renomme un module (bouton « Éditer la section »). Nom unique DANS le projet (§2.9)."""
@@ -235,7 +317,22 @@ class ModuleRepo:
                               (name, description, module_id))
         self.conn.commit()
 
-    def delete(self, module_id: int) -> None:
+    def delete(self, module_id: int, par: str = "") -> None:
+        """Met le module A LA CORBEILLE : lui, ses specifications et ses cas quittent les ecrans.
+
+        ⚠️ **Ne DÉTRUIT rien** (§7 du brief, 2026-07-24) : la ligne reste, marquee de la date et
+        de l'auteur. Elle disparait de toutes les listes et de tous les compteurs, et se restaure.
+        La destruction definitive existe — c'est `purger()`, un geste distinct et explicite.
+        """
+        self.conn.execute("UPDATE module SET deleted_at=?, deleted_by=? WHERE id=?",
+                          (now_iso(), par, module_id))
+        self.conn.commit()
+
+    def restaurer(self, module_id: int) -> None:
+        self.conn.execute("UPDATE module SET deleted_at='', deleted_by='' WHERE id=?", (module_id,))
+        self.conn.commit()
+
+    def purger(self, module_id: int) -> None:
         """Supprime un module ET toute sa descendance (spécifications, cas, versions, exécutions,
         résultats, réparations, coûts) — en réutilisant la cascade éprouvée de `CaseRepo.delete`
         cas par cas, puis en retirant les spécifications devenues vides, puis le module.
@@ -249,7 +346,11 @@ class ModuleRepo:
             "SELECT id FROM test_case WHERE module_id=?", (module_id,))]
         cases = CaseRepo(self.conn)
         for cid in case_ids:
-            cases.delete(cid)
+            # ⚠️ `purger`, pas `delete` : depuis la suppression douce (2026-07-24), `delete` ne
+            # fait plus que MASQUER — les lignes resteraient, et la suppression des
+            # spécifications puis du module échouerait sur les clés étrangères. Purger appelle
+            # purger, à chaque étage.
+            cases.purger(cid)
         # Les spécifications du module n'ont plus de cas (on vient de tous les retirer).
         self.conn.execute("DELETE FROM case_group WHERE module_id=?", (module_id,))
         self.conn.execute("DELETE FROM module WHERE id=?", (module_id,))
@@ -257,7 +358,8 @@ class ModuleRepo:
 
     def find_by_name(self, project_id: int, name: str) -> dict | None:
         row = self.conn.execute(
-            "SELECT * FROM module WHERE project_id=? AND name=?", (project_id, name)).fetchone()
+            f"SELECT * FROM module WHERE project_id=? AND name=? AND {_VIVANT}",
+            (project_id, name)).fetchone()
         return dict(row) if row else None
 
 
@@ -313,7 +415,8 @@ class CaseGroupRepo:
         """
         row = self.conn.execute(
             "SELECT g.spec_content, g.auto_enveloppe,"
-            " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id) AS n"
+            " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id AND tc.deleted_at='')"
+            "   AS n"
             " FROM case_group g WHERE g.id=?", (group_id,)).fetchone()
         return (bool(row) and bool(row["auto_enveloppe"]) and row["n"] == 0
                 and not (row["spec_content"] or "").strip())
@@ -333,14 +436,18 @@ class CaseGroupRepo:
         C'est la **troisième fois** que le banc bute sur sa propre non-rejouabilité. Un instrument
         de mesure qu'on ne peut pas relancer ne mesure pas une évolution — il ne dit rien.
         """
-        for row in self.conn.execute("SELECT id, title FROM case_group WHERE module_id=?",
-                                     (module_id,)):
+        # ⚠️ Seules les spécifications VIVANTES occupent un titre (2026-07-24). Une spécification
+        # à la corbeille ne bloque plus rien — et surtout on ne cherche pas à la détruire ici :
+        # elle porte encore ses cas (eux aussi à la corbeille), donc la clé étrangère refuserait.
+        # C'est exactement ce qui cassait le cycle « créer → supprimer → recréer le même titre ».
+        for row in self.conn.execute(
+                f"SELECT id, title FROM case_group WHERE module_id=? AND {_VIVANT}", (module_id,)):
             if row["id"] == excluding or _key(row["title"]) != _key(title):
                 continue
             if self.est_residu(row["id"]):
                 logger.info("[spécification] résidu #%s « %s » récupéré : ni cas ni document",
                             row["id"], row["title"])
-                self.conn.execute("DELETE FROM case_group WHERE id=?", (row["id"],))
+                self.delete(row["id"], par="récupération de résidu")
                 continue
             raise DuplicateName(f"ce module a déjà une spécification « {row['title']} »")
 
@@ -369,26 +476,35 @@ class CaseGroupRepo:
         return int(cur.lastrowid)
 
     def get(self, group_id: int) -> dict | None:
-        row = self.conn.execute("SELECT * FROM case_group WHERE id=?", (group_id,)).fetchone()
+        row = self.conn.execute(f"SELECT * FROM case_group WHERE id=? AND {_VIVANT}",
+                                (group_id,)).fetchone()
         return dict(row) if row else None
 
     def list_for_module(self, module_id: int) -> list[dict]:
         return _rows(self.conn.execute(
             "SELECT g.*,"
-            " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id) AS case_count"
-            " FROM case_group g WHERE g.module_id=? ORDER BY g.position, g.id", (module_id,)))
+            " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id AND tc.deleted_at='')"
+            "   AS case_count"
+            " FROM case_group g JOIN module m ON g.module_id=m.id"
+            " JOIN project p ON m.project_id=p.id"
+            " WHERE g.module_id=? AND g.deleted_at='' AND m.deleted_at='' AND p.deleted_at=''"
+            " ORDER BY g.position, g.id", (module_id,)))
 
     def list_for_project(self, project_id: int) -> list[dict]:
         """Toutes les spécifications d'un projet (jointes au module), pour l'arbre latéral."""
         return _rows(self.conn.execute(
             "SELECT g.id, g.module_id, g.title, g.position,"
-            " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id) AS case_count"
+            " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id AND tc.deleted_at='')"
+            "   AS case_count"
             " FROM case_group g JOIN module m ON g.module_id=m.id"
-            " WHERE m.project_id=? ORDER BY g.module_id, g.position, g.id", (project_id,)))
+            " JOIN project p ON m.project_id=p.id"
+            " WHERE m.project_id=? AND g.deleted_at='' AND m.deleted_at='' AND p.deleted_at=''"
+            " ORDER BY g.module_id, g.position, g.id", (project_id,)))
 
     def case_count(self, group_id: int) -> int:
-        return int(self.conn.execute("SELECT COUNT(*) AS n FROM test_case WHERE group_id=?",
-                                     (group_id,)).fetchone()["n"])
+        return int(self.conn.execute(
+            f"SELECT COUNT(*) AS n FROM test_case WHERE group_id=? AND {_VIVANT}",
+            (group_id,)).fetchone()["n"])
 
     def update(self, group_id: int, *, title: str | None = None, description: str | None = None,
                spec_content: str | None = None) -> None:
@@ -433,7 +549,32 @@ class CaseGroupRepo:
         self.conn.execute(f"UPDATE case_group SET {', '.join(sets)} WHERE id=?", params)
         self.conn.commit()
 
-    def delete(self, group_id: int) -> None:
+    def delete(self, group_id: int, par: str = "") -> None:
+        """Met la spécification À LA CORBEILLE — **si elle ne porte plus de cas**.
+
+        ⚠️ **Ne DÉTRUIT rien** (§7 du brief, 2026-07-24) : la ligne reste, marquée de la date et
+        de l'auteur. Elle disparaît de toutes les listes et de tous les compteurs, et se restaure.
+        La destruction définitive existe — c'est `purger()`, un geste distinct et explicite.
+
+        ⚠️ **Le refus `NotEmpty` est CONSERVÉ**, et ce n'est pas une survivance : une spécification
+        qui emporterait ses cas à la corbeille en cascade les rendrait invisibles sans que
+        personne l'ait demandé, et la restauration deviendrait ambiguë (lesquels étaient déjà
+        supprimés avant ?). L'utilisateur traite ses cas d'abord ; le refus dit combien il en
+        reste. *Failli disparaître en réécrivant cette méthode — rattrapé par son test.*
+        """
+        n = self.case_count(group_id)
+        if n:
+            raise NotEmpty(f"cette spécification porte encore {n} cas — supprimez-les d'abord")
+        self.conn.execute("UPDATE case_group SET deleted_at=?, deleted_by=? WHERE id=?",
+                          (now_iso(), par, group_id))
+        self.conn.commit()
+
+    def restaurer(self, group_id: int) -> None:
+        self.conn.execute("UPDATE case_group SET deleted_at='', deleted_by='' WHERE id=?",
+                          (group_id,))
+        self.conn.commit()
+
+    def purger(self, group_id: int) -> None:
         """Supprime une spécification VIDE. Refuse (NotEmpty) tant qu'elle porte des cas.
 
         Pas de cascade : un cas porte des versions, des exécutions, des résultats et des lignes de
@@ -466,6 +607,13 @@ _CASE_SELECT = (
     " LEFT JOIN case_group g ON tc.group_id = g.id"
 )
 
+# La visibilite d'un cas est HIERARCHIQUE : lui-meme vivant, ET son module, ET son projet.
+# Les `IS NULL` couvrent le cas sans module (cree par la CLI) : il n'a pas de parent a
+# consulter, et l'exclure le rendrait invisible pour de mauvaises raisons.
+_CASE_VIVANT = ("tc.deleted_at = ''"
+                " AND (m.id IS NULL OR m.deleted_at = '')"
+                " AND (p.id IS NULL OR p.deleted_at = '')")
+
 
 class CaseRepo:
     def __init__(self, conn: sqlite3.Connection):
@@ -480,7 +628,8 @@ class CaseRepo:
         """
         if group_id is None:
             return
-        rows = self.conn.execute("SELECT id, title FROM test_case WHERE group_id=?", (group_id,))
+        rows = self.conn.execute(
+            f"SELECT id, title FROM test_case WHERE group_id=? AND {_VIVANT}", (group_id,))
         for row in rows:
             if row["id"] != excluding and _key(row["title"]) == _key(title):
                 raise DuplicateName(f"cette spécification a déjà un cas intitulé « {row['title']} »")
@@ -494,7 +643,8 @@ class CaseRepo:
         """
         if not feature_slug:
             return
-        rows = self.conn.execute("SELECT id, title FROM test_case WHERE feature_slug=?",
+        rows = self.conn.execute(
+            f"SELECT id, title FROM test_case WHERE feature_slug=? AND {_VIVANT}",
                                  (feature_slug,))
         for row in rows:
             if row["id"] != excluding:
@@ -579,7 +729,36 @@ class CaseRepo:
                           (title, now_iso(), case_id))
         self.conn.commit()
 
-    def delete(self, case_id: int) -> None:
+    def delete(self, case_id: int, par: str = "") -> None:
+        """Met le cas A LA CORBEILLE — avec ses versions, ses executions et ses couts, qui le
+        suivent puisqu'ils n'existent que par lui.
+
+        ⚠️ **Ne DÉTRUIT rien** (§7 du brief, 2026-07-24) : la ligne reste, marquee de la date et
+        de l'auteur. Elle disparait de toutes les listes et de tous les compteurs, et se restaure.
+        La destruction definitive existe — c'est `purger()`, un geste distinct et explicite.
+        """
+        ligne = self.conn.execute("SELECT group_id FROM test_case WHERE id=?",
+                                  (case_id,)).fetchone()
+        self.conn.execute("UPDATE test_case SET deleted_at=?, deleted_by=? WHERE id=?",
+                          (now_iso(), par, case_id))
+        self.conn.commit()
+        # ⚠️ L'enveloppe AUTO-créée par la génération suit son cas — comportement d'origine, qu'il
+        # aurait été facile de perdre en remplaçant la suppression : une spécification résiduelle
+        # bloque la regénération d'un cas du même titre (défaut des migrations 17/18).
+        self._nettoyer_specification_orpheline(ligne["group_id"] if ligne else None, par)
+
+    def restaurer(self, case_id: int) -> None:
+        """Sort le cas de la corbeille.
+
+        ⚠️ Ne ressuscite PAS un module ou un projet supprime : restaurer un enfant ne doit pas
+        faire reapparaitre un parent que personne n'a demande. Le cas reste alors invisible — et
+        c'est la verite, pas un defaut.
+        """
+        self.conn.execute("UPDATE test_case SET deleted_at='', deleted_by='' WHERE id=?",
+                          (case_id,))
+        self.conn.commit()
+
+    def purger(self, case_id: int) -> None:
         """Supprime un cas ET sa descendance (versions, relectures, exécutions, résultats,
         réparations, coûts) — dans l'ordre des FK, en une transaction.
 
@@ -625,7 +804,7 @@ class CaseRepo:
             cur.rollback()
             raise
 
-    def _nettoyer_specification_orpheline(self, group_id: int | None) -> None:
+    def _nettoyer_specification_orpheline(self, group_id: int | None, par: str = "") -> None:
         """Supprime la Spécification devenue VIDE **si elle n'était qu'une enveloppe automatique**.
 
         ⚠️ **Le défaut que ça corrige** (mesuré le 2026-07-21) : `create()` auto-enveloppe un cas
@@ -647,7 +826,10 @@ class CaseRepo:
         if group_id is None:
             return
         if CaseGroupRepo(self.conn).est_residu(group_id):
-            self.conn.execute("DELETE FROM case_group WHERE id=?", (group_id,))
+            # Douce comme tout le reste depuis le 2026-07-24 : une enveloppe résiduelle est un
+            # détail technique, mais la détruire resterait une destruction — et le §7 n'en fait
+            # pas d'exception pour les détails.
+            CaseGroupRepo(self.conn).delete(group_id, par=par)
 
     def update_metier(self, case_id: int, *, title: str | None = None,
                       preconditions: str | None = None, test_steps: str | None = None,
@@ -734,7 +916,8 @@ class CaseRepo:
         self.conn.commit()
 
     def get(self, case_id: int) -> dict | None:
-        row = self.conn.execute(_CASE_SELECT + " WHERE tc.id=?", (case_id,)).fetchone()
+        row = self.conn.execute(_CASE_SELECT + f" WHERE tc.id=? AND {_CASE_VIVANT}",
+                                (case_id,)).fetchone()
         return dict(row) if row else None
 
     def list_all(self, *, project_id: int | None = None, module_id: int | None = None) -> list[dict]:
@@ -751,12 +934,15 @@ class CaseRepo:
         Le tri reste groupé par module sur les vues transverses, sinon des positions propres à
         chaque module s'entremêleraient en un ordre qui ne veut rien dire.
         """
-        clauses, params = [], []
+        # La visibilite d'abord : un cas supprime, ou dont le module/projet l'est, ne figure
+        # dans AUCUNE liste. C'est ici que le filtre doit vivre — le poser dans chaque appelant
+        # garantirait qu'un appelant l'oublie.
+        clauses, params = [_CASE_VIVANT], []
         if project_id is not None:
             clauses.append("m.project_id = ?"); params.append(project_id)
         if module_id is not None:
             clauses.append("tc.module_id = ?"); params.append(module_id)
-        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        where = " WHERE " + " AND ".join(clauses)
         order = " ORDER BY tc.module_id, tc.position, tc.id"
         return _rows(self.conn.execute(_CASE_SELECT + where + order, params))
 
@@ -1143,12 +1329,23 @@ class RunRepo:
         run = self.get(run_id)
         if run is None:
             return []
+        # ⚠️ Un cas SUPPRIMÉ ne fait plus partie d'aucune campagne — ni en mode `all` (la
+        # sélection est vivante), ni en `frozen` (la liaison figée le référence encore). Sans ce
+        # filtre, lancer une campagne EXÉCUTERAIT des cas que l'utilisateur croit supprimés,
+        # contre la vraie application. C'est le défaut le plus grave qu'aurait pu introduire la
+        # suppression douce — trouvé par un test qui portait sur tout autre chose.
         if run["selection_mode"] == "all":
             return [r["id"] for r in self.conn.execute(
                 "SELECT tc.id FROM test_case tc JOIN module m ON tc.module_id=m.id"
-                " WHERE m.project_id=? ORDER BY tc.id", (run["project_id"],))]
+                " JOIN project p ON m.project_id=p.id"
+                " WHERE m.project_id=? AND tc.deleted_at='' AND m.deleted_at=''"
+                " AND p.deleted_at='' ORDER BY tc.id", (run["project_id"],))]
         return [r["case_id"] for r in self.conn.execute(
-            "SELECT case_id FROM test_run_case WHERE run_id=? ORDER BY case_id", (run_id,))]
+            "SELECT trc.case_id FROM test_run_case trc"
+            " JOIN test_case tc ON trc.case_id=tc.id"
+            " LEFT JOIN module m ON tc.module_id=m.id"
+            " WHERE trc.run_id=? AND tc.deleted_at=''"
+            " AND (m.id IS NULL OR m.deleted_at='') ORDER BY trc.case_id", (run_id,))]
 
     def cases_with_results(self, run_id: int) -> list[dict]:
         """Chaque cas du run + son résultat DANS CE run (la dernière exécution rattachée).
