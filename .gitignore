@@ -39,3 +39,9 @@ dist/
 /frontend/node_modules/
 /frontend/dist/
 /frontend/.vite/
+
+# PDF produits depuis les documents Markdown (2026-07-24). Une COPIE d'un document versionné :
+# la versionner, c'est promettre qu'elle est à jour, alors que rien ne le garantit — et un lecteur
+# qui ouvre le PDF ne voit pas que le .md a bougé depuis. Régénérer coûte une commande :
+# `python scripts/doc_en_pdf.py docs/ONBOARDING.md`.
+/docs/*.pdf
