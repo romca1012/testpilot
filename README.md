@@ -5,6 +5,8 @@ spécification, fait **valider le métier par un humain**, les **exécute réell
 l'application cible, et produit un **verdict honnête** — le statut « testé » n'est jamais une case
 cochée, toujours la conséquence d'une exécution réelle.
 
+- **🆕 Vous arrivez sur le projet ?** `docs/ONBOARDING.md` — ce que fait le produit, la stack
+  technique, la carte du code et les pièges. Commencez par là.
 - **Vision et périmètre** : `docs/brief-produit-outil-test-management-ia.md` (seule source de
   vérité, avec son journal d'amendements).
 - **État réel et route** : `docs/PLAN.md`.
@@ -65,8 +67,8 @@ tests/              tests de l'outil
 ```bash
 pip install -e ".[dev]"
 python -m playwright install chromium
-pytest                                   # 845 tests
-cd frontend && npm install && npm test   # 75 tests
+pytest                                   # 915 tests
+cd frontend && npm install && npm test   # 110 tests
 ```
 
 Deux processus en développement :
