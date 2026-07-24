@@ -77,7 +77,13 @@
     border: 2px solid hsl(var(--background));
   }
   ::-webkit-scrollbar-thumb:hover { background: hsl(240 5% 22%); }
-  :focus-visible { outline: 2px solid hsl(var(--ring) / 0.7); outline-offset: 2px; }
+  /* ── Anneau de focus — WCAG 2.2 « Focus Appearance » (lot D, 2026-07-24) ──────────────────
+     Il était à `hsl(var(--ring) / 0.7)` : joli, mais **2,69:1** contre le fond une fois mélangé
+     — sous le seuil de 3:1 exigé. Mesuré par le calcul, pas à l'œil : sur un fond très sombre,
+     une transparence coûte bien plus de contraste qu'elle n'en a l'air.
+     Opaque : **4,31:1**. Épaisseur 2px + décalage 2px : le contour reste visible même sur un
+     élément dont la bordure a déjà la couleur d'accent. */
+  :focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 }
 
 @layer components {

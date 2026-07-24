@@ -186,10 +186,30 @@ sélectionner » puis « créer une campagne » → **1 requête**, campagne à 
 dans la barre de sélection — laquelle disparaît dès que l'action aboutit (la sélection est
 vidée). « 18 traités, 2 ignorés » s'effaçait donc à l'instant précis où il fallait le lire.
 
-### Lot D — Clavier et accessibilité *(~2 j)*
+### Lot D — Clavier et accessibilité — ✅ **LIVRÉ le 2026-07-24**
 
-Noms accessibles sur tous les boutons à icône · focus visible conforme · piège de focus + Échap
-dans les modales · cibles ≥ 24 px · puis palette de commandes `Cmd+K` avec raccourcis affichés.
+- **19 boutons muets nommés** (`aria-label`). ⚠️ `title` est une **infobulle, pas un nom** : elle
+  n'apparaît qu'au survol de la souris, et les lecteurs d'écran ne s'en servent qu'en dernier
+  recours. Un bouton identifié par son seul `title` est muet pour qui n'utilise pas de souris.
+- **Un GARDE-FOU de non-régression** : un test lit les fichiers source et échoue dès qu'un bouton
+  muet réapparaît. Corriger 19 boutons une fois ne sert à rien si le vingtième arrive la semaine
+  suivante.
+- **Modales** : focus donné au premier **champ** (pas à la croix de fermeture — proposer d'abord
+  de renoncer est un mauvais accueil), focus **enfermé** (sans quoi `Tab` part parcourir la page
+  masquée derrière), Échap, et focus **rendu** à l'élément qui avait ouvert.
+- **Palette de commandes** `Ctrl`/`⌘ + K` : navigation et recherche de cas, avec les **raccourcis
+  affichés** — c'est en les voyant qu'on les apprend. Elle navigue et ouvre ; elle ne supprime
+  pas et ne dépense rien : une action irréversible atteinte par une frappe distraite serait le
+  contraire d'un gain.
+
+⚠️ **L'anneau de focus n'était PAS conforme, et ça ne se voyait pas à l'œil.** Il était à 70 %
+d'opacité : **2,69:1** contre le fond, sous le seuil de 3:1 de WCAG 2.2 « Focus Appearance ».
+Calculé, pas estimé. Rendu opaque : **4,31:1**. Sur un fond très sombre, une transparence coûte
+bien plus de contraste qu'elle n'en a l'air.
+
+**Vérifié au clavier seul, dans un vrai navigateur** : `Ctrl+K` ouvre et donne le focus au champ ·
+taper puis `Entrée` ouvre le bon cas · `Échap` ferme · une modale garde le focus après 12 `Tab` ·
+**0 bouton muet dans la page rendue**.
 
 ---
 

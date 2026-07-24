@@ -7,6 +7,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import CasesShell from './components/CasesShell.vue'
 import LoginScreen from './pages/LoginScreen.vue'
+import PaletteCommandes from './components/PaletteCommandes.vue'
 import { api, setUnauthorizedHandler } from './lib/api'
 
 const route = useRoute()
@@ -51,7 +52,12 @@ onMounted(() => {
 
 <template>
   <LoginScreen v-if="sessionConnue && doitSeConnecter" @connected="doitSeConnecter = false" />
-  <component :is="layout" v-else-if="sessionConnue">
-    <RouterView />
-  </component>
+  <template v-else-if="sessionConnue">
+    <component :is="layout">
+      <RouterView />
+    </component>
+    <!-- Montée au niveau de l'application : la palette doit répondre à Ctrl+K depuis N'IMPORTE
+         quel écran. La poser dans le shell la rendrait muette sur les pages hors shell. -->
+    <PaletteCommandes />
+  </template>
 </template>

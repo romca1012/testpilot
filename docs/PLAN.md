@@ -40,7 +40,7 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 
 | | |
 |---|---|
-| Tests | **897 Python · 100 vitest** — tous verts |
+| Tests | **897 Python · 110 vitest** — tous verts |
 | Schéma | `user_version = 24` |
 | Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), re-confirmé au rejeu du 2026-07-23 |
 | Verdicts | **0 fausse accusation par invention de champ** ; 4ᵉ verdict `donnee_invalide` déclenché en réel |
@@ -381,8 +381,11 @@ porteur : **E → A → B → C → D**.
       multiple, actions en lot (campagne à sélection figée, priorité, suppression), densité,
       colonnes, préférences conservées + réinitialisation. **Mesuré au navigateur sur 20 cas** :
       recherche = 0 requête ; composer une campagne de 20 cas = **1 requête** au lieu de 20 gestes.
-- [ ] **Lot D — clavier et accessibilité** : 21 attributs `aria`/`role` pour 91 boutons ; puis
-      palette de commandes.
+- [x] **Lot D — clavier et accessibilité** *(fait le 2026-07-24)*. 19 boutons nommés + un
+      **garde-fou** qui refuse qu'un bouton muet revienne ; modales au clavier (focus donné,
+      enfermé, rendu) ; palette de commandes `Ctrl/⌘+K`. ⚠️ L'anneau de focus était à **2,69:1**,
+      sous le seuil WCAG de 3:1 — calculé, pas vu. Opaque : **4,31:1**.
+      Vérifié **au clavier seul** dans un vrai navigateur.
 
 ### Phase 3 — Compléter *(confort, pas essentiel)*
 

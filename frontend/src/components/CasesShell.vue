@@ -369,7 +369,7 @@ function switchProject(id: number) {
         <template v-for="m in modules" :key="m.id">
           <div class="group flex w-full items-center gap-1 rounded-md px-1.5 py-1.5 hover:bg-accent/40"
                :class="activeModuleId === m.id && 'bg-primary/10'">
-            <button class="shrink-0 p-0.5" :title="expanded.includes(m.id) ? 'Replier' : 'Déplier'" @click.stop="toggle(m.id)">
+            <button class="shrink-0 p-0.5" :title="expanded.includes(m.id) ? 'Replier' : 'Déplier'" @click.stop="toggle(m.id)" :aria-label="expanded.includes(m.id) ? 'Replier' : 'Déplier'">
               <svg class="w-3 h-3 text-muted-foreground transition-transform" :class="expanded.includes(m.id) ? 'rotate-90' : ''" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5l8 7-8 7z"/></svg>
             </button>
             <!-- Le NOM filtre la liste sur ce module (ce que faisait l'ancienne page module). -->
@@ -380,13 +380,13 @@ function switchProject(id: number) {
             <!-- Créer une SPÉCIFICATION (le document source) : le geste qui manquait à
                  l'interface — le CRUD existait côté serveur sans qu'aucun écran ne l'appelle. -->
             <button class="shrink-0 p-0.5 text-muted-foreground hover:text-primary"
-                    title="Ajouter une spécification dans ce module" @click.stop="ouvrirCreationSpec(m.id)">
+                    title="Ajouter une spécification dans ce module" @click.stop="ouvrirCreationSpec(m.id)" aria-label="Ajouter une spécification dans ce module">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M12 12v6M9 15h6"/></svg>
             </button>
-            <button class="shrink-0 p-0.5 text-muted-foreground hover:text-primary" title="Ajouter un cas dans ce module" @click.stop="goCaseNew(m.id)">
+            <button class="shrink-0 p-0.5 text-muted-foreground hover:text-primary" title="Ajouter un cas dans ce module" @click.stop="goCaseNew(m.id)" aria-label="Ajouter un cas dans ce module">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             </button>
-            <button class="shrink-0 p-0.5 text-muted-foreground/50 opacity-0 group-hover:opacity-100 hover:text-destructive" title="Supprimer ce module" @click.stop="deleteModule(m)">
+            <button class="shrink-0 p-0.5 text-muted-foreground/50 opacity-0 group-hover:opacity-100 hover:text-destructive" title="Supprimer ce module" @click.stop="deleteModule(m)" aria-label="Supprimer ce module">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v11a2 2 0 002 2h4a2 2 0 002-2V7"/></svg>
             </button>
           </div>
@@ -403,7 +403,7 @@ function switchProject(id: number) {
                 <span class="truncate">{{ g.title }}</span>
               </button>
               <button class="shrink-0 p-0.5 text-muted-foreground/60 opacity-0 group-hover/spec:opacity-100 hover:text-primary"
-                      title="Ouvrir la spécification (le document)" @click.stop="ouvrirFicheSpec(g.id)">
+                      title="Ouvrir la spécification (le document)" @click.stop="ouvrirFicheSpec(g.id)" aria-label="Ouvrir la spécification (le document)">
                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M8 13h8M8 17h5"/></svg>
               </button>
             </div>

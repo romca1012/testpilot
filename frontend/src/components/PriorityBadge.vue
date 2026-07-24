@@ -30,7 +30,9 @@ async function choose(level: string) {
 
 <template>
   <span class="relative inline-flex items-center gap-1">
-    <button v-if="editable" :disabled="busy" class="disabled:opacity-50" @click.stop="open = !open">
+    <button v-if="editable" :disabled="busy" class="disabled:opacity-50"
+            :aria-label="`Changer la priorité (actuellement ${view.label})`"
+            :aria-expanded="open" @click.stop="open = !open">
       <Chip :icon="view.icon" :label="view.label" :cls="toneClasses(view.tone)" />
     </button>
     <Chip v-else :icon="view.icon" :label="view.label" :cls="toneClasses(view.tone)" />

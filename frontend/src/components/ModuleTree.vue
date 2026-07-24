@@ -96,7 +96,7 @@ const validation = (status: string | null) => validationView(status)
             : 'text-muted-foreground hover:bg-accent/40 hover:text-foreground'"
         >
           <button class="grid h-6 w-5 shrink-0 place-items-center" :aria-expanded="isExpanded(m.id)"
-                  :title="isExpanded(m.id) ? 'Replier' : 'Déplier'" @click="emit('toggle', m.id)">
+                  :title="isExpanded(m.id) ? 'Replier' : 'Déplier'" @click="emit('toggle', m.id)" :aria-label="isExpanded(m.id) ? 'Replier' : 'Déplier'">
             <Icon name="chevron" class="h-3 w-3 transition-transform"
                   :class="isExpanded(m.id) && 'rotate-90'" />
           </button>

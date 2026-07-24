@@ -281,17 +281,17 @@ async function campagneDepuisSelection() {
     <div class="flex items-center justify-between px-6 pt-6 pb-2">
       <h1 class="text-[26px] font-semibold tracking-tight">Cas de test</h1>
       <div class="flex items-center gap-3.5 text-muted-foreground">
-        <button title="Nouveau module" class="hover:text-foreground" @click="openCreateModule(pid)">
+        <button title="Nouveau module" class="hover:text-foreground" @click="openCreateModule(pid)" aria-label="Nouveau module">
           <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M12 10v5M9.5 12.5h5"/></svg>
         </button>
-        <button v-for="ic in topIcons" :key="ic.t" :title="ic.t" class="hover:text-foreground" @click="topAction(ic.t)">
+        <button v-for="ic in topIcons" :key="ic.t" :title="ic.t" class="hover:text-foreground" @click="topAction(ic.t)" :aria-label="ic.t">
           <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path :d="ic.d"/></svg>
         </button>
         <button title="Générer des cas de test avec l'IA" class="grid place-items-center w-7 h-7 rounded-full bg-success/15 text-success hover:bg-success/25"
-                @click="router.push({ name: 'case-new', params: { pid } })">
+                @click="router.push({ name: 'case-new', params: { pid } })" aria-label="Générer des cas de test avec l'IA">
           <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/></svg>
         </button>
-        <button title="Lancer une exécution (créer un run)" class="grid place-items-center w-[30px] h-[30px] rounded-full bg-success text-white hover:bg-success/90" @click="goRunNew">
+        <button title="Lancer une exécution (créer un run)" class="grid place-items-center w-[30px] h-[30px] rounded-full bg-success text-white hover:bg-success/90" @click="goRunNew" aria-label="Lancer une exécution (créer un run)">
           <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </button>
       </div>
@@ -372,12 +372,15 @@ async function campagneDepuisSelection() {
       <div v-for="s in sections" :key="s.module.id" class="mt-4">
         <!-- En-tête de section (module) -->
         <div class="flex items-center gap-2.5 py-1.5">
-          <button class="text-muted-foreground hover:text-foreground" @click="toggle(s.module.id)">
+          <button class="text-muted-foreground hover:text-foreground"
+                  :aria-label="`${collapsed.includes(s.module.id) ? 'Déplier' : 'Replier'} le module ${s.module.name}`"
+                  :aria-expanded="!collapsed.includes(s.module.id)"
+                  @click="toggle(s.module.id)">
             <svg class="w-3.5 h-3.5 transition-transform" :class="collapsed.includes(s.module.id) ? '-rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
           </button>
           <span class="font-bold italic tracking-tight">{{ s.module.name }}</span>
           <span class="rounded-full bg-primary/15 text-primary text-[11px] font-semibold px-2.5 py-0.5 tabular-nums">{{ s.rows.length }}</span>
-          <button class="text-muted-foreground hover:text-foreground" title="Renommer le module" @click="renameSection(s.module)">
+          <button class="text-muted-foreground hover:text-foreground" title="Renommer le module" @click="renameSection(s.module)" aria-label="Renommer le module">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>
           </button>
         </div>

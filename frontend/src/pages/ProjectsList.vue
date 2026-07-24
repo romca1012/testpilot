@@ -282,7 +282,7 @@ onMounted(async () => { await load(); await loadExplorations() })
           class="absolute right-10 top-3 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
           title="Modifier le projet et sa connexion"
           @click.stop="startEdit(p)"
-        >
+         aria-label="Modifier le projet et sa connexion">
           <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M11 4H4v16h16v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z" />
           </svg>
@@ -291,7 +291,7 @@ onMounted(async () => { await load(); await loadExplorations() })
           class="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
           title="Supprimer le projet"
           @click.stop="toDelete = p"
-        >
+         aria-label="Supprimer le projet">
           <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v11a2 2 0 002 2h4a2 2 0 002-2V7" />
           </svg>

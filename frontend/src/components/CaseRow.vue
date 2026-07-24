@@ -42,7 +42,7 @@ async function toggle() {
   <div class="border-t border-border">
     <div class="group flex flex-wrap items-center gap-4 px-5 py-4 transition-colors hover:bg-accent/40">
       <button class="shrink-0 text-muted-foreground/50 hover:text-foreground" @click="toggle"
-              :title="open ? 'Replier les scénarios' : 'Déplier les scénarios'">
+              :title="open ? 'Replier les scénarios' : 'Déplier les scénarios'" :aria-label="open ? 'Replier les scénarios' : 'Déplier les scénarios'">
         <Icon name="chevron" class="h-4 w-4 transition-transform" :class="open && 'rotate-90'" />
       </button>
 
