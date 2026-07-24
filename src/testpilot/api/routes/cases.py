@@ -3,10 +3,10 @@ déclenchement d'exécution, et action de relecture (gate actionnable depuis l'U
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 
 from testpilot import config
-from testpilot.api import schemas
+from testpilot.api import access, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import generation_service, run_service
 from testpilot.generation import assertion_lint, domain_model, repair_diff, smoke_check
@@ -230,7 +230,8 @@ def start_run(case_id: int, background: BackgroundTasks, conn=Depends(get_conn))
 
 
 @router.post("/{case_id}/review", response_model=schemas.ReviewResponse)
-def submit_review(case_id: int, body: schemas.ReviewIn, conn=Depends(get_conn)):
+def submit_review(case_id: int, body: schemas.ReviewIn, request: Request,
+                  conn=Depends(get_conn)):
     case = CaseRepo(conn).get(case_id)
     if case is None:
         raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
@@ -240,7 +241,9 @@ def submit_review(case_id: int, body: schemas.ReviewIn, conn=Depends(get_conn)):
 
     decision = run_service.submit_review(
         conn, case_id, version_id, approved=body.approved,
-        reviewer=body.reviewer, comment=body.comment, repair_budget=body.repair_budget)
+        # Une relecture signée « ui » ne dit pas qui a relu. Le nom de session prime (2026-07-24).
+        reviewer=access.utilisateur_de(request) or body.reviewer,
+        comment=body.comment, repair_budget=body.repair_budget)
     # Un rejet repositionne le cas « à relire » ; l'approbation n'ouvre que le gate.
     if not body.approved:
         CaseRepo(conn).set_validation_status(case_id, "to_review")

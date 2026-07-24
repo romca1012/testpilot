@@ -9,13 +9,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from testpilot import config
-from testpilot.api.routes import cases, executions, groups, modules, projects, runs
+from testpilot.api import access
+from testpilot.api.routes import auth, cases, executions, groups, modules, projects, runs
 
 # Origines du serveur de dev Vite (aucune auth : usage interne, réseau local).
 _DEV_ORIGINS = [
@@ -34,13 +35,47 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=_DEV_ORIGINS,
         allow_methods=["*"],
+        # `allow_credentials` : le cookie de session doit accompagner les appels du serveur Vite
+        # en développement. Avec une liste d'origines explicite (jamais « * »), c'est licite.
+        allow_credentials=True,
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def verrou_acces(request: Request, call_next):
+        """Verrou d'instance (2026-07-24). Inactif tant qu'aucun mot de passe n'est configuré.
+
+        Un refus est un **401 explicite** : le frontend affiche son écran de connexion au lieu de
+        laisser croire à une panne. Les fichiers du frontend restent servis — sans quoi
+        l'utilisateur verrait une page blanche plutôt que le formulaire.
+        """
+        if access.verrou_actif() and not access.chemin_libre(request.url.path):
+            if not access.lire_jeton(request.cookies.get(access.COOKIE)):
+                return JSONResponse(status_code=401,
+                                    content={"detail": "session requise"})
+        return await call_next(request)
+
+    access.journaliser_l_etat_au_demarrage()
+
     @app.get("/api/health", tags=["meta"])
     def health():
-        return {"status": "ok", "version": config.APP_VERSION}
+        """Santé + **état du verrou d'accès**.
 
+        ⚠️ `access_lock` est ici parce que le journal ne suffisait pas : lancé par la commande
+        `uvicorn` de la procédure de déploiement, le message d'état au démarrage
+        (`logger.info`) **n'apparaît nulle part** — uvicorn ne configure pas les journaux de
+        l'application. Un exploitant qui suivait la procédure croyait donc vérifier que son
+        instance est verrouillée, et ne vérifiait rien. Trouvé en démarrant réellement le
+        serveur, jamais par les tests : ils passent par le client de test, pas par uvicorn.
+
+        Cette route est volontairement **libre d'accès** (il faut pouvoir constater qu'une
+        instance est verrouillée sans y entrer) et ne révèle rien d'exploitable : savoir qu'un
+        verrou existe n'aide pas à le franchir.
+        """
+        return {"status": "ok", "version": config.APP_VERSION,
+                "access_lock": access.verrou_actif()}
+
+    app.include_router(auth.router)
     app.include_router(projects.router)
     app.include_router(modules.router)
     app.include_router(groups.router)

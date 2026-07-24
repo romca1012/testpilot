@@ -12,6 +12,7 @@ import sqlite3
 from datetime import datetime, timezone
 
 from testpilot import config
+from testpilot.store import secrets as secrets_mod
 
 logger = logging.getLogger(__name__)
 
@@ -81,32 +82,47 @@ class ProjectRepo:
         cur = self.conn.execute(
             "INSERT INTO project (name, description, connector_type, base_url, database,"
             " username, password, created_at) VALUES (?,?,?,?,?,?,?,?)",
-            (name, description, connector_type, base_url, database, username, password, now_iso()))
+            (name, description, connector_type, base_url, database, username,
+             secrets_mod.chiffrer(password), now_iso()))
         self.conn.commit()
         return int(cur.lastrowid)
 
+    @staticmethod
+    def _en_clair(row) -> dict:
+        """Une ligne de projet utilisable par l'appelant : le secret **déchiffré**.
+
+        ⚠️ Le déchiffrement vit ICI, dans le dépôt, et nulle part ailleurs — sinon chaque appelant
+        déciderait pour lui-même, et l'un d'eux finirait par lire la colonne brute en croyant
+        tenir un mot de passe (il tiendrait un jeton chiffré). L'API, elle, ne renvoie de toute
+        façon jamais ce champ (write-only depuis `0005`).
+        """
+        projet = dict(row)
+        if "password" in projet:
+            projet["password"] = secrets_mod.dechiffrer(projet["password"])
+        return projet
+
     def get(self, project_id: int) -> dict | None:
         row = self.conn.execute("SELECT * FROM project WHERE id=?", (project_id,)).fetchone()
-        return dict(row) if row else None
+        return self._en_clair(row) if row else None
 
     def list_all(self) -> list[dict]:
         """Projets + compteurs de modules et de cas (pour l'accueil / le sélecteur)."""
-        return _rows(self.conn.execute(
+        return [self._en_clair(r) for r in self.conn.execute(
             "SELECT p.*,"
             " (SELECT COUNT(*) FROM module m WHERE m.project_id=p.id) AS module_count,"
             " (SELECT COUNT(*) FROM test_case tc JOIN module m ON tc.module_id=m.id"
             "  WHERE m.project_id=p.id) AS case_count"
-            " FROM project p ORDER BY p.id"))
+            " FROM project p ORDER BY p.id")]
 
     def find_by_name(self, name: str) -> dict | None:
         row = self.conn.execute("SELECT * FROM project WHERE name=?", (name,)).fetchone()
-        return dict(row) if row else None
+        return self._en_clair(row) if row else None
 
     def first(self) -> dict | None:
         """Projet par défaut (le plus ancien). Source unique de la règle « projet courant »
         hors interface : rattachement automatique ET connexion du runtime en CLI."""
         row = self.conn.execute("SELECT * FROM project ORDER BY id LIMIT 1").fetchone()
-        return dict(row) if row else None
+        return self._en_clair(row) if row else None
 
     def rename(self, project_id: int, *, name: str, description: str | None = None) -> None:
         self.ensure_name_free(name, excluding=project_id)
@@ -139,7 +155,7 @@ class ProjectRepo:
                 params.append(champs[col])
         if champs.get("password") is not None:
             sets.append("password=?")
-            params.append(champs["password"])
+            params.append(secrets_mod.chiffrer(champs["password"]))
         if not sets:
             return
         params.append(project_id)

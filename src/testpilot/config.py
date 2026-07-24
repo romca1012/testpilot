@@ -168,6 +168,21 @@ ODOO_DB = os.getenv("ODOO_DB", "odoo_test")
 ODOO_USER = os.getenv("ODOO_USER", "admin")
 ODOO_PASSWORD = os.getenv("ODOO_PASSWORD", "admin")
 
+# ── Secrets et accès (lot 2 du déploiement, 2026-07-24) ───────────────────────
+# Clé de chiffrement des secrets stockés (mot de passe de connexion d'un projet). Vide → une clé
+# est créée dans `data/.secret_key`. **Sur un serveur partagé, fournir cette variable** : une clé
+# rangée à côté de la base ne protège que les copies de la base, pas un accès à la machine.
+SECRET_KEY = os.getenv("TESTPILOT_SECRET_KEY", "")
+
+# Mot de passe d'INSTANCE (verrou d'accès minimal). Vide → aucun verrou : c'est le mode poste de
+# développement. **Dès que l'outil est joignable sur un réseau, le renseigner** — sans lui,
+# quiconque atteint le port pilote des tests contre l'application testée et lit ses rapports.
+# Ce n'est PAS un système de comptes (hors V1, §8 du brief) : un seul secret partagé.
+ACCESS_PASSWORD = os.getenv("TESTPILOT_ACCESS_PASSWORD", "")
+
+# Durée d'une session ouverte par ce verrou.
+SESSION_DAYS = int(os.getenv("TESTPILOT_SESSION_DAYS", "30"))
+
 # ── Sécurité : jamais la production ───────────────────────────────────────────
 if os.getenv("ODOO_ENV") == "prod":
     raise EnvironmentError(

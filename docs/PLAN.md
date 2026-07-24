@@ -40,8 +40,8 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 
 | | |
 |---|---|
-| Tests | **827 Python · 75 vitest** — tous verts |
-| Schéma | `user_version = 20` |
+| Tests | **847 Python · 75 vitest** — tous verts |
+| Schéma | `user_version = 21` |
 | Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), re-confirmé au rejeu du 2026-07-23 |
 | Verdicts | **0 fausse accusation par invention de champ** ; 4ᵉ verdict `donnee_invalide` déclenché en réel |
 | Coût d'un cas (analyse + génération) | **~0,08 à 0,11 $** — modèle **Sonnet 4.6** |
@@ -303,17 +303,28 @@ revienne.
       liste des exécutions et l'onglet Tests & Résultats. Les exécutions antérieures restent vides :
       *« on ne sait pas »* est la vérité ; une cible reconstituée depuis la configuration du jour
       serait une supposition présentée comme un fait.
-- [ ] 🔴 **Mot de passe de connexion en clair** dans SQLite — **bloquant**, et plus seulement « avant
-      usage client » : la cible est un serveur interne partagé (lot 2).
-- [ ] **Verrou d'accès minimal** (mot de passe d'instance) — pas le système de rôles, qui est hors
-      V1 : dès que l'outil quitte un poste, il est joignable par qui passe sur le réseau.
-- [ ] **Procédure de déploiement** : build du front (déjà servi par l'API), navigateurs Playwright,
-      emplacement de `data/`, sauvegarde. ⚠️ **README et `.env.example` périmés** — le README annonce
-      encore l'Incrément 0, « frontend hors périmètre » et la relecture obligatoire ; le `.env`
-      d'exemple porte le budget de 50 € retiré du produit.
-- [ ] **Qui a fait quoi** : sans comptes, l'auteur d'un cas et le lanceur d'une campagne sont
-      inconnus sur un serveur partagé. Palliatif à quelques heures — un nom saisi à l'arrivée, qui
-      alimente les champs `author` déjà présents — à décider au lot 2.
+- [x] **Mot de passe de connexion chiffré au repos** — **fait le 2026-07-24** (migration 21). La
+      colonne porte un jeton `enc:v1:…` ; les secrets déjà stockés sont repris par la migration,
+      idempotente. Clé par `TESTPILOT_SECRET_KEY`, sinon `data/.secret_key` (gitignoré).
+      **Honnêteté sur la portée** : ça protège la base **au repos** (copies, sauvegardes, export),
+      pas quelqu'un qui a la base **et** la clé. Une clé perdue ne fait **jamais** passer le jeton
+      pour un mot de passe : on rend vide, et la garde de connexion dit quoi corriger.
+- [x] **Verrou d'accès d'instance** — **fait le 2026-07-24**. `TESTPILOT_ACCESS_PASSWORD` : un
+      secret partagé, une session signée (changer le mot de passe invalide toutes les sessions),
+      un écran de connexion. **Ce n'est pas un système de comptes** (hors V1) et l'écran le dit.
+      Vide = aucun verrou, comme avant.
+- [x] **Qui a fait quoi** — **fait le 2026-07-24**. Le nom saisi à l'arrivée signe les cas créés et
+      les relectures. **Signature déclarée, pas identité vérifiée** — dit à l'écran. Sans nom,
+      l'auteur reste vide : « on ne sait pas » plutôt qu'un « admin » inventé.
+- [x] **Procédure de déploiement** — `docs/DEPLOIEMENT.md`, **suivie de bout en bout**, pas
+      théorique. README et `.env.example` refaits (le README annonçait encore l'Incrément 0 et
+      « frontend hors périmètre » ; le `.env` portait le budget de 50 € retiré du produit).
+      ⚠️ **Défaut trouvé en démarrant vraiment le serveur** : la procédure demandait de vérifier
+      une ligne de journal qui n'apparaît **jamais** sous la commande `uvicorn` recommandée.
+      L'état du verrou est désormais exposé sur `/api/health` — vérifier une protection ne doit
+      pas dépendre d'une configuration de journalisation.
+- [ ] **HTTPS / reverse proxy** si l'instance sort du réseau de confiance : le cookie de session
+      voyage sinon en clair. Hors outil (affaire d'exploitation), écrit dans la procédure.
 - [ ] **Une seule identité pour trois usages** (navigateur, RPC de test, RPC d'exploration).
       Conséquence produit : impossible de tester « un employé ne doit pas voir la page admin » —
       ça bloque toute une famille de cas « erreur / permission ».

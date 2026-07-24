@@ -15,11 +15,12 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Request,
     Response,
     UploadFile,
 )
 
-from testpilot.api import schemas
+from testpilot.api import access, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import generation_service, spec_extract
 from testpilot.store.repositories import (
@@ -125,7 +126,8 @@ def delete_module(module_id: int, conn=Depends(get_conn)):
 
 
 @router.post("/{module_id}/cases/manual", response_model=schemas.CaseSummary, status_code=201)
-def create_manual_case(module_id: int, body: schemas.ManualCaseIn, conn=Depends(get_conn)):
+def create_manual_case(module_id: int, body: schemas.ManualCaseIn, request: Request,
+                       conn=Depends(get_conn)):
     """Crée un cas À LA MAIN — le bouton « Ajouter un cas de test », SANS IA (décision `0022`).
 
     Le cas naît avec son document métier (titre, préconditions, étapes, résultat attendu) mais
@@ -143,7 +145,8 @@ def create_manual_case(module_id: int, body: schemas.ManualCaseIn, conn=Depends(
         cid = CaseRepo(conn).create_manual(
             module_id=module_id, title=body.title.strip(),
             preconditions=body.preconditions, test_steps=json.dumps(steps, ensure_ascii=False),
-            expected_result=body.expected_result.strip(), angle=body.angle)
+            expected_result=body.expected_result.strip(), angle=body.angle,
+            author=access.utilisateur_de(request) or "ui")
     except DuplicateName as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return schemas.case_summary(CaseRepo(conn).get(cid))
@@ -191,7 +194,7 @@ def reorder_cases(module_id: int, body: schemas.ReorderCasesIn, conn=Depends(get
 
 @router.post("/{module_id}/cases", response_model=schemas.GenerationJobOut, status_code=202)
 def add_case(module_id: int, body: schemas.AddCaseIn, background: BackgroundTasks,
-             conn=Depends(get_conn)):
+             request: Request, conn=Depends(get_conn)):
     spec = body.spec_content
     if not spec and body.spec_path:
         path = Path(body.spec_path)
@@ -200,8 +203,11 @@ def add_case(module_id: int, body: schemas.AddCaseIn, background: BackgroundTask
         spec = path.read_text(encoding="utf-8")
 
     try:
+        # Le nom saisi à l'ouverture de session l'emporte sur le « ui » par défaut : sur un
+        # serveur partagé, « qui a créé ce cas ? » doit avoir une réponse (2026-07-24).
         job_id, params = generation_service.start_generation(
-            conn, module_id, spec_content=spec, title=body.title, author=body.author)
+            conn, module_id, spec_content=spec, title=body.title,
+            author=access.utilisateur_de(request) or body.author)
     except generation_service.GenerationError as err:
         raise HTTPException(status_code=_ERROR_STATUS.get(err.code, 400), detail=err.detail)
 

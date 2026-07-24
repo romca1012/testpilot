@@ -1,9 +1,20 @@
-// Client API — base configurable, sans auth (usage interne). En dev, Vite (:5173) appelle
-// FastAPI (:8000) ; en prod, le front est servi par FastAPI (même origine → base relative).
+// Client API — base configurable. En dev, Vite (:5173) appelle FastAPI (:8000) ; en prod, le
+// front est servi par FastAPI (même origine → base relative).
 const API_BASE = import.meta.env.DEV ? 'http://localhost:8000' : ''
+
+// ⚠️ `credentials: 'include'` est INDISPENSABLE : le verrou d'instance (2026-07-24) tient dans un
+// cookie de session, et en développement le front (:5173) et l'API (:8000) sont deux origines —
+// sans ça, le cookie ne partirait pas et toute l'application semblerait déconnectée.
+const CREDENTIALS: RequestCredentials = 'include'
+
+// Prévenu quand le serveur répond 401 : l'écran de connexion doit revenir de lui-même quand une
+// session expire, plutôt que de laisser une page échouer sans explication.
+let onUnauthorized: (() => void) | null = null
+export function setUnauthorizedHandler(fn: (() => void) | null) { onUnauthorized = fn }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const resp = await fetch(`${API_BASE}${path}`, {
+    credentials: CREDENTIALS,
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   })
@@ -13,6 +24,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       const body = await resp.json()
       if (body?.detail) detail = body.detail
     } catch { /* réponse non-JSON */ }
+    // La connexion elle-même peut répondre 401 (mot de passe faux) : c'est le formulaire qui le
+    // dit, il ne faut pas le confondre avec une session expirée.
+    if (resp.status === 401 && !path.startsWith('/api/auth/')) onUnauthorized?.()
     throw new ApiError(resp.status, detail)
   }
   return resp.status === 204 ? (undefined as T) : resp.json()
@@ -25,6 +39,14 @@ export class ApiError extends Error {
 }
 
 export const api = {
+  // ── Session (verrou d'instance, 2026-07-24) ──
+  // `lock_enabled: false` = instance sans verrou : ne PAS afficher un formulaire rassurant qui
+  // ne protège rien. Le `name` n'est pas une identité vérifiée, c'est une signature déclarée.
+  getSession: () => request<Session>('/api/auth/session'),
+  login: (password: string, name: string) =>
+    request<Session>('/api/auth/login', { method: 'POST', body: JSON.stringify({ password, name }) }),
+  logout: () => request<Session>('/api/auth/logout', { method: 'POST' }),
+
   // Projets / modules (hiérarchie §7)
   listProjects: () => request<ProjectSummary[]>('/api/projects'),
   createProject: (payload: ProjectInput) =>
@@ -96,7 +118,10 @@ export const api = {
   extractSpec: async (moduleId: number | string, file: File): Promise<{ text: string; filename: string }> => {
     const fd = new FormData()
     fd.append('file', file)
-    const res = await fetch(`/api/modules/${moduleId}/cases/extract`, { method: 'POST', body: fd })
+    // ⚠️ `API_BASE` et `credentials` comme partout : sans eux, cet appel visait le serveur Vite en
+    // développement et partait sans cookie de session — l'import échouait là où tout le reste marche.
+    const res = await fetch(`${API_BASE}/api/modules/${moduleId}/cases/extract`,
+                            { method: 'POST', credentials: CREDENTIALS, body: fd })
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Import impossible.')
     return res.json()
   },
@@ -149,6 +174,9 @@ export const api = {
 }
 
 // ── Types (miroir des DTO backend) ──────────────────────────────────────────
+/** État du verrou d'instance. `lock_enabled=false` → aucun verrou configuré (poste isolé). */
+export interface Session { lock_enabled: boolean; authenticated: boolean; name: string }
+
 export interface ProjectSummary {
   id: number; name: string; description: string
   connector_type: string; base_url: string; database: string; username: string

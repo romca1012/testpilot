@@ -11,6 +11,10 @@ dist/
 
 # Secrets
 .env
+# Clé de chiffrement des secrets de connexion (2026-07-24). Déjà couverte par `/data/*`, répétée
+# ici parce qu'un TESTPILOT_DATA_DIR pointant ailleurs la sortirait de cette règle — et une clé
+# commitée annulerait tout l'intérêt du chiffrement.
+.secret_key
 
 # Persistance légère & artefacts générés (source de vérité = SQLite + historisation)
 /data/*

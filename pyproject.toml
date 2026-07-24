@@ -17,6 +17,10 @@ dependencies = [
     "pdfplumber>=0.11",
     "fastapi>=0.115",
     "uvicorn>=0.32",
+    # Chiffrement au repos du secret de connexion d'un projet (2026-07-24). Était déjà présent
+    # en transitif ; déclaré explicitement parce qu'on en dépend désormais directement — une
+    # dépendance qu'on utilise sans la déclarer disparaît le jour où son porteur disparaît.
+    "cryptography>=42.0",
 ]
 
 [project.optional-dependencies]

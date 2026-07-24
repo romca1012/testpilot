@@ -8,16 +8,19 @@ métier ici.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 from testpilot import config
 
+logger = logging.getLogger(__name__)
+
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 20
+_SCHEMA_VERSION = 21
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -103,6 +106,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_19_verdict_donnee_invalide(conn)
     if version < 20:
         _migrate_20_execution_cible(conn)
+    if version < 21:
+        _migrate_21_chiffrer_secrets(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -714,6 +719,41 @@ def _migrate_20_execution_cible(conn: sqlite3.Connection) -> None:
     for nom in ("target_url", "target_database", "target_username"):
         if nom not in cols:
             conn.execute(f"ALTER TABLE execution ADD COLUMN {nom} TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_21_chiffrer_secrets(conn: sqlite3.Connection) -> None:
+    """Chiffre les mots de passe de connexion déjà stockés **en clair** (2026-07-24).
+
+    Le secret d'un projet partait tel quel dans les sauvegardes et les copies de la base. La
+    migration le reprend une fois pour toutes ; les écritures suivantes chiffrent à la source
+    (`ProjectRepo`).
+
+    **Idempotente par ligne** : une valeur déjà préfixée `enc:v1:` est sautée, une chaîne vide
+    aussi (l'absence de secret n'est pas un secret à protéger). Rejouable sans dégât.
+
+    ⚠️ **Ne fait pas échouer l'ouverture de la base.** Si la clé est indisponible (bibliothèque
+    absente, répertoire non inscriptible), on **journalise bruyamment** et on laisse les valeurs
+    en clair : refuser de démarrer rendrait l'outil inutilisable pour un défaut de configuration,
+    alors que le mot de passe en clair est le comportement qu'on avait la veille. Le silence,
+    lui, serait inacceptable — on croirait la base protégée sans qu'elle le soit.
+    """
+    from testpilot.store import secrets as secrets_mod
+
+    lignes = conn.execute("SELECT id, password FROM project").fetchall()
+    a_chiffrer = [(r["id"], r["password"]) for r in lignes
+                  if r["password"] and not secrets_mod.est_chiffre(r["password"])]
+    if not a_chiffrer:
+        return
+    try:
+        for pid, clair in a_chiffrer:
+            conn.execute("UPDATE project SET password=? WHERE id=?",
+                         (secrets_mod.chiffrer(clair), pid))
+        logger.info("[migration 21] %s secret(s) de connexion chiffré(s) au repos", len(a_chiffrer))
+    except Exception:
+        logger.critical(
+            "[migration 21] les secrets de connexion N'ONT PAS PU être chiffrés : ils restent EN "
+            "CLAIR dans la base. Vérifiez `cryptography` et l'accès en écriture au répertoire de "
+            "données, puis rouvrez la base.", exc_info=True)
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:
