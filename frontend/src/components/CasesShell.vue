@@ -5,9 +5,14 @@
 // concept qu'on impose ailleurs. Les boutons/onglets non couverts par ce lot mènent à « à venir ».
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type CaseSummary, type GroupSummary, type ModuleSummary } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useModuleCreate } from '../lib/useModuleCreate'
+// Couche de données (lot A, 2026-07-24) : plus de `load()` maison ici. Le shell et la page
+// affichée demandaient les MÊMES modules, cas et spécifications à chaque navigation ; ils
+// partagent désormais un seul cache, et une mutation invalide ce qu'il faut.
+import {
+  useCas, useCreerGroupe, useCreerModule, useGroupes, useModules, useSupprimerModule,
+} from '../lib/donnees'
 import Modal from './ui/Modal.vue'
 import Button from './ui/Button.vue'
 
@@ -24,16 +29,19 @@ const moduleError = ref('')
 
 watch(() => mc.open.value, (o) => { if (o) { nm.value = { name: '', description: '' }; moduleError.value = '' } })
 
+const creerModule = useCreerModule(computed(() => mc.pid.value || (pid.value as string)))
+
 async function submitModule() {
   const name = nm.value.name.trim()
   if (!name) return
   creatingModule.value = true
   moduleError.value = ''
   try {
-    await api.createModule(mc.pid.value || (pid.value as string), name, nm.value.description.trim())
+    // La mutation invalide le projet : l'arbre ET les pages qui listent les modules se
+    // rafraîchissent seuls. Plus de `load()` manuel à ne pas oublier.
+    await creerModule.mutateAsync({ name, description: nm.value.description.trim() })
     mc.close()
-    mc.markCreated()   // prévient les pages qui listent les modules (elles rechargent)
-    await load()       // rafraîchit l'arbre de la barre latérale
+    mc.markCreated()
   } catch (e: any) {
     moduleError.value = e?.message || 'Création impossible'
   } finally {
@@ -45,26 +53,27 @@ const pid = computed(() => route.params.pid as string | undefined)
 const currentProject = computed(() => projectById(pid.value))
 const menuOpen = ref(false)
 
-const modules = ref<ModuleSummary[]>([])
-const groups = ref<GroupSummary[]>([])
-const cases = ref<CaseSummary[]>([])
+// Les trois listes de l'arbre viennent du cache partagé. `?? []` parce qu'une requête en vol n'a
+// pas encore de données : l'arbre se dessine vide plutôt que de faire tomber le rendu.
+const { data: modulesData } = useModules(pid)
+const { data: groupsData } = useGroupes(pid)
+const { data: casesData } = useCas(pid)
+const modules = computed(() => modulesData.value ?? [])
+const groups = computed(() => groupsData.value ?? [])
+const cases = computed(() => casesData.value ?? [])
 const expanded = ref<number[]>([])
 
-async function load() {
-  if (!pid.value) return
-  const [m, g, c] = await Promise.all([
-    api.listModules(pid.value), api.listGroups(pid.value), api.listCases(pid.value),
-  ])
-  modules.value = m
-  groups.value = g
-  cases.value = c
-  if (!expanded.value.length) expanded.value = m.map((x) => x.id) // tout déplié au départ
-}
+// Tout déplié au premier chargement d'un projet — un arbre entièrement replié ne montre rien
+// de ce qu'on vient d'ouvrir.
+watch(modules, (m) => { if (m.length && !expanded.value.length) expanded.value = m.map((x) => x.id) })
+watch(pid, () => { expanded.value = [] })   // changer de projet ne conserve pas un dépliage étranger
 
-onMounted(() => { ensureLoaded(); load() })
-watch(pid, () => { ensureLoaded(); load() })
-// Un cas ajouté ou un diagnostic tranché doit se refléter sans rechargement manuel.
-watch(() => route.fullPath, () => { load() })
+onMounted(() => { ensureLoaded() })
+watch(pid, () => { ensureLoaded() })
+// ⚠️ **Le rechargement à chaque navigation a été SUPPRIMÉ** (`watch(route.fullPath, load)`).
+// Il rechargeait modules + spécifications + cas à chaque clic, en double avec la page affichée.
+// Ce qui le remplace : les mutations invalident explicitement ce qu'elles périment
+// (`lib/donnees.ts`). Une donnée fraîche de moins de 30 s n'est plus redemandée.
 
 const specCount = computed(() => groups.value.length)
 const caseCount = computed(() => cases.value.length)
@@ -96,15 +105,16 @@ function ouvrirCreationSpec(moduleId: number) {
   specError.value = ''
 }
 
+const creerGroupe = useCreerGroupe(pid)
+
 async function submitSpec() {
   const titre = nouvelleSpec.value.title.trim()
   if (!titre || specModule.value == null) return
   creatingSpec.value = true
   specError.value = ''
   try {
-    const creee = await api.createGroup(specModule.value, { title: titre })
+    const creee = await creerGroupe.mutateAsync({ moduleId: specModule.value, title: titre })
     specModule.value = null
-    await load()   // l'arbre doit montrer la spécification tout de suite
     // On emmène sur sa fiche : une spécification vide qu'on ne rédige pas ne sert à rien.
     router.push({ name: 'spec-detail', params: { pid: pid.value, id: String(creee.id) } })
   } catch (e: any) {
@@ -181,19 +191,19 @@ function goGenerate(moduleId?: number) {
 }
 // Suppression d'un module — CASCADE (cas, versions, exécutions). Confirmation EXPLICITE avec le
 // compte de ce qui partira : §2.10 interdit d'effacer un run en silence, pas sur demande claire.
-async function deleteModule(m: ModuleSummary) {
+async function deleteModule(m: { id: number; name: string }) {
   const n = cases.value.filter((c) => c.module_id === m.id).length
   const detail = n ? ` et ses ${n} cas de test (avec leurs exécutions)` : ''
   if (!window.confirm(`Supprimer le module « ${m.name} »${detail} ? Cette action est irréversible.`)) return
   try {
-    await api.deleteModule(m.id)
+    await supprimerModule.mutateAsync(m.id)
     // Si on était sur une page filtrée par ce module, revenir à la liste complète.
     router.push({ name: 'cases', params: { pid: pid.value } })
-    await load()
   } catch (e: any) {
     window.alert(e?.message || 'Suppression impossible.')
   }
 }
+const supprimerModule = useSupprimerModule(pid)
 // Filtrer la liste sur un MODULE : c'est ce que faisait l'ancienne page module, désormais
 // redirigée ici. Cliquer un module de l'arbre a donc un effet, pas seulement déplier.
 function openModule(moduleId: number) {

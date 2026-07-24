@@ -113,13 +113,39 @@ séparé. *C'est déjà l'exigence du §7 du brief — le code ne la respecte pa
 - Documenter le système de jetons en 3 couches ; `ui/` devient la bibliothèque de référence
   (aucun nouveau composant ne réinvente un bouton).
 
-### Lot A — Une couche de données unique *(~1,5 j, backend inchangé)*
+### Lot A — Une couche de données unique — ✅ **LIVRÉ le 2026-07-24**
 
 - **`@tanstack/vue-query`** (arbitré : le standard, plutôt qu'un cache maison où vivent les bugs
-  subtils d'invalidation et de déduplication).
-- Une clé par ressource, cache partagé, invalidation **explicite** après mutation.
-- Fin des `load()` manuels et des doubles chargements shell + page.
-- Règle inscrite : **aucune donnée serveur ne va dans un store global.**
+  subtils d'invalidation et de déduplication). Tout passe par `lib/donnees.ts` : les **clés**
+  dérivent d'un seul endroit, chaque **mutation déclare ce qu'elle périme**.
+- **Migrés** : le shell (arbre Module → Spécification), la liste des cas, la fiche de
+  spécification, l'aperçu des campagnes.
+- **Supprimé** : `watch(route.fullPath, load)` dans le shell — il rechargeait **modules +
+  spécifications + cas à chaque clic**, en double avec la page affichée.
+
+**Mesuré au navigateur, pas supposé** (Playwright, application compilée, 6 navigations internes) :
+
+| | requêtes pendant la navigation |
+|---|---|
+| modules · cas · spécifications | **0** (les 3 listes de l'arbre, servies par le cache) |
+| campagnes | **0** après migration de l'aperçu (**+3** avant, une par visite) |
+
+⚠️ **Première mesure fausse, corrigée** : elle naviguait par `page.goto()`, ce qui recharge la
+page entière et détruit l'application **et son cache** à chaque fois — elle aurait montré un
+rechargement complet quelle que soit la qualité de la couche. La navigation doit se faire **par
+clic**, dans l'application.
+
+**Reste hors périmètre du lot** (assumé) : les écrans à sondage de tâche de fond
+(`AddTestCase`, `CaseDetailTR`) gardent leurs appels directs — leur logique de *polling* est un
+autre problème que le cache, et la convertir ajouterait du risque sans bénéfice. `useProjects`
+(état partagé maison de la liste des projets) reste également en place : une seule requête, pas
+de mutation, aucun gain à le migrer aujourd'hui.
+
+⚠️ **Une contrainte introduite, à connaître** : `frontend/.npmrc` porte `legacy-peer-deps=true`.
+La bibliothèque déclare une dépendance de pair *optionnelle* vers `@vue/composition-api` (la
+rétrocompatibilité Vue 2), que npm tente de résoudre et qui fait échouer l'installation. Le coût :
+npm cesse de vérifier les dépendances de pair **pour tous les paquets**. Contre-mesure : les deux
+suites et le build tournent avant chaque commit.
 
 ### Lot B — Le contrat d'API *(~2 j — casse le front, donc juste après A)*
 

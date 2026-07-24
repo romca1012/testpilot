@@ -9,9 +9,10 @@
 // Ce que cet écran fait, et rien de plus : nommer un document, l'écrire, le relire, voir les cas
 // qui en sont nés. **Il ne génère rien et ne dépense rien** — la génération est un geste explicite
 // (même principe que le lancement d'une campagne, décision 0022 n°8.c.1).
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type CaseSummary, type GroupDetail } from '../lib/api'
+import { type CaseSummary, type GroupDetail } from '../lib/api'
+import { useCas, useEnregistrerGroupe, useSupprimerGroupe, useUnGroupe } from '../lib/donnees'
 import { MODELE_SPECIFICATION, estModeleNonRempli } from '../lib/modeleSpecification'
 import { testStatusMeta, testStatusCode } from '../lib/status'
 import Button from '../components/ui/Button.vue'
@@ -38,23 +39,32 @@ const enregistrement = ref(false)
 const modifie = computed(() =>
   !!spec.value && (titre.value !== spec.value.title || document.value !== spec.value.spec_content))
 
-async function charger() {
-  chargement.value = true
-  erreur.value = ''
-  try {
-    const [s, tous] = await Promise.all([api.getGroup(gid.value), api.listCases(pid.value)])
-    spec.value = s
-    titre.value = s.title
-    document.value = s.spec_content
-    cas.value = tous.filter((c) => c.group_id === s.id)
-  } catch (e: any) {
-    erreur.value = e?.message || 'Spécification introuvable.'
-  } finally {
-    chargement.value = false
-  }
-}
-onMounted(charger)
-watch(gid, charger)
+// Couche de données partagée : les cas du projet sont déjà en cache (l'arbre et la liste les
+// affichent), la fiche ne les redemande donc pas — elle filtre ceux de cette spécification.
+const { data: specData, isLoading: chargeSpec, error: erreurSpec } = useUnGroupe(gid)
+const { data: casData } = useCas(pid)
+
+watch(specData, (s) => {
+  if (!s) return
+  // ⚠️ Le brouillon en cours de frappe ne doit pas être écrasé par une revalidation de fond.
+  // On juge l'écart AVANT de remplacer la référence serveur : le mesurer après la remplacerait
+  // ferait toujours paraître le brouillon « modifié » (il diffère forcément du nouveau serveur),
+  // et les champs ne seraient JAMAIS remplis — le premier chargement compris.
+  const brouillonIntact = !spec.value
+    || (titre.value === spec.value.title && document.value === spec.value.spec_content)
+  spec.value = s
+  if (brouillonIntact) { titre.value = s.title; document.value = s.spec_content }
+}, { immediate: true })
+
+watch([casData, specData], () => {
+  cas.value = (casData.value ?? []).filter((c) => c.group_id === specData.value?.id)
+}, { immediate: true })
+
+watch(erreurSpec, (e) => { if (e) erreur.value = (e as any)?.message || 'Spécification introuvable.' })
+watch(chargeSpec, (v) => { chargement.value = v && !specData.value }, { immediate: true })
+
+const enregistrerSpec = useEnregistrerGroupe(pid)
+const supprimerSpec = useSupprimerGroupe(pid)
 
 async function enregistrer() {
   if (!spec.value || !titre.value.trim()) return
@@ -62,8 +72,8 @@ async function enregistrer() {
   erreur.value = ''
   message.value = ''
   try {
-    const maj = await api.updateGroup(spec.value.id, {
-      title: titre.value.trim(), spec_content: document.value,
+    const maj = await enregistrerSpec.mutateAsync({
+      id: spec.value.id, title: titre.value.trim(), spec_content: document.value,
     })
     spec.value = maj
     titre.value = maj.title
@@ -84,7 +94,7 @@ async function supprimer() {
   if (!spec.value) return
   if (!window.confirm(`Supprimer la spécification « ${spec.value.title} » ?`)) return
   try {
-    await api.deleteGroup(spec.value.id)
+    await supprimerSpec.mutateAsync(spec.value.id)
     router.push({ name: 'cases', params: { pid: pid.value } })
   } catch (e: any) {
     // 409 : la spécification porte des cas. Le message du serveur dit combien — on le montre tel

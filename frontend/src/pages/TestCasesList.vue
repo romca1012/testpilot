@@ -2,11 +2,13 @@
 // Liste des cas de test — disposition TestRail (palette sombre). Groupée par SECTION = MODULE.
 // La colonne « Statut » n'affiche QUE le statut FONCTIONNEL (conforme / non conforme), jamais
 // l'exécution technique ni les deux mêlés (consigne du porteur). Titre sans préfixe d'angle.
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseSummary, type ModuleSummary } from '../lib/api'
 import { testStatusMeta, testStatusCode } from '../lib/status'
 import { useModuleCreate } from '../lib/useModuleCreate'
+import { cles, useCas, useModules } from '../lib/donnees'
+import { useQueryClient } from '@tanstack/vue-query'
 import Button from '../components/ui/Button.vue'
 
 const route = useRoute()
@@ -14,27 +16,24 @@ const router = useRouter()
 const pid = computed(() => route.params.pid as string)
 const specFilter = computed(() => Number(route.query.spec) || null)
 
-const modules = ref<ModuleSummary[]>([])
-const cases = ref<CaseSummary[]>([])
-const loading = ref(true)
+// Couche de données partagée (lot A, 2026-07-24) : cette page et le shell demandaient les mêmes
+// modules et les mêmes cas, chacun de son côté, à chaque navigation. Un seul cache désormais.
+const { data: modulesData, isLoading: chargeModules } = useModules(pid)
+const { data: casesData, isLoading: chargeCas } = useCas(pid)
+const modules = computed(() => modulesData.value ?? [])
+const cases = computed(() => casesData.value ?? [])
+// Chargement seulement au PREMIER affichage : une revalidation de fond ne doit pas remplacer la
+// liste par un squelette — l'écran doit rester stable sous les yeux de celui qui le lit.
+const loading = computed(() => (chargeModules.value || chargeCas.value)
+                               && !modulesData.value && !casesData.value)
 const collapsed = ref<number[]>([])
-
-async function load() {
-  loading.value = true
-  const [m, c] = await Promise.all([api.listModules(pid.value), api.listCases(pid.value)])
-  modules.value = m
-  cases.value = c
-  loading.value = false
-}
-onMounted(load)
-watch(pid, load)
+const qc = useQueryClient()
 
 // ── Création d'un module (modale partagée, rendue par CasesShell) ──────────────
-// On ne fait que DÉCLENCHER l'ouverture et ÉCOUTER le succès : la modale unique vit dans le shell
-// (qui porte aussi le « + Ajouter une section » de la barre latérale). `createdAt` bumpe après une
-// création → on recharge pour voir le nouveau module (vide, donc invisible sans le rechargement).
-const { openFor: openCreateModule, createdAt } = useModuleCreate()
-watch(createdAt, load)
+// On ne fait que DÉCLENCHER l'ouverture : la modale unique vit dans le shell. ⚠️ Le watcher sur
+// `createdAt` a disparu — la création invalide désormais le cache du projet, donc cette liste se
+// rafraîchit d'elle-même. C'est exactement la plomberie que la couche de données remplace.
+const { openFor: openCreateModule } = useModuleCreate()
 
 // Tri et filtre CÔTÉ CLIENT (préférences de lecture, pas de rechargement).
 const sortKey = ref<'id' | 'title' | 'status'>('id')
@@ -90,7 +89,8 @@ async function renameSection(m: ModuleSummary) {
   if (!nom || !nom.trim() || nom.trim() === m.name) return
   try {
     await api.renameModule(m.id, nom.trim())
-    await load()
+    // Renommage : ponctuel et sans mutation dédiée — on périme explicitement les modules.
+    await qc.invalidateQueries({ queryKey: cles.modules(pid.value) })
   } catch (e: any) {
     window.alert(e?.message || 'Renommage impossible.')
   }

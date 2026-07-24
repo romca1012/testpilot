@@ -40,7 +40,7 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 
 | | |
 |---|---|
-| Tests | **867 Python · 82 vitest** — tous verts |
+| Tests | **867 Python · 86 vitest** — tous verts |
 | Schéma | `user_version = 22` |
 | Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), re-confirmé au rejeu du 2026-07-23 |
 | Verdicts | **0 fausse accusation par invention de champ** ; 4ᵉ verdict `donnee_invalide` déclenché en réel |
@@ -367,8 +367,12 @@ porteur : **E → A → B → C → D**.
       le détail d'une campagne — et lu sur ses **exécutions réelles**, jamais sur la connexion
       actuelle du projet. Deux cibles dans une même campagne sont **signalées**, pas arbitrées.
       Système de jetons documenté en 3 couches (aucune couleur en dur : vérifié, 0 occurrence).
-- [ ] **Lot A — une couche de données unique** (`@tanstack/vue-query`) : 22 pages appellent l'API
-      en direct, le shell et la page rechargent les mêmes données à chaque navigation.
+- [x] **Lot A — une couche de données unique** *(fait le 2026-07-24)*. `@tanstack/vue-query` +
+      `lib/donnees.ts` : clés dérivées d'un seul endroit, chaque mutation déclare ce qu'elle
+      périme. Le rechargement du shell à chaque clic (`watch(route.fullPath, load)`) est supprimé.
+      **Mesuré au navigateur** sur l'application compilée : **0 requête redondante** sur 6
+      navigations internes (les 3 listes de l'arbre + les campagnes). ⚠️ Ma première mesure était
+      fausse — elle naviguait par rechargement de page, ce qui détruit le cache à chaque fois.
 - [ ] **Lot B — le contrat d'API** : erreurs RFC 9457 + code métier stable (le front lit du
       français pour décider), pagination par curseur, `/api/v1` — **et la suppression douce**,
       qui aligne enfin le produit sur son propre §7 (`delete_project` détruit sans filet).

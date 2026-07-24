@@ -12,7 +12,9 @@
  *   • le refus de suppression (409, la spec porte des cas) est affiché TEL QUEL — il dit combien.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { flushPromises } from '@vue/test-utils'
+// Monté AVEC la couche de données (lot A) : sans elle, le composant plante au `setup()`.
+import { monter } from './_montage'
 
 const getGroup = vi.fn()
 const updateGroup = vi.fn()
@@ -56,15 +58,16 @@ beforeEach(() => {
   ])
 })
 
-async function monter() {
-  const w = mount(SpecDetail)
+async function monterFiche() {
+  const w = monter(SpecDetail)
   await flushPromises()
+  await flushPromises()   // la requête du cache résout au tick suivant
   return w
 }
 
 describe('la fiche de la spécification', () => {
   it('affiche le document et les cas QUI EN SONT NÉS, pas les autres', async () => {
-    const w = await monter()
+    const w = await monterFiche()
     expect(w.find('textarea').element.value).toBe('Un employé déclare un sinistre.')
     expect(w.text()).toContain('Sinistre déclaré')
     expect(w.text()).toContain('Sinistre sans pièce jointe')
@@ -72,14 +75,14 @@ describe('la fiche de la spécification', () => {
   })
 
   it('n\'enregistre RIEN tant que rien n\'a changé', async () => {
-    const w = await monter()
+    const w = await monterFiche()
     const bouton = w.findAll('button').find((b) => b.text() === 'Enregistrer')!
     expect(bouton.attributes('disabled')).toBeDefined()
   })
 
   it('enregistre le document SANS rien générer ni dépenser', async () => {
     updateGroup.mockResolvedValue({ ...SPEC, spec_content: 'Nouveau texte' })
-    const w = await monter()
+    const w = await monterFiche()
     await w.find('textarea').setValue('Nouveau texte')
     await w.findAll('button').find((b) => b.text() === 'Enregistrer')!.trigger('click')
     await flushPromises()
@@ -92,7 +95,7 @@ describe('la fiche de la spécification', () => {
 
   it('propose le MODÈLE quand le document est vide, et pas quand il est rédigé', async () => {
     getGroup.mockResolvedValue({ ...SPEC, spec_content: '' })
-    const w = await monter()
+    const w = await monterFiche()
     const lien = w.findAll('button').find((b) => b.text().includes('Partir du modèle'))!
     await lien.trigger('click')
     expect(w.find('textarea').element.value).toBe(MODELE_SPECIFICATION)
@@ -102,14 +105,14 @@ describe('la fiche de la spécification', () => {
     // Un modèle non rempli contient des consignes, pas une spécification : générer dessus
     // produirait un test écrit d'après « Décrivez en une ou deux phrases… ».
     getGroup.mockResolvedValue({ ...SPEC, spec_content: MODELE_SPECIFICATION })
-    const w = await monter()
+    const w = await monterFiche()
     const bouton = w.findAll('button').find((b) => b.text().includes('Générer un cas'))!
     expect(bouton.attributes('disabled')).toBeDefined()
     expect(w.text()).toContain('Rédigez d\'abord le document')
   })
 
   it('emmène vers la génération AVEC la spécification, en un geste explicite', async () => {
-    const w = await monter()
+    const w = await monterFiche()
     await w.findAll('button').find((b) => b.text().includes('Générer un cas'))!.trigger('click')
     expect(push).toHaveBeenCalledWith(expect.objectContaining({
       name: 'case-new', query: { spec: '7' },
@@ -120,7 +123,7 @@ describe('la fiche de la spécification', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     deleteGroup.mockRejectedValue(
       Object.assign(new Error('cette spécification porte encore 2 cas'), { status: 409 }))
-    const w = await monter()
+    const w = await monterFiche()
     await w.findAll('button').find((b) => b.text().includes('Supprimer'))!.trigger('click')
     await flushPromises()
 

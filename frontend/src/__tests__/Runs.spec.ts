@@ -9,6 +9,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+// RunsOverview lit la couche de données (lot A) : sans elle, son `setup()` plante.
+import { monter } from './_montage'
 
 const listCases = vi.fn()
 const createRun = vi.fn()
@@ -116,7 +118,7 @@ describe('AddTestRunForm — création d\'une campagne', () => {
 
 describe('RunsOverview — liste des campagnes', () => {
   it('invite à créer quand il n\'y a aucune campagne', async () => {
-    const w = mount(RunsOverview)
+    const w = monter(RunsOverview)
     await flushPromises()
     expect(w.text()).toContain('Aucune exécution pour ce projet')
   })
@@ -125,7 +127,7 @@ describe('RunsOverview — liste des campagnes', () => {
     listRuns.mockResolvedValue([{ id: 7, project_id: 1, name: 'Campagne', status: 'running',
                                   selection_mode: 'all', case_count: 4, tested_count: 1,
                                   is_archived: false, created_at: '2026-07-21T10:00:00' }])
-    const w = mount(RunsOverview)
+    const w = monter(RunsOverview)
     await flushPromises()
 
     expect(w.text()).toContain('1/4 cas testés')
@@ -230,7 +232,7 @@ describe('RunsOverview — les archivees ne polluent pas la vue de travail', () 
       { id: 8, project_id: 1, name: 'Ancienne', status: 'completed', selection_mode: 'all',
         case_count: 2, tested_count: 2, is_archived: true, created_at: '2026-07-20T10:00:00' },
     ])
-    const w = mount(RunsOverview)
+    const w = monter(RunsOverview)
     await flushPromises()
 
     expect(w.text()).toContain('Active')

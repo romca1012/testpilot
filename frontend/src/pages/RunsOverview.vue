@@ -4,31 +4,22 @@
 // Auparavant, cette page listait les `execution` (des runs MONO-cas) faute de modèle de campagne.
 // Elle liste maintenant les vrais `test_run`. Les exécutions mono-cas héritées restent en base
 // et gardent leur rapport ; elles n'ont simplement pas de campagne — on ne les mélange plus ici.
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type RunSummary } from '../lib/api'
+import { type RunSummary } from '../lib/api'
+import { useRuns } from '../lib/donnees'
 
 const route = useRoute()
 const router = useRouter()
 const pid = computed(() => route.params.pid as string)
 
-const runs = ref<RunSummary[]>([])
-const loading = ref(true)
-const error = ref('')
+// Couche de données (lot A) : revenir sur cet écran ne redemande plus la liste des campagnes
+// tant qu'elle est fraîche. Mesuré au navigateur : 3 requêtes pour 3 visites AVANT, 1 APRÈS.
+const { data: runsData, isLoading, error: erreurRuns } = useRuns(pid)
+const runs = computed<RunSummary[]>(() => runsData.value ?? [])
+const loading = computed(() => isLoading.value && !runsData.value)
+const error = computed(() => (erreurRuns.value ? 'Impossible de charger les exécutions.' : ''))
 const sortBy = computed(() => (route.query.sort as string) || 'date')
-
-async function load() {
-  loading.value = true; error.value = ''
-  try {
-    runs.value = await api.listRuns(pid.value)
-  } catch {
-    error.value = 'Impossible de charger les exécutions.'
-  } finally {
-    loading.value = false
-  }
-}
-onMounted(load)
-watch(pid, load)
 
 // % de complétion = cas ayant un résultat / cas du run (note fonctionnelle, écran Aperçu).
 function completion(r: RunSummary) {
