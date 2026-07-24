@@ -158,8 +158,31 @@ suites et le build tournent avant chaque commit.
   **hiérarchique** (un cas dont le module est à la corbeille est invisible), restauration, purge
   définitive comme geste distinct, index UNIQUE devenus **partiels** (un nom supprimé se
   réutilise). Écran `Corbeille.vue` : sans lui, « restaurer » n'existerait pas pour l'utilisateur.
-- [ ] **Pagination par curseur** sur cas / exécutions / spécifications — **reste à faire**.
-- [ ] Filtres et tri normalisés ; préfixe `/api/v1` — **reste à faire**.
+- ✅ **Pagination par CURSEUR** sur les cas, avec **recherche et filtre côté serveur**.
+  *Un décalage (`OFFSET`) se décale : si quelqu'un crée un cas pendant qu'on feuillette, la page
+  suivante saute une ligne ou en répète une, sans que personne s'en aperçoive.* Le curseur est le
+  triplet de tri lui-même `(module_id, position, id)` — seule façon d'être cohérent avec l'ordre
+  d'affichage.
+  ⚠️ **Recherche et filtre sont au SERVEUR, et c'est le point qui compte** : appliqués côté
+  navigateur, ils ne porteraient que sur la page chargée — chercher un cas de la page 3
+  répondrait « aucun résultat », et l'utilisateur conclurait qu'il n'existe pas. *Un filtre qui
+  ment sur l'absence est pire que pas de filtre.*
+  **Mesuré sur 600 cas réels** : page de 100 en **31 ms**, page suivante en **24 ms** et reprise
+  exacte (`Cas 100` → `Cas 101`), recherche en **21 ms**, plafond serveur à 500 par requête.
+- ⏳ Préfixe `/api/v1` — **volontairement pas fait**, voir §6.
+
+### 6. Le versionnage d'API — reporté, et pourquoi
+
+Un préfixe de version protège un consommateur qu'on **ne peut pas déployer en même temps que
+l'API**. Aujourd'hui il n'en existe aucun : le frontend est compilé et servi par l'API elle-même,
+les deux partent ensemble à chaque déploiement. Poser `/api/v1` maintenant, ce serait ajouter un
+chemin à maintenir pour une promesse que personne n'utilise — le même raisonnement que pour
+l'abstraction multi-connecteurs (§8 du brief) : **on ne construit pas l'abstraction avant le
+deuxième cas**.
+
+**Le moment de le faire** : quand un second consommateur apparaîtra — la CI de l'Incrément 3, ou
+un client externe. C'est à ce moment-là que le contrat devra pouvoir évoluer sans casser
+quelqu'un, et pas avant.
 
 > ⚠️ **Trois défauts trouvés pendant ce lot, tous par des tests, aucun à la relecture** :
 > une campagne en mode « tous les cas » aurait **exécuté des cas supprimés** contre la vraie

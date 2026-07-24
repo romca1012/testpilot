@@ -40,7 +40,7 @@ Créer un projet  →  saisir/corriger sa connexion (l'application testée)
 
 | | |
 |---|---|
-| Tests | **897 Python · 110 vitest** — tous verts |
+| Tests | **908 Python · 110 vitest** — tous verts |
 | Schéma | `user_version = 24` |
 | Fiabilité — réussite technique au 1ᵉʳ jet | **88 %** sur le banc (**n=8**), re-confirmé au rejeu du 2026-07-23 |
 | Verdicts | **0 fausse accusation par invention de champ** ; 4ᵉ verdict `donnee_invalide` déclenché en réel |
@@ -376,7 +376,14 @@ porteur : **E → A → B → C → D**.
 - 🟡 **Lot B — le contrat d'API** *(2 tiers faits le 2026-07-24)*. ✅ Erreurs **RFC 9457** avec un
       catalogue de codes stables ; ✅ **suppression douce + corbeille** (migrations 23-24) — le
       produit tient enfin son §7, `delete_project` ne détruit plus rien sans filet.
-      ⏳ Restent la **pagination par curseur** et le préfixe **`/api/v1`**.
+      ✅ **Pagination par curseur** + recherche et filtre **au serveur** *(fait le 2026-07-24)* :
+      mesuré sur 600 cas — page de 100 en 31 ms, reprise exacte, recherche en 21 ms.
+      Au passage, la règle du **statut de lecture** a quitté le TypeScript pour `verdict/status.py` :
+      elle est calculée par le serveur et exposée sur les cas, exécutions, scénarios et campagnes —
+      **un seul endroit décide**, et un test compare les deux formes (Python / SQL) sur les
+      24 combinaisons possibles.
+      ⏳ `/api/v1` **volontairement reporté** : un versionnage protège un consommateur qu'on ne peut
+      pas déployer avec l'API. Il n'en existe aucun aujourd'hui (le front est servi par l'API).
 - [x] **Lot C — le quotidien du QA** *(fait le 2026-07-24)*. Recherche instantanée, sélection
       multiple, actions en lot (campagne à sélection figée, priorité, suppression), densité,
       colonnes, préférences conservées + réinitialisation. **Mesuré au navigateur sur 20 cas** :

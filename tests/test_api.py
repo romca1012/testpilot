@@ -84,7 +84,7 @@ def test_list_and_detail_expose_two_axes(client):
     cid, vid = _seed_case(conn, approved=False)
     conn.close()
 
-    cases = client.get("/api/cases").json()
+    cases = client.get("/api/cases").json()["items"]
     assert any(c["id"] == cid for c in cases)
 
     detail = client.get(f"/api/cases/{cid}").json()

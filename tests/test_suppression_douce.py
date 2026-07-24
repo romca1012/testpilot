@@ -215,13 +215,13 @@ def test_api_supprimer_puis_RESTAURER_un_cas(client):
     pid, mid, cid = _projet_api(client)
 
     assert client.delete(f"/api/cases/{cid}").status_code == 204
-    assert client.get(f"/api/cases?project_id={pid}").json() == []
+    assert client.get(f"/api/cases?project_id={pid}").json()["items"] == []
 
     corbeille = client.get(f"/api/projects/{pid}/corbeille").json()
     assert [(e["type"], e["titre"]) for e in corbeille] == [("cas", "Un cas")]
 
     assert client.post(f"/api/corbeille/cas/{cid}/restaurer").status_code == 204
-    assert [c["id"] for c in client.get(f"/api/cases?project_id={pid}").json()] == [cid]
+    assert [c["id"] for c in client.get(f"/api/cases?project_id={pid}").json()["items"]] == [cid]
     assert client.get(f"/api/projects/{pid}/corbeille").json() == []
 
 

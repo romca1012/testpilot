@@ -11,7 +11,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type RunDetail as RunDetailDto, type RunCaseResult } from '../lib/api'
-import { testStatusCode, testStatusMeta, TEST_STATUS_ORDER, type TestStatusCode } from '../lib/status'
+import { testStatusMeta, TEST_STATUS_ORDER, type TestStatusCode } from '../lib/status'
 
 const route = useRoute()
 const router = useRouter()
@@ -31,9 +31,7 @@ async function load() {
 onMounted(load)
 watch(runId, load)
 
-function statusOf(c: RunCaseResult): TestStatusCode {
-  return testStatusCode(c.execution_status, c.functional_status)
-}
+function statusOf(c: RunCaseResult): TestStatusCode { return c.statut as TestStatusCode }
 
 // Répartition RÉELLE des cas du run par statut dérivé.
 const dist = computed<Record<TestStatusCode, number>>(() => {

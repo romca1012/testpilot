@@ -45,7 +45,7 @@ def test_changer_la_priorite_de_N_cas_en_UNE_requete(client):
 
     assert r.status_code == 200
     assert r.json() == {"traites": 3, "ignores": 0}
-    assert {c["priority"] for c in client.get(f"/api/cases?project_id={pid}").json()} == {"high"}
+    assert {c["priority"] for c in client.get(f"/api/cases?project_id={pid}").json()["items"]} == {"high"}
 
 
 def test_un_cas_DISPARU_est_ignore_et_COMPTE_pas_fatal(client):
@@ -104,7 +104,7 @@ def test_supprimer_N_cas_en_UNE_requete_SANS_rien_detruire(client):
     r = client.post("/api/cases/lot/suppression", json={"case_ids": ids[:2]})
 
     assert r.json() == {"traites": 2, "ignores": 0}
-    restants = [c["id"] for c in client.get(f"/api/cases?project_id={pid}").json()]
+    restants = [c["id"] for c in client.get(f"/api/cases?project_id={pid}").json()["items"]]
     assert restants == [ids[2]]
     # §7 : rien n'est détruit — les deux cas sont à la corbeille, donc restaurables.
     corbeille = client.get(f"/api/projects/{pid}/corbeille").json()

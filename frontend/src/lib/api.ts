@@ -181,8 +181,23 @@ export const api = {
     request<CaseSummary>(`/api/cases/${id}`, { method: 'PATCH', body: JSON.stringify({ priority }) }),
   getCaseScenarios: (id: number | string) => request<ScenarioResultOut[]>(`/api/cases/${id}/scenarios`),
 
-  // Cas — toujours scopés par projet (jamais de mélange inter-projets)
-  listCases: (projectId: number | string) => request<CaseSummary[]>(`/api/cases?project_id=${projectId}`),
+  // Cas — toujours scopés par projet (jamais de mélange inter-projets), et PAGINÉS.
+  // ⚠️ La recherche (`q`) et le filtre (`statut`) partent au SERVEUR : appliqués côté navigateur,
+  // ils ne porteraient que sur la page chargée, et chercher un cas absent de celle-ci répondrait
+  // « aucun résultat ». Un filtre qui ment sur l'absence est pire que pas de filtre.
+  listCases: (projectId: number | string, opts: {
+    module_id?: number; group_id?: number; q?: string; statut?: string
+    cursor?: string | null; limit?: number
+  } = {}) => {
+    const p = new URLSearchParams({ project_id: String(projectId) })
+    if (opts.module_id != null) p.set('module_id', String(opts.module_id))
+    if (opts.group_id != null) p.set('group_id', String(opts.group_id))
+    if (opts.q) p.set('q', opts.q)
+    if (opts.statut) p.set('statut', opts.statut)
+    if (opts.cursor) p.set('cursor', opts.cursor)
+    if (opts.limit) p.set('limit', String(opts.limit))
+    return request<PageCas>(`/api/cases?${p.toString()}`)
+  },
   // Ordre d'AFFICHAGE des cas d'un module (décision 0009). En LOT : un glissement change N
   // positions. Le serveur recalcule les positions et renvoie la liste dans son ordre.
   reorderCases: (moduleId: number | string, caseIds: number[]) =>
@@ -313,6 +328,11 @@ export interface CaseMetierOut {
   case: CaseSummary; version_id: number | null; version_created: boolean
 }
 
+/** Une PAGE de cas. `next_cursor` est OPAQUE : on le renvoie tel quel, jamais on ne l'interprète.
+ *  `total` est le nombre de cas correspondant au filtre — pas le nombre chargé : c'est lui qui
+ *  permet d'écrire « 40 sur 2 000 » plutôt que de laisser croire la liste complète. */
+export interface PageCas { items: CaseSummary[]; next_cursor: string | null; total: number }
+
 export interface CaseSummary {
   id: number; title: string; module: string; module_id: number | null; project_id: number | null
   // Spécification propriétaire + angle testé (séparation 2026-07-19). `angle` = étiquette libre.
@@ -320,6 +340,9 @@ export interface CaseSummary {
   // Métadonnées non versionnées (0022 n°3b) : elles ne changent pas ce que le test vérifie.
   refs: string; estimate: string
   validation_status: string
+  /** Statut de LECTURE calculé par le SERVEUR (2026-07-24) — plus jamais dérivé ici : la règle
+   *  vivait en TypeScript, et filtrer côté serveur aurait exigé de la réécrire en SQL. */
+  statut: string
   priority: string   // étiquette de lecture (low|medium|high) — aucun ordre d'exécution
   last_execution_status: string | null; last_functional_status: string | null
   last_executed_at: string | null

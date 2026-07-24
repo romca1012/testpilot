@@ -280,7 +280,7 @@ def test_api_lancer_un_run_vide_est_REFUSE(client):
     # Mode `all` sur un projet dont on retire les cas → run sans cas.
     rid = client.post(f"/api/projects/{pid}/runs", json={
         "name": "Vide", "selection_mode": "all"}).json()["id"]
-    for c in client.get(f"/api/cases?project_id={pid}").json():
+    for c in client.get(f"/api/cases?project_id={pid}").json()["items"]:
         client.delete(f"/api/cases/{c['id']}")
 
     r = client.post(f"/api/runs/{rid}/launch")

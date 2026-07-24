@@ -946,6 +946,72 @@ class CaseRepo:
         order = " ORDER BY tc.module_id, tc.position, tc.id"
         return _rows(self.conn.execute(_CASE_SELECT + where + order, params))
 
+    def page(self, *, project_id: int | None = None, module_id: int | None = None,
+             group_id: int | None = None, recherche: str = "", statut: str = "",
+             apres: tuple | None = None, limite: int = 100) -> tuple[list[dict], tuple | None, int]:
+        """Une PAGE de cas, plus le curseur suivant et le total.
+
+        ⚠️ **Curseur, pas décalage** (`OFFSET`). Un décalage se décale : si quelqu'un crée un cas
+        pendant qu'on feuillette, la page suivante saute une ligne ou en répète une, sans que
+        personne s'en aperçoive. Le curseur pointe la DERNIÈRE ligne rendue — les écritures
+        concurrentes ne le déplacent pas.
+
+        Le curseur est le triplet de tri lui-même `(module_id, position, id)` : c'est la seule
+        façon d'être cohérent avec l'ordre d'affichage. SQLite compare les n-uplets directement,
+        ce qui donne une reprise exacte sans arithmétique fragile.
+
+        ⚠️ **Recherche et filtre sont ICI, pas dans l'écran.** Filtrer côté navigateur ne
+        porterait que sur la page chargée : chercher « sinistre » ne trouverait rien s'il est en
+        page 3, et l'utilisateur conclurait que le cas n'existe pas. Un filtre qui ment sur
+        l'absence est pire que pas de filtre.
+        """
+        from testpilot.verdict.status import sql_statut
+
+        clauses, params = [_CASE_VIVANT], []
+        if project_id is not None:
+            clauses.append("m.project_id = ?"); params.append(project_id)
+        if module_id is not None:
+            clauses.append("tc.module_id = ?"); params.append(module_id)
+        if group_id is not None:
+            clauses.append("tc.group_id = ?"); params.append(group_id)
+        if recherche.strip():
+            # Sur le TITRE et le module — ce que l'utilisateur lit. L'identifiant se cherche par
+            # son nombre : l'écran affiche « C12 », on accepte donc « 12 » comme « C12 ».
+            motif = f"%{recherche.strip().lstrip('cC')}%"
+            clauses.append("(tc.title LIKE ? OR m.name LIKE ? OR CAST(tc.id AS TEXT) LIKE ?)")
+            params += [f"%{recherche.strip()}%", f"%{recherche.strip()}%", motif]
+        statut_sql = sql_statut("tc.last_execution_status", "tc.last_functional_status")
+        if statut:
+            clauses.append(f"({statut_sql}) = ?"); params.append(statut)
+
+        where = " WHERE " + " AND ".join(clauses)
+        total = int(self.conn.execute(
+            f"SELECT COUNT(*) AS n FROM test_case tc"
+            f" LEFT JOIN module m ON tc.module_id = m.id"
+            f" LEFT JOIN project p ON m.project_id = p.id{where}", params).fetchone()["n"])
+
+        clauses_page, params_page = list(clauses), list(params)
+        if apres is not None:
+            # ⚠️ `COALESCE` : `module_id` peut être NULL (cas créé par la CLI). Sans lui, la
+            # comparaison de n-uplets rendrait NULL — ni vrai ni faux — et la pagination
+            # s'arrêterait net sur ces cas-là, en silence.
+            clauses_page.append(
+                "(COALESCE(tc.module_id, 0), tc.position, tc.id) > (?, ?, ?)")
+            params_page += list(apres)
+        requete = (_CASE_SELECT + " WHERE " + " AND ".join(clauses_page)
+                   + " ORDER BY COALESCE(tc.module_id, 0), tc.position, tc.id LIMIT ?")
+        lignes = _rows(self.conn.execute(requete, params_page + [limite + 1]))
+
+        # On demande UN de plus que la limite : c'est ce qui permet de savoir s'il reste quelque
+        # chose sans faire un second COUNT — et donc de ne pas proposer « charger plus » sur une
+        # liste déjà complète.
+        suivant = None
+        if len(lignes) > limite:
+            lignes = lignes[:limite]
+            d = lignes[-1]
+            suivant = (d.get("module_id") or 0, d.get("position") or 0, d["id"])
+        return lignes, suivant, total
+
     def reorder(self, module_id: int, case_ids: list[int]) -> None:
         """Fixe l'ordre d'affichage des cas d'un module (décision 0009). Transactionnel.
 

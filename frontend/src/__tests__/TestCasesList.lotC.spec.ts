@@ -44,17 +44,18 @@ import TestCasesList from '../pages/TestCasesList.vue'
 const CAS = [
   { id: 11, title: 'Déclaration de sinistre', module: 'Demandes', module_id: 1, group_id: null,
     group_title: null, angle: 'nominal', priority: 'medium',
-    last_execution_status: 'success', last_functional_status: 'conforme' },
+    last_execution_status: 'success', last_functional_status: 'conforme', statut: 'passed' },
   { id: 12, title: 'Retour matériel', module: 'Demandes', module_id: 1, group_id: null,
     group_title: null, angle: 'erreur', priority: 'high',
-    last_execution_status: null, last_functional_status: null },
+    last_execution_status: null, last_functional_status: null, statut: 'untested' },
 ]
 
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   listModules.mockResolvedValue([{ id: 1, name: 'Demandes', case_count: 2 }])
-  listCases.mockResolvedValue(CAS)
+  // Paginée depuis le 2026-07-24 : le simulacre rend une page, comme le serveur.
+  listCases.mockResolvedValue({ items: CAS, next_cursor: null, total: CAS.length })
   prioriteEnLot.mockResolvedValue({ traites: 2, ignores: 0 })
   supprimerEnLot.mockResolvedValue({ traites: 2, ignores: 0 })
   createRun.mockResolvedValue({ id: 7, name: 'Campagne', case_count: 2 })
@@ -72,31 +73,37 @@ function cases_a_cocher(w: any) {
   return w.findAll('input[type="checkbox"]')
 }
 
-describe('la recherche', () => {
-  it('filtre sur le TITRE', async () => {
-    const w = await monterListe()
-    await w.find('input[type="search"]').setValue('sinistre')
-
-    expect(w.text()).toContain('Déclaration de sinistre')
-    expect(w.text()).not.toContain('Retour matériel')
-  })
-
-  it('filtre aussi sur l\'IDENTIFIANT affiché — « C12 » doit marcher', async () => {
-    // C'est ce qu'on lit à l'écran et ce qu'on se dit entre collègues (« regarde C12 »).
-    const w = await monterListe()
-    await w.find('input[type="search"]').setValue('C12')
-
-    expect(w.text()).toContain('Retour matériel')
-    expect(w.text()).not.toContain('Déclaration de sinistre')
-  })
-
-  it('ne déclenche AUCUN appel serveur', async () => {
-    // Les cas sont déjà en cache : un aller-retour n'apporterait que de la latence.
+describe('la recherche et le filtre', () => {
+  // ⚠️ Ces tests vérifiaient un filtrage LOCAL jusqu'à la pagination (2026-07-24). Filtrer côté
+  // navigateur ne porte que sur la page chargée : chercher un cas de la page 3 répondrait
+  // « aucun résultat », et l'utilisateur conclurait qu'il n'existe pas. Un filtre qui ment sur
+  // l'absence est pire que pas de filtre — recherche et statut partent donc au serveur.
+  it('envoie la recherche AU SERVEUR', async () => {
     const w = await monterListe()
     listCases.mockClear()
     await w.find('input[type="search"]').setValue('sinistre')
+    await flushPromises()
 
-    expect(listCases).not.toHaveBeenCalled()
+    expect(listCases).toHaveBeenCalledWith('1', expect.objectContaining({ q: 'sinistre' }))
+  })
+
+  it('envoie AUSSI le filtre de statut au serveur', async () => {
+    const w = await monterListe()
+    listCases.mockClear()
+    await w.findAll('select').find((s: any) => s.element.value === '')!.setValue('failed')
+    await flushPromises()
+
+    expect(listCases).toHaveBeenCalledWith('1', expect.objectContaining({ statut: 'failed' }))
+  })
+
+  it('DIT combien de cas sont affichés sur le total', async () => {
+    // Sans ce compte, une liste tronquée a l'air complète — et l'utilisateur conclut qu'un cas
+    // n'existe pas alors qu'il est simplement au-delà de ce qui a été chargé.
+    listCases.mockResolvedValue({ items: CAS, next_cursor: 'x', total: 2000 })
+    const w = await monterListe()
+
+    expect(w.text()).toContain('sur 2000')
+    expect(w.text()).toContain('Charger')
   })
 })
 
@@ -133,7 +140,9 @@ describe('la sélection', () => {
     await cases_a_cocher(w)[1].setValue(true)
     expect(w.text()).toContain('1 cas sélectionné')
 
+    listCases.mockResolvedValue({ items: [], next_cursor: null, total: 0 })
     await w.find('input[type="search"]').setValue('rien')
+    await flushPromises()
 
     expect(w.text()).not.toContain('cas sélectionné')
   })

@@ -54,8 +54,10 @@ const siblings = ref<number[]>([])
 async function loadSiblings(moduleId: number | null | undefined) {
   if (!moduleId) { siblings.value = []; return }
   try {
-    const all = await api.listCases(pid.value)
-    siblings.value = all.filter((x) => x.module_id === moduleId).map((x) => x.id).sort((a, b) => a - b)
+    // La fratrie se demande au serveur, bornée au MODULE : charger tout le projet pour deux
+    // flèches « précédent / suivant » était le genre de coût qu'on ne voit pas venir.
+    const page = await api.listCases(pid.value, { module_id: moduleId, limit: 500 })
+    siblings.value = page.items.map((x) => x.id).sort((a, b) => a - b)
   } catch { siblings.value = [] }
 }
 const siblingIndex = computed(() => siblings.value.indexOf(caseId.value))

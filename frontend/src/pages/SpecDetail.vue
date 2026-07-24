@@ -12,9 +12,9 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { type CaseSummary, type GroupDetail } from '../lib/api'
-import { useCas, useEnregistrerGroupe, useSupprimerGroupe, useUnGroupe } from '../lib/donnees'
+import { usePageCas, useEnregistrerGroupe, useSupprimerGroupe, useUnGroupe } from '../lib/donnees'
 import { MODELE_SPECIFICATION, estModeleNonRempli } from '../lib/modeleSpecification'
-import { testStatusMeta, testStatusCode } from '../lib/status'
+import { testStatusMeta } from '../lib/status'
 import Button from '../components/ui/Button.vue'
 import Card from '../components/ui/Card.vue'
 import Spinner from '../components/ui/Spinner.vue'
@@ -39,10 +39,10 @@ const enregistrement = ref(false)
 const modifie = computed(() =>
   !!spec.value && (titre.value !== spec.value.title || document.value !== spec.value.spec_content))
 
-// Couche de données partagée : les cas du projet sont déjà en cache (l'arbre et la liste les
-// affichent), la fiche ne les redemande donc pas — elle filtre ceux de cette spécification.
+// ⚠️ Le filtre par spécification est fait par le SERVEUR : charger tous les cas du projet pour
+// n'en garder que quelques-uns était acceptable à 20 cas, absurde à 2 000.
 const { data: specData, isLoading: chargeSpec, error: erreurSpec } = useUnGroupe(gid)
-const { data: casData } = useCas(pid)
+const { data: casData } = usePageCas(pid, computed(() => ({ group_id: Number(gid.value) })))
 
 watch(specData, (s) => {
   if (!s) return
@@ -56,9 +56,7 @@ watch(specData, (s) => {
   if (brouillonIntact) { titre.value = s.title; document.value = s.spec_content }
 }, { immediate: true })
 
-watch([casData, specData], () => {
-  cas.value = (casData.value ?? []).filter((c) => c.group_id === specData.value?.id)
-}, { immediate: true })
+watch(casData, () => { cas.value = casData.value?.items ?? [] }, { immediate: true })
 
 watch(erreurSpec, (e) => { if (e) erreur.value = (e as any)?.message || 'Spécification introuvable.' })
 watch(chargeSpec, (v) => { chargement.value = v && !specData.value }, { immediate: true })
@@ -112,9 +110,7 @@ function genererDepuisLaSpec() {
 function ouvrirCas(id: number) {
   router.push({ name: 'case-detail', params: { pid: pid.value, id: String(id) } })
 }
-function statutDe(c: CaseSummary) {
-  return testStatusMeta(testStatusCode(c.last_execution_status, c.last_functional_status))
-}
+function statutDe(c: CaseSummary) { return testStatusMeta(c.statut) }
 </script>
 
 <template>

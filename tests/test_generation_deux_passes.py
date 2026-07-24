@@ -247,7 +247,7 @@ def test_la_passe_4a_S_ARRETE_et_ne_cree_AUCUN_cas(client, stub_passe_metier, mo
     assert state["metier"]["steps"] == ["Ouvrir le formulaire", "Saisir la raison",
                                         "Envoyer la demande"]
     assert state["case_id"] is None
-    assert client.get(f"/api/cases?module_id={mid}").json() == [], "aucun cas avant validation"
+    assert client.get(f"/api/cases?module_id={mid}").json()["items"] == [], "aucun cas avant validation"
 
 
 def test_le_document_CORRIGE_par_l_humain_fait_foi(client, monkeypatch):
@@ -336,4 +336,4 @@ def test_un_document_incomplet_fait_ECHOUER_le_job_sans_creer_de_cas(client, mon
     state = client.get(f"/api/modules/jobs/{job_id}").json()
     assert state["status"] == "failed"
     assert "incomplet" in state["error"]
-    assert client.get(f"/api/cases?module_id={mid}").json() == []
+    assert client.get(f"/api/cases?module_id={mid}").json()["items"] == []

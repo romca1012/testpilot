@@ -28,12 +28,13 @@ vi.mock('../lib/api', () => ({
   },
 }))
 
-import { useCas, useCreerModule, useModules } from '../lib/donnees'
+import { usePageCas, useCreerModule, useModules } from '../lib/donnees'
 
 beforeEach(() => {
   vi.clearAllMocks()
   listModules.mockResolvedValue([{ id: 1, name: 'Demandes' }])
-  listCases.mockResolvedValue([{ id: 10, title: 'Un cas', module_id: 1 }])
+  listCases.mockResolvedValue(
+    { items: [{ id: 10, title: 'Un cas', module_id: 1 }], next_cursor: null, total: 0 })
   createModule.mockResolvedValue({ id: 2, name: 'Facturation' })
 })
 
@@ -55,8 +56,8 @@ describe('la couche de données', () => {
     // C'est LE défaut que le lot A corrige : le shell et la page demandaient les mêmes modules
     // et les mêmes cas, chacun de son côté, à chaque navigation.
     const { monterAvec } = contexte()
-    monterAvec(Ecran(() => { useModules('1'); useCas('1'); return {} }))   // le shell
-    monterAvec(Ecran(() => { useModules('1'); useCas('1'); return {} }))   // la page affichée
+    monterAvec(Ecran(() => { useModules('1'); usePageCas('1'); return {} }))   // le shell
+    monterAvec(Ecran(() => { useModules('1'); usePageCas('1'); return {} }))   // la page affichée
     await flushPromises()
 
     expect(listModules).toHaveBeenCalledTimes(1)
@@ -67,13 +68,13 @@ describe('la couche de données', () => {
     // Un cache par clé, et la clé porte le projet. Sans ça, changer de projet montrerait les
     // cas du précédent — le mélange inter-projets que le référentiel interdit.
     const { monterAvec } = contexte()
-    monterAvec(Ecran(() => { useCas('1'); return {} }))
-    monterAvec(Ecran(() => { useCas('2'); return {} }))
+    monterAvec(Ecran(() => { usePageCas('1'); return {} }))
+    monterAvec(Ecran(() => { usePageCas('2'); return {} }))
     await flushPromises()
 
     expect(listCases).toHaveBeenCalledTimes(2)
-    expect(listCases).toHaveBeenCalledWith('1')
-    expect(listCases).toHaveBeenCalledWith('2')
+    expect(listCases).toHaveBeenCalledWith('1', expect.anything())
+    expect(listCases).toHaveBeenCalledWith('2', expect.anything())
   })
 
   it('une mutation PÉRIME ce qu\'elle change, sans rechargement manuel', async () => {

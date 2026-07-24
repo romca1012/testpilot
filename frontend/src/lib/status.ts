@@ -126,26 +126,23 @@ const TEST_STATUS: Record<TestStatusCode, { label: string; color: string; badge:
 // Ordre canonique (légende du donut, colonnes de filtre).
 export const TEST_STATUS_ORDER: TestStatusCode[] = ['passed', 'blocked', 'retest', 'failed', 'untested']
 
-export function testStatusCode(execution: string | null | undefined,
-                               functional: string | null | undefined): TestStatusCode {
-  if (functional === 'conforme') return 'passed'
-  if (functional === 'non_conforme') return 'failed'
-  // 4ᵉ verdict : donnée du test refusée → Retest (test à corriger), JAMAIS Failed (qui
-  // accuserait l'application) ni Passed (rien n'a été prouvé).
-  if (functional === 'donnee_invalide') return 'retest'
-  // Fonctionnel indéterminé : ran-mais-pas-jugé → Retest ; jamais lancé → Untested.
-  if (functional === 'indetermine') return execution === 'not_executed' ? 'untested' : 'retest'
-  // Aucun verdict fonctionnel (not_evaluated / null) : c'est le déroulement qui parle.
-  if (execution === 'technical_error') return 'blocked'
-  if (execution === 'success') return 'passed'
-  return 'untested'
+// ⚠️ `testStatusCode` A ÉTÉ SUPPRIMÉE le 2026-07-24. La projection des deux axes en une
+// étiquette vivait ICI, en TypeScript. Filtrer une liste par statut côté serveur — ce qu'exige
+// la pagination — aurait obligé à la réécrire en SQL : deux implémentations de la même règle,
+// qui divergent le jour où l'une évolue, et dont l'écart est invisible (les deux « marchent »).
+//
+// La règle vit désormais dans `verdict/status.py`, le serveur la calcule, et l'API expose
+// `statut` sur les cas, les exécutions, les scénarios et les cas d'une campagne. Ce module ne
+// garde que la PRÉSENTATION : quel libellé, quelle couleur pour un statut donné.
+
+/** Libellé + couleur d'un statut rendu par le serveur. Un statut inconnu retombe sur
+ *  « untested » plutôt que de casser l'affichage sur une valeur brute. */
+export function testStatusMeta(code: string) {
+  return TEST_STATUS[(code as TestStatusCode)] || TEST_STATUS.untested
 }
 
-export function testStatusMeta(code: TestStatusCode) { return TEST_STATUS[code] }
-
-export function testStatusView(execution: string | null | undefined,
-                               functional: string | null | undefined) {
-  return TEST_STATUS[testStatusCode(execution, functional)]
+export function testStatusView(statut: string) {
+  return TEST_STATUS[(statut as TestStatusCode)] || TEST_STATUS.untested
 }
 
 // Provenance du coût, en clair.

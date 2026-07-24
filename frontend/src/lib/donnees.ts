@@ -81,12 +81,30 @@ export function useModules(pid: Id) {
   })
 }
 
-export function useCas(pid: Id) {
-  return useQuery<CaseSummary[]>({
-    queryKey: computed(() => cles.cas(pid)),
-    queryFn: () => api.listCases(toValue(pid)),
+/** Une PAGE de cas. Les options font partie de la CLÉ de cache : deux filtres différents sont
+ *  deux jeux de données distincts, et les confondre servirait la liste de l'un pour l'autre. */
+export function usePageCas(pid: Id, opts: MaybeRefOrGetter<{
+  module_id?: number; group_id?: number; q?: string; statut?: string; limit?: number
+}> = {}) {
+  return useQuery({
+    queryKey: computed(() => [...cles.cas(pid), toValue(opts)]),
+    queryFn: () => api.listCases(toValue(pid), toValue(opts)),
     enabled: pret(pid),
   })
+}
+
+/** Le NOMBRE de cas, sans les charger — pour un compteur.
+ *
+ *  ⚠️ C'est ce qui a permis de découpler l'arbre de la liste : la barre latérale affichait un
+ *  compteur en chargeant TOUS les cas du projet. À 2 000 cas, elle payait une réponse de
+ *  plusieurs mégaoctets pour afficher un nombre. */
+export function useNbCas(pid: Id) {
+  const q = useQuery({
+    queryKey: computed(() => [...cles.cas(pid), 'total']),
+    queryFn: () => api.listCases(toValue(pid), { limit: 1 }),
+    enabled: pret(pid),
+  })
+  return computed(() => q.data.value?.total ?? 0)
 }
 
 export function useGroupes(pid: Id) {

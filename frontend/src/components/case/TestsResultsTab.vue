@@ -4,7 +4,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ExecutionSummary, ScenarioResultOut } from '../../lib/api'
-import { executionView, testStatusMeta, testStatusCode } from '../../lib/status'
+import { executionView, testStatusMeta } from '../../lib/status'
 import TestActivityChart from './TestActivityChart.vue'
 
 const props = defineProps<{
@@ -70,8 +70,8 @@ function openPlan(e: ExecutionSummary) {
           <button v-for="e in g.rows" :key="e.id"
                   class="w-full text-left flex items-center gap-4 py-3 border-b border-border/40 hover:bg-accent/30 transition-colors rounded-md px-2 -mx-2"
                   @click="openExec(e.id)">
-            <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold shrink-0" :class="testStatusMeta(testStatusCode(e.execution_status, e.functional_status)).badge">
-              {{ testStatusMeta(testStatusCode(e.execution_status, e.functional_status)).label }}
+            <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold shrink-0" :class="testStatusMeta(e.statut).badge">
+              {{ testStatusMeta(e.statut).label }}
             </span>
             <div class="min-w-0 flex-1">
               <div class="text-sm">
@@ -106,8 +106,8 @@ function openPlan(e: ExecutionSummary) {
           Aucun résultat détaillé pour ce cas de test.
         </p>
         <div v-for="(s, i) in scenarios" :key="i" class="flex items-start gap-4 py-3 border-b border-border/40">
-          <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold shrink-0" :class="testStatusMeta(testStatusCode(s.execution_status, s.functional_status)).badge">
-            {{ testStatusMeta(testStatusCode(s.execution_status, s.functional_status)).label }}
+          <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold shrink-0" :class="testStatusMeta(s.statut).badge">
+            {{ testStatusMeta(s.statut).label }}
           </span>
           <div class="min-w-0 flex-1">
             <div class="text-sm font-medium">{{ s.scenario_name }}</div>

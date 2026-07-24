@@ -171,7 +171,7 @@ def test_api_reorder_renvoie_la_liste_dans_le_nouvel_ordre(client):
     assert resp.status_code == 200
     assert [x["title"] for x in resp.json()] == ["C", "A", "B"]
     # Et l'ordre persiste au rechargement (ce n'est pas qu'une réponse cosmétique).
-    assert [x["title"] for x in client.get(f"/api/cases?module_id={mid}").json()] == ["C", "A", "B"]
+    assert [x["title"] for x in client.get(f"/api/cases?module_id={mid}").json()["items"]] == ["C", "A", "B"]
 
 
 def test_api_reorder_409_si_liste_invalide(client):

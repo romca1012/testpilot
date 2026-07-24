@@ -27,7 +27,9 @@ const saving = ref(false)
 const error = ref('')
 
 onMounted(async () => {
-  try { cases.value = await api.listCases(pid) } catch { cases.value = [] }
+  // Borne explicite : au-delà, la composition d'une campagne passe par la liste des cas et sa
+  // sélection multiple (lot C), qui sait paginer. Un formulaire ne doit pas charger 2 000 lignes.
+  try { cases.value = (await api.listCases(pid, { limit: 500 })).items } catch { cases.value = [] }
 })
 
 const canSubmit = computed(() =>

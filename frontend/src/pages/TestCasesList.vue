@@ -5,9 +5,9 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseSummary, type ModuleSummary } from '../lib/api'
-import { testStatusMeta, testStatusCode } from '../lib/status'
+import { testStatusMeta } from '../lib/status'
 import { useModuleCreate } from '../lib/useModuleCreate'
-import { cles, useCas, useModules } from '../lib/donnees'
+import { cles, usePageCas, useModules } from '../lib/donnees'
 import { useQueryClient } from '@tanstack/vue-query'
 import {
   COLONNES_MASQUABLES, HAUTEUR_LIGNE, usePreferencesListe, type Colonne,
@@ -22,9 +22,7 @@ const specFilter = computed(() => Number(route.query.spec) || null)
 // Couche de données partagée (lot A, 2026-07-24) : cette page et le shell demandaient les mêmes
 // modules et les mêmes cas, chacun de son côté, à chaque navigation. Un seul cache désormais.
 const { data: modulesData, isLoading: chargeModules } = useModules(pid)
-const { data: casesData, isLoading: chargeCas } = useCas(pid)
 const modules = computed(() => modulesData.value ?? [])
-const cases = computed(() => casesData.value ?? [])
 // Chargement seulement au PREMIER affichage : une revalidation de fond ne doit pas remplacer la
 // liste par un squelette — l'écran doit rester stable sous les yeux de celui qui le lit.
 const loading = computed(() => (chargeModules.value || chargeCas.value)
@@ -65,12 +63,23 @@ const PRIORITE: Record<string, string> = { high: 'Haute', medium: 'Moyenne', low
 // n'apporterait qu'une latence. Elle porte sur ce qu'on lit à l'écran — titre, identifiant,
 // module, spécification : chercher « C12 » ou « sinistre » doit marcher pareil.
 const recherche = ref('')
-function correspond(c: CaseSummary) {
-  const q = recherche.value.trim().toLowerCase()
-  if (!q) return true
-  return [`c${c.id}`, String(c.id), c.title, c.module || '', c.group_title || '']
-    .some((champ) => champ.toLowerCase().includes(q))
-}
+
+// ⚠️ La recherche et le filtre partent au SERVEUR, avec la pagination (2026-07-24). Appliqués
+// côté navigateur, ils ne porteraient que sur la page chargée : chercher un cas de la page 3
+// répondrait « aucun résultat », et l'utilisateur conclurait qu'il n'existe pas.
+const PAR_PAGE = 100
+const pageDemandee = ref(PAR_PAGE)
+const requeteServeur = computed(() => ({
+  q: recherche.value.trim(), statut: filterStatus.value, limit: pageDemandee.value,
+}))
+const { data: casesData, isLoading: chargeCas } = usePageCas(pid, requeteServeur)
+const cases = computed(() => casesData.value?.items ?? [])
+const totalCas = computed(() => casesData.value?.total ?? 0)
+const resteACharger = computed(() => Math.max(0, totalCas.value - cases.value.length))
+function chargerPlus() { pageDemandee.value += PAR_PAGE }
+// Revenir au premier lot dès que le filtre change : garder 400 lignes chargées en changeant de
+// recherche ferait payer un temps de réponse sans rapport avec ce qu'on demande.
+watch([recherche, filterStatus, pid], () => { pageDemandee.value = PAR_PAGE })
 
 // ── SÉLECTION MULTIPLE ───────────────────────────────────────────────────────
 const selection = ref<number[]>([])
@@ -88,16 +97,15 @@ function toutSelectionner(ids: number[], coche: boolean) {
 // garder des cases cochées invisibles ferait agir sur ce qu'on ne voit plus.
 watch([recherche, filterStatus, pid, specFilter], () => { selection.value = [] })
 
-function statusOf(c: CaseSummary) {
-  return testStatusCode(c.last_execution_status, c.last_functional_status)
-}
+// Le statut vient du SERVEUR (2026-07-24) : c'est la même valeur qui sert à filtrer et à
+// afficher, donc elles ne peuvent pas se contredire.
+function statusOf(c: CaseSummary) { return c.statut }
 
 // Cases visibles : filtrées par spécification (arbre) PUIS par statut (barre d'outils).
-const visibleCases = computed(() => {
-  let list = specFilter.value ? cases.value.filter((c) => c.group_id === specFilter.value) : cases.value
-  if (filterStatus.value) list = list.filter((c) => statusOf(c) === filterStatus.value)
-  return list.filter(correspond)
-})
+// Seul le filtre par SPÉCIFICATION reste local : il vient de l'arbre et ne change pas la
+// requête. Recherche et statut, eux, sont déjà appliqués par le serveur.
+const visibleCases = computed(() =>
+  specFilter.value ? cases.value.filter((c) => c.group_id === specFilter.value) : cases.value)
 
 function sortRows(rows: CaseSummary[]): CaseSummary[] {
   const copy = [...rows]
@@ -165,7 +173,7 @@ function exportCsv() {
   const entetes = ['ID', 'Titre', 'Module', 'Type', 'Priorité', 'Statut']
   const lignes = visibleCases.value.map((c) => [
     `C${c.id}`, c.title, c.module || '', c.angle || '', c.priority || '',
-    testStatusMeta(testStatusCode(c.last_execution_status, c.last_functional_status)).label,
+    testStatusMeta(c.statut).label,
   ].map(csvCell).join(';'))
   // BOM UTF-8 : sans lui, Excel lit « é » de travers.
   const contenu = '﻿' + [entetes.join(';'), ...lignes].join('\r\n')
@@ -369,6 +377,12 @@ async function campagneDepuisSelection() {
         <Button v-if="!specFilter && !filterStatus" variant="primary" @click="openCreateModule(pid)">Créer le premier module</Button>
       </div>
 
+      <!-- ⚠️ On DIT ce qui est chargé sur le total : sans ce compte, une liste tronquée a l'air
+           complète, et l'utilisateur conclut qu'un cas n'existe pas alors qu'il est page 3. -->
+      <p v-if="!loading && totalCas" class="pt-4 text-xs text-muted-foreground">
+        {{ cases.length }} cas affiché{{ cases.length > 1 ? 's' : '' }} sur {{ totalCas }}
+      </p>
+
       <div v-for="s in sections" :key="s.module.id" class="mt-4">
         <!-- En-tête de section (module) -->
         <div class="flex items-center gap-2.5 py-1.5">
@@ -435,8 +449,8 @@ async function campagneDepuisSelection() {
               <td v-if="colonneVisible('priorite')" class="px-2.5 text-right text-muted-foreground"
                   :class="HAUTEUR_LIGNE[prefs.densite]">{{ PRIORITE[c.priority] || c.priority }}</td>
               <td class="px-2.5 text-right" :class="HAUTEUR_LIGNE[prefs.densite]">
-                <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] font-semibold" :class="testStatusMeta(testStatusCode(c.last_execution_status, c.last_functional_status)).badge">
-                  {{ testStatusMeta(testStatusCode(c.last_execution_status, c.last_functional_status)).label }}
+                <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] font-semibold" :class="testStatusMeta(c.statut).badge">
+                  {{ testStatusMeta(c.statut).label }}
                 </span>
               </td>
               <td class="text-muted-foreground" :class="HAUTEUR_LIGNE[prefs.densite]">
@@ -445,6 +459,13 @@ async function campagneDepuisSelection() {
             </tr>
           </tbody>
         </table>
+      </div>
+      <div v-if="resteACharger" class="py-6 text-center">
+        <button class="rounded-md border border-border px-4 py-2 text-sm hover:border-primary/40"
+                @click="chargerPlus">
+          Charger {{ Math.min(resteACharger, 100) }} cas de plus
+          <span class="text-muted-foreground">({{ resteACharger }} restants)</span>
+        </button>
       </div>
     </div>
   </div>

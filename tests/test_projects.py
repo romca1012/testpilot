@@ -205,7 +205,7 @@ def test_api_delete_project_isole_les_autres(client):
     client.delete(f"/api/projects/{p1}")
     # Le second projet et son cas sont intacts.
     assert any(p["id"] == p2 for p in client.get("/api/projects").json())
-    assert {c["title"] for c in client.get(f"/api/cases?project_id={p2}").json()} == {"Garde"}
+    assert {c["title"] for c in client.get(f"/api/cases?project_id={p2}").json()["items"]} == {"Garde"}
 
 
 def test_delete_project_emporte_le_cout_de_generation_sans_execution(client):
@@ -276,5 +276,5 @@ def test_api_cases_filtre_project_id(client):
     CaseRepo(conn).create(title="Autre-cas", module_id=other_m, feature_slug="b")
     conn.close()
 
-    odoo_cases = client.get(f"/api/cases?project_id={p_odoo}").json()
+    odoo_cases = client.get(f"/api/cases?project_id={p_odoo}").json()["items"]
     assert {c["title"] for c in odoo_cases} == {"Odoo-cas"}  # jamais de mélange inter-projets

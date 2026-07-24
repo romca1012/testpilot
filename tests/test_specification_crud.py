@@ -180,7 +180,7 @@ def test_api_creer_une_specification_ne_genere_AUCUN_cas(client):
 
     assert r.status_code == 201
     assert r.json()["case_count"] == 0
-    assert client.get(f"/api/cases?module_id={mid}").json() == []
+    assert client.get(f"/api/cases?module_id={mid}").json()["items"] == []
 
 
 def test_api_une_specification_peut_naitre_SANS_document(client):

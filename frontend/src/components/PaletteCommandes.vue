@@ -14,7 +14,7 @@
 // frappe distraite serait exactement le contraire d'un gain.
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useCas } from '../lib/donnees'
+import { usePageCas } from '../lib/donnees'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,8 +25,11 @@ const requete = ref('')
 const index = ref(0)
 const champ = ref<HTMLInputElement | null>(null)
 
-// Les cas viennent du cache partagé (lot A) : ouvrir la palette ne déclenche aucune requête.
-const { data: casData } = useCas(computed(() => pid.value || ''))
+// ⚠️ La recherche part au SERVEUR et se borne à 8 résultats : chercher dans une liste chargée
+// en entier ne trouverait que ce qui a déjà été chargé, et répondrait « rien » sur un cas
+// pourtant existant. La requête n'est lancée que lorsqu'on tape quelque chose.
+const requeteServeur = computed(() => ({ q: requete.value.trim(), limit: 8 }))
+const { data: casData } = usePageCas(computed(() => pid.value || ''), requeteServeur)
 
 interface Entree {
   id: string
@@ -58,9 +61,7 @@ const resultats = computed<Entree[]>(() => {
   const q = requete.value.trim().toLowerCase()
   const cmds = commandes.value.filter((c) => !q || c.libelle.toLowerCase().includes(q))
   if (!q) return cmds
-  const cas = (casData.value ?? [])
-    .filter((c) => `c${c.id}`.includes(q) || c.title.toLowerCase().includes(q))
-    .slice(0, 8)
+  const cas = (casData.value?.items ?? [])
     .map((c) => ({
       id: `cas-${c.id}`,
       libelle: c.title,

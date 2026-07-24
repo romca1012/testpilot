@@ -47,7 +47,8 @@ const CAS = [
 
 beforeEach(() => {
   vi.clearAllMocks()
-  listCases.mockResolvedValue(CAS)
+  // La liste des cas est PAGINÉE depuis le 2026-07-24 : le simulacre rend une page.
+  listCases.mockResolvedValue({ items: CAS, next_cursor: null, total: CAS.length })
   createRun.mockResolvedValue({ id: 7, name: 'R', status: 'draft', case_count: 2 })
   listRuns.mockResolvedValue([])
   launchRun.mockResolvedValue({ id: 7, status: 'running' })
@@ -57,8 +58,10 @@ beforeEach(() => {
            case_count: 2, tested_count: 1, is_archived: false, created_at: '2026-07-21T10:00:00' },
     description: '', refs: '',
     cases: [
-      { id: 1, title: 'Cas A', execution_status: 'success', functional_status: 'conforme', execution_id: 30 },
-      { id: 2, title: 'Cas B', execution_status: null, functional_status: null, execution_id: null },
+      { id: 1, title: 'Cas A', execution_status: 'success', functional_status: 'conforme',
+        execution_id: 30, statut: 'passed' },
+      { id: 2, title: 'Cas B', execution_status: null, functional_status: null,
+        execution_id: null, statut: 'untested' },
     ],
   })
 })
@@ -172,8 +175,10 @@ describe('RunDetail — lancement de la campagne', () => {
              case_count: 2, tested_count: 1, is_archived: false, created_at: '2026-07-21T10:00:00' },
       description: '', refs: '',
       cases: [
-        { id: 1, title: 'A', execution_status: 'success', functional_status: 'conforme', execution_id: 30 },
-        { id: 2, title: 'B', execution_status: null, functional_status: null, execution_id: null },
+        { id: 1, title: 'A', execution_status: 'success', functional_status: 'conforme',
+          execution_id: 30, statut: 'passed' },
+        { id: 2, title: 'B', execution_status: null, functional_status: null,
+          execution_id: null, statut: 'untested' },
       ],
     })
     const w = mount(RunDetail)

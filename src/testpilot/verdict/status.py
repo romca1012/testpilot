@@ -137,3 +137,70 @@ def aggregate(verdicts: list[ScenarioVerdict]) -> CaseVerdict:
         scenarios_passed=passed,
         scenarios_failed=len(verdicts) - passed,
     )
+
+
+# ── Le statut de LECTURE d'un cas (déplacé depuis le frontend le 2026-07-24) ──────────────────
+# Les deux axes du §5 sont la vérité ; ce statut est leur PROJECTION en une étiquette unique, pour
+# les listes et les tableaux de bord. Il ne remplace jamais les deux axes : il les résume.
+#
+# ⚠️ **Cette règle vivait UNIQUEMENT en TypeScript.** Filtrer une liste par statut côté serveur
+# aurait donc exigé de la réécrire en SQL — deux implémentations de la même règle, qui divergent
+# le jour où l'une évolue, et dont l'écart est invisible (les deux « marchent »). On l'a déplacée
+# ici : un seul endroit décide, et le frontend lit ce que le serveur a calculé.
+
+STATUT_PASSED = "passed"
+STATUT_FAILED = "failed"
+STATUT_RETEST = "retest"
+STATUT_BLOCKED = "blocked"
+STATUT_UNTESTED = "untested"
+
+# Ordre canonique (légende des graphiques, colonnes de filtre).
+STATUTS = (STATUT_PASSED, STATUT_BLOCKED, STATUT_RETEST, STATUT_FAILED, STATUT_UNTESTED)
+
+
+def statut_de_test(execution: str | None, functional: str | None) -> str:
+    """Projette les DEUX axes en une étiquette de lecture.
+
+    L'ordre des tests n'est pas décoratif — le fonctionnel prime sur l'exécution :
+
+    - `conforme` → **passed** ;
+    - `non_conforme` → **failed** ;
+    - `donnee_invalide` → **retest** (4ᵉ verdict) : le test est à corriger. **Jamais `failed`**,
+      qui accuserait l'application, ni `passed`, alors que rien n'a été prouvé ;
+    - `indetermine` → **retest** s'il a tourné, **untested** s'il n'a jamais été lancé ;
+    - sans verdict fonctionnel, c'est le déroulement qui parle : `technical_error` → **blocked**,
+      `success` → **passed** ;
+    - à défaut → **untested**.
+    """
+    if functional == FUNC_CONFORME:
+        return STATUT_PASSED
+    if functional == FUNC_NON_CONFORME:
+        return STATUT_FAILED
+    if functional == FUNC_DONNEE_INVALIDE:
+        return STATUT_RETEST
+    if functional == FUNC_INDETERMINE:
+        return STATUT_UNTESTED if execution == EXEC_NOT_EXECUTED else STATUT_RETEST
+    if execution == EXEC_TECHNICAL_ERROR:
+        return STATUT_BLOCKED
+    if execution == EXEC_SUCCESS:
+        return STATUT_PASSED
+    return STATUT_UNTESTED
+
+
+# Expression SQL équivalente, pour FILTRER et TRIER sans charger la table entière.
+# ⚠️ Elle est dérivée de la fonction ci-dessus, et un test compare les deux sur TOUTES les
+# combinaisons possibles : sans cette comparaison, la version SQL divergerait un jour en silence.
+def sql_statut(execution: str, functional: str) -> str:
+    """Rend un CASE SQL calculant le statut depuis deux colonnes nommées."""
+    return (
+        f"CASE"
+        f" WHEN {functional} = '{FUNC_CONFORME}' THEN '{STATUT_PASSED}'"
+        f" WHEN {functional} = '{FUNC_NON_CONFORME}' THEN '{STATUT_FAILED}'"
+        f" WHEN {functional} = '{FUNC_DONNEE_INVALIDE}' THEN '{STATUT_RETEST}'"
+        f" WHEN {functional} = '{FUNC_INDETERMINE}' THEN"
+        f"   (CASE WHEN {execution} = '{EXEC_NOT_EXECUTED}' THEN '{STATUT_UNTESTED}'"
+        f"         ELSE '{STATUT_RETEST}' END)"
+        f" WHEN {execution} = '{EXEC_TECHNICAL_ERROR}' THEN '{STATUT_BLOCKED}'"
+        f" WHEN {execution} = '{EXEC_SUCCESS}' THEN '{STATUT_PASSED}'"
+        f" ELSE '{STATUT_UNTESTED}' END"
+    )

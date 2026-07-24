@@ -121,9 +121,10 @@ import PaletteCommandes from '../components/PaletteCommandes.vue'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  listCases.mockResolvedValue([
+  listCases.mockResolvedValue(
+    { items: [
     { id: 12, title: 'Retour matériel', module: 'Demandes' },
-  ])
+  ], next_cursor: null, total: 0 })
 })
 
 async function ouvrirPalette() {
@@ -158,14 +159,17 @@ describe('la palette de commandes', () => {
     w.unmount()
   })
 
-  it('trouve un CAS par son titre, sans requête serveur', async () => {
+  it('cherche un cas AU SERVEUR, borné à 8 résultats', async () => {
+    // ⚠️ Ce test disait l'inverse jusqu'à la pagination (2026-07-24) : la palette cherchait dans
+    // la liste complète, chargée en cache. À 2 000 cas, cette liste n'existe plus — et chercher
+    // dans ce qui a été chargé répondrait « rien » sur un cas pourtant existant. La recherche
+    // part donc au serveur, bornée : une palette qui déroule 400 lignes n'aide plus personne.
     const w = await ouvrirPalette()
-    listCases.mockClear()
     await w.find('input').setValue('matériel')
     await flushPromises()
 
     expect(w.text()).toContain('Retour matériel')
-    expect(listCases).not.toHaveBeenCalled()   // le cache du lot A suffit
+    expect(listCases).toHaveBeenCalledWith('1', expect.objectContaining({ q: 'matériel', limit: 8 }))
     w.unmount()
   })
 

@@ -71,10 +71,44 @@ def _smoke_check_domaine(conn, case: dict, current: dict | None) -> list[dict]:
                                    current.get("steps_content") or "", modele=modele)
 
 
-@router.get("", response_model=list[schemas.CaseSummary])
-def list_cases(project_id: int | None = None, module_id: int | None = None, conn=Depends(get_conn)):
-    rows = CaseRepo(conn).list_all(project_id=project_id, module_id=module_id)
-    return [schemas.case_summary(r) for r in rows]
+_CURSEUR_SEP = ":"
+
+
+def _decoder_curseur(curseur: str | None) -> tuple | None:
+    """Le curseur opaque redevient le triplet de tri. Un curseur illisible est traité comme
+    ABSENT plutôt que comme une erreur : on repart du début, ce qui est visible et récupérable —
+    là où un 422 laisserait l'écran bloqué sur une liste vide."""
+    if not curseur:
+        return None
+    try:
+        a, b, c = curseur.split(_CURSEUR_SEP)
+        return int(a), int(b), int(c)
+    except (ValueError, AttributeError):
+        return None
+
+
+@router.get("", response_model=schemas.PageCas)
+def list_cases(project_id: int | None = None, module_id: int | None = None,
+               group_id: int | None = None, q: str = "", statut: str = "",
+               cursor: str | None = None, limit: int = 100, conn=Depends(get_conn)):
+    """Les cas, PAGE PAR PAGE.
+
+    ⚠️ Cette route rendait auparavant **tous** les cas du projet. À la cible du produit (de
+    l'ordre du millier), c'était une réponse de plusieurs mégaoctets à chaque affichage — et un
+    navigateur qui rame sur une liste que personne ne lit en entier.
+
+    Recherche (`q`) et filtre (`statut`) sont traités **ici** : appliqués côté navigateur, ils ne
+    porteraient que sur la page chargée, et chercher un cas absent de celle-ci répondrait
+    « aucun résultat ». Un filtre qui ment sur l'absence est pire que pas de filtre.
+    """
+    limite = max(1, min(limit, 500))
+    lignes, suivant, total = CaseRepo(conn).page(
+        project_id=project_id, module_id=module_id, group_id=group_id,
+        recherche=q, statut=statut, apres=_decoder_curseur(cursor), limite=limite)
+    return schemas.PageCas(
+        items=[schemas.case_summary(r) for r in lignes],
+        next_cursor=_CURSEUR_SEP.join(str(x) for x in suivant) if suivant else None,
+        total=total)
 
 
 # ── Actions en LOT (lot C, 2026-07-24) ───────────────────────────────────────────────────────

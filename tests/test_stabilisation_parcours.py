@@ -76,7 +76,7 @@ def test_api_ajouter_cas_manuel(client):
     assert r.status_code == 201
     assert r.json()["title"] == "Cas manuel"
     # Il apparaît dans la liste du module comme n'importe quel cas.
-    assert any(c["title"] == "Cas manuel" for c in client.get(f"/api/cases?module_id={mid}").json())
+    assert any(c["title"] == "Cas manuel" for c in client.get(f"/api/cases?module_id={mid}").json()["items"])
 
 
 def test_api_cas_manuel_exige_titre_etapes_resultat(client):

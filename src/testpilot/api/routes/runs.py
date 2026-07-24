@@ -95,12 +95,18 @@ def get_run(run_id: int, conn=Depends(get_conn)):
     run = repo.get(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail=f"exécution {run_id} introuvable")
-    cases = [schemas.RunCaseResult(
-        id=c["id"], title=c["title"],
-        execution_status=(c["result"] or {}).get("execution_status") if c["result"] else None,
-        functional_status=(c["result"] or {}).get("functional_status") if c["result"] else None,
-        execution_id=(c["result"] or {}).get("id") if c["result"] else None)
-        for c in repo.cases_with_results(run_id)]
+    from testpilot.verdict.status import statut_de_test
+
+    cases = []
+    for c in repo.cases_with_results(run_id):
+        res = c["result"] or {}
+        ex, fo = res.get("execution_status"), res.get("functional_status")
+        cases.append(schemas.RunCaseResult(
+            id=c["id"], title=c["title"], execution_status=ex, functional_status=fo,
+            execution_id=res.get("id"),
+            # Un cas SANS exécution dans ce run est « non testé » — et c'est la même règle que
+            # partout ailleurs, calculée au même endroit.
+            statut=statut_de_test(ex, fo)))
     cibles = repo.cibles_du_run(run_id)
     return schemas.RunDetailOut(
         run=_summary(run, len(cases)), description=run.get("description", ""),

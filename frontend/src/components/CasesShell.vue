@@ -11,7 +11,7 @@ import { useModuleCreate } from '../lib/useModuleCreate'
 // affichée demandaient les MÊMES modules, cas et spécifications à chaque navigation ; ils
 // partagent désormais un seul cache, et une mutation invalide ce qu'il faut.
 import {
-  useCas, useCreerGroupe, useCreerModule, useGroupes, useModules, useSupprimerModule,
+  useCreerGroupe, useCreerModule, useGroupes, useModules, useNbCas, useSupprimerModule, useUnCas,
 } from '../lib/donnees'
 import Modal from './ui/Modal.vue'
 import Button from './ui/Button.vue'
@@ -57,10 +57,12 @@ const menuOpen = ref(false)
 // pas encore de données : l'arbre se dessine vide plutôt que de faire tomber le rendu.
 const { data: modulesData } = useModules(pid)
 const { data: groupsData } = useGroupes(pid)
-const { data: casesData } = useCas(pid)
 const modules = computed(() => modulesData.value ?? [])
 const groups = computed(() => groupsData.value ?? [])
-const cases = computed(() => casesData.value ?? [])
+// ⚠️ L'arbre ne charge PLUS tous les cas du projet (2026-07-24). Il n'en avait besoin que pour
+// deux choses : un compteur et le fil d'Ariane d'un cas ouvert. À 2 000 cas, il payait une
+// réponse de plusieurs mégaoctets pour afficher un nombre.
+const caseCount = useNbCas(pid)
 const expanded = ref<number[]>([])
 
 // Tout déplié au premier chargement d'un projet — un arbre entièrement replié ne montre rien
@@ -76,7 +78,6 @@ watch(pid, () => { ensureLoaded() })
 // (`lib/donnees.ts`). Une donnée fraîche de moins de 30 s n'est plus redemandée.
 
 const specCount = computed(() => groups.value.length)
-const caseCount = computed(() => cases.value.length)
 const initial = computed(() => (currentProject.value?.name || '?').trim().charAt(0).toUpperCase())
 
 function groupsOf(moduleId: number) {
@@ -136,7 +137,10 @@ function openSpec(groupId: number) {
 
 // ── Sous-navigation d'un cas — NICHÉE sous « Cas de test » (pas une colonne à part) ──
 const caseId = computed(() => (route.name === 'case-detail' ? Number(route.params.id) : null))
-const currentCase = computed(() => cases.value.find((c) => c.id === caseId.value) || null)
+// Le cas ouvert se demande par son identifiant, plutôt que d'être cherché dans une liste qu'on
+// aurait chargée entièrement pour lui.
+const { data: caseDetail } = useUnCas(computed(() => caseId.value ?? ''))
+const currentCase = computed(() => caseDetail.value?.case ?? null)
 const caseTab = computed(() => (route.query.tab as string) || 'details')
 const subtabs = [
   { key: 'details', label: 'Détails' },
@@ -192,7 +196,8 @@ function goGenerate(moduleId?: number) {
 // Suppression d'un module — CASCADE (cas, versions, exécutions). Confirmation EXPLICITE avec le
 // compte de ce qui partira : §2.10 interdit d'effacer un run en silence, pas sur demande claire.
 async function deleteModule(m: { id: number; name: string }) {
-  const n = cases.value.filter((c) => c.module_id === m.id).length
+  // Le compteur du module vient du SERVEUR : la liste des cas n'est plus chargée ici.
+  const n = modules.value.find((x) => x.id === m.id)?.case_count ?? 0
   const detail = n ? ` et ses ${n} cas de test (avec leurs exécutions)` : ''
   if (!window.confirm(`Supprimer le module « ${m.name} »${detail} ? Cette action est irréversible.`)) return
   try {

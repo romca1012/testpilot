@@ -91,7 +91,7 @@ def test_tri_par_ordre_manuel_pas_par_priorite(client):
 
     # Ordre par défaut = ordre de création (chaque cas naît en fin de liste), la priorité n'y
     # change rien.
-    titles = [c["title"] for c in client.get(f"/api/cases?module_id={mid}").json()]
+    titles = [c["title"] for c in client.get(f"/api/cases?module_id={mid}").json()["items"]]
     assert titles == ["Zebre", "Alpha", "Beta"]
 
 
@@ -165,7 +165,7 @@ def test_ajout_declenche_la_generation_dans_le_bon_module(client, monkeypatch):
 
     job = client.get(f"/api/modules/jobs/{job_id}").json()
     assert job["status"] == "done"
-    cases = client.get(f"/api/cases?module_id={mid}").json()
+    cases = client.get(f"/api/cases?module_id={mid}").json()["items"]
     assert [c["title"] for c in cases] == ["Retour matériel"]
 
 

@@ -48,14 +48,15 @@ const SPEC = {
 beforeEach(() => {
   vi.clearAllMocks()
   getGroup.mockResolvedValue({ ...SPEC })
-  listCases.mockResolvedValue([
-    { id: 11, title: 'Sinistre déclaré', group_id: 7, last_execution_status: 'success',
-      last_functional_status: 'conforme' },
-    { id: 12, title: 'Sinistre sans pièce jointe', group_id: 7, last_execution_status: null,
-      last_functional_status: null },
-    { id: 13, title: 'Autre cas', group_id: 99, last_execution_status: null,
-      last_functional_status: null },
-  ])
+  // ⚠️ Le filtre par spécification est fait par le SERVEUR depuis la pagination : le simulacre
+  // rend donc ce que le serveur rendrait — les cas de CETTE spécification, et eux seuls.
+  listCases.mockResolvedValue({
+    items: [
+      { id: 11, title: 'Sinistre déclaré', group_id: 7, statut: 'passed' },
+      { id: 12, title: 'Sinistre sans pièce jointe', group_id: 7, statut: 'untested' },
+    ],
+    next_cursor: null, total: 2,
+  })
 })
 
 async function monterFiche() {
@@ -71,7 +72,8 @@ describe('la fiche de la spécification', () => {
     expect(w.find('textarea').element.value).toBe('Un employé déclare un sinistre.')
     expect(w.text()).toContain('Sinistre déclaré')
     expect(w.text()).toContain('Sinistre sans pièce jointe')
-    expect(w.text()).not.toContain('Autre cas')   // appartient à une autre spécification
+    // Le serveur a filtré : la fiche affiche ce qu'il lui a rendu, sans re-trier localement.
+    expect(listCases).toHaveBeenCalledWith('1', expect.objectContaining({ group_id: 7 }))
   })
 
   it('n\'enregistre RIEN tant que rien n\'a changé', async () => {

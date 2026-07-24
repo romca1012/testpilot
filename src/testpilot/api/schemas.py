@@ -79,6 +79,10 @@ class CaseSummary(BaseModel):
     # On le rend VISIBLE — jamais silencieux, et jamais « corrigé » en masquant un run réel.
     last_verdict_version_id: int | None = None
     verdict_from_other_version: bool = False
+    # Le STATUT DE LECTURE, calculé par le SERVEUR (2026-07-24). Il vivait en TypeScript ; le
+    # filtrage côté serveur aurait alors exigé de réécrire la règle en SQL — deux
+    # implémentations qui divergent un jour, en silence. Un seul endroit décide désormais.
+    statut: str = "untested"
 
 
 class VersionOut(BaseModel):
@@ -164,6 +168,8 @@ class ExecutionSummary(BaseModel):
     target_url: str = ""
     target_database: str = ""
     target_username: str = ""
+    # Statut de LECTURE calculé par le serveur — même règle que pour un cas (une seule source).
+    statut: str = "untested"
 
 
 class CaseDetail(BaseModel):
@@ -192,6 +198,7 @@ class ScenarioResultOut(BaseModel):
     scenario_name: str
     execution_status: str
     functional_status: str
+    statut: str = "untested"
     cause_category: str = ""
     failure_type: str = ""
     error_summary: str = ""
@@ -406,6 +413,8 @@ class RunCaseResult(BaseModel):
     execution_status: str | None = None
     functional_status: str | None = None
     execution_id: int | None = None
+    # Voir `statut` de CaseSummary : calculé par le serveur, jamais redérivé à l'écran.
+    statut: str = "untested"
 
 
 class RunArchiveIn(BaseModel):
@@ -525,6 +534,8 @@ def module_summary(row: dict) -> ModuleSummary:
 
 
 def case_summary(row: dict) -> CaseSummary:
+    from testpilot.verdict.status import statut_de_test
+
     return CaseSummary(
         id=row["id"], title=row["title"],
         # Nom métier du module (repli sur le slug technique si le cas n'est pas encore rattaché).
@@ -545,6 +556,10 @@ def case_summary(row: dict) -> CaseSummary:
             row.get("last_verdict_version_id")
             and row.get("current_version_id")
             and row["last_verdict_version_id"] != row["current_version_id"]),
+        # Calculé ICI, une fois, pour tous les appelants : c'est ce qui garantit que l'étiquette
+        # affichée et celle qui sert à filtrer sont la même.
+        statut=statut_de_test(row.get("last_execution_status"),
+                              row.get("last_functional_status")),
     )
 
 
@@ -588,6 +603,8 @@ def _field_fallbacks(raw) -> list[str]:
 
 
 def execution_summary(row: dict, *, running: bool = False) -> ExecutionSummary:
+    from testpilot.verdict.status import statut_de_test
+
     return ExecutionSummary(
         id=row["id"], test_case_id=row["test_case_id"], version_id=row["version_id"],
         execution_status=row["execution_status"], functional_status=row["functional_status"],
@@ -604,13 +621,17 @@ def execution_summary(row: dict, *, running: bool = False) -> ExecutionSummary:
         target_url=row.get("target_url", "") or "",
         target_database=row.get("target_database", "") or "",
         target_username=row.get("target_username", "") or "",
+        statut=statut_de_test(row.get("execution_status"), row.get("functional_status")),
     )
 
 
 def scenario_result_out(row: dict) -> ScenarioResultOut:
+    from testpilot.verdict.status import statut_de_test
+
     return ScenarioResultOut(
         scenario_name=row["scenario_name"], execution_status=row["execution_status"],
-        functional_status=row["functional_status"], cause_category=row.get("cause_category", ""),
+        functional_status=row["functional_status"],
+        statut=statut_de_test(row["execution_status"], row["functional_status"]), cause_category=row.get("cause_category", ""),
         failure_type=row.get("failure_type", ""), error_summary=row.get("error_summary", ""),
         step_text=row.get("step_text", ""),
     )
@@ -643,3 +664,18 @@ class LotOut(BaseModel):
     """
     traites: int
     ignores: int = 0
+
+
+class PageCas(BaseModel):
+    """Une PAGE de cas — la réponse de `GET /api/cases`.
+
+    ⚠️ `next_cursor` est **opaque** : le client le renvoie tel quel, sans jamais l'interpréter.
+    S'il devenait un numéro de page, un client finirait par le fabriquer lui-même, et changer la
+    façon de paginer casserait tout le monde.
+
+    `total` est le nombre de cas correspondant au filtre — pas le nombre chargé. C'est ce qui
+    permet d'écrire « 40 sur 2 000 » plutôt que de laisser croire que la liste est complète.
+    """
+    items: list[CaseSummary] = []
+    next_cursor: str | None = None
+    total: int = 0
