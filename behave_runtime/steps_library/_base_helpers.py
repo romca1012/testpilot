@@ -4,12 +4,14 @@ Chaque module *steps.py importe les helpers dont il a besoin
 et les encapsule dans ses propres @given/@when/@then.
 """
 
+import json
 import logging
 import os
 import sys
 import time
 import warnings
 import re
+from dataclasses import asdict, dataclass
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,135 @@ def _record_field_fallback(message: str) -> None:
             handle.write(message.replace("\n", " ") + "\n")
     except OSError:
         pass
+
+
+# ── Les règles APPRISES d'un refus (§5bis n°1) ───────────────────────────────
+#
+# Chemin du fichier où consigner les refus MESURÉS pendant le run, posé par BehaveRunner dans
+# l'env du sous-processus. Nom DUPLIQUÉ côté runner pour la même raison que
+# `FIELD_FALLBACK_FILE_ENV` (l'importer d'ici tirerait Playwright dans la couche API) : l'accord
+# des deux valeurs est tenu par test.
+REGLES_REFUS_FILE_ENV = "TP_REGLES_REFUS_FILE"
+
+# Un run bavard ne doit pas produire un fichier illisible : au-delà, on s'arrête. Le même refus
+# se répète de toute façon à chaque scénario, et la déduplication se fait à la relecture.
+_MAX_REFUS_PAR_RUN = 20
+_refus_consignes = 0
+
+# Les drapeaux de `ValidityState`, dans l'ordre où on les interroge — du plus INFORMATIF (une
+# contrainte machine lisible) au plus creux. `customError` est le dernier : quand il tombe, le
+# navigateur n'expose AUCUNE contrainte, seulement sa phrase. C'est le cas des règles écrites en
+# JavaScript, que le crawl statique ne verra jamais.
+_DRAPEAUX_VALIDITE = (
+    ("patternMismatch", "pattern"),
+    ("tooLong", "maxLength"),
+    ("tooShort", "minLength"),
+    ("rangeOverflow", "max"),
+    ("rangeUnderflow", "min"),
+    ("stepMismatch", "step"),
+    ("typeMismatch", "type"),
+    ("badInput", ""),
+    ("valueMissing", ""),
+    ("customError", ""),
+)
+
+# La même liste, pour la sonde JS — dérivée de la précédente : un seul endroit décide.
+_DRAPEAUX_JS = "[" + ",".join(f"'{nom}'" for nom, _ in _DRAPEAUX_VALIDITE) + "]"
+
+
+def _refus_depuis_sonde(route, champ, origine="navigateur"):
+    """Un champ rapporté par une sonde → un `RefusMesure`, ou `None` s'il n'apprend rien.
+
+    Le drapeau retenu est le PREMIER de `_DRAPEAUX_VALIDITE` que le navigateur a levé — l'ordre
+    va du plus informatif (une contrainte machine qu'on peut relire) au plus creux. La valeur de
+    contrainte est lue sur la propriété DOM correspondante, jamais devinée dans le message.
+    """
+    nom = (champ.get("nom") or "").strip()
+    if not nom or nom == "?":
+        return None      # un champ sans `name` n'est pas ré-identifiable au run suivant
+    leves = champ.get("drapeaux") or []
+    type_contrainte, propriete = next(
+        ((d, p) for d, p in _DRAPEAUX_VALIDITE if d in leves), ("customError", ""))
+    return RefusMesure(
+        route=route,
+        champ=nom,
+        type_contrainte=type_contrainte,
+        valeur_contrainte=str(champ.get(propriete) or "") if propriete else "",
+        valeur_refusee=str(champ.get("valeur") or ""),
+        origine=origine,
+        preuve=str(champ.get("msg") or ""),
+    )
+
+
+@dataclass(frozen=True)
+class RefusMesure:
+    """Un refus de l'application, MESURÉ — la matière de la règle apprise (§5bis n°1).
+
+    ⚠️ **Aucun champ n'est rédigé par le LLM, ni déduit d'un texte qu'il aurait écrit.** `route`
+    vient de l'URL, `champ` de l'attribut `name`, `type_contrainte` d'un drapeau de `ValidityState`
+    posé par le moteur du navigateur, `valeur_contrainte` de la propriété DOM correspondante.
+    `preuve` porte le message du navigateur ou de l'application : il est **informatif**, et
+    n'entre jamais dans l'identité d'une règle (principe 1).
+    """
+
+    route: str
+    champ: str
+    type_contrainte: str
+    valeur_contrainte: str = ""
+    valeur_refusee: str = ""
+    origine: str = "navigateur"
+    preuve: str = ""
+
+
+def _route_courante(page) -> str:
+    """L'URL de la page, normalisée comme l'annuaire — best-effort, jamais lève.
+
+    Import différé : la bibliothèque doit s'importer à la collecte (dry-run) sans exiger le paquet
+    `testpilot`. Sans lui, on rend le chemin brut plutôt que rien — une route grossière vaut mieux
+    qu'un refus perdu.
+    """
+    url = getattr(page, "url", "") or ""
+    try:
+        from testpilot.generation import domain_model
+        return domain_model.normaliser_route(url)
+    except Exception:
+        return url
+
+
+def _consigner_refus(refus) -> None:
+    """Écrit les refus mesurés dans le fichier sidecar, s'il y en a un de désigné.
+
+    Même raison qu'un sidecar pour les replis de champ : le log NE SORT PAS d'un scénario capturé
+    par Behave, et un mécanisme dont le signal peut se perdre selon la configuration de
+    journalisation n'est pas un mécanisme. Hors run behave (test unitaire, appel direct), aucune
+    variable n'est posée : on ne fait rien.
+
+    **Une trace ne fait jamais échouer un scénario** — d'où le `except OSError` muet.
+    """
+    global _refus_consignes
+    path = os.environ.get(REGLES_REFUS_FILE_ENV)
+    if not path or not refus:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as handle:
+            for mesure in refus:
+                if _refus_consignes >= _MAX_REFUS_PAR_RUN:
+                    return
+                handle.write(json.dumps(asdict(mesure), ensure_ascii=False,
+                                        sort_keys=True) + "\n")
+                _refus_consignes += 1
+    except (OSError, TypeError):
+        pass
+
+
+def lever_donnee_refusee(message, refus=()):
+    """Consigne le refus PUIS lève — le seul endroit qui construit un `DonneeRefuseeError` appris.
+
+    Un seul site de construction : sinon un jour un `raise` oublierait de consigner, et la règle
+    ne serait jamais apprise **sans que rien ne le montre**.
+    """
+    _consigner_refus(refus)
+    raise DonneeRefuseeError(message, refus=refus)
 
 
 # ── OdooRPC helpers ──────────────────────────────────────────────────────────
@@ -228,14 +359,23 @@ def verifier_soumission_non_bloquee(page) -> None:
                 for (const el of f.querySelectorAll('input, select, textarea')) {
                     if (el.willValidate && !el.checkValidity()) {
                         out.push({nom: el.name || el.id || '?',
-                                  valeur: String(el.value || '').slice(0, 40),
+                                  // 120 et non 40 : cette valeur devient une règle APPRISE, et
+                                  // une valeur tronquée serait interdite sous une forme qui n'a
+                                  // jamais été soumise — donc jamais reconnue au run suivant.
+                                  valeur: String(el.value || '').slice(0, 120),
                                   msg: el.validationMessage || '',
-                                  manquant: el.validity.valueMissing === true});
+                                  manquant: el.validity.valueMissing === true,
+                                  drapeaux: DRAPEAUX.filter(d => el.validity[d] === true),
+                                  pattern: el.pattern || '',
+                                  maxLength: el.maxLength > 0 ? String(el.maxLength) : '',
+                                  minLength: el.minLength > 0 ? String(el.minLength) : '',
+                                  max: el.max || '', min: el.min || '',
+                                  step: el.step || '', type: el.type || ''});
                     }
                 }
             }
             return out.slice(0, 6);
-        }""") or []
+        }""".replace("DRAPEAUX", _DRAPEAUX_JS)) or []
     except Exception:
         return  # un contrôle de sûreté ne fait jamais tomber un scénario par lui-même
     if not invalides:
@@ -253,11 +393,13 @@ def verifier_soumission_non_bloquee(page) -> None:
         indice = (f"\n{len(manquants)} champ(s) OBLIGATOIRE(S) non renseigné(s) : "
                   f"{', '.join(manquants)}. Un choix fait plus haut (liste déroulante, case) a "
                   f"pu les rendre obligatoires alors qu'ils ne l'étaient pas au départ.")
-    raise DonneeRefuseeError(
+    route = _route_courante(page)
+    refus = [m for m in (_refus_depuis_sonde(route, c) for c in invalides) if m]
+    lever_donnee_refusee(
         f"LE NAVIGATEUR A REFUSÉ D'ENVOYER le formulaire : {len(invalides)} champ(s) invalide(s) "
         f"— {details}.{indice}\n"
         f"⚠️ L'APPLICATION N'EST PAS EN CAUSE : c'est le jeu de données du test qui est "
-        f"irrecevable. Corrige ces valeurs, ne conclus pas à un défaut applicatif.")
+        f"irrecevable. Corrige ces valeurs, ne conclus pas à un défaut applicatif.", refus)
 
 
 def resolve_field_name(page, ident):
@@ -323,7 +465,17 @@ class DonneeRefuseeError(ValueError):
     signal se POSE, il ne se déduit pas — forme la plus forte du principe 1.
 
     Hérite de `ValueError` : un `except ValueError` existant continue de l'attraper.
+
+    ⚠️ **`refus` porte le fait MESURÉ, structuré** (§5bis n°1) — mais `str(exc)` reste
+    **strictement inchangé** : la taxonomie classe sur le type, Behave n'affiche que le message,
+    et l'un comme l'autre ignorent cet attribut. Le payload ne franchit d'ailleurs pas la
+    frontière de processus (Behave ne recrache qu'un texte) : c'est le sidecar qui le transporte.
+    Il sert au test unitaire et au diagnostic local.
     """
+
+    def __init__(self, message, refus=()):
+        super().__init__(message)
+        self.refus = tuple(refus)
 
 
 def _options_of(select_locator):
@@ -458,10 +610,37 @@ def _verifier_valeur_retenue(page, name, ecrit) -> None:
     # espaces retirés des deux côtés.
     if re.sub(r"\s+", "", retenu).lower() == re.sub(r"\s+", "", attendu).lower():
         return
-    raise DonneeRefuseeError(
+    lever_donnee_refusee(
         f"Le champ « {name} » a MODIFIÉ la valeur saisie : écrit {attendu!r}, retenu {retenu!r}. "
         f"Un filtre de saisie l'a transformée — la valeur du test est donc INADAPTÉE à ce champ "
-        f"(ce n'est pas un défaut de l'application). Choisis une valeur conforme à son format.")
+        f"(ce n'est pas un défaut de l'application). Choisis une valeur conforme à son format.",
+        [RefusMesure(route=_route_courante(page), champ=name,
+                     type_contrainte="filtre_saisie",
+                     valeur_contrainte=_classe_conservee(attendu, retenu),
+                     valeur_refusee=attendu, origine="filtre_saisie",
+                     preuve=f"le champ a retenu {retenu!r}")])
+
+
+# Les classes de caractères qu'un filtre de saisie peut conserver, de la plus stricte à la plus
+# large. L'ordre compte : `001` s'explique par `\d` comme par `\w`, et c'est `\d` qui informe.
+_CLASSES_FILTRE = ((r"\d", str.isdigit),
+                   (r"[A-Za-z]", str.isalpha),
+                   (r"\w", lambda c: c.isalnum() or c == "_"))
+
+
+def _classe_conservee(ecrit, retenu) -> str:
+    """La classe de caractères qu'un filtre a laissé passer — **seulement si elle est PROUVÉE**.
+
+    ⚠️ Prouvée veut dire : filtrer `ecrit` sur cette classe redonne **exactement** `retenu`.
+    Mesuré sur `/client_contentieux` — `FAC-TEST-001` retenu `001` : garder les chiffres de
+    l'écrit redonne `001`, donc `\\d` est la règle. Si aucune classe ne reconstruit le retenu, on
+    rend `''` : la valeur est noircie, mais **aucune contrainte n'est affirmée**. Deviner ici
+    ferait dire à l'annuaire une règle que l'application n'a jamais énoncée.
+    """
+    for motif, garde in _CLASSES_FILTRE:
+        if "".join(c for c in str(ecrit) if garde(c)) == str(retenu):
+            return motif
+    return ""
 
 
 class ResolveurIncompletError(RuntimeError):
@@ -502,6 +681,7 @@ def remplir_formulaire_valide(context, route):
     # paquet `testpilot` ; il n'est requis qu'à l'EXÉCUTION réelle du step (PYTHONPATH posé par
     # BehaveRunner). `testpilot.generation.__init__` est paresseux : aucun tirage d'anthropic ici.
     from testpilot.generation import domain_model
+    from testpilot.generation import regles_apprises as ra
     from testpilot.generation import valeur_conforme as vc
 
     project_id = getattr(context, "project_id", None)
@@ -519,11 +699,18 @@ def remplir_formulaire_valide(context, route):
             f"résolveur: formulaire introuvable dans l'annuaire pour route='{route}' "
             f"(url réelle '{url}'). L'annuaire est-il à jour pour cette page ?")
 
+    # Ce que les REFUS précédents ont appris sur cette application (§5bis n°1). Fusionné à la
+    # LECTURE, jamais écrit dans l'annuaire : le fichier du crawl reste une référence versionnée,
+    # relue par un humain, seule capable de trahir une régression de l'application.
+    regles = ra.charger(project_id)
+
     saisie = {}
     for form in formulaires:
         for champ in form["requis"]:
             if not champ.get("visible", True):
                 continue  # champ requis CACHÉ (injecté serveur) : jamais saisi par l'interface (5ᵉ cause)
+            champ = ra.fusionner(
+                champ, ra.pour_champ(regles, form.get("route") or route, champ["name"]))
             try:
                 valeur = vc.valeur_pour(champ)
             except vc.ValeurNonSynthetisable as exc:
@@ -582,6 +769,11 @@ def attach_file(page, name, value=""):
             "checkbox": f'je renseigne le champ "{name}" avec la valeur "oui"  (pour la cocher)',
             "radio": f'je renseigne le champ "{name}" avec la valeur "<option>"',
         }.get(reel, f'je renseigne le champ "{name}" avec la valeur "<valeur>"')
+        # ⚠️ **N'APPREND RIEN, et c'est délibéré** (§5bis n°1). L'application n'a rien refusé :
+        # c'est l'AGENT qui a employé le mauvais step sur un champ qui n'est pas un fichier. En
+        # faire une « règle apprise » remplirait l'annuaire de faits sur *notre* code de test au
+        # lieu de faits sur l'application — et le résolveur n'a rien à en tirer. Seul un refus
+        # émis par le navigateur ou par le serveur est une mesure de l'application.
         raise DonneeRefuseeError(
             f"Le champ « {name} » n'est PAS un champ fichier (type={reel or 'inconnu'}) : on ne "
             f"peut rien y téléverser. Emploie plutôt :\n    {equivalent}")
@@ -920,11 +1112,18 @@ def _refus_par_le_navigateur(page) -> list:
             const out = [];
             for (const el of document.querySelectorAll('input, select, textarea')) {
                 if (el.willValidate && !el.checkValidity()) {
-                    out.push({nom: el.name || el.id || '?', msg: el.validationMessage || ''});
+                    out.push({nom: el.name || el.id || '?', msg: el.validationMessage || '',
+                              valeur: String(el.value || '').slice(0, 120),
+                              drapeaux: DRAPEAUX.filter(d => el.validity[d] === true),
+                              pattern: el.pattern || '',
+                              maxLength: el.maxLength > 0 ? String(el.maxLength) : '',
+                              minLength: el.minLength > 0 ? String(el.minLength) : '',
+                              max: el.max || '', min: el.min || '',
+                              step: el.step || '', type: el.type || ''});
                 }
             }
             return out.slice(0, 5);
-        }""") or []
+        }""".replace("DRAPEAUX", _DRAPEAUX_JS)) or []
     except Exception:
         return []
 
@@ -956,6 +1155,36 @@ def _refus_serveur(context):
         return ("generique", " ".join(str(err).split())[:200] or "(sans détail)")
     # Un dict sans id ni erreur reconnaissable : refus non nommé.
     return ("generique", "le serveur a refusé la soumission sans détail exploitable")
+
+
+def _refus_serveur_mesures(page, noms) -> list:
+    """Les champs que le SERVEUR a nommés, avec la valeur qu'ils portaient — best-effort.
+
+    Le serveur nomme les champs fautifs mais ne renvoie pas ce qu'on lui avait envoyé : on relit
+    la valeur dans le DOM, qui n'a pas bougé (la page n'a pas été rechargée, la soumission ayant
+    échoué). Sans elle, on saurait *quel* champ est refusé sans savoir *quoi* ne plus écrire —
+    et la règle apprise serait inutilisable par le résolveur.
+
+    Un refus serveur n'AFFIRME aucune contrainte : il noircit une valeur, rien de plus. La règle
+    métier derrière (« l'IBAN doit correspondre au client ») n'est ni dans le HTML ni dans la
+    réponse — la deviner serait une invention.
+    """
+    if page is None:
+        return []
+    route = _route_courante(page)
+    mesures = []
+    for nom in [n.strip() for n in str(noms).split(",") if n.strip()][:6]:
+        try:
+            valeur = page.evaluate(
+                "(n) => { const el = document.querySelector(`[name=\"${n}\"]`);"
+                " return el ? String(el.value).slice(0, 120) : ''; }", nom) or ""
+        except Exception:
+            valeur = ""
+        mesures.append(RefusMesure(route=route, champ=nom, type_contrainte="refus_serveur",
+                                   valeur_contrainte="", valeur_refusee=valeur,
+                                   origine="serveur",
+                                   preuve="champ nommé par la réponse du serveur"))
+    return mesures
 
 
 def diagnostic_soumission(page) -> str:
@@ -1035,8 +1264,14 @@ def check_count_increased_by_one(context, model):
     # navigateur a refusé notre donnée (validation native), le verdict est `donnee_invalide`, pas
     # `non_conforme` : c'est notre jeu de données qui était irrecevable. Mesuré le 2026-07-22 —
     # 4 des 6 faux `non_conforme` passaient par ICI (l'assertion de comptage), pas par le clic.
-    if page is not None and _refus_par_le_navigateur(page):
-        raise DonneeRefuseeError(diagnostic_soumission(page))
+    invalides = _refus_par_le_navigateur(page) if page is not None else []
+    if invalides:
+        # ⚠️ C'est ICI que passaient 4 des 6 faux `non_conforme` mesurés — donc le site le plus
+        # rentable à faire apprendre, et celui que le plan initial avait oublié.
+        route = _route_courante(page)
+        lever_donnee_refusee(
+            diagnostic_soumission(page),
+            [m for m in (_refus_depuis_sonde(route, c) for c in invalides) if m])
 
     # ⚠️ §2bis étape 3a — la RÉPONSE SERVEUR, quand le navigateur n'a rien bloqué. C'est ce qui
     # lève les refus SILENCIEUX (rien créé, page muette) : la page ne dit rien, le serveur si.
@@ -1046,9 +1281,10 @@ def check_count_increased_by_one(context, model):
         if genre == "champs":
             # Le serveur a nommé DES CHAMPS : c'est notre donnée qui viole une règle serveur (le
             # plafond JS enfin capté côté serveur) → donnee_invalide, l'app n'est pas en cause.
-            raise DonneeRefuseeError(
+            lever_donnee_refusee(
                 f"LE SERVEUR A REFUSÉ D'ENREGISTRER — champ(s) invalide(s) : {detail}. "
-                f"⚠️ L'APPLICATION N'EST PAS EN CAUSE : c'est le jeu de données du test.")
+                f"⚠️ L'APPLICATION N'EST PAS EN CAUSE : c'est le jeu de données du test.",
+                _refus_serveur_mesures(page, detail))
         if genre == "generique":
             # Refus serveur sans champ nommé, sur une saisie valide côté navigateur : l'app rejette
             # en silence une donnée recevable = défaut de comportement (arbitrage porteur 2026-07-23).

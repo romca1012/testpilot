@@ -280,9 +280,17 @@ revienne.
 - [x] **Auditer le brief contre le code réel** — fait le 2026-07-24 : **17 écarts** relevés, tranchés
       un par un par le porteur, **11 amendements** inscrits au journal du brief. Le travail qui en
       découle est en tête de `BACKLOG.md`.
-- [ ] **Mettre en œuvre le §5bis du brief** — « zéro verdict non concluant », 6 mécanismes.
-      Le premier (la **règle apprise à chaque refus**) est le plus rentable : il attaque les règles
-      JavaScript, seul angle mort structurel de l'annuaire.
+- 🟡 **Mettre en œuvre le §5bis du brief** — « zéro verdict non concluant », 6 mécanismes.
+      **Le n°1 (la règle apprise à chaque refus) est LIVRÉ le 2026-08-03** → `decisions/0023`.
+      Chaque refus mesuré (navigateur, filtre JavaScript, serveur) devient une règle persistée,
+      fusionnée **à la lecture** avec l'annuaire — qui n'est jamais réécrit. C'était le seul angle
+      d'attaque possible sur les règles écrites en JavaScript, invisibles au crawl par
+      construction. **1167 tests verts** (+252), chaque garde vérifiée par sabotage.
+      ⚠️ **Non encore prouvé en réel** : il faut rejouer `fournisseur_creation` **deux fois** —
+      la 1ʳᵉ doit apprendre, la 2ᵈᵉ ne doit plus produire la valeur refusée. *Aucun test unitaire
+      ne peut prouver ce chantier* (§4 : ces défauts n'existent que sur une base vécue).
+      Restent les mécanismes 3 à 6 (le n°2 est partiellement acquis : la mémoire est recalculée à
+      chaque tentative, donc le rejeu suivant est informé).
 
 ### Phase 2 — Rendre déployable
 

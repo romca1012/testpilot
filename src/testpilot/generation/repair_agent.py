@@ -63,12 +63,16 @@ def build_repair_prompt(connector: Connector | None = None) -> str:
     return base
 
 
-def _failure_report(scenarios, failures, steps_content: str = "") -> str:
+def _failure_report(scenarios, failures, steps_content: str = "", memoire: str = "") -> str:
     """L'échec observé, tel qu'on le donne à l'agent. Factuel : ce qui s'est passé, rien de plus.
 
     On ne lui souffle PAS de diagnostic : la taxonomie classe par mots-clés du message (`0012`),
     et lui transmettre sa propre conclusion l'enfermerait dans une piste qui peut être fausse —
     le cas 6 l'a montré (« rôle manquant » alors que la session navigateur était anonyme).
+
+    ⚠️ **`memoire` n'est pas une exception à cette règle** : elle ne porte que des faits RUNTIME
+    (valeurs que l'application a refusées, signatures d'échec des tentatives passées), jamais ce
+    que l'agent a *dit* avoir tenté. Voir `memoire_reparation`.
     """
     lignes = ["# Échec observé lors de l'exécution réelle", ""]
     for s in scenarios or []:
@@ -82,6 +86,11 @@ def _failure_report(scenarios, failures, steps_content: str = "") -> str:
         lignes.append("```")
         lignes.append((f.raw or f.traceback_summary or "(aucun détail)")[:1500])
         lignes.append("```")
+        lignes.append("")
+    if memoire:
+        # Placée AVANT le fichier courant, pour que l'impératif final (« renvoie-le ENTIER »)
+        # reste la dernière chose lue — c'est celui qu'un agent a le plus tendance à oublier.
+        lignes.append(memoire)
         lignes.append("")
     if steps_content:
         # ⚠️ Sans le contenu ACTUEL, l'agent réécrit de mémoire — et rend un EXTRAIT. Mesuré en
@@ -116,6 +125,7 @@ def _last_assistant_text(state: AgentState) -> str:
 
 
 def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "",
+                memoire: str = "",
                 llm: LLMAdapter | None = None, connector: Connector | None = None,
                 dry_runner: DryRunner | None = None,
                 cost_tracker: CostTracker | None = None,
@@ -144,8 +154,12 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
     # réellement réécrit (le tool `_apply_effect` les remplit).
     state = AgentState(module_name=module_name, feature_written=True, steps_written=True,
                        dry_run_passed=True)
+    # ⚠️ La mémoire va dans le MESSAGE, jamais dans `build_repair_prompt` : le prompt système
+    # est identique pour tous les cas, donc son cache est partagé par tous. Le rendre unique par
+    # cas coûterait bien plus que la mémoire ne fait gagner.
     state.messages.append({"role": "user",
-                           "content": _failure_report(scenarios, failures, steps_content)})
+                           "content": _failure_report(scenarios, failures, steps_content,
+                                                      memoire)})
 
     shared_steps = steps_library.catalogue()
     ctx = ToolContext(

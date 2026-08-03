@@ -59,6 +59,7 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 
 import _base_helpers as H  # noqa: E402
 from testpilot import config  # noqa: E402
+from testpilot.generation import domain_model  # noqa: E402
 
 RACINES = ["/my/home", "/myservices"]
 
@@ -73,16 +74,13 @@ _HORS_PERIMETRE = re.compile(
     r"^/(web|odoo)(/|$|#)|^/@/|^/website/add/|/web/static|/web/session/logout"
     r"|nav_tabs_content|/export(/|$)|\.(css|js|png|jpg|jpeg|svg|ico|woff2?)$",
     re.IGNORECASE)
-_LANG_PREFIX = re.compile(r"^/[a-z]{2}(_[A-Z]{2})?(?=/)")
-_ID_SEGMENT = re.compile(r"/\d+(?=/|$)")
-
-
 def normalise(path: str) -> str:
-    """`/en/formulaire/12` → `/formulaire/{id}`. Le gabarit, pas l'instance."""
-    path = urlparse(path).path or "/"
-    path = _LANG_PREFIX.sub("", path)
-    path = _ID_SEGMENT.sub("/{id}", path)
-    return path.rstrip("/") or "/"
+    """`/en/formulaire/12` → `/formulaire/{id}`. Le gabarit, pas l'instance.
+
+    Délègue à `domain_model.normaliser_route` : le runtime apprend désormais des règles indexées
+    sur la route, et les deux doivent produire EXACTEMENT la même clé.
+    """
+    return domain_model.normaliser_route(path)
 
 
 def _inspecter_page(page):
@@ -250,7 +248,8 @@ def crawler(ctx, nav, base_url, max_pages):
         # Le crawl arrive souvent sur la version anglaise ; y envoyer un test ferait échouer
         # tous les steps à libellé français (« Envoyer » devient « Send »). On garde l'identifiant
         # concret — la seule chose qui manquait — sans imposer une locale.
-        infos["url_exemple"] = _LANG_PREFIX.sub("", urlparse(page.url).path or reelle) or reelle
+        infos["url_exemple"] = domain_model.retirer_prefixe_langue(
+            urlparse(page.url).path or reelle) or reelle
         pages[reelle] = infos
         print(f"  {len(pages):>3}. {reelle:<42} {len(infos['champs']):>2} champs  "
               f"{len(infos['formulaires'])} form")

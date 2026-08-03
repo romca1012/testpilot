@@ -45,3 +45,8 @@ dist/
 # qui ouvre le PDF ne voit pas que le .md a bougé depuis. Régénérer coûte une commande :
 # `python scripts/doc_en_pdf.py docs/ONBOARDING.md`.
 /docs/*.pdf
+
+# Règles apprises d'un refus réel (decisions/0023) : propres à une instance et à son état,
+# comme la base et les artefacts. Le fichier du CRAWL (data/domain/*.json) reste versionné —
+# c'est une référence relue par un humain ; celui-ci est une mesure d'exécution.
+data/regles-apprises/

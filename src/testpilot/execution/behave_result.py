@@ -54,6 +54,10 @@ class BehaveResult:
     # Niveau RUN : on ne les rattache pas au scénario (corréler l'ordre des logs aux scénarios
     # serait fragile pour un bénéfice marginal).
     field_fallbacks: list[str] = field(default_factory=list)
+    # Refus MESURÉS sur l'application pendant le run (§5bis n°1). Niveau RUN, même raison.
+    # Ce sont des FAITS, pas un verdict : ils n'influencent aucun statut, ils alimentent
+    # l'apprentissage pour que le résolveur ne reproduise plus la valeur refusée.
+    refus_mesures: list[dict] = field(default_factory=list)
     dry_run: bool = False
     raw_stdout: str = ""
     raw_stderr: str = ""
@@ -139,6 +143,13 @@ FIELD_FALLBACK_FILENAME = "field_fallbacks.txt"
 
 _MAX_FIELD_FALLBACKS = 20
 
+# Sidecar des refus MESURÉS pendant le run (§5bis n°1 — « la règle apprise à chaque refus »).
+# Mêmes noms dupliqués côté ``_base_helpers``, pour la même raison, et le même test d'accord.
+REGLES_REFUS_FILE_ENV = "TP_REGLES_REFUS_FILE"
+REGLES_REFUS_FILENAME = "regles_refus.jsonl"
+
+_MAX_REFUS = 20
+
 
 def read_field_fallbacks(path, limit: int = _MAX_FIELD_FALLBACKS) -> list[str]:
     """Replis « libellé → nom technique » consignés pendant le run (décision 0007, phase B+).
@@ -165,6 +176,40 @@ def read_field_fallbacks(path, limit: int = _MAX_FIELD_FALLBACKS) -> list[str]:
             if len(found) >= limit:
                 break
     return found
+
+
+def read_refus_mesures(path, limit: int = _MAX_REFUS) -> list[dict]:
+    """Les refus MESURÉS pendant le run, relus depuis le sidecar (§5bis n°1).
+
+    Chaque ligne est un objet JSON décrivant un fait constaté sur l'application : quelle route,
+    quel champ, quel drapeau de validation, quelle valeur a été refusée. Ce sont ces faits qui
+    deviendront des règles apprises, pour que le résolveur ne reproduise plus la valeur.
+
+    ⚠️ **Même raison qu'un fichier plutôt que le log** : Behave ne recrache pas la sortie d'un
+    scénario capturé, et un refus survient précisément dans des scénarios que Behave capture. Le
+    fichier ne dépend d'aucun routage de journalisation.
+
+    Tolérant : une ligne illisible est sautée, pas propagée. Fichier absent = aucun refus (le cas
+    nominal d'un run qui s'est bien passé), jamais une erreur.
+    """
+    try:
+        content = Path(path).read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return []
+    mesures: list[dict] = []
+    for line in content.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            objet = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(objet, dict):
+            mesures.append(objet)
+            if len(mesures) >= limit:
+                break
+    return mesures
 
 
 def classify_failure(snippet: str) -> tuple[str, str]:

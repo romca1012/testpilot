@@ -95,3 +95,8 @@ SQLite (`data/testpilot.db`), schéma en SQL portable (`store/schema.sql`), migr
 et idempotentes à l'ouverture. La base et les artefacts générés ne sont pas versionnés — **sauf**
 la cartographie du domaine (`data/domain/*.json`), qui est une **référence** dont la revue passe
 par le diff git.
+
+`data/regles-apprises/*.jsonl` porte ce que l'application a **refusé pour de vrai** pendant un run,
+pour que l'outil ne réécrive plus une valeur invalide (`docs/decisions/0023`). C'est le seul angle
+d'attaque sur les règles de validation écrites en JavaScript, qu'aucun crawl statique ne verra.
+Non versionné — c'est une mesure d'exécution, pas une référence — mais **à sauvegarder**.

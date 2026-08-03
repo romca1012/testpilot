@@ -36,7 +36,7 @@ import logging
 from dataclasses import dataclass, field
 
 from testpilot import config
-from testpilot.generation import repair_agent
+from testpilot.generation import memoire_reparation, repair_agent
 from testpilot.guardrails.cost_tracker import CostTracker
 from testpilot.guardrails.repair_circuit import CircuitState, evaluate, failure_signature
 from testpilot.store.repositories import (
@@ -299,6 +299,18 @@ def _scenarios_of(outcome) -> list:
     return list(outcome.real_run.scenarios) if outcome and outcome.real_run else []
 
 
+def _routes_du_cas(outcome) -> list[str]:
+    """Les routes que ce run a réellement touchées, pour ne montrer que les règles pertinentes.
+
+    Lues sur les refus MESURÉS du run (`route` y est déjà normalisée), jamais devinées dans le
+    texte des scénarios — qui est écrit par l'agent. Vide → la mémoire montre tout ce que le
+    projet a appris : mieux vaut un peu de bruit qu'une règle utile passée sous silence.
+    """
+    run = getattr(outcome, "real_run", None)
+    return sorted({str(m.get("route")) for m in (getattr(run, "refus_mesures", None) or [])
+                   if isinstance(m, dict) and m.get("route")})
+
+
 def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
                     outcome, run_once, connector=None, dry_runner=None) -> RepairSession:
     """Répare tant que le circuit l'autorise. `run_once(version_id) -> outcome` est injecté.
@@ -344,6 +356,9 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
 
     versions = VersionRepo(conn)
     cases = CaseRepo(conn)
+    # Le projet du cas : il désigne l'annuaire ET les règles apprises (`0005` — un annuaire par
+    # instance). Absent → la mémoire se taira, la réparation se lancera quand même.
+    project_id = (cases.get(case_id) or {}).get("project_id")
     current_version_id = version_id
     failures = _failures_of(outcome)
     # État de départ, figé AVANT toute réparation : c'est la référence de non-régression
@@ -374,11 +389,18 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             session.outcome, session.reason = "error", "version courante introuvable"
             break
 
+        # Ce que ce cas a DÉJÀ appris — recalculé à CHAQUE tentative (une requête SQL et un
+        # fichier, gratuit). C'est ce qui permet à la tentative 2 de savoir ce que le run de la
+        # tentative 1 vient de prouver, au lieu de le redécouvrir en le repayant.
+        regles, faits = memoire_reparation.collecter(
+            conn, case_id=case_id, project_id=project_id, routes=_routes_du_cas(outcome))
+
         # 1. L'agent propose — il ne décide de rien.
         proposal = repair_agent.propose_fix(
             module_name=module_name,
             scenarios=_scenarios_of(outcome),
             failures=failures,
+            memoire=memoire_reparation.as_prompt_section(regles, faits),
             # Le fichier ACTUEL : `write_steps_file` le REMPLACE, l'agent doit donc partir de
             # son contenu et le rendre entier — sans lui, il réécrit de mémoire et tronque.
             steps_content=version["steps_content"] or "",

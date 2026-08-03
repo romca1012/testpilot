@@ -120,6 +120,7 @@ Tout l'état tient dans **`data/`** :
 |---|---|
 | `data/testpilot.db` | référentiel complet : projets, cas, versions, exécutions, coûts |
 | `data/domain/projet-*.json` | la cartographie mesurée de chaque application |
+| `data/regles-apprises/projet-*.jsonl` | ce que l'application a **refusé** en vrai — pour que l'outil ne réécrive plus une valeur invalide (`decisions/0023`) |
 | `data/executions/<id>/` | la **trace brute** de chaque exécution (journal du moteur, détail par scénario, test joué) |
 | `data/.secret_key` | la clé de chiffrement, **si** elle n'est pas dans l'environnement |
 

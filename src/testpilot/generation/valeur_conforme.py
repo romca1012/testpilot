@@ -20,6 +20,7 @@ que le crawl les a lues dans le HTML.
 from __future__ import annotations
 
 import re
+import warnings
 from datetime import date, timedelta
 
 
@@ -132,10 +133,153 @@ def _borne_num(v) -> float | None:
         return None
 
 
+# ── Ce que les REFUS ont appris (§5bis n°1) ──────────────────────────────────
+#
+# Le crawl ne voit que le HTML ; une règle posée en JavaScript lui échappe par construction. Ce
+# que l'exécution a mesuré (une valeur refusée, une classe de caractères qu'un filtre conserve)
+# vient donc restreindre ce que le résolveur a le droit de produire — sans jamais contredire ce
+# que le crawl a réellement mesuré.
+
+# Combien de valeurs différentes tenter avant de renoncer. Borné : si 5 valeurs déterministes,
+# toutes conformes aux contraintes connues, sont refusées, le problème n'est pas le tirage — c'est
+# qu'une règle nous échappe encore. On le DIT (verdict `indetermine`) au lieu de tâtonner.
+_MAX_VARIANTES = 5
+
+# « uniquement des chiffres » et ses variantes → la classe que le champ accepte. Lu dans le
+# message de l'APPLICATION (comme `regle_lisible`, qui porte déjà l'attribut `title`), jamais
+# dans un texte écrit par l'agent.
+_CLASSE_DEPUIS_REGLE = (
+    (r"(uniquement|que)\s+des\s+chiffres", r"\d"),
+    (r"chiffres\s+(uniquement|seulement)", r"\d"),
+    (r"(uniquement|que)\s+des\s+lettres", r"[A-Za-z]"),
+)
+
+
+def _classe_depuis_regle(regle: str) -> str:
+    """La classe de caractères imposée par une règle écrite en français, ou `''`."""
+    for motif, classe in _CLASSE_DEPUIS_REGLE:
+        if re.search(motif, regle or "", re.IGNORECASE):
+            return classe
+    return ""
+
+
+def _respecte(classe: str, valeur: str) -> bool:
+    """`valeur` n'est-elle faite que de caractères de `classe` ?
+
+    Une classe qu'on ne sait pas compiler n'interdit **rien** : le mécanisme est détectif, pas
+    bloquant — une donnée mal formée en base ne doit jamais empêcher un test de tourner.
+    `warnings.catch_warnings` est là parce qu'une classe douteuse déclenche un `FutureWarning`
+    avant même de lever, et qu'un avertissement dans la sortie de test est du bruit qu'on finit
+    par ne plus lire.
+    """
+    if not valeur:
+        return False
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            return re.fullmatch(f"(?:{classe})+", valeur) is not None
+    except (re.error, FutureWarning, DeprecationWarning):
+        return True
+
+
+def _valeur_pour_classe(classe: str, champ: dict) -> str:
+    """Une valeur faite UNIQUEMENT de caractères de `classe`, longue de ce que le champ tolère.
+
+    La longueur reprend les signaux déjà connus, dans le même ordre que `_premier_candidat` :
+    un nombre de chiffres énoncé dans la règle, sinon `minlength`, sinon 8 — assez pour la
+    plupart des identifiants, et rogné par `maxlength` s'il existe.
+    """
+    contraintes = champ.get("contraintes") or {}
+    unite = _char_pour_classe(classe.strip("\\")) if classe.startswith("[") \
+        else _ECHAPPE.get(classe.lstrip("\\"), "1")
+    longueur = (_n_chiffres_depuis_regle(contraintes.get("regle_lisible") or "")
+                or _borne_num(contraintes.get("minlength")) or 8)
+    maxlen = _borne_num(contraintes.get("maxlength"))
+    if maxlen is not None:
+        longueur = min(longueur, maxlen)
+    return unite * max(1, int(longueur))
+
+
+def _variantes(base: str, champ: dict):
+    """Des valeurs ALTERNATIVES à `base`, toujours conformes aux contraintes connues.
+
+    On ne « bruite » pas au hasard : on fait varier le remplissage en gardant la forme. Pour un
+    `pattern`, on incrémente le chiffre de bourrage (`1111111` → `2222222`) puis on re-vérifie par
+    `re.fullmatch` — exactement ce que fait déjà `valeur_pour_motif`. Une variante qui ne passe
+    pas la vérification n'est pas proposée : mieux vaut renoncer que produire un faux.
+    """
+    contraintes = champ.get("contraintes") or {}
+    motif = contraintes.get("pattern") or ""
+    for n in range(2, _MAX_VARIANTES + 1):
+        if motif:
+            candidat = re.sub(r"\d", str(n % 10), base)
+            if candidat != base and re.fullmatch(motif, candidat):
+                yield candidat
+            continue
+        suffixe = str(n)
+        maxlen = _borne_num(contraintes.get("maxlength"))
+        candidat = base + suffixe
+        if maxlen is not None and len(candidat) > maxlen:
+            candidat = base[:max(0, int(maxlen) - len(suffixe))] + suffixe
+        if candidat != base:
+            yield candidat
+
+
 # ── Le point d'entrée ────────────────────────────────────────────────────────
 
 def valeur_pour(champ: dict) -> str:
     """Une valeur DÉTERMINISTE garantie recevable par `champ`, ou `ValeurNonSynthetisable`.
+
+    ⚠️ **Sans règle apprise, le comportement est INCHANGÉ** : le premier candidat proposé est
+    exactement la valeur que ce module produisait avant (`_premier_candidat`). L'apprentissage ne
+    fait que **retirer** des possibilités déjà réfutées par l'application — il n'en invente aucune.
+
+    `champ` peut porter deux clés supplémentaires, posées par `regles_apprises.fusionner` :
+    `valeurs_interdites` (des valeurs que l'application a REFUSÉES pour de vrai) et
+    `contraintes.classe_conservee` (la classe qu'un filtre JavaScript laisse passer).
+    """
+    interdites = {str(v) for v in (champ.get("valeurs_interdites") or ())}
+
+    # ⚠️ **Un champ à OPTIONS RÉELLES est traité à part, et c'est `0019` qui l'impose** : on ne
+    # produit JAMAIS une valeur qui ne figure pas dans la liste. Une règle apprise peut écarter
+    # une option refusée — elle ne peut pas en inventer une. Sans cette borne, une classe apprise
+    # (`\d`) faisait proposer « 11111111 » sur un `<select>` : exactement la valeur inventée que
+    # `0019` a corrigée. (Trouvé par le test de garde, pas à la relecture.)
+    options = [str(o) for o in (champ.get("options") or []) if str(o).strip()]
+    if options:
+        for option in options:
+            if option not in interdites:
+                return option
+        raise ValeurNonSynthetisable(
+            f"champ {champ.get('name')!r} : TOUTES les options réelles ({len(options)}) ont été "
+            f"refusées par l'application. On n'en invente pas — cas à instruire.")
+
+    classe = ((champ.get("contraintes") or {}).get("classe_conservee")
+              or _classe_depuis_regle((champ.get("contraintes") or {}).get("regle_lisible") or ""))
+
+    base = _premier_candidat(champ)
+    # Une classe apprise (filtre JS, ou règle en français) que le candidat historique ne respecte
+    # pas : on ne se contente pas de le REFUSER, on PRODUIT une valeur conforme. C'est le cas
+    # `tva_intracommunautaire` — aucune contrainte HTML, le repli texte donnait « TestPilot », et
+    # le navigateur le refusait à chaque rejeu.
+    if classe and not _respecte(classe, base):
+        base = _valeur_pour_classe(classe, champ)
+
+    for candidat in (base, *_variantes(base, champ)):
+        if candidat in interdites:
+            continue
+        if classe and not _respecte(classe, candidat):
+            continue
+        return candidat
+
+    raise ValeurNonSynthetisable(
+        f"champ {champ.get('name')!r} : toutes les valeurs déterministes que je sais produire ont "
+        f"déjà été REFUSÉES par l'application (ou violent une règle apprise à l'exécution). "
+        f"Une contrainte nous échappe encore — cas à instruire, pas un défaut applicatif.")
+
+
+def _premier_candidat(champ: dict) -> str:
+    """La valeur historique de ce module — inchangée, et rendue en premier.
 
     Ordre de décision, du signal le plus fort au plus faible :
     options réelles → motif `pattern` → indice de la règle lisible → type (number/date/email/tel/

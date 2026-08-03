@@ -43,9 +43,16 @@ découle comme travail est listé ici. Détail des arbitrages : journal du brief
   restituer. Un critère de succès jamais mesuré est le « statut déclaratif » qu'on reproche ailleurs.
 - [x] **Afficher le taux de verdicts concluants** au banc (§9) — *fait le 2026-07-24*. Le récapitulatif de fin de banc a été extrait en fonction pure et couvert par des tests : il avait planté une fois APRÈS la dépense, et n'était atteignable qu'en repayant un banc.
 - [ ] 🔴 **Les six mécanismes du « zéro verdict non concluant »** (§5bis) — dans l'ordre de rendement :
-  1. **la règle apprise** : chaque refus (navigateur ou serveur) enrichit l'annuaire du projet, pour
-     que le résolveur ne puisse plus produire cette valeur. *Seul moyen d'atteindre les règles
-     écrites en JavaScript, invisibles au crawl.* **Le plus rentable — à faire en premier.**
+  1. [x] **la règle apprise** — ✅ **LIVRÉE le 2026-08-03** (`decisions/0023`). Chaque refus
+     (navigateur, filtre JavaScript ou serveur) est mesuré et persisté dans
+     `data/regles-apprises/projet-{id}.jsonl`, **fusionné à la LECTURE** avec l'annuaire du crawl —
+     qui n'est jamais réécrit (l'invariant de `domain_model` tient, et le brief est honoré en
+     lisant « annuaire » comme la connaissance du résolveur, pas comme le fichier).
+     Le résolveur ne peut plus reproduire une valeur refusée. **Reste à prouver en réel** : rejouer
+     `fournisseur_creation` deux fois (la 1ʳᵉ apprend, la 2ᵈᵉ ne doit plus échouer).
+     *Au passage* : le mécanisme n°2 (rejeu informé dans le run) est partiellement acquis — la
+     mémoire est recalculée à chaque tentative, donc la tentative 2 sait ce que le run de la
+     tentative 1 vient de prouver.
   2. rejeu immédiat après correction, dans le run, borné par le budget existant ;
   3. préconditions montées par RPC, l'interface ne pilotant que ce qui est sous test ;
   4. oracle sur l'**état**, jamais sur l'écran ;
@@ -221,8 +228,21 @@ est la **gouvernance du verdict**, pas la sécurité.)*
   tentative** contre $0,2895 avant le fix P0 : **−29 %**, le dry-run supprime un appel LLM perdu.
   ⚠️ **2 échantillons très dispersés** ($0,3088 vs $0,1041) : le coût suit le **nombre de tours
   ReAct**, pas un tarif fixe — ne pas le traiter comme une constante. Le plafond $0,62 reste bon.
-- [ ] 🔴 **La boucle rachète les mêmes correctifs à chaque rejeu** (`0018` — **note écrite, À
-  ARBITRER, PRIORITÉ 1 — aucun code avant arbitrage**). `v7` fait passer **1 scénario sur 3** (v1 :
+- [x] 🔴 **La boucle rachète les mêmes correctifs à chaque rejeu** (`0018`) — ✅ **LIVRÉE**, en deux
+  temps. ⚠️ **Cette entrée est restée périmée dix jours**, à dire « à arbitrer, aucun code avant
+  arbitrage » alors que le code était en place : corrigé le 2026-08-03. *Un backlog qui ment sur
+  ce qui est fait fait re-planifier du travail déjà livré — c'est le motif même du `PLAN.md`.*
+  - **Volet ADOPTION** — livré le 2026-07-23 (`56efaf7`), prouvé en réel (`552def6`) :
+    `progresse()` adopte une version qui a strictement moins d'échecs techniques, et
+    `couverture_perdue()` referme la porte que ça ouvrait (supprimer un scénario en échec ferait
+    sinon « progresser » le compteur). Les deux sont indissociables, verrouillé par l'ordre des
+    gardes.
+  - **Volet CONNAISSANCE** — livré le 2026-08-03 (`decisions/0023`) : `RepairRepo.historique_pour_cas`
+    + `memoire_reparation` injectent dans le prompt de réparation les **faits runtime** déjà établis
+    (valeurs refusées, signatures d'échec des tentatives passées, y compris d'une session à l'autre).
+    L'adoption gardait une **version** ; il manquait de garder un **savoir**.
+  - *Historique du diagnostic, conservé ci-dessous.*
+  `v7` fait passer **1 scénario sur 3** (v1 :
   0/3), délègue l'auth, ne réinvente aucun transport — **et elle est jetée**, disque rembobiné sur
   `v1`. Cause : `est_executable` exige que **TOUS** les scénarios tournent ; 2/3 en
   `technical_error` ⇒ verdict global `technical_error` ⇒ non adoptée.

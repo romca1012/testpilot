@@ -1515,6 +1515,24 @@ class RepairRepo:
             "SELECT * FROM repair_attempt WHERE execution_id=? ORDER BY attempt_number",
             (execution_id,)))
 
+    def historique_pour_cas(self, case_id: int, limit: int = 20) -> list[dict]:
+        """Toutes les tentatives d'un CAS — toutes exécutions, toutes sessions confondues.
+
+        ⚠️ **Ce trou est la raison pour laquelle la boucle rachetait les mêmes correctifs.** La
+        base portait déjà tout l'historique (signature d'échec, cause, issue), mais on ne savait
+        le lire que par exécution : chaque nouvelle session repartait donc aveugle, et
+        redécouvrait — en le repayant — ce qu'une session précédente avait déjà établi.
+
+        Rendu du plus RÉCENT au plus ancien : c'est ce qui informe le plus, et le plafond coupe
+        donc par la queue.
+        """
+        return _rows(self.conn.execute(
+            "SELECT ra.*, e.version_id, e.execution_status, e.functional_status"
+            " FROM repair_attempt ra JOIN execution e ON e.id = ra.execution_id"
+            " WHERE e.test_case_id = ?"
+            " ORDER BY ra.created_at DESC, ra.id DESC LIMIT ?",
+            (case_id, limit)))
+
 class CostRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn

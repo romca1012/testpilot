@@ -122,8 +122,8 @@ def conn(tmp_path):
     c.close()
 
 
-def _cas(conn, *, budget=2):
-    cid = CaseRepo(conn).create(title="Cas", feature_slug="cas")
+def _cas(conn, *, budget=2, module_id=None):
+    cid = CaseRepo(conn).create(title="Cas", feature_slug="cas", module_id=module_id)
     vid = VersionRepo(conn).create(test_case_id=cid, spec_content="spec", spec_hash="h",
                                    feature_content="# feature v1", steps_content="# steps v1")
     CaseRepo(conn).set_current_version(cid, vid)
@@ -813,3 +813,79 @@ def test_regressions_est_une_fonction_pure_et_gratuite():
     assert repair_service.regressions(avant, avant) == []
     # Un run qui n'a pas tourné n'a aucun scénario vert : rien à comparer, aucune régression.
     assert repair_service.regressions(_Outcome(real_run=None), apres) == []
+
+
+# ── La MÉMOIRE : ce qu'une session a appris, la suivante le sait (§5bis n°1 + 0018) ──
+
+def test_GARDE_une_regle_apprise_a_la_session_1_est_CONNUE_a_la_session_2(
+        conn, monkeypatch, tmp_path):
+    """Le cœur du chantier : la connaissance traverse les sessions de rejeu.
+
+    ⚠️ Échoue sur le code d'avant. `propose_fix` ne recevait que le fichier de steps courant :
+    chaque session repartait aveugle et redécouvrait — en la REPAYANT — une contrainte que
+    l'application avait déjà refusée. C'est le volet de `0018` que l'adoption sur progrès
+    (`progresse`/`couverture_perdue`) ne pouvait pas fermer : elle garde une version, pas un
+    savoir.
+    """
+    from testpilot.generation import regles_apprises as ra
+    from testpilot.store.repositories import ModuleRepo, ProjectRepo
+
+    monkeypatch.setattr(ra, "REGLES_DIR", tmp_path / "regles-apprises")
+    ra._lire.cache_clear()
+
+    # Rattaché à un PROJET : les règles apprises sont propres à une instance (`0005`), et sans
+    # projet il n'y a rien à retrouver. C'est aussi la forme réelle d'un cas en production.
+    projet = ProjectRepo(conn).create(name="Portail", description="")
+    module = ModuleRepo(conn).create(project_id=projet, name="Fournisseurs", description="")
+    cid, vid, eid = _cas(conn, budget=1, module_id=module)
+
+    # Session 1 : l'application refuse notre donnée. Le fait est appris.
+    ra.enregistrer(projet, [{"route": "/fournisseur/creation",
+                             "champ": "tva_intracommunautaire",
+                             "type_contrainte": "customError", "valeur_contrainte": "",
+                             "valeur_refusee": "TestPilot", "origine": "navigateur",
+                             "preuve": "uniquement des chiffres"}])
+
+    vus = {}
+
+    def faux_propose(**kwargs):
+        vus.update(kwargs)
+        return RepairProposal(changed=False)
+
+    monkeypatch.setattr(repair_service.repair_agent, "propose_fix", faux_propose)
+    depart = _echec(); depart.execution_id = eid
+
+    # Session 2 : une NOUVELLE boucle, qui n'a rien vu de la première.
+    repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_echec()]))
+
+    memoire = vus.get("memoire") or ""
+    assert "tva_intracommunautaire" in memoire, (
+        "la règle apprise à la session précédente doit parvenir à l'agent — sinon il la "
+        "redécouvre et la repaye à chaque rejeu")
+    assert "TestPilot" in memoire
+
+
+def test_sans_rien_d_appris_la_memoire_reste_VIDE(conn, monkeypatch, tmp_path):
+    """Anti-faux-positif : pas de section, donc aucun coût de prompt ajouté."""
+    from testpilot.generation import regles_apprises as ra
+
+    monkeypatch.setattr(ra, "REGLES_DIR", tmp_path / "vide")
+    ra._lire.cache_clear()
+
+    cid, vid, eid = _cas(conn, budget=1)
+    vus = {}
+
+    def faux_propose(**kwargs):
+        vus.update(kwargs)
+        return RepairProposal(changed=False)
+
+    monkeypatch.setattr(repair_service.repair_agent, "propose_fix", faux_propose)
+    depart = _echec(); depart.execution_id = eid
+
+    repair_service.run_repair_loop(
+        conn, case_id=cid, version_id=vid, module_name="cas",
+        outcome=depart, run_once=_runner(conn, cid, [_echec()]))
+
+    assert vus.get("memoire") == ""

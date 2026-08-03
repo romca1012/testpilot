@@ -24,14 +24,47 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 
 from testpilot import config
 
 logger = logging.getLogger(__name__)
 
 DOMAIN_DIR = config.DATA_DIR / "domain"
+
+_LANG_PREFIX = re.compile(r"^/[a-z]{2}(_[A-Z]{2})?(?=/)")
+_ID_SEGMENT = re.compile(r"/\d+(?=/|$)")
+
+
+def retirer_prefixe_langue(chemin: str) -> str:
+    """`/en/achat_siege/113` → `/achat_siege/113`. L'identifiant CONCRET est conservé.
+
+    Distinct de `normaliser_route`, qui remplace en plus l'identifiant par `{id}`. Le crawl a
+    besoin des deux : la route normalisée pour dédupliquer, l'URL concrète pour qu'un test
+    navigue vers une page qui existe vraiment (`0021`).
+    """
+    return _LANG_PREFIX.sub("", chemin or "")
+
+
+def normaliser_route(url: str) -> str:
+    """`/en/formulaire/12` → `/formulaire/{id}`. Le gabarit, pas l'instance.
+
+    ⚠️ **Vit ici, et pas dans le crawl, parce qu'il y a désormais DEUX producteurs de routes** :
+    le crawl (qui écrit l'annuaire) et le runtime (qui apprend une règle d'un refus, et doit
+    l'indexer sur la même clé). Deux normalisations qui divergeraient indexeraient deux mondes :
+    une règle apprise sur `/en/fournisseur/creation` ne serait jamais retrouvée pour la route
+    `/fournisseur/creation` de l'annuaire. `scripts/crawl_domaine.py` délègue ici.
+
+    Le préfixe de langue est retiré : `0021` a montré qu'une URL localisée fait échouer tous les
+    steps à libellé français (« Envoyer » → « Send »).
+    """
+    chemin = urlparse(url or "").path or "/"
+    chemin = _LANG_PREFIX.sub("", chemin)
+    chemin = _ID_SEGMENT.sub("/{id}", chemin)
+    return chemin.rstrip("/") or "/"
 
 
 def chemin_du_modele(project_id: int) -> Path:

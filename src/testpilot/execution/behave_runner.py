@@ -22,9 +22,12 @@ from testpilot import config
 from testpilot.execution.behave_result import (
     FIELD_FALLBACK_FILE_ENV,
     FIELD_FALLBACK_FILENAME,
+    REGLES_REFUS_FILE_ENV,
+    REGLES_REFUS_FILENAME,
     BehaveResult,
     parse_behave_json,
     read_field_fallbacks,
+    read_refus_mesures,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,7 +79,8 @@ class BehaveRunner:
         désigné à CHAQUE run, connexion propre au projet ou non.
         """
         env = {**os.environ, **self.connection,
-               FIELD_FALLBACK_FILE_ENV: str(run_dir / FIELD_FALLBACK_FILENAME)}
+               FIELD_FALLBACK_FILE_ENV: str(run_dir / FIELD_FALLBACK_FILENAME),
+               REGLES_REFUS_FILE_ENV: str(run_dir / REGLES_REFUS_FILENAME)}
         # `src` importable dans le sous-processus : le résolveur déterministe (§2bis) importe
         # `testpilot.generation.{valeur_conforme,domain_model}`. Sans ça, `python -m behave`
         # (cwd = run_dir jetable) ne voit pas le paquet `testpilot`. On PRÉPEND pour primer sur
@@ -137,9 +141,42 @@ class BehaveRunner:
             # et depuis le fichier — pas depuis la sortie de Behave, qui n'en porte rien sur un
             # scénario vert (cf. read_field_fallbacks).
             result.field_fallbacks = read_field_fallbacks(run_dir / FIELD_FALLBACK_FILENAME)
+            # Refus MESURÉS pendant le run (§5bis n°1). Lus ici, avant le rmtree, puis appris.
+            result.refus_mesures = read_refus_mesures(run_dir / REGLES_REFUS_FILENAME)
+            self._apprendre(result, dry_run=dry_run)
             return result
         finally:
             shutil.rmtree(run_dir, ignore_errors=True)
+
+    def _apprendre(self, result: BehaveResult, *, dry_run: bool) -> None:
+        """Persiste les refus mesurés en règles apprises pour ce projet (§5bis n°1).
+
+        ⚠️ **Pourquoi ICI et nulle part ailleurs.** `run_service` et `cli.py` clôturent tous deux
+        une exécution : y brancher l'apprentissage le dédoublerait, et un jour l'un des deux
+        divergerait. Le runner est le seul point que les deux traversent, et il connaît déjà le
+        projet.
+
+        Trois bornes, chacune assumée :
+
+        - **jamais sur un dry-run** — il ne touche pas l'application, il ne mesure rien ;
+        - **on apprend MÊME SI la version est rejetée** par la boucle de réparation. Un refus
+          mesuré est un fait sur l'application ; adopter une version est une décision sur notre
+          code. Les confondre perdrait le fait ;
+        - **best-effort, jamais fatal** — un disque plein ne doit pas faire tomber une exécution
+          qui a créé de vraies données dans l'application testée (même arbitrage que l'archivage).
+        """
+        if dry_run or self.project_id is None or not result.refus_mesures:
+            return
+        try:
+            from testpilot.generation import regles_apprises
+            apprises = regles_apprises.enregistrer(self.project_id, result.refus_mesures)
+        except Exception:
+            logger.warning("[règles apprises] apprentissage impossible — le run reste intact",
+                           exc_info=True)
+            return
+        if apprises:
+            logger.info("[règles apprises] projet %s : %d refus mesuré(s) enregistré(s)",
+                        self.project_id, apprises)
 
     def _archiver(self, run_dir: Path, module_name: str, *, dry_run: bool, journal: str) -> None:
         """Recopie la trace brute du run hors du dossier temporaire, avant sa destruction.
@@ -150,7 +187,9 @@ class BehaveRunner:
         - le **JSON de Behave** : le détail par scénario et par step, avec les messages d'erreur ;
         - le **.feature** et les **steps** RÉELLEMENT joués : le cas a pu changer depuis, et un
           résultat qu'on relit six mois plus tard doit être lisible avec le test de son époque ;
-        - les **replis de champ** consignés pendant le run, s'il y en a eu.
+        - les **replis de champ** consignés pendant le run, s'il y en a eu ;
+        - les **refus mesurés** : ce que l'application a refusé, et qui devient une règle apprise.
+          Archivé pour qu'on puisse relire *pourquoi* une valeur est interdite depuis ce run-là.
 
         ⚠️ **Best-effort, jamais bloquant.** Un disque plein ou un droit manquant ne doit pas
         transformer un run réussi en échec : l'archivage échoue en silence journalisé. L'inverse
@@ -168,6 +207,7 @@ class BehaveRunner:
                 (run_dir / f"{module_name}.feature", f"{module_name}.feature"),
                 (run_dir / "steps" / f"{module_name}_steps.py", f"{module_name}_steps.py"),
                 (run_dir / FIELD_FALLBACK_FILENAME, f"{prefixe}.replis-de-champ.json"),
+                (run_dir / REGLES_REFUS_FILENAME, f"{prefixe}.refus-mesures.jsonl"),
             ):
                 if source.exists():
                     shutil.copy2(source, self.artifacts_dir / cible)
