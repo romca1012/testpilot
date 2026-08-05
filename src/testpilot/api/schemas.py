@@ -314,28 +314,50 @@ class MetierDraftOut(BaseModel):
     expected_result: str = ""
 
 
+class SectionDraftOut(BaseModel):
+    """Une Section proposée (= une user story) et l'ensemble MINIMAL de cas planifiés pour la
+    couvrir (§9, génération multi-cas, 2026-08-05) — un nombre variable, jamais fixé d'avance."""
+    title: str = ""
+    cases: list[MetierDraftOut] = []
+
+
 class GenerationJobOut(BaseModel):
     job_id: str
     # running | awaiting_metier | done | failed
     # ⚠️ `awaiting_metier` n'est PAS un état d'attente technique : le job est arrêté et n'ira
-    # nulle part tant qu'un humain n'aura pas validé le document métier (décision `0022` n°5).
+    # nulle part tant qu'un humain n'aura pas validé l'ensemble des Sections proposées
+    # (décision `0022` n°5, étendue au §9).
     status: str
-    case_id: int | None = None
+    case_ids: list[int] = []
     error: str = ""
     # Rempli uniquement en `awaiting_metier`.
-    metier: MetierDraftOut | None = None
+    sections: list[SectionDraftOut] | None = None
 
 
-class MetierValidationIn(BaseModel):
-    """Le document métier tel que l'humain le valide — corrections comprises.
+class CaseValidationIn(BaseModel):
+    """UN cas, tel que l'humain le valide dans sa Section — corrections comprises.
 
     C'est CE contenu qui fera foi pour l'écriture du Gherkin, pas la proposition de l'IA :
-    l'humain peut tout réécrire, c'est l'intérêt de la pause.
+    l'humain peut tout réécrire, ou supprimer le cas de la liste (l'écran de validation le
+    permet), c'est l'intérêt de la pause.
     """
     title: str
     preconditions: str = ""
     steps: list[str]
     expected_result: str
+
+
+class SectionValidationIn(BaseModel):
+    """UNE Section (= une user story) telle que l'humain la valide, avec ses cas RETENUS —
+    potentiellement moins nombreux que la proposition initiale."""
+    title: str
+    cases: list[CaseValidationIn]
+
+
+class MetierValidationIn(BaseModel):
+    """L'ensemble des Sections tel que l'humain le valide — la structure complète, pas un seul
+    document : c'est le §9 (génération multi-cas) qui distingue ce schéma de l'ancien."""
+    sections: list[SectionValidationIn]
 
 
 class ProjectIn(BaseModel):

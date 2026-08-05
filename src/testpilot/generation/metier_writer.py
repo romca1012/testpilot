@@ -45,10 +45,10 @@ _METIER_SCHEMA = {
 }
 
 
-def _data_metier(llm, plan: TestPlan, model: str, cost_tracker) -> dict:
+def _data_metier(llm, plan: TestPlan, model: str, cost_tracker, brief: str = "") -> dict:
     """Le dict du document métier. Sorties structurées si l'adaptateur les expose (`call_json`),
     sinon parsing tolérant — ce qui garde inchangés les adaptateurs minimaux (fakes de test)."""
-    user = _build_prompt(plan)
+    user = _build_prompt(plan, brief)
     modele = model or config.MODEL_FAST
     if hasattr(llm, "call_json"):
         return llm.call_json(system_prompt=_SYSTEM, user_content=user, schema=_METIER_SCHEMA,
@@ -126,12 +126,25 @@ def _clean_step(raw: str) -> str:
     return _GHERKIN_KW.sub("", s).strip()
 
 
-def _build_prompt(plan: TestPlan) -> str:
+def _build_prompt(plan: TestPlan, brief: str = "") -> str:
+    # `brief` vient du découpage (`decoupage.propose_decoupage`) : il dit CE CAS précis à écrire
+    # dans le contexte de la spécification entière — il s'AJOUTE au texte complet, il ne le
+    # remplace jamais (l'agent a besoin de tout le contexte pour rédiger un document cohérent).
+    consigne_cas = (
+        f"""
+
+CE CAS PRÉCIS :
+{brief}
+
+Rédige UNIQUEMENT ce cas — pas les autres cas de la même spécification, ils sont rédigés
+séparément. Le brief ci-dessus dit ce qui le distingue des autres ; le reste de la spécification
+est le contexte dans lequel il s'inscrit.
+""" if brief else "")
     return f"""Rédige LE DOCUMENT MÉTIER d'un cas de test, à partir de cette spécification.
 
 SPÉCIFICATION :
 {plan.raw_spec}
-
+{consigne_cas}
 Réponds en JSON :
 {{
   "title": "phrase métier décrivant ce qui est vérifié",
@@ -155,8 +168,12 @@ RÈGLES IMPÉRATIVES :
 
 
 def propose_metier(plan: TestPlan, *, llm: LLMAdapter | None = None,
-                   cost_tracker=None, model: str = "") -> MetierDraft:
+                   cost_tracker=None, model: str = "", brief: str = "") -> MetierDraft:
     """Un appel LLM → le document métier d'UN cas. Ne persiste rien.
+
+    `brief` — vient du découpage (§9a) : quel cas précis rédiger dans cette spécification, parmi
+    tous ceux planifiés pour la même user story. Vide (défaut) : comportement d'avant, un seul
+    document pour toute la spec — c'est le chemin CLI et l'automatisation d'un cas manuel.
 
     Aucun contenu n'est fabriqué en cas d'échec : si le modèle ne rend pas de JSON exploitable,
     on renvoie un brouillon VIDE (`complete` faux) et l'appelant le signale. Inventer un titre
@@ -164,7 +181,7 @@ def propose_metier(plan: TestPlan, *, llm: LLMAdapter | None = None,
     l'arbitrage A.1 de la migration 14, qui a refusé de dériver le métier du Gherkin.
     """
     llm = llm or LLMAdapter()
-    data = _data_metier(llm, plan, model, cost_tracker)
+    data = _data_metier(llm, plan, model, cost_tracker, brief)
     if not data:
         logger.warning("[metier] aucune donnée JSON exploitable — brouillon vide")
         return MetierDraft()

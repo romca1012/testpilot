@@ -20,6 +20,8 @@ from fastapi import (
     UploadFile,
 )
 
+from testpilot import config
+from testpilot.analysis import spec_analyzer
 from testpilot.api import erreurs, access, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import generation_service, spec_extract
@@ -135,14 +137,17 @@ def create_manual_case(module_id: int, body: schemas.ManualCaseIn, request: Requ
 
 @router.post("/{module_id}/cases/extract", response_model=schemas.SpecExtractOut)
 async def extract_spec(module_id: int, file: UploadFile = File(...), conn=Depends(get_conn)):
-    """Extrait le TEXTE d'un fichier téléversé (.txt/.md/.docx) pour pré-remplir la génération.
+    """Extrait le TEXTE d'un fichier téléversé (.txt/.md/.docx/.pdf) pour pré-remplir la
+    génération, et conserve l'ORIGINAL sur disque pour une version plus évoluée.
 
     On ne devine pas le format à l'extension seule : `spec_extract` lève une erreur claire pour
-    un type non géré (PDF nécessiterait une dépendance) — jamais un texte vide silencieux.
+    un type non géré, ou pour un PDF sans texte extractible — jamais un texte vide silencieux.
+    La lecture est bornée (`SPEC_MAX_BYTES`) et vérifiée PENDANT la lecture, comme les pièces
+    jointes d'un résultat : un envoi qui ment sur sa taille n'est jamais chargé en entier.
     """
     if ModuleRepo(conn).get(module_id) is None:
         raise HTTPException(status_code=404, detail=f"module {module_id} introuvable")
-    data = await file.read()
+    data = await spec_extract.lire_borne(file, config.SPEC_MAX_BYTES)
     try:
         text = spec_extract.extract_text(file.filename or "", data)
     except spec_extract.UnsupportedFormat as exc:
@@ -150,6 +155,9 @@ async def extract_spec(module_id: int, file: UploadFile = File(...), conn=Depend
     if not text.strip():
         raise HTTPException(status_code=422,
                             detail="le fichier ne contient aucun texte exploitable")
+    # Le fichier original, adressé par le hash du texte qu'il a produit — pas par son nom, qui
+    # peut se répéter d'un téléversement à l'autre sans désigner le même document.
+    spec_extract.conserver_original(spec_analyzer.spec_hash(text), file.filename or "", data)
     return schemas.SpecExtractOut(text=text, filename=file.filename or "")
 
 
@@ -201,22 +209,29 @@ def get_job(job_id: str):
     job = generation_service.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job introuvable")
-    metier = job.get("metier") if job["status"] == "awaiting_metier" else None
+    sections = job.get("sections") if job["status"] == "awaiting_metier" else None
     return schemas.GenerationJobOut(
-        job_id=job_id, status=job["status"], case_id=job["case_id"], error=job["error"],
-        metier=schemas.MetierDraftOut(**metier) if metier else None)
+        job_id=job_id, status=job["status"], case_ids=job.get("case_ids") or [],
+        error=job["error"],
+        sections=[schemas.SectionDraftOut(
+                      title=s["title"],
+                      cases=[schemas.MetierDraftOut(**c) for c in s["cases"]])
+                  for s in sections] if sections else None)
 
 
 @router.post("/jobs/{job_id}/metier", response_model=schemas.GenerationJobOut, status_code=202)
 def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: BackgroundTasks):
-    """PASSE 4b — l'humain valide (ou corrige) le document métier ; le Gherkin est alors écrit.
+    """PASSE 4b — l'humain valide (ou corrige, ou réduit) l'ensemble des Sections ; le Gherkin de
+    chaque cas retenu est alors écrit.
 
-    C'est le point de reprise de la pause voulue par `0022` n°5 : le technique n'est payé
-    qu'après qu'un humain a signé l'intention. Le corps de la requête FAIT FOI — si le relecteur
-    a réécrit les étapes, ce sont les siennes qui partent à la génération, pas celles de l'IA.
+    C'est le point de reprise de la pause voulue par `0022` n°5, étendue au §9 : le technique
+    n'est payé qu'après qu'un humain a signé l'intention. Le corps de la requête FAIT FOI — si le
+    relecteur a réécrit des étapes ou supprimé un cas, c'est ce qu'il a validé qui part à la
+    génération, pas la proposition de l'IA.
     """
     try:
-        params = generation_service.validate_metier(job_id, body.model_dump())
+        sections = [s.model_dump() for s in body.sections]
+        params = generation_service.validate_metier(job_id, sections)
     except generation_service.GenerationError as err:
         raise erreurs.depuis_service(err.code, err.detail)
 

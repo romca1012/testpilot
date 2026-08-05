@@ -243,9 +243,9 @@ def test_un_fichier_TROP_GROS_est_refuse_avec_son_propre_code(client, campagne, 
 
 
 def test_un_refus_de_taille_ne_laisse_AUCUN_fragment_sur_le_disque(client, campagne, monkeypatch):
-    """⚠️ Le contenu est écrit par morceaux (ne pas recopier le défaut de `/cases/extract`, qui
-    charge tout en mémoire) : le refus tombe donc APRÈS un début d'écriture. Un fragment laissé
-    là remplirait le disque, refus après refus, sans jamais apparaître nulle part."""
+    """⚠️ Le contenu est écrit par morceaux : le refus tombe donc APRÈS un début d'écriture. Un
+    fragment laissé là remplirait le disque, refus après refus, sans jamais apparaître nulle
+    part."""
     monkeypatch.setattr(config, "ATTACHMENT_MAX_BYTES", 32)
     rid = _resultat(client, campagne)
 

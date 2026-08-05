@@ -7,6 +7,10 @@
  * vide indéfiniment — l'utilisateur voit un spinner pour un travail qui n'arrivera jamais.
  *
  * Ces tests montent la vraie page et vérifient les trois temps : spec → pause éditable → Gherkin.
+ *
+ * ⚠️ Étendu au §9 (génération MULTI-CAS, 2026-08-05) : la pause ne porte plus UN document, mais
+ * des SECTIONS (une par user story) groupant plusieurs cas — `job.metier`/`job.case_id`
+ * (singuliers) sont devenus `job.sections`/`job.case_ids` (pluriels).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -45,9 +49,15 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.useFakeTimers()
   listModules.mockResolvedValue([{ id: 1, name: 'Demande matériel' }])
-  addCase.mockResolvedValue({ job_id: 'J1', status: 'running', case_id: null, error: '' })
+  addCase.mockResolvedValue({ job_id: 'J1', status: 'running', case_ids: [], error: '' })
   createModule.mockResolvedValue({ id: 9, name: 'Nouveau module', project_id: 1, case_count: 0 })
 })
+
+/** Une proposition à UNE Section / UN cas — le cas le plus simple, suffisant pour la plupart des
+ * tests (la multiplicité des Sections/cas est couverte côté backend, pas ici). */
+function sectionsAvec(draft = DRAFT) {
+  return [{ title: 'Réception et délivrance', cases: [draft] }]
+}
 
 /** Monte, saisit une spec, soumet, puis laisse tomber une réponse de job. */
 async function jusquAuJob(job: any) {
@@ -63,62 +73,69 @@ async function jusquAuJob(job: any) {
   return w
 }
 
-describe('AddTestCase — la pause métier (0022 n°5)', () => {
-  it('S\'ARRÊTE sur awaiting_metier et affiche le document ÉDITABLE', async () => {
-    const w = await jusquAuJob({ status: 'awaiting_metier', metier: DRAFT, case_id: null, error: '' })
+describe('AddTestCase — la pause métier (0022 n°5, étendue au §9)', () => {
+  it('S\'ARRÊTE sur awaiting_metier et affiche les Sections ÉDITABLES', async () => {
+    const w = await jusquAuJob({ status: 'awaiting_metier', sections: sectionsAvec(), case_ids: [], error: '' })
 
     // Le document est rendu dans des champs, pas en lecture seule : la pause ne sert à rien si
     // on ne peut pas corriger.
     const inputs = w.findAll('input')
     expect(inputs.some((i) => (i.element as HTMLInputElement).value === DRAFT.title)).toBe(true)
     expect(inputs.some((i) => (i.element as HTMLInputElement).value === 'Ouvrir le formulaire')).toBe(true)
-    expect(w.text()).toContain('Valider et générer le test')
+    expect(w.text()).toContain('Réception et délivrance')  // le titre de la SECTION
+    expect(w.text()).toContain('Valider 1 cas et générer les tests')
     expect(push).not.toHaveBeenCalled()
   })
 
-  it('envoie le document CORRIGÉ, pas celui proposé par l\'IA', async () => {
+  it('envoie l\'ensemble CORRIGÉ, pas celui proposé par l\'IA', async () => {
     // Tout l'intérêt de la pause : ce que l'humain écrit fait foi.
-    validateMetier.mockResolvedValue({ job_id: 'J1', status: 'running', case_id: null, error: '' })
-    const w = await jusquAuJob({ status: 'awaiting_metier', metier: DRAFT, case_id: null, error: '' })
+    validateMetier.mockResolvedValue({ job_id: 'J1', status: 'running', case_ids: [], error: '' })
+    const w = await jusquAuJob({ status: 'awaiting_metier', sections: sectionsAvec(), case_ids: [], error: '' })
 
     const titre = w.findAll('input').find(
       (i) => (i.element as HTMLInputElement).value === DRAFT.title)!
     await titre.setValue('MON titre corrigé')
-    await w.findAll('button').find((b) => b.text().includes('Valider et générer'))!.trigger('click')
+    await w.findAll('button').find((b) => b.text().includes('Valider'))!.trigger('click')
     await flushPromises()
 
-    expect(validateMetier).toHaveBeenCalledWith('J1', expect.objectContaining({
-      title: 'MON titre corrigé',
-    }))
+    expect(validateMetier).toHaveBeenCalledWith('J1', [
+      expect.objectContaining({
+        title: 'Réception et délivrance',
+        cases: [expect.objectContaining({ title: 'MON titre corrigé' })],
+      }),
+    ])
   })
 
-  it('REFUSE de valider un document amputé de ses étapes', async () => {
+  it('REFUSE de valider un cas amputé de ses étapes', async () => {
     // Titre + étapes + résultat attendu sont obligatoires (0022 n°3.c) : un cas sans eux ne
     // vérifie rien. Le bouton est désactivé plutôt que de laisser le serveur refuser après coup.
-    const w = await jusquAuJob({ status: 'awaiting_metier', metier: DRAFT, case_id: null, error: '' })
+    // ⚠️ On cible les croix « Supprimer » (une ÉTAPE), jamais « Retirer ce cas » (le CAS entier) —
+    // sinon le cas disparaîtrait et le test ne prouverait plus rien (0 cas restant est un état
+    // valide, pas celui qu'on veut vérifier ici).
+    const w = await jusquAuJob({ status: 'awaiting_metier', sections: sectionsAvec(), case_ids: [], error: '' })
 
-    // Re-interrogé à chaque tour : après un clic le DOM est re-rendu et les références
-    // collectées d'avance pointent sur des nœuds détruits (et les index ont glissé).
     for (let garde = 0; garde < 10; garde++) {
-      const croix = w.findAll('button').filter((b) => b.text() === '✕')
+      const croix = w.findAll('button').filter((b) => b.attributes('title') === 'Supprimer')
       if (!croix.length) break
       await croix[0].trigger('click')
     }
 
-    const valider = w.findAll('button').find((b) => b.text().includes('Valider et générer'))!
+    const valider = w.findAll('button').find((b) => b.text().includes('Valider'))!
     expect(valider.attributes('disabled')).toBeDefined()
     expect(w.text()).toContain('un cas sans eux ne')
   })
 
-  it('emmène au GATE quand le job est terminé, jamais à l\'exécution', async () => {
-    await jusquAuJob({ status: 'done', case_id: 42, metier: null, error: '' })
+  it('retourne à la LISTE quand le job est terminé, jamais directement à l\'exécution', async () => {
+    // N cas générés (potentiellement plusieurs Sections) : plus de redirection vers UN cas
+    // précis, qui n'aurait plus de sens dès qu'il y en a plusieurs (§9).
+    await jusquAuJob({ status: 'done', case_ids: [42, 43], sections: null, error: '' })
 
     expect(push).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'case-detail', params: { pid: '1', id: '42' } }))
+      expect.objectContaining({ name: 'cases', params: { pid: '1' }, query: { module: '1' } }))
   })
 
   it('affiche l\'erreur et rend la main quand la génération échoue', async () => {
-    const w = await jusquAuJob({ status: 'failed', case_id: null, metier: null,
+    const w = await jusquAuJob({ status: 'failed', case_ids: [], sections: null,
                                 error: 'le document métier rendu est incomplet' })
 
     expect(w.text()).toContain('le document métier rendu est incomplet')

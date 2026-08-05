@@ -76,6 +76,8 @@ CATALOGUE: dict[str, tuple[int, str]] = {
     "fichier_trop_gros":      (413, "Ce fichier dépasse la taille autorisée"),
     "type_de_fichier_refuse": (415, "Ce type de fichier n'est pas accepté"),
     "trop_de_fichiers":       (409, "Ce résultat porte déjà trop de pièces jointes"),
+    # ── Import d'une spécification (2026-08-05) ──
+    "specification_trop_grande": (413, "Cette spécification dépasse la taille autorisée"),
     # ── Exploration ──
     "exploration_en_cours":   (409, "Une exploration est déjà en cours sur ce projet"),
     # ── Requête mal formée / non géré ──

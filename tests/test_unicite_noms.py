@@ -220,9 +220,16 @@ def test_api_409_module_en_double(client):
     assert "Facturation" in resp.json()["detail"]
 
 
-def test_api_409_cas_en_double_AVANT_de_lancer_la_generation(client):
-    """Le titre est validé à l'ENTRÉE : sinon on paierait un appel LLM de plusieurs minutes
-    pour finir en job « failed » au moment de l'insertion."""
+def test_api_202_meme_si_le_titre_FOURNI_existe_deja(client):
+    """⚠️ Comportement CHANGÉ le 2026-08-05 (§9, génération multi-cas) : le `title` fourni à
+    l'entrée n'est plus qu'une étiquette de job — les titres RÉELS des cas ne sont connus qu'après
+    le découpage en user stories, donc plus vérifiables avant le premier appel LLM. L'ancien 409
+    immédiat (qui économisait un appel coûteux sur un titre qu'on connaissait déjà) n'a plus de
+    sens : il faudrait bloquer sur un titre qui ne sera peut-être même pas celui d'un cas produit.
+
+    L'unicité réelle (par Section, à la persistance de chaque cas) est désormais garantie par
+    `resume_generation` — voir `test_generation_multi_cas.py
+    ::test_une_section_EN_DOUBLE_est_ignoree_SANS_faire_echouer_les_AUTRES`."""
     pid = client.post("/api/projects", json=_projet("P")).json()["id"]
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M", "description": ""}).json()["id"]
 
@@ -232,5 +239,4 @@ def test_api_409_cas_en_double_AVANT_de_lancer_la_generation(client):
 
     resp = client.post(f"/api/modules/{mid}/cases",
                        json={"spec_content": "# spec", "title": "cas existant", "author": "qa"})
-    assert resp.status_code == 409
-    assert "Cas existant" in resp.json()["detail"]
+    assert resp.status_code == 202

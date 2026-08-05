@@ -40,6 +40,7 @@ from testpilot.generation import memoire_reparation, repair_agent
 from testpilot.guardrails.cost_tracker import CostTracker
 from testpilot.guardrails.repair_circuit import CircuitState, evaluate, failure_signature
 from testpilot.store.repositories import (
+    CaseGroupRepo,
     CaseRepo,
     CostRepo,
     ExecutionRepo,
@@ -357,9 +358,19 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
 
     versions = VersionRepo(conn)
     cases = CaseRepo(conn)
+    case = cases.get(case_id) or {}
     # Le projet du cas : il désigne l'annuaire ET les règles apprises (`0005` — un annuaire par
     # instance). Absent → la mémoire se taira, la réparation se lancera quand même.
-    project_id = (cases.get(case_id) or {}).get("project_id")
+    project_id = case.get("project_id")
+    # ⚠️ Le texte de la spec vit désormais sur la SECTION (`case_group.spec_content`, §9c,
+    # 2026-08-05), plus sur la version — `VersionRepo.create` continue d'exiger le paramètre,
+    # donc une tentative de réparation doit le retrouver quelque part pour le reporter sur SA
+    # nouvelle version. Sans Section (cas généré avant §9, ou chemin CLI/automatisation qui
+    # l'écrit encore sur la version) : repli sur `version["spec_content"]`, jamais une levée.
+    spec_content_repare = ""
+    group_id = case.get("group_id")
+    if group_id is not None:
+        spec_content_repare = (CaseGroupRepo(conn).get(group_id) or {}).get("spec_content", "")
     current_version_id = version_id
     failures = _failures_of(outcome)
     # État de départ, figé AVANT toute réparation : c'est la référence de non-régression
@@ -447,7 +458,8 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
         # 2. Une tentative = une VERSION (trace honnête de ce qui a été tenté).
         new_version_id = versions.create(
             test_case_id=case_id,
-            spec_content=version["spec_content"], spec_hash=version["spec_hash"],
+            spec_content=spec_content_repare or version["spec_content"],
+            spec_hash=version["spec_hash"],
             feature_content=proposal.feature_content or version["feature_content"],
             steps_content=proposal.steps_content or version["steps_content"],
             change_summary=proposal.summary[:500] or "Réparation automatique",

@@ -1,18 +1,21 @@
 <script setup lang="ts">
-// « Ajouter un cas de test » — création en DEUX PASSES avec pause humaine (décision 0022 n°5).
+// « Générer des cas de test » — création en DEUX PASSES avec pause humaine (décision 0022 n°5,
+// étendue au §9 : génération MULTI-CAS le 2026-08-05).
 //
 // Ajouter un cas = fournir une SPEC (décision 0006) : jamais une coquille vide. Mais la
-// génération ne va plus d'un trait jusqu'au Gherkin : elle s'ARRÊTE une fois le document métier
-// rédigé, et attend qu'un humain le valide ou le corrige. Le technique — la passe la plus chère —
-// n'est payé qu'après que l'intention a été signée.
+// génération ne va plus d'un trait jusqu'au Gherkin, et ne produit plus UN seul cas : elle
+// identifie les user stories de la spec, propose pour CHACUNE l'ensemble minimal de cas qui la
+// couvre, puis s'ARRÊTE — et attend qu'un humain valide, corrige ou retire des cas. Le
+// technique — la passe la plus chère, multipliée par le nombre de cas — n'est payé qu'après que
+// l'intention a été signée dans son ensemble, pas cas par cas.
 //
 // L'écran a donc trois temps :
 //   1. `form`     — la spécification
-//   2. `metier`   — le document proposé, ÉDITABLE (c'est la pause)
-//   3. `gherkin`  — l'écriture du test, puis redirection vers le gate
+//   2. `metier`   — les Sections proposées, groupées, ÉDITABLES (c'est la pause)
+//   3. `gherkin`  — l'écriture des tests, puis retour à la liste des cas
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type MetierDraft, type ModuleSummary } from '../lib/api'
+import { api, type MetierDraft, type ModuleSummary, type SectionDraft } from '../lib/api'
 import { MODELE_SPECIFICATION } from '../lib/modeleSpecification'
 
 const route = useRoute()
@@ -38,18 +41,34 @@ const error = ref('')
 const jobId = ref('')
 let timer: number | undefined
 
-// Le document métier en cours d'édition. Copie locale : ce que l'utilisateur envoie fait foi,
-// la proposition de l'IA n'est qu'un point de départ.
-const metier = ref<MetierDraft>({
-  title: '', preconditions: '', steps: [], expected_result: '',
-})
+// Les Sections proposées, en cours d'édition. Copie locale : ce que l'utilisateur envoie fait
+// foi, la proposition de l'IA n'est qu'un point de départ — y compris pour la SUPPRESSION d'un
+// cas qui ne sert à rien (§9 : « un cas qui peut être validé par un autre n'est pas intéressant »).
+const sections = ref<SectionDraft[]>([])
+// Sections repliées, par INDEX — même mécanisme que le pliage des modules dans TestCasesList.vue.
+const repliees = ref<number[]>([])
+function toggleSection(i: number) {
+  repliees.value = repliees.value.includes(i)
+    ? repliees.value.filter((x) => x !== i) : [...repliees.value, i]
+}
 
 // Titre + étapes + résultat attendu sont obligatoires (décision 0022 n°3.c) — un cas sans ces
-// trois-là ne teste rien. Les préconditions restent facultatives.
-const metierComplet = computed(() =>
-  !!metier.value.title.trim()
-  && metier.value.steps.some((s) => s.trim())
-  && !!metier.value.expected_result.trim())
+// trois-là ne teste rien. Les préconditions restent facultatives. Règle inchangée, appliquée
+// maintenant à CHAQUE cas retenu plutôt qu'à un document unique.
+function casComplet(c: MetierDraft): boolean {
+  return !!c.title.trim() && c.steps.some((s) => s.trim()) && !!c.expected_result.trim()
+}
+const nbCasRetenus = computed(() => sections.value.reduce((n, s) => n + s.cases.length, 0))
+// Valide seulement si AU MOINS un cas subsiste, et que TOUS ceux qui subsistent sont complets —
+// un cas incomplet ne doit jamais partir en génération technique (coûteuse) pour rien.
+const toutValide = computed(() =>
+  nbCasRetenus.value > 0 && sections.value.every((s) => s.cases.every(casComplet)))
+
+function addStep(si: number, ci: number) { sections.value[si].cases[ci].steps.push('') }
+function removeStep(si: number, ci: number, i: number) { sections.value[si].cases[ci].steps.splice(i, 1) }
+// Retirer un cas ne supprime PAS sa Section : une Section vidée de tous ses cas est simplement
+// ignorée par le serveur à la validation (elle ne sera pas créée).
+function removeCase(si: number, ci: number) { sections.value[si].cases.splice(ci, 1) }
 
 // Une SPÉCIFICATION peut fournir le document (`?spec=`, depuis sa fiche, lot 4 du 2026-07-24) :
 // on part alors du texte déjà rédigé plutôt que de le recoller à la main — c'était le chaînon
@@ -121,14 +140,19 @@ function poll() {
       if (job.status === 'running') return
       stopPoll()
 
-      if (job.status === 'awaiting_metier' && job.metier) {
+      if (job.status === 'awaiting_metier' && job.sections) {
         // ⚠️ LA PAUSE. Le job est arrêté : sans cet aiguillage, le formulaire tournerait
         // indéfiniment sur un job qui n'avancera jamais tout seul.
-        metier.value = { ...job.metier, steps: [...job.metier.steps] }
+        sections.value = job.sections.map((s) => ({
+          title: s.title,
+          cases: s.cases.map((c) => ({ ...c, steps: [...c.steps] })),
+        }))
+        repliees.value = []
         etape.value = 'metier'
-      } else if (job.status === 'done' && job.case_id) {
-        // Le cas est généré mais PAS relu : on emmène au gate, jamais directement à l'exécution.
-        router.push({ name: 'case-detail', params: { pid: pid.value, id: String(job.case_id) } })
+      } else if (job.status === 'done' && job.case_ids.length) {
+        // N cas générés mais PAS relus : on retourne à la liste, jamais directement à
+        // l'exécution — un seul cas ne mérite plus sa propre redirection dédiée (§9).
+        router.push({ name: 'cases', params: { pid: pid.value }, query: { module: String(moduleId.value) } })
       } else {
         etape.value = 'form'
         error.value = job.error || 'La génération a échoué.'
@@ -140,9 +164,6 @@ function poll() {
     }
   }, 2000)
 }
-
-function addStep() { metier.value.steps.push('') }
-function removeStep(i: number) { metier.value.steps.splice(i, 1) }
 
 // ── Import d'un fichier de spec → remplit la zone de texte ────────────────────
 const importing = ref(false)
@@ -177,14 +198,19 @@ async function onFile(e: Event) {
 }
 
 async function validerMetier() {
-  if (!metierComplet.value) return
+  if (!toutValide.value) return
   error.value = ''
   etape.value = 'gherkin'
+  // Sections vidées de tous leurs cas exclues avant l'envoi : rien ne sert de les faire
+  // transiter, le serveur les ignorerait de toute façon (elles ne créent rien).
+  const retenues = sections.value
+    .filter((s) => s.cases.length)
+    .map((s) => ({
+      title: s.title,
+      cases: s.cases.map((c) => ({ ...c, steps: c.steps.map((s) => s.trim()).filter(Boolean) })),
+    }))
   try {
-    await api.validateMetier(jobId.value, {
-      ...metier.value,
-      steps: metier.value.steps.map((s) => s.trim()).filter(Boolean),
-    })
+    await api.validateMetier(jobId.value, retenues)
     poll()
   } catch (e: any) {
     etape.value = 'metier'
@@ -284,77 +310,112 @@ function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } 
       </form>
     </template>
 
-    <!-- ══════════ 2. LA PAUSE — validation du document métier ══════════ -->
+    <!-- ══════════ 2. LA PAUSE — validation des Sections proposées (§9) ══════════ -->
     <template v-else-if="etape === 'metier'">
       <p class="mt-1 text-sm text-muted-foreground">
-        Voici le cas tel que l'IA l'a compris. <strong class="text-foreground">Corrigez ce qui ne
-        va pas</strong> — c'est ce document qui servira à écrire le test.
+        Voici les cas tels que l'IA les a compris, groupés par user story. <strong
+        class="text-foreground">Corrigez, ou retirez</strong> ce qui ne sert à rien — c'est cet
+        ensemble qui servira à écrire les tests.
       </p>
 
       <div class="mt-4 rounded-lg border border-primary/40 bg-primary/[0.05] p-3 text-xs text-muted-foreground">
-        Aucun cas n'est encore créé, et le test technique n'est pas encore écrit. C'est le moment
-        de corriger : après validation, le test sera généré à partir de ce texte.
+        Aucun cas n'est encore créé, et aucun test technique n'est encore écrit. C'est le moment
+        de corriger : après validation, un test sera généré pour chaque cas retenu.
       </div>
 
-      <div class="mt-6 space-y-5">
-        <label class="block">
-          <span class="text-sm font-medium">Titre <span class="text-destructive">*</span></span>
-          <input v-model="metier.title"
-                 class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
-        </label>
+      <div class="mt-6 space-y-4">
+        <div v-for="(section, si) in sections" :key="si"
+             class="rounded-lg border border-border overflow-hidden">
+          <button type="button"
+                  class="w-full flex items-center gap-2 px-3 py-2.5 bg-surface-raised hover:bg-accent/40 text-left"
+                  :aria-label="`${repliees.includes(si) ? 'Déplier' : 'Replier'} la section ${section.title}`"
+                  :aria-expanded="!repliees.includes(si)"
+                  @click="toggleSection(si)">
+            <svg class="w-3.5 h-3.5 shrink-0 transition-transform" :class="repliees.includes(si) ? '-rotate-90' : ''"
+                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
+            <span class="font-semibold flex-1 truncate">{{ section.title }}</span>
+            <span class="shrink-0 rounded-full bg-primary/15 text-primary text-[11px] font-semibold px-2 py-0.5 tabular-nums">
+              {{ section.cases.length }} cas
+            </span>
+          </button>
 
-        <label class="block">
-          <span class="text-sm font-medium">Préconditions</span>
-          <textarea v-model="metier.preconditions" rows="3"
-                    placeholder="Le contexte nécessaire avant de commencer (facultatif)"
-                    class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none"></textarea>
-        </label>
+          <div v-if="!repliees.includes(si) && !section.cases.length" class="px-3 py-3 text-xs text-muted-foreground">
+            Aucun cas retenu dans cette section — elle ne sera pas créée.
+          </div>
 
-        <div>
-          <span class="text-sm font-medium">Étapes <span class="text-destructive">*</span></span>
-          <div class="mt-1 space-y-2">
-            <div v-for="(_, i) in metier.steps" :key="i" class="flex items-center gap-2">
-              <span class="w-6 shrink-0 text-right text-muted-foreground tabular-nums text-sm">{{ i + 1 }}.</span>
-              <input v-model="metier.steps[i]"
-                     class="flex-1 rounded-md bg-surface-raised border border-border px-3 py-1.5 focus:border-primary outline-none" />
-              <button type="button" class="text-muted-foreground hover:text-destructive px-1" title="Supprimer" @click="removeStep(i)">✕</button>
+          <div v-if="!repliees.includes(si)" class="divide-y divide-border">
+            <div v-for="(cas, ci) in section.cases" :key="ci" class="p-4 space-y-4">
+              <div class="flex items-start gap-3">
+                <label class="block flex-1">
+                  <span class="text-sm font-medium">Titre <span class="text-destructive">*</span></span>
+                  <input v-model="cas.title"
+                         class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+                </label>
+                <button type="button"
+                        class="mt-6 text-muted-foreground hover:text-destructive px-1 shrink-0"
+                        title="Retirer ce cas" @click="removeCase(si, ci)">✕</button>
+              </div>
+
+              <label class="block">
+                <span class="text-sm font-medium">Préconditions</span>
+                <textarea v-model="cas.preconditions" rows="2"
+                          placeholder="Le contexte nécessaire avant de commencer (facultatif)"
+                          class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none"></textarea>
+              </label>
+
+              <div>
+                <span class="text-sm font-medium">Étapes <span class="text-destructive">*</span></span>
+                <div class="mt-1 space-y-2">
+                  <div v-for="(_, i) in cas.steps" :key="i" class="flex items-center gap-2">
+                    <span class="w-6 shrink-0 text-right text-muted-foreground tabular-nums text-sm">{{ i + 1 }}.</span>
+                    <input v-model="cas.steps[i]"
+                           class="flex-1 rounded-md bg-surface-raised border border-border px-3 py-1.5 focus:border-primary outline-none" />
+                    <button type="button" class="text-muted-foreground hover:text-destructive px-1" title="Supprimer" @click="removeStep(si, ci, i)">✕</button>
+                  </div>
+                </div>
+                <button type="button" class="mt-2 text-sm text-primary hover:underline" @click="addStep(si, ci)">+ Ajouter une étape</button>
+              </div>
+
+              <label class="block">
+                <span class="text-sm font-medium">Résultat attendu <span class="text-destructive">*</span></span>
+                <textarea v-model="cas.expected_result" rows="2"
+                          placeholder="Une seule phrase de verdict pour tout le cas"
+                          class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none"></textarea>
+              </label>
+
+              <p v-if="!casComplet(cas)" class="text-xs text-muted-foreground">
+                Titre, au moins une étape et résultat attendu sont nécessaires — un cas sans eux
+                ne vérifie rien.
+              </p>
             </div>
           </div>
-          <button type="button" class="mt-2 text-sm text-primary hover:underline" @click="addStep">+ Ajouter une étape</button>
         </div>
 
-        <label class="block">
-          <span class="text-sm font-medium">Résultat attendu <span class="text-destructive">*</span></span>
-          <textarea v-model="metier.expected_result" rows="2"
-                    placeholder="Une seule phrase de verdict pour tout le cas"
-                    class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none"></textarea>
-        </label>
-
-        <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
-        <p v-if="!metierComplet" class="text-xs text-muted-foreground">
-          Titre, au moins une étape et résultat attendu sont nécessaires — un cas sans eux ne
-          vérifie rien.
+        <p v-if="!sections.length" class="text-sm text-muted-foreground">
+          Aucune user story exploitable n'a été trouvée dans cette spécification.
         </p>
 
-        <div class="flex items-center gap-3">
-          <button type="button" :disabled="!metierComplet"
+        <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+
+        <div class="flex items-center gap-3 pt-2">
+          <button type="button" :disabled="!toutValide"
                   class="rounded-md bg-primary text-white font-semibold px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   @click="validerMetier">
-            Valider et générer le test
+            Valider {{ nbCasRetenus }} cas et générer les tests
           </button>
           <button type="button" class="rounded-md border border-border px-4 py-2 hover:border-primary/40" @click="abandonner">Abandonner</button>
         </div>
       </div>
     </template>
 
-    <!-- ══════════ 3. L'ÉCRITURE DU TEST ══════════ -->
+    <!-- ══════════ 3. L'ÉCRITURE DES TESTS ══════════ -->
     <template v-else>
       <p class="mt-1 text-sm text-muted-foreground">
-        Écriture du test technique à partir du cas que vous venez de valider.
+        Écriture des {{ nbCasRetenus }} tests techniques à partir des cas que vous venez de valider.
       </p>
       <div class="mt-8 flex items-center gap-3 text-sm text-primary">
         <span class="inline-block h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin"></span>
-        Génération en cours… (2 à 3 minutes)
+        Génération en cours… (quelques minutes)
       </div>
       <p v-if="error" class="mt-3 text-sm text-destructive">{{ error }}</p>
     </template>

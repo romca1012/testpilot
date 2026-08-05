@@ -206,11 +206,11 @@ export const api = {
       method: 'POST', body: JSON.stringify({ spec_content, title }),
     }),
   getGenerationJob: (jobId: string) => request<GenerationJob>(`/api/modules/jobs/${jobId}`),
-  // Passe 4b : le document validé (corrections comprises) FAIT FOI — c'est lui qui part à la
-  // génération du Gherkin, pas la proposition initiale de l'IA.
-  validateMetier: (jobId: string, metier: MetierDraft) =>
+  // Passe 4b : l'ensemble des Sections validées (corrections et suppressions comprises) FAIT
+  // FOI — c'est lui qui part à la génération du Gherkin, pas la proposition initiale de l'IA.
+  validateMetier: (jobId: string, sections: SectionDraft[]) =>
     request<GenerationJob>(`/api/modules/jobs/${jobId}/metier`, {
-      method: 'POST', body: JSON.stringify(metier),
+      method: 'POST', body: JSON.stringify({ sections }),
     }),
   // ── Réglages d'INSTANCE (2026-08-04) — ils ne dépendent d'aucun projet ──
   // ⚠️ La réponse porte `source` (db | env | default) : la base l'emporte sur la variable
@@ -448,18 +448,23 @@ export interface CaseSummary {
   verdict_from_other_version: boolean
 }
 export interface ModuleDetail { module: ModuleSummary; project: Ref }
-/** Le document métier proposé par l'IA, à valider ou corriger (décision 0022 n°5, passe 4a). */
+/** Le document métier proposé par l'IA pour UN cas, à valider ou corriger (décision 0022 n°5). */
 export interface MetierDraft {
   title: string; preconditions: string; steps: string[]
   expected_result: string
 }
+/** Une Section proposée (= une user story) et l'ensemble MINIMAL de cas planifiés pour la
+ * couvrir (§9, génération multi-cas) — un nombre variable, jamais fixé d'avance. */
+export interface SectionDraft {
+  title: string; cases: MetierDraft[]
+}
 export interface GenerationJob {
   // running | awaiting_metier | done | failed
   // ⚠️ `awaiting_metier` n'est PAS une attente technique : le job est ARRÊTÉ et n'ira nulle part
-  // tant qu'un humain n'a pas validé le document métier. Traiter cet état comme « en cours »
-  // ferait tourner le formulaire dans le vide indéfiniment.
-  job_id: string; status: string; case_id: number | null; error: string
-  metier?: MetierDraft | null
+  // tant qu'un humain n'a pas validé l'ENSEMBLE des Sections proposées. Traiter cet état comme
+  // « en cours » ferait tourner le formulaire dans le vide indéfiniment.
+  job_id: string; status: string; case_ids: number[]; error: string
+  sections?: SectionDraft[] | null
 }
 export interface VersionOut {
   id: number; version_number: number; feature_content: string; steps_content: string

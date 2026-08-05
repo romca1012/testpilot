@@ -668,7 +668,7 @@ class CaseRepo:
 
     def create(self, *, title: str, module_id: int | None = None, group_id: int | None = None,
                feature_slug: str = "", author: str = "", description: str = "",
-               origin: str = "ia_generated", priority: str = "medium") -> int:
+               origin: str = "ia_generated", priority: str = "medium", refs: str = "") -> int:
         """Crée un cas. `group_id` OBLIGATOIRE pour tout cas RANGÉ dans un module : s'il n'est pas
         fourni mais qu'un module l'est, on AUTO-ENVELOPPE le cas dans sa propre spécification 1:1
         (même geste que la migration legacy). L'appelant historique (la génération) continue donc
@@ -677,6 +677,9 @@ class CaseRepo:
         Un cas SANS module (module_id=None) reste sans groupe : il n'a pas de place dans la
         hiérarchie Module→Spécification→Cas, donc aucune spécification à lui donner. C'est un cas
         de bord (hors arbre), pas le chemin de production — qui passe toujours par un module.
+
+        `refs` — texte libre comme TestRail (§9, 2026-08-05) : la génération multi-cas l'auto-remplit
+        avec le nom de la user story dont ce cas est issu. Vide par défaut, comme avant.
         """
         if group_id is None and module_id is not None:
             group_id = CaseGroupRepo(self.conn).create(module_id=module_id, title=title,
@@ -686,9 +689,9 @@ class CaseRepo:
         ts = now_iso()
         cur = self.conn.execute(
             "INSERT INTO test_case (title, module_id, group_id, feature_slug, description,"
-            " origin, priority, position, author, created_at, updated_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (title, module_id, group_id, feature_slug, description, origin, priority,
+            " origin, priority, refs, position, author, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (title, module_id, group_id, feature_slug, description, origin, priority, refs,
              self._next_position(module_id), author, ts, ts),
         )
         self.conn.commit()

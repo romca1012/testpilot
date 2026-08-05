@@ -36,6 +36,9 @@ def conn(tmp_path):
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
+    # `/cases/extract` conserve désormais l'original sous `DATA_DIR/specifications/` : sans cette
+    # redirection, ces tests écriraient dans le vrai `data/` du poste (garde-fou de conftest.py).
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
     return TestClient(app_mod.app)
 
 
@@ -219,13 +222,6 @@ def test_extraction_latin1_ne_plante_pas():
     assert "caf" in txt
 
 
-def test_extraction_pdf_REFUSEE_avec_message_clair():
-    """Pas de dépendance PDF : on le dit, on ne rend pas un texte vide silencieux (§4.6)."""
-    with pytest.raises(spec_extract.UnsupportedFormat) as exc:
-        spec_extract.extract_text("doc.pdf", b"%PDF-1.4 ...")
-    assert "PDF" in str(exc.value)
-
-
 def test_api_extract_upload(client):
     _, mid = _module(client)
 
@@ -238,11 +234,5 @@ def test_api_extract_upload(client):
     assert r.json()["filename"] == "ma_spec.md"
 
 
-def test_api_extract_pdf_renvoie_422(client):
-    _, mid = _module(client)
-
-    r = client.post(f"/api/modules/{mid}/cases/extract",
-                    files={"file": ("doc.pdf", io.BytesIO(b"%PDF"), "application/pdf")})
-
-    assert r.status_code == 422
-    assert "PDF" in r.json()["detail"]
+# La lecture du PDF, le plafond de taille et la conservation de l'original ont leurs propres
+# invariants, dédiés : voir tests/test_import_specification_pdf.py.

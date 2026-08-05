@@ -202,38 +202,140 @@ def test_sans_metier_les_champs_restent_VIDES_et_non_des_listes_fabriquees(tmp_p
     conn.close()
 
 
-# ── Le job : la PAUSE ─────────────────────────────────────────────────────────
+# ── §9c : le texte de la spec change de propriétaire ──────────────────────────
+
+def test_avec_une_SECTION_la_version_NE_porte_PLUS_le_texte_de_la_spec(tmp_path):
+    """Avec une Section explicite (`group_id`), c'est ELLE qui porte le texte
+    (`case_group.spec_content`, écrit par `generation_service` à sa création) — la version reste
+    vide. C'est le chemin de la génération multi-cas (§9)."""
+    from testpilot.generation.agent import GenerationAgent
+    from testpilot.generation.state import GenerationResult
+    from testpilot.store.repositories import CaseGroupRepo
+
+    conn = get_initialized_db(tmp_path / "g.db")
+    mid = ensure_default_module(conn, "demande_materiel")
+    gid = CaseGroupRepo(conn).create(module_id=mid, title="Une story",
+                                     spec_content="LE TEXTE SOURCE")
+    agent = GenerationAgent(case_repo=CaseRepo(conn), version_repo=VersionRepo(conn))
+    result = GenerationResult(success=True, module_name="demande_materiel", stopped_reason="done",
+                              dry_run_passed=True, iterations=1, cost_usd=0.0,
+                              feature_content="# feature", steps_content="# steps",
+                              spec_hash="h1", awaiting_review=True)
+    metier = {"title": "Cas avec Section", "preconditions": "", "steps": ["Une étape"],
+              "expected_result": "Un verdict"}
+
+    agent._persist(_plan(), result, case_id=None, title="ignoré", author="ui",
+                   module_id=mid, metier=metier, group_id=gid)
+
+    version = VersionRepo(conn).get(result.version_id)
+    assert version["spec_content"] == "", "le texte vit sur la Section, plus sur la version"
+    assert CaseGroupRepo(conn).get(gid)["spec_content"] == "LE TEXTE SOURCE", (
+        "la Section, elle, le porte toujours")
+    conn.close()
+
+
+def test_SANS_section_la_version_GARDE_le_texte_chemin_CLI_et_automatisation(tmp_path):
+    """Sans Section (`group_id=None` — chemin CLI, ou automatisation d'un cas manuel qui n'a ni
+    `group_id` ni Section), rien d'autre ne porte le texte : le comportement d'AVANT est conservé
+    pour ne rien perdre sur ces chemins-là (décision documentée au rapport de la session §9c)."""
+    from testpilot.generation.agent import GenerationAgent
+    from testpilot.generation.state import GenerationResult
+
+    conn = get_initialized_db(tmp_path / "h.db")
+    mid = ensure_default_module(conn, "demande_materiel")
+    agent = GenerationAgent(case_repo=CaseRepo(conn), version_repo=VersionRepo(conn))
+    result = GenerationResult(success=True, module_name="demande_materiel", stopped_reason="done",
+                              dry_run_passed=True, iterations=1, cost_usd=0.0,
+                              feature_content="# feature", steps_content="# steps",
+                              spec_hash="h1", awaiting_review=True)
+    metier = {"title": "Cas sans Section", "preconditions": "", "steps": ["Une étape"],
+              "expected_result": "Un verdict"}
+
+    agent._persist(_plan("LA SPEC BRUTE"), result, case_id=None, title="ignoré", author="ui",
+                   module_id=mid, metier=metier)
+
+    version = VersionRepo(conn).get(result.version_id)
+    assert version["spec_content"] == "LA SPEC BRUTE"
+    conn.close()
+
+
+def test_refs_du_cas_recoit_le_nom_de_la_story(tmp_path):
+    """`refs` (champ existant, texte libre comme TestRail) est auto-rempli avec le nom de la user
+    story dont ce cas est issu — aucune nouvelle colonne."""
+    from testpilot.generation.agent import GenerationAgent
+    from testpilot.generation.state import GenerationResult
+
+    conn = get_initialized_db(tmp_path / "refs.db")
+    mid = ensure_default_module(conn, "demande_materiel")
+    agent = GenerationAgent(case_repo=CaseRepo(conn), version_repo=VersionRepo(conn))
+    result = GenerationResult(success=True, module_name="demande_materiel", stopped_reason="done",
+                              dry_run_passed=True, iterations=1, cost_usd=0.0,
+                              feature_content="# f", steps_content="# s", spec_hash="h",
+                              awaiting_review=True)
+    metier = {"title": "Cas", "preconditions": "", "steps": ["Une étape"],
+              "expected_result": "Un verdict"}
+
+    agent._persist(_plan(), result, case_id=None, title="ignoré", author="ui",
+                   module_id=mid, metier=metier, refs="Réinitialisation du mot de passe")
+
+    assert CaseRepo(conn).get(result.case_id)["refs"] == "Réinitialisation du mot de passe"
+    conn.close()
+
+
+# ── Le job : la PAUSE (étendue au §9, découpage multi-cas, 2026-08-05) ────────
+#
+# Depuis le §9, la passe 4a ne rédige plus UN document mais découpe la spec en user stories
+# (`decoupage.propose_decoupage`) puis rédige le métier de CHAQUE cas planifié pour chacune. Ces
+# tests portent sur la MÉCANIQUE de pause (elle ne change pas), adaptée à la structure par
+# Sections. Le découpage lui-même (prompt, filtrage) est testé dans `test_decoupage.py`.
+
+from testpilot.generation import decoupage
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
+    generation_service._JOBS.clear()
     return TestClient(app_mod.app)
 
 
-@pytest.fixture
-def stub_passe_metier(monkeypatch):
-    """Neutralise analyse + LLM : on teste la MÉCANIQUE de pause, pas le modèle."""
+def _stub_analyse(monkeypatch):
     from testpilot.analysis import spec_analyzer as sa
-
     monkeypatch.setattr(sa.SpecAnalyzer, "analyze_spec_content",
                         lambda self, slug, content: _plan(content))
-    monkeypatch.setattr(metier_writer, "LLMAdapter", lambda: FakeLLM(_BON_JSON))
-    monkeypatch.setattr(metier_writer, "propose_metier",
-                        lambda plan, **kw: propose_metier(plan, llm=FakeLLM(_BON_JSON)),
-                        raising=False)
 
 
-def test_la_passe_4a_S_ARRETE_et_ne_cree_AUCUN_cas(client, stub_passe_metier, monkeypatch):
+def _stub_decoupage(monkeypatch, stories):
+    """`stories` : `[(user_story, [titre_de_cas, ...]), ...]` → stub de `propose_decoupage`."""
+    def stub(plan, **kw):
+        return [decoupage.StoryPlan(
+                    user_story=us,
+                    cases=[decoupage.CaseBrief(title=t, brief=t) for t in titres])
+                for us, titres in stories]
+    monkeypatch.setattr(decoupage, "propose_decoupage", stub)
+
+
+def _stub_metier(monkeypatch, *, incomplet=False):
+    """Un document métier par cas, TITRÉ D'APRÈS LE BRIEF reçu (le titre planifié par le
+    découpage) — pour que deux cas d'une même story restent distinguables sans dépendre d'un
+    vrai LLM."""
+    def stub(plan, *, brief="", cost_tracker=None, **kw):
+        if incomplet:
+            return MetierDraft()
+        return MetierDraft(title=brief or "Cas", preconditions="Contexte",
+                           steps=["Étape unique"], expected_result="Verdict")
+    monkeypatch.setattr(metier_writer, "propose_metier", stub)
+
+
+def test_la_passe_4a_S_ARRETE_et_ne_cree_AUCUN_cas(client, monkeypatch):
     """⚠️ Le cœur de la décision : le job n'ira nulle part tant qu'un humain n'a pas signé.
 
     Et rien n'est persisté à ce stade — un cas qui n'aurait que son métier serait une coquille
     sans Gherkin, ce que `0006` refuse.
     """
-    from testpilot.analysis import spec_analyzer as sa
-    monkeypatch.setattr(sa.SpecAnalyzer, "analyze_spec_content",
-                        lambda self, slug, content: _plan(content))
-    monkeypatch.setattr(metier_writer, "propose_metier",
-                        lambda plan, **kw: propose_metier(plan, llm=FakeLLM(_BON_JSON)))
+    _stub_analyse(monkeypatch)
+    _stub_decoupage(monkeypatch, [("Connexion", ["Connexion réussie"])])
+    _stub_metier(monkeypatch)
 
     pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
@@ -243,21 +345,42 @@ def test_la_passe_4a_S_ARRETE_et_ne_cree_AUCUN_cas(client, stub_passe_metier, mo
 
     state = client.get(f"/api/modules/jobs/{job['job_id']}").json()
     assert state["status"] == "awaiting_metier"
-    assert state["metier"]["title"] == "Réception et délivrance d'une commande"
-    assert state["metier"]["steps"] == ["Ouvrir le formulaire", "Saisir la raison",
-                                        "Envoyer la demande"]
-    assert state["case_id"] is None
+    assert len(state["sections"]) == 1
+    assert state["sections"][0]["title"] == "Connexion"
+    assert [c["title"] for c in state["sections"][0]["cases"]] == ["Connexion réussie"]
+    assert state["case_ids"] == []
     assert client.get(f"/api/cases?module_id={mid}").json()["items"] == [], "aucun cas avant validation"
 
 
-def test_le_document_CORRIGE_par_l_humain_fait_foi(client, monkeypatch):
-    """L'humain peut tout réécrire — c'est l'intérêt de la pause. Ce sont SES étapes qui partent
-    à la génération, jamais celles que l'IA avait proposées."""
-    from testpilot.analysis import spec_analyzer as sa
-    monkeypatch.setattr(sa.SpecAnalyzer, "analyze_spec_content",
-                        lambda self, slug, content: _plan(content))
-    monkeypatch.setattr(metier_writer, "propose_metier",
-                        lambda plan, **kw: propose_metier(plan, llm=FakeLLM(_BON_JSON)))
+def test_deux_user_stories_produisent_DEUX_sections_a_un_nombre_variable_de_cas(client, monkeypatch):
+    """Cœur du §9 : « variable » ne veut pas dire « maximal » ni « fixe ». Une story simple obtient
+    UN cas, une autre qui décrit plusieurs comportements en obtient PLUSIEURS — jamais le même
+    nombre par défaut."""
+    _stub_analyse(monkeypatch)
+    _stub_decoupage(monkeypatch, [
+        ("Connexion", ["Connexion réussie"]),
+        ("Réinitialisation du mot de passe", ["Demande valide", "Lien expiré", "Email inconnu"]),
+    ])
+    _stub_metier(monkeypatch)
+
+    pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
+    mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
+    job = client.post(f"/api/modules/{mid}/cases",
+                      json={"spec_content": "La spec", "title": "T"}).json()
+
+    state = client.get(f"/api/modules/jobs/{job['job_id']}").json()
+    assert [s["title"] for s in state["sections"]] == [
+        "Connexion", "Réinitialisation du mot de passe"]
+    assert len(state["sections"][0]["cases"]) == 1
+    assert len(state["sections"][1]["cases"]) == 3
+
+
+def test_les_sections_CORRIGEES_par_l_humain_font_foi(client, monkeypatch):
+    """L'humain peut tout réécrire — c'est l'intérêt de la pause. C'est SA structure qui part
+    à la génération, jamais la proposition de l'IA."""
+    _stub_analyse(monkeypatch)
+    _stub_decoupage(monkeypatch, [("Connexion", ["Cas proposé"])])
+    _stub_metier(monkeypatch)
     recu = {}
     monkeypatch.setattr(generation_service, "resume_generation",
                         lambda job_id, **kw: recu.update(kw))
@@ -267,32 +390,33 @@ def test_le_document_CORRIGE_par_l_humain_fait_foi(client, monkeypatch):
     job_id = client.post(f"/api/modules/{mid}/cases",
                          json={"spec_content": "La spec", "title": "T"}).json()["job_id"]
 
-    r = client.post(f"/api/modules/jobs/{job_id}/metier", json={
-        "title": "MON titre à moi",
-        "preconditions": "Mon contexte",
-        "steps": ["Mon étape unique"],
-        "expected_result": "Mon verdict",
-    })
+    r = client.post(f"/api/modules/jobs/{job_id}/metier", json={"sections": [
+        {"title": "Connexion", "cases": [
+            {"title": "MON titre à moi", "preconditions": "Mon contexte",
+             "steps": ["Mon étape unique"], "expected_result": "Mon verdict"},
+        ]},
+    ]})
 
     assert r.status_code == 202
-    assert recu["metier"]["title"] == "MON titre à moi"
-    assert recu["metier"]["steps"] == ["Mon étape unique"]
+    assert recu["sections"][0]["title"] == "Connexion"
+    assert recu["sections"][0]["cases"][0]["title"] == "MON titre à moi"
+    assert recu["sections"][0]["cases"][0]["steps"] == ["Mon étape unique"]
 
 
-def test_un_metier_incomplet_est_REFUSE(client, monkeypatch):
-    from testpilot.analysis import spec_analyzer as sa
-    monkeypatch.setattr(sa.SpecAnalyzer, "analyze_spec_content",
-                        lambda self, slug, content: _plan(content))
-    monkeypatch.setattr(metier_writer, "propose_metier",
-                        lambda plan, **kw: propose_metier(plan, llm=FakeLLM(_BON_JSON)))
+def test_un_cas_incomplet_est_REFUSE(client, monkeypatch):
+    _stub_analyse(monkeypatch)
+    _stub_decoupage(monkeypatch, [("Connexion", ["Cas"])])
+    _stub_metier(monkeypatch)
 
     pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
     job_id = client.post(f"/api/modules/{mid}/cases",
                          json={"spec_content": "La spec", "title": "T"}).json()["job_id"]
 
-    r = client.post(f"/api/modules/jobs/{job_id}/metier", json={
-        "title": "Un titre", "steps": [], "expected_result": "Un verdict"})
+    r = client.post(f"/api/modules/jobs/{job_id}/metier", json={"sections": [
+        {"title": "Connexion", "cases": [
+            {"title": "Un titre", "steps": [], "expected_result": "Un verdict"}]},
+    ]})
 
     assert r.status_code == 422
     assert "obligatoires" in r.json()["detail"]
@@ -300,18 +424,17 @@ def test_un_metier_incomplet_est_REFUSE(client, monkeypatch):
 
 def test_valider_deux_fois_est_REFUSE(client, monkeypatch):
     """Le second appel relancerait une génération payante sur un job déjà reparti."""
-    from testpilot.analysis import spec_analyzer as sa
-    monkeypatch.setattr(sa.SpecAnalyzer, "analyze_spec_content",
-                        lambda self, slug, content: _plan(content))
-    monkeypatch.setattr(metier_writer, "propose_metier",
-                        lambda plan, **kw: propose_metier(plan, llm=FakeLLM(_BON_JSON)))
+    _stub_analyse(monkeypatch)
+    _stub_decoupage(monkeypatch, [("Connexion", ["Cas"])])
+    _stub_metier(monkeypatch)
     monkeypatch.setattr(generation_service, "resume_generation", lambda job_id, **kw: None)
 
     pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
     job_id = client.post(f"/api/modules/{mid}/cases",
                          json={"spec_content": "La spec", "title": "T"}).json()["job_id"]
-    body = {"title": "T", "steps": ["a"], "expected_result": "r"}
+    body = {"sections": [{"title": "Connexion",
+                          "cases": [{"title": "T", "steps": ["a"], "expected_result": "r"}]}]}
     client.post(f"/api/modules/jobs/{job_id}/metier", json=body)
 
     r = client.post(f"/api/modules/jobs/{job_id}/metier", json=body)
@@ -320,11 +443,9 @@ def test_valider_deux_fois_est_REFUSE(client, monkeypatch):
 
 
 def test_un_document_incomplet_fait_ECHOUER_le_job_sans_creer_de_cas(client, monkeypatch):
-    from testpilot.analysis import spec_analyzer as sa
-    monkeypatch.setattr(sa.SpecAnalyzer, "analyze_spec_content",
-                        lambda self, slug, content: _plan(content))
-    monkeypatch.setattr(metier_writer, "propose_metier",
-                        lambda plan, **kw: MetierDraft())
+    _stub_analyse(monkeypatch)
+    _stub_decoupage(monkeypatch, [("Connexion", ["Cas"])])
+    _stub_metier(monkeypatch, incomplet=True)
 
     pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
@@ -334,4 +455,21 @@ def test_un_document_incomplet_fait_ECHOUER_le_job_sans_creer_de_cas(client, mon
     state = client.get(f"/api/modules/jobs/{job_id}").json()
     assert state["status"] == "failed"
     assert "incomplet" in state["error"]
+    assert client.get(f"/api/cases?module_id={mid}").json()["items"] == []
+
+
+def test_aucune_user_story_exploitable_fait_ECHOUER_le_job(client, monkeypatch):
+    """Le découpage peut ne rien trouver d'exploitable (spec trop vague) — le job échoue, il
+    n'invente aucune story pour compenser."""
+    _stub_analyse(monkeypatch)
+    _stub_decoupage(monkeypatch, [])
+    _stub_metier(monkeypatch)
+
+    pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
+    mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
+    job_id = client.post(f"/api/modules/{mid}/cases",
+                         json={"spec_content": "La spec", "title": "T"}).json()["job_id"]
+
+    state = client.get(f"/api/modules/jobs/{job_id}").json()
+    assert state["status"] == "failed"
     assert client.get(f"/api/cases?module_id={mid}").json()["items"] == []

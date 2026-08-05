@@ -45,13 +45,16 @@ class GenerationAgent:
     def generate(self, plan: TestPlan, *, case_id: int | None = None,
                  title: str = "", author: str = "", module_id: int | None = None,
                  metier: dict | None = None, group_id: int | None = None,
-                 projet: dict | None = None) -> GenerationResult:
+                 projet: dict | None = None, refs: str = "") -> GenerationResult:
         """`metier` — le document métier VALIDÉ (passe 4b de `0022`). Présent, il fixe le périmètre
         du Gherkin et se fige DANS la version, avec lui (décision n°10 : une version = le cas
         entier). Absent, le comportement est celui d'avant (chemin CLI et cas legacy).
 
         `projet` — le projet testé, qui porte SA cartographie du domaine. Sans lui, aucun annuaire
-        n'est chargé : l'agent explore comme avant, sans contrainte inventée."""
+        n'est chargé : l'agent explore comme avant, sans contrainte inventée.
+
+        `refs` — nom de la user story dont ce cas est issu (§9, génération multi-cas). Écrit tel
+        quel sur le CAS (champ `refs`, texte libre comme TestRail), jamais versionné."""
         state = AgentState(module_name=plan.module_name)
         # L'annuaire du domaine alimente la CONTRAINTE de complétude (champs requis + obligation
         # de soumettre). Jusqu'ici seul le GATE le lisait : la génération devait deviner les
@@ -84,7 +87,7 @@ class GenerationAgent:
         result = self._build_result(plan, state)
         if result.success and self.case_repo is not None and self.version_repo is not None:
             self._persist(plan, result, case_id=case_id, title=title, author=author,
-                          module_id=module_id, metier=metier, group_id=group_id)
+                          module_id=module_id, metier=metier, group_id=group_id, refs=refs)
         return result
 
     def _build_result(self, plan: TestPlan, state: AgentState) -> GenerationResult:
@@ -107,7 +110,7 @@ class GenerationAgent:
     def _persist(self, plan: TestPlan, result: GenerationResult, *,
                  case_id: int | None, title: str, author: str,
                  module_id: int | None = None, metier: dict | None = None,
-                 group_id: int | None = None) -> None:
+                 group_id: int | None = None, refs: str = "") -> None:
         """Crée/repère le cas, écrit la nouvelle version, pose le statut « à relire »."""
         import json as _json
 
@@ -124,7 +127,7 @@ class GenerationAgent:
             case_id = self.case_repo.create(
                 title=libelle, module_id=module_id, group_id=group_id,
                 feature_slug=plan.module_name,
-                author=author, description=plan.raw_spec[:500],
+                author=author, description=plan.raw_spec[:500], refs=refs,
             )
         # ⚠️ Générer une nouvelle version ne touche PLUS à l'état du cas (migration 25). Ce qui
         # rouvre la relecture, c'est la version elle-même : le gate porte sur la VERSION, et une
@@ -132,9 +135,16 @@ class GenerationAgent:
         # ça, moins fidèlement — et il empêchait l'État d'être ce qu'il doit être : un champ que
         # l'humain pose, et que la machine ne lui reprend pas (arbitré le 2026-08-04).
 
+        # ⚠️ Le texte de la spec change de propriétaire (§9c, 2026-08-05) : avec une Section
+        # explicite (`group_id`), c'est ELLE qui le porte (`case_group.spec_content`, écrit à sa
+        # création par `generation_service`) — pas la version. Sans Section (chemin CLI, ou
+        # automatisation d'un cas manuel qui n'a ni `group_id` ni Section), rien d'autre ne le
+        # porte : on garde le comportement d'avant pour ne rien perdre sur ces chemins-là.
+        version_spec_content = plan.raw_spec if group_id is None else ""
+
         version_id = self.version_repo.create(
             test_case_id=case_id,
-            spec_content=plan.raw_spec,
+            spec_content=version_spec_content,
             spec_hash=result.spec_hash,
             feature_content=result.feature_content,
             steps_content=result.steps_content,

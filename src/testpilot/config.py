@@ -199,8 +199,8 @@ SERVICE_ACCOUNT_NAME = os.getenv("TESTPILOT_SERVICE_ACCOUNT", "TestPilot (automa
 
 # ── Pièces jointes d'un résultat manuel (2026-08-05) ─────────────────────────
 # Une capture d'écran atteste qu'un test manuel a réellement été joué. Deux plafonds, parce
-# qu'un téléversement sans borne est une panne de disque qui attend son heure — et que la route
-# d'import de spec, qui n'en a aucun, est un défaut à ne pas recopier.
+# qu'un téléversement sans borne est une panne de disque qui attend son heure — c'était aussi le
+# défaut de la route d'import de spec avant `SPEC_MAX_BYTES` ci-dessous, corrigé le même jour.
 #
 # 10 Mo : une capture d'écran plein écran en PNG pèse ~2 Mo ; le plafond laisse de la marge sans
 # ouvrir la porte à une vidéo. 10 fichiers : de quoi documenter un parcours étape par étape.
@@ -209,6 +209,16 @@ SERVICE_ACCOUNT_NAME = os.getenv("TESTPILOT_SERVICE_ACCOUNT", "TestPilot (automa
 # script quand on les sert depuis cette origine). Elle vit en dur dans `attachment_service`.
 ATTACHMENT_MAX_BYTES = int(os.getenv("TESTPILOT_ATTACHMENT_MAX_BYTES", str(10 * 1024 * 1024)))
 ATTACHMENT_MAX_PER_RESULT = int(os.getenv("TESTPILOT_ATTACHMENT_MAX_PER_RESULT", "10"))
+
+# ── Téléversement d'une SPÉCIFICATION (2026-08-05) ────────────────────────────
+# `/cases/extract` (import d'un fichier pour pré-remplir la génération) n'avait AUCUN plafond —
+# `await file.read()` d'un coup, sans limite : le défaut que le commentaire ci-dessus
+# (`ATTACHMENT_MAX_BYTES`) pointait déjà du doigt sans le corriger. Une constante à part de
+# `ATTACHMENT_MAX_BYTES` : une spécification est du texte structuré (potentiellement un PDF de
+# plusieurs dizaines de pages), pas une capture d'écran — même patron (lecture par morceaux,
+# vérification pendant la lecture), plafond différent. 20 Mo laisse large pour un document texte
+# tout en coupant avant qu'un envoi anormal ne remplisse la mémoire du serveur.
+SPEC_MAX_BYTES = int(os.getenv("TESTPILOT_SPEC_MAX_BYTES", str(20 * 1024 * 1024)))
 
 # ── Sécurité : jamais la production ───────────────────────────────────────────
 if os.getenv("ODOO_ENV") == "prod":
@@ -219,5 +229,8 @@ if os.getenv("ODOO_ENV") == "prod":
 
 def ensure_dirs() -> None:
     """Crée les répertoires runtime (idempotent)."""
-    for directory in (DATA_DIR, REPORTS_DIR, GENERATED_DIR):
+    # `DATA_DIR / "specifications"` est recalculé ici (pas une constante au niveau module, comme
+    # `REPORTS_DIR`) pour rester juste même quand un test redirige `config.DATA_DIR` en cours de
+    # route : une constante figée à l'import garderait l'ancien chemin.
+    for directory in (DATA_DIR, REPORTS_DIR, GENERATED_DIR, DATA_DIR / "specifications"):
         directory.mkdir(parents=True, exist_ok=True)

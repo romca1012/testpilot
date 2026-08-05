@@ -181,18 +181,119 @@ Table `run_case_assignment` déjà créée (migration 25), rien ne l'alimente. C
 dans `RunDetail.vue` affiche « — » en dur.
 
 ### Le dernier des 4 manques P1 : génération multi-cas
-Voir `docs/REPRISE-P2.md` §6 pour le détail technique complet (toujours valable) :
-- `src/testpilot/generation/decoupage.py` (nouveau) : spécification → `[{user_story, cases:[…]}]`.
-- `propose_metier` prend un *brief* (le paramètre `angle` est déjà parti).
-- `generation_service` boucle et groupe par Section (`case_group`) — `group_id` est déjà un
-  paramètre de `GenerationAgent.generate()`, simplement jamais passé.
-- Correction du bug « voir le document » : le vrai texte doit s'écrire sur `case_group.spec_content`
-  (jamais sur `test_case_version.spec_content`, encore présent tant que la génération n'a pas été
-  recâblée dessus — **ne pas le supprimer avant ce chantier**).
-- Conservation du fichier original, support PDF (`pdfplumber` déjà une dépendance), taille
-  maximale d'upload.
-- `AddTestCase.vue` : écran unique de validation, groupé par Section, pliable/dépliable.
-- **Sections imbriquées** (sous-sections) rattachées à ce même chantier.
+
+**Récapitulatif complet arrêté avec le porteur le 2026-08-05, fin de session (81 % du budget de
+contexte) — ce qui suit remplace toute version antérieure de ce chantier (`REPRISE-P2.md` §6
+compris) et fait foi.**
+
+#### La logique
+
+Depuis une spécification (texte collé ou fichier chargé) : identifier les **user stories**, puis
+pour chacune générer l'**ensemble complet des cas nécessaires pour la couvrir** — un nombre
+**variable, jamais fixé d'avance**.
+
+⚠️ **« Variable » ne veut pas dire « maximal ».** On vise le **plus petit ensemble de cas qui
+couvre malgré tout toute la spécification** — *« un cas de test qui peut être validé par un autre
+n'est pas intéressant »* (arbitrage du porteur). Ça se traduit dans le **prompt du découpage**
+(étape 9a) : pas *« énumère tout ce qui est possible »*, mais *« trouve le plus petit ensemble de
+cas qui, ensemble, couvrent tout ce que la spécification décrit — sans qu'un cas soit redondant
+avec un autre »*.
+
+**Le format d'un cas de test NE CHANGE PAS** : mêmes champs qu'aujourd'hui (titre, préconditions,
+étapes, résultat attendu). Aucune migration de schéma sur `test_case_version` pour ce point —
+seul le nouveau module de découpage a besoin de son propre schéma de sortie structurée.
+
+Le mécanisme `scenarios`/`angle` (nominal/erreur/limite) est **abandonné comme moteur de la
+multiplication** — cohérent avec le retrait déjà fait du champ `angle` (migration 26).
+
+#### Ce qu'on NE construit PAS
+
+**Aucune gestion de « document spécification » en V1.** Ni écran « Nouvelle spécification », ni
+écran « voir le document » fonctionnel. La spécification n'est qu'une **entrée** de la
+génération — chargée en fichier ou remplie depuis un template — jamais un objet autonome
+qu'on crée/édite/relit.
+
+#### Le conteneur : `case_group` reste `case_group`
+
+Pas de nouvelle entité. `case_group` sert de **Section** — un simple regroupement de cas par user
+story, pas un document géré. **Le « 1 seul cas » actuel est un symptôme du bug (auto-enveloppe de
+`CaseRepo.create`), pas une limite structurelle** : une fois corrigé, une Section contient
+plusieurs cas normalement. Son **titre devient le nom de la user story**.
+
+**Provenance conservée, pas exposée** : le texte source reste associé en interne à la Section qui
+en est issue (`case_group.spec_content`), pour permettre plus tard, dans une version évoluée, de
+le consulter — rien à construire côté écran maintenant.
+
+**Une seule source pour ce texte** : `test_case_version.spec_content` (le champ legacy, marqué
+dette explicite depuis 2026-07-19) est **supprimé**. Vérifié le 2026-08-05, aucune alternative
+n'est nécessaire : `test_case_version.spec_hash` **reste** (il existe déjà, coûte quelques
+octets) — c'est lui qui permet de détecter *« cette version a été générée depuis une spec
+différente de celle d'aujourd'hui »* sans garder le texte en double. Et comme il n'y a **aucun
+écran d'édition de la spécification en V1**, `case_group.spec_content` ne bouge plus une fois la
+Section créée — le risque de perte de fidélité historique qui justifierait une copie par version
+ne se pose donc pas.
+
+⚠️ **Conséquence à ne pas oublier** : `repair_service.py:449` lit aujourd'hui
+`version["spec_content"]` — à repointer vers `case_group.spec_content` (via le `group_id` du cas)
+**dans le même mouvement** que la suppression de la colonne, sinon la réparation perd
+silencieusement son contexte.
+
+#### Références
+
+`refs` (champ existant sur le cas, texte libre comme TestRail) **auto-rempli avec le nom de la
+user story** à la génération. Aucune nouvelle colonne.
+
+#### L'écran de validation
+
+Un écran **unique** après génération : cas groupés par Section (pliable/dépliable), consultation
+et modification d'un cas via **l'écran de détail actuel, inchangé** (`CaseDetailTR.vue` —
+aucune refonte), suppression d'un cas si voulu, retour facile à la vue complète. Génération
+**directe et complète** (pas de présélection sur titres seuls façon TestRail 9.5 — arbitrage déjà
+acté, confirmé aujourd'hui).
+
+⚠️ **Conséquence de coût, assumée en connaissance de cause** (recherche faite le 2026-08-05 :
+TestRail lui-même limite le coût par un tri sur les TITRES avant de rédiger le détail complet —
+voir `PARITE-TESTRAIL.md`). Sans ce tri, le coût est proportionnel à ce que l'IA décide
+nécessaire, pas à ce qu'on choisit d'avance. Le seul point de contrôle possible reste l'écran de
+validation, **après** génération.
+
+**À la validation** : Sections et cas créés pour de vrai, scripts (Gherkin) générés et prêts à
+l'exécution — pas avant.
+
+#### Le plan technique, en 6 étapes
+
+Principe retenu : ne pas réinventer la génération, la **répéter**. Le pipeline `propose_metier` →
+`GenerationAgent.generate()` est déjà testé pour UN cas ; le nouveau module se contente de
+**planifier** quoi écrire, la boucle existante fait le travail une fois par cas planifié.
+
+- **9a** — `src/testpilot/generation/decoupage.py` (nouveau) : spécification → `[{user_story,
+  cases: [{title, brief}, …]}]`. Sorties structurées (même patron que
+  `metier_writer._data_metier`), prompt orienté « ensemble minimal qui couvre tout », pas
+  « énumère tout le possible ».
+- **9b** — `generation_service` boucle : une Section (`case_group`) par user story
+  (`CaseGroupRepo.create`, rien de nouveau) ; pour chaque cas planifié, `propose_metier(plan,
+  brief=...)` (le paramètre `brief` remplace l'ancien `angle`, **à ajouter** — vérifié le
+  2026-08-05, `propose_metier` n'a plus aucun paramètre de ce genre) puis
+  `GenerationAgent.generate(..., group_id=section.id, metier=...)`. **`group_id` est déjà un
+  paramètre de `generate()`** (`generation/agent.py:45-48`), simplement jamais passé.
+- **9c** — Le texte s'écrit sur `case_group.spec_content` (`generation/agent.py:137` aujourd'hui
+  écrit sur la version — à corriger), et `repair_service.py:449` repointé sur la même source
+  (voir ci-dessus). Une fois les deux recâblés et un audit confirmant plus aucun lecteur,
+  `test_case_version.spec_content` part dans une **migration 28 dédiée** — pas avant.
+- **9d** — Fichier original conservé (`data/specifications/<spec_hash>/`). PDF **déjà lisible**
+  côté CLI (`spec_analyzer._read_spec`, `pdfplumber` déjà une dépendance) mais **pas côté route
+  web** : `routes/modules.py:136-150` délègue à `spec_extract.extract_text`, dont le docstring
+  dit encore *« PDF nécessiterait une dépendance »* — **faux aujourd'hui**, simple branchement à
+  ajouter dans `spec_extract.py`. Taille maximale d'upload : aucune aujourd'hui, même patron que
+  `config.ATTACHMENT_MAX_BYTES`.
+- **9e** — `AddTestCase.vue` : écran unique de validation décrit ci-dessus. Renommage de schéma :
+  `GenerationJobOut.metier` → `sections`, `case_id` → `case_ids`.
+- **9f** — Sections imbriquées : **absentes du récapitulatif du 2026-08-05** (une version
+  antérieure de ce document les rattachait à ce chantier). Ne pas les construire tant que le
+  porteur ne les redemande pas explicitement — silence ≠ confirmation.
+
+**Ordre suggéré** : 9a → 9b → 9c ensemble (se testent mal séparés) ; 9d et 9e peuvent suivre
+indépendamment.
 
 ### Finitions
 Mise à jour finale de `docs/ONBOARDING.md` une fois tout livré.

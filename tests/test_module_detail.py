@@ -138,19 +138,25 @@ def test_ajout_sur_module_inexistant(client):
 
 
 def test_ajout_declenche_la_generation_dans_le_bon_module(client, monkeypatch):
-    """La spec enchaîne sur la génération, et le cas atterrit DANS le module demandé."""
+    """La spec enchaîne sur la génération, et le cas atterrit DANS le module demandé.
+
+    `run_generation` (passe 4a, découpage + métier) est simulé directement en `done` : ce test
+    porte sur le DÉCLENCHEMENT et le ROUTAGE au bon module, pas sur la mécanique de pause en deux
+    passes (couverte par `test_generation_deux_passes.py`)."""
     conn = _conn(); pid, mid = _seed(conn); conn.close()
     captured = {}
 
-    def fake_run(job_id, *, module_id, slug, title, spec_content, author):
-        # Simule la génération : crée le cas AVEC sa version (comme le vrai agent).
+    def fake_run(job_id, *, module_id, title, spec_content, author):
+        # Simule la génération : crée le cas AVEC sa version (comme le vrai agent le ferait,
+        # une fois la pause métier franchie).
+        slug = generation_service.slugify(title)
         captured.update(module_id=module_id, slug=slug, title=title, spec=spec_content)
         c = _conn()
         cid = CaseRepo(c).create(title=title, module_id=module_id, feature_slug=slug)
         VersionRepo(c).create(test_case_id=cid, spec_content=spec_content, spec_hash="h",
                               feature_content="# language: fr", steps_content="")
         c.close()
-        generation_service._JOBS[job_id].update(status="done", case_id=cid)
+        generation_service._JOBS[job_id].update(status="done", case_ids=[cid])
 
     monkeypatch.setattr(generation_service, "run_generation", fake_run)
 
@@ -167,6 +173,7 @@ def test_ajout_declenche_la_generation_dans_le_bon_module(client, monkeypatch):
     assert job["status"] == "done"
     cases = client.get(f"/api/cases?module_id={mid}").json()["items"]
     assert [c["title"] for c in cases] == ["Retour matériel"]
+    assert job["case_ids"] == [c["id"] for c in cases]
 
 
 def test_job_inconnu(client):
