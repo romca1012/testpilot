@@ -123,14 +123,14 @@ class GenerationAgent:
                 module_id = ensure_default_module(self.case_repo.conn, plan.module_name)
             case_id = self.case_repo.create(
                 title=libelle, module_id=module_id, group_id=group_id,
-                angle=(metier.get("angle") or ""), feature_slug=plan.module_name,
+                feature_slug=plan.module_name,
                 author=author, description=plan.raw_spec[:500],
             )
-            validation_status = "never_executed"
-        else:
-            existing = self.case_repo.get(case_id) or {}
-            # Re-version d'un cas déjà validé (spec évoluée) → à réviser (§5).
-            validation_status = "to_review" if existing.get("validation_status") == "validated" else "never_executed"
+        # ⚠️ Générer une nouvelle version ne touche PLUS à l'état du cas (migration 25). Ce qui
+        # rouvre la relecture, c'est la version elle-même : le gate porte sur la VERSION, et une
+        # version neuve n'est pas approuvée. Le statut recopié sur le cas ne faisait que redire
+        # ça, moins fidèlement — et il empêchait l'État d'être ce qu'il doit être : un champ que
+        # l'humain pose, et que la machine ne lui reprend pas (arbitré le 2026-08-04).
 
         version_id = self.version_repo.create(
             test_case_id=case_id,
@@ -155,10 +155,8 @@ class GenerationAgent:
             test_steps=(_json.dumps(metier["steps"], ensure_ascii=False)
                         if metier.get("steps") else ""),
             expected_result=metier.get("expected_result", ""),
-            angle=metier.get("angle", ""),
         )
         self.case_repo.set_current_version(case_id, version_id)
-        self.case_repo.set_validation_status(case_id, validation_status)
         result.case_id = case_id
         result.version_id = version_id
         result.awaiting_review = True

@@ -54,6 +54,23 @@ class BehaveRunner:
         self.project_id = project_id
         # Où CONSERVER la trace brute de ce run (2026-07-24). None → rien n'est gardé, comme avant.
         self.artifacts_dir: Path | None = None
+        # L'exécution en cours, pour tracer QUELLE exécution a appris quoi (0023). None → une
+        # règle apprise sans ce lien, comme avant ce correctif (les runners de test, `cli.py`).
+        self.execution_id: int | None = None
+
+    def cibler_execution(self, execution_id: int | None) -> None:
+        """Désigne l'exécution du PROCHAIN run — même motif que `cibler_artefacts` ci-dessous.
+
+        ⚠️ **Pourquoi ça n'existait pas.** `regles_apprises.enregistrer()` accepte `execution_id`
+        depuis l'origine (0023), mais rien ne l'appelait jamais avec autre chose que sa valeur par
+        défaut (`None`) : chaque règle apprise portait `execution_id: null`, contredisant la
+        traçabilité que 0023 promettait (« quel run a appris quoi »). Trouvé en observant de
+        vraies règles apprises réelles, toutes `null`, pendant l'audit.
+
+        Le runner est réutilisé d'une tentative de réparation à l'autre, chacune sa propre ligne
+        d'exécution (voir `cibler_artefacts`) : la cible se redésigne donc avant chaque run.
+        """
+        self.execution_id = execution_id
 
     def cibler_artefacts(self, chemin: Path | None) -> None:
         """Désigne le dossier où archiver la trace brute du PROCHAIN run.
@@ -169,7 +186,8 @@ class BehaveRunner:
             return
         try:
             from testpilot.generation import regles_apprises
-            apprises = regles_apprises.enregistrer(self.project_id, result.refus_mesures)
+            apprises = regles_apprises.enregistrer(self.project_id, result.refus_mesures,
+                                                    execution_id=self.execution_id)
         except Exception:
             logger.warning("[règles apprises] apprentissage impossible — le run reste intact",
                            exc_info=True)

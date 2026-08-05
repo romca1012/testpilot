@@ -42,3 +42,6 @@ line-length = 100
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+    "donnees_reelles: échappatoire explicite au garde-fou conftest.py qui interdit à un test de toucher le vrai data/ du poste — aucun test actuel n'en a besoin, à documenter s'il en naît un.",
+]

@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from testpilot import config
 from testpilot.store import secrets as secrets_mod
+from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE, MODES_EXECUTION
 
 logger = logging.getLogger(__name__)
 
@@ -666,7 +667,7 @@ class CaseRepo:
                     f"« {row['title']} »")
 
     def create(self, *, title: str, module_id: int | None = None, group_id: int | None = None,
-               angle: str = "", feature_slug: str = "", author: str = "", description: str = "",
+               feature_slug: str = "", author: str = "", description: str = "",
                origin: str = "ia_generated", priority: str = "medium") -> int:
         """Crée un cas. `group_id` OBLIGATOIRE pour tout cas RANGÉ dans un module : s'il n'est pas
         fourni mais qu'un module l'est, on AUTO-ENVELOPPE le cas dans sa propre spécification 1:1
@@ -684,17 +685,17 @@ class CaseRepo:
         self.ensure_slug_free(feature_slug)
         ts = now_iso()
         cur = self.conn.execute(
-            "INSERT INTO test_case (title, module_id, group_id, angle, feature_slug, description,"
-            " origin, validation_status, priority, position, author, created_at, updated_at)"
-            " VALUES (?,?,?,?,?,?,?, 'never_executed', ?,?,?,?,?)",
-            (title, module_id, group_id, angle, feature_slug, description, origin, priority,
+            "INSERT INTO test_case (title, module_id, group_id, feature_slug, description,"
+            " origin, priority, position, author, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (title, module_id, group_id, feature_slug, description, origin, priority,
              self._next_position(module_id), author, ts, ts),
         )
         self.conn.commit()
         return int(cur.lastrowid)
 
     def create_manual(self, *, module_id: int, title: str, preconditions: str = "",
-                      test_steps: str = "", expected_result: str = "", angle: str = "",
+                      test_steps: str = "", expected_result: str = "",
                       author: str = "ui") -> int:
         """Crée un cas À LA MAIN — le bouton « Ajouter un cas de test », SANS IA (décision `0022`).
 
@@ -715,7 +716,7 @@ class CaseRepo:
             feature_content="", steps_content="",   # pas de Gherkin : cas non exécutable en l'état
             change_summary="Création manuelle", created_by=author,
             title=title, preconditions=preconditions, test_steps=test_steps,
-            expected_result=expected_result, angle=angle)
+            expected_result=expected_result)
         # `set_current_version` pointe le cas sur la version qu'on vient d'écrire.
         vid = self.conn.execute("SELECT id FROM test_case_version WHERE test_case_id=?"
                                 " ORDER BY id DESC LIMIT 1", (cid,)).fetchone()["id"]
@@ -846,7 +847,7 @@ class CaseRepo:
 
     def update_metier(self, case_id: int, *, title: str | None = None,
                       preconditions: str | None = None, test_steps: str | None = None,
-                      expected_result: str | None = None, angle: str | None = None,
+                      expected_result: str | None = None,
                       refs: str | None = None, estimate: str | None = None,
                       editor: str = "ui") -> int | None:
         """Édite le contenu métier d'un cas → **crée une NOUVELLE version** (décision `0022` n°10).
@@ -879,8 +880,8 @@ class CaseRepo:
                               (*meta.values(), now_iso(), case_id))
             self.conn.commit()
 
-        # Contenu versionné : valeur fournie, sinon celle de la version courante (repli sur le cas
-        # pour titre/angle, car les versions d'avant la migration 14 n'en portaient pas).
+        # Contenu versionné : valeur fournie, sinon celle de la version courante (repli sur le
+        # cas pour le titre, car les versions d'avant la migration 14 n'en portaient pas).
         def pick(new, key, fallback):
             if new is not None:
                 return new
@@ -890,14 +891,12 @@ class CaseRepo:
         new_pre = pick(preconditions, "preconditions", "")
         new_steps = pick(test_steps, "test_steps", "")
         new_expected = pick(expected_result, "expected_result", "")
-        new_angle = pick(angle, "angle", case.get("angle", ""))
 
         inchange = (current is not None
                     and new_title == (current.get("title") or case.get("title", ""))
                     and new_pre == (current.get("preconditions") or "")
                     and new_steps == (current.get("test_steps") or "")
-                    and new_expected == (current.get("expected_result") or "")
-                    and new_angle == (current.get("angle") or case.get("angle", "")))
+                    and new_expected == (current.get("expected_result") or ""))
         if inchange:
             return None   # rien de versionné n'a bougé : pas de version fantôme
 
@@ -913,20 +912,45 @@ class CaseRepo:
             change_summary="Édition manuelle du contenu métier",
             created_by=editor,
             title=new_title, preconditions=new_pre, test_steps=new_steps,
-            expected_result=new_expected, angle=new_angle,
+            expected_result=new_expected,
         )
-        # Le CAS porte des COPIES courantes (titre/angle) pour les listes et les filtres.
+        # Le CAS porte une COPIE courante du titre pour les listes et les filtres.
         # La VERSION fait foi — même règle que le raccourci de résultat.
         self.conn.execute(
-            "UPDATE test_case SET title=?, angle=?, current_version_id=?, updated_at=? WHERE id=?",
-            (new_title, new_angle, version_id, now_iso(), case_id))
+            "UPDATE test_case SET title=?, current_version_id=?, updated_at=? WHERE id=?",
+            (new_title, version_id, now_iso(), case_id))
         self.conn.commit()
         return version_id
 
-    def set_priority(self, case_id: int, priority: str) -> None:
-        self.conn.execute("UPDATE test_case SET priority=?, updated_at=? WHERE id=?",
-                          (priority, now_iso(), case_id))
+    # Les métadonnées de LECTURE d'un cas : elles ne changent pas ce que le test VÉRIFIE, donc
+    # elles ne sont pas versionnées (même famille que `refs`/`estimate`, décision 0022 n°3b).
+    CHAMPS_DE_LECTURE = ("priority", "type", "etat")
+
+    def set_metadonnees(self, case_id: int, **champs) -> None:
+        """Écrit une ou plusieurs métadonnées de lecture (`priority`, `type`, `etat`).
+
+        Une seule méthode plutôt qu'un `set_x` par champ : les trois ont exactement la même
+        mécanique (écrire, horodater), et la liste s'allongera — l'administrateur pourra ajouter
+        des valeurs, et le produit d'autres colonnes du même genre.
+
+        ⚠️ **Les VALEURS ne sont pas validées ici**, délibérément : `type` et `etat` sont du texte
+        libre sans `CHECK` (précédent `angle`), justement pour qu'étendre la liste ne demande pas
+        de migration. C'est la couche API qui refuse une valeur hors vocabulaire — un seul endroit,
+        celui qui a le contexte pour rendre un message utile.
+        """
+        inconnus = set(champs) - set(self.CHAMPS_DE_LECTURE)
+        if inconnus:
+            raise ValueError(f"champ de lecture inconnu : {sorted(inconnus)}")
+        if not champs:
+            return
+        sets = ", ".join(f"{nom}=?" for nom in champs)
+        self.conn.execute(f"UPDATE test_case SET {sets}, updated_at=? WHERE id=?",
+                          (*champs.values(), now_iso(), case_id))
         self.conn.commit()
+
+    def set_priority(self, case_id: int, priority: str) -> None:
+        """Raccourci historique — `set_metadonnees` est la porte d'entrée générale."""
+        self.set_metadonnees(case_id, priority=priority)
 
     def get(self, case_id: int) -> dict | None:
         row = self.conn.execute(_CASE_SELECT + f" WHERE tc.id=? AND {_CASE_VIVANT}",
@@ -1074,19 +1098,47 @@ class CaseRepo:
                           (feature_slug, now_iso(), case_id))
         self.conn.commit()
 
-    def set_validation_status(self, case_id: int, status: str) -> None:
-        self.conn.execute(
-            "UPDATE test_case SET validation_status=?, updated_at=? WHERE id=?",
-            (status, now_iso(), case_id),
-        )
-        self.conn.commit()
+    # ⚠️ `set_validation_status` a été SUPPRIMÉ (migration 25). Le statut de validation était
+    # DÉRIVÉ des exécutions et écrit automatiquement en cinq endroits ; il se donnait des airs de
+    # cycle de vie sans en être un — on ne pouvait ni le poser, ni le retirer. `etat` le remplace
+    # (Nouveau/Conception/Prêt/Obsolète), écrit UNIQUEMENT par un humain via `set_metadonnees`.
 
     def update_last_outcome(self, case_id: int, *, execution_status: str,
                             functional_status: str, executed_at: str) -> None:
+        """Le RACCOURCI du dernier résultat, après une EXÉCUTION.
+
+        ⚠️ **`last_statut_manuel` est remis à VIDE, et c'est le point le plus important de cette
+        méthode.** Sans ça, une saisie humaine ancienne continuerait de court-circuiter la
+        dérivation (`statut_de_test` donne la priorité au statut manuel) : le cas afficherait
+        indéfiniment le statut saisi à la main, quels que soient les runs verts qui suivent. Le
+        défaut ne se voit qu'en croisant deux écrans — la liste dirait « Passed » pendant que le
+        rapport d'exécution dit « erreur technique ».
+
+        `last_result_mode='automatique'` : le mode est écrit en même temps que le résultat, jamais
+        déduit après coup.
+        """
         self.conn.execute(
             "UPDATE test_case SET last_execution_status=?, last_functional_status=?,"
-            " last_executed_at=?, updated_at=? WHERE id=?",
-            (execution_status, functional_status, executed_at, now_iso(), case_id),
+            " last_executed_at=?, last_statut_manuel='', last_result_mode=?,"
+            " last_result_at=?, updated_at=? WHERE id=?",
+            (execution_status, functional_status, executed_at, MODE_AUTOMATIQUE, executed_at,
+             now_iso(), case_id),
+        )
+        self.conn.commit()
+
+    def update_last_manuel(self, case_id: int, *, statut: str, saisi_at: str) -> None:
+        """Le RACCOURCI du dernier résultat, après une exécution MANUELLE.
+
+        ⚠️ **Les deux axes ne sont PAS touchés** (`last_execution_status` /
+        `last_functional_status`). Saisir « passed » ne doit jamais écrire « exécution=succès,
+        fonctionnel=conforme » : ce serait prétendre qu'une machine a constaté quelque chose. Ils
+        gardent donc la dernière MESURE réelle, s'il y en a eu une, et le statut affiché vient du
+        statut manuel (qui court-circuite la dérivation dans `statut_de_test`).
+        """
+        self.conn.execute(
+            "UPDATE test_case SET last_statut_manuel=?, last_result_mode=?,"
+            " last_result_at=?, updated_at=? WHERE id=?",
+            (statut, MODE_MANUELLE, saisi_at, now_iso(), case_id),
         )
         self.conn.commit()
 
@@ -1099,10 +1151,10 @@ class VersionRepo:
                feature_content: str, steps_content: str, feature_path: str = "",
                steps_path: str = "", change_summary: str = "", created_by: str = "",
                title: str = "", preconditions: str = "", test_steps: str = "",
-               expected_result: str = "", angle: str = "") -> int:
+               expected_result: str = "") -> int:
         """Crée une version — **le CAS ENTIER**, métier ET technique (décision `0022` n°10).
 
-        Les champs métier (`title`, `preconditions`, `test_steps`, `expected_result`, `angle`)
+        Les champs métier (`title`, `preconditions`, `test_steps`, `expected_result`)
         sont figés ici avec le Gherkin : c'est ce qui rend l'historique diffable et ce que le gate
         approuve d'un seul geste. `test_steps` est une **liste JSON**, pas du texte multi-lignes.
         """
@@ -1115,11 +1167,11 @@ class VersionRepo:
             "INSERT INTO test_case_version (test_case_id, version_number, spec_content,"
             " spec_hash, feature_content, steps_content, feature_path, steps_path,"
             " change_summary, created_at, created_by,"
-            " title, preconditions, test_steps, expected_result, angle)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " title, preconditions, test_steps, expected_result)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (test_case_id, number, spec_content, spec_hash, feature_content, steps_content,
              feature_path, steps_path, change_summary, now_iso(), created_by,
-             title, preconditions, test_steps, expected_result, angle),
+             title, preconditions, test_steps, expected_result),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -1286,6 +1338,12 @@ class ExecutionRepo:
         ⚠️ `report_json_path`/`report_html_path` ont été **supprimés** (migration 7) : personne ne
         les alimentait ni ne les lisait. Le rapport est **reconstruit à la demande** depuis la
         base (`report_service.build_report_for_execution`) — c'est le seul mécanisme réel.
+
+        ⚠️ **C'est ici, et NULLE PART AILLEURS, que le registre apprend qu'une exécution a eu un
+        résultat.** `finalize` est le seul goulot : le chemin normal (`run_service._persist`) et
+        le chemin d'échec (`_ecrire_erreur`) y passent tous les deux. Brancher le registre sur les
+        appelants aurait demandé de n'en oublier aucun — et le jour où un troisième apparaît, le
+        résultat manquerait au registre sans que rien ne le signale.
         """
         self.conn.execute(
             "UPDATE execution SET execution_status=?, functional_status=?, scenarios_total=?,"
@@ -1297,6 +1355,10 @@ class ExecutionRepo:
              field_fallbacks, error_message, execution_id),
         )
         self.conn.commit()
+        # Le compte de service est résolu MAINTENANT et recopié dans la ligne : changer le réglage
+        # plus tard ne doit pas réécrire l'auteur des résultats déjà produits.
+        ResultRepo(self.conn).enregistrer_execution(
+            execution_id, created_by=SettingRepo(self.conn).valeur("service_account_name"))
 
     def get(self, execution_id: int) -> dict | None:
         row = self.conn.execute("SELECT * FROM execution WHERE id=?", (execution_id,)).fetchone()
@@ -1368,17 +1430,25 @@ class RunRepo:
         self.conn = conn
 
     def create(self, *, project_id: int, name: str, description: str = "", refs: str = "",
-               selection_mode: str = "frozen", case_ids: list[int] | None = None) -> int:
+               selection_mode: str = "frozen", mode: str = MODE_AUTOMATIQUE,
+               case_ids: list[int] | None = None) -> int:
         """Crée un run en BROUILLON (jamais lancé à la création — `0022` 8.c.1).
 
         `case_ids` n'est matérialisé que pour `frozen` : en mode `all`, la sélection est vivante,
         la stocker figerait ce qu'on veut justement garder mouvant.
+
+        `mode` est le MODE D'EXÉCUTION de la campagne (2026-08-04) : `automatique` (la machine
+        joue les cas) ou `manuelle` (un humain les joue et saisit ce qu'il a constaté). Il décide
+        des gestes offerts par l'écran, et le mode de chaque résultat doit lui concorder —
+        invariant tenu par un trigger de la base, pas par une politesse des routes.
         """
+        if mode not in MODES_EXECUTION:
+            raise ValueError(f"mode d'exécution inconnu : {mode!r} — attendu {list(MODES_EXECUTION)}")
         ts = now_iso()
         cur = self.conn.execute(
-            "INSERT INTO test_run (project_id, name, description, refs, selection_mode, status,"
-            " created_at) VALUES (?,?,?,?,?,'draft',?)",
-            (project_id, name, description, refs, selection_mode, ts))
+            "INSERT INTO test_run (project_id, name, description, refs, selection_mode, mode,"
+            " status, created_at) VALUES (?,?,?,?,?,?,'draft',?)",
+            (project_id, name, description, refs, selection_mode, mode, ts))
         run_id = int(cur.lastrowid)
         if selection_mode == "frozen":
             for cid in dict.fromkeys(case_ids or []):  # dédup en gardant l'ordre
@@ -1393,15 +1463,29 @@ class RunRepo:
         return dict(row) if row else None
 
     def list_for_project(self, project_id: int) -> list[dict]:
-        # `tested_count` = cas DISTINCTS ayant au moins une exécution dans ce run — la base du
-        # « % de complétion » de l'écran Aperçu (note fonctionnelle). Le total dépend du mode
-        # (figé = frozen_count ; vivant = calculé par l'appelant), d'où les deux exposés.
+        # `tested_count` = cas DISTINCTS ayant un RÉSULTAT dans ce run — la base du « % de
+        # complétion » de l'écran Aperçu (note fonctionnelle). Le total dépend du mode (figé =
+        # frozen_count ; vivant = calculé par l'appelant), d'où les deux exposés.
+        #
+        # ⚠️ Compté sur le REGISTRE et non sur `execution` depuis le 2026-08-04 : une campagne
+        # testée à la main afficherait sinon 0 % pour toujours, alors qu'elle est finie. Les
+        # campagnes existantes ne bougent pas — la migration 25 leur a créé une ligne de registre
+        # par exécution.
+        #
+        # `manuel_count` = cas dont le DERNIER résultat a été joué à la MAIN. C'est ce qui permet
+        # de dire « 12 cas sur 40 ont été joués à la main » plutôt que de laisser une barre verte
+        # sous-entendre que tout a été prouvé par la machine.
         return _rows(self.conn.execute(
             "SELECT r.*,"
             " (SELECT COUNT(*) FROM test_run_case rc WHERE rc.run_id=r.id) AS frozen_count,"
-            " (SELECT COUNT(DISTINCT e.test_case_id) FROM execution e WHERE e.run_id=r.id)"
-            "     AS tested_count"
-            " FROM test_run r WHERE r.project_id=? ORDER BY r.id DESC", (project_id,)))
+            " (SELECT COUNT(DISTINCT tr.case_id) FROM test_result tr WHERE tr.run_id=r.id)"
+            "     AS tested_count,"
+            " (SELECT COUNT(*) FROM test_result tr"
+            "    JOIN (SELECT case_id, MAX(id) AS dernier FROM test_result WHERE run_id=r.id"
+            "          GROUP BY case_id) d ON d.dernier = tr.id"
+            "    WHERE tr.mode=?) AS manuel_count"
+            " FROM test_run r WHERE r.project_id=? ORDER BY r.id DESC",
+            (MODE_MANUELLE, project_id)))
 
     def case_ids(self, run_id: int) -> list[int]:
         """Les cas du run : recalculés (mode `all`) ou lus dans la liaison figée (`frozen`)."""
@@ -1429,25 +1513,40 @@ class RunRepo:
             " AND (p.id IS NULL OR p.deleted_at='') ORDER BY trc.case_id", (run_id,))]
 
     def cases_with_results(self, run_id: int) -> list[dict]:
-        """Chaque cas du run + son résultat DANS CE run (la dernière exécution rattachée).
+        """Chaque cas du run + son résultat DANS CE run, lu au REGISTRE (2026-08-04).
 
-        C'est le cœur de `0022` n°4 : le résultat vit sur le cas × run. Un cas sans exécution
-        dans ce run est « Non testé » — on l'expose quand même (il fait partie de la campagne).
+        C'est le cœur de `0022` n°4 : le résultat vit sur le cas × run. Un cas sans résultat dans
+        ce run est « Non testé » — on l'expose quand même (il fait partie de la campagne).
+
+        ⚠️ **`case_ids()` reste l'UNIQUE porte d'entrée** vers les cas d'une campagne : c'est elle
+        qui porte l'invariant de suppression douce (un cas à la corbeille ne fait plus partie
+        d'aucune campagne, ni en mode vivant ni en figé). Lire `test_run_case` directement ici
+        ferait réapparaître des cas que l'utilisateur croit supprimés — et, pire, les exécuterait.
+
+        ⚠️ **Le résultat ne vient plus de la dernière `execution`** : il vient du registre, qui
+        sait aussi porter un résultat DÉCLARÉ par un humain. Une campagne entièrement testée à la
+        main afficherait sinon « Non testé » partout.
+
+        **Deux requêtes, jamais 2×N** : une pour les cas, une pour leurs derniers résultats. La
+        version précédente en faisait deux PAR CAS — 1 000 allers-retours sur une campagne de 500.
         """
+        ids = self.case_ids(run_id)
+        if not ids:
+            return []
+        marqueurs = ",".join("?" * len(ids))
+        cases = {int(r["id"]): dict(r) for r in self.conn.execute(
+            f"SELECT id, title, last_execution_status, last_functional_status"
+            f" FROM test_case WHERE id IN ({marqueurs})", ids)}
+        derniers = ResultRepo(self.conn).derniers_du_run(run_id)
+
         out = []
-        for cid in self.case_ids(run_id):
-            case = self.conn.execute(
-                "SELECT id, title, last_execution_status, last_functional_status"
-                " FROM test_case WHERE id=?", (cid,)).fetchone()
+        for cid in ids:
+            case = cases.get(cid)
             if case is None:
-                continue  # cas supprimé depuis (mode all) — on ne fabrique rien
-            ex = self.conn.execute(
-                "SELECT id, execution_status, functional_status, scenarios_total,"
-                " scenarios_passed, started_at FROM execution"
-                " WHERE run_id=? AND test_case_id=? ORDER BY id DESC LIMIT 1", (run_id, cid)).fetchone()
-            row = dict(case)
-            row["result"] = dict(ex) if ex else None
-            out.append(row)
+                continue  # supprimé entre les deux requêtes — on ne fabrique rien
+            ligne = dict(case)
+            ligne["result"] = derniers.get(cid)
+            out.append(ligne)
         return out
 
     def cibles_du_run(self, run_id: int) -> list[dict]:
@@ -1668,3 +1767,302 @@ class CostRepo:
             " FROM cost_ledger WHERE test_case_id = ?"
             " GROUP BY phase, model ORDER BY cost_usd DESC",
             (case_id,)))
+
+
+class ResultRepo:
+    """Le REGISTRE des résultats — la seule réponse à « quel est le résultat du cas C dans la
+    campagne R ? » (2026-08-04).
+
+    ⚠️ **Deux MODES D'EXÉCUTION, une seule table, et la base qui les tient séparés.** Un résultat
+    `automatique` porte une exécution et aucun statut saisi ; un résultat `manuelle` porte un
+    statut saisi et aucune exécution. Ce n'est pas une convention que ce dépôt s'engage à
+    respecter : c'est un `CHECK` de la table, donc un refus d'insertion. C'est là que vit la
+    promesse du produit — *on sait toujours comment un statut a été obtenu*.
+
+    Et un trigger y ajoute la règle née du mode au niveau campagne : un résultat ne peut pas être
+    d'un autre mode que la campagne qui l'accueille.
+
+    **Rien n'est jamais modifié ni supprimé** : corriger un résultat, c'est en ajouter un nouveau.
+    L'historique reste lisible, y compris les erreurs de saisie — comme partout ici (§7).
+    """
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def enregistrer_execution(self, execution_id: int, *, created_by: str = "") -> int | None:
+        """Inscrit au registre l'exécution qui vient de se clore. Rend `None` si elle n'a pas sa
+        place (hors campagne, ou déjà inscrite).
+
+        ⚠️ **Une exécution SANS `run_id` n'entre pas au registre** — et ce n'est pas un oubli : le
+        registre répond à « résultat du cas C **dans la campagne R** ». Sans campagne, la question
+        n'existe pas ; la ligne vivrait dans `execution`, comme avant. C'est aussi ce qui garde
+        `quality_summary` (qui compte les `execution`) intact.
+
+        `created_by` est **recopié à l'écriture**, jamais résolu à la lecture : changer le compte
+        de service plus tard ne doit pas réécrire l'histoire.
+        """
+        ex = self.conn.execute(
+            "SELECT id, run_id, test_case_id FROM execution WHERE id=?", (execution_id,)).fetchone()
+        if ex is None or ex["run_id"] is None:
+            return None
+        deja = self.conn.execute(
+            "SELECT id FROM test_result WHERE execution_id=?", (execution_id,)).fetchone()
+        if deja is not None:
+            return int(deja["id"])   # `finalize` peut être rejoué : on ne compte pas deux fois
+        cur = self.conn.execute(
+            "INSERT INTO test_result (run_id, case_id, mode, execution_id, statut_manuel,"
+            " comment, created_by, attachments_path, created_at)"
+            " VALUES (?,?,?, ?, '', '', ?, '', ?)",
+            (ex["run_id"], ex["test_case_id"], MODE_AUTOMATIQUE, execution_id, created_by,
+             now_iso()))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def saisir(self, *, run_id: int, case_id: int, statut: str, comment: str = "",
+               created_by: str = "", attachments_path: str = "") -> int:
+        """Inscrit un résultat joué À LA MAIN par un humain, et met à jour le raccourci du cas.
+
+        Le statut est vérifié ici **et** par la base : la liste vient de `STATUTS_MANUELS`, et le
+        `CHECK` de la table refuse tout ce qui n'y est pas. Deux gardes pour la même règle, parce
+        que celle-ci porte la promesse du produit — un message clair côté Python, un refus
+        infranchissable côté base.
+        """
+        from testpilot.verdict.status import STATUTS_MANUELS
+
+        if statut not in STATUTS_MANUELS:
+            raise ValueError(
+                f"statut non saisissable : {statut!r} — attendu {list(STATUTS_MANUELS)}. "
+                "« untested » n'en fait PAS partie : c'est l'absence de résultat, pas un choix.")
+        ts = now_iso()
+        cur = self.conn.execute(
+            "INSERT INTO test_result (run_id, case_id, mode, execution_id, statut_manuel,"
+            " comment, created_by, attachments_path, created_at)"
+            " VALUES (?,?,?, NULL, ?,?,?,?,?)",
+            (run_id, case_id, MODE_MANUELLE, statut, comment, created_by, attachments_path, ts))
+        self.conn.commit()
+        CaseRepo(self.conn).update_last_manuel(case_id, statut=statut, saisi_at=ts)
+        return int(cur.lastrowid)
+
+    # Les DEUX AXES ne sont pas recopiés dans le registre : ils se lisent par JOINTURE sur
+    # l'exécution. Une copie divergerait le jour où une exécution est corrigée — et surtout,
+    # un axe recopié sur une ligne MANUELLE serait une mesure inventée. Sur un résultat manuel,
+    # la jointure ne rend rien, et c'est exactement ce qu'on veut afficher : rien.
+    _SELECT_RESULTAT = (
+        "SELECT tr.*, e.execution_status, e.functional_status, e.started_at AS execution_started_at"
+        " FROM test_result tr LEFT JOIN execution e ON e.id = tr.execution_id")
+
+    def dernier(self, run_id: int, case_id: int) -> dict | None:
+        """Le résultat qui FAIT FOI pour ce cas dans cette campagne : le dernier inscrit.
+
+        Trié par `id`, jamais par `created_at` : deux résultats saisis dans la même seconde
+        auraient la même date, et l'ordre deviendrait celui que la base voudrait bien rendre.
+        """
+        row = self.conn.execute(
+            f"{self._SELECT_RESULTAT} WHERE tr.run_id=? AND tr.case_id=?"
+            " ORDER BY tr.id DESC LIMIT 1", (run_id, case_id)).fetchone()
+        return dict(row) if row else None
+
+    def historique(self, run_id: int, case_id: int) -> list[dict]:
+        """Tous les résultats de ce cas dans cette campagne, du plus ancien au plus récent.
+
+        Corriger un résultat, c'est en ajouter un autre : l'ancien reste, et c'est cette liste qui
+        le montre. Sans elle, « corriger » redeviendrait « effacer ».
+        """
+        return _rows(self.conn.execute(
+            f"{self._SELECT_RESULTAT} WHERE tr.run_id=? AND tr.case_id=? ORDER BY tr.id",
+            (run_id, case_id)))
+
+    def get(self, result_id: int) -> dict | None:
+        row = self.conn.execute("SELECT * FROM test_result WHERE id=?", (result_id,)).fetchone()
+        return dict(row) if row else None
+
+    # ── Les PIÈCES JOINTES d'un résultat (2026-08-05) ────────────────────────
+    # ⚠️ **`stored_name` (le nom sur le disque) est distinct de `filename` (celui de
+    # l'utilisateur)** : c'est le serveur qui génère le premier, et c'est LUI seul qui touche un
+    # chemin. Le nom venu du client n'est qu'une étiquette d'affichage — il ne désigne jamais un
+    # fichier. Sans cette séparation, un `filename` du genre `../../.env` deviendrait un chemin.
+    #
+    # `attachments_path` est STOCKÉ sur le résultat, jamais déduit de son identifiant : le
+    # répertoire de données est configurable, et une base restaurée ailleurs doit continuer de
+    # dire où ses fichiers sont partis.
+
+    def ajouter_piece_jointe(self, result_id: int, *, filename: str, stored_name: str,
+                             dossier: str, content_type: str = "", size_bytes: int = 0) -> int:
+        """Inscrit une pièce jointe et mémorise le dossier qui l'accueille.
+
+        ⚠️ Écrire `attachments_path` n'entame PAS la règle « rien n'est modifié » de ce registre :
+        cette colonne dit *où sont rangés les fichiers*, pas ce que le résultat affirme. Le
+        statut, le commentaire et l'auteur, eux, restent intouchables.
+        """
+        cur = self.conn.execute(
+            "INSERT INTO result_attachment (result_id, filename, stored_name, content_type,"
+            " size_bytes, created_at) VALUES (?,?,?,?,?,?)",
+            (result_id, filename, stored_name, content_type, size_bytes, now_iso()))
+        self.conn.execute("UPDATE test_result SET attachments_path=? WHERE id=?",
+                          (dossier, result_id))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def pieces_jointes(self, result_id: int) -> list[dict]:
+        return _rows(self.conn.execute(
+            "SELECT * FROM result_attachment WHERE result_id=? ORDER BY id", (result_id,)))
+
+    def pieces_jointes_de(self, result_ids: list[int]) -> dict[int, list[dict]]:
+        """Les pièces jointes de PLUSIEURS résultats en **une** requête.
+
+        L'historique d'un cas en affiche N : une requête par ligne rendrait le coût de l'écran
+        proportionnel au nombre de corrections, pour une colonne le plus souvent vide.
+        """
+        if not result_ids:
+            return {}
+        marqueurs = ",".join("?" * len(result_ids))
+        par_resultat: dict[int, list[dict]] = {}
+        for row in _rows(self.conn.execute(
+                f"SELECT * FROM result_attachment WHERE result_id IN ({marqueurs}) ORDER BY id",
+                tuple(result_ids))):
+            par_resultat.setdefault(int(row["result_id"]), []).append(row)
+        return par_resultat
+
+    def piece_jointe(self, result_id: int, attachment_id: int) -> dict | None:
+        """UNE pièce jointe, **à condition qu'elle appartienne à ce résultat**.
+
+        ⚠️ Le `result_id` dans la clause n'est pas décoratif : sans lui, l'identifiant numérique
+        d'une pièce jointe suffirait à lire celle d'un AUTRE résultat en passant par n'importe
+        quelle URL. Le dossier est rendu avec elle — le nom sur disque ne se recolle qu'à un
+        chemin lu en base, jamais à une chaîne venue du client.
+        """
+        row = self.conn.execute(
+            "SELECT a.*, r.attachments_path FROM result_attachment a"
+            " JOIN test_result r ON r.id = a.result_id"
+            " WHERE a.id=? AND a.result_id=?", (attachment_id, result_id)).fetchone()
+        return dict(row) if row else None
+
+    def derniers_du_run(self, run_id: int) -> dict[int, dict]:
+        """Le dernier résultat de CHAQUE cas de la campagne, en **une** requête.
+
+        ⚠️ Une requête, pas une par cas : l'écran d'une campagne de 500 cas ferait sinon 500
+        allers-retours pour afficher une colonne. Le `MAX(id)` par cas est calculé en sous-requête,
+        puis joint — c'est la forme qui reste juste quand deux résultats partagent leur horodatage.
+        """
+        return {int(r["case_id"]): dict(r) for r in self.conn.execute(
+            f"{self._SELECT_RESULTAT}"
+            " JOIN (SELECT case_id, MAX(id) AS dernier FROM test_result WHERE run_id=?"
+            "       GROUP BY case_id) d ON d.dernier = tr.id"
+            " WHERE tr.run_id=?", (run_id, run_id))}
+
+    def historique_du_cas(self, case_id: int, limite: int = 200) -> list[dict]:
+        """Tous les résultats de ce cas, **toutes campagnes confondues**, du plus récent au plus
+        ancien — avec le nom de la campagne qui les a produits.
+
+        ⚠️ C'est la question que `dernier`/`historique` ne savaient pas poser : elles répondent
+        « dans CETTE campagne ». Ici on demande « et ailleurs ? » — ce qui permet de voir qu'un cas
+        passe partout sauf sur une recette, information invisible campagne par campagne.
+
+        Une campagne dont le PROJET est à la corbeille n'y figure pas : elle n'existe plus pour
+        l'écran, et son résultat ne doit pas ressusciter dans l'historique d'un cas vivant.
+        """
+        return _rows(self.conn.execute(
+            "SELECT tr.*, e.execution_status, e.functional_status, r.name AS run_name"
+            " FROM test_result tr LEFT JOIN execution e ON e.id = tr.execution_id"
+            " JOIN test_run r ON r.id = tr.run_id"
+            " JOIN project p ON p.id = r.project_id"
+            " WHERE tr.case_id=? AND p.deleted_at='' ORDER BY tr.id DESC LIMIT ?",
+            (case_id, limite)))
+
+    def activite_du_run(self, run_id: int, limite: int = 500) -> list[dict]:
+        """Le fil chronologique d'une campagne : chaque résultat posé, du plus récent au plus
+        ancien, avec le titre du cas concerné.
+
+        ⚠️ Un cas à la CORBEILLE n'apparaît pas : il ne fait plus partie d'aucune campagne
+        (même invariant que `RunRepo.case_ids`). Sans ce filtre, le fil d'activité serait la
+        seule vue de l'application où un cas supprimé continuerait de vivre.
+        """
+        return _rows(self.conn.execute(
+            "SELECT tr.*, e.execution_status, e.functional_status, tc.title AS case_title"
+            " FROM test_result tr LEFT JOIN execution e ON e.id = tr.execution_id"
+            " JOIN test_case tc ON tc.id = tr.case_id"
+            " WHERE tr.run_id=? AND tc.deleted_at='' ORDER BY tr.id DESC LIMIT ?",
+            (run_id, limite)))
+
+
+class SettingRepo:
+    """Les RÉGLAGES D'INSTANCE — une table clé/valeur, mais à vocabulaire FERMÉ.
+
+    ⚠️ **`CLES_CONNUES` n'est pas de la bureaucratie.** Une table clé/valeur ouverte devient un
+    dépotoir en six mois : plus personne ne sait quelles clés sont lues, lesquelles sont mortes,
+    ni laquelle un écran attend. Refuser une clé inconnue à l'écriture est ce qui rend la table
+    lisible dans un an — même discipline que `erreurs.CATALOGUE`, pour la même raison.
+
+    **La résolution est en trois temps : base → variable d'environnement → défaut du code.** Et
+    l'API expose **d'où vient la valeur** (`resoudre` rend le couple valeur/provenance) : sans
+    ça, un exploitant qui a posé sa variable d'environnement et qui voit autre chose à l'écran
+    cherche pendant une heure — la base l'emporte, mais rien ne le lui dit.
+    """
+
+    # clé → (valeur par défaut lue dans `config`, description affichée)
+    CLES_CONNUES: dict[str, tuple[str, str]] = {
+        "service_account_name": (
+            "SERVICE_ACCOUNT_NAME",
+            "Nom qui signe les résultats produits par une EXÉCUTION automatique. Sans rapport "
+            "avec le compte de connexion à l'application testée.",
+        ),
+    }
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def _verifier(self, cle: str) -> None:
+        if cle not in self.CLES_CONNUES:
+            raise ValueError(
+                f"réglage inconnu : {cle!r} — ajoutez-le à SettingRepo.CLES_CONNUES")
+
+    def resoudre(self, cle: str) -> tuple[str, str]:
+        """Rend `(valeur, provenance)` où provenance ∈ {`db`, `env`, `default`}.
+
+        La PROVENANCE est rendue avec la valeur, et pas seulement la valeur : c'est elle qui
+        permet à l'écran d'expliquer pourquoi la variable d'environnement de l'exploitant n'est
+        pas celle qui s'applique.
+        """
+        self._verifier(cle)
+        row = self.conn.execute("SELECT value FROM app_setting WHERE key=?", (cle,)).fetchone()
+        if row is not None and str(row["value"]).strip():
+            return str(row["value"]), "db"
+        attribut, _ = self.CLES_CONNUES[cle]
+        defaut = str(getattr(config, attribut, "") or "")
+        # `config` a déjà lu l'environnement (aucun `os.getenv` hors de lui) : on compare donc à
+        # la valeur d'usine pour savoir si l'exploitant a posé une variable, ou pas.
+        usine = _DEFAUTS_USINE.get(attribut, "")
+        return defaut, ("env" if defaut != usine else "default")
+
+    def valeur(self, cle: str) -> str:
+        return self.resoudre(cle)[0]
+
+    def ecrire(self, cle: str, valeur: str, *, par: str = "") -> None:
+        """Pose (ou efface) un réglage. Une valeur VIDE supprime la ligne plutôt que d'écrire une
+        chaîne vide : « pas de réglage » et « réglé à rien » ne sont pas le même fait, et seul le
+        premier doit laisser reprendre la main à l'environnement."""
+        self._verifier(cle)
+        valeur = str(valeur or "").strip()
+        if not valeur:
+            self.conn.execute("DELETE FROM app_setting WHERE key=?", (cle,))
+        else:
+            self.conn.execute(
+                "INSERT INTO app_setting (key, value, updated_at, updated_by) VALUES (?,?,?,?)"
+                " ON CONFLICT(key) DO UPDATE SET value=excluded.value,"
+                " updated_at=excluded.updated_at, updated_by=excluded.updated_by",
+                (cle, valeur, now_iso(), par))
+        self.conn.commit()
+
+    def tous(self) -> list[dict]:
+        """Tous les réglages CONNUS, résolus — y compris ceux qu'aucune ligne ne porte."""
+        return [{"key": cle, "value": v, "source": src, "description": self.CLES_CONNUES[cle][1]}
+                for cle in self.CLES_CONNUES
+                for v, src in [self.resoudre(cle)]]
+
+
+# Les valeurs d'USINE, figées ici, servent UNIQUEMENT à distinguer « l'exploitant a posé une
+# variable d'environnement » de « personne n'a rien réglé ». Elles doivent rester identiques aux
+# défauts de `config.py` — un test les compare, sinon l'écran annoncerait « env » à tout le monde.
+_DEFAUTS_USINE = {
+    "SERVICE_ACCOUNT_NAME": "TestPilot (automatique)",
+}

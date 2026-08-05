@@ -124,10 +124,6 @@ def _persist_run(deps: PipelineDeps, *, case_id: int, version_id: int,
     )
 
     cases = CaseRepo(deps.conn)
-    prev = cases.get(case_id)
-    new_validation = review_gate.validation_status_after_run(
-        prev["validation_status"] if prev else "never_executed", verdict.execution_status)
-    cases.set_validation_status(case_id, new_validation)
     cases.update_last_outcome(
         case_id, execution_status=verdict.execution_status,
         functional_status=verdict.functional_status, executed_at=now_iso())
@@ -163,8 +159,9 @@ def run_pipeline(deps: PipelineDeps, spec_path: str | Path, *, author: str = "",
             approved=approved, reviewer=reviewer,
             comment="auto-approuvé (--yes)" if auto_approve else "relecture CLI")
         if not approved:
+            # Le REFUS vit sur la version (`review_decision`), pas sur le cas : c'est lui qui
+            # ferme le gate. Recopier un statut sur le cas n'ajoutait rien et pouvait le contredire.
             out("[3/5] Version rejetée en relecture. Arrêt sans exécution.")
-            CaseRepo(deps.conn).set_validation_status(gen.case_id, "to_review")
             return PipelineResult(STAGE_REVIEW_REJECTED, case_id=gen.case_id,
                                   version_id=gen.version_id, message="rejeté en relecture")
     out("[3/5] Relecture approuvée — exécution autorisée.")

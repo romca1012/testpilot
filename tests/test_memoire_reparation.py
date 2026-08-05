@@ -62,7 +62,7 @@ def test_GARDE_la_repetition_d_une_signature_est_DITE_a_l_agent():
     """
     section = mr.as_prompt_section([], [_fait(version_id=7), _fait(version_id=9)])
     assert "s'est répétée 2×" in section
-    assert "Change d'angle" in section
+    assert "Change d'approche" in section
 
 
 def test_deux_signatures_differentes_ne_declenchent_PAS_l_avertissement():

@@ -43,16 +43,34 @@ const FUNCTIONAL: Record<string, StatusView> = {
   not_evaluated: { label: 'Non évalué', icon: 'circle', tone: 'muted' },
 }
 
-// ── Statut de VALIDATION du cas (cycle de vie) ────────────────────────────────
-const VALIDATION: Record<string, StatusView> = {
-  // « Non validé » et non « Jamais lancé » : un cas peut avoir été lancé mais échoué
-  // techniquement — il reste non validé sans pour autant n'avoir jamais tourné (§5).
-  never_executed: { label: 'Non validé', icon: 'circle', tone: 'muted',
-    hint: 'Aucune exécution réussie n\'a encore validé ce cas (jamais lancé, ou lancé sans succès).' },
-  validated: { label: 'Validé', icon: 'check', tone: 'success',
-    hint: 'Le test a été exécuté au moins une fois en entier, sans interruption technique.' },
-  to_review: { label: 'À relire', icon: 'half', tone: 'warning' },
+// ── ÉTAT du cas : le cycle de vie du DOCUMENT (New / Design / Ready / Obsolete) ───────────────
+// ⚠️ Il remplace l'ancien « statut de validation », qui était DÉRIVÉ des exécutions : on ne
+// pouvait ni le poser ni le retirer, et il se donnait des airs de cycle de vie sans en être un.
+// Celui-ci n'a AUCUN automatisme — modifier un cas ne le remet pas à zéro. C'est l'humain qui
+// le fait avancer, et personne d'autre.
+const ETAT: Record<string, StatusView> = {
+  new: { label: 'Nouveau', icon: 'circle', tone: 'muted',
+    hint: 'Le cas vient d\'être créé. Cet état ne dit RIEN de ses exécutions : c\'est l\'avancement de sa rédaction.' },
+  design: { label: 'Conception', icon: 'half', tone: 'warning',
+    hint: 'Le cas est en cours de rédaction.' },
+  ready: { label: 'Prêt', icon: 'check', tone: 'success',
+    hint: 'Le cas est considéré comme rédigé et utilisable.' },
+  obsolete: { label: 'Obsolète', icon: 'x', tone: 'muted',
+    hint: 'Le cas ne correspond plus à ce que fait l\'application. Il reste consultable.' },
 }
+export const ETAT_ORDER = ['new', 'design', 'ready', 'obsolete']
+
+// ── TYPE du cas : ce qu'il VÉRIFIE (axe de vérification, jamais une méthode) ──────────────────
+// Reprend la coupure réelle de TestRail : Functional/Regression/Acceptance/Smoke d'un côté,
+// Performance/Security/Usability/Compatibility de l'autre. « Automated » et « Exploratory » ne
+// sont pas ici — ce sont des façons de tester, pas des catégories de vérification.
+const TYPE: Record<string, StatusView> = {
+  fonctionnel: { label: 'Fonctionnel', icon: 'check', tone: 'muted',
+    hint: 'Vérifie que le système fait ce qui est attendu (métier, régression, recette, smoke).' },
+  non_fonctionnel: { label: 'Non fonctionnel', icon: 'dot', tone: 'muted',
+    hint: 'Évalue une qualité transversale : performance, sécurité, ergonomie, compatibilité.' },
+}
+export const TYPE_ORDER = ['fonctionnel', 'non_fonctionnel']
 
 // ── Priorité de LECTURE d'un cas — surtout pas un ordre d'exécution ───────────
 const PRIORITY: Record<string, StatusView> = {
@@ -87,27 +105,20 @@ export function executionView(code: string | null | undefined): StatusView {
 export function functionalView(code: string | null | undefined): StatusView {
   return (code && FUNCTIONAL[code]) || FUNCTIONAL.not_evaluated
 }
-export function validationView(code: string | null | undefined): StatusView {
-  return (code && VALIDATION[code]) || UNKNOWN
+export function etatView(code: string | null | undefined): StatusView {
+  return (code && ETAT[code]) || ETAT.new
+}
+export function typeView(code: string | null | undefined): StatusView {
+  return (code && TYPE[code]) || UNKNOWN
 }
 export function defectOriginView(code: string | null | undefined): StatusView {
   return (code && DEFECT_ORIGIN[code]) || DEFECT_ORIGIN.indetermine
 }
 
-// ── Angle testé d'un cas — étiquette LIBRE, en libellé métier (jamais le code brut) ──
-// Métadonnée interne (séparation 2026-07-19) : jamais dans le titre du cas, seulement en
-// métadonnée. 'legacy' = cas d'avant la séparation (repris tel quel).
-const ANGLE: Record<string, string> = {
-  nominal: 'Cas nominal',
-  erreur: 'Cas d\'erreur',
-  limite: 'Cas limite',
-  autre: 'Autre angle',
-  legacy: 'Cas repris',
-}
-export function angleLabel(code: string | null | undefined): string {
-  if (!code) return '—'
-  return ANGLE[code] || code
-}
+// ⚠️ `angleLabel` A ÉTÉ SUPPRIMÉE le 2026-08-04, avec le champ `angle` lui-même (migration 26).
+// **TestRail n'a pas de champ « Angle »**, et le cap produit est la parité. Ce que l'angle
+// prétendait dire est porté par le `Type` ci-dessus et par le TITRE, qui est une phrase métier.
+// La génération multi-cas ne s'appuiera pas dessus non plus : elle découpe par user story.
 
 // ── Statut de test « façon TestRail » — DÉRIVÉ des DEUX axes, pas une fusion ─────────────────
 // Passed / Failed / Retest / Blocked / Untested. ⚠️ Ce n'est PAS un badge « OK/KO » qui cache les
@@ -143,6 +154,28 @@ export function testStatusMeta(code: string) {
 
 export function testStatusView(statut: string) {
   return TEST_STATUS[(statut as TestStatusCode)] || TEST_STATUS.untested
+}
+
+// ── MODE D'EXÉCUTION : la machine a joué le test, ou un humain l'a joué à la main ─────────────
+// ⚠️ **C'est l'étiquette qui empêche le statut de mentir.** Dans la plupart des outils de test
+// management, « Passed » est une case qu'un humain coche : rien ne dit si quoi que ce soit a
+// tourné. Ici, les deux façons d'exécuter existent — et on ne les confond jamais, parce que le
+// mode est STOCKÉ en base avec le résultat, pas deviné à l'affichage.
+//
+// ⚠️ **« Manuelle » et non « Déclaré »** (vocabulaire arrêté le 2026-08-04). « Déclaré » traitait
+// en aveu ce qui est un vrai travail de test : un humain a suivi les étapes contre la vraie
+// application. Le mot poussait à cacher la moitié manuelle de la recette plutôt qu'à la tenir.
+const RESULT_MODE: Record<string, StatusView> = {
+  automatique: { label: 'Automatique', icon: 'check', tone: 'success',
+    hint: 'Un test a tourné tout seul contre l\'application. La trace complète est consultable.' },
+  manuelle: { label: 'Manuelle', icon: 'half', tone: 'warning',
+    hint: 'Un humain a joué ce test à la main, en suivant ses étapes. Aucune trace machine : '
+        + 'le statut vaut ce que vaut la personne qui l\'a constaté.' },
+}
+/** Rend `null` quand il n'y a AUCUN résultat — l'écran n'affiche alors pas de pastille du tout.
+ *  Une pastille « inconnu » laisserait croire qu'un résultat existe mais qu'on ignore son mode. */
+export function resultModeView(code: string | null | undefined): StatusView | null {
+  return (code && RESULT_MODE[code]) || null
 }
 
 // Provenance du coût, en clair.

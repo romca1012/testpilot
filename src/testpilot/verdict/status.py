@@ -157,9 +157,37 @@ STATUT_UNTESTED = "untested"
 # Ordre canonique (légende des graphiques, colonnes de filtre).
 STATUTS = (STATUT_PASSED, STATUT_BLOCKED, STATUT_RETEST, STATUT_FAILED, STATUT_UNTESTED)
 
+# ── Le MODE d'exécution : qui a joué le test ─────────────────────────────────
+# Vocabulaire arrêté le 2026-08-04 (il remplace « provenance : exécuté / déclaré »). « Déclaré »
+# sous-entendait une affirmation sans preuve ; **« manuelle » dit la vérité** : un humain a
+# réellement joué le test, à la main, en suivant ses étapes. Ce n'est pas une case cochée, c'est
+# une autre façon d'exécuter — et c'est bien ce qui doit rester lisible.
+MODE_MANUELLE = "manuelle"
+MODE_AUTOMATIQUE = "automatique"
+MODES_EXECUTION = (MODE_MANUELLE, MODE_AUTOMATIQUE)
 
-def statut_de_test(execution: str | None, functional: str | None) -> str:
-    """Projette les DEUX axes en une étiquette de lecture.
+# Les statuts qu'un HUMAIN peut saisir en exécution MANUELLE.
+# ⚠️ `untested` en est ABSENT, délibérément : le saisir serait indiscernable de « pas encore de
+# résultat », et fabriquerait une ligne qui n'affirme rien. L'absence de résultat le dit déjà —
+# mieux, et gratuitement.
+STATUTS_MANUELS = (STATUT_PASSED, STATUT_FAILED, STATUT_RETEST, STATUT_BLOCKED)
+
+
+def statut_de_test(execution: str | None, functional: str | None,
+                   manuel: str | None = None) -> str:
+    """Projette un résultat en une étiquette de lecture.
+
+    ⚠️ **Un statut saisi en exécution MANUELLE n'est pas dérivé : il est constaté par un humain.**
+    Il court-circuite donc la dérivation au lieu de s'y mélanger. C'est la seule façon d'intégrer
+    un constat humain sans inventer des mesures qu'on n'a pas faites : saisir « passed » ne doit
+    JAMAIS écrire `execution=success, functional=conforme`, qui prétendrait qu'une **machine** a
+    constaté quelque chose. Les deux axes restent vides sur un résultat manuel, et l'écran
+    l'affiche ainsi.
+
+    Un `manuel` hors de `STATUTS_MANUELS` (vide, None, `untested`, valeur inconnue) est ignoré et
+    la dérivation reprend : une valeur douteuse ne devient jamais une étiquette.
+
+    Sans `manuel`, le comportement est celui d'avant l'exécution manuelle, à l'octet près.
 
     L'ordre des tests n'est pas décoratif — le fonctionnel prime sur l'exécution :
 
@@ -172,6 +200,8 @@ def statut_de_test(execution: str | None, functional: str | None) -> str:
       `success` → **passed** ;
     - à défaut → **untested**.
     """
+    if manuel in STATUTS_MANUELS:
+        return manuel
     if functional == FUNC_CONFORME:
         return STATUT_PASSED
     if functional == FUNC_NON_CONFORME:
@@ -190,8 +220,8 @@ def statut_de_test(execution: str | None, functional: str | None) -> str:
 # Expression SQL équivalente, pour FILTRER et TRIER sans charger la table entière.
 # ⚠️ Elle est dérivée de la fonction ci-dessus, et un test compare les deux sur TOUTES les
 # combinaisons possibles : sans cette comparaison, la version SQL divergerait un jour en silence.
-def sql_statut(execution: str, functional: str) -> str:
-    """Rend un CASE SQL calculant le statut depuis deux colonnes nommées."""
+def _case_derive(execution: str, functional: str) -> str:
+    """La DÉRIVATION seule, depuis les deux axes — le corps historique de `sql_statut`."""
     return (
         f"CASE"
         f" WHEN {functional} = '{FUNC_CONFORME}' THEN '{STATUT_PASSED}'"
@@ -204,3 +234,23 @@ def sql_statut(execution: str, functional: str) -> str:
         f" WHEN {execution} = '{EXEC_SUCCESS}' THEN '{STATUT_PASSED}'"
         f" ELSE '{STATUT_UNTESTED}' END"
     )
+
+
+def sql_statut(execution: str, functional: str, manuel: str | None = None) -> str:
+    """Rend un CASE SQL calculant le statut depuis des colonnes nommées.
+
+    `manuel` (colonne du statut saisi en exécution manuelle) court-circuite la dérivation,
+    exactement comme dans `statut_de_test`. Sans lui, l'expression est IDENTIQUE à celle d'avant
+    l'exécution manuelle : les appelants qui n'en connaissent pas la notion ne changent pas.
+
+    ⚠️ La liste du `IN` est **générée depuis `STATUTS_MANUELS`**, jamais retapée — c'est ce qui
+    empêche cette troisième forme de la règle de dériver. Et c'est un `IN` explicite plutôt qu'un
+    `<> ''` : une valeur parasite en base ne doit pas pouvoir ressortir comme étiquette brute à
+    l'écran (invariant `test_toute_combinaison_rend_un_statut_CONNU`).
+    """
+    derive = _case_derive(execution, functional)
+    if manuel is None:
+        return derive
+    manuels = ", ".join(f"'{s}'" for s in STATUTS_MANUELS)
+    return (f"CASE WHEN {manuel} IN ({manuels}) THEN {manuel}"
+            f" ELSE ({derive}) END")

@@ -60,7 +60,7 @@ def _adaptateur(client):
 
 _JSON = json.dumps({"title": "Créer une demande", "preconditions": "être connecté",
                     "steps": ["Ouvrir le formulaire", "Saisir", "Envoyer"],
-                    "expected_result": "la demande est créée", "angle": "nominal"})
+                    "expected_result": "la demande est créée"})
 
 _SCHEMA = {"type": "object", "properties": {"title": {"type": "string"}},
            "required": ["title"], "additionalProperties": False}

@@ -200,8 +200,9 @@ def test_la_version_reparee_n_est_JAMAIS_approuvee_d_office(conn, monkeypatch):
     # Aucune décision de relecture sur v2 — donc le gate la refuse pour tout run FUTUR.
     assert ReviewRepo(conn).latest_for_version(v2) is None
     assert ReviewRepo(conn).is_version_approved(v2) is False
-    # …et le cas attend une ratification humaine.
-    assert CaseRepo(conn).get(cid)["validation_status"] == "to_review"
+    # …et la ratification attendue se lit sur la VERSION, seul endroit où elle s'inscrit : le
+    # statut recopié sur le cas est parti avec la migration 25 (il redisait ceci, en moins fidèle).
+    assert CaseRepo(conn).get(cid)["etat"] == "new"
 
 
 def test_deux_tentatives_avant_de_reussir(conn, monkeypatch):
@@ -511,7 +512,6 @@ def test_un_test_qui_TOURNE_et_revele_un_vrai_bug_est_ADOPTE(conn, monkeypatch):
     assert VersionRepo(conn).get(v2)["steps_content"] == "# v2 odoorpc"
     # …et elle n'est jamais approuvée d'office : le gate reste souverain (0014, option (i)).
     assert ReviewRepo(conn).is_version_approved(v2) is False
-    assert CaseRepo(conn).get(cid)["validation_status"] == "to_review"
 
 
 def test_le_disque_porte_la_version_adoptee_meme_si_elle_n_est_pas_verte(conn, monkeypatch, tmp_path):

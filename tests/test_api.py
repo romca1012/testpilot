@@ -236,14 +236,22 @@ def test_lint_gate_sans_avertissement_sur_assertion_saine(client):
     assert gate["lint_warnings"] == []
 
 
-def test_rejet_repositionne_le_cas_a_relire(client):
+def test_un_rejet_referme_le_gate_sans_toucher_a_l_etat_du_cas(client):
+    """Un refus s'inscrit sur la VERSION, et nulle part ailleurs.
+
+    ⚠️ Ce test vérifiait aussi qu'un rejet repositionnait le cas « à relire ». Ce statut a été
+    supprimé (migration 25) : il redisait moins fidèlement ce que le gate dit déjà, et il
+    reprenait à l'humain un champ — l'État — dont il doit rester le seul auteur. Ce que le refus
+    doit produire, c'est **une exécution refusée** ; c'est ce qui est vérifié ici.
+    """
     conn = _conn()
     cid, _ = _seed_case(conn, approved=True)
     conn.close()
+    avant = client.get(f"/api/cases/{cid}").json()["case"]["etat"]
     review = client.post(f"/api/cases/{cid}/review", json={"approved": False, "comment": "à revoir"}).json()
     assert review["decision"] == "rejected"
-    assert review["validation_status"] == "to_review"
     assert review["gate"]["allowed"] is False
+    assert client.get(f"/api/cases/{cid}").json()["case"]["etat"] == avant
 
 
 def test_liste_executions_globale(client):

@@ -107,10 +107,10 @@ def test_gate_approuve_execute_et_ecrit_le_rapport(conn, tmp_path):
     assert result.report_json.exists() and result.report_html.exists()
     assert result.verdict.execution_status == "success"
     assert result.verdict.functional_status == "conforme"
-    # Relecture approuvée persistée, exécution enregistrée, cas validé.
+    # Relecture approuvée persistée, exécution enregistrée, dernier résultat inscrit sur le cas.
     assert ReviewRepo(conn).is_version_approved(result.version_id) is True
     assert ExecutionRepo(conn).get(result.execution_id)["execution_status"] == "success"
-    assert CaseRepo(conn).get(result.case_id)["validation_status"] == "validated"
+    assert CaseRepo(conn).get(result.case_id)["last_execution_status"] == "success"
 
 
 def test_gate_rejete_arrete_avant_execution(conn, tmp_path):
@@ -121,7 +121,9 @@ def test_gate_rejete_arrete_avant_execution(conn, tmp_path):
     # Décision de rejet enregistrée, aucune exécution créée.
     assert ReviewRepo(conn).latest_for_version(result.version_id)["decision"] == "rejected"
     assert ExecutionRepo(conn).list_for_case(result.case_id) == []
-    assert CaseRepo(conn).get(result.case_id)["validation_status"] == "to_review"
+    # Le refus vit sur la VERSION (ligne au-dessus) et nulle part ailleurs : le cas ne porte
+    # plus de statut recopié, et son État reste celui que l'humain lui a donné (migration 25).
+    assert CaseRepo(conn).get(result.case_id)["etat"] == "new"
 
 
 def test_generation_echouee_arrete_avant_le_gate(conn, tmp_path):

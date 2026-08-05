@@ -58,6 +58,24 @@ CATALOGUE: dict[str, tuple[int, str]] = {
     "campagne_vide":          (422, "Cette campagne ne contient aucun cas"),
     "campagne_en_cours":      (409, "Cette campagne est déjà en cours"),
     "campagne_archivee":      (409, "Cette campagne est archivée (lecture seule)"),
+    # ── Exécution MANUELLE d'un cas : la saisie de son résultat (2026-08-04) ──
+    # `untested` n'est PAS saisissable : c'est l'absence de résultat, jamais un choix. Le refus
+    # doit le DIRE, sinon l'utilisateur cherche l'option manquante dans une liste déroulante.
+    "statut_invalide":        (422, "Ce statut ne peut pas être saisi"),
+    "cas_hors_campagne":      (409, "Ce cas ne fait pas partie de cette campagne"),
+    # Le mode se choisit à la CRÉATION de la campagne : une campagne automatique se lance, elle
+    # ne se saisit pas. Sans ce code, le refus remonterait en erreur d'intégrité SQLite (le
+    # trigger du mode) — illisible pour un client, et impossible à distinguer d'une panne.
+    "campagne_automatique":   (409, "Cette campagne est automatique (résultats non saisissables)"),
+    "campagne_manuelle":      (409, "Cette campagne est manuelle (elle ne se lance pas)"),
+    # ── Pièces jointes d'un résultat (2026-08-05) ──
+    # Trois refus DISTINCTS, parce que l'écran doit dire lequel : « trop gros », « type refusé »
+    # et « trop de fichiers » appellent trois gestes différents de l'utilisateur. Un code unique
+    # le forcerait à lire une phrase française pour deviner lequel — le défaut que la RFC 9457
+    # est venue fermer ici.
+    "fichier_trop_gros":      (413, "Ce fichier dépasse la taille autorisée"),
+    "type_de_fichier_refuse": (415, "Ce type de fichier n'est pas accepté"),
+    "trop_de_fichiers":       (409, "Ce résultat porte déjà trop de pièces jointes"),
     # ── Exploration ──
     "exploration_en_cours":   (409, "Une exploration est déjà en cours sur ce projet"),
     # ── Requête mal formée / non géré ──
@@ -79,6 +97,7 @@ _DEPUIS_SERVICE = {
     "empty": "campagne_vide",
     "already_running": "campagne_en_cours",
     "archived": "campagne_archivee",
+    "manual": "campagne_manuelle",
 }
 
 

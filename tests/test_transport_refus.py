@@ -117,6 +117,27 @@ def test_GARDE_le_refus_devient_une_REGLE_APPRISE_du_projet(tmp_path, monkeypatc
     assert regles[0].valeur_refusee == "TestPilot"
 
 
+def test_GARDE_la_regle_apprise_porte_l_execution_qui_l_a_decouverte(tmp_path, monkeypatch):
+    """⚠️ Échoue sur le code d'avant : `enregistrer()` accepte `execution_id` depuis l'origine
+    (0023), mais rien ne l'appelait jamais avec autre chose que sa valeur par défaut — chaque
+    règle apprise portait `execution_id: null`, contredisant la traçabilité que 0023 promet
+    (« quel run a appris quoi »). Trouvé sur de VRAIES règles apprises, toutes `null`, en audit.
+
+    `RegleApprise` ne porte pas `execution_id` (ce n'est pas une contrainte du résolveur) : on lit
+    donc la ligne JSONL brute, pas `ra.charger()`.
+    """
+    monkeypatch.setattr(ra, "REGLES_DIR", tmp_path / "regles-apprises")
+    ra._lire.cache_clear()
+
+    runner = _aire_de_run(tmp_path, avec_refus=True)
+    runner.cibler_execution(4242)
+    runner.real_run("garde")
+
+    lignes = ra.chemin(7).read_text(encoding="utf-8").splitlines()
+    assert len(lignes) == 1
+    assert json.loads(lignes[0])["execution_id"] == 4242
+
+
 def test_un_run_VERT_sans_refus_n_apprend_RIEN(tmp_path, monkeypatch):
     """Anti-faux-positif : sans refus, aucun fichier de règles ne doit apparaître."""
     monkeypatch.setattr(ra, "REGLES_DIR", tmp_path / "regles-apprises")

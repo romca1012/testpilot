@@ -9,7 +9,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseDetail, type ScenarioResultOut } from '../lib/api'
-import { angleLabel, priorityView, validationView } from '../lib/status'
+import { ETAT_ORDER, TYPE_ORDER, etatView, priorityView, typeView } from '../lib/status'
 import CaseHeader from '../components/case/CaseHeader.vue'
 import TestsResultsTab from '../components/case/TestsResultsTab.vue'
 import DefectsTab from '../components/case/DefectsTab.vue'
@@ -144,13 +144,7 @@ const hasMetier = computed(() =>
 const editing = ref(false)
 const saving = ref(false)
 const saveError = ref('')
-const form = ref({ title: '', preconditions: '', steps: [] as string[], expected: '', refs: '', estimate: '', angle: '' })
-const ANGLES = [
-  { value: 'nominal', label: 'Cas nominal' },
-  { value: 'erreur', label: 'Cas d\'erreur' },
-  { value: 'limite', label: 'Cas limite' },
-  { value: 'autre', label: 'Autre angle' },
-]
+const form = ref({ title: '', preconditions: '', steps: [] as string[], expected: '', refs: '', estimate: '' })
 
 function startEdit() {
   const v = currentVersion.value
@@ -164,7 +158,6 @@ function startEdit() {
     expected: v?.expected_result || derived.value.expected.join(' '),
     refs: c.value?.refs || '',
     estimate: c.value?.estimate || '',
-    angle: c.value?.angle || '',
   }
   saveError.value = ''
   editing.value = true
@@ -183,7 +176,6 @@ async function save() {
       expected_result: form.value.expected,
       refs: form.value.refs,
       estimate: form.value.estimate,
-      angle: form.value.angle,
     })
     editing.value = false
     await load()
@@ -226,18 +218,19 @@ async function automate() {
   }
 }
 
-// Priorité éditable EN LIGNE (endpoint dédié, ne crée pas de version, ne rebloque pas le gate).
+// Priorité, Type et État éditables EN LIGNE (même endpoint : ces trois métadonnées ne créent
+// pas de version et ne rebloquent pas le gate — elles ne changent pas ce que le test vérifie).
 const priorityHint = priorityView('medium').hint
-const savingPriority = ref(false)
-async function onPriority(value: string) {
-  savingPriority.value = true
+const savingMeta = ref(false)
+async function onMeta(champs: { priority?: string; type?: string; etat?: string }) {
+  savingMeta.value = true
   try {
-    await api.setCasePriority(caseId.value, value)
+    await api.setCaseMetadonnees(caseId.value, champs)
     await load()
   } catch (e: any) {
-    error.value = e?.message || 'Changement de priorité impossible.'
+    error.value = e?.message || 'Modification impossible.'
   } finally {
-    savingPriority.value = false
+    savingMeta.value = false
   }
 }
 
@@ -288,30 +281,41 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
 
       <!-- ====== DÉTAILS ====== -->
       <template v-if="tab === 'details'">
-        <!-- Métadonnées — vraies valeurs (avant : « Aucun » en dur, données ignorées). Priorité
-             éditable EN LIGNE ; les autres champs métier via « Modifier ». L'État est SYSTÈME
-             (dérivé des exécutions, non modifiable à la main) : l'infobulle le dit + liste ses
-             valeurs possibles, pour répondre au « je ne vois pas les options ». -->
+        <!-- Métadonnées — vraies valeurs (avant : « Aucun » en dur, données ignorées). Priorité,
+             Type et État éditables EN LIGNE ; les autres champs métier via « Modifier ».
+             ⚠️ L'État n'est PLUS un statut système : c'est le cycle de vie du document, que
+             l'utilisateur pose lui-même et que rien ne remet à zéro derrière lui. -->
         <div class="mt-4 rounded-lg border border-border bg-primary/[0.05] p-4 grid grid-cols-4 gap-y-4 gap-x-6">
           <div>
-            <div class="text-xs font-semibold text-muted-foreground">Type</div>
-            <div class="mt-0.5">{{ angleLabel(c.angle) }}</div>
+            <div class="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+              Type
+              <span class="cursor-help text-muted-foreground/50" :title="typeView(c.type).hint">ⓘ</span>
+            </div>
+            <select :value="c.type" :disabled="savingMeta"
+                    @change="onMeta({ type: ($event.target as HTMLSelectElement).value })"
+                    class="mt-0.5 -ml-1 bg-transparent rounded px-1 py-0.5 hover:bg-accent/40 focus:bg-surface-raised focus:border-primary border border-transparent outline-none cursor-pointer">
+              <option v-for="code in TYPE_ORDER" :key="code" :value="code">{{ typeView(code).label }}</option>
+            </select>
           </div>
           <div>
             <div class="text-xs font-semibold text-muted-foreground flex items-center gap-1">
               État
               <span class="cursor-help text-muted-foreground/50"
-                    :title="validationView(c.validation_status).hint + ' Valeurs possibles : Non validé · À relire · Validé. Ce statut est DÉRIVÉ des exécutions, il ne se change pas à la main.'">ⓘ</span>
+                    :title="etatView(c.etat).hint + ' Il décrit l\'avancement de la RÉDACTION du cas, jamais le résultat de ses exécutions.'">ⓘ</span>
             </div>
-            <div class="mt-0.5">{{ validationView(c.validation_status).label }}</div>
+            <select :value="c.etat" :disabled="savingMeta"
+                    @change="onMeta({ etat: ($event.target as HTMLSelectElement).value })"
+                    class="mt-0.5 -ml-1 bg-transparent rounded px-1 py-0.5 hover:bg-accent/40 focus:bg-surface-raised focus:border-primary border border-transparent outline-none cursor-pointer">
+              <option v-for="code in ETAT_ORDER" :key="code" :value="code">{{ etatView(code).label }}</option>
+            </select>
           </div>
           <div>
             <div class="text-xs font-semibold text-muted-foreground flex items-center gap-1">
               Priorité
               <span class="cursor-help text-muted-foreground/50" :title="priorityHint">ⓘ</span>
             </div>
-            <select :value="c.priority" :disabled="savingPriority"
-                    @change="onPriority(($event.target as HTMLSelectElement).value)"
+            <select :value="c.priority" :disabled="savingMeta"
+                    @change="onMeta({ priority: ($event.target as HTMLSelectElement).value })"
                     class="mt-0.5 -ml-1 bg-transparent rounded px-1 py-0.5 hover:bg-accent/40 focus:bg-surface-raised focus:border-primary border border-transparent outline-none cursor-pointer">
               <option value="high">Haute</option>
               <option value="medium">Moyenne</option>
@@ -334,7 +338,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
             <div class="mt-0.5">{{ hasGherkin ? 'Oui' : 'Non' }}</div>
           </div>
           <div class="col-span-2 self-end text-xs text-muted-foreground/70">
-            Estimation, références et type se modifient via « Modifier ».
+            Estimation et références se modifient via « Modifier ».
           </div>
         </div>
 
@@ -450,14 +454,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
               <textarea v-model="form.expected" rows="2" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none"></textarea>
             </label>
 
-            <div class="grid grid-cols-3 gap-4">
-              <label class="block">
-                <span class="text-sm font-medium">Type</span>
-                <select v-model="form.angle" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none">
-                  <option value="">—</option>
-                  <option v-for="a in ANGLES" :key="a.value" :value="a.value">{{ a.label }}</option>
-                </select>
-              </label>
+            <div class="grid grid-cols-2 gap-4">
               <label class="block">
                 <span class="text-sm font-medium">Références</span>
                 <input v-model="form.refs" placeholder="JIRA-123…" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />

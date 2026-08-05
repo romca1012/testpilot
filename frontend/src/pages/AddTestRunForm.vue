@@ -5,6 +5,12 @@
 // sélections : « tous les cas » (VIVANTE — les nouveaux cas rejoignent) et « cas spécifiques »
 // (FIGÉE, transverse multi-modules §7). Le filtrage dynamique est reporté (8.a) et n'est plus
 // proposé du tout à l'écran — le serveur le refuse toujours explicitement.
+//
+// ⚠️ **Le MODE D'EXÉCUTION se choisit ICI** (2026-08-04), et nulle part ailleurs : la machine
+// joue les cas, ou un humain les joue à la main. Ce n'est pas un détail de présentation — c'est
+// ce choix qui décide des gestes qu'offrira la page de la campagne (« Lancer », ou « + Résultat »,
+// jamais les deux). Le poser après coup, résultat par résultat, était l'écran d'avant : deux
+// boutons proposés en permanence, et aucun qui s'impose.
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseSummary } from '../lib/api'
@@ -19,6 +25,9 @@ const form = ref({
   refs: '',
   description: '',
   selection: 'all' as 'all' | 'frozen',
+  // Automatique par défaut : c'est ce que TestPilot sait faire de plus et ce qui distingue le
+  // produit. Le manuel est un choix délibéré, jamais une valeur dans laquelle on tombe.
+  mode: 'automatique' as 'automatique' | 'manuelle',
 })
 
 const cases = ref<CaseSummary[]>([])
@@ -80,6 +89,7 @@ async function submit() {
       description: form.value.description,
       refs: form.value.refs,
       selection_mode: form.value.selection,
+      mode: form.value.mode,
       case_ids: form.value.selection === 'frozen' ? selected.value : [],
     })
     router.push({ name: 'run-detail', params: { pid, id: String(run.id) } })
@@ -97,7 +107,8 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
     <h1 class="text-2xl font-semibold tracking-tight">Ajouter une exécution de test</h1>
     <p class="mt-1 text-sm text-muted-foreground">
       Une exécution regroupe les cas à jouer ensemble. Elle est créée
-      <strong class="text-foreground">sans être lancée</strong> — vous la lancerez depuis sa page.
+      <strong class="text-foreground">sans rien déclencher</strong> — vous la lancerez, ou vous en
+      saisirez les résultats, depuis sa page.
     </p>
 
     <form class="mt-6 space-y-5" @submit.prevent="submit">
@@ -120,6 +131,44 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
         <textarea v-model="form.description" rows="3"
                   class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none"></textarea>
       </label>
+
+      <!-- ── MODE D'EXÉCUTION ── le choix qui commande tout le reste de la campagne. Deux
+           options radio, jamais une case à cocher « manuelle » : cocher une case suggère une
+           dérogation, deux options côte à côte disent que ce sont deux façons de travailler. -->
+      <div>
+        <span class="text-sm font-medium">Mode d'exécution <span class="text-destructive">*</span></span>
+        <div class="mt-2 space-y-2">
+          <label class="flex gap-3 rounded-md border p-3 cursor-pointer transition-colors"
+                 :class="form.mode === 'automatique' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'">
+            <input type="radio" value="automatique" v-model="form.mode" class="mt-1 accent-[hsl(var(--primary))]" />
+            <div>
+              <div class="text-sm font-medium">Automatique</div>
+              <p class="text-xs text-muted-foreground mt-0.5">
+                TestPilot <strong class="text-foreground">joue les cas</strong> contre l'application
+                réelle et pose leurs résultats. Vous lancerez la campagne depuis sa page.
+              </p>
+            </div>
+          </label>
+
+          <label class="flex gap-3 rounded-md border p-3 cursor-pointer transition-colors"
+                 :class="form.mode === 'manuelle' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'">
+            <input type="radio" value="manuelle" v-model="form.mode" class="mt-1 accent-[hsl(var(--primary))]" />
+            <div>
+              <div class="text-sm font-medium">Manuelle</div>
+              <p class="text-xs text-muted-foreground mt-0.5">
+                Vous <strong class="text-foreground">jouez les cas à la main</strong>, en suivant
+                leurs étapes, et vous saisissez ce que vous avez constaté. Rien ne se lance :
+                chaque ligne reçoit son résultat.
+              </p>
+            </div>
+          </label>
+        </div>
+        <!-- Dire que le choix est DÉFINITIF évite la question « je pourrai changer ? » — et un
+             écran de modification qu'on ne tiendrait pas. -->
+        <p class="mt-2 text-[11px] text-muted-foreground">
+          Ce choix vaut pour toute la campagne : ses résultats viendront tous du même mode.
+        </p>
+      </div>
 
       <!-- Sélection des cas -->
       <div>

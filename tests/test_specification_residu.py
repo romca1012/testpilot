@@ -257,12 +257,12 @@ def test_la_reprise_NE_TOUCHE_PAS_une_specification_documentee(conn, module_id):
 
 
 def test_la_reprise_NE_TOUCHE_PAS_une_specification_a_PLUSIEURS_cas(conn, module_id):
-    """Plusieurs cas sous un même conteneur, c'est le modèle VOULU (un document, N angles) —
+    """Plusieurs cas sous un même conteneur, c'est le modèle VOULU (un document, N cas) —
     l'inverse exact d'une enveloppe 1:1."""
     from testpilot.store.db import _migrate_18_corriger_provenance_enveloppes
 
     gid = CaseGroupRepo(conn).create(module_id=module_id, title=TITRE)
-    for titre in ("angle nominal", "angle erreur"):
+    for titre in ("cas nominal", "cas d'erreur"):
         cid = _cas(conn, module_id, titre)
         conn.execute("UPDATE test_case SET group_id=? WHERE id=?", (gid, cid))
     conn.commit()

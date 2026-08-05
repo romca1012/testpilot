@@ -54,8 +54,8 @@ def _case_count(conn, module_id: int) -> int:
 def create_group(module_id: int, body: schemas.GroupIn, conn=Depends(get_conn)):
     """Crée une Spécification — un DOCUMENT nommé, et rien d'autre.
 
-    ⚠️ Ne génère AUCUN cas et ne dépense RIEN : c'est l'étape 3 (« un angle par appel ») qui
-    lira ce document, après que l'humain aura confirmé les angles voulus (§4bis du brief).
+    ⚠️ Ne génère AUCUN cas et ne dépense RIEN : c'est la génération qui lira ce document,
+    après que l'humain aura confirmé ce qu'il veut couvrir (§4bis du brief).
     Créer une spécification ne doit pas engager une dépense non demandée — même raison que le
     lancement explicite d'un run (`0022` n°8.c.1).
 
@@ -126,7 +126,7 @@ def create_manual_case(module_id: int, body: schemas.ManualCaseIn, request: Requ
         cid = CaseRepo(conn).create_manual(
             module_id=module_id, title=body.title.strip(),
             preconditions=body.preconditions, test_steps=json.dumps(steps, ensure_ascii=False),
-            expected_result=body.expected_result.strip(), angle=body.angle,
+            expected_result=body.expected_result.strip(),
             author=access.utilisateur_de(request) or "ui")
     except DuplicateName as exc:
         raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc

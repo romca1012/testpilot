@@ -11,10 +11,10 @@ const MODULES: ModuleSummary[] = [
 
 const CASES: CaseSummary[] = [
   { id: 10, title: 'Demande de matériel', module: 'demande_materiel', module_id: 1, project_id: 1,
-    validation_status: 'validated', priority: 'medium',
+    etat: 'ready', type: 'fonctionnel', priority: 'medium',
     last_execution_status: 'success', last_functional_status: 'conforme', last_executed_at: null },
   { id: 11, title: 'Validation champ requis', module: 'demande_materiel', module_id: 1, project_id: 1,
-    validation_status: 'to_review', priority: 'high',
+    etat: 'design', type: 'fonctionnel', priority: 'high',
     last_execution_status: 'technical_error', last_functional_status: 'indetermine', last_executed_at: null },
 ]
 
@@ -55,13 +55,14 @@ describe('ModuleTree — la structure du projet d\'un coup d\'œil', () => {
     const w = mountTree({ expanded: [1] })
     const text = w.text()
     // Le cas 10 est success/conforme, le cas 11 technical_error/indetermine. L'arbre ne doit
-    // porter QUE la validation (mono-axe) — jamais un verdict des deux axes, ni fusionné,
-    // ni même affiché : ces deux axes vivent dans la table et le détail.
+    // porter QUE l'ÉTAT du document — jamais un verdict des deux axes, ni fusionné, ni même
+    // affiché : ces deux axes vivent dans la table et le détail.
     expect(text).not.toContain('Conforme')
     expect(text).not.toContain('Erreur technique')
     expect(text).not.toContain('Indéterminable')
-    // …et la validation est bien là, avec son mot en infobulle (jamais la couleur seule).
-    expect(w.html()).toContain('Validation :')
+    // …et l'État est bien là, avec son mot en infobulle (jamais la couleur seule).
+    expect(w.html()).toContain('État :')
+    expect(w.html()).toContain('Prêt')
   })
 
   it('bascule le libellé tout déplier / tout replier selon l\'état', async () => {

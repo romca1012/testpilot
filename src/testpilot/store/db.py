@@ -9,6 +9,7 @@ métier ici.
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 24
+_SCHEMA_VERSION = 27
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -62,6 +63,11 @@ def get_initialized_db(db_path: Path | str | None = None) -> sqlite3.Connection:
 # ── Migrations ────────────────────────────────────────────────────────────────
 def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:
     return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _colonnes_ordonnees(conn: sqlite3.Connection, table: str) -> list[str]:
+    """Les colonnes DANS L'ORDRE de la table — nécessaire pour recopier une table à l'identique."""
+    return [r["name"] for r in conn.execute(f"PRAGMA table_info({table})")]
 
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
@@ -114,6 +120,12 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_23_suppression_douce(conn)
     if version < 24:
         _migrate_24_unicite_parmi_les_vivants(conn)
+    if version < 25:
+        _migrate_25_resultats_et_cycle_de_vie(conn)
+    if version < 26:
+        _migrate_26_retrait_de_l_angle(conn)
+    if version < 27:
+        _migrate_27_mode_d_execution(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -488,28 +500,35 @@ def _migrate_14_champs_metier(conn: sqlite3.Connection) -> None:
     `refs` (et non `references`, mot-clé SQL) et `estimate` vivent sur le CAS : ce sont des
     métadonnées qui ne changent pas ce que le test vérifie, les versionner gonflerait l'historique.
     """
+    ccols = _column_names(conn, "test_case")
+    # ⚠️ `angle` n'est repris QUE si le cas le porte encore — c'est-à-dire sur une base
+    # réellement antérieure à la migration 26, qui l'a supprimé. Sans cette garde, rejouer la 14
+    # sur une base moderne RESSUSCITE une colonne qu'une migration ultérieure a retirée, puis
+    # échoue sur `tc.angle`. Une migration doit rester rejouable, y compris hors de son époque.
+    ancien = "angle" in ccols
     vcols = _column_names(conn, "test_case_version")
-    for col in ("title", "preconditions", "test_steps", "expected_result", "angle"):
+    for col in ("title", "preconditions", "test_steps", "expected_result",
+                *(("angle",) if ancien else ())):
         if col not in vcols:
             conn.execute(f"ALTER TABLE test_case_version ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
 
-    ccols = _column_names(conn, "test_case")
     for col in ("refs", "estimate"):
         if col not in ccols:
             conn.execute(f"ALTER TABLE test_case ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
 
-    # Reprise MINIMALE et non inventée : le titre et l'angle des versions existantes sont ceux
-    # du cas (on ne les connaît pas autrement — aucune version n'a jamais porté de titre).
-    # Les champs de CONTENU (préconditions/étapes/résultat) restent vides : les dériver ici
-    # reviendrait à fabriquer du texte, ce que A.1 a explicitement écarté.
+    # Reprise MINIMALE et non inventée : le titre des versions existantes est celui du cas (on ne
+    # le connaît pas autrement — aucune version n'a jamais porté de titre). Les champs de CONTENU
+    # (préconditions/étapes/résultat) restent vides : les dériver ici reviendrait à fabriquer du
+    # texte, ce que A.1 a explicitement écarté.
     conn.execute(
         "UPDATE test_case_version SET title = ("
         "  SELECT tc.title FROM test_case tc WHERE tc.id = test_case_version.test_case_id)"
         " WHERE title = ''")
-    conn.execute(
-        "UPDATE test_case_version SET angle = ("
-        "  SELECT tc.angle FROM test_case tc WHERE tc.id = test_case_version.test_case_id)"
-        " WHERE angle = ''")
+    if ancien:
+        conn.execute(
+            "UPDATE test_case_version SET angle = ("
+            "  SELECT tc.angle FROM test_case tc WHERE tc.id = test_case_version.test_case_id)"
+            " WHERE angle = ''")
 
 
 def _migrate_15_test_run(conn: sqlite3.Connection) -> None:
@@ -828,6 +847,473 @@ def _migrate_24_unicite_parmi_les_vivants(conn: sqlite3.Connection) -> None:
     conn.execute("DROP INDEX IF EXISTS uq_case_feature_slug")
     conn.execute("CREATE UNIQUE INDEX uq_case_feature_slug ON test_case(feature_slug)"
                  " WHERE feature_slug != '' AND deleted_at = ''")
+
+
+def _sql_sans_colonne(create_sql: str, colonne: str) -> str:
+    """Retire d'un `CREATE TABLE` la DÉFINITION d'une colonne — sa contrainte comprise.
+
+    ⚠️ **Pourquoi un parcours de caractères et pas une expression régulière.** La définition à
+    retirer se termine par une virgule, mais elle en CONTIENT (`CHECK (x IN ('a', 'b'))`). Une
+    regex non parenthésée couperait à la première virgule venue et produirait un `CREATE TABLE`
+    invalide — sur une reconstruction de table, donc au pire moment possible. On compte donc les
+    parenthèses et on coupe à la première virgule de profondeur 0.
+
+    Rend le SQL **inchangé** si la colonne n'est pas trouvée comme début de définition : mieux
+    vaut une migration qui n'a rien fait (l'appelant le détecte et le dit) qu'une table amputée
+    au hasard.
+    """
+    debut = None
+    for m in re.finditer(rf"\b{re.escape(colonne)}\b", create_sql):
+        avant = create_sql[:m.start()].rstrip()
+        # Une DÉFINITION commence juste après la parenthèse ouvrante ou une virgule ; toute autre
+        # occurrence du nom (dans un CHECK, un commentaire…) n'est pas un début de colonne.
+        if avant.endswith("(") or avant.endswith(","):
+            debut = m.start()
+            break
+    if debut is None:
+        return create_sql
+
+    profondeur, i = 0, debut
+    while i < len(create_sql):
+        c = create_sql[i]
+        if c == "(":
+            profondeur += 1
+        elif c == ")":
+            if profondeur == 0:
+                break          # dernière colonne de la table : la définition finit ici
+            profondeur -= 1
+        elif c == "," and profondeur == 0:
+            i += 1             # on emporte la virgule de séparation avec la définition
+            break
+        i += 1
+    return create_sql[:debut] + create_sql[i:]
+
+
+def _reconstruire_sans_colonne(conn: sqlite3.Connection, table: str, colonne: str) -> None:
+    """Supprime une colonne que `ALTER TABLE DROP COLUMN` REFUSE (elle porte un `CHECK`).
+
+    Même procédé qu'à la migration 19 (reconstruction en 12 étapes), avec deux différences :
+    la table cible est dérivée par `_sql_sans_colonne` plutôt que par un remplacement de texte,
+    et la recopie NOMME ses colonnes — les deux tables n'ont plus la même forme, un
+    `INSERT … SELECT *` insérerait tout décalé d'une colonne, en silence.
+
+    Idempotent : une table dont la colonne est déjà partie n'est pas touchée.
+
+    ⚠️ Ne lève pas si la définition n'est pas reconnue : une colonne survivante avec sa valeur
+    par défaut ne casse aucune écriture, alors qu'une exception ici empêcherait d'OUVRIR la base.
+    On journalise bruyamment — même arbitrage qu'à la migration 21.
+    """
+    if colonne not in _column_names(conn, table):
+        return
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+                       (table,)).fetchone()
+    sql = row["sql"] if row else ""
+    nouveau = _sql_sans_colonne(sql, colonne) if sql else ""
+    if not sql or nouveau == sql:
+        logger.critical("[migration 25] impossible de retirer %s.%s : définition non reconnue dans"
+                        " le schéma stocké. La colonne SUBSISTE (sans effet fonctionnel).",
+                        table, colonne)
+        return
+
+    colonnes = [c for c in _colonnes_ordonnees(conn, table) if c != colonne]
+    liste = ", ".join(colonnes)
+    tmp = f"{table}__migr25"
+    # ⚠️ Le nom peut être ENTRE GUILLEMETS dans le schéma stocké — c'est le cas de toute table
+    # déjà reconstruite une fois : `ALTER TABLE … RENAME TO x` réécrit `CREATE TABLE "x"`. Un
+    # simple `replace("CREATE TABLE test_case", …)` ne matche alors PAS, la table temporaire garde
+    # le nom d'origine, et la migration meurt sur « table already exists ». Trouvé en rejouant la
+    # migration sur une COPIE de la vraie base — la base synthétique du test, elle, n'était jamais
+    # passée par une reconstruction, donc ne portait pas de guillemets.
+    create_tmp, remplace = re.subn(
+        rf'^(\s*CREATE\s+TABLE\s+)("?){re.escape(table)}\2',
+        lambda m: f"{m.group(1)}{tmp}", nouveau, count=1, flags=re.IGNORECASE)
+    if not remplace:
+        logger.critical("[migration 25] en-tête CREATE TABLE de %s non reconnue : la colonne %s "
+                        "SUBSISTE (sans effet fonctionnel).", table, colonne)
+        return
+    aux = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE tbl_name=? AND type IN ('index','trigger')"
+        " AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%'", (table,)).fetchall()
+
+    conn.commit()  # aucune transaction ouverte : PRAGMA foreign_keys est un no-op en transaction
+    old_iso = conn.isolation_level
+    conn.isolation_level = None  # autocommit : on gère BEGIN/COMMIT nous-mêmes (DDL+DML atomique)
+    try:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("BEGIN")
+        try:
+            conn.execute(f"DROP TABLE IF EXISTS {tmp}")
+            conn.execute(create_tmp)
+            conn.execute(f"INSERT INTO {tmp} ({liste}) SELECT {liste} FROM {table}")
+            conn.execute(f"DROP TABLE {table}")
+            conn.execute(f"ALTER TABLE {tmp} RENAME TO {table}")
+            for a in aux:
+                conn.execute(a["sql"])  # index/triggers recréés (dropés avec l'ancienne table)
+            violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+            if violations:
+                raise RuntimeError(f"FK cassées après reconstruction de {table} : {violations}")
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+        conn.execute("PRAGMA foreign_keys = ON")
+    finally:
+        conn.isolation_level = old_iso
+
+
+def _migrate_25_resultats_et_cycle_de_vie(conn: sqlite3.Connection) -> None:
+    """L'exécution MANUELLE entre dans le modèle, et le cas gagne un cycle de vie (2026-08-04).
+
+    ⚠️ **Le registre `test_result` porte la promesse du produit dans la BASE, pas dans le code.**
+    Jusqu'ici, « quel est le résultat du cas C dans la campagne R ? » se répondait en cherchant la
+    dernière `execution` rattachée — donc un résultat ne pouvait exister que si une machine avait
+    tourné. Un humain qui teste à la main n'avait aucune place où écrire. Le registre lui en donne
+    une, avec `source` **STOCKÉE** (`executed` / `declared`) et jamais déduite, et un `CHECK` qui
+    rend un déclaré déguisé en exécuté **impossible à insérer** : l'invariant « on sait toujours
+    d'où vient un statut » cesse d'être une convention que le code doit respecter.
+
+    **Pourquoi une table et non des colonnes sur `execution`** (l'alternative évidente, écartée) :
+    `execution.version_id` est `NOT NULL` avec FK, or un cas non automatisable — le cas d'usage
+    central du manuel — n'a AUCUNE version ; et `ExecutionRepo.quality_summary` mesure la santé de
+    la génération en comptant les `execution`, que des déclarations humaines fausseraient.
+
+    **`run_case_assignment` est une table dédiée** et non une colonne sur `test_run_case` : en
+    `selection_mode='all'` cette liaison est VIDE (la sélection est vivante), et y écrire une
+    assignation gonflerait `frozen_count` — donc le nombre de cas affiché de la campagne.
+
+    **Les trois raccourcis `last_*` sur `test_case`** : sans eux, un cas testé UNIQUEMENT à la main
+    resterait « Non testé » dans les listes, qui lisent `last_execution_status`. Un statut qui ment
+    — exactement ce que le produit combat. La vérité par campagne reste dans `test_result` ; ces
+    colonnes ne sont qu'un raccourci global, et c'est assumé.
+
+    **`validation_status` est SUPPRIMÉ** (reconstruction de table : il porte un `CHECK`). Il était
+    dérivé des exécutions et non éditable — pas un cycle de vie de document. `etat` le remplace,
+    librement modifiable. Vérifié avant d'écrire cette migration : il ne gate RIEN (le seul gate
+    d'exécution est `review_decision`, lu par `review_gate.evaluate_gate`).
+
+    ⚠️ **`test_case_version.spec_content` n'est PAS supprimé ici**, contrairement au plan de
+    reprise : la génération et la réparation l'écrivent et le lisent encore. Le retirer avant de
+    les avoir recâblées sur `case_group.spec_content` laisserait le dépôt rouge — la dette est
+    soldée avec la génération multi-cas, qui est justement le chantier qui recâble ces appelants.
+
+    Idempotente de bout en bout (introspection + `IF NOT EXISTS` + `NOT EXISTS` sur la reprise).
+    """
+    # La liste des statuts déclarables est GÉNÉRÉE depuis la règle Python, jamais retapée : c'est
+    # exactement le défaut de la migration 19 (un CHECK oublié pendant que le code évoluait) qu'on
+    # refuse de rejouer. Import local, comme à la migration 21 : `db` ne dépend pas de `verdict`.
+    # (`STATUTS_MANUELS` s'appelait `STATUTS_DECLARABLES` le jour où cette migration a été écrite.
+    #  Le symbole Python a été renommé le 2026-08-04 ; la liste de valeurs, elle, est la même —
+    #  cette migration continue donc de produire EXACTEMENT le schéma qu'elle a déjà produit.)
+    from testpilot.verdict.status import STATUTS_MANUELS
+
+    declarables = ", ".join(f"'{s}'" for s in STATUTS_MANUELS)
+
+    # ── Le registre des résultats ────────────────────────────────────────────
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS test_result ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " run_id INTEGER NOT NULL,"
+        " case_id INTEGER NOT NULL,"
+        # STOCKÉE, jamais déduite : c'est la colonne qui empêche le produit de mentir.
+        " source TEXT NOT NULL CHECK (source IN ('executed', 'declared')),"
+        # Exécuté : les DEUX AXES se lisent par jointure, on ne les recopie pas (une copie
+        # divergerait ; et un axe recopié sur un résultat déclaré serait une mesure inventée).
+        " execution_id INTEGER,"
+        f" declared_status TEXT NOT NULL DEFAULT ''"
+        f"     CHECK (declared_status IN ('', {declarables})),"
+        " comment TEXT NOT NULL DEFAULT '',"
+        " created_by TEXT NOT NULL DEFAULT '',"
+        " attachments_path TEXT NOT NULL DEFAULT '',"
+        " created_at TEXT NOT NULL,"
+        # ⚠️ LE CHECK QUI PORTE LA PROMESSE : un exécuté a une exécution et aucun statut déclaré ;
+        # un déclaré a un statut et aucune exécution. Les deux moitiés sont exclusives, en base.
+        " CHECK ((source = 'executed' AND execution_id IS NOT NULL AND declared_status = '')"
+        "     OR (source = 'declared' AND execution_id IS NULL AND declared_status <> '')),"
+        " FOREIGN KEY (run_id) REFERENCES test_run(id),"
+        " FOREIGN KEY (case_id) REFERENCES test_case(id),"
+        " FOREIGN KEY (execution_id) REFERENCES execution(id))")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_result_run_case ON test_result(run_id, case_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_result_case ON test_result(case_id)")
+    # Index unique PARTIEL : une exécution donne au plus UNE ligne de registre. C'est ce qui rend
+    # la reprise ci-dessous rejouable sans doublon, même interrompue en plein milieu.
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_result_execution"
+                 " ON test_result(execution_id) WHERE execution_id IS NOT NULL")
+
+    # ── À qui un cas est CONFIÉ dans une campagne ────────────────────────────
+    # `assigned_to` est du TEXTE LIBRE : testpilot n'a aucune notion de compte utilisateur, et
+    # inventer une table d'utilisateurs pour ce seul champ promettrait une identité qu'on ne
+    # vérifie pas (même raison que `deleted_by`, une signature déclarée).
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS run_case_assignment ("
+        " run_id INTEGER NOT NULL,"
+        " case_id INTEGER NOT NULL,"
+        " assigned_to TEXT NOT NULL DEFAULT '',"
+        " assigned_by TEXT NOT NULL DEFAULT '',"
+        " assigned_at TEXT NOT NULL,"
+        " PRIMARY KEY (run_id, case_id),"
+        " FOREIGN KEY (run_id) REFERENCES test_run(id),"
+        " FOREIGN KEY (case_id) REFERENCES test_case(id))")
+
+    # ── Pièces jointes d'un résultat ─────────────────────────────────────────
+    # `stored_name` (le nom SUR LE DISQUE) est distinct de `filename` (le nom de l'utilisateur) :
+    # le téléchargement se fera par id numérique et lira `stored_name` en base, pour qu'aucune
+    # chaîne venue du client ne touche jamais un chemin de fichier.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS result_attachment ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " result_id INTEGER NOT NULL,"
+        " filename TEXT NOT NULL,"
+        " stored_name TEXT NOT NULL,"
+        " content_type TEXT NOT NULL DEFAULT '',"
+        " size_bytes INTEGER NOT NULL DEFAULT 0,"
+        " created_at TEXT NOT NULL,"
+        " FOREIGN KEY (result_id) REFERENCES test_result(id))")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_attachment_result"
+                 " ON result_attachment(result_id)")
+
+    # ── Réglages d'instance ──────────────────────────────────────────────────
+    # Table volontairement générique, mais `SettingRepo` REFUSERA toute clé absente de son
+    # `CLES_CONNUES` (même discipline que `erreurs.CATALOGUE`) : sans cette garde, une table
+    # clé/valeur devient un dépotoir en six mois, et plus personne ne sait ce qui est lu.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS app_setting ("
+        " key TEXT PRIMARY KEY,"
+        " value TEXT NOT NULL DEFAULT '',"
+        " updated_at TEXT NOT NULL,"
+        " updated_by TEXT NOT NULL DEFAULT '')")
+
+    # ── Le cas : Type, État, et le raccourci du dernier résultat ─────────────
+    # `type` et `etat` sont du TEXTE LIBRE SANS CHECK (précédent : `angle`) — un administrateur
+    # pourra ajouter une valeur sans migration. Défauts : `fonctionnel` et `new`.
+    ccols = _column_names(conn, "test_case")
+    for nom, defaut in (("type", "'fonctionnel'"),
+                        ("etat", "'new'"),
+                        ("last_declared_status", "''"),
+                        ("last_result_source", "''"),
+                        ("last_result_at", "''")):
+        if nom not in ccols:
+            conn.execute(f"ALTER TABLE test_case ADD COLUMN {nom} TEXT NOT NULL DEFAULT {defaut}")
+
+    _reconstruire_sans_colonne(conn, "test_case", "validation_status")
+
+    # ── Reprise : chaque exécution DE CAMPAGNE devient une ligne de registre ──
+    # ⚠️ `ORDER BY e.id` n'est pas décoratif : l'ordre des lignes PORTE le « dernier résultat ».
+    # Insérées dans le désordre, elles inverseraient des verdicts sur des campagnes existantes.
+    # `created_by` reste VIDE : ces exécutions précèdent le réglage du compte de service, et y
+    # écrire le nom du jour prétendrait mesurer ce qu'on n'a pas mesuré (leçon de la migration 20).
+    #
+    # ⚠️ Les deux `EXISTS` ne sont pas de la prudence décorative : la vraie base porte une
+    # exécution rattachée à une campagne DÉTRUITE (`run_id` orphelin, run purgé depuis). Sans
+    # eux, la reprise insérait une ligne violant la clé étrangère — et l'ouverture de la base
+    # échouait. Une exécution dont la campagne n'existe plus ne peut pas répondre à « résultat du
+    # cas C dans la campagne R » : on la laisse hors du registre, elle reste dans `execution`.
+    #
+    # ⚠️ **`source` absente = la table a DÉJÀ été convertie par la migration 27**, qui l'a
+    # renommée `mode`. On ne rejoue alors pas la reprise : elle a eu lieu, dans l'ancien
+    # vocabulaire, et ses lignes ont été converties. Ce garde-fou ne change RIEN à ce que cette
+    # migration produit sur une base pré-25 — il ne fait qu'éviter qu'elle plante en repassant sur
+    # une base déjà arrivée plus loin (ce que font les tests des migrations antérieures, en
+    # ramenant `user_version` en arrière sur une base moderne).
+    if "source" in _column_names(conn, "test_result"):
+        conn.execute(
+            "INSERT INTO test_result (run_id, case_id, source, execution_id, declared_status,"
+            " comment, created_by, attachments_path, created_at)"
+            " SELECT e.run_id, e.test_case_id, 'executed', e.id, '', '', '', '', e.started_at"
+            " FROM execution e"
+            " WHERE e.run_id IS NOT NULL"
+            "   AND EXISTS (SELECT 1 FROM test_run r WHERE r.id = e.run_id)"
+            "   AND EXISTS (SELECT 1 FROM test_case c WHERE c.id = e.test_case_id)"
+            "   AND NOT EXISTS (SELECT 1 FROM test_result tr WHERE tr.execution_id = e.id)"
+            " ORDER BY e.id")
+
+    # Un cas qui porte déjà un dernier résultat l'a forcément reçu d'une EXÉCUTION (rien d'autre
+    # ne savait en écrire un avant aujourd'hui). On l'inscrit — sinon l'écran afficherait une
+    # provenance vide sur tout l'historique, et laisserait croire que la question ne se posait pas.
+    conn.execute(
+        "UPDATE test_case SET last_result_source = 'executed', last_result_at = last_executed_at"
+        " WHERE last_result_source = ''"
+        "   AND last_executed_at IS NOT NULL AND last_executed_at <> ''")
+
+
+def _migrate_26_retrait_de_l_angle(conn: sqlite3.Connection) -> None:
+    """`angle` quitte le modèle (2026-08-04, décision du porteur) — **TestRail n'a pas ce champ**.
+
+    L'angle (nominal / erreur / limite / autre) était une invention de TestPilot, arrêtée le
+    2026-07-19 pour distinguer plusieurs cas nés d'une même spécification. Le cap produit étant la
+    **parité TestRail**, un champ propriétaire de plus est une divergence qu'il faudrait expliquer
+    à chaque utilisateur — et que rien ne réclamait : `type` (Fonctionnel / Non fonctionnel) et le
+    **titre** portent déjà ce que l'angle prétendait dire.
+
+    ⚠️ **Ce que ça coûte, et pourquoi c'est acceptable ici.** L'angle était le seul levier par
+    lequel la génération pouvait demander autre chose qu'un cas nominal (`propose_metier(…,
+    angle=…)`). Mais la génération ne produit **qu'un seul cas** aujourd'hui — le manque n°2 du
+    chantier en cours — et le mécanisme qui la multipliera est le découpage en **user stories**,
+    qui ne s'appuie pas sur l'angle. On ne retire donc pas une capacité : on retire une étiquette
+    qui décrivait une capacité inexistante. (Vérifié sur la vraie base au moment du retrait : les
+    8 cas portaient tous `nominal` — aucune information réelle n'y était rangée.)
+
+    `ALTER TABLE … DROP COLUMN` suffit : `angle` ne porte ni `CHECK` ni index, contrairement à
+    `validation_status` (migration 25) qui exigeait une reconstruction de table.
+    """
+    for table in ("test_case", "test_case_version"):
+        if "angle" in _column_names(conn, table):
+            conn.execute(f"ALTER TABLE {table} DROP COLUMN angle")
+
+
+def _migrate_27_mode_d_execution(conn: sqlite3.Connection) -> None:
+    """« provenance : exécuté / déclaré » devient le **MODE D'EXÉCUTION** : automatique / manuelle
+    — et le mode remonte au niveau de la CAMPAGNE (2026-08-04, décision du porteur).
+
+    ⚠️ **Ce n'est pas un renommage cosmétique.** « Déclaré » sous-entendait une affirmation sans
+    preuve, une case cochée. Or un test joué à la main EST une exécution : un humain a suivi les
+    étapes, contre la vraie application. Le mot faisait passer pour un aveu de faiblesse ce qui est
+    **une autre façon d'exécuter** — et poussait à cacher la moitié manuelle du travail plutôt qu'à
+    la tenir. `manuelle` dit ce qui s'est réellement passé.
+
+    ⚠️ **Le mode monte sur `test_run`.** On ne le choisit plus résultat par résultat mais en créant
+    la campagne, et c'est ce qui rend les écrans lisibles : une campagne automatique se **lance**
+    (aucun bouton de saisie), une campagne manuelle se **saisit** (aucun bouton Lancer). Sans ce
+    choix en amont, chaque ligne portait les deux gestes et aucun ne s'imposait.
+
+    ⚠️ **Le `CHECK` XOR survit au renommage** — c'est la seule chose qui compte vraiment ici : un
+    résultat manuel ne peut pas se réclamer d'une exécution machine, ni un automatique se passer
+    d'exécution. Pas une convention que le code respecte : un refus d'insertion.
+
+    Et un TRIGGER nouveau porte l'invariant que le mode fait naître : **le mode d'un résultat
+    concorde avec celui de sa campagne**. Un `CHECK` ne sait pas lire une autre table ; sans le
+    trigger, cette règle ne vivrait que dans les routes — donc nulle part le jour où un script
+    écrit en base. Il gouverne ce qu'on ÉCRIT désormais, il ne rejuge pas l'histoire : une vieille
+    campagne mixte reste telle quelle, mais ne peut plus recevoir de résultat du mauvais mode.
+
+    **La reprise.** Les campagnes existantes ont toutes été jouées par la machine → `automatique`.
+    Sauf celles dont TOUS les résultats sont des saisies humaines : les dire automatiques rendrait
+    leur historique manuel impossible à continuer, l'écran ne proposant plus la saisie.
+
+    `test_result` est RECONSTRUITE (ses deux colonnes portent des `CHECK`, que SQLite ne sait pas
+    modifier autrement) ; `test_case` se contente d'un `RENAME COLUMN` — ses raccourcis n'ont
+    aucun `CHECK`. Idempotente : chaque étape s'introspecte avant d'agir.
+    """
+    from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE, STATUTS_MANUELS
+
+    manuels = ", ".join(f"'{s}'" for s in STATUTS_MANUELS)
+    modes = ", ".join(f"'{m}'" for m in (MODE_MANUELLE, MODE_AUTOMATIQUE))
+
+    # ── La campagne porte son mode ───────────────────────────────────────────
+    # `ADD COLUMN … CHECK(…)` applique bien la contrainte (vérifié sur SQLite 3.35.5) ; c'est
+    # seulement CHANGER un CHECK existant qui exige une reconstruction — cf. `test_result`.
+    if "mode" not in _column_names(conn, "test_run"):
+        conn.execute(f"ALTER TABLE test_run ADD COLUMN mode TEXT NOT NULL"
+                     f" DEFAULT '{MODE_AUTOMATIQUE}' CHECK (mode IN ({modes}))")
+
+    # ── Le registre : `source` devient `mode`, `declared_status` devient `statut_manuel` ─────
+    if "mode" not in _column_names(conn, "test_result"):
+        _reconstruire_test_result_en_mode(conn, manuels, modes)
+
+    # Le trigger vient APRÈS la reconstruction (un `DROP TABLE` emporte ses triggers).
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS trg_resultat_suit_le_mode_de_sa_campagne"
+        " BEFORE INSERT ON test_result FOR EACH ROW"
+        " WHEN NEW.mode <> (SELECT mode FROM test_run WHERE id = NEW.run_id)"
+        " BEGIN SELECT RAISE(ABORT,"
+        " 'le mode du résultat ne concorde pas avec celui de sa campagne'); END")
+
+    # ── Les raccourcis du cas suivent le même vocabulaire ────────────────────
+    for ancien, nouveau in (("last_result_source", "last_result_mode"),
+                            ("last_declared_status", "last_statut_manuel")):
+        cols = _column_names(conn, "test_case")
+        if ancien not in cols:
+            continue
+        if nouveau in cols:
+            # Base NEUVE : `schema.sql` a créé la colonne cible, puis la migration 25 — qui ne
+            # connaît que l'ancien nom — a rajouté l'ancienne à côté. Les deux sont vides (aucun
+            # cas n'existe encore) : on retire l'intruse plutôt que d'inventer une fusion.
+            conn.execute(f"ALTER TABLE test_case DROP COLUMN {ancien}")
+        else:
+            conn.execute(f"ALTER TABLE test_case RENAME COLUMN {ancien} TO {nouveau}")
+    conn.execute(f"UPDATE test_case SET last_result_mode = '{MODE_AUTOMATIQUE}'"
+                 f" WHERE last_result_mode = 'executed'")
+    conn.execute(f"UPDATE test_case SET last_result_mode = '{MODE_MANUELLE}'"
+                 f" WHERE last_result_mode = 'declared'")
+
+    # ── Le mode des campagnes existantes ─────────────────────────────────────
+    # Toutes automatiques (elles ont été jouées par la machine) SAUF celles dont aucun résultat ne
+    # vient d'une exécution : leur histoire est entièrement manuelle, la dire automatique
+    # empêcherait de la continuer.
+    conn.execute(
+        f"UPDATE test_run SET mode = '{MODE_MANUELLE}' WHERE id IN ("
+        f" SELECT run_id FROM test_result GROUP BY run_id"
+        f" HAVING SUM(mode = '{MODE_AUTOMATIQUE}') = 0)")
+
+
+def _reconstruire_test_result_en_mode(conn: sqlite3.Connection, manuels: str, modes: str) -> None:
+    """Reconstruit `test_result` avec le vocabulaire du mode d'exécution.
+
+    ⚠️ La recopie **NOMME ses colonnes** (leçon de la migration 25) : les deux tables n'ont ni les
+    mêmes noms ni le même ordre implicite, et un `INSERT … SELECT *` décalerait tout d'un cran,
+    en silence, sur la table qui porte les résultats du produit.
+    """
+    from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE
+
+    create_tmp = (
+        "CREATE TABLE test_result__migr27 ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " run_id INTEGER NOT NULL,"
+        " case_id INTEGER NOT NULL,"
+        # STOCKÉ, jamais déduit : c'est la colonne qui empêche le produit de mentir.
+        f" mode TEXT NOT NULL CHECK (mode IN ({modes})),"
+        # Automatique : les DEUX AXES se lisent par jointure, on ne les recopie pas (une copie
+        # divergerait ; et un axe recopié sur un résultat manuel serait une mesure inventée).
+        " execution_id INTEGER,"
+        f" statut_manuel TEXT NOT NULL DEFAULT ''"
+        f"     CHECK (statut_manuel IN ('', {manuels})),"
+        " comment TEXT NOT NULL DEFAULT '',"
+        " created_by TEXT NOT NULL DEFAULT '',"
+        " attachments_path TEXT NOT NULL DEFAULT '',"
+        " created_at TEXT NOT NULL,"
+        # ⚠️ LE CHECK QUI PORTE LA PROMESSE, repris mot pour mot de la migration 25 : un résultat
+        # automatique a une exécution et aucun statut saisi ; un manuel a un statut saisi et
+        # aucune exécution. Les deux moitiés restent exclusives, en base.
+        f" CHECK ((mode = '{MODE_AUTOMATIQUE}' AND execution_id IS NOT NULL AND statut_manuel = '')"
+        f"     OR (mode = '{MODE_MANUELLE}' AND execution_id IS NULL AND statut_manuel <> '')),"
+        " FOREIGN KEY (run_id) REFERENCES test_run(id),"
+        " FOREIGN KEY (case_id) REFERENCES test_case(id),"
+        " FOREIGN KEY (execution_id) REFERENCES execution(id))")
+
+    aux = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE tbl_name='test_result' AND type IN ('index','trigger')"
+        " AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%'").fetchall()
+
+    conn.commit()  # aucune transaction ouverte : PRAGMA foreign_keys est un no-op en transaction
+    old_iso = conn.isolation_level
+    conn.isolation_level = None  # autocommit : on gère BEGIN/COMMIT nous-mêmes (DDL+DML atomique)
+    try:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("BEGIN")
+        try:
+            conn.execute("DROP TABLE IF EXISTS test_result__migr27")
+            conn.execute(create_tmp)
+            conn.execute(
+                "INSERT INTO test_result__migr27 (id, run_id, case_id, mode, execution_id,"
+                " statut_manuel, comment, created_by, attachments_path, created_at)"
+                f" SELECT id, run_id, case_id,"
+                f" CASE source WHEN 'executed' THEN '{MODE_AUTOMATIQUE}'"
+                f"             ELSE '{MODE_MANUELLE}' END,"
+                " execution_id, declared_status, comment, created_by, attachments_path, created_at"
+                " FROM test_result ORDER BY id")
+            conn.execute("DROP TABLE test_result")
+            conn.execute("ALTER TABLE test_result__migr27 RENAME TO test_result")
+            for a in aux:
+                conn.execute(a["sql"])  # index recréés (dropés avec l'ancienne table)
+            violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+            if violations:
+                raise RuntimeError(f"FK cassées après reconstruction de test_result : {violations}")
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+        conn.execute("PRAGMA foreign_keys = ON")
+    finally:
+        conn.isolation_level = old_iso
 
 
 def _ensure_project(conn: sqlite3.Connection, name: str, now: str) -> int:

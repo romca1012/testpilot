@@ -97,8 +97,7 @@ def test_automatiser_cree_une_version_AVEC_gherkin_sur_le_meme_cas(conn, monkeyp
             feature_content="# language: fr\nScénario: auto\n  Quand j'agis\n",
             steps_content="# steps", change_summary="Automatisation",
             title=metier["title"], preconditions=metier["preconditions"],
-            test_steps=json.dumps(metier["steps"]), expected_result=metier["expected_result"],
-            angle=metier.get("angle", ""))
+            test_steps=json.dumps(metier["steps"]), expected_result=metier["expected_result"])
         self.case_repo.set_current_version(case_id, vid)
         from testpilot.generation.state import GenerationResult
         r = GenerationResult(success=True, module_name=plan.module_name, stopped_reason="done",

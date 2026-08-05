@@ -39,17 +39,16 @@ _METIER_SCHEMA = {
         "preconditions": {"type": "string"},
         "steps": {"type": "array", "items": {"type": "string"}},
         "expected_result": {"type": "string"},
-        "angle": {"type": "string"},
     },
-    "required": ["title", "preconditions", "steps", "expected_result", "angle"],
+    "required": ["title", "preconditions", "steps", "expected_result"],
     "additionalProperties": False,
 }
 
 
-def _data_metier(llm, plan: TestPlan, angle: str, model: str, cost_tracker) -> dict:
+def _data_metier(llm, plan: TestPlan, model: str, cost_tracker) -> dict:
     """Le dict du document métier. Sorties structurées si l'adaptateur les expose (`call_json`),
     sinon parsing tolérant — ce qui garde inchangés les adaptateurs minimaux (fakes de test)."""
-    user = _build_prompt(plan, angle)
+    user = _build_prompt(plan)
     modele = model or config.MODEL_FAST
     if hasattr(llm, "call_json"):
         return llm.call_json(system_prompt=_SYSTEM, user_content=user, schema=_METIER_SCHEMA,
@@ -65,15 +64,14 @@ def _data_metier(llm, plan: TestPlan, angle: str, model: str, cost_tracker) -> d
     except Exception:
         return {}
 
-# Angles connus. `angle` reste une ÉTIQUETTE LIBRE en base (décision 0022 n°9) : cette liste
-# guide le modèle sans l'enfermer — une valeur hors liste est acceptée telle quelle.
-_ANGLES = ("nominal", "erreur", "limite", "autre")
-
-# ⚠️ Un titre ne doit JAMAIS porter son angle en préfixe (décision 0022 n°3, rappelée au backlog
-# avec un exemple TestRail réel). `[NOMINAL] …` est un artefact du prompt « triptyque » d'avant :
-# l'angle est une métadonnée, pas une partie du titre lu par un humain.
-_PREFIXE_ANGLE = re.compile(r"^\s*[\[\(]?\s*(nominal|erreur|limite|autre|cas\s+\w+)\s*[\]\)]?\s*[:\-–]?\s*",
-                            re.IGNORECASE)
+# ⚠️ Un titre ne doit JAMAIS porter une étiquette en préfixe (décision 0022 n°3, avec un exemple
+# TestRail réel). `[NOMINAL] …` est un artefact du prompt « triptyque » d'avant : un titre est une
+# PHRASE MÉTIER, pas une case de classement. Le nettoyage SURVIT au retrait du champ `angle`
+# (migration 26) : le modèle a appris ces préfixes sur du corpus, il les propose encore alors que
+# plus rien ne les lui demande.
+_PREFIXE_CLASSEMENT = re.compile(
+    r"^\s*[\[\(]?\s*(nominal|erreur|limite|autre|cas\s+\w+)\s*[\]\)]?\s*[:\-–]?\s*",
+    re.IGNORECASE)
 
 # Mots-clés Gherkin : interdits dans les ÉTAPES métier (consigne du porteur — pas de
 # Given/When/Then à l'écran). On les retire au lieu de rejeter la réponse : le contenu de l'étape
@@ -90,34 +88,32 @@ _NUMEROTATION = re.compile(r"^\s*\d+\s*[.)]\s*")
 
 
 class MetierDraft:
-    """Le document métier proposé pour UN cas (un angle). Toujours éditable par l'humain."""
+    """Le document métier proposé pour UN cas. Toujours éditable par l'humain."""
 
     def __init__(self, *, title: str = "", preconditions: str = "",
-                 steps: list[str] | None = None, expected_result: str = "", angle: str = ""):
+                 steps: list[str] | None = None, expected_result: str = ""):
         self.title = title
         self.preconditions = preconditions
         self.steps = steps or []
         self.expected_result = expected_result
-        self.angle = angle
 
     def as_dict(self) -> dict:
         return {"title": self.title, "preconditions": self.preconditions,
-                "steps": list(self.steps), "expected_result": self.expected_result,
-                "angle": self.angle}
+                "steps": list(self.steps), "expected_result": self.expected_result}
 
     @property
     def complete(self) -> bool:
         """Titre + étapes + résultat attendu sont OBLIGATOIRES (décision `0022` n°3.c).
 
         Un cas sans ces trois-là ne teste rien — c'est le « cas fantôme » que `0006` refusait.
-        Les préconditions et l'angle restent facultatifs.
+        Les préconditions restent facultatives.
         """
         return bool(self.title.strip() and self.steps and self.expected_result.strip())
 
 
 def _clean_title(raw: str) -> str:
-    """Retire un éventuel préfixe d'angle. Le titre est une PHRASE MÉTIER, rien d'autre."""
-    return _PREFIXE_ANGLE.sub("", str(raw or "")).strip()
+    """Retire un éventuel préfixe de classement. Le titre est une PHRASE MÉTIER, rien d'autre."""
+    return _PREFIXE_CLASSEMENT.sub("", str(raw or "")).strip()
 
 
 def _clean_step(raw: str) -> str:
@@ -130,26 +126,23 @@ def _clean_step(raw: str) -> str:
     return _GHERKIN_KW.sub("", s).strip()
 
 
-def _build_prompt(plan: TestPlan, angle: str) -> str:
+def _build_prompt(plan: TestPlan) -> str:
     return f"""Rédige LE DOCUMENT MÉTIER d'un cas de test, à partir de cette spécification.
 
 SPÉCIFICATION :
 {plan.raw_spec}
-
-ANGLE À COUVRIR : {angle}
 
 Réponds en JSON :
 {{
   "title": "phrase métier décrivant ce qui est vérifié",
   "preconditions": "le contexte nécessaire avant de commencer, en langage clair (ou \\"\\")",
   "steps": ["Ouvrir …", "Saisir …", "Cliquer …"],
-  "expected_result": "UNE phrase de verdict global",
-  "angle": "{angle}"
+  "expected_result": "UNE phrase de verdict global"
 }}
 
 RÈGLES IMPÉRATIVES :
 1. Le TITRE est une phrase métier qui dit ce qui est vérifié.
-   JAMAIS de préfixe d'angle : « [NOMINAL] … » est INTERDIT.
+   JAMAIS de préfixe de classement : « [NOMINAL] … » est INTERDIT.
    Bon : « Réception et délivrance d'une commande ».
 2. Les ÉTAPES sont des actions numérotées simples, à la suite.
    AUCUN mot-clé Gherkin (Soit / Étant donné / Quand / Alors / Given / When / Then).
@@ -161,9 +154,9 @@ RÈGLES IMPÉRATIVES :
 5. Titre, étapes et résultat attendu sont OBLIGATOIRES et ne peuvent pas être vides."""
 
 
-def propose_metier(plan: TestPlan, *, angle: str = "nominal", llm: LLMAdapter | None = None,
+def propose_metier(plan: TestPlan, *, llm: LLMAdapter | None = None,
                    cost_tracker=None, model: str = "") -> MetierDraft:
-    """Un appel LLM → le document métier d'UN cas (un angle). Ne persiste rien.
+    """Un appel LLM → le document métier d'UN cas. Ne persiste rien.
 
     Aucun contenu n'est fabriqué en cas d'échec : si le modèle ne rend pas de JSON exploitable,
     on renvoie un brouillon VIDE (`complete` faux) et l'appelant le signale. Inventer un titre
@@ -171,10 +164,10 @@ def propose_metier(plan: TestPlan, *, angle: str = "nominal", llm: LLMAdapter | 
     l'arbitrage A.1 de la migration 14, qui a refusé de dériver le métier du Gherkin.
     """
     llm = llm or LLMAdapter()
-    data = _data_metier(llm, plan, angle, model, cost_tracker)
+    data = _data_metier(llm, plan, model, cost_tracker)
     if not data:
         logger.warning("[metier] aucune donnée JSON exploitable — brouillon vide")
-        return MetierDraft(angle=angle)
+        return MetierDraft()
 
     steps = [_clean_step(s) for s in (data.get("steps") or []) if str(s or "").strip()]
     return MetierDraft(
@@ -182,5 +175,4 @@ def propose_metier(plan: TestPlan, *, angle: str = "nominal", llm: LLMAdapter | 
         preconditions=str(data.get("preconditions", "") or "").strip(),
         steps=[s for s in steps if s],
         expected_result=str(data.get("expected_result", "") or "").strip(),
-        angle=str(data.get("angle", "") or angle).strip(),
     )

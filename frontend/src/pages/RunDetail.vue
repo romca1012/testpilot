@@ -6,12 +6,32 @@
 // ligne (il pointe vers l'exécution qui l'a produit).
 //
 // Le statut d'un cas est DÉRIVÉ des deux axes réels (Passed/Failed/Retest/Blocked/Untested) :
-// jamais un badge unique qui masque l'un des deux (§4.1). Un cas sans exécution dans ce run est
+// jamais un badge unique qui masque l'un des deux (§4.1). Un cas sans résultat dans ce run est
 // « Untested » — on ne fabrique aucun résultat.
+//
+// ⚠️ **Chaque ligne dit COMMENT son résultat a été obtenu** (2026-08-04) : joué par la machine,
+// ou joué à la main. Sans cette colonne, ouvrir l'exécution manuelle transformerait cet écran en
+// ce que le produit refuse d'être — un tableau de cases cochées dont personne ne peut dire ce qui
+// a réellement tourné.
+//
+// ⚠️ **Le MODE de la campagne décide des gestes offerts.** Automatique → un bouton « Lancer » et
+// aucune saisie. Manuelle → aucun bouton « Lancer » et un « + Résultat » par ligne. Les deux à la
+// fois, c'était l'écran d'avant : deux gestes proposés, aucun qui s'impose, et un utilisateur qui
+// choisit au hasard. Le serveur refuse de son côté — l'écran n'est pas le gardien de la règle,
+// seulement son porte-parole.
+//
+// ⚠️ **La vue « Tests & Résultats », à parité TestRail** (2026-08-05) : deux cartes de synthèse
+// (camembert + taux de réussite), puis les cas GROUPÉS PAR STATUT. Ce qu'elle remplace : une
+// barre empilée surmontée d'un « % » qui comptait les cas AYANT TOURNÉ. Ce chiffre se lisait
+// comme un taux de réussite, alors qu'une campagne intégralement rouge l'aurait affiché à 100 %.
+// Le camembert et les groupes descendent tous deux de `TEST_STATUS_ORDER` : la liste des statuts,
+// leur ordre et leurs couleurs ne sont écrits qu'à un seul endroit, `lib/status.ts`.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type RunDetail as RunDetailDto, type RunCaseResult } from '../lib/api'
 import { testStatusMeta, TEST_STATUS_ORDER, type TestStatusCode } from '../lib/status'
+import ResultMode from '../components/ResultMode.vue'
+import AddResultDialog from '../components/AddResultDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -41,7 +61,116 @@ const dist = computed<Record<TestStatusCode, number>>(() => {
 })
 const total = computed(() => detail.value?.cases.length || 0)
 const tested = computed(() => total.value - dist.value.untested)
-const pct = computed(() => (total.value ? Math.round((tested.value / total.value) * 100) : 0))
+
+// ── Ce que la campagne VAUT, en deux chiffres qui ne se recouvrent pas ────────
+// « réussi » = la part des cas VERTS sur le total, pas la part de ceux qui ont tourné. Un run où
+// 8 cas sur 10 sont encore à jouer n'est pas « 20 % avancé » : il est réussi à 20 %, et 80 % de
+// son périmètre n'a rien prouvé du tout. Les deux phrases sont dites côte à côte pour que l'une
+// ne puisse jamais être lue à la place de l'autre.
+function part(n: number) { return total.value ? Math.round((n / total.value) * 100) : 0 }
+const pctReussi = computed(() => part(dist.value.passed))
+const pctNonTestes = computed(() => part(dist.value.untested))
+
+// ── Le camembert, à la main ──────────────────────────────────────────────────
+// Un `<path>` par statut, aucune librairie de graphiques (le projet n'en embarque pas). Les
+// couleurs et les libellés viennent de `status.ts` : ni l'ordre ni la palette ne sont retapés ici.
+const R = 54, CX = 60, CY = 60
+function pointSur(deg: number): [number, number] {
+  const a = ((deg - 90) * Math.PI) / 180
+  return [CX + R * Math.cos(a), CY + R * Math.sin(a)]
+}
+function arc(a0: number, a1: number): string {
+  const [x0, y0] = pointSur(a0)
+  const [x1, y1] = pointSur(a1)
+  const grandArc = a1 - a0 > 180 ? 1 : 0
+  return `M ${CX} ${CY} L ${x0.toFixed(2)} ${y0.toFixed(2)} `
+       + `A ${R} ${R} 0 ${grandArc} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} Z`
+}
+// ⚠️ Un statut à 100 % ne se dessine PAS en arc : son point de départ et son point d'arrivée sont
+// confondus, et le navigateur rend un disque vide. On rend alors un cercle plein — sinon le seul
+// cas où la campagne est unanime est justement celui où le graphique disparaît.
+const parts = computed(() => {
+  const out: { code: TestStatusCode; d: string; plein: boolean }[] = []
+  let a0 = 0
+  for (const k of TEST_STATUS_ORDER) {
+    const n = dist.value[k]
+    if (!n) continue
+    const a1 = a0 + (n / total.value) * 360
+    out.push({ code: k, d: arc(a0, a1), plein: n === total.value })
+    a0 = a1
+  }
+  return out
+})
+// Le graphique est une IMAGE pour un lecteur d'écran : sans ce résumé, il ne dit rien du tout.
+const resumeCamembert = computed(() =>
+  'Répartition des statuts : '
+  + TEST_STATUS_ORDER.map((k) => `${dist.value[k]} ${testStatusMeta(k).label}`).join(', '))
+
+// Les deux téléchargements du coin, comme TestRail : l'image du graphique, et ses données.
+const svgEl = ref<SVGSVGElement | null>(null)
+function telecharger(contenu: BlobPart, type: string, nom: string) {
+  const url = URL.createObjectURL(new Blob([contenu], { type }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nom
+  a.click()
+  URL.revokeObjectURL(url)
+}
+function exporterImage() {
+  if (!svgEl.value) return
+  telecharger(new XMLSerializer().serializeToString(svgEl.value),
+              'image/svg+xml;charset=utf-8', `campagne-${runId.value}-repartition.svg`)
+}
+function exporterCsv() {
+  const lignes = TEST_STATUS_ORDER.map(
+    (k) => [testStatusMeta(k).label, dist.value[k], `${part(dist.value[k])} %`].join(';'))
+  // BOM UTF-8 : sans lui, Excel lit « é » de travers.
+  const contenu = '﻿' + ['Statut;Cas;Part', ...lignes].join('\r\n')
+  telecharger(contenu, 'text/csv;charset=utf-8', `campagne-${runId.value}-repartition.csv`)
+}
+
+// ── Tri, filtre, colonnes : des préférences de LECTURE, rien d'autre ──────────
+// Aucune règle métier ne naît ici : on ne fait que réordonner et masquer ce que le serveur a
+// déjà tranché. Le statut d'une ligne reste `c.statut`, jamais recalculé à l'écran (§3.6).
+const tri = ref<'statut' | 'id' | 'titre'>('statut')
+const triAsc = ref(true)
+const filtreStatut = ref('')          // '' = aucun filtre
+const menuColonnes = ref(false)
+// Ni le titre ni le statut ne se masquent : un tableau de cas sans eux ne montre plus rien.
+const COLONNES_MASQUABLES = [
+  { cle: 'assigne', label: 'Assigné à' },
+  { cle: 'mode', label: 'Mode' },
+  { cle: 'soumis', label: 'Soumis par' },
+] as const
+type Colonne = typeof COLONNES_MASQUABLES[number]['cle']
+const colonnes = ref<Colonne[]>(['assigne', 'mode', 'soumis'])
+function colonneVisible(c: Colonne) { return colonnes.value.includes(c) }
+function basculerColonne(c: Colonne) {
+  colonnes.value = colonneVisible(c) ? colonnes.value.filter((x) => x !== c) : [...colonnes.value, c]
+}
+const triParDefaut = computed(() => tri.value === 'statut' && triAsc.value && !filtreStatut.value)
+function reinitialiserTri() { tri.value = 'statut'; triAsc.value = true; filtreStatut.value = '' }
+
+const casVisibles = computed(() => {
+  const l = (detail.value?.cases || []).filter((c) => !filtreStatut.value || c.statut === filtreStatut.value)
+  const s = [...l]
+  if (tri.value === 'titre') s.sort((a, b) => a.title.localeCompare(b.title))
+  else if (tri.value === 'id') s.sort((a, b) => a.id - b.id)
+  else s.sort((a, b) => TEST_STATUS_ORDER.indexOf(statusOf(a)) - TEST_STATUS_ORDER.indexOf(statusOf(b)))
+  if (!triAsc.value) s.reverse()
+  return s
+})
+
+// ⚠️ **Un groupe n'existe que s'il a des cas.** Dérouler cinq bandeaux dont trois sont vides
+// ferait passer pour « une campagne qui a du Blocked » une campagne qui n'en a aucun : le lecteur
+// retient les intitulés, pas les zéros. Hors tri par statut, une seule liste, sans bandeau.
+const groupes = computed(() => {
+  if (tri.value !== 'statut') return [{ code: null as TestStatusCode | null, cases: casVisibles.value }]
+  const ordre = triAsc.value ? TEST_STATUS_ORDER : [...TEST_STATUS_ORDER].reverse()
+  return ordre
+    .map((code) => ({ code, cases: casVisibles.value.filter((c) => statusOf(c) === code) }))
+    .filter((g) => g.cases.length > 0)
+})
 
 const STATUS_RUN: Record<string, { label: string; cls: string }> = {
   draft: { label: 'Brouillon', cls: 'bg-secondary text-muted-foreground' },
@@ -61,6 +190,9 @@ const launchErrorCode = ref('')
 let pollTimer: number | undefined
 
 const enCours = computed(() => detail.value?.run.status === 'running')
+// Le MODE D'EXÉCUTION de la campagne, choisi à sa création. Il commande quels gestes existent
+// sur cet écran : une campagne automatique se LANCE, une campagne manuelle se SAISIT.
+const estManuelle = computed(() => detail.value?.run.mode === 'manuelle')
 
 async function launch() {
   launchError.value = ''
@@ -106,15 +238,29 @@ async function toggleArchive() {
   }
 }
 
-// Cliquer un cas : vers son RAPPORT s'il a été exécuté ici, sinon vers le cas lui-même.
+// Cliquer un cas : vers CE CAS DANS CETTE CAMPAGNE (le « test », 2026-08-05).
+//
+// ⚠️ Avant, le clic menait au rapport technique de l'exécution — ou, faute d'exécution, à la fiche
+// du cas dans le référentiel. Deux destinations pour le même geste, et aucune qui répondait à la
+// question posée en cliquant : « où en est ce cas, ICI ? ». Le rapport détaillé et la fiche du cas
+// restent atteignables DEPUIS cette page, nommés pour ce qu'ils sont.
 function openCase(c: RunCaseResult) {
-  if (c.execution_id) {
-    router.push({ name: 'report', params: { pid: pid.value, id: String(c.execution_id) } })
-  } else {
-    router.push({ name: 'case-detail', params: { pid: pid.value, id: String(c.id) } })
-  }
+  router.push({ name: 'run-test',
+                params: { pid: pid.value, id: String(runId.value), caseId: String(c.id) } })
 }
 function backToList() { router.push({ name: 'executions', params: { pid: pid.value } }) }
+
+// ── Exécution MANUELLE d'un cas (le geste « Add Result » de TestRail) ────────
+// ⚠️ **Refusée sur une campagne archivée, et absente d'une campagne automatique** — le bouton
+// disparaît alors, plutôt que d'échouer au clic : une action proposée doit être une action
+// possible. Le serveur refuse de son côté, l'écran n'est pas le gardien de la règle, seulement
+// son porte-parole.
+const casSaisi = ref<RunCaseResult | null>(null)
+function ouvrirSaisie(c: RunCaseResult) { casSaisi.value = c }
+async function resultatAjoute() {
+  casSaisi.value = null
+  await load()
+}
 </script>
 
 <template>
@@ -139,8 +285,9 @@ function backToList() { router.push({ name: 'executions', params: { pid: pid.val
       </span>
 
       <div class="ml-auto flex items-center gap-2">
-        <!-- Lancer : geste EXPLICITE. Masqué si la campagne est archivée (lecture seule). -->
-        <button v-if="!enCours && !archived"
+        <!-- Lancer : geste EXPLICITE. Masqué si la campagne est archivée (lecture seule) — et
+             ABSENT d'une campagne manuelle, qui n'a rien à lancer : ses résultats se saisissent. -->
+        <button v-if="!enCours && !archived && !estManuelle"
                 class="rounded-md bg-success text-white font-semibold px-4 py-2 text-sm flex items-center gap-2 hover:bg-success/90 disabled:opacity-50"
                 :disabled="launching || !total" @click="launch">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
@@ -197,23 +344,63 @@ function backToList() { router.push({ name: 'executions', params: { pid: pid.val
       entre eux.
     </p>
 
-    <!-- Avancement -->
-    <div class="mt-6 flex flex-wrap items-center gap-6 rounded-lg border border-border bg-surface/60 p-4">
-      <div>
-        <div class="text-3xl font-semibold tabular-nums">{{ pct }} %</div>
-        <div class="text-xs text-muted-foreground mt-0.5">{{ tested }} / {{ total }} cas testés</div>
-      </div>
-      <div class="flex-1 min-w-[200px]">
-        <div class="h-2 rounded-full bg-border overflow-hidden flex">
-          <div v-for="k in TEST_STATUS_ORDER" :key="k" class="h-full"
-               :style="{ width: (total ? (dist[k] / total) * 100 : 0) + '%',
-                         background: testStatusMeta(k).color }"></div>
+    <!-- Avancement : DEUX cartes côte à côte (parité TestRail) — la répartition à gauche, ce que
+         la campagne vaut à droite. Une seule barre empilée mélangeait les deux lectures. -->
+    <div class="mt-6 grid gap-4 lg:grid-cols-[1.7fr_1fr]">
+      <!-- Camembert + sa légende -->
+      <div class="relative rounded-lg border border-border bg-surface/60 p-4 flex items-center gap-6">
+        <div class="absolute right-3 top-3 flex gap-1 text-muted-foreground">
+          <button class="rounded p-1 hover:bg-accent hover:text-foreground"
+                  title="Télécharger le graphique" aria-label="Télécharger le graphique (image SVG)"
+                  @click="exporterImage">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+            </svg>
+          </button>
+          <button class="rounded p-1 hover:bg-accent hover:text-foreground"
+                  title="Télécharger les données" aria-label="Télécharger les données de la répartition (CSV)"
+                  @click="exporterCsv">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            </svg>
+          </button>
         </div>
-        <div class="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-          <span v-for="k in TEST_STATUS_ORDER" :key="k" class="flex items-center gap-1.5">
-            <span class="h-2.5 w-2.5 rounded-sm" :style="{ background: testStatusMeta(k).color }"></span>
-            {{ testStatusMeta(k).label }} : {{ dist[k] }}
-          </span>
+
+        <svg ref="svgEl" viewBox="0 0 120 120" class="w-32 h-32 shrink-0"
+             xmlns="http://www.w3.org/2000/svg" role="img" :aria-label="resumeCamembert">
+          <circle v-if="!total" :cx="CX" :cy="CY" :r="R" fill="hsl(var(--border))" opacity="0.4" />
+          <template v-for="p in parts" :key="p.code">
+            <circle v-if="p.plein" :cx="CX" :cy="CY" :r="R" :fill="`hsl(${testStatusMeta(p.code).color})`" />
+            <path v-else :d="p.d" :fill="`hsl(${testStatusMeta(p.code).color})`" />
+          </template>
+        </svg>
+
+        <!-- ⚠️ La légende ITÈRE `TEST_STATUS_ORDER` : ni la liste des statuts, ni leur ordre, ni
+             leurs couleurs ne sont retapés ici. Le libellé est TOUJOURS écrit à côté de sa
+             pastille — jamais la couleur seule. -->
+        <ul class="flex-1 min-w-0 space-y-2">
+          <li v-for="k in TEST_STATUS_ORDER" :key="k">
+            <div class="flex items-center gap-2">
+              <span class="h-2.5 w-2.5 rounded-full shrink-0"
+                    :style="{ background: `hsl(${testStatusMeta(k).color})` }"></span>
+              <span class="font-semibold tabular-nums">{{ dist[k] }}</span>
+              <span class="font-semibold">{{ testStatusMeta(k).label }}</span>
+            </div>
+            <p class="pl-[18px] ml-0.5 text-xs text-muted-foreground">
+              {{ part(dist[k]) }} % défini sur {{ testStatusMeta(k).label }}
+            </p>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Ce que la campagne vaut : le taux de RÉUSSITE, et ce qui n'a rien prouvé. -->
+      <div class="rounded-lg border border-border bg-surface/60 p-4 grid place-items-center text-center">
+        <div>
+          <div class="text-5xl font-bold tabular-nums">{{ pctReussi }} %</div>
+          <div class="text-sm text-muted-foreground mt-1">réussi</div>
+          <p class="mt-3 text-xs text-muted-foreground">
+            {{ dist.untested }} / {{ total }} non testés ({{ pctNonTestes }} %).
+          </p>
         </div>
       </div>
     </div>
@@ -225,22 +412,110 @@ function backToList() { router.push({ name: 'executions', params: { pid: pid.val
     <p v-if="!total" class="mt-3 text-sm text-muted-foreground">
       Cette exécution ne contient aucun cas.
     </p>
-    <table v-else class="w-full border-collapse mt-1">
-      <tbody>
-        <tr v-for="c in detail.cases" :key="c.id"
-            class="group border-b border-border/40 hover:bg-accent/30 cursor-pointer"
-            @click="openCase(c)">
-          <td class="py-3 pl-1 w-16 font-bold tabular-nums whitespace-nowrap text-muted-foreground">C{{ c.id }}</td>
-          <td class="py-3 px-2.5 text-primary group-hover:underline leading-snug">{{ c.title }}</td>
-          <td class="py-3 px-2.5 w-44 text-right">
-            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[12.5px] font-semibold"
-                  :class="testStatusMeta(statusOf(c)).badge">
-              {{ testStatusMeta(statusOf(c)).label }}
-            </span>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+
+    <template v-else>
+      <!-- Barre d'outils — TRI, FILTRE, COLONNES. Préférences de lecture uniquement. -->
+      <div class="flex items-center gap-4 border-b border-border bg-surface-raised/50 px-3 py-2 text-xs text-muted-foreground">
+        <label class="flex items-center gap-1.5">Trier :
+          <select v-model="tri" aria-label="Trier les cas"
+                  class="cursor-pointer border-b border-dotted border-muted-foreground bg-transparent text-foreground outline-none">
+            <option value="statut">Statut</option>
+            <option value="id">ID</option>
+            <option value="titre">Titre</option>
+          </select>
+        </label>
+        <button class="hover:text-foreground" :aria-label="triAsc ? 'Trier en ordre décroissant' : 'Trier en ordre croissant'"
+                @click="triAsc = !triAsc">{{ triAsc ? '▲' : '▼' }}</button>
+        <button v-if="!triParDefaut" class="hover:text-foreground" aria-label="Réinitialiser le tri et le filtre"
+                @click="reinitialiserTri">✕</button>
+        <label class="flex items-center gap-1.5">Filtre :
+          <select v-model="filtreStatut" aria-label="Filtrer les cas par statut"
+                  class="cursor-pointer border-b border-dotted border-muted-foreground bg-transparent text-foreground outline-none">
+            <option value="">Aucun</option>
+            <option v-for="k in TEST_STATUS_ORDER" :key="k" :value="k">{{ testStatusMeta(k).label }}</option>
+          </select>
+        </label>
+        <span class="flex-1"></span>
+        <div class="relative">
+          <button class="hover:text-foreground" @click="menuColonnes = !menuColonnes">≡ Colonnes</button>
+          <div v-if="menuColonnes" class="absolute right-0 z-30 mt-1 w-40 rounded-md border border-border bg-surface-overlay py-1 shadow-xl">
+            <label v-for="col in COLONNES_MASQUABLES" :key="col.cle"
+                   class="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-accent/60">
+              <input type="checkbox" :checked="colonneVisible(col.cle)" @change="basculerColonne(col.cle)" />
+              <span class="text-foreground">{{ col.label }}</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <p v-if="!casVisibles.length" class="mt-3 text-sm text-muted-foreground">
+        Aucun cas ne porte ce statut dans cette campagne.
+      </p>
+
+      <!-- Un bloc par GROUPE. Trié par statut → un bandeau « Passed (2) » par statut PRÉSENT ;
+           trié autrement → une seule liste, sans bandeau. -->
+      <section v-for="g in groupes" :key="g.code || 'tous'" class="mt-4">
+        <div v-if="g.code" class="flex items-center gap-2">
+          <span class="text-sm font-semibold">{{ testStatusMeta(g.code).label }}</span>
+          <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums"
+                :class="testStatusMeta(g.code).badge">{{ g.cases.length }}</span>
+          <span class="h-1 w-16 rounded-full" :style="{ background: `hsl(${testStatusMeta(g.code).color})` }"></span>
+        </div>
+
+        <table class="mt-1 w-full border-collapse text-sm">
+          <thead>
+            <tr class="border-b border-border text-[11px] uppercase tracking-wider text-muted-foreground">
+              <th class="py-2 pl-1 w-16 text-left font-semibold">ID</th>
+              <th class="py-2 px-2.5 text-left font-semibold">Titre</th>
+              <th v-if="colonneVisible('assigne')" class="py-2 px-2.5 w-32 text-left font-semibold">Assigné à</th>
+              <th v-if="colonneVisible('mode')" class="py-2 px-2.5 w-32 text-left font-semibold">Mode</th>
+              <th v-if="colonneVisible('soumis')" class="py-2 px-2.5 w-40 text-left font-semibold">Soumis par</th>
+              <th class="py-2 px-2.5 w-32 text-right font-semibold" title="État du cas dans cette campagne">Ét.</th>
+              <th class="py-2 pl-2.5 w-10"></th>
+              <th class="py-2 w-6"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in g.cases" :key="c.id"
+                class="group border-b border-border/40 hover:bg-accent/30 cursor-pointer"
+                @click="openCase(c)">
+              <td class="py-3 pl-1 font-bold tabular-nums whitespace-nowrap text-muted-foreground">C{{ c.id }}</td>
+              <td class="py-3 px-2.5 text-primary group-hover:underline leading-snug">{{ c.title }}</td>
+              <!-- « Assigné à » : la table `run_case_assignment` existe, RIEN ne l'alimente encore.
+                   On écrit « — » plutôt que d'inventer un nom — une colonne vide qui dit vrai vaut
+                   mieux qu'une colonne remplie qui ment. -->
+              <td v-if="colonneVisible('assigne')" class="py-3 px-2.5 text-muted-foreground">—</td>
+              <!-- Le MODE avant le statut : on lit « comment ça a été obtenu » puis « ce que ça
+                   vaut ». L'inverse laisserait le statut s'imposer seul, ce qu'il ne doit jamais faire. -->
+              <td v-if="colonneVisible('mode')" class="py-3 px-2.5">
+                <ResultMode :mode="c.result_mode" :created-by="c.created_by" :at="c.result_at" />
+              </td>
+              <!-- Colonne « Soumis par », comme TestRail. Un compte de service pour la machine, un
+                   nom de session pour un humain — et « — » quand personne n'a signé, jamais un nom
+                   deviné. -->
+              <td v-if="colonneVisible('soumis')" class="py-3 px-2.5 truncate text-muted-foreground">{{ c.created_by || '—' }}</td>
+              <td class="py-3 px-2.5 text-right">
+                <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[12.5px] font-semibold"
+                      :class="testStatusMeta(statusOf(c)).badge">
+                  {{ testStatusMeta(statusOf(c)).label }}
+                </span>
+              </td>
+              <td class="py-3 pl-2.5" @click.stop>
+                <button v-if="!archived && estManuelle"
+                        class="rounded-md border border-border bg-surface-raised px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                        :title="`Ajouter un résultat pour C${c.id}`"
+                        @click="ouvrirSaisie(c)">+ Résultat</button>
+              </td>
+              <td class="py-3 text-right text-muted-foreground group-hover:text-foreground" aria-hidden="true">›</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </template>
+
+    <AddResultDialog :open="!!casSaisi" :run-id="runId" :cas="casSaisi"
+                     :statuts="detail.statuts_manuels"
+                     @close="casSaisi = null" @saved="resultatAjoute" />
   </div>
 
   <div v-else class="text-sm text-muted-foreground">Exécution introuvable.</div>

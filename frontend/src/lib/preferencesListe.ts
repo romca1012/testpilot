@@ -54,6 +54,12 @@ export function usePreferencesListe(pid: () => string) {
       // sa clé — sans fusion, ce réglage vaudrait `undefined` et l'écran se casserait sur une
       // préférence pourtant valide au moment où elle a été écrite.
       prefs.value = brut ? { ...DEFAUTS, ...JSON.parse(brut) } : { ...DEFAUTS }
+      // La colonne « Type » a d'abord affiché l'ANGLE testé ; l'angle a été supprimé
+      // (2026-08-04) et « Type » désigne désormais le vrai champ de TestRail. Une préférence
+      // enregistrée entre-temps peut porter `angle` : la traduire évite de faire disparaître une
+      // colonne que l'utilisateur avait choisie, sans qu'il comprenne pourquoi.
+      prefs.value.colonnes = (prefs.value.colonnes || []).map(
+        (col) => ((col as string) === 'angle' ? 'type' : col)) as Colonne[]
     } catch {
       prefs.value = { ...DEFAUTS }   // stockage illisible : la liste marche quand même
     }

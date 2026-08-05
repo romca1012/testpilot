@@ -43,10 +43,10 @@ import TestCasesList from '../pages/TestCasesList.vue'
 
 const CAS = [
   { id: 11, title: 'Déclaration de sinistre', module: 'Demandes', module_id: 1, group_id: null,
-    group_title: null, angle: 'nominal', priority: 'medium',
+    group_title: null, type: 'fonctionnel', etat: 'new', priority: 'medium',
     last_execution_status: 'success', last_functional_status: 'conforme', statut: 'passed' },
   { id: 12, title: 'Retour matériel', module: 'Demandes', module_id: 1, group_id: null,
-    group_title: null, angle: 'erreur', priority: 'high',
+    group_title: null, type: 'non_fonctionnel', etat: 'design', priority: 'high',
     last_execution_status: null, last_functional_status: null, statut: 'untested' },
 ]
 

@@ -41,7 +41,7 @@ let timer: number | undefined
 // Le document métier en cours d'édition. Copie locale : ce que l'utilisateur envoie fait foi,
 // la proposition de l'IA n'est qu'un point de départ.
 const metier = ref<MetierDraft>({
-  title: '', preconditions: '', steps: [], expected_result: '', angle: '',
+  title: '', preconditions: '', steps: [], expected_result: '',
 })
 
 // Titre + étapes + résultat attendu sont obligatoires (décision 0022 n°3.c) — un cas sans ces

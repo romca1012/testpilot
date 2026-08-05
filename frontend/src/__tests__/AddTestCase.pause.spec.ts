@@ -39,7 +39,6 @@ const DRAFT = {
   preconditions: 'Un utilisateur connecté.',
   steps: ['Ouvrir le formulaire', 'Envoyer la demande'],
   expected_result: 'La demande est enregistrée.',
-  angle: 'nominal',
 }
 
 beforeEach(() => {

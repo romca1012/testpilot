@@ -10,7 +10,7 @@ Ce que ces tests figent :
 - le document corrigé par l'humain FAIT FOI (pas la proposition de l'IA) ;
 - le Gherkin est écrit DEPUIS ce document (le prompt le porte, et lui seul) ;
 - le métier se fige DANS la version, avec le technique (décision n°10) ;
-- un titre ne porte jamais son angle en préfixe, une étape jamais de mot-clé Gherkin.
+- un titre ne porte jamais de préfixe de classement, une étape jamais de mot-clé Gherkin.
 """
 
 import json
@@ -60,7 +60,6 @@ _BON_JSON = json.dumps({
     "preconditions": "Un utilisateur connecté disposant d'un catalogue.",
     "steps": ["Ouvrir le formulaire", "Saisir la raison", "Envoyer la demande"],
     "expected_result": "La demande est enregistrée et visible dans la liste.",
-    "angle": "nominal",
 }, ensure_ascii=False)
 
 
@@ -75,10 +74,13 @@ def test_propose_metier_rend_un_document_complet():
     assert draft.complete
 
 
-def test_le_titre_ne_porte_JAMAIS_son_angle_en_prefixe():
-    """⚠️ `[NOMINAL] …` est interdit (décision `0022` n°3) : l'angle est une métadonnée, pas une
-    partie du titre lu par un humain. Le préfixe est un artefact du prompt « triptyque » d'avant —
-    on le retire au lieu de faire confiance au modèle, qui le remet régulièrement."""
+def test_le_titre_ne_porte_JAMAIS_de_prefixe_de_classement():
+    """⚠️ `[NOMINAL] …` est interdit (décision `0022` n°3) : un titre est une PHRASE MÉTIER, pas
+    une case de classement. Le préfixe est un artefact du prompt « triptyque » d'avant — on le
+    retire au lieu de faire confiance au modèle, qui le remet régulièrement.
+
+    ⚠️ Ce nettoyage SURVIT au retrait du champ `angle` (migration 26), et c'est le point du test :
+    plus rien ne demande d'angle au modèle, mais il en propose encore — il l'a appris ainsi."""
     payload = json.dumps({**json.loads(_BON_JSON), "title": "[NOMINAL] Création d'une demande"})
 
     draft = propose_metier(_plan(), llm=FakeLLM(payload))
@@ -163,8 +165,7 @@ def test_le_metier_valide_est_ecrit_DANS_la_version(tmp_path):
                               feature_content="# feature", steps_content="# steps",
                               spec_hash="h1", awaiting_review=True)
     metier = {"title": "Réception d'une commande", "preconditions": "Utilisateur connecté",
-              "steps": ["Ouvrir", "Envoyer"], "expected_result": "La demande est enregistrée.",
-              "angle": "nominal"}
+              "steps": ["Ouvrir", "Envoyer"], "expected_result": "La demande est enregistrée."}
 
     agent._persist(_plan(), result, case_id=None, title="ignoré", author="ui",
                    module_id=mid, metier=metier)
@@ -173,7 +174,6 @@ def test_le_metier_valide_est_ecrit_DANS_la_version(tmp_path):
     assert version["preconditions"] == "Utilisateur connecté"
     assert json.loads(version["test_steps"]) == ["Ouvrir", "Envoyer"]
     assert version["expected_result"] == "La demande est enregistrée."
-    assert version["angle"] == "nominal"
     # Le titre du CAS vient du document validé, pas de l'argument d'appel.
     assert CaseRepo(conn).get(result.case_id)["title"] == "Réception d'une commande"
     conn.close()
@@ -272,13 +272,11 @@ def test_le_document_CORRIGE_par_l_humain_fait_foi(client, monkeypatch):
         "preconditions": "Mon contexte",
         "steps": ["Mon étape unique"],
         "expected_result": "Mon verdict",
-        "angle": "limite",
     })
 
     assert r.status_code == 202
     assert recu["metier"]["title"] == "MON titre à moi"
     assert recu["metier"]["steps"] == ["Mon étape unique"]
-    assert recu["metier"]["angle"] == "limite"
 
 
 def test_un_metier_incomplet_est_REFUSE(client, monkeypatch):
@@ -326,7 +324,7 @@ def test_un_document_incomplet_fait_ECHOUER_le_job_sans_creer_de_cas(client, mon
     monkeypatch.setattr(sa.SpecAnalyzer, "analyze_spec_content",
                         lambda self, slug, content: _plan(content))
     monkeypatch.setattr(metier_writer, "propose_metier",
-                        lambda plan, **kw: MetierDraft(angle="nominal"))
+                        lambda plan, **kw: MetierDraft())
 
     pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]

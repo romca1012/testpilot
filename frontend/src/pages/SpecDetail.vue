@@ -4,7 +4,7 @@
 // Le backend du CRUD existait depuis le 2026-07-20 ; aucun écran ne l'appelait. Conséquence
 // concrète : un utilisateur ne pouvait ni créer ni relire une spécification — les seules qui
 // existaient étaient les « enveloppes » créées automatiquement par la génération, une par cas.
-// Le modèle du brief (une spec → N cas, un par angle) n'était donc atteignable par personne.
+// Le modèle du brief (une spec → N cas) n'était donc atteignable par personne.
 //
 // Ce que cet écran fait, et rien de plus : nommer un document, l'écrire, le relire, voir les cas
 // qui en sont nés. **Il ne génère rien et ne dépense rien** — la génération est un geste explicite

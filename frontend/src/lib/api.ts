@@ -1,6 +1,8 @@
 // Client API — base configurable. En dev, Vite (:5173) appelle FastAPI (:8000) ; en prod, le
 // front est servi par FastAPI (même origine → base relative).
-const API_BASE = import.meta.env.DEV ? 'http://localhost:8000' : ''
+// ⚠️ EXPORTÉE : un lien `<a href>` de téléchargement direct (pièce jointe) a besoin de la même
+// base que `fetch` — la reconstruire à côté aurait fait deux vérités qui peuvent diverger.
+export const API_BASE = import.meta.env.DEV ? 'http://localhost:8000' : ''
 
 // ⚠️ `credentials: 'include'` est INDISPENSABLE : le verrou d'instance (2026-07-24) tient dans un
 // cookie de session, et en développement le front (:5173) et l'API (:8000) sont deux origines —
@@ -12,26 +14,42 @@ const CREDENTIALS: RequestCredentials = 'include'
 let onUnauthorized: (() => void) | null = null
 export function setUnauthorizedHandler(fn: (() => void) | null) { onUnauthorized = fn }
 
+// Extraction d'erreur PARTAGÉE entre `request()` (JSON) et `requestForm()` (multipart) : les deux
+// parlent au même serveur RFC 9457, et dupliquer cette lecture aurait fait deux endroits où un
+// oubli (ex. ne pas relire `code`) casse silencieusement l'un des deux chemins sans casser l'autre.
+async function erreurDepuis(resp: Response, path: string): Promise<never> {
+  let detail = `HTTP ${resp.status}`
+  let code = ''
+  try {
+    const body = await resp.json()
+    if (body?.detail) detail = body.detail
+    // RFC 9457 (lot B) : `code` est le contrat stable. `detail` reste la phrase pour l'humain.
+    if (body?.code) code = body.code
+  } catch { /* réponse non-JSON */ }
+  // La connexion elle-même peut répondre 401 (mot de passe faux) : c'est le formulaire qui le
+  // dit, il ne faut pas le confondre avec une session expirée.
+  if (resp.status === 401 && !path.startsWith('/api/auth/')) onUnauthorized?.()
+  throw new ApiError(resp.status, detail, code)
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const resp = await fetch(`${API_BASE}${path}`, {
     credentials: CREDENTIALS,
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   })
-  if (!resp.ok) {
-    let detail = `HTTP ${resp.status}`
-    let code = ''
-    try {
-      const body = await resp.json()
-      if (body?.detail) detail = body.detail
-      // RFC 9457 (lot B) : `code` est le contrat stable. `detail` reste la phrase pour l'humain.
-      if (body?.code) code = body.code
-    } catch { /* réponse non-JSON */ }
-    // La connexion elle-même peut répondre 401 (mot de passe faux) : c'est le formulaire qui le
-    // dit, il ne faut pas le confondre avec une session expirée.
-    if (resp.status === 401 && !path.startsWith('/api/auth/')) onUnauthorized?.()
-    throw new ApiError(resp.status, detail, code)
-  }
+  if (!resp.ok) await erreurDepuis(resp, path)
+  return resp.status === 204 ? (undefined as T) : resp.json()
+}
+
+// Upload `multipart/form-data` (pièce jointe, import de spec…) : PAS de `request()` ici, parce
+// que `request()` pose TOUJOURS `Content-Type: application/json` — un en-tête incompatible avec
+// un envoi de fichier, où c'est le NAVIGATEUR qui doit écrire `multipart/form-data; boundary=…`
+// (une valeur qu'on ne peut pas reproduire à la main). Même logique d'erreur que `request()`
+// (`erreurDepuis`), donc même contrat `ApiError.code` côté écran — seul le transport diffère.
+async function requestForm<T>(path: string, body: FormData): Promise<T> {
+  const resp = await fetch(`${API_BASE}${path}`, { method: 'POST', credentials: CREDENTIALS, body })
+  if (!resp.ok) await erreurDepuis(resp, path)
   return resp.status === 204 ? (undefined as T) : resp.json()
 }
 
@@ -83,6 +101,9 @@ export const api = {
   createRun: (projectId: number | string, body: {
     name: string; description?: string; refs?: string
     selection_mode: 'all' | 'frozen'; case_ids?: number[]
+    // ⚠️ Le MODE D'EXÉCUTION se choisit ICI, à la création, et jamais résultat par résultat :
+    // c'est lui qui décide si la campagne se LANCE ou se SAISIT.
+    mode?: 'automatique' | 'manuelle'
   }) => request<RunSummary>(`/api/projects/${projectId}/runs`, {
     method: 'POST', body: JSON.stringify(body),
   }),
@@ -93,6 +114,34 @@ export const api = {
   // ne lance rien, lancer est un geste explicite).
   launchRun: (runId: number | string) =>
     request<RunSummary>(`/api/runs/${runId}/launch`, { method: 'POST' }),
+  // ── Exécution MANUELLE d'un cas (2026-08-04), dans une campagne manuelle ──
+  // Le flux de TestRail : une campagne, un cas, un statut, un commentaire. Le résultat sera
+  // étiqueté « Manuelle » partout — c'est la condition à laquelle l'exécution manuelle
+  // n'affaiblit pas la promesse du produit.
+  listResults: (runId: number | string, caseId: number | string) =>
+    request<ResultOut[]>(`/api/runs/${runId}/cases/${caseId}/results`),
+  addResult: (runId: number | string, caseId: number | string, body: { statut: string; comment?: string }) =>
+    request<ResultOut>(`/api/runs/${runId}/cases/${caseId}/results`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  // ── Pièces jointes d'un résultat (2026-08-05) ── TOUJOURS après `addResult` : la preuve
+  // visuelle d'un test manuel est optionnelle, jamais une condition pour enregistrer le résultat.
+  // multipart — `files` répété une fois par fichier, exactement ce qu'attend
+  // `files: list[UploadFile]` côté FastAPI.
+  addAttachments: (resultId: number | string, files: File[]) => {
+    const fd = new FormData()
+    files.forEach((f) => fd.append('files', f))
+    return requestForm<AttachmentOut[]>(`/api/results/${resultId}/attachments`, fd)
+  },
+  // ── UN CAS DANS UNE CAMPAGNE — l'objet « test » (2026-08-05) ──
+  // Distinct de `getCase` (le cas du référentiel) et de `getExecution` (le rapport technique
+  // d'UNE exécution) : ici on demande « où en est CE cas, dans CETTE campagne ».
+  getTestDansRun: (runId: number | string, caseId: number | string) =>
+    request<TestDansRun>(`/api/runs/${runId}/tests/${caseId}`),
+  // Le fil chronologique d'une campagne. Les écrans Activité ET Progression le lisent : la
+  // progression est l'activité comptée autrement, pas une seconde mesure.
+  getRunActivite: (runId: number | string) =>
+    request<RunActivite>(`/api/runs/${runId}/activite`),
   // Clôt (ou rouvre) une campagne : archivée = lecture seule. Réversible, rien n'est effacé.
   archiveRun: (runId: number | string, archived = true) =>
     request<RunSummary>(`/api/runs/${runId}/archive`, {
@@ -114,7 +163,7 @@ export const api = {
     request<void>(`/api/modules/${moduleId}`, { method: 'DELETE' }),
   // « Ajouter un cas de test » = saisie MANUELLE (sans IA), à distinguer de addCase (l'IA).
   createManualCase: (moduleId: number | string, body: {
-    title: string; preconditions?: string; test_steps: string[]; expected_result: string; angle?: string
+    title: string; preconditions?: string; test_steps: string[]; expected_result: string
   }) => request<CaseSummary>(`/api/modules/${moduleId}/cases/manual`, {
     method: 'POST', body: JSON.stringify(body),
   }),
@@ -132,22 +181,17 @@ export const api = {
   automateCase: (caseId: number | string) =>
     request<GenerationJob>(`/api/cases/${caseId}/automate`, { method: 'POST' }),
   // Import d'un fichier de spec (.txt/.md/.docx) pour pré-remplir la génération. multipart —
-  // pas de JSON, donc pas via `request()`.
-  extractSpec: async (moduleId: number | string, file: File): Promise<{ text: string; filename: string }> => {
+  // pas de JSON, donc via `requestForm()` (et non `request()`).
+  extractSpec: (moduleId: number | string, file: File): Promise<{ text: string; filename: string }> => {
     const fd = new FormData()
     fd.append('file', file)
-    // ⚠️ `API_BASE` et `credentials` comme partout : sans eux, cet appel visait le serveur Vite en
-    // développement et partait sans cookie de session — l'import échouait là où tout le reste marche.
-    const res = await fetch(`${API_BASE}/api/modules/${moduleId}/cases/extract`,
-                            { method: 'POST', credentials: CREDENTIALS, body: fd })
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Import impossible.')
-    return res.json()
+    return requestForm(`/api/modules/${moduleId}/cases/extract`, fd)
   },
   // Spécifications (case_group) du projet — pour l'arbre latéral et les compteurs.
   listGroups: (projectId: number | string) => request<GroupSummary[]>(`/api/projects/${projectId}/groups`),
   // ── La SPÉCIFICATION : le document source, d'où naissent 1 à N cas (décision 0022) ──
   // ⚠️ Créer une spécification ne génère AUCUN cas et ne dépense RIEN : elle nomme un document.
-  // C'est la génération qui le lira, après confirmation humaine des angles (§4bis du brief).
+  // C'est la génération qui le lira, après confirmation humaine du périmètre (§4bis du brief).
   createGroup: (moduleId: number | string, body: { title: string; description?: string; spec_content?: string }) =>
     request<GroupDetail>(`/api/modules/${moduleId}/groups`, { method: 'POST', body: JSON.stringify(body) }),
   getGroup: (groupId: number | string) => request<GroupDetail>(`/api/groups/${groupId}`),
@@ -168,8 +212,19 @@ export const api = {
     request<GenerationJob>(`/api/modules/jobs/${jobId}/metier`, {
       method: 'POST', body: JSON.stringify(metier),
     }),
+  // ── Réglages d'INSTANCE (2026-08-04) — ils ne dépendent d'aucun projet ──
+  // ⚠️ La réponse porte `source` (db | env | default) : la base l'emporte sur la variable
+  // d'environnement, et l'écran doit pouvoir le DIRE plutôt que de laisser un exploitant
+  // chercher pourquoi sa variable semble ignorée.
+  listSettings: () => request<SettingOut[]>('/api/settings'),
+  setSetting: (key: string, value: string) =>
+    request<SettingOut>(`/api/settings/${key}`, { method: 'PATCH', body: JSON.stringify({ value }) }),
   setCasePriority: (id: number | string, priority: string) =>
     request<CaseSummary>(`/api/cases/${id}`, { method: 'PATCH', body: JSON.stringify({ priority }) }),
+  /** Métadonnées de lecture d'un cas : priorité, Type, État. On n'envoie QUE ce qui change —
+   *  renvoyer les autres champs écraserait ce qu'un autre onglet vient d'y écrire. */
+  setCaseMetadonnees: (id: number | string, champs: { priority?: string; type?: string; etat?: string }) =>
+    request<CaseSummary>(`/api/cases/${id}`, { method: 'PATCH', body: JSON.stringify(champs) }),
   getCaseScenarios: (id: number | string) => request<ScenarioResultOut[]>(`/api/cases/${id}/scenarios`),
 
   // Cas — toujours scopés par projet (jamais de mélange inter-projets), et PAGINÉS.
@@ -263,19 +318,68 @@ export interface Quality {
 export interface RunSummary {
   id: number; project_id: number; name: string
   status: string            // draft | running | completed
-  selection_mode: string; case_count: number; tested_count: number
+  selection_mode: string
+  /** Le MODE D'EXÉCUTION de la campagne : 'automatique' (la machine joue les cas) ou 'manuelle'
+   *  (un humain les joue et saisit ce qu'il a constaté). Choisi à la CRÉATION — c'est lui qui
+   *  décide des gestes offerts : une campagne automatique se lance, une manuelle se saisit. */
+  mode: string
+  case_count: number; tested_count: number
+  /** Parmi les cas testés, ceux dont le DERNIER résultat a été joué à la main. Un « 100 % » ne
+   *  doit jamais laisser croire que tout a été prouvé par la machine. */
+  manuel_count: number
   is_archived: boolean; created_at: string
 }
 /** Un cas DANS un run, avec son résultat (ou null = non testé). */
 export interface RunCaseResult {
   id: number; title: string
+  // Les deux axes — ⚠️ VIDES sur un résultat MANUEL : personne n'a mesuré, on n'affiche rien.
   execution_status: string | null; functional_status: string | null; execution_id: number | null
+  /** '' = aucun résultat | 'automatique' = une machine l'a produit | 'manuelle' = un humain a
+   *  joué le test à la main. STOCKÉ avec le résultat, jamais déduit d'une exécution présente. */
+  result_mode: string
+  statut_manuel: string
+  comment: string
+  created_by: string
+  result_at: string
+  /** Statut de lecture calculé par le SERVEUR (un statut manuel court-circuite la dérivation). */
+  statut: string
 }
 export interface RunDetail {
   run: RunSummary; description: string; refs: string; cases: RunCaseResult[]
   /** Contre quoi la campagne a RÉELLEMENT tourné (lu sur ses exécutions). `target_mixed` = la
    *  connexion a changé en cours de campagne : ses résultats ne sont plus comparables. */
   target_url: string; target_database: string; target_mixed: boolean
+  /** ⚠️ Itérée telle quelle par l'écran de saisie — JAMAIS retapée ici. La liste vit en Python
+   *  et dans un CHECK de la base ; une troisième copie en TypeScript divergerait un jour. */
+  statuts_manuels: string[]
+}
+
+/** Un résultat de CE cas dans UNE campagne (la sienne ou une autre) — « où et quand », pas
+ *  « pourquoi » : ni commentaire ni axes, l'écran qui les veut ouvre le test concerné. */
+export interface ResultAilleurs {
+  run_id: number; run_name: string; statut: string; mode: string
+  created_by: string; created_at: string
+}
+/** **UN CAS DANS UNE CAMPAGNE** — le « test » de TestRail, distinct du cas du référentiel.
+ *  Le statut, les résultats et les commentaires appartiennent à ce couple, pas au cas. */
+export interface TestDansRun {
+  run_id: number; run_name: string; run_archived: boolean; run_mode: string
+  case_id: number; title: string
+  type: string; etat: string; priority: string; estimate: string; refs: string
+  statut: string
+  results: ResultOut[]
+  /** Voisins DANS LA CAMPAGNE — jamais dans le module : les flèches enchaînent une session de
+   *  recette, elles ne parcourent pas le référentiel. */
+  prev_case_id: number | null; next_case_id: number | null
+  historique_du_cas: ResultAilleurs[]
+}
+/** Un résultat posé dans une campagne, vu depuis son fil d'activité. */
+export interface ActiviteEvent {
+  case_id: number; case_title: string; statut: string; mode: string
+  created_by: string; created_at: string
+}
+export interface RunActivite {
+  run_id: number; run_name: string; case_count: number; events: ActiviteEvent[]
 }
 
 /** État de la cartographie d'un projet. `mesure_le` est affiché systématiquement : c'est une
@@ -309,7 +413,7 @@ export interface GroupDetail {
 
 export interface CaseMetierIn {
   title?: string; preconditions?: string; test_steps?: string
-  expected_result?: string; angle?: string; refs?: string; estimate?: string; editor?: string
+  expected_result?: string; refs?: string; estimate?: string; editor?: string
 }
 export interface CaseMetierOut {
   case: CaseSummary; version_id: number | null; version_created: boolean
@@ -322,11 +426,15 @@ export interface PageCas { items: CaseSummary[]; next_cursor: string | null; tot
 
 export interface CaseSummary {
   id: number; title: string; module: string; module_id: number | null; project_id: number | null
-  // Spécification propriétaire + angle testé (séparation 2026-07-19). `angle` = étiquette libre.
-  group_id: number | null; group_title: string | null; angle: string
+  // Spécification propriétaire (séparation 2026-07-19). ⚠️ `angle` a été retiré : ce champ
+  // n'existe pas dans TestRail, et `type` + le titre disent déjà ce qu'il prétendait dire.
+  group_id: number | null; group_title: string | null
   // Métadonnées non versionnées (0022 n°3b) : elles ne changent pas ce que le test vérifie.
   refs: string; estimate: string
-  validation_status: string
+  // Type (ce que le cas vérifie) et État (où en est le document). Ils remplacent l'ancien
+  // `validation_status`, qui était dérivé des exécutions et qu'aucun humain ne pouvait poser.
+  type: string       // fonctionnel | non_fonctionnel
+  etat: string       // new | design | ready | obsolete
   /** Statut de LECTURE calculé par le SERVEUR (2026-07-24) — plus jamais dérivé ici : la règle
    *  vivait en TypeScript, et filtrer côté serveur aurait exigé de la réécrire en SQL. */
   statut: string
@@ -343,7 +451,7 @@ export interface ModuleDetail { module: ModuleSummary; project: Ref }
 /** Le document métier proposé par l'IA, à valider ou corriger (décision 0022 n°5, passe 4a). */
 export interface MetierDraft {
   title: string; preconditions: string; steps: string[]
-  expected_result: string; angle: string
+  expected_result: string
 }
 export interface GenerationJob {
   // running | awaiting_metier | done | failed
@@ -357,7 +465,7 @@ export interface VersionOut {
   id: number; version_number: number; feature_content: string; steps_content: string
   spec_hash: string; created_at: string
   // Contenu MÉTIER figé dans cette version (décision 0022 n°10). `test_steps` = liste JSON.
-  title: string; preconditions: string; test_steps: string; expected_result: string; angle: string
+  title: string; preconditions: string; test_steps: string; expected_result: string
   // Ce qui a changé et qui l'a fait — `created_by === 'repair-agent'` = version issue d'une
   // réparation automatique (0014), à ratifier.
   change_summary: string; created_by: string
@@ -392,7 +500,36 @@ export interface ScenarioResultOut {
 }
 export interface ExecutionDetail extends ExecutionSummary { scenarios: ScenarioResultOut[] }
 export interface RunResponse { execution_id: number; status: string }
-export interface ReviewResponse { decision: string; validation_status: string; gate: GateOut }
+/** Une pièce jointe d'un résultat (2026-08-05) — la preuve visuelle qu'un test manuel a
+ *  réellement été joué. `filename` est le nom d'ORIGINE (affichage seulement) : le nom sur
+ *  disque est généré côté serveur et n'apparaît jamais ici. */
+export interface AttachmentOut {
+  id: number
+  filename: string
+  content_type: string
+  size_bytes: number
+}
+
+/** Un résultat du registre. ⚠️ Les deux axes sont VIDES sur un résultat MANUEL : ils viennent
+ *  de l'exécution, et un résultat manuel n'en a aucune. On n'invente rien pour remplir. */
+export interface ResultOut {
+  id: number
+  mode: string                // manuelle | automatique
+  statut: string              // étiquette de lecture, calculée par le serveur
+  statut_manuel: string
+  comment: string
+  created_by: string
+  created_at: string
+  execution_id: number | null
+  execution_status: string | null
+  functional_status: string | null
+  // VIDE par défaut : la grande majorité des résultats n'en portent aucune, et le serveur ne
+  // fait pas payer une jointure supplémentaire pour un tableau vide.
+  attachments: AttachmentOut[]
+}
+/** Un réglage d'instance, sa valeur EFFECTIVE et d'où elle vient. */
+export interface SettingOut { key: string; value: string; source: string; description: string }
+export interface ReviewResponse { decision: string; gate: GateOut }
 export interface TestReport {
   module_name: string; title: string; version_number: number
   execution_status: string; functional_status: string; execution_label: string; functional_label: string

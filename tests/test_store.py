@@ -32,7 +32,10 @@ def test_case_version_review_execution_roundtrip(conn):
     reviews, execs = ReviewRepo(conn), ExecutionRepo(conn)
 
     cid = cases.create(title="Demande de matériel", feature_slug="demande_materiel", author="qa")
-    assert cases.get(cid)["validation_status"] == "never_executed"
+    # Un cas naît « Nouveau » et « fonctionnel » (migration 25). Ce n'est plus un statut dérivé
+    # des exécutions : c'est un cycle de vie de document, que seul un humain fait avancer.
+    assert cases.get(cid)["etat"] == "new"
+    assert cases.get(cid)["type"] == "fonctionnel"
 
     vid1 = versions.create(test_case_id=cid, spec_content="spec", spec_hash="abc",
                            feature_content="# language: fr", steps_content="from behave import *")
@@ -87,7 +90,16 @@ def test_repair_attempt_and_cost_ledger(conn):
 
 
 def test_enum_check_constraint_rejects_invalid_status(conn):
+    """Les `CHECK` de la base mordent toujours — vérifié sur `priority`, dont le vocabulaire est
+    figé au schéma.
+
+    ⚠️ Ce test portait sur `validation_status`, supprimé par la migration 25. Il n'a PAS été
+    remplacé par le même contrôle sur `type`/`etat` : ces deux-là sont du texte libre SANS
+    `CHECK`, délibérément (précédent `angle`) — leur vocabulaire est refusé par l'API, pas par la
+    base, pour qu'un administrateur puisse l'étendre sans migration. Le refus est donc testé
+    côté route (`test_api`), là où il vit réellement.
+    """
     cases = CaseRepo(conn)
     cid = cases.create(title="t", feature_slug="m")
     with pytest.raises(sqlite3.IntegrityError):
-        cases.set_validation_status(cid, "bogus")
+        cases.set_metadonnees(cid, priority="bogus")

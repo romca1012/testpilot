@@ -262,8 +262,9 @@ def test_la_boucle_ADOPTE_un_progres_partiel(conn, monkeypatch):
     assert session.executable is False, "le test ne tourne PAS entièrement — et on l'adopte quand même"
     assert session.final_version_id != vid, "le progrès a été JETÉ : la boucle rachètera ce travail"
     assert CaseRepo(conn).get(cid)["current_version_id"] == session.final_version_id
-    # Jamais approuvée d'office : le gate reste souverain (§4.3).
-    assert CaseRepo(conn).get(cid)["validation_status"] == "to_review"
+    # Jamais approuvée d'office : le gate reste souverain (§4.3). La ratification attendue se lit
+    # sur la VERSION adoptée — c'est le seul endroit où elle s'inscrit depuis la migration 25.
+    assert ReviewRepo(conn).is_version_approved(session.final_version_id) is False
 
 
 def test_la_boucle_REFUSE_une_suppression_de_scenario_en_echec(conn, monkeypatch):

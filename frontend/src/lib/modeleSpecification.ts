@@ -15,8 +15,8 @@
 //     vérifier de sérieux ;
 //   • le RÉSULTAT ATTENDU : c'est le verdict, et il doit être une phrase vérifiable, pas un
 //     ressenti ;
-//   • les CAS PARTICULIERS : ce sont les angles « erreur » et « limite » qu'on pourra tirer de la
-//     même spécification.
+//   • les CAS PARTICULIERS : ce sont les cas d'erreur et les cas limites qu'on pourra tirer de
+//     la même spécification.
 
 export const MODELE_SPECIFICATION = `## Ce qu'on veut tester
 

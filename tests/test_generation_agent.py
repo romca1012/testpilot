@@ -102,9 +102,10 @@ def test_happy_path_writes_files_and_awaits_review(tmp_path):
     assert result.awaiting_review is True
     assert result.feature_path.exists() and result.steps_path.exists()
 
-    # Hand-off vers verdict : version persistée, cas « jamais exécuté » (à relire).
+    # Hand-off vers verdict : la version est persistée et devient la courante. C'est elle qui
+    # attend la relecture (`awaiting_review` ci-dessus) — générer n'écrit RIEN sur l'État du cas.
     case = CaseRepo(conn).get(result.case_id)
-    assert case["validation_status"] == "never_executed"
+    assert case["etat"] == "new"
     assert case["current_version_id"] == result.version_id
     version = VersionRepo(conn).get(result.version_id)
     assert version["feature_content"] == _FEATURE

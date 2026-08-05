@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from testpilot.verdict.status import EXEC_SUCCESS
 
 
 @dataclass
@@ -69,11 +68,8 @@ def auto_approve_metier(review_repo, *, case_id: int, version_id: int,
         repair_budget=repair_budget)
 
 
-def validation_status_after_run(prev_status: str, execution_status: str) -> str:
-    """Transition du statut de validation d'un cas après une exécution (§5).
-
-    « Validé » = joué en entier sans interruption technique (exécution=success), quel que
-    soit le statut fonctionnel : un test qui tourne et détecte un vrai bug reste un test
-    validé. Un échec technique ne valide pas le cas — son statut précédent est conservé.
-    """
-    return "validated" if execution_status == EXEC_SUCCESS else prev_status
+# ⚠️ `validation_status_after_run` a été SUPPRIMÉE (2026-08-04). Elle calculait un statut de
+# validation DÉRIVÉ de l'exécution, recopié sur le cas par cinq appelants. Ce statut est parti
+# avec la migration 25 : il se présentait comme un cycle de vie sans en être un (aucun humain ne
+# pouvait le poser), et il faisait doublon avec ce que les exécutions disent déjà. `test_case.etat`
+# le remplace — écrit par un humain, et par personne d'autre.

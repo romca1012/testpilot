@@ -150,7 +150,7 @@ def _record_generation_cost(conn, *, case_id: int | None, analysis_usd: float,
 
 
 def run_generation(job_id: str, *, module_id: int, slug: str, title: str,
-                   spec_content: str, author: str, angle: str = "nominal") -> None:
+                   spec_content: str, author: str) -> None:
     """PASSE 4a — analyse la spec, rédige le DOCUMENT MÉTIER, puis **s'arrête**.
 
     ⚠️ Ce job ne va PAS jusqu'au bout : il se met en `awaiting_metier` et attend qu'un humain
@@ -177,7 +177,7 @@ def run_generation(job_id: str, *, module_id: int, slug: str, title: str,
         plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(slug, spec_content)
 
         metier_tracker = CostTracker()
-        draft = propose_metier(plan, angle=angle, cost_tracker=metier_tracker)
+        draft = propose_metier(plan, cost_tracker=metier_tracker)
 
         if not draft.complete:
             # Titre + étapes + résultat attendu sont obligatoires (`0022` n°3.c). On ÉCHOUE plutôt
@@ -222,7 +222,6 @@ def validate_metier(job_id: str, metier: dict) -> dict:
         "preconditions": str(metier.get("preconditions", "") or "").strip(),
         "steps": steps,
         "expected_result": str(metier["expected_result"]).strip(),
-        "angle": str(metier.get("angle", "") or job.get("metier", {}).get("angle", "")).strip(),
     }
     job.update(status="running", metier=validated)
     return {**job["_resume"], "metier": validated}
@@ -295,7 +294,6 @@ def start_automation(conn, case_id: int) -> tuple[str, dict]:
         "preconditions": version.get("preconditions", ""),
         "steps": steps,
         "expected_result": version.get("expected_result", ""),
-        "angle": version.get("angle", "") or case.get("angle", ""),
     }
     if not (metier["title"] and metier["steps"] and metier["expected_result"]):
         raise GenerationError(

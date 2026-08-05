@@ -183,6 +183,33 @@ ACCESS_PASSWORD = os.getenv("TESTPILOT_ACCESS_PASSWORD", "")
 # Durée d'une session ouverte par ce verrou.
 SESSION_DAYS = int(os.getenv("TESTPILOT_SESSION_DAYS", "30"))
 
+# ── Le COMPTE DE SERVICE qui signe les résultats exécutés (2026-08-04) ────────
+# Quand la machine exécute un test, le résultat doit porter un auteur : sans lui, la colonne
+# « Soumis par » serait vide sur la moitié des lignes, et l'écran laisserait croire à un oubli
+# de saisie plutôt qu'à une exécution automatique.
+#
+# ⚠️ **Sans rapport avec la connexion à l'application testée** (`ODOO_USER`) : celui-ci nomme QUI
+# a produit le résultat dans TestPilot, celui-là dit avec quel compte on s'est connecté à Odoo.
+# Les confondre ferait dire à un rapport que « admin » a testé à la main.
+#
+# Vérifié avant de l'ajouter : TestRail n'a aucune notion de « Bot » — les équipes y créent un
+# **compte de service** dédié. C'en est l'équivalent, réglable au niveau de l'instance (la base
+# l'emporte sur cette variable ; voir `SettingRepo`).
+SERVICE_ACCOUNT_NAME = os.getenv("TESTPILOT_SERVICE_ACCOUNT", "TestPilot (automatique)")
+
+# ── Pièces jointes d'un résultat manuel (2026-08-05) ─────────────────────────
+# Une capture d'écran atteste qu'un test manuel a réellement été joué. Deux plafonds, parce
+# qu'un téléversement sans borne est une panne de disque qui attend son heure — et que la route
+# d'import de spec, qui n'en a aucun, est un défaut à ne pas recopier.
+#
+# 10 Mo : une capture d'écran plein écran en PNG pèse ~2 Mo ; le plafond laisse de la marge sans
+# ouvrir la porte à une vidéo. 10 fichiers : de quoi documenter un parcours étape par étape.
+# ⚠️ La LISTE BLANCHE des types, elle, n'est **pas** réglable par variable d'environnement :
+# autoriser `svg` ou `html` depuis un `.env` rouvrirait une faille XSS stockée (ils exécutent du
+# script quand on les sert depuis cette origine). Elle vit en dur dans `attachment_service`.
+ATTACHMENT_MAX_BYTES = int(os.getenv("TESTPILOT_ATTACHMENT_MAX_BYTES", str(10 * 1024 * 1024)))
+ATTACHMENT_MAX_PER_RESULT = int(os.getenv("TESTPILOT_ATTACHMENT_MAX_PER_RESULT", "10"))
+
 # ── Sécurité : jamais la production ───────────────────────────────────────────
 if os.getenv("ODOO_ENV") == "prod":
     raise EnvironmentError(

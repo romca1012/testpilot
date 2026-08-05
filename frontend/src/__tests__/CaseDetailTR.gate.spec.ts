@@ -42,7 +42,7 @@ const APPROUVE: GateOut = {
 function detail(gate: GateOut) {
   return {
     case: {
-      id: 1, title: 'Demande de matériel', angle: 'nominal', validation_status: 'never_executed',
+      id: 1, title: 'Demande de matériel', etat: 'new', type: 'fonctionnel',
       refs: '', estimate: '',
     },
     current_version_id: 7,

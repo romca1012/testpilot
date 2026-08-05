@@ -282,8 +282,9 @@ def est_executable(outcome) -> bool:
     On délègue à `derive_verdict` plutôt que de relire les échecs ici : les deux axes doivent se
     calculer à UN SEUL endroit, sinon ils dérivent — et la dérive serait à diagnostiquer plus tard.
 
-    Le §5 dit déjà exactement cette règle, ailleurs (`review_gate.validation_status_after_run`) :
-    *« un test qui tourne et détecte un vrai bug reste un test validé »*.
+    C'est la règle du §5, celle des deux axes : *« un test qui tourne et détecte un vrai bug est
+    un SUCCÈS technique »*. Elle était aussi portée par `review_gate.validation_status_after_run`,
+    supprimée avec la migration 25 — la règle, elle, n'a pas bougé d'un pouce.
     """
     if not a_tourne(outcome):
         return False
@@ -512,10 +513,9 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
 
     if adopte:
         # La version réparée devient la référence — mais elle n'est PAS approuvée : personne ne
-        # l'a relue. Le cas repasse « à relire » pour ratification (§4.3). C'est le prix de
-        # l'option C : la réparation est invisible PENDANT la session, jamais après.
+        # l'a relue, et le gate le verra (il porte sur la VERSION). C'est le prix de l'option C :
+        # la réparation est invisible PENDANT la session, jamais après.
         cases.set_current_version(case_id, current_version_id)
-        cases.set_validation_status(case_id, "to_review")
         if session.executable:
             logger.info("[repair] cas %s : test rendu exécutable en %s tentative(s) → v%s "
                         "(issue : %s), à ratifier",

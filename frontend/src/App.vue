@@ -9,10 +9,12 @@ import CasesShell from './components/CasesShell.vue'
 import LoginScreen from './pages/LoginScreen.vue'
 import PaletteCommandes from './components/PaletteCommandes.vue'
 import { api, setUnauthorizedHandler } from './lib/api'
+import { ROUTES_SANS_SHELL } from './lib/shell'
 
 const route = useRoute()
-// Routes SANS contexte projet (accueil, liste des projets) : pas de shell projet.
-const NO_SHELL = ['home', 'projects']
+// Routes SANS contexte projet : pas de shell projet. La liste vit dans `lib/shell.ts`, où un
+// test la compare aux routes déclarées — en oublier une rend la page entièrement blanche.
+const NO_SHELL = ROUTES_SANS_SHELL
 const useShell = computed(() => !NO_SHELL.includes(String(route.name)))
 
 // ⚠️ UN SEUL <RouterView>, enveloppé conditionnellement — jamais deux en parallèle.

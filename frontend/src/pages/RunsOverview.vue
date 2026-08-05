@@ -97,6 +97,9 @@ function goNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) 
             <div class="text-sm text-primary truncate">R{{ r.id }} — {{ r.name }}</div>
             <div class="text-xs text-muted-foreground mt-0.5">
               {{ r.tested_count }}/{{ r.case_count }} cas testés ·
+              <!-- Le MODE dans la liste : sans lui, deux campagnes identiques à l'œil se
+                   comportent différemment une fois ouvertes (l'une se lance, l'autre se saisit). -->
+              {{ r.mode === 'manuelle' ? 'manuelle' : 'automatique' }} ·
               {{ r.selection_mode === 'all' ? 'tous les cas (vivante)' : 'sélection figée' }}
             </div>
           </div>

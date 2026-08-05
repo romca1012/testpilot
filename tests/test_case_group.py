@@ -32,7 +32,11 @@ def test_base_neuve_a_case_group_et_les_colonnes(conn):
     tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert "case_group" in tables
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(test_case)")}
-    assert {"group_id", "angle"} <= cols
+    assert "group_id" in cols
+    # ⚠️ `angle` a été SUPPRIMÉ (migration 26) : TestRail n'a pas ce champ. La migration 13
+    # ci-dessous le crée quand même sur une base ancienne — c'est son état d'époque, et une
+    # migration se teste sur ce qu'elle rencontrait, pas sur le schéma d'aujourd'hui.
+    assert "angle" not in cols
     # ⚠️ On compare à `_SCHEMA_VERSION`, jamais à un nombre en dur : figer « 13 » faisait échouer
     # ce test à chaque migration suivante, pour une raison sans rapport avec ce qu'il vérifie.
     from testpilot.store.db import _SCHEMA_VERSION
@@ -133,7 +137,44 @@ def test_la_specification_porte_le_document_source(conn):
     assert g["spec_hash"] == "h1"
 
 
-# ── CaseRepo : group_id, angle, unicité par groupe ────────────────────────────
+# ── Migration 26 : l'angle s'en va ────────────────────────────────────────────
+
+def test_migration_26_retire_l_angle_d_une_base_qui_le_portait(tmp_path):
+    """⚠️ **`angle` n'existe pas dans TestRail**, et le cap produit est la parité (2026-08-04).
+
+    Il avait été introduit le 2026-07-19 pour distinguer plusieurs cas nés d'une même
+    spécification. Ce que la génération multi-cas fera à la place, c'est découper par **user
+    story** — elle ne s'appuiera pas dessus. Le champ partait donc de la base, des deux tables
+    qui le portaient, sans reconstruction (il n'a ni `CHECK` ni index, contrairement à
+    `validation_status`).
+
+    Les valeurs sont perdues, et c'est assumé : elles disaient « nominal » sur la totalité des
+    cas réels au moment du retrait — l'étiquette ne rangeait rien.
+    """
+    from testpilot.store.db import _migrate_26_retrait_de_l_angle
+
+    raw = sqlite3.connect(str(tmp_path / "pre26.db"))
+    raw.row_factory = sqlite3.Row
+    raw.execute("CREATE TABLE test_case (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT,"
+                " angle TEXT NOT NULL DEFAULT '')")
+    raw.execute("CREATE TABLE test_case_version (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                " test_case_id INTEGER, angle TEXT NOT NULL DEFAULT '')")
+    raw.execute("INSERT INTO test_case (title, angle) VALUES ('Nominal', 'nominal')")
+    raw.commit()
+
+    _migrate_26_retrait_de_l_angle(raw)
+    _migrate_26_retrait_de_l_angle(raw)   # idempotente, comme toute migration de ce dépôt
+    raw.commit()
+
+    for table in ("test_case", "test_case_version"):
+        cols = {r["name"] for r in raw.execute(f"PRAGMA table_info({table})")}
+        assert "angle" not in cols
+    # Le reste de la ligne est intact : on retire une colonne, on ne réécrit pas la table.
+    assert raw.execute("SELECT title FROM test_case").fetchone()["title"] == "Nominal"
+    raw.close()
+
+
+# ── CaseRepo : group_id, unicité par groupe ───────────────────────────────────
 
 def test_creer_un_cas_sans_group_id_l_auto_enveloppe(conn):
     """L'appelant historique (génération) ne passe pas de group_id : le cas est auto-enveloppé
@@ -143,7 +184,6 @@ def test_creer_un_cas_sans_group_id_l_auto_enveloppe(conn):
 
     case = CaseRepo(conn).get(cid)
     assert case["group_id"] is not None
-    assert case["angle"] == ""  # étiquette libre, vide par défaut
 
 
 def test_deux_specifications_peuvent_chacune_avoir_un_Nominal(conn):
@@ -153,10 +193,10 @@ def test_deux_specifications_peuvent_chacune_avoir_un_Nominal(conn):
     g1 = CaseGroupRepo(conn).create(module_id=mid, title="Demande")
     g2 = CaseGroupRepo(conn).create(module_id=mid, title="Retour")
 
-    CaseRepo(conn).create(title="Nominal", module_id=mid, group_id=g1, angle="nominal",
+    CaseRepo(conn).create(title="Nominal", module_id=mid, group_id=g1,
                           feature_slug="demande_nominal")
     # Même titre, AUTRE spécification → autorisé.
-    CaseRepo(conn).create(title="Nominal", module_id=mid, group_id=g2, angle="nominal",
+    CaseRepo(conn).create(title="Nominal", module_id=mid, group_id=g2,
                           feature_slug="retour_nominal")
 
     # Mais deux « Nominal » dans la MÊME spécification → refusé.
@@ -164,13 +204,10 @@ def test_deux_specifications_peuvent_chacune_avoir_un_Nominal(conn):
         CaseRepo(conn).create(title="Nominal", module_id=mid, group_id=g1, feature_slug="x")
 
 
-def test_l_angle_est_une_etiquette_libre(conn):
-    mid = ensure_default_module(conn, "demande_materiel")
-    g = CaseGroupRepo(conn).create(module_id=mid, title="Demande")
-    cid = CaseRepo(conn).create(title="Cas exotique", module_id=mid, group_id=g,
-                                angle="charge_extreme", feature_slug="exo")
-
-    assert CaseRepo(conn).get(cid)["angle"] == "charge_extreme"  # pas contraint à nominal/erreur/limite
+# ⚠️ `test_l_angle_est_une_etiquette_libre` a été SUPPRIMÉ avec le champ lui-même (migration 26).
+# L'angle n'existe pas dans TestRail, et le cap produit est la parité : ce qu'il prétendait dire
+# est porté par `type` et par le TITRE. La génération multi-cas découpera par user story, pas par
+# angle — le retirer ne ferme donc aucune porte, il en évite une fausse.
 
 
 # ── La cascade projet emporte les spécifications ──────────────────────────────

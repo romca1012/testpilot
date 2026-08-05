@@ -50,7 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_module_project ON module(project_id);
 -- Rouvre 0006 (décision du porteur, 2026-07-19) : chaque situation testée (nominal/erreur/limite/
 -- autre) devient un CAS indépendant. La spécification EST LE DOCUMENT fourni par l'utilisateur —
 -- la spec complète du module/de la fonctionnalité, donnée UNE FOIS — à partir de laquelle plusieurs
--- cas indépendants sont générés (un par angle). Elle ne porte NI statut, NI version, NI gate, NI
+-- cas indépendants sont générés. Elle ne porte NI statut, NI version, NI gate, NI
 -- coût (tout cela reste sur le cas), mais elle porte la SPEC : c'est la SOURCE UNIQUE, jamais
 -- recopiée dans chaque version (un cas la RÉFÉRENCE par `spec_hash`). Libellé UI : « Spécification ».
 CREATE TABLE IF NOT EXISTS case_group (
@@ -85,15 +85,22 @@ CREATE TABLE IF NOT EXISTS test_case (
     title                  TEXT    NOT NULL,
     module_id              INTEGER REFERENCES module(id),   -- rangement MÉTIER (§7)
     group_id               INTEGER REFERENCES case_group(id), -- Spécification propriétaire (2026-07-19)
-    -- Angle testé : ÉTIQUETTE LIBRE (nominal/erreur/limite/autre/legacy…), PAS un triptyque imposé.
-    angle                  TEXT    NOT NULL DEFAULT '',
+    -- ⚠️ `angle` (nominal/erreur/limite) a été SUPPRIMÉ (migration 26) : **TestRail n'a pas ce
+    -- champ**, et le cap produit est la parité. Ce que l'angle prétendait dire est déjà porté par
+    -- le `type` ci-dessous et par le TITRE, qui est une phrase métier.
     feature_slug           TEXT    NOT NULL DEFAULT '',      -- nom du .feature (technique)
     -- Le connecteur a quitté le cas : il vit sur le PROJET (décision 0005).
     description            TEXT    NOT NULL DEFAULT '',
     origin                 TEXT    NOT NULL DEFAULT 'ia_generated'
                                      CHECK (origin IN ('ia_generated', 'manual_converted')),
-    validation_status      TEXT    NOT NULL DEFAULT 'never_executed'
-                                     CHECK (validation_status IN ('never_executed', 'validated', 'to_review')),
+    -- ⚠️ `validation_status` a été SUPPRIMÉ (migration 25). Il était DÉRIVÉ des exécutions et
+    -- non modifiable : ce n'était pas un cycle de vie de document, et il ne gatait rien (le seul
+    -- gate d'exécution est `review_decision`). `etat` ci-dessous le remplace, éditable.
+    -- ── Type et État : les deux champs de TestRail qui manquaient (migration 25) ──────────
+    -- TEXTE LIBRE SANS CHECK, délibérément (précédent : `angle`) : un administrateur pourra
+    -- ajouter une valeur sans migration de schéma. La liste affichée est décidée côté serveur.
+    type                   TEXT    NOT NULL DEFAULT 'fonctionnel', -- fonctionnel | non_fonctionnel
+    etat                   TEXT    NOT NULL DEFAULT 'new',         -- new | design | ready | obsolete
     -- Priorité de LECTURE/traitement (étiquette). Volontairement PAS un ordre d'exécution :
     -- celui-ci est porté par l'ordre des scénarios du .feature (décision 0006).
     priority               TEXT    NOT NULL DEFAULT 'medium'
@@ -114,6 +121,15 @@ CREATE TABLE IF NOT EXISTS test_case (
     last_execution_status  TEXT    CHECK (last_execution_status IN ('success', 'technical_error', 'not_executed')),
     last_functional_status TEXT    CHECK (last_functional_status IN ('conforme', 'non_conforme', 'indetermine', 'not_evaluated', 'donnee_invalide')),
     last_executed_at       TEXT,
+    -- ── Raccourci du DERNIER résultat, les deux modes confondus (migrations 25 puis 27) ───
+    -- Sans ces trois colonnes, un cas testé UNIQUEMENT à la main resterait « Non testé » dans
+    -- les listes (qui lisent `last_execution_status`) — le statut qui ment, exactement ce que
+    -- le produit combat. ⚠️ C'est un RACCOURCI GLOBAL, pas un résultat par campagne : la vérité
+    -- par campagne vit dans `test_result`. Conséquence assumée : une exécution hors campagne
+    -- écrase ici une saisie manuelle faite dans une campagne (l'écran de campagne ne bouge pas).
+    last_statut_manuel     TEXT    NOT NULL DEFAULT '',  -- '' = le dernier résultat est AUTOMATIQUE
+    last_result_mode       TEXT    NOT NULL DEFAULT '',  -- '' | manuelle | automatique
+    last_result_at         TEXT    NOT NULL DEFAULT '',
     author                 TEXT    NOT NULL DEFAULT '',
     -- Suppression DOUCE (migration 23, §7 du brief) : vide = vivant. Supprimer marque la date
     -- et l'auteur ; l'élément quitte toutes les listes et tous les compteurs, et se restaure.
@@ -134,7 +150,7 @@ CREATE TABLE IF NOT EXISTS test_case_version (
     -- 🔴 DETTE EXPLICITE À SOLDER À L'ÉTAPE 3 (contractée le 2026-07-19). `spec_content` est un
     -- SURSIS TECHNIQUE, PAS une duplication permanente qu'on accepte : la spec est la SOURCE UNIQUE
     -- portée par `case_group`. Ce champ n'existe encore que parce que la génération/réparation
-    -- l'écrivent/le lisent, et les recâbler est l'étape 3 (« un angle par appel »).
+    -- l'écrivent/le lisent, et les recâbler est le chantier de la génération multi-cas.
     -- ENGAGEMENT : à l'étape 3, la génération lira/écrira la spec sur `case_group.spec_content`,
     -- ce champ deviendra VIDE et INUTILISÉ, puis sera SUPPRIMÉ (migration dédiée). Il ne doit
     -- JAMAIS redevenir une source de vérité. Tant qu'il porte du texte, c'est une copie legacy.
@@ -146,7 +162,7 @@ CREATE TABLE IF NOT EXISTS test_case_version (
     -- Une version = LE CAS ENTIER : le métier est figé ici EN MÊME TEMPS que le technique.
     -- C'est ce qui rend possible l'historique à diffs (« titre : X → Y ») et permet au gate
     -- d'approuver un couple métier/technique cohérent.
-    -- ⚠️ `test_case` porte des COPIES de `title`/`angle` (valeurs courantes, pour les listes) :
+    -- ⚠️ `test_case` porte une COPIE de `title` (valeur courante, pour les listes) :
     -- en cas de divergence, C'EST LA VERSION QUI FAIT FOI — même règle que le raccourci de
     -- résultat sur le cas.
     title           TEXT    NOT NULL DEFAULT '',   -- le titre AU MOMENT de cette version
@@ -157,7 +173,6 @@ CREATE TABLE IF NOT EXISTS test_case_version (
     -- retour à la ligne parasite ne doit pas fabriquer une étape fantôme.
     test_steps      TEXT    NOT NULL DEFAULT '',
     expected_result TEXT    NOT NULL DEFAULT '',   -- UNE phrase de verdict global (décision 3.a)
-    angle           TEXT    NOT NULL DEFAULT '',   -- snapshot de l'angle (l'historique le diffe)
     feature_content TEXT    NOT NULL DEFAULT '',
     steps_content   TEXT    NOT NULL DEFAULT '',
     feature_path    TEXT    NOT NULL DEFAULT '',
@@ -331,3 +346,10 @@ CREATE INDEX IF NOT EXISTS idx_cost_period ON cost_ledger(period_month);
 -- raison que idx_case_module). Une base neuve les reçoit quand même (ses migrations tournent toutes).
 -- ⚠️ Le titre de cas est unique PAR GROUPE (migration 13), plus par module : deux spécifications
 -- peuvent chacune avoir un cas « Nominal ». L'ancien uq_case_module_title est donc RETIRÉ.
+
+-- ── Tables absentes de ce fichier, et pourquoi ───────────────────────────────
+-- `test_run` / `test_run_case` (migration 15) et `test_result` / `run_case_assignment` /
+-- `result_attachment` / `app_setting` (migration 25) sont créées PAR LEUR MIGRATION, jamais ici.
+-- Raison : ce fichier s'exécute AVANT les migrations, et ces tables portent des clés étrangères
+-- vers des tables/colonnes qui n'existent pas encore sur une base antérieure. Une base neuve les
+-- reçoit quand même — toutes ses migrations tournent à la première ouverture.

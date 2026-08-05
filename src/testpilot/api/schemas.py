@@ -10,6 +10,24 @@ import json
 
 from pydantic import BaseModel
 
+from testpilot.verdict.status import MODE_AUTOMATIQUE
+
+# ── Vocabulaires contrôlés du cas ─────────────────────────────────────────────
+# ⚠️ **Ils vivent ICI, du côté serveur, et nulle part ailleurs.** La base, elle, ne porte AUCUN
+# `CHECK` sur `type`/`etat` (précédent `angle`) : c'est ce qui permettra à un administrateur
+# d'ajouter une valeur sans migration. La contrepartie est que le refus d'une valeur inconnue
+# doit être fait quelque part — un seul endroit, celui qui sait rendre un message utile.
+#
+# Correspondance TestRail, adoptée le 2026-08-04 à partir de ses vraies catégories :
+#   Functional / Regression / Acceptance / Smoke        → fonctionnel
+#   Performance / Security / Usability / Compatibility  → non fonctionnel
+#   Automated / Exploratory                             → hors de cet axe (ce sont des MÉTHODES,
+#                                                          pas des catégories de vérification)
+TYPES_CAS = ("fonctionnel", "non_fonctionnel")
+ETATS_CAS = ("new", "design", "ready", "obsolete")
+PRIORITES_CAS = ("low", "medium", "high")
+TYPE_DEFAUT = "fonctionnel"
+ETAT_DEFAUT = "new"
 
 
 # ── Projet / Module (hiérarchie §7) ───────────────────────────────────────────
@@ -59,16 +77,24 @@ class CaseSummary(BaseModel):
     module: str  # nom métier lisible du module (jamais le slug technique)
     module_id: int | None = None
     project_id: int | None = None
-    # Spécification (case_group) propriétaire + angle testé — séparation 2026-07-19. `angle` est
-    # une étiquette LIBRE (nominal/erreur/limite/autre/legacy), affichée en libellé métier côté UI.
+    # Spécification (case_group) propriétaire — séparation 2026-07-19.
+    # ⚠️ `angle` a été retiré (migration 26) : ce champ n'existe pas dans TestRail, et `type`
+    # + le titre disent déjà ce qu'il prétendait dire.
     group_id: int | None = None
     group_title: str | None = None
-    angle: str = ""
     # Métadonnées non versionnées (décision 0022 n°3b) : elles ne changent pas ce que le test
     # vérifie. `refs` = tickets externes ; `estimate` alimentera le burndown.
     refs: str = ""
     estimate: str = ""
-    validation_status: str
+    # ── Type et État (2026-08-04) — les deux champs de TestRail qui manquaient ─────────────
+    # `type` : ce que le cas VÉRIFIE (fonctionnel = le système fait-il ce qui est attendu ;
+    # non fonctionnel = une qualité transversale : performance, sécurité, ergonomie…).
+    # `etat` : où en est le DOCUMENT (new/design/ready/obsolete). ⚠️ Aucun automatisme ne le
+    # touche — modifier un cas ne le remet PAS à zéro (arbitré : la remise à zéro appartient au
+    # workflow de relecture Enterprise de TestRail, qui est une autre fonctionnalité).
+    # Ils remplacent `validation_status`, qui était dérivé des exécutions et non modifiable.
+    type: str = "fonctionnel"
+    etat: str = "new"
     priority: str = "medium"  # étiquette de lecture — aucun ordre d'exécution promis
     last_execution_status: str | None = None
     last_functional_status: str | None = None
@@ -94,7 +120,6 @@ class VersionOut(BaseModel):
     preconditions: str = ""
     test_steps: str = ""
     expected_result: str = ""
-    angle: str = ""
     feature_content: str = ""
     steps_content: str = ""
     spec_hash: str = ""
@@ -243,7 +268,15 @@ class ModuleDetail(BaseModel):
 
 
 class CasePatch(BaseModel):
-    priority: str  # low | medium | high
+    """Métadonnées de LECTURE d'un cas — celles qui ne changent pas ce que le test VÉRIFIE.
+
+    Chaque champ est optionnel : seul ce qui est fourni change. `priority` l'était de fait
+    (c'était le seul champ) ; le rendre explicitement optionnel permet de modifier l'État sans
+    avoir à renvoyer la priorité, donc sans risquer d'écraser celle d'un autre onglet.
+    """
+    priority: str | None = None   # low | medium | high
+    type: str | None = None       # fonctionnel | non_fonctionnel
+    etat: str | None = None       # new | design | ready | obsolete
 
 
 class CaseMetierIn(BaseModel):
@@ -254,7 +287,6 @@ class CaseMetierIn(BaseModel):
     preconditions: str | None = None
     test_steps: str | None = None      # liste JSON sérialisée
     expected_result: str | None = None
-    angle: str | None = None
     refs: str | None = None
     estimate: str | None = None
     editor: str = "ui"
@@ -280,7 +312,6 @@ class MetierDraftOut(BaseModel):
     preconditions: str = ""
     steps: list[str] = []
     expected_result: str = ""
-    angle: str = ""
 
 
 class GenerationJobOut(BaseModel):
@@ -305,7 +336,6 @@ class MetierValidationIn(BaseModel):
     preconditions: str = ""
     steps: list[str]
     expected_result: str
-    angle: str = ""
 
 
 class ProjectIn(BaseModel):
@@ -388,7 +418,6 @@ class ManualCaseIn(BaseModel):
     preconditions: str = ""
     test_steps: list[str] = []
     expected_result: str = ""
-    angle: str = ""
 
 
 class SpecExtractOut(BaseModel):
@@ -398,23 +427,89 @@ class SpecExtractOut(BaseModel):
 
 
 class RunIn(BaseModel):
-    """Création d'un run (campagne). `case_ids` n'est utilisé qu'en mode `frozen`."""
+    """Création d'un run (campagne). `case_ids` n'est utilisé qu'en mode `frozen`.
+
+    ⚠️ `mode` est le MODE D'EXÉCUTION (2026-08-04) : `automatique` (la machine joue les cas) ou
+    `manuelle` (un humain les joue et saisit ce qu'il a constaté). Il se choisit **à la création**,
+    parce que c'est lui qui décide des gestes offerts ensuite — lancer, ou saisir.
+    """
     name: str
     description: str = ""
     refs: str = ""
     selection_mode: str = "frozen"  # all | frozen
+    mode: str = MODE_AUTOMATIQUE    # manuelle | automatique
     case_ids: list[int] = []
 
 
 class RunCaseResult(BaseModel):
-    """Un cas DANS un run, avec son résultat (dernière exécution rattachée) ou None si non testé."""
+    """Un cas DANS un run, avec son DERNIER résultat — automatique ou manuel — ou rien si non testé."""
     id: int
     title: str
+    # Les deux axes, lus par jointure sur l'exécution. ⚠️ **Vides sur un résultat MANUEL**, et
+    # c'est voulu : personne n'a mesuré quoi que ce soit, l'écran ne doit donc rien afficher.
     execution_status: str | None = None
     functional_status: str | None = None
     execution_id: int | None = None
+    # ── COMMENT ce résultat a été obtenu (2026-08-04) ──────────────────────────────────────
+    # `''` = aucun résultat. `automatique` = une machine l'a produit, la trace est consultable.
+    # `manuelle` = un humain a joué le test à la main. C'est la donnée qui empêche le statut de
+    # mentir : elle est STOCKÉE dans le registre, jamais déduite de la présence d'une exécution.
+    result_mode: str = ""
+    statut_manuel: str = ""
+    comment: str = ""
+    created_by: str = ""
+    result_at: str = ""
     # Voir `statut` de CaseSummary : calculé par le serveur, jamais redérivé à l'écran.
     statut: str = "untested"
+
+
+class ResultIn(BaseModel):
+    """Un résultat SAISI À LA MAIN, dans une campagne (écran « Ajouter un résultat »).
+
+    Le statut est **obligatoire et sans défaut** : c'est le seul champ que l'écran ne pré-remplit
+    pas. Proposer « Passed » d'avance transformerait la saisie en un clic distrait — exactement ce
+    qui rend le mot « testé » sans valeur dans la plupart des outils.
+
+    ⚠️ **Pas de « défauts liés » ni de « temps passé »** en V1 (arbitré) : TestRail les a, nous
+    ne les tiendrions pas — un champ qu'on remplit à moitié ment plus qu'un champ absent.
+    """
+    statut: str
+    comment: str = ""
+
+
+class AttachmentOut(BaseModel):
+    """Une pièce jointe d'un résultat — typiquement la capture d'écran qui atteste du constat.
+
+    ⚠️ **Le nom SUR LE DISQUE n'est pas exposé**, et ce n'est pas de la pudeur : le client n'en a
+    aucun usage (il télécharge par identifiant numérique), et ne pas le publier retire l'idée même
+    qu'un nom de fichier puisse voyager depuis ou vers le serveur.
+    """
+    id: int
+    filename: str               # le nom d'origine — étiquette d'AFFICHAGE, jamais un chemin
+    content_type: str           # celui que le serveur servira, déduit de la liste blanche
+    size_bytes: int = 0
+
+
+class ResultOut(BaseModel):
+    """Un résultat du registre, joué automatiquement ou manuellement.
+
+    ⚠️ `execution_status` / `functional_status` sont **vides sur un résultat manuel** : ils sont
+    lus par jointure sur l'exécution, et un résultat manuel n'en a aucune. Aucune valeur n'est
+    inventée pour « remplir » l'affichage.
+    """
+    id: int
+    mode: str                   # manuelle | automatique
+    statut: str                 # l'étiquette de lecture, calculée par le serveur
+    statut_manuel: str = ""
+    comment: str = ""
+    created_by: str = ""
+    created_at: str = ""
+    execution_id: int | None = None
+    execution_status: str | None = None
+    functional_status: str | None = None
+    # La preuve visuelle qui accompagne un constat humain (2026-08-05). Liste VIDE par défaut :
+    # la pièce jointe est optionnelle, et un résultat sans fichier reste un résultat entier.
+    attachments: list[AttachmentOut] = []
 
 
 class RunArchiveIn(BaseModel):
@@ -429,8 +524,14 @@ class RunSummary(BaseModel):
     name: str
     status: str            # draft | running | completed
     selection_mode: str
+    # Le MODE D'EXÉCUTION de la campagne : c'est lui qui décide des gestes offerts par l'écran
+    # (une campagne automatique se lance, une campagne manuelle se saisit — jamais les deux).
+    mode: str = MODE_AUTOMATIQUE
     case_count: int = 0
     tested_count: int = 0  # cas ayant un résultat dans ce run → % de complétion
+    # Parmi eux, ceux dont le dernier résultat a été joué À LA MAIN. Exposé dès maintenant pour
+    # qu'un « 100 % » ne puisse jamais laisser croire que tout a été prouvé par la machine.
+    manuel_count: int = 0
     # Archivé = LECTURE SEULE (on ne relance plus). Distinct du statut : `completed` dit où en
     # est l'exécution, `is_archived` dit si on a le droit d'y toucher.
     is_archived: bool = False
@@ -449,6 +550,87 @@ class RunDetailOut(BaseModel):
     target_url: str = ""
     target_database: str = ""
     target_mixed: bool = False
+    # ⚠️ **La liste des statuts saisissables vient du SERVEUR**, et l'écran l'itère telle quelle.
+    # Elle existe déjà en Python (`STATUTS_MANUELS`) et dans un `CHECK` de la base ; la retaper en
+    # TypeScript en ferait une troisième version, qui divergerait un jour en silence. C'est le
+    # défaut qu'on a déjà payé une fois ici, avec le statut de lecture (§3.6 ONBOARDING).
+    statuts_manuels: list[str] = []
+
+
+class ResultAilleurs(BaseModel):
+    """Un résultat de CE cas dans UNE campagne — la sienne, ou une autre.
+
+    Sert deux affichages de la page d'un test : la courbe des 30 derniers jours, et « le même cas
+    dans les autres campagnes ». Volontairement plus maigre que `ResultOut` : ni commentaire ni
+    axes, parce qu'on répond ici à « où et quand », pas à « pourquoi ».
+    """
+    run_id: int
+    run_name: str
+    statut: str
+    mode: str
+    created_by: str = ""
+    created_at: str = ""
+
+
+class TestDansRunOut(BaseModel):
+    """**UN CAS DANS UNE CAMPAGNE** — l'objet que TestRail appelle un « test » (`T…`), distinct du
+    cas du référentiel (`C…`).
+
+    ⚠️ **Pourquoi il a sa propre identité.** Le couple campagne × cas existait déjà en base (une
+    ligne de `test_result` par résultat), mais aucune URL ni aucun écran ne le nommait : cliquer un
+    cas dans une campagne menait soit au rapport technique d'UNE exécution, soit à la fiche du cas —
+    jamais à « ce cas, ici, dans cette campagne ». Le statut, les résultats et les commentaires
+    appartiennent pourtant à ce couple, pas au cas.
+
+    Ce que le cas apporte (titre, type, priorité, estimation, références, état) est **recopié à la
+    lecture**, jamais figé : il n'y a pas de snapshot des cas à la clôture d'une campagne
+    (`RunRepo.archive`), et cet écart reste assumé plutôt que masqué.
+    """
+    run_id: int
+    run_name: str
+    run_archived: bool = False
+    run_mode: str = MODE_AUTOMATIQUE
+    case_id: int
+    title: str
+    # Le bloc de métadonnées, lu sur le cas (jamais réinventé ici).
+    type: str = "fonctionnel"
+    etat: str = "new"
+    priority: str = "medium"
+    estimate: str = ""
+    refs: str = ""
+    # Le statut du DERNIER résultat dans cette campagne — calculé par le serveur, comme partout.
+    statut: str = "untested"
+    results: list[ResultOut] = []
+    # Les voisins DANS LA CAMPAGNE (jamais dans le module) : les flèches précédent/suivant servent
+    # à enchaîner les tests d'une session de recette, pas à parcourir le référentiel.
+    prev_case_id: int | None = None
+    next_case_id: int | None = None
+    # Le même cas ailleurs — y compris dans cette campagne (l'écran filtre ce qu'il montre où).
+    historique_du_cas: list[ResultAilleurs] = []
+
+
+class ActiviteOut(BaseModel):
+    """Un résultat posé dans une campagne, vu depuis le fil d'activité."""
+    case_id: int
+    case_title: str
+    statut: str
+    mode: str
+    created_by: str = ""
+    created_at: str = ""
+
+
+class RunActiviteOut(BaseModel):
+    """Le fil chronologique d'une campagne + de quoi mesurer son avancement.
+
+    ⚠️ **Une seule réponse pour deux écrans** (Activité et Progression). La progression est
+    l'activité comptée autrement : le nombre de cas ayant reçu leur PREMIER résultat, jour après
+    jour, rapporté à `case_count`. Une seconde route qui recompterait la même chose en SQL
+    finirait par diverger de celle-ci sans que personne le voie.
+    """
+    run_id: int
+    run_name: str
+    case_count: int = 0
+    events: list[ActiviteOut] = []
 
 
 class ModuleIn(BaseModel):
@@ -512,11 +694,32 @@ class ReviewIn(BaseModel):
 
 class ReviewResponse(BaseModel):
     decision: str
-    validation_status: str
+    # ⚠️ Plus de `validation_status` : la relecture porte sur la VERSION, et c'est le `gate`
+    # ci-dessous qui dit ce qu'elle autorise. Renvoyer en plus un statut de cas laissait croire
+    # que la décision s'inscrivait à deux endroits.
     gate: GateOut
     # Ce que l'approbation a réellement autorisé — renvoyé pour que l'UI montre la valeur
     # RETENUE, pas celle envoyée (elles diffèrent si le champ était vide).
     repair_budget: int = 0
+
+
+# ── Réglages d'instance (2026-08-04) ──────────────────────────────────────────
+class SettingOut(BaseModel):
+    """Un réglage, sa valeur EFFECTIVE et **d'où elle vient**.
+
+    ⚠️ `source` n'est pas décorative : la base l'emporte sur la variable d'environnement, qui
+    l'emporte sur le défaut du code. Sans cette information, un exploitant dont la variable est
+    ignorée n'a aucun moyen de comprendre pourquoi.
+    """
+    key: str
+    value: str
+    source: str          # db | env | default
+    description: str = ""
+
+
+class SettingPatch(BaseModel):
+    """Une valeur VIDE efface le réglage : l'environnement (puis le défaut) reprend la main."""
+    value: str = ""
 
 
 # ── Mappers dict → DTO ─────────────────────────────────────────────────────────
@@ -542,9 +745,8 @@ def case_summary(row: dict) -> CaseSummary:
         module=row.get("module_name") or row.get("feature_slug") or "—",
         module_id=row.get("module_id"), project_id=row.get("project_id"),
         group_id=row.get("group_id"), group_title=row.get("group_title"),
-        angle=row.get("angle", "") or "",
         refs=row.get("refs", "") or "", estimate=row.get("estimate", "") or "",
-        validation_status=row["validation_status"],
+        type=row.get("type", "") or TYPE_DEFAUT, etat=row.get("etat", "") or ETAT_DEFAUT,
         priority=row.get("priority", "medium"),
         last_execution_status=row.get("last_execution_status"),
         last_functional_status=row.get("last_functional_status"),
@@ -575,7 +777,6 @@ def version_out(row: dict) -> VersionOut:
         preconditions=row.get("preconditions", "") or "",
         test_steps=row.get("test_steps", "") or "",
         expected_result=row.get("expected_result", "") or "",
-        angle=row.get("angle", "") or "",
     )
 
 

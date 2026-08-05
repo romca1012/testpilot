@@ -20,6 +20,7 @@ from testpilot import config
 from testpilot.api.services import run_service
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import RunRepo
+from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class CampaignError(Exception):
 
     def __init__(self, code: str, detail: str):
         super().__init__(detail)
-        self.code = code  # not_found | empty | already_running | archived | no_connection
+        self.code = code  # not_found | empty | already_running | archived | manual | no_connection
         self.detail = detail
 
 
@@ -47,6 +48,14 @@ def start_campaign(conn, run_id: int) -> dict:
         # l'API le relancer et réécrire un historique clos.
         raise CampaignError("archived",
                             "cette exécution est archivée (lecture seule) — rouvrez-la pour la relancer")
+    if run.get("mode", MODE_AUTOMATIQUE) == MODE_MANUELLE:
+        # ⚠️ Le MODE D'EXÉCUTION se choisit à la création (2026-08-04). Une campagne manuelle se
+        # SAISIT, cas par cas ; la lancer produirait des résultats machine dans une campagne dont
+        # tout l'historique est humain — et le trigger de la base les refuserait, une exécution
+        # après l'autre, sans que personne ne comprenne pourquoi. On le dit ici, en clair.
+        raise CampaignError("manual",
+                            "cette campagne est manuelle : ses résultats se saisissent à la main, "
+                            "cas par cas. Créez une campagne automatique pour la faire jouer.")
     case_ids = repo.case_ids(run_id)
     if not case_ids:
         # Lancer une campagne vide produirait un run « terminé » sans rien avoir testé — un

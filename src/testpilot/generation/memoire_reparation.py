@@ -139,7 +139,7 @@ def _section_tentatives(faits) -> list[str]:
     if repetee:
         lignes.append(f"⚠️ La signature `{repetee}` s'est répétée {signatures.count(repetee)}× : "
                       f"ce qui a été tenté ces fois-là n'a rien changé au signal d'échec. "
-                      f"Change d'angle.")
+                      f"Change d'approche.")
     return lignes + [""]
 
 

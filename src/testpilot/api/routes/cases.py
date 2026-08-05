@@ -255,15 +255,38 @@ def get_case(case_id: int, conn=Depends(get_conn)):
     )
 
 
+# Les trois métadonnées de lecture et leur vocabulaire — déclarés UNE fois, ici, plutôt que
+# répétés dans autant de `if` qu'il y a de champs (c'était le cas avec la seule priorité, et ça
+# se serait dupliqué à chaque champ ajouté).
+_VOCABULAIRES = {
+    "priority": schemas.PRIORITES_CAS,
+    "type": schemas.TYPES_CAS,
+    "etat": schemas.ETATS_CAS,
+}
+
+
 @router.patch("/{case_id}", response_model=schemas.CaseSummary)
 def update_case(case_id: int, body: schemas.CasePatch, conn=Depends(get_conn)):
-    """Met à jour la priorité de LECTURE d'un cas (étiquette — aucun ordre d'exécution)."""
+    """Met à jour les métadonnées de LECTURE d'un cas : priorité, Type, État.
+
+    ⚠️ **Modifier l'État n'a AUCUN effet de bord** : ce n'est pas un statut dérivé, et rien ne
+    le remettra à zéro derrière l'utilisateur (arbitré le 2026-08-04). Aucun de ces trois champs
+    ne crée de version — ils ne changent pas ce que le test vérifie.
+    """
     cases = CaseRepo(conn)
     if cases.get(case_id) is None:
         raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
-    if body.priority not in ("low", "medium", "high"):
-        raise HTTPException(status_code=422, detail="priorité invalide (low | medium | high)")
-    cases.set_priority(case_id, body.priority)
+
+    champs = {nom: valeur for nom, valeur in
+              (("priority", body.priority), ("type", body.type), ("etat", body.etat))
+              if valeur is not None}
+    for nom, valeur in champs.items():
+        if valeur not in _VOCABULAIRES[nom]:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{nom} invalide ({' | '.join(_VOCABULAIRES[nom])})")
+    if champs:
+        cases.set_metadonnees(case_id, **champs)
     return schemas.case_summary(cases.get(case_id))
 
 
@@ -283,7 +306,7 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
         version_id = cases.update_metier(
             case_id, title=body.title, preconditions=body.preconditions,
             test_steps=body.test_steps, expected_result=body.expected_result,
-            angle=body.angle, refs=body.refs, estimate=body.estimate, editor=body.editor)
+            refs=body.refs, estimate=body.estimate, editor=body.editor)
     except DuplicateName as exc:
         raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
     if version_id is not None:
@@ -335,14 +358,12 @@ def submit_review(case_id: int, body: schemas.ReviewIn, request: Request,
         # Une relecture signée « ui » ne dit pas qui a relu. Le nom de session prime (2026-07-24).
         reviewer=access.utilisateur_de(request) or body.reviewer,
         comment=body.comment, repair_budget=body.repair_budget)
-    # Un rejet repositionne le cas « à relire » ; l'approbation n'ouvre que le gate.
-    if not body.approved:
-        CaseRepo(conn).set_validation_status(case_id, "to_review")
-    refreshed = CaseRepo(conn).get(case_id)
+    # ⚠️ Un rejet ne touche PLUS au cas : la décision vit sur la VERSION (`review_decision`),
+    # c'est elle que le gate consulte. Le statut recopié sur le cas était une seconde réponse à
+    # la même question — et l'État, lui, appartient à l'humain (migration 25).
     budget = ReviewRepo(conn).repair_budget_for_version(version_id)
     return schemas.ReviewResponse(
         decision="approved" if body.approved else "rejected",
-        validation_status=refreshed["validation_status"],
         repair_budget=budget,
         gate=schemas.GateOut(allowed=decision.allowed, needs_review=decision.needs_review,
                              reason=decision.reason, repair_budget=budget,

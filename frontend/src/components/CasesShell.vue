@@ -156,18 +156,28 @@ function goSubTab(key: string) {
 }
 
 // ── Sous-navigation d'un RUN — NICHÉE sous « Exécutions et résultats de test » (même patron) ──
-const runId = computed(() => (route.name === 'run-detail' ? Number(route.params.id) : null))
-const runTab = computed(() => (route.query.tab as string) || 'tests')
+// ⚠️ Les sous-onglets sont de VRAIES routes depuis le 2026-08-05, plus un `?tab=` sur
+// `run-detail` : chacun charge sa propre donnée, et la page d'un TEST (`run-test`) doit garder ce
+// contexte de campagne dans la barre latérale — sinon on perd la campagne en ouvrant un test.
+const ROUTES_RUN = ['run-detail', 'run-activite', 'run-progression', 'run-test']
+const runId = computed(() =>
+  ROUTES_RUN.includes(String(route.name)) ? Number(route.params.id) : null)
 const runSubtabs = [
-  { key: 'tests', label: 'Tests & Résultats', ready: true },
-  { key: 'activite', label: 'Activité', ready: false },
-  { key: 'progression', label: 'Progression', ready: false },
-  { key: 'defauts', label: 'Défauts', ready: false },
+  { key: 'tests', label: 'Tests & Résultats', route: 'run-detail', ready: true },
+  { key: 'activite', label: 'Activité', route: 'run-activite', ready: true },
+  { key: 'progression', label: 'Progression', route: 'run-progression', ready: true },
+  // Seul « Défauts » reste à venir : TestPilot ne modélise pas encore de défaut rattaché à un
+  // résultat, et un écran de compteurs à zéro laisserait croire que la question est réglée.
+  { key: 'defauts', label: 'Défauts', route: '', ready: false },
 ]
+// L'onglet actif se lit sur le NOM DE ROUTE. Un test ouvert (`run-test`) garde « Tests &
+// Résultats » allumé : c'est de là qu'on y est arrivé, et c'est là qu'on revient.
+const runTab = computed(() =>
+  runSubtabs.find((t) => t.route && t.route === String(route.name))?.key || 'tests')
 function goRunTab(key: string) {
-  if (!runId.value) return
-  router.push({ name: 'run-detail', params: { pid: pid.value, id: String(runId.value) },
-    query: key === 'tests' ? {} : { tab: key } })
+  const cible = runSubtabs.find((t) => t.key === key)
+  if (!runId.value || !cible?.route) return
+  router.push({ name: cible.route, params: { pid: pid.value, id: String(runId.value) } })
 }
 
 // Les pages « Cas de test » (liste + détail) se paginent elles-mêmes (barres pleine largeur) ;
@@ -241,7 +251,7 @@ function isActive(key: string) {
   const n = String(route.name)
   if (key === 'cases') return ['cases', 'case-detail', 'cases-all', 'module-detail',
                                'spec-detail', 'case-new', 'case-manual', 'corbeille'].includes(n)
-  if (key === 'exec') return ['executions', 'report', 'run-detail', 'run-new', 'plan-new'].includes(n)
+  if (key === 'exec') return ['executions', 'report', 'run-new', 'plan-new', ...ROUTES_RUN].includes(n)
   if (key === 'qualite') return n === 'quality'
   return n === 'cases-soon' && route.query.tab === key
 }
@@ -294,6 +304,12 @@ function switchProject(id: number) {
           <RouterLink :to="{ name: 'corbeille', params: { pid } }"
                       class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                       @click="menuOpen = false">Corbeille…</RouterLink>
+          <!-- Les réglages d'instance doivent être ATTEIGNABLES : un compte de service qu'on ne
+               peut régler que par variable d'environnement obligerait à redémarrer le serveur
+               pour changer un nom affiché dans les rapports. -->
+          <RouterLink :to="{ name: 'settings' }"
+                      class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                      @click="menuOpen = false">Réglages…</RouterLink>
           <!-- ⚠️ Le verrou d'instance repose sur un mot de passe PARTAGÉ : sans moyen de quitter
                sa session, un poste commun reste ouvert au suivant qui s'y assied. La route
                existait depuis le lot 2 ; aucun écran ne l'appelait. -->
@@ -498,7 +514,7 @@ function switchProject(id: number) {
 
     <!-- ════════ Création d'une SPÉCIFICATION (le document source, décision 0022) ════════ -->
     <Modal :open="specModule !== null" title="Nouvelle spécification"
-           subtitle="Un document décrivant une fonctionnalité. Il servira à écrire un ou plusieurs cas de test — un par angle."
+           subtitle="Un document décrivant une fonctionnalité. Il servira à écrire un ou plusieurs cas de test."
            @close="specModule = null">
       <form id="form-create-spec" class="space-y-3" @submit.prevent="submitSpec">
         <label class="block">

@@ -10,15 +10,16 @@
  * profondeur que le modèle de données n'a pas (piège « affiché ≠ réel », invariant 4.6).
  *
  * ⚠️ Aucune pastille de statut FUSIONNÉE sur un cas : un point unique « OK/KO » violerait
- * l'invariant 4.1 (les deux axes ne fusionnent jamais). L'arbre ne porte que le statut de
- * VALIDATION, qui est mono-axe par nature ; les deux axes restent dans la table et le détail.
+ * l'invariant 4.1 (les deux axes ne fusionnent jamais). L'arbre ne porte que l'ÉTAT du cas
+ * (Nouveau/Conception/Prêt/Obsolète), qui ne parle pas d'exécution du tout ; les deux axes
+ * restent dans la table et le détail.
  *
  * Aucun appel réseau ici : le parent fournit modules + cas (déjà chargés par l'API existante),
  * le groupage est local.
  */
 import { computed } from 'vue'
 import type { CaseSummary, ModuleSummary } from '../lib/api'
-import { prettyModule, toneClasses, validationView } from '../lib/status'
+import { etatView, prettyModule, toneClasses } from '../lib/status'
 import Icon from './ui/Icon.vue'
 
 const props = defineProps<{
@@ -59,12 +60,12 @@ const allExpanded = computed(() =>
  *  l'arbre serait un cas qu'on croit inexistant. */
 const orphans = computed(() => props.cases.filter((c) => c.module_id == null))
 
-/** Indicateur de validation compact pour l'arbre : ICÔNE (dont la forme change selon l'état) +
- *  le mot en infobulle. Pas de chip complet — il écraserait les titres dans une colonne étroite ;
- *  pas non plus un simple point coloré, la couleur seule ne portant jamais un statut (règle de
- *  `Chip`, invariant 4.7). Mono-axe : `validation_status` uniquement, jamais les deux axes
- *  fusionnés (4.1). */
-const validation = (status: string | null) => validationView(status)
+/** Indicateur d'ÉTAT compact pour l'arbre : ICÔNE (dont la forme change selon l'état) + le mot
+ *  en infobulle. Pas de chip complet — il écraserait les titres dans une colonne étroite ; pas
+ *  non plus un simple point coloré, la couleur seule ne portant jamais un statut (règle de
+ *  `Chip`, invariant 4.7). ⚠️ L'État décrit l'avancement du DOCUMENT, jamais un résultat de
+ *  test : aucun risque de le confondre avec un verdict, donc aucune fusion d'axes (4.1). */
+const etat = (code: string | null) => etatView(code)
 </script>
 
 <template>
@@ -131,10 +132,10 @@ const validation = (status: string | null) => validationView(status)
                    (« affiché ≠ réel », 4.6). L'appartenance est portée par le connecteur. -->
               <Icon name="file" class="h-3.5 w-3.5 shrink-0 opacity-60" />
               <span class="min-w-0 flex-1 truncate">{{ c.title }}</span>
-              <!-- Statut de VALIDATION seulement — mono-axe. Jamais un badge fusionné (4.1). -->
-              <span class="shrink-0 rounded-full border p-0.5" :class="toneClasses(validation(c.validation_status).tone)"
-                    :title="`Validation : ${validation(c.validation_status).label}`">
-                <Icon :name="validation(c.validation_status).icon" class="h-3 w-3" />
+              <!-- ÉTAT du document seulement. Jamais un badge de verdict fusionné (4.1). -->
+              <span class="shrink-0 rounded-full border p-0.5" :class="toneClasses(etat(c.etat).tone)"
+                    :title="`État : ${etat(c.etat).label}`">
+                <Icon :name="etat(c.etat).icon" class="h-3 w-3" />
               </span>
             </RouterLink>
           </li>
@@ -159,9 +160,9 @@ const validation = (status: string | null) => validationView(status)
           </span>
           <Icon name="file" class="h-3.5 w-3.5 shrink-0 opacity-60" />
           <span class="min-w-0 flex-1 truncate">{{ c.title }}</span>
-          <span class="shrink-0 rounded-full border p-0.5" :class="toneClasses(validation(c.validation_status).tone)"
-                :title="`Validation : ${validation(c.validation_status).label}`">
-            <Icon :name="validation(c.validation_status).icon" class="h-3 w-3" />
+          <span class="shrink-0 rounded-full border p-0.5" :class="toneClasses(etat(c.etat).tone)"
+                :title="`État : ${etat(c.etat).label}`">
+            <Icon :name="etat(c.etat).icon" class="h-3 w-3" />
           </span>
         </RouterLink>
       </li>

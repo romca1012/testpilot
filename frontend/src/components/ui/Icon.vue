@@ -3,7 +3,7 @@
 defineProps<{ name: string; class?: string }>()
 
 // Icônes de contour (stroke=currentColor) sauf 'half' qui remplit un demi-disque.
-const STROKE = new Set(['check', 'x', 'circle', 'chevron', 'folder', 'file', 'plus'])
+const STROKE = new Set(['check', 'x', 'circle', 'chevron', 'folder', 'file', 'plus', 'image'])
 </script>
 
 <template>
@@ -27,6 +27,13 @@ const STROKE = new Set(['check', 'x', 'circle', 'chevron', 'folder', 'file', 'pl
     </template>
     <template v-else-if="name === 'file'">
       <path d="M13 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V9m-6-6l6 6m-6-6v6h6" />
+    </template>
+    <!-- 'image' distingue une pièce jointe VISIBLE d'un coup d'œil (capture d'écran) d'un
+         document quelconque ('file') — utile dans la liste des pièces jointes d'un résultat. -->
+    <template v-else-if="name === 'image'">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.4" fill="currentColor" stroke="none" />
+      <path d="M3 16l5-5 4 4 5-6 4 5" />
     </template>
   </svg>
 </template>

@@ -4,7 +4,7 @@
  * Le CRUD existait côté serveur depuis le 2026-07-20 sans qu'aucun écran ne l'appelle : un
  * utilisateur ne pouvait ni créer ni relire une spécification. Les seules qui existaient étaient
  * les « enveloppes » créées automatiquement par la génération, une par cas — le modèle du brief
- * (une spec → N cas, un par angle) était donc inatteignable par l'interface.
+ * (une spec → N cas) était donc inatteignable par l'interface.
  *
  * Ce que ces tests figent :
  *   • éditer le document ne génère RIEN et ne dépense RIEN (la génération reste un geste séparé) ;

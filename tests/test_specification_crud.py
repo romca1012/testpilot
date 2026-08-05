@@ -1,9 +1,9 @@
 """CRUD de la SPÉCIFICATION (`case_group`) — chantier 1 du plan validé (2026-07-20).
 
 La Spécification est LE DOCUMENT source (décision `0022`) : elle produit **1 à N cas** selon les
-angles que l'humain retient — jamais une découpe automatique. Avant ce chantier, seule la LECTURE
+situations que l'humain retient — jamais une découpe automatique. Avant ce chantier, seule la LECTURE
 existait (`GET /projects/{id}/groups`) : on ne pouvait ni créer, ni éditer, ni supprimer une
-spécification, donc l'étape 3 (génération « un angle par appel ») n'avait aucun document à lire.
+spécification, donc la génération n'avait aucun document à lire.
 
 Ce que ces tests figent :
 - créer une spécification ne génère AUCUN cas et ne dépense RIEN (elle nomme un document) ;
@@ -173,7 +173,7 @@ def test_api_cycle_complet_creer_lire_editer_supprimer(client):
 def test_api_creer_une_specification_ne_genere_AUCUN_cas(client):
     """⚠️ Créer une spécification nomme un DOCUMENT — ça ne lance pas la génération.
 
-    C'est l'étape 3 qui lira ce document, APRÈS que l'humain aura confirmé les angles voulus
+    C'est la génération qui lira ce document, APRÈS que l'humain aura confirmé le périmètre voulu
     (§4bis du brief). Créer un conteneur ne doit engager aucune dépense LLM non demandée — même
     principe que le lancement explicite d'un run (`0022` n°8.c.1). Ce test échouerait si
     quelqu'un rebranchait la génération sur la création.

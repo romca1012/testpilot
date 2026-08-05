@@ -28,11 +28,11 @@ def conn(tmp_path):
 
 def _cas(conn, *, title="Demande de matériel"):
     mid = ensure_default_module(conn, "demande_materiel")
-    cid = CaseRepo(conn).create(title=title, module_id=mid, feature_slug="dm", angle="nominal")
+    cid = CaseRepo(conn).create(title=title, module_id=mid, feature_slug="dm")
     vid = VersionRepo(conn).create(
         test_case_id=cid, spec_content="spec", spec_hash="h",
         feature_content="# language: fr\nFonctionnalité: F\n", steps_content="from behave import when\n",
-        title=title, angle="nominal")
+        title=title)
     CaseRepo(conn).set_current_version(cid, vid)
     return cid, vid
 
@@ -42,7 +42,9 @@ def _cas(conn, *, title="Demande de matériel"):
 def test_les_champs_metier_sont_sur_la_VERSION_et_les_metadonnees_sur_le_cas(conn):
     """Décision 10 : une version = le cas entier. Les métadonnées, elles, ne versionnent pas."""
     vcols = {r["name"] for r in conn.execute("PRAGMA table_info(test_case_version)")}
-    assert {"title", "preconditions", "test_steps", "expected_result", "angle"} <= vcols
+    assert {"title", "preconditions", "test_steps", "expected_result"} <= vcols
+    # `angle` a quitté la version avec la migration 26 (TestRail n'a pas ce champ).
+    assert "angle" not in vcols
 
     ccols = {r["name"] for r in conn.execute("PRAGMA table_info(test_case)")}
     assert {"refs", "estimate"} <= ccols

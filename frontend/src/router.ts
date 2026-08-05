@@ -7,7 +7,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 // `AppShell` dans la barre latérale (sous les onglets), pas par une route layout — deux bandeaux
 // de navigation côte à côte gaspillaient l'espace. Les routes restent donc à plat, et AppShell
 // n'affiche l'arbre que pour les routes listées dans `CASES_ROUTES` (séparation §8 préservée).
-const routes = [
+export const routes = [
   // Accueil : auto-sélection si un seul projet, sinon page de gestion des projets.
   { path: '/', name: 'home', component: () => import('./pages/Home.vue') },
   { path: '/projects', name: 'projects', component: () => import('./pages/ProjectsList.vue') },
@@ -25,10 +25,15 @@ const routes = [
   { path: '/projects/:pid/cases/:id', name: 'case-detail', component: () => import('./pages/CaseDetailTR.vue') },
   // La SPÉCIFICATION : le document source, d'où naissent 1 à N cas (décision 0022). Son CRUD
   // existait côté serveur depuis le 2026-07-20 sans qu'aucun écran ne l'appelle — le modèle
-  // « une spec → plusieurs angles » était donc inatteignable par l'interface.
+  // « une spec → plusieurs cas » était donc inatteignable par l'interface.
   // Chemin `specs/` distinct de `cases/` : sous `cases/`, il serait entré en concurrence avec
   // `cases/:id` (une spécification n'est pas un cas, et l'URL doit le dire).
   { path: '/projects/:pid/specs/:id', name: 'spec-detail', component: () => import('./pages/SpecDetail.vue') },
+  // Les RÉGLAGES D'INSTANCE (2026-08-04) : ils valent pour toute l'installation, pas pour un
+  // projet. L'URL est donc hors de `/projects/:pid` — la ranger sous un projet laisserait croire
+  // qu'un autre projet peut avoir un autre compte de service.
+  { path: '/settings', name: 'settings', component: () => import('./pages/Settings.vue') },
+
   // La CORBEILLE (§7) : supprimer masque, restaurer annule, détruire est un geste à part.
   { path: '/projects/:pid/corbeille', name: 'corbeille', component: () => import('./pages/Corbeille.vue') },
 
@@ -48,6 +53,16 @@ const routes = [
   { path: '/projects/:pid/executions/new', name: 'run-new', component: () => import('./pages/AddTestRunForm.vue') },
   { path: '/projects/:pid/plans/new', name: 'plan-new', component: () => import('./pages/AddTestPlanForm.vue') },
   { path: '/projects/:pid/runs/:id', name: 'run-detail', component: () => import('./pages/RunDetail.vue') },
+  // Les trois vues d'une campagne que TestRail nomme Status / Activity / Progress. Elles sont de
+  // VRAIES routes et non un `?tab=` : chacune charge sa propre donnée, et une adresse partagée
+  // doit rouvrir exactement l'écran qu'on avait sous les yeux.
+  { path: '/projects/:pid/runs/:id/activite', name: 'run-activite', component: () => import('./pages/RunActivite.vue') },
+  { path: '/projects/:pid/runs/:id/progression', name: 'run-progression', component: () => import('./pages/RunProgression.vue') },
+  // ⚠️ **UN CAS DANS UNE CAMPAGNE** — le « test » (`T…`), distinct du cas (`C…`). L'URL le dit :
+  // le test n'existe QUE sous une campagne, alors que `cases/:id` existe seul. C'est cette
+  // distinction qui manquait — cliquer un cas dans une campagne menait au rapport technique d'une
+  // exécution ou à la fiche du cas, jamais à « ce cas, ici ».
+  { path: '/projects/:pid/runs/:id/tests/:caseId', name: 'run-test', component: () => import('./pages/RunTestDetail.vue') },
   { path: '/projects/:pid/executions/:id', name: 'report', component: () => import('./pages/ReportView.vue') },
 
   // Qualité de génération : l'évolution de l'outil (taux de réussite technique au premier jet),

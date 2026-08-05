@@ -1,11 +1,11 @@
 <script setup lang="ts">
 // Liste des cas de test — disposition TestRail (palette sombre). Groupée par SECTION = MODULE.
 // La colonne « Statut » n'affiche QUE le statut FONCTIONNEL (conforme / non conforme), jamais
-// l'exécution technique ni les deux mêlés (consigne du porteur). Titre sans préfixe d'angle.
+// l'exécution technique ni les deux mêlés (consigne du porteur). Titre sans préfixe de classement.
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseSummary, type ModuleSummary } from '../lib/api'
-import { testStatusMeta } from '../lib/status'
+import { testStatusMeta, typeView } from '../lib/status'
 import { useModuleCreate } from '../lib/useModuleCreate'
 import { cles, usePageCas, useModules } from '../lib/donnees'
 import { useQueryClient } from '@tanstack/vue-query'
@@ -172,7 +172,7 @@ function csvCell(v: unknown): string {
 function exportCsv() {
   const entetes = ['ID', 'Titre', 'Module', 'Type', 'Priorité', 'Statut']
   const lignes = visibleCases.value.map((c) => [
-    `C${c.id}`, c.title, c.module || '', c.angle || '', c.priority || '',
+    `C${c.id}`, c.title, c.module || '', typeView(c.type).label, c.priority || '',
     testStatusMeta(c.statut).label,
   ].map(csvCell).join(';'))
   // BOM UTF-8 : sans lui, Excel lit « é » de travers.
@@ -444,8 +444,10 @@ async function campagneDepuisSelection() {
                   :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.title }}</td>
               <td v-if="colonneVisible('module')" class="px-2.5 text-muted-foreground truncate"
                   :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.module }}</td>
+              <!-- `typeView` et jamais le code brut : « non_fonctionnel » à l'écran est une
+                   valeur d'enum, pas un libellé (point unique de traduction, `status.ts`). -->
               <td v-if="colonneVisible('type')" class="px-2.5 text-muted-foreground"
-                  :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.angle || '—' }}</td>
+                  :class="HAUTEUR_LIGNE[prefs.densite]">{{ typeView(c.type).label }}</td>
               <td v-if="colonneVisible('priorite')" class="px-2.5 text-right text-muted-foreground"
                   :class="HAUTEUR_LIGNE[prefs.densite]">{{ PRIORITE[c.priority] || c.priority }}</td>
               <td class="px-2.5 text-right" :class="HAUTEUR_LIGNE[prefs.densite]">

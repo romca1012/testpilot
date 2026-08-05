@@ -152,6 +152,10 @@ def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str
     if hasattr(runner, "cibler_artefacts"):   # les runners de test n'archivent pas
         runner.cibler_artefacts(chemin)
         ExecutionRepo(conn).set_artifacts_path(execution_id, str(chemin))
+    # Même motif : une règle apprise pendant CE run doit porter SA ligne d'exécution (0023),
+    # pas celle d'une tentative précédente réutilisant le même runner.
+    if hasattr(runner, "cibler_execution"):
+        runner.cibler_execution(execution_id)
     outcome = Executor(runner).execute(module_name)
     duration = time.perf_counter() - started
     verdict = derive_verdict(outcome)
@@ -238,9 +242,6 @@ def _persist(conn, execution_id, case_id, verdict, outcome, duration) -> None:
         field_fallbacks=json.dumps(fallbacks, ensure_ascii=False) if fallbacks else "")
 
     cases = CaseRepo(conn)
-    prev = cases.get(case_id)
-    cases.set_validation_status(case_id, review_gate.validation_status_after_run(
-        prev["validation_status"] if prev else "never_executed", verdict.execution_status))
     cases.update_last_outcome(case_id, execution_status=verdict.execution_status,
                               functional_status=verdict.functional_status, executed_at=now_iso())
 

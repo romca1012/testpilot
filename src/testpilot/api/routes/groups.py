@@ -1,12 +1,12 @@
 """Routes de la SPÉCIFICATION (`case_group`) — le CRUD minimal de l'étape 2.
 
 La Spécification est LE DOCUMENT fourni une fois, source des cas qu'on en tirera (décision
-`0022`). Une spécification produit **1 à N cas** : le nombre dépend des angles retenus par
+`0022`). Une spécification produit **1 à N cas** : le nombre dépend des situations retenues par
 l'humain à l'étape de confirmation, jamais d'une découpe automatique.
 
 C'est un conteneur SIMPLE : ni statut, ni version, ni gate, ni coût — tout cela reste sur le CAS.
 Ce CRUD ne fait donc qu'écrire un document et le nommer ; il ne déclenche aucune génération et ne
-dépense rien. La génération (« un angle par appel ») est l'étape 3, et elle LIRA ce document.
+dépense rien. La génération LIRA ce document.
 """
 
 from __future__ import annotations

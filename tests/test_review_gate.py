@@ -72,8 +72,12 @@ def test_rejected_version_is_blocked(repos):
     assert "rejet" in decision.reason.lower()
 
 
-def test_validation_status_transition_after_run():
-    # « Validé » seulement si l'exécution a pu tourner en entier (success), même si non_conforme.
-    assert gate.validation_status_after_run("never_executed", "success") == "validated"
-    assert gate.validation_status_after_run("never_executed", "technical_error") == "never_executed"
-    assert gate.validation_status_after_run("validated", "technical_error") == "validated"
+def test_le_gate_ne_calcule_plus_aucun_statut_de_cas():
+    """⚠️ `validation_status_after_run` a été SUPPRIMÉE avec la migration 25.
+
+    Elle dérivait un « statut de validation » de l'exécution, que cinq appelants recopiaient sur
+    le cas. Ce champ se présentait comme un cycle de vie sans en être un — aucun humain ne
+    pouvait le poser — et `test_case.etat` le remplace, écrit par l'humain seul. Ce test garde la
+    trace de la suppression : le gate décide d'AUTORISER une exécution, il n'étiquette pas les cas.
+    """
+    assert not hasattr(gate, "validation_status_after_run")
