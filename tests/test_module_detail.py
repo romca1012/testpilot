@@ -191,3 +191,39 @@ def test_slug_unique_entre_deux_cas_du_meme_module(client):
 
 def test_slugify_normalise_accents_et_espaces():
     assert generation_service.slugify("Retour matériel VIP !") == "retour_materiel_vip"
+
+
+# ── Longueur bornée (2026-08-05) ──────────────────────────────────────────────
+# Un slug apparaît DEUX FOIS dans le chemin d'exécution Behave (dossier temporaire ET fichier
+# `_steps.py` à l'intérieur) : un titre-phrase généré par l'IA, non borné, dépassait la limite
+# de chemin Windows — `[Errno 2] No such file or directory` sans rapport apparent avec la cause.
+
+_TITRE_LONG = ("Le formulaire de mutation payeur refuse les codes payeur contenant des lettres "
+              "ou caractères spéciaux")
+
+
+def test_slugify_BORNE_un_titre_long():
+    slug = generation_service.slugify(_TITRE_LONG)
+    assert len(slug) <= generation_service._SLUG_MAX + 7  # + "_" + hash 6 hex
+
+
+def test_slugify_reste_COURT_pour_un_titre_court():
+    """Un titre déjà court ne doit RIEN gagner en tronquant : le slug doit rester lisible, pas
+    systématiquement alourdi d'un hachage qui ne sert à rien en dessous de la limite."""
+    assert generation_service.slugify("Retour matériel VIP !") == "retour_materiel_vip"
+
+
+def test_slugify_DISTINGUE_deux_titres_au_meme_prefixe_long():
+    """Deux cas dont le titre ne diffère que par la fin (fréquent : l'IA varie la fin d'un
+    titre, pas son début) ne doivent PAS produire le même slug une fois tronqués — sinon
+    `unique_feature_slug` ne les distinguerait que par un suffixe numérique arbitraire, qui ne
+    dit rien de la différence réelle entre les deux cas."""
+    a = generation_service.slugify(_TITRE_LONG + " (variante A)")
+    b = generation_service.slugify(_TITRE_LONG + " (variante B)")
+    assert a != b
+
+
+def test_slugify_deux_appels_sur_le_MEME_titre_donnent_le_MEME_slug():
+    """Le hachage doit être STABLE : `unique_feature_slug` en dépend pour reconnaître un cas
+    déjà nommé, pas pour en fabriquer un nouveau à chaque appel."""
+    assert generation_service.slugify(_TITRE_LONG) == generation_service.slugify(_TITRE_LONG)

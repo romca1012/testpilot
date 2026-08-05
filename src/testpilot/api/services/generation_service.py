@@ -46,13 +46,36 @@ def get_job(job_id: str) -> dict | None:
     return _JOBS.get(job_id)
 
 
+# Un slug nomme le fichier .feature, MAIS AUSSI le dossier temporaire d'exécution ET, dans ce
+# dossier, le fichier `<slug>_steps.py` (behave_runner.py) — il apparaît donc DEUX FOIS dans un
+# même chemin. Mesuré le 2026-08-05 : un titre de cas généré par l'IA (une phrase, pas un
+# libellé court — « Le formulaire de mutation payeur refuse les codes payeur contenant des
+# lettres ou caractères spéciaux ») produisait un slug de ~100 caractères, doublé dans le
+# chemin, qui dépassait la limite Windows (260 caractères) — `[Errno 2] No such file or
+# directory`, sans rapport apparent avec la vraie cause. 40 caractères, doublés, laissent une
+# marge confortable même sur un profil Windows profondément imbriqué.
+_SLUG_MAX = 40
+
+
 def slugify(text: str) -> str:
-    """Titre → slug de fichier .feature (ascii, minuscules, underscores)."""
+    """Titre → slug de fichier .feature (ascii, minuscules, underscores), BORNÉ en longueur.
+
+    Un hachage court est ajouté à la coupe : deux titres qui partagent le même préfixe long
+    (fréquent — l'IA varie souvent la fin d'un titre, pas son début) ne doivent pas produire le
+    même slug tronqué, ce que `unique_feature_slug` ne pourrait alors distinguer que par un
+    suffixe numérique arbitraire.
+    """
+    import hashlib
     import unicodedata
     text = unicodedata.normalize("NFKD", text or "")
     text = text.encode("ascii", "ignore").decode("ascii").lower()
     text = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
-    return text or "cas"
+    if not text:
+        return "cas"
+    if len(text) > _SLUG_MAX:
+        empreinte = hashlib.sha1(text.encode("ascii")).hexdigest()[:6]
+        text = f"{text[:_SLUG_MAX].rstrip('_')}_{empreinte}"
+    return text
 
 
 def unique_feature_slug(conn, base: str) -> str:
@@ -517,6 +540,16 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                                             author=author, projet=project,
                                             refs=section["title"])
                 except DuplicateName as exc:
+                    erreurs.append(f"« {case_metier['title']} » : {exc}")
+                    continue
+                except Exception as exc:
+                    # ⚠️ Un cas ne doit JAMAIS pouvoir faire échouer TOUT le lot (mesuré le
+                    # 2026-08-05) : les cas précédents de cette boucle sont déjà persistés en
+                    # base au moment où celui-ci plante — les perdre de vue parce qu'un cas
+                    # SUIVANT échoue techniquement serait pire que signaler ce seul échec et
+                    # continuer avec les autres.
+                    logger.exception("[generation] cas « %s » (job %s) en échec technique",
+                                     case_metier["title"], job_id)
                     erreurs.append(f"« {case_metier['title']} » : {exc}")
                     continue
 

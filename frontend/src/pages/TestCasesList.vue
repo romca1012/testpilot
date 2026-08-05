@@ -121,9 +121,52 @@ function sortRows(rows: CaseSummary[]): CaseSummary[] {
 const sections = computed(() => {
   const filtering = !!specFilter.value || !!filterStatus.value
   return modules.value
-    .map((m) => ({ module: m, rows: sortRows(visibleCases.value.filter((c) => c.module_id === m.id)) }))
+    .map((m) => {
+      const rows = sortRows(visibleCases.value.filter((c) => c.module_id === m.id))
+      return { module: m, rows, groupes: groupesDeSection(rows) }
+    })
     .filter((s) => !filtering || s.rows.length > 0)
 })
+
+// Sous-groupe les cas d'un module par SECTION (case_group = une user story, §9 génération
+// multi-cas) — chacune vue par TestRail comme un dossier qui contient plusieurs cas. Ordre de
+// PREMIÈRE apparition dans `rows` (déjà trié), pas un ordre arbitraire recalculé à part.
+// ⚠️ `CaseRepo.create` auto-enveloppe TOUJOURS un cas dans sa propre Section — `group_id` ne
+// devrait donc jamais être vide, mais un cas orphelin (import, résidu) atterrit dans un groupe
+// « Sans section » plutôt que de disparaître silencieusement de la liste.
+interface GroupeSection { group_id: number | null; group_title: string; rows: CaseSummary[] }
+function groupesDeSection(rows: CaseSummary[]): GroupeSection[] {
+  const parId = new Map<number, GroupeSection>()
+  const ordre: number[] = []
+  for (const c of rows) {
+    const gid = c.group_id ?? -1
+    if (!parId.has(gid)) {
+      parId.set(gid, { group_id: c.group_id, group_title: c.group_title || 'Sans section', rows: [] })
+      ordre.push(gid)
+    }
+    parId.get(gid)!.rows.push(c)
+  }
+  return ordre.map((gid) => parId.get(gid)!)
+}
+
+// Pliage PAR SECTION, distinct du pliage par module (`collapsed`) : une clé composite évite toute
+// collision entre un id de module et un id de case_group, qui viennent de séquences différentes.
+const collapsedGroups = ref<string[]>([])
+function toggleGroup(moduleId: number, groupId: number | null) {
+  const cle = `${moduleId}:${groupId}`
+  collapsedGroups.value = collapsedGroups.value.includes(cle)
+    ? collapsedGroups.value.filter((x) => x !== cle) : [...collapsedGroups.value, cle]
+}
+function groupCollapsed(moduleId: number, groupId: number | null) {
+  return collapsedGroups.value.includes(`${moduleId}:${groupId}`)
+}
+
+// Nombre de colonnes RÉELLEMENT affichées (checkbox + titre + statut + chevron sont fixes, le
+// reste dépend des préférences) — la ligne d'en-tête de Section doit couvrir exactement ce nombre,
+// ni plus (bord qui dépasse) ni moins (colonnes désalignées avec le tableau).
+const colonnesAffichees = computed(() =>
+  4 + (colonneVisible('id') ? 1 : 0) + (colonneVisible('module') ? 1 : 0)
+    + (colonneVisible('type') ? 1 : 0) + (colonneVisible('priorite') ? 1 : 0))
 
 const activeSpecTitle = computed(() => {
   if (!specFilter.value) return null
@@ -378,8 +421,13 @@ async function campagneDepuisSelection() {
       </div>
 
       <!-- ⚠️ On DIT ce qui est chargé sur le total : sans ce compte, une liste tronquée a l'air
-           complète, et l'utilisateur conclut qu'un cas n'existe pas alors qu'il est page 3. -->
-      <p v-if="!loading && totalCas" class="pt-4 text-xs text-muted-foreground">
+           complète, et l'utilisateur conclut qu'un cas n'existe pas alors qu'il est page 3.
+           Sous un filtre par Section, comparer au total du PROJET n'aurait aucun sens (mesuré le
+           2026-08-05 : l'en-tête disait « 15 sur 15 » alors qu'un seul cas était affiché). -->
+      <p v-if="!loading && specFilter" class="pt-4 text-xs text-muted-foreground">
+        {{ visibleCases.length }} cas affiché{{ visibleCases.length > 1 ? 's' : '' }} pour cette section
+      </p>
+      <p v-else-if="!loading && totalCas" class="pt-4 text-xs text-muted-foreground">
         {{ cases.length }} cas affiché{{ cases.length > 1 ? 's' : '' }} sur {{ totalCas }}
       </p>
 
@@ -427,39 +475,65 @@ async function campagneDepuisSelection() {
               <th class="w-8"></th>
             </tr>
           </thead>
-          <tbody>
-            <tr v-for="c in s.rows" :key="c.id"
-                class="group border-t border-border/60 hover:bg-accent/30 cursor-pointer"
-                :class="estSelectionne(c.id) && 'bg-primary/10'"
-                @click="openCase(c.id)">
-              <!-- ⚠️ `@click.stop` sur la case : sans lui, cocher ouvrirait aussi le cas — le
-                   clic remonterait à la ligne. Sélectionner et ouvrir sont deux intentions. -->
-              <td class="pl-1" :class="HAUTEUR_LIGNE[prefs.densite]" @click.stop>
-                <input type="checkbox" :aria-label="`Sélectionner ${c.title}`"
-                       :checked="estSelectionne(c.id)" @change="basculer(c.id)" />
-              </td>
-              <td v-if="colonneVisible('id')" class="pl-3 font-bold tabular-nums whitespace-nowrap"
-                  :class="HAUTEUR_LIGNE[prefs.densite]">C{{ c.id }}</td>
-              <td class="px-2.5 text-primary group-hover:underline leading-snug"
-                  :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.title }}</td>
-              <td v-if="colonneVisible('module')" class="px-2.5 text-muted-foreground truncate"
-                  :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.module }}</td>
-              <!-- `typeView` et jamais le code brut : « non_fonctionnel » à l'écran est une
-                   valeur d'enum, pas un libellé (point unique de traduction, `status.ts`). -->
-              <td v-if="colonneVisible('type')" class="px-2.5 text-muted-foreground"
-                  :class="HAUTEUR_LIGNE[prefs.densite]">{{ typeView(c.type).label }}</td>
-              <td v-if="colonneVisible('priorite')" class="px-2.5 text-right text-muted-foreground"
-                  :class="HAUTEUR_LIGNE[prefs.densite]">{{ PRIORITE[c.priority] || c.priority }}</td>
-              <td class="px-2.5 text-right" :class="HAUTEUR_LIGNE[prefs.densite]">
-                <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] font-semibold" :class="testStatusMeta(c.statut).badge">
-                  {{ testStatusMeta(c.statut).label }}
-                </span>
-              </td>
-              <td class="text-muted-foreground" :class="HAUTEUR_LIGNE[prefs.densite]">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
-              </td>
-            </tr>
-          </tbody>
+          <template v-for="g in s.groupes" :key="`${s.module.id}-${g.group_id}`">
+            <!-- En-tête de SECTION (case_group = une user story, §9) — pliable indépendamment du
+                 module. C'est le regroupement fait à la génération qui devient enfin VISIBLE dans
+                 la liste, pas seulement accessible en filtrant (mesuré le 2026-08-05 : cliquer
+                 une Section remplaçait toute la vue au lieu de la sous-titrer). -->
+            <tbody>
+              <tr class="border-t border-border/60 bg-surface-raised/40">
+                <td :colspan="colonnesAffichees" class="px-3" :class="HAUTEUR_LIGNE[prefs.densite]">
+                  <div class="flex items-center gap-1.5">
+                    <button class="flex items-center gap-1.5 text-left text-muted-foreground hover:text-foreground"
+                            :aria-label="`${groupCollapsed(s.module.id, g.group_id) ? 'Déplier' : 'Replier'} la section ${g.group_title}`"
+                            :aria-expanded="!groupCollapsed(s.module.id, g.group_id)"
+                            @click="toggleGroup(s.module.id, g.group_id)">
+                      <svg class="w-3 h-3 shrink-0 transition-transform" :class="groupCollapsed(s.module.id, g.group_id) ? '-rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
+                      <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+                      <span class="text-[12.5px] font-semibold text-primary/90">{{ g.group_title }}</span>
+                      <span class="rounded-full bg-primary/15 text-primary text-[10.5px] font-semibold px-2 py-0.5 tabular-nums">{{ g.rows.length }}</span>
+                    </button>
+                    <RouterLink v-if="g.group_id" :to="{ name: 'spec-detail', params: { pid, id: String(g.group_id) } }"
+                                class="text-[11px] text-muted-foreground hover:text-primary hover:underline"
+                                title="Ouvrir la spécification (le document)">voir le document</RouterLink>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+            <tbody v-if="!groupCollapsed(s.module.id, g.group_id)">
+              <tr v-for="c in g.rows" :key="c.id"
+                  class="group border-t border-border/60 hover:bg-accent/30 cursor-pointer"
+                  :class="estSelectionne(c.id) && 'bg-primary/10'"
+                  @click="openCase(c.id)">
+                <!-- ⚠️ `@click.stop` sur la case : sans lui, cocher ouvrirait aussi le cas — le
+                     clic remonterait à la ligne. Sélectionner et ouvrir sont deux intentions. -->
+                <td class="pl-1" :class="HAUTEUR_LIGNE[prefs.densite]" @click.stop>
+                  <input type="checkbox" :aria-label="`Sélectionner ${c.title}`"
+                         :checked="estSelectionne(c.id)" @change="basculer(c.id)" />
+                </td>
+                <td v-if="colonneVisible('id')" class="pl-3 font-bold tabular-nums whitespace-nowrap"
+                    :class="HAUTEUR_LIGNE[prefs.densite]">C{{ c.id }}</td>
+                <td class="px-2.5 text-primary group-hover:underline leading-snug"
+                    :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.title }}</td>
+                <td v-if="colonneVisible('module')" class="px-2.5 text-muted-foreground truncate"
+                    :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.module }}</td>
+                <!-- `typeView` et jamais le code brut : « non_fonctionnel » à l'écran est une
+                     valeur d'enum, pas un libellé (point unique de traduction, `status.ts`). -->
+                <td v-if="colonneVisible('type')" class="px-2.5 text-muted-foreground"
+                    :class="HAUTEUR_LIGNE[prefs.densite]">{{ typeView(c.type).label }}</td>
+                <td v-if="colonneVisible('priorite')" class="px-2.5 text-right text-muted-foreground"
+                    :class="HAUTEUR_LIGNE[prefs.densite]">{{ PRIORITE[c.priority] || c.priority }}</td>
+                <td class="px-2.5 text-right" :class="HAUTEUR_LIGNE[prefs.densite]">
+                  <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] font-semibold" :class="testStatusMeta(c.statut).badge">
+                    {{ testStatusMeta(c.statut).label }}
+                  </span>
+                </td>
+                <td class="text-muted-foreground" :class="HAUTEUR_LIGNE[prefs.densite]">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+                </td>
+              </tr>
+            </tbody>
+          </template>
         </table>
       </div>
       <div v-if="resteACharger" class="py-6 text-center">

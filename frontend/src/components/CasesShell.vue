@@ -133,7 +133,10 @@ const activeModuleId = computed(() =>
   route.name === 'cases' ? Number(route.query.module) || null : null)
 
 function openSpec(groupId: number) {
-  router.push({ name: 'cases', params: { pid: pid.value }, query: { spec: String(groupId) } })
+  // ⚠️ On GARDE le reste de la query (notamment `module`) : filtrer sur une Section ne doit pas
+  // faire perdre le module qu'on regardait — sinon « retirer le filtre » renvoie à une vue plus
+  // large que celle d'où on est parti (mesuré le 2026-08-05).
+  router.push({ name: 'cases', params: { pid: pid.value }, query: { ...route.query, spec: String(groupId) } })
 }
 
 // ── Sous-navigation d'un cas — NICHÉE sous « Cas de test » (pas une colonne à part) ──

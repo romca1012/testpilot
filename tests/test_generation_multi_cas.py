@@ -127,6 +127,41 @@ def test_deux_user_stories_produisent_DEUX_sections_distinctes(conn, monkeypatch
     assert len(groupes) == 2
 
 
+def test_un_cas_en_ECHEC_TECHNIQUE_ne_fait_PAS_echouer_les_cas_DEJA_persistes(conn, monkeypatch):
+    """⚠️ Bug réel, mesuré le 2026-08-05 sur une vraie génération (spec « mutation payeur ») :
+    un chemin Windows trop long (`[Errno 2] No such file or directory`) sur UN cas faisait
+    échouer TOUT le job — alors que 4 cas précédents de la même boucle étaient déjà persistés
+    en base. Seul `DuplicateName` était rattrapé par cas ; toute autre exception remontait à la
+    garde de tête de fonction, qui marque le job entier `failed` SANS annuler ce qui est déjà
+    en base (aucune transaction ne les protège). Le job doit rester `done` si d'autres cas de la
+    boucle ont réussi, avec l'échec du cas fautif SEULEMENT rapporté dans `error`."""
+    mid = _module(conn)
+    _neutraliser_pipeline_technique(monkeypatch)
+
+    reel_generate = agent_mod.GenerationAgent.generate
+
+    def generate_avec_un_echec_technique(self, plan, **kw):
+        if "PLANTE" in (kw.get("metier") or {}).get("title", ""):
+            raise OSError(2, "No such file or directory", "chemin trop long")
+        return reel_generate(self, plan, **kw)
+
+    monkeypatch.setattr(agent_mod.GenerationAgent, "generate", generate_avec_un_echec_technique)
+
+    _resume(
+        "job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+        sections=_sections(
+            ("Connexion", [_cas("Connexion réussie"), _cas("PLANTE ici")]),
+        ))
+
+    cas = CaseRepo(conn).list_all(module_id=mid)
+    assert {c["title"] for c in cas} == {"Connexion réussie"}, (
+        "le cas qui a réussi AVANT le crash doit rester persisté")
+
+    job = generation_service.get_job("job1")
+    assert job["status"] == "done", "un autre cas de la boucle a réussi — le job ne doit pas échouer"
+    assert "PLANTE ici" in job["error"], "l'échec technique doit être rapporté, pas avalé"
+
+
 def test_une_section_EN_DOUBLE_est_ignoree_SANS_faire_echouer_les_AUTRES(conn, monkeypatch):
     """L'unicité des titres, qui se vérifiait AVANT tout appel LLM dans l'ancien modèle mono-cas
     (`start_generation`), ne peut plus l'être : les titres réels ne sont connus qu'APRÈS le
