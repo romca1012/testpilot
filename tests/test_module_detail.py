@@ -24,8 +24,9 @@ from testpilot.store.repositories import (
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    # Chaque test a sa PROPRE base (tmp_path) : le job de génération y vit désormais aussi
+    # (migration 29, GenerationJobRepo) — plus de dict `_JOBS` global à nettoyer entre les tests.
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "mod.db")
-    generation_service._JOBS.clear()
     return TestClient(app_mod.app)
 
 
@@ -155,8 +156,9 @@ def test_ajout_declenche_la_generation_dans_le_bon_module(client, monkeypatch):
         cid = CaseRepo(c).create(title=title, module_id=module_id, feature_slug=slug)
         VersionRepo(c).create(test_case_id=cid, spec_content=spec_content, spec_hash="h",
                               feature_content="# language: fr", steps_content="")
+        from testpilot.store.repositories import GenerationJobRepo
+        GenerationJobRepo(c).maj(job_id, status="done", case_ids=[cid])
         c.close()
-        generation_service._JOBS[job_id].update(status="done", case_ids=[cid])
 
     monkeypatch.setattr(generation_service, "run_generation", fake_run)
 

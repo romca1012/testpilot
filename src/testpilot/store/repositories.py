@@ -7,9 +7,10 @@ font autorité dans ``verdict/status.py`` ; la base les reflète via des CHECK (
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from testpilot import config
 from testpilot.store import secrets as secrets_mod
@@ -2274,3 +2275,99 @@ class SettingRepo:
 _DEFAUTS_USINE = {
     "SERVICE_ACCOUNT_NAME": "TestPilot (automatique)",
 }
+
+
+class GenerationJobRepo:
+    """Le job de génération (multi-cas ou automatisation d'un cas manuel) — PERSISTÉ, pas
+    seulement en mémoire (migration 29, 2026-08-07, suite à un incident réel : un job en mémoire
+    disparaît d'un coup si le serveur redémarre pendant une génération, longue — plusieurs
+    minutes de dry-run réel — sans que l'écran ne puisse jamais dire à l'utilisateur pourquoi il
+    reste bloqué. Vécu le 07/08, pris pour un simple « timeout »).
+
+    ⚠️ **Colonnes explicites pour ce qu'on filtre/affiche souvent** (`status`, `error`,
+    `case_ids`, `module_id`, `cost_usd`) ; **le reste en JSON dans `payload`** — un job est un
+    état de TRAVAIL EN COURS, pas une donnée métier durable, et cette table ne devrait pas
+    s'élargir à chaque nouveau type de tâche de fond (génération multi-cas : Section ciblée,
+    spécification, cas en attente de validation ; automatisation : cas visé, slug, métier).
+    """
+
+    # Un job "running" sans la moindre mise à jour depuis ce délai est réputé MORT — le serveur
+    # qui le faisait avancer a très probablement redémarré pendant qu'il tournait. La génération
+    # dit elle-même « quelques minutes » : un multiple large, pour ne jamais couper un job encore
+    # réellement vivant sur une spécification à beaucoup de cas.
+    SEUIL_BLOQUE_SECONDES = 900
+
+    _COLONNES_DIRECTES = {"status", "error", "case_ids", "cost_usd"}
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def creer(self, job_id: str, *, module_id: int, payload: dict | None = None) -> None:
+        ts = now_iso()
+        self.conn.execute(
+            "INSERT INTO generation_job (id, status, error, case_ids, module_id, payload,"
+            " cost_usd, created_at, updated_at) VALUES (?, 'running', '', '[]', ?, ?, 0.0, ?, ?)",
+            (job_id, module_id, json.dumps(payload or {}, ensure_ascii=False), ts, ts))
+        self.conn.commit()
+
+    def get(self, job_id: str) -> dict | None:
+        """Rend le job, à PLAT (colonnes explicites + `payload` fusionnés au même niveau — les
+        colonnes explicites l'emportent en cas de collision, ce qui ne devrait jamais arriver).
+
+        ⚠️ **Repli sur PANNE, écrit ici et pas seulement renvoyé une fois** : un job "running"
+        resté sans nouvelle trop longtemps est réputé mort. On l'écrit tout de suite (pas
+        seulement au lecteur qui tombe dessus le premier), pour que TOUT lecteur futur voie la
+        même vérité — le seul choke point de cette règle, comme `ExecutionRepo.finalize` l'est
+        pour le registre.
+        """
+        row = self.conn.execute("SELECT * FROM generation_job WHERE id=?", (job_id,)).fetchone()
+        if row is None:
+            return None
+        d = dict(row)
+        payload = json.loads(d.pop("payload") or "{}")
+        d["case_ids"] = json.loads(d["case_ids"])
+        d = {**payload, **d}
+        if d["status"] == "running":
+            maj = _depuis_iso(d["updated_at"])
+            if maj is not None and (datetime.now(timezone.utc) - maj) > timedelta(
+                    seconds=self.SEUIL_BLOQUE_SECONDES):
+                self.maj(job_id, status="failed",
+                        error="la génération semble interrompue — le serveur a peut-être "
+                              "redémarré pendant qu'elle tournait. Relancez-la.")
+                return self.get(job_id)
+        return d
+
+    def maj(self, job_id: str, **champs) -> None:
+        """Met à jour un job — même ergonomie que l'ancien `_JOBS[job_id].update(**champs)`,
+        pour ne pas réécrire toute la logique de `generation_service` : les clés connues
+        (`status`/`error`/`case_ids`/`cost_usd`) vont dans leur colonne, tout le reste rejoint
+        `payload`."""
+        row = self.conn.execute("SELECT payload FROM generation_job WHERE id=?",
+                                (job_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"job {job_id} introuvable")
+        payload = json.loads(row["payload"] or "{}")
+        directes = {k: v for k, v in champs.items() if k in self._COLONNES_DIRECTES}
+        payload.update({k: v for k, v in champs.items() if k not in self._COLONNES_DIRECTES})
+
+        sets = ["updated_at=?", "payload=?"]
+        valeurs: list = [now_iso(), json.dumps(payload, ensure_ascii=False)]
+        for col in ("status", "error", "cost_usd"):
+            if col in directes:
+                sets.append(f"{col}=?")
+                valeurs.append(directes[col])
+        if "case_ids" in directes:
+            sets.append("case_ids=?")
+            valeurs.append(json.dumps(directes["case_ids"]))
+        valeurs.append(job_id)
+        self.conn.execute(f"UPDATE generation_job SET {', '.join(sets)} WHERE id=?", valeurs)
+        self.conn.commit()
+
+
+def _depuis_iso(valeur: str) -> datetime | None:
+    """Parse un horodatage écrit par `now_iso()` — tolérant : une valeur illisible ne doit
+    jamais faire planter la détection de blocage, seulement la désactiver pour cette ligne."""
+    try:
+        return datetime.fromisoformat(valeur)
+    except (TypeError, ValueError):
+        return None

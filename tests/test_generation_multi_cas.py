@@ -37,19 +37,13 @@ from testpilot.store.repositories import (
     CaseGroupRepo,
     CaseRepo,
     CostRepo,
+    GenerationJobRepo,
     ModuleRepo,
     ProjectRepo,
 )
 
 _PROJET_CONNECTE = {"name": "P", "connector_type": "odoo", "base_url": "http://recette:8069",
                     "database": "db", "username": "qa", "password": "p"}
-
-
-@pytest.fixture(autouse=True)
-def _jobs_propres():
-    generation_service._JOBS.clear()
-    yield
-    generation_service._JOBS.clear()
 
 
 @pytest.fixture
@@ -104,13 +98,14 @@ def _cas(titre: str, *, user_story: str = "") -> dict:
            "expected_result": f"Verdict de {titre}", "user_story": user_story}
 
 
-def _resume(job_id: str, **kw):
+def _resume(conn, job_id: str, *, module_id: int, **kw):
     """Appelle `resume_generation` comme le fait la route : le job existe TOUJOURS déjà à ce
     stade (créé par `start_generation`, mis à jour par `validate_metier`) — jamais appelé à
     froid en production. On reproduit cette précondition ici plutôt que de l'assouplir dans le
     code de production pour un usage que la vraie route ne fait jamais."""
-    generation_service._JOBS.setdefault(job_id, {"status": "running", "case_ids": [], "error": ""})
-    generation_service.resume_generation(job_id, **kw)
+    if GenerationJobRepo(conn).get(job_id) is None:
+        GenerationJobRepo(conn).creer(job_id, module_id=module_id)
+    generation_service.resume_generation(job_id, module_id=module_id, **kw)
 
 
 # ── group_id choisi par l'utilisateur : aucune Section auto-créée ─────────────
@@ -122,7 +117,7 @@ def test_resume_generation_NE_CREE_AUCUNE_section(conn, monkeypatch):
     _neutraliser_pipeline_technique(monkeypatch)
     avant = len(CaseGroupRepo(conn).list_for_module(mid))
 
-    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+    _resume(conn, "job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
            cases=[_cas("Connexion réussie")])
 
     apres = len(CaseGroupRepo(conn).list_for_module(mid))
@@ -137,7 +132,7 @@ def test_un_cas_avec_group_id_atterrit_DANS_cette_section(conn, monkeypatch):
     _neutraliser_pipeline_technique(monkeypatch)
     cible = CaseGroupRepo(conn).create(module_id=mid, title="Ma section à moi")
 
-    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+    _resume(conn, "job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
            group_id=cible, cases=[_cas("Connexion réussie")])
 
     cas = CaseRepo(conn).list_all(module_id=mid)
@@ -152,7 +147,7 @@ def test_plusieurs_cas_PARTAGENT_la_meme_section_choisie_UNE_FOIS_pour_le_lot(co
     _neutraliser_pipeline_technique(monkeypatch)
     section = CaseGroupRepo(conn).create(module_id=mid, title="Connexion")
 
-    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+    _resume(conn, "job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
            group_id=section,
            cases=[_cas("Connexion réussie"), _cas("Connexion refusée")])
 
@@ -166,7 +161,7 @@ def test_un_cas_SANS_group_id_repart_sur_SA_PROPRE_enveloppe(conn, monkeypatch):
     mid = _module(conn)
     _neutraliser_pipeline_technique(monkeypatch)
 
-    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+    _resume(conn, "job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
            cases=[_cas("Cas A"), _cas("Cas B")])
 
     cas = CaseRepo(conn).list_all(module_id=mid)
@@ -181,7 +176,7 @@ def test_un_group_id_INTROUVABLE_replie_TOUT_LE_LOT_sur_l_enveloppe_auto(conn, m
     mid = _module(conn)
     _neutraliser_pipeline_technique(monkeypatch)
 
-    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+    _resume(conn, "job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
            group_id=999999, cases=[_cas("Connexion réussie"), _cas("Connexion refusée")])
 
     cas = CaseRepo(conn).list_all(module_id=mid)
@@ -189,7 +184,7 @@ def test_un_group_id_INTROUVABLE_replie_TOUT_LE_LOT_sur_l_enveloppe_auto(conn, m
     assert all(c["group_id"] != 999999 for c in cas)   # replié sur une enveloppe réelle
     assert cas[0]["group_id"] != cas[1]["group_id"]     # chacune la sienne, jamais partagée
 
-    job = generation_service.get_job("job1")
+    job = generation_service.get_job(conn, "job1")
     assert job["status"] == "done"
     assert "n'existe plus" in job["error"]
 
@@ -201,7 +196,7 @@ def test_un_group_id_d_un_AUTRE_module_replie_aussi_sur_l_enveloppe_auto(conn, m
     section_ailleurs = CaseGroupRepo(conn).create(module_id=autre_mid, title="Pas ici")
     _neutraliser_pipeline_technique(monkeypatch)
 
-    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+    _resume(conn, "job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
            group_id=section_ailleurs, cases=[_cas("Connexion réussie")])
 
     cas = CaseRepo(conn).list_all(module_id=mid)
@@ -228,14 +223,14 @@ def test_un_cas_en_ECHEC_TECHNIQUE_ne_fait_PAS_echouer_les_cas_DEJA_persistes(co
 
     monkeypatch.setattr(agent_mod.GenerationAgent, "generate", generate_avec_un_echec_technique)
 
-    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+    _resume(conn, "job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
            cases=[_cas("Connexion réussie"), _cas("PLANTE ici")])
 
     cas = CaseRepo(conn).list_all(module_id=mid)
     assert {c["title"] for c in cas} == {"Connexion réussie"}, (
         "le cas qui a réussi AVANT le crash doit rester persisté")
 
-    job = generation_service.get_job("job1")
+    job = generation_service.get_job(conn, "job1")
     assert job["status"] == "done", "un autre cas de la boucle a réussi — le job ne doit pas échouer"
     assert "PLANTE ici" in job["error"], "l'échec technique doit être rapporté, pas avalé"
 
@@ -246,7 +241,7 @@ def test_refs_de_chaque_cas_est_le_nom_de_sa_story_d_origine(conn, monkeypatch):
     mid = _module(conn)
     _neutraliser_pipeline_technique(monkeypatch)
 
-    _resume("job3", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+    _resume(conn, "job3", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
            cases=[_cas("Connexion réussie", user_story="Connexion"),
                  _cas("Lien valide", user_story="Réinitialisation"),
                  _cas("Lien expiré", user_story="Réinitialisation")])
@@ -266,7 +261,7 @@ def test_le_cout_de_chaque_cas_genere_est_enregistre_au_ledger(conn, monkeypatch
     mid = _module(conn)
     _neutraliser_pipeline_technique(monkeypatch, cout_par_cas=0.05)
 
-    _resume("job5", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+    _resume(conn, "job5", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
            cases=[_cas("Connexion réussie"), _cas("Lien valide"), _cas("Lien expiré")])
 
     # 3 cas générés à 0,05 $ + l'analyse partagée (neutralisée à $0, donc aucune ligne orpheline
@@ -309,7 +304,7 @@ def test_le_decoupage_et_les_N_passes_metier_sont_comptes_AU_LEDGER_avant_tout_c
         conn, mid, spec_content="Une spec", title="T")
     generation_service.run_generation(job_id, **params)
 
-    job = generation_service._JOBS[job_id]
+    job = generation_service.get_job(conn, job_id)
     assert job["status"] == "awaiting_metier"
     # La liste est PLATE : deux cas, chacun avec sa provenance (`user_story`), pas de Section.
     assert len(job["cases"]) == 2
@@ -332,7 +327,7 @@ def test_la_reprise_avec_une_liste_REDUITE_ne_laisse_AUCUNE_TRACE_des_cas_retire
     _neutraliser_pipeline_technique(monkeypatch)
     # La proposition initiale portait 2 cas ; l'humain n'a retenu que le premier. C'est CETTE
     # liste réduite, et RIEN d'autre, qui est passée ici.
-    _resume("job6", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+    _resume(conn, "job6", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
            cases=[_cas("Connexion réussie", user_story="Connexion")])
 
     cas = CaseRepo(conn).list_all(module_id=mid)
@@ -348,55 +343,53 @@ def test_bout_en_bout_valide_PUIS_reprise_AVEC_une_liste_reduite(conn, monkeypat
     _neutraliser_pipeline_technique(monkeypatch)
     section = CaseGroupRepo(conn).create(module_id=mid, title="Connexion")
     job_id = "job7"
-    generation_service._JOBS[job_id] = {
-        "status": "awaiting_metier", "case_ids": [], "error": "",
-        "cases": [_cas("Connexion réussie", user_story="Connexion"),
-                 _cas("Connexion via SSO", user_story="Connexion")],
-        "_resume": {"module_id": mid, "title": "Spec", "author": "qa",
-                   "spec_content": "LE TEXTE", "group_id": section},
-    }
+    GenerationJobRepo(conn).creer(job_id, module_id=mid, payload={
+        "title": "Spec", "author": "qa", "spec_content": "LE TEXTE", "group_id": section,
+    })
+    GenerationJobRepo(conn).maj(
+        job_id, status="awaiting_metier",
+        cases=[_cas("Connexion réussie", user_story="Connexion"),
+              _cas("Connexion via SSO", user_story="Connexion")])
 
     # L'écran de validation envoie la liste ÉDITÉE : un seul cas retenu. La Section, elle, était
     # déjà fixée avant la génération — `validate_metier` n'y touche pas.
     params = generation_service.validate_metier(
-        job_id, [_cas("Connexion réussie", user_story="Connexion")])
+        conn, job_id, [_cas("Connexion réussie", user_story="Connexion")])
     generation_service.resume_generation(job_id, **params)
 
     cas = CaseRepo(conn).list_all(module_id=mid)
     assert [c["title"] for c in cas] == ["Connexion réussie"]
     assert cas[0]["group_id"] == section
-    assert generation_service._JOBS[job_id]["status"] == "done"
-    assert len(generation_service._JOBS[job_id]["case_ids"]) == 1
+    job = generation_service.get_job(conn, job_id)
+    assert job["status"] == "done"
+    assert len(job["case_ids"]) == 1
 
 
-def test_validate_metier_REFUSE_si_PLUS_AUCUN_cas_n_est_retenu():
+def test_validate_metier_REFUSE_si_PLUS_AUCUN_cas_n_est_retenu(conn):
     """Tous les cas supprimés à la validation : rien à générer, on le dit plutôt que de démarrer
     un job vide."""
     job_id = "jobY"
-    generation_service._JOBS[job_id] = {
-        "status": "awaiting_metier", "case_ids": [], "error": "",
-        "cases": [_cas("Connexion réussie")],
-        "_resume": {"module_id": 1, "title": "T", "author": "qa", "spec_content": "s"},
-    }
+    GenerationJobRepo(conn).creer(job_id, module_id=1, payload={
+        "title": "T", "author": "qa", "spec_content": "s",
+    })
+    GenerationJobRepo(conn).maj(job_id, status="awaiting_metier", cases=[_cas("Connexion réussie")])
 
     with pytest.raises(generation_service.GenerationError) as exc:
-        generation_service.validate_metier(job_id, [])
+        generation_service.validate_metier(conn, job_id, [])
     assert exc.value.code == "invalid_metier"
 
 
-def test_validate_metier_TRANSPORTE_le_group_id_du_job_SANS_le_toucher():
-    """La Section (`group_id`) vit dans `_resume`, fixée AVANT la génération — `validate_metier`
+def test_validate_metier_TRANSPORTE_le_group_id_du_job_SANS_le_toucher(conn):
+    """La Section (`group_id`) vit dans le job, fixée AVANT la génération — `validate_metier`
     ne la lit ni ne l'écrit, elle voyage telle quelle jusqu'à `resume_generation` (étape 3bis)."""
     job_id = "jobZ"
-    generation_service._JOBS[job_id] = {
-        "status": "awaiting_metier", "case_ids": [], "error": "",
-        "cases": [_cas("Connexion réussie")],
-        "_resume": {"module_id": 1, "title": "T", "author": "qa", "spec_content": "s",
-                   "group_id": 42},
-    }
+    GenerationJobRepo(conn).creer(job_id, module_id=1, payload={
+        "title": "T", "author": "qa", "spec_content": "s", "group_id": 42,
+    })
+    GenerationJobRepo(conn).maj(job_id, status="awaiting_metier", cases=[_cas("Connexion réussie")])
 
     params = generation_service.validate_metier(
-        job_id, [_cas("Connexion réussie"), _cas("Connexion via SSO")])
+        conn, job_id, [_cas("Connexion réussie"), _cas("Connexion via SSO")])
 
     assert params["group_id"] == 42
     assert "group_id" not in params["cases"][0]   # plus de group_id PAR CAS (revenu en arrière)

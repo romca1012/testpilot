@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 28
+_SCHEMA_VERSION = 29
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -128,6 +128,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_27_mode_d_execution(conn)
     if version < 28:
         _migrate_28_sous_sections(conn)
+    if version < 29:
+        _migrate_29_generation_job(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -1358,3 +1360,34 @@ def _migrate_28_sous_sections(conn: sqlite3.Connection) -> None:
                      " INTEGER REFERENCES case_group(id)")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_case_group_parent ON case_group(parent_group_id)")
+
+
+def _migrate_29_generation_job(conn: sqlite3.Connection) -> None:
+    """Le job de génération (multi-cas ou automatisation d'un cas manuel) devient PERSISTÉ —
+    plus seulement un dict Python en mémoire (2026-08-07, incident réel).
+
+    ⚠️ **Un job en mémoire ne survit pas à un redémarrage du serveur.** La génération est longue
+    (plusieurs minutes de dry-run réel) ; si le serveur redémarre pendant qu'un job tourne, le job
+    disparaît d'un coup, et l'écran continue d'interroger un `job_id` qui n'existe plus — bloqué
+    sans jamais dire pourquoi. Vécu en conditions réelles le 07/08 : perçu comme un « timeout »,
+    alors que la vraie cause était le redémarrage lui-même.
+
+    Colonnes explicites pour ce qu'on filtre/affiche souvent (`status`, `error`, `case_ids`,
+    `module_id`, `cost_usd`) ; le reste (Section ciblée, spécification, cas en attente de
+    validation, ou `case_id`/`slug`/métier pour une automatisation) vit dans `payload`, en JSON —
+    un job est un état de TRAVAIL EN COURS, pas une donnée métier durable, et cette table ne
+    devrait pas s'élargir à chaque nouveau type de tâche de fond.
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS generation_job ("
+        " id           TEXT PRIMARY KEY,"
+        " status       TEXT NOT NULL,"
+        " error        TEXT NOT NULL DEFAULT '',"
+        " case_ids     TEXT NOT NULL DEFAULT '[]',"
+        " module_id    INTEGER NOT NULL,"
+        " payload      TEXT NOT NULL DEFAULT '{}',"
+        " cost_usd     REAL NOT NULL DEFAULT 0.0,"
+        " created_at   TEXT NOT NULL,"
+        " updated_at   TEXT NOT NULL)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_generation_job_status ON generation_job(status)")

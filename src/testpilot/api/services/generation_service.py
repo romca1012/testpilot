@@ -14,7 +14,11 @@ UN cas par appel, testé comme tel. Ce module se contente de **planifier** (déc
 **répéter** ce pipeline une fois par cas planifié.
 
 La génération est longue et coûteuse (LLM) : elle tourne en tâche de fond, avec un job suivi
-en mémoire — même schéma que les exécutions (202 + polling).
+PAR ÉCRIT (`GenerationJobRepo`, migration 29, 2026-08-07) — même schéma que les exécutions
+(202 + polling), mais plus jamais un simple dict Python en mémoire : un job en mémoire disparaît
+d'un coup si le serveur redémarre pendant qu'il tourne (plusieurs minutes de dry-run réel), et
+l'écran reste bloqué sans jamais pouvoir dire pourquoi — vécu en conditions réelles le 07/08,
+pris pour un simple « timeout ».
 """
 
 from __future__ import annotations
@@ -25,12 +29,9 @@ import uuid
 
 from testpilot import config
 from testpilot.store.db import get_initialized_db
-from testpilot.store.repositories import CaseRepo, DuplicateName, ModuleRepo
+from testpilot.store.repositories import CaseRepo, DuplicateName, GenerationJobRepo, ModuleRepo
 
 logger = logging.getLogger(__name__)
-
-# job_id → {status: running|awaiting_metier|done|failed, case_ids, error, ...}
-_JOBS: dict[str, dict] = {}
 
 
 class GenerationError(Exception):
@@ -42,8 +43,11 @@ class GenerationError(Exception):
         self.detail = detail
 
 
-def get_job(job_id: str) -> dict | None:
-    return _JOBS.get(job_id)
+def get_job(conn, job_id: str) -> dict | None:
+    """Rend le job — depuis la base (migration 29), jamais un dict en mémoire. Un job "running"
+    resté bloqué trop longtemps est automatiquement réinterprété en échec par
+    `GenerationJobRepo.get` (voir sa docstring) : cette fonction n'a rien de plus à faire."""
+    return GenerationJobRepo(conn).get(job_id)
 
 
 # Un slug nomme le fichier .feature, MAIS AUSSI le dossier temporaire d'exécution ET, dans ce
@@ -135,7 +139,13 @@ def start_generation(conn, module_id: int, *, spec_content: str, title: str = ""
     label = (title or "").strip() or f"Cas {module['name']}"
 
     job_id = uuid.uuid4().hex
-    _JOBS[job_id] = {"status": "running", "case_ids": [], "error": "", "module_id": module_id}
+    # Le contexte complet est écrit DÈS LE DÉPART (pas seulement à la pause `awaiting_metier`) :
+    # un job "running" qui redémarre en cours de route garde de quoi être compris/diagnostiqué,
+    # même s'il ne peut pas reprendre tout seul (le découpage et les passes métier restent à
+    # refaire — coût assumé, voir `run_generation`).
+    GenerationJobRepo(conn).creer(job_id, module_id=module_id, payload={
+        "title": label, "spec_content": spec_content, "author": author, "group_id": group_id,
+    })
     return job_id, {"module_id": module_id, "title": label, "spec_content": spec_content,
                     "author": author, "group_id": group_id}
 
@@ -248,8 +258,8 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
             _record_generation_cost(conn, case_id=None,
                                     analysis_usd=analysis_tracker.total_cost,
                                     decoupage_usd=decoupage_tracker.total_cost)
-            _JOBS[job_id].update(
-                status="failed",
+            GenerationJobRepo(conn).maj(
+                job_id, status="failed",
                 error="le découpage n'a identifié aucune user story exploitable dans cette "
                       "spécification — reformulez-la ou détaillez-la davantage",
                 cost_usd=analysis_tracker.total_cost + decoupage_tracker.total_cost)
@@ -275,8 +285,8 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
                                             analysis_usd=analysis_tracker.total_cost,
                                             decoupage_usd=decoupage_tracker.total_cost,
                                             metier_usd=metier_tracker.total_cost)
-                    _JOBS[job_id].update(
-                        status="failed",
+                    GenerationJobRepo(conn).maj(
+                        job_id, status="failed",
                         error=f"le document métier de « {brief.title} » (user story « "
                               f"{story.user_story} ») est incomplet — relancez la génération",
                         cost_usd=cout)
@@ -289,33 +299,32 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
                                 decoupage_usd=decoupage_tracker.total_cost,
                                 metier_usd=metier_tracker.total_cost)
 
-        _JOBS[job_id].update(
-            status="awaiting_metier",
-            cases=cases,
-            # Contexte de reprise : `resume_generation` ne refait ni l'analyse ni le découpage ni
-            # les passes métier — seule l'analyse est rejouée (elle alimente l'agent en matière
-            # technique qu'un `TestPlan` ne peut pas porter d'un job à l'autre, non sérialisable).
-            _resume={"module_id": module_id, "title": title, "author": author,
-                     "spec_content": spec_content, "group_id": group_id},
-            cost_usd=total_cost)
+        # Le contexte de reprise (module_id/title/author/spec_content/group_id) est déjà en base
+        # depuis `start_generation` — inutile de le réécrire ici. `resume_generation` ne refait ni
+        # l'analyse ni le découpage ni les passes métier — seule l'analyse est rejouée (elle
+        # alimente l'agent en matière technique qu'un `TestPlan` ne peut pas porter d'un job à
+        # l'autre, non sérialisable).
+        GenerationJobRepo(conn).maj(job_id, status="awaiting_metier", cases=cases,
+                                    cost_usd=total_cost)
     except Exception as exc:  # jamais laisser un job « en cours » sur un plantage
         logger.exception("[generation] job %s (découpage + passe métier) en échec : %s",
                          job_id, exc)
-        _JOBS[job_id].update(status="failed", error=str(exc)[:300])
+        GenerationJobRepo(conn).maj(job_id, status="failed", error=str(exc)[:300])
     finally:
         conn.close()
 
 
-def validate_metier(job_id: str, cases: list[dict]) -> dict:
+def validate_metier(conn, job_id: str, cases: list[dict]) -> dict:
     """Enregistre les cas VALIDÉS (éventuellement corrigés ou réduits) et prépare la reprise.
 
     `cases` — liste PLATE (étape 3, 2026-08-07) : `[{"title", "preconditions", "steps",
     "expected_result", "user_story"}, ...]`. Pas de `group_id` par cas ici (étape 3bis) : la
     Section est déjà fixée pour TOUT le job, choisie avant même la génération
-    (`job["_resume"]["group_id"]`) — cette fonction n'a rien à en faire, elle est juste
-    transportée telle quelle jusqu'à `resume_generation` via `_resume`.
+    (`job["group_id"]`, écrit dès `start_generation`) — cette fonction n'a rien à en faire, elle
+    est juste transportée telle quelle jusqu'à `resume_generation`.
     """
-    job = _JOBS.get(job_id)
+    jobs = GenerationJobRepo(conn)
+    job = jobs.get(job_id)
     if job is None:
         raise GenerationError("not_found", "job introuvable")
     if job.get("status") != "awaiting_metier":
@@ -344,8 +353,10 @@ def validate_metier(job_id: str, cases: list[dict]) -> dict:
         raise GenerationError("invalid_metier",
                               "aucun cas retenu — il ne reste rien à générer")
 
-    job.update(status="running", cases=validated)
-    return {**job["_resume"], "cases": validated}
+    jobs.maj(job_id, status="running", cases=validated)
+    return {"module_id": job["module_id"], "title": job["title"],
+           "spec_content": job["spec_content"], "author": job["author"],
+           "group_id": job.get("group_id"), "cases": validated}
 
 
 def _auto_approuver(conn, case_id: int, version_id: int | None) -> None:
@@ -425,8 +436,8 @@ def start_automation(conn, case_id: int) -> tuple[str, dict]:
     CaseRepo(conn).set_feature_slug(case_id, slug)
 
     job_id = uuid.uuid4().hex
-    _JOBS[job_id] = {"status": "running", "case_ids": [], "error": "",
-                     "module_id": case["module_id"]}
+    GenerationJobRepo(conn).creer(job_id, module_id=case["module_id"],
+                                  payload={"case_id": case_id, "slug": slug})
     return job_id, {"case_id": case_id, "module_id": case["module_id"], "slug": slug,
                     "spec_content": _spec_from_metier(metier), "metier": metier}
 
@@ -469,13 +480,13 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
 
         if result.success:
             _auto_approuver(conn, case_id, result.version_id)
-            _JOBS[job_id].update(status="done", case_ids=[case_id])
+            GenerationJobRepo(conn).maj(job_id, status="done", case_ids=[case_id])
         else:
-            _JOBS[job_id].update(status="failed",
+            GenerationJobRepo(conn).maj(job_id, status="failed",
                                  error=result.error or result.stopped_reason or "automatisation échouée")
     except Exception as exc:
         logger.exception("[automation] job %s en échec : %s", job_id, exc)
-        _JOBS[job_id].update(status="failed", error=str(exc)[:300])
+        GenerationJobRepo(conn).maj(job_id, status="failed", error=str(exc)[:300])
     finally:
         if connector is not None:
             try:
@@ -594,14 +605,14 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
         _record_generation_cost(conn, case_id=None, analysis_usd=analysis_tracker.total_cost)
 
         if case_ids:
-            _JOBS[job_id].update(status="done", case_ids=case_ids,
+            GenerationJobRepo(conn).maj(job_id, status="done", case_ids=case_ids,
                                  error="; ".join(erreurs))
         else:
-            _JOBS[job_id].update(status="failed",
+            GenerationJobRepo(conn).maj(job_id, status="failed",
                                  error="; ".join(erreurs) or "aucun cas généré")
     except Exception as exc:  # jamais laisser un job « en cours » sur un plantage
         logger.exception("[generation] job %s (passe Gherkin) en échec : %s", job_id, exc)
-        _JOBS[job_id].update(status="failed", error=str(exc)[:300])
+        GenerationJobRepo(conn).maj(job_id, status="failed", error=str(exc)[:300])
     finally:
         if connector is not None:
             try:

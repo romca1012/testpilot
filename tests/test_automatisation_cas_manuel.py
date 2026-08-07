@@ -118,7 +118,7 @@ def test_automatiser_cree_une_version_AVEC_gherkin_sur_le_meme_cas(conn, monkeyp
     job_id, params = generation_service.start_automation(conn, cid)
     generation_service.run_automation(job_id, **params)
 
-    assert generation_service.get_job(job_id)["status"] == "done"
+    assert generation_service.get_job(conn, job_id)["status"] == "done"
     conn2 = get_initialized_db(config.DB_PATH)
     versions = VersionRepo(conn2).list_for_case(cid)
     assert len(versions) == versions_avant + 1, "une nouvelle version a été créée"

@@ -211,8 +211,12 @@ def add_case(module_id: int, body: schemas.AddCaseIn, background: BackgroundTask
 
 
 @router.get("/jobs/{job_id}", response_model=schemas.GenerationJobOut)
-def get_job(job_id: str):
-    job = generation_service.get_job(job_id)
+def get_job(job_id: str, conn=Depends(get_conn)):
+    """⚠️ Le job est lu EN BASE (migration 29, 2026-08-07) — jamais un dict en mémoire, qui
+    disparaissait d'un coup si le serveur redémarrait pendant une génération en cours. Un job
+    "running" resté bloqué trop longtemps est automatiquement réinterprété en échec
+    (`GenerationJobRepo.get`), avec un message qui le dit clairement plutôt qu'un blocage muet."""
+    job = generation_service.get_job(conn, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job introuvable")
     cases = job.get("cases") if job["status"] == "awaiting_metier" else None
@@ -223,7 +227,8 @@ def get_job(job_id: str):
 
 
 @router.post("/jobs/{job_id}/metier", response_model=schemas.GenerationJobOut, status_code=202)
-def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: BackgroundTasks):
+def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: BackgroundTasks,
+                    conn=Depends(get_conn)):
     """PASSE 4b — l'humain valide (ou corrige, ou réduit) l'ensemble des cas proposés, chacun avec
     la Section qu'il a choisie (ou aucune) ; le Gherkin de chaque cas retenu est alors écrit.
 
@@ -235,7 +240,7 @@ def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: B
     """
     try:
         cases = [c.model_dump() for c in body.cases]
-        params = generation_service.validate_metier(job_id, cases)
+        params = generation_service.validate_metier(conn, job_id, cases)
     except generation_service.GenerationError as err:
         raise erreurs.depuis_service(err.code, err.detail)
 

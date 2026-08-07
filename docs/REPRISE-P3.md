@@ -6,8 +6,10 @@
 > chantier (génération multi-cas) ne soit terminé, dogfoodé en conditions réelles et corrigé.
 >
 > Écrit le 2026-08-05, en fin de session. **Complété le 2026-08-06** (§0 ci-dessous — fiabilisation
-> des résultats automatisés, traçabilité, et chantier Sections/Sous-sections/glisser-déposer, EN
-> COURS). Régénérable : `python scripts/doc_en_pdf.py docs/REPRISE-P3.md`
+> des résultats automatisés, traçabilité, et chantier Sections/Sous-sections/glisser-déposer) puis
+> le **2026-08-07** (§0bis — incident de purge corrigé ; §0ter — le job de génération survit
+> désormais à un redémarrage serveur). Régénérable :
+> `python scripts/doc_en_pdf.py docs/REPRISE-P3.md`
 
 ---
 
@@ -113,9 +115,9 @@ Le porteur a signalé une génération « timed out » sur Mutation Payeur, avec
   avaient été mis à la corbeille (suppression douce) par le porteur lui-même après l'incident —
   leurs 13 cas et 9 sections étaient intacts, juste invisibles.
 - **Cause probable du « timed out »** : le serveur du porteur a changé de PID entre deux contrôles
-  — un redémarrage a eu lieu pendant la génération. Les jobs de génération ne vivent qu'en mémoire
-  (`generation_service._JOBS`, un dict Python) : un redémarrage les efface, l'écran reste bloqué
-  sans jamais recevoir de réponse. **Faiblesse réelle, non corrigée** — voir §10bis.
+  — un redémarrage a eu lieu pendant la génération. Les jobs de génération ne vivaient qu'en
+  mémoire (`generation_service._JOBS`, un dict Python) : un redémarrage les effaçait, l'écran
+  restait bloqué sans jamais recevoir de réponse. **Corrigé le même jour** — voir §0ter.
 - Sur confirmation explicite et informée du porteur (irréversibilité expliquée deux fois), les
   deux modules ont été **purgés définitivement**. La purge a d'abord échoué (`sqlite3.
   IntegrityError: FOREIGN KEY constraint failed`) sur le module ayant du VRAI historique
@@ -129,6 +131,42 @@ Le porteur a signalé une génération « timed out » sur Mutation Payeur, avec
   registre_ne_PLANTE_PAS`). Suite complète repassée : 1357 verts.
 - ⚠️ **Le serveur du porteur (port 8000) tourne encore sur l'ANCIEN code** — Python ne recharge
   pas à chaud. Un redémarrage est nécessaire pour que ce correctif s'applique chez lui.
+
+---
+
+## 0ter. Mise à jour du 2026-08-07 — fiabilité : le job de génération survit à un redémarrage
+
+Correctif du gap identifié en §0bis. **Le job de génération est désormais PERSISTÉ en base**, plus
+seulement un dict Python en mémoire — un redémarrage serveur pendant une génération en cours ne
+laisse plus l'écran bloqué indéfiniment.
+
+- **Migration 29** ([db.py](src/testpilot/store/db.py)) : nouvelle table `generation_job` (`id`,
+  `status`, `error`, `case_ids`, `module_id`, `payload` JSON, `cost_usd`, `created_at`,
+  `updated_at`), index sur `status`. Testée deux fois (base fraîche + base pré-migration réelle),
+  comme toute migration du dépôt.
+- **`GenerationJobRepo`** ([repositories.py](src/testpilot/store/repositories.py)) remplace le
+  dict `_JOBS` : `creer`/`get`/`maj`. Les champs souvent filtrés (`status`, `error`, `case_ids`,
+  `cost_usd`) sont des colonnes dédiées ; tout le reste (titre, spec, auteur, section choisie,
+  cas proposés…) vit dans `payload` (JSON), fusionné à la lecture — la forme du dict rendu par
+  `get()` n'a pas changé pour ses appelants.
+- **Détection de blocage** : un job en `status="running"` dont `updated_at` date de plus de 15
+  minutes (`GenerationJobRepo.SEUIL_BLOQUE_SECONDES`) est réinterprété en `failed`, avec un message
+  clair (« la génération semble interrompue — le serveur a peut-être redémarré... Relancez-la. »),
+  **écrit en base** (pas juste renvoyé une fois) au moment même de la lecture — même patron que
+  `ExecutionRepo.finalize`, un seul endroit qui écrit cette conclusion. `awaiting_metier` (attente
+  humaine légitime, potentiellement longue) est explicitement EXEMPTÉ de cette détection.
+- `generation_service.py` réécrit en conséquence : `get_job`/`validate_metier` prennent désormais
+  `conn` en premier paramètre (le job vit en base, plus en mémoire globale).
+- Le frontend n'a nécessité **aucun changement** : `AddTestCase.vue` affiche déjà `job.error`
+  tel quel, quel que soit son contenu.
+
+**Vérifié** : `tests/test_generation_job_repo.py` (10 tests, dont la survie du job à travers une
+nouvelle connexion DB — la preuve centrale du correctif — et l'exemption `awaiting_metier`) ;
+suite complète back (1370 tests) et front (186 tests) vertes, `type-check` propre. Vérification
+live supplémentaire, en dehors des tests : un job `running` avec un `updated_at` vieux de 20
+minutes simulé directement en base, relu via la VRAIE route `GET /api/modules/jobs/{id}` — répond
+bien `status: "failed"` avec le message d'interruption, et cette conclusion est relue identique
+depuis la base (pas transitoire).
 
 ---
 
@@ -366,14 +404,6 @@ demande explicite du porteur.
 
 **Chantier « génération multi-cas » (§0, Étapes 0 à 3bis + AddTestRunForm) déclaré TERMINÉ par le
 porteur le 2026-08-07.** Ce qui suit est la suite du programme, pas une continuation de ce chantier.
-
-### Fiabilité — les jobs de génération ne survivent pas à un redémarrage serveur
-Trouvé le 2026-08-07 en investiguant l'incident de purge (§0bis) : `generation_service._JOBS` est
-un dict Python **en mémoire, jamais en base**. Un redémarrage du serveur pendant une génération en
-cours (long — dry-run réel contre Odoo, plusieurs minutes) fait disparaître le job : l'écran reste
-bloqué sans jamais recevoir de réponse, perçu comme un « timeout ». Pas corrigé — nécessiterait de
-persister l'état du job (au moins son `job_id`/`status`/`error`) pour distinguer « en cours » de
-« le serveur qui le suivait n'existe plus ».
 
 ### Assignation
 Table `run_case_assignment` déjà créée (migration 25), rien ne l'alimente. Colonne « Assigné à »

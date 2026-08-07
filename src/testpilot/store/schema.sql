@@ -359,8 +359,9 @@ CREATE INDEX IF NOT EXISTS idx_cost_period ON cost_ledger(period_month);
 -- peuvent chacune avoir un cas « Nominal ». L'ancien uq_case_module_title est donc RETIRÉ.
 
 -- ── Tables absentes de ce fichier, et pourquoi ───────────────────────────────
--- `test_run` / `test_run_case` (migration 15) et `test_result` / `run_case_assignment` /
--- `result_attachment` / `app_setting` (migration 25) sont créées PAR LEUR MIGRATION, jamais ici.
--- Raison : ce fichier s'exécute AVANT les migrations, et ces tables portent des clés étrangères
--- vers des tables/colonnes qui n'existent pas encore sur une base antérieure. Une base neuve les
--- reçoit quand même — toutes ses migrations tournent à la première ouverture.
+-- `test_run` / `test_run_case` (migration 15), `test_result` / `run_case_assignment` /
+-- `result_attachment` / `app_setting` (migration 25) et `generation_job` (migration 29) sont
+-- créées PAR LEUR MIGRATION, jamais ici. Raison : ce fichier s'exécute AVANT les migrations, et
+-- ces tables portent des clés étrangères vers des tables/colonnes qui n'existent pas encore sur
+-- une base antérieure. Une base neuve les reçoit quand même — toutes ses migrations tournent à
+-- la première ouverture.

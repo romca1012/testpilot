@@ -294,8 +294,9 @@ from testpilot.generation import decoupage
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    # Chaque test a sa PROPRE base (tmp_path) : le job de génération y vit désormais aussi
+    # (migration 29, GenerationJobRepo) — plus de dict `_JOBS` global à nettoyer entre les tests.
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
-    generation_service._JOBS.clear()
     return TestClient(app_mod.app)
 
 
