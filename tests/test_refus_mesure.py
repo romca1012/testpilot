@@ -208,6 +208,8 @@ def test_une_classe_NON_prouvable_n_affirme_aucune_contrainte(sidecar):
     ("a_b-c", "a_bc", r"\w"),          # seul `\w` explique le souligné conservé
     ("a-b-c", "abc", r"[A-Za-z]"),     # la classe la PLUS STRICTE qui explique gagne
     ("FAC-TEST-001", "XYZ", ""),
+    ("01/01/2024", "", ""),            # ⚠️ AUCUNE lettre dans « 01/01/2024 » : sans la garde, ce
+    ("AAAAAAAA", "", ""),              #   cas « prouvait » [A-Za-z] à tort (cf. test dédié).
 ])
 def test_la_classe_conservee_doit_etre_PROUVEE_par_reconstruction(ecrit, retenu, attendu):
     """L'ordre des classes va du plus strict au plus large, et c'est délibéré.
@@ -216,6 +218,29 @@ def test_la_classe_conservee_doit_etre_PROUVEE_par_reconstruction(ecrit, retenu,
     Rendre la classe la plus large serait vrai et inutile.
     """
     assert H._classe_conservee(ecrit, retenu) == attendu
+
+
+def test_un_retenu_VIDE_ne_prouve_JAMAIS_de_classe(sidecar):
+    """⚠️ Le défaut RÉEL, mesuré en production (campagne 18, 2026-08-06, champ `date_debut` de
+    `/retenue_garantie`) — pas une hypothèse.
+
+    Un champ dont le filtre de saisie vide TOUT (`retenu == ''`) rendait `[A-Za-z]` « prouvé » dès
+    lors que l'écrit ne contenait aucune lettre (`01/01/2024` n'en a aucune : filtrer sur les
+    lettres redonne bien `''`, trivialement — n'importe quelle classe absente de l'écrit passait
+    ce test). Le résolveur déterministe apprenait donc une classe INVENTÉE, puis synthétisait sa
+    valeur de rechange dans cette classe (`AAAAAAAA`) — qui, à son tour, sans le moindre chiffre,
+    « prouvait » `\\d` au run suivant : la règle apprise ne convergeait jamais, elle tournait.
+
+    Le champ `date_debut` était pourtant correctement typé `date` dans l'annuaire ; c'est cette
+    classe apprise à tort qui écrasait la vraie date que `valeur_conforme.valeur_pour()` aurait
+    autrement rendue (§7, `_valeur_pour_classe` prime sur `_premier_candidat` dès qu'une classe
+    apprise existe).
+    """
+    page = _FakePage([""])   # le champ a tout perdu : c'est EXACTEMENT le cas réel mesuré
+    with pytest.raises(DonneeRefuseeError):
+        H._verifier_valeur_retenue(page, "date_debut", "01/01/2024")
+    ligne = _lignes(sidecar)[0]
+    assert ligne["valeur_contrainte"] == ""   # jamais `[A-Za-z]` — aucune classe n'est prouvée
 
 
 def test_un_reformatage_cosmetique_n_apprend_RIEN(sidecar):

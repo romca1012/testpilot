@@ -36,6 +36,7 @@ Comme Behave charge ``environment.py`` AVANT les modules de steps, l'alias est e
 import os
 import sys
 import types
+from pathlib import Path
 
 from behave import fixture, use_fixture
 from dotenv import load_dotenv
@@ -203,8 +204,52 @@ def before_scenario(context, scenario):
     _capturer_reponse_formulaire(context)
 
 
+def _capturer_ecran(context, scenario) -> None:
+    """Capture l'état visuel de la page à la fin du scénario, TOUS statuts confondus (§A du plan
+    « fiabiliser le verdict automatique », 2026-08-06).
+
+    ⚠️ Même discipline que la pièce jointe qu'un humain ajoute en saisie manuelle
+    (`AddResultDialog.vue`) : une preuve visuelle doit accompagner CHAQUE résultat automatique, pas
+    seulement les échecs — un utilisateur qui vérifie un « passed » doit pouvoir constater ce que
+    la machine a réellement vu, pas seulement la croire sur parole.
+
+    Écrit en RELATIF (`screenshots/`) : le process behave tourne avec `run_dir` en cwd
+    (`BehaveRunner._run`, `cwd=str(run_dir)`), et c'est `_archiver` qui rapatrie ce dossier vers
+    les artefacts de l'exécution avant que `run_dir` ne soit détruit.
+
+    Pas de capture en `--dry-run` : aucune page n'a réellement été parcourue (les steps sont
+    `skipped`), une capture y serait une image d'`about:blank` sans aucune valeur de preuve.
+
+    ⚠️ **`full_page=True`, et ce n'est pas cosmétique.** Trouvé en dogfooding réel (2026-08-06,
+    campagne 18) : deux captures de la même page fermée sur les premiers champs, prises PAR
+    DÉFAUT (viewport seul), se ressemblaient au premier coup d'œil alors que les deux échecs
+    n'avaient rien à voir — le formulaire n'avait simplement pas encore défilé au moment de la
+    capture. La page entière montre toujours l'endroit réel du problème, même hors du viewport.
+
+    Best-effort ABSOLU (même principe que `_capturer_reponse_formulaire`) : un souci de capture ne
+    doit jamais faire échouer ou masquer le verdict réel du scénario.
+    """
+    if getattr(context.config, "dry_run", False):
+        return
+    page = getattr(context, "page", None)
+    if page is None:
+        return
+    try:
+        dossier = Path("screenshots")
+        dossier.mkdir(exist_ok=True)
+        n = getattr(context, "_indice_scenario", 0) + 1
+        context._indice_scenario = n
+        statut = scenario.status.name if getattr(scenario, "status", None) else "inconnu"
+        page.screenshot(path=str(dossier / f"{n:02d}-{statut}.png"), full_page=True)
+    except Exception as exc:
+        print(f"[capture] écran non capturé pour le scénario « {scenario.name} » : {exc}")
+
+
 def after_scenario(context, scenario):
-    """Supprime UNIQUEMENT les enregistrements produits par le test (jamais les prérequis)."""
+    """Capture une preuve visuelle, PUIS supprime UNIQUEMENT les enregistrements produits par le
+    test (jamais les prérequis)."""
+    _capturer_ecran(context, scenario)
+
     odoo = getattr(context, "odoo", None)
     if odoo is None:
         return

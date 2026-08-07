@@ -9,26 +9,35 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import time
+import uuid
 from pathlib import Path
 
 from testpilot import config
-from testpilot.api.services import repair_service
+from testpilot.api.services import attachment_service, repair_service
 from testpilot.connectors.runtime_env import ConnexionIncomplete, cible_de, verifier_connexion
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.execution.executor import Executor
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import (
     CaseRepo,
+    CostRepo,
     ExecutionRepo,
     ProjectRepo,
     RepairRepo,
+    ResultRepo,
     ReviewRepo,
     now_iso,
 )
 from testpilot.verdict import defect_origin as do
-from testpilot.verdict import review_gate
-from testpilot.verdict.status import EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE, derive_verdict
+from testpilot.verdict import explication, review_gate
+from testpilot.verdict.status import (
+    CaseVerdict,
+    EXEC_TECHNICAL_ERROR,
+    FUNC_INDETERMINE,
+    derive_verdict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +168,7 @@ def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str
     outcome = Executor(runner).execute(module_name)
     duration = time.perf_counter() - started
     verdict = derive_verdict(outcome)
-    _persist(conn, execution_id, case_id, verdict, outcome, duration)
+    _persist(conn, execution_id, case_id, verdict, outcome, duration, module_name)
     # Attaché ici plutôt que porté par ExecutionOutcome : le pilier execution ne connaît pas la
     # base, et n'a pas à la connaître.
     outcome.execution_id = execution_id
@@ -206,7 +215,71 @@ def _connector_for(conn, case_id: int):
         return None
 
 
-def _persist(conn, execution_id, case_id, verdict, outcome, duration) -> None:
+def _expliquer(conn, execution_id: int, verdict: CaseVerdict, module_name: str) -> str:
+    """Le commentaire IA du verdict (§A du plan « fiabiliser le verdict automatique »,
+    2026-08-06) — TOUS statuts, décision explicite du porteur. Best-effort : un souci ici ne doit
+    JAMAIS empêcher la clôture de l'exécution, qui doit toujours s'écrire.
+
+    Coût tracé sous sa PROPRE phase (`"explication"`), hors du budget §9 (qui ne mesure que la
+    CRÉATION d'un cas, pas ses exécutions répétées) — décision explicite du porteur.
+    """
+    try:
+        texte, cout = explication.propose_explication(verdict, module_name=module_name)
+    except Exception:
+        logger.warning("[explication] génération impossible pour l'exécution %s", execution_id,
+                       exc_info=True)
+        return ""
+    if cout:
+        try:
+            CostRepo(conn).add_entry(phase="explication", model=config.MODEL_FAST,
+                                     cost_usd=cout, source=config.COST_SOURCE,
+                                     execution_id=execution_id)
+        except Exception:
+            logger.warning("[explication] coût de %s USD NON enregistré (exécution %s)",
+                           cout, execution_id, exc_info=True)
+    return texte
+
+
+def _joindre_captures(conn, execution_id: int, result_id: int | None) -> None:
+    """Rattache au résultat les captures d'écran archivées pour cette exécution (§A) — même
+    dossier/table que les pièces jointes qu'un humain ajoute en saisie manuelle
+    (`attachment_service`), pour que l'écran les affiche sans code neuf côté lecture.
+
+    Best-effort ABSOLU : une capture manquante ou non copiable ne doit jamais faire tomber une
+    exécution déjà persistée. `result_id` est `None` hors campagne (le registre ne s'applique
+    pas) — rien à faire, silencieusement.
+    """
+    if result_id is None:
+        return
+    source_dir = dossier_artefacts(execution_id) / "screenshots"
+    if not source_dir.is_dir():
+        return
+    try:
+        cible_dir = attachment_service.dossier(result_id)
+        cible_dir.mkdir(parents=True, exist_ok=True)
+        repo = ResultRepo(conn)
+        # Même plafond que la saisie manuelle (`attachment_service.enregistrer`) : un cas à
+        # beaucoup de scénarios ne doit pas dépasser silencieusement la limite d'un résultat.
+        deja = len(repo.pieces_jointes(result_id))
+        for fichier in sorted(source_dir.glob("*.png")):
+            if deja >= config.ATTACHMENT_MAX_PER_RESULT:
+                logger.info("[capture] plafond de %s pièces jointes atteint pour le résultat %s"
+                           " — captures restantes non jointes", config.ATTACHMENT_MAX_PER_RESULT,
+                           result_id)
+                break
+            stored_name = f"{uuid.uuid4().hex}.png"
+            shutil.copy2(fichier, cible_dir / stored_name)
+            repo.ajouter_piece_jointe(
+                result_id, filename=fichier.name, stored_name=stored_name,
+                dossier=str(cible_dir), content_type="image/png",
+                size_bytes=fichier.stat().st_size)
+            deja += 1
+    except OSError:
+        logger.warning("[capture] pièce(s) jointe(s) non rattachée(s) au résultat %s", result_id,
+                       exc_info=True)
+
+
+def _persist(conn, execution_id, case_id, verdict, outcome, duration, module_name: str = "") -> None:
     execs = ExecutionRepo(conn)
     for s in verdict.scenarios:
         execs.add_scenario_result(
@@ -233,13 +306,23 @@ def _persist(conn, execution_id, case_id, verdict, outcome, duration) -> None:
     # avant l'exécution) → liste vide.
     fallbacks = outcome.real_run.field_fallbacks if outcome.real_run is not None else []
 
-    execs.finalize(
+    # ⚠️ Le commentaire (§A) est généré ICI, AVANT `finalize` : le registre écrit ses lignes une
+    # fois pour toutes (§7, `ResultRepo`), donc le texte doit être prêt AU MOMENT de l'INSERT — une
+    # UPDATE après coup romprait l'invariant « rien n'est jamais modifié ».
+    commentaire = _expliquer(conn, execution_id, verdict, module_name)
+
+    result_id = execs.finalize(
         execution_id, execution_status=verdict.execution_status,
         functional_status=verdict.functional_status,
         scenarios_total=len(verdict.scenarios),
         scenarios_passed=verdict.scenarios_passed, scenarios_failed=verdict.scenarios_failed,
         cost_usd=0.0, iterations=0, duration_seconds=duration,
-        field_fallbacks=json.dumps(fallbacks, ensure_ascii=False) if fallbacks else "")
+        field_fallbacks=json.dumps(fallbacks, ensure_ascii=False) if fallbacks else "",
+        comment=commentaire)
+    # Les captures, elles, peuvent s'attacher APRÈS coup sans rompre l'invariant : elles vivent
+    # dans `result_attachment`, une table à part (même exception déjà documentée pour
+    # `attachments_path`, cf. `ResultRepo.ajouter_piece_jointe`).
+    _joindre_captures(conn, execution_id, result_id)
 
     cases = CaseRepo(conn)
     cases.update_last_outcome(case_id, execution_status=verdict.execution_status,
@@ -247,13 +330,21 @@ def _persist(conn, execution_id, case_id, verdict, outcome, duration) -> None:
 
 
 def _ecrire_erreur(conn, execution_id: int, case_id: int, message: str) -> bool:
-    """Écrit le verdict d'échec. Rend False si l'écriture n'a PAS abouti — jamais d'exception."""
+    """Écrit le verdict d'échec. Rend False si l'écriture n'a PAS abouti — jamais d'exception.
+
+    ⚠️ Pas d'appel IA ici (contrairement à `_persist`) : un plantage AVANT tout scénario n'a ni
+    verdict ni scénario à expliquer, et c'est un chemin rare — un commentaire fixe, honnête, vaut
+    mieux qu'un appel IA de plus sur un message d'exception déjà technique par nature.
+    """
     try:
         ExecutionRepo(conn).finalize(
             execution_id, execution_status=EXEC_TECHNICAL_ERROR,
             functional_status=FUNC_INDETERMINE, scenarios_total=0, scenarios_passed=0,
             scenarios_failed=0, cost_usd=0.0, iterations=0, duration_seconds=0.0,
-            error_message=(message or "")[:1000])
+            error_message=(message or "")[:1000],
+            comment="Le test n'a pas pu s'exécuter techniquement avant même de commencer à "
+                    "vérifier l'application — rien n'a donc pu être constaté sur son "
+                    "fonctionnement.")
         CaseRepo(conn).update_last_outcome(
             case_id, execution_status=EXEC_TECHNICAL_ERROR,
             functional_status=FUNC_INDETERMINE, executed_at=now_iso())

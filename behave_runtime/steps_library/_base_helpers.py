@@ -636,7 +636,20 @@ def _classe_conservee(ecrit, retenu) -> str:
     l'écrit redonne `001`, donc `\\d` est la règle. Si aucune classe ne reconstruit le retenu, on
     rend `''` : la valeur est noircie, mais **aucune contrainte n'est affirmée**. Deviner ici
     ferait dire à l'annuaire une règle que l'application n'a jamais énoncée.
+
+    ⚠️ **`retenu == ''` est un cas DÉGÉNÉRÉ, pas une preuve — trouvé en run réel** (campagne 18,
+    2026-08-06, champ `date_debut` de `/retenue_garantie`). Quand RIEN n'est retenu, filtrer
+    `ecrit` sur N'IMPORTE QUELLE classe absente de `ecrit` redonne trivialement `''` : écrire
+    « 01/01/2024 » (aucune lettre) « prouvait » `[A-Za-z]`, et le résolveur en déduisait une
+    valeur de rechange faite uniquement de lettres (`AAAAAAAA`) — qui, elle aussi sans le moindre
+    chiffre, « prouvait » ensuite `\\d` au tour suivant. Un champ **réellement vide en sortie**
+    (masque de date, `<input type="date">` non éditable au clavier…) apprenait donc une classe
+    inventée à chaque tentative, sans jamais converger — l'« absence de signal prise pour un
+    signal positif » que ce projet traque partout ailleurs, glissée ici. Un retenu vide ne prouve
+    RIEN sur ce qui a été filtré : on refuse la classe plutôt que d'en affirmer une par accident.
     """
+    if not str(retenu).strip():
+        return ""
     for motif, garde in _CLASSES_FILTRE:
         if "".join(c for c in str(ecrit) if garde(c)) == str(retenu):
             return motif

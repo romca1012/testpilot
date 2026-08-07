@@ -1332,11 +1332,20 @@ class ExecutionRepo:
     def finalize(self, execution_id: int, *, execution_status: str, functional_status: str,
                  scenarios_total: int, scenarios_passed: int, scenarios_failed: int,
                  cost_usd: float, iterations: int, duration_seconds: float,
-                 field_fallbacks: str = "", error_message: str = "") -> None:
-        """Clôt une exécution avec son verdict.
+                 field_fallbacks: str = "", error_message: str = "",
+                 comment: str = "") -> int | None:
+        """Clôt une exécution avec son verdict. Rend l'id de la ligne du registre (§A du plan
+        « fiabiliser le verdict automatique », 2026-08-06) — `None` si l'exécution n'a pas sa
+        place au registre (hors campagne).
 
         `error_message` : raison d'un plantage AVANT tout scénario (migration 11) — sans elle,
         l'écran affiche « erreur technique » sans dire pourquoi.
+
+        `comment` : le commentaire en français clair qui accompagne ce verdict (§A). ⚠️ Écrit ICI,
+        à la CRÉATION de la ligne du registre — jamais par une UPDATE ultérieure : le registre
+        n'autorise aucune modification après coup (`ResultRepo`, §7 : « rien n'est jamais modifié
+        ni supprimé »). L'appelant doit donc avoir généré le commentaire AVANT d'appeler
+        `finalize` — cf. `run_service._persist`.
 
         ⚠️ `report_json_path`/`report_html_path` ont été **supprimés** (migration 7) : personne ne
         les alimentait ni ne les lisait. Le rapport est **reconstruit à la demande** depuis la
@@ -1360,8 +1369,9 @@ class ExecutionRepo:
         self.conn.commit()
         # Le compte de service est résolu MAINTENANT et recopié dans la ligne : changer le réglage
         # plus tard ne doit pas réécrire l'auteur des résultats déjà produits.
-        ResultRepo(self.conn).enregistrer_execution(
-            execution_id, created_by=SettingRepo(self.conn).valeur("service_account_name"))
+        return ResultRepo(self.conn).enregistrer_execution(
+            execution_id, created_by=SettingRepo(self.conn).valeur("service_account_name"),
+            comment=comment)
 
     def get(self, execution_id: int) -> dict | None:
         row = self.conn.execute("SELECT * FROM execution WHERE id=?", (execution_id,)).fetchone()
@@ -1792,7 +1802,8 @@ class ResultRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def enregistrer_execution(self, execution_id: int, *, created_by: str = "") -> int | None:
+    def enregistrer_execution(self, execution_id: int, *, created_by: str = "",
+                              comment: str = "") -> int | None:
         """Inscrit au registre l'exécution qui vient de se clore. Rend `None` si elle n'a pas sa
         place (hors campagne, ou déjà inscrite).
 
@@ -1801,8 +1812,11 @@ class ResultRepo:
         n'existe pas ; la ligne vivrait dans `execution`, comme avant. C'est aussi ce qui garde
         `quality_summary` (qui compte les `execution`) intact.
 
-        `created_by` est **recopié à l'écriture**, jamais résolu à la lecture : changer le compte
-        de service plus tard ne doit pas réécrire l'histoire.
+        `created_by` et `comment` sont **recopiés à l'écriture**, jamais résolus/modifiés à la
+        lecture : changer le compte de service plus tard, ou reformuler un commentaire après
+        coup, ne doit pas réécrire l'histoire (§7 : rien n'est jamais modifié ni supprimé).
+        `comment` (§A, 2026-08-06) : l'explication en français clair du verdict — générée par
+        l'appelant AVANT cet appel (`run_service._persist`), jamais ici.
         """
         ex = self.conn.execute(
             "SELECT id, run_id, test_case_id FROM execution WHERE id=?", (execution_id,)).fetchone()
@@ -1815,9 +1829,9 @@ class ResultRepo:
         cur = self.conn.execute(
             "INSERT INTO test_result (run_id, case_id, mode, execution_id, statut_manuel,"
             " comment, created_by, attachments_path, created_at)"
-            " VALUES (?,?,?, ?, '', '', ?, '', ?)",
-            (ex["run_id"], ex["test_case_id"], MODE_AUTOMATIQUE, execution_id, created_by,
-             now_iso()))
+            " VALUES (?,?,?, ?, '', ?, ?, '', ?)",
+            (ex["run_id"], ex["test_case_id"], MODE_AUTOMATIQUE, execution_id, comment,
+             created_by, now_iso()))
         self.conn.commit()
         return int(cur.lastrowid)
 
