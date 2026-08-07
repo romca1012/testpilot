@@ -804,6 +804,17 @@ class CaseRepo:
             cur.execute(f"DELETE FROM repair_attempt  WHERE execution_id IN ({exec_sub})", (case_id,))
             cur.execute(f"DELETE FROM cost_ledger      WHERE execution_id IN ({exec_sub})"
                         "    OR test_case_id = ?", (case_id, case_id))
+            # ⚠️ Le REGISTRE des résultats (migration 25, 2026-08-06) — oublié à sa création,
+            # trouvé le 2026-08-07 sur une VRAIE purge (« FOREIGN KEY constraint failed » à la
+            # suppression finale de `test_case`, exactement le même défaut déjà payé deux fois
+            # pour `cost_ledger` et `test_run_case`, voir la note plus bas). `test_result` porte
+            # une FK vers `execution` : il DOIT partir AVANT elle, pas après — sinon la ligne de
+            # registre pointerait sur une exécution déjà détruite. Ses pièces jointes
+            # (`result_attachment`) partent d'abord, elles référencent `test_result`.
+            cur.execute("DELETE FROM result_attachment WHERE result_id IN"
+                        " (SELECT id FROM test_result WHERE case_id=?)", (case_id,))
+            cur.execute("DELETE FROM test_result       WHERE case_id=?", (case_id,))
+            cur.execute("DELETE FROM run_case_assignment WHERE case_id=?", (case_id,))
             cur.execute("DELETE FROM execution         WHERE test_case_id=?", (case_id,))
             # ⚠️ L'appartenance à une CAMPAGNE doit partir aussi (migration 15). Oubliée à
             # l'ajout de `test_run_case`, elle rendait tout cas inclus dans un run
