@@ -229,6 +229,15 @@ class BehaveRunner:
             ):
                 if source.exists():
                     shutil.copy2(source, self.artifacts_dir / cible)
+            # Captures d'ecran par scenario (dossier "screenshots/" ecrit par environment.py,
+            # cf. son docstring) : pas de fichier fixe (un par scenario), donc copie de dossier
+            # plutot qu'une entree de plus dans la liste ci-dessus.
+            captures = run_dir / "screenshots"
+            if captures.is_dir():
+                cible_captures = self.artifacts_dir / "screenshots"
+                cible_captures.mkdir(exist_ok=True)
+                for fichier in captures.glob("*.png"):
+                    shutil.copy2(fichier, cible_captures / fichier.name)
         except OSError:
             logger.warning("[artefacts] archivage impossible vers %s — le run, lui, est intact",
                            self.artifacts_dir, exc_info=True)
