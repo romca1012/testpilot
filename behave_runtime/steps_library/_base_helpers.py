@@ -322,6 +322,28 @@ def click_button(page, label):
     verifier_soumission_non_bloquee(page)
 
 
+def _marquer(page, attribut: str, nom: str) -> None:
+    """Ajoute `nom` à un ensemble porté par la PAGE elle-même (une page = un scénario, cycle de
+    vie posé par `environment.py`) — aucun risque de fuite d'un scénario à l'autre."""
+    ensemble = getattr(page, attribut, None)
+    if ensemble is None:
+        ensemble = set()
+        setattr(page, attribut, ensemble)
+    ensemble.add(nom)
+
+
+def _champs_vides_voulus(page) -> set:
+    """Les champs qu'UN SCÉNARIO a laissés vides EXPRÈS (`je laisse le champ … vide`) — c'est
+    précisément ce que le test veut voir refusé, jamais une preuve de donnée de test fautive."""
+    return getattr(page, "_tp_champs_vides_intentionnels", None) or set()
+
+
+def _champs_fichiers_deja_remplis(page) -> set:
+    """Les champs fichier auxquels on a réellement joint un fichier AVANT le clic — voir
+    `verifier_soumission_non_bloquee` pour pourquoi ça compte."""
+    return getattr(page, "_tp_champs_fichiers_remplis", None) or set()
+
+
 def verifier_soumission_non_bloquee(page) -> None:
     """Le navigateur a-t-il REFUSÉ d'envoyer le formulaire ? — le contrôle qui empêche le faux
     verdict au lieu de l'expliquer après coup.
@@ -347,6 +369,21 @@ def verifier_soumission_non_bloquee(page) -> None:
     onglet, dérouler une section. Un champ invalide ailleurs dans la page ne doit pas faire échouer
     un clic qui n'a rien à voir : on ne regarde que si un formulaire s'est **réellement opposé** à
     son propre envoi, et on se tait dans tous les autres cas.
+
+    ⚠️ **Deux exceptions, mesurées le 2026-08-07 sur `/retenue_garantie` (cas 124 et 125).**
+    Un scénario NÉGATIF (« le formulaire refuse une demande sans tel document ») laisse un champ
+    vide EXPRÈS via `je laisse le champ … vide` — c'est justement ce que le test veut voir refusé,
+    jamais une preuve que SON jeu de données est fautif. Sans exclusion, ce contrôle levait
+    `DonneeRefuseeError` sur le champ que le scénario ciblait lui-même, empêchant l'assertion
+    `Alors une erreur de validation est affichée` de jamais se prononcer — aucun de ces scénarios
+    négatifs n'aurait jamais pu conclure « conforme ».
+    Deuxième exception, sur le MÊME run : `copy_invoice_part` (un champ « ajouter des fichiers »)
+    portait bien un fichier valide juste avant le clic — c'est le clic LUI-MÊME qui l'a vidé (JS du
+    portail, mesuré en direct : `filesCount` passe de 1 à 0 entre le clic et cette lecture). Ce
+    n'est pas notre donnée qui est en cause, c'est un effet de bord de l'application sur un champ
+    qu'on avait pourtant correctement rempli.
+    Les deux sont donc EXCLUS de ce qui peut lever un refus ici — l'assertion `Then` du scénario
+    reste seule juge de ce qui s'est réellement passé.
     """
     try:
         invalides = page.evaluate("""() => {
@@ -380,6 +417,14 @@ def verifier_soumission_non_bloquee(page) -> None:
         return  # un contrôle de sûreté ne fait jamais tomber un scénario par lui-même
     if not invalides:
         return
+
+    vides_voulus = _champs_vides_voulus(page)
+    remplis_avant = _champs_fichiers_deja_remplis(page)
+    invalides = [c for c in invalides
+                if c["nom"] not in vides_voulus and c["nom"] not in remplis_avant]
+    if not invalides:
+        return  # rien à signaler : soit le champ que LE SCÉNARIO teste lui-même, soit un champ
+                 # qu'on avait bien rempli avant le clic (voir docstring, 2026-08-07)
 
     manquants = [c["nom"] for c in invalides if c["manquant"]]
     details = " · ".join(
@@ -792,6 +837,9 @@ def attach_file(page, name, value=""):
             f"peut rien y téléverser. Emploie plutôt :\n    {equivalent}")
 
     cible.set_input_files(str(chemin))
+    # Mémorisé pour `verifier_soumission_non_bloquee` (2026-08-07) : si CE champ redevient
+    # invalide après un clic, ce n'est pas notre donnée qui est en cause — on l'avait bien rempli.
+    _marquer(page, "_tp_champs_fichiers_remplis", name)
 
 
 def leave_field_empty(page, name):
@@ -807,6 +855,9 @@ def leave_field_empty(page, name):
     laisser une erreur de bas niveau, qu'on diagnostiquerait à tort en « champ introuvable ».
     """
     name = resolve_field_name(page, name)
+    # Mémorisé pour `verifier_soumission_non_bloquee` (2026-08-07) : CE champ vide est le sujet
+    # même du test, jamais une preuve que le jeu de données du scénario est fautif.
+    _marquer(page, "_tp_champs_vides_intentionnels", name)
     page.wait_for_selector(f'[name="{name}"]', timeout=10000, state="attached")
     el = page.locator(f'[name="{name}"]').first
     tag = el.evaluate("el => el.tagName.toLowerCase()")
