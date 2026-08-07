@@ -95,7 +95,7 @@ def unique_feature_slug(conn, base: str) -> str:
 
 
 def start_generation(conn, module_id: int, *, spec_content: str, title: str = "",
-                     author: str = "") -> tuple[str, dict]:
+                     author: str = "", group_id: int | None = None) -> tuple[str, dict]:
     """Valide la demande et prépare le job. Renvoie (job_id, paramètres de la tâche de fond).
 
     ⚠️ Aucune vérification de titre/slug ICI : avec un seul cas, le titre à créer était connu
@@ -103,12 +103,24 @@ def start_generation(conn, module_id: int, *, spec_content: str, title: str = ""
     les titres RÉELS ne sont connus qu'APRÈS l'appel de découpage — l'unicité (par Section, via
     `CaseRepo.ensure_title_free`) et le slug (`unique_feature_slug`) se vérifient donc à la
     persistance de CHAQUE cas (`resume_generation`), pas ici.
+
+    `group_id` (étape 3bis, 2026-08-07) : la Section choisie AVANT la génération, pour TOUS les
+    cas qui en sortiront — obligatoire côté écran, comme `module_id`. Vérifiée ICI, avant tout
+    appel LLM (même raison que `verifier_connexion` juste après) : si elle n'existe pas ou
+    n'appartient pas à ce module, autant le dire avant de payer quoi que ce soit plutôt qu'à la
+    toute fin. `None` reste toléré (appel direct à l'API, hors écran) — repli sur l'enveloppe
+    automatique, jamais un job qui refuse de démarrer pour autant.
     """
     module = ModuleRepo(conn).get(module_id)
     if module is None:
         raise GenerationError("not_found", f"module {module_id} introuvable")
     if not (spec_content or "").strip():
         raise GenerationError("invalid_spec", "la spécification est vide")
+    if group_id is not None:
+        from testpilot.store.repositories import CaseGroupRepo
+        groupe = CaseGroupRepo(conn).get(group_id)
+        if groupe is None or groupe["module_id"] != module_id:
+            raise GenerationError("not_found", f"section {group_id} introuvable dans ce module")
 
     # ⚠️ La génération OBSERVE l'application (dry-run, smoke-check) : sans connexion complète, elle
     # observerait l'instance par défaut de la machine et écrirait un test taillé pour elle
@@ -125,7 +137,7 @@ def start_generation(conn, module_id: int, *, spec_content: str, title: str = ""
     job_id = uuid.uuid4().hex
     _JOBS[job_id] = {"status": "running", "case_ids": [], "error": "", "module_id": module_id}
     return job_id, {"module_id": module_id, "title": label, "spec_content": spec_content,
-                    "author": author}
+                    "author": author, "group_id": group_id}
 
 
 def _record_generation_cost(conn, *, case_id: int | None, analysis_usd: float = 0.0,
@@ -197,21 +209,23 @@ def _record_generation_cost(conn, *, case_id: int | None, analysis_usd: float = 
 
 
 def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str,
-                   author: str) -> None:
+                   author: str, group_id: int | None = None) -> None:
     """PASSE 4a — analyse la spec, la DÉCOUPE en user stories + cas planifiés (§9a), rédige le
     DOCUMENT MÉTIER de chacun, puis **s'arrête**.
 
     ⚠️ Ce job ne va PAS jusqu'au bout : il se met en `awaiting_metier` et attend qu'un humain
-    valide (ou corrige, ou réduise) l'ensemble des Sections proposées. `resume_generation` écrit
-    ensuite le Gherkin de chaque cas retenu **depuis ce document validé**. C'est la décision `0022`
-    n°5, étendue à N cas par le §9 : on ne paie plus la passe technique (la plus chère) pour une
+    valide (ou corrige, ou réduise) l'ensemble des cas proposés, à PLAT, sans regroupement imposé.
+    `resume_generation` écrit ensuite le Gherkin de chaque cas retenu **depuis ce document
+    validé**, tous dans la MÊME Section — celle déjà choisie AVANT cette passe (`group_id`, étape
+    3bis, 2026-08-07). C'est la décision `0022` n°5, étendue à N cas par le §9 : on ne paie plus
+    la passe technique (la plus chère) pour une
     intention fausse — ni pour un cas que l'humain aurait de toute façon supprimé à la validation.
 
-    Rien n'est persisté à ce stade — aucune Section ni aucun cas n'existe encore. Un cas qui
-    n'aurait que son métier serait une coquille sans Gherkin, précisément ce que `0006` refuse. Le
-    brouillon vit donc dans le job, en mémoire : si le serveur redémarre avant validation, le
-    découpage et les passes métier sont à refaire, et c'est le prix assumé pour ne jamais salir le
-    référentiel.
+    Rien n'est persisté à ce stade — aucun cas n'existe encore (la Section CIBLE, elle, existe déjà :
+    choisie ou créée AVANT de lancer cette passe). Un cas qui n'aurait que son métier serait une
+    coquille sans Gherkin, précisément ce que `0006` refuse. Le brouillon vit donc dans le job, en
+    mémoire : si le serveur redémarre avant validation, le découpage et les passes métier sont à
+    refaire, et c'est le prix assumé pour ne jamais salir le référentiel.
     """
     from testpilot.analysis.spec_analyzer import SpecAnalyzer
     from testpilot.generation.decoupage import propose_decoupage
@@ -242,9 +256,12 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
             return
 
         metier_tracker = CostTracker()
-        sections: list[dict] = []
+        # Liste PLATE (étape 3, 2026-08-07) : le découpage par user story reste un outil INTERNE
+        # de l'IA (il l'aide à couvrir la spec sans redondance, §9a) mais ne crée plus AUCUN
+        # conteneur — chaque cas rédigé ne fait qu'EMPORTER le nom de sa story, en simple repère
+        # de lecture (`user_story`), jamais une Section imposée.
+        cases: list[dict] = []
         for story in stories:
-            cas_rediges = []
             for brief in story.cases:
                 draft = propose_metier(plan, brief=brief.brief, cost_tracker=metier_tracker)
                 if not draft.complete:
@@ -264,8 +281,7 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
                               f"{story.user_story} ») est incomplet — relancez la génération",
                         cost_usd=cout)
                     return
-                cas_rediges.append(draft.as_dict())
-            sections.append({"title": story.user_story, "cases": cas_rediges})
+                cases.append({**draft.as_dict(), "user_story": story.user_story})
 
         total_cost = (analysis_tracker.total_cost + decoupage_tracker.total_cost
                      + metier_tracker.total_cost)
@@ -275,12 +291,12 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
 
         _JOBS[job_id].update(
             status="awaiting_metier",
-            sections=sections,
+            cases=cases,
             # Contexte de reprise : `resume_generation` ne refait ni l'analyse ni le découpage ni
             # les passes métier — seule l'analyse est rejouée (elle alimente l'agent en matière
             # technique qu'un `TestPlan` ne peut pas porter d'un job à l'autre, non sérialisable).
             _resume={"module_id": module_id, "title": title, "author": author,
-                     "spec_content": spec_content},
+                     "spec_content": spec_content, "group_id": group_id},
             cost_usd=total_cost)
     except Exception as exc:  # jamais laisser un job « en cours » sur un plantage
         logger.exception("[generation] job %s (découpage + passe métier) en échec : %s",
@@ -290,13 +306,14 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
         conn.close()
 
 
-def validate_metier(job_id: str, sections: list[dict]) -> dict:
-    """Enregistre les Sections VALIDÉES (éventuellement corrigées, ou réduites — un cas de trop
-    peut être supprimé ici) et prépare la reprise.
+def validate_metier(job_id: str, cases: list[dict]) -> dict:
+    """Enregistre les cas VALIDÉS (éventuellement corrigés ou réduits) et prépare la reprise.
 
-    `sections` — `[{"title": str, "cases": [{"title", "preconditions", "steps",
-    "expected_result"}, ...]}, ...]`. Une Section sans aucun cas retenu est éliminée : elle ne
-    créera pas de Section vide (§9b, "aucune trace des cas retirés ne doit apparaître").
+    `cases` — liste PLATE (étape 3, 2026-08-07) : `[{"title", "preconditions", "steps",
+    "expected_result", "user_story"}, ...]`. Pas de `group_id` par cas ici (étape 3bis) : la
+    Section est déjà fixée pour TOUT le job, choisie avant même la génération
+    (`job["_resume"]["group_id"]`) — cette fonction n'a rien à en faire, elle est juste
+    transportée telle quelle jusqu'à `resume_generation` via `_resume`.
     """
     job = _JOBS.get(job_id)
     if job is None:
@@ -306,35 +323,29 @@ def validate_metier(job_id: str, sections: list[dict]) -> dict:
                               f"ce job n'attend pas de validation métier (état : {job['status']})")
 
     validated: list[dict] = []
-    for section in sections:
-        titre_section = str((section or {}).get("title", "")).strip()
-        if not titre_section:
-            raise GenerationError("invalid_metier",
-                                  "chaque section doit porter un titre (le nom de la user story)")
-        cas_valides = []
-        for c in ((section or {}).get("cases") or []):
-            steps = [str(s).strip() for s in (c.get("steps") or []) if str(s or "").strip()]
-            if not (str(c.get("title", "")).strip() and steps
-                    and str(c.get("expected_result", "")).strip()):
-                raise GenerationError(
-                    "invalid_metier",
-                    f"section « {titre_section} » : titre, étapes et résultat attendu sont "
-                    "obligatoires pour chaque cas")
-            cas_valides.append({
-                "title": str(c["title"]).strip(),
-                "preconditions": str(c.get("preconditions", "") or "").strip(),
-                "steps": steps,
-                "expected_result": str(c["expected_result"]).strip(),
-            })
-        if cas_valides:  # une section vidée de tous ses cas ne crée pas de Section fantôme
-            validated.append({"title": titre_section, "cases": cas_valides})
+    for c in cases:
+        c = c or {}
+        steps = [str(s).strip() for s in (c.get("steps") or []) if str(s or "").strip()]
+        if not (str(c.get("title", "")).strip() and steps
+                and str(c.get("expected_result", "")).strip()):
+            raise GenerationError(
+                "invalid_metier",
+                f"« {c.get('title') or 'un cas'} » : titre, étapes et résultat attendu sont "
+                "obligatoires pour chaque cas")
+        validated.append({
+            "title": str(c["title"]).strip(),
+            "preconditions": str(c.get("preconditions", "") or "").strip(),
+            "steps": steps,
+            "expected_result": str(c["expected_result"]).strip(),
+            "user_story": str(c.get("user_story", "") or "").strip(),
+        })
 
     if not validated:
         raise GenerationError("invalid_metier",
                               "aucun cas retenu — il ne reste rien à générer")
 
-    job.update(status="running", sections=validated)
-    return {**job["_resume"], "sections": validated}
+    job.update(status="running", cases=validated)
+    return {**job["_resume"], "cases": validated}
 
 
 def _auto_approuver(conn, case_id: int, version_id: int | None) -> None:
@@ -475,10 +486,18 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
 
 
 def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: str,
-                      author: str, sections: list[dict]) -> None:
-    """PASSE 4b — pour CHAQUE Section validée (une par user story), crée la `case_group` puis
-    écrit le Gherkin de chacun de ses cas retenus. Répète le pipeline mono-cas (`propose_metier`
-    déjà passé, `GenerationAgent.generate()`) une fois par cas planifié — rien n'est réinventé.
+                      author: str, cases: list[dict], group_id: int | None = None) -> None:
+    """PASSE 4b — pour CHAQUE cas validé, écrit son Gherkin dans LA MÊME Section — celle que
+    l'utilisateur a choisie AVANT de lancer la génération (`group_id`, étape 3bis, 2026-08-07),
+    pas cas par cas. Répète le pipeline mono-cas (`propose_metier` déjà passé,
+    `GenerationAgent.generate()`) une fois par cas — rien n'est réinventé.
+
+    ⚠️ Cette fonction ne crée plus AUCUNE Section elle-même : avant l'étape 3, elle en fabriquait
+    une par user story. La Section existe déjà quand cette fonction s'exécute (choisie ou créée
+    sur l'écran de spécification, avant même l'appel LLM). `group_id` absent, ou devenu invalide
+    entre le lancement et la génération (Section supprimée entre-temps, très rare), replie TOUS
+    les cas sur leur propre enveloppe automatique (`CaseRepo.create`) plutôt que d'échouer — validé
+    UNE SEULE FOIS ici, pas cas par cas.
     """
     import dataclasses
 
@@ -502,70 +521,73 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
         runner = BehaveRunner(connection=project_env(project),
                               project_id=(project or {}).get("id"))
 
-        # L'analyse est refaite ici, UNE SEULE FOIS pour toute la spec (partagée par tous les cas
-        # de toutes les Sections) : elle alimente l'agent en matière technique (modèles, routes,
-        # champs requis) que le document métier ne porte pas, et un `TestPlan` n'est pas
-        # sérialisable dans le job. Son coût est réel, il est compté avec le reste — comme
-        # orpheline (voir plus bas) : aucun cas particulier ne « paie » pour une analyse partagée
-        # par tous.
+        # L'analyse est refaite ici, UNE SEULE FOIS pour toute la spec (partagée par tous les cas) :
+        # elle alimente l'agent en matière technique (modèles, routes, champs requis) que le
+        # document métier ne porte pas, et un `TestPlan` n'est pas sérialisable dans le job. Son
+        # coût est réel, il est compté avec le reste — comme orpheline (voir plus bas) : aucun cas
+        # particulier ne « paie » pour une analyse partagée par tous.
         analysis_tracker = CostTracker()
         plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(
             slugify(title), spec_content)
 
         agent = GenerationAgent(dry_runner=runner, connector=connector,
                                 case_repo=CaseRepo(conn), version_repo=VersionRepo(conn))
-        groups = CaseGroupRepo(conn)
+
+        # La Section est celle CHOISIE PAR L'UTILISATEUR avant la génération — plus aucune
+        # création automatique ici (voir docstring). Invalide ou disparue entre-temps (Section
+        # supprimée pendant que le job tournait, très rare) : repli sur l'enveloppe 1:1 auto-créée
+        # par `CaseRepo.create`, pour TOUS les cas — jamais un lot bloqué pour un ciblage périmé.
+        # Validé UNE SEULE FOIS, pas à chaque itération de la boucle.
+        erreur_section = ""
+        if group_id is not None:
+            groupe = CaseGroupRepo(conn).get(group_id)
+            if groupe is None or groupe["module_id"] != module_id:
+                erreur_section = ("la section choisie n'existe plus — les cas ont été créés "
+                                  "chacun dans sa propre enveloppe")
+                group_id = None
 
         case_ids: list[int] = []
-        erreurs: list[str] = []
-        for section in sections:
+        erreurs: list[str] = [erreur_section] if erreur_section else []
+        for case in cases:
+            # Chaque cas d'une même spec a besoin de son PROPRE fichier `.feature` : l'analyse
+            # est partagée (`plan`), mais `module_name` (qui nomme le fichier) doit être
+            # distinct par cas — d'où la copie du plan avec un slug propre à ce cas.
+            slug = unique_feature_slug(conn, slugify(case["title"]))
+            case_plan = dataclasses.replace(plan, module_name=slug)
+            metier = {"title": case["title"], "preconditions": case["preconditions"],
+                     "steps": case["steps"], "expected_result": case["expected_result"]}
             try:
-                # Le texte de la spec est porté par la SECTION (§9c), pas par chaque version — une
-                # seule fois, à la création. `case_group.spec_content` ne bouge plus ensuite (pas
-                # d'écran d'édition de la spécification en V1).
-                group_id = groups.create(module_id=module_id, title=section["title"],
-                                         spec_content=spec_content)
+                result = agent.generate(case_plan, group_id=group_id, metier=metier,
+                                        module_id=module_id, title=case["title"],
+                                        author=author, projet=project,
+                                        refs=case.get("user_story", ""))
             except DuplicateName as exc:
-                erreurs.append(f"section « {section['title']} » : {exc}")
+                erreurs.append(f"« {case['title']} » : {exc}")
                 continue
-            for case_metier in section["cases"]:
-                # Chaque cas d'une même spec a besoin de son PROPRE fichier `.feature` : l'analyse
-                # est partagée (`plan`), mais `module_name` (qui nomme le fichier) doit être
-                # distinct par cas — d'où la copie du plan avec un slug propre à ce cas.
-                slug = unique_feature_slug(conn, slugify(case_metier["title"]))
-                case_plan = dataclasses.replace(plan, module_name=slug)
-                try:
-                    result = agent.generate(case_plan, group_id=group_id, metier=case_metier,
-                                            module_id=module_id, title=case_metier["title"],
-                                            author=author, projet=project,
-                                            refs=section["title"])
-                except DuplicateName as exc:
-                    erreurs.append(f"« {case_metier['title']} » : {exc}")
-                    continue
-                except Exception as exc:
-                    # ⚠️ Un cas ne doit JAMAIS pouvoir faire échouer TOUT le lot (mesuré le
-                    # 2026-08-05) : les cas précédents de cette boucle sont déjà persistés en
-                    # base au moment où celui-ci plante — les perdre de vue parce qu'un cas
-                    # SUIVANT échoue techniquement serait pire que signaler ce seul échec et
-                    # continuer avec les autres.
-                    logger.exception("[generation] cas « %s » (job %s) en échec technique",
-                                     case_metier["title"], job_id)
-                    erreurs.append(f"« {case_metier['title']} » : {exc}")
-                    continue
+            except Exception as exc:
+                # ⚠️ Un cas ne doit JAMAIS pouvoir faire échouer TOUT le lot (mesuré le
+                # 2026-08-05) : les cas précédents de cette boucle sont déjà persistés en
+                # base au moment où celui-ci plante — les perdre de vue parce qu'un cas
+                # SUIVANT échoue techniquement serait pire que signaler ce seul échec et
+                # continuer avec les autres.
+                logger.exception("[generation] cas « %s » (job %s) en échec technique",
+                                 case["title"], job_id)
+                erreurs.append(f"« {case['title']} » : {exc}")
+                continue
 
-                # Le coût de CE cas (génération/Gherkin) lui est attribué directement — c'est le
-                # seul poste dépensé APRÈS que le cas existe, donc le seul qu'on peut lui imputer
-                # sans arbitraire.
-                _record_generation_cost(conn, case_id=result.case_id,
-                                        generation_usd=result.cost_usd)
+            # Le coût de CE cas (génération/Gherkin) lui est attribué directement — c'est le
+            # seul poste dépensé APRÈS que le cas existe, donc le seul qu'on peut lui imputer
+            # sans arbitraire.
+            _record_generation_cost(conn, case_id=result.case_id,
+                                    generation_usd=result.cost_usd)
 
-                if result.success and result.case_id:
-                    _auto_approuver(conn, result.case_id, result.version_id)
-                    case_ids.append(result.case_id)
-                else:
-                    erreurs.append(
-                        f"« {case_metier['title']} » : "
-                        f"{result.error or result.stopped_reason or 'génération échouée'}")
+            if result.success and result.case_id:
+                _auto_approuver(conn, result.case_id, result.version_id)
+                case_ids.append(result.case_id)
+            else:
+                erreurs.append(
+                    f"« {case['title']} » : "
+                    f"{result.error or result.stopped_reason or 'génération échouée'}")
 
         # L'analyse partagée : une seule ligne orpheline, plutôt qu'une répartition arbitraire
         # entre les cas produits (voir docstring de `_record_generation_cost`).

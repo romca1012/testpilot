@@ -14,7 +14,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { type CaseSummary, type GroupDetail } from '../lib/api'
 import { usePageCas, useEnregistrerGroupe, useSupprimerGroupe, useUnGroupe } from '../lib/donnees'
 import { MODELE_SPECIFICATION, estModeleNonRempli } from '../lib/modeleSpecification'
-import { testStatusMeta } from '../lib/status'
 import Button from '../components/ui/Button.vue'
 import Card from '../components/ui/Card.vue'
 import Spinner from '../components/ui/Spinner.vue'
@@ -110,7 +109,6 @@ function genererDepuisLaSpec() {
 function ouvrirCas(id: number) {
   router.push({ name: 'case-detail', params: { pid: pid.value, id: String(id) } })
 }
-function statutDe(c: CaseSummary) { return testStatusMeta(c.statut) }
 </script>
 
 <template>
@@ -166,14 +164,10 @@ function statutDe(c: CaseSummary) { return testStatusMeta(c.statut) }
 
         <ul v-if="cas.length" class="divide-y divide-border text-sm">
           <li v-for="c in cas" :key="c.id"
-              class="flex cursor-pointer items-center justify-between gap-3 py-2.5 hover:text-primary"
+              class="flex cursor-pointer items-center gap-3 py-2.5 hover:text-primary"
               @click="ouvrirCas(c.id)">
-            <div class="min-w-0">
-              <span class="text-muted-foreground tabular-nums mr-2">C{{ c.id }}</span>
-              <span class="truncate">{{ c.title }}</span>
-            </div>
-            <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium"
-                  :class="statutDe(c).badge">{{ statutDe(c).label }}</span>
+            <span class="text-muted-foreground tabular-nums mr-2">C{{ c.id }}</span>
+            <span class="truncate">{{ c.title }}</span>
           </li>
         </ul>
         <p v-else class="text-sm text-muted-foreground">

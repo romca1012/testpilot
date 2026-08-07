@@ -24,6 +24,7 @@ import { TEST_STATUS_ORDER, testStatusMeta } from '../lib/status'
 import { monter } from './_montage'
 
 const listCases = vi.fn()
+const listGroups = vi.fn()
 const createRun = vi.fn()
 const listRuns = vi.fn()
 const getRun = vi.fn()
@@ -34,6 +35,9 @@ const push = vi.fn()
 vi.mock('../lib/api', () => ({
   api: {
     listCases: (...a: any[]) => listCases(...a),
+    // Le picker de cas (étape « sélection figée ») groupe désormais par Section/Sous-section
+    // (2026-08-07), pas seulement par Module — il lit `listGroups` via `useGroupes`.
+    listGroups: (...a: any[]) => listGroups(...a),
     createRun: (...a: any[]) => createRun(...a),
     listRuns: (...a: any[]) => listRuns(...a),
     getRun: (...a: any[]) => getRun(...a),
@@ -60,6 +64,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   // La liste des cas est PAGINÉE depuis le 2026-07-24 : le simulacre rend une page.
   listCases.mockResolvedValue({ items: CAS, next_cursor: null, total: CAS.length })
+  listGroups.mockResolvedValue([])
   createRun.mockResolvedValue({ id: 7, name: 'R', status: 'draft', case_count: 2 })
   listRuns.mockResolvedValue([])
   launchRun.mockResolvedValue({ id: 7, status: 'running' })
@@ -83,7 +88,7 @@ beforeEach(() => {
 
 describe('AddTestRunForm — création d\'une campagne', () => {
   it('mode « tous les cas » : n\'envoie AUCUNE sélection figée', async () => {
-    const w = mount(AddTestRunForm)
+    const w = monter(AddTestRunForm)
     await flushPromises()
 
     await w.find('form').trigger('submit')
@@ -97,7 +102,7 @@ describe('AddTestRunForm — création d\'une campagne', () => {
   it('le MODE D\'EXÉCUTION part avec la création, et vaut « automatique » par défaut', async () => {
     // ⚠️ Le mode ne se devine plus résultat par résultat : il se choisit ici. Automatique par
     // défaut — le manuel est un choix délibéré, jamais une valeur dans laquelle on tombe.
-    const w = mount(AddTestRunForm)
+    const w = monter(AddTestRunForm)
     await flushPromises()
 
     await w.find('form').trigger('submit')
@@ -112,7 +117,7 @@ describe('AddTestRunForm — création d\'une campagne', () => {
   })
 
   it('sélection figée : exige au moins un cas coché', async () => {
-    const w = mount(AddTestRunForm)
+    const w = monter(AddTestRunForm)
     await flushPromises()
     await w.findAll('input[type="radio"]')[3].setValue()
     await flushPromises()
@@ -128,7 +133,7 @@ describe('AddTestRunForm — création d\'une campagne', () => {
   it('permet une sélection TRANSVERSE : cas de plusieurs modules (§7)', async () => {
     // Le JTBD « régression transverse » : une campagne pioche dans plusieurs modules. Le backend
     // le permet ; l'écran doit le rendre VISIBLE (groupes par module + mention « Transverse »).
-    const w = mount(AddTestRunForm)
+    const w = monter(AddTestRunForm)
     await flushPromises()
     await w.findAll('input[type="radio"]')[3].setValue()
     await flushPromises()

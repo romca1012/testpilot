@@ -74,10 +74,21 @@ CREATE TABLE IF NOT EXISTS case_group (
     deleted_by    TEXT    NOT NULL DEFAULT '',
     created_at   TEXT    NOT NULL,
     updated_at   TEXT    NOT NULL,
+    -- Sous-section (migration 28, 2026-08-06) : NULL = Section de premier niveau (comme avant).
+    -- Une seule profondeur d'imbrication — une sous-section ne porte jamais elle-même de
+    -- parent_group_id renseigné, comme TestRail (pas de niveau 3 par défaut).
+    parent_group_id INTEGER REFERENCES case_group(id),
     FOREIGN KEY (module_id) REFERENCES module(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_group_module ON case_group(module_id);
+-- ⚠️ PAS d'index sur `parent_group_id` ici, et c'est délibéré (bug réel mesuré le 2026-08-06) :
+-- ce fichier s'exécute AVANT les migrations, via `CREATE TABLE IF NOT EXISTS` — un NO-OP sur une
+-- base EXISTANTE, qui ne porte donc pas encore la colonne. Un `CREATE INDEX` inconditionnel ici
+-- plantait immédiatement au démarrage sur la vraie base (« no such column: parent_group_id »),
+-- avant même que la migration 28 n'ait la main. L'index est créé PAR la migration
+-- (`_migrate_28_sous_sections`), seule à savoir que la colonne existe déjà — même règle que
+-- `uq_group_module_title` et les autres index sur des colonnes nées après ce fichier.
 
 -- ── Cas de test (socle commun §7) ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS test_case (

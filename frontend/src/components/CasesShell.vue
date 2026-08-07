@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useModuleCreate } from '../lib/useModuleCreate'
+import { useSectionCreate } from '../lib/useSectionCreate'
 // Couche de données (lot A, 2026-07-24) : plus de `load()` maison ici. Le shell et la page
 // affichée demandaient les MÊMES modules, cas et spécifications à chaque navigation ; ils
 // partagent désormais un seul cache, et une mutation invalide ce qu'il faut.
@@ -93,31 +94,38 @@ const activeGroupId = computed(() =>
   route.name === 'spec-detail' ? Number(route.params.id) || null
   : route.name === 'cases' ? Number(route.query.spec) || null : null)
 
-// ── Créer une SPÉCIFICATION (lot 4, 2026-07-24) ───────────────────────────────
+// ── Créer une SECTION ou une SOUS-SECTION (lot 4, 2026-07-24 ; sous-sections, migration 28) ────
 // ⚠️ Créer ici ne génère AUCUN cas et ne dépense RIEN : on nomme un document, on l'écrit sur sa
 // fiche, et c'est un geste séparé qui lance la génération (§4bis du brief).
-const specModule = ref<number | null>(null)
+// Modale UNIQUE, comme la création de module : plusieurs endroits la déclenchent (l'arbre latéral,
+// et surtout les liens inline sous chaque module/Section de TestCasesList.vue, à l'endroit exact
+// où TestRail les place) — `useSectionCreate` est le composable partagé qui les fait converger ici.
+const sc = useSectionCreate()
 const nouvelleSpec = ref({ title: '' })
 const creatingSpec = ref(false)
 const specError = ref('')
+const specModalTitle = computed(() => sc.parentGroupId.value ? 'Nouvelle sous-section' : 'Nouvelle section')
+
+watch(() => sc.open.value, (o) => { if (o) { nouvelleSpec.value = { title: '' }; specError.value = '' } })
 
 function ouvrirCreationSpec(moduleId: number) {
-  specModule.value = moduleId
-  nouvelleSpec.value = { title: '' }
-  specError.value = ''
+  sc.openFor(moduleId)
 }
 
 const creerGroupe = useCreerGroupe(pid)
 
 async function submitSpec() {
   const titre = nouvelleSpec.value.title.trim()
-  if (!titre || specModule.value == null) return
+  if (!titre || sc.moduleId.value == null) return
   creatingSpec.value = true
   specError.value = ''
   try {
-    const creee = await creerGroupe.mutateAsync({ moduleId: specModule.value, title: titre })
-    specModule.value = null
-    // On emmène sur sa fiche : une spécification vide qu'on ne rédige pas ne sert à rien.
+    const creee = await creerGroupe.mutateAsync({
+      moduleId: sc.moduleId.value, title: titre, parentGroupId: sc.parentGroupId.value,
+    })
+    sc.close()
+    sc.markCreated()
+    // On emmène sur sa fiche : une Section vide qu'on ne rédige pas ne sert à rien.
     router.push({ name: 'spec-detail', params: { pid: pid.value, id: String(creee.id) } })
   } catch (e: any) {
     specError.value = e?.message || 'Création impossible'
@@ -385,7 +393,7 @@ function switchProject(id: number) {
       <!-- Info spécifications / cas -->
       <div class="px-3.5 pb-3 text-xs leading-relaxed">
         <div class="flex items-center gap-1.5 text-muted-foreground">
-          Contient {{ specCount }} spécification{{ specCount > 1 ? 's' : '' }} et {{ caseCount }} cas.
+          Contient {{ specCount }} section{{ specCount > 1 ? 's' : '' }} et {{ caseCount }} cas.
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
         </div>
         <button class="text-primary hover:underline" @click="comingSoon('Modifier la description')">Modifier la description</button>
@@ -399,7 +407,6 @@ function switchProject(id: number) {
       <div class="flex items-center gap-2 px-3.5 py-2 text-xs">
         <span class="flex items-center gap-1.5 rounded-md border border-border bg-surface-raised px-2 py-1">Tous
           <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span>
-        <button class="text-primary hover:underline" @click="mc.openFor(pid as string)">+ Ajouter une section</button>
       </div>
 
       <!-- Arbre Module → Spécification -->
@@ -415,10 +422,10 @@ function switchProject(id: number) {
               <svg class="w-4 h-4 text-warning shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
               <span class="truncate">{{ m.name }}</span>
             </button>
-            <!-- Créer une SPÉCIFICATION (le document source) : le geste qui manquait à
+            <!-- Créer une SECTION (le document source) : le geste qui manquait à
                  l'interface — le CRUD existait côté serveur sans qu'aucun écran ne l'appelle. -->
             <button class="shrink-0 p-0.5 text-muted-foreground hover:text-primary"
-                    title="Ajouter une spécification dans ce module" @click.stop="ouvrirCreationSpec(m.id)" aria-label="Ajouter une spécification dans ce module">
+                    title="Ajouter une section dans ce module" @click.stop="ouvrirCreationSpec(m.id)" aria-label="Ajouter une section dans ce module">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M12 12v6M9 15h6"/></svg>
             </button>
             <button class="shrink-0 p-0.5 text-muted-foreground hover:text-primary" title="Ajouter un cas dans ce module" @click.stop="goCaseNew(m.id)" aria-label="Ajouter un cas dans ce module">
@@ -441,7 +448,7 @@ function switchProject(id: number) {
                 <span class="truncate">{{ g.title }}</span>
               </button>
               <button class="shrink-0 p-0.5 text-muted-foreground/60 opacity-0 group-hover/spec:opacity-100 hover:text-primary"
-                      title="Ouvrir la spécification (le document)" @click.stop="ouvrirFicheSpec(g.id)" aria-label="Ouvrir la spécification (le document)">
+                      title="Ouvrir la section (le document)" @click.stop="ouvrirFicheSpec(g.id)" aria-label="Ouvrir la section (le document)">
                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M8 13h8M8 17h5"/></svg>
               </button>
             </div>
@@ -515,10 +522,10 @@ function switchProject(id: number) {
       </template>
     </Modal>
 
-    <!-- ════════ Création d'une SPÉCIFICATION (le document source, décision 0022) ════════ -->
-    <Modal :open="specModule !== null" title="Nouvelle spécification"
+    <!-- ════════ Création d'une SECTION ou SOUS-SECTION (décision 0022 ; migration 28) ════════ -->
+    <Modal :open="sc.open.value" :title="specModalTitle"
            subtitle="Un document décrivant une fonctionnalité. Il servira à écrire un ou plusieurs cas de test."
-           @close="specModule = null">
+           @close="sc.close()">
       <form id="form-create-spec" class="space-y-3" @submit.prevent="submitSpec">
         <label class="block">
           <span class="text-sm font-medium">Titre <span class="text-destructive">*</span></span>
@@ -532,8 +539,8 @@ function switchProject(id: number) {
         <p v-if="specError" class="text-sm text-destructive">{{ specError }}</p>
       </form>
       <template #footer>
-        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="specModule = null">Annuler</button>
-        <Button type="submit" form="form-create-spec" variant="primary" :loading="creatingSpec" :disabled="!nouvelleSpec.title.trim()">Créer la spécification</Button>
+        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="sc.close()">Annuler</button>
+        <Button type="submit" form="form-create-spec" variant="primary" :loading="creatingSpec" :disabled="!nouvelleSpec.title.trim()">{{ sc.parentGroupId.value ? 'Créer la sous-section' : 'Créer la section' }}</Button>
       </template>
     </Modal>
   </div>

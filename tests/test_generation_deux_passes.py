@@ -345,17 +345,19 @@ def test_la_passe_4a_S_ARRETE_et_ne_cree_AUCUN_cas(client, monkeypatch):
 
     state = client.get(f"/api/modules/jobs/{job['job_id']}").json()
     assert state["status"] == "awaiting_metier"
-    assert len(state["sections"]) == 1
-    assert state["sections"][0]["title"] == "Connexion"
-    assert [c["title"] for c in state["sections"][0]["cases"]] == ["Connexion réussie"]
+    # Liste PLATE (étape 3, 2026-08-07) : plus de Sections auto-créées par user story — juste un
+    # repère de provenance (`user_story`) par cas, à LIRE seulement.
+    assert len(state["cases"]) == 1
+    assert state["cases"][0]["title"] == "Connexion réussie"
+    assert state["cases"][0]["user_story"] == "Connexion"
     assert state["case_ids"] == []
     assert client.get(f"/api/cases?module_id={mid}").json()["items"] == [], "aucun cas avant validation"
 
 
-def test_deux_user_stories_produisent_DEUX_sections_a_un_nombre_variable_de_cas(client, monkeypatch):
+def test_deux_user_stories_produisent_une_liste_PLATE_a_nombre_variable_de_cas(client, monkeypatch):
     """Cœur du §9 : « variable » ne veut pas dire « maximal » ni « fixe ». Une story simple obtient
     UN cas, une autre qui décrit plusieurs comportements en obtient PLUSIEURS — jamais le même
-    nombre par défaut."""
+    nombre par défaut. Depuis l'étape 3 (2026-08-07) : rendu à PLAT, plus de Sections imposées."""
     _stub_analyse(monkeypatch)
     _stub_decoupage(monkeypatch, [
         ("Connexion", ["Connexion réussie"]),
@@ -369,15 +371,17 @@ def test_deux_user_stories_produisent_DEUX_sections_a_un_nombre_variable_de_cas(
                       json={"spec_content": "La spec", "title": "T"}).json()
 
     state = client.get(f"/api/modules/jobs/{job['job_id']}").json()
-    assert [s["title"] for s in state["sections"]] == [
-        "Connexion", "Réinitialisation du mot de passe"]
-    assert len(state["sections"][0]["cases"]) == 1
-    assert len(state["sections"][1]["cases"]) == 3
+    assert len(state["cases"]) == 4   # 1 + 3, pas 2 ni 4/2 imposé
+    par_story: dict[str, int] = {}
+    for c in state["cases"]:
+        par_story[c["user_story"]] = par_story.get(c["user_story"], 0) + 1
+    assert par_story == {"Connexion": 1, "Réinitialisation du mot de passe": 3}
 
 
-def test_les_sections_CORRIGEES_par_l_humain_font_foi(client, monkeypatch):
-    """L'humain peut tout réécrire — c'est l'intérêt de la pause. C'est SA structure qui part
-    à la génération, jamais la proposition de l'IA."""
+def test_les_cas_CORRIGES_par_l_humain_font_foi(client, monkeypatch):
+    """L'humain peut tout réécrire — c'est SA liste qui part à la génération, jamais la
+    proposition de l'IA. La Section, elle, est fixée AVANT (étape 3bis) — `validate_metier` n'y
+    touche pas, elle voyage telle quelle depuis `AddCaseIn.group_id`."""
     _stub_analyse(monkeypatch)
     _stub_decoupage(monkeypatch, [("Connexion", ["Cas proposé"])])
     _stub_metier(monkeypatch)
@@ -387,20 +391,21 @@ def test_les_sections_CORRIGEES_par_l_humain_font_foi(client, monkeypatch):
 
     pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
+    section = client.post(f"/api/modules/{mid}/groups", json={"title": "Connexion"}).json()["id"]
     job_id = client.post(f"/api/modules/{mid}/cases",
-                         json={"spec_content": "La spec", "title": "T"}).json()["job_id"]
+                         json={"spec_content": "La spec", "title": "T",
+                              "group_id": section}).json()["job_id"]
 
-    r = client.post(f"/api/modules/jobs/{job_id}/metier", json={"sections": [
-        {"title": "Connexion", "cases": [
-            {"title": "MON titre à moi", "preconditions": "Mon contexte",
-             "steps": ["Mon étape unique"], "expected_result": "Mon verdict"},
-        ]},
+    r = client.post(f"/api/modules/jobs/{job_id}/metier", json={"cases": [
+        {"title": "MON titre à moi", "preconditions": "Mon contexte",
+         "steps": ["Mon étape unique"], "expected_result": "Mon verdict",
+         "user_story": "Connexion"},
     ]})
 
     assert r.status_code == 202
-    assert recu["sections"][0]["title"] == "Connexion"
-    assert recu["sections"][0]["cases"][0]["title"] == "MON titre à moi"
-    assert recu["sections"][0]["cases"][0]["steps"] == ["Mon étape unique"]
+    assert recu["group_id"] == section
+    assert recu["cases"][0]["title"] == "MON titre à moi"
+    assert recu["cases"][0]["steps"] == ["Mon étape unique"]
 
 
 def test_un_cas_incomplet_est_REFUSE(client, monkeypatch):
@@ -413,10 +418,8 @@ def test_un_cas_incomplet_est_REFUSE(client, monkeypatch):
     job_id = client.post(f"/api/modules/{mid}/cases",
                          json={"spec_content": "La spec", "title": "T"}).json()["job_id"]
 
-    r = client.post(f"/api/modules/jobs/{job_id}/metier", json={"sections": [
-        {"title": "Connexion", "cases": [
-            {"title": "Un titre", "steps": [], "expected_result": "Un verdict"}]},
-    ]})
+    r = client.post(f"/api/modules/jobs/{job_id}/metier", json={"cases": [
+        {"title": "Un titre", "steps": [], "expected_result": "Un verdict"}]})
 
     assert r.status_code == 422
     assert "obligatoires" in r.json()["detail"]
@@ -433,8 +436,7 @@ def test_valider_deux_fois_est_REFUSE(client, monkeypatch):
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
     job_id = client.post(f"/api/modules/{mid}/cases",
                          json={"spec_content": "La spec", "title": "T"}).json()["job_id"]
-    body = {"sections": [{"title": "Connexion",
-                          "cases": [{"title": "T", "steps": ["a"], "expected_result": "r"}]}]}
+    body = {"cases": [{"title": "T", "steps": ["a"], "expected_result": "r"}]}
     client.post(f"/api/modules/jobs/{job_id}/metier", json=body)
 
     r = client.post(f"/api/modules/jobs/{job_id}/metier", json=body)
@@ -473,3 +475,24 @@ def test_aucune_user_story_exploitable_fait_ECHOUER_le_job(client, monkeypatch):
     state = client.get(f"/api/modules/jobs/{job_id}").json()
     assert state["status"] == "failed"
     assert client.get(f"/api/cases?module_id={mid}").json()["items"] == []
+
+
+def test_une_section_INVALIDE_est_refusee_AVANT_tout_appel_LLM(client, monkeypatch):
+    """Étape 3bis : la Section choisie est vérifiée avant même le premier appel payant — inutile
+    de dépenser quoi que ce soit pour un ciblage déjà cassé au départ."""
+    appelee = {"decoupage": False}
+
+    def espion(*a, **kw):
+        appelee["decoupage"] = True
+        return []
+    _stub_analyse(monkeypatch)
+    monkeypatch.setattr(decoupage, "propose_decoupage", espion)
+
+    pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
+    mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
+
+    r = client.post(f"/api/modules/{mid}/cases",
+                    json={"spec_content": "La spec", "title": "T", "group_id": 999999})
+
+    assert r.status_code == 404
+    assert not appelee["decoupage"], "aucun appel LLM ne doit partir avant la vérification"

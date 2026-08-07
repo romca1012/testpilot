@@ -64,11 +64,16 @@ class ModuleRef(BaseModel):
 
 # ── Cas ───────────────────────────────────────────────────────────────────────
 class GroupSummary(BaseModel):
-    """Spécification (case_group) — conteneur d'affichage : id, module, titre, nb de cas."""
+    """Spécification (case_group) — conteneur d'affichage : id, module, titre, nb de cas.
+
+    `parent_group_id` (migration 28) : `None` = Section de premier niveau ; sinon, id de la
+    Section qui porte cette Sous-section — c'est ce qui permet à l'écran de reconstruire l'arbre.
+    """
     id: int
     module_id: int
     title: str
     case_count: int = 0
+    parent_group_id: int | None = None
 
 
 class CaseSummary(BaseModel):
@@ -279,6 +284,17 @@ class CasePatch(BaseModel):
     etat: str | None = None       # new | design | ready | obsolete
 
 
+class CaseMoveIn(BaseModel):
+    """Cible d'un déplacement/copie de cas entre Sections (migration 28, étape 2)."""
+    group_id: int
+
+
+class CaseMoveOut(BaseModel):
+    """Ce qu'un déplacement/copie rend : l'id du cas concerné (le même pour un déplacement, un
+    NOUVEAU pour une copie — c'est ce qui distingue les deux à l'écran)."""
+    id: int
+
+
 class CaseMetierIn(BaseModel):
     """Édition du contenu MÉTIER d'un cas (décision `0022`). Chaque champ est optionnel : seul ce
     qui est fourni change. Une modification d'un champ VERSIONNÉ crée une nouvelle version — jamais
@@ -299,65 +315,70 @@ class CaseMetierOut(BaseModel):
 
 
 class AddCaseIn(BaseModel):
-    """Ajout d'un cas = fournir une SPEC (jamais une coquille vide — décision 0006)."""
+    """Ajout d'un cas = fournir une SPEC (jamais une coquille vide — décision 0006).
+
+    `group_id` (étape 3bis, 2026-08-07) : la Section CHOISIE PAR L'UTILISATEUR avant même de
+    lancer la génération (existante, ou créée depuis cet écran) — tous les cas qui en sortiront y
+    atterrissent. Obligatoire côté ÉCRAN (même règle que `module_id`), mais le type reste
+    `int | None` ici : le serveur n'impose rien qu'un appel direct à l'API ne pourrait franchir,
+    et un `group_id` absent repli simplement sur l'enveloppe automatique (jamais bloquant)."""
     spec_content: str = ""
     spec_path: str = ""
     title: str = ""
     author: str = "ui"
+    group_id: int | None = None
 
 
 class MetierDraftOut(BaseModel):
-    """Le document métier proposé par l'IA — à valider ou corriger avant l'écriture du Gherkin."""
+    """Le document métier proposé par l'IA — à valider ou corriger avant l'écriture du Gherkin.
+
+    `user_story` (étape 3, 2026-08-07) : la user story dont ce cas est issu — un simple REPÈRE DE
+    LECTURE affiché en sous-titre sur l'écran de validation, jamais une Section imposée. L'IA
+    continue à découper la spécification en user stories en interne (`decoupage.propose_decoupage`,
+    ça l'aide à couvrir sans redondance), mais ce découpage ne crée plus AUCUN conteneur : c'est
+    l'utilisateur qui choisit où chaque cas atterrit (`group_id` sur `CaseValidationIn`)."""
     title: str = ""
     preconditions: str = ""
     steps: list[str] = []
     expected_result: str = ""
-
-
-class SectionDraftOut(BaseModel):
-    """Une Section proposée (= une user story) et l'ensemble MINIMAL de cas planifiés pour la
-    couvrir (§9, génération multi-cas, 2026-08-05) — un nombre variable, jamais fixé d'avance."""
-    title: str = ""
-    cases: list[MetierDraftOut] = []
+    user_story: str = ""
 
 
 class GenerationJobOut(BaseModel):
     job_id: str
     # running | awaiting_metier | done | failed
     # ⚠️ `awaiting_metier` n'est PAS un état d'attente technique : le job est arrêté et n'ira
-    # nulle part tant qu'un humain n'aura pas validé l'ensemble des Sections proposées
-    # (décision `0022` n°5, étendue au §9).
+    # nulle part tant qu'un humain n'aura pas validé l'ensemble des cas proposés (décision `0022`
+    # n°5, étendue au §9, puis mise à plat à l'étape 3 : 2026-08-07).
     status: str
     case_ids: list[int] = []
     error: str = ""
-    # Rempli uniquement en `awaiting_metier`.
-    sections: list[SectionDraftOut] | None = None
+    # Rempli uniquement en `awaiting_metier` — une liste PLATE (étape 3), plus de regroupement en
+    # Sections imposé par l'IA.
+    cases: list[MetierDraftOut] | None = None
 
 
 class CaseValidationIn(BaseModel):
-    """UN cas, tel que l'humain le valide dans sa Section — corrections comprises.
+    """UN cas, tel que l'humain le valide — corrections comprises.
 
     C'est CE contenu qui fera foi pour l'écriture du Gherkin, pas la proposition de l'IA :
     l'humain peut tout réécrire, ou supprimer le cas de la liste (l'écran de validation le
     permet), c'est l'intérêt de la pause.
+
+    ⚠️ Pas de `group_id` ici (étape 3bis, 2026-08-07, revient sur l'étape 3 initiale) : la Section
+    est choisie UNE FOIS, avant même la génération (`AddCaseIn.group_id`), pas cas par cas sur cet
+    écran. `user_story` reste un simple repère de LECTURE affiché ici (jamais une Section).
     """
     title: str
     preconditions: str = ""
     steps: list[str]
     expected_result: str
-
-
-class SectionValidationIn(BaseModel):
-    """UNE Section (= une user story) telle que l'humain la valide, avec ses cas RETENUS —
-    potentiellement moins nombreux que la proposition initiale."""
-    title: str
-    cases: list[CaseValidationIn]
+    user_story: str = ""
 
 
 class MetierValidationIn(BaseModel):
-    """L'ensemble des Sections tel que l'humain le valide — la structure complète, pas un seul
-    document : c'est le §9 (génération multi-cas) qui distingue ce schéma de l'ancien."""
-    sections: list[SectionValidationIn]
+    """L'ensemble des cas tel que l'humain le valide — une liste PLATE (étape 3, 2026-08-07)."""
+    cases: list[CaseValidationIn]
 
 
 class ProjectIn(BaseModel):
@@ -665,10 +686,14 @@ class GroupIn(BaseModel):
 
     ⚠️ Pas de `spec_hash` : l'empreinte est recalculée par le repo depuis le document, jamais
     reçue de l'appelant — sinon elle pourrait mentir sur ce qu'elle référence.
+
+    `parent_group_id` (migration 28) : fourni pour créer une SOUS-section sous une Section
+    existante du même module. `None` (défaut) = Section de premier niveau, comme avant.
     """
     title: str
     description: str = ""
     spec_content: str = ""
+    parent_group_id: int | None = None
 
 
 class GroupPatch(BaseModel):
@@ -676,6 +701,14 @@ class GroupPatch(BaseModel):
     title: str | None = None
     description: str | None = None
     spec_content: str | None = None
+
+
+class GroupMoveIn(BaseModel):
+    """Cible d'un glisser-déposer de Section (étape 2bis) — `None` promeut au premier niveau.
+
+    ⚠️ Pas de pendant « copie » : contrairement à un cas, une Section ne se duplique jamais
+    (voir `CaseMoveIn`, réservé aux cas)."""
+    parent_group_id: int | None = None
 
 
 class GroupDetail(BaseModel):
@@ -691,6 +724,7 @@ class GroupDetail(BaseModel):
     spec_content: str = ""
     spec_hash: str = ""
     case_count: int = 0
+    parent_group_id: int | None = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -700,6 +734,7 @@ def group_detail(row: dict) -> GroupDetail:
         id=row["id"], module_id=row["module_id"], title=row["title"],
         description=row.get("description", ""), spec_content=row.get("spec_content", ""),
         spec_hash=row.get("spec_hash", ""), case_count=row.get("case_count", 0),
+        parent_group_id=row.get("parent_group_id"),
         created_at=row.get("created_at", ""), updated_at=row.get("updated_at", ""))
 
 

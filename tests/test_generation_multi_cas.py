@@ -1,16 +1,24 @@
-"""Génération multi-cas (§9, 2026-08-05) : une spécification → ses user stories → l'ensemble
-minimal de cas nécessaires pour couvrir chacune.
+"""Génération multi-cas (§9, 2026-08-05), mise à PLAT à l'étape 3 (2026-08-07) : une spécification
+produit une liste plate de cas — plus aucune Section auto-créée par user story. L'utilisateur
+choisit lui-même, sur l'écran de validation, la Section de chaque cas (existante ou nouvelle,
+créée par le MÊME endpoint que partout ailleurs dans l'app) — ou aucune, auquel cas le cas repart
+sur l'enveloppe automatique 1:1 déjà en place (`CaseRepo.create`).
 
-Ces tests portent sur l'ORCHESTRATION de `generation_service.resume_generation` (une Section par
-story, répétition du pipeline mono-cas déjà testé) — pas sur la génération Gherkin elle-même
-(connecteur, dry-run, agent technique), neutralisée ici via `GenerationAgent.generate` pour
-n'exercer que `_persist` (déjà couvert en détail par `test_generation_deux_passes.py`).
+Ces tests portent sur l'ORCHESTRATION de `generation_service.resume_generation` (répétition du
+pipeline mono-cas déjà testé) — pas sur la génération Gherkin elle-même (connecteur, dry-run, agent
+technique), neutralisée ici via `GenerationAgent.generate` pour n'exercer que `_persist` (déjà
+couvert en détail par `test_generation_deux_passes.py`).
 
 Ce que ces tests figent :
-- deux user stories produisent DEUX Sections (`case_group`) distinctes ;
-- une Section porte plusieurs cas quand la story le justifie — jamais un nombre fixe ;
-- `refs` de chaque cas = le nom de sa story ;
-- `case_group.spec_content` porte le texte réel dès la création de la Section ;
+- `resume_generation` NE CRÉE PLUS AUCUNE Section — elle range chaque cas dans le `group_id` reçu,
+  tel quel ;
+- un cas SANS `group_id` repart sur l'enveloppe automatique (une par cas, jamais partagée) ;
+- un `group_id` invalide (Section disparue, ou d'un AUTRE module) replie sur l'enveloppe
+  automatique SANS faire échouer le cas — juste signalé dans `error` ;
+- plusieurs cas peuvent partager la MÊME Section (choisie par l'utilisateur), sans qu'aucun nombre
+  ne soit imposé ;
+- `refs` de chaque cas porte le nom de sa user story d'origine — un simple repère de provenance,
+  jamais une Section ;
 - le découpage ET chaque passe métier sont comptés au ledger (orphelins, avant tout cas créé) ;
 - la reprise fonctionne avec une liste de cas RÉDUITE par rapport à la proposition initiale —
   aucune trace des cas retirés n'apparaît.
@@ -65,7 +73,7 @@ def _plan(spec="La spec complète.") -> TestPlan:
 
 def _neutraliser_pipeline_technique(monkeypatch, *, cout_par_cas=0.02):
     """Neutralise analyse + connecteur + runner + boucle ReAct — mais garde `_persist` (le VRAI
-    code), pour exercer la persistance réelle (Section, refs, spec_content, coût)."""
+    code), pour exercer la persistance réelle (Section, refs, coût)."""
     from testpilot.analysis import spec_analyzer as sa
 
     monkeypatch.setattr(sa.SpecAnalyzer, "analyze_spec_content",
@@ -91,13 +99,9 @@ def _neutraliser_pipeline_technique(monkeypatch, *, cout_par_cas=0.02):
     monkeypatch.setattr(agent_mod.GenerationAgent, "generate", faux_generate)
 
 
-def _cas(titre: str) -> dict:
+def _cas(titre: str, *, user_story: str = "") -> dict:
     return {"title": titre, "preconditions": "", "steps": [f"Étape de {titre}"],
-           "expected_result": f"Verdict de {titre}"}
-
-
-def _sections(*stories: tuple[str, list[dict]]) -> list[dict]:
-    return [{"title": titre, "cases": cas} for titre, cas in stories]
+           "expected_result": f"Verdict de {titre}", "user_story": user_story}
 
 
 def _resume(job_id: str, **kw):
@@ -109,32 +113,109 @@ def _resume(job_id: str, **kw):
     generation_service.resume_generation(job_id, **kw)
 
 
-# ── Sections et nombre variable de cas ────────────────────────────────────────
+# ── group_id choisi par l'utilisateur : aucune Section auto-créée ─────────────
 
-def test_deux_user_stories_produisent_DEUX_sections_distinctes(conn, monkeypatch):
+def test_resume_generation_NE_CREE_AUCUNE_section(conn, monkeypatch):
+    """Le cœur de l'étape 3 : avant, une Section naissait par user story. Plus maintenant — le
+    nombre de Sections dans le module ne bouge PAS après la génération."""
+    mid = _module(conn)
+    _neutraliser_pipeline_technique(monkeypatch)
+    avant = len(CaseGroupRepo(conn).list_for_module(mid))
+
+    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+           cases=[_cas("Connexion réussie")])
+
+    apres = len(CaseGroupRepo(conn).list_for_module(mid))
+    # Le cas SANS `group_id` retombe sur son enveloppe auto 1:1 (`CaseRepo.create`) — CETTE
+    # Section-là existe, mais ce n'est pas `resume_generation` qui l'a fabriquée : c'est le même
+    # mécanisme qu'un cas manuel créé sans section, inchangé depuis toujours.
+    assert apres == avant + 1
+
+
+def test_un_cas_avec_group_id_atterrit_DANS_cette_section(conn, monkeypatch):
+    mid = _module(conn)
+    _neutraliser_pipeline_technique(monkeypatch)
+    cible = CaseGroupRepo(conn).create(module_id=mid, title="Ma section à moi")
+
+    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+           group_id=cible, cases=[_cas("Connexion réussie")])
+
+    cas = CaseRepo(conn).list_all(module_id=mid)
+    assert len(cas) == 1
+    assert cas[0]["group_id"] == cible
+
+
+def test_plusieurs_cas_PARTAGENT_la_meme_section_choisie_UNE_FOIS_pour_le_lot(conn, monkeypatch):
+    """La Section est choisie une fois, avant la génération (étape 3bis) — tous les cas du lot
+    y atterrissent, quelle que soit leur user story d'origine."""
+    mid = _module(conn)
+    _neutraliser_pipeline_technique(monkeypatch)
+    section = CaseGroupRepo(conn).create(module_id=mid, title="Connexion")
+
+    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+           group_id=section,
+           cases=[_cas("Connexion réussie"), _cas("Connexion refusée")])
+
+    cas = CaseRepo(conn).list_all(module_id=mid)
+    assert {c["group_id"] for c in cas} == {section}
+    assert len(cas) == 2
+
+
+def test_un_cas_SANS_group_id_repart_sur_SA_PROPRE_enveloppe(conn, monkeypatch):
+    """Deux cas sans section choisie : chacun la sienne, jamais partagée entre eux."""
     mid = _module(conn)
     _neutraliser_pipeline_technique(monkeypatch)
 
-    _resume(
-        "job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
-        sections=_sections(
-            ("Connexion", [_cas("Connexion réussie")]),
-            ("Réinitialisation du mot de passe", [_cas("Lien valide"), _cas("Lien expiré")]),
-        ))
+    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+           cases=[_cas("Cas A"), _cas("Cas B")])
 
-    groupes = CaseGroupRepo(conn).list_for_module(mid)
-    assert {g["title"] for g in groupes} == {"Connexion", "Réinitialisation du mot de passe"}
-    assert len(groupes) == 2
+    cas = CaseRepo(conn).list_all(module_id=mid)
+    assert len(cas) == 2
+    assert cas[0]["group_id"] != cas[1]["group_id"]
+
+
+def test_un_group_id_INTROUVABLE_replie_TOUT_LE_LOT_sur_l_enveloppe_auto(conn, monkeypatch):
+    """Section supprimée entre le lancement et la génération (rare, mais possible) : les cas
+    doivent quand même être créés — juste pas où prévu — et le repli doit être VISIBLE, pas
+    silencieux. Validé UNE SEULE FOIS pour tout le lot, pas cas par cas (étape 3bis)."""
+    mid = _module(conn)
+    _neutraliser_pipeline_technique(monkeypatch)
+
+    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+           group_id=999999, cases=[_cas("Connexion réussie"), _cas("Connexion refusée")])
+
+    cas = CaseRepo(conn).list_all(module_id=mid)
+    assert len(cas) == 2
+    assert all(c["group_id"] != 999999 for c in cas)   # replié sur une enveloppe réelle
+    assert cas[0]["group_id"] != cas[1]["group_id"]     # chacune la sienne, jamais partagée
+
+    job = generation_service.get_job("job1")
+    assert job["status"] == "done"
+    assert "n'existe plus" in job["error"]
+
+
+def test_un_group_id_d_un_AUTRE_module_replie_aussi_sur_l_enveloppe_auto(conn, monkeypatch):
+    mid = _module(conn)
+    autre_mid = ModuleRepo(conn).create(
+        project_id=ProjectRepo(conn).create(**{**_PROJET_CONNECTE, "name": "Autre"}), name="Autre module")
+    section_ailleurs = CaseGroupRepo(conn).create(module_id=autre_mid, title="Pas ici")
+    _neutraliser_pipeline_technique(monkeypatch)
+
+    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+           group_id=section_ailleurs, cases=[_cas("Connexion réussie")])
+
+    cas = CaseRepo(conn).list_all(module_id=mid)
+    assert len(cas) == 1
+    assert cas[0]["group_id"] != section_ailleurs
+    assert CaseGroupRepo(conn).get(cas[0]["group_id"])["module_id"] == mid
 
 
 def test_un_cas_en_ECHEC_TECHNIQUE_ne_fait_PAS_echouer_les_cas_DEJA_persistes(conn, monkeypatch):
     """⚠️ Bug réel, mesuré le 2026-08-05 sur une vraie génération (spec « mutation payeur ») :
     un chemin Windows trop long (`[Errno 2] No such file or directory`) sur UN cas faisait
-    échouer TOUT le job — alors que 4 cas précédents de la même boucle étaient déjà persistés
-    en base. Seul `DuplicateName` était rattrapé par cas ; toute autre exception remontait à la
-    garde de tête de fonction, qui marque le job entier `failed` SANS annuler ce qui est déjà
-    en base (aucune transaction ne les protège). Le job doit rester `done` si d'autres cas de la
-    boucle ont réussi, avec l'échec du cas fautif SEULEMENT rapporté dans `error`."""
+    échouer TOUT le job — alors que les cas précédents de la même boucle étaient déjà persistés
+    en base. Le job doit rester `done` si d'autres cas de la boucle ont réussi, avec l'échec du
+    cas fautif SEULEMENT rapporté dans `error`."""
     mid = _module(conn)
     _neutraliser_pipeline_technique(monkeypatch)
 
@@ -147,11 +228,8 @@ def test_un_cas_en_ECHEC_TECHNIQUE_ne_fait_PAS_echouer_les_cas_DEJA_persistes(co
 
     monkeypatch.setattr(agent_mod.GenerationAgent, "generate", generate_avec_un_echec_technique)
 
-    _resume(
-        "job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
-        sections=_sections(
-            ("Connexion", [_cas("Connexion réussie"), _cas("PLANTE ici")]),
-        ))
+    _resume("job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+           cases=[_cas("Connexion réussie"), _cas("PLANTE ici")])
 
     cas = CaseRepo(conn).list_all(module_id=mid)
     assert {c["title"] for c in cas} == {"Connexion réussie"}, (
@@ -162,67 +240,16 @@ def test_un_cas_en_ECHEC_TECHNIQUE_ne_fait_PAS_echouer_les_cas_DEJA_persistes(co
     assert "PLANTE ici" in job["error"], "l'échec technique doit être rapporté, pas avalé"
 
 
-def test_une_section_EN_DOUBLE_est_ignoree_SANS_faire_echouer_les_AUTRES(conn, monkeypatch):
-    """L'unicité des titres, qui se vérifiait AVANT tout appel LLM dans l'ancien modèle mono-cas
-    (`start_generation`), ne peut plus l'être : les titres réels ne sont connus qu'APRÈS le
-    découpage. Elle se vérifie donc désormais À LA PERSISTANCE de chaque Section
-    (`CaseGroupRepo.ensure_title_free`) — et une collision ne doit PAS faire échouer tout le job :
-    seule la Section en collision est ignorée, les autres sont créées normalement."""
-    mid = _module(conn)
-    _neutraliser_pipeline_technique(monkeypatch)
-    CaseGroupRepo(conn).create(module_id=mid, title="Connexion", spec_content="")
+# ── refs = nom de la story d'origine (simple provenance, jamais une Section) ──
 
-    _resume(
-        "job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
-        sections=_sections(
-            ("Connexion", [_cas("Connexion réussie")]),            # collision → ignorée
-            ("Réinitialisation du mot de passe", [_cas("Lien valide")]),  # doit quand même passer
-        ))
-
-    groupes = {g["title"] for g in CaseGroupRepo(conn).list_for_module(mid)}
-    assert groupes == {"Connexion", "Réinitialisation du mot de passe"}, (
-        "une seule Section « Connexion » doit exister — la nouvelle n'a pas dû être créée")
-    cas = CaseRepo(conn).list_all(module_id=mid)
-    assert {c["title"] for c in cas} == {"Lien valide"}, (
-        "le cas de la Section en collision ne doit PAS avoir été créé")
-
-    job = generation_service.get_job("job1")
-    assert job["status"] == "done", "d'autres Sections ont réussi — le job entier ne doit pas échouer"
-    assert "Connexion" in job["error"], "la collision doit être rapportée, pas avalée en silence"
-
-
-def test_une_section_porte_plusieurs_cas_QUAND_la_story_le_justifie(conn, monkeypatch):
-    """Le nombre de cas par Section n'est jamais fixé d'avance — ici 1 et 2, jamais un compte
-    imposé par défaut (pas systématiquement 3)."""
+def test_refs_de_chaque_cas_est_le_nom_de_sa_story_d_origine(conn, monkeypatch):
     mid = _module(conn)
     _neutraliser_pipeline_technique(monkeypatch)
 
-    _resume(
-        "job2", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
-        sections=_sections(
-            ("Connexion", [_cas("Connexion réussie")]),
-            ("Réinitialisation", [_cas("Lien valide"), _cas("Lien expiré")]),
-        ))
-
-    cas = CaseRepo(conn).list_all(module_id=mid)
-    par_groupe: dict[int, list] = {}
-    for c in cas:
-        par_groupe.setdefault(c["group_id"], []).append(c)
-    assert sorted(len(v) for v in par_groupe.values()) == [1, 2]
-
-
-# ── refs = nom de la story ─────────────────────────────────────────────────────
-
-def test_refs_de_chaque_cas_est_le_nom_de_sa_story(conn, monkeypatch):
-    mid = _module(conn)
-    _neutraliser_pipeline_technique(monkeypatch)
-
-    _resume(
-        "job3", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
-        sections=_sections(
-            ("Connexion", [_cas("Connexion réussie")]),
-            ("Réinitialisation", [_cas("Lien valide"), _cas("Lien expiré")]),
-        ))
+    _resume("job3", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+           cases=[_cas("Connexion réussie", user_story="Connexion"),
+                 _cas("Lien valide", user_story="Réinitialisation"),
+                 _cas("Lien expiré", user_story="Réinitialisation")])
 
     cas = CaseRepo(conn).list_all(module_id=mid)
     refs_par_titre = {c["title"]: c["refs"] for c in cas}
@@ -233,31 +260,14 @@ def test_refs_de_chaque_cas_est_le_nom_de_sa_story(conn, monkeypatch):
     }
 
 
-# ── Le texte de la spec vit sur la Section ─────────────────────────────────────
-
-def test_case_group_spec_content_porte_le_texte_REEL_apres_creation(conn, monkeypatch):
-    mid = _module(conn)
-    _neutraliser_pipeline_technique(monkeypatch)
-
-    _resume(
-        "job4", module_id=mid, title="Spec", spec_content="LE VRAI TEXTE SOURCE", author="qa",
-        sections=_sections(("Connexion", [_cas("Connexion réussie")])))
-
-    groupe = CaseGroupRepo(conn).list_for_module(mid)[0]
-    assert CaseGroupRepo(conn).get(groupe["id"])["spec_content"] == "LE VRAI TEXTE SOURCE"
-
-
 # ── Le coût : découpage + N passes métier + N générations ────────────────────
 
 def test_le_cout_de_chaque_cas_genere_est_enregistre_au_ledger(conn, monkeypatch):
     mid = _module(conn)
     _neutraliser_pipeline_technique(monkeypatch, cout_par_cas=0.05)
 
-    _resume(
-        "job5", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
-        sections=_sections(
-            ("Connexion", [_cas("Connexion réussie")]),
-            ("Réinitialisation", [_cas("Lien valide"), _cas("Lien expiré")])))
+    _resume("job5", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+           cases=[_cas("Connexion réussie"), _cas("Lien valide"), _cas("Lien expiré")])
 
     # 3 cas générés à 0,05 $ + l'analyse partagée (neutralisée à $0, donc aucune ligne orpheline
     # supplémentaire — `_record_generation_cost` n'écrit jamais une ligne à $0).
@@ -270,7 +280,8 @@ def test_le_cout_de_chaque_cas_genere_est_enregistre_au_ledger(conn, monkeypatch
 def test_le_decoupage_et_les_N_passes_metier_sont_comptes_AU_LEDGER_avant_tout_cas(conn, monkeypatch):
     """`run_generation` (la passe 4a) enregistre le coût du découpage ET de chaque passe métier —
     en lignes ORPHELINES, puisqu'aucun cas n'existe encore à ce stade (ils naissent tous ensemble
-    à la validation, §9b)."""
+    à la validation, §9b). Le découpage par story reste un OUTIL INTERNE de l'IA (§9a) : son coût
+    existe toujours, même si son résultat ne crée plus de Section."""
     from testpilot.analysis import spec_analyzer as sa
     from testpilot.generation import decoupage, metier_writer
 
@@ -298,7 +309,11 @@ def test_le_decoupage_et_les_N_passes_metier_sont_comptes_AU_LEDGER_avant_tout_c
         conn, mid, spec_content="Une spec", title="T")
     generation_service.run_generation(job_id, **params)
 
-    assert generation_service._JOBS[job_id]["status"] == "awaiting_metier"
+    job = generation_service._JOBS[job_id]
+    assert job["status"] == "awaiting_metier"
+    # La liste est PLATE : deux cas, chacun avec sa provenance (`user_story`), pas de Section.
+    assert len(job["cases"]) == 2
+    assert {c["user_story"] for c in job["cases"]} == {"Connexion"}
     phases = {r["phase"] for r in conn.execute(
         "SELECT DISTINCT phase FROM cost_ledger WHERE test_case_id IS NULL")}
     assert "decoupage" in phases
@@ -310,79 +325,78 @@ def test_le_decoupage_et_les_N_passes_metier_sont_comptes_AU_LEDGER_avant_tout_c
 # ── La reprise avec une liste RÉDUITE ─────────────────────────────────────────
 
 def test_la_reprise_avec_une_liste_REDUITE_ne_laisse_AUCUNE_TRACE_des_cas_retires(conn, monkeypatch):
-    """L'utilisateur a supprimé un cas à la validation : SEULE la structure réduite arrive à
+    """L'utilisateur a supprimé un cas à la validation : SEULE la liste réduite arrive à
     `resume_generation` (jamais la proposition complète) — rien ne doit trahir l'existence du cas
-    écarté, ni dans les cas créés, ni dans les Sections."""
+    écarté."""
     mid = _module(conn)
     _neutraliser_pipeline_technique(monkeypatch)
-    # La proposition initiale portait 2 cas ("Connexion réussie" ET "Mot de passe oublié
-    # abandonné en cours") ; l'humain n'a retenu que le premier. C'est CETTE structure réduite,
-    # et RIEN d'autre, qui est passée ici.
-    _resume(
-        "job6", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
-        sections=_sections(("Connexion", [_cas("Connexion réussie")])))
+    # La proposition initiale portait 2 cas ; l'humain n'a retenu que le premier. C'est CETTE
+    # liste réduite, et RIEN d'autre, qui est passée ici.
+    _resume("job6", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+           cases=[_cas("Connexion réussie", user_story="Connexion")])
 
     cas = CaseRepo(conn).list_all(module_id=mid)
     assert [c["title"] for c in cas] == ["Connexion réussie"]
     assert "abandonné" not in json.dumps(cas, ensure_ascii=False)
 
 
-def test_bout_en_bout_valide_PUIS_reprise_AVEC_une_story_reduite(conn, monkeypatch):
-    """De bout en bout : le job propose 2 cas pour une story, l'humain n'en valide qu'UN via
-    `validate_metier` — c'est cette structure réduite, et RIEN d'autre, que `resume_generation`
-    reçoit et persiste."""
+def test_bout_en_bout_valide_PUIS_reprise_AVEC_une_liste_reduite(conn, monkeypatch):
+    """De bout en bout : le job propose 2 cas pour une Section déjà choisie AVANT la génération
+    (étape 3bis), l'humain n'en valide qu'UN via `validate_metier` — c'est cette liste réduite,
+    et RIEN d'autre, que `resume_generation` reçoit et persiste, toujours dans la même Section."""
     mid = _module(conn)
     _neutraliser_pipeline_technique(monkeypatch)
+    section = CaseGroupRepo(conn).create(module_id=mid, title="Connexion")
     job_id = "job7"
     generation_service._JOBS[job_id] = {
         "status": "awaiting_metier", "case_ids": [], "error": "",
-        "sections": [{"title": "Connexion",
-                     "cases": [_cas("Connexion réussie"), _cas("Connexion via SSO")]}],
+        "cases": [_cas("Connexion réussie", user_story="Connexion"),
+                 _cas("Connexion via SSO", user_story="Connexion")],
         "_resume": {"module_id": mid, "title": "Spec", "author": "qa",
-                   "spec_content": "LE TEXTE"},
+                   "spec_content": "LE TEXTE", "group_id": section},
     }
 
-    # L'écran de validation envoie la structure ÉDITÉE : un seul cas retenu sur les deux proposés.
+    # L'écran de validation envoie la liste ÉDITÉE : un seul cas retenu. La Section, elle, était
+    # déjà fixée avant la génération — `validate_metier` n'y touche pas.
     params = generation_service.validate_metier(
-        job_id, [{"title": "Connexion", "cases": [_cas("Connexion réussie")]}])
+        job_id, [_cas("Connexion réussie", user_story="Connexion")])
     generation_service.resume_generation(job_id, **params)
 
     cas = CaseRepo(conn).list_all(module_id=mid)
     assert [c["title"] for c in cas] == ["Connexion réussie"]
+    assert cas[0]["group_id"] == section
     assert generation_service._JOBS[job_id]["status"] == "done"
     assert len(generation_service._JOBS[job_id]["case_ids"]) == 1
 
 
-def test_validate_metier_ELIMINE_une_section_entierement_videe_par_l_humain():
-    """Si l'humain supprime TOUS les cas d'une story, la Section correspondante disparaît de la
-    structure validée plutôt que de créer une Section vide — sans bloquer les autres Sections."""
-    job_id = "jobX"
-    generation_service._JOBS[job_id] = {
-        "status": "awaiting_metier", "case_ids": [], "error": "",
-        "sections": [
-            {"title": "Connexion", "cases": [_cas("Connexion réussie")]},
-            {"title": "Story vidée", "cases": [_cas("Cas abandonné")]},
-        ],
-        "_resume": {"module_id": 1, "title": "T", "author": "qa", "spec_content": "s"},
-    }
-
-    params = generation_service.validate_metier(job_id, [
-        {"title": "Connexion", "cases": [_cas("Connexion réussie")]},
-        {"title": "Story vidée", "cases": []},
-    ])
-
-    assert [s["title"] for s in params["sections"]] == ["Connexion"]
-
-
 def test_validate_metier_REFUSE_si_PLUS_AUCUN_cas_n_est_retenu():
-    """Toutes les Sections vidées : rien à générer, on le dit plutôt que de démarrer un job vide."""
+    """Tous les cas supprimés à la validation : rien à générer, on le dit plutôt que de démarrer
+    un job vide."""
     job_id = "jobY"
     generation_service._JOBS[job_id] = {
         "status": "awaiting_metier", "case_ids": [], "error": "",
-        "sections": [{"title": "Connexion", "cases": [_cas("Connexion réussie")]}],
+        "cases": [_cas("Connexion réussie")],
         "_resume": {"module_id": 1, "title": "T", "author": "qa", "spec_content": "s"},
     }
 
     with pytest.raises(generation_service.GenerationError) as exc:
-        generation_service.validate_metier(job_id, [{"title": "Connexion", "cases": []}])
+        generation_service.validate_metier(job_id, [])
     assert exc.value.code == "invalid_metier"
+
+
+def test_validate_metier_TRANSPORTE_le_group_id_du_job_SANS_le_toucher():
+    """La Section (`group_id`) vit dans `_resume`, fixée AVANT la génération — `validate_metier`
+    ne la lit ni ne l'écrit, elle voyage telle quelle jusqu'à `resume_generation` (étape 3bis)."""
+    job_id = "jobZ"
+    generation_service._JOBS[job_id] = {
+        "status": "awaiting_metier", "case_ids": [], "error": "",
+        "cases": [_cas("Connexion réussie")],
+        "_resume": {"module_id": 1, "title": "T", "author": "qa", "spec_content": "s",
+                   "group_id": 42},
+    }
+
+    params = generation_service.validate_metier(
+        job_id, [_cas("Connexion réussie"), _cas("Connexion via SSO")])
+
+    assert params["group_id"] == 42
+    assert "group_id" not in params["cases"][0]   # plus de group_id PAR CAS (revenu en arrière)

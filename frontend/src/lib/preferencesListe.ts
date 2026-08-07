@@ -12,14 +12,15 @@
 import { ref, watch } from 'vue'
 
 export type Densite = 'compacte' | 'normale' | 'aeree'
-export type Colonne = 'id' | 'titre' | 'module' | 'type' | 'priorite' | 'statut'
+export type Colonne = 'id' | 'titre' | 'type' | 'priorite' | 'statut'
 
 /** Les colonnes qu'on peut masquer. `titre` et `statut` n'en font pas partie : une liste de cas
  *  sans titre ni verdict ne montre plus rien — laisser les masquer serait offrir de casser
- *  l'écran. */
+ *  l'écran. Pas de « Module » ici (retiré le 2026-08-06, étape 2bis) : l'information double
+ *  déjà le regroupement affiché en en-tête au-dessus de chaque module — TestRail ne la répète
+ *  pas non plus dans le tableau. */
 export const COLONNES_MASQUABLES: { cle: Colonne; label: string }[] = [
   { cle: 'id', label: 'ID' },
-  { cle: 'module', label: 'Module' },
   { cle: 'type', label: 'Type' },
   { cle: 'priorite', label: 'Priorité' },
 ]
@@ -38,7 +39,7 @@ interface Preferences {
 
 const DEFAUTS: Preferences = {
   densite: 'normale',
-  colonnes: ['id', 'module', 'type', 'priorite'],
+  colonnes: ['id', 'type', 'priorite'],
   tri: 'id',
 }
 

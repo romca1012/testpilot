@@ -20,7 +20,6 @@ const listModules = vi.fn()
 const listCases = vi.fn()
 const prioriteEnLot = vi.fn()
 const supprimerEnLot = vi.fn()
-const createRun = vi.fn()
 const push = vi.fn()
 
 vi.mock('../lib/api', () => ({
@@ -29,7 +28,6 @@ vi.mock('../lib/api', () => ({
     listCases: (...a: any[]) => listCases(...a),
     prioriteEnLot: (...a: any[]) => prioriteEnLot(...a),
     supprimerEnLot: (...a: any[]) => supprimerEnLot(...a),
-    createRun: (...a: any[]) => createRun(...a),
     renameModule: vi.fn(),
   },
 }))
@@ -58,7 +56,6 @@ beforeEach(() => {
   listCases.mockResolvedValue({ items: CAS, next_cursor: null, total: CAS.length })
   prioriteEnLot.mockResolvedValue({ traites: 2, ignores: 0 })
   supprimerEnLot.mockResolvedValue({ traites: 2, ignores: 0 })
-  createRun.mockResolvedValue({ id: 7, name: 'Campagne', case_count: 2 })
 })
 
 async function monterListe() {
@@ -110,12 +107,12 @@ describe('la recherche et le filtre', () => {
 describe('la sélection', () => {
   it('n\'affiche la barre d\'actions QUE lorsqu\'il y a une sélection', async () => {
     const w = await monterListe()
-    expect(w.text()).not.toContain('Créer une campagne')
+    expect(w.text()).not.toContain('cas sélectionné')
 
     await cases_a_cocher(w)[1].setValue(true)
 
     expect(w.text()).toContain('1 cas sélectionné')
-    expect(w.text()).toContain('Créer une campagne')
+    expect(w.text()).toContain('Priorité :')
   })
 
   it('cocher n\'OUVRE PAS le cas', async () => {
@@ -168,21 +165,6 @@ describe('les actions en lot', () => {
     await flushPromises()
 
     expect(w.text()).toContain('1 ignoré')
-  })
-
-  it('compose une campagne à SÉLECTION FIGÉE depuis les cas cochés', async () => {
-    // Figée, et non « tous les cas du projet » : une campagne ne doit pas changer sous les
-    // pieds de celui qui l'a composée.
-    vi.spyOn(window, 'prompt').mockReturnValue('Campagne du jour')
-    const w = await monterListe()
-    await cases_a_cocher(w)[0].setValue(true)
-    await w.findAll('button').find((b: any) => b.text() === 'Créer une campagne')!.trigger('click')
-    await flushPromises()
-
-    expect(createRun).toHaveBeenCalledWith('1', expect.objectContaining({
-      selection_mode: 'frozen', case_ids: [11, 12],
-    }))
-    expect(push).toHaveBeenCalledWith(expect.objectContaining({ name: 'run-detail' }))
   })
 
   it('DEMANDE confirmation avant une suppression de masse', async () => {

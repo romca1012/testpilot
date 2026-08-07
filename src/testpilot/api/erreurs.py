@@ -46,6 +46,8 @@ CATALOGUE: dict[str, tuple[int, str]] = {
     "introuvable":            (404, "Ressource introuvable"),
     "nom_deja_pris":          (409, "Ce nom est déjà utilisé"),
     "conteneur_non_vide":     (409, "Cet élément porte encore des enfants"),
+    # Sous-sections (migration 28) : une seule profondeur d'imbrication, comme TestRail.
+    "profondeur_invalide":    (422, "Profondeur d'imbrication non autorisée"),
     # ── Connexion à l'application testée ──
     "connexion_incomplete":   (409, "La connexion du projet est incomplète"),
     # ── Cycle de vie d'un cas ──

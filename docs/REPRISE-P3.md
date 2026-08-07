@@ -5,7 +5,130 @@
 > **complète sa propre version précédente** — écrite en cours de session, avant que le dernier
 > chantier (génération multi-cas) ne soit terminé, dogfoodé en conditions réelles et corrigé.
 >
-> Écrit le 2026-08-05, en fin de session. Régénérable : `python scripts/doc_en_pdf.py docs/REPRISE-P3.md`
+> Écrit le 2026-08-05, en fin de session. **Complété le 2026-08-06** (§0 ci-dessous — fiabilisation
+> des résultats automatisés, traçabilité, et chantier Sections/Sous-sections/glisser-déposer, EN
+> COURS). Régénérable : `python scripts/doc_en_pdf.py docs/REPRISE-P3.md`
+
+---
+
+## 0. Mise à jour du 2026-08-06 — fiabilisation, traçabilité, et Sections/glisser-déposer
+
+### Fiabilisation des résultats automatisés — un vrai bug TestPilot corrigé, pas applicatif
+
+Le porteur a lancé une exécution réelle et observé deux `retest` dont la capture d'écran semblait
+identique à un `failed` — signalé explicitement comme suspect : *« ca c est un bug venant de
+testpilot qui fausse les resultats de test »*. Deux causes distinctes trouvées et corrigées :
+
+1. **`page.screenshot(...)` sans `full_page=True`** (`behave_runtime/environment.py::_capturer_ecran`)
+   — les captures ne montraient que le viewport, donc se ressemblaient d'un échec à l'autre alors
+   que le contenu réel différait. Corrigé.
+2. **`_classe_conservee(ecrit, retenu)` avait un cas dégénéré**
+   (`behave_runtime/steps_library/_base_helpers.py`) : quand `retenu` est **vide**, N'IMPORTE QUELLE
+   classe de caractères absente de `ecrit` « prouve » trivialement qu'elle est conservée. Une règle
+   apprise erronée (`date_debut` → `[A-Za-z]`) a fait injecter `AAAAAAAA` dans un champ date sur deux
+   exécutions réelles successives (résultats 128, 129 de la campagne 18), faussant le verdict.
+   **Corrigé** par une garde en tête de fonction (`if not str(retenu).strip(): return ""`), avec
+   régression dédiée (`tests/test_refus_mesure.py::test_un_retenu_VIDE_ne_prouve_JAMAIS_de_classe`).
+   Les 2 lignes de règle apprise corrompues nettoyées dans `data/regles-apprises/projet-1.jsonl`
+   (sauvegarde horodatée conservée avant nettoyage, sur demande explicite du porteur).
+
+### Traçabilité automatique (Étape A) — livrée et vérifiée sur données réelles
+
+Chaque exécution automatique écrit désormais un **commentaire en langage clair** généré par IA
+(`src/testpilot/verdict/explication.py::propose_explication`) — pour **TOUS les verdicts**, pas
+seulement les échecs : *« cela garantit une possible vérification humaine d'une exécution
+automatisée grâce à une IA »* (consigne explicite du porteur). Le commentaire est écrit **au
+moment de la création du résultat**, jamais par `UPDATE` — respecte l'invariant « rien n'est jamais
+modifié » du registre (`test_result`). Les captures d'écran sont archivées comme pièces jointes du
+résultat (`result_attachment`, plafonné par `config.ATTACHMENT_MAX_PER_RESULT`).
+
+### Chantier Sections/Sous-sections, déplacer-copier, glisser-déposer
+
+Plan complet et à jour : `C:\Users\RomaricCAPO-CHICHI\.claude\plans\effervescent-tinkering-pascal.md`
+(seul document qui fait foi sur le détail technique de ce chantier — ce qui suit n'en est qu'un
+résumé d'état).
+
+- ✅ **Étape 0** — retrait de « créer une campagne depuis une sélection de cas » : le porteur passe
+  systématiquement par « Lancer une exécution » (`AddTestRunForm.vue`), qui offre déjà le choix du
+  mode et la sélection des cas en un geste.
+- ✅ **Étape 1** — vraies Sous-sections : une profondeur d'imbrication (migration 28,
+  `case_group.parent_group_id`), parité TestRail par défaut (pas de niveau 3). Liens inline
+  « Ajouter un cas » / « Ajouter une sous-section » à l'endroit exact où TestRail les place (sous
+  la liste des cas d'une Section, plus dans la barre latérale). ⚠️ Bug de déploiement réel trouvé
+  et corrigé pendant la vérification : un `CREATE INDEX` sur la nouvelle colonne avait été placé
+  dans `schema.sql` (qui tourne AVANT les migrations) au lieu de la migration elle-même — plantait
+  le tout premier appel sur la vraie base de production. Nouveau test dédié à cette classe de bug :
+  `tests/test_migration_28.py` (copie la VRAIE base et rejoue le chemin complet `init_db()`).
+- ✅ **Étape 2** — déplacer/copier un cas entre Sections, en base : `CaseRepo.deplacer` (réattache,
+  même `id`, historique intact) / `CaseRepo.copier` (clone réel, aucun historique hérité, nouveau
+  `feature_slug`, script recopié sur disque). Vérifié en direct sur données réelles (Sapian) :
+  déplacement d'un cas déjà exécuté → historique byte-identique ; copie → cas neuf sans résultat,
+  fichiers `.feature`/`_steps.py` distincts sur disque. Nettoyé après vérification.
+- ✅ **Étape 2bis** — le porteur avait comparé l'écran livré à l'Étape 2 (icône ⋮ → fenêtre listant
+  toutes les Sections cibles) à de vraies captures TestRail : chez eux c'est un **glisser-déposer
+  natif** (poignée par ligne, dépôt sur une Section, petit menu QUI APPARAÎT AU POINT DE DÉPÔT —
+  « Déplacer ici (ctrl/cmd) / Copier ici (maj) / Annuler », les touches déclenchant l'action
+  directement sans même faire apparaître le menu). Livré : remplace le menu ⋮ pour les cas ET les
+  Sections (déplacer seulement pour ces dernières — jamais de copie, ça dupliquerait en cascade
+  tous leurs cas), retire la colonne « Module » du tableau (redondante avec le regroupement déjà
+  affiché en en-tête). Nouveau backend : `CaseGroupRepo.deplacer` + route
+  `POST /api/groups/{id}/deplacer`. **Bug trouvé et corrigé au passage** : `DuplicateName` et
+  `ProfondeurInvalide` héritent toutes deux de `ValueError` en Python — l'ordre des `except` sur
+  les 3 routes déplacer/copier faisait qu'une collision ou une imbrication invalide renvoyait 404
+  au lieu du bon code d'erreur (409/422), sans qu'aucun test HTTP existant ne l'attrape. Vérifié en
+  direct sur données réelles (nesting/promotion de Sections jetables, nettoyées après coup) + suite
+  complète back/front vertes.
+- ✅ **Étape 3** — génération multi-cas mise à PLAT : l'IA propose une liste plate de cas (fini le
+  regroupement automatique en Sections par user story détectée), chacun avec un simple repère de
+  lecture (« Issu de : … », jamais une Section). Livrée une première fois avec un choix de Section
+  PAR CAS sur l'écran de validation — **remplacé le jour même par l'étape 3bis** ci-dessous, sur
+  retour du manager du porteur.
+- ✅ **Étape 3bis** (même jour, 2026-08-07) — la Section se choisit désormais AVANT la génération,
+  UNE SEULE FOIS pour tout le lot, sur l'écran de spécification (même patron exact que le choix du
+  Module, et **obligatoire** comme lui — bouton désactivé sans Section choisie/nommée). L'écran de
+  validation n'a donc plus aucun sélecteur : une simple liste de cas, **repliée par défaut**, à
+  déplier un par un pour consulter/corriger. `resume_generation` ne crée plus AUCUNE Section
+  elle-même, et valide le `group_id` reçu UNE SEULE FOIS pour tout le lot (repli sur l'enveloppe
+  automatique, par cas, si la Section a disparu entre-temps — jamais bloquant). Vérifié : suites
+  complètes back (1356) + front (181), type-check propre, **et en direct sur le projet réel**
+  (serveur jetable) — une Section invalide ou d'un autre module est bien refusée en 404 avant tout
+  appel LLM (aucun coût), une Section valide démarre normalement, aucune trace laissée en base.
+  **Bug de régression trouvé et corrigé en cours de route** : un test existant simulait
+  `run_generation` avec une signature figée ignorant le nouveau `group_id` — l'appel plantait en
+  silence dans la tâche de fond FastAPI, invisible tant qu'on ne lance pas la suite COMPLÈTE (les
+  fichiers ciblés seuls ne l'auraient jamais montré).
+
+**Ordre et discipline, inchangés** : chaque étape expliquée avant d'être codée, vérifiée
+personnellement par le porteur (tests + vérification live sur données réelles + nettoyage des
+traces de vérification) avant de passer à la suivante.
+
+---
+
+## 0bis. Incident réel du 2026-08-07 — purge cassée par le registre, corrigée
+
+Le porteur a signalé une génération « timed out » sur Mutation Payeur, avec l'impression que
+« tout a été perdu ». Investigation directe sur `data/testpilot.db` (lecture seule d'abord) :
+
+- **Rien n'était réellement perdu** : les modules « Mutation Payeur » et « Retenue de garantie »
+  avaient été mis à la corbeille (suppression douce) par le porteur lui-même après l'incident —
+  leurs 13 cas et 9 sections étaient intacts, juste invisibles.
+- **Cause probable du « timed out »** : le serveur du porteur a changé de PID entre deux contrôles
+  — un redémarrage a eu lieu pendant la génération. Les jobs de génération ne vivent qu'en mémoire
+  (`generation_service._JOBS`, un dict Python) : un redémarrage les efface, l'écran reste bloqué
+  sans jamais recevoir de réponse. **Faiblesse réelle, non corrigée** — voir §10bis.
+- Sur confirmation explicite et informée du porteur (irréversibilité expliquée deux fois), les
+  deux modules ont été **purgés définitivement**. La purge a d'abord échoué (`sqlite3.
+  IntegrityError: FOREIGN KEY constraint failed`) sur le module ayant du VRAI historique
+  d'exécution : `CaseRepo.purger` (cascade de suppression définitive) ne nettoyait jamais
+  `test_result`/`result_attachment`/`run_case_assignment` (migration 25, 2026-08-06) — un cas déjà
+  exécuté dans une campagne devenait **insupprimable définitivement**, même depuis la corbeille.
+  Même défaut déjà payé deux fois pour `cost_ledger` et `test_run_case` (une table ajoutée après
+  coup, jamais raccordée à la cascade). **Corrigé** dans `CaseRepo.purger`
+  ([repositories.py](src/testpilot/store/repositories.py)), avec un test dédié qui rejoue le
+  scénario exact (`tests/test_suppression_douce.py::test_purger_un_cas_AVEC_un_vrai_resultat_au_
+  registre_ne_PLANTE_PAS`). Suite complète repassée : 1357 verts.
+- ⚠️ **Le serveur du porteur (port 8000) tourne encore sur l'ANCIEN code** — Python ne recharge
+  pas à chaud. Un redémarrage est nécessaire pour que ce correctif s'applique chez lui.
 
 ---
 
@@ -227,6 +350,12 @@ test »* — contient 9a à 9e tels qu'ils étaient **avant** le dogfooding rée
 ?? specs/vert/10-mandat-prelevement.md
 ```
 
+**Mise à jour 2026-08-06** : la liste ci-dessus reflète l'état au 2026-08-05. Depuis, le chantier
+§0 (fiabilisation + traçabilité + Sections/glisser-déposer) a ajouté un volume de changements bien
+plus large, toujours **NON commité** en totalité — ne pas ré-énumérer ici à la main, ça se périme
+à chaque session : lancer `git status` fait foi. Toujours aucun commit hors `96aedd4` et
+`75a3ede`/`5c202b8`/`538f514`/`d7cc5db` (voir `git log`) pour ce périmètre.
+
 **Un commit s'impose** — deux vrais correctifs de production et 4 specs réelles ne devraient pas
 rester en local. Pas fait automatiquement : la consigne du dépôt est de ne commiter que sur
 demande explicite du porteur.
@@ -234,6 +363,17 @@ demande explicite du porteur.
 ---
 
 ## 10. ⏳ Ce qui reste (non commencé)
+
+**Chantier « génération multi-cas » (§0, Étapes 0 à 3bis + AddTestRunForm) déclaré TERMINÉ par le
+porteur le 2026-08-07.** Ce qui suit est la suite du programme, pas une continuation de ce chantier.
+
+### Fiabilité — les jobs de génération ne survivent pas à un redémarrage serveur
+Trouvé le 2026-08-07 en investiguant l'incident de purge (§0bis) : `generation_service._JOBS` est
+un dict Python **en mémoire, jamais en base**. Un redémarrage du serveur pendant une génération en
+cours (long — dry-run réel contre Odoo, plusieurs minutes) fait disparaître le job : l'écran reste
+bloqué sans jamais recevoir de réponse, perçu comme un « timeout ». Pas corrigé — nécessiterait de
+persister l'état du job (au moins son `job_id`/`status`/`error`) pour distinguer « en cours » de
+« le serveur qui le suivait n'existe plus ».
 
 ### Assignation
 Table `run_case_assignment` déjà créée (migration 25), rien ne l'alimente. Colonne « Assigné à »

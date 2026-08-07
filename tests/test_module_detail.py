@@ -146,7 +146,7 @@ def test_ajout_declenche_la_generation_dans_le_bon_module(client, monkeypatch):
     conn = _conn(); pid, mid = _seed(conn); conn.close()
     captured = {}
 
-    def fake_run(job_id, *, module_id, title, spec_content, author):
+    def fake_run(job_id, *, module_id, title, spec_content, author, group_id=None):
         # Simule la génération : crée le cas AVEC sa version (comme le vrai agent le ferait,
         # une fois la pause métier franchie).
         slug = generation_service.slugify(title)

@@ -199,6 +199,36 @@ def delete_case(case_id: int, request: Request, conn=Depends(get_conn)):
     return Response(status_code=204)
 
 
+@router.post("/{case_id}/deplacer", response_model=schemas.CaseMoveOut)
+def deplacer_case(case_id: int, body: schemas.CaseMoveIn, conn=Depends(get_conn)):
+    """Déplace un cas vers une autre Section — même `id`, aucun historique touché
+    (étape 2, migration 28)."""
+    try:
+        CaseRepo(conn).deplacer(case_id, body.group_id)
+    # ⚠️ `DuplicateName` hérite de `ValueError` — ce `except` DOIT rester avant le générique,
+    # sinon il est avalé par lui et une collision de titre rend 404 au lieu de 409 (mesuré).
+    except DuplicateName as exc:
+        raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return schemas.CaseMoveOut(id=case_id)
+
+
+@router.post("/{case_id}/copier", response_model=schemas.CaseMoveOut, status_code=201)
+def copier_case(case_id: int, body: schemas.CaseMoveIn, request: Request, conn=Depends(get_conn)):
+    """Copie un cas dans une autre Section — un cas RÉELLEMENT NEUF, sans historique partagé
+    (étape 2, migration 28)."""
+    try:
+        nouveau_id = CaseRepo(conn).copier(case_id, body.group_id,
+                                           author=access.utilisateur_de(request))
+    # ⚠️ `DuplicateName` hérite de `ValueError` — voir la note dans `deplacer_case` ci-dessus.
+    except DuplicateName as exc:
+        raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return schemas.CaseMoveOut(id=nouveau_id)
+
+
 @router.get("/{case_id}", response_model=schemas.CaseDetail)
 def get_case(case_id: int, conn=Depends(get_conn)):
     case = CaseRepo(conn).get(case_id)

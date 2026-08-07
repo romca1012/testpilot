@@ -99,7 +99,7 @@ const etat = (code: string | null) => etatView(code)
           <button class="grid h-6 w-5 shrink-0 place-items-center" :aria-expanded="isExpanded(m.id)"
                   :title="isExpanded(m.id) ? 'Replier' : 'Déplier'" @click="emit('toggle', m.id)" :aria-label="isExpanded(m.id) ? 'Replier' : 'Déplier'">
             <Icon name="chevron" class="h-3 w-3 transition-transform"
-                  :class="isExpanded(m.id) && 'rotate-90'" />
+                  :class="isExpanded(m.id) ? 'rotate-90' : ''" />
           </button>
           <RouterLink :to="`/projects/${projectId}/modules/${m.id}`" :title="prettyModule(m.name)"
                       class="flex min-w-0 flex-1 items-center gap-1.5 py-1.5">

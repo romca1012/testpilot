@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 27
+_SCHEMA_VERSION = 28
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -126,6 +126,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_26_retrait_de_l_angle(conn)
     if version < 27:
         _migrate_27_mode_d_execution(conn)
+    if version < 28:
+        _migrate_28_sous_sections(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -1340,3 +1342,19 @@ def _prettify(slug: str) -> str:
     """'demande_materiel' → 'Demande materiel' (nom métier lisible depuis un slug technique)."""
     s = slug.replace("_", " ").replace("-", " ").strip()
     return s[:1].upper() + s[1:] if s else s
+
+
+def _migrate_28_sous_sections(conn: sqlite3.Connection) -> None:
+    """Sous-sections : une Section (`case_group`) peut désormais en contenir d'autres
+    (2026-08-06, décision du porteur — parité TestRail, une vraie hiérarchie, pas un libellé).
+
+    `parent_group_id` : NULL = Section de premier niveau, comme avant cette migration — aucune
+    base existante ne change de comportement tant que personne ne crée de sous-section. Une seule
+    profondeur : une sous-section ne porte jamais elle-même de `parent_group_id` renseigné, comme
+    TestRail par défaut (pas de niveau 3).
+    """
+    if "parent_group_id" not in _column_names(conn, "case_group"):
+        conn.execute("ALTER TABLE case_group ADD COLUMN parent_group_id"
+                     " INTEGER REFERENCES case_group(id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_case_group_parent ON case_group(parent_group_id)")

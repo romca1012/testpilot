@@ -169,6 +169,22 @@ export const api = {
   }),
   deleteCase: (caseId: number | string) =>
     request<void>(`/api/cases/${caseId}`, { method: 'DELETE' }),
+  // Déplacer/copier un cas entre Sections (migration 28, étape 2). Déplacer = même id, aucun
+  // historique touché ; copier = un cas NEUF, sans le moindre résultat hérité (parité TestRail).
+  deplacerCas: (caseId: number | string, groupId: number) =>
+    request<{ id: number }>(`/api/cases/${caseId}/deplacer`, {
+      method: 'POST', body: JSON.stringify({ group_id: groupId }),
+    }),
+  copierCas: (caseId: number | string, groupId: number) =>
+    request<{ id: number }>(`/api/cases/${caseId}/copier`, {
+      method: 'POST', body: JSON.stringify({ group_id: groupId }),
+    }),
+  // Glisser-déposer une Section (étape 2bis) — jamais de copie : dupliquer une Section
+  // dupliquerait en cascade tous les cas qu'elle contient (voir `copierCas`, réservé aux cas).
+  deplacerGroupe: (groupId: number, parentGroupId: number | null) =>
+    request<{ parent_group_id: number | null }>(`/api/groups/${groupId}/deplacer`, {
+      method: 'POST', body: JSON.stringify({ parent_group_id: parentGroupId }),
+    }),
   // ── Actions en LOT (lot C) : une action, une requête, un compte rendu ──
   // ⚠️ `traites` et `ignores` sont séparés : demander 20 cas et en traiter 18 n'est pas un
   // succès complet — l'écran doit pouvoir le dire plutôt que d'annoncer « fait ».
@@ -192,7 +208,7 @@ export const api = {
   // ── La SPÉCIFICATION : le document source, d'où naissent 1 à N cas (décision 0022) ──
   // ⚠️ Créer une spécification ne génère AUCUN cas et ne dépense RIEN : elle nomme un document.
   // C'est la génération qui le lira, après confirmation humaine du périmètre (§4bis du brief).
-  createGroup: (moduleId: number | string, body: { title: string; description?: string; spec_content?: string }) =>
+  createGroup: (moduleId: number | string, body: { title: string; description?: string; spec_content?: string; parent_group_id?: number | null }) =>
     request<GroupDetail>(`/api/modules/${moduleId}/groups`, { method: 'POST', body: JSON.stringify(body) }),
   getGroup: (groupId: number | string) => request<GroupDetail>(`/api/groups/${groupId}`),
   // Édition partielle : n'envoyer que ce qui change (`null`/absent = « ne touche pas »).
@@ -201,16 +217,19 @@ export const api = {
   // 409 tant que la spécification porte des cas — pas de cascade : un cas porte de l'historique.
   deleteGroup: (groupId: number | string) =>
     request<void>(`/api/groups/${groupId}`, { method: 'DELETE' }),
-  addCase: (moduleId: number | string, spec_content: string, title = '') =>
+  // `group_id` (étape 3bis, 2026-08-07) : la Section choisie AVANT la génération, pour TOUS les
+  // cas qui en sortiront — pas cas par cas.
+  addCase: (moduleId: number | string, spec_content: string, title = '', group_id: number | null = null) =>
     request<GenerationJob>(`/api/modules/${moduleId}/cases`, {
-      method: 'POST', body: JSON.stringify({ spec_content, title }),
+      method: 'POST', body: JSON.stringify({ spec_content, title, group_id }),
     }),
   getGenerationJob: (jobId: string) => request<GenerationJob>(`/api/modules/jobs/${jobId}`),
-  // Passe 4b : l'ensemble des Sections validées (corrections et suppressions comprises) FAIT
-  // FOI — c'est lui qui part à la génération du Gherkin, pas la proposition initiale de l'IA.
-  validateMetier: (jobId: string, sections: SectionDraft[]) =>
+  // Passe 4b : la liste PLATE des cas validés (corrections, suppressions — étape 3, 2026-08-07)
+  // FAIT FOI — c'est elle qui part à la génération du Gherkin, pas la proposition initiale de
+  // l'IA. Pas de Section ici (étape 3bis) : elle est déjà fixée depuis `addCase`.
+  validateMetier: (jobId: string, cases: MetierDraft[]) =>
     request<GenerationJob>(`/api/modules/jobs/${jobId}/metier`, {
-      method: 'POST', body: JSON.stringify({ sections }),
+      method: 'POST', body: JSON.stringify({ cases }),
     }),
   // ── Réglages d'INSTANCE (2026-08-04) — ils ne dépendent d'aucun projet ──
   // ⚠️ La réponse porte `source` (db | env | default) : la base l'emporte sur la variable
@@ -402,12 +421,16 @@ export interface Ref { id: number; name: string }
 
 export interface GroupSummary {
   id: number; module_id: number; title: string; case_count: number
+  // `null` = Section de premier niveau ; sinon l'id de la Section qui porte cette Sous-section
+  // (migration 28) — c'est ce qui permet à l'écran de reconstruire l'arbre.
+  parent_group_id?: number | null
 }
 /** La Spécification AVEC son document. `spec_hash` est l'empreinte du document tel qu'il est —
  *  c'est elle qui dira un jour qu'un cas est né d'une version dépassée de sa spec (0022 n°6). */
 export interface GroupDetail {
   id: number; module_id: number; title: string; description: string
   spec_content: string; spec_hash: string; case_count: number
+  parent_group_id?: number | null
   created_at: string; updated_at: string
 }
 
@@ -448,23 +471,23 @@ export interface CaseSummary {
   verdict_from_other_version: boolean
 }
 export interface ModuleDetail { module: ModuleSummary; project: Ref }
-/** Le document métier proposé par l'IA pour UN cas, à valider ou corriger (décision 0022 n°5). */
+/** Le document métier proposé par l'IA pour UN cas, à valider ou corriger (décision 0022 n°5).
+ * Liste PLATE depuis l'étape 3 (2026-08-07) : `user_story` est un simple repère de LECTURE (la
+ * story dont ce cas est issu, jamais une Section imposée). Pas de `group_id` par cas ici (étape
+ * 3bis, 2026-08-07) : la Section est choisie UNE FOIS, avant même la génération
+ * (`api.addCase`), pas cas par cas sur cet écran. */
 export interface MetierDraft {
   title: string; preconditions: string; steps: string[]
   expected_result: string
-}
-/** Une Section proposée (= une user story) et l'ensemble MINIMAL de cas planifiés pour la
- * couvrir (§9, génération multi-cas) — un nombre variable, jamais fixé d'avance. */
-export interface SectionDraft {
-  title: string; cases: MetierDraft[]
+  user_story?: string
 }
 export interface GenerationJob {
   // running | awaiting_metier | done | failed
   // ⚠️ `awaiting_metier` n'est PAS une attente technique : le job est ARRÊTÉ et n'ira nulle part
-  // tant qu'un humain n'a pas validé l'ENSEMBLE des Sections proposées. Traiter cet état comme
+  // tant qu'un humain n'a pas validé l'ENSEMBLE des cas proposés. Traiter cet état comme
   // « en cours » ferait tourner le formulaire dans le vide indéfiniment.
   job_id: string; status: string; case_ids: number[]; error: string
-  sections?: SectionDraft[] | null
+  cases?: MetierDraft[] | null
 }
 export interface VersionOut {
   id: number; version_number: number; feature_content: string; steps_content: string
@@ -494,6 +517,14 @@ export interface ExecutionSummary {
   // Replis « libellé → nom technique » tracés pendant le run (décision 0007 B+) — non-bloquant.
   field_fallbacks?: string[]
   case_title: string | null; module_name: string | null; suite_name: string | null
+  // Raison d'un plantage AVANT tout scénario (migration 11) — vide sur un run normal.
+  error_message?: string
+  // CONTRE QUOI ce test a tourné (migration 20) — vide sur les exécutions antérieures à elle.
+  // Jamais le mot de passe.
+  target_url?: string; target_database?: string; target_username?: string
+  // Statut de LECTURE calculé par le serveur (passed/failed/retest/blocked/untested) — TOUJOURS
+  // présent (défaut `"untested"` côté Pydantic), jamais absent de la réponse.
+  statut: string
 }
 export interface CaseDetail {
   case: CaseSummary; project: Ref | null; module: Ref | null; current_version_id: number | null
@@ -502,6 +533,10 @@ export interface CaseDetail {
 export interface ScenarioResultOut {
   scenario_name: string; execution_status: string; functional_status: string
   cause_category: string; failure_type: string; error_summary: string
+  // Statut de LECTURE calculé par le serveur — TOUJOURS présent (défaut `"untested"`).
+  statut: string
+  // Le step en échec — exposé pour rendre `cause_category` auditable (décision 0015).
+  step_text?: string
 }
 export interface ExecutionDetail extends ExecutionSummary { scenarios: ScenarioResultOut[] }
 export interface RunResponse { execution_id: number; status: string }
@@ -543,4 +578,7 @@ export interface TestReport {
   repairs: Array<{ cause_label: string; defect_origin: string; confirmation_status: string; requires_human_confirmation: boolean; what_was_tried: string }>
   cost_usd: number; cost_source: string; iterations: number; duration_seconds: number
   needs_human_confirmation: boolean
+  // CONTRE QUOI ce verdict a été rendu (migration 20) — vide sur les exécutions antérieures à
+  // elle : « on ne sait pas » est la vérité, jamais une cible reconstituée. Jamais le mot de passe.
+  target_url?: string; target_database?: string; target_username?: string
 }

@@ -56,7 +56,11 @@ export const cles = {
   unRun: (id: Id) => ['run', Number(toValue(id))] as const,
 }
 
-type Id = MaybeRefOrGetter<number | string>
+// `undefined`/`null` INCLUS, délibérément : pendant une transition de route, `pid` passe
+// brièvement par cet état (cf. `pret()` ci-dessous, qui le gère déjà) — un type qui ne l'admettait
+// pas mentait sur ce que les appelants envoient réellement (trouvé par la vérification de types
+// réelle, 2026-08-06 : chaque appelant devait forcer le type avec `as string` pour compiler).
+type Id = MaybeRefOrGetter<number | string | undefined | null>
 
 /** Une requête n'est lancée que si son identifiant existe : pendant une transition de route,
  *  `pid` passe brièvement à `undefined` et une requête `/api/projects/undefined/...` partirait. */
@@ -65,6 +69,16 @@ function pret(id: Id) {
     const v = toValue(id)
     return v !== undefined && v !== null && v !== '' && !Number.isNaN(Number(v))
   })
+}
+
+/** La valeur d'un `Id` DANS un `queryFn`/`mutationFn` — jamais `undefined`/`null` à cet endroit
+ *  précis : `@tanstack/vue-query` garantit qu'il n'appelle `queryFn` que si `enabled` (= `pret(id)`
+ *  ici) est vrai, et une mutation n'est déclenchée qu'à la main, jamais tant que l'écran attend
+ *  encore un projet. Un simple `toValue` laisserait passer `undefined` dans le type — ce module
+ *  SAIT que ça n'arrive pas à cet endroit, `sur()` le dit au lieu de forcer chaque appelant à
+ *  écrire `as string` (ce qui masquerait un VRAI `undefined` ailleurs, lui). */
+function sur<T extends number | string>(id: MaybeRefOrGetter<T | undefined | null>): T {
+  return toValue(id) as T
 }
 
 // ── Lectures ─────────────────────────────────────────────────────────────────────────────────
@@ -76,7 +90,7 @@ export function useProjets() {
 export function useModules(pid: Id) {
   return useQuery<ModuleSummary[]>({
     queryKey: computed(() => cles.modules(pid)),
-    queryFn: () => api.listModules(toValue(pid)),
+    queryFn: () => api.listModules(sur(pid)),
     enabled: pret(pid),
   })
 }
@@ -88,7 +102,7 @@ export function usePageCas(pid: Id, opts: MaybeRefOrGetter<{
 }> = {}) {
   return useQuery({
     queryKey: computed(() => [...cles.cas(pid), toValue(opts)]),
-    queryFn: () => api.listCases(toValue(pid), toValue(opts)),
+    queryFn: () => api.listCases(sur(pid), toValue(opts)),
     enabled: pret(pid),
   })
 }
@@ -101,7 +115,7 @@ export function usePageCas(pid: Id, opts: MaybeRefOrGetter<{
 export function useNbCas(pid: Id) {
   const q = useQuery({
     queryKey: computed(() => [...cles.cas(pid), 'total']),
-    queryFn: () => api.listCases(toValue(pid), { limit: 1 }),
+    queryFn: () => api.listCases(sur(pid), { limit: 1 }),
     enabled: pret(pid),
   })
   return computed(() => q.data.value?.total ?? 0)
@@ -110,7 +124,7 @@ export function useNbCas(pid: Id) {
 export function useGroupes(pid: Id) {
   return useQuery<GroupSummary[]>({
     queryKey: computed(() => cles.groupes(pid)),
-    queryFn: () => api.listGroups(toValue(pid)),
+    queryFn: () => api.listGroups(sur(pid)),
     enabled: pret(pid),
   })
 }
@@ -118,7 +132,7 @@ export function useGroupes(pid: Id) {
 export function useRuns(pid: Id) {
   return useQuery<RunSummary[]>({
     queryKey: computed(() => cles.runs(pid)),
-    queryFn: () => api.listRuns(toValue(pid)),
+    queryFn: () => api.listRuns(sur(pid)),
     enabled: pret(pid),
   })
 }
@@ -126,7 +140,7 @@ export function useRuns(pid: Id) {
 export function useUnGroupe(gid: Id) {
   return useQuery({
     queryKey: computed(() => cles.unGroupe(gid)),
-    queryFn: () => api.getGroup(toValue(gid)),
+    queryFn: () => api.getGroup(sur(gid)),
     enabled: pret(gid),
   })
 }
@@ -134,7 +148,7 @@ export function useUnGroupe(gid: Id) {
 export function useUnCas(cid: Id) {
   return useQuery({
     queryKey: computed(() => cles.unCas(cid)),
-    queryFn: () => api.getCase(toValue(cid)),
+    queryFn: () => api.getCase(sur(cid)),
     enabled: pret(cid),
   })
 }
@@ -146,7 +160,7 @@ export function useCreerModule(pid: Id) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (v: { name: string; description?: string }) =>
-      api.createModule(toValue(pid), v.name, v.description || ''),
+      api.createModule(sur(pid), v.name, v.description || ''),
     // Un module neuf change l'arbre ET les listes groupées par module.
     onSuccess: () => { qc.invalidateQueries({ queryKey: cles.projet(pid) }) },
   })
@@ -165,8 +179,8 @@ export function useSupprimerModule(pid: Id) {
 export function useCreerGroupe(pid: Id) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (v: { moduleId: number; title: string }) =>
-      api.createGroup(v.moduleId, { title: v.title }),
+    mutationFn: (v: { moduleId: number; title: string; parentGroupId?: number | null }) =>
+      api.createGroup(v.moduleId, { title: v.title, parent_group_id: v.parentGroupId ?? null }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: cles.groupes(pid) }) },
   })
 }

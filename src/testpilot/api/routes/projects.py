@@ -142,7 +142,8 @@ def list_groups(project_id: int, conn=Depends(get_conn)):
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
     return [schemas.GroupSummary(id=r["id"], module_id=r["module_id"], title=r["title"],
-                                 case_count=r.get("case_count", 0))
+                                 case_count=r.get("case_count", 0),
+                                 parent_group_id=r.get("parent_group_id"))
             for r in CaseGroupRepo(conn).list_for_project(project_id)]
 
 

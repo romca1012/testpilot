@@ -15,7 +15,10 @@ const pid = computed(() => route.params.pid as string)
 
 // Couche de données (lot A) : revenir sur cet écran ne redemande plus la liste des campagnes
 // tant qu'elle est fraîche. Mesuré au navigateur : 3 requêtes pour 3 visites AVANT, 1 APRÈS.
-const { data: runsData, isLoading, error: erreurRuns } = useRuns(pid)
+// ⚠️ `refetch` (et non `load`, qui n'a jamais existé ici) : trouvé par la vérification de types
+// réelle mise en place le 2026-08-06 — le bouton « Réessayer » appelait une fonction absente,
+// donc un clic dessus ne faisait RIEN (silencieux, sans erreur visible à l'écran).
+const { data: runsData, isLoading, error: erreurRuns, refetch } = useRuns(pid)
 const runs = computed<RunSummary[]>(() => runsData.value ?? [])
 const loading = computed(() => isLoading.value && !runsData.value)
 const error = computed(() => (erreurRuns.value ? 'Impossible de charger les exécutions.' : ''))
@@ -79,7 +82,7 @@ function goNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) 
       </div>
       <div v-else-if="error" class="mt-8 text-center">
         <p class="text-sm text-muted-foreground">{{ error }}</p>
-        <button class="mt-3 rounded-md border border-border px-3 py-1.5 text-sm hover:border-primary/40" @click="load">Réessayer</button>
+        <button class="mt-3 rounded-md border border-border px-3 py-1.5 text-sm hover:border-primary/40" @click="() => refetch()">Réessayer</button>
       </div>
       <p v-else-if="!runs.length" class="mt-10 text-center text-sm text-muted-foreground">
         Aucune exécution pour ce projet. Créez-en une avec « Ajouter une exécution ».

@@ -30,6 +30,7 @@ from testpilot.store.repositories import (
     CaseRepo,
     DuplicateName,
     ModuleRepo,
+    ProfondeurInvalide,
     ProjectRepo,
 )
 
@@ -63,6 +64,8 @@ def create_group(module_id: int, body: schemas.GroupIn, conn=Depends(get_conn)):
 
     Le document peut être vide à la création : on nomme la spécification d'abord, on la rédige
     ensuite. C'est la GÉNÉRATION qui exigera un document non vide, pas le conteneur.
+
+    `body.parent_group_id` (migration 28) : crée une SOUS-section sous une Section existante.
     """
     if ModuleRepo(conn).get(module_id) is None:
         raise HTTPException(status_code=404, detail=f"module {module_id} introuvable")
@@ -70,9 +73,12 @@ def create_group(module_id: int, body: schemas.GroupIn, conn=Depends(get_conn)):
         raise HTTPException(status_code=422, detail="le titre de la spécification est requis")
     try:
         gid = CaseGroupRepo(conn).create(module_id=module_id, title=body.title.strip(),
-                                         description=body.description)
+                                         description=body.description,
+                                         parent_group_id=body.parent_group_id)
     except DuplicateName as exc:
         raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
+    except ProfondeurInvalide as exc:
+        raise erreurs.ErreurMetier("profondeur_invalide", str(exc)) from exc
     # Le document passe par `update()` : c'est LUI qui calcule `spec_hash`, en un seul endroit.
     if body.spec_content:
         CaseGroupRepo(conn).update(gid, spec_content=body.spec_content)
@@ -196,7 +202,7 @@ def add_case(module_id: int, body: schemas.AddCaseIn, background: BackgroundTask
         # serveur partagé, « qui a créé ce cas ? » doit avoir une réponse (2026-07-24).
         job_id, params = generation_service.start_generation(
             conn, module_id, spec_content=spec, title=body.title,
-            author=access.utilisateur_de(request) or body.author)
+            author=access.utilisateur_de(request) or body.author, group_id=body.group_id)
     except generation_service.GenerationError as err:
         raise erreurs.depuis_service(err.code, err.detail)
 
@@ -209,29 +215,27 @@ def get_job(job_id: str):
     job = generation_service.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job introuvable")
-    sections = job.get("sections") if job["status"] == "awaiting_metier" else None
+    cases = job.get("cases") if job["status"] == "awaiting_metier" else None
     return schemas.GenerationJobOut(
         job_id=job_id, status=job["status"], case_ids=job.get("case_ids") or [],
         error=job["error"],
-        sections=[schemas.SectionDraftOut(
-                      title=s["title"],
-                      cases=[schemas.MetierDraftOut(**c) for c in s["cases"]])
-                  for s in sections] if sections else None)
+        cases=[schemas.MetierDraftOut(**c) for c in cases] if cases else None)
 
 
 @router.post("/jobs/{job_id}/metier", response_model=schemas.GenerationJobOut, status_code=202)
 def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: BackgroundTasks):
-    """PASSE 4b — l'humain valide (ou corrige, ou réduit) l'ensemble des Sections ; le Gherkin de
-    chaque cas retenu est alors écrit.
+    """PASSE 4b — l'humain valide (ou corrige, ou réduit) l'ensemble des cas proposés, chacun avec
+    la Section qu'il a choisie (ou aucune) ; le Gherkin de chaque cas retenu est alors écrit.
 
-    C'est le point de reprise de la pause voulue par `0022` n°5, étendue au §9 : le technique
-    n'est payé qu'après qu'un humain a signé l'intention. Le corps de la requête FAIT FOI — si le
-    relecteur a réécrit des étapes ou supprimé un cas, c'est ce qu'il a validé qui part à la
-    génération, pas la proposition de l'IA.
+    C'est le point de reprise de la pause voulue par `0022` n°5, étendue au §9, puis mise à plat
+    à l'étape 3 (2026-08-07) : le technique n'est payé qu'après qu'un humain a signé l'intention.
+    Le corps de la requête FAIT FOI — si le relecteur a réécrit des étapes, supprimé un cas ou
+    changé sa Section, c'est ce qu'il a validé qui part à la génération, pas la proposition de
+    l'IA.
     """
     try:
-        sections = [s.model_dump() for s in body.sections]
-        params = generation_service.validate_metier(job_id, sections)
+        cases = [c.model_dump() for c in body.cases]
+        params = generation_service.validate_metier(job_id, cases)
     except generation_service.GenerationError as err:
         raise erreurs.depuis_service(err.code, err.detail)
 

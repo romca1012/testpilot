@@ -14,6 +14,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseSummary } from '../lib/api'
+import { useGroupes } from '../lib/donnees'
 
 const route = useRoute()
 const router = useRouter()
@@ -56,6 +57,48 @@ function selectNone() { selected.value = [] }
 // Une exécution nommée peut regrouper des cas de PLUSIEURS modules — c'est le JTBD « régression
 // transverse ». Le backend le permet (référence par ID, sans contrainte de module) ; l'écran doit
 // le RENDRE VISIBLE, sinon l'utilisateur ne sait pas qu'il peut le faire.
+//
+// Groupé Module → Section → Sous-section (2026-08-07) — même hiérarchie que la liste des cas
+// (`TestCasesList.vue`) et le glisser-déposer de l'étape 2bis, plutôt que le regroupement PAR
+// MODULE SEUL d'avant les Sections. Purement une aide au repérage : contrairement à la liste des
+// cas, ce picker ne montre QUE ce qui contient au moins un cas (une Section vide n'aide personne
+// à choisir quoi jouer).
+const { data: groupsData } = useGroupes(pid)
+const groups = computed(() => groupsData.value ?? [])
+
+interface GroupeAffichage {
+  group_id: number | null; group_title: string; rows: CaseSummary[]; sousSections: GroupeAffichage[]
+}
+function groupesDuModule(moduleId: number | null, rows: CaseSummary[]): GroupeAffichage[] {
+  const groupesDuMod = groups.value.filter((g) => g.module_id === moduleId)
+  const parGroupe = new Map<number, CaseSummary[]>()
+  const orphelins: CaseSummary[] = []
+  for (const c of rows) {
+    if (c.group_id != null && groupesDuMod.some((g) => g.id === c.group_id)) {
+      const arr = parGroupe.get(c.group_id) ?? []
+      arr.push(c)
+      parGroupe.set(c.group_id, arr)
+    } else {
+      orphelins.push(c)
+    }
+  }
+  const versGroupe = (g: { id: number; title: string }): GroupeAffichage => ({
+    group_id: g.id, group_title: g.title, rows: parGroupe.get(g.id) ?? [], sousSections: [],
+  })
+  const noeuds = groupesDuMod
+    .filter((g) => g.parent_group_id == null)
+    .map((g) => {
+      const noeud = versGroupe(g)
+      noeud.sousSections = groupesDuMod.filter((sg) => sg.parent_group_id === g.id)
+        .map(versGroupe).filter((sg) => sg.rows.length > 0)
+      return noeud
+    })
+    .filter((n) => n.rows.length > 0 || n.sousSections.length > 0)
+  if (orphelins.length) {
+    noeuds.push({ group_id: null, group_title: 'Sans section', rows: orphelins, sousSections: [] })
+  }
+  return noeuds
+}
 const byModule = computed(() => {
   const map = new Map<string, CaseSummary[]>()
   for (const c of cases.value) {
@@ -63,14 +106,22 @@ const byModule = computed(() => {
     if (!map.has(k)) map.set(k, [])
     map.get(k)!.push(c)
   }
-  return [...map.entries()].map(([module, rows]) => ({ module, rows }))
+  return [...map.entries()].map(([module, rows]) => ({
+    module, rows, groupes: groupesDuModule(rows[0]?.module_id ?? null, rows),
+  }))
 })
+// Toggle générique : un module, une Section ou une sous-section — même geste, juste un
+// périmètre de lignes différent. Une Section coche/décoche AUSSI ses sous-sections (comme un
+// dossier), une sous-section reste locale à elle-même.
 function toggleModule(rows: CaseSummary[]) {
   const ids = rows.map((c) => c.id)
   const tousCoches = ids.every((id) => selected.value.includes(id))
   selected.value = tousCoches
     ? selected.value.filter((id) => !ids.includes(id))
     : [...new Set([...selected.value, ...ids])]
+}
+function tousLesCas(g: GroupeAffichage): CaseSummary[] {
+  return [...g.rows, ...g.sousSections.flatMap((sg) => sg.rows)]
 }
 // Combien de modules la sélection couvre — pour dire « transverse » quand c'est le cas.
 const modulesCouverts = computed(() => {
@@ -215,21 +266,49 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
                   Aucun cas de test dans ce projet — créez-en un d'abord.
                 </p>
                 <div v-else class="mt-2 max-h-64 overflow-y-auto rounded-md border border-border">
-                  <div v-for="g in byModule" :key="g.module">
+                  <div v-for="m in byModule" :key="m.module">
                     <button type="button"
                             class="w-full flex items-center gap-2 bg-surface-raised/70 px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground border-b border-border/60"
-                            @click="toggleModule(g.rows)">
+                            @click="toggleModule(m.rows)">
                       <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
-                      {{ g.module }}
-                      <span class="ml-auto font-normal normal-case">{{ g.rows.length }} cas — tout (dé)cocher</span>
+                      {{ m.module }}
+                      <span class="ml-auto font-normal normal-case">{{ m.rows.length }} cas — tout (dé)cocher</span>
                     </button>
-                    <label v-for="c in g.rows" :key="c.id"
-                           class="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent/30 cursor-pointer border-b border-border/40">
-                      <input type="checkbox" :checked="selected.includes(c.id)" @change="toggleCase(c.id)"
-                             class="accent-[hsl(var(--primary))]" />
-                      <span class="text-muted-foreground tabular-nums text-xs">C{{ c.id }}</span>
-                      <span class="truncate">{{ c.title }}</span>
-                    </label>
+
+                    <template v-for="grp in m.groupes" :key="`${m.module}-${grp.group_id ?? 'sans-section'}`">
+                      <!-- Section — coche/décoche AUSSI ses sous-sections, comme un dossier. -->
+                      <button type="button"
+                              class="w-full flex items-center gap-2 bg-surface-raised/30 pl-6 pr-3 py-1 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground border-b border-border/30"
+                              @click="toggleModule(tousLesCas(grp))">
+                        <svg v-if="grp.group_id" class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+                        {{ grp.group_title }}
+                        <span class="ml-auto font-normal">{{ tousLesCas(grp).length }} cas</span>
+                      </button>
+                      <label v-for="c in grp.rows" :key="c.id"
+                             class="flex items-center gap-2 pl-9 pr-3 py-2 text-sm hover:bg-accent/30 cursor-pointer border-b border-border/40">
+                        <input type="checkbox" :checked="selected.includes(c.id)" @change="toggleCase(c.id)"
+                               class="accent-[hsl(var(--primary))]" />
+                        <span class="text-muted-foreground tabular-nums text-xs">C{{ c.id }}</span>
+                        <span class="truncate">{{ c.title }}</span>
+                      </label>
+
+                      <!-- Sous-section — une seule profondeur, parité TestRail. -->
+                      <template v-for="sg in grp.sousSections" :key="sg.group_id">
+                        <button type="button"
+                                class="w-full flex items-center gap-2 bg-surface-raised/20 pl-9 pr-3 py-1 text-left text-[11px] text-muted-foreground hover:text-foreground border-b border-border/30"
+                                @click="toggleModule(sg.rows)">
+                          {{ sg.group_title }}
+                          <span class="ml-auto">{{ sg.rows.length }} cas</span>
+                        </button>
+                        <label v-for="c in sg.rows" :key="c.id"
+                               class="flex items-center gap-2 pl-12 pr-3 py-2 text-sm hover:bg-accent/30 cursor-pointer border-b border-border/40">
+                          <input type="checkbox" :checked="selected.includes(c.id)" @change="toggleCase(c.id)"
+                                 class="accent-[hsl(var(--primary))]" />
+                          <span class="text-muted-foreground tabular-nums text-xs">C{{ c.id }}</span>
+                          <span class="truncate">{{ c.title }}</span>
+                        </label>
+                      </template>
+                    </template>
                   </div>
                 </div>
               </div>

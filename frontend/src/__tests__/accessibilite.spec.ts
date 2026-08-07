@@ -92,7 +92,9 @@ describe('la modale au clavier', () => {
 
     // Le dernier élément focusable est le bouton « Fermer » ou le second champ selon l'ordre du
     // DOM : on place le focus sur le dernier, puis on tabule.
-    const focusables = w.element.querySelectorAll<HTMLElement>('input, button')
+    // `w.element` type comme `Element` générique selon la version de `@vue/test-utils` : le
+    // caster en `HTMLElement` restaure la surcharge générique de `querySelectorAll`.
+    const focusables = (w.element as HTMLElement).querySelectorAll<HTMLElement>('input, button')
     const dernier = focusables[focusables.length - 1]
     dernier.focus()
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))

@@ -46,6 +46,15 @@ class NotEmpty(ValueError):
     """
 
 
+class ProfondeurInvalide(ValueError):
+    """Une Sous-section qu'on tente de placer sous une AUTRE sous-section (migration 28).
+
+    Une seule profondeur d'imbrication, comme TestRail par défaut : une Section peut avoir des
+    Sous-sections, mais une Sous-section n'en a jamais elle-même. Levée par les repos, traduite
+    en HTTP 422 par les routes.
+    """
+
+
 def _key(value: str) -> str:
     """Clé de comparaison des noms : insensible à la casse ET aux accents composés.
 
@@ -459,7 +468,8 @@ class CaseGroupRepo:
             raise DuplicateName(f"ce module a déjà une spécification « {row['title']} »")
 
     def create(self, *, module_id: int, title: str, description: str = "",
-               spec_content: str = "", spec_hash: str = "", auto_enveloppe: bool = False) -> int:
+               spec_content: str = "", spec_hash: str = "", auto_enveloppe: bool = False,
+               parent_group_id: int | None = None) -> int:
         """Crée une spécification. `spec_content` est LE DOCUMENT source (2026-07-19) ; `spec_hash`
         son empreinte, que chaque cas généré référencera. Vides à l'auto-enveloppement d'un cas
         (la spec vit encore sur la version jusqu'à l'étape 3).
@@ -468,7 +478,21 @@ class CaseGroupRepo:
         1:1 autour d'un cas qui n'en avait pas. Ce drapeau donne à cette enveloppe le droit d'être
         récupérée quand son cas disparaît. Par défaut **False** : tout ce qui vient de l'écran est
         délibéré, donc protégé — en cas de doute, on protège (migration 17).
+
+        `parent_group_id` (migration 28) : crée une SOUS-section sous une Section existante du
+        MÊME module. ⚠️ **Une seule profondeur** — placer une sous-section sous une AUTRE
+        sous-section lève `ProfondeurInvalide` (parité TestRail par défaut, pas de niveau 3).
         """
+        if parent_group_id is not None:
+            parent = self.get(parent_group_id)
+            if parent is None:
+                raise ValueError(f"section parente {parent_group_id} introuvable")
+            if parent["module_id"] != module_id:
+                raise ValueError("la section parente n'appartient pas à ce module")
+            if parent["parent_group_id"] is not None:
+                raise ProfondeurInvalide(
+                    "impossible de créer une sous-section sous une sous-section — "
+                    "une seule profondeur d'imbrication est autorisée")
         self.ensure_title_free(module_id, title)
         ts = now_iso()
         row = self.conn.execute("SELECT MAX(position) AS m FROM case_group WHERE module_id=?",
@@ -476,11 +500,47 @@ class CaseGroupRepo:
         position = 0 if row["m"] is None else int(row["m"]) + 1
         cur = self.conn.execute(
             "INSERT INTO case_group (module_id, title, description, spec_content, spec_hash,"
-            " position, auto_enveloppe, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            " position, auto_enveloppe, parent_group_id, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
             (module_id, title, description, spec_content, spec_hash, position,
-             int(auto_enveloppe), ts, ts))
+             int(auto_enveloppe), parent_group_id, ts, ts))
         self.conn.commit()
         return int(cur.lastrowid)
+
+    def deplacer(self, group_id: int, parent_group_id: int | None) -> None:
+        """Glisser-déposer d'une Section (étape 2bis, 2026-08-06) — la réattache à un autre
+        parent (ou la promeut au premier niveau si `parent_group_id` est `None`), SANS jamais la
+        dupliquer : contrairement à un cas, une Section ne se copie pas — copier reviendrait à
+        dupliquer en cascade tous les cas qu'elle contient.
+
+        Mêmes règles de profondeur qu'à la création (`create`, une seule profondeur, parité
+        TestRail) : la cible doit être une Section de premier niveau du MÊME module, et la
+        Section déplacée ne doit porter AUCUNE sous-section (sinon l'imbriquer romprait la
+        limite d'une profondeur).
+        """
+        groupe = self.get(group_id)
+        if groupe is None:
+            raise ValueError(f"section {group_id} introuvable")
+        if parent_group_id == group_id:
+            raise ValueError("une section ne peut pas devenir sa propre sous-section")
+        if parent_group_id is not None:
+            parent = self.get(parent_group_id)
+            if parent is None:
+                raise ValueError(f"section {parent_group_id} introuvable")
+            if parent["module_id"] != groupe["module_id"]:
+                raise ValueError("la section cible n'appartient pas au même module")
+            if parent["parent_group_id"] is not None:
+                raise ProfondeurInvalide(
+                    "impossible de déplacer une section sous une sous-section — "
+                    "une seule profondeur d'imbrication est autorisée")
+            if self.count_children(group_id) > 0:
+                raise ProfondeurInvalide(
+                    "cette section a elle-même des sous-sections — "
+                    "elle ne peut pas devenir une sous-section")
+        self.conn.execute(
+            "UPDATE case_group SET parent_group_id=?, updated_at=? WHERE id=?",
+            (parent_group_id, now_iso(), group_id))
+        self.conn.commit()
 
     def get(self, group_id: int) -> dict | None:
         # Visibilité HIÉRARCHIQUE, comme partout : une spécification dont le module ou le projet
@@ -505,9 +565,13 @@ class CaseGroupRepo:
             " ORDER BY g.position, g.id", (module_id,)))
 
     def list_for_project(self, project_id: int) -> list[dict]:
-        """Toutes les spécifications d'un projet (jointes au module), pour l'arbre latéral."""
+        """Toutes les spécifications d'un projet (jointes au module), pour l'arbre latéral.
+
+        `parent_group_id` (migration 28) voyage avec la ligne : c'est ce qui permet à l'écran de
+        reconstruire l'arbre Section → Sous-section côté client, sans requête supplémentaire.
+        """
         return _rows(self.conn.execute(
-            "SELECT g.id, g.module_id, g.title, g.position,"
+            "SELECT g.id, g.module_id, g.title, g.position, g.parent_group_id,"
             " (SELECT COUNT(*) FROM test_case tc WHERE tc.group_id=g.id AND tc.deleted_at='')"
             "   AS case_count"
             " FROM case_group g JOIN module m ON g.module_id=m.id"
@@ -518,6 +582,14 @@ class CaseGroupRepo:
     def case_count(self, group_id: int) -> int:
         return int(self.conn.execute(
             f"SELECT COUNT(*) AS n FROM test_case WHERE group_id=? AND {_VIVANT}",
+            (group_id,)).fetchone()["n"])
+
+    def count_children(self, group_id: int) -> int:
+        """Combien de sous-sections VIVANTES cette Section porte encore (migration 28) — même
+        rôle que `case_count` pour les cas : `delete`/`purger` s'en servent pour refuser tant
+        qu'il en reste, plutôt que de les emporter en cascade."""
+        return int(self.conn.execute(
+            "SELECT COUNT(*) AS n FROM case_group WHERE parent_group_id=? AND deleted_at=''",
             (group_id,)).fetchone()["n"])
 
     def update(self, group_id: int, *, title: str | None = None, description: str | None = None,
@@ -575,10 +647,18 @@ class CaseGroupRepo:
         personne l'ait demandé, et la restauration deviendrait ambiguë (lesquels étaient déjà
         supprimés avant ?). L'utilisateur traite ses cas d'abord ; le refus dit combien il en
         reste. *Failli disparaître en réécrivant cette méthode — rattrapé par son test.*
+
+        Même refus pour les SOUS-sections (migration 28) : une Section qui en porte encore ne se
+        supprime pas tant qu'elles n'ont pas été traitées, cas par cas, sous-section par
+        sous-section — même discipline, jamais de cascade silencieuse.
         """
         n = self.case_count(group_id)
         if n:
             raise NotEmpty(f"cette spécification porte encore {n} cas — supprimez-les d'abord")
+        n_enfants = self.count_children(group_id)
+        if n_enfants:
+            raise NotEmpty(
+                f"cette section porte encore {n_enfants} sous-section(s) — supprimez-les d'abord")
         self.conn.execute("UPDATE case_group SET deleted_at=?, deleted_by=? WHERE id=?",
                           (now_iso(), par, group_id))
         self.conn.commit()
@@ -589,7 +669,8 @@ class CaseGroupRepo:
         self.conn.commit()
 
     def purger(self, group_id: int) -> None:
-        """Supprime une spécification VIDE. Refuse (NotEmpty) tant qu'elle porte des cas.
+        """Supprime une spécification VIDE. Refuse (NotEmpty) tant qu'elle porte des cas ou des
+        sous-sections (migration 28).
 
         Pas de cascade : un cas porte des versions, des exécutions, des résultats et des lignes de
         coût. Les emporter sur la suppression de leur conteneur détruirait de l'historique sans
@@ -599,6 +680,10 @@ class CaseGroupRepo:
         n = self.case_count(group_id)
         if n:
             raise NotEmpty(f"cette spécification porte encore {n} cas — supprimez-les d'abord")
+        n_enfants = self.count_children(group_id)
+        if n_enfants:
+            raise NotEmpty(
+                f"cette section porte encore {n_enfants} sous-section(s) — supprimez-les d'abord")
         self.conn.execute("DELETE FROM case_group WHERE id=?", (group_id,))
         self.conn.commit()
 
@@ -745,6 +830,101 @@ class CaseRepo:
         self.conn.execute("UPDATE test_case SET title=?, updated_at=? WHERE id=?",
                           (title, now_iso(), case_id))
         self.conn.commit()
+
+    def deplacer(self, case_id: int, group_id: int) -> None:
+        """Déplace un cas vers une autre Section (migration 28, étape 2) — réattribution PURE,
+        jamais une copie.
+
+        ⚠️ **Même `id`, aucun historique touché.** `test_result.case_id`/`execution.test_case_id`
+        ne bougent jamais : tous les résultats et exécutions passés du cas restent exactement les
+        siens après le déplacement — comportement mesuré de TestRail (déplacer un cas dans une
+        même suite ne supprime jamais son historique ; seul un déplacement entre SUITES le
+        ferait, une notion que TestPilot n'a pas). Le module suit la Section cible : un cas ne
+        peut pas appartenir à un module différent de celui de sa propre Section.
+        """
+        case = self.get(case_id)
+        if case is None:
+            raise ValueError(f"cas {case_id} introuvable")
+        groupe = CaseGroupRepo(self.conn).get(group_id)
+        if groupe is None:
+            raise ValueError(f"section {group_id} introuvable")
+        self.ensure_title_free(group_id, case["title"], excluding=case_id)
+        self.conn.execute(
+            "UPDATE test_case SET group_id=?, module_id=?, updated_at=? WHERE id=?",
+            (group_id, groupe["module_id"], now_iso(), case_id))
+        self.conn.commit()
+        # L'ancienne Section a pu devenir une enveloppe vide : même nettoyage qu'à la suppression
+        # (`_nettoyer_specification_orpheline` ne touche qu'un résidu technique, jamais un actif).
+        self._nettoyer_specification_orpheline(case["group_id"])
+
+    def copier(self, case_id: int, group_id: int, *, author: str = "") -> int:
+        """Copie un cas dans une autre Section (migration 28, étape 2) — un cas RÉELLEMENT NEUF
+        (nouvel `id`, nouveau `feature_slug`), SANS le moindre historique partagé : aucune
+        exécution, aucun résultat — il démarre « Untested ». Rend l'`id` du nouveau cas.
+
+        ⚠️ Comportement mesuré de TestRail : copier duplique le CONTENU (document métier + script
+        Gherkin), jamais les résultats — c'est `deplacer` qui préserve l'historique, jamais
+        `copier`. Confondre les deux fragmenterait la traçabilité (un même historique éclaté
+        entre deux cas qui prétendent chacun en être l'origine).
+        """
+        source = self.get(case_id)
+        if source is None:
+            raise ValueError(f"cas {case_id} introuvable")
+        groupe = CaseGroupRepo(self.conn).get(group_id)
+        if groupe is None:
+            raise ValueError(f"section {group_id} introuvable")
+
+        titre = source["title"]
+        try:
+            self.ensure_title_free(group_id, titre)
+        except DuplicateName:
+            # Collision dans la Section cible (rare, mais réelle si on copie vers une Section qui
+            # a déjà un cas du même nom) : un suffixe, pas un refus — l'intention était de copier.
+            titre = f"{titre} (copie)"
+            self.ensure_title_free(group_id, titre)
+
+        version = (VersionRepo(self.conn).get(source["current_version_id"])
+                   if source.get("current_version_id") else None)
+
+        # Un `feature_slug` neuf UNIQUEMENT si la version courante porte un script réel : un cas
+        # sans Gherkin (saisie manuelle non encore automatisée) reste sans slug, comme à sa
+        # création — `ensure_slug_free`/`unique_feature_slug` n'ont rien à garantir pour lui.
+        slug = ""
+        if version and (version.get("feature_content") or "").strip():
+            from testpilot.api.services.generation_service import slugify, unique_feature_slug
+            slug = unique_feature_slug(self.conn, slugify(titre))
+
+        new_id = self.create(
+            title=titre, module_id=groupe["module_id"], group_id=group_id,
+            feature_slug=slug, author=author, description=source.get("description") or "",
+            origin=source.get("origin") or "ia_generated",
+            priority=source.get("priority") or "medium", refs=source.get("refs") or "")
+
+        if version:
+            vid = VersionRepo(self.conn).create(
+                test_case_id=new_id, spec_content=version.get("spec_content") or "",
+                spec_hash=version.get("spec_hash") or "",
+                feature_content=version.get("feature_content") or "",
+                steps_content=version.get("steps_content") or "",
+                change_summary=f"Copié depuis le cas #{case_id}", created_by=author,
+                title=version.get("title") or titre,
+                preconditions=version.get("preconditions") or "",
+                test_steps=version.get("test_steps") or "",
+                expected_result=version.get("expected_result") or "")
+            self.set_current_version(new_id, vid)
+
+            # ⚠️ Le RUNNER lit le script SUR DISQUE (`config.GENERATED_DIR/{slug}.feature`),
+            # jamais depuis la base — sans cette recopie, le cas copié serait « exécutable » en
+            # apparence (une version avec du Gherkin) mais échouerait au premier run, fichier
+            # introuvable. Même chemin que `write_feature_file`/`write_steps_file` (génération).
+            if slug and (version.get("feature_content") or "").strip():
+                config.GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+                (config.GENERATED_DIR / f"{slug}.feature").write_text(
+                    version["feature_content"], encoding="utf-8")
+                (config.GENERATED_DIR / f"{slug}_steps.py").write_text(
+                    version.get("steps_content") or "", encoding="utf-8")
+
+        return new_id
 
     def delete(self, case_id: int, par: str = "") -> None:
         """Met le cas A LA CORBEILLE — avec ses versions, ses executions et ses couts, qui le

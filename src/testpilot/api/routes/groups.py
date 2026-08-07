@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
-from testpilot.store.repositories import CaseGroupRepo, DuplicateName, NotEmpty
+from testpilot.store.repositories import CaseGroupRepo, DuplicateName, NotEmpty, ProfondeurInvalide
 
 router = APIRouter(prefix="/api/groups", tags=["groups"])
 
@@ -49,6 +49,23 @@ def update_group(group_id: int, body: schemas.GroupPatch, conn=Depends(get_conn)
             spec_content=body.spec_content)
     except DuplicateName as exc:
         raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
+    return schemas.group_detail(_load(conn, group_id))
+
+
+@router.post("/{group_id}/deplacer", response_model=schemas.GroupDetail)
+def deplacer_group(group_id: int, body: schemas.GroupMoveIn, conn=Depends(get_conn)):
+    """Glisser-déposer d'une Section (étape 2bis) — la réattache à une autre Section (ou la
+    promeut au premier niveau si `parent_group_id` est `null`). Jamais de copie : une Section ne
+    se duplique pas (voir `CaseRepo.copier`, réservé aux cas)."""
+    _load(conn, group_id)
+    try:
+        CaseGroupRepo(conn).deplacer(group_id, body.parent_group_id)
+    # ⚠️ `ProfondeurInvalide` hérite de `ValueError` — ce `except` DOIT rester avant le générique,
+    # sinon il est avalé par lui et une imbrication invalide rend 404 au lieu de 422 (mesuré).
+    except ProfondeurInvalide as exc:
+        raise erreurs.ErreurMetier("profondeur_invalide", str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return schemas.group_detail(_load(conn, group_id))
 
 

@@ -25,11 +25,13 @@ import { monter } from './_montage'
 
 const listModules = vi.fn()
 const listCases = vi.fn()
+const listGroups = vi.fn()
 
 vi.mock('../lib/api', () => ({
   api: {
     listModules: (...a: any[]) => listModules(...a),
     listCases: (...a: any[]) => listCases(...a),
+    listGroups: (...a: any[]) => listGroups(...a),
     renameModule: vi.fn(),
   },
 }))
@@ -61,12 +63,20 @@ const CAS = [
     priority: 'medium', last_execution_status: null, last_functional_status: null, statut: 'untested' },
 ]
 
+// Les DEUX Sections elles-mêmes (migration 28 : la liste ne les dérive plus des seuls cas
+// présents, pour qu'une Section fraîchement créée et encore vide apparaisse quand même).
+const GROUPES = [
+  { id: 86, module_id: 10, title: 'Mutation nominale', case_count: 2, parent_group_id: null },
+  { id: 87, module_id: 10, title: 'Mutation refusée', case_count: 1, parent_group_id: null },
+]
+
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   routeQuery = {}
   listModules.mockResolvedValue([{ id: 10, name: 'Mutation payeur', case_count: 4 }])
   listCases.mockResolvedValue({ items: CAS, next_cursor: null, total: CAS.length })
+  listGroups.mockResolvedValue(GROUPES)
 })
 
 async function monterListe() {

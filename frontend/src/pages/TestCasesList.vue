@@ -1,13 +1,19 @@
 <script setup lang="ts">
 // Liste des cas de test — disposition TestRail (palette sombre). Groupée par SECTION = MODULE.
-// La colonne « Statut » n'affiche QUE le statut FONCTIONNEL (conforme / non conforme), jamais
-// l'exécution technique ni les deux mêlés (consigne du porteur). Titre sans préfixe de classement.
+// ⚠️ **Aucun statut ici** (consigne du porteur, 2026-08-06) : un cas de test n'EST pas
+// passed/failed — seule une EXÉCUTION (un run précis) l'est. Le raccourci `c.statut` (dernier
+// résultat, tous modes/campagnes confondus) restait affiché ici et laissait croire qu'un cas
+// « a » un statut propre, alors que la vérité par campagne vit dans `test_result` et peut
+// diverger d'une campagne à l'autre. Le statut ne s'affiche donc plus que dans les écrans
+// d'EXÉCUTION (RunDetail, RunTestDetail, l'onglet Tests & Résultats d'un cas). Titre sans
+// préfixe de classement.
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type CaseSummary, type ModuleSummary } from '../lib/api'
-import { testStatusMeta, typeView } from '../lib/status'
+import { api, type CaseSummary, type GroupSummary, type ModuleSummary } from '../lib/api'
+import { typeView } from '../lib/status'
 import { useModuleCreate } from '../lib/useModuleCreate'
-import { cles, usePageCas, useModules } from '../lib/donnees'
+import { useSectionCreate } from '../lib/useSectionCreate'
+import { cles, usePageCas, useModules, useGroupes } from '../lib/donnees'
 import { useQueryClient } from '@tanstack/vue-query'
 import {
   COLONNES_MASQUABLES, HAUTEUR_LIGNE, usePreferencesListe, type Colonne,
@@ -23,6 +29,12 @@ const specFilter = computed(() => Number(route.query.spec) || null)
 // modules et les mêmes cas, chacun de son côté, à chaque navigation. Un seul cache désormais.
 const { data: modulesData, isLoading: chargeModules } = useModules(pid)
 const modules = computed(() => modulesData.value ?? [])
+// Sections/Sous-sections (migration 28) : chargées à PART des cas, pour que celles encore VIDES
+// (qu'on vient de créer inline, "Ajouter une section"/"Ajouter une sous-section") apparaissent
+// quand même — dériver uniquement des cas présents (ancien comportement) les aurait rendues
+// invisibles tant qu'aucun cas n'y est encore rangé.
+const { data: groupsData } = useGroupes(pid)
+const groups = computed(() => groupsData.value ?? [])
 // Chargement seulement au PREMIER affichage : une revalidation de fond ne doit pas remplacer la
 // liste par un squelette — l'écran doit rester stable sous les yeux de celui qui le lit.
 const loading = computed(() => (chargeModules.value || chargeCas.value)
@@ -35,6 +47,150 @@ const qc = useQueryClient()
 // `createdAt` a disparu — la création invalide désormais le cache du projet, donc cette liste se
 // rafraîchit d'elle-même. C'est exactement la plomberie que la couche de données remplace.
 const { openFor: openCreateModule } = useModuleCreate()
+// ── Création d'une Section/Sous-section (modale partagée, rendue par CasesShell) ──────────────
+// Même patron que les modules : la modale unique vit dans le shell, ici on ne fait que déclencher
+// son ouverture. Placé INLINE sous chaque module/Section dans la liste — à l'endroit exact où
+// TestRail les affiche (consigne du porteur, 2026-08-06), plus dans la barre latérale ambiguë.
+const sc = useSectionCreate()
+function ajouterSection(moduleId: number) { sc.openFor(moduleId) }
+function ajouterSousSection(moduleId: number, parentGroupId: number) { sc.openFor(moduleId, parentGroupId) }
+
+// ── Glisser-déposer : déplacer/copier un cas, réorganiser les Sections (étape 2bis) ────────────
+// ⚠️ Scope volontairement DANS LE MODULE COURANT (décision du plan) — pas de choix de module,
+// une Section/sous-section n'existe que sous un module précis. Remplace le menu ⋮ livré à l'étape
+// 2 (le porteur l'a comparé à de vraies captures TestRail : chez eux c'est un vrai glisser-
+// déposer natif, poignée par ligne + petit menu AU POINT DE DÉPÔT). Le backend ne change pas —
+// `api.deplacerCas`/`copierCas`/`deplacerGroupe` sont les mêmes qu'avant, seul le déclenchement
+// change. Le réordonnancement (position au sein d'une même Section) reste HORS scope : non
+// demandé, et `case_group` n'a aujourd'hui aucun moyen de le piloter par glisser-déposer.
+const TYPE_CAS = 'application/x-tp-case'
+const TYPE_SECTION = 'application/x-tp-section'
+
+// Menu flottant qui apparaît AU POINT DE DÉPÔT (comme TestRail) quand on lâche sans modificateur
+// clavier — Ctrl/Cmd ou Maj agissent directement SANS jamais faire apparaître ce menu.
+const menuDepot = ref<{
+  x: number; y: number; kind: 'cas' | 'section'; id: number; cibleGroupId: number | null
+} | null>(null)
+function fermerMenuDepot() { menuDepot.value = null }
+
+const survolSection = ref<number | null>(null)
+const survolModule = ref<number | null>(null)
+
+function onDragStartCas(event: DragEvent, caseId: number) {
+  event.dataTransfer?.setData(TYPE_CAS, String(caseId))
+}
+function onDragStartSection(event: DragEvent, groupId: number | null) {
+  if (groupId == null) return
+  event.dataTransfer?.setData(TYPE_SECTION, String(groupId))
+}
+
+// Une Section/sous-section accepte les DEUX types (un cas à ranger, une autre Section à imbriquer
+// dessous) — d'où `.prevent` inconditionnel côté template. Un en-tête de MODULE, lui, n'accepte
+// qu'une Section (pour la repromouvoir au premier niveau) : un cas ne peut pas atterrir
+// directement sur un module, il lui faut toujours une Section.
+function onDragOverModule(event: DragEvent) {
+  if (event.dataTransfer?.types.includes(TYPE_SECTION)) event.preventDefault()
+}
+
+// Surbrillance de la cible survolée — « Sans section » (group_id null, cas orphelins) n'est pas
+// une vraie Section : elle n'accepte jamais de dépôt.
+function onDragEnterSection(event: DragEvent, groupId: number | null) {
+  if (groupId == null) return
+  if (event.dataTransfer?.types.includes(TYPE_CAS) || event.dataTransfer?.types.includes(TYPE_SECTION)) {
+    survolSection.value = groupId
+  }
+}
+function onDragLeaveSection(groupId: number | null) {
+  if (groupId != null && survolSection.value === groupId) survolSection.value = null
+}
+function onDragEnterModule(event: DragEvent, moduleId: number) {
+  if (event.dataTransfer?.types.includes(TYPE_SECTION)) survolModule.value = moduleId
+}
+function onDragLeaveModule(moduleId: number) {
+  if (survolModule.value === moduleId) survolModule.value = null
+}
+
+function ouvrirMenuDepot(event: DragEvent, kind: 'cas' | 'section', id: number, cibleGroupId: number | null) {
+  const LARGEUR = 230
+  const HAUTEUR = 150
+  menuDepot.value = {
+    x: Math.min(event.clientX, window.innerWidth - LARGEUR - 8),
+    y: Math.min(event.clientY, window.innerHeight - HAUTEUR - 8),
+    kind, id, cibleGroupId,
+  }
+}
+
+function onDropSection(event: DragEvent, cibleGroupId: number | null) {
+  event.preventDefault()
+  survolSection.value = null
+  if (cibleGroupId == null) return
+  const dt = event.dataTransfer
+  if (!dt) return
+  if (dt.types.includes(TYPE_CAS)) {
+    const caseId = Number(dt.getData(TYPE_CAS))
+    if (!caseId) return
+    if (event.ctrlKey || event.metaKey) { deplacerCasVers(caseId, cibleGroupId); return }
+    if (event.shiftKey) { copierCasVers(caseId, cibleGroupId); return }
+    ouvrirMenuDepot(event, 'cas', caseId, cibleGroupId)
+  } else if (dt.types.includes(TYPE_SECTION)) {
+    const groupId = Number(dt.getData(TYPE_SECTION))
+    if (!groupId || groupId === cibleGroupId) return
+    if (event.ctrlKey || event.metaKey) { deplacerGroupeVers(groupId, cibleGroupId); return }
+    ouvrirMenuDepot(event, 'section', groupId, cibleGroupId)
+  }
+}
+
+function onDropModule(event: DragEvent) {
+  event.preventDefault()
+  survolModule.value = null
+  const dt = event.dataTransfer
+  if (!dt?.types.includes(TYPE_SECTION)) return
+  const groupId = Number(dt.getData(TYPE_SECTION))
+  if (!groupId) return
+  // Promotion au premier niveau : `cibleGroupId: null` = « aucun parent ».
+  if (event.ctrlKey || event.metaKey) { deplacerGroupeVers(groupId, null); return }
+  ouvrirMenuDepot(event, 'section', groupId, null)
+}
+
+async function deplacerCasVers(caseId: number, groupId: number) {
+  try {
+    await api.deplacerCas(caseId, groupId)
+    await qc.invalidateQueries({ queryKey: cles.projet(pid.value) })
+  } catch (e: any) {
+    messageLot.value = e?.message || 'Déplacement impossible.'
+  }
+}
+async function copierCasVers(caseId: number, groupId: number) {
+  try {
+    await api.copierCas(caseId, groupId)
+    await qc.invalidateQueries({ queryKey: cles.projet(pid.value) })
+  } catch (e: any) {
+    messageLot.value = e?.message || 'Copie impossible.'
+  }
+}
+async function deplacerGroupeVers(groupId: number, parentGroupId: number | null) {
+  try {
+    await api.deplacerGroupe(groupId, parentGroupId)
+    await qc.invalidateQueries({ queryKey: cles.projet(pid.value) })
+  } catch (e: any) {
+    messageLot.value = e?.message || 'Déplacement impossible.'
+  }
+}
+
+// Boutons du menu flottant — lisent `menuDepot` avant de le fermer, sinon la cible a disparu.
+async function menuDepotDeplacer() {
+  const m = menuDepot.value
+  if (!m) return
+  fermerMenuDepot()
+  if (m.kind === 'cas') await deplacerCasVers(m.id, m.cibleGroupId!)
+  else await deplacerGroupeVers(m.id, m.cibleGroupId)
+}
+async function menuDepotCopier() {
+  const m = menuDepot.value
+  if (!m || m.kind !== 'cas') return
+  fermerMenuDepot()
+  await copierCasVers(m.id, m.cibleGroupId!)
+}
 
 // Tri et filtre CÔTÉ CLIENT (préférences de lecture, pas de rechargement).
 const filterStatus = ref('')  // '' = tous
@@ -123,30 +279,51 @@ const sections = computed(() => {
   return modules.value
     .map((m) => {
       const rows = sortRows(visibleCases.value.filter((c) => c.module_id === m.id))
-      return { module: m, rows, groupes: groupesDeSection(rows) }
+      return { module: m, rows, groupes: groupesDeModule(m.id, rows) }
     })
     .filter((s) => !filtering || s.rows.length > 0)
 })
 
-// Sous-groupe les cas d'un module par SECTION (case_group = une user story, §9 génération
-// multi-cas) — chacune vue par TestRail comme un dossier qui contient plusieurs cas. Ordre de
-// PREMIÈRE apparition dans `rows` (déjà trié), pas un ordre arbitraire recalculé à part.
-// ⚠️ `CaseRepo.create` auto-enveloppe TOUJOURS un cas dans sa propre Section — `group_id` ne
-// devrait donc jamais être vide, mais un cas orphelin (import, résidu) atterrit dans un groupe
-// « Sans section » plutôt que de disparaître silencieusement de la liste.
-interface GroupeSection { group_id: number | null; group_title: string; rows: CaseSummary[] }
-function groupesDeSection(rows: CaseSummary[]): GroupeSection[] {
-  const parId = new Map<number, GroupeSection>()
-  const ordre: number[] = []
+// Sous-groupe les cas d'un module par SECTION → SOUS-SECTION (migration 28, une seule profondeur,
+// parité TestRail) — chacune vue comme un dossier qui contient des cas et, pour une Section, des
+// sous-dossiers. ⚠️ Construit depuis `groups` (TOUTES les Sections du module, cas ou pas), pas
+// depuis les seuls cas présents : une Section/Sous-section fraîchement créée, encore vide, doit
+// apparaître tout de suite pour qu'on puisse y ranger un cas — la dériver des cas la rendrait
+// invisible jusqu'à ce qu'elle en porte un.
+interface GroupeSection {
+  group_id: number | null; group_title: string; rows: CaseSummary[]; sousSections: GroupeSection[]
+}
+function groupesDeModule(moduleId: number, rows: CaseSummary[]): GroupeSection[] {
+  const groupesDuModule = groups.value.filter((g) => g.module_id === moduleId)
+  const parGroupe = new Map<number, CaseSummary[]>()
+  const orphelins: CaseSummary[] = []
   for (const c of rows) {
-    const gid = c.group_id ?? -1
-    if (!parId.has(gid)) {
-      parId.set(gid, { group_id: c.group_id, group_title: c.group_title || 'Sans section', rows: [] })
-      ordre.push(gid)
+    if (c.group_id != null && groupesDuModule.some((g) => g.id === c.group_id)) {
+      const arr = parGroupe.get(c.group_id) ?? []
+      arr.push(c)
+      parGroupe.set(c.group_id, arr)
+    } else {
+      orphelins.push(c)
     }
-    parId.get(gid)!.rows.push(c)
   }
-  return ordre.map((gid) => parId.get(gid)!)
+  const versGroupeSection = (g: GroupSummary): GroupeSection => ({
+    group_id: g.id, group_title: g.title, rows: parGroupe.get(g.id) ?? [], sousSections: [],
+  })
+  const noeuds = groupesDuModule
+    .filter((g) => g.parent_group_id == null)
+    .map((g) => {
+      const noeud = versGroupeSection(g)
+      noeud.sousSections = groupesDuModule
+        .filter((sg) => sg.parent_group_id === g.id)
+        .map(versGroupeSection)
+      return noeud
+    })
+  // Cas orphelins (import, résidu — `CaseRepo.create` auto-enveloppe normalement TOUJOURS un cas
+  // dans sa propre Section) : un groupe « Sans section » plutôt que de disparaître en silence.
+  if (orphelins.length) {
+    noeuds.push({ group_id: null, group_title: 'Sans section', rows: orphelins, sousSections: [] })
+  }
+  return noeuds
 }
 
 // Pliage PAR SECTION, distinct du pliage par module (`collapsed`) : une clé composite évite toute
@@ -161,11 +338,19 @@ function groupCollapsed(moduleId: number, groupId: number | null) {
   return collapsedGroups.value.includes(`${moduleId}:${groupId}`)
 }
 
-// Nombre de colonnes RÉELLEMENT affichées (checkbox + titre + statut + chevron sont fixes, le
-// reste dépend des préférences) — la ligne d'en-tête de Section doit couvrir exactement ce nombre,
+// « Ajouter un cas » INLINE sous une Section/sous-section (même intention que le bouton du même
+// nom dans CasesShell.vue : saisie MANUELLE, sans IA, le module visé pré-sélectionné). Une
+// fonction LOCALE — la vérification de types réelle, mise en place le 2026-08-06, a attrapé
+// l'appel à une fonction du même nom qui n'existait QUE dans CasesShell.vue, jamais ici.
+function goCaseNew(moduleId: number) {
+  router.push({ name: 'case-manual', params: { pid: pid.value }, query: { module: String(moduleId) } })
+}
+
+// Nombre de colonnes RÉELLEMENT affichées (checkbox + titre + chevron sont fixes, le reste
+// dépend des préférences) — la ligne d'en-tête de Section doit couvrir exactement ce nombre,
 // ni plus (bord qui dépasse) ni moins (colonnes désalignées avec le tableau).
 const colonnesAffichees = computed(() =>
-  4 + (colonneVisible('id') ? 1 : 0) + (colonneVisible('module') ? 1 : 0)
+  3 + (colonneVisible('id') ? 1 : 0)
     + (colonneVisible('type') ? 1 : 0) + (colonneVisible('priorite') ? 1 : 0))
 
 const activeSpecTitle = computed(() => {
@@ -213,10 +398,11 @@ function csvCell(v: unknown): string {
   return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 function exportCsv() {
-  const entetes = ['ID', 'Titre', 'Module', 'Type', 'Priorité', 'Statut']
+  // ⚠️ Pas de colonne Statut : un cas de test n'a pas de statut propre, seule une exécution en a
+  // un (consigne du porteur, 2026-08-06).
+  const entetes = ['ID', 'Titre', 'Module', 'Type', 'Priorité']
   const lignes = visibleCases.value.map((c) => [
     `C${c.id}`, c.title, c.module || '', typeView(c.type).label, c.priority || '',
-    testStatusMeta(c.statut).label,
   ].map(csvCell).join(';'))
   // BOM UTF-8 : sans lui, Excel lit « é » de travers.
   const contenu = '﻿' + [entetes.join(';'), ...lignes].join('\r\n')
@@ -275,25 +461,6 @@ async function supprimerEnLot() {
   }
 }
 
-async function campagneDepuisSelection() {
-  const nom = window.prompt('Nom de la campagne', `Campagne du ${new Date().toLocaleDateString('fr-FR')}`)
-  if (!nom || !nom.trim()) return
-  actionEnCours.value = true
-  messageLot.value = ''
-  try {
-    // Sélection FIGÉE : la campagne doit contenir ces cas-là, pas « les cas du projet au moment
-    // du lancement » — sinon elle changerait sous les pieds de celui qui l'a composée.
-    const run = await api.createRun(pid.value, {
-      name: nom.trim(), selection_mode: 'frozen', case_ids: selection.value,
-    })
-    selection.value = []
-    router.push({ name: 'run-detail', params: { pid: pid.value, id: String(run.id) } })
-  } catch (e: any) {
-    messageLot.value = e?.message || 'Création impossible.'
-  } finally {
-    actionEnCours.value = false
-  }
-}
 </script>
 
 <template>
@@ -304,9 +471,6 @@ async function campagneDepuisSelection() {
     <div v-if="selection.length"
          class="sticky top-0 z-20 flex flex-wrap items-center gap-3 border-b border-primary/30 bg-primary/10 px-6 py-2.5 text-sm backdrop-blur">
       <span class="font-semibold">{{ selection.length }} cas sélectionné{{ selection.length > 1 ? 's' : '' }}</span>
-      <button class="text-primary hover:underline disabled:opacity-50" :disabled="actionEnCours"
-              @click="campagneDepuisSelection">Créer une campagne</button>
-      <span class="text-muted-foreground/50">·</span>
       <span class="text-muted-foreground">Priorité :</span>
       <button v-for="p in ['high', 'medium', 'low']" :key="p"
               class="text-primary hover:underline disabled:opacity-50" :disabled="actionEnCours"
@@ -381,8 +545,8 @@ async function campagneDepuisSelection() {
           <option value="aeree">Aérée</option>
         </select>
       </label>
-      <!-- COLONNES : on ne peut masquer ni le titre ni le statut — une liste de cas sans eux
-           ne montrerait plus rien. -->
+      <!-- COLONNES : on ne peut pas masquer le titre — une liste de cas sans lui ne montrerait
+           plus rien. -->
       <div class="relative">
         <button class="hover:text-foreground" @click="menuColonnes = !menuColonnes">Colonnes ▾</button>
         <div v-if="menuColonnes" class="absolute z-30 mt-1 w-40 rounded-md border border-border bg-surface-overlay py-1 shadow-xl">
@@ -432,8 +596,13 @@ async function campagneDepuisSelection() {
       </p>
 
       <div v-for="s in sections" :key="s.module.id" class="mt-4">
-        <!-- En-tête de section (module) -->
-        <div class="flex items-center gap-2.5 py-1.5">
+        <!-- En-tête de section (module) — reçoit le dépôt d'une Section glissée (la repromeut au
+             premier niveau, `parent_group_id: null`) ; un cas seul ne peut pas y atterrir
+             directement, il lui faut toujours une Section (`onDragOverModule`). -->
+        <div class="flex items-center gap-2.5 py-1.5 rounded"
+             :class="survolModule === s.module.id ? 'bg-primary/10' : ''"
+             @dragover="onDragOverModule" @dragenter="onDragEnterModule($event, s.module.id)"
+             @dragleave="onDragLeaveModule(s.module.id)" @drop="onDropModule($event)">
           <button class="text-muted-foreground hover:text-foreground"
                   :aria-label="`${collapsed.includes(s.module.id) ? 'Déplier' : 'Replier'} le module ${s.module.name}`"
                   :aria-expanded="!collapsed.includes(s.module.id)"
@@ -445,14 +614,19 @@ async function campagneDepuisSelection() {
           <button class="text-muted-foreground hover:text-foreground" title="Renommer le module" @click="renameSection(s.module)" aria-label="Renommer le module">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>
           </button>
+          <!-- « Ajouter une section », INLINE sous le module — à l'endroit où TestRail le place,
+               plus dans la barre latérale ambiguë (retirée, 2026-08-06). -->
+          <button class="ml-2 text-[12px] text-primary hover:underline" @click="ajouterSection(s.module.id)">
+            + Ajouter une section
+          </button>
         </div>
 
-        <p v-if="!collapsed.includes(s.module.id) && !s.rows.length"
+        <p v-if="!collapsed.includes(s.module.id) && !s.rows.length && !s.groupes.length"
            class="pl-8 py-2 text-xs italic text-muted-foreground/70">
           Aucun cas dans ce module — générez-en avec l'IA ou ajoutez-en un.
         </p>
 
-        <table v-if="!collapsed.includes(s.module.id) && s.rows.length" class="w-full border-collapse">
+        <table v-if="!collapsed.includes(s.module.id) && (s.rows.length || s.groupes.length)" class="w-full border-collapse">
           <thead>
             <tr class="text-[11px] uppercase tracking-wider text-muted-foreground">
               <th class="w-8 py-2 pl-1">
@@ -466,12 +640,10 @@ async function campagneDepuisSelection() {
                 <span class="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded bg-primary"></span>ID
               </th>
               <th class="text-left font-semibold py-2 px-2.5">Titre</th>
-              <th v-if="colonneVisible('module')" class="w-40 text-left font-semibold py-2 px-2.5">Module</th>
               <th v-if="colonneVisible('type')" class="w-28 text-left font-semibold py-2 px-2.5">Type</th>
               <!-- Priorité à DROITE avec le statut : ce sont les colonnes qu'on balaie
                    verticalement, et un balayage se fait sur un bord aligné. -->
               <th v-if="colonneVisible('priorite')" class="w-24 text-right font-semibold py-2 px-2.5">Priorité</th>
-              <th class="w-44 text-right font-semibold py-2 px-2.5">Statut</th>
               <th class="w-8"></th>
             </tr>
           </thead>
@@ -481,9 +653,27 @@ async function campagneDepuisSelection() {
                  la liste, pas seulement accessible en filtrant (mesuré le 2026-08-05 : cliquer
                  une Section remplaçait toute la vue au lieu de la sous-titrer). -->
             <tbody>
-              <tr class="border-t border-border/60 bg-surface-raised/40">
+              <!-- Poignée = draggable (glisser CETTE Section vers une autre) ; la ligne entière est
+                   aussi une CIBLE de dépôt (un cas ou une autre Section peut y atterrir). « Sans
+                   section » (group_id null, cas orphelins) n'est ni l'un ni l'autre — pas une
+                   vraie Section à déplacer ou à recevoir. -->
+              <tr class="group border-t border-border/60 bg-surface-raised/40"
+                  :class="survolSection === g.group_id ? 'ring-1 ring-inset ring-primary/50' : ''"
+                  @dragover="g.group_id ? $event.preventDefault() : undefined"
+                  @dragenter="onDragEnterSection($event, g.group_id)"
+                  @dragleave="onDragLeaveSection(g.group_id)"
+                  @drop="onDropSection($event, g.group_id)">
                 <td :colspan="colonnesAffichees" class="px-3" :class="HAUTEUR_LIGNE[prefs.densite]">
                   <div class="flex items-center gap-1.5">
+                    <!-- Poignée = un <span> HTML, PAS l'<svg> lui-même : le glisser natif sur un
+                         <svg> est peu fiable d'un moteur à l'autre (Chrome ignore `draggable`
+                         sans `-webkit-user-drag: element`, absent par défaut). Toujours visible
+                         (pas seulement au survol) — parité avec la vraie poignée TestRail. -->
+                    <span v-if="g.group_id" draggable="true" @dragstart="onDragStartSection($event, g.group_id)"
+                          class="shrink-0 cursor-grab text-muted-foreground/70 hover:text-muted-foreground"
+                          title="Glisser pour déplacer cette section">
+                      <svg class="w-3.5 h-3.5 pointer-events-none" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.3"/><circle cx="15" cy="6" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="9" cy="18" r="1.3"/><circle cx="15" cy="18" r="1.3"/></svg>
+                    </span>
                     <button class="flex items-center gap-1.5 text-left text-muted-foreground hover:text-foreground"
                             :aria-label="`${groupCollapsed(s.module.id, g.group_id) ? 'Déplier' : 'Replier'} la section ${g.group_title}`"
                             :aria-expanded="!groupCollapsed(s.module.id, g.group_id)"
@@ -495,7 +685,7 @@ async function campagneDepuisSelection() {
                     </button>
                     <RouterLink v-if="g.group_id" :to="{ name: 'spec-detail', params: { pid, id: String(g.group_id) } }"
                                 class="text-[11px] text-muted-foreground hover:text-primary hover:underline"
-                                title="Ouvrir la spécification (le document)">voir le document</RouterLink>
+                                title="Ouvrir la section (le document)">voir le document</RouterLink>
                   </div>
                 </td>
               </tr>
@@ -515,24 +705,98 @@ async function campagneDepuisSelection() {
                     :class="HAUTEUR_LIGNE[prefs.densite]">C{{ c.id }}</td>
                 <td class="px-2.5 text-primary group-hover:underline leading-snug"
                     :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.title }}</td>
-                <td v-if="colonneVisible('module')" class="px-2.5 text-muted-foreground truncate"
-                    :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.module }}</td>
                 <!-- `typeView` et jamais le code brut : « non_fonctionnel » à l'écran est une
                      valeur d'enum, pas un libellé (point unique de traduction, `status.ts`). -->
                 <td v-if="colonneVisible('type')" class="px-2.5 text-muted-foreground"
                     :class="HAUTEUR_LIGNE[prefs.densite]">{{ typeView(c.type).label }}</td>
                 <td v-if="colonneVisible('priorite')" class="px-2.5 text-right text-muted-foreground"
                     :class="HAUTEUR_LIGNE[prefs.densite]">{{ PRIORITE[c.priority] || c.priority }}</td>
-                <td class="px-2.5 text-right" :class="HAUTEUR_LIGNE[prefs.densite]">
-                  <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] font-semibold" :class="testStatusMeta(c.statut).badge">
-                    {{ testStatusMeta(c.statut).label }}
+                <!-- Poignée de glisser-déposer (parité TestRail, 2026-08-06) — remplace le menu ⋮
+                     « Déplacer/copier vers… » : on attrape la ligne et on la lâche sur une Section. -->
+                <td class="text-muted-foreground" :class="HAUTEUR_LIGNE[prefs.densite]" @click.stop>
+                  <span draggable="true" @dragstart="onDragStartCas($event, c.id)"
+                        class="inline-block cursor-grab text-muted-foreground/70 hover:text-muted-foreground"
+                        title="Glisser vers une autre section" aria-label="Glisser ce cas vers une autre section" role="img">
+                    <svg class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.3"/><circle cx="15" cy="6" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="9" cy="18" r="1.3"/><circle cx="15" cy="18" r="1.3"/></svg>
                   </span>
                 </td>
-                <td class="text-muted-foreground" :class="HAUTEUR_LIGNE[prefs.densite]">
-                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+              </tr>
+              <!-- INLINE, sous la liste des cas de la Section — à l'endroit exact où TestRail les
+                   place (consigne du porteur, 2026-08-06), plus dans la barre latérale. Pas de
+                   « Ajouter une sous-section » sous une Section « Sans section » (g.group_id null,
+                   cas orphelins — pas un vrai conteneur à sous-structurer). -->
+              <tr v-if="g.group_id" class="border-t border-border/30">
+                <td :colspan="colonnesAffichees" class="pl-9 py-1.5 text-[12px]" :class="HAUTEUR_LIGNE[prefs.densite]">
+                  <button class="text-primary hover:underline" @click="goCaseNew(s.module.id)">Ajouter un cas</button>
+                  <span class="text-muted-foreground/50 mx-1.5">|</span>
+                  <button class="text-primary hover:underline" @click="ajouterSousSection(s.module.id, g.group_id)">Ajouter une sous-section</button>
                 </td>
               </tr>
             </tbody>
+
+            <!-- SOUS-SECTIONS (migration 28) — une profondeur, indentées sous leur Section. -->
+            <template v-for="sg in g.sousSections" :key="`${s.module.id}-${g.group_id}-${sg.group_id}`">
+              <tbody v-if="!groupCollapsed(s.module.id, g.group_id)">
+                <tr class="group border-t border-border/60 bg-surface-raised/25"
+                    :class="survolSection === sg.group_id ? 'ring-1 ring-inset ring-primary/50' : ''"
+                    @dragover.prevent @dragenter="onDragEnterSection($event, sg.group_id)"
+                    @dragleave="onDragLeaveSection(sg.group_id)" @drop="onDropSection($event, sg.group_id)">
+                  <td :colspan="colonnesAffichees" class="pl-9 px-3" :class="HAUTEUR_LIGNE[prefs.densite]">
+                    <div class="flex items-center gap-1.5">
+                      <span draggable="true" @dragstart="onDragStartSection($event, sg.group_id)"
+                            class="shrink-0 cursor-grab text-muted-foreground/70 hover:text-muted-foreground"
+                            title="Glisser pour déplacer cette sous-section">
+                        <svg class="w-3.5 h-3.5 pointer-events-none" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.3"/><circle cx="15" cy="6" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="9" cy="18" r="1.3"/><circle cx="15" cy="18" r="1.3"/></svg>
+                      </span>
+                      <button class="flex items-center gap-1.5 text-left text-muted-foreground hover:text-foreground"
+                              :aria-label="`${groupCollapsed(s.module.id, sg.group_id) ? 'Déplier' : 'Replier'} la sous-section ${sg.group_title}`"
+                              :aria-expanded="!groupCollapsed(s.module.id, sg.group_id)"
+                              @click="toggleGroup(s.module.id, sg.group_id)">
+                        <svg class="w-3 h-3 shrink-0 transition-transform" :class="groupCollapsed(s.module.id, sg.group_id) ? '-rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
+                        <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+                        <span class="text-[12px] font-semibold text-primary/80">{{ sg.group_title }}</span>
+                        <span class="rounded-full bg-primary/15 text-primary text-[10px] font-semibold px-2 py-0.5 tabular-nums">{{ sg.rows.length }}</span>
+                      </button>
+                      <RouterLink :to="{ name: 'spec-detail', params: { pid, id: String(sg.group_id) } }"
+                                  class="text-[11px] text-muted-foreground hover:text-primary hover:underline"
+                                  title="Ouvrir la sous-section (le document)">voir le document</RouterLink>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+              <tbody v-if="!groupCollapsed(s.module.id, g.group_id) && !groupCollapsed(s.module.id, sg.group_id)">
+                <tr v-for="c in sg.rows" :key="c.id"
+                    class="group border-t border-border/60 hover:bg-accent/30 cursor-pointer"
+                    :class="estSelectionne(c.id) && 'bg-primary/10'"
+                    @click="openCase(c.id)">
+                  <td class="pl-1" :class="HAUTEUR_LIGNE[prefs.densite]" @click.stop>
+                    <input type="checkbox" :aria-label="`Sélectionner ${c.title}`"
+                           :checked="estSelectionne(c.id)" @change="basculer(c.id)" />
+                  </td>
+                  <td v-if="colonneVisible('id')" class="pl-3 font-bold tabular-nums whitespace-nowrap"
+                      :class="HAUTEUR_LIGNE[prefs.densite]">C{{ c.id }}</td>
+                  <td class="px-2.5 text-primary group-hover:underline leading-snug"
+                      :class="HAUTEUR_LIGNE[prefs.densite]">{{ c.title }}</td>
+                  <td v-if="colonneVisible('type')" class="px-2.5 text-muted-foreground"
+                      :class="HAUTEUR_LIGNE[prefs.densite]">{{ typeView(c.type).label }}</td>
+                  <td v-if="colonneVisible('priorite')" class="px-2.5 text-right text-muted-foreground"
+                      :class="HAUTEUR_LIGNE[prefs.densite]">{{ PRIORITE[c.priority] || c.priority }}</td>
+                  <td class="text-muted-foreground" :class="HAUTEUR_LIGNE[prefs.densite]" @click.stop>
+                    <span draggable="true" @dragstart="onDragStartCas($event, c.id)"
+                          class="inline-block cursor-grab text-muted-foreground/70 hover:text-muted-foreground"
+                          title="Glisser vers une autre section" aria-label="Glisser ce cas vers une autre section" role="img">
+                      <svg class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.3"/><circle cx="15" cy="6" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="9" cy="18" r="1.3"/><circle cx="15" cy="18" r="1.3"/></svg>
+                    </span>
+                  </td>
+                </tr>
+                <!-- Pas de « Ajouter une sous-section » ici : une seule profondeur d'imbrication. -->
+                <tr class="border-t border-border/30">
+                  <td :colspan="colonnesAffichees" class="pl-14 py-1.5 text-[12px]" :class="HAUTEUR_LIGNE[prefs.densite]">
+                    <button class="text-primary hover:underline" @click="goCaseNew(s.module.id)">Ajouter un cas</button>
+                  </td>
+                </tr>
+              </tbody>
+            </template>
           </template>
         </table>
       </div>
@@ -541,6 +805,31 @@ async function campagneDepuisSelection() {
                 @click="chargerPlus">
           Charger {{ Math.min(resteACharger, 100) }} cas de plus
           <span class="text-muted-foreground">({{ resteACharger }} restants)</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ════════ Menu flottant AU POINT DE DÉPÔT (parité TestRail, étape 2bis) ════════
+         N'apparaît que si le dépôt s'est fait SANS Ctrl/Cmd/Maj (ces touches agissent tout de
+         suite, voir onDropSection/onDropModule) — un fond plein écran ferme le menu au clic
+         extérieur, même patron que Modal.vue. -->
+    <div v-if="menuDepot" class="fixed inset-0 z-40" @click="fermerMenuDepot" @contextmenu.prevent="fermerMenuDepot">
+      <div class="absolute rounded-md border border-border bg-surface-overlay py-1 text-sm shadow-xl"
+           :style="{ left: menuDepot.x + 'px', top: menuDepot.y + 'px' }" @click.stop>
+        <template v-if="menuDepot.kind === 'cas'">
+          <button class="block w-full whitespace-nowrap px-3 py-1.5 text-left hover:bg-accent/60" @click="menuDepotDeplacer">
+            Déplacer ici (ctrl/cmd)
+          </button>
+          <button class="block w-full whitespace-nowrap px-3 py-1.5 text-left hover:bg-accent/60" @click="menuDepotCopier">
+            Copier ici (maj)
+          </button>
+        </template>
+        <!-- Une Section n'est jamais copiée ici : ça dupliquerait en cascade tous ses cas. -->
+        <button v-else class="block w-full whitespace-nowrap px-3 py-1.5 text-left hover:bg-accent/60" @click="menuDepotDeplacer">
+          Déplacer ici
+        </button>
+        <button class="block w-full whitespace-nowrap px-3 py-1.5 text-left text-muted-foreground hover:bg-accent/60" @click="fermerMenuDepot">
+          Annuler
         </button>
       </div>
     </div>
