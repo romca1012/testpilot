@@ -288,7 +288,7 @@ onMounted(async () => { await load(); await loadExplorations() })
       </Button>
     </div>
 
-    <div v-else class="grid gap-3 sm:grid-cols-2">
+    <div v-else class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(280px,320px))]">
       <div
         v-for="p in projects" :key="p.id"
         class="group relative rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40 hover:bg-accent/30"

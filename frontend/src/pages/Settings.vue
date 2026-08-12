@@ -8,6 +8,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, type SettingOut } from '../lib/api'
 import { useSession } from '../lib/useSession'
+import Button from '../components/ui/Button.vue'
 
 const { session } = useSession()
 // ⚠️ Indicatif seulement — le SERVEUR est la seule vraie garde (403 sinon, `routes/settings.py`).
@@ -170,7 +171,7 @@ async function envoyerTestSmtp() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl p-6">
+  <div class="mx-auto max-w-4xl p-6 md:p-8">
     <!-- ⚠️ Cet écran est HORS du shell de projet (les réglages ne dépendent d'aucun projet) : il
          doit donc porter lui-même son chemin de retour. Sans lui, on y arrive et on y reste. -->
     <RouterLink to="/" class="text-sm text-primary hover:underline">← Retour</RouterLink>
@@ -192,7 +193,7 @@ async function envoyerTestSmtp() {
              class="mt-6 rounded-lg border border-border bg-surface-raised p-4">
       <div class="flex items-center gap-2">
         <h2 class="font-medium">{{ TITRES[r.key] || r.key }}</h2>
-        <span class="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground"
+        <span class="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
               :title="PROVENANCE[r.source]?.hint">{{ PROVENANCE[r.source]?.label || r.source }}</span>
       </div>
       <p class="mt-1 text-sm text-muted-foreground">{{ r.description }}</p>
@@ -201,17 +202,16 @@ async function envoyerTestSmtp() {
         <input v-model="brouillon[r.key]" :placeholder="r.value"
                :disabled="r.admin_only && !estAdmin"
                class="flex-1 rounded-md bg-surface border border-border px-3 py-2 focus:border-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed" />
-        <button class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
-                :disabled="enregistrement === r.key || (r.admin_only && !estAdmin)" @click="enregistrer(r.key)">
+        <Button variant="primary" :disabled="enregistrement === r.key || (r.admin_only && !estAdmin)" @click="enregistrer(r.key)">
           {{ enregistrement === r.key ? 'Enregistrement…' : 'Enregistrer' }}
-        </button>
+        </Button>
       </div>
       <!-- Écriture réservée à l'Admin (2026-08-11) — un gabarit mal réglé change ce que voit
            TOUTE l'équipe, sur tous les projets. Indicatif : le 403 serveur fait foi. -->
       <p v-if="r.admin_only && !estAdmin" class="mt-2 text-xs text-warning">
         Réservé au rôle Admin.
       </p>
-      <p class="mt-2 text-xs text-muted-foreground/80">
+      <p class="mt-2 text-xs text-subtle-foreground">
         Laisser le champ VIDE efface le réglage : la variable d'environnement du serveur, puis la
         valeur par défaut, reprennent la main.
       </p>

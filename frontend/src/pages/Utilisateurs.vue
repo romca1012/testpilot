@@ -112,7 +112,7 @@ async function confirmerReinit() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl p-6">
+  <div class="mx-auto max-w-4xl p-6 md:p-8">
     <RouterLink to="/" class="text-sm text-primary hover:underline">← Retour</RouterLink>
     <h1 class="mt-3 text-xl font-semibold">Comptes utilisateurs</h1>
     <p class="mt-1 text-sm text-muted-foreground">
@@ -142,10 +142,9 @@ async function confirmerReinit() {
                 class="rounded-md bg-surface border border-border px-3 py-2 focus:border-primary outline-none">
           <option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option>
         </select>
-        <button class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
-                :disabled="creation || !nouveauNom.trim() || !nouveauMdp" @click="creer">
+        <Button variant="primary" :disabled="creation || !nouveauNom.trim() || !nouveauMdp" @click="creer">
           {{ creation ? 'Création…' : 'Créer' }}
-        </button>
+        </Button>
       </div>
     </section>
 
@@ -207,7 +206,7 @@ async function confirmerReinit() {
         <p v-if="reinitErreur" class="text-sm text-destructive">{{ reinitErreur }}</p>
       </form>
       <template #footer>
-        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="reinitCompte = null">Annuler</button>
+        <Button type="button" variant="secondary" @click="reinitCompte = null">Annuler</Button>
         <Button type="submit" form="form-reinit-mdp" variant="primary" :loading="reinitEnCours" :disabled="!nouveauMdpReinit">Réinitialiser</Button>
       </template>
     </Modal>
