@@ -19,6 +19,7 @@ import {
   COLONNES_MASQUABLES, HAUTEUR_LIGNE, usePreferencesListe, type Colonne,
 } from '../lib/preferencesListe'
 import Button from '../components/ui/Button.vue'
+import IconButton from '../components/ui/IconButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -494,19 +495,19 @@ async function supprimerEnLot() {
 
     <!-- En-tête -->
     <div class="flex items-center justify-between px-6 pt-6 pb-2">
-      <h1 class="text-[26px] font-semibold tracking-tight">Cas de test</h1>
+      <h1 class="text-2xl font-semibold tracking-tight">Cas de test</h1>
       <div class="flex items-center gap-3.5 text-muted-foreground">
-        <button title="Nouveau module" class="hover:text-foreground" @click="openCreateModule(pid)" aria-label="Nouveau module">
+        <IconButton label="Nouveau module" @click="openCreateModule(pid)">
           <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M12 10v5M9.5 12.5h5"/></svg>
-        </button>
-        <button v-for="ic in topIcons" :key="ic.t" :title="ic.t" class="hover:text-foreground" @click="topAction(ic.t)" :aria-label="ic.t">
+        </IconButton>
+        <IconButton v-for="ic in topIcons" :key="ic.t" :label="ic.t" @click="topAction(ic.t)">
           <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path :d="ic.d"/></svg>
-        </button>
+        </IconButton>
         <button title="Générer des cas de test avec l'IA" class="grid place-items-center w-7 h-7 rounded-full bg-success/15 text-success hover:bg-success/25"
                 @click="router.push({ name: 'case-new', params: { pid } })" aria-label="Générer des cas de test avec l'IA">
           <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/></svg>
         </button>
-        <button title="Lancer une exécution (créer un run)" class="grid place-items-center w-[30px] h-[30px] rounded-full bg-success text-white hover:bg-success/90" @click="goRunNew" aria-label="Lancer une exécution (créer un run)">
+        <button title="Lancer une exécution (créer un run)" class="grid place-items-center w-[30px] h-[30px] rounded-full bg-success text-success-foreground hover:bg-success/90" @click="goRunNew" aria-label="Lancer une exécution (créer un run)">
           <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </button>
       </div>
@@ -610,25 +611,25 @@ async function supprimerEnLot() {
             <svg class="w-3.5 h-3.5 transition-transform" :class="collapsed.includes(s.module.id) ? '-rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
           </button>
           <span class="font-bold italic tracking-tight">{{ s.module.name }}</span>
-          <span class="rounded-full bg-primary/15 text-primary text-[11px] font-semibold px-2.5 py-0.5 tabular-nums">{{ s.rows.length }}</span>
+          <span class="rounded-full bg-primary/15 text-primary text-xs font-semibold px-2.5 py-0.5 tabular-nums">{{ s.rows.length }}</span>
           <button class="text-muted-foreground hover:text-foreground" title="Renommer le module" @click="renameSection(s.module)" aria-label="Renommer le module">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>
           </button>
           <!-- « Ajouter une section », INLINE sous le module — à l'endroit où TestRail le place,
                plus dans la barre latérale ambiguë (retirée, 2026-08-06). -->
-          <button class="ml-2 text-[12px] text-primary hover:underline" @click="ajouterSection(s.module.id)">
+          <button class="ml-2 text-xs text-primary hover:underline" @click="ajouterSection(s.module.id)">
             + Ajouter une section
           </button>
         </div>
 
         <p v-if="!collapsed.includes(s.module.id) && !s.rows.length && !s.groupes.length"
-           class="pl-8 py-2 text-xs italic text-muted-foreground/70">
+           class="pl-8 py-2 text-xs italic text-subtle-foreground">
           Aucun cas dans ce module — générez-en avec l'IA ou ajoutez-en un.
         </p>
 
         <table v-if="!collapsed.includes(s.module.id) && (s.rows.length || s.groupes.length)" class="w-full border-collapse">
           <thead>
-            <tr class="text-[11px] uppercase tracking-wider text-muted-foreground">
+            <tr class="text-xs uppercase tracking-wider text-muted-foreground">
               <th class="w-8 py-2 pl-1">
                 <!-- « Tout sélectionner » porte sur CETTE section, pas sur la liste entière :
                      cocher 400 cas invisibles d'un clic est un piège, pas un raccourci. -->
@@ -680,11 +681,11 @@ async function supprimerEnLot() {
                             @click="toggleGroup(s.module.id, g.group_id)">
                       <svg class="w-3 h-3 shrink-0 transition-transform" :class="groupCollapsed(s.module.id, g.group_id) ? '-rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
                       <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
-                      <span class="text-[12.5px] font-semibold text-primary/90">{{ g.group_title }}</span>
-                      <span class="rounded-full bg-primary/15 text-primary text-[10.5px] font-semibold px-2 py-0.5 tabular-nums">{{ g.rows.length }}</span>
+                      <span class="text-sm font-semibold text-primary/90">{{ g.group_title }}</span>
+                      <span class="rounded-full bg-primary/15 text-primary text-xs font-semibold px-2 py-0.5 tabular-nums">{{ g.rows.length }}</span>
                     </button>
                     <RouterLink v-if="g.group_id" :to="{ name: 'spec-detail', params: { pid, id: String(g.group_id) } }"
-                                class="text-[11px] text-muted-foreground hover:text-primary hover:underline"
+                                class="text-xs text-muted-foreground hover:text-primary hover:underline"
                                 title="Ouvrir la section (le document)">voir le document</RouterLink>
                   </div>
                 </td>
@@ -726,7 +727,7 @@ async function supprimerEnLot() {
                    « Ajouter une sous-section » sous une Section « Sans section » (g.group_id null,
                    cas orphelins — pas un vrai conteneur à sous-structurer). -->
               <tr v-if="g.group_id" class="border-t border-border/30">
-                <td :colspan="colonnesAffichees" class="pl-9 py-1.5 text-[12px]" :class="HAUTEUR_LIGNE[prefs.densite]">
+                <td :colspan="colonnesAffichees" class="pl-9 py-1.5 text-xs" :class="HAUTEUR_LIGNE[prefs.densite]">
                   <button class="text-primary hover:underline" @click="goCaseNew(s.module.id)">Ajouter un cas</button>
                   <span class="text-muted-foreground/50 mx-1.5">|</span>
                   <button class="text-primary hover:underline" @click="ajouterSousSection(s.module.id, g.group_id)">Ajouter une sous-section</button>
@@ -754,11 +755,11 @@ async function supprimerEnLot() {
                               @click="toggleGroup(s.module.id, sg.group_id)">
                         <svg class="w-3 h-3 shrink-0 transition-transform" :class="groupCollapsed(s.module.id, sg.group_id) ? '-rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
                         <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
-                        <span class="text-[12px] font-semibold text-primary/80">{{ sg.group_title }}</span>
-                        <span class="rounded-full bg-primary/15 text-primary text-[10px] font-semibold px-2 py-0.5 tabular-nums">{{ sg.rows.length }}</span>
+                        <span class="text-sm font-semibold text-primary/80">{{ sg.group_title }}</span>
+                        <span class="rounded-full bg-primary/15 text-primary text-xs font-semibold px-2 py-0.5 tabular-nums">{{ sg.rows.length }}</span>
                       </button>
                       <RouterLink :to="{ name: 'spec-detail', params: { pid, id: String(sg.group_id) } }"
-                                  class="text-[11px] text-muted-foreground hover:text-primary hover:underline"
+                                  class="text-xs text-muted-foreground hover:text-primary hover:underline"
                                   title="Ouvrir la sous-section (le document)">voir le document</RouterLink>
                     </div>
                   </td>
@@ -791,7 +792,7 @@ async function supprimerEnLot() {
                 </tr>
                 <!-- Pas de « Ajouter une sous-section » ici : une seule profondeur d'imbrication. -->
                 <tr class="border-t border-border/30">
-                  <td :colspan="colonnesAffichees" class="pl-14 py-1.5 text-[12px]" :class="HAUTEUR_LIGNE[prefs.densite]">
+                  <td :colspan="colonnesAffichees" class="pl-14 py-1.5 text-xs" :class="HAUTEUR_LIGNE[prefs.densite]">
                     <button class="text-primary hover:underline" @click="goCaseNew(s.module.id)">Ajouter un cas</button>
                   </td>
                 </tr>
@@ -801,11 +802,10 @@ async function supprimerEnLot() {
         </table>
       </div>
       <div v-if="resteACharger" class="py-6 text-center">
-        <button class="rounded-md border border-border px-4 py-2 text-sm hover:border-primary/40"
-                @click="chargerPlus">
+        <Button variant="secondary" @click="chargerPlus">
           Charger {{ Math.min(resteACharger, 100) }} cas de plus
           <span class="text-muted-foreground">({{ resteACharger }} restants)</span>
-        </button>
+        </Button>
       </div>
     </div>
 
