@@ -509,7 +509,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
                 <div v-for="(s, i) in form.steps" :key="i" class="flex items-center gap-2">
                   <span class="w-6 shrink-0 text-right text-muted-foreground tabular-nums text-sm">{{ i + 1 }}.</span>
                   <input v-model="form.steps[i]" class="flex-1 rounded-md bg-surface-raised border border-border px-3 py-1.5 focus:border-primary outline-none" />
-                  <IconButton size="sm" variant="danger" label="Supprimer cette étape" @click="removeStep(i)">✕</IconButton>
+                  <IconButton size="sm" variant="danger" label="Supprimer" @click="removeStep(i)">✕</IconButton>
                 </div>
               </div>
               <button type="button" class="mt-2 text-sm text-primary hover:underline" @click="addStep">+ Ajouter une étape</button>

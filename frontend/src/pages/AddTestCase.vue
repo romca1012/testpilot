@@ -30,6 +30,8 @@ import { useQueryClient } from '@tanstack/vue-query'
 import { api, type MetierDraft, type ModuleSummary } from '../lib/api'
 import { MODELE_SPECIFICATION } from '../lib/modeleSpecification'
 import { cles, useGroupes } from '../lib/donnees'
+import Button from '../components/ui/Button.vue'
+import IconButton from '../components/ui/IconButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -299,8 +301,8 @@ function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } 
 </script>
 
 <template>
-  <div class="p-6 md:p-8 max-w-[760px]">
-    <h1 class="text-[26px] font-semibold tracking-tight">Générer des cas de test</h1>
+  <div class="max-w-[700px]">
+    <h1 class="text-2xl font-semibold tracking-tight">Générer des cas de test</h1>
 
     <!-- ══════════ 1. LA SPÉCIFICATION ET LA SECTION CIBLE ══════════ -->
     <template v-if="etape === 'form' || etape === 'analyse'">
@@ -384,7 +386,7 @@ function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } 
           </p>
           <textarea v-model="spec" rows="14" required
                     placeholder="Décrivez la fonctionnalité à tester : le parcours, les données attendues, les règles… — ou importez un fichier."
-                    class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 font-mono text-[13px] focus:border-primary outline-none"></textarea>
+                    class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 font-mono text-sm focus:border-primary outline-none"></textarea>
           <p v-if="importedName" class="mt-1 text-xs text-muted-foreground">
             Importé depuis <strong class="text-foreground">{{ importedName }}</strong> — vous pouvez le corriger avant de générer.
           </p>
@@ -397,15 +399,15 @@ function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } 
         <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
 
         <div class="flex items-center gap-3">
-          <button type="submit"
+          <Button type="submit" variant="primary"
                   :disabled="etape === 'analyse' || !spec.trim()
                     || (creatingModule && !newModuleName.trim())
                     || (creatingSection && !newSectionName.trim())
                     || (!creatingSection && sectionId == null)"
-                  class="rounded-md bg-primary text-white font-semibold px-4 py-2 disabled:opacity-60">
+                  :loading="etape === 'analyse'">
             {{ etape === 'analyse' ? 'Rédaction en cours…' : 'Rédiger le cas de test' }}
-          </button>
-          <button type="button" class="rounded-md border border-border px-4 py-2 hover:border-primary/40" @click="abandonner">Annuler</button>
+          </Button>
+          <Button type="button" variant="secondary" @click="abandonner">Annuler</Button>
         </div>
       </form>
     </template>
@@ -417,7 +419,7 @@ function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } 
         pour le consulter ou le corriger</strong>, retirez ce qui ne sert à rien, puis validez.
       </p>
 
-      <div class="mt-4 rounded-lg border border-primary/40 bg-primary/[0.05] p-3 text-xs text-muted-foreground">
+      <div class="mt-4 rounded-lg border border-primary/40 bg-primary/5 p-3 text-xs text-muted-foreground">
         Aucun cas n'est encore créé, et aucun test technique n'est encore écrit. C'est le moment
         de corriger : après validation, un test sera généré pour chaque cas retenu, dans la
         Section choisie à l'étape précédente.
@@ -439,12 +441,11 @@ function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } 
                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
                 <span class="min-w-0 flex-1 truncate font-medium">{{ cas[i].title || '(sans titre)' }}</span>
                 <span v-if="!casComplet(cas[i])"
-                      class="shrink-0 rounded-full bg-destructive/15 text-destructive text-[10px] font-semibold px-2 py-0.5">
+                      class="shrink-0 rounded-full bg-destructive/15 text-destructive text-xs font-semibold px-2 py-0.5">
                   incomplet
                 </span>
               </button>
-              <button type="button" class="shrink-0 px-3 text-muted-foreground hover:text-destructive"
-                      title="Retirer ce cas" @click="removeCase(i)">✕</button>
+              <IconButton class="shrink-0 mr-1" variant="danger" label="Retirer ce cas" @click="removeCase(i)">✕</IconButton>
             </div>
 
             <div v-if="deplies.has(i)" class="p-4 space-y-4 border-t border-border">
@@ -468,7 +469,7 @@ function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } 
                     <span class="w-6 shrink-0 text-right text-muted-foreground tabular-nums text-sm">{{ j + 1 }}.</span>
                     <input v-model="cas[i].steps[j]"
                            class="flex-1 rounded-md bg-surface-raised border border-border px-3 py-1.5 focus:border-primary outline-none" />
-                    <button type="button" class="text-muted-foreground hover:text-destructive px-1" title="Supprimer" @click="removeStep(i, j)">✕</button>
+                    <IconButton size="sm" variant="danger" label="Supprimer" @click="removeStep(i, j)">✕</IconButton>
                   </div>
                 </div>
                 <button type="button" class="mt-2 text-sm text-primary hover:underline" @click="addStep(i)">+ Ajouter une étape</button>
@@ -496,12 +497,10 @@ function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } 
         <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
 
         <div class="flex items-center gap-3 pt-2">
-          <button type="button" :disabled="!toutValide"
-                  class="rounded-md bg-primary text-white font-semibold px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  @click="validerMetier">
+          <Button type="button" variant="primary" :disabled="!toutValide" @click="validerMetier">
             Valider {{ nbCasRetenus }} cas et générer les tests
-          </button>
-          <button type="button" class="rounded-md border border-border px-4 py-2 hover:border-primary/40" @click="abandonner">Abandonner</button>
+          </Button>
+          <Button type="button" variant="secondary" @click="abandonner">Abandonner</Button>
         </div>
       </div>
     </template>
