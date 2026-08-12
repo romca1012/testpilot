@@ -18,6 +18,7 @@ import {
 } from '../lib/donnees'
 import Modal from './ui/Modal.vue'
 import Button from './ui/Button.vue'
+import IconButton from './ui/IconButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -299,7 +300,7 @@ function switchProject(id: number) {
       <div class="relative">
         <button class="h-14 w-full flex items-center gap-2.5 px-3.5 border-b border-border hover:bg-accent/40 transition-colors"
                 @click="menuOpen = !menuOpen">
-          <span class="h-[30px] w-[30px] rounded-lg bg-primary text-white grid place-items-center font-bold text-[15px]">{{ initial }}</span>
+          <span class="h-[30px] w-[30px] rounded-lg bg-primary text-primary-foreground grid place-items-center font-bold text-sm">{{ initial }}</span>
           <span class="font-semibold flex-1 text-left truncate tracking-tight">{{ currentProject?.name || '…' }}</span>
           <svg class="w-4 h-4 text-muted-foreground shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
         </button>
@@ -337,7 +338,7 @@ function switchProject(id: number) {
                       class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                       @click="menuOpen = false">Bibliothèque de steps…</RouterLink>
           <div class="my-1 border-t border-border"></div>
-          <p v-if="session?.authenticated" class="px-3 py-1 text-[11px] text-muted-foreground/70">
+          <p v-if="session?.authenticated" class="px-3 py-1 text-xs text-subtle-foreground">
             Connecté en tant que {{ session.name }} · {{ LIBELLE_ROLE[session.role] || session.role }}
           </p>
           <!-- ⚠️ Sans moyen de quitter sa session, un poste commun reste ouvert au suivant qui
@@ -360,12 +361,12 @@ function switchProject(id: number) {
 
           <!-- Sous-nav du cas ouvert — apparaît SOUS « Cas de test », indentée -->
           <div v-if="item.key === 'cases' && caseId" class="ml-4 pl-3 border-l border-border flex flex-col gap-0.5 py-1">
-            <span class="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Aperçu</span>
+            <span class="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Aperçu</span>
             <button v-for="t in subtabs" :key="t.key"
-                    class="text-left rounded-md px-2.5 py-1.5 text-[13px] transition-colors"
+                    class="text-left rounded-md px-2.5 py-1.5 text-sm transition-colors"
                     :class="caseTab === t.key ? 'bg-primary/15 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.3)]' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'"
                     @click="goSubTab(t.key)">{{ t.label }}</button>
-            <p v-if="currentCase" class="px-2 pt-1.5 text-[11px] text-muted-foreground leading-relaxed">
+            <p v-if="currentCase" class="px-2 pt-1.5 text-xs text-muted-foreground leading-relaxed">
               Dans la section
               <button class="text-primary hover:underline" @click="openSpec(currentCase.group_id!)">{{ currentCase.group_title || currentCase.module }}</button>.
             </p>
@@ -373,14 +374,14 @@ function switchProject(id: number) {
 
           <!-- Sous-nav du RUN ouvert — apparaît SOUS « Exécutions et résultats de test », indentée -->
           <div v-if="item.key === 'exec' && runId" class="ml-4 pl-3 border-l border-border flex flex-col gap-0.5 py-1">
-            <span class="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Aperçu</span>
+            <span class="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Aperçu</span>
             <button v-for="t in runSubtabs" :key="t.key"
-                    class="text-left rounded-md px-2.5 py-1.5 text-[13px] transition-colors flex items-center justify-between"
+                    class="text-left rounded-md px-2.5 py-1.5 text-sm transition-colors flex items-center justify-between"
                     :class="runTab === t.key ? 'bg-primary/15 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.3)]' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'"
                     @click="goRunTab(t.key)">
-              {{ t.label }}<span v-if="!t.ready" class="text-[9px] uppercase text-muted">à venir</span>
+              {{ t.label }}<span v-if="!t.ready" class="text-xs uppercase text-muted">à venir</span>
             </button>
-            <div class="px-2 pt-1.5 text-[11px] text-muted-foreground leading-relaxed space-y-1">
+            <div class="px-2 pt-1.5 text-xs text-muted-foreground leading-relaxed space-y-1">
               <p>Jalon : <span class="text-muted">à venir</span></p>
               <p>Références : <span class="text-muted">aucune</span></p>
             </div>
@@ -396,16 +397,14 @@ function switchProject(id: number) {
         <!-- « Ajouter un cas de test » = SAISIE MANUELLE (sans IA). « Générer » = l'IA depuis une
              spec. Les deux étaient confondus : « Ajouter » lançait l'IA, « Générer » ne faisait
              rien. Correction du porteur (2026-07-21). -->
-        <button class="rounded-md bg-primary text-white font-semibold px-3 py-2.5 flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors"
-                @click="goCaseNew()">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          Ajouter un cas de test
-        </button>
-        <button class="rounded-md bg-surface-raised border border-border px-3 py-2.5 flex items-center gap-2 hover:border-primary/40 transition-colors"
-                @click="goGenerate()">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/></svg>
-          Générer des cas de test
-        </button>
+        <Button variant="primary" class="w-full" @click="goCaseNew()">
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Ajouter un cas
+        </Button>
+        <Button variant="secondary" class="w-full" @click="goGenerate()">
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/></svg>
+          Générer des cas
+        </Button>
       </div>
 
       <!-- Info spécifications / cas -->
@@ -418,7 +417,7 @@ function switchProject(id: number) {
       </div>
 
       <!-- Bandeau + sous-barre -->
-      <div class="flex items-center justify-between px-3.5 py-2.5 border-y border-border text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div class="flex items-center justify-between px-3.5 py-2.5 border-y border-border text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         Cas de test
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 13l5 5 5-5M7 6l5 5 5-5"/></svg>
       </div>
@@ -432,26 +431,25 @@ function switchProject(id: number) {
         <template v-for="m in modules" :key="m.id">
           <div class="group flex w-full items-center gap-1 rounded-md px-1.5 py-1.5 hover:bg-accent/40"
                :class="activeModuleId === m.id && 'bg-primary/10'">
-            <button class="shrink-0 p-0.5" :title="expanded.includes(m.id) ? 'Replier' : 'Déplier'" @click.stop="toggle(m.id)" :aria-label="expanded.includes(m.id) ? 'Replier' : 'Déplier'">
+            <IconButton size="sm" class="shrink-0" :label="expanded.includes(m.id) ? 'Replier' : 'Déplier'" @click.stop="toggle(m.id)">
               <svg class="w-3 h-3 text-muted-foreground transition-transform" :class="expanded.includes(m.id) ? 'rotate-90' : ''" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5l8 7-8 7z"/></svg>
-            </button>
+            </IconButton>
             <!-- Le NOM filtre la liste sur ce module (ce que faisait l'ancienne page module). -->
-            <button class="flex min-w-0 flex-1 items-center gap-1.5 text-left font-semibold" @click="openModule(m.id)">
+            <button class="flex min-w-0 flex-1 items-center gap-1.5 text-left font-semibold" :title="m.name" @click="openModule(m.id)">
               <svg class="w-4 h-4 text-warning shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
               <span class="truncate">{{ m.name }}</span>
             </button>
             <!-- Créer une SECTION (le document source) : le geste qui manquait à
                  l'interface — le CRUD existait côté serveur sans qu'aucun écran ne l'appelle. -->
-            <button class="shrink-0 p-0.5 text-muted-foreground hover:text-primary"
-                    title="Ajouter une section dans ce module" @click.stop="ouvrirCreationSpec(m.id)" aria-label="Ajouter une section dans ce module">
+            <IconButton size="sm" class="shrink-0" label="Ajouter une section dans ce module" @click.stop="ouvrirCreationSpec(m.id)">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M12 12v6M9 15h6"/></svg>
-            </button>
-            <button class="shrink-0 p-0.5 text-muted-foreground hover:text-primary" title="Ajouter un cas dans ce module" @click.stop="goCaseNew(m.id)" aria-label="Ajouter un cas dans ce module">
+            </IconButton>
+            <IconButton size="sm" class="shrink-0" label="Ajouter un cas dans ce module" @click.stop="goCaseNew(m.id)">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            </button>
-            <button class="shrink-0 p-0.5 text-muted-foreground/50 opacity-0 group-hover:opacity-100 hover:text-destructive" title="Supprimer ce module" @click.stop="deleteModule(m)" aria-label="Supprimer ce module">
+            </IconButton>
+            <IconButton size="sm" class="shrink-0 opacity-0 group-hover:opacity-100" variant="danger" label="Supprimer ce module" @click.stop="deleteModule(m)">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v11a2 2 0 002 2h4a2 2 0 002-2V7"/></svg>
-            </button>
+            </IconButton>
           </div>
           <template v-if="expanded.includes(m.id)">
             <!-- Le NOM filtre la liste sur cette spécification (comportement d'origine) ;
@@ -459,16 +457,16 @@ function switchProject(id: number) {
                  pour deux intentions distinctes : « montre-moi ses cas » et « montre-moi ce
                  qu'elle dit ». -->
             <div v-for="g in groupsOf(m.id)" :key="g.id"
-                 class="group/spec flex w-full items-center gap-1.5 rounded-md pl-7 pr-1.5 py-1.5 hover:bg-accent/40 text-[13px]"
+                 class="group/spec flex w-full items-center gap-1.5 rounded-md pl-7 pr-1.5 py-1.5 hover:bg-accent/40 text-sm"
                  :class="activeGroupId === g.id ? 'text-primary bg-primary/10' : 'text-primary/90'">
-              <button class="flex min-w-0 flex-1 items-center gap-1.5 text-left" @click="openSpec(g.id)">
+              <button class="flex min-w-0 flex-1 items-center gap-1.5 text-left" :title="g.title" @click="openSpec(g.id)">
                 <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
                 <span class="truncate">{{ g.title }}</span>
               </button>
-              <button class="shrink-0 p-0.5 text-muted-foreground/60 opacity-0 group-hover/spec:opacity-100 hover:text-primary"
-                      title="Ouvrir la section (le document)" @click.stop="ouvrirFicheSpec(g.id)" aria-label="Ouvrir la section (le document)">
+              <IconButton size="sm" class="shrink-0 opacity-0 group-hover/spec:opacity-100"
+                          label="Ouvrir la section (le document)" @click.stop="ouvrirFicheSpec(g.id)">
                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M8 13h8M8 17h5"/></svg>
-              </button>
+              </IconButton>
             </div>
           </template>
         </template>
@@ -478,16 +476,14 @@ function switchProject(id: number) {
       <!-- Contexte « Exécutions et résultats de test » : actions run/plan + filtres -->
       <template v-else-if="isActive('exec')">
       <div class="px-3 pb-3 flex flex-col gap-2">
-        <button class="rounded-md bg-primary text-white font-semibold px-3 py-2.5 flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors"
-                @click="goRoute('run-new')">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          Ajouter une exécution de test
-        </button>
-        <button class="rounded-md bg-primary text-white font-semibold px-3 py-2.5 flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors"
-                @click="goRoute('plan-new')">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          Ajouter un plan de test
-        </button>
+        <Button variant="primary" class="w-full" @click="goRoute('run-new')">
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Ajouter une exécution
+        </Button>
+        <Button variant="primary" class="w-full" @click="goRoute('plan-new')">
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Ajouter un plan
+        </Button>
       </div>
       <div class="px-3.5 pb-4 space-y-3 text-sm">
         <label class="block">
@@ -535,7 +531,7 @@ function switchProject(id: number) {
         <p v-if="moduleError" class="text-sm text-destructive">{{ moduleError }}</p>
       </form>
       <template #footer>
-        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="mc.close()">Annuler</button>
+        <Button type="button" variant="secondary" @click="mc.close()">Annuler</Button>
         <Button type="submit" form="form-create-module" variant="primary" :loading="creatingModule" :disabled="!nm.name.trim()">Créer le module</Button>
       </template>
     </Modal>
@@ -557,7 +553,7 @@ function switchProject(id: number) {
         <p v-if="specError" class="text-sm text-destructive">{{ specError }}</p>
       </form>
       <template #footer>
-        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="sc.close()">Annuler</button>
+        <Button type="button" variant="secondary" @click="sc.close()">Annuler</Button>
         <Button type="submit" form="form-create-spec" variant="primary" :loading="creatingSpec" :disabled="!nouvelleSpec.title.trim()">{{ sc.parentGroupId.value ? 'Créer la sous-section' : 'Créer la section' }}</Button>
       </template>
     </Modal>

@@ -57,6 +57,22 @@
     --input: 240 5% 17%;
     --ring: 232 56% 60%;
     --radius: 0.5rem;
+
+    /* ── Tokens ajoutés lors de l'audit DA (2026-08-12) — referment 3 échappatoires trouvées
+       dans le code : une couleur en dur, un overlay en dur, une opacité de texte au hasard. ── */
+    /* Badge d'identifiant (C120, R23…) : violet distinct de --primary, désormais nommé au lieu
+       d'être écrit en dur (`hsl(262 52% 55%)`) dans 3 fichiers différents — même teinte, mais un
+       changement de charte le suivra maintenant automatiquement. */
+    --accent-id: 262 52% 55%;
+    --accent-id-foreground: 0 0% 100%;
+    /* Fond des overlays (modales) — remplace les `bg-black/50` en dur trouvés dans Modal.vue et
+       PaletteCommandes.vue. Légèrement plus sombre que --background pour un vrai effet de scrim. */
+    --overlay: 240 6% 4%;
+    /* Texte secondaire VRAIMENT lisible (dates, aide contextuelle) mais plus discret que
+       --muted-foreground : remplace les opacités `/40` à `/70` posées au hasard sur
+       muted-foreground. Contraste calculé contre --background : ≈4,5:1 (AA texte normal), au lieu
+       d'une opacité qui le fait varier sans contrôle. */
+    --subtle-foreground: 240 5% 50%;
   }
 
   * { border-color: hsl(var(--border)); }
