@@ -33,6 +33,8 @@ import { testStatusMeta, TEST_STATUS_ORDER, type TestStatusCode } from '../lib/s
 import ResultMode from '../components/ResultMode.vue'
 import AddResultDialog from '../components/AddResultDialog.vue'
 import RefsList from '../components/RefsList.vue'
+import Button from '../components/ui/Button.vue'
+import IconButton from '../components/ui/IconButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -272,13 +274,13 @@ async function resultatAjoute() {
 
   <div v-else-if="error" class="text-center py-10">
     <p class="text-sm text-muted-foreground">{{ error }}</p>
-    <button class="mt-3 rounded-md border border-border px-3 py-1.5 text-sm hover:border-primary/40" @click="load">Réessayer</button>
+    <Button variant="secondary" class="mt-3" @click="load">Réessayer</Button>
   </div>
 
   <div v-else-if="detail">
     <!-- En-tête -->
     <div class="flex items-center gap-3 flex-wrap">
-      <span class="rounded-full bg-[hsl(262_52%_55%)] text-white text-sm font-semibold px-3 py-1 tabular-nums">R{{ detail.run.id }}</span>
+      <span class="rounded-full bg-accent-id text-accent-id-foreground text-sm font-semibold px-3 py-1 tabular-nums">R{{ detail.run.id }}</span>
       <h1 class="text-2xl font-semibold tracking-tight truncate">{{ detail.run.name }}</h1>
       <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
             :class="(STATUS_RUN[detail.run.status] || STATUS_RUN.draft).cls">
@@ -288,21 +290,19 @@ async function resultatAjoute() {
       <div class="ml-auto flex items-center gap-2">
         <!-- Lancer : geste EXPLICITE. Masqué si la campagne est archivée (lecture seule) — et
              ABSENT d'une campagne manuelle, qui n'a rien à lancer : ses résultats se saisissent. -->
-        <button v-if="!enCours && !archived && !estManuelle"
-                class="rounded-md bg-success text-white font-semibold px-4 py-2 text-sm flex items-center gap-2 hover:bg-success/90 disabled:opacity-50"
+        <Button v-if="!enCours && !archived && !estManuelle" variant="success"
                 :disabled="launching || !total" @click="launch">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
           {{ launching ? 'Lancement…' : (detail.run.status === 'completed' ? 'Relancer' : 'Lancer l\'exécution') }}
-        </button>
+        </Button>
         <span v-if="enCours" class="flex items-center gap-2 text-sm text-warning">
           <span class="inline-block h-3.5 w-3.5 rounded-full border-2 border-warning border-t-transparent animate-spin"></span>
           Exécution en cours — {{ tested }} / {{ total }} cas
         </span>
         <!-- Clore / rouvrir. Réversible : une clôture par erreur ne doit pas être irrattrapable. -->
-        <button v-if="!enCours" class="rounded-md border border-border px-3 py-2 text-sm hover:border-primary/40"
-                @click="toggleArchive">
+        <Button v-if="!enCours" variant="secondary" @click="toggleArchive">
           {{ archived ? 'Rouvrir' : 'Clôturer' }}
-        </button>
+        </Button>
       </div>
     </div>
 
@@ -325,17 +325,17 @@ async function resultatAjoute() {
       Les cas sont joués l'un après l'autre contre l'application réelle — les résultats
       apparaissent au fur et à mesure.
     </p>
-    <button class="mt-1 text-primary/90 text-sm hover:underline" @click="backToList">Exécutions et résultats de test</button>
+    <button class="mt-1 text-primary text-sm hover:underline" @click="backToList">Exécutions et résultats de test</button>
 
-    <p v-if="detail.description" class="mt-3 text-sm text-foreground/85 whitespace-pre-wrap">{{ detail.description }}</p>
+    <p v-if="detail.description" class="mt-3 text-sm text-foreground whitespace-pre-wrap">{{ detail.description }}</p>
     <p v-if="detail.refs" class="mt-1 text-xs text-muted-foreground">Références : <RefsList :refs="detail.refs" /></p>
 
     <!-- CONTRE QUOI cette campagne a tourné — lu sur ses exécutions, jamais sur la connexion
          actuelle du projet (elle a pu changer depuis). Des résultats sans leur cible ne prouvent
          rien, et sur un serveur partagé plusieurs instances coexistent. -->
     <p v-if="detail.target_url" class="mt-1 text-xs text-muted-foreground">
-      Testé contre <span class="text-foreground/90">{{ detail.target_url }}</span>
-      <template v-if="detail.target_database"> · base <span class="text-foreground/90">{{ detail.target_database }}</span></template>
+      Testé contre <span class="text-foreground">{{ detail.target_url }}</span>
+      <template v-if="detail.target_database"> · base <span class="text-foreground">{{ detail.target_database }}</span></template>
     </p>
     <!-- Deux cibles dans une même campagne = la connexion a bougé en cours de route : ses
          résultats ne sont plus comparables entre eux. On le dit, on n'en choisit pas une. -->
@@ -350,21 +350,17 @@ async function resultatAjoute() {
     <div class="mt-6 grid gap-4 lg:grid-cols-[1.7fr_1fr]">
       <!-- Camembert + sa légende -->
       <div class="relative rounded-lg border border-border bg-surface/60 p-4 flex items-center gap-6">
-        <div class="absolute right-3 top-3 flex gap-1 text-muted-foreground">
-          <button class="rounded p-1 hover:bg-accent hover:text-foreground"
-                  title="Télécharger le graphique" aria-label="Télécharger le graphique (image SVG)"
-                  @click="exporterImage">
+        <div class="absolute right-3 top-3 flex gap-1">
+          <IconButton size="sm" label="Télécharger le graphique (image SVG)" @click="exporterImage">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
             </svg>
-          </button>
-          <button class="rounded p-1 hover:bg-accent hover:text-foreground"
-                  title="Télécharger les données" aria-label="Télécharger les données de la répartition (CSV)"
-                  @click="exporterCsv">
+          </IconButton>
+          <IconButton size="sm" label="Télécharger les données de la répartition (CSV)" @click="exporterCsv">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
             </svg>
-          </button>
+          </IconButton>
         </div>
 
         <svg ref="svgEl" viewBox="0 0 120 120" class="w-32 h-32 shrink-0"
@@ -458,14 +454,14 @@ async function resultatAjoute() {
       <section v-for="g in groupes" :key="g.code || 'tous'" class="mt-4">
         <div v-if="g.code" class="flex items-center gap-2">
           <span class="text-sm font-semibold">{{ testStatusMeta(g.code).label }}</span>
-          <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums"
+          <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums"
                 :class="testStatusMeta(g.code).badge">{{ g.cases.length }}</span>
           <span class="h-1 w-16 rounded-full" :style="{ background: `hsl(${testStatusMeta(g.code).color})` }"></span>
         </div>
 
         <table class="mt-1 w-full border-collapse text-sm">
           <thead>
-            <tr class="border-b border-border text-[11px] uppercase tracking-wider text-muted-foreground">
+            <tr class="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
               <th class="py-2 pl-1 w-16 text-left font-semibold">ID</th>
               <th class="py-2 px-2.5 text-left font-semibold">Titre</th>
               <th v-if="colonneVisible('assigne')" class="py-2 px-2.5 w-32 text-left font-semibold">Assigné à</th>
@@ -496,16 +492,15 @@ async function resultatAjoute() {
                    deviné. -->
               <td v-if="colonneVisible('soumis')" class="py-3 px-2.5 truncate text-muted-foreground">{{ c.created_by || '—' }}</td>
               <td class="py-3 px-2.5 text-right">
-                <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[12.5px] font-semibold"
+                <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
                       :class="testStatusMeta(statusOf(c)).badge">
                   {{ testStatusMeta(statusOf(c)).label }}
                 </span>
               </td>
               <td class="py-3 pl-2.5" @click.stop>
-                <button v-if="!archived && estManuelle"
-                        class="rounded-md border border-border bg-surface-raised px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                <Button v-if="!archived && estManuelle" variant="secondary" size="sm"
                         :title="`Ajouter un résultat pour C${c.id}`"
-                        @click="ouvrirSaisie(c)">+ Résultat</button>
+                        @click="ouvrirSaisie(c)">+ Résultat</Button>
               </td>
               <td class="py-3 text-right text-muted-foreground group-hover:text-foreground" aria-hidden="true">›</td>
             </tr>

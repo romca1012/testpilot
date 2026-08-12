@@ -2,7 +2,7 @@
 import Spinner from './Spinner.vue'
 
 withDefaults(defineProps<{
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success'
   size?: 'sm' | 'md' | 'lg'
   disabled?: boolean
   loading?: boolean
@@ -13,6 +13,9 @@ const VARIANTS = {
   secondary: 'bg-surface-raised text-foreground hover:bg-accent border-border',
   ghost: 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-accent/50 border-transparent',
   danger: 'bg-transparent text-destructive hover:bg-destructive/10 border-destructive/40',
+  // Action positive explicite (ex. « Lancer l'exécution ») — distincte de primary (navigation/
+  // validation) : reprend le token --success déjà utilisé pour les statuts.
+  success: 'bg-success text-success-foreground hover:bg-success/90 border-transparent',
 }
 
 // Trois hauteurs pour toute l'appli (audit DA 2026-08-12) : avant, Button.vue n'avait qu'une
