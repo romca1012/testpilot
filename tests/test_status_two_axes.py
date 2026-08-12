@@ -82,6 +82,41 @@ def test_subprocess_crash_is_technical_error():
     assert v.functional_status == st.FUNC_INDETERMINE
 
 
+def test_crash_a_code_de_retour_POSITIF_sans_scenario_est_technical_error_pas_untested():
+    """B4 (audit 2026-08-07) — un crash « normal » de Python (exception non rattrapée dans notre
+    formatter JSON maison, process tué par disque plein, etc.) ressort avec un code de retour
+    POSITIF, pas négatif (réservé aux sentinelles internes du runner). Avant ce correctif,
+    `aggregate([])` rendait `not_executed/not_evaluated` — projeté en « untested » à l'écran,
+    comme si le test n'avait JAMAIS tourné, alors qu'il a réellement tourné et planté."""
+    v = st.derive_verdict(_outcome([], [], dry_ok=True, returncode=1))
+    assert v.execution_status == st.EXEC_TECHNICAL_ERROR
+    assert v.functional_status == st.FUNC_INDETERMINE
+    # `indetermine` + un axe exécution qui n'est PAS `not_executed` → « retest », jamais
+    # « untested » : c'est exactement la distinction que ce correctif rétablit.
+    assert st.statut_de_test(v.execution_status, v.functional_status) == st.STATUT_RETEST
+    assert st.statut_de_test(v.execution_status, v.functional_status) != st.STATUT_UNTESTED
+
+
+def test_returncode_non_nul_AVEC_au_moins_un_scenario_reste_un_echec_fonctionnel_normal():
+    """Ne pas confondre avec l'échec fonctionnel ORDINAIRE : Behave ressort aussi non-zéro quand
+    un scénario échoue légitimement — tant qu'au moins un scénario est bien rapporté, ce n'est
+    PAS un crash, la garde du B4 ne doit donc jamais s'y appliquer."""
+    scenarios = [BehaveScenario("[Erreur] montant", "failed", error="AssertionError")]
+    failures = [BehaveFailure("[Erreur] montant", "Alors le total vaut 0", "assertion",
+                              "AssertionError: attendu 0, obtenu 5")]
+    v = st.derive_verdict(_outcome(scenarios, failures, returncode=1))
+    assert v.execution_status == st.EXEC_SUCCESS
+    assert v.functional_status == st.FUNC_NON_CONFORME
+
+
+def test_returncode_zero_sans_scenario_reste_le_comportement_d_avant():
+    """Une feature sans le moindre scénario (fichier vide) ressort en `0` — cas légitime, distinct
+    du crash B4 (qui suppose un `returncode` NON nul) : comportement inchangé."""
+    v = st.derive_verdict(_outcome([], [], returncode=0))
+    assert v.execution_status == st.EXEC_NOT_EXECUTED
+    assert v.functional_status == st.FUNC_NOT_EVALUATED
+
+
 def test_axes_are_independent_all_combinations_reachable():
     """Les quatre combinaisons utiles (success/tech × conforme/non_conforme/indetermine)."""
     green = st.derive_verdict(_outcome([BehaveScenario("a", "passed")], []))

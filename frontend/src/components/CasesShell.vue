@@ -5,10 +5,11 @@
 // concept qu'on impose ailleurs. Les boutons/onglets non couverts par ce lot mènent à « à venir ».
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api } from '../lib/api'
+import { api, LIBELLE_ROLE } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useModuleCreate } from '../lib/useModuleCreate'
 import { useSectionCreate } from '../lib/useSectionCreate'
+import { useSession } from '../lib/useSession'
 // Couche de données (lot A, 2026-07-24) : plus de `load()` maison ici. Le shell et la page
 // affichée demandaient les MÊMES modules, cas et spécifications à chaque navigation ; ils
 // partagent désormais un seul cache, et une mutation invalide ce qu'il faut.
@@ -21,6 +22,7 @@ import Button from './ui/Button.vue'
 const route = useRoute()
 const router = useRouter()
 const { projects, ensureLoaded, projectById } = useProjects()
+const { session } = useSession()
 
 // Modale UNIQUE de création de module (déclenchée d'ici « + Ajouter une section », et depuis la
 // liste des cas). Le shell est toujours présent sur les routes de gestion : c'est son bon hôte.
@@ -159,6 +161,9 @@ const subtabs = [
   { key: 'tests', label: 'Tests & Résultats' },
   { key: 'defauts', label: 'Défauts' },
   { key: 'historique', label: 'Historique' },
+  // Consultation du Gherkin/Python généré (2026-08-07) — édition réservée au rôle Dev, mais la
+  // LECTURE reste ouverte à tous : c'est l'onglet qui l'affiche, pas le contenu, qui se gate.
+  { key: 'script', label: 'Script' },
 ]
 function goSubTab(key: string) {
   if (!caseId.value) return
@@ -321,9 +326,22 @@ function switchProject(id: number) {
           <RouterLink :to="{ name: 'settings' }"
                       class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                       @click="menuOpen = false">Réglages…</RouterLink>
-          <!-- ⚠️ Le verrou d'instance repose sur un mot de passe PARTAGÉ : sans moyen de quitter
-               sa session, un poste commun reste ouvert au suivant qui s'y assied. La route
-               existait depuis le lot 2 ; aucun écran ne l'appelait. -->
+          <!-- Gestion des comptes (2026-08-07) — Admin seulement : le lien lui-même reflète déjà
+               ce que le serveur imposerait de toute façon (403), pas de raison de le proposer. -->
+          <RouterLink v-if="session?.role === 'admin'" :to="{ name: 'utilisateurs' }"
+                      class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                      @click="menuOpen = false">Utilisateurs…</RouterLink>
+          <!-- Bibliothèque de steps partagés (2026-08-11) — lecture pour tous les rôles : un
+               catalogue technique de référence, jusqu'ici invisible hors du code Python. -->
+          <RouterLink :to="{ name: 'bibliotheque-steps' }"
+                      class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                      @click="menuOpen = false">Bibliothèque de steps…</RouterLink>
+          <div class="my-1 border-t border-border"></div>
+          <p v-if="session?.authenticated" class="px-3 py-1 text-[11px] text-muted-foreground/70">
+            Connecté en tant que {{ session.name }} · {{ LIBELLE_ROLE[session.role] || session.role }}
+          </p>
+          <!-- ⚠️ Sans moyen de quitter sa session, un poste commun reste ouvert au suivant qui
+               s'y assied. La route existait depuis le lot 2 ; aucun écran ne l'appelait. -->
           <button class="block w-full px-3 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                   @click="seDeconnecter">Se déconnecter</button>
         </div>

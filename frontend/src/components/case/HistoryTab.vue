@@ -6,6 +6,7 @@ import { computed } from 'vue'
 import type { VersionOut } from '../../lib/api'
 
 const props = defineProps<{ versions: VersionOut[] }>()
+const emit = defineEmits<{ 'voir-script': [id: number] }>()
 
 function fmtDay(iso: string) {
   const s = new Date(iso).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -52,6 +53,10 @@ const groups = computed(() => {
           <span class="text-sm font-medium">Version : {{ v.version_number }}</span>
           <span class="text-xs text-muted-foreground tabular-nums">{{ fmtDateTime(v.created_at) }}</span>
           <span class="text-xs text-muted-foreground">· {{ v.byRepair ? 'Réparation automatique' : (v.created_by || 'auteur inconnu') }}</span>
+          <button v-if="(v.feature_content || '').trim()" class="ml-auto text-xs text-primary hover:underline"
+                  @click="emit('voir-script', v.id)">
+            Voir le script →
+          </button>
         </div>
 
         <!-- Création : pas de diff, texte explicatif -->

@@ -224,6 +224,44 @@ def test_purger_un_cas_AVEC_un_vrai_resultat_au_registre_ne_PLANTE_PAS(conn):
                         (c1,)).fetchone()["n"] == 0
 
 
+def test_purger_un_PROJET_AVEC_un_vrai_resultat_au_registre_ne_PLANTE_PAS(conn):
+    """⚠️ Même défaut que `test_purger_un_cas_AVEC_un_vrai_resultat...` ci-dessus, une 4ᵉ fois
+    (audit 2026-08-07, B3) : `ProjectRepo.purger` a SA PROPRE cascade SQL, dupliquée de celle de
+    `CaseRepo.purger` plutôt que de la réutiliser — le correctif du 2026-08-07 sur le cas n'avait
+    jamais été répercuté ici. Tout projet ayant eu ne serait-ce qu'UNE campagne exécutée ne
+    pouvait donc jamais être purgé définitivement (`IntegrityError` sur `test_result→execution`).
+    """
+    from testpilot.store.repositories import ExecutionRepo, ResultRepo, RunRepo, VersionRepo
+    from testpilot.verdict.status import MODE_AUTOMATIQUE
+
+    pid, mid, gid, c1, _c2 = _arbre(conn)
+    vid = VersionRepo(conn).create(
+        test_case_id=c1, spec_content="s", spec_hash="h",
+        feature_content="# language: fr\nFonctionnalité: X\n  Scénario: Y\n    Alors ok",
+        steps_content="from behave import then\n@then('ok')\ndef _(context): pass",
+        title="Cas A", test_steps="[]", expected_result="ok")
+    CaseRepo(conn).set_current_version(c1, vid)
+    run_id = RunRepo(conn).create(project_id=pid, name="Campagne", case_ids=[c1],
+                                  mode=MODE_AUTOMATIQUE)
+    eid = ExecutionRepo(conn).create(test_case_id=c1, version_id=vid)
+    conn.execute("UPDATE execution SET run_id=? WHERE id=?", (run_id, eid))
+    conn.commit()
+    ExecutionRepo(conn).finalize(
+        eid, execution_status="success", functional_status="conforme", scenarios_total=1,
+        scenarios_passed=1, scenarios_failed=0, cost_usd=0.0, iterations=1, duration_seconds=0.1,
+        comment="Vérifié : conforme.")
+    assert ResultRepo(conn).dernier(run_id, c1) is not None, "le registre doit porter un résultat"
+
+    ProjectRepo(conn).delete(pid, par="qa")
+    ProjectRepo(conn).purger(pid)   # ⚠️ plantait ici avant le correctif (IntegrityError)
+
+    assert conn.execute("SELECT COUNT(*) AS n FROM project").fetchone()["n"] == 0
+    assert conn.execute("SELECT COUNT(*) AS n FROM test_case WHERE id=?", (c1,)).fetchone()["n"] == 0
+    assert conn.execute("SELECT COUNT(*) AS n FROM test_result WHERE case_id=?",
+                        (c1,)).fetchone()["n"] == 0
+    assert conn.execute("SELECT COUNT(*) AS n FROM execution WHERE id=?", (eid,)).fetchone()["n"] == 0
+
+
 # ── 4. La corbeille par l'API — sans elle, « restaurer » n'existe pas ────────
 
 @pytest.fixture
@@ -235,7 +273,6 @@ def client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(config, "ACCESS_PASSWORD", "")
     return TestClient(app_mod.app)
 
 

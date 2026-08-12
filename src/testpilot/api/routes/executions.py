@@ -5,10 +5,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
-from testpilot.api import schemas
+from testpilot.api import access, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import report_service, run_service
 from testpilot.reporting import report as report_mod
@@ -18,22 +18,47 @@ router = APIRouter(prefix="/api/executions", tags=["executions"])
 
 
 @router.get("", response_model=list[schemas.ExecutionSummary])
-def list_executions(limit: int = 50, project_id: int | None = None, conn=Depends(get_conn)):
+def list_executions(request: Request, limit: int = 50, project_id: int | None = None,
+                    conn=Depends(get_conn)):
+    """⚠️ `project_id` en query n'était, jusqu'au 2026-08-11, JAMAIS vérifié : sans lui, la liste
+    traversait tous les projets sans filtre d'accès. Filtrée ICI, en Python, APRÈS la requête —
+    même patron que `list_projects` (`routes/projects.py`) : retirer toute ligne dont le projet
+    résolu est `no_access` pour l'appelant. Un projet non résolvable (`None`, ne devrait jamais
+    arriver) n'est PAS caché par erreur — mieux vaut une fuite improbable qu'une liste qui ment
+    par excès de prudence sur une donnée qu'on n'a pas su interpréter."""
+    utilisateur = getattr(request.state, "user", None)
     rows = ExecutionRepo(conn).list_recent(limit, project_id=project_id)
+    rows = [r for r in rows
+           if (pid := access.project_id_depuis_execution(conn, r["id"])) is None
+           or access.role_effectif_projet(conn, utilisateur, pid) != access.ACCES_PROJET_REFUSE]
     return [schemas.execution_summary(r, running=run_service.is_running(r["id"])) for r in rows]
 
 
 @router.get("/quality/summary", response_model=schemas.QualityOut)
-def quality_summary(project_id: int | None = None, conn=Depends(get_conn)):
+def quality_summary(request: Request, project_id: int | None = None, conn=Depends(get_conn)):
     """Santé technique de la génération dans le temps — l'évolution de l'outil.
 
     Dérivé des VRAIES exécutions (premier jet), jamais fabriqué : le tableau de bord compte des
     runs réels. `/quality/summary` et non `/quality` pour ne pas heurter `/{execution_id}`.
+
+    ⚠️ **Limite assumée** (2026-08-11) : `project_id` fourni est vérifié (404 si `no_access`, même
+    contrat que le reste). SANS `project_id`, la réponse est un AGRÉGAT sur tout l'instance — ni
+    filtrable en Python (ce n'est pas une liste de lignes), ni restructurable en une requête par
+    projet sans réécrire `ExecutionRepo.quality_summary` en profondeur. Assumé : ce résumé ne
+    porte que des COMPTES (succès/échec technique), jamais un titre de cas ni un contenu — une
+    fuite bien plus étroite que les autres routes fermées par ce chantier.
     """
+    utilisateur = getattr(request.state, "user", None)
+    if project_id is not None:
+        role = access.role_effectif_projet(conn, utilisateur, project_id)
+        if role == access.ACCES_PROJET_REFUSE:
+            raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
     return schemas.QualityOut(**ExecutionRepo(conn).quality_summary(project_id=project_id))
 
 
-@router.get("/{execution_id}", response_model=schemas.ExecutionDetail)
+@router.get("/{execution_id}", response_model=schemas.ExecutionDetail,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "execution_id", access.project_id_depuis_execution))])
 def get_execution(execution_id: int, conn=Depends(get_conn)):
     execs = ExecutionRepo(conn)
     row = execs.get(execution_id)
@@ -44,7 +69,9 @@ def get_execution(execution_id: int, conn=Depends(get_conn)):
     return schemas.ExecutionDetail(**summary.model_dump(), scenarios=scenarios)
 
 
-@router.get("/{execution_id}/artifacts", response_model=schemas.ArtifactsOut)
+@router.get("/{execution_id}/artifacts", response_model=schemas.ArtifactsOut,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "execution_id", access.project_id_depuis_execution))])
 def list_artifacts(execution_id: int, conn=Depends(get_conn)):
     """La trace BRUTE de cette exécution : ce que la machine a réellement vu.
 
@@ -98,7 +125,9 @@ def _libelle(nom: str) -> str:
     return nom
 
 
-@router.get("/{execution_id}/artifacts/{nom}", response_class=PlainTextResponse)
+@router.get("/{execution_id}/artifacts/{nom}", response_class=PlainTextResponse,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "execution_id", access.project_id_depuis_execution))])
 def get_artifact(execution_id: int, nom: str, conn=Depends(get_conn)):
     """Le contenu d'un artefact.
 
@@ -120,7 +149,9 @@ def get_artifact(execution_id: int, nom: str, conn=Depends(get_conn)):
     raise HTTPException(status_code=404, detail=f"artefact « {nom} » introuvable")
 
 
-@router.get("/{execution_id}/report")
+@router.get("/{execution_id}/report",
+           dependencies=[Depends(access.require_project_access_depuis(
+               "execution_id", access.project_id_depuis_execution))])
 def get_report_json(execution_id: int, conn=Depends(get_conn)):
     report = report_service.build_report_for_execution(conn, execution_id)
     if report is None:
@@ -128,7 +159,9 @@ def get_report_json(execution_id: int, conn=Depends(get_conn)):
     return report.to_dict()
 
 
-@router.get("/{execution_id}/report.html", response_class=HTMLResponse)
+@router.get("/{execution_id}/report.html", response_class=HTMLResponse,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "execution_id", access.project_id_depuis_execution))])
 def get_report_html(execution_id: int, conn=Depends(get_conn)):
     report = report_service.build_report_for_execution(conn, execution_id)
     if report is None:

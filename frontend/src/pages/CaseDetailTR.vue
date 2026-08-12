@@ -8,12 +8,15 @@
 // retirés (jamais de Given/When/Then affiché, consigne du porteur). Provisoire, signalé comme tel.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type CaseDetail, type ScenarioResultOut } from '../lib/api'
+import { api, roleSuffisant, type CaseDetail, type ScenarioResultOut } from '../lib/api'
 import { ETAT_ORDER, TYPE_ORDER, etatView, priorityView, typeView } from '../lib/status'
+import { useSession } from '../lib/useSession'
 import CaseHeader from '../components/case/CaseHeader.vue'
 import TestsResultsTab from '../components/case/TestsResultsTab.vue'
 import DefectsTab from '../components/case/DefectsTab.vue'
 import HistoryTab from '../components/case/HistoryTab.vue'
+import CodeView from '../components/CodeView.vue'
+import RefsList from '../components/RefsList.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -77,6 +80,64 @@ const currentVersion = computed(() => {
 // Un cas MANUEL n'a pas de Gherkin : pas de relecture ni d'exécution tant qu'aucun test
 // technique n'a été généré. `feature_content` vide = pas de test exécutable.
 const hasGherkin = computed(() => !!(currentVersion.value?.feature_content || '').trim())
+
+// ── Onglet Script (2026-08-07) — lecture pour tous, édition réservée au rôle Dev ──────────────
+const { session } = useSession()
+const peutEditerScript = computed(() => roleSuffisant(session.value?.role || '', 'dev'))
+const editingScript = ref(false)
+const scriptDraft = ref({ feature: '', steps: '' })
+const savingScript = ref(false)
+const scriptError = ref('')
+
+// ── Consultation par VERSION (2026-08-11) — une régénération (spec plus évoluée, réparation...)
+// crée une NOUVELLE version, jamais un écrasement : sans sélecteur, seule la version COURANTE
+// était consultable, malgré les précédentes déjà transmises par l'API. Porté par l'URL
+// (`?version=`), comme `tab` — un lien depuis l'Historique doit pouvoir y renvoyer directement.
+const versionAffichee = computed(() => {
+  const d = detail.value
+  if (!d) return null
+  const demandee = Number(route.query.version)
+  if (demandee && d.versions.some((v) => v.id === demandee)) {
+    return d.versions.find((v) => v.id === demandee) || null
+  }
+  return currentVersion.value
+})
+const estVersionCourante = computed(() => versionAffichee.value?.id === detail.value?.current_version_id)
+const scriptHasGherkin = computed(() => !!(versionAffichee.value?.feature_content || '').trim())
+
+function selectionnerVersion(id: number) {
+  editingScript.value = false
+  router.replace({ query: { ...route.query, tab: 'script', version: String(id) } })
+}
+function revenirVersionCourante() {
+  const q = { ...route.query, tab: 'script' } as Record<string, any>
+  delete q.version
+  router.replace({ query: q })
+}
+
+function startEditScript() {
+  scriptDraft.value = {
+    feature: currentVersion.value?.feature_content || '',
+    steps: currentVersion.value?.steps_content || '',
+  }
+  scriptError.value = ''
+  editingScript.value = true
+}
+
+async function saveScript() {
+  if (!caseId.value) return
+  savingScript.value = true
+  scriptError.value = ''
+  try {
+    await api.updateCaseScript(caseId.value, scriptDraft.value.feature, scriptDraft.value.steps)
+    editingScript.value = false
+    await load()
+  } catch (e: any) {
+    scriptError.value = e?.message || 'Enregistrement impossible.'
+  } finally {
+    savingScript.value = false
+  }
+}
 
 // ── Dérivation PROVISOIRE depuis le Gherkin (à remplacer par les champs métier, étape 3) ──
 const GHERKIN_KW = /^\s*(Soit|Étant donné(?:e|s)?|Etant donné(?:e|s)?|Quand|Alors|Et|Mais|Given|When|Then|And|But)\b\s*/i
@@ -328,7 +389,10 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
           </div>
           <div>
             <div class="text-xs font-semibold text-muted-foreground">Références</div>
-            <div class="mt-0.5" :class="!c.refs && 'text-muted-foreground/70 italic'">{{ c.refs || 'Aucune' }}</div>
+            <div class="mt-0.5" :class="!c.refs && 'text-muted-foreground/70 italic'">
+              <RefsList v-if="c.refs" :refs="c.refs" />
+              <template v-else>Aucune</template>
+            </div>
           </div>
           <div>
             <div class="text-xs font-semibold text-muted-foreground flex items-center gap-1">
@@ -458,6 +522,9 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
               <label class="block">
                 <span class="text-sm font-medium">Références</span>
                 <input v-model="form.refs" placeholder="JIRA-123…" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+                <span class="mt-1 block text-[11px] text-muted-foreground">
+                  Séparées par des virgules — deviennent des liens si un gabarit est réglé dans Réglages.
+                </span>
               </label>
               <label class="block">
                 <span class="text-sm font-medium">Estimation</span>
@@ -489,7 +556,73 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
 
       <!-- ====== HISTORIQUE ====== -->
       <div v-else-if="tab === 'historique'" class="mt-6">
-        <HistoryTab :versions="detail.versions" />
+        <HistoryTab :versions="detail.versions" @voir-script="selectionnerVersion" />
+      </div>
+
+      <!-- ====== SCRIPT (2026-08-07, sélecteur de version le 2026-08-11) — lecture pour tous,
+           édition réservée au rôle Dev, et seulement sur la version COURANTE ====== -->
+      <div v-else-if="tab === 'script'" class="mt-6 space-y-4">
+        <label v-if="detail.versions.length > 1" class="block max-w-sm">
+          <span class="text-xs text-muted-foreground">Version</span>
+          <select :value="versionAffichee?.id"
+                  @change="selectionnerVersion(Number(($event.target as HTMLSelectElement).value))"
+                  class="mt-1 w-full rounded-md bg-surface border border-border px-3 py-2 text-sm focus:border-primary outline-none">
+            <option v-for="v in [...detail.versions].sort((a, b) => b.version_number - a.version_number)"
+                    :key="v.id" :value="v.id">
+              Version {{ v.version_number }} — {{ new Date(v.created_at).toLocaleDateString('fr-FR') }}
+              — {{ v.created_by === 'repair-agent' ? 'réparation automatique' : (v.created_by || 'auteur inconnu') }}
+              {{ v.id === detail.current_version_id ? '(courante)' : '' }}
+            </option>
+          </select>
+        </label>
+
+        <p v-if="!estVersionCourante"
+           class="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+          Vous consultez la version {{ versionAffichee?.version_number }}, pas la version courante
+          (V{{ currentVersion?.version_number }}) — lecture seule.
+          <button class="ml-1 underline hover:no-underline" @click="revenirVersionCourante">
+            Revenir à la version courante
+          </button>
+        </p>
+
+        <p v-if="!scriptHasGherkin" class="text-sm text-muted-foreground">
+          Aucun script technique généré pour cette version.
+        </p>
+        <template v-else-if="!editingScript">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold">Gherkin (.feature)</h3>
+            <button v-if="peutEditerScript && estVersionCourante" class="text-sm text-primary hover:underline"
+                    @click="startEditScript">Modifier</button>
+          </div>
+          <CodeView :content="versionAffichee?.feature_content || ''" lang="gherkin" />
+          <h3 class="text-sm font-semibold">Python (steps)</h3>
+          <CodeView :content="versionAffichee?.steps_content || ''" lang="python" />
+        </template>
+        <template v-else>
+          <div>
+            <h3 class="text-sm font-semibold">Gherkin (.feature)</h3>
+            <textarea v-model="scriptDraft.feature" rows="14" spellcheck="false"
+                      class="mt-1 w-full rounded-md bg-background border border-border px-3 py-2 font-mono text-xs outline-none focus:border-primary"></textarea>
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold">Python (steps)</h3>
+            <textarea v-model="scriptDraft.steps" rows="14" spellcheck="false"
+                      class="mt-1 w-full rounded-md bg-background border border-border px-3 py-2 font-mono text-xs outline-none focus:border-primary"></textarea>
+          </div>
+          <p class="text-xs text-muted-foreground">
+            Enregistrer crée une NOUVELLE version — jamais d'écrasement — et la remet en attente
+            de relecture : cette modification n'a pas été validée par un dry-run.
+          </p>
+          <p v-if="scriptError" class="text-sm text-destructive">{{ scriptError }}</p>
+          <div class="flex gap-2">
+            <button class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+                    :disabled="savingScript" @click="saveScript">
+              {{ savingScript ? 'Enregistrement…' : 'Enregistrer' }}
+            </button>
+            <button class="rounded-md border border-border px-4 py-2 text-sm hover:border-primary/40"
+                    :disabled="savingScript" @click="editingScript = false">Annuler</button>
+          </div>
+        </template>
       </div>
     </div>
   </div>

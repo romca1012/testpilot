@@ -87,6 +87,10 @@ def step_field_not_empty(context, field):
 
 @then('le champ "{field}" de cet enregistrement dans le modèle "{model}" pointe vers "{expected}"')
 def step_field_m2o_equals(context, field, model, expected):
+    assert hasattr(context, "last_record_ids"), (
+        "Aucun enregistrement en contexte. Utilisez d'abord un step 'existe dans le modèle' — ou "
+        "une vérification de comptage qui en trouve un (0022 A+, 2026-08-07)."
+    )
     Model = context.odoo.env[model]
     record_data = Model.browse(context.last_record_ids[0]).read([field])[0]
     actual = record_data[field]
@@ -103,6 +107,10 @@ def step_field_m2o_equals(context, field, model, expected):
 
 @then('le champ "{field}" de cet enregistrement contient le nom "{partial}"')
 def step_field_m2o_contains(context, field, partial):
+    assert hasattr(context, "last_record_ids") and hasattr(context, "last_record_model"), (
+        "Aucun enregistrement en contexte. Utilisez d'abord un step qui crée ou trouve un "
+        "enregistrement."
+    )
     Model = context.odoo.env[context.last_record_model]
     record_data = Model.browse(context.last_record_ids[0]).read([field])[0]
     actual = record_data[field]

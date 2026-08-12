@@ -93,3 +93,36 @@ def _garde_donnees_reelles(request):
         f"REGLES_DIR, DOMAIN_DIR…) ou marquer @pytest.mark.donnees_reelles si c'est délibéré.",
         pytrace=False,
     )
+
+
+@pytest.fixture(autouse=True)
+def _connecte_par_defaut(monkeypatch, request):
+    """Les comptes utilisateurs (2026-08-07) rendent la connexion OBLIGATOIRE sur toute l'API —
+    avant, `config.ACCESS_PASSWORD` vide (le défaut en test) désactivait le verrou entièrement.
+    Sans ce bouchon, les ~250 tests qui appellent l'API via `TestClient` sans jamais se connecter
+    recevraient tous un 401, pour une raison sans rapport avec ce qu'ils vérifient réellement.
+
+    ⚠️ Ce n'est PAS un remplacement inconditionnel : dès qu'un COOKIE de session est présent (un
+    test qui s'est VRAIMENT connecté — `test_la_suppression_en_lot_trace_QUI`,
+    `test_comptes_utilisateurs.py`), le vrai mécanisme fait foi, y COMPRIS quand il refuse
+    à raison (compte désactivé, jeton invalide) — sinon vérifier un rejet deviendrait impossible
+    à tester, la complaisance masquerait exactement ce qu'on cherche à prouver. Le compte Admin
+    de complaisance n'intervient que si AUCUN cookie n'est présent du tout — le cas de la grande
+    majorité des tests, qui n'appellent jamais `/api/auth/login`.
+
+    Échappatoire explicite (même patron que `@pytest.mark.donnees_reelles`) pour le seul test qui
+    vérifie le comportement SANS AUCUN bouchon, cookie ou pas : `@pytest.mark.sans_bouchon_auth`.
+    """
+    if request.node.get_closest_marker("sans_bouchon_auth"):
+        return
+
+    from testpilot.api import access
+
+    reelle = access.utilisateur_actuel
+
+    def _bouchon(conn, request):
+        if request.cookies.get(access.COOKIE) is not None:
+            return reelle(conn, request)
+        return {"id": 0, "username": "test", "role": access.ROLE_ADMIN, "is_active": 1}
+
+    monkeypatch.setattr(access, "utilisateur_actuel", _bouchon)

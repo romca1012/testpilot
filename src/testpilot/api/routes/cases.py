@@ -135,21 +135,42 @@ def _ids_valides(case_ids: list[int]) -> list[int]:
     return uniques
 
 
+def _acces_suffisant(conn, request: Request, project_id: int | None) -> bool:
+    """Un accès EFFECTIF au moins Testeur sur le projet du cas (2026-08-11) — un cas dont le
+    projet vient de passer en `no_access`, ou d'être forcé sous Testeur, doit être ignoré du lot
+    EXACTEMENT comme un cas disparu entre l'affichage et le clic : jamais un 403 qui laisserait
+    échouer les 19 autres pour un seul cas devenu inaccessible entre-temps, jamais une fuite sur
+    quel projet le cas appartient.
+
+    `project_id=None` (un cas SANS module — « hors arbre », voir `CaseRepo.create`) est TOUJOURS
+    accessible : rien ne le rattache à un projet, donc rien à quoi comparer un rôle effectif.
+    Même correctif que `access.require_project_access_depuis` (trouvé en vérifiant la suite
+    complète : un cas de test créé sans module se voyait exclu du lot à tort)."""
+    utilisateur = getattr(request.state, "user", None)
+    if utilisateur is None:
+        return False
+    if project_id is None:
+        return True
+    role = access.role_effectif_projet(conn, utilisateur, project_id)
+    return access.role_suffisant(role, access.ROLE_TESTEUR)
+
+
 @router.patch("/lot", response_model=schemas.LotOut)
-def priorite_en_lot(body: schemas.LotPrioriteIn, conn=Depends(get_conn)):
+def priorite_en_lot(body: schemas.LotPrioriteIn, request: Request, conn=Depends(get_conn)):
     """Change la priorité de N cas en UNE requête.
 
-    ⚠️ **Les cas introuvables sont IGNORÉS, pas fatals** — et comptés à part. Entre l'affichage
-    de la liste et le clic, un cas a pu être supprimé par quelqu'un d'autre : refuser toute
-    l'action pour un élément disparu ferait perdre les 19 autres. Le compte rendu dit ce qui
-    s'est réellement passé.
+    ⚠️ **Les cas introuvables OU DEVENUS INACCESSIBLES sont IGNORÉS, pas fatals** — et comptés à
+    part. Entre l'affichage de la liste et le clic, un cas a pu être supprimé par quelqu'un
+    d'autre, ou son projet passé hors d'accès : refuser toute l'action pour un élément disparu
+    ferait perdre les 19 autres. Le compte rendu dit ce qui s'est réellement passé.
     """
     if body.priority not in ("low", "medium", "high"):
         raise erreurs.ErreurMetier("requete_invalide", "priorité invalide (low | medium | high)")
     cases = CaseRepo(conn)
     traites = 0
     for cid in _ids_valides(body.case_ids):
-        if cases.get(cid) is None:
+        cas = cases.get(cid)
+        if cas is None or not _acces_suffisant(conn, request, cas.get("project_id")):
             continue
         cases.set_priority(cid, body.priority)
         traites += 1
@@ -163,30 +184,39 @@ def supprimer_en_lot(body: schemas.LotCasIn, request: Request, conn=Depends(get_
     par = access.utilisateur_de(request)
     traites = 0
     for cid in _ids_valides(body.case_ids):
-        if cases.get(cid) is None:
+        cas = cases.get(cid)
+        if cas is None or not _acces_suffisant(conn, request, cas.get("project_id")):
             continue
         cases.delete(cid, par=par)
         traites += 1
     return schemas.LotOut(traites=traites, ignores=len(set(body.case_ids)) - traites)
 
 
-@router.post("/{case_id}/automate", response_model=schemas.GenerationJobOut, status_code=202)
-def automate_case(case_id: int, background: BackgroundTasks, conn=Depends(get_conn)):
+@router.post("/{case_id}/automate", response_model=schemas.GenerationJobOut, status_code=202,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "case_id", access.project_id_depuis_case))])
+def automate_case(case_id: int, background: BackgroundTasks, request: Request,
+                  conn=Depends(get_conn)):
     """AUTOMATISER un cas manuel : générer son test technique DEPUIS son métier (décision `0022`
     n°6). L'IA lit le titre/préconditions/étapes/résultat déjà saisis et écrit le Gherkin.
 
     Tâche de fond (LLM, quelques minutes), suivie via `GET /api/modules/jobs/{id}` — comme la
     génération. Le front ne propose ce bouton que pour un cas SANS test technique.
     """
+    # ⚠️ Résolu SYNCHRONE, avant `background.add_task` (migration 32) — une fois en tâche de
+    # fond, il n'y a plus de `Request` à lire.
     try:
-        job_id, params = generation_service.start_automation(conn, case_id)
+        job_id, params = generation_service.start_automation(
+            conn, case_id, author=access.utilisateur_de(request))
     except generation_service.GenerationError as err:
         raise erreurs.depuis_service(err.code, err.detail)
     background.add_task(generation_service.run_automation, job_id, **params)
     return schemas.GenerationJobOut(job_id=job_id, status="running")
 
 
-@router.delete("/{case_id}", status_code=204)
+@router.delete("/{case_id}", status_code=204,
+              dependencies=[Depends(access.require_project_access_depuis(
+                  "case_id", access.project_id_depuis_case))])
 def delete_case(case_id: int, request: Request, conn=Depends(get_conn)):
     """Supprime un cas et toute sa descendance (versions, exécutions, résultats, coûts).
 
@@ -199,7 +229,9 @@ def delete_case(case_id: int, request: Request, conn=Depends(get_conn)):
     return Response(status_code=204)
 
 
-@router.post("/{case_id}/deplacer", response_model=schemas.CaseMoveOut)
+@router.post("/{case_id}/deplacer", response_model=schemas.CaseMoveOut,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "case_id", access.project_id_depuis_case))])
 def deplacer_case(case_id: int, body: schemas.CaseMoveIn, conn=Depends(get_conn)):
     """Déplace un cas vers une autre Section — même `id`, aucun historique touché
     (étape 2, migration 28)."""
@@ -214,7 +246,9 @@ def deplacer_case(case_id: int, body: schemas.CaseMoveIn, conn=Depends(get_conn)
     return schemas.CaseMoveOut(id=case_id)
 
 
-@router.post("/{case_id}/copier", response_model=schemas.CaseMoveOut, status_code=201)
+@router.post("/{case_id}/copier", response_model=schemas.CaseMoveOut, status_code=201,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "case_id", access.project_id_depuis_case))])
 def copier_case(case_id: int, body: schemas.CaseMoveIn, request: Request, conn=Depends(get_conn)):
     """Copie un cas dans une autre Section — un cas RÉELLEMENT NEUF, sans historique partagé
     (étape 2, migration 28)."""
@@ -229,7 +263,9 @@ def copier_case(case_id: int, body: schemas.CaseMoveIn, request: Request, conn=D
     return schemas.CaseMoveOut(id=nouveau_id)
 
 
-@router.get("/{case_id}", response_model=schemas.CaseDetail)
+@router.get("/{case_id}", response_model=schemas.CaseDetail,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "case_id", access.project_id_depuis_case))])
 def get_case(case_id: int, conn=Depends(get_conn)):
     case = CaseRepo(conn).get(case_id)
     if case is None:
@@ -295,7 +331,9 @@ _VOCABULAIRES = {
 }
 
 
-@router.patch("/{case_id}", response_model=schemas.CaseSummary)
+@router.patch("/{case_id}", response_model=schemas.CaseSummary,
+             dependencies=[Depends(access.require_project_access_depuis(
+                 "case_id", access.project_id_depuis_case))])
 def update_case(case_id: int, body: schemas.CasePatch, conn=Depends(get_conn)):
     """Met à jour les métadonnées de LECTURE d'un cas : priorité, Type, État.
 
@@ -320,7 +358,9 @@ def update_case(case_id: int, body: schemas.CasePatch, conn=Depends(get_conn)):
     return schemas.case_summary(cases.get(case_id))
 
 
-@router.patch("/{case_id}/metier", response_model=schemas.CaseMetierOut)
+@router.patch("/{case_id}/metier", response_model=schemas.CaseMetierOut,
+             dependencies=[Depends(access.require_project_access_depuis(
+                 "case_id", access.project_id_depuis_case))])
 def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(get_conn)):
     """Édite le contenu MÉTIER d'un cas. Un champ versionné modifié → **nouvelle version**.
 
@@ -346,7 +386,27 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
                                  version_id=version_id, version_created=version_id is not None)
 
 
-@router.get("/{case_id}/scenarios", response_model=list[schemas.ScenarioResultOut])
+@router.patch("/{case_id}/script", response_model=schemas.CaseMetierOut,
+             dependencies=[Depends(access.require_role(access.ROLE_DEV)),
+                          Depends(access.require_project_access_depuis(
+                              "case_id", access.project_id_depuis_case))])
+def update_case_script(case_id: int, body: schemas.ScriptEditIn, conn=Depends(get_conn)):
+    """Édite DIRECTEMENT le Gherkin/Python généré — réservé au rôle Dev.
+
+    Pas d'auto-approbation (contrairement à `/metier`) : voir `CaseRepo.update_script`.
+    """
+    cases = CaseRepo(conn)
+    if cases.get(case_id) is None:
+        raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
+    version_id = cases.update_script(case_id, feature_content=body.feature_content,
+                                     steps_content=body.steps_content, editor=body.editor)
+    return schemas.CaseMetierOut(case=schemas.case_summary(cases.get(case_id)),
+                                 version_id=version_id, version_created=version_id is not None)
+
+
+@router.get("/{case_id}/scenarios", response_model=list[schemas.ScenarioResultOut],
+           dependencies=[Depends(access.require_project_access_depuis(
+               "case_id", access.project_id_depuis_case))])
 def get_case_scenarios(case_id: int, conn=Depends(get_conn)):
     """Scénarios du DERNIER run du cas (dépliage) — vide si jamais exécuté.
 
@@ -361,19 +421,27 @@ def get_case_scenarios(case_id: int, conn=Depends(get_conn)):
     return [schemas.scenario_result_out(s) for s in execs.list_scenario_results(last["id"])]
 
 
-@router.post("/{case_id}/runs", response_model=schemas.RunResponse, status_code=202)
-def start_run(case_id: int, background: BackgroundTasks, conn=Depends(get_conn)):
+@router.post("/{case_id}/runs", response_model=schemas.RunResponse, status_code=202,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "case_id", access.project_id_depuis_case))])
+def start_run(case_id: int, background: BackgroundTasks, request: Request, conn=Depends(get_conn)):
+    # ⚠️ Résolu SYNCHRONE, avant `background.add_task` (migration 32) — même moment que pour
+    # `author` dans `add_case` : une fois en tâche de fond, il n'y a plus de `Request` à lire.
+    triggered_by = access.utilisateur_de(request)
     try:
-        eid, module, cid, vid = run_service.trigger_run(conn, case_id)
+        eid, module, cid, vid = run_service.trigger_run(conn, case_id, triggered_by=triggered_by)
     except run_service.RunError as err:
         # Le code du service TRAVERSE la frontière HTTP (lot B) : le client teste `code`,
         # jamais la phrase française de `detail`.
         raise erreurs.depuis_service(err.code, err.detail)
-    background.add_task(run_service.run_execution, eid, module, cid, vid)
+    background.add_task(run_service.run_execution, eid, module, cid, vid,
+                        triggered_by=triggered_by)
     return schemas.RunResponse(execution_id=eid, status="running")
 
 
-@router.post("/{case_id}/review", response_model=schemas.ReviewResponse)
+@router.post("/{case_id}/review", response_model=schemas.ReviewResponse,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "case_id", access.project_id_depuis_case))])
 def submit_review(case_id: int, body: schemas.ReviewIn, request: Request,
                   conn=Depends(get_conn)):
     case = CaseRepo(conn).get(case_id)

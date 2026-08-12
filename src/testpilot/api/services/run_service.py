@@ -65,8 +65,12 @@ def project_du_cas(conn, case_id: int) -> dict | None:
     return ProjectRepo(conn).get(project_id) if project_id else None
 
 
-def trigger_run(conn, case_id: int) -> tuple[int, str, int, int]:
-    """Valide le gate et crée la ligne d'exécution. Renvoie (execution_id, feature_slug, case_id, version_id)."""
+def trigger_run(conn, case_id: int, *, triggered_by: str = "") -> tuple[int, str, int, int]:
+    """Valide le gate et crée la ligne d'exécution. Renvoie (execution_id, feature_slug, case_id, version_id).
+
+    `triggered_by` (migration 32) : le compte qui a demandé ce run — résolu par l'APPELANT,
+    SYNCHRONE, avant toute mise en tâche de fond (même patron que `author` dans `add_case`).
+    """
     case = CaseRepo(conn).get(case_id)
     if case is None:
         raise RunError("not_found", f"cas {case_id} introuvable")
@@ -91,7 +95,7 @@ def trigger_run(conn, case_id: int) -> tuple[int, str, int, int]:
     execs = ExecutionRepo(conn)
     trigger = "rerun" if execs.list_for_case(case_id) else "first_run"
     eid = execs.create(test_case_id=case_id, version_id=version_id, trigger=trigger,
-                       cible=cible_de(project))
+                       cible=cible_de(project), triggered_by=triggered_by)
     _RUNNING.add(eid)
     # feature_slug = nom du .feature (technique), distinct du module métier (§7 / décision 0004).
     return eid, case["feature_slug"], case_id, version_id
@@ -119,11 +123,15 @@ def resolve_project_id(conn, case_id: int) -> int | None:
     return (case or {}).get("project_id")
 
 
-def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int) -> None:
+def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int, *,
+                  triggered_by: str = "") -> None:
     """Tâche de fond : lance Behave réel, calcule + persiste le verdict à deux axes.
 
     Puis tente une RÉPARATION si le gate l'a autorisée (décision 0014) : la boucle vit dans
     `repair_service`, c'est le circuit qui décide de continuer ou non — jamais l'agent.
+
+    `triggered_by` (migration 32) : transmis à `_maybe_repair` — une tentative de réparation
+    n'est pas un nouveau geste humain, elle hérite de l'acteur du run d'origine.
     """
     # ⚠️ L'ouverture est DANS le try : hors de lui, un échec de connexion sautait à la fois le
     # filet (`_finalize_error`) et le `finally` — l'exécution restait « en cours » pour toujours
@@ -135,8 +143,19 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
         runner = BehaveRunner(connection=resolve_connection(conn, case_id),
                               project_id=resolve_project_id(conn, case_id))
         outcome = _execute_and_persist(conn, execution_id, case_id, module_name, runner)
-        _maybe_repair(conn, case_id=case_id, version_id=version_id, module_name=module_name,
-                      outcome=outcome, runner=runner)
+        # ⚠️ Isolé du verdict déjà persisté ci-dessus (audit 2026-08-07, défaut bloquant) : un
+        # plantage PENDANT la réparation ne doit JAMAIS écraser un verdict RÉEL déjà écrit —
+        # `ExecutionRepo.finalize` n'a aucune garde contre un second appel, donc laisser cette
+        # exception remonter au `except` du bas appellerait `_finalize_error` sur ce MÊME
+        # `execution_id` et remplacerait un verdict fonctionnel (potentiellement un vrai bug
+        # détecté) par « erreur technique » — la réparation est un bonus après coup, jamais une
+        # condition de validité du verdict original.
+        try:
+            _maybe_repair(conn, case_id=case_id, version_id=version_id, module_name=module_name,
+                          outcome=outcome, runner=runner, triggered_by=triggered_by)
+        except Exception:
+            logger.exception("[run] réparation de l'exécution %s en échec — le verdict "
+                             "d'origine reste acquis, non touché", execution_id)
     except Exception as exc:  # jamais laisser l'exécution « en cours » sur un plantage
         logger.exception("[run] exécution %s en échec : %s", execution_id, exc)
         _finalize_error(conn, execution_id, case_id, str(exc))
@@ -175,15 +194,31 @@ def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str
     return outcome
 
 
-def _maybe_repair(conn, *, case_id: int, version_id: int, module_name: str, outcome, runner):
-    """Répare si le gate l'a autorisé. Chaque tentative rejouée = une nouvelle EXÉCUTION (B)."""
+def _maybe_repair(conn, *, case_id: int, version_id: int, module_name: str, outcome, runner,
+                  triggered_by: str = ""):
+    """Répare si le gate l'a autorisé. Chaque tentative rejouée = une nouvelle EXÉCUTION (B).
+
+    `triggered_by` (migration 32) : l'acteur du run d'origine, reporté sur chaque tentative — une
+    réparation n'est pas un nouveau geste humain, juste la suite du même run.
+    """
     cible = cible_de(project_du_cas(conn, case_id))
 
     def run_once(new_version_id: int):
         """Rejoue le module après une correction, dans sa PROPRE ligne d'exécution."""
         eid = ExecutionRepo(conn).create(test_case_id=case_id, version_id=new_version_id,
-                                         trigger="rerun", cible=cible)
-        return _execute_and_persist(conn, eid, case_id, module_name, runner)
+                                         trigger="rerun", cible=cible, triggered_by=triggered_by)
+        try:
+            return _execute_and_persist(conn, eid, case_id, module_name, runner)
+        except Exception:
+            # Cette ligne d'exécution existe déjà en base (créée juste au-dessus) : sans ceci,
+            # un plantage avant sa finalisation la laisserait « not_executed » pour toujours — un
+            # signal RASSURANT, alors qu'elle a réellement tourné et planté (même piège que
+            # `_finalize_error`, §4.6). Propage ensuite : la boucle de réparation doit s'arrêter,
+            # pas continuer sur un `outcome` inexistant.
+            logger.exception("[run] tentative de réparation (exécution %s) en échec technique", eid)
+            _finalize_error(conn, eid, case_id,
+                            "réparation : la tentative a planté techniquement")
+            raise
 
     connector = _connector_for(conn, case_id)
     session = repair_service.run_repair_loop(

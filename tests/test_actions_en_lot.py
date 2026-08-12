@@ -14,15 +14,27 @@ import pytest
 from fastapi.testclient import TestClient
 
 from testpilot import config
-from testpilot.api import app as app_mod
+from testpilot.api import access, app as app_mod
+from testpilot.store.db import get_initialized_db
+from testpilot.store.repositories import UserRepo
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(config, "ACCESS_PASSWORD", "")
     return TestClient(app_mod.app)
+
+
+def _creer_compte(username: str, password: str) -> None:
+    """Un compte réel — depuis le lot 2026-08-07, se connecter exige un compte qui existe
+    vraiment, plus un simple nom déclaré au clavier."""
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        UserRepo(conn).create(username=username, password_hash=access.hacher_mot_de_passe(password),
+                              role=access.ROLE_TESTEUR)
+    finally:
+        conn.close()
 
 
 def _projet(client, nb_cas: int = 3):
@@ -111,10 +123,11 @@ def test_supprimer_N_cas_en_UNE_requete_SANS_rien_detruire(client):
     assert {e["titre"] for e in corbeille if e["type"] == "cas"} == {"Cas 1", "Cas 2"}
 
 
-def test_la_suppression_en_lot_trace_QUI(client, monkeypatch):
+def test_la_suppression_en_lot_trace_QUI(client):
     """Sur un serveur partagé, une suppression de masse sans auteur est ingérable."""
-    monkeypatch.setattr(config, "ACCESS_PASSWORD", "secret")
-    client.post("/api/auth/login", json={"password": "secret", "name": "Awa"})
+    _creer_compte("Awa", "secret")
+    r = client.post("/api/auth/login", json={"username": "Awa", "password": "secret"})
+    assert r.status_code == 200
     pid, _, ids = _projet(client, 2)
 
     client.post("/api/cases/lot/suppression", json={"case_ids": ids})

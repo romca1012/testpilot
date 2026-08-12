@@ -50,3 +50,6 @@ dist/
 # comme la base et les artefacts. Le fichier du CRAWL (data/domain/*.json) reste versionné —
 # c'est une référence relue par un humain ; celui-ci est une mesure d'exécution.
 data/regles-apprises/
+
+# Claude Code — préférences locales (personnelles, pas partagées)
+.claude/settings.local.json

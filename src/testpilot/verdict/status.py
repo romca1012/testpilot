@@ -99,6 +99,15 @@ def derive_verdict(outcome: ExecutionOutcome) -> CaseVerdict:
     if real is None or real.returncode < 0:
         # Crash / timeout du sous-processus → interruption technique.
         return CaseVerdict(EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE)
+    if real.returncode != 0 and not real.scenarios:
+        # Le process a planté avec un code de retour POSITIF ordinaire (ex. exception Python non
+        # rattrapée dans notre formatter JSON maison) — AVANT qu'aucun scénario n'ait pu être
+        # rapporté. À distinguer d'un échec fonctionnel normal (`returncode` non nul MAIS au
+        # moins un scénario réellement rapporté, lui, en échec). Sans cette garde, `aggregate([])`
+        # ci-dessous rendait `not_executed` : « le test n'a jamais tourné », alors qu'il a
+        # réellement tourné et planté — le même piège que « l'absence de signal prise pour un
+        # signal positif » déjà traqué ailleurs (`_finalize_error`, §4.6). Audit 2026-08-07 (B4).
+        return CaseVerdict(EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE)
 
     grouped = _failures_by_scenario(real.failures)
     verdicts = [scenario_verdict(s, grouped.get(s.name, [])) for s in real.scenarios]

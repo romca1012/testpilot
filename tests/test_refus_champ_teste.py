@@ -147,3 +147,103 @@ def test_leave_field_empty_MARQUE_le_champ_comme_intentionnellement_vide():
         H.resolve_field_name = original
 
     assert page._tp_champs_vides_intentionnels == {"rib_original"}
+
+
+# ── 2ᵉ passe (2026-08-07) : le scénario ENTIER est marqué, pas seulement des champs ────
+#
+# ⚠️ Les deux exemptions ci-dessus ne couvrent que deux MÉCANISMES précis (`je laisse le champ …
+# vide`, `je joins un fichier …`). Mesuré le MÊME jour sur `/retenue_garantie` (cas 121 et 122,
+# run 21) : un scénario qui écrit une valeur VOLONTAIREMENT invalide en toutes lettres
+# (`code_client1` = "123456", 6 chiffres au lieu de 7) tombait dans le même piège — aucun
+# marquage PAR CHAMP ne peut couvrir une valeur invalide passée par `je renseigne le champ …`.
+#
+# Le signal retenu est structurel et mesuré : sur les 85 scénarios de `behave_runtime/generated/`,
+# les 35 négatifs portent TOUS l'assertion « … n'a pas augmenté », aucun des 43 nominaux ne la
+# porte, et AUCUN ne porte les deux. `environment.py` la lit avant le premier step.
+
+def test_un_scenario_qui_ATTEND_un_refus_ne_leve_RIEN_quel_que_soit_le_champ():
+    """Le cas 121 : `code_client1` invalide EXPRÈS, écrit en toutes lettres — aucun marquage par
+    champ ne peut le couvrir, seul le marquage du SCÉNARIO le peut."""
+    page = _Page([_champ("code_client1", "Le Code Client doit contenir exactement 7 chiffres.",
+                         "123456")])
+    H.marquer_scenario_attend_un_refus(page)
+
+    verifier_soumission_non_bloquee(page)  # ne lève PAS
+
+
+def test_un_scenario_NOMINAL_est_toujours_protege_par_le_controle():
+    """La borne : SANS ce marquage, un refus reste signalé exactement comme avant. C'est ce qui
+    empêche l'exemption de devenir un trou — un scénario nominal dont la donnée est refusée doit
+    toujours dire « c'est notre donnée », jamais accuser l'application."""
+    page = _Page([_champ("code_client1", "format invalide", "123456")])
+
+    with pytest.raises(DonneeRefuseeError, match="LE NAVIGATEUR A REFUSÉ"):
+        verifier_soumission_non_bloquee(page)
+
+
+def test_le_marquage_de_scenario_est_isole_PAR_PAGE():
+    """Un scénario = une page (`environment.py`) : le marquage ne doit jamais fuir vers le
+    scénario suivant, sinon un nominal hériterait de l'exemption d'un négatif précédent."""
+    negatif = _Page([_champ("code_client1", "format invalide", "123456")])
+    H.marquer_scenario_attend_un_refus(negatif)
+    nominal = _Page([_champ("code_client1", "format invalide", "123456")])
+
+    verifier_soumission_non_bloquee(negatif)      # exempté
+    with pytest.raises(DonneeRefuseeError):
+        verifier_soumission_non_bloquee(nominal)  # toujours protégé
+
+
+def test_environment_MARQUE_bien_les_scenarios_negatifs():
+    """Le câblage : `environment.py` doit lire les steps AVANT le premier clic. Sans lui, la
+    fonction de marquage existerait sans que rien ne l'appelle — exactement le genre d'oubli que
+    `test_soumission_bloquee.py::test_click_button_APPELLE_le_controle` attrape déjà ailleurs."""
+    source = Path("behave_runtime/environment.py").read_text(encoding="utf-8")
+
+    assert "marquer_scenario_attend_un_refus" in source
+    assert "n'a pas augmenté" in source
+    bloc = source.split("def before_scenario(")[1].split("\ndef ")[0]
+    assert "_marquer_si_scenario_negatif" in bloc, (
+        "le marquage doit être appelé depuis before_scenario, avant tout step")
+
+
+# ── Le contexte d'enregistrement après un comptage réussi (cas 120) ───────────
+
+class _FauxModeleCree:
+    def __init__(self, ids=None, boom=False): self.ids, self.boom = ids or [777], boom
+    def search_count(self, _d): return 11
+    def search(self, _d, **_kw):
+        if self.boom:
+            raise RuntimeError("RPC perdu")
+        return self.ids
+
+
+class _CtxCree:
+    def __init__(self, boom=False):
+        modele = _FauxModeleCree(boom=boom)
+        self.odoo = type("O", (), {"env": type("E", (), {
+            "__getitem__": lambda s, n: modele})()})()
+        setattr(self, H._count_attr("helpdesk.ticket"), 10)
+
+
+def test_un_comptage_reussi_POSE_l_enregistrement_pour_les_steps_suivants():
+    """⚠️ Le bug du cas 120 (2026-08-07) : « le nombre … augmente de 1 » PROUVE qu'un
+    enregistrement a été créé, mais ne le posait pas en contexte — le step suivant (« le champ …
+    de CET enregistrement … ») plantait en `AttributeError`, verdict « erreur technique » sur un
+    scénario où l'application avait parfaitement fonctionné."""
+    ctx = _CtxCree()
+
+    H.check_count_increased_by_one(ctx, "helpdesk.ticket")
+
+    assert ctx.last_record_ids == [777]
+    assert ctx.last_record_model == "helpdesk.ticket"
+
+
+def test_une_capture_IMPOSSIBLE_ne_fait_PAS_echouer_le_comptage():
+    """Best-effort : le contrat de ce step est le COMPTAGE, déjà rempli. Une commodité pour les
+    steps suivants ne doit jamais faire tomber une assertion qui a réussi — le step suivant le
+    signalera clairement de lui-même."""
+    ctx = _CtxCree(boom=True)
+
+    H.check_count_increased_by_one(ctx, "helpdesk.ticket")  # ne lève PAS
+
+    assert not hasattr(ctx, "last_record_ids"), "rien posé, mais rien de silencieux non plus"

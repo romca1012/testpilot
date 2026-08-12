@@ -27,13 +27,17 @@ def _load(conn, group_id: int) -> dict:
     return group | {"case_count": CaseGroupRepo(conn).case_count(group_id)}
 
 
-@router.get("/{group_id}", response_model=schemas.GroupDetail)
+@router.get("/{group_id}", response_model=schemas.GroupDetail,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "group_id", access.project_id_depuis_group))])
 def get_group(group_id: int, conn=Depends(get_conn)):
     """La spécification AVEC son document — la vue de l'écran d'édition."""
     return schemas.group_detail(_load(conn, group_id))
 
 
-@router.patch("/{group_id}", response_model=schemas.GroupDetail)
+@router.patch("/{group_id}", response_model=schemas.GroupDetail,
+             dependencies=[Depends(access.require_project_access_depuis(
+                 "group_id", access.project_id_depuis_group))])
 def update_group(group_id: int, body: schemas.GroupPatch, conn=Depends(get_conn)):
     """Édition partielle. Éditer le document ne crée AUCUNE version et ne rebloque AUCUN gate :
     ceux-ci vivent sur le cas (`0022` n°10). La conséquence d'une spec modifiée se lira sur les
@@ -52,7 +56,9 @@ def update_group(group_id: int, body: schemas.GroupPatch, conn=Depends(get_conn)
     return schemas.group_detail(_load(conn, group_id))
 
 
-@router.post("/{group_id}/deplacer", response_model=schemas.GroupDetail)
+@router.post("/{group_id}/deplacer", response_model=schemas.GroupDetail,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "group_id", access.project_id_depuis_group))])
 def deplacer_group(group_id: int, body: schemas.GroupMoveIn, conn=Depends(get_conn)):
     """Glisser-déposer d'une Section (étape 2bis) — la réattache à une autre Section (ou la
     promeut au premier niveau si `parent_group_id` est `null`). Jamais de copie : une Section ne
@@ -69,7 +75,9 @@ def deplacer_group(group_id: int, body: schemas.GroupMoveIn, conn=Depends(get_co
     return schemas.group_detail(_load(conn, group_id))
 
 
-@router.delete("/{group_id}", status_code=204)
+@router.delete("/{group_id}", status_code=204,
+              dependencies=[Depends(access.require_project_access_depuis(
+                  "group_id", access.project_id_depuis_group))])
 def delete_group(group_id: int, request: Request, conn=Depends(get_conn)):
     """Supprime une spécification VIDE ; 409 tant qu'elle porte des cas.
 

@@ -8,8 +8,9 @@ import { useRoute } from 'vue-router'
 import CasesShell from './components/CasesShell.vue'
 import LoginScreen from './pages/LoginScreen.vue'
 import PaletteCommandes from './components/PaletteCommandes.vue'
-import { api, setUnauthorizedHandler } from './lib/api'
+import { setUnauthorizedHandler } from './lib/api'
 import { ROUTES_SANS_SHELL } from './lib/shell'
+import { useSession } from './lib/useSession'
 
 const route = useRoute()
 // Routes SANS contexte projet : pas de shell projet. La liste vit dans `lib/shell.ts`, où un
@@ -25,25 +26,18 @@ const useShell = computed(() => !NO_SHELL.includes(String(route.name)))
 // `<component :is>` déplace la MÊME vue entre le shell et un simple conteneur : plus de doublon.
 const layout = computed(() => (useShell.value ? CasesShell : 'div'))
 
-// ── Verrou d'instance (2026-07-24) ─────────────────────────────────────────────
+// ── Connexion obligatoire — comptes utilisateurs (2026-08-07) ─────────────────
 // Trois états, et pas deux : tant que la session n'est pas connue, on n'affiche NI l'application
 // NI l'écran de connexion. Afficher l'application « en attendant » la ferait clignoter puis
 // disparaître ; afficher le formulaire ferait ressaisir un mot de passe à qui était déjà connecté.
+const { session, charger: chargerSession } = useSession()
 const sessionConnue = ref(false)
 const doitSeConnecter = ref(false)
 
 async function verifierSession() {
-  try {
-    const s = await api.getSession()
-    doitSeConnecter.value = s.lock_enabled && !s.authenticated
-  } catch {
-    // API injoignable : on laisse passer plutôt que de bloquer derrière un formulaire qui ne
-    // servirait à rien — les écrans afficheront leur propre erreur de chargement, qui est le
-    // diagnostic utile.
-    doitSeConnecter.value = false
-  } finally {
-    sessionConnue.value = true
-  }
+  await chargerSession()
+  doitSeConnecter.value = !session.value?.authenticated
+  sessionConnue.value = true
 }
 
 onMounted(() => {

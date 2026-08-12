@@ -20,6 +20,7 @@ import ResultHistory from '../components/ResultHistory.vue'
 import ResultMode from '../components/ResultMode.vue'
 import CourbeResultats from '../components/CourbeResultats.vue'
 import AddResultDialog from '../components/AddResultDialog.vue'
+import RefsList from '../components/RefsList.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -188,7 +189,10 @@ const parMois = computed(() => {
       </div>
       <div>
         <div class="text-xs font-semibold text-muted-foreground">Références</div>
-        <div class="mt-0.5" :class="!test.refs && 'text-muted-foreground/70 italic'">{{ test.refs || 'Aucune' }}</div>
+        <div class="mt-0.5" :class="!test.refs && 'text-muted-foreground/70 italic'">
+          <RefsList v-if="test.refs" :refs="test.refs" />
+          <template v-else>Aucune</template>
+        </div>
       </div>
       <div>
         <div class="text-xs font-semibold text-muted-foreground">État</div>

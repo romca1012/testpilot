@@ -174,7 +174,10 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
         <span class="text-sm font-medium">Références</span>
         <textarea v-model="form.refs" rows="2" placeholder="JIRA-123, …"
                   class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none"></textarea>
-        <span class="text-xs text-muted-foreground">Tickets externes liés à cette campagne.</span>
+        <span class="text-xs text-muted-foreground">
+          Tickets externes liés à cette campagne, séparés par des virgules — deviennent des liens
+          si un gabarit est réglé dans Réglages.
+        </span>
       </label>
 
       <label class="block">

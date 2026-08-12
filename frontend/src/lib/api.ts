@@ -2,7 +2,11 @@
 // front est servi par FastAPI (même origine → base relative).
 // ⚠️ EXPORTÉE : un lien `<a href>` de téléchargement direct (pièce jointe) a besoin de la même
 // base que `fetch` — la reconstruire à côté aurait fait deux vérités qui peuvent diverger.
-export const API_BASE = import.meta.env.DEV ? 'http://localhost:8000' : ''
+// ⚠️ TEMPORAIRE : pointé sur :8010 tant que le port 8000 reste occupé par un processus fantôme
+// (2026-08-10, voir la session — Windows ne le retrouve dans aucune table de process, mais le
+// port répond encore). Remettre 'http://localhost:8000' une fois ce port libéré (redémarrage du
+// poste probablement nécessaire).
+export const API_BASE = import.meta.env.DEV ? 'http://localhost:8010' : ''
 
 // ⚠️ `credentials: 'include'` est INDISPENSABLE : le verrou d'instance (2026-07-24) tient dans un
 // cookie de session, et en développement le front (:5173) et l'API (:8000) sont deux origines —
@@ -73,13 +77,20 @@ export class ApiError extends Error {
 }
 
 export const api = {
-  // ── Session (verrou d'instance, 2026-07-24) ──
-  // `lock_enabled: false` = instance sans verrou : ne PAS afficher un formulaire rassurant qui
-  // ne protège rien. Le `name` n'est pas une identité vérifiée, c'est une signature déclarée.
+  // ── Session — comptes utilisateurs réels (2026-08-07) ──
+  // `name`/`role` viennent d'un COMPTE vérifié (identifiant + mot de passe), plus d'un nom
+  // librement déclaré comme avant le 2026-08-07.
   getSession: () => request<Session>('/api/auth/session'),
-  login: (password: string, name: string) =>
-    request<Session>('/api/auth/login', { method: 'POST', body: JSON.stringify({ password, name }) }),
+  login: (username: string, password: string) =>
+    request<Session>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: () => request<Session>('/api/auth/logout', { method: 'POST' }),
+
+  // ── Comptes — Admin seulement (le serveur le vérifie ; ces appels échoueraient en 403 sinon) ──
+  listUsers: () => request<UserAccount[]>('/api/admin/users'),
+  createUser: (payload: { username: string; password: string; role: string; email?: string }) =>
+    request<UserAccount>('/api/admin/users', { method: 'POST', body: JSON.stringify(payload) }),
+  patchUser: (id: number, patch: { role?: string; is_active?: boolean; new_password?: string; email?: string }) =>
+    request<UserAccount>(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
 
   // Projets / modules (hiérarchie §7)
   listProjects: () => request<ProjectSummary[]>('/api/projects'),
@@ -89,6 +100,19 @@ export const api = {
     request<ProjectSummary>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteProject: (id: number | string) =>
     request<void>(`/api/projects/${id}`, { method: 'DELETE' }),
+  // ── Accès par projet — Admin seulement (migration 31, 2026-08-10) ──
+  // Surcharge du rôle global : accès par défaut du projet (vide = rôle global) + exceptions
+  // par compte. `no_access` rend le projet invisible/404 pour qui le porte.
+  getProjectAccess: (id: number | string) =>
+    request<ProjectAccess>(`/api/projects/${id}/access`),
+  setProjectDefaultAccess: (id: number | string, default_access: string) =>
+    request<ProjectAccess>(`/api/projects/${id}/access`,
+      { method: 'PATCH', body: JSON.stringify({ default_access }) }),
+  setProjectAccessOverride: (id: number | string, user_id: number, role: string) =>
+    request<ProjectAccess>(`/api/projects/${id}/access/users`,
+      { method: 'POST', body: JSON.stringify({ user_id, role }) }),
+  removeProjectAccessOverride: (id: number | string, userId: number) =>
+    request<ProjectAccess>(`/api/projects/${id}/access/users/${userId}`, { method: 'DELETE' }),
   // Exploration : cartographie l'application DU PROJET (crawl déterministe, aucun LLM).
   // Payée une fois par projet ; la génération lira ensuite cette mesure au lieu de deviner.
   // Santé technique de la génération dans le temps — dérivée des vraies exécutions, jamais
@@ -238,6 +262,13 @@ export const api = {
   listSettings: () => request<SettingOut[]>('/api/settings'),
   setSetting: (key: string, value: string) =>
     request<SettingOut>(`/api/settings/${key}`, { method: 'PATCH', body: JSON.stringify({ value }) }),
+  testSmtp: (destinataire: string) =>
+    request<{ succes: boolean; erreur: string }>('/api/settings/smtp/test',
+      { method: 'POST', body: JSON.stringify({ destinataire }) }),
+
+  // ── Bibliothèque de steps partagés (2026-08-11) — une seule pour toute l'instance ──
+  // Jusqu'ici visible SEULEMENT du prompt système de l'agent de génération.
+  listSharedSteps: () => request<SharedStepOut[]>('/api/steps-library'),
   setCasePriority: (id: number | string, priority: string) =>
     request<CaseSummary>(`/api/cases/${id}`, { method: 'PATCH', body: JSON.stringify({ priority }) }),
   /** Métadonnées de lecture d'un cas : priorité, Type, État. On n'envoie QUE ce qui change —
@@ -274,6 +305,12 @@ export const api = {
   // et le gate rebloque l'exécution jusqu'à relecture. `refs`/`estimate` ne versionnent pas.
   updateCaseMetier: (id: number | string, body: CaseMetierIn) =>
     request<CaseMetierOut>(`/api/cases/${id}/metier`, { method: 'PATCH', body: JSON.stringify(body) }),
+  // Édition DIRECTE du script généré — réservée au rôle Dev (le serveur le vérifie, 403 sinon).
+  // Jamais auto-approuvée : le gate rebloque l'exécution jusqu'à relecture.
+  updateCaseScript: (id: number | string, feature_content: string, steps_content: string) =>
+    request<CaseMetierOut>(`/api/cases/${id}/script`, {
+      method: 'PATCH', body: JSON.stringify({ feature_content, steps_content }),
+    }),
   reviewCase: (id: number | string, approved: boolean, comment = '', repair_budget?: number) =>
     request<ReviewResponse>(`/api/cases/${id}/review`, {
       method: 'POST',
@@ -303,7 +340,31 @@ export const api = {
 
 // ── Types (miroir des DTO backend) ──────────────────────────────────────────
 /** État du verrou d'instance. `lock_enabled=false` → aucun verrou configuré (poste isolé). */
-export interface Session { lock_enabled: boolean; authenticated: boolean; name: string }
+export interface Session { lock_enabled: boolean; authenticated: boolean; name: string; role: string }
+
+// Les 4 rôles, hiérarchie croissante — même ordre que `access.ROLES` côté serveur (la vérité
+// reste toujours le serveur ; ceci ne sert qu'à ADAPTER l'affichage, jamais à décider un droit).
+export const ROLES = ['lecture_seule', 'testeur', 'dev', 'admin'] as const
+export type Role = typeof ROLES[number]
+export function roleSuffisant(role: string, minimum: Role): boolean {
+  return ROLES.indexOf(role as Role) >= ROLES.indexOf(minimum)
+}
+export const LIBELLE_ROLE: Record<string, string> = {
+  lecture_seule: 'Lecture seule', testeur: 'Testeur', dev: 'Dev', admin: 'Admin',
+}
+
+export interface UserAccount {
+  id: number; username: string; role: string; email: string; is_active: boolean; created_at: string
+}
+
+// Accès par projet (migration 31, 2026-08-10) — `no_access` volontairement HORS de `ROLES` :
+// niveau()/role_suffisant() côté serveur le traitent déjà comme -1 sans y toucher.
+export const ACCES_PROJET_REFUSE = 'no_access'
+export const LIBELLE_ACCES: Record<string, string> = {
+  '': 'Rôle global (par défaut)', ...LIBELLE_ROLE, [ACCES_PROJET_REFUSE]: 'Aucun accès',
+}
+export interface ProjectAccessOverride { user_id: number; username: string; role: string }
+export interface ProjectAccess { default_access: string; overrides: ProjectAccessOverride[] }
 
 /** Trace brute d'une exécution. `available=false` porte TOUJOURS sa raison : « pas de fichier »
  *  et « aucune trace conservée » ne se disent pas pareil. */
@@ -568,7 +629,15 @@ export interface ResultOut {
   attachments: AttachmentOut[]
 }
 /** Un réglage d'instance, sa valeur EFFECTIVE et d'où elle vient. */
-export interface SettingOut { key: string; value: string; source: string; description: string }
+export interface SettingOut {
+  key: string; value: string; source: string; description: string
+  // Écriture réservée à l'Admin (2026-08-11) — la lecture reste ouverte à tous.
+  admin_only: boolean
+  // `value` est alors un masque fixe (ou vide) — jamais le vrai secret (2026-08-12).
+  secret: boolean
+}
+/** Un step de la bibliothèque partagée — `keyword` ∈ given|when|then|step. */
+export interface SharedStepOut { keyword: string; label: string; source: string; note: string }
 export interface ReviewResponse { decision: string; gate: GateOut }
 export interface TestReport {
   module_name: string; title: string; version_number: number

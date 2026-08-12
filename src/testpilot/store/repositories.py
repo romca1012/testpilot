@@ -265,6 +265,21 @@ class ProjectRepo:
             # que `CaseRepo.delete`, même raison, même preuve (test de cascade projet).
             cur.execute(f"DELETE FROM cost_ledger      WHERE execution_id IN ({exec_sub})"
                         f"    OR test_case_id IN ({case_sub})", (project_id, project_id))
+            # ⚠️ Le REGISTRE des résultats (migration 25) — même défaut que celui déjà corrigé sur
+            # `CaseRepo.purger` (2026-08-07, `test_delete_case_...`), jamais répercuté ICI : un
+            # projet ayant eu ne serait-ce qu'UNE campagne exécutée finalise au moins une ligne
+            # `test_result`, qui porte une FK vers `execution` — sans ce nettoyage, le `DELETE
+            # FROM execution` juste en dessous échouait en `IntegrityError`, rollback, purge
+            # DÉFINITIVE IMPOSSIBLE (audit 2026-08-07, B3). `result_attachment` part d'abord, il
+            # référence `test_result`. `run_case_assignment` porte la même FK vers `execution` via
+            # `test_case`/`run_id` — même raison, même ordre que `CaseRepo.purger`.
+            cur.execute("DELETE FROM result_attachment WHERE result_id IN"
+                        f"    (SELECT id FROM test_result WHERE case_id IN ({case_sub}))",
+                        (project_id,))
+            cur.execute(f"DELETE FROM test_result       WHERE case_id IN ({case_sub})",
+                        (project_id,))
+            cur.execute(f"DELETE FROM run_case_assignment WHERE case_id IN ({case_sub})",
+                        (project_id,))
             cur.execute(f"DELETE FROM execution        WHERE test_case_id IN ({case_sub})", (project_id,))
             # ⚠️ `test_run_case` : la liaison campagne ↔ cas. Sans elle, le `DELETE FROM test_case`
             # échoue sur la clé étrangère et TOUTE la purge est annulée. C'est le MÊME défaut que
@@ -1117,6 +1132,53 @@ class CaseRepo:
         self.conn.commit()
         return version_id
 
+    def update_script(self, case_id: int, *, feature_content: str, steps_content: str,
+                      editor: str = "ui") -> int | None:
+        """Édite directement le SCRIPT généré (Gherkin + Python) → **nouvelle version** (rôle
+        Dev, 2026-08-07) — le MIROIR de `update_metier` : ici c'est le contenu MÉTIER qui est
+        recopié tel quel, le contenu TECHNIQUE qui change.
+
+        ⚠️ **Contrairement à `update_metier`, la nouvelle version n'est PAS auto-approuvée** —
+        une main humaine sur un script généré, sans dry-run pour la valider, est un geste plus
+        risqué qu'éditer le texte métier : le gate bloque donc l'exécution jusqu'à relecture,
+        automatiquement, sans règle supplémentaire à écrire.
+
+        Rend `None` si rien n'a changé (pas de version fantôme) — sinon l'id de la NOUVELLE
+        version.
+        """
+        case = self.get(case_id)
+        if case is None:
+            return None
+        versions = VersionRepo(self.conn)
+        current = (versions.get(case["current_version_id"])
+                  if case.get("current_version_id") else None)
+        if (current is not None
+                and feature_content == (current.get("feature_content") or "")
+                and steps_content == (current.get("steps_content") or "")):
+            return None
+
+        version_id = versions.create(
+            test_case_id=case_id,
+            spec_content=(current or {}).get("spec_content", ""),
+            spec_hash=(current or {}).get("spec_hash", ""),
+            feature_content=feature_content, steps_content=steps_content,
+            change_summary="Édition manuelle du script", created_by=editor,
+            title=(current or {}).get("title") or case.get("title", ""),
+            preconditions=(current or {}).get("preconditions", ""),
+            test_steps=(current or {}).get("test_steps", ""),
+            expected_result=(current or {}).get("expected_result", ""))
+        self.set_current_version(case_id, version_id)
+
+        # ⚠️ Le RUNNER lit le script SUR DISQUE (`config.GENERATED_DIR/{slug}.feature`), jamais
+        # depuis la base (même raison que `CaseRepo.copier`) — sans cette recopie, l'édition
+        # semblerait prise en compte à l'écran mais le prochain run rejouerait l'ANCIEN script.
+        slug = case.get("feature_slug")
+        if slug:
+            config.GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+            (config.GENERATED_DIR / f"{slug}.feature").write_text(feature_content, encoding="utf-8")
+            (config.GENERATED_DIR / f"{slug}_steps.py").write_text(steps_content, encoding="utf-8")
+        return version_id
+
     # Les métadonnées de LECTURE d'un cas : elles ne changent pas ce que le test VÉRIFIE, donc
     # elles ne sont pas versionnées (même famille que `refs`/`estimate`, décision 0022 n°3b).
     CHAMPS_DE_LECTURE = ("priority", "type", "etat")
@@ -1498,19 +1560,25 @@ class ExecutionRepo:
         }
 
     def create(self, *, test_case_id: int, version_id: int, trigger: str = "first_run",
-               cible: dict | None = None) -> int:
+               cible: dict | None = None, triggered_by: str = "") -> int:
         """Ouvre une ligne d'exécution.
 
         `cible` (migration 20) : contre quelle application on va tourner — adresse, base,
         utilisateur, **jamais le mot de passe**. Écrite à l'OUVERTURE et non à la clôture : une
         exécution qui plante avant la fin doit tout de même dire ce qu'elle visait.
+
+        `triggered_by` (migration 32) : le compte réel qui a déclenché ce run — vide si aucun n'a
+        pu être résolu (`finalize` retombe alors sur le compte de service). Écrit ICI, une seule
+        fois : une réparation créée `run_once()` le passe explicitement, elle hérite ainsi de
+        l'acteur du run d'origine plutôt que d'en perdre la trace.
         """
         c = cible or {}
         cur = self.conn.execute(
             "INSERT INTO execution (test_case_id, version_id, trigger, target_url,"
-            " target_database, target_username, started_at) VALUES (?,?,?,?,?,?,?)",
+            " target_database, target_username, triggered_by, started_at) VALUES (?,?,?,?,?,?,?,?)",
             (test_case_id, version_id, trigger, str(c.get("target_url") or ""),
-             str(c.get("target_database") or ""), str(c.get("target_username") or ""), now_iso()),
+             str(c.get("target_database") or ""), str(c.get("target_username") or ""),
+             triggered_by or "", now_iso()),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -1559,11 +1627,23 @@ class ExecutionRepo:
              field_fallbacks, error_message, execution_id),
         )
         self.conn.commit()
-        # Le compte de service est résolu MAINTENANT et recopié dans la ligne : changer le réglage
-        # plus tard ne doit pas réécrire l'auteur des résultats déjà produits.
+        # Le déclencheur RÉEL (migration 32) prime : c'est lui qui a cliqué « Lancer », pas le
+        # compte de service. Repli sur le compte de service SEULEMENT si aucun acteur n'a pu être
+        # résolu à la création de la ligne (`triggered_by` vide) — filet pour un déclenchement
+        # futur sans session (CI, tâche planifiée), aucun cas de ce genre aujourd'hui. Résolu
+        # MAINTENANT et recopié dans la ligne : changer le réglage plus tard ne doit pas réécrire
+        # l'auteur des résultats déjà produits.
+        row = self.conn.execute(
+            "SELECT triggered_by FROM execution WHERE id=?", (execution_id,)).fetchone()
+        triggered_by = (row["triggered_by"] if row else "") or ""
+        # ⚠️ Repli sur `config.SERVICE_ACCOUNT_NAME` DIRECT, plus via `SettingRepo` (2026-08-12) —
+        # ce nom n'est plus un réglage modifiable depuis l'écran : le porteur l'a explicitement
+        # demandé (« ça ne devrait pas être un paramètre modifiable », confirmé sur l'écran
+        # Réglages). Reste ajustable au déploiement par la variable d'environnement
+        # `TESTPILOT_SERVICE_ACCOUNT` — une configuration d'exploitant, plus un réglage produit.
+        created_by = triggered_by or config.SERVICE_ACCOUNT_NAME
         return ResultRepo(self.conn).enregistrer_execution(
-            execution_id, created_by=SettingRepo(self.conn).valeur("service_account_name"),
-            comment=comment)
+            execution_id, created_by=created_by, comment=comment)
 
     def get(self, execution_id: int) -> dict | None:
         row = self.conn.execute("SELECT * FROM execution WHERE id=?", (execution_id,)).fetchone()
@@ -2208,12 +2288,73 @@ class SettingRepo:
     cherche pendant une heure — la base l'emporte, mais rien ne le lui dit.
     """
 
-    # clé → (valeur par défaut lue dans `config`, description affichée)
-    CLES_CONNUES: dict[str, tuple[str, str]] = {
-        "service_account_name": (
-            "SERVICE_ACCOUNT_NAME",
-            "Nom qui signe les résultats produits par une EXÉCUTION automatique. Sans rapport "
-            "avec le compte de connexion à l'application testée.",
+    # clé → (valeur par défaut lue dans `config`, description affichée, réservé à l'Admin,
+    #         SECRET — 2026-08-12, voir plus bas)
+    # ⚠️ `admin_only` (2026-08-11) gouverne seulement l'ÉCRITURE (`routes/settings.py` l'applique) —
+    # la lecture reste ouverte à tous, SAUF pour un réglage `secret` (ci-dessous), masqué pour tout
+    # le monde y compris l'Admin : la lecture n'a jamais besoin de le REVOIR en clair, seul le
+    # serveur en a besoin pour se connecter.
+    # ⚠️ `service_account_name` a été RETIRÉ d'ici le 2026-08-12, sur demande explicite du
+    # porteur : ce n'était pas censé être un réglage modifiable depuis l'écran (le nom qui signe
+    # une exécution automatique n'a plus grand-chose à décider depuis la traçabilité de
+    # `triggered_by` — migration 32). Il reste réglable au déploiement par la variable
+    # d'environnement `TESTPILOT_SERVICE_ACCOUNT` (`config.SERVICE_ACCOUNT_NAME`), lue
+    # directement — plus via cette table, plus via l'écran Réglages.
+    CLES_CONNUES: dict[str, tuple[str, str, bool, bool]] = {
+        "reference_url_template": (
+            "REFERENCE_URL_TEMPLATE",
+            "Gabarit d'URL pour transformer une référence (« JIRA-123 ») en lien cliquable — "
+            "« {ref} » est remplacé par la référence exacte. Vide = les références restent du "
+            "texte brut, partout. Réservé à l'Admin : un gabarit mal réglé change ce que voit "
+            "TOUTE l'équipe, sur tous les projets.",
+            True,
+            False,
+        ),
+        "notifications_enabled": (
+            "NOTIFICATIONS_ENABLED",
+            "Envoyer un email à l'auteur d'une campagne ou d'une automatisation quand elle se "
+            "termine. « 1 » = activé, vide/« 0 » = désactivé (défaut — jamais d'envoi surprise).",
+            True,
+            False,
+        ),
+        "smtp_host": (
+            "SMTP_HOST",
+            "Serveur SMTP utilisé pour les notifications par email.",
+            True,
+            False,
+        ),
+        "smtp_port": (
+            "SMTP_PORT",
+            "Port du serveur SMTP (587 = STARTTLS, le plus courant).",
+            True,
+            False,
+        ),
+        "smtp_username": (
+            "SMTP_USERNAME",
+            "Compte utilisé pour s'authentifier auprès du serveur SMTP. Vide = pas "
+            "d'authentification (relais interne ouvert).",
+            True,
+            False,
+        ),
+        "smtp_password": (
+            "SMTP_PASSWORD",
+            "Mot de passe du compte SMTP. Jamais relu en clair une fois enregistré — laisser "
+            "vide pour le conserver, l'effacer explicitement pour le retirer.",
+            True,
+            True,
+        ),
+        "smtp_from": (
+            "SMTP_FROM",
+            "Adresse d'expéditeur des emails de notification.",
+            True,
+            False,
+        ),
+        "smtp_use_tls": (
+            "SMTP_USE_TLS",
+            "Chiffrer la connexion au serveur SMTP (STARTTLS). « 1 » = activé, vide/« 0 » = "
+            "désactivé.",
+            True,
+            False,
         ),
     }
 
@@ -2225,18 +2366,31 @@ class SettingRepo:
             raise ValueError(
                 f"réglage inconnu : {cle!r} — ajoutez-le à SettingRepo.CLES_CONNUES")
 
+    # Le masque renvoyé pour un réglage secret DÉJÀ posé — jamais la valeur réelle. Reconnu à
+    # l'écriture (`ecrire`) pour refuser de l'enregistrer telle quelle si jamais elle revenait
+    # (un écran qui préremplirait son champ avec la valeur affichée écraserait le vrai secret par
+    # ce masque littéral — ce n'est PAS censé arriver côté frontend, ce garde est un filet).
+    MASQUE_SECRET = "••••••••"
+
     def resoudre(self, cle: str) -> tuple[str, str]:
-        """Rend `(valeur, provenance)` où provenance ∈ {`db`, `env`, `default`}.
+        """Rend `(valeur, provenance)` où provenance ∈ {`db`, `env`, `default`} — la valeur
+        RÉELLE, en clair, déchiffrée si besoin. Réservé à un usage INTERNE (le serveur ouvrant
+        lui-même une connexion) : jamais renvoyée telle quelle par l'API, voir `tous()`.
 
         La PROVENANCE est rendue avec la valeur, et pas seulement la valeur : c'est elle qui
         permet à l'écran d'expliquer pourquoi la variable d'environnement de l'exploitant n'est
         pas celle qui s'applique.
         """
         self._verifier(cle)
+        _, _, _, secret = self.CLES_CONNUES[cle]
         row = self.conn.execute("SELECT value FROM app_setting WHERE key=?", (cle,)).fetchone()
         if row is not None and str(row["value"]).strip():
-            return str(row["value"]), "db"
-        attribut, _ = self.CLES_CONNUES[cle]
+            valeur = str(row["value"])
+            if secret:
+                from testpilot.store import secrets as _secrets
+                valeur = _secrets.dechiffrer(valeur)
+            return valeur, "db"
+        attribut, _, _, _ = self.CLES_CONNUES[cle]
         defaut = str(getattr(config, attribut, "") or "")
         # `config` a déjà lu l'environnement (aucun `os.getenv` hors de lui) : on compare donc à
         # la valeur d'usine pour savoir si l'exploitant a posé une variable, ou pas.
@@ -2249,12 +2403,22 @@ class SettingRepo:
     def ecrire(self, cle: str, valeur: str, *, par: str = "") -> None:
         """Pose (ou efface) un réglage. Une valeur VIDE supprime la ligne plutôt que d'écrire une
         chaîne vide : « pas de réglage » et « réglé à rien » ne sont pas le même fait, et seul le
-        premier doit laisser reprendre la main à l'environnement."""
+        premier doit laisser reprendre la main à l'environnement.
+
+        Un réglage `secret` est CHIFFRÉ avant d'être écrit (`store/secrets.py`, même mécanisme
+        que le mot de passe de connexion d'un projet) — la base ne porte jamais un secret en
+        clair."""
         self._verifier(cle)
+        _, _, _, secret = self.CLES_CONNUES[cle]
         valeur = str(valeur or "").strip()
+        if secret and valeur == self.MASQUE_SECRET:
+            return  # le masque affiché n'est jamais une vraie valeur — no-op de sécurité
         if not valeur:
             self.conn.execute("DELETE FROM app_setting WHERE key=?", (cle,))
         else:
+            if secret:
+                from testpilot.store import secrets as _secrets
+                valeur = _secrets.chiffrer(valeur)
             self.conn.execute(
                 "INSERT INTO app_setting (key, value, updated_at, updated_by) VALUES (?,?,?,?)"
                 " ON CONFLICT(key) DO UPDATE SET value=excluded.value,"
@@ -2263,17 +2427,34 @@ class SettingRepo:
         self.conn.commit()
 
     def tous(self) -> list[dict]:
-        """Tous les réglages CONNUS, résolus — y compris ceux qu'aucune ligne ne porte."""
-        return [{"key": cle, "value": v, "source": src, "description": self.CLES_CONNUES[cle][1]}
-                for cle in self.CLES_CONNUES
-                for v, src in [self.resoudre(cle)]]
+        """Tous les réglages CONNUS, résolus — y compris ceux qu'aucune ligne ne porte.
+
+        ⚠️ Un réglage `secret` n'est JAMAIS rendu en clair ici — c'est la vue qu'expose l'API
+        (`GET /api/settings`). `MASQUE_SECRET` si une valeur est posée, `""` sinon : ni l'un ni
+        l'autre ne permet de reconstituer le mot de passe."""
+        out = []
+        for cle in self.CLES_CONNUES:
+            v, src = self.resoudre(cle)
+            secret = self.CLES_CONNUES[cle][3]
+            valeur_rendue = (self.MASQUE_SECRET if v else "") if secret else v
+            out.append({"key": cle, "value": valeur_rendue, "source": src,
+                       "description": self.CLES_CONNUES[cle][1],
+                       "admin_only": self.CLES_CONNUES[cle][2], "secret": secret})
+        return out
 
 
 # Les valeurs d'USINE, figées ici, servent UNIQUEMENT à distinguer « l'exploitant a posé une
 # variable d'environnement » de « personne n'a rien réglé ». Elles doivent rester identiques aux
 # défauts de `config.py` — un test les compare, sinon l'écran annoncerait « env » à tout le monde.
 _DEFAUTS_USINE = {
-    "SERVICE_ACCOUNT_NAME": "TestPilot (automatique)",
+    "REFERENCE_URL_TEMPLATE": "",
+    "NOTIFICATIONS_ENABLED": "",
+    "SMTP_HOST": "",
+    "SMTP_PORT": "587",
+    "SMTP_USERNAME": "",
+    "SMTP_PASSWORD": "",
+    "SMTP_FROM": "",
+    "SMTP_USE_TLS": "1",
 }
 
 
@@ -2371,3 +2552,133 @@ def _depuis_iso(valeur: str) -> datetime | None:
         return datetime.fromisoformat(valeur)
     except (TypeError, ValueError):
         return None
+
+
+class UserRepo:
+    """Comptes utilisateurs (migration 30, 2026-08-07) — remplace le mot de passe unique partagé
+    du lot 2. `password_hash` est déjà haché à l'appel (`api/access.py::hacher_mot_de_passe`) :
+    ce repo ne hache ni ne vérifie rien, il n'écrit et ne lit que ce qu'on lui donne, comme
+    `store/secrets.py` ne fait que chiffrer/déchiffrer sans connaître la politique d'accès.
+
+    Jamais de suppression définitive d'un compte — seulement `is_active` : désactiver un compte
+    ne doit jamais effacer l'auteur des cas/résultats qu'il a signés (`created_by`/`deleted_by`
+    restent du texte libre, indépendant de cette table)."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def create(self, *, username: str, password_hash: str, role: str, email: str = "") -> int:
+        username = (username or "").strip()
+        if not username:
+            raise ValueError("le nom d'utilisateur est obligatoire")
+        if self.conn.execute("SELECT 1 FROM user WHERE username=?", (username,)).fetchone():
+            raise DuplicateName(f"le nom d'utilisateur « {username} » est déjà pris")
+        cur = self.conn.execute(
+            "INSERT INTO user (username, password_hash, role, email, is_active, created_at)"
+            " VALUES (?,?,?,?,1,?)", (username, password_hash, role, (email or "").strip(),
+                                      now_iso()))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def get(self, user_id: int) -> dict | None:
+        row = self.conn.execute("SELECT * FROM user WHERE id=?", (user_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_by_username(self, username: str) -> dict | None:
+        row = self.conn.execute("SELECT * FROM user WHERE username=?",
+                                (username,)).fetchone()
+        return dict(row) if row else None
+
+    def list_all(self) -> list[dict]:
+        return _rows(self.conn.execute("SELECT * FROM user ORDER BY username"))
+
+    def count(self) -> int:
+        return int(self.conn.execute("SELECT COUNT(*) AS n FROM user").fetchone()["n"])
+
+    def set_role(self, user_id: int, role: str) -> None:
+        self.conn.execute("UPDATE user SET role=? WHERE id=?", (role, user_id))
+        self.conn.commit()
+
+    def set_active(self, user_id: int, is_active: bool) -> None:
+        """⚠️ Prend effet IMMÉDIATEMENT (`api/access.py::utilisateur_actuel` relit ce champ à
+        CHAQUE requête, jamais depuis le jeton) — désactiver quelqu'un doit couper l'accès tout
+        de suite, pas attendre l'expiration naturelle de sa session."""
+        self.conn.execute("UPDATE user SET is_active=? WHERE id=?",
+                          (1 if is_active else 0, user_id))
+        self.conn.commit()
+
+    def set_password_hash(self, user_id: int, password_hash: str) -> None:
+        """Réinitialisation par un Admin (2026-08-11) — pour un compte qui a oublié le sien."""
+        self.conn.execute("UPDATE user SET password_hash=? WHERE id=?", (password_hash, user_id))
+        self.conn.commit()
+
+    def set_email(self, user_id: int, email: str) -> None:
+        """Nécessaire pour prévenir ce compte par email (2026-08-12, `notification_service`) —
+        vide = pas d'email connu, `notification_service.notifier` reste alors silencieux."""
+        self.conn.execute("UPDATE user SET email=? WHERE id=?", ((email or "").strip(), user_id))
+        self.conn.commit()
+
+    def admins_actifs_restants(self, exclude_user_id: int | None = None) -> int:
+        """Combien de comptes Admin ACTIFS resteraient hors `exclude_user_id` — sert à interdire
+        de désactiver/rétrograder le DERNIER, ce qui couperait toute gestion des comptes/accès
+        (même risque d'auto-blocage que `access.require_project_access` évite déjà par projet)."""
+        q = "SELECT COUNT(*) AS n FROM user WHERE role='admin' AND is_active=1"
+        params: list = []
+        if exclude_user_id is not None:
+            q += " AND id != ?"
+            params.append(exclude_user_id)
+        return int(self.conn.execute(q, params).fetchone()["n"])
+        self.conn.commit()
+
+
+class ProjectAccessRepo:
+    """Surcharge du rôle global PAR PROJET (migration 31, 2026-08-10) — deux niveaux, tous deux
+    optionnels : `default_access` d'un projet (une valeur sur `project`, pas dans cette table),
+    et une exception PAR COMPTE dans `project_access`. La résolution complète (exception > défaut
+    > rôle global) vit dans `api/access.py::role_effectif_projet` — ce repo ne fait que lire et
+    écrire, comme `UserRepo` ne hache ni ne vérifie aucun mot de passe."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def default_access(self, project_id: int) -> str:
+        """Chaîne vide = pas de surcharge (rôle global) — jamais `None`, pour que l'appelant
+        n'ait qu'un seul cas à tester."""
+        row = self.conn.execute("SELECT default_access FROM project WHERE id=?",
+                                (project_id,)).fetchone()
+        return (row["default_access"] if row else "") or ""
+
+    def set_default_access(self, project_id: int, default_access: str) -> None:
+        self.conn.execute("UPDATE project SET default_access=? WHERE id=?",
+                          (default_access, project_id))
+        self.conn.commit()
+
+    def overrides_for_project(self, project_id: int) -> list[dict]:
+        """Les exceptions par compte de CE projet, avec le nom d'utilisateur déjà joint — l'écran
+        Admin n'a besoin de rien résoudre lui-même."""
+        return _rows(self.conn.execute(
+            "SELECT pa.project_id, pa.user_id, pa.role, u.username"
+            " FROM project_access pa JOIN user u ON u.id = pa.user_id"
+            " WHERE pa.project_id=? ORDER BY u.username", (project_id,)))
+
+    def override_for_user(self, project_id: int, user_id: int) -> str | None:
+        """`None` = aucune exception pour ce compte sur ce projet (repli sur `default_access`
+        puis le rôle global) — distinct d'une chaîne vide, qui n'existe pas ici : une ligne de
+        `project_access` porte TOUJOURS un rôle explicite."""
+        row = self.conn.execute(
+            "SELECT role FROM project_access WHERE project_id=? AND user_id=?",
+            (project_id, user_id)).fetchone()
+        return row["role"] if row else None
+
+    def set_override(self, project_id: int, user_id: int, role: str) -> None:
+        self.conn.execute(
+            "INSERT INTO project_access (project_id, user_id, role) VALUES (?,?,?)"
+            " ON CONFLICT (project_id, user_id) DO UPDATE SET role=excluded.role",
+            (project_id, user_id, role))
+        self.conn.commit()
+
+    def remove_override(self, project_id: int, user_id: int) -> None:
+        self.conn.execute(
+            "DELETE FROM project_access WHERE project_id=? AND user_id=?",
+            (project_id, user_id))
+        self.conn.commit()

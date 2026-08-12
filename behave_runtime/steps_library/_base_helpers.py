@@ -344,6 +344,30 @@ def _champs_fichiers_deja_remplis(page) -> set:
     return getattr(page, "_tp_champs_fichiers_remplis", None) or set()
 
 
+def marquer_scenario_attend_un_refus(page) -> None:
+    """Désigne CE scénario comme n'attendant AUCUNE création — posé par `environment.py`
+    (2026-08-07), qui lit les steps du scénario AVANT qu'il ne commence.
+
+    ⚠️ **Pourquoi au niveau du SCÉNARIO, et pas seulement par champ.** Le premier correctif
+    (`_champs_vides_voulus`/`_champs_fichiers_deja_remplis`) ne couvrait que deux mécanismes
+    précis (`je laisse le champ … vide`, `je joins un fichier …`). Mesuré le MÊME jour sur
+    `/mutation_payeur` : un scénario qui renseigne un `code_client1` VOLONTAIREMENT trop court
+    (`je renseigne le champ … avec la valeur …`, pas un champ vide) tombait dans le même piège —
+    aucun mécanisme de marquage par champ ne couvre une valeur invalide écrite en toutes lettres.
+
+    Un scénario qui affirme `… n'a pas augmenté` (jamais `augmente de 1`) DIT, structurellement,
+    qu'il n'attend RIEN de créé — c'est la définition même d'un scénario négatif dans ce dépôt
+    (vérifié sur `behave_runtime/generated/` : 31 scénarios sur 69 portent cette assertion,
+    aucun ne porte les deux). Peu importe alors PAR QUEL champ le navigateur refuse : c'est
+    exactement ce que le scénario est venu vérifier, jamais une preuve de donnée fautive.
+    """
+    page._tp_scenario_attend_un_refus = True
+
+
+def _scenario_attend_un_refus(page) -> bool:
+    return bool(getattr(page, "_tp_scenario_attend_un_refus", False))
+
+
 def verifier_soumission_non_bloquee(page) -> None:
     """Le navigateur a-t-il REFUSÉ d'envoyer le formulaire ? — le contrôle qui empêche le faux
     verdict au lieu de l'expliquer après coup.
@@ -416,6 +440,12 @@ def verifier_soumission_non_bloquee(page) -> None:
     except Exception:
         return  # un contrôle de sûreté ne fait jamais tomber un scénario par lui-même
     if not invalides:
+        return
+
+    if _scenario_attend_un_refus(page):
+        # Ce scénario n'attend justement AUCUNE création (`… n'a pas augmenté`, jamais
+        # `augmente de 1`) — peu importe PAR QUEL champ le navigateur a refusé, c'est
+        # exactement ce qu'il est venu vérifier. Ses propres `Then` restent seuls juges.
         return
 
     vides_voulus = _champs_vides_voulus(page)
@@ -1309,6 +1339,34 @@ def diagnostic_soumission(page) -> str:
         return f"(diagnostic de soumission indisponible : {type(exc).__name__})"
 
 
+def _capturer_dernier_enregistrement(context, model) -> None:
+    """Pose `last_record_ids`/`last_record_model` sur l'enregistrement qui vient d'être créé.
+
+    ⚠️ **Le trou mesuré le 2026-08-07** (`/retenue_garantie`, cas 120) : un scénario nominal qui
+    enchaîne « le nombre … augmente de 1 » puis « le champ … de CET enregistrement … » plantait
+    sur `AttributeError: 'Context' object has no attribute 'last_record_ids'`. Seuls les steps
+    « un enregistrement … existe dans le modèle … » posaient ce contexte ; l'assertion de comptage,
+    qui vient pourtant de PROUVER qu'un enregistrement a été créé, ne le posait pas. Résultat :
+    erreur TECHNIQUE (« à retester ») sur un scénario où l'application avait parfaitement
+    fonctionné — le pire des verdicts, celui qui ne dit rien.
+
+    L'identifiant le plus RÉCENT est le nouveau : `_poll_until` vient de confirmer qu'il y en a
+    exactement un de plus qu'au snapshot.
+
+    ⚠️ **Best-effort, jamais bloquant** — même arbitrage que l'archivage et la capture d'écran.
+    Le contrat de `check_count_increased_by_one` est le COMPTAGE, et il est déjà rempli quand on
+    arrive ici : une commodité pour les steps suivants ne doit pas faire échouer un step dont
+    l'assertion a réussi. Si la capture échoue, rien n'est posé — et le step suivant le dira
+    clairement (« Aucun enregistrement en contexte… »), sans jamais se taire.
+    """
+    try:
+        context.last_record_ids = context.odoo.env[model].search([], order="id desc", limit=1)
+        context.last_record_model = model
+    except Exception:
+        logger.warning("[comptage] dernier enregistrement de '%s' non capturé — les steps "
+                       "« CET enregistrement » suivants le signaleront", model, exc_info=True)
+
+
 def check_count_increased_by_one(context, model):
     """Le positif attend que le ticket APPARAISSE (jusqu'à `COUNT_SETTLE_TIMEOUT`). S'il n'apparaît
     pas dans la fenêtre, l'assertion échoue avec le message d'origine — un vrai « non créé » reste
@@ -1322,6 +1380,7 @@ def check_count_increased_by_one(context, model):
     ok, current = _poll_until(
         lambda: context.odoo.env[model].search_count([]), lambda c: c == initial + 1)
     if ok:
+        _capturer_dernier_enregistrement(context, model)
         return
     page = getattr(context, "page", None)
     # ⚠️ §2bis 4ᵉ verdict — AVANT d'accuser l'application. Si rien n'a été créé PARCE QUE le

@@ -314,6 +314,13 @@ class CaseMetierOut(BaseModel):
     version_created: bool = False
 
 
+class ScriptEditIn(BaseModel):
+    """Édition DIRECTE du script généré (Gherkin + Python) — rôle Dev (2026-08-07)."""
+    feature_content: str
+    steps_content: str
+    editor: str = "ui"
+
+
 class AddCaseIn(BaseModel):
     """Ajout d'un cas = fournir une SPEC (jamais une coquille vide — décision 0006).
 
@@ -772,11 +779,88 @@ class SettingOut(BaseModel):
     value: str
     source: str          # db | env | default
     description: str = ""
+    admin_only: bool = False   # écriture réservée à l'Admin (2026-08-11) — la lecture reste ouverte
+    # `secret` (2026-08-12) : `value` est alors `SettingRepo.MASQUE_SECRET` ou "" — JAMAIS le
+    # vrai mot de passe, y compris pour l'Admin. Voir `SettingRepo.tous()`.
+    secret: bool = False
 
 
 class SettingPatch(BaseModel):
     """Une valeur VIDE efface le réglage : l'environnement (puis le défaut) reprend la main."""
     value: str = ""
+
+
+class SmtpTestIn(BaseModel):
+    destinataire: str
+
+
+class SmtpTestOut(BaseModel):
+    """Jamais une exception brute : un Admin qui teste sa configuration doit comprendre
+    POURQUOI ça a échoué (hôte injoignable, authentification refusée, etc.)."""
+    succes: bool
+    erreur: str = ""
+
+
+# ── Comptes utilisateurs (2026-08-07) ─────────────────────────────────────────
+class UserOut(BaseModel):
+    """Un compte, TEL QUE L'ÉCRAN ADMIN LE MONTRE — jamais `password_hash`, qui n'a rien à faire
+    hors de la base, même haché."""
+    id: int
+    username: str
+    role: str
+    email: str = ""
+    is_active: bool
+    created_at: str
+
+
+# ── Accès par projet (migration 31, 2026-08-10) ───────────────────────────────
+class ProjectAccessOverrideOut(BaseModel):
+    user_id: int
+    username: str
+    role: str          # 'no_access' ou un des 4 rôles
+
+
+class ProjectAccessOut(BaseModel):
+    """L'accès à un projet, tel que l'écran Admin le montre : le défaut, et les exceptions."""
+    default_access: str = ""      # vide = rôle global (pas de surcharge)
+    overrides: list[ProjectAccessOverrideOut] = []
+
+
+class ProjectDefaultAccessIn(BaseModel):
+    default_access: str = ""      # vide = rôle global ; sinon 'no_access' ou un des 4 rôles
+
+
+class ProjectAccessOverrideIn(BaseModel):
+    user_id: int
+    role: str          # 'no_access' ou un des 4 rôles
+
+
+class UserCreateIn(BaseModel):
+    username: str
+    password: str
+    role: str
+    email: str = ""
+
+
+class UserPatchIn(BaseModel):
+    """Les gestes d'un Admin sur un compte existant. `new_password` (2026-08-11) couvre le compte
+    qui a oublié le sien — un self-service par le titulaire lui-même reste à construire séparément.
+    `email` (2026-08-12) : nécessaire pour prévenir ce compte par email — voir
+    `notification_service`."""
+    role: str | None = None
+    is_active: bool | None = None
+    new_password: str | None = None
+    email: str | None = None
+
+
+# ── Bibliothèque de steps partagés (2026-08-11) ───────────────────────────────
+class SharedStepOut(BaseModel):
+    """Un step de `behave_runtime/steps_library/` — jusqu'ici visible seulement de l'agent de
+    génération (prompt système), jamais d'un humain sans lire le code Python."""
+    keyword: str          # given | when | then | step
+    label: str
+    source: str = ""      # fichier d'origine
+    note: str = ""        # ce que le step FAIT, quand le libellé seul ne suffit pas
 
 
 # ── Mappers dict → DTO ─────────────────────────────────────────────────────────

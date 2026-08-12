@@ -28,6 +28,7 @@ import re
 import uuid
 
 from testpilot import config
+from testpilot.api.services import notification_service
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import CaseRepo, DuplicateName, GenerationJobRepo, ModuleRepo
 
@@ -265,26 +266,35 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
                 cost_usd=analysis_tracker.total_cost + decoupage_tracker.total_cost)
             return
 
-        metier_tracker = CostTracker()
         # Liste PLATE (étape 3, 2026-08-07) : le découpage par user story reste un outil INTERNE
         # de l'IA (il l'aide à couvrir la spec sans redondance, §9a) mais ne crée plus AUCUN
         # conteneur — chaque cas rédigé ne fait qu'EMPORTER le nom de sa story, en simple repère
         # de lecture (`user_story`), jamais une Section imposée.
         cases: list[dict] = []
+        metier_cost_total = 0.0
         for story in stories:
             for brief in story.cases:
-                draft = propose_metier(plan, brief=brief.brief, cost_tracker=metier_tracker)
+                # ⚠️ Budget PAR CAS, pas cumulé sur tout le lot (audit 2026-08-07, B2, bloquant) :
+                # un `metier_tracker` unique, réutilisé pour tous les cas, faisait grossir
+                # `total_cost` d'un cas à l'autre jusqu'à dépasser `COST_LIMIT_PER_RUN_USD` —
+                # après quoi TOUS les cas suivants du lot échouaient en cascade dès leur premier
+                # appel, indépendamment de leur propre coût. Chaque cas repart avec son propre
+                # budget ; `metier_cost_total` n'accumule que pour le RAPPORT, jamais pour la
+                # décision du plafond.
+                case_tracker = CostTracker()
+                draft = propose_metier(plan, brief=brief.brief, cost_tracker=case_tracker)
+                metier_cost_total += case_tracker.total_cost
                 if not draft.complete:
                     # Titre + étapes + résultat attendu sont obligatoires (`0022` n°3.c). On
                     # ÉCHOUE le job ENTIER plutôt que de proposer un ensemble à trous : l'humain
                     # corrigerait une base fabriquée sans savoir ce qui vient du modèle et ce qui
                     # vient de nous — même prudence qu'en mono-cas, étendue à la boucle.
                     cout = (analysis_tracker.total_cost + decoupage_tracker.total_cost
-                           + metier_tracker.total_cost)
+                           + metier_cost_total)
                     _record_generation_cost(conn, case_id=None,
                                             analysis_usd=analysis_tracker.total_cost,
                                             decoupage_usd=decoupage_tracker.total_cost,
-                                            metier_usd=metier_tracker.total_cost)
+                                            metier_usd=metier_cost_total)
                     GenerationJobRepo(conn).maj(
                         job_id, status="failed",
                         error=f"le document métier de « {brief.title} » (user story « "
@@ -294,10 +304,10 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
                 cases.append({**draft.as_dict(), "user_story": story.user_story})
 
         total_cost = (analysis_tracker.total_cost + decoupage_tracker.total_cost
-                     + metier_tracker.total_cost)
+                     + metier_cost_total)
         _record_generation_cost(conn, case_id=None, analysis_usd=analysis_tracker.total_cost,
                                 decoupage_usd=decoupage_tracker.total_cost,
-                                metier_usd=metier_tracker.total_cost)
+                                metier_usd=metier_cost_total)
 
         # Le contexte de reprise (module_id/title/author/spec_content/group_id) est déjà en base
         # depuis `start_generation` — inutile de le réécrire ici. `resume_generation` ne refait ni
@@ -392,12 +402,15 @@ def _spec_from_metier(metier: dict) -> str:
     return "\n".join(lignes)
 
 
-def start_automation(conn, case_id: int) -> tuple[str, dict]:
+def start_automation(conn, case_id: int, *, author: str = "") -> tuple[str, dict]:
     """Prépare l'AUTOMATISATION d'un cas manuel : générer son test technique depuis son métier.
 
     Le cas manuel naît sans `feature_slug` (pas de .feature). On lui en attribue un ici — un run
     le retrouve par ce champ (§7). La génération écrira `{slug}.feature` et une NOUVELLE version
     portant le Gherkin, sur le MÊME cas (décision `0022` n°6).
+
+    `author` (migration 32) : le compte qui a demandé cette automatisation — résolu par
+    l'APPELANT, SYNCHRONE, avant toute mise en tâche de fond, transmis à `run_automation`.
     """
     import json as _json
 
@@ -439,7 +452,8 @@ def start_automation(conn, case_id: int) -> tuple[str, dict]:
     GenerationJobRepo(conn).creer(job_id, module_id=case["module_id"],
                                   payload={"case_id": case_id, "slug": slug})
     return job_id, {"case_id": case_id, "module_id": case["module_id"], "slug": slug,
-                    "spec_content": _spec_from_metier(metier), "metier": metier}
+                    "spec_content": _spec_from_metier(metier), "metier": metier,
+                    "author": author or "ui"}
 
 
 def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
@@ -455,6 +469,7 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
 
     conn = get_initialized_db(config.DB_PATH)
     connector = None
+    succes = False
     try:
         module = ModuleRepo(conn).get(module_id)
         project = ProjectRepo(conn).get(module["project_id"]) if module else None
@@ -479,6 +494,7 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
                                 generation_usd=result.cost_usd)
 
         if result.success:
+            succes = True
             _auto_approuver(conn, case_id, result.version_id)
             GenerationJobRepo(conn).maj(job_id, status="done", case_ids=[case_id])
         else:
@@ -493,6 +509,14 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
                 connector.disconnect()
             except Exception:
                 pass
+        # Best-effort ABSOLU (2026-08-12) : prévenir qui a demandé cette automatisation ne doit
+        # jamais empêcher la clôture du job, déjà enregistrée juste au-dessus.
+        try:
+            notification_service.notifier_fin_d_automatisation(
+                conn, case_id=case_id, titre_cas=metier.get("title", ""), succes=succes,
+                triggered_by=author)
+        except Exception:
+            logger.exception("[automation] job %s : notification non envoyée", job_id)
         conn.close()
 
 
@@ -560,6 +584,15 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
         case_ids: list[int] = []
         erreurs: list[str] = [erreur_section] if erreur_section else []
         for case in cases:
+            # ⚠️ Budget PAR CAS, pas cumulé sur tout le lot (audit 2026-08-07, B2, bloquant) :
+            # `agent.cost_tracker` était créé UNE FOIS avant la boucle et réutilisé pour chaque
+            # cas — `total_cost` grossissait donc d'un cas à l'autre jusqu'à dépasser
+            # `COST_LIMIT_PER_RUN_USD` (0,50 $ par défaut), après quoi TOUS les cas suivants du
+            # lot échouaient en cascade dès leur premier appel, indépendamment de leur propre
+            # coût — et le coût cumulé du lot entier était attribué au ledger du cas qui avait
+            # fait déborder le plafond (double comptage). Chaque cas doit repartir avec son
+            # propre budget, comme en génération mono-cas.
+            agent.cost_tracker = CostTracker()
             # Chaque cas d'une même spec a besoin de son PROPRE fichier `.feature` : l'analyse
             # est partagée (`plan`), mais `module_name` (qui nomme le fichier) doit être
             # distinct par cas — d'où la copie du plan avec un slug propre à ce cas.

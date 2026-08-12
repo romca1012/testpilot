@@ -36,7 +36,9 @@ from testpilot.store.repositories import (
 
 router = APIRouter(prefix="/api/modules", tags=["modules"])
 
-@router.get("/{module_id}", response_model=schemas.ModuleDetail)
+@router.get("/{module_id}", response_model=schemas.ModuleDetail,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "module_id", access.project_id_depuis_module))])
 def get_module(module_id: int, conn=Depends(get_conn)):
     module = ModuleRepo(conn).get(module_id)
     if module is None:
@@ -53,7 +55,9 @@ def _case_count(conn, module_id: int) -> int:
                         (module_id,)).fetchone()["n"]
 
 
-@router.post("/{module_id}/groups", response_model=schemas.GroupDetail, status_code=201)
+@router.post("/{module_id}/groups", response_model=schemas.GroupDetail, status_code=201,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "module_id", access.project_id_depuis_module))])
 def create_group(module_id: int, body: schemas.GroupIn, conn=Depends(get_conn)):
     """Crée une Spécification — un DOCUMENT nommé, et rien d'autre.
 
@@ -85,7 +89,9 @@ def create_group(module_id: int, body: schemas.GroupIn, conn=Depends(get_conn)):
     return schemas.group_detail(CaseGroupRepo(conn).get(gid) | {"case_count": 0})
 
 
-@router.patch("/{module_id}", response_model=schemas.ModuleSummary)
+@router.patch("/{module_id}", response_model=schemas.ModuleSummary,
+             dependencies=[Depends(access.require_project_access_depuis(
+                 "module_id", access.project_id_depuis_module))])
 def rename_module(module_id: int, body: schemas.ModuleIn, conn=Depends(get_conn)):
     """Renomme un module (« Éditer la section »). Nom unique par projet (409 sinon)."""
     module = ModuleRepo(conn).get(module_id)
@@ -101,7 +107,9 @@ def rename_module(module_id: int, body: schemas.ModuleIn, conn=Depends(get_conn)
     return schemas.module_summary(updated | {"case_count": _case_count(conn, module_id)})
 
 
-@router.delete("/{module_id}", status_code=204)
+@router.delete("/{module_id}", status_code=204,
+              dependencies=[Depends(access.require_project_access_depuis(
+                  "module_id", access.project_id_depuis_module))])
 def delete_module(module_id: int, request: Request, conn=Depends(get_conn)):
     """Supprime un module et TOUTE sa descendance (spécifications, cas, versions, exécutions…).
 
@@ -114,7 +122,9 @@ def delete_module(module_id: int, request: Request, conn=Depends(get_conn)):
     return Response(status_code=204)
 
 
-@router.post("/{module_id}/cases/manual", response_model=schemas.CaseSummary, status_code=201)
+@router.post("/{module_id}/cases/manual", response_model=schemas.CaseSummary, status_code=201,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "module_id", access.project_id_depuis_module))])
 def create_manual_case(module_id: int, body: schemas.ManualCaseIn, request: Request,
                        conn=Depends(get_conn)):
     """Crée un cas À LA MAIN — le bouton « Ajouter un cas de test », SANS IA (décision `0022`).
@@ -141,7 +151,9 @@ def create_manual_case(module_id: int, body: schemas.ManualCaseIn, request: Requ
     return schemas.case_summary(CaseRepo(conn).get(cid))
 
 
-@router.post("/{module_id}/cases/extract", response_model=schemas.SpecExtractOut)
+@router.post("/{module_id}/cases/extract", response_model=schemas.SpecExtractOut,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "module_id", access.project_id_depuis_module))])
 async def extract_spec(module_id: int, file: UploadFile = File(...), conn=Depends(get_conn)):
     """Extrait le TEXTE d'un fichier téléversé (.txt/.md/.docx/.pdf) pour pré-remplir la
     génération, et conserve l'ORIGINAL sur disque pour une version plus évoluée.
@@ -167,7 +179,9 @@ async def extract_spec(module_id: int, file: UploadFile = File(...), conn=Depend
     return schemas.SpecExtractOut(text=text, filename=file.filename or "")
 
 
-@router.put("/{module_id}/cases/order", response_model=list[schemas.CaseSummary])
+@router.put("/{module_id}/cases/order", response_model=list[schemas.CaseSummary],
+           dependencies=[Depends(access.require_project_access_depuis(
+               "module_id", access.project_id_depuis_module))])
 def reorder_cases(module_id: int, body: schemas.ReorderCasesIn, conn=Depends(get_conn)):
     """Fixe l'ordre d'AFFICHAGE des cas du module (décision 0009).
 
@@ -187,7 +201,9 @@ def reorder_cases(module_id: int, body: schemas.ReorderCasesIn, conn=Depends(get
     return [schemas.case_summary(r) for r in CaseRepo(conn).list_all(module_id=module_id)]
 
 
-@router.post("/{module_id}/cases", response_model=schemas.GenerationJobOut, status_code=202)
+@router.post("/{module_id}/cases", response_model=schemas.GenerationJobOut, status_code=202,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "module_id", access.project_id_depuis_module))])
 def add_case(module_id: int, body: schemas.AddCaseIn, background: BackgroundTasks,
              request: Request, conn=Depends(get_conn)):
     spec = body.spec_content
@@ -210,7 +226,9 @@ def add_case(module_id: int, body: schemas.AddCaseIn, background: BackgroundTask
     return schemas.GenerationJobOut(job_id=job_id, status="running")
 
 
-@router.get("/jobs/{job_id}", response_model=schemas.GenerationJobOut)
+@router.get("/jobs/{job_id}", response_model=schemas.GenerationJobOut,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "job_id", access.project_id_depuis_job))])
 def get_job(job_id: str, conn=Depends(get_conn)):
     """⚠️ Le job est lu EN BASE (migration 29, 2026-08-07) — jamais un dict en mémoire, qui
     disparaissait d'un coup si le serveur redémarrait pendant une génération en cours. Un job
@@ -226,7 +244,9 @@ def get_job(job_id: str, conn=Depends(get_conn)):
         cases=[schemas.MetierDraftOut(**c) for c in cases] if cases else None)
 
 
-@router.post("/jobs/{job_id}/metier", response_model=schemas.GenerationJobOut, status_code=202)
+@router.post("/jobs/{job_id}/metier", response_model=schemas.GenerationJobOut, status_code=202,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "job_id", access.project_id_depuis_job))])
 def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: BackgroundTasks,
                     conn=Depends(get_conn)):
     """PASSE 4b — l'humain valide (ou corrige, ou réduit) l'ensemble des cas proposés, chacun avec

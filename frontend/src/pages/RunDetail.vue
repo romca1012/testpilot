@@ -32,6 +32,7 @@ import { api, type RunDetail as RunDetailDto, type RunCaseResult } from '../lib/
 import { testStatusMeta, TEST_STATUS_ORDER, type TestStatusCode } from '../lib/status'
 import ResultMode from '../components/ResultMode.vue'
 import AddResultDialog from '../components/AddResultDialog.vue'
+import RefsList from '../components/RefsList.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -327,7 +328,7 @@ async function resultatAjoute() {
     <button class="mt-1 text-primary/90 text-sm hover:underline" @click="backToList">Exécutions et résultats de test</button>
 
     <p v-if="detail.description" class="mt-3 text-sm text-foreground/85 whitespace-pre-wrap">{{ detail.description }}</p>
-    <p v-if="detail.refs" class="mt-1 text-xs text-muted-foreground">Références : {{ detail.refs }}</p>
+    <p v-if="detail.refs" class="mt-1 text-xs text-muted-foreground">Références : <RefsList :refs="detail.refs" /></p>
 
     <!-- CONTRE QUOI cette campagne a tourné — lu sur ses exécutions, jamais sur la connexion
          actuelle du projet (elle a pu changer depuis). Des résultats sans leur cible ne prouvent

@@ -1,7 +1,12 @@
 """Routes de la hiérarchie §7 : projets et leurs modules.
 
 Le projet est le contexte de premier niveau (au-dessus des onglets Gestion / Exécution) ;
-les modules regroupent les cas d'un projet. Aucune auth à ce stade.
+les modules regroupent les cas d'un projet.
+
+Toute route qui porte `project_id` DIRECTEMENT dans son chemin est gardée par
+`Depends(access.require_project_access)` (migration 31, 2026-08-10) — la surcharge d'accès par
+projet, en plus du rôle global déjà vérifié par le middleware. `list_projects` (`GET ""`, sans
+`project_id`) filtre la liste elle-même : c'est ce qui rend un projet réellement CACHÉ.
 """
 
 from __future__ import annotations
@@ -11,7 +16,14 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import exploration_service
-from testpilot.store.repositories import CaseGroupRepo, DuplicateName, ModuleRepo, ProjectRepo
+from testpilot.store.repositories import (
+    CaseGroupRepo,
+    DuplicateName,
+    ModuleRepo,
+    ProjectAccessRepo,
+    ProjectRepo,
+    UserRepo,
+)
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -39,8 +51,13 @@ def _summary_row(conn, project_id: int) -> dict | None:
 
 
 @router.get("", response_model=list[schemas.ProjectSummary])
-def list_projects(conn=Depends(get_conn)):
-    return [schemas.project_summary(r) for r in ProjectRepo(conn).list_all()]
+def list_projects(request: Request, conn=Depends(get_conn)):
+    """⚠️ Retire tout projet en `no_access` pour l'utilisateur courant (migration 31, 2026-08-10)
+    — c'est ce filtre qui rend un projet réellement CACHÉ, pas seulement refusé si on force son
+    URL (`require_project_access` s'en charge, en 404, sur les routes qui prennent `project_id`)."""
+    utilisateur = request.state.user
+    return [schemas.project_summary(r) for r in ProjectRepo(conn).list_all()
+           if access.role_effectif_projet(conn, utilisateur, r["id"]) != access.ACCES_PROJET_REFUSE]
 
 
 @router.post("", response_model=schemas.ProjectSummary, status_code=201)
@@ -61,7 +78,8 @@ def _last_project_id(conn) -> int:
     return conn.execute("SELECT MAX(id) AS m FROM project").fetchone()["m"]
 
 
-@router.patch("/{project_id}", response_model=schemas.ProjectSummary)
+@router.patch("/{project_id}", response_model=schemas.ProjectSummary,
+             dependencies=[Depends(access.require_project_access)])
 def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get_conn)):
     """Édite un projet : nom, description **et connexion** (décision `0005`).
 
@@ -91,7 +109,8 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
     return schemas.project_summary(_summary_row(conn, project_id))
 
 
-@router.delete("/{project_id}", status_code=204)
+@router.delete("/{project_id}", status_code=204,
+              dependencies=[Depends(access.require_project_access)])
 def delete_project(project_id: int, request: Request, conn=Depends(get_conn)):
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
@@ -99,7 +118,8 @@ def delete_project(project_id: int, request: Request, conn=Depends(get_conn)):
     return Response(status_code=204)
 
 
-@router.get("/{project_id}/exploration", response_model=schemas.ExplorationOut)
+@router.get("/{project_id}/exploration", response_model=schemas.ExplorationOut,
+           dependencies=[Depends(access.require_project_access)])
 def get_exploration(project_id: int, conn=Depends(get_conn)):
     """La cartographie du projet : existe-t-elle, de quand date-t-elle, que couvre-t-elle."""
     projet = ProjectRepo(conn).get(project_id)
@@ -110,7 +130,8 @@ def get_exploration(project_id: int, conn=Depends(get_conn)):
     return schemas.ExplorationOut(**etat, error=(job or {}).get("error", ""))
 
 
-@router.post("/{project_id}/exploration", response_model=schemas.ExplorationOut, status_code=202)
+@router.post("/{project_id}/exploration", response_model=schemas.ExplorationOut, status_code=202,
+            dependencies=[Depends(access.require_project_access)])
 def start_exploration(project_id: int, background: BackgroundTasks, conn=Depends(get_conn)):
     """Explore l'application du projet et construit SA cartographie (aucun LLM).
 
@@ -129,14 +150,16 @@ def start_exploration(project_id: int, background: BackgroundTasks, conn=Depends
     return schemas.ExplorationOut(running=True, job_id=job_id)
 
 
-@router.get("/{project_id}/modules", response_model=list[schemas.ModuleSummary])
+@router.get("/{project_id}/modules", response_model=list[schemas.ModuleSummary],
+           dependencies=[Depends(access.require_project_access)])
 def list_modules(project_id: int, conn=Depends(get_conn)):
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
     return [schemas.module_summary(r) for r in ModuleRepo(conn).list_for_project(project_id)]
 
 
-@router.get("/{project_id}/groups", response_model=list[schemas.GroupSummary])
+@router.get("/{project_id}/groups", response_model=list[schemas.GroupSummary],
+           dependencies=[Depends(access.require_project_access)])
 def list_groups(project_id: int, conn=Depends(get_conn)):
     """Les spécifications (case_group) du projet, pour l'arbre latéral et les compteurs."""
     if ProjectRepo(conn).get(project_id) is None:
@@ -147,7 +170,8 @@ def list_groups(project_id: int, conn=Depends(get_conn)):
             for r in CaseGroupRepo(conn).list_for_project(project_id)]
 
 
-@router.post("/{project_id}/modules", response_model=schemas.ModuleSummary, status_code=201)
+@router.post("/{project_id}/modules", response_model=schemas.ModuleSummary, status_code=201,
+            dependencies=[Depends(access.require_project_access)])
 def create_module(project_id: int, body: schemas.ModuleIn, conn=Depends(get_conn)):
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
@@ -160,3 +184,64 @@ def create_module(project_id: int, body: schemas.ModuleIn, conn=Depends(get_conn
         raise _conflict(exc) from exc
     return schemas.ModuleSummary(id=mid, project_id=project_id, name=body.name.strip(),
                                  description=body.description, case_count=0)
+
+
+# ── Accès par projet — gestion réservée à l'Admin (migration 31, 2026-08-10) ──────────────────
+# ⚠️ Pas de `require_project_access` ici : ces routes GÈRENT l'accès, un Admin doit toujours
+# pouvoir les atteindre même sur un projet qu'il vient lui-même de passer en `no_access` (sinon
+# il se coincerait dehors sans recours — même piège qu'un rôle qui pourrait bloquer sa propre
+# gestion, cf. l'avertissement de TestRail sur les rôles d'administrateur).
+_ROLES_ACCES_PROJET = (access.ACCES_PROJET_REFUSE, *access.ROLES)
+
+
+def _role_projet_valide(role: str) -> bool:
+    return role in _ROLES_ACCES_PROJET
+
+
+@router.get("/{project_id}/access", response_model=schemas.ProjectAccessOut,
+           dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
+def get_project_access(project_id: int, conn=Depends(get_conn)):
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    repo = ProjectAccessRepo(conn)
+    return schemas.ProjectAccessOut(
+        default_access=repo.default_access(project_id),
+        overrides=[schemas.ProjectAccessOverrideOut(user_id=r["user_id"], username=r["username"],
+                                                     role=r["role"])
+                  for r in repo.overrides_for_project(project_id)])
+
+
+@router.patch("/{project_id}/access", response_model=schemas.ProjectAccessOut,
+             dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
+def set_project_default_access(project_id: int, body: schemas.ProjectDefaultAccessIn,
+                               conn=Depends(get_conn)):
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    if body.default_access and not _role_projet_valide(body.default_access):
+        raise HTTPException(status_code=422,
+                            detail=f"accès inconnu : « {body.default_access} »")
+    ProjectAccessRepo(conn).set_default_access(project_id, body.default_access)
+    return get_project_access(project_id, conn)
+
+
+@router.post("/{project_id}/access/users", response_model=schemas.ProjectAccessOut,
+            dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
+def set_project_access_override(project_id: int, body: schemas.ProjectAccessOverrideIn,
+                                conn=Depends(get_conn)):
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    if UserRepo(conn).get(body.user_id) is None:
+        raise HTTPException(status_code=404, detail=f"utilisateur {body.user_id} introuvable")
+    if not _role_projet_valide(body.role):
+        raise HTTPException(status_code=422, detail=f"accès inconnu : « {body.role} »")
+    ProjectAccessRepo(conn).set_override(project_id, body.user_id, body.role)
+    return get_project_access(project_id, conn)
+
+
+@router.delete("/{project_id}/access/users/{user_id}", response_model=schemas.ProjectAccessOut,
+              dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
+def remove_project_access_override(project_id: int, user_id: int, conn=Depends(get_conn)):
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    ProjectAccessRepo(conn).remove_override(project_id, user_id)
+    return get_project_access(project_id, conn)

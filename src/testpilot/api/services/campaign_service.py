@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 
 from testpilot import config
-from testpilot.api.services import run_service
+from testpilot.api.services import notification_service, run_service
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import RunRepo
 from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE
@@ -34,8 +34,13 @@ class CampaignError(Exception):
         self.detail = detail
 
 
-def start_campaign(conn, run_id: int) -> dict:
-    """Valide le lancement et passe le run « en cours ». Renvoie les paramètres de la tâche."""
+def start_campaign(conn, run_id: int, *, triggered_by: str = "") -> dict:
+    """Valide le lancement et passe le run « en cours ». Renvoie les paramètres de la tâche.
+
+    `triggered_by` (migration 32) : le compte qui a demandé ce lancement — résolu par
+    l'APPELANT, SYNCHRONE, avant toute mise en tâche de fond, reporté sur CHAQUE exécution que
+    la campagne va créer.
+    """
     repo = RunRepo(conn)
     run = repo.get(run_id)
     if run is None:
@@ -76,21 +81,25 @@ def start_campaign(conn, run_id: int) -> dict:
         raise CampaignError("no_connection", err.message()) from err
 
     repo.set_status(run_id, "running", launched=True)
-    return {"run_id": run_id, "case_ids": case_ids}
+    return {"run_id": run_id, "case_ids": case_ids, "triggered_by": triggered_by}
 
 
-def run_campaign(run_id: int, case_ids: list[int]) -> None:
+def run_campaign(run_id: int, case_ids: list[int], *, triggered_by: str = "") -> None:
     """Tâche de fond : exécute les cas du run EN SÉQUENCE, puis clôt la campagne.
 
     Chaque cas est joué par le circuit existant (`run_service`), qui persiste le verdict à deux
     axes et tente une réparation si elle est autorisée. On rattache l'exécution au run juste après
     sa création : c'est ce lien qui fait exister le « résultat du cas DANS ce run » (`0022` n°4).
+
+    `triggered_by` (migration 32) : reporté sur CHAQUE exécution créée par cette campagne — c'est
+    le même geste (« lancer CETTE campagne »), pas N déclenchements distincts.
     """
     conn = get_initialized_db(config.DB_PATH)
     try:
         for case_id in case_ids:
             try:
-                eid, slug, cid, vid = run_service.trigger_run(conn, case_id)
+                eid, slug, cid, vid = run_service.trigger_run(conn, case_id,
+                                                               triggered_by=triggered_by)
             except run_service.RunError as err:
                 # Un cas non exécutable (sans version, gate fermé) ne fait pas tomber la campagne :
                 # il reste « non testé » dans le run, et on le journalise.
@@ -101,7 +110,7 @@ def run_campaign(run_id: int, case_ids: list[int]) -> None:
             conn.execute("UPDATE execution SET run_id=? WHERE id=?", (run_id, eid))
             conn.commit()
             try:
-                run_service.run_execution(eid, slug, cid, vid)
+                run_service.run_execution(eid, slug, cid, vid, triggered_by=triggered_by)
             except Exception:
                 # `run_execution` a son propre filet (statut technical_error) ; on protège quand
                 # même la boucle pour que les cas suivants soient joués.
@@ -111,4 +120,10 @@ def run_campaign(run_id: int, case_ids: list[int]) -> None:
             RunRepo(conn).set_status(run_id, "completed", completed=True)
         except Exception:
             logger.exception("[campagne %s] clôture non enregistrée", run_id)
+        # Best-effort ABSOLU (2026-08-12) : prévenir qui a lancé cette campagne ne doit jamais
+        # empêcher sa clôture, déjà enregistrée juste au-dessus.
+        try:
+            notification_service.notifier_fin_de_campagne(conn, run_id, triggered_by=triggered_by)
+        except Exception:
+            logger.exception("[campagne %s] notification non envoyée", run_id)
         conn.close()

@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { api, type Exploration, type ProjectSummary } from '../lib/api'
+import {
+  ACCES_PROJET_REFUSE, api, LIBELLE_ACCES, LIBELLE_ROLE, ROLES,
+  type Exploration, type ProjectAccess, type ProjectSummary, type UserAccount,
+} from '../lib/api'
 import { useProjects } from '../lib/useProjects'
+import { useSession } from '../lib/useSession'
 import Button from '../components/ui/Button.vue'
 import Icon from '../components/ui/Icon.vue'
 import Modal from '../components/ui/Modal.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const router = useRouter()
+const { session } = useSession()
 const { ensureLoaded } = useProjects()
 const projects = ref<ProjectSummary[]>([])
 const loading = ref(true)
@@ -34,6 +39,69 @@ const CONNECTORS = [{ value: 'odoo', label: 'Odoo' }]  // extensible (§8 multi-
 // Suppression
 const toDelete = ref<ProjectSummary | null>(null)
 const deleting = ref(false)
+
+// ── Accès par projet (Admin) — surcharge du rôle global (migration 31, 2026-08-10) ──
+// Un projet peut être caché à tous (`no_access`), forcé à un rôle pour tous (défaut), ou avoir
+// des exceptions par compte. Le SERVEUR reste la seule vraie garde (403/404) ; cette modale
+// n'évite qu'à un Admin d'y arriver pour un projet qui, de toute façon, se refuserait.
+const accessProject = ref<ProjectSummary | null>(null)
+const accessData = ref<ProjectAccess | null>(null)
+const accessLoading = ref(false)
+const accessError = ref('')
+const comptes = ref<UserAccount[]>([])
+const nouvelleExceptionCompte = ref<number | null>(null)
+const nouvelleExceptionRole = ref('testeur')
+
+async function openAccess(p: ProjectSummary) {
+  accessProject.value = p
+  accessError.value = ''
+  accessLoading.value = true
+  try {
+    const [acces, tousLesComptes] = await Promise.all([api.getProjectAccess(p.id), api.listUsers()])
+    accessData.value = acces
+    comptes.value = tousLesComptes
+  } catch (e: any) {
+    accessError.value = e?.message || 'Chargement des accès impossible.'
+  } finally {
+    accessLoading.value = false
+  }
+}
+
+async function changerAccesParDefaut(defaultAccess: string) {
+  if (!accessProject.value) return
+  try {
+    accessData.value = await api.setProjectDefaultAccess(accessProject.value.id, defaultAccess)
+  } catch (e: any) {
+    accessError.value = e?.message || 'Enregistrement impossible.'
+  }
+}
+
+async function ajouterException() {
+  if (!accessProject.value || nouvelleExceptionCompte.value == null) return
+  try {
+    accessData.value = await api.setProjectAccessOverride(
+      accessProject.value.id, nouvelleExceptionCompte.value, nouvelleExceptionRole.value)
+    nouvelleExceptionCompte.value = null
+    nouvelleExceptionRole.value = 'testeur'
+  } catch (e: any) {
+    accessError.value = e?.message || 'Ajout impossible.'
+  }
+}
+
+async function retirerException(userId: number) {
+  if (!accessProject.value) return
+  try {
+    accessData.value = await api.removeProjectAccessOverride(accessProject.value.id, userId)
+  } catch (e: any) {
+    accessError.value = e?.message || 'Retrait impossible.'
+  }
+}
+
+// Un compte déjà en exception sur ce projet ne doit pas être proposé deux fois.
+function comptesSansException() {
+  const dejaException = new Set((accessData.value?.overrides || []).map((o) => o.user_id))
+  return comptes.value.filter((c) => !dejaException.has(c.id))
+}
 
 // ── Édition d'un projet et de SA CONNEXION (décision 0005) ────────────────────
 // Manquait entièrement : on pouvait créer un projet et le supprimer, pas le corriger. Une faute
@@ -279,6 +347,16 @@ onMounted(async () => { await load(); await loadExplorations() })
         </div>
 
         <button
+          v-if="session?.role === 'admin'"
+          class="absolute right-[4.5rem] top-3 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+          title="Gérer l'accès à ce projet"
+          @click.stop="openAccess(p)"
+         aria-label="Gérer l'accès à ce projet">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zM8 11V7a4 4 0 118 0v4" />
+          </svg>
+        </button>
+        <button
           class="absolute right-10 top-3 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
           title="Modifier le projet et sa connexion"
           @click.stop="startEdit(p)"
@@ -392,6 +470,72 @@ onMounted(async () => { await load(); await loadExplorations() })
       <template #footer>
         <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="editing = null">Annuler</button>
         <Button type="submit" form="form-edit-project" variant="primary" :loading="saving" :disabled="!edit.name.trim()">Enregistrer</Button>
+      </template>
+    </Modal>
+
+    <!-- ════════ Accès par projet (Admin) — surcharge du rôle global ════════ -->
+    <Modal :open="!!accessProject" :title="accessProject ? `Accès à « ${accessProject.name} »` : ''"
+           subtitle="Par défaut, le rôle global de chaque compte s'applique. Ce réglage NE VAUT que pour ce projet."
+           @close="accessProject = null">
+      <div class="space-y-5">
+        <p v-if="accessError" class="text-sm text-destructive">{{ accessError }}</p>
+        <p v-if="accessLoading" class="text-sm text-muted-foreground">Chargement…</p>
+
+        <template v-else-if="accessData">
+          <label class="block">
+            <span class="text-sm font-medium">Accès par défaut du projet</span>
+            <select :value="accessData.default_access"
+                    @change="changerAccesParDefaut(($event.target as HTMLSelectElement).value)"
+                    class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none">
+              <option value="">{{ LIBELLE_ACCES[''] }}</option>
+              <option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option>
+              <option :value="ACCES_PROJET_REFUSE">{{ LIBELLE_ACCES[ACCES_PROJET_REFUSE] }}</option>
+            </select>
+            <p class="mt-1 text-[11px] text-muted-foreground">
+              « Aucun accès » masque le projet à tous, sauf exception ci-dessous. Un rôle forcé
+              (ex. Lecture seule) s'applique à tous, même à un compte Dev ou Admin globalement.
+            </p>
+          </label>
+
+          <div>
+            <span class="text-sm font-medium">Exceptions par compte</span>
+            <table v-if="accessData.overrides.length" class="mt-2 w-full border-collapse text-sm">
+              <tbody>
+                <tr v-for="o in accessData.overrides" :key="o.user_id" class="border-t border-border">
+                  <td class="py-1.5">{{ o.username }}</td>
+                  <td class="py-1.5 text-muted-foreground">{{ LIBELLE_ACCES[o.role] || o.role }}</td>
+                  <td class="py-1.5 text-right">
+                    <button class="text-xs text-destructive hover:underline" @click="retirerException(o.user_id)">
+                      Retirer
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-else class="mt-2 text-[11px] text-muted-foreground">Aucune exception.</p>
+
+            <div class="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
+              <select v-model="nouvelleExceptionCompte"
+                      class="rounded-md bg-surface-raised border border-border px-2 py-1.5 text-sm focus:border-primary outline-none">
+                <option :value="null" disabled>Choisir un compte…</option>
+                <option v-for="c in comptesSansException()" :key="c.id" :value="c.id">{{ c.username }}</option>
+              </select>
+              <select v-model="nouvelleExceptionRole"
+                      class="rounded-md bg-surface-raised border border-border px-2 py-1.5 text-sm focus:border-primary outline-none">
+                <option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option>
+                <option :value="ACCES_PROJET_REFUSE">{{ LIBELLE_ACCES[ACCES_PROJET_REFUSE] }}</option>
+              </select>
+              <button class="rounded-md border border-border px-3 py-1.5 text-sm hover:border-primary/40 disabled:opacity-50"
+                      :disabled="nouvelleExceptionCompte == null" @click="ajouterException">
+                Ajouter
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <template #footer>
+        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="accessProject = null">Fermer</button>
       </template>
     </Modal>
 

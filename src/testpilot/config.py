@@ -174,14 +174,21 @@ ODOO_PASSWORD = os.getenv("ODOO_PASSWORD", "admin")
 # rangée à côté de la base ne protège que les copies de la base, pas un accès à la machine.
 SECRET_KEY = os.getenv("TESTPILOT_SECRET_KEY", "")
 
-# Mot de passe d'INSTANCE (verrou d'accès minimal). Vide → aucun verrou : c'est le mode poste de
-# développement. **Dès que l'outil est joignable sur un réseau, le renseigner** — sans lui,
-# quiconque atteint le port pilote des tests contre l'application testée et lit ses rapports.
-# Ce n'est PAS un système de comptes (hors V1, §8 du brief) : un seul secret partagé.
-ACCESS_PASSWORD = os.getenv("TESTPILOT_ACCESS_PASSWORD", "")
+# ── Comptes utilisateurs (2026-08-07 — remplace le mot de passe unique partagé du lot 2) ──────
+# Clé de signature des jetons de session — DISTINCTE de `SECRET_KEY` ci-dessus (qui chiffre les
+# mots de passe de connexion des projets, un usage différent). Vide → une clé est créée dans
+# `data/.session_secret` (voir `api/access.py::_cle`).
+SESSION_SECRET = os.getenv("TESTPILOT_SESSION_SECRET", "")
 
-# Durée d'une session ouverte par ce verrou.
+# Durée d'une session ouverte.
 SESSION_DAYS = int(os.getenv("TESTPILOT_SESSION_DAYS", "30"))
+
+# Le tout premier compte Admin, créé une seule fois au démarrage si la table `user` est encore
+# vide ET que les deux variables sont renseignées (`api/app.py::_amorcer_premier_admin`). Sans
+# elles, une base neuve n'a AUCUN compte, et personne ne peut se connecter pour en créer un —
+# c'est le problème de démarrage que ces deux variables résolvent.
+ADMIN_USERNAME = os.getenv("TESTPILOT_ADMIN_USERNAME", "")
+ADMIN_PASSWORD = os.getenv("TESTPILOT_ADMIN_PASSWORD", "")
 
 # ── Le COMPTE DE SERVICE qui signe les résultats exécutés (2026-08-04) ────────
 # Quand la machine exécute un test, le résultat doit porter un auteur : sans lui, la colonne
@@ -196,6 +203,27 @@ SESSION_DAYS = int(os.getenv("TESTPILOT_SESSION_DAYS", "30"))
 # **compte de service** dédié. C'en est l'équivalent, réglable au niveau de l'instance (la base
 # l'emporte sur cette variable ; voir `SettingRepo`).
 SERVICE_ACCOUNT_NAME = os.getenv("TESTPILOT_SERVICE_ACCOUNT", "TestPilot (automatique)")
+
+# ── Références cliquables (2026-08-11) ────────────────────────────────────────
+# `refs` (cas, campagnes) est un texte libre style « JIRA-123, JIRA-456 » — jamais découpé ni lié
+# nulle part. Un gabarit d'URL, réglable au niveau de l'instance (la base l'emporte sur cette
+# variable ; voir `SettingRepo`), transforme chaque référence en lien : `{ref}` est remplacé par
+# la référence exacte. Vide (défaut) = aucun lien, le texte reste brut — comportement inchangé
+# tant que personne ne règle rien. Volontairement PAS d'intégration Jira réelle : aucune
+# vérification que le ticket existe, aucun appel réseau externe.
+REFERENCE_URL_TEMPLATE = os.getenv("TESTPILOT_REFERENCE_URL_TEMPLATE", "")
+
+# ── Notifications par email (2026-08-12) ──────────────────────────────────────
+# Prévenir l'auteur d'une campagne/automatisation quand elle se termine — désactivé par défaut,
+# geste explicite de l'Admin (`SettingRepo`, la base l'emporte sur ces variables). `SMTP_PASSWORD`
+# n'a délibérément AUCUN défaut non vide : un secret ne doit jamais être codé en dur.
+NOTIFICATIONS_ENABLED = os.getenv("TESTPILOT_NOTIFICATIONS_ENABLED", "")
+SMTP_HOST = os.getenv("TESTPILOT_SMTP_HOST", "")
+SMTP_PORT = os.getenv("TESTPILOT_SMTP_PORT", "587")
+SMTP_USERNAME = os.getenv("TESTPILOT_SMTP_USERNAME", "")
+SMTP_PASSWORD = os.getenv("TESTPILOT_SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("TESTPILOT_SMTP_FROM", "")
+SMTP_USE_TLS = os.getenv("TESTPILOT_SMTP_USE_TLS", "1")
 
 # ── Pièces jointes d'un résultat manuel (2026-08-05) ─────────────────────────
 # Une capture d'écran atteste qu'un test manuel a réellement été joué. Deux plafonds, parce

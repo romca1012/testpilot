@@ -32,6 +32,13 @@ class _FakeModel:
             raise RuntimeError("connexion RPC perdue")
         return self._count
 
+    def search(self, _domain, **_kw):
+        """Présent sur le vrai modèle odoorpc — `check_count_increased_by_one` s'en sert pour
+        capturer l'enregistrement créé (2026-08-07)."""
+        if self._boom:
+            raise RuntimeError("connexion RPC perdue")
+        return [4242]
+
 
 class _FakeEnv:
     def __init__(self, count, boom=False):

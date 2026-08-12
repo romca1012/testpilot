@@ -1,24 +1,15 @@
-"""Lot 2 du chemin de déploiement (2026-07-24) : **sortir de la machine du développeur**.
+"""Lot 2 du chemin de déploiement (2026-07-24) : **le secret de connexion ne dort plus en clair**.
 
-Cible arrêtée par le porteur : un **serveur interne**, **plusieurs testeurs**. Deux conséquences
-que ces tests figent :
+Un `SELECT * FROM project` rendait les identifiants de l'application testée — et la base part
+dans les sauvegardes. Ces tests figent le chiffrement au repos (`store/secrets.py`).
 
-1. **Le secret de connexion ne dort plus en clair.** Un `SELECT * FROM project` rendait les
-   identifiants de l'application testée — et la base part dans les sauvegardes.
-2. **L'instance n'est plus grande ouverte.** Sans verrou, quiconque atteint le port pilote des
-   tests contre l'application cible et lit les rapports.
-
-⚠️ Ce qui est testé ici est un **verrou d'instance**, pas un système de comptes (hors V1, §8) : un
-mot de passe partagé et un nom déclaré. Les tests le disent, pour qu'on ne prenne jamais ce nom
-pour une identité vérifiée.
+⚠️ Le verrou d'instance qui vivait aussi dans ce fichier a été remplacé par de vrais comptes
+utilisateurs (2026-08-07) — voir `test_comptes_utilisateurs.py`, qui reprend cet invariant.
 """
 
 import pytest
-from fastapi.testclient import TestClient
 
 from testpilot import config
-from testpilot.api import access
-from testpilot.api import app as app_mod
 from testpilot.store import secrets as secrets_mod
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import ProjectRepo
@@ -141,125 +132,3 @@ def test_la_cle_par_variable_d_environnement_prime_sur_le_fichier(tmp_path, monk
     assert secrets_mod.dechiffrer(jeton) == "s3cr3t"
     # Aucune clé n'a été écrite sur le disque : c'est tout l'intérêt de la variable d'environnement.
     assert not (tmp_path / ".secret_key").exists()
-
-
-# ── 2. Le verrou d'instance ───────────────────────────────────────────────────
-
-@pytest.fixture
-def client_verrouille(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
-    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(config, "ACCESS_PASSWORD", "entrez-moi")
-    return TestClient(app_mod.app)
-
-
-@pytest.fixture
-def client_ouvert(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
-    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(config, "ACCESS_PASSWORD", "")
-    return TestClient(app_mod.app)
-
-
-def test_sans_session_l_api_repond_401(client_verrouille):
-    assert client_verrouille.get("/api/projects").status_code == 401
-
-
-def test_le_mauvais_mot_de_passe_est_refuse(client_verrouille):
-    r = client_verrouille.post("/api/auth/login", json={"password": "au hasard", "name": "Awa"})
-    assert r.status_code == 401
-    assert r.json()["authenticated"] is False
-    assert client_verrouille.get("/api/projects").status_code == 401
-
-
-def test_le_bon_mot_de_passe_ouvre_l_acces(client_verrouille):
-    r = client_verrouille.post("/api/auth/login",
-                               json={"password": "entrez-moi", "name": "Awa"})
-    assert r.status_code == 200 and r.json()["authenticated"] is True
-    assert client_verrouille.get("/api/projects").status_code == 200
-
-
-def test_sans_verrou_configure_rien_n_est_bloque(client_ouvert):
-    """Le mode poste isolé, celui d'avant : aucun formulaire, aucune gêne."""
-    assert client_ouvert.get("/api/projects").status_code == 200
-    session = client_ouvert.get("/api/auth/session").json()
-    assert session["lock_enabled"] is False
-    assert session["authenticated"] is True
-
-
-def test_l_ecran_de_connexion_reste_atteignable(client_verrouille):
-    """Verrouiller la route de connexion elle-même rendrait l'instance inutilisable."""
-    assert client_verrouille.get("/api/health").status_code == 200
-    assert client_verrouille.get("/api/auth/session").status_code == 200
-
-
-def test_l_etat_du_verrou_est_VERIFIABLE_sans_entrer(client_verrouille):
-    """⚠️ Trouvé en démarrant vraiment le serveur, pas par les tests.
-
-    La procédure de déploiement demandait de vérifier une **ligne de journal** — qui n'apparaît
-    jamais sous la commande `uvicorn` recommandée (uvicorn ne configure pas les journaux de
-    l'application). L'exploitant croyait donc vérifier que son instance est verrouillée, et ne
-    vérifiait rien. L'état est désormais exposé là où un `curl` le voit, sans session.
-
-    ⚠️ Les deux cas sont testés SÉPARÉMENT : demander les deux clients dans un même test ferait
-    appliquer la configuration de la seconde fixture aux deux — le test passerait ou échouerait
-    pour une raison qui n'a rien à voir avec ce qu'il prétend vérifier.
-    """
-    assert client_verrouille.get("/api/health").json()["access_lock"] is True
-
-
-def test_sans_verrou_la_sante_le_dit_aussi(client_ouvert):
-    assert client_ouvert.get("/api/health").json()["access_lock"] is False
-
-
-def test_un_jeton_falsifie_ne_passe_pas(client_verrouille):
-    client_verrouille.cookies.set(access.COOKIE, "99999999999.Intrus.signaturebidon")
-    assert client_verrouille.get("/api/projects").status_code == 401
-
-
-def test_changer_le_mot_de_passe_invalide_les_sessions(client_verrouille, monkeypatch):
-    """Le seul geste dont dispose l'équipe quand quelqu'un part : il doit mordre tout de suite."""
-    client_verrouille.post("/api/auth/login", json={"password": "entrez-moi", "name": "Awa"})
-    assert client_verrouille.get("/api/projects").status_code == 200
-
-    monkeypatch.setattr(config, "ACCESS_PASSWORD", "un-autre-secret")
-    assert client_verrouille.get("/api/projects").status_code == 401
-
-
-def test_un_jeton_expire_est_refuse(monkeypatch):
-    monkeypatch.setattr(config, "ACCESS_PASSWORD", "entrez-moi")
-    monkeypatch.setattr(config, "SESSION_DAYS", 0)
-    jeton = access.creer_jeton("Awa")
-    import time as _t
-    _t.sleep(0.01)
-    assert access.lire_jeton(jeton) is None
-
-
-# ── 3. Qui a fait quoi ────────────────────────────────────────────────────────
-
-def test_le_nom_de_session_signe_les_cas_crees(client_verrouille):
-    """Sans comptes, c'est ce qui répond à « qui a créé ce cas ? » sur un serveur partagé."""
-    client_verrouille.post("/api/auth/login", json={"password": "entrez-moi", "name": "Awa"})
-    pid = client_verrouille.post("/api/projects", json={
-        "name": "Recette", "base_url": "http://x", "database": "db",
-        "username": "qa", "password": "p"}).json()["id"]
-    mid = client_verrouille.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
-
-    client_verrouille.post(f"/api/modules/{mid}/cases/manual", json={
-        "title": "Cas signé", "test_steps": ["a"], "expected_result": "ok"})
-
-    conn = get_initialized_db(config.DB_PATH)
-    try:
-        auteur = conn.execute("SELECT author FROM test_case WHERE title='Cas signé'").fetchone()
-    finally:
-        conn.close()
-    assert auteur["author"] == "Awa"
-
-
-def test_sans_nom_l_auteur_reste_ANONYME_et_n_est_pas_invente(client_ouvert):
-    """⚠️ Vide se lit « on ne sait pas ». Écrire « admin » ferait signer un cas par quelqu'un qui
-    n'existe pas — « affiché ≠ réel » appliqué à l'auteur d'un test."""
-    from starlette.requests import Request
-
-    requete = Request({"type": "http", "headers": [], "path": "/api/x", "method": "GET"})
-    assert access.utilisateur_de(requete) == ""

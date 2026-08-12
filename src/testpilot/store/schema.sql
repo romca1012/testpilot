@@ -262,6 +262,10 @@ CREATE TABLE IF NOT EXISTS execution (
     -- Chemin STOCKÉ et non déduit de l'id : le répertoire de données est configurable.
     -- Vide = aucun artefact conservé (toutes les exécutions antérieures).
     artifacts_path    TEXT    NOT NULL DEFAULT '',
+    -- QUI a déclenché cette exécution (migration 32) : le compte réel, ou vide si aucun n'a pu
+    -- être résolu (repli sur le compte de service à la clôture, `ExecutionRepo.finalize`).
+    -- Distinct de `trigger` (POURQUOI : first_run/rerun) — deux questions différentes.
+    triggered_by      TEXT    NOT NULL DEFAULT '',
     started_at        TEXT    NOT NULL,
     FOREIGN KEY (test_case_id) REFERENCES test_case(id),
     FOREIGN KEY (version_id)   REFERENCES test_case_version(id)

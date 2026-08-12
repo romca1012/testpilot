@@ -37,7 +37,6 @@ from testpilot.store.repositories import (
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(config, "ACCESS_PASSWORD", "")
     return TestClient(app_mod.app)
 
 

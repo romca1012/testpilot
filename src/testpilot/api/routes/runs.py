@@ -32,7 +32,8 @@ def _summary(run: dict, case_count: int) -> schemas.RunSummary:
         created_at=run.get("created_at", ""))
 
 
-@router.post("/api/projects/{project_id}/runs", response_model=schemas.RunSummary, status_code=201)
+@router.post("/api/projects/{project_id}/runs", response_model=schemas.RunSummary, status_code=201,
+            dependencies=[Depends(access.require_project_access)])
 def create_run(project_id: int, body: schemas.RunIn, conn=Depends(get_conn)):
     """Crée une campagne en BROUILLON. Le mode de SÉLECTION `all` est vivant (les cas du projet) ;
     `frozen` fige la sélection fournie. Le filtrage dynamique n'est pas géré (422).
@@ -63,7 +64,8 @@ def create_run(project_id: int, body: schemas.RunIn, conn=Depends(get_conn)):
     return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
 
 
-@router.get("/api/projects/{project_id}/runs", response_model=list[schemas.RunSummary])
+@router.get("/api/projects/{project_id}/runs", response_model=list[schemas.RunSummary],
+           dependencies=[Depends(access.require_project_access)])
 def list_runs(project_id: int, conn=Depends(get_conn)):
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
@@ -75,15 +77,20 @@ def list_runs(project_id: int, conn=Depends(get_conn)):
     return out
 
 
-@router.post("/api/runs/{run_id}/launch", response_model=schemas.RunSummary, status_code=202)
-def launch_run(run_id: int, background: BackgroundTasks, conn=Depends(get_conn)):
+@router.post("/api/runs/{run_id}/launch", response_model=schemas.RunSummary, status_code=202,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "run_id", access.project_id_depuis_run))])
+def launch_run(run_id: int, background: BackgroundTasks, request: Request, conn=Depends(get_conn)):
     """LANCE la campagne : exécute ses cas EN SÉQUENCE (tâche de fond).
 
     Geste explicite (`0022` 8.c.1) — créer un run ne lance rien. Un run vide est refusé : il
     finirait « terminé » sans avoir rien testé, un succès trompeur.
     """
+    # ⚠️ Résolu SYNCHRONE, avant `background.add_task` (migration 32) — une fois en tâche de
+    # fond, il n'y a plus de `Request` à lire.
     try:
-        params = campaign_service.start_campaign(conn, run_id)
+        params = campaign_service.start_campaign(conn, run_id,
+                                                  triggered_by=access.utilisateur_de(request))
     except campaign_service.CampaignError as err:
         raise erreurs.depuis_service(err.code, err.detail)
     background.add_task(campaign_service.run_campaign, **params)
@@ -91,7 +98,9 @@ def launch_run(run_id: int, background: BackgroundTasks, conn=Depends(get_conn))
     return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
 
 
-@router.post("/api/runs/{run_id}/archive", response_model=schemas.RunSummary)
+@router.post("/api/runs/{run_id}/archive", response_model=schemas.RunSummary,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "run_id", access.project_id_depuis_run))])
 def archive_run(run_id: int, body: schemas.RunArchiveIn, conn=Depends(get_conn)):
     """Clôt (ou rouvre) une campagne. Archivée = LECTURE SEULE : on ne la relance plus.
 
@@ -105,7 +114,9 @@ def archive_run(run_id: int, body: schemas.RunArchiveIn, conn=Depends(get_conn))
     return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
 
 
-@router.get("/api/runs/{run_id}", response_model=schemas.RunDetailOut)
+@router.get("/api/runs/{run_id}", response_model=schemas.RunDetailOut,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "run_id", access.project_id_depuis_run))])
 def get_run(run_id: int, conn=Depends(get_conn)):
     """Le run + ses cas, chacun avec son résultat DANS ce run (ou None = non testé)."""
     repo = RunRepo(conn)
@@ -189,7 +200,9 @@ def _result_out(ligne: dict, pieces: list[dict] | None = None) -> schemas.Result
 
 
 @router.get("/api/runs/{run_id}/cases/{case_id}/results",
-            response_model=list[schemas.ResultOut])
+            response_model=list[schemas.ResultOut],
+            dependencies=[Depends(access.require_project_access_depuis(
+                "run_id", access.project_id_depuis_run))])
 def list_results(run_id: int, case_id: int, conn=Depends(get_conn)):
     """L'HISTORIQUE des résultats d'un cas dans cette campagne, du plus ancien au plus récent.
 
@@ -211,7 +224,9 @@ def _avec_pieces(conn, lignes: list[dict]) -> list[schemas.ResultOut]:
 
 
 @router.post("/api/runs/{run_id}/cases/{case_id}/results",
-             response_model=schemas.ResultOut, status_code=201)
+             response_model=schemas.ResultOut, status_code=201,
+             dependencies=[Depends(access.require_project_access_depuis(
+                 "run_id", access.project_id_depuis_run))])
 def add_result(run_id: int, case_id: int, body: schemas.ResultIn, request: Request,
                conn=Depends(get_conn)):
     """Inscrit le résultat d'un cas JOUÉ À LA MAIN par un humain.
@@ -277,7 +292,9 @@ def _resultat_ouvert(conn, result_id: int) -> dict:
 
 
 @router.post("/api/results/{result_id}/attachments",
-             response_model=list[schemas.AttachmentOut], status_code=201)
+             response_model=list[schemas.AttachmentOut], status_code=201,
+             dependencies=[Depends(access.require_project_access_depuis(
+                 "result_id", access.project_id_depuis_result))])
 async def add_attachments(result_id: int, files: list[UploadFile] = File(...),
                           conn=Depends(get_conn)):
     """Joint un ou plusieurs fichiers à un résultat déjà inscrit.
@@ -291,7 +308,9 @@ async def add_attachments(result_id: int, files: list[UploadFile] = File(...),
             for f in files]
 
 
-@router.get("/api/results/{result_id}/attachments/{attachment_id}")
+@router.get("/api/results/{result_id}/attachments/{attachment_id}",
+           dependencies=[Depends(access.require_project_access_depuis(
+               "result_id", access.project_id_depuis_result))])
 def get_attachment(result_id: int, attachment_id: int, conn=Depends(get_conn)):
     """Le CONTENU d'une pièce jointe — par identifiants NUMÉRIQUES, jamais par nom de fichier.
 
@@ -362,7 +381,9 @@ def _ailleurs(ligne: dict) -> schemas.ResultAilleurs:
         created_at=ligne.get("created_at", "") or "")
 
 
-@router.get("/api/runs/{run_id}/tests/{case_id}", response_model=schemas.TestDansRunOut)
+@router.get("/api/runs/{run_id}/tests/{case_id}", response_model=schemas.TestDansRunOut,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "run_id", access.project_id_depuis_run))])
 def get_test(run_id: int, case_id: int, conn=Depends(get_conn)):
     """« Ce cas, dans cette campagne » : ses métadonnées, tous ses résultats ici, ses voisins de
     campagne, et son parcours dans les AUTRES campagnes.
@@ -394,7 +415,9 @@ def get_test(run_id: int, case_id: int, conn=Depends(get_conn)):
         historique_du_cas=[_ailleurs(r) for r in ResultRepo(conn).historique_du_cas(case_id)])
 
 
-@router.get("/api/runs/{run_id}/activite", response_model=schemas.RunActiviteOut)
+@router.get("/api/runs/{run_id}/activite", response_model=schemas.RunActiviteOut,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "run_id", access.project_id_depuis_run))])
 def get_activite(run_id: int, conn=Depends(get_conn)):
     """Le fil chronologique d'une campagne — et, par la même occasion, sa progression.
 

@@ -36,6 +36,12 @@ class _FakeModel:
         self.appels += 1
         return v
 
+    def search(self, _domain, **_kw):
+        """Le vrai modèle odoorpc en a un — `check_count_increased_by_one` s'en sert pour capturer
+        l'enregistrement créé (2026-08-07). Sans lui ici, le faux serait moins capable que le vrai
+        et le test passerait à côté de ce que la production fait vraiment."""
+        return [4242]
+
 
 class _FakeEnv:
     def __init__(self, model):

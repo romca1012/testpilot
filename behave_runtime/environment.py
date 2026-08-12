@@ -196,12 +196,36 @@ def _capturer_reponse_formulaire(context):
         pass
 
 
+def _marquer_si_scenario_negatif(context, scenario) -> None:
+    """Désigne AVANT toute action si ce scénario n'attend AUCUNE création (2026-08-07).
+
+    ⚠️ **Pourquoi ICI, avant le premier `Quand`.** `verifier_soumission_non_bloquee` (dans
+    `_base_helpers.py`) tourne au moment du clic — trop tard pour lire les steps À VENIR. Behave,
+    lui, connaît TOUTE la liste des steps du scénario dès `before_scenario` : on la lit une fois,
+    ici, et on pose le résultat sur la page pour que le clic le retrouve plus tard.
+
+    Le signal retenu — `… n'a pas augmenté` — est STRUCTUREL, pas un texte de titre deviné : c'est
+    le step que `check_count_not_increased` reconnaît. Mesuré sur les 85 scénarios de
+    `behave_runtime/generated/` le 2026-08-07 : les 35 négatifs le portent TOUS, aucun des 43
+    nominaux ne le porte, et AUCUN scénario ne porte les deux assertions à la fois. Voir
+    `_base_helpers.marquer_scenario_attend_un_refus` pour le détail de ce que ça change.
+
+    `all_steps` (Background + Scénario) plutôt que `steps` : l'assertion vit toujours dans le
+    corps du scénario, mais lire les deux ne coûte rien et ne dépend pas de cette convention.
+    """
+    from _base_helpers import marquer_scenario_attend_un_refus
+    steps = getattr(scenario, "all_steps", None) or scenario.steps
+    if any("n'a pas augmenté" in step.name for step in steps):
+        marquer_scenario_attend_un_refus(context.page)
+
+
 def before_scenario(context, scenario):
     """Initialise le registre de teardown et ouvre les connexions du scénario."""
     context.created = {}
     use_fixture(odoo_session, context)
     use_fixture(playwright_browser, context)
     _capturer_reponse_formulaire(context)
+    _marquer_si_scenario_negatif(context, scenario)
 
 
 def _capturer_ecran(context, scenario) -> None:

@@ -228,7 +228,7 @@ def test_lancer_execute_les_cas_EN_SEQUENCE_et_les_rattache(conn, monkeypatch):
 
     joues: list[int] = []
     monkeypatch.setattr(run_service, "run_execution",
-                        lambda eid, slug, cid, vid: joues.append(cid))
+                        lambda eid, slug, cid, vid, **kw: joues.append(cid))
     monkeypatch.setattr(config, "DB_PATH", conn.execute("PRAGMA database_list").fetchone()[2])
 
     params = campaign_service.start_campaign(conn, rid)
@@ -261,7 +261,7 @@ def test_un_cas_en_echec_n_arrete_pas_la_campagne(conn, monkeypatch):
 
     joues: list[int] = []
 
-    def boum(eid, slug, cid, vid):
+    def boum(eid, slug, cid, vid, **kw):
         joues.append(cid)
         if cid == c1:
             raise RuntimeError("navigateur mort")

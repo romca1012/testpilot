@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 29
+_SCHEMA_VERSION = 33
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -130,6 +130,14 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_28_sous_sections(conn)
     if version < 29:
         _migrate_29_generation_job(conn)
+    if version < 30:
+        _migrate_30_utilisateurs(conn)
+    if version < 31:
+        _migrate_31_acces_par_projet(conn)
+    if version < 32:
+        _migrate_32_triggered_by(conn)
+    if version < 33:
+        _migrate_33_email_utilisateur(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -1391,3 +1399,78 @@ def _migrate_29_generation_job(conn: sqlite3.Connection) -> None:
         " updated_at   TEXT NOT NULL)")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_generation_job_status ON generation_job(status)")
+
+
+def _migrate_30_utilisateurs(conn: sqlite3.Connection) -> None:
+    """De vrais comptes utilisateurs, avec rôle — remplace le nom libre non vérifié de l'ancien
+    verrou d'instance (2026-08-07, retour du porteur sur la V1 : « pas un système de comptes »
+    devient un vrai système de comptes).
+
+    Quatre rôles, en hiérarchie croissante de droits : `lecture_seule` (rien écrire) <
+    `testeur` (usage courant) < `dev` (+ éditer les scripts générés à la main) < `admin`
+    (+ gérer les comptes). Le `CHECK` porte la promesse en base, pas seulement côté Python — même
+    discipline que partout ailleurs dans ce schéma.
+
+    `is_active` plutôt qu'une suppression : désactiver un compte doit pouvoir se défaire (un
+    départ temporaire n'est pas un départ définitif), et ne DÉTRUIT jamais l'auteur des cas/
+    résultats qu'il a signés (cohérent avec la suppression douce déjà pratiquée ailleurs).
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS user ("
+        " id            INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " username      TEXT    NOT NULL UNIQUE,"
+        " password_hash TEXT    NOT NULL,"
+        " role          TEXT    NOT NULL"
+        "     CHECK (role IN ('lecture_seule', 'testeur', 'dev', 'admin')),"
+        " is_active     INTEGER NOT NULL DEFAULT 1,"
+        " created_at    TEXT    NOT NULL)")
+
+
+def _migrate_31_acces_par_projet(conn: sqlite3.Connection) -> None:
+    """Surcharge du rôle global, PAR PROJET (2026-08-10 — parité TestRail partielle, portée
+    validée par le porteur après vérification du vrai modèle TestRail : garder le rôle global,
+    ajouter une surcharge par projet, pas de groupes, pas de droit Administrateur séparé).
+
+    `project.default_access` : vide = rôle global (comportement d'AVANT cette migration,
+    inchangé) ; sinon `no_access` (projet cache à tous sauf exception) ou un des 4 rôles (forcé
+    pour tout le monde — ex. archiver un projet en lecture seule sans toucher à chaque compte).
+
+    `project_access` : une exception PAR COMPTE, PAR PROJET — prime sur `default_access`, qui
+    prime sur le rôle global (`access.role_effectif_projet`, ordre de résolution).
+
+    ⚠️ `no_access` n'est PAS ajouté à la liste des rôles vérifiée par un `CHECK` ici : ce n'est
+    pas un rôle qu'un COMPTE porte (la table `user` ne le connaît pas), seulement une valeur que
+    `default_access`/`project_access.role` peuvent prendre — les valider ensemble aurait mélangé
+    deux vocabulaires qui répondent à des questions différentes (« qui est ce compte » contre
+    « que peut-il faire sur CE projet »).
+    """
+    if "default_access" not in _column_names(conn, "project"):
+        conn.execute("ALTER TABLE project ADD COLUMN default_access TEXT NOT NULL DEFAULT ''")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS project_access ("
+        " project_id INTEGER NOT NULL,"
+        " user_id    INTEGER NOT NULL,"
+        " role       TEXT    NOT NULL"
+        "     CHECK (role IN ('no_access', 'lecture_seule', 'testeur', 'dev', 'admin')),"
+        " PRIMARY KEY (project_id, user_id))")
+
+
+def _migrate_32_triggered_by(conn: sqlite3.Connection) -> None:
+    """Traçabilité des exécutions automatiques (2026-08-12) : QUI a déclenché ce run, pas
+    seulement « Automatique ». Avant cette migration, `ExecutionRepo.finalize` signait
+    systématiquement `test_result.created_by` avec le réglage `service_account_name` — l'humain
+    qui avait cliqué « Lancer » n'était nulle part.
+
+    Vide sur les exécutions antérieures à la migration : on ne sait pas qui les a déclenchées,
+    et l'inventer serait un mensonge (même principe que `target_url`, migration 20).
+    """
+    if "triggered_by" not in _column_names(conn, "execution"):
+        conn.execute("ALTER TABLE execution ADD COLUMN triggered_by TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_33_email_utilisateur(conn: sqlite3.Connection) -> None:
+    """L'email d'un compte (2026-08-12) — nécessaire pour le prévenir par email quand SA campagne
+    ou SON automatisation se termine (`notification_service`). Vide par défaut : un compte
+    existant n'a personne pour deviner son adresse."""
+    if "email" not in _column_names(conn, "user"):
+        conn.execute("ALTER TABLE user ADD COLUMN email TEXT NOT NULL DEFAULT ''")

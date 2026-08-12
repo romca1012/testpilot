@@ -33,6 +33,12 @@ export const routes = [
   // projet. L'URL est donc hors de `/projects/:pid` — la ranger sous un projet laisserait croire
   // qu'un autre projet peut avoir un autre compte de service.
   { path: '/settings', name: 'settings', component: () => import('./pages/Settings.vue') },
+  // Gestion des comptes (2026-08-07) — Admin seulement ; le SERVEUR le vérifie (403 sinon), cet
+  // écran ne fait qu'éviter de proposer un lien qui serait de toute façon refusé.
+  { path: '/utilisateurs', name: 'utilisateurs', component: () => import('./pages/Utilisateurs.vue') },
+  // Bibliothèque de steps partagés (2026-08-11) — lecture pour tous les rôles, une seule pour
+  // toute l'instance (pas de `pid` : rien à voir avec un projet précis).
+  { path: '/bibliotheque-steps', name: 'bibliotheque-steps', component: () => import('./pages/BibliothequeSteps.vue') },
 
   // La CORBEILLE (§7) : supprimer masque, restaurer annule, détruire est un geste à part.
   { path: '/projects/:pid/corbeille', name: 'corbeille', component: () => import('./pages/Corbeille.vue') },
