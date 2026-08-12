@@ -21,6 +21,8 @@ import ResultMode from '../components/ResultMode.vue'
 import CourbeResultats from '../components/CourbeResultats.vue'
 import AddResultDialog from '../components/AddResultDialog.vue'
 import RefsList from '../components/RefsList.vue'
+import Button from '../components/ui/Button.vue'
+import IconButton from '../components/ui/IconButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -121,7 +123,7 @@ const parMois = computed(() => {
 
   <div v-else-if="error" class="text-center py-10">
     <p class="text-sm text-muted-foreground">{{ error }}</p>
-    <button class="mt-3 rounded-md border border-border px-3 py-1.5 text-sm hover:border-primary/40" @click="load">Réessayer</button>
+    <Button variant="secondary" class="mt-3" @click="load">Réessayer</Button>
   </div>
 
   <div v-else-if="test">
@@ -133,7 +135,7 @@ const parMois = computed(() => {
             :title="`Statut : ${statut.label}`"></span>
       <!-- L'identité du TEST, distincte de celle du cas. L'infobulle le dit en toutes lettres :
            sans elle, « T7-12 » ressemblerait à une variante décorative de « C12 ». -->
-      <span class="rounded-full bg-[hsl(262_52%_55%)] text-white text-sm font-semibold px-3 py-1 tabular-nums"
+      <span class="rounded-full bg-accent-id text-accent-id-foreground text-sm font-semibold px-3 py-1 tabular-nums"
             :title="`Ce test = le cas C${test.case_id} dans la campagne R${test.run_id}. Le cas, lui, vit dans le référentiel et sert à toutes les campagnes.`">
         T{{ test.run_id }}-{{ test.case_id }}
       </span>
@@ -142,39 +144,35 @@ const parMois = computed(() => {
       <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
             :class="statut.badge">{{ statut.label }}</span>
 
-      <div class="ml-auto flex items-center gap-1.5 text-muted-foreground">
-        <button class="hover:text-foreground p-1 disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Test précédent de cette campagne" aria-label="Test précédent de cette campagne"
-                :disabled="!test.prev_case_id" @click="allerAuTest(test.prev_case_id)">
+      <div class="ml-auto flex items-center gap-1.5">
+        <IconButton label="Test précédent de cette campagne"
+                    :disabled="!test.prev_case_id" @click="allerAuTest(test.prev_case_id)">
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
-        </button>
-        <button class="hover:text-foreground p-1 disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Test suivant de cette campagne" aria-label="Test suivant de cette campagne"
-                :disabled="!test.next_case_id" @click="allerAuTest(test.next_case_id)">
+        </IconButton>
+        <IconButton label="Test suivant de cette campagne"
+                    :disabled="!test.next_case_id" @click="allerAuTest(test.next_case_id)">
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
-        </button>
-        <button class="hover:text-foreground p-1" title="Imprimer ce test" aria-label="Imprimer ce test"
-                @click="imprimer">
+        </IconButton>
+        <IconButton label="Imprimer ce test" @click="imprimer">
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V3h12v6M6 18H4a1 1 0 01-1-1v-5a2 2 0 012-2h14a2 2 0 012 2v5a1 1 0 01-1 1h-2M6 14h12v7H6z"/></svg>
-        </button>
+        </IconButton>
         <!-- Le geste central de TestRail, offert ici comme dans la liste de la campagne : la
              fiche du test est L'AUTRE endroit d'où on saisit un résultat. -->
-        <button v-if="peutSaisir"
-                class="rounded-md bg-primary text-white font-semibold px-3 py-1.5 text-sm hover:bg-primary/90"
-                title="Ajouter un résultat pour ce test" @click="ouvrirSaisie">Ajouter un résultat</button>
+        <Button v-if="peutSaisir" variant="primary"
+                title="Ajouter un résultat pour ce test" @click="ouvrirSaisie">Ajouter un résultat</Button>
         <!-- ⚠️ Le geste qui empêche les deux identités de se confondre : d'ici, on va au CAS —
              le document du référentiel, partagé par toutes les campagnes. -->
-        <button class="rounded-md border border-border px-3 py-1.5 text-sm text-primary hover:border-primary/40"
+        <Button variant="secondary"
                 title="Ouvrir le cas dans le référentiel (partagé par toutes les campagnes)"
-                @click="voirLeCas">Voir le cas</button>
+                @click="voirLeCas">Voir le cas</Button>
       </div>
     </div>
 
     <!-- Fil d'Ariane vers la campagne -->
-    <button class="mt-1 text-primary/90 text-sm hover:underline" @click="retourCampagne">{{ test.run_name }}</button>
+    <button class="mt-1 text-primary text-sm hover:underline" @click="retourCampagne">{{ test.run_name }}</button>
 
     <!-- ══ MÉTADONNÉES — lues sur le cas, jamais réinventées ici ══ -->
-    <div class="mt-4 rounded-lg border border-border bg-primary/[0.05] p-4 grid grid-cols-2 md:grid-cols-5 gap-y-4 gap-x-6 text-sm">
+    <div class="mt-4 rounded-lg border border-border bg-primary/5 p-4 grid grid-cols-2 md:grid-cols-5 gap-y-4 gap-x-6 text-sm">
       <div>
         <div class="text-xs font-semibold text-muted-foreground">Type</div>
         <div class="mt-0.5" :title="typeView(test.type).hint">{{ typeView(test.type).label }}</div>
@@ -185,11 +183,11 @@ const parMois = computed(() => {
       </div>
       <div>
         <div class="text-xs font-semibold text-muted-foreground">Estimation</div>
-        <div class="mt-0.5" :class="!test.estimate && 'text-muted-foreground/70 italic'">{{ test.estimate || 'Non renseignée' }}</div>
+        <div class="mt-0.5" :class="!test.estimate && 'text-subtle-foreground italic'">{{ test.estimate || 'Non renseignée' }}</div>
       </div>
       <div>
         <div class="text-xs font-semibold text-muted-foreground">Références</div>
-        <div class="mt-0.5" :class="!test.refs && 'text-muted-foreground/70 italic'">
+        <div class="mt-0.5" :class="!test.refs && 'text-subtle-foreground italic'">
           <RefsList v-if="test.refs" :refs="test.refs" />
           <template v-else>Aucune</template>
         </div>
@@ -202,7 +200,7 @@ const parMois = computed(() => {
     <!-- ⚠️ Ces valeurs sont celles du cas AUJOURD'HUI : il n'y a pas de photo des cas à la
          clôture d'une campagne (`RunRepo.archive`). Écart connu et assumé — on le dit plutôt que
          de laisser croire que la campagne a figé ce qu'elle affiche. -->
-    <p class="mt-1.5 text-[11px] text-muted-foreground">
+    <p class="mt-1.5 text-xs text-muted-foreground">
       Métadonnées lues sur le cas dans son état actuel — une campagne ne fige pas le contenu des cas.
     </p>
 
@@ -242,10 +240,10 @@ const parMois = computed(() => {
           Ce cas n'a été joué dans aucune autre campagne.
         </p>
         <div v-for="mois in parMois" :key="mois.cle" class="mt-4">
-          <h4 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ mois.titre }}</h4>
+          <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{{ mois.titre }}</h4>
           <ul class="mt-2 divide-y divide-border/40 rounded-lg border border-border">
             <li v-for="(r, i) in mois.lignes" :key="i" class="flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm">
-              <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-semibold shrink-0"
+              <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold shrink-0"
                     :class="testStatusMeta(r.statut).badge">{{ testStatusMeta(r.statut).label }}</span>
               <!-- ⚠️ Le MODE reste visible ici aussi : un « Passed » manuel dans une autre
                    campagne ne vaut pas un « Passed » automatique, et l'écran ne doit jamais
@@ -253,7 +251,7 @@ const parMois = computed(() => {
               <ResultMode :mode="r.mode" :created-by="r.created_by" :at="r.created_at" />
               <RouterLink :to="{ name: 'run-test', params: { pid, id: String(r.run_id), caseId: String(test.case_id) } }"
                           class="text-primary hover:underline truncate">{{ r.run_name }}</RouterLink>
-              <span class="ml-auto text-[11px] text-muted-foreground shrink-0">
+              <span class="ml-auto text-xs text-muted-foreground shrink-0">
                 Testé par {{ r.created_by || '—' }} · {{ formatDate(r.created_at) }}
               </span>
             </li>
