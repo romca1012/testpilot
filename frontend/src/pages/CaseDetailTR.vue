@@ -17,6 +17,8 @@ import DefectsTab from '../components/case/DefectsTab.vue'
 import HistoryTab from '../components/case/HistoryTab.vue'
 import CodeView from '../components/CodeView.vue'
 import RefsList from '../components/RefsList.vue'
+import Button from '../components/ui/Button.vue'
+import IconButton from '../components/ui/IconButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -329,7 +331,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
 
   <div v-else-if="error" class="p-8 text-center">
     <p class="text-sm text-muted-foreground">{{ error }}</p>
-    <button class="mt-3 rounded-md border border-border px-3 py-1.5 text-sm hover:border-primary/40" @click="load">Réessayer</button>
+    <Button variant="secondary" class="mt-3" @click="load">Réessayer</Button>
   </div>
 
   <div v-else-if="c && detail">
@@ -346,11 +348,11 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
              Type et État éditables EN LIGNE ; les autres champs métier via « Modifier ».
              ⚠️ L'État n'est PLUS un statut système : c'est le cycle de vie du document, que
              l'utilisateur pose lui-même et que rien ne remet à zéro derrière lui. -->
-        <div class="mt-4 rounded-lg border border-border bg-primary/[0.05] p-4 grid grid-cols-4 gap-y-4 gap-x-6">
+        <div class="mt-4 rounded-lg border border-border bg-primary/5 p-4 grid grid-cols-4 gap-y-4 gap-x-6">
           <div>
             <div class="text-xs font-semibold text-muted-foreground flex items-center gap-1">
               Type
-              <span class="cursor-help text-muted-foreground/50" :title="typeView(c.type).hint">ⓘ</span>
+              <span class="cursor-help text-subtle-foreground" :title="typeView(c.type).hint">ⓘ</span>
             </div>
             <select :value="c.type" :disabled="savingMeta"
                     @change="onMeta({ type: ($event.target as HTMLSelectElement).value })"
@@ -361,7 +363,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
           <div>
             <div class="text-xs font-semibold text-muted-foreground flex items-center gap-1">
               État
-              <span class="cursor-help text-muted-foreground/50"
+              <span class="cursor-help text-subtle-foreground"
                     :title="etatView(c.etat).hint + ' Il décrit l\'avancement de la RÉDACTION du cas, jamais le résultat de ses exécutions.'">ⓘ</span>
             </div>
             <select :value="c.etat" :disabled="savingMeta"
@@ -373,7 +375,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
           <div>
             <div class="text-xs font-semibold text-muted-foreground flex items-center gap-1">
               Priorité
-              <span class="cursor-help text-muted-foreground/50" :title="priorityHint">ⓘ</span>
+              <span class="cursor-help text-subtle-foreground" :title="priorityHint">ⓘ</span>
             </div>
             <select :value="c.priority" :disabled="savingMeta"
                     @change="onMeta({ priority: ($event.target as HTMLSelectElement).value })"
@@ -385,11 +387,11 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
           </div>
           <div>
             <div class="text-xs font-semibold text-muted-foreground">Estimation</div>
-            <div class="mt-0.5" :class="!c.estimate && 'text-muted-foreground/70 italic'">{{ c.estimate || 'Non renseignée' }}</div>
+            <div class="mt-0.5" :class="!c.estimate && 'text-subtle-foreground italic'">{{ c.estimate || 'Non renseignée' }}</div>
           </div>
           <div>
             <div class="text-xs font-semibold text-muted-foreground">Références</div>
-            <div class="mt-0.5" :class="!c.refs && 'text-muted-foreground/70 italic'">
+            <div class="mt-0.5" :class="!c.refs && 'text-subtle-foreground italic'">
               <RefsList v-if="c.refs" :refs="c.refs" />
               <template v-else>Aucune</template>
             </div>
@@ -397,11 +399,11 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
           <div>
             <div class="text-xs font-semibold text-muted-foreground flex items-center gap-1">
               Test automatisé
-              <span class="cursor-help text-muted-foreground/50" title="« Oui » quand un test technique (Gherkin) existe et peut être exécuté. Un cas saisi à la main est « Non » tant qu'on n'a pas généré son test.">ⓘ</span>
+              <span class="cursor-help text-subtle-foreground" title="« Oui » quand un test technique (Gherkin) existe et peut être exécuté. Un cas saisi à la main est « Non » tant qu'on n'a pas généré son test.">ⓘ</span>
             </div>
             <div class="mt-0.5">{{ hasGherkin ? 'Oui' : 'Non' }}</div>
           </div>
-          <div class="col-span-2 self-end text-xs text-muted-foreground/70">
+          <div class="col-span-2 self-end text-xs text-subtle-foreground">
             Estimation et références se modifient via « Modifier ».
           </div>
         </div>
@@ -415,19 +417,19 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
         <template v-if="!editing">
           <section class="mt-6">
             <h2 class="font-semibold pb-2 border-b border-border">Préconditions</h2>
-            <p v-if="metier.preconditions" class="mt-3 text-[15px] leading-relaxed whitespace-pre-wrap text-foreground/90">{{ metier.preconditions }}</p>
-            <ul v-else-if="derived.preconditions.length" class="mt-3 space-y-1.5 text-[15px] leading-relaxed">
-              <li v-for="(p, i) in derived.preconditions" :key="i" class="text-foreground/90">{{ p }}</li>
+            <p v-if="metier.preconditions" class="mt-3 text-base leading-relaxed whitespace-pre-wrap text-foreground">{{ metier.preconditions }}</p>
+            <ul v-else-if="derived.preconditions.length" class="mt-3 space-y-1.5 text-base leading-relaxed">
+              <li v-for="(p, i) in derived.preconditions" :key="i" class="text-foreground">{{ p }}</li>
             </ul>
             <p v-else class="mt-3 text-muted-foreground">Aucune précondition renseignée.</p>
           </section>
 
           <section class="mt-6">
             <h2 class="font-semibold pb-2 border-b border-border">Étapes</h2>
-            <ol v-if="metier.steps.length || derived.steps.length" class="mt-3 space-y-2 text-[15px] leading-relaxed list-none">
+            <ol v-if="metier.steps.length || derived.steps.length" class="mt-3 space-y-2 text-base leading-relaxed list-none">
               <li v-for="(s, i) in (metier.steps.length ? metier.steps : derived.steps)" :key="i" class="flex gap-3">
                 <span class="shrink-0 text-muted-foreground tabular-nums font-medium">{{ i + 1 }}.</span>
-                <span class="text-foreground/90">{{ s }}</span>
+                <span class="text-foreground">{{ s }}</span>
               </li>
             </ol>
             <p v-else class="mt-3 text-muted-foreground">Aucune étape renseignée.</p>
@@ -435,9 +437,9 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
 
           <section class="mt-6">
             <h2 class="font-semibold pb-2 border-b border-border">Résultat attendu</h2>
-            <p v-if="metier.expected" class="mt-3 text-[15px] leading-relaxed whitespace-pre-wrap text-foreground/90">{{ metier.expected }}</p>
-            <ul v-else-if="derived.expected.length" class="mt-3 space-y-1.5 text-[15px] leading-relaxed">
-              <li v-for="(r, i) in derived.expected" :key="i" class="text-foreground/90">{{ r }}</li>
+            <p v-if="metier.expected" class="mt-3 text-base leading-relaxed whitespace-pre-wrap text-foreground">{{ metier.expected }}</p>
+            <ul v-else-if="derived.expected.length" class="mt-3 space-y-1.5 text-base leading-relaxed">
+              <li v-for="(r, i) in derived.expected" :key="i" class="text-foreground">{{ r }}</li>
             </ul>
             <p v-else class="mt-3 text-muted-foreground">Aucun résultat attendu renseigné.</p>
           </section>
@@ -445,7 +447,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
           <!-- Cas MANUEL (aucun Gherkin) : le test technique n'existe pas encore. -->
           <section v-if="!hasGherkin" class="mt-8">
             <h2 class="font-semibold pb-2 border-b border-border">Test technique</h2>
-            <div class="mt-3 rounded-lg border border-border bg-primary/[0.04] p-4 text-sm text-muted-foreground">
+            <div class="mt-3 rounded-lg border border-border bg-primary/5 p-4 text-sm text-muted-foreground">
               Ce cas a été saisi à la main : il décrit ce qui doit être vérifié, mais son test
               technique n'a pas encore été généré (bouton « Automatiser avec l'IA » ci-dessus).
             </div>
@@ -464,9 +466,9 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
               Signaux relevés automatiquement sur ce test (cartographie mesurée). Indicatifs — à ton appréciation.
             </p>
             <ul class="mt-3 space-y-2">
-              <li v-for="(w, i) in lintWarnings" :key="i" class="rounded-md border border-warning/30 bg-warning/[0.05] p-3 text-sm">
-                <div class="text-xs font-semibold text-warning/90">{{ w.step }} <span v-if="w.line" class="text-muted-foreground">· ligne {{ w.line }}</span></div>
-                <div class="mt-1 text-foreground/85">{{ w.message }}</div>
+              <li v-for="(w, i) in lintWarnings" :key="i" class="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm">
+                <div class="text-xs font-semibold text-warning">{{ w.step }} <span v-if="w.line" class="text-muted-foreground">· ligne {{ w.line }}</span></div>
+                <div class="mt-1 text-foreground">{{ w.message }}</div>
               </li>
             </ul>
           </section>
@@ -475,7 +477,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
                Un cas ne s'exécute pas seul : il se joue dans un Run. On indique où. -->
           <section v-if="hasGherkin" class="mt-8">
             <h2 class="font-semibold pb-2 border-b border-border">Exécution</h2>
-            <div class="mt-3 rounded-lg border border-border bg-primary/[0.04] p-4 text-sm text-muted-foreground">
+            <div class="mt-3 rounded-lg border border-border bg-primary/5 p-4 text-sm text-muted-foreground">
               Ce test est prêt. Les exécutions se lancent depuis
               <RouterLink :to="{ name: 'executions', params: { pid } }" class="text-primary hover:underline">Exécutions et résultats de test</RouterLink>,
               dans un run qui regroupe les cas à jouer ensemble.
@@ -485,7 +487,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
 
         <!-- ════════ ÉDITION ════════ -->
         <template v-else>
-          <div class="mt-4 rounded-lg border border-primary/40 bg-primary/[0.04] p-3 text-xs text-muted-foreground">
+          <div class="mt-4 rounded-lg border border-primary/40 bg-primary/5 p-3 text-xs text-muted-foreground">
             Enregistrer crée une <strong class="text-foreground">nouvelle version</strong> du cas.
             Le test technique n'est pas régénéré : la version devra être <strong class="text-foreground">relue</strong> avant toute exécution.
           </div>
@@ -507,7 +509,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
                 <div v-for="(s, i) in form.steps" :key="i" class="flex items-center gap-2">
                   <span class="w-6 shrink-0 text-right text-muted-foreground tabular-nums text-sm">{{ i + 1 }}.</span>
                   <input v-model="form.steps[i]" class="flex-1 rounded-md bg-surface-raised border border-border px-3 py-1.5 focus:border-primary outline-none" />
-                  <button type="button" class="text-muted-foreground hover:text-destructive px-1" title="Supprimer" @click="removeStep(i)">✕</button>
+                  <IconButton size="sm" variant="danger" label="Supprimer cette étape" @click="removeStep(i)">✕</IconButton>
                 </div>
               </div>
               <button type="button" class="mt-2 text-sm text-primary hover:underline" @click="addStep">+ Ajouter une étape</button>
@@ -522,7 +524,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
               <label class="block">
                 <span class="text-sm font-medium">Références</span>
                 <input v-model="form.refs" placeholder="JIRA-123…" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
-                <span class="mt-1 block text-[11px] text-muted-foreground">
+                <span class="mt-1 block text-xs text-muted-foreground">
                   Séparées par des virgules — deviennent des liens si un gabarit est réglé dans Réglages.
                 </span>
               </label>
@@ -535,10 +537,10 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
             <p v-if="saveError" class="text-sm text-destructive">{{ saveError }}</p>
 
             <div class="flex items-center gap-3">
-              <button class="rounded-md bg-primary text-white font-semibold px-4 py-2 disabled:opacity-60" :disabled="saving" @click="save">
+              <Button variant="primary" :loading="saving" @click="save">
                 {{ saving ? 'Enregistrement…' : 'Enregistrer' }}
-              </button>
-              <button class="rounded-md border border-border px-4 py-2 hover:border-primary/40" @click="editing = false">Annuler</button>
+              </Button>
+              <Button variant="secondary" @click="editing = false">Annuler</Button>
             </div>
           </section>
         </template>
@@ -615,12 +617,10 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
           </p>
           <p v-if="scriptError" class="text-sm text-destructive">{{ scriptError }}</p>
           <div class="flex gap-2">
-            <button class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
-                    :disabled="savingScript" @click="saveScript">
+            <Button variant="primary" :loading="savingScript" @click="saveScript">
               {{ savingScript ? 'Enregistrement…' : 'Enregistrer' }}
-            </button>
-            <button class="rounded-md border border-border px-4 py-2 text-sm hover:border-primary/40"
-                    :disabled="savingScript" @click="editingScript = false">Annuler</button>
+            </Button>
+            <Button variant="secondary" :disabled="savingScript" @click="editingScript = false">Annuler</Button>
           </div>
         </template>
       </div>

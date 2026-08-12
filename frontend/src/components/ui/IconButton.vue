@@ -25,6 +25,7 @@ const SIZES = { sm: 'h-6 w-6', md: 'h-8 w-8' }
 
 <template>
   <button
+    type="button"
     :aria-label="label"
     :title="label"
     :disabled="disabled"
