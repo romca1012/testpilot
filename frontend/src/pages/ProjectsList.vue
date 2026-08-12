@@ -11,6 +11,7 @@ import Button from '../components/ui/Button.vue'
 import Icon from '../components/ui/Icon.vue'
 import Modal from '../components/ui/Modal.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import IconButton from '../components/ui/IconButton.vue'
 
 const router = useRouter()
 const { session } = useSession()
@@ -303,17 +304,17 @@ onMounted(async () => { await load(); await loadExplorations() })
         </button>
         <!-- Connexion en clair sur la carte : c'est ce qui distingue deux projets du même
              connecteur, et ce qu'on vient vérifier quand une exécution tape la mauvaise instance. -->
-        <div v-if="p.base_url" class="mt-2 truncate text-[11px] text-muted-foreground/70" :title="p.base_url">
+        <div v-if="p.base_url" class="mt-2 truncate text-xs text-subtle-foreground" :title="p.base_url">
           {{ p.connector_type }} · {{ p.base_url }}<span v-if="p.database"> · {{ p.database }}</span>
         </div>
-        <div v-else class="mt-2 text-[11px] text-warning">Aucune connexion configurée</div>
+        <div v-else class="mt-2 text-xs text-warning">Aucune connexion configurée</div>
 
         <!-- ══ Cartographie de l'application (étape 2 du flux) ══
              La DATE est toujours affichée : c'est une photo, et elle vieillit. Un projet non
              exploré le dit clairement plutôt que de laisser croire que la génération sait où
              elle va. -->
         <div class="mt-3 flex items-center gap-2 border-t border-border/60 pt-2.5">
-          <div class="min-w-0 flex-1 text-[11px]">
+          <div class="min-w-0 flex-1 text-xs">
             <template v-if="explorations[p.id]?.running || exploring === p.id">
               <span class="text-primary">Exploration en cours… (quelques minutes)</span>
             </template>
@@ -329,51 +330,48 @@ onMounted(async () => { await load(); await loadExplorations() })
               <span v-if="explorations[p.id].contraintes" class="text-muted-foreground">
                 · {{ explorations[p.id].contraintes }} règles de saisie
               </span>
-              <span class="text-muted-foreground/60"> — mesuré le {{ explorations[p.id].mesure_le }}</span>
+              <span class="text-subtle-foreground"> — mesuré le {{ explorations[p.id].mesure_le }}</span>
             </template>
             <template v-else>
-              <span class="text-muted-foreground/70">Application non explorée</span>
+              <span class="text-subtle-foreground">Application non explorée</span>
             </template>
           </div>
-          <button
-            class="shrink-0 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+          <Button
+            variant="secondary" size="sm"
             :disabled="!p.base_url || explorations[p.id]?.running || exploring === p.id"
             :title="!p.base_url ? 'Renseignez d\'abord la connexion du projet'
                     : explorations[p.id]?.explored ? 'Re-mesurer l\'application' : 'Cartographier l\'application'"
             @click.stop="explore(p)"
           >
             {{ explorations[p.id]?.explored ? 'Ré-explorer' : 'Explorer' }}
-          </button>
+          </Button>
         </div>
 
-        <button
-          v-if="session?.role === 'admin'"
-          class="absolute right-[4.5rem] top-3 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
-          title="Gérer l'accès à ce projet"
-          @click.stop="openAccess(p)"
-         aria-label="Gérer l'accès à ce projet">
+        <IconButton
+          v-if="session?.role === 'admin'" size="sm"
+          class="absolute right-[4.5rem] top-3 opacity-0 transition-opacity group-hover:opacity-100"
+          label="Gérer l'accès à ce projet"
+          @click.stop="openAccess(p)">
           <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zM8 11V7a4 4 0 118 0v4" />
           </svg>
-        </button>
-        <button
-          class="absolute right-10 top-3 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
-          title="Modifier le projet et sa connexion"
-          @click.stop="startEdit(p)"
-         aria-label="Modifier le projet et sa connexion">
+        </IconButton>
+        <IconButton size="sm"
+          class="absolute right-10 top-3 opacity-0 transition-opacity group-hover:opacity-100"
+          label="Modifier le projet et sa connexion"
+          @click.stop="startEdit(p)">
           <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M11 4H4v16h16v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z" />
           </svg>
-        </button>
-        <button
-          class="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-          title="Supprimer le projet"
-          @click.stop="toDelete = p"
-         aria-label="Supprimer le projet">
+        </IconButton>
+        <IconButton size="sm" variant="danger"
+          class="absolute right-3 top-3 opacity-0 transition-opacity group-hover:opacity-100"
+          label="Supprimer le projet"
+          @click.stop="toDelete = p">
           <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v11a2 2 0 002 2h4a2 2 0 002-2V7" />
           </svg>
-        </button>
+        </IconButton>
       </div>
     </div>
 
@@ -398,7 +396,7 @@ onMounted(async () => { await load(); await loadExplorations() })
         </div>
 
         <fieldset class="rounded-lg border border-border p-3">
-          <legend class="px-1 text-[11px] uppercase tracking-wide text-muted-foreground">Connexion</legend>
+          <legend class="px-1 text-xs uppercase tracking-wide text-muted-foreground">Connexion</legend>
           <div class="grid gap-3 sm:grid-cols-2">
             <input v-model="form.base_url" placeholder="URL (ex. http://localhost:10017)"
                    class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
@@ -409,7 +407,7 @@ onMounted(async () => { await load(); await loadExplorations() })
             <input v-model="form.password" type="password" placeholder="Mot de passe"
                    class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
           </div>
-          <p class="mt-2 text-[11px] text-muted-foreground">
+          <p class="mt-2 text-xs text-muted-foreground">
             Facultatif ici — vous pourrez la renseigner et la corriger ensuite. Sans elle, aucune
             exploration ni exécution n'est possible.
           </p>
@@ -419,7 +417,7 @@ onMounted(async () => { await load(); await loadExplorations() })
       </form>
 
       <template #footer>
-        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="showCreate = false">Annuler</button>
+        <Button type="button" variant="secondary" @click="showCreate = false">Annuler</Button>
         <Button type="submit" form="form-create-project" variant="primary" :loading="creating" :disabled="!form.name.trim()">Créer le projet</Button>
       </template>
     </Modal>
@@ -461,14 +459,14 @@ onMounted(async () => { await load(); await loadExplorations() })
                    class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
           </label>
         </div>
-        <p class="text-[11px] text-muted-foreground">
+        <p class="text-xs text-muted-foreground">
           Le mot de passe n'est jamais réaffiché. Laissez ce champ vide pour le conserver tel quel.
         </p>
         <p v-if="editError" class="text-sm text-destructive">{{ editError }}</p>
       </form>
 
       <template #footer>
-        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="editing = null">Annuler</button>
+        <Button type="button" variant="secondary" @click="editing = null">Annuler</Button>
         <Button type="submit" form="form-edit-project" variant="primary" :loading="saving" :disabled="!edit.name.trim()">Enregistrer</Button>
       </template>
     </Modal>
@@ -491,7 +489,7 @@ onMounted(async () => { await load(); await loadExplorations() })
               <option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option>
               <option :value="ACCES_PROJET_REFUSE">{{ LIBELLE_ACCES[ACCES_PROJET_REFUSE] }}</option>
             </select>
-            <p class="mt-1 text-[11px] text-muted-foreground">
+            <p class="mt-1 text-xs text-muted-foreground">
               « Aucun accès » masque le projet à tous, sauf exception ci-dessous. Un rôle forcé
               (ex. Lecture seule) s'applique à tous, même à un compte Dev ou Admin globalement.
             </p>
@@ -512,7 +510,7 @@ onMounted(async () => { await load(); await loadExplorations() })
                 </tr>
               </tbody>
             </table>
-            <p v-else class="mt-2 text-[11px] text-muted-foreground">Aucune exception.</p>
+            <p v-else class="mt-2 text-xs text-muted-foreground">Aucune exception.</p>
 
             <div class="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
               <select v-model="nouvelleExceptionCompte"
@@ -525,17 +523,16 @@ onMounted(async () => { await load(); await loadExplorations() })
                 <option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option>
                 <option :value="ACCES_PROJET_REFUSE">{{ LIBELLE_ACCES[ACCES_PROJET_REFUSE] }}</option>
               </select>
-              <button class="rounded-md border border-border px-3 py-1.5 text-sm hover:border-primary/40 disabled:opacity-50"
-                      :disabled="nouvelleExceptionCompte == null" @click="ajouterException">
+              <Button variant="secondary" :disabled="nouvelleExceptionCompte == null" @click="ajouterException">
                 Ajouter
-              </button>
+              </Button>
             </div>
           </div>
         </template>
       </div>
 
       <template #footer>
-        <button type="button" class="rounded-md border border-border px-4 h-9 text-sm hover:border-primary/40" @click="accessProject = null">Fermer</button>
+        <Button type="button" variant="secondary" @click="accessProject = null">Fermer</Button>
       </template>
     </Modal>
 
