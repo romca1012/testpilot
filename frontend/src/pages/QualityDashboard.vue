@@ -51,7 +51,7 @@ const maxJour = computed(() =>
 <template>
   <div class="p-6 md:p-8 max-w-4xl">
     <header>
-      <h1 class="text-[26px] font-semibold tracking-tight">Qualité de génération</h1>
+      <h1 class="text-2xl font-semibold tracking-tight">Qualité de génération</h1>
       <p class="mt-1 text-sm text-muted-foreground">
         Un test fraîchement généré tourne-t-il <strong class="text-foreground">sans erreur
         technique</strong> ? Mesuré sur les exécutions réelles au premier jet — pas la conformité
@@ -108,17 +108,17 @@ const maxJour = computed(() =>
                 <div v-if="d.not_executed" class="bg-warning/70"
                      :style="{ height: (d.not_executed / maxJour * 110) + 'px' }"></div>
               </div>
-              <span class="text-[10px] text-muted-foreground tabular-nums">{{ d.jour.slice(5) }}</span>
+              <span class="text-xs text-muted-foreground tabular-nums">{{ d.jour.slice(5) }}</span>
             </div>
           </div>
-          <div class="mt-2 flex items-center gap-4 text-[11px] text-muted-foreground">
+          <div class="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
             <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-success/80"></span>A tourné</span>
             <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-destructive/80"></span>Erreur technique</span>
             <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-warning/70"></span>Interrompu</span>
           </div>
         </section>
 
-        <p class="mt-8 text-xs text-muted-foreground/70">
+        <p class="mt-8 text-xs text-subtle-foreground">
           Mesure au <strong>premier jet</strong> (hors réparation et rejeux) : c'est la qualité de
           la génération elle-même, pas celle du filet qui la rattrape. Chiffres dérivés des runs
           réels — aucune valeur saisie à la main.

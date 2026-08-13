@@ -12,8 +12,8 @@ const label = computed(() => LABELS[route.query.tab as string] || 'Section')
 </script>
 
 <template>
-  <div class="p-8">
-    <h1 class="text-[26px] font-semibold tracking-tight">{{ label }}</h1>
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{ label }}</h1>
     <div class="mt-6 rounded-lg border border-dashed border-border p-12 text-center">
       <p class="text-sm text-muted-foreground">Cette section sera disponible prochainement.</p>
     </div>

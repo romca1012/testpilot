@@ -8,6 +8,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { type RunSummary } from '../lib/api'
 import { useRuns } from '../lib/donnees'
+import Button from '../components/ui/Button.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -72,9 +73,8 @@ function goNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) 
   <div>
     <div class="flex-1 min-w-0">
       <div class="flex items-center justify-between">
-        <h1 class="text-[26px] font-semibold tracking-tight">Exécutions et résultats de test</h1>
-        <button class="rounded-md bg-primary text-white font-semibold px-3 py-1.5 text-sm hover:bg-primary/90"
-                @click="goNew">+ Ajouter une exécution</button>
+        <h1 class="text-2xl font-semibold tracking-tight">Exécutions et résultats de test</h1>
+        <Button variant="primary" @click="goNew">+ Ajouter une exécution</Button>
       </div>
 
       <div v-if="loading" class="mt-6 space-y-2">
@@ -82,7 +82,7 @@ function goNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) 
       </div>
       <div v-else-if="error" class="mt-8 text-center">
         <p class="text-sm text-muted-foreground">{{ error }}</p>
-        <button class="mt-3 rounded-md border border-border px-3 py-1.5 text-sm hover:border-primary/40" @click="() => refetch()">Réessayer</button>
+        <Button variant="secondary" class="mt-3" @click="() => refetch()">Réessayer</Button>
       </div>
       <p v-else-if="!runs.length" class="mt-10 text-center text-sm text-muted-foreground">
         Aucune exécution pour ce projet. Créez-en une avec « Ajouter une exécution ».
@@ -93,7 +93,7 @@ function goNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) 
         <button v-for="r in g.rows" :key="r.id"
                 class="w-full text-left flex items-center gap-4 py-3 border-b border-border/40 hover:bg-accent/30 rounded-md px-2 -mx-2"
                 @click="openRun(r.id)">
-          <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-semibold shrink-0" :class="statusOf(r).cls">
+          <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold shrink-0" :class="statusOf(r).cls">
             {{ statusOf(r).label }}
           </span>
           <div class="min-w-0 flex-1">
@@ -128,7 +128,7 @@ function goNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) 
           <button v-for="r in archives" :key="r.id"
                   class="w-full text-left flex items-center gap-4 py-3 border-b border-border/40 hover:bg-accent/30 rounded-md px-2 -mx-2 opacity-75"
                   @click="openRun(r.id)">
-            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-semibold shrink-0 bg-secondary text-muted-foreground">
+            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold shrink-0 bg-secondary text-muted-foreground">
               Archivée
             </span>
             <div class="min-w-0 flex-1">

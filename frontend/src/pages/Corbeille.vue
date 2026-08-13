@@ -95,7 +95,7 @@ async function purger(e: ElementCorbeille) {
             class="flex flex-wrap items-center justify-between gap-3 py-3">
           <div class="min-w-0">
             <div class="flex items-center gap-2">
-              <span class="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">
+              <span class="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
                 {{ LIBELLE[e.type] || e.type }}
               </span>
               <span class="truncate font-medium">{{ e.titre }}</span>
@@ -104,7 +104,7 @@ async function purger(e: ElementCorbeille) {
               Supprimé le {{ formatDate(e.deleted_at) }}
               <!-- Le nom est une signature DÉCLARÉE (lot 2), pas une identité vérifiée : on ne
                    dit donc pas « par X » comme s'il s'agissait d'un fait établi. -->
-              <template v-if="e.deleted_by"> — signé <span class="text-foreground/80">{{ e.deleted_by }}</span></template>
+              <template v-if="e.deleted_by"> — signé <span class="text-foreground">{{ e.deleted_by }}</span></template>
             </div>
           </div>
           <div class="flex shrink-0 items-center gap-3">

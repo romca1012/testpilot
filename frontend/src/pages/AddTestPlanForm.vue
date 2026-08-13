@@ -5,6 +5,7 @@
 // Sauvegarde et génération réelle → backend (§7), donc submit « à venir ».
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import Button from '../components/ui/Button.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -82,18 +83,18 @@ function comingSoon(w: string) { window.alert(`${w} — à venir.`) }
             {{ r }} <span class="text-xs text-muted-foreground">(ajoutée localement, non enregistrée)</span>
           </li>
         </ul>
-        <button type="button" class="mt-3 rounded-md bg-surface-raised border border-border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:border-primary/40" @click="addRunLocally">
+        <Button type="button" variant="secondary" class="mt-3" @click="addRunLocally">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           Ajouter une exécution de test
-        </button>
+        </Button>
       </div>
 
       <div class="flex items-center gap-3 pt-2">
-        <button type="submit" class="rounded-md bg-success text-white font-semibold px-4 py-2 flex items-center gap-2 hover:bg-success/90">
+        <Button type="submit" variant="success">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12.5l4.2 4.2L19 6.8"/></svg>
           Ajouter un plan de test
-        </button>
-        <button type="button" class="rounded-md border border-destructive/50 text-destructive px-4 py-2 hover:bg-destructive/10" @click="cancel">Annuler</button>
+        </Button>
+        <Button type="button" variant="secondary" @click="cancel">Annuler</Button>
       </div>
     </form>
   </div>

@@ -15,6 +15,7 @@ import { testStatusMeta } from '../lib/status'
 import { cleJour, jourLong } from '../lib/format'
 import CourbeResultats from '../components/CourbeResultats.vue'
 import ResultMode from '../components/ResultMode.vue'
+import Button from '../components/ui/Button.vue'
 
 const route = useRoute()
 const pid = computed(() => route.params.pid as string)
@@ -58,13 +59,13 @@ function heure(iso: string): string { return (iso || '').slice(11, 16) }
 
   <div v-else-if="error" class="text-center py-10">
     <p class="text-sm text-muted-foreground">{{ error }}</p>
-    <button class="mt-3 rounded-md border border-border px-3 py-1.5 text-sm hover:border-primary/40" @click="load">Réessayer</button>
+    <Button variant="secondary" class="mt-3" @click="load">Réessayer</Button>
   </div>
 
   <div v-else-if="activite">
     <h1 class="text-2xl font-semibold tracking-tight truncate">Activité</h1>
     <RouterLink :to="{ name: 'run-detail', params: { pid, id: String(runId) } }"
-                class="mt-1 inline-block text-primary/90 text-sm hover:underline">{{ activite.run_name }}</RouterLink>
+                class="mt-1 inline-block text-primary text-sm hover:underline">{{ activite.run_name }}</RouterLink>
 
     <CourbeResultats class="mt-5" :events="events" :jours="14" />
 
@@ -78,18 +79,18 @@ function heure(iso: string): string { return (iso || '').slice(11, 16) }
     </p>
 
     <section v-for="jour in parJour" :key="jour.cle" class="mt-6">
-      <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ jour.titre }}</h3>
+      <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{{ jour.titre }}</h3>
       <ul class="mt-2 divide-y divide-border/40 rounded-lg border border-border">
         <li v-for="(e, i) in jour.lignes" :key="i"
             class="flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm">
-          <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-semibold shrink-0"
+          <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold shrink-0"
                 :class="testStatusMeta(e.statut).badge">{{ testStatusMeta(e.statut).label }}</span>
           <!-- Le titre mène au TEST dans CETTE campagne (pas au cas du référentiel) : c'est de
                ce résultat-ci qu'on vient de lire la ligne. -->
           <RouterLink :to="{ name: 'run-test', params: { pid, id: String(runId), caseId: String(e.case_id) } }"
                       class="text-primary hover:underline truncate min-w-0">{{ e.case_title }}</RouterLink>
           <ResultMode :mode="e.mode" :created-by="e.created_by" :at="e.created_at" />
-          <span class="ml-auto text-[11px] text-muted-foreground shrink-0">
+          <span class="ml-auto text-xs text-muted-foreground shrink-0">
             Testé par {{ e.created_by || '—' }} · {{ heure(e.created_at) }}
           </span>
         </li>

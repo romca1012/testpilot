@@ -15,6 +15,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseSummary } from '../lib/api'
 import { useGroupes } from '../lib/donnees'
+import Button from '../components/ui/Button.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -219,7 +220,7 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
         </div>
         <!-- Dire que le choix est DÉFINITIF évite la question « je pourrai changer ? » — et un
              écran de modification qu'on ne tiendrait pas. -->
-        <p class="mt-2 text-[11px] text-muted-foreground">
+        <p class="mt-2 text-xs text-muted-foreground">
           Ce choix vaut pour toute la campagne : ses résultats viendront tous du même mode.
         </p>
       </div>
@@ -271,7 +272,7 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
                 <div v-else class="mt-2 max-h-64 overflow-y-auto rounded-md border border-border">
                   <div v-for="m in byModule" :key="m.module">
                     <button type="button"
-                            class="w-full flex items-center gap-2 bg-surface-raised/70 px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground border-b border-border/60"
+                            class="w-full flex items-center gap-2 bg-surface-raised/70 px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground border-b border-border/60"
                             @click="toggleModule(m.rows)">
                       <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
                       {{ m.module }}
@@ -281,7 +282,7 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
                     <template v-for="grp in m.groupes" :key="`${m.module}-${grp.group_id ?? 'sans-section'}`">
                       <!-- Section — coche/décoche AUSSI ses sous-sections, comme un dossier. -->
                       <button type="button"
-                              class="w-full flex items-center gap-2 bg-surface-raised/30 pl-6 pr-3 py-1 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground border-b border-border/30"
+                              class="w-full flex items-center gap-2 bg-surface-raised/30 pl-6 pr-3 py-1 text-left text-xs font-medium text-muted-foreground hover:text-foreground border-b border-border/30"
                               @click="toggleModule(tousLesCas(grp))">
                         <svg v-if="grp.group_id" class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
                         {{ grp.group_title }}
@@ -298,7 +299,7 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
                       <!-- Sous-section — une seule profondeur, parité TestRail. -->
                       <template v-for="sg in grp.sousSections" :key="sg.group_id">
                         <button type="button"
-                                class="w-full flex items-center gap-2 bg-surface-raised/20 pl-9 pr-3 py-1 text-left text-[11px] text-muted-foreground hover:text-foreground border-b border-border/30"
+                                class="w-full flex items-center gap-2 bg-surface-raised/20 pl-9 pr-3 py-1 text-left text-xs text-muted-foreground hover:text-foreground border-b border-border/30"
                                 @click="toggleModule(sg.rows)">
                           {{ sg.group_title }}
                           <span class="ml-auto">{{ sg.rows.length }} cas</span>
@@ -324,12 +325,11 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
       <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
 
       <div class="flex items-center gap-3 pt-2">
-        <button type="submit" :disabled="saving || !canSubmit"
-                class="rounded-md bg-success text-white font-semibold px-4 py-2 flex items-center gap-2 hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed">
+        <Button type="submit" variant="success" :disabled="saving || !canSubmit" :loading="saving">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12.5l4.2 4.2L19 6.8"/></svg>
           {{ saving ? 'Création…' : 'Ajouter une exécution de test' }}
-        </button>
-        <button type="button" class="rounded-md border border-border px-4 py-2 hover:border-primary/40" @click="cancel">Annuler</button>
+        </Button>
+        <Button type="button" variant="secondary" @click="cancel">Annuler</Button>
       </div>
     </form>
   </div>

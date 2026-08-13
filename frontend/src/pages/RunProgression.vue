@@ -12,6 +12,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, type RunActivite } from '../lib/api'
 import { cleJour, derniersJours, jourLong } from '../lib/format'
+import Button from '../components/ui/Button.vue'
 
 const route = useRoute()
 const pid = computed(() => route.params.pid as string)
@@ -90,13 +91,13 @@ const dernier = computed(() => jourLong(grille.value[grille.value.length - 1] ||
 
   <div v-else-if="error" class="text-center py-10">
     <p class="text-sm text-muted-foreground">{{ error }}</p>
-    <button class="mt-3 rounded-md border border-border px-3 py-1.5 text-sm hover:border-primary/40" @click="load">Réessayer</button>
+    <Button variant="secondary" class="mt-3" @click="load">Réessayer</Button>
   </div>
 
   <div v-else-if="activite">
     <h1 class="text-2xl font-semibold tracking-tight truncate">Progression</h1>
     <RouterLink :to="{ name: 'run-detail', params: { pid, id: String(runId) } }"
-                class="mt-1 inline-block text-primary/90 text-sm hover:underline">{{ activite.run_name }}</RouterLink>
+                class="mt-1 inline-block text-primary text-sm hover:underline">{{ activite.run_name }}</RouterLink>
 
     <div class="mt-5 flex flex-wrap items-center gap-8 rounded-lg border border-border bg-surface/60 p-4">
       <div>
@@ -126,7 +127,7 @@ const dernier = computed(() => jourLong(grille.value[grille.value.length - 1] ||
     </div>
 
     <p class="mt-3 text-xs text-muted-foreground max-w-2xl">
-      Un cas compte le jour de son <strong class="text-foreground/80">premier</strong> résultat.
+      Un cas compte le jour de son <strong class="text-foreground">premier</strong> résultat.
       Rejouer un cas déjà testé ne fait donc pas monter la courbe — ce serait compter deux fois la
       même couverture. Le détail de qui a posé quoi, et quand, est dans
       <RouterLink :to="{ name: 'run-activite', params: { pid, id: String(runId) } }"

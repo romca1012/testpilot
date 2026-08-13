@@ -73,11 +73,11 @@ onMounted(async () => {
         <!-- Contre QUOI ce verdict a été rendu. Un « conforme » sans sa cible ne prouve rien —
              et sur un serveur partagé, plusieurs instances coexistent. -->
         <p v-if="report.target_url" class="mt-1 text-sm text-muted-foreground">
-          Testé contre <span class="text-foreground/90">{{ report.target_url }}</span>
-          <template v-if="report.target_database"> · base <span class="text-foreground/90">{{ report.target_database }}</span></template>
-          <template v-if="report.target_username"> · utilisateur <span class="text-foreground/90">{{ report.target_username }}</span></template>
+          Testé contre <span class="text-foreground">{{ report.target_url }}</span>
+          <template v-if="report.target_database"> · base <span class="text-foreground">{{ report.target_database }}</span></template>
+          <template v-if="report.target_username"> · utilisateur <span class="text-foreground">{{ report.target_username }}</span></template>
         </p>
-        <p v-else class="mt-1 text-sm text-muted-foreground/70">
+        <p v-else class="mt-1 text-sm text-subtle-foreground">
           Cible non tracée — exécution antérieure à son enregistrement. Elle n'est pas reconstituée :
           ce serait une supposition présentée comme un fait.
         </p>
@@ -159,7 +159,7 @@ onMounted(async () => {
             <!-- Ce que l'agent DIT avoir changé (0014). Sans ça, la réparation serait une
                  boîte noire : « v2 » sans savoir ce qui a bougé. -->
             <p v-if="d.what_was_tried" class="mt-1.5 text-xs text-muted-foreground">
-              <span class="text-foreground/70">Réparation tentée :</span> {{ d.what_was_tried }}
+              <span class="text-foreground">Réparation tentée :</span> {{ d.what_was_tried }}
             </p>
           </li>
         </ul>

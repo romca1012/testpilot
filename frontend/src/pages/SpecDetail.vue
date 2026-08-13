@@ -139,7 +139,7 @@ function ouvrirCas(id: number) {
         </p>
         <textarea v-model="document" rows="18" spellcheck="false"
                   placeholder="Collez ici la spécification fonctionnelle, ou partez du modèle."
-                  class="w-full rounded-md border border-border bg-surface-raised px-3 py-2 font-mono text-[13px] leading-relaxed outline-none focus:border-primary/50" />
+                  class="w-full rounded-md border border-border bg-surface-raised px-3 py-2 font-mono text-sm leading-relaxed outline-none focus:border-primary/50" />
         <div class="mt-3 flex flex-wrap items-center gap-3">
           <Button variant="primary" :loading="enregistrement" :disabled="!modifie || !titre.trim()"
                   @click="enregistrer">Enregistrer</Button>

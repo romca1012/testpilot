@@ -79,9 +79,9 @@ const groupes = computed(() => {
         </h2>
         <ul class="mt-2 divide-y divide-border/60 rounded-lg border border-border">
           <li v-for="s in g.steps" :key="g.keyword + '·' + s.label" class="p-3">
-            <code class="block break-words font-mono text-sm text-foreground/90">{{ s.label }}</code>
+            <code class="block break-words font-mono text-sm text-foreground">{{ s.label }}</code>
             <p v-if="s.note" class="mt-1 text-xs text-muted-foreground">→ {{ s.note }}</p>
-            <p class="mt-1 text-[11px] text-muted-foreground/60">{{ s.source }}</p>
+            <p class="mt-1 text-xs text-subtle-foreground">{{ s.source }}</p>
           </li>
         </ul>
       </section>
