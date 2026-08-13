@@ -19,7 +19,7 @@ from testpilot import config
 from testpilot.api import access, erreurs
 from testpilot.api.routes import (
     auth, cases, corbeille, executions, groups, modules, projects, runs, settings,
-    steps_library, users,
+    users,
 )
 from testpilot.store.db import get_initialized_db
 
@@ -121,7 +121,6 @@ def create_app() -> FastAPI:
     app.include_router(cases.router)
     app.include_router(executions.router)
     app.include_router(settings.router)
-    app.include_router(steps_library.router)
 
     # Frontend compilé (prod) : assets hashés + fallback SPA vers index.html pour que les
     # deep-links client (/cases, /executions/1) fonctionnent au rafraîchissement. Absent en

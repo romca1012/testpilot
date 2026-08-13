@@ -266,9 +266,6 @@ export const api = {
     request<{ succes: boolean; erreur: string }>('/api/settings/smtp/test',
       { method: 'POST', body: JSON.stringify({ destinataire }) }),
 
-  // ── Bibliothèque de steps partagés (2026-08-11) — une seule pour toute l'instance ──
-  // Jusqu'ici visible SEULEMENT du prompt système de l'agent de génération.
-  listSharedSteps: () => request<SharedStepOut[]>('/api/steps-library'),
   setCasePriority: (id: number | string, priority: string) =>
     request<CaseSummary>(`/api/cases/${id}`, { method: 'PATCH', body: JSON.stringify({ priority }) }),
   /** Métadonnées de lecture d'un cas : priorité, Type, État. On n'envoie QUE ce qui change —
@@ -636,8 +633,6 @@ export interface SettingOut {
   // `value` est alors un masque fixe (ou vide) — jamais le vrai secret (2026-08-12).
   secret: boolean
 }
-/** Un step de la bibliothèque partagée — `keyword` ∈ given|when|then|step. */
-export interface SharedStepOut { keyword: string; label: string; source: string; note: string }
 export interface ReviewResponse { decision: string; gate: GateOut }
 export interface TestReport {
   module_name: string; title: string; version_number: number

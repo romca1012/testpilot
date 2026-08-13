@@ -853,16 +853,6 @@ class UserPatchIn(BaseModel):
     email: str | None = None
 
 
-# ── Bibliothèque de steps partagés (2026-08-11) ───────────────────────────────
-class SharedStepOut(BaseModel):
-    """Un step de `behave_runtime/steps_library/` — jusqu'ici visible seulement de l'agent de
-    génération (prompt système), jamais d'un humain sans lire le code Python."""
-    keyword: str          # given | when | then | step
-    label: str
-    source: str = ""      # fichier d'origine
-    note: str = ""        # ce que le step FAIT, quand le libellé seul ne suffit pas
-
-
 # ── Mappers dict → DTO ─────────────────────────────────────────────────────────
 def project_summary(row: dict) -> ProjectSummary:
     return ProjectSummary(

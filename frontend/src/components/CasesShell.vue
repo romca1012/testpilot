@@ -332,11 +332,6 @@ function switchProject(id: number) {
           <RouterLink v-if="session?.role === 'admin'" :to="{ name: 'utilisateurs' }"
                       class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                       @click="menuOpen = false">Utilisateurs…</RouterLink>
-          <!-- Bibliothèque de steps partagés (2026-08-11) — lecture pour tous les rôles : un
-               catalogue technique de référence, jusqu'ici invisible hors du code Python. -->
-          <RouterLink :to="{ name: 'bibliotheque-steps' }"
-                      class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                      @click="menuOpen = false">Bibliothèque de steps…</RouterLink>
           <div class="my-1 border-t border-border"></div>
           <p v-if="session?.authenticated" class="px-3 py-1 text-xs text-subtle-foreground">
             Connecté en tant que {{ session.name }} · {{ LIBELLE_ROLE[session.role] || session.role }}
