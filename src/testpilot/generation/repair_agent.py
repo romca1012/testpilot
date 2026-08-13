@@ -46,21 +46,39 @@ class RepairProposal:
     stopped_reason: str = ""
 
 
-def build_repair_prompt(connector: Connector | None = None) -> str:
+def build_repair_prompt(connector: Connector | None = None,
+                        connector_type: str | None = None) -> str:
     """Prompt de réparation + catalogue des steps + règles du connecteur.
 
     Même catalogue que la génération : un correctif qui réinvente un step partagé serait rejeté
     à l'écriture (`0003`), et l'agent doit voir ce qu'il peut réutiliser — y compris les notes
     qui disent ce qu'un step FAIT (`0012`).
+
+    `connector_type` (Phase 1c) : scope le catalogue au connecteur du projet — `None` (défaut)
+    garde le catalogue complet, comportement identique à avant.
+
+    Phase 1d : même placement que `prompt.build_system_prompt` — catalogue en tête dans
+    `<bibliotheque_de_steps>`, règles du connecteur en fin dans `<regles_connecteur>`.
     """
+    from testpilot.generation.prompt import _nom_connecteur
+
     base = _REPAIR_PROMPT_PATH.read_text(encoding="utf-8")
-    catalogue = steps_library.as_prompt_section(steps_library.catalogue())
+
+    prefix = ""
+    catalogue = steps_library.as_prompt_section(steps_library.catalogue(connector_type=connector_type))
     if catalogue:
-        base += "\n\n---\n\n## Steps partagés disponibles (à réutiliser)\n\n" + catalogue
+        bloc = "## Steps partagés disponibles (à réutiliser)\n\n" + catalogue
+        prefix = f"<bibliotheque_de_steps>\n\n{bloc}\n\n</bibliotheque_de_steps>\n\n---\n\n"
+
+    suffix = ""
     rules = connector.rules() if connector else ""
     if rules:
-        base += "\n\n---\n\n## Connecteur actif\n\n" + rules
-    return base
+        bloc = "## Connecteur actif\n\n" + rules
+        nom = _nom_connecteur(connector)
+        ouverture = f'<regles_connecteur nom="{nom}">' if nom else "<regles_connecteur>"
+        suffix = f"\n\n---\n\n{ouverture}\n\n{bloc}\n\n</regles_connecteur>"
+
+    return prefix + base + suffix
 
 
 def _failure_report(scenarios, failures, steps_content: str = "", memoire: str = "") -> str:
@@ -127,6 +145,7 @@ def _last_assistant_text(state: AgentState) -> str:
 def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "",
                 memoire: str = "",
                 llm: LLMAdapter | None = None, connector: Connector | None = None,
+                connector_type: str | None = None,
                 dry_runner: DryRunner | None = None,
                 cost_tracker: CostTracker | None = None,
                 max_iterations: int | None = None) -> RepairProposal:
@@ -161,7 +180,7 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
                            "content": _failure_report(scenarios, failures, steps_content,
                                                       memoire)})
 
-    shared_steps = steps_library.catalogue()
+    shared_steps = steps_library.catalogue(connector_type=connector_type)
     ctx = ToolContext(
         module_name=module_name,
         generated_dir=config.GENERATED_DIR,
@@ -170,7 +189,7 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
     )
     run_loop(
         llm=llm,
-        system_prompt=build_repair_prompt(connector),
+        system_prompt=build_repair_prompt(connector, connector_type),
         state=state,
         ctx=ctx,
         dry_runner=dry_runner,

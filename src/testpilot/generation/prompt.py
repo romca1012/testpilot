@@ -19,6 +19,15 @@ from testpilot.generation.steps_library import SharedStep
 _SYSTEM_PROMPT_PATH = config.PROMPTS_DIR / "system_prompt.md"
 
 
+def _nom_connecteur(connector: Connector | None) -> str:
+    """Nom court du connecteur actif, dérivé de sa classe (`OdooConnector` → `odoo`) — pas de
+    nouveau champ à maintenir, juste ce que la classe dit déjà d'elle-même."""
+    if connector is None:
+        return ""
+    nom = type(connector).__name__
+    return (nom[: -len("Connector")] if nom.endswith("Connector") else nom).lower()
+
+
 def build_system_prompt(connector: Connector | None = None,
                         shared_steps: list[SharedStep] | None = None) -> str:
     """Prompt système + catalogue des steps partagés + règles du connecteur actif.
@@ -26,17 +35,30 @@ def build_system_prompt(connector: Connector | None = None,
     Le catalogue est indispensable : le prompt demande de réutiliser la bibliothèque et
     interdit de la redéfinir, mais l'agent ne pouvait pas la voir — il inventait donc ses
     propres steps (et son propre transport HTTP). Cf. décision 0003.
+
+    Phase 1d (recommandation Anthropic sur les prompts à contexte long : le contenu de
+    référence volumineux se lit mieux — et se réutilise mieux — placé EN TÊTE, dans une balise
+    XML nommée, plutôt qu'en fin de prompt) : le catalogue passe devant les instructions, dans
+    `<bibliotheque_de_steps>`. Les règles du connecteur restent en fin, dans
+    `<regles_connecteur>` — l'agent les lit après avoir compris la méthode générique.
     """
     base = _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
 
+    prefix = ""
     catalogue = steps_library.as_prompt_section(shared_steps or [])
     if catalogue:
-        base += "\n\n---\n\n## Steps partagés disponibles (à réutiliser)\n\n" + catalogue
+        bloc = "## Steps partagés disponibles (à réutiliser)\n\n" + catalogue
+        prefix = f"<bibliotheque_de_steps>\n\n{bloc}\n\n</bibliotheque_de_steps>\n\n---\n\n"
 
+    suffix = ""
     rules = connector.rules() if connector else ""
     if rules:
-        base += "\n\n---\n\n## Connecteur actif\n\n" + rules
-    return base
+        bloc = "## Connecteur actif\n\n" + rules
+        nom = _nom_connecteur(connector)
+        ouverture = f'<regles_connecteur nom="{nom}">' if nom else "<regles_connecteur>"
+        suffix = f"\n\n---\n\n{ouverture}\n\n{bloc}\n\n</regles_connecteur>"
+
+    return prefix + base + suffix
 
 
 def _nav_to_gherkin_hint(navigation: list[NavStep]) -> str:

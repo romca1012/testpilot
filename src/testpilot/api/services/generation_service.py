@@ -476,7 +476,8 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
         connector = OdooConnector.from_project(project)
         connector.connect()
         runner = BehaveRunner(connection=project_env(project),
-                              project_id=(project or {}).get("id"))
+                              project_id=(project or {}).get("id"),
+                              connector_type=(project or {}).get("connector_type"))
 
         analysis_tracker = CostTracker()
         plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(slug, spec_content)
@@ -554,7 +555,8 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
         connector = OdooConnector.from_project(project)
         connector.connect()
         runner = BehaveRunner(connection=project_env(project),
-                              project_id=(project or {}).get("id"))
+                              project_id=(project or {}).get("id"),
+                              connector_type=(project or {}).get("connector_type"))
 
         # L'analyse est refaite ici, UNE SEULE FOIS pour toute la spec (partagée par tous les cas) :
         # elle alimente l'agent en matière technique (modèles, routes, champs requis) que le

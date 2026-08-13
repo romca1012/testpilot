@@ -67,7 +67,10 @@ class GenerationAgent:
                                "content": prompt_mod.build_initial_message(plan, modele, metier)})
         # Un seul catalogue pour les deux usages : ce qu'on MONTRE à l'agent (prompt) et ce
         # qu'on lui REFUSE à l'écriture (redéfinition). Cf. décision 0003.
-        shared_steps = steps_library.catalogue()
+        # Scopé au connecteur DU PROJET (Phase 1c) : sans ça, un futur 2e connecteur verrait
+        # (et se ferait bloquer par) les steps spécifiques à un autre — faux positif AmbiguousStep.
+        connector_type = (projet or {}).get("connector_type")
+        shared_steps = steps_library.catalogue(connector_type=connector_type)
         ctx = ToolContext(
             module_name=plan.module_name,
             generated_dir=config.GENERATED_DIR,

@@ -123,6 +123,13 @@ def resolve_project_id(conn, case_id: int) -> int | None:
     return (case or {}).get("project_id")
 
 
+def resolve_connector_type(conn, case_id: int) -> str | None:
+    """Le `connector_type` du PROJET du cas — que le runner passe pour scoper la bibliothèque
+    de steps (Phase 1b). `None` si le projet n'en porte pas encore (repli : bibliothèque
+    complète, comportement identique à avant cette phase)."""
+    return (project_du_cas(conn, case_id) or {}).get("connector_type")
+
+
 def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int, *,
                   triggered_by: str = "") -> None:
     """Tâche de fond : lance Behave réel, calcule + persiste le verdict à deux axes.
@@ -141,7 +148,8 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
         conn = get_initialized_db(config.DB_PATH)
         # Le runtime tape l'application DU PROJET du cas (décision 0005).
         runner = BehaveRunner(connection=resolve_connection(conn, case_id),
-                              project_id=resolve_project_id(conn, case_id))
+                              project_id=resolve_project_id(conn, case_id),
+                              connector_type=resolve_connector_type(conn, case_id))
         outcome = _execute_and_persist(conn, execution_id, case_id, module_name, runner)
         # ⚠️ Isolé du verdict déjà persisté ci-dessus (audit 2026-08-07, défaut bloquant) : un
         # plantage PENDANT la réparation ne doit JAMAIS écraser un verdict RÉEL déjà écrit —

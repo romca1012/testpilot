@@ -130,17 +130,19 @@ Quand le dry-run signale un step `undefined`, le texte Gherkin du `.feature` ne 
    libellé distinct et non ambigu.
 
 ### Règle 2 — Ne pas redéfinir les steps partagés
-Les steps de `_base_steps.py`, `_generic_steps.py`, `_background_steps.py` sont la bibliothèque
-réutilisable. `write_steps_file` **rejette** toute redéfinition (AmbiguousStep). Pour un comportement
-proche mais différent, change le libellé (ex. « je clique sur l'onglet portail "X" » plutôt que
-« je clique sur l'onglet "X" »). La liste exacte des libellés réutilisables est donnée en fin
-de prompt, section « Steps partagés disponibles » : lis-la AVANT d'écrire un step.
+La bibliothèque réutilisable est rangée en `generic/` (portable, tout connecteur) et un
+sous-dossier par connecteur (`odoo/`, etc.). `write_steps_file` **rejette** toute redéfinition
+(AmbiguousStep). Pour un comportement proche mais différent, change le libellé (ex. « je clique
+sur l'onglet portail "X" » plutôt que « je clique sur l'onglet "X" »). La liste exacte des
+libellés réutilisables est donnée **en tête de ce prompt**, dans la balise
+`<bibliotheque_de_steps>` : lis-la AVANT d'écrire un step.
 
 ### Règle 3 — Ne jamais réinventer le transport
 Un step n'ouvre jamais ses propres connexions HTTP : pas de `requests`, `urllib`, `httpx`, et
-jamais d'appel direct aux endpoints internes (`/web/dataset`, `/jsonrpc`). Utilise
-`context.odoo` (RPC : `context.odoo.env["model"].search_count([])`) ou `context.page`
-(Playwright) — eux seuls portent la session authentifiée. `write_steps_file` rejette le reste.
+jamais d'appel direct aux endpoints internes du système testé. Utilise le canal authentifié que
+le connecteur actif expose (ex. `context.odoo`, RPC : `context.odoo.env["model"].search_count([])`
+pour le connecteur Odoo — détails dans `<regles_connecteur>`) ou `context.page` (Playwright,
+portable). `write_steps_file` rejette le reste.
 
 ### Règle 4 — Une assertion doit pouvoir échouer (falsifiabilité)
 Toute assertion doit avoir un **mode d'échec réel** : si l'application se comportait mal, elle

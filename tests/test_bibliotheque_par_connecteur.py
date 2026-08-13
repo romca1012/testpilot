@@ -83,3 +83,12 @@ def test_assemble_scope_a_un_connecteur_inexistant_exclut_odoo(tmp_path):
     assert "_odoo_background_steps.py" not in fichiers
     assert "_generic_steps.py" in fichiers
     assert "_base_helpers.py" in fichiers  # toujours copié
+
+
+def test_catalogue_odoo_scope_egale_le_catalogue_sans_scope(tmp_path):
+    """Phase 1c — régression zéro sur le taux de blocage : aujourd'hui, seul Odoo existe, donc
+    scoper à "odoo" (generic/ + odoo/) doit rendre EXACTEMENT le même ensemble de labels que le
+    catalogue non scopé — aucun step perdu, aucun faux positif `AmbiguousStep` en plus."""
+    labels_scopes = {s.label for s in steps_library.catalogue(connector_type="odoo")}
+    labels_sans_scope = {s.label for s in steps_library.catalogue()}
+    assert labels_scopes == labels_sans_scope

@@ -44,6 +44,7 @@ from testpilot.store.repositories import (
     CaseRepo,
     CostRepo,
     ExecutionRepo,
+    ProjectRepo,
     RepairRepo,
     ReviewRepo,
     VersionRepo,
@@ -362,6 +363,10 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
     # Le projet du cas : il désigne l'annuaire ET les règles apprises (`0005` — un annuaire par
     # instance). Absent → la mémoire se taira, la réparation se lancera quand même.
     project_id = case.get("project_id")
+    # Scope le catalogue de steps montré à l'agent de réparation au connecteur du projet
+    # (Phase 1c) — absent (projet sans connecteur défini) ⇒ catalogue complet, comme avant.
+    connector_type = (ProjectRepo(conn).get(project_id) or {}).get("connector_type") \
+        if project_id else None
     # ⚠️ Le texte de la spec vit désormais sur la SECTION (`case_group.spec_content`, §9c,
     # 2026-08-05), plus sur la version — `VersionRepo.create` continue d'exiger le paramètre,
     # donc une tentative de réparation doit le retrouver quelque part pour le reporter sur SA
@@ -417,6 +422,7 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             # son contenu et le rendre entier — sans lui, il réécrit de mémoire et tronque.
             steps_content=version["steps_content"] or "",
             connector=connector,
+            connector_type=connector_type,
             # Le dry-run rattrape DANS la session ce qui, sinon, coûte un run réel pour rien :
             # un correctif qui ne parse plus, ou un step supprimé que le `.feature` réclame
             # encore. Mesuré au rejeu du 2026-07-17 (v12) : l'agent a retiré son step d'auth sans

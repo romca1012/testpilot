@@ -121,8 +121,36 @@ def reserved_labels(directory: Path | None = None, connector_type: str | None = 
     return frozenset(step.label for step in catalogue(directory, connector_type))
 
 
+def _origine(step: SharedStep) -> str:
+    """Premier segment du chemin source — `generic` ou le nom du connecteur (Phase 1a)."""
+    return step.source.split("/", 1)[0] if "/" in step.source else "generic"
+
+
+def _section_par_mot_cle(steps: list[SharedStep]) -> str:
+    """Un groupe de steps rendu par mot-clé Gherkin (`### Soit (`@given`)`, etc.)."""
+    # (libellé, note) — dédupliqué : une fonction à double décorateur (@when ET @then) apparaît
+    # une fois par mot-clé, mais jamais deux fois dans la même section.
+    by_keyword: dict[str, dict[str, str]] = {}
+    for step in steps:
+        by_keyword.setdefault(step.keyword, {}).setdefault(step.label, step.note)
+
+    lines: list[str] = []
+    for keyword in ("given", "when", "then", "step"):
+        entrees = sorted(by_keyword.get(keyword, {}).items())
+        if not entrees:
+            continue
+        lines.append(f"### {GHERKIN_KEYWORD[keyword]} (`@{keyword}`)")
+        for label, note in entrees:
+            lines.append(f"- {label}")
+            if note:
+                lines.append(f"  → {note}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
 def as_prompt_section(steps: list[SharedStep]) -> str:
-    """Rend le catalogue pour le prompt système, groupé par mot-clé Gherkin.
+    """Rend le catalogue pour le prompt système, groupé par ORIGINE (générique / connecteur)
+    puis par mot-clé Gherkin, chaque origine dans sa propre balise XML.
 
     Sans cette section, l'agent ne PEUT PAS réutiliser la bibliothèque : on lui demandait de
     ne pas la redéfinir sans jamais la lui montrer (décision 0003).
@@ -132,14 +160,13 @@ def as_prompt_section(steps: list[SharedStep]) -> str:
     convention raisonnable mais fausse (le libellé humain), d'où un `[name="Raison de la
     demande"]` introuvable. Le repli technique (phase B) rattrape ce cas ; cette annotation
     apprend la convention propre — sélecteur exact, donc plus fiable.
+
+    Regroupement par origine (Phase 1d, recommandation Anthropic sur les balises XML pour du
+    contenu long/de référence) : l'agent voit distinctement ce qui est portable (`generic`) de
+    ce qui appartient au connecteur actif — utile dès qu'un 2ᵉ connecteur existera.
     """
     if not steps:
         return ""
-    # (libellé, note) — dédupliqué : une fonction à double décorateur (@when ET @then) apparaît
-    # une fois par mot-clé, mais jamais deux fois dans la même section.
-    by_keyword: dict[str, dict[str, str]] = {}
-    for step in steps:
-        by_keyword.setdefault(step.keyword, {}).setdefault(step.label, step.note)
 
     lines = [
         "Ces steps EXISTENT DÉJÀ et sont chargés automatiquement. Réutilise-les en copiant le",
@@ -158,15 +185,25 @@ def as_prompt_section(steps: list[SharedStep]) -> str:
         "⚠️ **Quand un step porte une note « → … », LIS-LA** : son libellé seul ne suffit pas à",
         "deviner ce qu'il fait, et deux libellés voisins peuvent agir très différemment.",
         "",
+        "⚠️ **Avant d'écrire un nouveau step, cite (dans ton `[Thought]`) le libellé exact de",
+        "celui ou ceux du catalogue que tu comptes réutiliser** : ça oblige à le relire au lieu",
+        "de deviner, et évite d'en réinventer un qui existe déjà sous un autre nom.",
+        "",
     ]
-    for keyword in ("given", "when", "then", "step"):
-        entrees = sorted(by_keyword.get(keyword, {}).items())
-        if not entrees:
+
+    par_origine: dict[str, list[SharedStep]] = {}
+    for step in steps:
+        par_origine.setdefault(_origine(step), []).append(step)
+
+    blocs = []
+    for nom in sorted(par_origine, key=lambda n: (n != "generic", n)):
+        section = _section_par_mot_cle(par_origine[nom])
+        if not section:
             continue
-        lines.append(f"### {GHERKIN_KEYWORD[keyword]} (`@{keyword}`)")
-        for label, note in entrees:
-            lines.append(f"- {label}")
-            if note:
-                lines.append(f"  → {note}")
-        lines.append("")
-    return "\n".join(lines).rstrip()
+        if nom == "generic":
+            blocs.append(f"<steps_partages_generiques>\n\n{section}\n\n</steps_partages_generiques>")
+        else:
+            blocs.append(f'<steps_partages_connecteur nom="{nom}">\n\n{section}\n\n'
+                         f"</steps_partages_connecteur>")
+
+    return "\n".join(lines).rstrip() + "\n\n" + "\n\n".join(blocs)
