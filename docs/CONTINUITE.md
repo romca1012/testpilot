@@ -237,7 +237,7 @@ du porteur — script tracé, garde-fou d'identité, backups conservés. Référ
 | **Incrément 1 — Cœur du référentiel & exécution** | 🟡 **En cours.** **Livré** : hiérarchie Projet→Module→Cas (`0004`) + connecteur au projet (`0005`) ; séparation UX Gestion/Exécution (§8) ; historisation (`test_case_version`) ; API FastAPI + SPA Vite/Vue ; explorateur Modules→Cas. **Reste** : **exécutions nommées transverses multi-modules** (le dernier gros manque du §7), archivage, rôles & permissions (QA / lead / admin / client externe). |
 | **Incrément 2 — Fiabilisation & gouvernance du verdict** | 🟡 **En cours, largement avancé** — c'est l'essentiel du travail des 2 derniers jours, longtemps mal étiqueté « Interface ». **Livré** : garde-fou de validation humaine sur les diagnostics (`0013`) ; garde-fous **tentatives + budget** par cas (`0014`, budget porté par le gate) ; réparation automatique (`0014`) ; diagnostic sur signal du runtime (`0015`) ; critère d'adoption à deux axes (`0016`) ; suivi des coûts (`cost_ledger`, `BUDGET_PER_CASE_*`). **Reste** : calibrage des seuils (§6/§11.2) ; mode dev/utilisateur ; tableau de bord des modules « à retester » ; coûts réels Anthropic (aujourd'hui `estimated`). |
 | **Incrément 3 — Élargissement du périmètre validé** | Non commencé. Ordre fixé au brief : (1) gestion de projet type Jira, (2) charge/perf, (3) sécurité, (4) CI/CD. |
-| **Incrément 4 — Extension multi-connecteurs** | Non commencé. L'architecture est posée (`connector_type` au projet, `0005`). |
+| **Incrément 4 — Extension multi-connecteurs** | Non commencé. L'architecture est posée (`connector_type` au projet, `0005`) ; l'inventaire des points d'accroche déjà câblés (bibliothèque de steps, règles de prompt, mapping runtime) est en §2.2. |
 | **— Dette transverse, hors découpage §12** | **Mot de passe de connexion en clair** dans SQLite — bloquant avant tout déploiement client. ⚠️ Rangée « Incrément 2 » jusqu'ici : c'était faux, l'Incrément 2 du brief est la **gouvernance du verdict**, pas la sécurité. Cette dette n'appartient à aucun incrément du brief. |
 
 **Tests : 311 Python · 36 vitest · build front OK.** Tout est vert au moment de ce rapport.
@@ -306,6 +306,40 @@ Chaque décision a sa note détaillée dans `docs/decisions/`.
   l'interface promettait un multi-projet que tout run trahissait en tapant la config globale.
 - Le mot de passe est **write-only côté API** (jamais renvoyé). Stockage en clair = dette
   documentée → Incrément 2.
+
+#### Ce qui est déjà prêt pour le 2ᵉ connecteur — Phase 3 de l'audit DA (2026-08-13)
+
+Odoo reste aujourd'hui le seul connecteur : **aucune classe `SapConnector`/`WebConnector` n'existe
+et ne doit être créée à l'avance** — ce serait construire l'abstraction avant le deuxième cas
+(même principe que le versionnage d'API différé, `CONCEPTION.md` §6). Ce qui suit n'est pas du
+code à écrire : c'est l'inventaire de ce que la Phase 1 (bibliothèque de steps par connecteur,
+2026-08-13) a déjà posé comme points d'accroche, pour ne pas les re-découvrir au moment venu.
+
+- **Bibliothèque de steps** — `behave_runtime/steps_library/<connector_type>/` : `generic/`
+  (portable, tout connecteur) + un sous-dossier par connecteur (seul `odoo/` existe). Un nouveau
+  connecteur pose ses steps dans `behave_runtime/steps_library/<son_connector_type>/` ;
+  `steps_library.catalogue(connector_type=...)` fait déjà l'union `generic/` + ce dossier, sans
+  rien voir des steps d'un AUTRE connecteur (le risque de collision `AmbiguousStep` à tort que la
+  Phase 1 a fermé).
+- **Règles spécifiques dans le prompt** — `Connector.rules()` (`connectors/base.py`), vide par
+  défaut, déjà câblé dans `prompt.build_system_prompt` ET `repair_agent.build_repair_prompt`,
+  dans une balise `<regles_connecteur nom="…">`. Un nouveau connecteur n'a qu'à surcharger
+  `rules()` — aucun câblage de prompt à toucher.
+- **Nom du connecteur dans le prompt** — `prompt._nom_connecteur()` dérive le nom de la balise
+  depuis le nom de la CLASSE (`OdooConnector` → `odoo`, `SapConnector` → `sap`) : garder la
+  convention `<Nom>Connector` suffit, aucune table de correspondance à tenir à jour.
+- **Variables d'environnement du runtime** — `connectors/runtime_env._MAPPINGS` (dict indexé par
+  `connector_type`) ne porte qu'`"odoo"` aujourd'hui. Un nouveau connecteur y ajoute une entrée
+  qui mappe ses variables d'env vers les colonnes du projet (`base_url`/`database`/`username`/
+  `password` sont déjà génériques ; une colonne supplémentaire propre à un connecteur serait une
+  vraie migration, pas un ajout au dict).
+- **`project.connector_type` est déjà la source de vérité de bout en bout** (décision `0005` +
+  Phase 1b) : génération, réparation et exécution le résolvent tous depuis le projet du cas — un
+  nouveau connecteur n'a qu'à être une valeur de plus dans cette colonne, rien à réintroduire.
+- **Méthode de non-régression, si le prochain connecteur touche à ce qui est partagé** —
+  `scripts/mesure_phase1e_avant_apres.py` : rejoue un jeu de specs avant/après via le vrai
+  pipeline de génération et compare coût, itérations, réutilisation, taux de réussite. Coûte de
+  vrais appels LLM — à lancer volontairement, pas en CI.
 
 ### 2.3 Un cas = un fichier `.feature` (PAS un scénario) — `0006`
 - La granularité fine existe déjà **là où elle compte** : `scenario_result`, 2 statuts par
