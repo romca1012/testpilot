@@ -82,23 +82,43 @@ def extract_steps(source_code: str, source: str = "") -> list[SharedStep]:
     return steps
 
 
-def catalogue(directory: Path | None = None) -> list[SharedStep]:
-    """Tous les steps de la bibliothèque partagée. Vide si elle est absente (best-effort)."""
+def catalogue(directory: Path | None = None, connector_type: str | None = None) -> list[SharedStep]:
+    """Tous les steps de la bibliothèque partagée, éventuellement scopés à un connecteur.
+
+    Depuis l'audit DA du 2026-08-13, la bibliothèque est rangée en `generic/` (portable, tout
+    connecteur) + un sous-dossier par connecteur (`odoo/`, futurs `sap/`, `web/`...) — avant,
+    generic/odoo étaient mélangés à plat, sans distinction, ce qui aurait fait bloquer à tort un
+    step d'un futur connecteur au libellé proche d'un step Odoo sans rapport.
+
+    `connector_type=None` (défaut) : union complète de TOUT le dossier, récursivement — le même
+    comportement qu'avant cette séparation (repli sûr pour les appelants qui n'ont pas encore de
+    connecteur résolu, jamais plus restrictif que l'historique).
+    `connector_type="odoo"` (etc.) : seulement `generic/` + `<connector_type>/` — jamais les steps
+    d'un AUTRE connecteur.
+    """
     directory = directory or config.STEPS_LIBRARY_DIR
     if not directory.exists():
         return []
+    if connector_type is None:
+        paths = directory.rglob("*.py")
+    else:
+        paths = [
+            *((directory / "generic").rglob("*.py") if (directory / "generic").exists() else []),
+            *((directory / connector_type).rglob("*.py") if (directory / connector_type).exists() else []),
+        ]
     steps: list[SharedStep] = []
-    for path in sorted(directory.glob("*.py")):
+    for path in sorted(paths):
         try:
-            steps.extend(extract_steps(path.read_text(encoding="utf-8"), source=path.name))
+            source = str(path.relative_to(directory)).replace("\\", "/")
+            steps.extend(extract_steps(path.read_text(encoding="utf-8"), source=source))
         except OSError:
             continue
     return steps
 
 
-def reserved_labels(directory: Path | None = None) -> frozenset[str]:
+def reserved_labels(directory: Path | None = None, connector_type: str | None = None) -> frozenset[str]:
     """Libellés réservés — un step généré ne doit jamais les redéfinir (AmbiguousStep)."""
-    return frozenset(step.label for step in catalogue(directory))
+    return frozenset(step.label for step in catalogue(directory, connector_type))
 
 
 def as_prompt_section(steps: list[SharedStep]) -> str:

@@ -66,7 +66,7 @@ def test_aucun_then_de_la_bibliotheque_nest_un_corps_vide():
     réutilisent la bibliothèque.
     """
     creux = []
-    for py in sorted(_LIB.glob("*.py")):
+    for py in sorted(_LIB.rglob("*.py")):
         for nom, node in _fonctions_then(py):
             corps = [n for n in node.body if not isinstance(n, ast.Expr)
                      or not isinstance(n.value, ast.Constant)]   # ignore la docstring
@@ -82,7 +82,7 @@ def test_chaque_then_partage_assertit_ou_delegue_explicitement():
     connues. Un nouveau `@then` sans assertion visible force à se poser la question ici plutôt
     que de passer inaperçu."""
     suspects = []
-    for py in sorted(_LIB.glob("*.py")):
+    for py in sorted(_LIB.rglob("*.py")):
         for nom, node in _fonctions_then(py):
             assertit = any(isinstance(n, (ast.Assert, ast.Raise)) for n in ast.walk(node))
             if not assertit and nom not in _DELEGUENT_OU_ATTENDENT:

@@ -1,10 +1,10 @@
-"""Steps de Contexte (Background) — chargés automatiquement par Behave.
+"""Steps de Contexte (Background) spécifiques au connecteur Odoo — session RPC, garde-fous env.
 
-Ces 5 steps sont les SEULS à avoir des décorateurs Behave dans ce fichier.
-Ils ne causent jamais d'AmbiguousStep car aucun agent ne les regénère.
-Toute autre logique est dans _base_helpers.py (helpers sans décorateurs).
+Ces 4 steps sont les SEULS à avoir des décorateurs Behave dans ce fichier (le 5e du fichier
+d'origine, la déclaration de teardown, ne dépend d'aucun connecteur — il vit maintenant dans
+`../generic/_generic_steps.py`). Ils ne causent jamais d'AmbiguousStep car aucun agent ne les
+régénère.
 """
-
 from behave import given
 
 
@@ -35,9 +35,3 @@ def step_module_installed(context, module_name):
     IrModule = context.odoo.env["ir.module.module"]
     ids = IrModule.search([("name", "=", module_name), ("state", "=", "installed")])
     assert ids, f"Le module Odoo '{module_name}' n'est pas installé."
-
-
-@given('tous les enregistrements créés durant ce scénario seront supprimés '
-       'après exécution via leurs identifiants enregistrés')
-def step_declare_teardown(context):
-    pass

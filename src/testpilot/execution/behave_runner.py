@@ -41,12 +41,16 @@ class BehaveRunner:
     def __init__(self, *, runtime_dir: Path | None = None, generated_dir: Path | None = None,
                  steps_library_dir: Path | None = None, dry_timeout: int | None = None,
                  real_timeout: int | None = None, connection: dict[str, str] | None = None,
-                 project_id: int | None = None):
+                 project_id: int | None = None, connector_type: str | None = None):
         self.runtime_dir = runtime_dir or config.BEHAVE_RUNTIME_DIR
         self.generated_dir = generated_dir or config.GENERATED_DIR
         self.steps_library_dir = steps_library_dir or config.STEPS_LIBRARY_DIR
         self.dry_timeout = dry_timeout or config.BEHAVE_DRY_TIMEOUT_SECONDS
         self.real_timeout = real_timeout or config.BEHAVE_REAL_TIMEOUT_SECONDS
+        # Connecteur du projet (2026-08-13) : scope QUELS steps partagés sont copiés dans le
+        # run_dir — `generic/` + `<connector_type>/` seulement. None (défaut) = tout copier, comme
+        # avant la séparation par connecteur (repli sûr, jamais moins de steps qu'aujourd'hui).
+        self.connector_type = connector_type
         # Connexion du PROJET (variables d'env) injectée dans le sous-processus behave.
         # Vide → le harnais retombe sur la config globale (.env). Cf. connectors/runtime_env.
         self.connection = connection or {}
@@ -242,6 +246,24 @@ class BehaveRunner:
             logger.warning("[artefacts] archivage impossible vers %s — le run, lui, est intact",
                            self.artifacts_dir, exc_info=True)
 
+    def _steps_library_files(self) -> list[Path]:
+        """Fichiers `.py` de la bibliothèque partagée à copier, scopés par `self.connector_type`.
+
+        Miroir du scope de `steps_library.catalogue()` (même règle : `generic/` + le connecteur
+        actif, jamais un AUTRE connecteur) — mais avec une différence obligatoire : les helpers
+        SANS décorateur à la racine (`_base_helpers.py`, `_accent_matcher.py`) sont TOUJOURS
+        copiés, scope ou pas, car les steps de `generic/`/`<connector>/` les importent au
+        runtime (`from _base_helpers import ...`) — les exclure casserait tout run.
+        """
+        if self.connector_type is None:
+            return list(self.steps_library_dir.rglob("*.py"))
+        fichiers = list(self.steps_library_dir.glob("*.py"))  # helpers à la racine, toujours
+        for sous_dossier in ("generic", self.connector_type):
+            chemin = self.steps_library_dir / sous_dossier
+            if chemin.exists():
+                fichiers.extend(chemin.rglob("*.py"))
+        return fichiers
+
     def _assemble(self, run_dir: Path, module_name: str, feature_src: Path) -> None:
         """Recopie environment.py, le formatter, la bibliothèque de steps + les steps générés,
         et le .feature."""
@@ -259,7 +281,7 @@ class BehaveRunner:
         steps_dir.mkdir()
         (steps_dir / "__init__.py").write_text("", encoding="utf-8")
         if self.steps_library_dir.exists():
-            for lib in self.steps_library_dir.glob("*.py"):
+            for lib in self._steps_library_files():
                 shutil.copy2(lib, steps_dir / lib.name)
         gen_steps = self.generated_dir / f"{module_name}_steps.py"
         if gen_steps.exists():

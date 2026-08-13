@@ -1,17 +1,41 @@
+"""Steps spécifiques au connecteur Odoo — assertions OdooRPC et navigation portail Odoo.
 
-"""Steps Behave — assertions OdooRPC et navigation Playwright.
-
-Ce fichier contient uniquement les steps qui ne sont pas dans :
-  - _background_steps.py (5 steps Contexte communs)
-  - _generic_steps.py    (UI générique : fill, click, count, erreurs)
+Un step vit ici s'il touche `context.odoo` (RPC), une variable `ODOO_*`, ou un sélecteur DOM
+propre au web client Odoo (`.o_notification_manager`) — voir `../generic/_generic_steps.py` pour
+le critère complet et pourquoi cette séparation existe (audit DA 2026-08-13).
 """
-
 import sys
 
 from behave import given, then, when
 
-# Import à PLAT (layout d'exécution sans package features/ — cf. environment.py), comme _generic_steps.
-from _base_helpers import click_first_actionable
+# Import à PLAT (layout d'exécution sans package features/ — cf. environment.py), comme les
+# autres fichiers de la bibliothèque.
+from _base_helpers import (
+    memorize_record_count, check_count_not_increased, check_count_increased_by_one, no_duplicate,
+)
+
+
+# ── Comptage / dédoublonnage (ex-_generic_steps.py — appelaient context.odoo malgré le nom) ──
+
+@given('le nombre d\'enregistrements dans le modèle "{model}" est enregistré pour comparaison')
+def step_record_count(context, model):
+    memorize_record_count(context, model)
+
+
+@then('aucun enregistrement en double avec le champ "{field}" égal à "{value}" '
+      'n\'existe dans le modèle "{model}"')
+def step_no_dup(context, field, value, model):
+    no_duplicate(context.odoo.env, model, field, value)
+
+
+@then('le nombre total d\'enregistrements dans le modèle "{model}" n\'a pas augmenté')
+def step_count_not_inc(context, model):
+    check_count_not_increased(context, model)
+
+
+@then('le nombre total d\'enregistrements dans le modèle "{model}" augmente de 1')
+def step_count_increased_by_one(context, model):
+    check_count_increased_by_one(context, model)
 
 
 # ── Nettoyage de données de test ─────────────────────────────────────────────
@@ -167,8 +191,8 @@ def step_no_test_records(context, prefix, model):
 # séquences, mail.message bougent à chaque action). Le `pass` n'était pas un oubli, c'était la
 # seule façon de faire « passer » une promesse impossible.
 #
-# Le besoin réel est couvert par les steps CIBLÉS ci-dessous et dans _generic_steps, qui eux
-# vérifient vraiment, modèle par modèle :
+# Le besoin réel est couvert par les steps CIBLÉS ci-dessus et dans generic/_generic_steps.py,
+# qui eux vérifient vraiment, modèle par modèle :
 #   - « le nombre total d'enregistrements dans le modèle "{model}" n'a pas augmenté »
 #   - « aucun enregistrement partiel avec le champ "{field}" vide … »
 #   - « aucun enregistrement en double avec le champ "{field}" égal à "{value}" … »
@@ -183,7 +207,7 @@ def step_no_partial_record(context, field, model):
     )
 
 
-# ── Navigation Playwright — backend ──────────────────────────────────────────
+# ── Navigation Playwright — backend Odoo ──────────────────────────────────────
 
 @given('je navigue vers le menu Odoo "{menu_path}"')
 @when('je navigue vers le menu Odoo "{menu_path}"')
@@ -222,58 +246,6 @@ def step_login_portal(context):
     """CONNECTE réellement le NAVIGATEUR (Playwright) et TERMINE sur l'accueil du portail (context.odoo_url), PAS sur le catalogue : pour cliquer un onglet de service (ex. « Ordinateurs », qui vit sur /myservices), NAVIGUE d'abord vers sa page avec « je navigue vers l'URL du portail "…" » — sinon le clic expire, l'onglet n'est pas là où le step d'auth t'a déposé (0020). Indispensable AVANT toute navigation sur une page du portail, sinon la session est anonyme et la page ne se rend pas. NE RÉIMPLÉMENTE JAMAIS l'authentification : le champ `input[name='login']` existe mais n'est PAS visible, un `fill()` nu expire au bout de 30 s — ce step le sait (`state="attached"` + `force=True`). Réutilise-le, ne le recopie pas."""
     _playwright_login(context)
     context.page.goto(context.odoo_url, wait_until="domcontentloaded")
-
-
-@when('j\'accède à la section "{section_name}" du portail')
-@given('j\'accède à la section "{section_name}" du portail')
-def step_access_portal_section(context, section_name):
-    from playwright.sync_api import TimeoutError as PlaywrightTimeout
-    try:
-        context.page.get_by_text(section_name, exact=False).first.click(timeout=8000)
-    except PlaywrightTimeout:
-        raise AssertionError(
-            f"PRÉREQUIS MANQUANT : la section '{section_name}' est absente de {context.page.url}. "
-            "Vérifiez que des produits avec portal_active=True et la catégorie correspondante "
-            "existent dans Odoo."
-        )
-
-
-# ── Navigation portail — steps génériques ────────────────────────────────────
-
-_PRODUCT_PATHS = ("/description/", "/product/", "/detail/", "/formulaire-applicatif/")
-
-
-@given('je clique sur l\'onglet "{name}"')
-@when('je clique sur l\'onglet "{name}"')
-def step_click_portal_onglet(context, name):
-    click_first_actionable(context.page, [
-        f".nav-link:has-text('{name}')", f".nav-item a:has-text('{name}')",
-        f"[role='tab']:has-text('{name}')", f"li a:has-text('{name}')",
-        f"a:has-text('{name}')", f"button:has-text('{name}')",
-    ], quoi=f"Onglet '{name}'")
-
-
-@when('je sélectionne le produit "{name}" dans la liste')
-def step_select_product_in_list(context, name):
-    click_first_actionable(context.page,
-        [f"a[href*='{p}']:has-text('{name}')" for p in _PRODUCT_PATHS],
-        quoi=f"Produit '{name}'")
-
-
-@when('je sélectionne le produit dans la liste contenant "{partial}"')
-def step_select_product_partial(context, partial):
-    # `:has-text` fait le « contient » (sous-chaîne, insensible à la casse) — plus tolérant que
-    # l'ancien `partial in inner_text`, et sans course au rendu.
-    click_first_actionable(context.page,
-        [f"a[href*='{p}']:has-text('{partial}')" for p in _PRODUCT_PATHS],
-        quoi=f"Produit contenant '{partial}'")
-
-
-@when('je clique sur le bouton "{label}" avec accessoires')
-def step_click_button_with_accessoires(context, label):
-    click_first_actionable(context.page,
-        [f".btn-{label}", f":is(button, a):has-text('{label}')"],
-        quoi=f"Bouton '{label}' (accessoires)")
 
 
 @then('une notification d\'erreur de validation est affichée dans l\'interface Odoo')
