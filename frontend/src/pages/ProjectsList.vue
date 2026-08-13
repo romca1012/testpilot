@@ -262,7 +262,7 @@ onMounted(async () => { await load(); await loadExplorations() })
 </script>
 
 <template>
-  <div class="space-y-8">
+  <div class="space-y-8 p-6 md:p-8">
     <header class="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 class="text-2xl font-semibold tracking-tight">Projets</h1>

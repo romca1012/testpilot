@@ -51,7 +51,7 @@ const groupes = computed(() => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl p-6">
+  <div class="mx-auto max-w-4xl p-6 md:p-8">
     <RouterLink to="/" class="text-sm text-primary hover:underline">← Retour</RouterLink>
     <h1 class="mt-3 text-xl font-semibold">Bibliothèque de steps partagés</h1>
     <p class="mt-1 text-sm text-muted-foreground">
