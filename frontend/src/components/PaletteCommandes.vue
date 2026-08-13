@@ -15,6 +15,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePageCas } from '../lib/donnees'
+import { verrouillerScroll, deverrouillerScroll } from '../lib/scrollLock'
 
 const route = useRoute()
 const router = useRouter()
@@ -77,9 +78,10 @@ function ouvrir() {
   ouverte.value = true
   requete.value = ''
   index.value = 0
+  verrouillerScroll()
   nextTick(() => champ.value?.focus())
 }
-function fermer() { ouverte.value = false }
+function fermer() { ouverte.value = false; deverrouillerScroll() }
 
 function executer(e?: Entree) {
   const cible = e || resultats.value[index.value]
@@ -111,7 +113,7 @@ defineExpose({ ouvrir })
 <template>
   <!-- ⚠️ La palette ne se rend QUE sous un projet : ses commandes ont toutes besoin d'un `pid`,
        et les proposer hors contexte mènerait à des liens cassés. -->
-  <div v-if="ouverte && pid" class="fixed inset-0 z-50 grid place-items-start justify-center bg-black/50 p-4 pt-[12vh]"
+  <div v-if="ouverte && pid" class="fixed inset-0 z-50 grid place-items-start justify-center bg-overlay/80 p-4 pt-[12vh]"
        @click.self="fermer">
     <div class="w-full max-w-xl overflow-hidden rounded-xl border border-border bg-surface-overlay shadow-2xl"
          role="dialog" aria-modal="true" aria-label="Palette de commandes">
@@ -121,7 +123,7 @@ defineExpose({ ouvrir })
                placeholder="Aller à… ou chercher un cas de test"
                aria-label="Rechercher une commande ou un cas de test"
                class="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/70" />
-        <kbd class="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Échap</kbd>
+        <kbd class="shrink-0 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground">Échap</kbd>
       </div>
 
       <ul class="max-h-80 overflow-y-auto py-1">
@@ -139,7 +141,7 @@ defineExpose({ ouvrir })
       </ul>
 
       <!-- Les raccourcis s'affichent ICI : c'est en les voyant qu'on les apprend. -->
-      <div class="flex items-center gap-4 border-t border-border px-4 py-2 text-[11px] text-muted-foreground">
+      <div class="flex items-center gap-4 border-t border-border px-4 py-2 text-xs text-muted-foreground">
         <span><kbd class="rounded border border-border px-1">↑</kbd> <kbd class="rounded border border-border px-1">↓</kbd> naviguer</span>
         <span><kbd class="rounded border border-border px-1">Entrée</kbd> ouvrir</span>
         <span class="flex-1"></span>
