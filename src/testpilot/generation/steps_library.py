@@ -18,8 +18,11 @@ Le parseur Python, lui, fusionne ces littéraux : l'AST rend le libellé entier.
 from __future__ import annotations
 
 import ast
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+import parse as parse_lib  # dépendance transitive de behave — motifs `{champ}` des libellés.
 
 from testpilot import config
 
@@ -207,3 +210,96 @@ def as_prompt_section(steps: list[SharedStep]) -> str:
                          f"</steps_partages_connecteur>")
 
     return "\n".join(lines).rstrip() + "\n\n" + "\n\n".join(blocs)
+
+
+# ── Script effectif consultable (Phase 2, audit DA 2026-08-13) ─────────────────────────────────
+# Ce qu'un cas EXÉCUTE réellement dépasse presque toujours son `steps_content` propre : la
+# plupart de ses steps viennent de la bibliothèque partagée, chargée par Behave mais invisible
+# dans l'onglet Script. Les deux fonctions ci-dessous résolvent, PUREMENT à partir du texte du
+# `.feature` et du catalogue, quels steps partagés sont réellement en jeu et ce qu'ils font —
+# sans dépendre de la base ni d'un run réel.
+
+_GHERKIN_MOTS_CLES = ("Soit", "Quand", "Alors", "Et", "Mais")
+_LIGNE_GHERKIN = re.compile(r"^\s*(?:" + "|".join(_GHERKIN_MOTS_CLES) + r")\s+(.+?)\s*$")
+
+
+def _lignes_gherkin(feature_content: str) -> list[str]:
+    """Le texte de chaque step du `.feature`, keyword Gherkin (fr) retiré."""
+    return [m.group(1) for ligne in feature_content.splitlines()
+            if (m := _LIGNE_GHERKIN.match(ligne))]
+
+
+def match_referenced(feature_content: str, catalogue: list[SharedStep]) -> list[SharedStep]:
+    """Les steps du CATALOGUE que ce `.feature` référence réellement.
+
+    Comparaison par motif (`parse.compile(label).parse(ligne)`), pas par égalité de texte : un
+    même libellé de catalogue (`je renseigne le champ "{field}" avec la valeur "{value}"`)
+    couvre toutes ses instanciations concrètes dans le `.feature`, jamais littéralement égales.
+
+    Un step qui ne matche AUCUNE ligne n'est simplement pas dans le résultat — ce n'est pas une
+    erreur, la plupart du catalogue n'est jamais utilisée par un cas donné.
+    """
+    if not feature_content or not catalogue:
+        return []
+    # Précompilé une seule fois par step de catalogue, pas par (ligne × step) : le catalogue
+    # peut porter plus de cent entrées, le refaire à chaque ligne serait un travail jeté.
+    parseurs = [(step, parse_lib.compile(step.label)) for step in catalogue]
+    trouves: dict[tuple[str, str], SharedStep] = {}
+    for ligne in _lignes_gherkin(feature_content):
+        for step, parseur in parseurs:
+            cle = (step.keyword, step.label)
+            if cle in trouves:
+                continue
+            try:
+                if parseur.parse(ligne) is not None:
+                    trouves[cle] = step
+            except (ValueError, IndexError):
+                continue
+    return sorted(trouves.values(), key=lambda s: (s.source, s.label))
+
+
+def load_step_source(steps: list[SharedStep], directory: Path | None = None) -> dict[str, str]:
+    """Code complet (décorateur + corps) de chaque step, RELU depuis son fichier source.
+
+    Jamais reconstruit à partir du `SharedStep` (qui ne porte que keyword+label+note) : la
+    fonction réelle sur disque est la seule source de vérité pour ce qu'un step FAIT.
+
+    Clé : le libellé (unique dans un catalogue — `write_steps_file` l'impose déjà via
+    `AmbiguousStep`, cf. décision 0003). Un step demandé mais introuvable sur disque (fichier
+    source disparu entre la génération et la consultation) est simplement absent du résultat.
+    """
+    directory = directory or config.STEPS_LIBRARY_DIR
+    par_fichier: dict[str, list[SharedStep]] = {}
+    for step in steps:
+        if step.source:
+            par_fichier.setdefault(step.source, []).append(step)
+
+    code: dict[str, str] = {}
+    for source, groupe in par_fichier.items():
+        try:
+            texte = (directory / source).read_text(encoding="utf-8")
+            tree = ast.parse(texte)
+        except (OSError, SyntaxError):
+            continue
+        lignes = texte.splitlines(keepends=True)
+        labels_attendus = {s.label for s in groupe}
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for deco in node.decorator_list:
+                if not isinstance(deco, ast.Call) or not deco.args:
+                    continue
+                if _decorator_name(deco.func).lower() not in _DECORATORS:
+                    continue
+                arg = deco.args[0]
+                if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
+                    continue
+                label = arg.value.strip()
+                if label not in labels_attendus or label in code:
+                    continue
+                # Le décorateur précède `def` dans le fichier mais PAS dans `node.lineno`
+                # (toujours la ligne du `def`, cf. doc `ast`) : sans ce recalcul, le code
+                # "complet" perdrait le `@given(...)`/`@when(...)` qui dit ce qui déclenche le step.
+                debut = min([d.lineno for d in node.decorator_list] + [node.lineno])
+                code[label] = "".join(lignes[debut - 1:node.end_lineno])
+    return code

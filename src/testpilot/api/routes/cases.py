@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from testpilot import config
 from testpilot.api import erreurs, access, schemas
 from testpilot.api.deps import get_conn
-from testpilot.api.services import generation_service, run_service
+from testpilot.api.services import generation_service, run_service, script_service
 from testpilot.generation import assertion_lint, domain_model, repair_diff, smoke_check
 from testpilot.store.repositories import (
     CaseRepo,
@@ -319,6 +319,26 @@ def get_case(case_id: int, conn=Depends(get_conn)):
         executions=executions,
         gate=gate,
     )
+
+
+@router.get("/{case_id}/versions/{version_id}/script-effectif", response_model=schemas.ScriptEffectifOut,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "case_id", access.project_id_depuis_case))])
+def get_script_effectif(case_id: int, version_id: int, conn=Depends(get_conn)):
+    """Le script COMPLET réellement exécuté par cette version : `steps_content` propre au cas +
+    le code des steps partagés que son `.feature` référence (Phase 2, script consultable).
+
+    Sans cet endpoint, la bibliothèque partagée reste invisible depuis l'écran — la plupart de ce
+    qu'un test exécute n'apparaîtrait jamais nulle part côté lecture.
+    """
+    if CaseRepo(conn).get(case_id) is None:
+        raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
+    version = VersionRepo(conn).get(version_id)
+    if version is None or version.get("test_case_id") != case_id:
+        raise HTTPException(status_code=404,
+                            detail=f"version {version_id} introuvable pour le cas {case_id}")
+    return schemas.ScriptEffectifOut(
+        **script_service.resoudre_script_effectif(conn, case_id=case_id, version_id=version_id))
 
 
 # Les trois métadonnées de lecture et leur vocabulaire — déclarés UNE fois, ici, plutôt que

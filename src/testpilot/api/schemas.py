@@ -321,6 +321,27 @@ class ScriptEditIn(BaseModel):
     editor: str = "ui"
 
 
+class SharedStepOut(BaseModel):
+    """Un step de la bibliothèque partagée référencé par le `.feature` de la version consultée."""
+    keyword: str
+    label: str
+    source: str = ""
+    note: str = ""
+    code: str = ""
+
+
+class ScriptEffectifOut(BaseModel):
+    """Script COMPLET réellement exécuté par une version — `steps_content` propre au cas +
+    steps partagés qu'elle référence, résolus jusqu'à leur code (Phase 2, script consultable).
+
+    `feature_content`/`steps_content` sont recopiés tels quels (mêmes valeurs que `VersionOut`) :
+    l'écran garde son affichage actuel par défaut, ce DTO n'ajoute qu'une vue alternative."""
+    feature_content: str = ""
+    steps_content: str = ""
+    shared_steps: list[SharedStepOut] = []
+    steps_effectif: str = ""
+
+
 class AddCaseIn(BaseModel):
     """Ajout d'un cas = fournir une SPEC (jamais une coquille vide — décision 0006).
 

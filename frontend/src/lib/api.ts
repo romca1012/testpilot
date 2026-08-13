@@ -298,6 +298,11 @@ export const api = {
       method: 'PUT', body: JSON.stringify({ case_ids: caseIds }),
     }),
   getCase: (id: number | string) => request<CaseDetail>(`/api/cases/${id}`),
+  // Script COMPLET réellement exécuté (Phase 2) : `steps_content` propre au cas + le code des
+  // steps partagés que son `.feature` référence — invisible autrement, la bibliothèque partagée
+  // n'apparaît nulle part dans `steps_content`.
+  getScriptEffectif: (caseId: number | string, versionId: number | string) =>
+    request<ScriptEffectifOut>(`/api/cases/${caseId}/versions/${versionId}/script-effectif`),
   // Édition du contenu MÉTIER — un champ versionné modifié crée une NOUVELLE version (0022 n°10),
   // et le gate rebloque l'exécution jusqu'à relecture. `refs`/`estimate` ne versionnent pas.
   updateCaseMetier: (id: number | string, body: CaseMetierIn) =>
@@ -587,6 +592,17 @@ export interface ExecutionSummary {
 export interface CaseDetail {
   case: CaseSummary; project: Ref | null; module: Ref | null; current_version_id: number | null
   versions: VersionOut[]; reviews: ReviewOut[]; executions: ExecutionSummary[]; gate: GateOut | null
+}
+// Un step de la bibliothèque partagée référencé par le `.feature` d'une version (Phase 2, script
+// consultable) — `code` est le décorateur + corps complet, relu depuis son fichier source.
+export interface SharedStepOut {
+  keyword: string; label: string; source: string; note: string; code: string
+}
+export interface ScriptEffectifOut {
+  feature_content: string; steps_content: string
+  shared_steps: SharedStepOut[]
+  // `steps_content` + le code des steps partagés résolus, groupé par fichier d'origine.
+  steps_effectif: string
 }
 export interface ScenarioResultOut {
   scenario_name: string; execution_status: string; functional_status: string

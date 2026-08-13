@@ -8,7 +8,7 @@
 // retirés (jamais de Given/When/Then affiché, consigne du porteur). Provisoire, signalé comme tel.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, roleSuffisant, type CaseDetail, type ScenarioResultOut } from '../lib/api'
+import { api, roleSuffisant, type CaseDetail, type ScenarioResultOut, type ScriptEffectifOut } from '../lib/api'
 import { ETAT_ORDER, TYPE_ORDER, etatView, priorityView, typeView } from '../lib/status'
 import { useSession } from '../lib/useSession'
 import CaseHeader from '../components/case/CaseHeader.vue'
@@ -116,6 +116,48 @@ function revenirVersionCourante() {
   delete q.version
   router.replace({ query: q })
 }
+
+// ── Script COMPLET (Phase 2, 2026-08-13) — bibliothèque partagée résolue, lecture seule.
+// « Fichier du cas » (comportement d'avant cette phase) reste la valeur par défaut : cette vue
+// n'ajoute qu'une consultation alternative, elle ne remplace rien. Mis en cache PAR VERSION —
+// changer de version affichée ne doit pas resservir le script d'une autre.
+const scriptView = ref<'propre' | 'complet'>('propre')
+const scriptEffectifCache = ref<Map<number, ScriptEffectifOut>>(new Map())
+const loadingScriptEffectif = ref(false)
+const scriptEffectifError = ref('')
+const scriptEffectifActuel = computed(() => {
+  const vid = versionAffichee.value?.id
+  return vid ? scriptEffectifCache.value.get(vid) || null : null
+})
+
+async function chargerScriptEffectif(versionId: number) {
+  if (scriptEffectifCache.value.has(versionId)) return
+  loadingScriptEffectif.value = true
+  scriptEffectifError.value = ''
+  try {
+    const data = await api.getScriptEffectif(caseId.value, versionId)
+    scriptEffectifCache.value.set(versionId, data)
+  } catch (e: any) {
+    scriptEffectifError.value = e?.message || 'Impossible de charger le script complet.'
+  } finally {
+    loadingScriptEffectif.value = false
+  }
+}
+function afficherScriptComplet() {
+  scriptView.value = 'complet'
+  const vid = versionAffichee.value?.id
+  if (vid) chargerScriptEffectif(vid)
+}
+function afficherFichierDuCas() {
+  scriptView.value = 'propre'
+}
+// La version consultée peut changer (sélecteur ou lien Historique) SANS repasser par
+// `selectionnerVersion` en tant que geste explicite « je veux le script complet » — sans ce
+// watcher, rester en vue « Script complet » en changeant de version afficherait un cache vide
+// (fond blanc) plutôt que de charger le script de la nouvelle version.
+watch(versionAffichee, (v) => {
+  if (scriptView.value === 'complet' && v?.id) chargerScriptEffectif(v.id)
+})
 
 function startEditScript() {
   scriptDraft.value = {
@@ -597,8 +639,31 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
                     @click="startEditScript">Modifier</button>
           </div>
           <CodeView :content="versionAffichee?.feature_content || ''" lang="gherkin" />
-          <h3 class="text-sm font-semibold">Python (steps)</h3>
-          <CodeView :content="versionAffichee?.steps_content || ''" lang="python" />
+
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <h3 class="text-sm font-semibold">Python (steps)</h3>
+            <div class="inline-flex rounded-md border border-border overflow-hidden text-xs">
+              <button type="button"
+                      :class="['px-2 py-1', scriptView === 'propre' ? 'bg-primary text-primary-foreground' : 'hover:bg-surface']"
+                      @click="afficherFichierDuCas">Fichier du cas</button>
+              <button type="button"
+                      :class="['px-2 py-1', scriptView === 'complet' ? 'bg-primary text-primary-foreground' : 'hover:bg-surface']"
+                      @click="afficherScriptComplet">Script complet</button>
+            </div>
+          </div>
+          <p v-if="scriptView === 'complet'"
+             class="rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
+            Lecture seule — les steps partagés se modifient dans la bibliothèque, pas depuis ce cas.
+          </p>
+          <p v-if="scriptView === 'complet' && loadingScriptEffectif" class="text-sm text-muted-foreground">
+            Chargement du script complet…
+          </p>
+          <p v-else-if="scriptView === 'complet' && scriptEffectifError" class="text-sm text-destructive">
+            {{ scriptEffectifError }}
+          </p>
+          <CodeView v-else
+                    :content="scriptView === 'complet' ? (scriptEffectifActuel?.steps_effectif ?? '') : (versionAffichee?.steps_content || '')"
+                    lang="python" />
         </template>
         <template v-else>
           <div>
