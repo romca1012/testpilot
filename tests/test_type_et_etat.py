@@ -18,6 +18,7 @@ texte libre, pour qu'un administrateur puisse l'étendre sans migration).
 import pytest
 from fastapi.testclient import TestClient
 
+from testpilot import config
 from testpilot.api.app import app
 from testpilot.api.deps import get_conn
 from testpilot.store.db import get_initialized_db
@@ -25,7 +26,13 @@ from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo, Vers
 
 
 @pytest.fixture
-def conn(tmp_path):
+def conn(tmp_path, monkeypatch):
+    # `config.DB_PATH`/`DATA_DIR`, pas seulement `get_conn` en dépendance : un chemin de code qui
+    # rouvre sa propre connexion via `get_initialized_db(config.DB_PATH)` (ex. le secours de
+    # `run_service.py`) contournerait sinon `app.dependency_overrides[get_conn]` et toucherait la
+    # VRAIE base du poste — trouvé en pratique (2026-08-28), via le garde-fou de `conftest.py`.
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "etat.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(tmp_path / "etat.db")
     yield c
     c.close()

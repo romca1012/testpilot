@@ -18,6 +18,7 @@ et sa campagne a son propre fichier (`test_mode_de_campagne.py`).
 import pytest
 from fastapi.testclient import TestClient
 
+from testpilot import config
 from testpilot.api.app import app
 from testpilot.api.deps import get_conn
 from testpilot.store.db import get_initialized_db
@@ -26,7 +27,14 @@ from testpilot.verdict.status import MODE_MANUELLE, STATUTS_MANUELS
 
 
 @pytest.fixture
-def conn(tmp_path):
+def conn(tmp_path, monkeypatch):
+    # `config.DB_PATH`/`DATA_DIR`, pas seulement `get_conn` en dépendance : un chemin de code qui
+    # rouvre sa propre connexion via `get_initialized_db(config.DB_PATH)` (ex. le secours de
+    # `run_service.py`) contournerait sinon `app.dependency_overrides[get_conn]` et toucherait la
+    # VRAIE base du poste — trouvé en pratique (2026-08-28) sur ce fichier, via le garde-fou de
+    # `conftest.py`.
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "saisie.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(tmp_path / "saisie.db")
     yield c
     c.close()
