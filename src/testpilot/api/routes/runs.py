@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import attachment_service, campaign_service
+from testpilot.guardrails import concurrency
 from testpilot.store.repositories import CaseRepo, ProjectRepo, ResultRepo, RunRepo
 from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE, MODES_EXECUTION, STATUTS_MANUELS
 
@@ -93,7 +94,10 @@ def launch_run(run_id: int, background: BackgroundTasks, request: Request, conn=
                                                   triggered_by=access.utilisateur_de(request))
     except campaign_service.CampaignError as err:
         raise erreurs.depuis_service(err.code, err.detail)
-    background.add_task(campaign_service.run_campaign, **params)
+    # Plafonné (guardrails/concurrency.py) : chaque cas de la campagne ouvre un navigateur —
+    # la tâche de fond attend son tour avant de jouer la campagne EN SÉQUENCE.
+    background.add_task(concurrency.run_gated, campaign_service.run_campaign,
+                        queue_label=f"campaign:{params['run_id']}", **params)
     repo = RunRepo(conn)
     return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
 

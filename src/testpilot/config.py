@@ -54,6 +54,14 @@ MODEL_REPAIR = os.getenv("TESTPILOT_MODEL_REPAIR", "claude-haiku-4-5-20251001")
 MAX_ITERATIONS = int(os.getenv("TESTPILOT_MAX_ITERATIONS", "25"))
 REPAIR_STALL_LIMIT = int(os.getenv("TESTPILOT_REPAIR_STALL_LIMIT", "3"))
 
+# Plafond de tâches de fond RÉELLEMENT actives en même temps (génération, exécution Playwright,
+# exploration) — `guardrails/concurrency.py`. Chaque tâche est un navigateur Playwright et/ou des
+# appels à l'API Anthropic : dix clics simultanés sur « Lancer » sans ce plafond démarreraient dix
+# navigateurs et dix appels LLM en parallèle, sans file ni visibilité (constaté, aucune limite
+# n'existait avant ce garde-fou). 3 par défaut — prudent sur un poste/serveur partagé ; à ajuster
+# selon la machine qui héberge TestPilot, pas selon le nombre d'utilisateurs.
+MAX_CONCURRENT_JOBS = int(os.getenv("TESTPILOT_MAX_CONCURRENT_JOBS", "3"))
+
 # Plafond d'UN run d'agent (génération, analyse) — recalibré le 2026-07-17 sur mesure réelle.
 # Il valait $2,00 ≈ 1,85 EUR : presque le DOUBLE du §9 à lui seul, et **16,6× le coût réel**.
 #
