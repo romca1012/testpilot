@@ -122,6 +122,33 @@ def test_joindre_une_capture_puis_la_retrouver_et_la_telecharger(client, campagn
     assert fichier.content == PNG
 
 
+def test_un_admin_retire_la_preuve_sans_supprimer_le_resultat(client, campagne, conn):
+    """La suppression porte sur la preuve ciblée ; le verdict et son historique restent intacts."""
+    rid = _resultat(client, campagne)
+    piece = _joindre(client, rid, "capture-ecran.png").json()[0]
+    fichier = attachment_service.dossier(rid) / ResultRepo(conn).piece_jointe(
+        rid, piece["id"])["stored_name"]
+
+    retrait = client.delete(f"/api/results/{rid}/attachments/{piece['id']}")
+
+    assert retrait.status_code == 204
+    assert not fichier.exists()
+    historique = client.get(
+        f"/api/runs/{campagne['run']}/cases/{campagne['cas']}/results").json()
+    assert historique[0]["id"] == rid
+    assert historique[0]["attachments"] == []
+
+
+def test_retirer_la_piece_d_un_AUTRE_resultat_est_introuvable(client, campagne):
+    mien = _resultat(client, campagne)
+    autre = _resultat(client, campagne, cas="autre")
+    piece = _joindre(client, autre, "confidentiel.png").json()[0]
+
+    retrait = client.delete(f"/api/results/{mien}/attachments/{piece['id']}")
+
+    assert retrait.status_code == 404
+
+
 def test_plusieurs_fichiers_en_UNE_fois(client, campagne):
     """Documenter un parcours demande souvent plusieurs captures : les envoyer une par une
     multiplierait les occasions d'échouer à moitié."""

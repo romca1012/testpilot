@@ -7,9 +7,10 @@
  * vers un nom de fichier — c'est la garde que le backend applique, l'écran ne doit rien inventer
  * qui la contourne.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ResultHistory from '../components/ResultHistory.vue'
+import { api } from '../lib/api'
 
 const RESULTAT_SANS_PIECE = {
   id: 1, mode: 'automatique', statut: 'passed', statut_manuel: '', comment: '',
@@ -59,5 +60,27 @@ describe('ResultHistory — les pièces jointes d\'un résultat', () => {
     // anciennes ne portent pas `attachments`, et `r.attachments.length` (sans `?.`) y plantait.
     const { attachments, ...sansChamp } = RESULTAT_SANS_PIECE
     expect(() => mount(ResultHistory, { props: { results: [sansChamp as any] } })).not.toThrow()
+  })
+
+  it("réserve le retrait des preuves à l'administrateur", () => {
+    const lecture = mount(ResultHistory, { props: { results: [RESULTAT_AVEC_PIECES] } })
+    const admin = mount(ResultHistory, {
+      props: { results: [RESULTAT_AVEC_PIECES], canDeleteAttachments: true },
+    })
+
+    expect(lecture.find('button[aria-label^="Retirer la pièce jointe"]').exists()).toBe(false)
+    expect(admin.findAll('button[aria-label^="Retirer la pièce jointe"]')).toHaveLength(2)
+  })
+
+  it('confirme le retrait, appelle la bonne ressource et demande le rechargement', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true)
+    const supprimer = vi.spyOn(api, 'deleteAttachment').mockResolvedValueOnce(undefined)
+    const w = mount(ResultHistory, {
+      props: { results: [RESULTAT_AVEC_PIECES], canDeleteAttachments: true },
+    })
+
+    await w.find('button[aria-label="Retirer la pièce jointe capture-écran.png"]').trigger('click')
+    await vi.waitFor(() => expect(supprimer).toHaveBeenCalledWith(2, 5))
+    expect(w.emitted('attachment-removed')).toHaveLength(1)
   })
 })

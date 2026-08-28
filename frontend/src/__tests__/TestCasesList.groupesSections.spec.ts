@@ -28,11 +28,13 @@ const listCases = vi.fn()
 const listGroups = vi.fn()
 
 vi.mock('../lib/api', () => ({
+  roleSuffisant: () => true,
   api: {
     listModules: (...a: any[]) => listModules(...a),
     listCases: (...a: any[]) => listCases(...a),
     listGroups: (...a: any[]) => listGroups(...a),
     renameModule: vi.fn(),
+    deleteGroup: vi.fn(),
   },
 }))
 

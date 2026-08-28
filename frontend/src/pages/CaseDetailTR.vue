@@ -11,6 +11,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api, roleSuffisant, type CaseDetail, type ScenarioResultOut, type ScriptEffectifOut } from '../lib/api'
 import { ETAT_ORDER, TYPE_ORDER, etatView, priorityView, typeView } from '../lib/status'
 import { useSession } from '../lib/useSession'
+import { useProjects } from '../lib/useProjects'
 import CaseHeader from '../components/case/CaseHeader.vue'
 import TestsResultsTab from '../components/case/TestsResultsTab.vue'
 import DefectsTab from '../components/case/DefectsTab.vue'
@@ -85,7 +86,11 @@ const hasGherkin = computed(() => !!(currentVersion.value?.feature_content || ''
 
 // ── Onglet Script (2026-08-07) — lecture pour tous, édition réservée au rôle Dev ──────────────
 const { session } = useSession()
-const peutEditerScript = computed(() => roleSuffisant(session.value?.role || '', 'dev'))
+const { projectById } = useProjects()
+const roleProjet = computed(() => projectById(pid.value)?.effective_role || session.value?.role || '')
+const peutModifier = computed(() => roleSuffisant(roleProjet.value, 'testeur'))
+const peutEditerScript = computed(() => roleSuffisant(roleProjet.value, 'dev'))
+const peutSupprimer = computed(() => roleSuffisant(roleProjet.value, 'admin'))
 const editingScript = ref(false)
 const scriptDraft = ref({ feature: '', steps: '' })
 const savingScript = ref(false)
@@ -380,7 +385,8 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
     <!-- La sous-navigation (Détails / Tests & Résultats / …) vit dans la barre latérale du shell,
          sous « Cas de test » — ici on ne rend que le CONTENU de l'onglet actif. -->
     <div class="min-w-0 p-6 md:p-8 max-w-5xl">
-      <CaseHeader :c="c" :can-automate="!hasGherkin" :automating="automating"
+      <CaseHeader :c="c" :can-edit="peutModifier" :can-delete="peutSupprimer"
+                  :can-automate="peutEditerScript && !hasGherkin" :automating="automating"
                   :prev-id="prevId" :next-id="nextId"
                   @back="backToList" @edit="startEdit" @delete="deleteCase" @automate="automate" @go="goCase" />
 
@@ -396,7 +402,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
               Type
               <span class="cursor-help text-subtle-foreground" :title="typeView(c.type).hint">ⓘ</span>
             </div>
-            <select :value="c.type" :disabled="savingMeta"
+            <select :value="c.type" :disabled="savingMeta || !peutModifier"
                     @change="onMeta({ type: ($event.target as HTMLSelectElement).value })"
                     class="mt-0.5 -ml-1 bg-transparent rounded px-1 py-0.5 hover:bg-accent/40 focus:bg-surface-raised focus:border-primary border border-transparent outline-none cursor-pointer">
               <option v-for="code in TYPE_ORDER" :key="code" :value="code">{{ typeView(code).label }}</option>
@@ -408,7 +414,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
               <span class="cursor-help text-subtle-foreground"
                     :title="etatView(c.etat).hint + ' Il décrit l\'avancement de la RÉDACTION du cas, jamais le résultat de ses exécutions.'">ⓘ</span>
             </div>
-            <select :value="c.etat" :disabled="savingMeta"
+            <select :value="c.etat" :disabled="savingMeta || !peutModifier"
                     @change="onMeta({ etat: ($event.target as HTMLSelectElement).value })"
                     class="mt-0.5 -ml-1 bg-transparent rounded px-1 py-0.5 hover:bg-accent/40 focus:bg-surface-raised focus:border-primary border border-transparent outline-none cursor-pointer">
               <option v-for="code in ETAT_ORDER" :key="code" :value="code">{{ etatView(code).label }}</option>
@@ -419,7 +425,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
               Priorité
               <span class="cursor-help text-subtle-foreground" :title="priorityHint">ⓘ</span>
             </div>
-            <select :value="c.priority" :disabled="savingMeta"
+            <select :value="c.priority" :disabled="savingMeta || !peutModifier"
                     @change="onMeta({ priority: ($event.target as HTMLSelectElement).value })"
                     class="mt-0.5 -ml-1 bg-transparent rounded px-1 py-0.5 hover:bg-accent/40 focus:bg-surface-raised focus:border-primary border border-transparent outline-none cursor-pointer">
               <option value="high">Haute</option>

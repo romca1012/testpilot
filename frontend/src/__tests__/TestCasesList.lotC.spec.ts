@@ -23,6 +23,7 @@ const supprimerEnLot = vi.fn()
 const push = vi.fn()
 
 vi.mock('../lib/api', () => ({
+  roleSuffisant: () => true,
   api: {
     listModules: (...a: any[]) => listModules(...a),
     listCases: (...a: any[]) => listCases(...a),
@@ -30,6 +31,9 @@ vi.mock('../lib/api', () => ({
     supprimerEnLot: (...a: any[]) => supprimerEnLot(...a),
     renameModule: vi.fn(),
   },
+}))
+vi.mock('../lib/useSession', () => ({
+  useSession: () => ({ session: { value: { role: 'admin' } } }),
 }))
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { pid: '1' }, query: {} }),

@@ -13,6 +13,11 @@ import { routes } from '../router'
 import { ROUTES_SANS_SHELL } from '../lib/shell'
 
 describe('shell de projet — toute route hors /projects/:pid doit s\'en passer', () => {
+  it('ne publie plus de page vide « à venir » dans la navigation V1', () => {
+    expect(routes.some((r: any) => r.name === 'cases-soon')).toBe(false)
+    expect(routes.some((r: any) => r.name === 'plan-new')).toBe(false)
+  })
+
   it('aucune route de premier niveau n\'est rendue dans le shell', () => {
     const oubliees = routes
       .filter((r: any) => r.name && !String(r.path).startsWith('/projects/:pid'))

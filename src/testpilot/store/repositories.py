@@ -106,7 +106,9 @@ class ProjectRepo:
             (name, description, connector_type, base_url, database, username,
              secrets_mod.chiffrer(password), now_iso()))
         self.conn.commit()
-        return int(cur.lastrowid)
+        project_id = int(cur.lastrowid)
+        ProjectMemberRepo(self.conn).sync_project(project_id)
+        return project_id
 
     @staticmethod
     def _en_clair(row) -> dict:
@@ -1508,7 +1510,8 @@ class ExecutionRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def quality_summary(self, *, project_id: int | None = None) -> dict:
+    def quality_summary(self, *, project_id: int | None = None,
+                        allowed_project_ids: list[int] | None = None) -> dict:
         """Santé TECHNIQUE de la génération : un test fraîchement produit TOURNE-T-IL ?
 
         ⚠️ On mesure l'axe EXÉCUTION (`execution_status`), jamais le fonctionnel — un test qui
@@ -1523,12 +1526,31 @@ class ExecutionRepo:
         ⚠️ **Rien n'est déclaratif ici** (invariant §4.2) : chaque ligne agrégée est une exécution
         RÉELLE qui a eu lieu. Le tableau de bord ne fabrique aucun chiffre — il compte des runs.
         """
-        where = "WHERE e.trigger = 'first_run'"
+        if project_id is not None and allowed_project_ids is not None:
+            raise ValueError("project_id et allowed_project_ids sont mutuellement exclusifs")
+
+        # Une ligne vient d'être créée avec le statut par défaut `not_executed` avant que le
+        # worker ne démarre. Elle n'est pas encore une mesure : la compter ferait baisser le
+        # tableau de bord pendant chaque exécution en cours.
+        where = ("WHERE e.trigger = 'first_run'"
+                 " AND NOT (e.execution_status = 'not_executed'"
+                 " AND e.duration_seconds = 0 AND e.scenarios_total = 0"
+                 " AND e.error_message = '')")
         params: tuple = ()
         if project_id is not None:
             where += (" AND e.test_case_id IN (SELECT tc.id FROM test_case tc"
                       " JOIN module m ON tc.module_id = m.id WHERE m.project_id = ?)")
             params = (project_id,)
+        elif allowed_project_ids is not None:
+            ids = list(dict.fromkeys(int(pid) for pid in allowed_project_ids))
+            if not ids:
+                where += " AND 0"
+            else:
+                marqueurs = ",".join("?" for _ in ids)
+                where += (" AND e.test_case_id IN (SELECT tc.id FROM test_case tc"
+                          " JOIN module m ON tc.module_id = m.id"
+                          f" WHERE m.project_id IN ({marqueurs}))")
+                params = tuple(ids)
 
         def _compte(sql_extra: str) -> list[dict]:
             return _rows(self.conn.execute(
@@ -1547,9 +1569,12 @@ class ExecutionRepo:
             jour[statut] += r["n"]
 
         n = sum(total.values())
+        mesures_concluantes = total["success"] + total["technical_error"]
         # `ran_rate` reste None (et non 0.0) sans donnée : « aucune mesure » n'est pas « 0 % de
         # réussite » — le motif du repli silencieux qu'on refuse partout (§4.6).
-        ran_rate = (total["success"] / n) if n else None
+        # Une interruption ne prouve ni la réussite ni l'échec de la génération. Elle reste
+        # visible, mais ne dégrade pas artificiellement le taux.
+        ran_rate = (total["success"] / mesures_concluantes) if mesures_concluantes else None
         return {
             "total": n,
             "ran": total["success"],
@@ -1652,6 +1677,12 @@ class ExecutionRepo:
     def list_for_case(self, test_case_id: int) -> list[dict]:
         return _rows(self.conn.execute(
             "SELECT * FROM execution WHERE test_case_id=? ORDER BY id", (test_case_id,)))
+
+    def has_for_version(self, version_id: int) -> bool:
+        """Dit si cette version précise a déjà été jouée."""
+        row = self.conn.execute(
+            "SELECT 1 FROM execution WHERE version_id=? LIMIT 1", (version_id,)).fetchone()
+        return row is not None
 
     def list_recent(self, limit: int = 50, *, project_id: int | None = None) -> list[dict]:
         """Exécutions récentes (onglet Exécution), plus récentes d'abord, avec le contexte de
@@ -2226,6 +2257,15 @@ class ResultRepo:
             " WHERE a.id=? AND a.result_id=?", (attachment_id, result_id)).fetchone()
         return dict(row) if row else None
 
+    def supprimer_piece_jointe(self, result_id: int, attachment_id: int) -> None:
+        """Retire uniquement la pièce demandée, jamais le résultat ni son historique."""
+        cur = self.conn.execute(
+            "DELETE FROM result_attachment WHERE id=? AND result_id=?",
+            (attachment_id, result_id))
+        if cur.rowcount == 0:
+            raise ValueError("pièce jointe introuvable")
+        self.conn.commit()
+
     def derniers_du_run(self, run_id: int) -> dict[int, dict]:
         """Le dernier résultat de CHAQUE cas de la campagne, en **une** requête.
 
@@ -2300,6 +2340,11 @@ class SettingRepo:
     # `triggered_by` — migration 32). Il reste réglable au déploiement par la variable
     # d'environnement `TESTPILOT_SERVICE_ACCOUNT` (`config.SERVICE_ACCOUNT_NAME`), lue
     # directement — plus via cette table, plus via l'écran Réglages.
+    FUSEAUX_HORAIRES: tuple[tuple[str, str], ...] = (
+        ("Europe/Paris", "Paris"),
+        ("Africa/Dakar", "Sénégal"),
+    )
+
     CLES_CONNUES: dict[str, tuple[str, str, bool, bool]] = {
         "reference_url_template": (
             "REFERENCE_URL_TEMPLATE",
@@ -2307,6 +2352,24 @@ class SettingRepo:
             "« {ref} » est remplacé par la référence exacte. Vide = les références restent du "
             "texte brut, partout. Réservé à l'Admin : un gabarit mal réglé change ce que voit "
             "TOUTE l'équipe, sur tous les projets.",
+            True,
+            False,
+        ),
+        "instance_name": (
+            "INSTANCE_NAME",
+            "Nom affiché pour identifier cette installation de TestPilot.",
+            True,
+            False,
+        ),
+        "instance_timezone": (
+            "INSTANCE_TIMEZONE",
+            "Fuseau horaire IANA utilisé pour afficher les dates de l'instance.",
+            True,
+            False,
+        ),
+        "date_format": (
+            "DATE_FORMAT",
+            "Format utilisé pour afficher les dates dans l'interface.",
             True,
             False,
         ),
@@ -2411,6 +2474,13 @@ class SettingRepo:
         self._verifier(cle)
         _, _, _, secret = self.CLES_CONNUES[cle]
         valeur = str(valeur or "").strip()
+        if cle == "instance_name" and valeur and not 2 <= len(valeur) <= 80:
+            raise ValueError("le nom de l'instance doit contenir entre 2 et 80 caractères")
+        if cle == "instance_timezone" and valeur:
+            if valeur not in {identifiant for identifiant, _ in self.FUSEAUX_HORAIRES}:
+                raise ValueError("fuseau horaire IANA inconnu")
+        if cle == "date_format" and valeur and valeur not in {"DD/MM/YYYY", "YYYY-MM-DD", "MM/DD/YYYY"}:
+            raise ValueError("format de date inconnu")
         if secret and valeur == self.MASQUE_SECRET:
             return  # le masque affiché n'est jamais une vraie valeur — no-op de sécurité
         if not valeur:
@@ -2448,6 +2518,9 @@ class SettingRepo:
 # défauts de `config.py` — un test les compare, sinon l'écran annoncerait « env » à tout le monde.
 _DEFAUTS_USINE = {
     "REFERENCE_URL_TEMPLATE": "",
+    "INSTANCE_NAME": "TestPilot",
+    "INSTANCE_TIMEZONE": "Europe/Paris",
+    "DATE_FORMAT": "DD/MM/YYYY",
     "NOTIFICATIONS_ENABLED": "",
     "SMTP_HOST": "",
     "SMTP_PORT": "587",
@@ -2578,7 +2651,9 @@ class UserRepo:
             " VALUES (?,?,?,?,1,?)", (username, password_hash, role, (email or "").strip(),
                                       now_iso()))
         self.conn.commit()
-        return int(cur.lastrowid)
+        user_id = int(cur.lastrowid)
+        ProjectMemberRepo(self.conn).sync_user(user_id)
+        return user_id
 
     def get(self, user_id: int) -> dict | None:
         row = self.conn.execute("SELECT * FROM user WHERE id=?", (user_id,)).fetchone()
@@ -2598,6 +2673,7 @@ class UserRepo:
     def set_role(self, user_id: int, role: str) -> None:
         self.conn.execute("UPDATE user SET role=? WHERE id=?", (role, user_id))
         self.conn.commit()
+        ProjectMemberRepo(self.conn).sync_user(user_id)
 
     def set_active(self, user_id: int, is_active: bool) -> None:
         """⚠️ Prend effet IMMÉDIATEMENT (`api/access.py::utilisateur_actuel` relit ce champ à
@@ -2606,6 +2682,7 @@ class UserRepo:
         self.conn.execute("UPDATE user SET is_active=? WHERE id=?",
                           (1 if is_active else 0, user_id))
         self.conn.commit()
+        ProjectMemberRepo(self.conn).sync_user(user_id)
 
     def set_password_hash(self, user_id: int, password_hash: str) -> None:
         """Réinitialisation par un Admin (2026-08-11) — pour un compte qui a oublié le sien."""
@@ -2631,6 +2708,110 @@ class UserRepo:
         self.conn.commit()
 
 
+class UserGroupRepo:
+    """Groupes d'utilisateurs administrables (migration 36)."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def list_all(self) -> list[dict]:
+        return _rows(self.conn.execute(
+            "SELECT g.*, COUNT(gm.user_id) AS member_count"
+            " FROM user_group g LEFT JOIN user_group_member gm ON gm.group_id=g.id"
+            " GROUP BY g.id ORDER BY g.name"))
+
+    def get(self, group_id: int) -> dict | None:
+        row = self.conn.execute(
+            "SELECT g.*, COUNT(gm.user_id) AS member_count"
+            " FROM user_group g LEFT JOIN user_group_member gm ON gm.group_id=g.id"
+            " WHERE g.id=? GROUP BY g.id", (group_id,)).fetchone()
+        return dict(row) if row else None
+
+    def members(self, group_id: int) -> list[dict]:
+        return _rows(self.conn.execute(
+            "SELECT u.id, u.username, u.email, u.role, u.is_active"
+            " FROM user_group_member gm JOIN user u ON u.id=gm.user_id"
+            " WHERE gm.group_id=? ORDER BY u.username", (group_id,)))
+
+    def create(self, name: str, user_ids: list[int]) -> int:
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("le nom du groupe est obligatoire")
+        try:
+            cur = self.conn.execute(
+                "INSERT INTO user_group (name, created_at) VALUES (?,?)", (name, now_iso()))
+        except sqlite3.IntegrityError as exc:
+            raise DuplicateName(f"le groupe « {name} » existe déjà") from exc
+        group_id = int(cur.lastrowid)
+        self.replace_members(group_id, user_ids, commit=False)
+        self.conn.commit()
+        return group_id
+
+    def update(self, group_id: int, name: str, user_ids: list[int]) -> None:
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("le nom du groupe est obligatoire")
+        try:
+            self.conn.execute("UPDATE user_group SET name=? WHERE id=?", (name, group_id))
+        except sqlite3.IntegrityError as exc:
+            raise DuplicateName(f"le groupe « {name} » existe déjà") from exc
+        self.replace_members(group_id, user_ids, commit=False)
+        self.conn.commit()
+
+    def replace_members(self, group_id: int, user_ids: list[int], *, commit: bool = True) -> None:
+        self.conn.execute("DELETE FROM user_group_member WHERE group_id=?", (group_id,))
+        self.conn.executemany(
+            "INSERT INTO user_group_member (group_id,user_id) VALUES (?,?)",
+            [(group_id, user_id) for user_id in dict.fromkeys(user_ids)])
+        if commit:
+            self.conn.commit()
+
+    def delete(self, group_id: int) -> None:
+        self.conn.execute("DELETE FROM user_group WHERE id=?", (group_id,))
+        self.conn.commit()
+
+
+class ProjectGroupAccessRepo:
+    """Surcharges de rôle attribuées à des groupes dans un projet (migration 37)."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def list_for_project(self, project_id: int) -> list[dict]:
+        return _rows(self.conn.execute(
+            "SELECT pga.project_id, pga.group_id, pga.role, g.name AS group_name,"
+            " COUNT(gm.user_id) AS member_count"
+            " FROM project_group_access pga JOIN user_group g ON g.id=pga.group_id"
+            " LEFT JOIN user_group_member gm ON gm.group_id=g.id"
+            " WHERE pga.project_id=? GROUP BY pga.project_id,pga.group_id"
+            " ORDER BY g.name", (project_id,)))
+
+    def roles_for_user(self, project_id: int, user_id: int) -> list[str]:
+        return [row["role"] for row in self.conn.execute(
+            "SELECT pga.role FROM project_group_access pga"
+            " JOIN user_group_member gm ON gm.group_id=pga.group_id"
+            " WHERE pga.project_id=? AND gm.user_id=?", (project_id, user_id)).fetchall()]
+
+    def get(self, project_id: int, group_id: int) -> str | None:
+        row = self.conn.execute(
+            "SELECT role FROM project_group_access WHERE project_id=? AND group_id=?",
+            (project_id, group_id)).fetchone()
+        return row["role"] if row else None
+
+    def set(self, project_id: int, group_id: int, role: str) -> None:
+        self.conn.execute(
+            "INSERT INTO project_group_access (project_id,group_id,role) VALUES (?,?,?)"
+            " ON CONFLICT(project_id,group_id) DO UPDATE SET role=excluded.role",
+            (project_id, group_id, role))
+        self.conn.commit()
+
+    def remove(self, project_id: int, group_id: int) -> None:
+        self.conn.execute(
+            "DELETE FROM project_group_access WHERE project_id=? AND group_id=?",
+            (project_id, group_id))
+        self.conn.commit()
+
+
 class ProjectAccessRepo:
     """Surcharge du rôle global PAR PROJET (migration 31, 2026-08-10) — deux niveaux, tous deux
     optionnels : `default_access` d'un projet (une valeur sur `project`, pas dans cette table),
@@ -2652,6 +2833,7 @@ class ProjectAccessRepo:
         self.conn.execute("UPDATE project SET default_access=? WHERE id=?",
                           (default_access, project_id))
         self.conn.commit()
+        ProjectMemberRepo(self.conn).sync_project(project_id)
 
     def overrides_for_project(self, project_id: int) -> list[dict]:
         """Les exceptions par compte de CE projet, avec le nom d'utilisateur déjà joint — l'écran
@@ -2676,9 +2858,128 @@ class ProjectAccessRepo:
             " ON CONFLICT (project_id, user_id) DO UPDATE SET role=excluded.role",
             (project_id, user_id, role))
         self.conn.commit()
+        ProjectMemberRepo(self.conn).sync_one(project_id, user_id)
 
     def remove_override(self, project_id: int, user_id: int) -> None:
         self.conn.execute(
             "DELETE FROM project_access WHERE project_id=? AND user_id=?",
             (project_id, user_id))
         self.conn.commit()
+        ProjectMemberRepo(self.conn).sync_one(project_id, user_id)
+
+
+class ProjectMemberRepo:
+    """Appartenances explicites à un projet (migration 34).
+
+    Ce premier slice cohabite avec `ProjectAccessRepo` jusqu'à la validation de parité complète ;
+    il ne décide pas encore de l'autorisation HTTP.
+    """
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def get(self, project_id: int, user_id: int) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM project_member WHERE project_id=? AND user_id=?",
+            (project_id, user_id),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def list_for_project(self, project_id: int) -> list[dict]:
+        return _rows(self.conn.execute(
+            "SELECT pm.*, u.username, u.email FROM project_member pm"
+            " JOIN user u ON u.id=pm.user_id WHERE pm.project_id=?"
+            " ORDER BY u.username", (project_id,),
+        ))
+
+    def set(self, project_id: int, user_id: int, role: str,
+            status: str = "active") -> None:
+        self.conn.execute(
+            "INSERT INTO project_member (project_id,user_id,role,status,created_at)"
+            " VALUES (?,?,?,?,?)"
+            " ON CONFLICT(project_id,user_id) DO UPDATE SET"
+            " role=excluded.role,status=excluded.status",
+            (project_id, user_id, role, status, now_iso()),
+        )
+        self.conn.commit()
+
+    def remove(self, project_id: int, user_id: int) -> None:
+        self.conn.execute(
+            "UPDATE project_member SET status='removed' WHERE project_id=? AND user_id=?",
+            (project_id, user_id),
+        )
+        self.conn.commit()
+
+    def effective_role(self, project_id: int, user_id: int) -> str:
+        member = self.get(project_id, user_id)
+        if member is None or member["status"] != "active":
+            return "no_access"
+        return member["role"]
+
+    def active_admin_count(self, project_id: int, exclude_user_id: int | None = None) -> int:
+        query = (
+            "SELECT COUNT(*) AS n FROM project_member pm"
+            " JOIN user u ON u.id=pm.user_id"
+            " WHERE pm.project_id=? AND pm.role='admin'"
+            " AND pm.status='active' AND u.is_active=1"
+        )
+        params: list = [project_id]
+        if exclude_user_id is not None:
+            query += " AND pm.user_id<>?"
+            params.append(exclude_user_id)
+        return int(self.conn.execute(query, params).fetchone()["n"])
+
+    def sync_one(self, project_id: int, user_id: int) -> None:
+        """Recalcule une appartenance depuis le modèle historique."""
+        row = self.conn.execute(
+            "SELECT u.is_active,"
+            " COALESCE(pa.role, NULLIF(p.default_access,''), u.role) AS effective_role"
+            " FROM project p CROSS JOIN user u"
+            " LEFT JOIN project_access pa"
+            "   ON pa.project_id=p.id AND pa.user_id=u.id"
+            " WHERE p.id=? AND u.id=? AND p.deleted_at=''",
+            (project_id, user_id),
+        ).fetchone()
+        if row is None or row["effective_role"] == "no_access":
+            if self.get(project_id, user_id) is not None:
+                self.conn.execute(
+                    "UPDATE project_member SET status='removed'"
+                    " WHERE project_id=? AND user_id=?", (project_id, user_id),
+                )
+                self.conn.commit()
+            return
+        self.set(
+            project_id, user_id, row["effective_role"],
+            "active" if row["is_active"] else "suspended",
+        )
+
+    def sync_project(self, project_id: int) -> None:
+        for row in self.conn.execute("SELECT id FROM user").fetchall():
+            self.sync_one(project_id, row["id"])
+
+    def sync_user(self, user_id: int) -> None:
+        for row in self.conn.execute(
+            "SELECT id FROM project WHERE deleted_at=''"
+        ).fetchall():
+            self.sync_one(row["id"], user_id)
+
+
+class AccessAuditRepo:
+    """Trace append-only des décisions prises lors de la gestion des accès projet."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def record(self, *, actor_user_id: int | None, project_id: int, action: str,
+               target_user_id: int | None, result: str, detail: str = "") -> None:
+        self.conn.execute(
+            "INSERT INTO access_audit"
+            " (occurred_at,actor_user_id,project_id,action,target_user_id,result,detail)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (now_iso(), actor_user_id, project_id, action, target_user_id, result, detail),
+        )
+        self.conn.commit()
+
+    def list_for_project(self, project_id: int) -> list[dict]:
+        return _rows(self.conn.execute(
+            "SELECT * FROM access_audit WHERE project_id=? ORDER BY id", (project_id,)))

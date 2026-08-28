@@ -20,9 +20,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from testpilot import config
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import notification_service
+from testpilot.api.routes import auth
 from testpilot.store.repositories import SettingRepo
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -32,6 +34,39 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 def list_settings(conn=Depends(get_conn)):
     """Tous les réglages CONNUS, résolus — y compris ceux qu'aucune ligne de base ne porte."""
     return [schemas.SettingOut(**r) for r in SettingRepo(conn).tous()]
+
+
+@router.get("/options/timezones", response_model=list[schemas.TimezoneOption])
+def list_timezones():
+    """Catalogue unique des fuseaux proposés par l'instance.
+
+    Le frontend reçoit les identifiants IANA réels depuis le serveur : il ne maintient pas une
+    deuxième liste susceptible de diverger de la validation backend.
+    """
+    return [schemas.TimezoneOption(value=value, label=label)
+            for value, label in SettingRepo.FUSEAUX_HORAIRES]
+
+
+@router.get("/security-status", response_model=schemas.SecurityStatusOut,
+            dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
+def security_status():
+    """État effectif, sans jamais renvoyer la valeur d'un secret."""
+    secret_session_externe = bool((config.SESSION_SECRET or "").strip())
+    secret_donnees_externe = bool((config.SECRET_KEY or "").strip())
+    return schemas.SecurityStatusOut(
+        password_min_length=access.MOT_DE_PASSE_LONGUEUR_MIN,
+        password_hash="PBKDF2-HMAC-SHA256 (200 000 itérations)",
+        session_days=config.SESSION_DAYS,
+        cookie_http_only=True,
+        cookie_same_site="Lax",
+        cookie_secure=config.COOKIE_SECURE,
+        session_secret_external=secret_session_externe,
+        data_secret_external=secret_donnees_externe,
+        login_max_failures=auth.LOGIN_MAX_ECHECS,
+        login_window_minutes=auth.LOGIN_FENETRE_SECONDES // 60,
+        production_ready=(config.COOKIE_SECURE and secret_session_externe
+                          and secret_donnees_externe),
+    )
 
 
 @router.patch("/{key}", response_model=schemas.SettingOut)

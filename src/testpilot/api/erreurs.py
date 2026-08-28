@@ -132,7 +132,8 @@ def depuis_service(code_service: str, detail: str, *, defaut: str = "non_gere") 
     return ErreurMetier(_DEPUIS_SERVICE.get(code_service, defaut), detail)
 
 
-def _probleme(*, code: str, titre: str, status: int, detail: str, chemin: str) -> JSONResponse:
+def _probleme(*, code: str, titre: str, status: int, detail: str, chemin: str,
+              headers: dict[str, str] | None = None) -> JSONResponse:
     return JSONResponse(
         status_code=status,
         media_type="application/problem+json",
@@ -144,6 +145,7 @@ def _probleme(*, code: str, titre: str, status: int, detail: str, chemin: str) -
             "instance": chemin,
             "code": code,
         },
+        headers=headers,
     )
 
 
@@ -162,4 +164,4 @@ async def gerer_http_exception(request: Request, exc: HTTPException) -> JSONResp
     titre = CATALOGUE[code][1]
     detail = exc.detail if isinstance(exc.detail, str) else titre
     return _probleme(code=code, titre=titre, status=exc.status_code,
-                     detail=detail, chemin=request.url.path)
+                     detail=detail, chemin=request.url.path, headers=exc.headers)

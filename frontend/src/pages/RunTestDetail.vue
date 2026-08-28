@@ -13,7 +13,9 @@
 // sans laquelle on croit modifier un résultat en modifiant un cas.
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type TestDansRun } from '../lib/api'
+import { api, roleSuffisant, type TestDansRun } from '../lib/api'
+import { useProjects } from '../lib/useProjects'
+import { useSession } from '../lib/useSession'
 import { etatView, priorityView, testStatusMeta, typeView } from '../lib/status'
 import { cleMois, formatDate, moisLong } from '../lib/format'
 import ResultHistory from '../components/ResultHistory.vue'
@@ -29,6 +31,11 @@ const router = useRouter()
 const pid = computed(() => route.params.pid as string)
 const runId = computed(() => Number(route.params.id))
 const caseId = computed(() => Number(route.params.caseId))
+const { session } = useSession()
+const { projectById } = useProjects()
+const roleProjet = computed(() => projectById(pid.value)?.effective_role || session.value?.role || '')
+const peutModifier = computed(() => roleSuffisant(roleProjet.value, 'testeur'))
+const peutSupprimer = computed(() => roleSuffisant(roleProjet.value, 'admin'))
 
 const test = ref<TestDansRun | null>(null)
 const loading = ref(true)
@@ -84,7 +91,7 @@ function imprimer() { window.print() }
 // ⚠️ Même garde qu'en liste : absente d'une campagne automatique (rien à saisir, la machine a
 // déjà parlé), absente d'une campagne archivée (lecture seule). Le serveur refuse de son côté ;
 // l'écran n'est que son porte-parole.
-const peutSaisir = computed(() => test.value?.run_mode === 'manuelle' && !test.value?.run_archived)
+const peutSaisir = computed(() => peutModifier.value && test.value?.run_mode === 'manuelle' && !test.value?.run_archived)
 const saisieOuverte = ref(false)
 // `AddResultDialog` n'attend que `id` et `title` (voir sa prop `CasMinimal`) : cette page n'a
 // jamais eu de `RunCaseResult` complet à lui donner, elle n'a que ces deux champs sur son « test ».
@@ -220,7 +227,8 @@ const parMois = computed(() => {
          `ResultHistory` porte déjà cette liste (mode d'exécution, statut, auteur, date,
          commentaire) : la réécrire ici en ferait deux versions du même affichage. -->
     <div v-if="onglet === 'resultats'" class="mt-5">
-      <ResultHistory :results="test.results" />
+      <ResultHistory :results="test.results" :can-delete-attachments="peutSupprimer"
+                     @attachment-removed="load" />
     </div>
 
     <!-- ── Historique et contexte ─────────────────────────────────────────── -->

@@ -5,7 +5,7 @@
 // concept qu'on impose ailleurs. Les boutons/onglets non couverts par ce lot mènent à « à venir ».
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, LIBELLE_ROLE } from '../lib/api'
+import { roleSuffisant } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useModuleCreate } from '../lib/useModuleCreate'
 import { useSectionCreate } from '../lib/useSectionCreate'
@@ -19,11 +19,18 @@ import {
 import Modal from './ui/Modal.vue'
 import Button from './ui/Button.vue'
 import IconButton from './ui/IconButton.vue'
+import ThemeSwitch from './ThemeSwitch.vue'
+import AccountMenu from './AccountMenu.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { projects, ensureLoaded, projectById } = useProjects()
 const { session } = useSession()
+const roleProjet = computed(() => currentProject.value?.effective_role || session.value?.role || '')
+const peutModifier = computed(() => roleSuffisant(roleProjet.value, 'testeur'))
+const peutGenerer = computed(() => roleSuffisant(roleProjet.value, 'dev'))
+const peutVoirQualite = computed(() => roleSuffisant(roleProjet.value, 'dev'))
+const estAdminProjet = computed(() => roleSuffisant(roleProjet.value, 'admin'))
 
 // Modale UNIQUE de création de module (déclenchée d'ici « + Ajouter une section », et depuis la
 // liste des cas). Le shell est toujours présent sur les routes de gestion : c'est son bon hôte.
@@ -243,46 +250,27 @@ function openModule(moduleId: number) {
   router.push({ name: 'cases', params: { pid: pid.value }, query: { module: String(moduleId) } })
 }
 
-// Nav principale. Seul « Cas de test » est fonctionnel dans ce lot ; le reste mène à « à venir »
-// (placeholder), sauf « Exécutions » qui pointe vers l'écran d'exécution existant.
+// Navigation V1 : uniquement des destinations réellement utilisables.
 const nav = computed(() => [
-  { key: 'apercu', label: 'Aperçu', to: soon('apercu'),
-    icon: 'M4 5h16M4 12h16M4 19h10' },
-  { key: 'todo', label: 'Tâche à faire', to: soon('todo'),
-    icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11' },
   { key: 'cases', label: 'Cas de test', to: { name: 'cases', params: { pid: pid.value } },
     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
   { key: 'exec', label: 'Exécutions et résultats de test', to: { name: 'executions', params: { pid: pid.value } },
     icon: 'M14.7 11.2l-5.2-3a1 1 0 00-1.5.8v6a1 1 0 001.5.9l5.2-3a1 1 0 000-1.7z' },
-  { key: 'qualite', label: 'Qualité de génération', to: { name: 'quality', params: { pid: pid.value } },
+  ...(peutVoirQualite.value ? [{ key: 'qualite', label: 'Qualité de génération', to: { name: 'quality', params: { pid: pid.value } },
     icon: 'M3 3v18h18M7 15l3-4 3 3 4-6' },
-  { key: 'jalons', label: 'Jalons', to: soon('jalons'),
-    icon: 'M5 3v18M5 4h11l-2 3 2 3H5' },
-  { key: 'rapports', label: 'Rapports', to: soon('rapports'),
-    icon: 'M9 17v-6M12 17V7M15 17v-3M4 5a2 2 0 012-2h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2z' },
+  ] : []),
 ])
-function soon(tab: string) {
-  return { name: 'cases-soon', params: { pid: pid.value }, query: { tab } }
-}
 function isActive(key: string) {
   const n = String(route.name)
   if (key === 'cases') return ['cases', 'case-detail', 'cases-all', 'module-detail',
                                'spec-detail', 'case-new', 'case-manual', 'corbeille'].includes(n)
   if (key === 'exec') return ['executions', 'report', 'run-new', 'plan-new', ...ROUTES_RUN].includes(n)
   if (key === 'qualite') return n === 'quality'
-  return n === 'cases-soon' && route.query.tab === key
+  return false
 }
 function comingSoon(what: string) {
   window.alert(`${what} — à venir.`)
 }
-async function seDeconnecter() {
-  menuOpen.value = false
-  try { await api.logout() } catch { /* déjà déconnecté : le rechargement suffit */ }
-  // Rechargement complet plutôt qu'une navigation : il vide le cache de la couche de données,
-  // sinon les cas du projet resteraient lisibles en mémoire après la déconnexion.
-  window.location.reload()
-}
-
 function switchProject(id: number) {
   menuOpen.value = false
   router.push({ name: 'cases', params: { pid: String(id) } })
@@ -315,16 +303,18 @@ function switchProject(id: number) {
                renommer ni configurer un projet depuis l'interface. -->
           <div class="my-1 border-t border-border"></div>
           <RouterLink to="/projects" class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                      @click="menuOpen = false">Gérer les projets…</RouterLink>
+                      @click="menuOpen = false">Tous les projets…</RouterLink>
+          <RouterLink v-if="session?.role === 'admin'" to="/admin/projects" class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                      @click="menuOpen = false">Administrer les projets…</RouterLink>
           <!-- La corbeille doit être ATTEIGNABLE : une suppression douce qu'on ne peut pas
                annuler depuis l'interface ne vaut pas mieux qu'une destruction. -->
-          <RouterLink :to="{ name: 'corbeille', params: { pid } }"
+          <RouterLink v-if="session?.role === 'admin'" :to="{ name: 'corbeille', params: { pid } }"
                       class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                       @click="menuOpen = false">Corbeille…</RouterLink>
           <!-- Les réglages d'instance doivent être ATTEIGNABLES : un compte de service qu'on ne
                peut régler que par variable d'environnement obligerait à redémarrer le serveur
                pour changer un nom affiché dans les rapports. -->
-          <RouterLink :to="{ name: 'settings' }"
+          <RouterLink v-if="session?.role === 'admin'" :to="{ name: 'settings' }"
                       class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                       @click="menuOpen = false">Réglages…</RouterLink>
           <!-- Gestion des comptes (2026-08-07) — Admin seulement : le lien lui-même reflète déjà
@@ -332,14 +322,6 @@ function switchProject(id: number) {
           <RouterLink v-if="session?.role === 'admin'" :to="{ name: 'utilisateurs' }"
                       class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                       @click="menuOpen = false">Utilisateurs…</RouterLink>
-          <div class="my-1 border-t border-border"></div>
-          <p v-if="session?.authenticated" class="px-3 py-1 text-xs text-subtle-foreground">
-            Connecté en tant que {{ session.name }} · {{ LIBELLE_ROLE[session.role] || session.role }}
-          </p>
-          <!-- ⚠️ Sans moyen de quitter sa session, un poste commun reste ouvert au suivant qui
-               s'y assied. La route existait depuis le lot 2 ; aucun écran ne l'appelait. -->
-          <button class="block w-full px-3 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                  @click="seDeconnecter">Se déconnecter</button>
         </div>
       </div>
 
@@ -388,7 +370,7 @@ function switchProject(id: number) {
 
       <!-- Contexte « Cas de test » : boutons cas + arbre Module → Spécification -->
       <template v-if="isActive('cases')">
-      <div class="px-3 pb-3 flex flex-col gap-2">
+      <div v-if="peutModifier" class="px-3 pb-3 flex flex-col gap-2">
         <!-- « Ajouter un cas de test » = SAISIE MANUELLE (sans IA). « Générer » = l'IA depuis une
              spec. Les deux étaient confondus : « Ajouter » lançait l'IA, « Générer » ne faisait
              rien. Correction du porteur (2026-07-21). -->
@@ -396,7 +378,7 @@ function switchProject(id: number) {
           <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           Ajouter un cas
         </Button>
-        <Button variant="secondary" class="w-full" @click="goGenerate()">
+        <Button v-if="peutGenerer" variant="secondary" class="w-full" @click="goGenerate()">
           <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/></svg>
           Générer des cas
         </Button>
@@ -408,7 +390,6 @@ function switchProject(id: number) {
           Contient {{ specCount }} section{{ specCount > 1 ? 's' : '' }} et {{ caseCount }} cas.
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
         </div>
-        <button class="text-primary hover:underline" @click="comingSoon('Modifier la description')">Modifier la description</button>
       </div>
 
       <!-- Bandeau + sous-barre -->
@@ -436,13 +417,13 @@ function switchProject(id: number) {
             </button>
             <!-- Créer une SECTION (le document source) : le geste qui manquait à
                  l'interface — le CRUD existait côté serveur sans qu'aucun écran ne l'appelle. -->
-            <IconButton size="sm" class="shrink-0" label="Ajouter une section dans ce module" @click.stop="ouvrirCreationSpec(m.id)">
+            <IconButton v-if="peutModifier" size="sm" class="shrink-0" label="Ajouter une section dans ce module" @click.stop="ouvrirCreationSpec(m.id)">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M12 12v6M9 15h6"/></svg>
             </IconButton>
-            <IconButton size="sm" class="shrink-0" label="Ajouter un cas dans ce module" @click.stop="goCaseNew(m.id)">
+            <IconButton v-if="peutModifier" size="sm" class="shrink-0" label="Ajouter un cas dans ce module" @click.stop="goCaseNew(m.id)">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             </IconButton>
-            <IconButton size="sm" class="shrink-0 opacity-0 group-hover:opacity-100" variant="danger" label="Supprimer ce module" @click.stop="deleteModule(m)">
+            <IconButton v-if="estAdminProjet" size="sm" class="shrink-0 opacity-0 group-hover:opacity-100" variant="danger" label="Supprimer ce module" @click.stop="deleteModule(m)">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v11a2 2 0 002 2h4a2 2 0 002-2V7"/></svg>
             </IconButton>
           </div>
@@ -468,16 +449,13 @@ function switchProject(id: number) {
       </div>
       </template>
 
-      <!-- Contexte « Exécutions et résultats de test » : actions run/plan + filtres -->
+      <!-- Contexte « Exécutions et résultats de test » : action run + filtres.
+           Les plans ne font pas partie de la bêta : ne pas publier une action factice. -->
       <template v-else-if="isActive('exec')">
-      <div class="px-3 pb-3 flex flex-col gap-2">
+      <div v-if="peutModifier" class="px-3 pb-3 flex flex-col gap-2">
         <Button variant="primary" class="w-full" @click="goRoute('run-new')">
           <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           Ajouter une exécution
-        </Button>
-        <Button variant="primary" class="w-full" @click="goRoute('plan-new')">
-          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          Ajouter un plan
         </Button>
       </div>
       <div class="px-3.5 pb-4 space-y-3 text-sm">
@@ -501,6 +479,12 @@ function switchProject(id: number) {
         </label>
       </div>
       </template>
+
+      <div class="mt-auto border-t border-border px-2 py-2"><AccountMenu /></div>
+      <div class="flex items-center justify-between gap-2 border-t border-border px-3 py-3">
+        <span class="text-xs font-medium text-muted-foreground">Apparence</span>
+        <ThemeSwitch />
+      </div>
     </aside>
 
     <div class="flex-1 min-w-0 overflow-y-auto">

@@ -87,13 +87,27 @@ export const api = {
 
   // ── Comptes — Admin seulement (le serveur le vérifie ; ces appels échoueraient en 403 sinon) ──
   listUsers: () => request<UserAccount[]>('/api/admin/users'),
-  createUser: (payload: { username: string; password: string; role: string; email?: string }) =>
+  getUser: (id: number | string) => request<UserAccount>(`/api/admin/users/${id}`),
+  createUser: (payload: { username: string; password: string; role: string; email?: string; projects?: UserProjectChoice[] }) =>
     request<UserAccount>('/api/admin/users', { method: 'POST', body: JSON.stringify(payload) }),
   patchUser: (id: number, patch: { role?: string; is_active?: boolean; new_password?: string; email?: string }) =>
     request<UserAccount>(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  getUserProjects: (id: number) => request<UserProjectAccess[]>(`/api/admin/users/${id}/projects`),
+  putUserProjects: (id: number, projects: UserProjectChoice[]) =>
+    request<UserProjectAccess[]>(`/api/admin/users/${id}/projects`, {
+      method: 'PUT', body: JSON.stringify({ projects }),
+    }),
+  listUserGroups: () => request<UserGroup[]>('/api/admin/users/groups'),
+  createUserGroup: (payload: UserGroupInput) =>
+    request<UserGroup>('/api/admin/users/groups', { method: 'POST', body: JSON.stringify(payload) }),
+  updateUserGroup: (id: number, payload: UserGroupInput) =>
+    request<UserGroup>(`/api/admin/users/groups/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteUserGroup: (id: number) =>
+    request<void>(`/api/admin/users/groups/${id}`, { method: 'DELETE' }),
 
   // Projets / modules (hiérarchie §7)
   listProjects: () => request<ProjectSummary[]>('/api/projects'),
+  listAdminProjects: () => request<ProjectSummary[]>('/api/projects/catalogue-admin'),
   createProject: (payload: ProjectInput) =>
     request<ProjectSummary>('/api/projects', { method: 'POST', body: JSON.stringify(payload) }),
   updateProject: (id: number | string, patch: Partial<ProjectInput>) =>
@@ -113,6 +127,23 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ user_id, role }) }),
   removeProjectAccessOverride: (id: number | string, userId: number) =>
     request<ProjectAccess>(`/api/projects/${id}/access/users/${userId}`, { method: 'DELETE' }),
+  setProjectGroupAccess: (id: number | string, group_id: number, role: string) =>
+    request<ProjectAccess>(`/api/projects/${id}/access/groups`, {
+      method: 'POST', body: JSON.stringify({ group_id, role }),
+    }),
+  removeProjectGroupAccess: (id: number | string, groupId: number) =>
+    request<ProjectAccess>(`/api/projects/${id}/access/groups/${groupId}`, { method: 'DELETE' }),
+  listProjectMembers: (id: number | string) =>
+    request<ProjectMember[]>(`/api/projects/${id}/members`),
+  addProjectMember: (id: number | string, user_id: number, role: string) =>
+    request<ProjectMember>(`/api/projects/${id}/members`,
+      { method: 'POST', body: JSON.stringify({ user_id, role }) }),
+  patchProjectMember: (id: number | string, userId: number,
+                       patch: { role?: string; status?: 'active' | 'suspended' }) =>
+    request<ProjectMember>(`/api/projects/${id}/members/${userId}`,
+      { method: 'PATCH', body: JSON.stringify(patch) }),
+  removeProjectMember: (id: number | string, userId: number) =>
+    request<ProjectMember>(`/api/projects/${id}/members/${userId}`, { method: 'DELETE' }),
   // Exploration : cartographie l'application DU PROJET (crawl déterministe, aucun LLM).
   // Payée une fois par projet ; la génération lira ensuite cette mesure au lieu de deviner.
   // Santé technique de la génération dans le temps — dérivée des vraies exécutions, jamais
@@ -157,6 +188,8 @@ export const api = {
     files.forEach((f) => fd.append('files', f))
     return requestForm<AttachmentOut[]>(`/api/results/${resultId}/attachments`, fd)
   },
+  deleteAttachment: (resultId: number | string, attachmentId: number | string) =>
+    request<void>(`/api/results/${resultId}/attachments/${attachmentId}`, { method: 'DELETE' }),
   // ── UN CAS DANS UNE CAMPAGNE — l'objet « test » (2026-08-05) ──
   // Distinct de `getCase` (le cas du référentiel) et de `getExecution` (le rapport technique
   // d'UNE exécution) : ici on demande « où en est CE cas, dans CETTE campagne ».
@@ -260,6 +293,8 @@ export const api = {
   // d'environnement, et l'écran doit pouvoir le DIRE plutôt que de laisser un exploitant
   // chercher pourquoi sa variable semble ignorée.
   listSettings: () => request<SettingOut[]>('/api/settings'),
+  listTimezoneOptions: () => request<TimezoneOption[]>('/api/settings/options/timezones'),
+  getSecurityStatus: () => request<SecurityStatus>('/api/settings/security-status'),
   setSetting: (key: string, value: string) =>
     request<SettingOut>(`/api/settings/${key}`, { method: 'PATCH', body: JSON.stringify({ value }) }),
   testSmtp: (destinataire: string) =>
@@ -358,6 +393,17 @@ export const LIBELLE_ROLE: Record<string, string> = {
 export interface UserAccount {
   id: number; username: string; role: string; email: string; is_active: boolean; created_at: string
 }
+export interface UserProjectChoice { project_id: number; role: string }
+export interface UserProjectAccess extends UserProjectChoice {
+  project_name: string; has_access: boolean
+}
+export interface UserGroupMember {
+  id: number; username: string; email: string; role: string; is_active: boolean
+}
+export interface UserGroup {
+  id: number; name: string; member_count: number; created_at: string; members: UserGroupMember[]
+}
+export interface UserGroupInput { name: string; user_ids: number[] }
 
 // Accès par projet (migration 31, 2026-08-10) — `no_access` volontairement HORS de `ROLES` :
 // niveau()/role_suffisant() côté serveur le traitent déjà comme -1 sans y toucher.
@@ -366,7 +412,16 @@ export const LIBELLE_ACCES: Record<string, string> = {
   '': 'Rôle global (par défaut)', ...LIBELLE_ROLE, [ACCES_PROJET_REFUSE]: 'Aucun accès',
 }
 export interface ProjectAccessOverride { user_id: number; username: string; role: string }
-export interface ProjectAccess { default_access: string; overrides: ProjectAccessOverride[] }
+export interface ProjectGroupAccess {
+  group_id: number; group_name: string; role: string; member_count: number
+}
+export interface ProjectAccess {
+  default_access: string; overrides: ProjectAccessOverride[]; group_overrides: ProjectGroupAccess[]
+}
+export interface ProjectMember {
+  user_id: number; username: string; email: string; role: string
+  status: 'active' | 'suspended' | 'removed'; created_at: string
+}
 
 /** Trace brute d'une exécution. `available=false` porte TOUJOURS sa raison : « pas de fichier »
  *  et « aucune trace conservée » ne se disent pas pareil. */
@@ -385,6 +440,7 @@ export interface ProjectSummary {
   id: number; name: string; description: string
   connector_type: string; base_url: string; database: string; username: string
   module_count: number; case_count: number
+  effective_role: string
 }
 /** Santé technique de la génération (axe EXÉCUTION, premier jet). `ran_rate` = null quand aucune
  *  mesure : « rien mesuré » n'est pas « 0 % de réussite ». */
@@ -648,6 +704,13 @@ export interface SettingOut {
   admin_only: boolean
   // `value` est alors un masque fixe (ou vide) — jamais le vrai secret (2026-08-12).
   secret: boolean
+}
+export interface TimezoneOption { value: string; label: string }
+export interface SecurityStatus {
+  password_min_length: number; password_hash: string; session_days: number
+  cookie_http_only: boolean; cookie_same_site: string; cookie_secure: boolean
+  session_secret_external: boolean; data_secret_external: boolean
+  login_max_failures: number; login_window_minutes: number; production_ready: boolean
 }
 export interface ReviewResponse { decision: string; gate: GateOut }
 export interface TestReport {

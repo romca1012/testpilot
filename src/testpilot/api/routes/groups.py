@@ -76,8 +76,8 @@ def deplacer_group(group_id: int, body: schemas.GroupMoveIn, conn=Depends(get_co
 
 
 @router.delete("/{group_id}", status_code=204,
-              dependencies=[Depends(access.require_project_access_depuis(
-                  "group_id", access.project_id_depuis_group))])
+              dependencies=[Depends(access.require_project_role_depuis(
+                  "group_id", access.project_id_depuis_group, access.ROLE_ADMIN))])
 def delete_group(group_id: int, request: Request, conn=Depends(get_conn)):
     """Supprime une spécification VIDE ; 409 tant qu'elle porte des cas.
 

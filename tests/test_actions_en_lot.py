@@ -26,13 +26,13 @@ def client(tmp_path, monkeypatch):
     return TestClient(app_mod.app)
 
 
-def _creer_compte(username: str, password: str) -> None:
+def _creer_compte(username: str, password: str, role: str = access.ROLE_TESTEUR) -> None:
     """Un compte réel — depuis le lot 2026-08-07, se connecter exige un compte qui existe
     vraiment, plus un simple nom déclaré au clavier."""
     conn = get_initialized_db(config.DB_PATH)
     try:
         UserRepo(conn).create(username=username, password_hash=access.hacher_mot_de_passe(password),
-                              role=access.ROLE_TESTEUR)
+                              role=role)
     finally:
         conn.close()
 
@@ -125,7 +125,8 @@ def test_supprimer_N_cas_en_UNE_requete_SANS_rien_detruire(client):
 
 def test_la_suppression_en_lot_trace_QUI(client):
     """Sur un serveur partagé, une suppression de masse sans auteur est ingérable."""
-    _creer_compte("Awa", "secret")
+    # La suppression de masse est une opération destructive réservée à l'Admin.
+    _creer_compte("Awa", "secret", access.ROLE_ADMIN)
     r = client.post("/api/auth/login", json={"username": "Awa", "password": "secret"})
     assert r.status_code == 200
     pid, _, ids = _projet(client, 2)

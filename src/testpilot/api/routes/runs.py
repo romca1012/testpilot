@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
 from testpilot.api import access, erreurs, schemas
@@ -306,6 +306,16 @@ async def add_attachments(result_id: int, files: list[UploadFile] = File(...),
     _resultat_ouvert(conn, result_id)
     return [schemas.AttachmentOut(**await attachment_service.enregistrer(conn, result_id, f))
             for f in files]
+
+
+@router.delete("/api/results/{result_id}/attachments/{attachment_id}", status_code=204,
+               dependencies=[Depends(access.require_project_role_depuis(
+                   "result_id", access.project_id_depuis_result, access.ROLE_ADMIN))])
+def delete_attachment(result_id: int, attachment_id: int, conn=Depends(get_conn)):
+    """Retire une pièce jointe d'un résultat, sans modifier ni supprimer le résultat lui-même."""
+    _resultat_ouvert(conn, result_id)
+    attachment_service.supprimer(conn, result_id, attachment_id)
+    return Response(status_code=204)
 
 
 @router.get("/api/results/{result_id}/attachments/{attachment_id}",

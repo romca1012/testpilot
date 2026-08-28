@@ -16,12 +16,16 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import exploration_service
+from testpilot.api.services.project_membership_service import ProjectMembershipService
 from testpilot.store.repositories import (
     CaseGroupRepo,
     DuplicateName,
     ModuleRepo,
     ProjectAccessRepo,
+    ProjectGroupAccessRepo,
+    ProjectMemberRepo,
     ProjectRepo,
+    UserGroupRepo,
     UserRepo,
 )
 
@@ -56,11 +60,32 @@ def list_projects(request: Request, conn=Depends(get_conn)):
     — c'est ce filtre qui rend un projet réellement CACHÉ, pas seulement refusé si on force son
     URL (`require_project_access` s'en charge, en 404, sur les routes qui prennent `project_id`)."""
     utilisateur = request.state.user
-    return [schemas.project_summary(r) for r in ProjectRepo(conn).list_all()
-           if access.role_effectif_projet(conn, utilisateur, r["id"]) != access.ACCES_PROJET_REFUSE]
+    visibles = []
+    for row in ProjectRepo(conn).list_all():
+        role = access.role_effectif_projet(conn, utilisateur, row["id"])
+        if role == access.ACCES_PROJET_REFUSE:
+            continue
+        visibles.append(schemas.project_summary({**row, "effective_role": role}))
+    return visibles
 
 
-@router.post("", response_model=schemas.ProjectSummary, status_code=201)
+@router.get("/catalogue-admin", response_model=list[schemas.ProjectSummary],
+            dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
+def list_projects_for_admin(request: Request, conn=Depends(get_conn)):
+    """Catalogue complet réservé à l'administration.
+
+    Il est volontairement distinct du sélecteur de travail : un Admin d'instance doit pouvoir
+    attribuer un projet sans devenir membre, tandis qu'un utilisateur ordinaire ne doit jamais
+    apprendre l'existence d'un projet masqué.
+    """
+    utilisateur = request.state.user
+    return [schemas.project_summary({
+        **row, "effective_role": access.role_effectif_projet(conn, utilisateur, row["id"]),
+    }) for row in ProjectRepo(conn).list_all()]
+
+
+@router.post("", response_model=schemas.ProjectSummary, status_code=201,
+             dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
 def create_project(body: schemas.ProjectIn, conn=Depends(get_conn)):
     if not body.name.strip():
         raise HTTPException(status_code=422, detail="le nom du projet est requis")
@@ -79,7 +104,7 @@ def _last_project_id(conn) -> int:
 
 
 @router.patch("/{project_id}", response_model=schemas.ProjectSummary,
-             dependencies=[Depends(access.require_project_access)])
+             dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
 def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get_conn)):
     """Édite un projet : nom, description **et connexion** (décision `0005`).
 
@@ -110,7 +135,7 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
 
 
 @router.delete("/{project_id}", status_code=204,
-              dependencies=[Depends(access.require_project_access)])
+              dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
 def delete_project(project_id: int, request: Request, conn=Depends(get_conn)):
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
@@ -131,7 +156,7 @@ def get_exploration(project_id: int, conn=Depends(get_conn)):
 
 
 @router.post("/{project_id}/exploration", response_model=schemas.ExplorationOut, status_code=202,
-            dependencies=[Depends(access.require_project_access)])
+            dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
 def start_exploration(project_id: int, background: BackgroundTasks, conn=Depends(get_conn)):
     """Explore l'application du projet et construit SA cartographie (aucun LLM).
 
@@ -208,40 +233,175 @@ def get_project_access(project_id: int, conn=Depends(get_conn)):
         default_access=repo.default_access(project_id),
         overrides=[schemas.ProjectAccessOverrideOut(user_id=r["user_id"], username=r["username"],
                                                      role=r["role"])
-                  for r in repo.overrides_for_project(project_id)])
+                  for r in repo.overrides_for_project(project_id)],
+        group_overrides=[schemas.ProjectGroupAccessOut(**r)
+                         for r in ProjectGroupAccessRepo(conn).list_for_project(project_id)])
+
+
+def _admins_effectifs(conn, project_id: int) -> int:
+    return sum(
+        1 for user in UserRepo(conn).list_all()
+        if user["is_active"] and access.role_effectif_projet(conn, user, project_id) == access.ROLE_ADMIN)
+
+
+@router.post("/{project_id}/access/groups", response_model=schemas.ProjectAccessOut,
+             dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
+def set_project_group_access(project_id: int, body: schemas.ProjectGroupAccessIn,
+                             conn=Depends(get_conn)):
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    if UserGroupRepo(conn).get(body.group_id) is None:
+        raise HTTPException(status_code=404, detail=f"groupe {body.group_id} introuvable")
+    if body.role not in ("", *_ROLES_ACCES_PROJET):
+        raise HTTPException(status_code=422, detail=f"accès inconnu : « {body.role} »")
+    repo = ProjectGroupAccessRepo(conn)
+    precedent = repo.get(project_id, body.group_id)
+    repo.set(project_id, body.group_id, body.role)
+    if _admins_effectifs(conn, project_id) == 0:
+        precedent is None and repo.remove(project_id, body.group_id)
+        precedent is not None and repo.set(project_id, body.group_id, precedent)
+        raise erreurs.ErreurMetier(
+            "etat_incompatible", "impossible : cette attribution laisserait le projet sans Admin actif")
+    return get_project_access(project_id, conn)
+
+
+@router.delete("/{project_id}/access/groups/{group_id}", response_model=schemas.ProjectAccessOut,
+               dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
+def remove_project_group_access(project_id: int, group_id: int, conn=Depends(get_conn)):
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    repo = ProjectGroupAccessRepo(conn)
+    precedent = repo.get(project_id, group_id)
+    if precedent is None:
+        raise HTTPException(status_code=404, detail="attribution de groupe introuvable")
+    repo.remove(project_id, group_id)
+    if _admins_effectifs(conn, project_id) == 0:
+        repo.set(project_id, group_id, precedent)
+        raise erreurs.ErreurMetier(
+            "etat_incompatible", "impossible : cette suppression laisserait le projet sans Admin actif")
+    return get_project_access(project_id, conn)
 
 
 @router.patch("/{project_id}/access", response_model=schemas.ProjectAccessOut,
              dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
 def set_project_default_access(project_id: int, body: schemas.ProjectDefaultAccessIn,
-                               conn=Depends(get_conn)):
+                               request: Request, conn=Depends(get_conn)):
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
     if body.default_access and not _role_projet_valide(body.default_access):
         raise HTTPException(status_code=422,
                             detail=f"accès inconnu : « {body.default_access} »")
-    ProjectAccessRepo(conn).set_default_access(project_id, body.default_access)
+    ProjectMembershipService(
+        conn, request.state.user["id"]).set_default_access(project_id, body.default_access)
     return get_project_access(project_id, conn)
 
 
 @router.post("/{project_id}/access/users", response_model=schemas.ProjectAccessOut,
             dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
 def set_project_access_override(project_id: int, body: schemas.ProjectAccessOverrideIn,
-                                conn=Depends(get_conn)):
+                                request: Request, conn=Depends(get_conn)):
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
     if UserRepo(conn).get(body.user_id) is None:
         raise HTTPException(status_code=404, detail=f"utilisateur {body.user_id} introuvable")
     if not _role_projet_valide(body.role):
         raise HTTPException(status_code=422, detail=f"accès inconnu : « {body.role} »")
-    ProjectAccessRepo(conn).set_override(project_id, body.user_id, body.role)
+    service = ProjectMembershipService(conn, request.state.user["id"])
+    if body.role == access.ACCES_PROJET_REFUSE:
+        service.remove(project_id, body.user_id)
+    else:
+        service.set_active_member(
+            project_id, body.user_id, body.role, action="LEGACY_OVERRIDE_SET")
     return get_project_access(project_id, conn)
 
 
 @router.delete("/{project_id}/access/users/{user_id}", response_model=schemas.ProjectAccessOut,
               dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
-def remove_project_access_override(project_id: int, user_id: int, conn=Depends(get_conn)):
+def remove_project_access_override(project_id: int, user_id: int, request: Request,
+                                   conn=Depends(get_conn)):
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
-    ProjectAccessRepo(conn).remove_override(project_id, user_id)
+    ProjectMembershipService(
+        conn, request.state.user["id"]).remove_legacy_override(project_id, user_id)
     return get_project_access(project_id, conn)
+
+
+_STATUTS_MEMBRE_MODIFIABLES = ("active", "suspended")
+
+
+def _member_out(row: dict) -> schemas.ProjectMemberOut:
+    return schemas.ProjectMemberOut(**{k: row[k] for k in (
+        "user_id", "username", "email", "role", "status", "created_at")})
+
+
+def _require_project_and_user(conn, project_id: int, user_id: int | None = None) -> dict | None:
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    if user_id is None:
+        return None
+    user = UserRepo(conn).get(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail=f"utilisateur {user_id} introuvable")
+    return user
+
+
+@router.get("/{project_id}/members", response_model=list[schemas.ProjectMemberOut],
+            dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
+def list_project_members(project_id: int, conn=Depends(get_conn)):
+    _require_project_and_user(conn, project_id)
+    return [_member_out(row) for row in ProjectMemberRepo(conn).list_for_project(project_id)]
+
+
+@router.post("/{project_id}/members", response_model=schemas.ProjectMemberOut, status_code=201,
+             dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
+def add_project_member(project_id: int, body: schemas.ProjectMemberCreateIn,
+                       request: Request, conn=Depends(get_conn)):
+    user = _require_project_and_user(conn, project_id, body.user_id)
+    if body.role not in access.ROLES:
+        raise HTTPException(status_code=422, detail=f"rôle inconnu : « {body.role} »")
+    if not user["is_active"]:
+        raise HTTPException(status_code=409, detail="ce compte est désactivé")
+    ProjectMembershipService(conn, request.state.user["id"]).set_active_member(
+        project_id, body.user_id, body.role, action="MEMBER_ADDED")
+    return _member_out(ProjectMemberRepo(conn).get(project_id, body.user_id) | {
+        "username": user["username"], "email": user["email"]})
+
+
+@router.patch("/{project_id}/members/{user_id}", response_model=schemas.ProjectMemberOut,
+              dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
+def patch_project_member(project_id: int, user_id: int, body: schemas.ProjectMemberPatchIn,
+                         request: Request, conn=Depends(get_conn)):
+    user = _require_project_and_user(conn, project_id, user_id)
+    repo = ProjectMemberRepo(conn)
+    member = repo.get(project_id, user_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="membre du projet introuvable")
+    role = body.role if body.role is not None else member["role"]
+    status = body.status if body.status is not None else member["status"]
+    if role not in access.ROLES:
+        raise HTTPException(status_code=422, detail=f"rôle inconnu : « {role} »")
+    if status not in _STATUTS_MEMBRE_MODIFIABLES:
+        raise HTTPException(status_code=422, detail=f"statut inconnu : « {status} »")
+    if status == "active" and not user["is_active"]:
+        raise HTTPException(status_code=409, detail="ce compte est désactivé")
+    if status == "active":
+        ProjectMembershipService(conn, request.state.user["id"]).set_active_member(
+            project_id, user_id, role, action="MEMBER_UPDATED")
+    else:
+        ProjectMembershipService(conn, request.state.user["id"]).suspend(
+            project_id, user_id, role)
+    return _member_out(repo.get(project_id, user_id) | {
+        "username": user["username"], "email": user["email"]})
+
+
+@router.delete("/{project_id}/members/{user_id}", response_model=schemas.ProjectMemberOut,
+               dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
+def remove_project_member(project_id: int, user_id: int, request: Request,
+                          conn=Depends(get_conn)):
+    user = _require_project_and_user(conn, project_id, user_id)
+    repo = ProjectMemberRepo(conn)
+    if repo.get(project_id, user_id) is None:
+        raise HTTPException(status_code=404, detail="membre du projet introuvable")
+    ProjectMembershipService(conn, request.state.user["id"]).remove(project_id, user_id)
+    return _member_out(repo.get(project_id, user_id) | {
+        "username": user["username"], "email": user["email"]})

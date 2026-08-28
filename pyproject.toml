@@ -15,8 +15,14 @@ dependencies = [
     "playwright>=1.40",
     "OdooRPC>=0.9",
     "pdfplumber>=0.11",
+    # Import des spécifications Word (`spec_extract._docx`). La dépendance était utilisée sans
+    # être déclarée : une installation propre réussissait, puis le premier .docx échouait.
+    "python-docx>=1.1",
     "fastapi>=0.115",
     "uvicorn>=0.32",
+    # Requis par les routes FastAPI qui acceptent UploadFile/Form (import de spécification et
+    # pièces jointes). Sans lui, Uvicorn ouvre le port mais l'application plante à l'import.
+    "python-multipart>=0.0.9",
     # Chiffrement au repos du secret de connexion d'un projet (2026-07-24). Était déjà présent
     # en transitif ; déclaré explicitement parce qu'on en dépend désormais directement — une
     # dépendance qu'on utilise sans la déclarer disparaît le jour où son porteur disparaît.
@@ -40,7 +46,10 @@ target-version = "py310"
 line-length = 100
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+# `testpilot` vit sous `src/`, tandis que le harnais réellement exécuté par
+# Behave reste à la racine dans `behave_runtime/`. Déclarer les deux ici rend
+# `pytest` reproductible sans variable PYTHONPATH propre au poste ou à la CI.
+pythonpath = ["src", "."]
 testpaths = ["tests"]
 markers = [
     "donnees_reelles: échappatoire explicite au garde-fou conftest.py qui interdit à un test de toucher le vrai data/ du poste — aucun test actuel n'en a besoin, à documenter s'il en naît un.",

@@ -6,13 +6,18 @@
 // et gardent leur rapport ; elles n'ont simplement pas de campagne — on ne les mélange plus ici.
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { type RunSummary } from '../lib/api'
+import { roleSuffisant, type RunSummary } from '../lib/api'
+import { useSession } from '../lib/useSession'
+import { useProjects } from '../lib/useProjects'
 import { useRuns } from '../lib/donnees'
 import Button from '../components/ui/Button.vue'
 
 const route = useRoute()
 const router = useRouter()
 const pid = computed(() => route.params.pid as string)
+const { session } = useSession()
+const { projectById } = useProjects()
+const peutCreer = computed(() => roleSuffisant(projectById(pid.value)?.effective_role || session.value?.role || '', 'testeur'))
 
 // Couche de données (lot A) : revenir sur cet écran ne redemande plus la liste des campagnes
 // tant qu'elle est fraîche. Mesuré au navigateur : 3 requêtes pour 3 visites AVANT, 1 APRÈS.
@@ -74,7 +79,7 @@ function goNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) 
     <div class="flex-1 min-w-0">
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-semibold tracking-tight">Exécutions et résultats de test</h1>
-        <Button variant="primary" @click="goNew">+ Ajouter une exécution</Button>
+        <Button v-if="peutCreer" variant="primary" @click="goNew">+ Ajouter une exécution</Button>
       </div>
 
       <div v-if="loading" class="mt-6 space-y-2">
@@ -85,7 +90,7 @@ function goNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) 
         <Button variant="secondary" class="mt-3" @click="() => refetch()">Réessayer</Button>
       </div>
       <p v-else-if="!runs.length" class="mt-10 text-center text-sm text-muted-foreground">
-        Aucune exécution pour ce projet. Créez-en une avec « Ajouter une exécution ».
+        {{ peutCreer ? 'Aucune exécution pour ce projet. Créez-en une avec « Ajouter une exécution ».' : 'Aucune exécution pour ce projet.' }}
       </p>
 
       <div v-for="g in groups" :key="g.month" class="mt-5">
@@ -140,14 +145,6 @@ function goNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) 
         </div>
       </div>
 
-      <!-- Plans de test : conteneur de runs, non construit (incrément 2) — dit, jamais fabriqué. -->
-      <div class="mt-8 rounded-lg border border-dashed border-border p-5">
-        <div class="text-sm font-medium">Plans de test</div>
-        <p class="mt-1 text-xs text-muted-foreground">
-          Un plan regroupera plusieurs exécutions (par exemple une par configuration).
-          Pas encore construit — aucun plan n'existe.
-        </p>
-      </div>
     </div>
   </div>
 </template>

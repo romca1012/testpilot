@@ -183,6 +183,13 @@ SESSION_SECRET = os.getenv("TESTPILOT_SESSION_SECRET", "")
 # Durée d'une session ouverte.
 SESSION_DAYS = int(os.getenv("TESTPILOT_SESSION_DAYS", "30"))
 
+# Le cookie ne doit voyager que sous HTTPS en production. `False` reste le défaut pour que le
+# développement local sur http://localhost continue de fonctionner ; le profil de déploiement
+# impose explicitement `true` derrière le reverse proxy TLS.
+COOKIE_SECURE = os.getenv("TESTPILOT_COOKIE_SECURE", "false").strip().lower() in {
+    "1", "true", "yes", "on",
+}
+
 # Le tout premier compte Admin, créé une seule fois au démarrage si la table `user` est encore
 # vide ET que les deux variables sont renseignées (`api/app.py::_amorcer_premier_admin`). Sans
 # elles, une base neuve n'a AUCUN compte, et personne ne peut se connecter pour en créer un —
@@ -212,6 +219,13 @@ SERVICE_ACCOUNT_NAME = os.getenv("TESTPILOT_SERVICE_ACCOUNT", "TestPilot (automa
 # tant que personne ne règle rien. Volontairement PAS d'intégration Jira réelle : aucune
 # vérification que le ticket existe, aucun appel réseau externe.
 REFERENCE_URL_TEMPLATE = os.getenv("TESTPILOT_REFERENCE_URL_TEMPLATE", "")
+
+# ── Paramètres généraux de l'instance ────────────────────────────────────────
+# Réglages produit modifiables depuis l'administration. Ils restent également surchargeables
+# au déploiement ; une valeur enregistrée en base garde la priorité via `SettingRepo`.
+INSTANCE_NAME = os.getenv("TESTPILOT_INSTANCE_NAME", "TestPilot")
+INSTANCE_TIMEZONE = os.getenv("TESTPILOT_TIMEZONE", "Europe/Paris")
+DATE_FORMAT = os.getenv("TESTPILOT_DATE_FORMAT", "DD/MM/YYYY")
 
 # ── Notifications par email (2026-08-12) ──────────────────────────────────────
 # Prévenir l'auteur d'une campagne/automatisation quand elle se termine — désactivé par défaut,

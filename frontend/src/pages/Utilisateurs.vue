@@ -1,214 +1,217 @@
 <script setup lang="ts">
-// Gestion des comptes — Admin seulement (2026-08-07). Le SERVEUR est la seule vraie garde (403
-// sur `/api/admin/users` pour tout autre rôle) ; cet écran affiche juste un message clair au lieu
-// de laisser un Testeur/Dev arriver ici pour se voir refuser chaque action une par une.
-import { onMounted, ref } from 'vue'
-import { api, LIBELLE_ROLE, ROLES, type UserAccount } from '../lib/api'
-import { useSession } from '../lib/useSession'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  ACCES_PROJET_REFUSE, api, LIBELLE_ROLE, ROLES,
+  type ProjectSummary, type UserAccount, type UserGroup, type UserProjectChoice,
+} from '../lib/api'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
-
-const { session } = useSession()
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import { DESCRIPTION_ROLE } from '../lib/roles'
 
 const comptes = ref<UserAccount[]>([])
+const groupes = ref<UserGroup[]>([])
+const route = useRoute()
+const router = useRouter()
+const projets = ref<ProjectSummary[]>([])
 const loading = ref(true)
 const erreur = ref('')
-
-const nouveauNom = ref('')
-const nouveauMdp = ref('')
-const nouveauRole = ref('testeur')
-const nouvelEmail = ref('')
+const recherche = ref('')
+const ongletInitial = route.query.tab === 'roles' ? 'roles' : route.query.tab === 'groups' ? 'groups' : 'users'
+const onglet = ref<'users' | 'groups' | 'roles'>(ongletInitial)
+const showCreate = ref(false)
 const creation = ref(false)
+const nouveau = ref({ username: '', password: '', email: '', role: 'testeur' })
+const accesCreation = ref<Record<number, string>>({})
+const showGroup = ref(false)
+const savingGroup = ref(false)
+const groupForm = ref<{ id: number | null; name: string; user_ids: number[] }>({ id: null, name: '', user_ids: [] })
+const groupToDelete = ref<UserGroup | null>(null)
+const deletingGroup = ref(false)
+
+const comptesFiltres = computed(() => {
+  const q = recherche.value.trim().toLocaleLowerCase('fr')
+  if (!q) return comptes.value
+  return comptes.value.filter(c => `${c.username} ${c.email}`.toLocaleLowerCase('fr').includes(q))
+})
 
 async function charger() {
   loading.value = true
   erreur.value = ''
-  try {
-    comptes.value = await api.listUsers()
-  } catch (e: any) {
-    erreur.value = e?.message || 'Impossible de charger les comptes.'
-  } finally {
-    loading.value = false
-  }
+  try { [comptes.value, projets.value, groupes.value] = await Promise.all([api.listUsers(), api.listAdminProjects(), api.listUserGroups()]) }
+  catch (e: any) { erreur.value = e?.message || 'Impossible de charger les utilisateurs.' }
+  finally { loading.value = false }
 }
 onMounted(charger)
 
+function ouvrirCreation() {
+  nouveau.value = { username: '', password: '', email: '', role: 'testeur' }
+  accesCreation.value = Object.fromEntries(projets.value.map(p => [p.id, ACCES_PROJET_REFUSE]))
+  showCreate.value = true
+}
+
+function choixProjets(source: Record<number, string>): UserProjectChoice[] {
+  return Object.entries(source)
+    .filter(([, role]) => role !== ACCES_PROJET_REFUSE)
+    .map(([project_id, role]) => ({ project_id: Number(project_id), role }))
+}
+
 async function creer() {
-  if (!nouveauNom.value.trim() || !nouveauMdp.value) return
+  if (!nouveau.value.username.trim() || nouveau.value.password.length < 8) return
   creation.value = true
   erreur.value = ''
   try {
     const compte = await api.createUser({
-      username: nouveauNom.value.trim(), password: nouveauMdp.value, role: nouveauRole.value,
-      email: nouvelEmail.value.trim(),
+      username: nouveau.value.username.trim(), password: nouveau.value.password,
+      email: nouveau.value.email.trim(), role: nouveau.value.role,
+      projects: choixProjets(accesCreation.value),
     })
-    comptes.value = [...comptes.value, compte]
-    nouveauNom.value = ''
-    nouveauMdp.value = ''
-    nouveauRole.value = 'testeur'
-    nouvelEmail.value = ''
-  } catch (e: any) {
-    erreur.value = e?.message || 'Création impossible.'
-  } finally {
-    creation.value = false
-  }
+    comptes.value = [...comptes.value, compte].sort((a, b) => a.username.localeCompare(b.username))
+    showCreate.value = false
+  } catch (e: any) { erreur.value = e?.message || 'Création impossible.' }
+  finally { creation.value = false }
 }
 
-async function changerRole(compte: UserAccount, role: string) {
+async function ouvrirEdition(c: UserAccount) {
+  await router.push({ name: 'utilisateur-detail', params: { id: c.id } })
+}
+
+function ouvrirGroupe(groupe?: UserGroup) {
+  groupForm.value = groupe
+    ? { id: groupe.id, name: groupe.name, user_ids: groupe.members.map(m => m.id) }
+    : { id: null, name: '', user_ids: [] }
+  showGroup.value = true
+}
+
+function basculerMembre(userId: number, checked: boolean) {
+  const ids = new Set(groupForm.value.user_ids)
+  checked ? ids.add(userId) : ids.delete(userId)
+  groupForm.value.user_ids = [...ids]
+}
+
+async function enregistrerGroupe() {
+  if (!groupForm.value.name.trim()) return
+  savingGroup.value = true
+  erreur.value = ''
   try {
-    const maj = await api.patchUser(compte.id, { role })
-    comptes.value = comptes.value.map((c) => (c.id === compte.id ? maj : c))
-  } catch (e: any) {
-    erreur.value = e?.message || 'Changement de rôle impossible.'
-  }
+    const payload = { name: groupForm.value.name.trim(), user_ids: groupForm.value.user_ids }
+    const saved = groupForm.value.id
+      ? await api.updateUserGroup(groupForm.value.id, payload)
+      : await api.createUserGroup(payload)
+    groupes.value = [...groupes.value.filter(g => g.id !== saved.id), saved]
+      .sort((a, b) => a.name.localeCompare(b.name))
+    showGroup.value = false
+  } catch (e: any) { erreur.value = e?.message || 'Enregistrement du groupe impossible.' }
+  finally { savingGroup.value = false }
 }
 
-async function changerEmail(compte: UserAccount, email: string) {
-  // Nécessaire pour prévenir ce compte par email (2026-08-12) — voir Réglages > Notifications.
-  if (email === compte.email) return
+async function supprimerGroupe() {
+  if (!groupToDelete.value) return
+  deletingGroup.value = true
+  erreur.value = ''
   try {
-    const maj = await api.patchUser(compte.id, { email })
-    comptes.value = comptes.value.map((c) => (c.id === compte.id ? maj : c))
-  } catch (e: any) {
-    erreur.value = e?.message || "Changement d'email impossible."
-  }
+    await api.deleteUserGroup(groupToDelete.value.id)
+    groupes.value = groupes.value.filter(g => g.id !== groupToDelete.value?.id)
+    groupToDelete.value = null
+  } catch (e: any) { erreur.value = e?.message || 'Suppression du groupe impossible.' }
+  finally { deletingGroup.value = false }
 }
 
-async function basculerActif(compte: UserAccount) {
-  try {
-    const maj = await api.patchUser(compte.id, { is_active: !compte.is_active })
-    comptes.value = comptes.value.map((c) => (c.id === compte.id ? maj : c))
-  } catch (e: any) {
-    erreur.value = e?.message || 'Action impossible.'
-  }
-}
-
-// ── Réinitialisation de mot de passe (2026-08-11) — pour un compte qui a oublié le sien : jusqu'ici
-// aucun recours n'existait, un Admin devait modifier la base directement.
-const reinitCompte = ref<UserAccount | null>(null)
-const nouveauMdpReinit = ref('')
-const reinitEnCours = ref(false)
-const reinitErreur = ref('')
-
-function ouvrirReinit(compte: UserAccount) {
-  reinitCompte.value = compte
-  nouveauMdpReinit.value = ''
-  reinitErreur.value = ''
-}
-
-async function confirmerReinit() {
-  if (!reinitCompte.value || !nouveauMdpReinit.value) return
-  reinitEnCours.value = true
-  reinitErreur.value = ''
-  try {
-    await api.patchUser(reinitCompte.value.id, { new_password: nouveauMdpReinit.value })
-    reinitCompte.value = null
-  } catch (e: any) {
-    reinitErreur.value = e?.message || 'Réinitialisation impossible.'
-  } finally {
-    reinitEnCours.value = false
-  }
-}
+const actifs = computed(() => comptes.value.filter(c => c.is_active).length)
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl p-6 md:p-8">
-    <RouterLink to="/" class="text-sm text-primary hover:underline">← Retour</RouterLink>
-    <h1 class="mt-3 text-xl font-semibold">Comptes utilisateurs</h1>
-    <p class="mt-1 text-sm text-muted-foreground">
-      Un compte se crée ici — il n'existe aucune inscription libre. Désactiver un compte ne le
-      supprime pas : son historique (cas créés, résultats saisis) reste intact.
-    </p>
+  <div class="px-4 py-6 sm:px-6 md:px-8">
+    <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Administration</div>
+        <h1 class="mt-1 text-2xl font-semibold tracking-tight">Utilisateurs et rôles</h1>
+        <p class="mt-2 max-w-3xl text-sm text-muted-foreground">Gérez les comptes, leurs rôles et les projets auxquels ils peuvent accéder.</p>
+        <p v-if="!loading" class="mt-2 text-xs text-muted-foreground">{{ actifs }} actif{{ actifs > 1 ? 's' : '' }} · {{ comptes.length - actifs }} inactif{{ comptes.length - actifs > 1 ? 's' : '' }}</p>
+      </div>
+      <Button variant="primary" size="lg" @click="ouvrirCreation">+ Ajouter un utilisateur</Button>
+    </header>
 
-    <p v-if="session && session.role !== 'admin'"
-       class="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-      Cet écran est réservé au rôle Admin.
-    </p>
+    <p v-if="erreur" role="alert" class="mt-5 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{{ erreur }}</p>
 
-    <p v-if="erreur" class="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-      {{ erreur }}
-    </p>
+    <nav class="mt-6 flex gap-6 border-b border-border" aria-label="Gestion des utilisateurs">
+      <button class="min-h-11 border-b-2 px-1 text-sm font-semibold" :class="onglet === 'users' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'" @click="onglet = 'users'">UTILISATEURS</button>
+      <button class="min-h-11 border-b-2 px-1 text-sm font-semibold" :class="onglet === 'groups' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'" @click="onglet = 'groups'">GROUPES</button>
+      <button class="min-h-11 border-b-2 px-1 text-sm font-semibold" :class="onglet === 'roles' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'" @click="onglet = 'roles'">RÔLES</button>
+    </nav>
 
-    <section class="mt-6 rounded-lg border border-border bg-surface-raised p-4">
-      <h2 class="font-medium">Nouveau compte</h2>
-      <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_1fr_auto_auto]">
-        <input v-model="nouveauNom" placeholder="Identifiant"
-               class="rounded-md bg-surface border border-border px-3 py-2 focus:border-primary outline-none" />
-        <input v-model="nouveauMdp" type="password" placeholder="Mot de passe initial"
-               class="rounded-md bg-surface border border-border px-3 py-2 focus:border-primary outline-none" />
-        <input v-model="nouvelEmail" type="email" placeholder="Email (facultatif)"
-               class="rounded-md bg-surface border border-border px-3 py-2 focus:border-primary outline-none" />
-        <select v-model="nouveauRole"
-                class="rounded-md bg-surface border border-border px-3 py-2 focus:border-primary outline-none">
-          <option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option>
-        </select>
-        <Button variant="primary" :disabled="creation || !nouveauNom.trim() || !nouveauMdp" @click="creer">
-          {{ creation ? 'Création…' : 'Créer' }}
-        </Button>
+    <section v-if="onglet === 'users'" class="mt-4 overflow-hidden rounded-lg border border-border bg-surface">
+      <div class="border-b border-border bg-surface-raised p-3">
+        <label class="block max-w-xl"><span class="sr-only">Rechercher un utilisateur</span><input v-model="recherche" type="search" placeholder="Rechercher par identifiant ou adresse email" class="h-11 w-full rounded-md border border-border bg-surface px-3 outline-none focus:border-primary" /></label>
+      </div>
+      <p v-if="loading" class="p-6 text-sm text-muted-foreground">Chargement…</p>
+      <div v-else class="overflow-x-auto">
+        <table class="w-full min-w-[860px] text-sm">
+          <thead class="bg-surface-raised text-left text-xs uppercase tracking-wide text-muted-foreground"><tr><th class="px-4 py-3">Utilisateur</th><th class="px-4 py-3">Adresse email</th><th class="px-4 py-3">Statut</th><th class="px-4 py-3">Rôle</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
+          <tbody><tr v-for="c in comptesFiltres" :key="c.id" class="border-t border-border hover:bg-accent/20">
+            <th class="px-4 py-3 text-left font-medium"><button class="text-primary hover:underline" @click="ouvrirEdition(c)">{{ c.username }}</button></th>
+            <td class="px-4 py-3 text-muted-foreground">{{ c.email || 'Non renseignée' }}</td>
+            <td class="px-4 py-3"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-medium" :class="c.is_active ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'">{{ c.is_active ? 'Actif' : 'Inactif' }}</span></td>
+            <td class="px-4 py-3">{{ LIBELLE_ROLE[c.role] || c.role }}</td>
+            <td class="px-4 py-3 text-right"><Button variant="ghost" size="sm" @click="ouvrirEdition(c)">Modifier</Button></td>
+          </tr></tbody>
+        </table>
+        <p v-if="!comptesFiltres.length" class="p-8 text-center text-sm text-muted-foreground">Aucun utilisateur ne correspond à cette recherche.</p>
       </div>
     </section>
 
-    <p v-if="loading" class="mt-6 text-sm text-muted-foreground">Chargement…</p>
+    <section v-else-if="onglet === 'groups'" class="mt-4 overflow-hidden rounded-lg border border-border bg-surface">
+      <div class="flex items-center justify-between gap-4 border-b border-border bg-surface-raised px-4 py-3">
+        <div><h2 class="font-semibold">Groupes d’utilisateurs</h2><p class="mt-1 text-xs text-muted-foreground">Regroupez les membres d’une même équipe pour préparer la gestion collective des accès.</p></div>
+        <Button variant="primary" @click="ouvrirGroupe()">+ Ajouter un groupe</Button>
+      </div>
+      <div v-if="groupes.length" class="divide-y divide-border">
+        <div v-for="g in groupes" :key="g.id" class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><button class="min-h-11 text-left font-medium text-primary hover:underline" @click="ouvrirGroupe(g)">{{ g.name }}</button><p class="text-sm text-muted-foreground">{{ g.member_count }} membre{{ g.member_count > 1 ? 's' : '' }}<span v-if="g.members.length"> · {{ g.members.map(m => m.username).join(', ') }}</span></p></div>
+          <div class="flex gap-2"><Button variant="ghost" size="sm" @click="ouvrirGroupe(g)">Modifier</Button><Button variant="danger" size="sm" @click="groupToDelete = g">Supprimer</Button></div>
+        </div>
+      </div>
+      <div v-else class="p-8 text-center"><p class="font-medium">Aucun groupe</p><p class="mt-1 text-sm text-muted-foreground">Créez un groupe pour rassembler les utilisateurs d’une équipe.</p></div>
+    </section>
 
-    <table v-else class="mt-6 w-full border-collapse text-sm">
-      <thead>
-        <tr class="text-left text-xs uppercase tracking-wider text-muted-foreground">
-          <th class="py-2">Identifiant</th>
-          <th class="py-2">Rôle</th>
-          <th class="py-2">Email</th>
-          <th class="py-2">État</th>
-          <th class="py-2"></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="c in comptes" :key="c.id" class="border-t border-border">
-          <td class="py-2">{{ c.username }}</td>
-          <td class="py-2">
-            <select :value="c.role" @change="changerRole(c, ($event.target as HTMLSelectElement).value)"
-                    class="rounded-md bg-surface border border-border px-2 py-1 focus:border-primary outline-none">
-              <option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option>
-            </select>
-          </td>
-          <td class="py-2">
-            <input :value="c.email" type="email" placeholder="—"
-                   @change="changerEmail(c, ($event.target as HTMLInputElement).value.trim())"
-                   class="w-full rounded-md bg-surface border border-border px-2 py-1 focus:border-primary outline-none" />
-          </td>
-          <td class="py-2">
-            <!-- Jamais la couleur seule : le texte porte l'information. -->
-            <span :class="c.is_active ? 'text-success' : 'text-muted-foreground'">
-              {{ c.is_active ? 'Actif' : 'Désactivé' }}
-            </span>
-          </td>
-          <td class="py-2 text-right">
-            <button class="text-sm text-primary hover:underline" @click="ouvrirReinit(c)">
-              Réinitialiser le mot de passe
-            </button>
-            <button class="ml-3 text-sm text-primary hover:underline" @click="basculerActif(c)">
-              {{ c.is_active ? 'Désactiver' : 'Réactiver' }}
-            </button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <section v-else class="mt-4 overflow-hidden rounded-lg border border-border bg-surface">
+      <div class="bg-surface-raised px-4 py-3 text-sm font-medium">Rôle</div>
+      <div v-for="r in ROLES" :key="r" class="flex items-center justify-between gap-4 border-t border-border px-4 py-3"><div><button class="min-h-11 text-left font-medium text-primary hover:underline" @click="router.push({ name: 'role-detail', params: { role: r } })">{{ LIBELLE_ROLE[r] }}</button><p class="text-sm text-muted-foreground">{{ DESCRIPTION_ROLE[r] }}</p></div><div class="flex shrink-0 items-center gap-2"><span v-if="r === 'admin'" class="rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">Administration</span><Button variant="ghost" size="sm" @click="router.push({ name: 'role-detail', params: { role: r } })">Voir les permissions</Button></div></div>
+    </section>
 
-    <!-- ════════ Réinitialisation de mot de passe ════════ -->
-    <Modal :open="!!reinitCompte"
-           :title="reinitCompte ? `Réinitialiser le mot de passe de « ${reinitCompte.username} »` : ''"
-           subtitle="Le titulaire devra utiliser ce nouveau mot de passe dès sa prochaine connexion."
-           @close="reinitCompte = null">
-      <form id="form-reinit-mdp" class="space-y-2" @submit.prevent="confirmerReinit">
-        <label class="block">
-          <span class="text-sm font-medium">Nouveau mot de passe</span>
-          <input v-model="nouveauMdpReinit" type="password" autofocus
-                 class="mt-1 w-full rounded-md bg-surface border border-border px-3 py-2 focus:border-primary outline-none" />
-        </label>
-        <p v-if="reinitErreur" class="text-sm text-destructive">{{ reinitErreur }}</p>
+    <Modal :open="showCreate" title="Ajouter un utilisateur" subtitle="Créez le compte puis définissez ses accès aux projets." max-width="max-w-3xl" @close="showCreate = false">
+      <form id="create-user" class="space-y-5" @submit.prevent="creer">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="text-sm font-medium">Identifiant *<input v-model="nouveau.username" name="username" autofocus class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3" /></label>
+          <label class="text-sm font-medium">Adresse email<input v-model="nouveau.email" name="email" type="email" class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3" /></label>
+          <label class="text-sm font-medium">Mot de passe initial *<input v-model="nouveau.password" name="new-password" type="password" autocomplete="new-password" class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3" /><span class="mt-1 block text-xs font-normal text-muted-foreground">8 caractères minimum</span></label>
+          <label class="text-sm font-medium">Rôle dans l’instance *<select v-model="nouveau.role" class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3"><option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option></select></label>
+        </div>
+        <fieldset><legend class="font-semibold">Accès aux projets</legend><p class="mt-1 text-xs text-muted-foreground">« Aucun accès » masque entièrement le projet pour cet utilisateur.</p>
+          <div class="mt-3 max-h-64 overflow-y-auto rounded-md border border-border"><div v-for="p in projets" :key="p.id" class="grid items-center gap-3 border-t border-border px-3 py-2 first:border-t-0 sm:grid-cols-[1fr_220px]"><span class="text-sm font-medium">{{ p.name }}</span><select v-model="accesCreation[p.id]" :aria-label="`Accès à ${p.name}`" class="h-10 rounded-md border border-border bg-surface px-2 text-sm"><option :value="ACCES_PROJET_REFUSE">Aucun accès</option><option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option></select></div><p v-if="!projets.length" class="p-4 text-sm text-muted-foreground">Aucun projet disponible.</p></div>
+        </fieldset>
       </form>
-      <template #footer>
-        <Button type="button" variant="secondary" @click="reinitCompte = null">Annuler</Button>
-        <Button type="submit" form="form-reinit-mdp" variant="primary" :loading="reinitEnCours" :disabled="!nouveauMdpReinit">Réinitialiser</Button>
-      </template>
+      <template #footer><Button @click="showCreate = false">Annuler</Button><Button type="submit" form="create-user" variant="primary" :loading="creation" :disabled="!nouveau.username.trim() || nouveau.password.length < 8">Créer l’utilisateur</Button></template>
     </Modal>
+
+    <Modal :open="showGroup" :title="groupForm.id ? 'Modifier le groupe' : 'Ajouter un groupe'" subtitle="Le groupe contient la liste complète des utilisateurs sélectionnés." max-width="max-w-2xl" @close="showGroup = false">
+      <form id="group-form" class="space-y-5" @submit.prevent="enregistrerGroupe">
+        <label class="block text-sm font-medium">Nom du groupe *<input v-model="groupForm.name" autofocus class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3" /></label>
+        <fieldset><legend class="font-semibold">Membres</legend><p class="mt-1 text-xs text-muted-foreground">Les comptes désactivés restent visibles pour conserver une composition explicite.</p>
+          <div class="mt-3 max-h-72 overflow-y-auto rounded-md border border-border">
+            <label v-for="c in comptes" :key="c.id" class="flex min-h-11 cursor-pointer items-center gap-3 border-t border-border px-3 py-2 first:border-t-0 hover:bg-accent/20">
+              <input type="checkbox" class="h-4 w-4" :checked="groupForm.user_ids.includes(c.id)" @change="basculerMembre(c.id, ($event.target as HTMLInputElement).checked)" />
+              <span class="min-w-0 flex-1"><span class="block font-medium">{{ c.username }}</span><span class="block truncate text-xs text-muted-foreground">{{ c.email || LIBELLE_ROLE[c.role] }}</span></span>
+              <span v-if="!c.is_active" class="rounded-full bg-secondary px-2 py-1 text-xs text-muted-foreground">Inactif</span>
+            </label>
+          </div>
+        </fieldset>
+      </form>
+      <template #footer><Button @click="showGroup = false">Annuler</Button><Button type="submit" form="group-form" variant="primary" :loading="savingGroup" :disabled="!groupForm.name.trim()">Enregistrer le groupe</Button></template>
+    </Modal>
+
+    <ConfirmDialog :open="Boolean(groupToDelete)" title="Supprimer ce groupe ?" :message="`Le groupe « ${groupToDelete?.name || ''} » sera supprimé. Les comptes utilisateurs ne seront pas supprimés.`" confirm-label="Supprimer le groupe" :busy="deletingGroup" @confirm="supprimerGroupe" @cancel="groupToDelete = null" />
+
   </div>
 </template>

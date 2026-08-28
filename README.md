@@ -10,7 +10,7 @@ cochée, toujours la conséquence d'une exécution réelle.
 - **Vision et périmètre** : `docs/brief-produit-outil-test-management-ia.md` (seule source de
   vérité, avec son journal d'amendements).
 - **État réel et route** : `docs/PLAN.md`.
-- **Installer sur un serveur** : `docs/DEPLOIEMENT.md`.
+- **Installer la V1 bêta sur un serveur** : `docs/DEPLOIEMENT-V1-BETA.md`.
 
 ## Ce que le produit fait aujourd'hui
 
@@ -82,11 +82,11 @@ En production, `npm run build` suffit : l'API sert l'interface compilée sur le 
 
 ## Sécurité — à lire avant de l'exposer sur un réseau
 
-- `TESTPILOT_ACCESS_PASSWORD` : **le verrou d'instance**. Vide = aucune protection : quiconque
-  atteint le port lance des tests contre votre application et lit vos rapports.
-- `TESTPILOT_SECRET_KEY` : chiffre les mots de passe de connexion stockés en base.
-- **Pas de comptes, pas de rôles** : hors V1 (§8 du brief), à traiter avant tout usage par un
-  client externe. Le nom saisi à la connexion est une **signature déclarée**, pas une identité.
+- La connexion par compte est obligatoire ; les rôles globaux et les rôles par projet sont
+  contrôlés par le serveur.
+- `TESTPILOT_SECRET_KEY` chiffre les mots de passe de connexion stockés en base.
+- `TESTPILOT_SESSION_SECRET` signe les sessions et doit être distincte de la clé de chiffrement.
+- `TESTPILOT_COOKIE_SECURE=true` est obligatoire derrière HTTPS pour le pilote.
 - Le garde-fou anti-production reste intact : `ODOO_ENV=prod` **bloque toute exécution**.
 
 ## Persistance

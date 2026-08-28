@@ -24,11 +24,19 @@ const push = vi.fn()
 
 vi.mock('../lib/api', () => ({
   API_BASE: '',
+  roleSuffisant: () => true,
   api: {
     getTestDansRun: (...a: any[]) => getTestDansRun(...a),
     getRun: (...a: any[]) => getRun(...a),
   },
 }))
+vi.mock('../lib/useProjects', () => ({
+  useProjects: () => ({ projectById: () => ({ effective_role: 'admin' }) }),
+}))
+vi.mock('../lib/useSession', async () => {
+  const { ref } = await import('vue')
+  return { useSession: () => ({ session: ref({ role: 'admin' }) }) }
+})
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { pid: '1', id: '7', caseId: '12' }, query: {} }),
   useRouter: () => ({ push }),

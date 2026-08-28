@@ -149,3 +149,21 @@ async def enregistrer(conn, result_id: int, fichier: UploadFile) -> dict:
         dossier=str(cible), content_type=type_servi(stored_name)[0], size_bytes=taille)
     return {"id": piece_id, "filename": (fichier.filename or "")[:255],
             "content_type": type_servi(stored_name)[0], "size_bytes": taille}
+
+
+def supprimer(conn, result_id: int, attachment_id: int) -> None:
+    """Retire une preuve jointe explicitement demandée, sans toucher au résultat signé.
+
+    Le nom sur disque est lu en base et recherché par égalité exacte dans le dossier enregistré :
+    aucune chaîne fournie par le client n'est utilisée comme chemin.
+    """
+    repo = ResultRepo(conn)
+    piece = repo.piece_jointe(result_id, attachment_id)
+    if piece is None:
+        raise erreurs.ErreurMetier("introuvable", "pièce jointe introuvable")
+    dossier_piece = Path((piece.get("attachments_path") or "").strip() or ".")
+    for fichier in dossier_piece.iterdir() if dossier_piece.is_dir() else ():
+        if fichier.is_file() and fichier.name == piece["stored_name"]:
+            fichier.unlink(missing_ok=True)
+            break
+    repo.supprimer_piece_jointe(result_id, attachment_id)

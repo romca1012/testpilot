@@ -11,6 +11,7 @@ export const routes = [
   // Accueil : auto-sélection si un seul projet, sinon page de gestion des projets.
   { path: '/', name: 'home', component: () => import('./pages/Home.vue') },
   { path: '/projects', name: 'projects', component: () => import('./pages/ProjectsList.vue') },
+  { path: '/admin/projects', name: 'admin-projects', component: () => import('./pages/ProjectsList.vue') },
 
   // Première vue d'un projet : la LISTE des cas façon TestRail (option (a), 2026-07-20). Le shell
   // « Cas de test » (CasesShell) est choisi par App.vue pour ces routes.
@@ -20,8 +21,6 @@ export const routes = [
   { path: '/projects/:pid/cases/new', name: 'case-new', component: () => import('./pages/AddTestCase.vue') },
   // « Ajouter un cas de test » = saisie MANUELLE (métier, sans IA).
   { path: '/projects/:pid/cases/manual', name: 'case-manual', component: () => import('./pages/AddManualCase.vue') },
-  // Onglets de nav non couverts par ce lot (Aperçu, Tâche à faire, Jalons, Rapports) → « à venir ».
-  { path: '/projects/:pid/cases/soon', name: 'cases-soon', component: () => import('./pages/CasesSoon.vue') },
   { path: '/projects/:pid/cases/:id', name: 'case-detail', component: () => import('./pages/CaseDetailTR.vue') },
   // La SPÉCIFICATION : le document source, d'où naissent 1 à N cas (décision 0022). Son CRUD
   // existait côté serveur depuis le 2026-07-20 sans qu'aucun écran ne l'appelle — le modèle
@@ -33,9 +32,13 @@ export const routes = [
   // projet. L'URL est donc hors de `/projects/:pid` — la ranger sous un projet laisserait croire
   // qu'un autre projet peut avoir un autre compte de service.
   { path: '/settings', name: 'settings', component: () => import('./pages/Settings.vue') },
+  { path: '/settings/general', name: 'settings-general', component: () => import('./pages/GeneralSettings.vue') },
+  { path: '/settings/security', name: 'settings-security', component: () => import('./pages/SecuritySettings.vue') },
   // Gestion des comptes (2026-08-07) — Admin seulement ; le SERVEUR le vérifie (403 sinon), cet
   // écran ne fait qu'éviter de proposer un lien qui serait de toute façon refusé.
   { path: '/utilisateurs', name: 'utilisateurs', component: () => import('./pages/Utilisateurs.vue') },
+  { path: '/utilisateurs/:id', name: 'utilisateur-detail', component: () => import('./pages/UserDetail.vue') },
+  { path: '/utilisateurs/roles/:role', name: 'role-detail', component: () => import('./pages/RoleDetail.vue') },
 
   // La CORBEILLE (§7) : supprimer masque, restaurer annule, détruire est un geste à part.
   { path: '/projects/:pid/corbeille', name: 'corbeille', component: () => import('./pages/Corbeille.vue') },
@@ -54,7 +57,6 @@ export const routes = [
   // « Exécutions et résultats de test » — module TestRail (Aperçu / détail run / formulaires).
   { path: '/projects/:pid/executions', name: 'executions', component: () => import('./pages/RunsOverview.vue') },
   { path: '/projects/:pid/executions/new', name: 'run-new', component: () => import('./pages/AddTestRunForm.vue') },
-  { path: '/projects/:pid/plans/new', name: 'plan-new', component: () => import('./pages/AddTestPlanForm.vue') },
   { path: '/projects/:pid/runs/:id', name: 'run-detail', component: () => import('./pages/RunDetail.vue') },
   // Les trois vues d'une campagne que TestRail nomme Status / Activity / Progress. Elles sont de
   // VRAIES routes et non un `?tab=` : chacune charge sa propre donnée, et une adresse partagée

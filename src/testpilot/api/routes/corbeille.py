@@ -86,19 +86,19 @@ def require_corbeille_access(type_element: str, element_id: int, request: Reques
             f"type d'élément inconnu : « {type_element} » "
             f"(attendu : {', '.join(sorted(_DEPOTS))})")
 
-    # `None` LAISSE PASSER (rôle global) plutôt qu'un 404 automatique — même correctif que
-    # `access.require_project_access_depuis` : un cas SANS module (« hors arbre », voir
-    # `CaseRepo.create`) n'a structurellement AUCUN projet à quoi rattacher un contrôle. `_depot()`
-    # dans la route elle-même vérifie déjà l'existence de l'élément et répond son propre message.
+    # Refus fermé : une ressource inconnue ou orpheline n'a aucun périmètre d'autorisation
+    # vérifiable. C'est particulièrement important ici puisque `purger` est irréversible.
     project_id = _project_id_depuis_element(conn, type_element, element_id)
     if project_id is None:
-        return utilisateur["role"]
+        raise HTTPException(status_code=404, detail="ressource introuvable")
 
     role = access.role_effectif_projet(conn, utilisateur, project_id)
     if role == access.ACCES_PROJET_REFUSE:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
-    if (not access.role_suffisant(role, access.ROLE_TESTEUR)
-            and request.method in access.METHODES_ECRITURE):
+    # La corbeille est une fonction d'administration du projet. La purge est irréversible et la
+    # restauration peut ressusciter toute une arborescence : un Testeur ne doit pas les obtenir
+    # en contournant l'interface.
+    if not access.role_suffisant(role, access.ROLE_ADMIN):
         raise HTTPException(status_code=403, detail="droits insuffisants")
     return role
 

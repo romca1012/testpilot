@@ -26,11 +26,43 @@
    Modal, Spinner). Aucun écran ne réinvente un bouton : ce qui manque s'ajoute LÀ, pour tout le
    monde à la fois. C'est ce qui empêche la dérive d'un écran à l'autre.
 
-   *(Thème sombre uniquement, assumé : `color-scheme: dark` ci-dessous. Un thème clair se
-   construirait en dupliquant la couche SÉMANTIQUE, jamais en retouchant les composants.)*
+   Les thèmes clair et sombre redéfinissent uniquement la couche SÉMANTIQUE : les composants
+   conservent ainsi leur hiérarchie visuelle et leurs états dans les deux modes.
    ═══════════════════════════════════════════════════════════════════════════ */
 @layer base {
-  :root, .dark {
+  :root, .light {
+    --background: 220 25% 97%;
+    --foreground: 224 30% 13%;
+    --surface: 0 0% 100%;
+    --surface-raised: 220 25% 98%;
+    --surface-overlay: 0 0% 100%;
+    --card: 0 0% 100%;
+    --primary: 232 52% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 20% 94%;
+    --secondary-foreground: 224 25% 18%;
+    --muted: 220 18% 93%;
+    --muted-foreground: 220 10% 40%;
+    --accent: 226 30% 93%;
+    --accent-foreground: 224 30% 16%;
+    --destructive: 0 67% 46%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 66% 32%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 90% 45%;
+    --warning-foreground: 224 30% 12%;
+    --untested: 204 70% 42%;
+    --border: 220 16% 84%;
+    --input: 220 16% 88%;
+    --ring: 232 52% 48%;
+    --radius: 0.5rem;
+    --accent-id: 262 52% 48%;
+    --accent-id-foreground: 0 0% 100%;
+    --overlay: 224 30% 10%;
+    --subtle-foreground: 220 10% 36%;
+  }
+
+  .dark {
     --background: 240 6% 6%;
     --foreground: 240 6% 93%;
     --surface: 240 6% 8%;
@@ -76,7 +108,8 @@
   }
 
   * { border-color: hsl(var(--border)); }
-  html { color-scheme: dark; }
+  html { color-scheme: light; }
+  html.dark { color-scheme: dark; }
   body {
     margin: 0;
     background: hsl(var(--background));
@@ -92,7 +125,7 @@
     border-radius: 6px;
     border: 2px solid hsl(var(--background));
   }
-  ::-webkit-scrollbar-thumb:hover { background: hsl(240 5% 22%); }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
   /* ── Anneau de focus — WCAG 2.2 « Focus Appearance » (lot D, 2026-07-24) ──────────────────
      Il était à `hsl(var(--ring) / 0.7)` : joli, mais **2,69:1** contre le fond une fois mélangé
      — sous le seuil de 3:1 exigé. Mesuré par le calcul, pas à l'œil : sur un fond très sombre,
@@ -107,7 +140,7 @@
   .app-bg {
     background:
       radial-gradient(60rem 60rem at 80% -10%, hsl(var(--primary) / 0.08), transparent 60%),
-      radial-gradient(50rem 50rem at -10% 110%, hsl(252 56% 60% / 0.06), transparent 55%),
+      radial-gradient(50rem 50rem at -10% 110%, hsl(var(--accent-id) / 0.06), transparent 55%),
       hsl(var(--background));
   }
 

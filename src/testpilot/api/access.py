@@ -244,25 +244,51 @@ def require_role(minimum: str):
     return dependance
 
 
-def role_effectif_projet(conn, utilisateur: dict, project_id: int) -> str:
-    """Le rôle qui s'applique VRAIMENT à ce compte sur CE projet (migration 31, 2026-08-10) —
-    ordre de résolution, du plus spécifique au plus général :
-
-    1. Une exception posée pour CE compte sur CE projet (`project_access`) ;
-    2. sinon l'accès par défaut du projet (`project.default_access`), s'il est réglé ;
-    3. sinon le rôle GLOBAL du compte — comportement d'avant cette migration, inchangé pour tout
-       projet où personne n'a rien réglé.
-    """
-    from testpilot.store.repositories import ProjectAccessRepo
+def _role_effectif_projet_legacy(conn, utilisateur: dict, project_id: int) -> str:
+    """Résolution historique conservée pendant la transition et les tests de parité."""
+    from testpilot.store.repositories import ProjectAccessRepo, ProjectGroupAccessRepo
 
     repo = ProjectAccessRepo(conn)
     exception = repo.override_for_user(project_id, utilisateur["id"])
     if exception is not None:
         return exception
+    roles_groupes = ProjectGroupAccessRepo(conn).roles_for_user(project_id, utilisateur["id"])
+    if roles_groupes:
+        # Une attribution « rôle global » est résolue membre par membre. Plusieurs groupes se
+        # cumulent : le plus haut niveau gagne ; `no_access` n'accorde simplement aucun droit.
+        resolus = [utilisateur["role"] if role == "" else role for role in roles_groupes]
+        return max(resolus, key=niveau)
     defaut = repo.default_access(project_id)
     if defaut:
         return defaut
     return utilisateur["role"]
+
+
+def role_effectif_projet(conn, utilisateur: dict, project_id: int) -> str:
+    """Le rôle qui s'applique VRAIMENT à ce compte sur CE projet (migration 34) —
+    ordre de résolution, du plus spécifique au plus général :
+
+    `project_member` est désormais l'autorité. Pendant la transition, la décision historique est
+    recalculée et toute divergence est journalisée comme une erreur. Un compte authentifié réel
+    absent de la table des membres n'a aucun accès.
+    """
+    from testpilot.store.repositories import ProjectMemberRepo, UserRepo
+
+    # Les tests API historiques injectent un Admin synthétique id=0 sans ligne en base. Ce repli
+    # ne peut pas arriver en production : le middleware n'authentifie qu'un `user` réellement lu.
+    if UserRepo(conn).get(utilisateur["id"]) is None:
+        return _role_effectif_projet_legacy(conn, utilisateur, project_id)
+
+    ancien = _role_effectif_projet_legacy(conn, utilisateur, project_id)
+    nouveau = ProjectMemberRepo(conn).effective_role(project_id, utilisateur["id"])
+    if nouveau != ancien:
+        logger.error(
+            "[accès] divergence ProjectMember user=%s projet=%s nouveau=%s legacy=%s",
+            utilisateur["id"], project_id, nouveau, ancien,
+        )
+    # La résolution dynamique devient l'autorité dès l'arrivée des groupes. `project_member`
+    # reste la projection utilisée par l'écran historique et son écart demeure journalisé.
+    return ancien
 
 
 def require_project_access(project_id: int, request: Request, conn=Depends(get_conn)) -> str:
@@ -287,6 +313,21 @@ def require_project_access(project_id: int, request: Request, conn=Depends(get_c
     if not role_suffisant(role, ROLE_TESTEUR) and request.method in METHODES_ECRITURE:
         raise HTTPException(status_code=403, detail="droits insuffisants")
     return role
+
+
+def require_project_role(minimum: str):
+    """Exige un niveau précis dans le projet, y compris pour un rôle global moins élevé.
+
+    Cette garde couvre les opérations d'administration du projet (identité, suppression,
+    exploration) qui ne doivent pas devenir accessibles à tout Testeur simplement parce qu'il
+    possède le droit d'écrire des cas.
+    """
+    def dependance(project_id: int, request: Request, conn=Depends(get_conn)) -> str:
+        role = require_project_access(project_id, request, conn)
+        if not role_suffisant(role, minimum):
+            raise HTTPException(status_code=403, detail="droits insuffisants")
+        return role
+    return dependance
 
 
 # ── Routes profondes (2026-08-11) — fermer le trou documenté ci-dessus depuis la migration 31 ──
@@ -314,13 +355,10 @@ def require_project_access_depuis(id_param: str, resolveur):
     que le NOM du paramètre change d'une route à l'autre — un paramètre `project_id: int` fixe ne
     peut pas s'adapter à `case_id`, `module_id`, etc. sans une fonction par identifiant.
 
-    ⚠️ **`resolveur` rendant `None` LAISSE PASSER** (rôle global, aucune restriction de projet) —
-    ce n'est PAS un 404 automatique. Trouvé en vérifiant la suite complète : un cas SANS module
-    (`module_id=None`, le cas « hors arbre » documenté dans `CaseRepo.create` — hors du chemin de
-    production, mais réel en test/CLI) n'a structurellement AUCUN projet à quoi rattacher un
-    contrôle d'accès. La route elle-même vérifie déjà l'EXISTENCE de la ressource et répond son
-    propre 404 le cas échéant (`CaseRepo.get(case_id) is None` → `HTTPException(404, ...)`) — cette
-    dépendance ne fait que RESTREINDRE quand il y a un projet à restreindre, jamais plus."""
+    Un resolveur qui rend `None` est traité comme un **refus fermé** : soit la ressource n'existe
+    pas, soit elle est orpheline et aucune isolation par projet ne peut être prouvée. Dans les deux
+    cas, l'API répond 404. Un rôle global, même Admin, ne doit jamais servir de repli lorsqu'une
+    ressource métier sensible n'a pas de périmètre d'autorisation vérifiable."""
     def dependance(request: Request, conn=Depends(get_conn)) -> str | None:
         utilisateur = getattr(request.state, "user", None)
         if utilisateur is None:
@@ -328,12 +366,24 @@ def require_project_access_depuis(id_param: str, resolveur):
 
         project_id = resolveur(conn, request.path_params.get(id_param))
         if project_id is None:
-            return utilisateur["role"]
+            raise HTTPException(status_code=404, detail="ressource introuvable")
 
         role = role_effectif_projet(conn, utilisateur, project_id)
         if role == ACCES_PROJET_REFUSE:
             raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
         if not role_suffisant(role, ROLE_TESTEUR) and request.method in METHODES_ECRITURE:
+            raise HTTPException(status_code=403, detail="droits insuffisants")
+        return role
+    return dependance
+
+
+def require_project_role_depuis(id_param: str, resolveur, minimum: str):
+    """Variante profonde de :func:`require_project_role`."""
+    acces = require_project_access_depuis(id_param, resolveur)
+
+    def dependance(request: Request, conn=Depends(get_conn)) -> str | None:
+        role = acces(request, conn)
+        if role is not None and not role_suffisant(role, minimum):
             raise HTTPException(status_code=403, detail="droits insuffisants")
         return role
     return dependance

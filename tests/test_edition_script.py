@@ -106,9 +106,14 @@ def _compte_et_connexion(client, username: str, role: str):
 
 
 def _projet_module_cas(client) -> tuple[int, int]:
-    pid = client.post("/api/projects", json={
-        "name": "Recette", "base_url": "http://x", "database": "db",
-        "username": "qa", "password": "p"}).json()["id"]
+    # La création d'un projet est Admin-only. Le projet est donc une précondition du test ;
+    # ProjectRepo synchronise les membres existants selon leur rôle global.
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        pid = ProjectRepo(conn).create(name="Recette", base_url="http://x", database="db",
+                                       username="qa", password="p")
+    finally:
+        conn.close()
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
     cid = client.post(f"/api/modules/{mid}/cases/manual", json={
         "title": "Cas", "test_steps": ["a"], "expected_result": "ok"}).json()["id"]

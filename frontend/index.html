@@ -1,9 +1,22 @@
 <!doctype html>
-<html lang="fr" class="dark">
+<html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      (() => {
+        let theme = 'dark'
+        try {
+          const stored = localStorage.getItem('testpilot-theme')
+          theme = stored === 'light' || stored === 'dark'
+            ? stored
+            : (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+        } catch (_) {}
+        document.documentElement.classList.add(theme)
+        document.documentElement.style.colorScheme = theme
+      })()
+    </script>
     <title>TestPilot</title>
   </head>
   <body>

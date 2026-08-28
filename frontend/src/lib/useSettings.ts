@@ -24,6 +24,11 @@ function get(key: string): string {
   return settings.value.find((s) => s.key === key)?.value || ''
 }
 
+/** Lecture synchrone pour les utilitaires transverses (titre, formatage des dates). */
+export function settingValue(key: string, fallback = ''): string {
+  return get(key) || fallback
+}
+
 export function useSettings() {
   return { settings, loaded, loading, ensureLoaded, get }
 }

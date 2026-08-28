@@ -23,6 +23,7 @@ const listCases = vi.fn()
 const push = vi.fn()
 
 vi.mock('../lib/api', () => ({
+  roleSuffisant: () => true,
   api: {
     getGroup: (...a: any[]) => getGroup(...a),
     updateGroup: (...a: any[]) => updateGroup(...a),

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 33
+_SCHEMA_VERSION = 37
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -138,6 +138,14 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_32_triggered_by(conn)
     if version < 33:
         _migrate_33_email_utilisateur(conn)
+    if version < 34:
+        _migrate_34_project_members(conn)
+    if version < 35:
+        _migrate_35_access_audit(conn)
+    if version < 36:
+        _migrate_36_user_groups(conn)
+    if version < 37:
+        _migrate_37_project_group_access(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -1474,3 +1482,95 @@ def _migrate_33_email_utilisateur(conn: sqlite3.Connection) -> None:
     existant n'a personne pour deviner son adresse."""
     if "email" not in _column_names(conn, "user"):
         conn.execute("ALTER TABLE user ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_34_project_members(conn: sqlite3.Connection) -> None:
+    """Matérialise les appartenances projet sans changer les droits effectifs existants.
+
+    La migration 31 exprimait les accès comme un défaut de projet et des exceptions. Cette table
+    prépare le modèle V1 explicite : une ligne dit qu'un utilisateur est membre d'un projet, avec
+    son rôle et son statut. Le backfill calcule exactement l'ancien rôle effectif
+    (exception > défaut > rôle global) et n'insère pas les accès `no_access`.
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS project_member ("
+        " project_id INTEGER NOT NULL REFERENCES project(id),"
+        " user_id    INTEGER NOT NULL REFERENCES user(id),"
+        " role       TEXT NOT NULL"
+        "   CHECK (role IN ('lecture_seule', 'testeur', 'dev', 'admin')) ,"
+        " status     TEXT NOT NULL DEFAULT 'active'"
+        "   CHECK (status IN ('active', 'suspended', 'removed')) ,"
+        " created_at TEXT NOT NULL,"
+        " PRIMARY KEY (project_id, user_id))")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_project_member_user"
+        " ON project_member(user_id, status)")
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT OR IGNORE INTO project_member"
+        " (project_id, user_id, role, status, created_at)"
+        " SELECT p.id, u.id,"
+        "   COALESCE(pa.role, NULLIF(p.default_access, ''), u.role),"
+        "   CASE WHEN u.is_active=1 THEN 'active' ELSE 'suspended' END, ?"
+        " FROM project p CROSS JOIN user u"
+        " LEFT JOIN project_access pa"
+        "   ON pa.project_id=p.id AND pa.user_id=u.id"
+        " WHERE p.deleted_at=''"
+        " AND COALESCE(pa.role, NULLIF(p.default_access, ''), u.role) <> 'no_access'",
+        (now,),
+    )
+
+
+def _migrate_35_access_audit(conn: sqlite3.Connection) -> None:
+    """Journal minimal et durable des mutations d'accès projet et de leurs refus."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS access_audit ("
+        " id             INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " occurred_at    TEXT NOT NULL,"
+        " actor_user_id  INTEGER,"
+        " project_id     INTEGER NOT NULL,"
+        " action         TEXT NOT NULL,"
+        " target_user_id INTEGER,"
+        " result         TEXT NOT NULL CHECK (result IN ('allowed','denied')),"
+        " detail         TEXT NOT NULL DEFAULT '')")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_access_audit_project_time"
+        " ON access_audit(project_id, occurred_at)")
+
+
+def _migrate_36_user_groups(conn: sqlite3.Connection) -> None:
+    """Groupes d'utilisateurs façon TestRail : un groupe nommé contient zéro à N comptes.
+
+    Ce premier socle ne modifie pas encore la résolution des droits projet : il rend la gestion
+    des équipes réelle et persistante avant d'ajouter, dans le lot suivant, les surcharges de
+    rôle par groupe. Les FK empêchent de conserver un membre fantôme.
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS user_group ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " name TEXT NOT NULL UNIQUE,"
+        " created_at TEXT NOT NULL)")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS user_group_member ("
+        " group_id INTEGER NOT NULL REFERENCES user_group(id) ON DELETE CASCADE,"
+        " user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,"
+        " PRIMARY KEY (group_id, user_id))")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_user_group_member_user"
+        " ON user_group_member(user_id)")
+
+
+def _migrate_37_project_group_access(conn: sqlite3.Connection) -> None:
+    """Surcharge d'accès par groupe et par projet, comme TestRail.
+
+    Chaîne vide = utiliser le rôle global propre à chaque membre ; `no_access` = ce groupe
+    n'accorde rien ; sinon l'un des quatre rôles V1. Les groupes d'un même utilisateur se
+    cumulent ensuite en prenant le niveau le plus permissif.
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS project_group_access ("
+        " project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,"
+        " group_id INTEGER NOT NULL REFERENCES user_group(id) ON DELETE CASCADE,"
+        " role TEXT NOT NULL"
+        "   CHECK (role IN ('', 'no_access', 'lecture_seule', 'testeur', 'dev', 'admin')) ,"
+        " PRIMARY KEY (project_id, group_id))")

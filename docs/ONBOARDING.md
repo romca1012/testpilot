@@ -290,15 +290,17 @@ cd frontend && npm run dev                # interface → :5173
 ```
 
 **En production, un seul** : `npm run build`, et l'API sert l'interface compilée sur son propre
-port. Procédure complète et vérifiée : `docs/DEPLOIEMENT.md`.
+port. Procédure actuelle : `docs/DEPLOIEMENT-V1-BETA.md`.
 
 ### Les variables d'environnement qui comptent
 
 | Variable | Effet si absente |
 |---|---|
 | `ANTHROPIC_API_KEY` | aucune génération possible |
-| `TESTPILOT_ACCESS_PASSWORD` | 🔴 **aucune protection** : quiconque atteint le port lance des tests contre ton application et lit tes rapports |
-| `TESTPILOT_SECRET_KEY` | les mots de passe de connexion ne sont pas chiffrés au repos |
+| `TESTPILOT_SECRET_KEY` | une clé locale est créée, moins adaptée à un serveur partagé et aux sauvegardes |
+| `TESTPILOT_SESSION_SECRET` | une clé locale signe les sessions ; fournir une valeur stable sur le serveur |
+| `TESTPILOT_COOKIE_SECURE` | le cookie reste compatible HTTP ; imposer `true` derrière HTTPS |
+| `TESTPILOT_ADMIN_USERNAME`, `TESTPILOT_ADMIN_PASSWORD` | aucune amorce automatique du premier Admin sur une base vide |
 | `ODOO_ENV` | ⚠️ `prod` **bloque toute exécution** — garde-fou anti-production, ne le contourne pas |
 | `TESTPILOT_MODEL_*` | modèles par défaut (change de modèle sans toucher au code) |
 | `TESTPILOT_SERVICE_ACCOUNT` | nom qui signe les résultats produits par une exécution AUTOMATIQUE (défaut « TestPilot (automatique) »). Réglable aussi depuis l'écran Réglages, qui l'emporte sur cette variable |
@@ -386,11 +388,8 @@ automatique — garanti par un `CHECK` en base, jamais une convention de code. C
    l'outil génère et exécute, mais ne **pilote** pas encore une recette.
 4. Les mécanismes du §5bis (« zéro verdict non concluant »), à commencer par la règle apprise à
    chaque refus.
-5. **Pas de comptes ni de rôles.** Le nom saisi à la connexion est une *signature déclarée*, pas
-   une identité, et il n'y a qu'un seul mot de passe pour toute l'instance — plusieurs projets
-   fonctionnent, mais pour une même équipe qui partage un seul accès, pas comme des espaces
-   cloisonnés à la TestRail. À traiter avant tout usage par plusieurs équipes ou un client externe.
-6. HTTPS / reverse proxy — côté exploitation.
+5. HTTPS / reverse proxy — côté exploitation ; les comptes et rôles par projet sont désormais
+   présents, mais ne remplacent pas la protection du transport.
 
 ⚠️ Cette liste est le résumé stable. Pour l'état précis d'un chantier **en cours**, avec les
 chemins de fichiers et les pièges déjà payés, voir `REPRISE-P*.md` s'il en existe un — ce document

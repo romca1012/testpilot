@@ -1,5 +1,8 @@
 # Déployer TestPilot sur un serveur interne
 
+> **Document historique.** Il décrit l'ancien verrou partagé, remplacé depuis par des comptes et
+> des rôles par projet. Pour la bêta actuelle, utiliser `docs/DEPLOIEMENT-V1-BETA.md`.
+
 > **Écrit le 2026-07-24**, pour la cible arrêtée par le porteur : un **serveur interne**,
 > **plusieurs testeurs**, pour des tests complets — **même si les verdicts ne sont pas encore tous
 > concluants**. Cette procédure a été suivie de bout en bout, elle n'est pas théorique.

@@ -23,7 +23,7 @@ from testpilot import config
 from testpilot.api import access
 from testpilot.api import app as app_mod
 from testpilot.store.db import get_initialized_db
-from testpilot.store.repositories import UserRepo
+from testpilot.store.repositories import ProjectRepo, UserRepo
 
 
 @pytest.fixture
@@ -53,6 +53,19 @@ def _connecte(client, username: str, password: str):
     r = client.post("/api/auth/login", json={"username": username, "password": password})
     assert r.status_code == 200, r.text
     return r
+
+
+def test_cookie_de_session_est_secure_quand_le_profil_production_l_impose(
+        client, monkeypatch):
+    _compte(client, "secure-user", "mot-de-passe", access.ROLE_TESTEUR)
+    monkeypatch.setattr(config, "COOKIE_SECURE", True)
+
+    r = client.post("/api/auth/login", json={
+        "username": "secure-user", "password": "mot-de-passe",
+    })
+
+    assert r.status_code == 200
+    assert "Secure" in r.headers["set-cookie"]
 
 
 # ── 1. Mots de passe et jetons ────────────────────────────────────────────────
@@ -185,6 +198,32 @@ def test_mauvais_mot_de_passe_est_refuse(client):
     assert r.status_code == 401
 
 
+def test_cinq_echecs_bloquent_temporairement_la_connexion(client):
+    _compte(client, "CibleLimitation", "bon-mot-de-passe", access.ROLE_TESTEUR)
+    reponses = [client.post("/api/auth/login", json={
+        "username": "CibleLimitation", "password": "mauvais",
+    }) for _ in range(5)]
+    assert [r.status_code for r in reponses[:4]] == [401, 401, 401, 401]
+    assert reponses[4].status_code == 429
+    assert reponses[4].headers["retry-after"] == "900"
+    assert "15 minutes" in reponses[4].json()["detail"]
+
+
+def test_un_succes_remet_le_compteur_d_echecs_a_zero(client):
+    _compte(client, "CompteurReinitialise", "bon-mot-de-passe", access.ROLE_TESTEUR)
+    for _ in range(4):
+        assert client.post("/api/auth/login", json={
+            "username": "CompteurReinitialise", "password": "mauvais",
+        }).status_code == 401
+    assert client.post("/api/auth/login", json={
+        "username": "CompteurReinitialise", "password": "bon-mot-de-passe",
+    }).status_code == 200
+    client.post("/api/auth/logout")
+    assert client.post("/api/auth/login", json={
+        "username": "CompteurReinitialise", "password": "mauvais",
+    }).status_code == 401
+
+
 def test_bon_identifiant_ouvre_l_acces(client):
     _compte(client, "Awa", "bonmdp", access.ROLE_TESTEUR)
     _connecte(client, "Awa", "bonmdp")
@@ -241,9 +280,13 @@ def test_lecture_seule_peut_toujours_LIRE(client):
 def test_testeur_peut_ecrire(client):
     _compte(client, "Awa", "mdp", access.ROLE_TESTEUR)
     _connecte(client, "Awa", "mdp")
-    r = client.post("/api/projects", json={
-        "name": "Recette", "base_url": "http://x", "database": "db",
-        "username": "qa", "password": "p"})
+    # Un Testeur écrit dans un projet autorisé, mais ne crée pas l'espace projet lui-même.
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        pid = ProjectRepo(conn).create(name="Recette")
+    finally:
+        conn.close()
+    r = client.post(f"/api/projects/{pid}/modules", json={"name": "Recette fonctionnelle"})
     assert r.status_code == 201
 
 
@@ -265,9 +308,12 @@ def test_une_desactivation_EN_COURS_DE_SESSION_coupe_l_acces_immediatement(clien
 def test_une_retrogradation_EN_COURS_DE_SESSION_bloque_l_ecriture_immediatement(client):
     uid = _compte(client, "Awa", "mdp", access.ROLE_TESTEUR)
     _connecte(client, "Awa", "mdp")
-    assert client.post("/api/projects", json={
-        "name": "R1", "base_url": "http://x", "database": "db",
-        "username": "qa", "password": "p"}).status_code == 201
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        pid = ProjectRepo(conn).create(name="R1")
+    finally:
+        conn.close()
+    assert client.post(f"/api/projects/{pid}/modules", json={"name": "M1"}).status_code == 201
 
     conn = get_initialized_db(config.DB_PATH)
     try:
@@ -275,9 +321,7 @@ def test_une_retrogradation_EN_COURS_DE_SESSION_bloque_l_ecriture_immediatement(
     finally:
         conn.close()
 
-    r = client.post("/api/projects", json={
-        "name": "R2", "base_url": "http://x", "database": "db",
-        "username": "qa", "password": "p"})
+    r = client.post(f"/api/projects/{pid}/modules", json={"name": "M2"})
     assert r.status_code == 403
 
 

@@ -9,7 +9,9 @@
 // préfixe de classement.
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type CaseSummary, type GroupSummary, type ModuleSummary } from '../lib/api'
+import { api, roleSuffisant, type CaseSummary, type GroupSummary, type ModuleSummary } from '../lib/api'
+import { useSession } from '../lib/useSession'
+import { useProjects } from '../lib/useProjects'
 import { typeView } from '../lib/status'
 import { useModuleCreate } from '../lib/useModuleCreate'
 import { useSectionCreate } from '../lib/useSectionCreate'
@@ -20,10 +22,17 @@ import {
 } from '../lib/preferencesListe'
 import Button from '../components/ui/Button.vue'
 import IconButton from '../components/ui/IconButton.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const pid = computed(() => route.params.pid as string)
+const { session } = useSession()
+const { projectById } = useProjects()
+const roleProjet = computed(() => projectById(pid.value)?.effective_role || session.value?.role || '')
+const peutModifier = computed(() => roleSuffisant(roleProjet.value, 'testeur'))
+const peutGenerer = computed(() => roleSuffisant(roleProjet.value, 'dev'))
+const estAdmin = computed(() => roleProjet.value === 'admin')
 const specFilter = computed(() => Number(route.query.spec) || null)
 
 // Couche de données partagée (lot A, 2026-07-24) : cette page et le shell demandaient les mêmes
@@ -330,6 +339,8 @@ function groupesDeModule(moduleId: number, rows: CaseSummary[]): GroupeSection[]
 // Pliage PAR SECTION, distinct du pliage par module (`collapsed`) : une clé composite évite toute
 // collision entre un id de module et un id de case_group, qui viennent de séquences différentes.
 const collapsedGroups = ref<string[]>([])
+const groupeASupprimer = ref<GroupeSection | null>(null)
+const suppressionGroupe = ref(false)
 function toggleGroup(moduleId: number, groupId: number | null) {
   const cle = `${moduleId}:${groupId}`
   collapsedGroups.value = collapsedGroups.value.includes(cle)
@@ -337,6 +348,29 @@ function toggleGroup(moduleId: number, groupId: number | null) {
 }
 function groupCollapsed(moduleId: number, groupId: number | null) {
   return collapsedGroups.value.includes(`${moduleId}:${groupId}`)
+}
+
+function demanderSuppressionGroupe(groupe: GroupeSection) {
+  if (groupe.group_id == null) return
+  groupeASupprimer.value = groupe
+}
+
+async function supprimerGroupe() {
+  const groupe = groupeASupprimer.value
+  if (!groupe?.group_id) return
+  suppressionGroupe.value = true
+  messageLot.value = ''
+  try {
+    await api.deleteGroup(groupe.group_id)
+    groupeASupprimer.value = null
+    messageLot.value = `La section « ${groupe.group_title} » a été supprimée.`
+    await qc.invalidateQueries({ queryKey: cles.projet(pid.value) })
+  } catch (e: any) {
+    groupeASupprimer.value = null
+    messageLot.value = e?.message || 'Suppression de la section impossible.'
+  } finally {
+    suppressionGroupe.value = false
+  }
 }
 
 // « Ajouter un cas » INLINE sous une Section/sous-section (même intention que le bouton du même
@@ -477,7 +511,7 @@ async function supprimerEnLot() {
               class="text-primary hover:underline disabled:opacity-50" :disabled="actionEnCours"
               @click="prioriteEnLot(p)">{{ PRIORITE[p] }}</button>
       <span class="text-muted-foreground/50">·</span>
-      <button class="text-destructive hover:underline disabled:opacity-50" :disabled="actionEnCours"
+      <button v-if="estAdmin" class="text-destructive hover:underline disabled:opacity-50" :disabled="actionEnCours"
               @click="supprimerEnLot">Supprimer</button>
       <span class="flex-1"></span>
       <button class="text-muted-foreground hover:text-foreground" @click="selection = []">Tout décocher</button>
@@ -497,17 +531,17 @@ async function supprimerEnLot() {
     <div class="flex items-center justify-between px-6 pt-6 pb-2">
       <h1 class="text-2xl font-semibold tracking-tight">Cas de test</h1>
       <div class="flex items-center gap-3.5 text-muted-foreground">
-        <IconButton label="Nouveau module" @click="openCreateModule(pid)">
+        <IconButton v-if="peutModifier" label="Nouveau module" @click="openCreateModule(pid)">
           <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M12 10v5M9.5 12.5h5"/></svg>
         </IconButton>
         <IconButton v-for="ic in topIcons" :key="ic.t" :label="ic.t" @click="topAction(ic.t)">
           <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path :d="ic.d"/></svg>
         </IconButton>
-        <button title="Générer des cas de test avec l'IA" class="grid place-items-center w-7 h-7 rounded-full bg-success/15 text-success hover:bg-success/25"
+        <button v-if="peutGenerer" title="Générer des cas de test avec l'IA" class="grid place-items-center w-7 h-7 rounded-full bg-success/15 text-success hover:bg-success/25"
                 @click="router.push({ name: 'case-new', params: { pid } })" aria-label="Générer des cas de test avec l'IA">
           <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/></svg>
         </button>
-        <button title="Lancer une exécution (créer un run)" class="grid place-items-center w-[30px] h-[30px] rounded-full bg-success text-success-foreground hover:bg-success/90" @click="goRunNew" aria-label="Lancer une exécution (créer un run)">
+        <button v-if="peutModifier" title="Lancer une exécution (créer un run)" class="grid place-items-center w-[30px] h-[30px] rounded-full bg-success text-success-foreground hover:bg-success/90" @click="goRunNew" aria-label="Lancer une exécution (créer un run)">
           <svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </button>
       </div>
@@ -582,7 +616,7 @@ async function supprimerEnLot() {
         <p class="text-sm text-muted-foreground">
           {{ specFilter || filterStatus ? 'Aucun cas de test ne correspond au filtre.' : 'Aucun module dans ce projet.' }}
         </p>
-        <Button v-if="!specFilter && !filterStatus" variant="primary" @click="openCreateModule(pid)">Créer le premier module</Button>
+        <Button v-if="peutModifier && !specFilter && !filterStatus" variant="primary" @click="openCreateModule(pid)">Créer le premier module</Button>
       </div>
 
       <!-- ⚠️ On DIT ce qui est chargé sur le total : sans ce compte, une liste tronquée a l'air
@@ -612,12 +646,12 @@ async function supprimerEnLot() {
           </button>
           <span class="font-bold italic tracking-tight">{{ s.module.name }}</span>
           <span class="rounded-full bg-primary/15 text-primary text-xs font-semibold px-2.5 py-0.5 tabular-nums">{{ s.rows.length }}</span>
-          <button class="text-muted-foreground hover:text-foreground" title="Renommer le module" @click="renameSection(s.module)" aria-label="Renommer le module">
+          <button v-if="peutModifier" class="text-muted-foreground hover:text-foreground" title="Renommer le module" @click="renameSection(s.module)" aria-label="Renommer le module">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>
           </button>
           <!-- « Ajouter une section », INLINE sous le module — à l'endroit où TestRail le place,
                plus dans la barre latérale ambiguë (retirée, 2026-08-06). -->
-          <button class="ml-2 text-xs text-primary hover:underline" @click="ajouterSection(s.module.id)">
+          <button v-if="peutModifier" class="ml-2 text-xs text-primary hover:underline" @click="ajouterSection(s.module.id)">
             + Ajouter une section
           </button>
         </div>
@@ -633,7 +667,7 @@ async function supprimerEnLot() {
               <th class="w-8 py-2 pl-1">
                 <!-- « Tout sélectionner » porte sur CETTE section, pas sur la liste entière :
                      cocher 400 cas invisibles d'un clic est un piège, pas un raccourci. -->
-                <input type="checkbox" :aria-label="`Sélectionner les cas de ${s.module.name}`"
+                <input v-if="peutModifier" type="checkbox" :aria-label="`Sélectionner les cas de ${s.module.name}`"
                        :checked="s.rows.length > 0 && s.rows.every((c) => estSelectionne(c.id))"
                        @change="toutSelectionner(s.rows.map((c) => c.id), ($event.target as HTMLInputElement).checked)" />
               </th>
@@ -687,6 +721,12 @@ async function supprimerEnLot() {
                     <RouterLink v-if="g.group_id" :to="{ name: 'spec-detail', params: { pid, id: String(g.group_id) } }"
                                 class="text-xs text-muted-foreground hover:text-primary hover:underline"
                                 title="Ouvrir la section (le document)">voir le document</RouterLink>
+                    <IconButton v-if="estAdmin && g.group_id" size="sm" variant="danger"
+                                class="ml-auto opacity-70 transition-opacity hover:opacity-100 focus:opacity-100"
+                                :label="`Supprimer la section ${g.group_title}`"
+                                @click.stop="demanderSuppressionGroupe(g)">
+                      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 7h12M9 7V5h6v2m-7 0 1 12h6l1-12"/></svg>
+                    </IconButton>
                   </div>
                 </td>
               </tr>
@@ -699,7 +739,7 @@ async function supprimerEnLot() {
                 <!-- ⚠️ `@click.stop` sur la case : sans lui, cocher ouvrirait aussi le cas — le
                      clic remonterait à la ligne. Sélectionner et ouvrir sont deux intentions. -->
                 <td class="pl-1" :class="HAUTEUR_LIGNE[prefs.densite]" @click.stop>
-                  <input type="checkbox" :aria-label="`Sélectionner ${c.title}`"
+                  <input v-if="peutModifier" type="checkbox" :aria-label="`Sélectionner ${c.title}`"
                          :checked="estSelectionne(c.id)" @change="basculer(c.id)" />
                 </td>
                 <td v-if="colonneVisible('id')" class="pl-3 font-bold tabular-nums whitespace-nowrap"
@@ -728,9 +768,9 @@ async function supprimerEnLot() {
                    cas orphelins — pas un vrai conteneur à sous-structurer). -->
               <tr v-if="g.group_id" class="border-t border-border/30">
                 <td :colspan="colonnesAffichees" class="pl-9 py-1.5 text-xs" :class="HAUTEUR_LIGNE[prefs.densite]">
-                  <button class="text-primary hover:underline" @click="goCaseNew(s.module.id)">Ajouter un cas</button>
-                  <span class="text-muted-foreground/50 mx-1.5">|</span>
-                  <button class="text-primary hover:underline" @click="ajouterSousSection(s.module.id, g.group_id)">Ajouter une sous-section</button>
+                  <button v-if="peutModifier" class="text-primary hover:underline" @click="goCaseNew(s.module.id)">Ajouter un cas</button>
+                  <span v-if="peutModifier" class="text-muted-foreground/50 mx-1.5">|</span>
+                  <button v-if="peutModifier" class="text-primary hover:underline" @click="ajouterSousSection(s.module.id, g.group_id)">Ajouter une sous-section</button>
                 </td>
               </tr>
             </tbody>
@@ -761,6 +801,12 @@ async function supprimerEnLot() {
                       <RouterLink :to="{ name: 'spec-detail', params: { pid, id: String(sg.group_id) } }"
                                   class="text-xs text-muted-foreground hover:text-primary hover:underline"
                                   title="Ouvrir la sous-section (le document)">voir le document</RouterLink>
+                      <IconButton v-if="estAdmin" size="sm" variant="danger"
+                                  class="ml-auto opacity-70 transition-opacity hover:opacity-100 focus:opacity-100"
+                                  :label="`Supprimer la sous-section ${sg.group_title}`"
+                                  @click.stop="demanderSuppressionGroupe(sg)">
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 7h12M9 7V5h6v2m-7 0 1 12h6l1-12"/></svg>
+                      </IconButton>
                     </div>
                   </td>
                 </tr>
@@ -771,7 +817,7 @@ async function supprimerEnLot() {
                     :class="estSelectionne(c.id) && 'bg-primary/10'"
                     @click="openCase(c.id)">
                   <td class="pl-1" :class="HAUTEUR_LIGNE[prefs.densite]" @click.stop>
-                    <input type="checkbox" :aria-label="`Sélectionner ${c.title}`"
+                    <input v-if="peutModifier" type="checkbox" :aria-label="`Sélectionner ${c.title}`"
                            :checked="estSelectionne(c.id)" @change="basculer(c.id)" />
                   </td>
                   <td v-if="colonneVisible('id')" class="pl-3 font-bold tabular-nums whitespace-nowrap"
@@ -793,7 +839,7 @@ async function supprimerEnLot() {
                 <!-- Pas de « Ajouter une sous-section » ici : une seule profondeur d'imbrication. -->
                 <tr class="border-t border-border/30">
                   <td :colspan="colonnesAffichees" class="pl-14 py-1.5 text-xs" :class="HAUTEUR_LIGNE[prefs.densite]">
-                    <button class="text-primary hover:underline" @click="goCaseNew(s.module.id)">Ajouter un cas</button>
+                    <button v-if="peutModifier" class="text-primary hover:underline" @click="goCaseNew(s.module.id)">Ajouter un cas</button>
                   </td>
                 </tr>
               </tbody>
@@ -808,6 +854,19 @@ async function supprimerEnLot() {
         </Button>
       </div>
     </div>
+
+    <ConfirmDialog
+      :open="Boolean(groupeASupprimer)"
+      title="Supprimer cette section ?"
+      :message="groupeASupprimer?.rows.length || groupeASupprimer?.sousSections.length
+        ? `La section « ${groupeASupprimer?.group_title || ''} » contient encore des cas ou des sous-sections. Déplacez ou supprimez d’abord son contenu.`
+        : `La section vide « ${groupeASupprimer?.group_title || ''} » sera placée dans la corbeille.`"
+      confirm-label="Supprimer la section"
+      :busy="suppressionGroupe"
+      :confirm-disabled="Boolean(groupeASupprimer?.rows.length || groupeASupprimer?.sousSections.length)"
+      @confirm="supprimerGroupe"
+      @cancel="groupeASupprimer = null"
+    />
 
     <!-- ════════ Menu flottant AU POINT DE DÉPÔT (parité TestRail, étape 2bis) ════════
          N'apparaît que si le dépôt s'est fait SANS Ctrl/Cmd/Maj (ces touches agissent tout de

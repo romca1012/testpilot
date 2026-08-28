@@ -10,12 +10,15 @@
 // qu'il vaut**, **qui l'a posé et quand**. Le mode d'exécution passe en premier parce que c'est
 // lui qui qualifie tout le reste — un « Passed » automatique et un « Passed » manuel ne se lisent
 // pas de la même façon.
-import { computed } from 'vue'
-import { API_BASE, type ResultOut } from '../lib/api'
+import { computed, ref } from 'vue'
+import { API_BASE, api, type ResultOut } from '../lib/api'
 import { testStatusMeta } from '../lib/status'
 import ResultMode from './ResultMode.vue'
 
-const props = defineProps<{ results: ResultOut[]; loading?: boolean }>()
+const props = defineProps<{ results: ResultOut[]; loading?: boolean; canDeleteAttachments?: boolean }>()
+const emit = defineEmits<{ (e: 'attachment-removed'): void }>()
+const suppressionEnCours = ref<number | null>(null)
+const erreurSuppression = ref('')
 
 // Le plus RÉCENT en haut : c'est celui qui fait foi, et celui qu'on vient d'écrire.
 const ordre = computed(() => [...props.results].reverse())
@@ -36,6 +39,20 @@ function taille(octets: number): string {
   if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`
   return `${(octets / (1024 * 1024)).toFixed(1)} Mo`
 }
+
+async function retirerPiece(resultId: number, attachmentId: number, filename: string) {
+  if (!window.confirm(`Retirer la pièce jointe « ${filename} » ? Le résultat restera conservé.`)) return
+  suppressionEnCours.value = attachmentId
+  erreurSuppression.value = ''
+  try {
+    await api.deleteAttachment(resultId, attachmentId)
+    emit('attachment-removed')
+  } catch (e: any) {
+    erreurSuppression.value = e?.message || "Impossible de retirer la pièce jointe."
+  } finally {
+    suppressionEnCours.value = null
+  }
+}
 </script>
 
 <template>
@@ -51,6 +68,11 @@ function taille(octets: number): string {
          Les confondre laisserait croire qu'un verdict « non testé » a été posé par quelqu'un. -->
     <p v-else-if="!results.length" class="mt-2 text-sm text-muted-foreground italic">
       Aucun résultat pour ce cas dans cette campagne.
+    </p>
+
+    <p v-if="erreurSuppression" role="alert"
+       class="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      {{ erreurSuppression }}
     </p>
 
     <ul v-else class="mt-3 space-y-3">
@@ -75,7 +97,7 @@ function taille(octets: number): string {
              n'en a normalement pas (il a sa propre trace, ci-dessous), mais rien ne l'interdit :
              on affiche la liste dès qu'elle existe, quel que soit le mode. -->
         <ul v-if="r.attachments?.length" class="mt-2 flex flex-wrap gap-2">
-          <li v-for="p in r.attachments" :key="p.id">
+          <li v-for="p in r.attachments" :key="p.id" class="inline-flex items-center gap-1">
             <a :href="urlPiece(r.id, p.id)" target="_blank" rel="noopener"
                class="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1 text-[12px] text-primary hover:border-primary/40 hover:underline">
               <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -84,6 +106,13 @@ function taille(octets: number): string {
               <span class="max-w-[14rem] truncate">{{ p.filename }}</span>
               <span class="text-muted-foreground">({{ taille(p.size_bytes) }})</span>
             </a>
+            <button v-if="canDeleteAttachments" type="button"
+                    class="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    :aria-label="`Retirer la pièce jointe ${p.filename}`"
+                    :disabled="suppressionEnCours === p.id"
+                    @click="retirerPiece(r.id, p.id, p.filename)">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 7h12M9 7V5h6v2m-7 0 1 12h6l1-12"/></svg>
+            </button>
           </li>
         </ul>
 

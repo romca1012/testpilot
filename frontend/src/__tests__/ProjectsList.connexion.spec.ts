@@ -27,6 +27,7 @@ const EXPLORE = { ...PAS_EXPLORE, explored: true, mesure_le: '2026-07-20',
 vi.mock('../lib/api', () => ({
   api: {
     listProjects: (...a: any[]) => listProjects(...a),
+    listAdminProjects: (...a: any[]) => listProjects(...a),
     updateProject: (...a: any[]) => updateProject(...a),
     createProject: vi.fn(),
     deleteProject: vi.fn(),
@@ -35,7 +36,12 @@ vi.mock('../lib/api', () => ({
   },
 }))
 vi.mock('../lib/useProjects', () => ({ useProjects: () => ({ ensureLoaded: vi.fn() }) }))
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  // Ces tests couvrent les opérations techniques, désormais volontairement
+  // isolées de la page de sélection des projets.
+  useRoute: () => ({ name: 'admin-projects' }),
+}))
 
 import ProjectsList from '../pages/ProjectsList.vue'
 

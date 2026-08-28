@@ -12,7 +12,7 @@ from testpilot.api import access, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import report_service, run_service
 from testpilot.reporting import report as report_mod
-from testpilot.store.repositories import ExecutionRepo
+from testpilot.store.repositories import ExecutionRepo, ProjectRepo
 
 router = APIRouter(prefix="/api/executions", tags=["executions"])
 
@@ -22,15 +22,16 @@ def list_executions(request: Request, limit: int = 50, project_id: int | None = 
                     conn=Depends(get_conn)):
     """⚠️ `project_id` en query n'était, jusqu'au 2026-08-11, JAMAIS vérifié : sans lui, la liste
     traversait tous les projets sans filtre d'accès. Filtrée ICI, en Python, APRÈS la requête —
-    même patron que `list_projects` (`routes/projects.py`) : retirer toute ligne dont le projet
-    résolu est `no_access` pour l'appelant. Un projet non résolvable (`None`, ne devrait jamais
-    arriver) n'est PAS caché par erreur — mieux vaut une fuite improbable qu'une liste qui ment
-    par excès de prudence sur une donnée qu'on n'a pas su interpréter."""
+    même patron que `list_projects` (`routes/projects.py`) : ne conserver qu'une ligne dont le
+    projet est résolu ET accessible. Une exécution orpheline est masquée : l'impossibilité de
+    prouver son périmètre ne doit jamais devenir une autorisation implicite."""
     utilisateur = getattr(request.state, "user", None)
     rows = ExecutionRepo(conn).list_recent(limit, project_id=project_id)
     rows = [r for r in rows
-           if (pid := access.project_id_depuis_execution(conn, r["id"])) is None
-           or access.role_effectif_projet(conn, utilisateur, pid) != access.ACCES_PROJET_REFUSE]
+            if (pid := access.project_id_depuis_execution(conn, r["id"])) is not None
+            and access.role_effectif_projet(
+                conn, utilisateur, pid
+            ) != access.ACCES_PROJET_REFUSE]
     return [schemas.execution_summary(r, running=run_service.is_running(r["id"])) for r in rows]
 
 
@@ -41,19 +42,28 @@ def quality_summary(request: Request, project_id: int | None = None, conn=Depend
     Dérivé des VRAIES exécutions (premier jet), jamais fabriqué : le tableau de bord compte des
     runs réels. `/quality/summary` et non `/quality` pour ne pas heurter `/{execution_id}`.
 
-    ⚠️ **Limite assumée** (2026-08-11) : `project_id` fourni est vérifié (404 si `no_access`, même
-    contrat que le reste). SANS `project_id`, la réponse est un AGRÉGAT sur tout l'instance — ni
-    filtrable en Python (ce n'est pas une liste de lignes), ni restructurable en une requête par
-    projet sans réécrire `ExecutionRepo.quality_summary` en profondeur. Assumé : ce résumé ne
-    porte que des COMPTES (succès/échec technique), jamais un titre de cas ni un contenu — une
-    fuite bien plus étroite que les autres routes fermées par ce chantier.
+    Sans `project_id`, l'agrégat reste global pour l'utilisateur mais ne reçoit que les projets
+    auxquels il a accès. Les compteurs eux-mêmes sont une information inter-projets : ils ne
+    doivent jamais inclure silencieusement un projet masqué.
     """
     utilisateur = getattr(request.state, "user", None)
     if project_id is not None:
         role = access.role_effectif_projet(conn, utilisateur, project_id)
         if role == access.ACCES_PROJET_REFUSE:
             raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
-    return schemas.QualityOut(**ExecutionRepo(conn).quality_summary(project_id=project_id))
+        if not access.role_suffisant(role, access.ROLE_DEV):
+            raise HTTPException(status_code=403, detail="droits insuffisants")
+        resume = ExecutionRepo(conn).quality_summary(project_id=project_id)
+    else:
+        autorises = [
+            projet["id"] for projet in ProjectRepo(conn).list_all()
+            if access.role_suffisant(
+                access.role_effectif_projet(conn, utilisateur, projet["id"]),
+                access.ROLE_DEV,
+            )
+        ]
+        resume = ExecutionRepo(conn).quality_summary(allowed_project_ids=autorises)
+    return schemas.QualityOut(**resume)
 
 
 @router.get("/{execution_id}", response_model=schemas.ExecutionDetail,

@@ -114,6 +114,43 @@ def test_les_interrompus_sont_distincts_des_erreurs(conn):
 
     assert s["not_executed"] == 1
     assert s["technical_error"] == 0
+    assert s["ran_rate"] is None, "une interruption seule n'est pas un échec de génération"
+
+
+def test_une_interruption_ne_degrade_pas_le_taux(conn):
+    mid = ensure_default_module(conn, "m")
+    c1, v1 = _cas(conn, mid)
+    c2, v2 = _cas(conn, mid)
+    _run(conn, c1, v1, execution_status="success")
+    _run(conn, c2, v2, execution_status="not_executed")
+
+    s = ExecutionRepo(conn).quality_summary()
+
+    assert s["total"] == 2 and s["not_executed"] == 1
+    assert s["ran_rate"] == 1.0
+
+
+def test_une_execution_encore_en_cours_n_est_pas_une_interruption(conn):
+    mid = ensure_default_module(conn, "m")
+    cid, vid = _cas(conn, mid)
+    ExecutionRepo(conn).create(test_case_id=cid, version_id=vid, trigger="first_run")
+
+    s = ExecutionRepo(conn).quality_summary()
+
+    assert s["total"] == 0
+    assert s["ran_rate"] is None
+
+
+def test_le_premier_jet_est_defini_par_version(conn):
+    mid = ensure_default_module(conn, "m")
+    cid, vid1 = _cas(conn, mid)
+    vid2 = VersionRepo(conn).create(test_case_id=cid, spec_content="s2", spec_hash="h2",
+                                       feature_content="f2", steps_content="s2")
+    execs = ExecutionRepo(conn)
+    execs.create(test_case_id=cid, version_id=vid1, trigger="first_run")
+
+    assert execs.has_for_version(vid1) is True
+    assert execs.has_for_version(vid2) is False
 
 
 def test_evolution_groupee_par_jour(conn):
@@ -147,6 +184,36 @@ def test_jamais_de_melange_inter_projets(conn):
 
     assert sa["ran"] == 1 and sa["technical_error"] == 0
     assert sb["ran"] == 0 and sb["technical_error"] == 1
+
+
+def test_agregat_borne_a_une_liste_de_projets_autorises(conn):
+    m1 = ensure_default_module(conn, "autorise")
+    from testpilot.store.repositories import ModuleRepo, ProjectRepo
+    pid1 = ModuleRepo(conn).get(m1)["project_id"]
+    pid2 = ProjectRepo(conn).create(name="Masque", base_url="")
+    m2 = ModuleRepo(conn).create(project_id=pid2, name="module masque")
+
+    ca, va = _cas(conn, m1)
+    cb, vb = _cas(conn, m2)
+    _run(conn, ca, va, execution_status="success")
+    _run(conn, cb, vb, execution_status="technical_error")
+
+    resume = ExecutionRepo(conn).quality_summary(allowed_project_ids=[pid1])
+
+    assert resume["total"] == 1
+    assert resume["ran"] == 1
+    assert resume["technical_error"] == 0
+
+
+def test_agregat_sans_aucun_projet_autorise_est_vide(conn):
+    mid = ensure_default_module(conn, "interdit")
+    cid, vid = _cas(conn, mid)
+    _run(conn, cid, vid, execution_status="success")
+
+    resume = ExecutionRepo(conn).quality_summary(allowed_project_ids=[])
+
+    assert resume["total"] == 0
+    assert resume["ran_rate"] is None
 
 
 # ── L'API ─────────────────────────────────────────────────────────────────────

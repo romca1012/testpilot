@@ -142,12 +142,14 @@ def test_le_gate_signale_le_rayon_d_explosion_sans_jamais_bloquer(tmp_path, monk
 
     from testpilot import config as cfg
     from testpilot.store.db import get_initialized_db
-    from testpilot.store.repositories import CaseRepo, ReviewRepo, VersionRepo
+    from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo, ReviewRepo, VersionRepo
 
     db = tmp_path / "g.db"
     monkeypatch.setattr(cfg, "DB_PATH", db)
     conn = get_initialized_db(db)
-    cid = CaseRepo(conn).create(title="Cas", feature_slug="cas")
+    pid = ProjectRepo(conn).create(name="Projet réparation")
+    mid = ModuleRepo(conn).create(project_id=pid, name="Module")
+    cid = CaseRepo(conn).create(module_id=mid, title="Cas", feature_slug="cas")
     v1 = VersionRepo(conn).create(test_case_id=cid, spec_content="s", spec_hash="h",
                                   feature_content="# f", steps_content=AUTH, created_by="ia")
     v2 = VersionRepo(conn).create(test_case_id=cid, spec_content="s", spec_hash="h",
@@ -178,12 +180,14 @@ def test_une_version_NON_reparee_ne_declenche_aucun_signalement(tmp_path, monkey
 
     from testpilot import config as cfg
     from testpilot.store.db import get_initialized_db
-    from testpilot.store.repositories import CaseRepo, ReviewRepo, VersionRepo
+    from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo, ReviewRepo, VersionRepo
 
     db = tmp_path / "h.db"
     monkeypatch.setattr(cfg, "DB_PATH", db)
     conn = get_initialized_db(db)
-    cid = CaseRepo(conn).create(title="Cas", feature_slug="cas2")
+    pid = ProjectRepo(conn).create(name="Projet génération")
+    mid = ModuleRepo(conn).create(project_id=pid, name="Module")
+    cid = CaseRepo(conn).create(module_id=mid, title="Cas", feature_slug="cas2")
     VersionRepo(conn).create(test_case_id=cid, spec_content="s", spec_hash="h",
                              feature_content="# f", steps_content=AUTH, created_by="ia")
     v2 = VersionRepo(conn).create(test_case_id=cid, spec_content="s", spec_hash="h",

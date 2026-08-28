@@ -58,6 +58,12 @@ def _empreinte() -> dict[str, int]:
     for chemin in _VRAI_DATA_DIR.rglob("*"):
         if not chemin.is_file():
             continue
+        # SQLite crée et retire ces compagnons transactionnels pendant une connexion. Leur
+        # existence est transitoire et ne constitue pas une donnée applicative persistée ; la
+        # vraie base (`testpilot.db`) reste, elle, fingerprintée et continue donc de faire
+        # échouer tout test qui la modifie réellement.
+        if chemin.name.endswith(("-journal", "-wal", "-shm")):
+            continue
         try:
             empreinte[str(chemin)] = chemin.stat().st_size
         except OSError:

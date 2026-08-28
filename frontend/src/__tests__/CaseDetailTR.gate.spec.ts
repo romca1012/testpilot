@@ -18,6 +18,7 @@ import type { GateOut } from '../lib/api'
 const getCase = vi.fn()
 const runCase = vi.fn()
 vi.mock('../lib/api', () => ({
+  roleSuffisant: () => true,
   api: {
     getCase: (...a: any[]) => getCase(...a),
     getCaseScenarios: vi.fn().mockResolvedValue([]),

@@ -28,7 +28,9 @@
 // leur ordre et leurs couleurs ne sont écrits qu'à un seul endroit, `lib/status.ts`.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type RunDetail as RunDetailDto, type RunCaseResult } from '../lib/api'
+import { api, roleSuffisant, type RunDetail as RunDetailDto, type RunCaseResult } from '../lib/api'
+import { useProjects } from '../lib/useProjects'
+import { useSession } from '../lib/useSession'
 import { testStatusMeta, TEST_STATUS_ORDER, type TestStatusCode } from '../lib/status'
 import ResultMode from '../components/ResultMode.vue'
 import AddResultDialog from '../components/AddResultDialog.vue'
@@ -40,6 +42,10 @@ const route = useRoute()
 const router = useRouter()
 const pid = computed(() => route.params.pid as string)
 const runId = computed(() => Number(route.params.id))
+const { session } = useSession()
+const { projectById } = useProjects()
+const roleProjet = computed(() => projectById(pid.value)?.effective_role || session.value?.role || '')
+const peutModifier = computed(() => roleSuffisant(roleProjet.value, 'testeur'))
 
 const detail = ref<RunDetailDto | null>(null)
 const loading = ref(true)
@@ -290,7 +296,7 @@ async function resultatAjoute() {
       <div class="ml-auto flex items-center gap-2">
         <!-- Lancer : geste EXPLICITE. Masqué si la campagne est archivée (lecture seule) — et
              ABSENT d'une campagne manuelle, qui n'a rien à lancer : ses résultats se saisissent. -->
-        <Button v-if="!enCours && !archived && !estManuelle" variant="success"
+        <Button v-if="peutModifier && !enCours && !archived && !estManuelle" variant="success"
                 :disabled="launching || !total" @click="launch">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
           {{ launching ? 'Lancement…' : (detail.run.status === 'completed' ? 'Relancer' : 'Lancer l\'exécution') }}
@@ -300,7 +306,7 @@ async function resultatAjoute() {
           Exécution en cours — {{ tested }} / {{ total }} cas
         </span>
         <!-- Clore / rouvrir. Réversible : une clôture par erreur ne doit pas être irrattrapable. -->
-        <Button v-if="!enCours" variant="secondary" @click="toggleArchive">
+        <Button v-if="peutModifier && !enCours" variant="secondary" @click="toggleArchive">
           {{ archived ? 'Rouvrir' : 'Clôturer' }}
         </Button>
       </div>
@@ -498,7 +504,7 @@ async function resultatAjoute() {
                 </span>
               </td>
               <td class="py-3 pl-2.5" @click.stop>
-                <Button v-if="!archived && estManuelle" variant="secondary" size="sm"
+                <Button v-if="peutModifier && !archived && estManuelle" variant="secondary" size="sm"
                         :title="`Ajouter un résultat pour C${c.id}`"
                         @click="ouvrirSaisie(c)">+ Résultat</Button>
               </td>

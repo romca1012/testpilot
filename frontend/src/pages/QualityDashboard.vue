@@ -61,9 +61,12 @@ const maxJour = computed(() =>
 
     <div v-if="loading" class="mt-8 h-32 rounded-xl bg-secondary animate-pulse"></div>
 
-    <div v-else-if="error" class="mt-8 text-sm text-muted-foreground">
-      {{ error }}
-      <button class="ml-2 text-primary hover:underline" @click="load">Réessayer</button>
+    <div v-else-if="error" role="alert"
+         class="mt-8 flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+      <span>{{ error }}</span>
+      <button class="min-h-11 rounded-md border border-destructive/30 px-4 font-medium hover:bg-destructive/10" @click="load">
+        Réessayer
+      </button>
     </div>
 
     <template v-else-if="data">
@@ -91,13 +94,15 @@ const maxJour = computed(() =>
           {{ data.ran }} run{{ data.ran > 1 ? 's' : '' }} sur {{ data.total }} ont pu s'exécuter.
           « Erreur technique » = le test n'a pas pu tourner (sélecteur ou route introuvable,
           timeout…) ; « interrompu » = arrêté avant de tourner. Un test qui tourne et trouve un
-          bug compte comme une réussite technique.
+          bug compte comme une réussite technique. Les interruptions restent visibles mais sont
+          exclues du taux, car elles ne prouvent ni la réussite ni l’échec de la génération.
         </p>
 
         <!-- Évolution jour par jour -->
         <section class="mt-8">
           <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Évolution</h2>
-          <div class="mt-4 flex items-end gap-2 overflow-x-auto pb-2" style="min-height: 140px">
+          <div class="mt-4 flex items-end gap-2 overflow-x-auto pb-2" style="min-height: 140px"
+               role="img" aria-label="Évolution quotidienne de la réussite technique des tests générés">
             <div v-for="d in data.by_day" :key="d.jour" class="flex flex-col items-center gap-1.5 shrink-0" style="width: 48px">
               <div class="w-full flex flex-col-reverse rounded-md overflow-hidden bg-secondary/40"
                    :style="{ height: '110px' }" :title="`${d.jour} — ${d.success} ok / ${d.technical_error} erreur / ${d.not_executed} interrompu`">
@@ -116,6 +121,16 @@ const maxJour = computed(() =>
             <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-destructive/80"></span>Erreur technique</span>
             <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-warning/70"></span>Interrompu</span>
           </div>
+          <table class="sr-only">
+            <caption>Données quotidiennes de qualité de génération</caption>
+            <thead><tr><th>Date</th><th>A tourné</th><th>Erreur technique</th><th>Interrompu</th></tr></thead>
+            <tbody>
+              <tr v-for="d in data.by_day" :key="`table-${d.jour}`">
+                <th scope="row">{{ d.jour }}</th>
+                <td>{{ d.success }}</td><td>{{ d.technical_error }}</td><td>{{ d.not_executed }}</td>
+              </tr>
+            </tbody>
+          </table>
         </section>
 
         <p class="mt-8 text-xs text-subtle-foreground">

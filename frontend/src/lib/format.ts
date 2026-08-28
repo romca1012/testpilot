@@ -1,10 +1,25 @@
 // Formatage d'affichage — dates, durée, coût.
+import { settingValue } from './useSettings'
 
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
   if (isNaN(d.getTime())) return '—'
-  return d.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })
+  const timeZone = settingValue('instance_timezone', 'Europe/Paris')
+  const format = settingValue('date_format', 'DD/MM/YYYY')
+  const base: Intl.DateTimeFormatOptions = {
+    timeZone, hour: '2-digit', minute: '2-digit', hour12: false,
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  }
+  const parties = new Intl.DateTimeFormat('fr-FR', base).formatToParts(d)
+  const valeur = (type: Intl.DateTimeFormatPartTypes) =>
+    parties.find((p) => p.type === type)?.value || ''
+  const date = format === 'YYYY-MM-DD'
+    ? `${valeur('year')}-${valeur('month')}-${valeur('day')}`
+    : format === 'MM/DD/YYYY'
+      ? `${valeur('month')}/${valeur('day')}/${valeur('year')}`
+      : `${valeur('day')}/${valeur('month')}/${valeur('year')}`
+  return `${date} ${valeur('hour')}:${valeur('minute')}`
 }
 
 export function formatDuration(seconds: number | null | undefined): string {

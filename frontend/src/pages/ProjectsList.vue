@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
-  ACCES_PROJET_REFUSE, api, LIBELLE_ACCES, LIBELLE_ROLE, ROLES,
-  type Exploration, type ProjectAccess, type ProjectSummary, type UserAccount,
+  ACCES_PROJET_REFUSE, api, LIBELLE_ROLE, ROLES,
+  type Exploration, type ProjectGroupAccess, type ProjectMember, type ProjectSummary,
+  type UserAccount, type UserGroup,
 } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useSession } from '../lib/useSession'
@@ -11,9 +12,10 @@ import Button from '../components/ui/Button.vue'
 import Icon from '../components/ui/Icon.vue'
 import Modal from '../components/ui/Modal.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
-import IconButton from '../components/ui/IconButton.vue'
 
 const router = useRouter()
+const route = useRoute()
+const adminMode = computed(() => route.name === 'admin-projects')
 const { session } = useSession()
 const { ensureLoaded } = useProjects()
 const projects = ref<ProjectSummary[]>([])
@@ -41,26 +43,55 @@ const CONNECTORS = [{ value: 'odoo', label: 'Odoo' }]  // extensible (§8 multi-
 const toDelete = ref<ProjectSummary | null>(null)
 const deleting = ref(false)
 
-// ── Accès par projet (Admin) — surcharge du rôle global (migration 31, 2026-08-10) ──
-// Un projet peut être caché à tous (`no_access`), forcé à un rôle pour tous (défaut), ou avoir
-// des exceptions par compte. Le SERVEUR reste la seule vraie garde (403/404) ; cette modale
-// n'évite qu'à un Admin d'y arriver pour un projet qui, de toute façon, se refuserait.
+// ── Membres du projet (Admin) — appartenance et rôle explicites V1 ────────────
 const accessProject = ref<ProjectSummary | null>(null)
-const accessData = ref<ProjectAccess | null>(null)
+const accessMembers = ref<ProjectMember[]>([])
 const accessLoading = ref(false)
+const accessSaving = ref(false)
+const memberSaving = ref<number | null>(null)
+const memberApiDisponible = ref(true)
 const accessError = ref('')
 const comptes = ref<UserAccount[]>([])
-const nouvelleExceptionCompte = ref<number | null>(null)
-const nouvelleExceptionRole = ref('testeur')
+const nouveauMembreCompte = ref<number | null>(null)
+const nouveauMembreRole = ref('testeur')
+const groupes = ref<UserGroup[]>([])
+const accessGroups = ref<ProjectGroupAccess[]>([])
+const nouveauGroupe = ref<number | null>(null)
+const nouveauGroupeRole = ref('')
+const groupSaving = ref<number | 'new' | null>(null)
+const accessTab = ref<'members' | 'groups'>('members')
 
 async function openAccess(p: ProjectSummary) {
   accessProject.value = p
+  accessTab.value = 'members'
   accessError.value = ''
   accessLoading.value = true
   try {
-    const [acces, tousLesComptes] = await Promise.all([api.getProjectAccess(p.id), api.listUsers()])
-    accessData.value = acces
-    comptes.value = tousLesComptes
+    const [users, userGroups, projectAccess] = await Promise.all([
+      api.listUsers(), api.listUserGroups(), api.getProjectAccess(p.id),
+    ])
+    comptes.value = users
+    groupes.value = userGroups
+    accessGroups.value = projectAccess.group_overrides || []
+    try {
+      accessMembers.value = await api.listProjectMembers(p.id)
+      memberApiDisponible.value = true
+    } catch (e: any) {
+      if (e?.status !== 404) throw e
+      // Compatibilité immédiate avec une API encore démarrée sur le contrat précédent.
+      const ancien = await api.getProjectAccess(p.id)
+      const overrides = new Map(ancien.overrides.map((o) => [o.user_id, o.role]))
+      accessMembers.value = comptes.value.map((c) => {
+        const role = overrides.get(c.id) || ancien.default_access || c.role
+        return {
+          user_id: c.id, username: c.username, email: c.email,
+          role: role === ACCES_PROJET_REFUSE ? c.role : role,
+          status: role === ACCES_PROJET_REFUSE ? 'removed' : (c.is_active ? 'active' : 'suspended'),
+          created_at: c.created_at,
+        }
+      })
+      memberApiDisponible.value = false
+    }
   } catch (e: any) {
     accessError.value = e?.message || 'Chargement des accès impossible.'
   } finally {
@@ -68,40 +99,105 @@ async function openAccess(p: ProjectSummary) {
   }
 }
 
-async function changerAccesParDefaut(defaultAccess: string) {
-  if (!accessProject.value) return
+async function ajouterMembre() {
+  if (!accessProject.value || nouveauMembreCompte.value == null) return
+  accessSaving.value = true
+  accessError.value = ''
   try {
-    accessData.value = await api.setProjectDefaultAccess(accessProject.value.id, defaultAccess)
-  } catch (e: any) {
-    accessError.value = e?.message || 'Enregistrement impossible.'
-  }
-}
-
-async function ajouterException() {
-  if (!accessProject.value || nouvelleExceptionCompte.value == null) return
-  try {
-    accessData.value = await api.setProjectAccessOverride(
-      accessProject.value.id, nouvelleExceptionCompte.value, nouvelleExceptionRole.value)
-    nouvelleExceptionCompte.value = null
-    nouvelleExceptionRole.value = 'testeur'
+    const compte = comptes.value.find((c) => c.id === nouveauMembreCompte.value)!
+    const membre = memberApiDisponible.value
+      ? await api.addProjectMember(accessProject.value.id, nouveauMembreCompte.value, nouveauMembreRole.value)
+      : await api.setProjectAccessOverride(accessProject.value.id, nouveauMembreCompte.value,
+          nouveauMembreRole.value).then(() => ({
+            user_id: compte.id, username: compte.username, email: compte.email,
+            role: nouveauMembreRole.value, status: 'active' as const, created_at: compte.created_at,
+          }))
+    const index = accessMembers.value.findIndex((m) => m.user_id === membre.user_id)
+    if (index >= 0) accessMembers.value[index] = membre
+    else accessMembers.value.push(membre)
+    nouveauMembreCompte.value = null
+    nouveauMembreRole.value = 'testeur'
   } catch (e: any) {
     accessError.value = e?.message || 'Ajout impossible.'
+  } finally {
+    accessSaving.value = false
   }
 }
 
-async function retirerException(userId: number) {
+const groupesAjoutables = computed(() => {
+  const deja = new Set(accessGroups.value.map(g => g.group_id))
+  return groupes.value.filter(g => !deja.has(g.id))
+})
+
+async function enregistrerAccesGroupe(groupId: number, role: string, nouveau = false) {
   if (!accessProject.value) return
+  groupSaving.value = nouveau ? 'new' : groupId
+  accessError.value = ''
   try {
-    accessData.value = await api.removeProjectAccessOverride(accessProject.value.id, userId)
+    const result = await api.setProjectGroupAccess(accessProject.value.id, groupId, role)
+    accessGroups.value = result.group_overrides || []
+    if (nouveau) { nouveauGroupe.value = null; nouveauGroupeRole.value = '' }
+  } catch (e: any) { accessError.value = e?.message || 'Attribution du groupe impossible.' }
+  finally { groupSaving.value = null }
+}
+
+async function retirerAccesGroupe(groupId: number) {
+  if (!accessProject.value) return
+  groupSaving.value = groupId
+  accessError.value = ''
+  try {
+    const result = await api.removeProjectGroupAccess(accessProject.value.id, groupId)
+    accessGroups.value = result.group_overrides || []
+  } catch (e: any) { accessError.value = e?.message || 'Retrait du groupe impossible.' }
+  finally { groupSaving.value = null }
+}
+
+async function modifierMembre(userId: number, patch: { role?: string; status?: 'active' | 'suspended' }) {
+  if (!accessProject.value) return
+  memberSaving.value = userId
+  accessError.value = ''
+  try {
+    const index = accessMembers.value.findIndex((m) => m.user_id === userId)
+    const actuel = accessMembers.value[index]
+    const role = patch.role || actuel.role
+    const status = patch.status || actuel.status
+    const membre = memberApiDisponible.value
+      ? await api.patchProjectMember(accessProject.value.id, userId, patch)
+      : await api.setProjectAccessOverride(accessProject.value.id, userId,
+          status === 'active' ? role : ACCES_PROJET_REFUSE).then(() => ({ ...actuel, role, status }))
+    if (index >= 0) accessMembers.value[index] = membre
+  } catch (e: any) {
+    accessError.value = e?.message || 'Modification impossible.'
+  } finally {
+    memberSaving.value = null
+  }
+}
+
+async function retirerMembre(userId: number) {
+  if (!accessProject.value) return
+  memberSaving.value = userId
+  accessError.value = ''
+  try {
+    const index = accessMembers.value.findIndex((m) => m.user_id === userId)
+    const membre = memberApiDisponible.value
+      ? await api.removeProjectMember(accessProject.value.id, userId)
+      : await api.setProjectAccessOverride(accessProject.value.id, userId,
+          ACCES_PROJET_REFUSE).then(() => ({ ...accessMembers.value[index], status: 'removed' as const }))
+    if (index >= 0) accessMembers.value[index] = membre
   } catch (e: any) {
     accessError.value = e?.message || 'Retrait impossible.'
+  } finally {
+    memberSaving.value = null
   }
 }
 
-// Un compte déjà en exception sur ce projet ne doit pas être proposé deux fois.
-function comptesSansException() {
-  const dejaException = new Set((accessData.value?.overrides || []).map((o) => o.user_id))
-  return comptes.value.filter((c) => !dejaException.has(c.id))
+function comptesAjoutables() {
+  const presents = new Set(accessMembers.value.filter((m) => m.status !== 'removed').map((m) => m.user_id))
+  return comptes.value.filter((c) => c.is_active && !presents.has(c.id))
+}
+
+function membresVisibles() {
+  return accessMembers.value.filter((m) => m.status !== 'removed')
 }
 
 // ── Édition d'un projet et de SA CONNEXION (décision 0005) ────────────────────
@@ -208,7 +304,7 @@ function open(p: ProjectSummary) {
 async function load() {
   loading.value = true
   try {
-    projects.value = await api.listProjects()
+    projects.value = await (adminMode.value ? api.listAdminProjects() : api.listProjects())
   } catch (e: any) {
     error.value = e?.message || 'Chargement impossible'
   } finally {
@@ -262,15 +358,15 @@ onMounted(async () => { await load(); await loadExplorations() })
 </script>
 
 <template>
-  <div class="space-y-8 p-6 md:p-8">
+  <div class="space-y-6 p-6 md:p-8">
     <header class="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 class="text-2xl font-semibold tracking-tight">Projets</h1>
-        <p class="mt-1 text-sm text-muted-foreground">
-          Un projet regroupe les cas de tests et exécutions d'une application testée.
-        </p>
+        <p class="mt-1 text-sm text-muted-foreground">{{ adminMode
+          ? 'Configurez les projets, leurs applications et leurs accès.'
+          : 'Choisissez le projet sur lequel vous souhaitez travailler.' }}</p>
       </div>
-      <Button variant="primary" @click="openCreate">
+      <Button v-if="adminMode" variant="primary" @click="openCreate">
         <Icon name="plus" class="h-4 w-4" /> Nouveau projet
       </Button>
     </header>
@@ -282,38 +378,43 @@ onMounted(async () => { await load(); await loadExplorations() })
       <div class="grid h-12 w-12 place-items-center rounded-full border border-border bg-surface text-muted-foreground">
         <Icon name="folder" class="h-5 w-5" />
       </div>
-      <p class="text-sm text-muted-foreground">Aucun projet pour le moment.</p>
-      <Button variant="primary" @click="openCreate">
+      <p class="text-sm text-muted-foreground">{{ adminMode ? 'Aucun projet pour le moment.' : 'Aucun projet ne vous est actuellement attribué.' }}</p>
+      <p v-if="!adminMode" class="max-w-md text-xs leading-5 text-subtle-foreground">Contactez un administrateur TestPilot pour demander l’accès à un projet.</p>
+      <Button v-if="adminMode" variant="primary" @click="openCreate">
         <Icon name="plus" class="h-4 w-4" /> Créer le premier projet
       </Button>
     </div>
 
-    <div v-else class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(280px,320px))]">
+    <div v-else class="overflow-hidden rounded-lg border border-border bg-surface">
+      <div class="border-b border-border bg-surface-raised px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Projet</div>
       <div
         v-for="p in projects" :key="p.id"
-        class="group relative rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40 hover:bg-accent/30"
+        class="group relative border-b border-border bg-surface p-4 transition-colors last:border-b-0 hover:bg-accent/20"
       >
         <button class="flex w-full items-center justify-between text-left" @click="open(p)">
           <div class="min-w-0">
-            <div class="font-medium truncate pr-8">{{ p.name }}</div>
+            <div class="font-medium truncate pr-8 text-primary">{{ p.name }}</div>
             <div class="mt-1 text-xs text-muted-foreground">
               {{ p.module_count }} module{{ p.module_count > 1 ? 's' : '' }} · {{ p.case_count }} cas
             </div>
           </div>
-          <Icon name="chevron" class="h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
+          <span v-if="!adminMode" class="inline-flex min-h-9 shrink-0 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground">Ouvrir</span>
+          <Icon v-else name="chevron" class="h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
         </button>
         <!-- Connexion en clair sur la carte : c'est ce qui distingue deux projets du même
              connecteur, et ce qu'on vient vérifier quand une exécution tape la mauvaise instance. -->
-        <div v-if="p.base_url" class="mt-2 truncate text-xs text-subtle-foreground" :title="p.base_url">
+        <div v-if="adminMode && p.base_url" class="mt-2 truncate text-xs text-subtle-foreground" :title="p.base_url">
           {{ p.connector_type }} · {{ p.base_url }}<span v-if="p.database"> · {{ p.database }}</span>
         </div>
-        <div v-else class="mt-2 text-xs text-warning">Aucune connexion configurée</div>
+        <div v-else-if="adminMode" class="mt-2 text-xs text-warning">Aucune connexion configurée</div>
 
         <!-- ══ Cartographie de l'application (étape 2 du flux) ══
              La DATE est toujours affichée : c'est une photo, et elle vieillit. Un projet non
              exploré le dit clairement plutôt que de laisser croire que la génération sait où
              elle va. -->
-        <div class="mt-3 flex items-center gap-2 border-t border-border/60 pt-2.5">
+        <div v-if="adminMode" class="mt-3 border-t border-border/60 pt-2.5 md:ml-6">
+          <div class="text-[11px] font-medium uppercase tracking-wide text-subtle-foreground">Exploration</div>
+          <div class="mt-1 flex items-center gap-2">
           <div class="min-w-0 flex-1 text-xs">
             <template v-if="explorations[p.id]?.running || exploring === p.id">
               <span class="text-primary">Exploration en cours… (quelques minutes)</span>
@@ -343,35 +444,30 @@ onMounted(async () => { await load(); await loadExplorations() })
                     : explorations[p.id]?.explored ? 'Re-mesurer l\'application' : 'Cartographier l\'application'"
             @click.stop="explore(p)"
           >
-            {{ explorations[p.id]?.explored ? 'Ré-explorer' : 'Explorer' }}
+            {{ explorations[p.id]?.explored ? 'Actualiser' : 'Explorer' }}
           </Button>
+          </div>
         </div>
 
-        <IconButton
-          v-if="session?.role === 'admin'" size="sm"
-          class="absolute right-[4.5rem] top-3 opacity-0 transition-opacity group-hover:opacity-100"
-          label="Gérer l'accès à ce projet"
-          @click.stop="openAccess(p)">
-          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zM8 11V7a4 4 0 118 0v4" />
-          </svg>
-        </IconButton>
-        <IconButton size="sm"
-          class="absolute right-10 top-3 opacity-0 transition-opacity group-hover:opacity-100"
-          label="Modifier le projet et sa connexion"
-          @click.stop="startEdit(p)">
-          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M11 4H4v16h16v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z" />
-          </svg>
-        </IconButton>
-        <IconButton size="sm" variant="danger"
-          class="absolute right-3 top-3 opacity-0 transition-opacity group-hover:opacity-100"
-          label="Supprimer le projet"
-          @click.stop="toDelete = p">
-          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v11a2 2 0 002 2h4a2 2 0 002-2V7" />
-          </svg>
-        </IconButton>
+        <div v-if="adminMode" class="mt-3 border-t border-border/60 pt-2.5 md:ml-6">
+          <div class="text-[11px] font-medium uppercase tracking-wide text-subtle-foreground">Paramètres du projet</div>
+          <div class="mt-1.5 flex flex-wrap gap-1.5">
+            <Button
+              variant="secondary"
+              size="sm"
+              :title="`Modifier l'identité et l'application de ${p.name}`"
+              @click.stop="startEdit(p)"
+            >
+              Identité et application
+            </Button>
+            <Button v-if="session?.role === 'admin'" variant="secondary" size="sm" @click.stop="openAccess(p)">
+              Accès
+            </Button>
+            <Button variant="ghost" size="sm" class="text-destructive" @click.stop="toDelete = p">
+              Supprimer
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -423,45 +519,33 @@ onMounted(async () => { await load(); await loadExplorations() })
     </Modal>
 
     <!-- ════════ Édition d'un projet et de sa connexion ════════ -->
-    <Modal :open="!!editing" :title="editing ? `Modifier « ${editing.name} »` : ''"
+    <Modal :open="!!editing" :title="editing ? `Paramètres du projet — ${editing.name}` : ''"
            subtitle="La connexion désigne l'application réellement testée : c'est elle que les exécutions et l'exploration utiliseront."
            @close="editing = null">
       <form id="form-edit-project" class="space-y-3" @submit.prevent="saveEdit">
-        <label class="block">
-          <span class="text-sm font-medium">Nom <span class="text-destructive">*</span></span>
-          <input v-model="edit.name" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
-        </label>
-        <label class="block">
-          <span class="text-sm font-medium">Connecteur</span>
-          <select v-model="edit.connector_type" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2">
-            <option v-for="c in CONNECTORS" :key="c.value" :value="c.value">{{ c.label }}</option>
-          </select>
-        </label>
-        <div class="grid grid-cols-2 gap-3">
+        <fieldset class="rounded-lg border border-border p-3">
+          <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Identité</legend>
           <label class="block">
-            <span class="text-sm font-medium">URL</span>
-            <input v-model="edit.base_url" placeholder="http://localhost:10017"
-                   class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+            <span class="text-sm font-medium">Nom <span class="text-destructive">*</span></span>
+            <input v-model="edit.name" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
           </label>
+        </fieldset>
+        <fieldset class="rounded-lg border border-border p-3">
+          <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Application cible</legend>
           <label class="block">
-            <span class="text-sm font-medium">Base de données</span>
-            <input v-model="edit.database"
-                   class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+            <span class="text-sm font-medium">Connecteur</span>
+            <select v-model="edit.connector_type" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2">
+              <option v-for="c in CONNECTORS" :key="c.value" :value="c.value">{{ c.label }}</option>
+            </select>
           </label>
-          <label class="block">
-            <span class="text-sm font-medium">Utilisateur</span>
-            <input v-model="edit.username"
-                   class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
-          </label>
-          <label class="block">
-            <span class="text-sm font-medium">Mot de passe</span>
-            <input v-model="edit.password" type="password" placeholder="Inchangé"
-                   class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
-          </label>
-        </div>
-        <p class="text-xs text-muted-foreground">
-          Le mot de passe n'est jamais réaffiché. Laissez ce champ vide pour le conserver tel quel.
-        </p>
+          <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label class="block"><span class="text-sm font-medium">URL</span><input v-model="edit.base_url" placeholder="http://localhost:10017" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <label class="block"><span class="text-sm font-medium">Base de données</span><input v-model="edit.database" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <label class="block"><span class="text-sm font-medium">Utilisateur</span><input v-model="edit.username" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <label class="block"><span class="text-sm font-medium">Mot de passe</span><input v-model="edit.password" type="password" placeholder="Inchangé" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+          </div>
+          <p class="mt-2 text-xs text-muted-foreground">Le mot de passe n'est jamais réaffiché. Laissez ce champ vide pour le conserver tel quel.</p>
+        </fieldset>
         <p v-if="editError" class="text-sm text-destructive">{{ editError }}</p>
       </form>
 
@@ -471,62 +555,108 @@ onMounted(async () => { await load(); await loadExplorations() })
       </template>
     </Modal>
 
-    <!-- ════════ Accès par projet (Admin) — surcharge du rôle global ════════ -->
-    <Modal :open="!!accessProject" :title="accessProject ? `Accès à « ${accessProject.name} »` : ''"
-           subtitle="Par défaut, le rôle global de chaque compte s'applique. Ce réglage NE VAUT que pour ce projet."
+    <!-- ════════ Membres et rôles du projet (Admin) ════════ -->
+    <Modal :open="!!accessProject" :title="accessProject ? `Paramètres du projet — Accès à ${accessProject.name}` : ''"
+           subtitle="Gérez séparément les accès individuels et ceux accordés aux groupes."
+           max-width="max-w-4xl"
            @close="accessProject = null">
       <div class="space-y-5">
-        <p v-if="accessError" class="text-sm text-destructive">{{ accessError }}</p>
+        <p v-if="accessError" role="alert" class="text-sm text-destructive">{{ accessError }}</p>
         <p v-if="accessLoading" class="text-sm text-muted-foreground">Chargement…</p>
 
-        <template v-else-if="accessData">
-          <label class="block">
-            <span class="text-sm font-medium">Accès par défaut du projet</span>
-            <select :value="accessData.default_access"
-                    @change="changerAccesParDefaut(($event.target as HTMLSelectElement).value)"
-                    class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none">
-              <option value="">{{ LIBELLE_ACCES[''] }}</option>
-              <option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option>
-              <option :value="ACCES_PROJET_REFUSE">{{ LIBELLE_ACCES[ACCES_PROJET_REFUSE] }}</option>
-            </select>
-            <p class="mt-1 text-xs text-muted-foreground">
-              « Aucun accès » masque le projet à tous, sauf exception ci-dessous. Un rôle forcé
-              (ex. Lecture seule) s'applique à tous, même à un compte Dev ou Admin globalement.
-            </p>
-          </label>
+        <template v-else>
+          <nav class="flex gap-6 border-b border-border" aria-label="Types d’accès au projet">
+            <button class="min-h-11 border-b-2 px-1 text-sm font-semibold" :class="accessTab === 'members' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'" @click="accessTab = 'members'">UTILISATEURS</button>
+            <button class="min-h-11 border-b-2 px-1 text-sm font-semibold" :class="accessTab === 'groups' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'" @click="accessTab = 'groups'">GROUPES</button>
+          </nav>
 
-          <div>
-            <span class="text-sm font-medium">Exceptions par compte</span>
-            <table v-if="accessData.overrides.length" class="mt-2 w-full border-collapse text-sm">
+          <div v-if="accessTab === 'members'">
+            <div class="flex items-start justify-between gap-4"><div><h3 class="text-sm font-semibold">Accès individuels</h3><p class="mt-1 text-xs text-muted-foreground">Une suspension retire l’accès sans supprimer le compte.</p></div><span class="shrink-0 rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">{{ membresVisibles().length }} compte{{ membresVisibles().length > 1 ? 's' : '' }}</span></div>
+            <div v-if="membresVisibles().length" class="mt-3 overflow-x-auto rounded-md border border-border">
+            <table class="w-full min-w-[720px] table-fixed border-collapse text-sm">
+              <thead class="text-left text-xs text-muted-foreground">
+                <tr class="bg-surface-raised"><th class="w-[34%] px-3 py-2.5">Compte</th><th class="w-[23%] px-3">Rôle projet</th><th class="w-[14%] px-3">Statut</th><th class="w-[29%] px-3 text-right">Actions</th></tr>
+              </thead>
               <tbody>
-                <tr v-for="o in accessData.overrides" :key="o.user_id" class="border-t border-border">
-                  <td class="py-1.5">{{ o.username }}</td>
-                  <td class="py-1.5 text-muted-foreground">{{ LIBELLE_ACCES[o.role] || o.role }}</td>
-                  <td class="py-1.5 text-right">
-                    <button class="text-xs text-destructive hover:underline" @click="retirerException(o.user_id)">
-                      Retirer
-                    </button>
+                <tr v-for="m in membresVisibles()" :key="m.user_id" class="border-t border-border">
+                  <td class="px-3 py-2.5">
+                    <span class="block truncate font-medium">{{ m.username }}</span>
+                    <span v-if="m.email" class="block truncate text-xs text-muted-foreground" :title="m.email">{{ m.email }}</span>
+                  </td>
+                  <td class="px-3 py-2.5">
+                    <label :for="`member-role-${m.user_id}`" class="sr-only">Rôle projet de {{ m.username }}</label>
+                    <select :id="`member-role-${m.user_id}`" :value="m.role"
+                            :disabled="memberSaving === m.user_id"
+                            @change="modifierMembre(m.user_id, { role: ($event.target as HTMLSelectElement).value })"
+                            class="h-10 w-full rounded-md bg-surface-raised border border-border px-2 focus:border-primary outline-none">
+                      <option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option>
+                    </select>
+                  </td>
+                  <td class="px-3 py-2.5">
+                    <span :class="m.status === 'active' ? 'text-success' : 'text-muted-foreground'">
+                      {{ m.status === 'active' ? 'Actif' : 'Suspendu' }}
+                    </span>
+                  </td>
+                  <td class="px-3 py-2.5"><div class="flex justify-end gap-2 whitespace-nowrap">
+                    <Button v-if="m.status === 'active'" variant="ghost" size="sm" :disabled="memberSaving === m.user_id" @click="modifierMembre(m.user_id, { status: 'suspended' })">Suspendre</Button>
+                    <Button v-else variant="ghost" size="sm" :disabled="memberSaving === m.user_id" @click="modifierMembre(m.user_id, { status: 'active' })">Réactiver</Button>
+                    <Button variant="danger" size="sm" :disabled="memberSaving === m.user_id" @click="retirerMembre(m.user_id)">Retirer</Button>
+                  </div>
                   </td>
                 </tr>
               </tbody>
             </table>
-            <p v-else class="mt-2 text-xs text-muted-foreground">Aucune exception.</p>
+            </div>
+            <p v-else class="mt-2 text-sm text-muted-foreground">Aucun membre actif sur ce projet.</p>
 
-            <div class="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
-              <select v-model="nouvelleExceptionCompte"
-                      class="rounded-md bg-surface-raised border border-border px-2 py-1.5 text-sm focus:border-primary outline-none">
-                <option :value="null" disabled>Choisir un compte…</option>
-                <option v-for="c in comptesSansException()" :key="c.id" :value="c.id">{{ c.username }}</option>
-              </select>
-              <select v-model="nouvelleExceptionRole"
-                      class="rounded-md bg-surface-raised border border-border px-2 py-1.5 text-sm focus:border-primary outline-none">
-                <option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option>
-                <option :value="ACCES_PROJET_REFUSE">{{ LIBELLE_ACCES[ACCES_PROJET_REFUSE] }}</option>
-              </select>
-              <Button variant="secondary" :disabled="nouvelleExceptionCompte == null" @click="ajouterException">
+            <div class="mt-5 grid grid-cols-1 items-end gap-3 rounded-md border border-border bg-surface-raised p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+              <label class="text-sm">
+                <span class="mb-1 block font-medium">Compte à ajouter</span>
+                <select v-model="nouveauMembreCompte"
+                      class="h-10 w-full min-w-0 rounded-md bg-surface border border-border px-2 text-sm focus:border-primary outline-none">
+                  <option :value="null" disabled>Choisir un compte…</option>
+                  <option v-for="c in comptesAjoutables()" :key="c.id" :value="c.id">{{ c.username }}</option>
+                </select>
+              </label>
+              <label class="text-sm">
+                <span class="mb-1 block font-medium">Rôle dans ce projet</span>
+                <select v-model="nouveauMembreRole"
+                      class="h-10 w-full min-w-0 rounded-md bg-surface border border-border px-2 text-sm focus:border-primary outline-none">
+                  <option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option>
+                </select>
+              </label>
+              <Button variant="secondary" :loading="accessSaving" :disabled="nouveauMembreCompte == null"
+                      @click="ajouterMembre">
                 Ajouter
               </Button>
             </div>
+            <p v-if="!comptesAjoutables().length" class="mt-2 text-xs text-muted-foreground">
+              Aucun autre compte actif n'est disponible.
+              <RouterLink to="/utilisateurs" class="text-primary hover:underline" @click="accessProject = null">
+                Créer ou réactiver un compte
+              </RouterLink>
+              avant de l'ajouter au projet.
+            </p>
+          </div>
+
+          <div v-else>
+            <h3 class="text-sm font-semibold">Accès des groupes</h3>
+            <p class="mt-1 text-xs text-muted-foreground">Les groupes se cumulent ; un accès individuel reste prioritaire.</p>
+            <div v-if="accessGroups.length" class="mt-3 divide-y divide-border rounded-md border border-border">
+              <div v-for="g in accessGroups" :key="g.group_id" class="grid items-center gap-3 px-3 py-2 sm:grid-cols-[1fr_190px_auto]">
+                <div><span class="font-medium">{{ g.group_name }}</span><span class="ml-2 text-xs text-muted-foreground">{{ g.member_count }} membre{{ g.member_count > 1 ? 's' : '' }}</span></div>
+                <select :value="g.role" :disabled="groupSaving === g.group_id" :aria-label="`Rôle du groupe ${g.group_name}`" class="h-10 rounded-md border border-border bg-surface-raised px-2 text-sm" @change="enregistrerAccesGroupe(g.group_id, ($event.target as HTMLSelectElement).value)">
+                  <option value="">Rôle global de chaque membre</option><option :value="ACCES_PROJET_REFUSE">Aucun accès accordé</option><option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option>
+                </select>
+                <Button variant="danger" size="sm" :loading="groupSaving === g.group_id" @click="retirerAccesGroupe(g.group_id)">Retirer</Button>
+              </div>
+            </div>
+            <div class="mt-4 grid grid-cols-1 items-end gap-3 rounded-md border border-border bg-surface-raised p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,220px)_auto]">
+              <label class="text-sm"><span class="mb-1 block font-medium">Groupe à ajouter</span><select v-model="nouveauGroupe" class="h-10 w-full rounded-md border border-border bg-surface-raised px-2"><option :value="null" disabled>Choisir un groupe…</option><option v-for="g in groupesAjoutables" :key="g.id" :value="g.id">{{ g.name }}</option></select></label>
+              <label class="text-sm"><span class="mb-1 block font-medium">Accès</span><select v-model="nouveauGroupeRole" class="h-10 w-full rounded-md border border-border bg-surface-raised px-2"><option value="">Rôle global</option><option :value="ACCES_PROJET_REFUSE">Aucun accès</option><option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option></select></label>
+              <Button variant="secondary" :loading="groupSaving === 'new'" :disabled="nouveauGroupe == null" @click="enregistrerAccesGroupe(nouveauGroupe!, nouveauGroupeRole, true)">Ajouter</Button>
+            </div>
+            <p v-if="!groupes.length" class="mt-3 text-xs text-muted-foreground">Aucun groupe disponible. <RouterLink to="/utilisateurs?tab=groups" class="text-primary hover:underline" @click="accessProject = null">Créer un groupe</RouterLink>.</p>
           </div>
         </template>
       </div>

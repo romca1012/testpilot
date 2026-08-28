@@ -93,7 +93,9 @@ def trigger_run(conn, case_id: int, *, triggered_by: str = "") -> tuple[int, str
         raise RunError("no_connection", err.message()) from err
 
     execs = ExecutionRepo(conn)
-    trigger = "rerun" if execs.list_for_case(case_id) else "first_run"
+    # Le premier jet appartient à chaque VERSION générée. Après une régénération, la première
+    # exécution de la nouvelle version doit alimenter à nouveau l'onglet Qualité.
+    trigger = "rerun" if execs.has_for_version(version_id) else "first_run"
     eid = execs.create(test_case_id=case_id, version_id=version_id, trigger=trigger,
                        cible=cible_de(project), triggered_by=triggered_by)
     _RUNNING.add(eid)

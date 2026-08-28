@@ -45,7 +45,11 @@ const CLES_SMTP = new Set([
   'notifications_enabled', 'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password',
   'smtp_from', 'smtp_use_tls',
 ])
-const reglagesGeneriques = computed(() => reglages.value.filter((r) => !CLES_SMTP.has(r.key)))
+const CLES_PAGES_DEDIEES = new Set([
+  ...CLES_SMTP,
+  'instance_name', 'instance_timezone', 'date_format',
+])
+const reglagesGeneriques = computed(() => reglages.value.filter((r) => !CLES_PAGES_DEDIEES.has(r.key)))
 
 const smtpHote = ref('')
 const smtpPort = ref('587')
@@ -172,12 +176,10 @@ async function envoyerTestSmtp() {
 
 <template>
   <div class="mx-auto max-w-4xl p-6 md:p-8">
-    <!-- ⚠️ Cet écran est HORS du shell de projet (les réglages ne dépendent d'aucun projet) : il
-         doit donc porter lui-même son chemin de retour. Sans lui, on y arrive et on y reste. -->
-    <RouterLink to="/" class="text-sm text-primary hover:underline">← Retour</RouterLink>
-    <h1 class="mt-3 text-xl font-semibold">Réglages de l'instance</h1>
+    <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Administration</div>
+    <h1 class="mt-1 text-2xl font-semibold tracking-tight">Intégrations et notifications</h1>
     <p class="mt-1 text-sm text-muted-foreground">
-      Ces réglages valent pour toute l'installation, quels que soient les projets.
+      Configurez les références externes et les notifications déjà disponibles pour toute l’instance.
     </p>
 
     <p v-if="erreur" class="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

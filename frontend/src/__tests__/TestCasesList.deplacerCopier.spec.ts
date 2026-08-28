@@ -15,6 +15,7 @@ const deplacerCas = vi.fn()
 const copierCas = vi.fn()
 
 vi.mock('../lib/api', () => ({
+  roleSuffisant: () => true,
   api: {
     listModules: (...a: any[]) => listModules(...a),
     listCases: (...a: any[]) => listCases(...a),

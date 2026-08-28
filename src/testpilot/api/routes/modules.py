@@ -108,8 +108,8 @@ def rename_module(module_id: int, body: schemas.ModuleIn, conn=Depends(get_conn)
 
 
 @router.delete("/{module_id}", status_code=204,
-              dependencies=[Depends(access.require_project_access_depuis(
-                  "module_id", access.project_id_depuis_module))])
+              dependencies=[Depends(access.require_project_role_depuis(
+                  "module_id", access.project_id_depuis_module, access.ROLE_ADMIN))])
 def delete_module(module_id: int, request: Request, conn=Depends(get_conn)):
     """Supprime un module et TOUTE sa descendance (spécifications, cas, versions, exécutions…).
 
@@ -202,8 +202,8 @@ def reorder_cases(module_id: int, body: schemas.ReorderCasesIn, conn=Depends(get
 
 
 @router.post("/{module_id}/cases", response_model=schemas.GenerationJobOut, status_code=202,
-            dependencies=[Depends(access.require_project_access_depuis(
-                "module_id", access.project_id_depuis_module))])
+            dependencies=[Depends(access.require_project_role_depuis(
+                "module_id", access.project_id_depuis_module, access.ROLE_DEV))])
 def add_case(module_id: int, body: schemas.AddCaseIn, background: BackgroundTasks,
              request: Request, conn=Depends(get_conn)):
     spec = body.spec_content
@@ -245,8 +245,8 @@ def get_job(job_id: str, conn=Depends(get_conn)):
 
 
 @router.post("/jobs/{job_id}/metier", response_model=schemas.GenerationJobOut, status_code=202,
-            dependencies=[Depends(access.require_project_access_depuis(
-                "job_id", access.project_id_depuis_job))])
+            dependencies=[Depends(access.require_project_role_depuis(
+                "job_id", access.project_id_depuis_job, access.ROLE_DEV))])
 def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: BackgroundTasks,
                     conn=Depends(get_conn)):
     """PASSE 4b — l'humain valide (ou corrige, ou réduit) l'ensemble des cas proposés, chacun avec

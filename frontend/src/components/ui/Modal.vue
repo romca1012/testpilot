@@ -29,10 +29,10 @@ watch(toRef(props, 'open'), (v) => (v ? verrouillerScroll() : deverrouillerScrol
 <template>
   <div v-if="open" class="fixed inset-0 z-40 grid place-items-center bg-overlay/80 p-4"
        @click.self="emit('close')">
-    <div ref="panneau" class="w-full rounded-xl border border-border bg-card shadow-2xl"
+    <div ref="panneau" class="flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
          :class="maxWidth" role="dialog" aria-modal="true"
          :aria-label="title || undefined">
-      <header v-if="title || $slots.header" class="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+      <header v-if="title || $slots.header" class="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
         <div class="min-w-0">
           <slot name="header">
             <h2 class="text-lg font-semibold tracking-tight">{{ title }}</h2>
@@ -47,11 +47,11 @@ watch(toRef(props, 'open'), (v) => (v ? verrouillerScroll() : deverrouillerScrol
         </button>
       </header>
 
-      <div class="px-5 py-4">
+      <div class="min-h-0 overflow-y-auto px-5 py-4">
         <slot />
       </div>
 
-      <footer v-if="$slots.footer" class="flex items-center justify-end gap-3 border-t border-border px-5 py-4">
+      <footer v-if="$slots.footer" class="flex shrink-0 items-center justify-end gap-3 border-t border-border px-5 py-4">
         <slot name="footer" />
       </footer>
     </div>

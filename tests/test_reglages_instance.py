@@ -200,3 +200,74 @@ def test_l_api_refuse_une_cle_inconnue_avec_un_code_stable(client):
     assert r.status_code == 422
     # Le code RFC 9457 est le contrat : c'est lui qu'un écran teste, jamais la phrase française.
     assert r.json()["code"] == "requete_invalide"
+
+
+# ── Paramètres généraux de l'instance ────────────────────────────────────────
+
+def test_les_parametres_generaux_ont_des_defauts_explicites(conn):
+    reglages = SettingRepo(conn)
+    assert reglages.valeur("instance_name") == "TestPilot"
+    assert reglages.valeur("instance_timezone") == "Europe/Paris"
+    assert reglages.valeur("date_format") == "DD/MM/YYYY"
+
+
+def test_un_admin_enregistre_les_parametres_generaux(conn, client):
+    _compte(conn, "RootGeneral", "mdp12345", access.ROLE_ADMIN)
+    _connecte(client, "RootGeneral", "mdp12345")
+    valeurs = {
+        "instance_name": "Recette AXENEO",
+        "instance_timezone": "Africa/Dakar",
+        "date_format": "YYYY-MM-DD",
+    }
+    for cle, valeur in valeurs.items():
+        r = client.patch(f"/api/settings/{cle}", json={"value": valeur})
+        assert r.status_code == 200, r.text
+        assert r.json()["value"] == valeur
+        assert r.json()["source"] == "db"
+
+
+@pytest.mark.parametrize(("cle", "valeur"), [
+    ("instance_name", "X"),
+    ("instance_timezone", "Paris"),
+    ("date_format", "libre"),
+])
+def test_les_parametres_generaux_invalides_sont_refuses(conn, client, cle, valeur):
+    _compte(conn, f"Admin-{cle}", "mdp12345", access.ROLE_ADMIN)
+    _connecte(client, f"Admin-{cle}", "mdp12345")
+    r = client.patch(f"/api/settings/{cle}", json={"value": valeur})
+    assert r.status_code == 422
+    assert r.json()["code"] == "requete_invalide"
+
+
+def test_un_testeur_ne_modifie_pas_les_parametres_generaux(conn, client):
+    _compte(conn, "AwaGeneral", "mdp12345", access.ROLE_TESTEUR)
+    _connecte(client, "AwaGeneral", "mdp12345")
+    r = client.patch("/api/settings/instance_name", json={"value": "Autre instance"})
+    assert r.status_code == 403
+
+
+def test_le_catalogue_des_fuseaux_est_reel_et_limite_a_paris_et_senegal(client):
+    r = client.get("/api/settings/options/timezones")
+    assert r.status_code == 200
+    assert r.json() == [
+        {"value": "Europe/Paris", "label": "Paris"},
+        {"value": "Africa/Dakar", "label": "Sénégal"},
+    ]
+
+
+def test_l_etat_de_securite_est_reserve_a_l_admin_et_ne_revele_aucun_secret(conn, client):
+    _compte(conn, "LecteurSecurite", "mdp12345", access.ROLE_TESTEUR)
+    _connecte(client, "LecteurSecurite", "mdp12345")
+    assert client.get("/api/settings/security-status").status_code == 403
+
+    client.post("/api/auth/logout")
+    _compte(conn, "AdminSecurite", "mdp12345", access.ROLE_ADMIN)
+    _connecte(client, "AdminSecurite", "mdp12345")
+    r = client.get("/api/settings/security-status")
+    assert r.status_code == 200
+    corps = r.json()
+    assert corps["password_min_length"] == access.MOT_DE_PASSE_LONGUEUR_MIN
+    assert corps["login_max_failures"] == 5
+    assert corps["login_window_minutes"] == 15
+    assert "secret" not in str(corps).lower() or all(
+        isinstance(corps[k], bool) for k in ("session_secret_external", "data_secret_external"))

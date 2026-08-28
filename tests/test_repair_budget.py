@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from testpilot import config
 from testpilot.api import app as app_mod
 from testpilot.store.db import _SCHEMA_VERSION, _column_names, get_initialized_db
-from testpilot.store.repositories import CaseRepo, ReviewRepo, VersionRepo
+from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo, ReviewRepo, VersionRepo
 
 
 @pytest.fixture
@@ -28,7 +28,9 @@ def conn(tmp_path):
 
 
 def _cas(conn):
-    cid = CaseRepo(conn).create(title="Cas", feature_slug="cas")
+    pid = ProjectRepo(conn).create(name="Projet réparation")
+    mid = ModuleRepo(conn).create(project_id=pid, name="Module")
+    cid = CaseRepo(conn).create(module_id=mid, title="Cas", feature_slug="cas")
     vid = VersionRepo(conn).create(test_case_id=cid, spec_content="s", spec_hash="h",
                                    feature_content="f", steps_content="st")
     CaseRepo(conn).set_current_version(cid, vid)

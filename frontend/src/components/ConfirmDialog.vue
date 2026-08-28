@@ -16,6 +16,7 @@ const props = defineProps<{
   message: string
   confirmLabel?: string
   busy?: boolean
+  confirmDisabled?: boolean
 }>()
 const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void }>()
 
@@ -34,7 +35,7 @@ watch(toRef(props, 'open'), (v) => (v ? verrouillerScroll() : deverrouillerScrol
         <p class="mt-2 text-sm text-muted-foreground whitespace-pre-line">{{ message }}</p>
         <div class="mt-5 flex justify-end gap-2">
           <Button variant="ghost" :disabled="busy" @click="emit('cancel')">Annuler</Button>
-          <Button variant="danger" :loading="busy" @click="emit('confirm')">{{ confirmLabel || 'Supprimer' }}</Button>
+          <Button variant="danger" :loading="busy" :disabled="confirmDisabled" @click="emit('confirm')">{{ confirmLabel || 'Supprimer' }}</Button>
         </div>
       </div>
     </div>

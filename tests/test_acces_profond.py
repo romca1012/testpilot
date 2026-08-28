@@ -189,6 +189,23 @@ def test_un_id_inconnu_rend_None_jamais_une_exception(arbre):
         conn.close()
 
 
+def test_un_cas_orphelin_est_refuse_meme_a_un_admin(client):
+    """Sans projet vérifiable, aucun rôle global ne peut rendre la ressource autorisée."""
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        case_id = CaseRepo(conn).create(title="Cas orphelin", module_id=None)
+    finally:
+        conn.close()
+
+    _compte("Root", access.ROLE_ADMIN)
+    _connecte(client, "Root")
+
+    assert client.get(f"/api/cases/{case_id}").status_code == 404
+    assert client.patch(
+        f"/api/cases/{case_id}", json={"priority": "high"}
+    ).status_code == 404
+
+
 # ── 2. Chaque route profonde — 404 sur no_access, jamais 403 ──────────────────────────────────
 # Un échantillon représentatif (pas les ~45 routes) : un GET et une ÉCRITURE par résolveur.
 
@@ -294,8 +311,7 @@ def test_corbeille_restaurer_un_cas_deja_a_la_corbeille_marche_AVEC_acces(client
     finally:
         conn.close()
     _compte("Root", access.ROLE_ADMIN)
-    _compte("Awa", access.ROLE_TESTEUR)
-    _connecte(client, "Awa")
+    _connecte(client, "Root")
     r = client.post(f"/api/corbeille/cas/{arbre.case_id}/restaurer")
     assert r.status_code == 204
 
@@ -311,6 +327,20 @@ def test_corbeille_purger_un_PROJET_no_access_rend_404(client, arbre):
     _prepare(client, arbre)
     r = client.delete(f"/api/corbeille/projet/{arbre.project_id}")
     assert r.status_code == 404
+
+
+def test_corbeille_refuse_de_purger_un_cas_orphelin_meme_pour_admin(client):
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        case_id = CaseRepo(conn).create(title="Orphelin", module_id=None)
+        CaseRepo(conn).delete(case_id, par="root")
+    finally:
+        conn.close()
+
+    _compte("Root", access.ROLE_ADMIN)
+    _connecte(client, "Root")
+
+    assert client.delete(f"/api/corbeille/cas/{case_id}").status_code == 404
 
 
 def test_corbeille_type_element_inconnu_reste_422_pas_404(client, arbre):
@@ -375,3 +405,83 @@ def test_quality_summary_avec_project_id_no_access_rend_404(client, arbre):
     _prepare(client, arbre)
     r = client.get(f"/api/executions/quality/summary?project_id={arbre.project_id}")
     assert r.status_code == 404
+
+
+def test_quality_summary_exige_le_role_DEV(client, arbre):
+    _compte("Root", access.ROLE_ADMIN)
+    _compte("Awa", access.ROLE_TESTEUR)
+    _connecte(client, "Awa")
+
+    r = client.get(f"/api/executions/quality/summary?project_id={arbre.project_id}")
+
+    assert r.status_code == 403
+
+
+def test_generation_IA_exige_le_role_DEV(client, arbre):
+    _compte("Root", access.ROLE_ADMIN)
+    _compte("Awa", access.ROLE_TESTEUR)
+    _connecte(client, "Awa")
+
+    depart = client.post(
+        f"/api/modules/{arbre.module_id}/cases",
+        json={"title": "Essai", "spec_content": "Une demande doit être validée"},
+    )
+    reprise = client.post(
+        f"/api/modules/jobs/{arbre.job_id}/metier",
+        json={"cases": []},
+    )
+
+    assert depart.status_code == 403
+    assert reprise.status_code == 403
+
+
+def test_quality_summary_global_exclut_un_projet_no_access(client, arbre):
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        visible_project = ProjectRepo(conn).create(name="Visible", **_PROJET)
+        visible_module = ModuleRepo(conn).create(project_id=visible_project, name="M visible")
+        visible_case = CaseRepo(conn).create(title="Visible", module_id=visible_module)
+        visible_version = VersionRepo(conn).create(
+            test_case_id=visible_case, spec_content="", spec_hash="h",
+            feature_content="Feature: visible", steps_content="",
+        )
+        visible_execution = ExecutionRepo(conn).create(
+            test_case_id=visible_case, version_id=visible_version,
+        )
+        ExecutionRepo(conn).finalize(
+            visible_execution, execution_status="success", functional_status="conforme",
+            scenarios_total=1, scenarios_passed=1, scenarios_failed=0,
+            cost_usd=0, iterations=0, duration_seconds=1,
+        )
+    finally:
+        conn.close()
+
+    _compte("Root", access.ROLE_ADMIN)
+    uid = _compte("Awa", access.ROLE_DEV)
+    _cacher_projet(arbre.project_id, uid)
+    _connecte(client, "Awa")  # Dev : le projet de l'arbre reste masqué
+
+    resume = client.get("/api/executions/quality/summary").json()
+    assert resume["total"] == 1
+    assert resume["ran"] == 1
+    assert resume["not_executed"] == 0
+
+
+def test_liste_cas_par_project_id_no_access_rend_404(client, arbre):
+    _prepare(client, arbre)
+    assert client.get(
+        f"/api/cases?project_id={arbre.project_id}"
+    ).status_code == 404
+
+
+def test_liste_cas_par_module_no_access_rend_404(client, arbre):
+    _prepare(client, arbre)
+    assert client.get(
+        f"/api/cases?module_id={arbre.module_id}"
+    ).status_code == 404
+
+
+def test_liste_cas_sans_perimetre_est_refusee(client, arbre):
+    _compte("Root", access.ROLE_ADMIN)
+    _connecte(client, "Root")
+    assert client.get("/api/cases").status_code == 422

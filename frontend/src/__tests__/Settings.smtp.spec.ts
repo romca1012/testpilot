@@ -24,6 +24,9 @@ import Settings from '../pages/Settings.vue'
 
 const REGLAGES_BASE = [
   { key: 'reference_url_template', value: '', source: 'default', description: 'd', admin_only: true, secret: false },
+  { key: 'instance_name', value: 'TestPilot', source: 'default', description: 'd', admin_only: true, secret: false },
+  { key: 'instance_timezone', value: 'Europe/Paris', source: 'default', description: 'd', admin_only: true, secret: false },
+  { key: 'date_format', value: 'DD/MM/YYYY', source: 'default', description: 'd', admin_only: true, secret: false },
   { key: 'notifications_enabled', value: '', source: 'default', description: 'd', admin_only: true, secret: false },
   { key: 'smtp_host', value: '', source: 'default', description: 'd', admin_only: true, secret: false },
   { key: 'smtp_port', value: '587', source: 'default', description: 'd', admin_only: true, secret: false },
@@ -49,6 +52,8 @@ describe('Settings — section Notifications par email', () => {
     const w = await page()
     expect(w.text()).not.toContain('smtp_host')
     expect(w.text()).not.toContain('notifications_enabled')
+    expect(w.text()).not.toContain('instance_name')
+    expect(w.text()).not.toContain('instance_timezone')
   })
 
   it('le mot de passe secret n\'est jamais préaffiché, même masqué', async () => {

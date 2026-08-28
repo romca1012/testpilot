@@ -59,5 +59,19 @@ describe('QualityDashboard', () => {
 
     expect(w.text()).toContain('07-19')
     expect(w.text()).toContain('07-21')
+    expect(w.find('[role="img"]').attributes('aria-label')).toContain('Évolution quotidienne')
+  })
+
+  it('rend une erreur explicite et permet de relancer le chargement', async () => {
+    getQuality.mockRejectedValueOnce(new Error('Droits insuffisants'))
+      .mockResolvedValueOnce({ total: 0, ran: 0, technical_error: 0, not_executed: 0,
+                               ran_rate: null, by_day: [] })
+    const w = mount(QualityDashboard, { global: { stubs } })
+    await flushPromises()
+
+    expect(w.find('[role="alert"]').text()).toContain('Droits insuffisants')
+    await w.get('button').trigger('click')
+    await flushPromises()
+    expect(getQuality).toHaveBeenCalledTimes(2)
   })
 })

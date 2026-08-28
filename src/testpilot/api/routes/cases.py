@@ -88,7 +88,7 @@ def _decoder_curseur(curseur: str | None) -> tuple | None:
 
 
 @router.get("", response_model=schemas.PageCas)
-def list_cases(project_id: int | None = None, module_id: int | None = None,
+def list_cases(request: Request, project_id: int | None = None, module_id: int | None = None,
                group_id: int | None = None, q: str = "", statut: str = "",
                cursor: str | None = None, limit: int = 100, conn=Depends(get_conn)):
     """Les cas, PAGE PAR PAGE.
@@ -101,6 +101,32 @@ def list_cases(project_id: int | None = None, module_id: int | None = None,
     porteraient que sur la page chargée, et chercher un cas absent de celle-ci répondrait
     « aucun résultat ». Un filtre qui ment sur l'absence est pire que pas de filtre.
     """
+    # Une liste doit elle aussi prouver son périmètre. Sans cette garde, `project_id` n'était
+    # qu'un filtre facultatif : connaître l'URL suffisait pour lister les cas d'un projet caché,
+    # et l'absence de filtre mélangeait tous les projets de l'instance.
+    perimetres: list[int] = []
+    if project_id is not None:
+        perimetres.append(project_id)
+    if module_id is not None:
+        pid_module = access.project_id_depuis_module(conn, module_id)
+        if pid_module is None:
+            raise HTTPException(status_code=404, detail="module introuvable")
+        perimetres.append(pid_module)
+    if group_id is not None:
+        pid_groupe = access.project_id_depuis_group(conn, group_id)
+        if pid_groupe is None:
+            raise HTTPException(status_code=404, detail="section introuvable")
+        perimetres.append(pid_groupe)
+    if not perimetres:
+        raise HTTPException(status_code=422, detail="un périmètre projet est requis")
+    if len(set(perimetres)) != 1:
+        raise HTTPException(status_code=404, detail="périmètre introuvable")
+
+    utilisateur = getattr(request.state, "user", None)
+    role = access.role_effectif_projet(conn, utilisateur, perimetres[0])
+    if role == access.ACCES_PROJET_REFUSE:
+        raise HTTPException(status_code=404, detail=f"projet {perimetres[0]} introuvable")
+
     limite = max(1, min(limit, 500))
     lignes, suivant, total = CaseRepo(conn).page(
         project_id=project_id, module_id=module_id, group_id=group_id,
@@ -135,24 +161,23 @@ def _ids_valides(case_ids: list[int]) -> list[int]:
     return uniques
 
 
-def _acces_suffisant(conn, request: Request, project_id: int | None) -> bool:
+def _acces_suffisant(conn, request: Request, project_id: int | None,
+                     minimum: str = access.ROLE_TESTEUR) -> bool:
     """Un accès EFFECTIF au moins Testeur sur le projet du cas (2026-08-11) — un cas dont le
     projet vient de passer en `no_access`, ou d'être forcé sous Testeur, doit être ignoré du lot
     EXACTEMENT comme un cas disparu entre l'affichage et le clic : jamais un 403 qui laisserait
     échouer les 19 autres pour un seul cas devenu inaccessible entre-temps, jamais une fuite sur
     quel projet le cas appartient.
 
-    `project_id=None` (un cas SANS module — « hors arbre », voir `CaseRepo.create`) est TOUJOURS
-    accessible : rien ne le rattache à un projet, donc rien à quoi comparer un rôle effectif.
-    Même correctif que `access.require_project_access_depuis` (trouvé en vérifiant la suite
-    complète : un cas de test créé sans module se voyait exclu du lot à tort)."""
+    `project_id=None` est refusé : sans projet vérifiable, aucune autorisation ne peut être
+    démontrée. Dans une opération en lot, ce cas est ignoré comme une ressource inaccessible."""
     utilisateur = getattr(request.state, "user", None)
     if utilisateur is None:
         return False
     if project_id is None:
-        return True
+        return False
     role = access.role_effectif_projet(conn, utilisateur, project_id)
-    return access.role_suffisant(role, access.ROLE_TESTEUR)
+    return access.role_suffisant(role, minimum)
 
 
 @router.patch("/lot", response_model=schemas.LotOut)
@@ -185,7 +210,8 @@ def supprimer_en_lot(body: schemas.LotCasIn, request: Request, conn=Depends(get_
     traites = 0
     for cid in _ids_valides(body.case_ids):
         cas = cases.get(cid)
-        if cas is None or not _acces_suffisant(conn, request, cas.get("project_id")):
+        if cas is None or not _acces_suffisant(
+                conn, request, cas.get("project_id"), access.ROLE_ADMIN):
             continue
         cases.delete(cid, par=par)
         traites += 1
@@ -193,8 +219,8 @@ def supprimer_en_lot(body: schemas.LotCasIn, request: Request, conn=Depends(get_
 
 
 @router.post("/{case_id}/automate", response_model=schemas.GenerationJobOut, status_code=202,
-            dependencies=[Depends(access.require_project_access_depuis(
-                "case_id", access.project_id_depuis_case))])
+            dependencies=[Depends(access.require_project_role_depuis(
+                "case_id", access.project_id_depuis_case, access.ROLE_DEV))])
 def automate_case(case_id: int, background: BackgroundTasks, request: Request,
                   conn=Depends(get_conn)):
     """AUTOMATISER un cas manuel : générer son test technique DEPUIS son métier (décision `0022`
@@ -215,8 +241,8 @@ def automate_case(case_id: int, background: BackgroundTasks, request: Request,
 
 
 @router.delete("/{case_id}", status_code=204,
-              dependencies=[Depends(access.require_project_access_depuis(
-                  "case_id", access.project_id_depuis_case))])
+              dependencies=[Depends(access.require_project_role_depuis(
+                  "case_id", access.project_id_depuis_case, access.ROLE_ADMIN))])
 def delete_case(case_id: int, request: Request, conn=Depends(get_conn)):
     """Supprime un cas et toute sa descendance (versions, exécutions, résultats, coûts).
 
@@ -407,9 +433,8 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
 
 
 @router.patch("/{case_id}/script", response_model=schemas.CaseMetierOut,
-             dependencies=[Depends(access.require_role(access.ROLE_DEV)),
-                          Depends(access.require_project_access_depuis(
-                              "case_id", access.project_id_depuis_case))])
+             dependencies=[Depends(access.require_project_role_depuis(
+                 "case_id", access.project_id_depuis_case, access.ROLE_DEV))])
 def update_case_script(case_id: int, body: schemas.ScriptEditIn, conn=Depends(get_conn)):
     """Édite DIRECTEMENT le Gherkin/Python généré — réservé au rôle Dev.
 

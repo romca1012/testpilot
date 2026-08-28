@@ -87,10 +87,18 @@ def test_une_exception_par_compte_prime_sur_l_acces_par_defaut(conn):
 
 def test_no_access_par_defaut_rend_404_sur_le_projet(client):
     _compte(client, "Awa", access.ROLE_ADMIN)
+    root_id = _compte(client, "Root", access.ROLE_ADMIN)
     _connecte(client, "Awa")
     pid = client.post("/api/projects", json=_PROJET).json()["id"]
-    client.patch(f"/api/projects/{pid}/access", json={"default_access": access.ACCES_PROJET_REFUSE})
+    # Un défaut restrictif reste possible à condition de conserver un Admin explicite.
+    assert client.post(
+        f"/api/projects/{pid}/access/users", json={"user_id": root_id, "role": "admin"}
+    ).status_code == 200
+    assert client.patch(
+        f"/api/projects/{pid}/access", json={"default_access": access.ACCES_PROJET_REFUSE}
+    ).status_code == 200
 
+    # Awa n'a pas d'exception : le défaut no_access s'applique bien à elle.
     r = client.get(f"/api/projects/{pid}/modules")
     assert r.status_code == 404
 
@@ -154,13 +162,21 @@ def test_un_projet_cache_reste_visible_pour_un_AUTRE_compte(client):
 # ── 4. Un accès par défaut FORCÉ s'applique même à un rôle global plus haut ───
 
 def test_un_projet_force_en_lecture_seule_bloque_meme_un_testeur(client):
-    _compte(client, "Root", access.ROLE_ADMIN)
+    root_id = _compte(client, "Root", access.ROLE_ADMIN)
     _connecte(client, "Root")
     pid = client.post("/api/projects", json=_PROJET).json()["id"]
-    client.patch(f"/api/projects/{pid}/access", json={"default_access": access.ROLE_LECTURE_SEULE})
+    # Le défaut Lecture seule ne doit pas rétrograder le dernier Admin du projet.
+    assert client.post(
+        f"/api/projects/{pid}/access/users", json={"user_id": root_id, "role": "admin"}
+    ).status_code == 200
+    assert client.patch(
+        f"/api/projects/{pid}/access", json={"default_access": access.ROLE_LECTURE_SEULE}
+    ).status_code == 200
 
     _compte(client, "Awa", access.ROLE_TESTEUR)
     _connecte(client, "Awa")
+    projet = next(p for p in client.get("/api/projects").json() if p["id"] == pid)
+    assert projet["effective_role"] == access.ROLE_LECTURE_SEULE
     r = client.post(f"/api/projects/{pid}/modules", json={"name": "M"})
     assert r.status_code == 403
     assert client.get(f"/api/projects/{pid}/modules").status_code == 200   # lecture, elle, passe
@@ -180,23 +196,20 @@ def test_un_testeur_ne_peut_pas_gerer_l_acces(client):
                         json={"default_access": access.ROLE_TESTEUR}).status_code == 403
 
 
-def test_un_admin_gere_l_acces_MEME_sur_un_projet_qu_il_a_lui_meme_cache(client):
-    """Le garde-fou qui compte : se tirer une balle dans le pied ne doit pas être possible."""
+def test_un_admin_ne_peut_pas_laisser_le_projet_sans_admin_actif(client):
+    """Le garde-fou Lot A : aucun réglage par défaut ne peut retirer le dernier Admin."""
     _compte(client, "Root", access.ROLE_ADMIN)
     _connecte(client, "Root")
     pid = client.post("/api/projects", json=_PROJET).json()["id"]
 
     r = client.patch(f"/api/projects/{pid}/access",
                      json={"default_access": access.ACCES_PROJET_REFUSE})
-    assert r.status_code == 200
+    assert r.status_code == 409
+    assert r.json()["code"] == "etat_incompatible"
 
-    # Toujours capable de le régler à nouveau, malgré le `no_access` qu'il vient de poser.
-    r = client.get(f"/api/projects/{pid}/access")
-    assert r.status_code == 200
-    assert r.json()["default_access"] == access.ACCES_PROJET_REFUSE
-
-    r = client.patch(f"/api/projects/{pid}/access", json={"default_access": ""})
-    assert r.status_code == 200 and r.json()["default_access"] == ""
+    # L'opération refusée est atomique : Root reste Admin et le défaut reste inchangé.
+    assert client.get(f"/api/projects/{pid}/modules").status_code == 200
+    assert client.get(f"/api/projects/{pid}/access").json()["default_access"] == ""
 
 
 def test_ajouter_et_retirer_une_exception_par_compte(client):

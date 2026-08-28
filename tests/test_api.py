@@ -84,7 +84,9 @@ def test_list_and_detail_expose_two_axes(client):
     cid, vid = _seed_case(conn, approved=False)
     conn.close()
 
-    cases = client.get("/api/cases").json()["items"]
+    project_id = CaseRepo(conn := _conn()).get(cid)["project_id"]
+    conn.close()
+    cases = client.get(f"/api/cases?project_id={project_id}").json()["items"]
     assert any(c["id"] == cid for c in cases)
 
     detail = client.get(f"/api/cases/{cid}").json()
@@ -106,7 +108,9 @@ def test_run_refuse_si_non_approuve(client):
 
 def test_run_refuse_si_pas_de_version(client):
     conn = _conn()
-    cid = CaseRepo(conn).create(title="vide", feature_slug="vide")
+    cid = CaseRepo(conn).create(
+        title="vide", feature_slug="vide", module_id=_module_connecte(conn)
+    )
     conn.close()
     resp = client.post(f"/api/cases/{cid}/runs")
     assert resp.status_code == 409
@@ -213,7 +217,10 @@ def test_lint_assertion_infalsifiable_signale_au_gate_sans_bloquer(client):
     """Décision 0008 phase C : une assertion tautologique (contenu EXACT de l'écart 2) doit
     remonter comme avertissement AU GATE, sans jamais changer l'état du gate lui-même."""
     conn = _conn()
-    cid = CaseRepo(conn).create(title="Cas tautologie", feature_slug="tauto", author="qa")
+    cid = CaseRepo(conn).create(
+        title="Cas tautologie", feature_slug="tauto", author="qa",
+        module_id=_module_connecte(conn),
+    )
     vid = VersionRepo(conn).create(
         test_case_id=cid, spec_content="spec", spec_hash="h",
         feature_content="# language: fr\nFonctionnalité: x", steps_content=_ECART_2_STEPS)

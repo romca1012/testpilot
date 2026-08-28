@@ -11,8 +11,10 @@
 // (même principe que le lancement d'une campagne, décision 0022 n°8.c.1).
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { type CaseSummary, type GroupDetail } from '../lib/api'
+import { roleSuffisant, type CaseSummary, type GroupDetail } from '../lib/api'
 import { usePageCas, useEnregistrerGroupe, useSupprimerGroupe, useUnGroupe } from '../lib/donnees'
+import { useProjects } from '../lib/useProjects'
+import { useSession } from '../lib/useSession'
 import { MODELE_SPECIFICATION, estModeleNonRempli } from '../lib/modeleSpecification'
 import Button from '../components/ui/Button.vue'
 import Card from '../components/ui/Card.vue'
@@ -22,6 +24,12 @@ const route = useRoute()
 const router = useRouter()
 const pid = computed(() => route.params.pid as string)
 const gid = computed(() => route.params.id as string)
+const { session } = useSession()
+const { projectById } = useProjects()
+const roleProjet = computed(() => projectById(pid.value)?.effective_role || session.value?.role || '')
+const peutModifier = computed(() => roleSuffisant(roleProjet.value, 'testeur'))
+const peutGenerer = computed(() => roleSuffisant(roleProjet.value, 'dev'))
+const peutSupprimer = computed(() => roleSuffisant(roleProjet.value, 'admin'))
 
 const spec = ref<GroupDetail | null>(null)
 const cas = ref<CaseSummary[]>([])
@@ -125,7 +133,7 @@ function ouvrirCas(id: number) {
     <template v-else-if="spec">
       <div>
         <p class="text-xs uppercase tracking-wider text-muted-foreground">Spécification</p>
-        <input v-model="titre"
+        <input v-model="titre" :readonly="!peutModifier"
                class="mt-1 w-full bg-transparent text-2xl font-semibold tracking-tight outline-none focus:border-b focus:border-primary/50" />
         <p class="mt-1 text-sm text-muted-foreground">
           {{ spec.case_count }} cas de test {{ spec.case_count > 1 ? 'issus' : 'issu' }} de ce document
@@ -137,13 +145,13 @@ function ouvrirCas(id: number) {
           C'est ce texte que l'IA lira pour écrire les cas de test. Plus il est précis sur les
           <strong>données</strong> et les <strong>règles</strong>, moins l'outil a à deviner.
         </p>
-        <textarea v-model="document" rows="18" spellcheck="false"
+        <textarea v-model="document" rows="18" spellcheck="false" :readonly="!peutModifier"
                   placeholder="Collez ici la spécification fonctionnelle, ou partez du modèle."
                   class="w-full rounded-md border border-border bg-surface-raised px-3 py-2 font-mono text-sm leading-relaxed outline-none focus:border-primary/50" />
         <div class="mt-3 flex flex-wrap items-center gap-3">
-          <Button variant="primary" :loading="enregistrement" :disabled="!modifie || !titre.trim()"
+          <Button v-if="peutModifier" variant="primary" :loading="enregistrement" :disabled="!modifie || !titre.trim()"
                   @click="enregistrer">Enregistrer</Button>
-          <button v-if="estModeleNonRempli(document)" class="text-sm text-primary hover:underline"
+          <button v-if="peutModifier && estModeleNonRempli(document)" class="text-sm text-primary hover:underline"
                   @click="partirDuModele">Partir du modèle</button>
           <span v-if="message" class="text-sm text-success">{{ message }}</span>
           <span v-if="erreur" class="text-sm text-destructive">{{ erreur }}</span>
@@ -154,7 +162,7 @@ function ouvrirCas(id: number) {
         <!-- ⚠️ Générer est un geste EXPLICITE, jamais un effet de bord de l'écriture du document :
              c'est là que la dépense est engagée et que l'humain valide le métier (§4bis). -->
         <div class="mb-3 flex flex-wrap items-center gap-3">
-          <Button variant="primary" :disabled="estModeleNonRempli(document)" @click="genererDepuisLaSpec">
+          <Button v-if="peutGenerer" variant="primary" :disabled="estModeleNonRempli(document)" @click="genererDepuisLaSpec">
             Générer un cas de test depuis cette spécification
           </Button>
           <span v-if="estModeleNonRempli(document)" class="text-sm text-muted-foreground">
@@ -179,7 +187,7 @@ function ouvrirCas(id: number) {
         <span class="text-xs text-muted-foreground">
           Empreinte du document : <span class="font-mono">{{ spec.spec_hash.slice(0, 12) || '—' }}</span>
         </span>
-        <button class="text-sm text-destructive hover:underline" @click="supprimer">
+        <button v-if="peutSupprimer" class="text-sm text-destructive hover:underline" @click="supprimer">
           Supprimer cette spécification
         </button>
       </div>

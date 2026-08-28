@@ -33,6 +33,7 @@ const archiveRun = vi.fn()
 const push = vi.fn()
 
 vi.mock('../lib/api', () => ({
+  roleSuffisant: () => true,
   api: {
     listCases: (...a: any[]) => listCases(...a),
     // Le picker de cas (étape « sélection figée ») groupe désormais par Section/Sous-section
@@ -45,6 +46,13 @@ vi.mock('../lib/api', () => ({
     archiveRun: (...a: any[]) => archiveRun(...a),
   },
 }))
+vi.mock('../lib/useProjects', () => ({
+  useProjects: () => ({ projectById: () => ({ effective_role: 'admin' }) }),
+}))
+vi.mock('../lib/useSession', async () => {
+  const { ref } = await import('vue')
+  return { useSession: () => ({ session: ref({ role: 'admin' }) }) }
+})
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { pid: '1', id: '7' }, query: {} }),
   useRouter: () => ({ push }),

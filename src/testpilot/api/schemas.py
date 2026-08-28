@@ -42,6 +42,7 @@ class ProjectSummary(BaseModel):
     # password : jamais exposé par l'API (write-only, cf. décision 0005).
     module_count: int = 0
     case_count: int = 0
+    effective_role: str = ""
 
 
 class ModuleSummary(BaseModel):
@@ -811,6 +812,25 @@ class SettingPatch(BaseModel):
     value: str = ""
 
 
+class TimezoneOption(BaseModel):
+    value: str
+    label: str
+
+
+class SecurityStatusOut(BaseModel):
+    password_min_length: int
+    password_hash: str
+    session_days: int
+    cookie_http_only: bool
+    cookie_same_site: str
+    cookie_secure: bool
+    session_secret_external: bool
+    data_secret_external: bool
+    login_max_failures: int
+    login_window_minutes: int
+    production_ready: bool
+
+
 class SmtpTestIn(BaseModel):
     destinataire: str
 
@@ -841,10 +861,18 @@ class ProjectAccessOverrideOut(BaseModel):
     role: str          # 'no_access' ou un des 4 rôles
 
 
+class ProjectGroupAccessOut(BaseModel):
+    group_id: int
+    group_name: str
+    role: str
+    member_count: int = 0
+
+
 class ProjectAccessOut(BaseModel):
     """L'accès à un projet, tel que l'écran Admin le montre : le défaut, et les exceptions."""
     default_access: str = ""      # vide = rôle global (pas de surcharge)
     overrides: list[ProjectAccessOverrideOut] = []
+    group_overrides: list[ProjectGroupAccessOut] = []
 
 
 class ProjectDefaultAccessIn(BaseModel):
@@ -856,11 +884,54 @@ class ProjectAccessOverrideIn(BaseModel):
     role: str          # 'no_access' ou un des 4 rôles
 
 
+class ProjectGroupAccessIn(BaseModel):
+    group_id: int
+    role: str          # '' = rôle global ; sinon no_access ou rôle V1
+
+
+class ProjectMemberOut(BaseModel):
+    user_id: int
+    username: str
+    email: str = ""
+    role: str
+    status: str
+    created_at: str
+
+
+class ProjectMemberCreateIn(BaseModel):
+    user_id: int
+    role: str
+
+
+class ProjectMemberPatchIn(BaseModel):
+    role: str | None = None
+    status: str | None = None
+
+
+class UserProjectAccessIn(BaseModel):
+    project_id: int
+    role: str
+
+
+class UserProjectAccessOut(BaseModel):
+    project_id: int
+    project_name: str
+    role: str
+    has_access: bool
+
+
+class UserProjectAccessListIn(BaseModel):
+    projects: list[UserProjectAccessIn]
+
+
 class UserCreateIn(BaseModel):
     username: str
     password: str
     role: str
     email: str = ""
+    # None conserve le comportement historique (accès dérivé du rôle global). Une liste,
+    # même vide, représente au contraire le choix explicite fait par l'Admin dans l'écran.
+    projects: list[UserProjectAccessIn] | None = None
 
 
 class UserPatchIn(BaseModel):
@@ -874,13 +945,36 @@ class UserPatchIn(BaseModel):
     email: str | None = None
 
 
+class UserGroupIn(BaseModel):
+    name: str
+    # Comme l'API TestRail, la liste représente toujours l'ensemble complet des membres.
+    user_ids: list[int] = []
+
+
+class UserGroupMemberOut(BaseModel):
+    id: int
+    username: str
+    email: str = ""
+    role: str
+    is_active: bool
+
+
+class UserGroupOut(BaseModel):
+    id: int
+    name: str
+    member_count: int = 0
+    created_at: str
+    members: list[UserGroupMemberOut] = []
+
+
 # ── Mappers dict → DTO ─────────────────────────────────────────────────────────
 def project_summary(row: dict) -> ProjectSummary:
     return ProjectSummary(
         id=row["id"], name=row["name"], description=row.get("description", ""),
         connector_type=row.get("connector_type", "odoo"), base_url=row.get("base_url", ""),
         database=row.get("database", ""), username=row.get("username", ""),
-        module_count=row.get("module_count", 0), case_count=row.get("case_count", 0))
+        module_count=row.get("module_count", 0), case_count=row.get("case_count", 0),
+        effective_role=row.get("effective_role", ""))
 
 
 def module_summary(row: dict) -> ModuleSummary:

@@ -16,7 +16,7 @@ from testpilot.api import access
 from testpilot.api import app as app_mod
 from testpilot.api.services import script_service
 from testpilot.store.db import get_initialized_db
-from testpilot.store.repositories import CaseRepo, UserRepo, VersionRepo
+from testpilot.store.repositories import CaseRepo, ProjectRepo, UserRepo, VersionRepo
 
 _STEP_GENERIC = (
     "from behave import when\n\n"
@@ -119,11 +119,12 @@ def _compte_et_connexion(client, username: str = "Awa", role: str = access.ROLE_
 
 
 def _projet_module_cas(client, nom_projet: str = "Recette") -> tuple[int, int]:
-    r = client.post("/api/projects", json={
-        "name": nom_projet, "base_url": "http://x", "database": "db",
-        "username": "qa", "password": "p"})
-    assert r.status_code == 201, r.text
-    pid = r.json()["id"]
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        pid = ProjectRepo(conn).create(name=nom_projet, base_url="http://x", database="db",
+                                       username="qa", password="p")
+    finally:
+        conn.close()
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
     cid = client.post(f"/api/modules/{mid}/cases/manual", json={
         "title": "Cas", "test_steps": ["a"], "expected_result": "ok"}).json()["id"]
