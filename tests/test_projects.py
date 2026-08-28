@@ -14,6 +14,7 @@ from testpilot.api import app as app_mod
 from testpilot.store.db import (
     _migrate_1_project_module,
     _migrate_2_project_connector,
+    _migrate_38_connector_version,
     get_initialized_db,
 )
 from testpilot.store.repositories import (
@@ -67,6 +68,26 @@ def test_list_cases_filtre_par_projet_et_module(conn):
     assert {c["title"] for c in CaseRepo(conn).list_all()} == {"A", "B"}
     assert {c["title"] for c in CaseRepo(conn).list_all(project_id=p1)} == {"A"}
     assert {c["title"] for c in CaseRepo(conn).list_all(module_id=m2)} == {"B"}
+
+
+def test_project_repo_connector_version_indeterminee_par_defaut(conn):
+    """`ProjectRepo.create` sans `connector_version` : '' (indéterminée), jamais une valeur
+    devinée — chaque connecteur a son propre format de version (migration 38)."""
+    pid = ProjectRepo(conn).create(name="Odoo")
+    assert ProjectRepo(conn).get(pid)["connector_version"] == ""
+
+
+def test_project_repo_connector_version_persistee(conn):
+    pid = ProjectRepo(conn).create(name="Odoo 17", connector_version="17")
+    assert ProjectRepo(conn).get(pid)["connector_version"] == "17"
+
+
+def test_project_repo_update_connection_edite_la_version(conn):
+    pid = ProjectRepo(conn).create(name="Odoo")
+
+    ProjectRepo(conn).update_connection(pid, connector_version="19")
+
+    assert ProjectRepo(conn).get(pid)["connector_version"] == "19"
 
 
 # ── Migration d'une base d'AVANT la hiérarchie ────────────────────────────────
@@ -129,6 +150,30 @@ def test_migration_2_connecteur_remonte_au_projet(tmp_path):
     raw.close()
 
 
+def test_migration_38_ajoute_connector_version(tmp_path):
+    """Migration 38 : la VERSION du connecteur, distincte du connecteur lui-même. Colonne
+    ajoutée, vide par défaut — « indéterminée » reste un choix légitime, jamais une valeur
+    forcée sur les projets déjà existants."""
+    db = tmp_path / "v37.db"
+    raw = sqlite3.connect(str(db))
+    raw.row_factory = sqlite3.Row
+    raw.execute("CREATE TABLE project (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,"
+                " connector_type TEXT NOT NULL DEFAULT 'odoo', created_at TEXT NOT NULL DEFAULT '')")
+    raw.execute("INSERT INTO project (name) VALUES ('Portail Sapian')")
+    raw.commit()
+
+    _migrate_38_connector_version(raw)
+    raw.commit()
+
+    pcols = {r["name"] for r in raw.execute("PRAGMA table_info(project)")}
+    assert "connector_version" in pcols
+    proj = dict(raw.execute("SELECT * FROM project WHERE id=1").fetchone())
+    assert proj["connector_version"] == ""
+    # Idempotente : rejouée sur une base déjà à la cible, elle ne casse rien.
+    _migrate_38_connector_version(raw)
+    raw.close()
+
+
 # ── API ───────────────────────────────────────────────────────────────────────
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -150,6 +195,42 @@ def test_api_projects_crud_et_modules(client):
     assert mods[0]["name"] == "Demande matériel"
     # Module sous projet inexistant → 404
     assert client.post("/api/projects/999/modules", json={"name": "X"}).status_code == 404
+
+
+def test_api_connector_version_indeterminee_par_defaut(client):
+    """Créer un projet SANS préciser de version : '' (indéterminée) — jamais une valeur
+    devinée. Chaque connecteur a son propre format de version, aucune liste fermée à respecter."""
+    p = client.post("/api/projects", json={"name": "Odoo"})
+    assert p.json()["connector_version"] == ""
+
+
+def test_api_connector_version_declaree_a_la_creation(client):
+    p = client.post("/api/projects", json={"name": "Odoo 17", "connector_version": "17"})
+    assert p.status_code == 201
+    assert p.json()["connector_version"] == "17"
+    # Relue depuis la liste, pas seulement dans la réponse de création.
+    pid = p.json()["id"]
+    releve = next(x for x in client.get("/api/projects").json() if x["id"] == pid)
+    assert releve["connector_version"] == "17"
+
+
+def test_api_connector_version_editable(client):
+    pid = client.post("/api/projects", json={"name": "Odoo"}).json()["id"]
+
+    r = client.patch(f"/api/projects/{pid}", json={"connector_version": "19"})
+
+    assert r.status_code == 200
+    assert r.json()["connector_version"] == "19"
+
+
+def test_api_connector_version_peut_etre_revidee_explicitement(client):
+    """Une chaîne vide EXPLICITE revient à « indéterminée » — distinct de ne pas fournir le
+    champ du tout (même logique que le mot de passe, décision 0005)."""
+    pid = client.post("/api/projects", json={"name": "Odoo", "connector_version": "17"}).json()["id"]
+
+    r = client.patch(f"/api/projects/{pid}", json={"connector_version": ""})
+
+    assert r.json()["connector_version"] == ""
 
 
 def test_api_case_detail_expose_le_fil_d_ariane(client):

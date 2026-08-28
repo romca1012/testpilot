@@ -29,13 +29,13 @@ const creating = ref(false)
 const createError = ref('')
 
 function openCreate() {
-  form.value = { name: '', connector_type: 'odoo', base_url: '', database: '', username: '', password: '' }
+  form.value = { name: '', connector_type: 'odoo', connector_version: '', base_url: '', database: '', username: '', password: '' }
   createError.value = ''
   showCreate.value = true
 }
 // Un projet = une application testée, avec son connecteur + sa connexion.
 const form = ref({
-  name: '', connector_type: 'odoo', base_url: '', database: '', username: '', password: '',
+  name: '', connector_type: 'odoo', connector_version: '', base_url: '', database: '', username: '', password: '',
 })
 const CONNECTORS = [{ value: 'odoo', label: 'Odoo' }]  // extensible (§8 multi-connecteurs)
 
@@ -209,14 +209,15 @@ const editing = ref<ProjectSummary | null>(null)
 const saving = ref(false)
 const editError = ref('')
 const edit = ref({
-  name: '', connector_type: 'odoo', base_url: '', database: '', username: '', password: '',
+  name: '', connector_type: 'odoo', connector_version: '', base_url: '', database: '', username: '', password: '',
 })
 
 function startEdit(p: ProjectSummary) {
   editing.value = p
   editError.value = ''
   edit.value = {
-    name: p.name, connector_type: p.connector_type || 'odoo', base_url: p.base_url || '',
+    name: p.name, connector_type: p.connector_type || 'odoo',
+    connector_version: p.connector_version || '', base_url: p.base_url || '',
     database: p.database || '', username: p.username || '',
     // ⚠️ TOUJOURS vide : l'API ne renvoie jamais le mot de passe (write-only). Le champ vide
     // signifie « inchangé », jamais « efface-le » — d'où le filtrage à l'enregistrement.
@@ -279,6 +280,7 @@ async function saveEdit() {
     const patch: Record<string, string> = {
       name: edit.value.name.trim(),
       connector_type: edit.value.connector_type,
+      connector_version: edit.value.connector_version,
       base_url: edit.value.base_url,
       database: edit.value.database,
       username: edit.value.username,
@@ -404,7 +406,8 @@ onMounted(async () => { await load(); await loadExplorations() })
         <!-- Connexion en clair sur la carte : c'est ce qui distingue deux projets du même
              connecteur, et ce qu'on vient vérifier quand une exécution tape la mauvaise instance. -->
         <div v-if="adminMode && p.base_url" class="mt-2 truncate text-xs text-subtle-foreground" :title="p.base_url">
-          {{ p.connector_type }} · {{ p.base_url }}<span v-if="p.database"> · {{ p.database }}</span>
+          {{ p.connector_type + (p.connector_version ? ' ' + p.connector_version : '') }}
+          · {{ p.base_url }}<span v-if="p.database"> · {{ p.database }}</span>
         </div>
         <div v-else-if="adminMode" class="mt-2 text-xs text-warning">Aucune connexion configurée</div>
 
@@ -491,6 +494,16 @@ onMounted(async () => { await load(); await loadExplorations() })
           </label>
         </div>
 
+        <!-- Version DÉCLARÉE de l'instance (ex. « 17 » pour Odoo 17) — jamais obligatoire : deux
+             projets du même connecteur peuvent tourner sur des versions différentes, et rien ne
+             force à la connaître. -->
+        <label class="block">
+          <span class="text-xs text-muted-foreground">Version de l'application</span>
+          <input v-model="form.connector_version" placeholder="ex. 17"
+                 class="mt-1 h-9 w-full rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
+          <span class="mt-1 block text-xs text-subtle-foreground">Facultatif — laissez vide si la version n'est pas identifiable.</span>
+        </label>
+
         <fieldset class="rounded-lg border border-border p-3">
           <legend class="px-1 text-xs uppercase tracking-wide text-muted-foreground">Connexion</legend>
           <div class="grid gap-3 sm:grid-cols-2">
@@ -537,6 +550,12 @@ onMounted(async () => { await load(); await loadExplorations() })
             <select v-model="edit.connector_type" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2">
               <option v-for="c in CONNECTORS" :key="c.value" :value="c.value">{{ c.label }}</option>
             </select>
+          </label>
+          <!-- Version DÉCLARÉE de l'instance — jamais obligatoire (voir la modale de création). -->
+          <label class="mt-3 block">
+            <span class="text-sm font-medium">Version de l'application</span>
+            <input v-model="edit.connector_version" placeholder="ex. 17" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+            <span class="mt-1 block text-xs text-subtle-foreground">Facultatif — laissez vide si la version n'est pas identifiable.</span>
           </label>
           <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label class="block"><span class="text-sm font-medium">URL</span><input v-model="edit.base_url" placeholder="http://localhost:10017" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>

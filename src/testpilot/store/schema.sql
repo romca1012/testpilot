@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS project (
     name           TEXT    NOT NULL,
     description    TEXT    NOT NULL DEFAULT '',
     connector_type TEXT    NOT NULL DEFAULT 'odoo',
+    -- Version DÉCLARÉE de cette instance (ex. « 17 » pour Odoo 17) — chaîne libre, jamais une
+    -- liste fermée (chaque connecteur a son propre format de version). Vide = indéterminée,
+    -- un choix légitime quand l'application ne l'expose pas (migration 38).
+    connector_version TEXT NOT NULL DEFAULT '',
     base_url       TEXT    NOT NULL DEFAULT '',
     database       TEXT    NOT NULL DEFAULT '',
     username       TEXT    NOT NULL DEFAULT '',

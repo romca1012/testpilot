@@ -62,7 +62,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 37
+ALIGNED_WITH_SCHEMA_VERSION = 38
 
 metadata = MetaData()
 
@@ -75,6 +75,8 @@ project = Table(
     Column("name", Text, nullable=False),
     Column("description", Text, nullable=False, server_default=""),
     Column("connector_type", Text, nullable=False, server_default="odoo"),
+    # Migration 38 : version DÉCLARÉE de cette instance — vide = indéterminée.
+    Column("connector_version", Text, nullable=False, server_default=""),
     Column("base_url", Text, nullable=False, server_default=""),
     Column("database", Text, nullable=False, server_default=""),
     Column("username", Text, nullable=False, server_default=""),

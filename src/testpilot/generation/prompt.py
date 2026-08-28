@@ -29,7 +29,8 @@ def _nom_connecteur(connector: Connector | None) -> str:
 
 
 def build_system_prompt(connector: Connector | None = None,
-                        shared_steps: list[SharedStep] | None = None) -> str:
+                        shared_steps: list[SharedStep] | None = None,
+                        connector_version: str = "") -> str:
     """Prompt système + catalogue des steps partagés + règles du connecteur actif.
 
     Le catalogue est indispensable : le prompt demande de réutiliser la bibliothèque et
@@ -41,6 +42,12 @@ def build_system_prompt(connector: Connector | None = None,
     XML nommée, plutôt qu'en fin de prompt) : le catalogue passe devant les instructions, dans
     `<bibliotheque_de_steps>`. Les règles du connecteur restent en fin, dans
     `<regles_connecteur>` — l'agent les lit après avoir compris la méthode générique.
+
+    `connector_version` : la version DÉCLARÉE de l'instance (projet, migration 38), simple
+    contexte informatif — ``""`` (indéterminée) ne produit aucune mention, jamais une règle
+    inventée. Aucune règle différenciée par version n'existe encore (`Connector.rules()` ne
+    prend toujours que le connecteur) : seul le FAIT de la version, quand elle est connue,
+    est transmis à l'agent.
     """
     base = _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
 
@@ -52,8 +59,9 @@ def build_system_prompt(connector: Connector | None = None,
 
     suffix = ""
     rules = connector.rules() if connector else ""
-    if rules:
-        bloc = "## Connecteur actif\n\n" + rules
+    version_ligne = f"Version déclarée : {connector_version}\n\n" if connector_version else ""
+    if rules or version_ligne:
+        bloc = version_ligne + (f"## Connecteur actif\n\n{rules}" if rules else "")
         nom = _nom_connecteur(connector)
         ouverture = f'<regles_connecteur nom="{nom}">' if nom else "<regles_connecteur>"
         suffix = f"\n\n---\n\n{ouverture}\n\n{bloc}\n\n</regles_connecteur>"

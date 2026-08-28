@@ -135,6 +135,54 @@ describe('ProjectsList — édition d\'un projet et de sa connexion', () => {
   })
 })
 
+// ── Version DÉCLARÉE du connecteur (migration 38) ──────────────────────────────
+// Distincte du connecteur lui-même (ex. Odoo 17 vs Odoo 19) : un projet peut la déclarer, ou la
+// laisser vide si l'application ne l'expose pas — jamais un champ à l'air obligatoire.
+describe('ProjectsList — version déclarée du connecteur', () => {
+  it("n'affiche rien de plus sur la carte quand la version est absente", async () => {
+    // '' = indéterminée : ne rien afficher, jamais une valeur inventée du type « v? ».
+    const w = mount(ProjectsList, { global: { stubs } })
+    await flushPromises()
+
+    expect(w.text()).toContain('odoo · http://localhost:10017')
+  })
+
+  it('affiche la version sur la carte quand elle est déclarée', async () => {
+    listProjects.mockResolvedValue([{ ...PROJET, connector_version: '17' }])
+    const w = mount(ProjectsList, { global: { stubs } })
+    await flushPromises()
+
+    expect(w.text()).toContain('odoo 17 · http://localhost:10017')
+  })
+
+  it('pré-remplit le formulaire d\'édition avec la version déclarée', async () => {
+    listProjects.mockResolvedValue([{ ...PROJET, connector_version: '17' }])
+    const w = await ouvrirEdition()
+
+    const valeurs = w.findAll('input').map((i) => (i.element as HTMLInputElement).value)
+    expect(valeurs).toContain('17')
+  })
+
+  it('transmet la version modifiée', async () => {
+    const w = await ouvrirEdition()
+    const champVersion = w.findAll('input').find(
+      (i) => i.attributes('placeholder') === 'ex. 17')!
+    await champVersion.setValue('19')
+    await enregistrer(w)
+
+    expect(updateProject.mock.calls[0][1].connector_version).toBe('19')
+  })
+
+  it('reste facultative : le formulaire se soumet vide sans erreur', async () => {
+    // Aucune contrainte de remplissage — l'API accepte explicitement une chaîne vide.
+    const w = await ouvrirEdition()
+    await enregistrer(w)
+
+    expect(updateProject).toHaveBeenCalled()
+    expect(updateProject.mock.calls[0][1].connector_version).toBe('')
+  })
+})
+
 describe("ProjectsList — exploration de l'application (étape 2 du flux)", () => {
   it("dit clairement qu'une application n'est PAS explorée", async () => {
     // Laisser la carte muette ferait croire que la génération sait où elle va.

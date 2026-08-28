@@ -99,7 +99,7 @@ def test_le_mot_de_passe_n_est_JAMAIS_renvoye(client):
 def test_renommer_ne_touche_pas_a_la_connexion(client):
     """La régression que ce chantier corrige, prise par l'autre bout : un PATCH de nom ne doit
     rien changer d'autre."""
-    pid = _projet(client)
+    pid = _projet(client, connector_version="17")
 
     r = client.patch(f"/api/projects/{pid}", json={"name": "Nouveau nom"})
 
@@ -107,6 +107,9 @@ def test_renommer_ne_touche_pas_a_la_connexion(client):
     assert r.json()["base_url"] == "http://localhost:10017"
     assert r.json()["database"] == "sapian"
     assert r.json()["username"] == "admin"
+    # La VERSION (migration 38) suit la même règle que le reste de la connexion : absente du
+    # corps du PATCH, elle ne bouge pas.
+    assert r.json()["connector_version"] == "17"
 
 
 def test_un_nom_deja_pris_reste_un_409(client):

@@ -36,6 +36,9 @@ class ProjectSummary(BaseModel):
     name: str
     description: str = ""
     connector_type: str = "odoo"
+    # Version DÉCLARÉE de l'instance (ex. « 17 » pour Odoo 17) — chaîne libre, vide acceptée
+    # explicitement : « indéterminée » est un choix légitime, jamais une valeur à forcer.
+    connector_version: str = ""
     base_url: str = ""
     database: str = ""
     username: str = ""
@@ -423,6 +426,7 @@ class ProjectIn(BaseModel):
     name: str
     description: str = ""
     connector_type: str = "odoo"
+    connector_version: str = ""
     base_url: str = ""
     database: str = ""
     username: str = ""
@@ -441,6 +445,7 @@ class ProjectPatch(BaseModel):
     name: str | None = None
     description: str | None = None
     connector_type: str | None = None
+    connector_version: str | None = None
     base_url: str | None = None
     database: str | None = None
     username: str | None = None
@@ -980,7 +985,8 @@ class UserGroupOut(BaseModel):
 def project_summary(row: dict) -> ProjectSummary:
     return ProjectSummary(
         id=row["id"], name=row["name"], description=row.get("description", ""),
-        connector_type=row.get("connector_type", "odoo"), base_url=row.get("base_url", ""),
+        connector_type=row.get("connector_type", "odoo"),
+        connector_version=row.get("connector_version", ""), base_url=row.get("base_url", ""),
         database=row.get("database", ""), username=row.get("username", ""),
         module_count=row.get("module_count", 0), case_count=row.get("case_count", 0),
         effective_role=row.get("effective_role", ""))
