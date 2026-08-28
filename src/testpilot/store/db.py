@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,10 @@ _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
 _SCHEMA_VERSION = 38
+
+# Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
+# dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
+_HORODATAGE_SAUVEGARDE = "%Y%m%d-%H%M%S"
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -53,9 +58,64 @@ def init_db(conn: sqlite3.Connection) -> None:
     _run_migrations(conn)
 
 
+def _sauvegarder_avant_migration(path: Path, version_avant: int) -> Path:
+    """Copie `path` À CÔTÉ d'elle-même, AVANT qu'une migration n'y écrive quoi que ce soit.
+
+    Convention de nom cohérente avec les copies manuelles déjà vues dans ce dépôt
+    (`testpilot.db.avant-nettoyage-20260805-104308`) : `{nom}.avant-migration-{version}-{horodatage}`,
+    où `version` est le schéma DE DÉPART (celui qu'on peut retrouver en cas de retour arrière), pas
+    la cible. `shutil.copy2` (pas `copy`) : préserve les métadonnées, sans intérêt fonctionnel ici
+    mais sans coût non plus.
+
+    Ne touche PAS aux fichiers `-wal`/`-shm` : `connect()` n'active aucun `PRAGMA journal_mode=WAL`
+    (le mode par défaut de sqlite3 est le journal `DELETE`, purgé à la fermeture de la connexion
+    précédente) — il n'y a donc rien de cohérent à recopier en plus du fichier principal.
+    """
+    horodatage = datetime.now(timezone.utc).strftime(_HORODATAGE_SAUVEGARDE)
+    cible = path.with_name(f"{path.name}.avant-migration-{version_avant}-{horodatage}")
+    shutil.copy2(path, cible)
+    return cible
+
+
 def get_initialized_db(db_path: Path | str | None = None) -> sqlite3.Connection:
-    """Raccourci : connexion + schéma prêt à l'emploi (migrations incluses)."""
-    conn = connect(db_path)
+    """Raccourci : connexion + schéma prêt à l'emploi (migrations incluses).
+
+    ⚠️ **Sauvegarde AVANT toute migration qui va RÉELLEMENT écrire la base** — dans ce code, pas
+    seulement documentée (`docs/DEPLOIEMENT*`) : une consigne humaine s'oublie, un appel au
+    démarrage du serveur non. Trois cas, tous mesurés par le test qui accompagne cette fonction :
+
+    - **base neuve** (le fichier n'existe pas encore) : rien à perdre, aucune copie — le schéma se
+      crée directement. Copier un fichier qui n'existe pas planterait pour rien.
+    - **base déjà à jour** (`user_version == _SCHEMA_VERSION`) : aucune migration ne va s'exécuter,
+      donc aucune sauvegarde à CHAQUE redémarrage du serveur — ça grossirait sans fin pour un
+      bénéfice nul (le même écart que `data/executions/`, que ce lot ne veut pas répéter).
+    - **base ancienne** (`user_version < _SCHEMA_VERSION`) : une migration va écrire. On sauvegarde
+      D'ABORD. Si la copie ÉCHOUE (disque plein, permission refusée), on **refuse de migrer** et on
+      relève l'exception plutôt que de continuer sans filet — mieux vaut un démarrage bloqué,
+      bruyamment journalisé, qu'une migration qu'on ne pourrait pas défaire si elle tournait mal.
+
+    L'existence du fichier est testée **avant** `connect()` : ouvrir une connexion SQLite sur un
+    chemin absent CRÉE le fichier (vide, sans schéma) — après quoi `path.exists()` mentirait.
+    """
+    path = Path(db_path) if db_path else config.DB_PATH
+    existait_deja = path.exists()
+    conn = connect(path)
+    if existait_deja:
+        version_avant = conn.execute("PRAGMA user_version").fetchone()[0]
+        if version_avant < _SCHEMA_VERSION:
+            try:
+                cible = _sauvegarder_avant_migration(path, version_avant)
+            except OSError:
+                conn.close()
+                logger.critical(
+                    "[sauvegarde pré-migration] ÉCHEC de la copie de %s avant la migration"
+                    " (schéma %s -> %s) : migration REFUSÉE, le serveur ne démarre pas sur cette"
+                    " base. Vérifiez l'espace disque et les droits d'écriture sur %s, puis relancez.",
+                    path, version_avant, _SCHEMA_VERSION, path.parent, exc_info=True)
+                raise
+            logger.info(
+                "[sauvegarde pré-migration] %s -> %s (schéma %s -> %s)",
+                path, cible, version_avant, _SCHEMA_VERSION)
     init_db(conn)
     return conn
 

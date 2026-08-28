@@ -104,8 +104,55 @@ Puis vérifiez :
 
 ## 6. Sauvegarde
 
-Une copie brute de SQLite pendant une écriture peut être incohérente. Pour le pilote, utilisez une
-fenêtre de maintenance courte :
+TestPilot combine deux mécanismes complémentaires — aucun ne remplace l'autre :
+
+### 6.1. Automatique, avant chaque migration
+
+À **chaque démarrage du serveur**, avant qu'une migration de schéma en attente n'écrive quoi que
+ce soit dans `testpilot.db`, le code (`testpilot.store.db.get_initialized_db`, pas une consigne
+documentée à part) copie la base telle quelle à côté d'elle-même :
+`testpilot.db.avant-migration-{schéma de départ}-{horodatage}`. Sur une base déjà à jour ou neuve,
+aucune copie n'est produite — rien ne migre, rien à sauvegarder. Si la copie échoue (disque plein,
+droits insuffisants) alors qu'une migration allait réellement s'exécuter, le démarrage est
+**refusé** et journalisé en `CRITICAL` : mieux vaut un serveur qui ne démarre pas qu'une migration
+jouée sans filet. Ce mécanisme ne couvre QUE l'instant de la migration ; il ne remplace pas une
+politique de sauvegarde périodique.
+
+### 6.2. Périodique, via `scripts/sauvegarder.py`
+
+Un script autonome, appelé par le **planificateur du système** (pas un thread dans le process
+`uvicorn` — voir le docstring du script pour le pourquoi) :
+
+```powershell
+python scripts/sauvegarder.py
+```
+
+Copie `data/testpilot.db` (à chaud, via l'API `sqlite3.Connection.backup()` — sûre même si le
+serveur écrit au même moment, contrairement à une copie de fichier brute) vers `data/sauvegardes/`,
+horodatée, puis applique une **rétention** : les 30 plus récentes sont conservées par défaut
+(`--garder N` pour ajuster), les plus anciennes au-delà sont supprimées — comme
+`data/executions/`, cette politique ne laisse jamais grossir le dossier sans fin.
+
+Planification recommandée (quotidienne) :
+
+```powershell
+schtasks /create /tn "TestPilot - sauvegarde quotidienne" /sc daily /st 02:00 `
+  /tr "'C:\chemin\vers\.venv\Scripts\python.exe' 'C:\chemin\vers\testpilot\scripts\sauvegarder.py'"
+```
+
+Équivalent `cron` (Linux) : `0 2 * * * /chemin/vers/.venv/bin/python /chemin/vers/testpilot/scripts/sauvegarder.py`.
+
+⚠️ **Ce que `scripts/sauvegarder.py` NE couvre PAS** : `data/domain/*.json` (déjà versionné par
+git — decision `0021`, le dupliquer créerait une seconde source de vérité), `data/executions/`,
+`data/regles-apprises/` et `data/reports/`. Pour un instantané complet incluant ces éléments, la
+procédure manuelle ci-dessous (archiver tout `data/`, service arrêté) reste valable et recommandée
+**avant toute mise à jour** (§8) ou campagne massive.
+
+### 6.3. Instantané complet (manuel, avant mise à jour ou campagne massive)
+
+Une copie brute de SQLite pendant une écriture peut être incohérente. Pour un instantané qui
+inclut aussi `domain/`, `regles-apprises/`, `executions/` et `reports/`, utilisez une fenêtre de
+maintenance courte :
 
 1. arrêter le service TestPilot ;
 2. vérifier qu'aucun processus n'utilise la base ;
@@ -113,10 +160,22 @@ fenêtre de maintenance courte :
 4. conserver les deux clés dans le coffre de secrets, séparément de l'archive non chiffrée ;
 5. redémarrer le service et contrôler `/api/health`.
 
-La sauvegarde doit contenir la base, `domain/`, `regles-apprises/`, `executions/` et `reports/`.
-Fréquence recommandée : quotidienne et avant chaque mise à jour.
+Fréquence recommandée : quotidienne (couverte par `scripts/sauvegarder.py` pour la seule base) et
+systématique avant chaque mise à jour.
 
 ## 7. Test de restauration obligatoire
+
+Le cycle complet (créer une base, y écrire, sauvegarder, la perdre, restaurer, comparer) est
+**automatisé et vérifié en CI** (`tests/test_sauvegarde_restauration.py`) — ce n'est pas juste une
+procédure documentée jamais exercée. Pour une restauration RÉELLE d'une sauvegarde faite avec
+`scripts/sauvegarder.py` :
+
+```powershell
+python scripts/sauvegarder.py restaurer data\sauvegardes\testpilot.db.sauvegarde-20260828-020000 `
+  --vers data\testpilot.db
+```
+
+Pour un instantané complet (archive §6.3) :
 
 1. préparer un répertoire temporaire vide ;
 2. y restaurer l'archive ;
@@ -130,11 +189,16 @@ Ne testez jamais une restauration en écrasant directement l'instance active.
 ## 8. Mise à jour
 
 1. arrêter le service après avoir annoncé la maintenance ;
-2. réaliser une sauvegarde ;
+2. réaliser une sauvegarde (`python scripts/sauvegarder.py`, ou l'instantané complet §6.3 si la
+   mise à jour touche autre chose que le schéma) ;
 3. récupérer le commit de release identifié ;
 4. mettre à jour les dépendances et reconstruire le frontend ;
 5. exécuter les tests ;
 6. démarrer le service et rejouer les contrôles du §5.
+
+⚠️ Le redémarrage à l'étape 6 sauvegarde LUI-MÊME la base juste avant toute migration de schéma en
+attente (§6.1) — un filet de sécurité automatique, pas un remplacement de l'étape 2 : il ne
+couvre que l'instant de la migration, pas une régression applicative découverte après coup.
 
 ## 9. Limites connues
 
@@ -142,6 +206,9 @@ Ne testez jamais une restauration en écrasant directement l'instance active.
 - pilote interne uniquement ;
 - absence de scheduler, d'environnements multiples et de champs projet personnalisables ;
 - un seul connecteur principal validé ;
-- artefacts non purgés automatiquement.
+- artefacts non purgés automatiquement ;
+- `scripts/sauvegarder.py` ne planifie rien lui-même (§6.2, appel externe requis) et ne couvre que
+  `testpilot.db` — pas `data/executions/`, `data/regles-apprises/` ni `data/reports/` (§6.3 pour
+  un instantané complet) ; aucune réplication temps réel, ni sauvegarde d'un futur backend Postgres.
 
 Une ouverture à des clients externes exige une nouvelle revue sécurité et exploitation.
