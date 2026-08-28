@@ -25,6 +25,7 @@ from testpilot.analysis import spec_analyzer
 from testpilot.api import erreurs, access, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import generation_service, spec_extract
+from testpilot.guardrails import concurrency
 from testpilot.store.repositories import (
     CaseGroupRepo,
     CaseRepo,
@@ -222,8 +223,26 @@ def add_case(module_id: int, body: schemas.AddCaseIn, background: BackgroundTask
     except generation_service.GenerationError as err:
         raise erreurs.depuis_service(err.code, err.detail)
 
-    background.add_task(generation_service.run_generation, job_id, **params)
+    # Plafonné (guardrails/concurrency.py) : la tâche de fond attend son tour dans la file
+    # partagée avant de lancer réellement la génération (appels LLM) — le 202 répond, lui, tout
+    # de suite.
+    background.add_task(concurrency.run_gated, generation_service.run_generation, job_id,
+                        queue_label=f"generation:{job_id}", **params)
     return schemas.GenerationJobOut(job_id=job_id, status="running")
+
+
+@router.get("/jobs/queue/status", response_model=schemas.ConcurrencyQueueOut)
+def get_queue_status():
+    """État courant du plafond de tâches de fond PARTAGÉ (génération, exécution, exploration —
+    `guardrails/concurrency.py`) : pas seulement la génération, malgré le préfixe `/modules/jobs`
+    — c'est l'endpoint « job » déjà existant le plus proche, étendu plutôt que dupliqué (aucun
+    autre écran de suivi de job n'existe aujourd'hui pour y accrocher cette visibilité).
+    Placé AVANT `/jobs/{job_id}` : chemins à 3 segments, aucune ambiguïté de routage, mais l'ordre
+    de lecture suit la logique « vue d'ensemble avant le détail d'un job ».
+    """
+    status = concurrency.get_queue().status()
+    return schemas.ConcurrencyQueueOut(max_concurrent=status.max_concurrent,
+                                       running=status.running, waiting=status.waiting)
 
 
 @router.get("/jobs/{job_id}", response_model=schemas.GenerationJobOut,
@@ -264,5 +283,8 @@ def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: B
     except generation_service.GenerationError as err:
         raise erreurs.depuis_service(err.code, err.detail)
 
-    background.add_task(generation_service.resume_generation, job_id, **params)
+    # Même `job_id` que `start_generation` : la position dans la file reprend l'identité du job,
+    # pas une nouvelle file par appel (guardrails/concurrency.py).
+    background.add_task(concurrency.run_gated, generation_service.resume_generation, job_id,
+                        queue_label=f"generation:{job_id}", **params)
     return schemas.GenerationJobOut(job_id=job_id, status="running")

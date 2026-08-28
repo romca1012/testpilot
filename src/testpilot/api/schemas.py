@@ -387,6 +387,15 @@ class GenerationJobOut(BaseModel):
     cases: list[MetierDraftOut] | None = None
 
 
+class ConcurrencyQueueOut(BaseModel):
+    """Visibilité minimale du plafond de tâches de fond partagé (`guardrails/concurrency.py`) —
+    combien tournent réellement, combien patientent, quel est le plafond configuré. En mémoire du
+    PROCESSUS : ne survit pas à un redémarrage, ne reflète qu'un seul processus (documenté)."""
+    max_concurrent: int
+    running: int
+    waiting: int
+
+
 class CaseValidationIn(BaseModel):
     """UN cas, tel que l'humain le valide — corrections comprises.
 

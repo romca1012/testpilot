@@ -10,6 +10,7 @@ from testpilot.api import erreurs, access, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import generation_service, run_service, script_service
 from testpilot.generation import assertion_lint, domain_model, repair_diff, smoke_check
+from testpilot.guardrails import concurrency
 from testpilot.store.repositories import (
     CaseRepo,
     DuplicateName,
@@ -236,7 +237,10 @@ def automate_case(case_id: int, background: BackgroundTasks, request: Request,
             conn, case_id, author=access.utilisateur_de(request))
     except generation_service.GenerationError as err:
         raise erreurs.depuis_service(err.code, err.detail)
-    background.add_task(generation_service.run_automation, job_id, **params)
+    # Plafonné (guardrails/concurrency.py) : la tâche de fond attend son tour dans la file
+    # partagée avant de lancer réellement la génération — le clic répond, lui, immédiatement.
+    background.add_task(concurrency.run_gated, generation_service.run_automation, job_id,
+                        queue_label=f"automation:{job_id}", **params)
     return schemas.GenerationJobOut(job_id=job_id, status="running")
 
 
@@ -479,8 +483,10 @@ def start_run(case_id: int, background: BackgroundTasks, request: Request, conn=
         # Le code du service TRAVERSE la frontière HTTP (lot B) : le client teste `code`,
         # jamais la phrase française de `detail`.
         raise erreurs.depuis_service(err.code, err.detail)
-    background.add_task(run_service.run_execution, eid, module, cid, vid,
-                        triggered_by=triggered_by)
+    # Plafonné (guardrails/concurrency.py) : un run ouvre un navigateur Playwright réel — la
+    # tâche de fond attend son tour, la réponse HTTP ne l'attend pas.
+    background.add_task(concurrency.run_gated, run_service.run_execution, eid, module, cid, vid,
+                        queue_label=f"execution:{eid}", triggered_by=triggered_by)
     return schemas.RunResponse(execution_id=eid, status="running")
 
 
