@@ -44,6 +44,12 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 @pytest.fixture
 def conn(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    # `DB_PATH` aussi, pas seulement `DATA_DIR` : un chemin de code qui rouvre sa propre connexion
+    # via `get_initialized_db(config.DB_PATH)` (ex. le secours de `run_service.py`) contournerait
+    # sinon `app.dependency_overrides[get_conn]` et toucherait la VRAIE base du poste — trouvé en
+    # pratique (2026-08-28) : ce test a fait tourner une vraie migration sur la vraie base faute
+    # de ce monkeypatch, seul le garde-fou de `conftest.py` l'a repéré.
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "pieces.db")
     c = get_initialized_db(tmp_path / "pieces.db")
     yield c
     c.close()
