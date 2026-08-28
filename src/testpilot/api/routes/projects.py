@@ -92,7 +92,8 @@ def create_project(body: schemas.ProjectIn, conn=Depends(get_conn)):
     try:
         ProjectRepo(conn).create(
             name=body.name.strip(), description=body.description,
-            connector_type=body.connector_type, base_url=body.base_url, database=body.database,
+            connector_type=body.connector_type, connector_version=body.connector_version,
+            base_url=body.base_url, database=body.database,
             username=body.username, password=body.password)
     except DuplicateName as exc:
         raise _conflict(exc) from exc
@@ -129,8 +130,9 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
     except DuplicateName as exc:
         raise _conflict(exc) from exc
     repo.update_connection(
-        project_id, connector_type=body.connector_type, base_url=body.base_url,
-        database=body.database, username=body.username, password=body.password)
+        project_id, connector_type=body.connector_type, connector_version=body.connector_version,
+        base_url=body.base_url, database=body.database, username=body.username,
+        password=body.password)
     return schemas.project_summary(_summary_row(conn, project_id))
 
 

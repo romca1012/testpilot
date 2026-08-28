@@ -97,13 +97,13 @@ class ProjectRepo:
                 raise DuplicateName(f"un projet nommé « {row['name']} » existe déjà")
 
     def create(self, *, name: str, description: str = "", connector_type: str = "odoo",
-               base_url: str = "", database: str = "", username: str = "",
-               password: str = "") -> int:
+               connector_version: str = "", base_url: str = "", database: str = "",
+               username: str = "", password: str = "") -> int:
         self.ensure_name_free(name)
         cur = self.conn.execute(
-            "INSERT INTO project (name, description, connector_type, base_url, database,"
-            " username, password, created_at) VALUES (?,?,?,?,?,?,?,?)",
-            (name, description, connector_type, base_url, database, username,
+            "INSERT INTO project (name, description, connector_type, connector_version,"
+            " base_url, database, username, password, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (name, description, connector_type, connector_version, base_url, database, username,
              secrets_mod.chiffrer(password), now_iso()))
         self.conn.commit()
         project_id = int(cur.lastrowid)
@@ -164,7 +164,9 @@ class ProjectRepo:
     # Champs de connexion éditables. Le `connector_type` en fait partie : changer d'ERP sur un
     # projet existant est rare, mais l'interdire obligerait à recréer le projet — donc à perdre
     # ses modules, ses cas et son historique. On préfère l'autoriser et le tracer.
-    _CONNEXION = ("connector_type", "base_url", "database", "username")
+    # `connector_version` (migration 38) suit la même logique : une application peut monter de
+    # version sans changer de projet — l'interdire forcerait, là encore, à tout recréer.
+    _CONNEXION = ("connector_type", "connector_version", "base_url", "database", "username")
 
     def update_connection(self, project_id: int, **champs) -> None:
         """Édite la connexion d'un projet (décision `0005` : elle vit sur le PROJET).

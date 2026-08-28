@@ -438,7 +438,11 @@ export interface Artifacts { available: boolean; reason: string; files: Artifact
 
 export interface ProjectSummary {
   id: number; name: string; description: string
-  connector_type: string; base_url: string; database: string; username: string
+  connector_type: string
+  // Version DÉCLARÉE de l'instance (ex. « 17 » pour Odoo 17) — '' = indéterminée, un choix
+  // légitime quand l'application ne l'expose pas (migration 38), jamais une valeur à deviner.
+  connector_version: string
+  base_url: string; database: string; username: string
   module_count: number; case_count: number
   effective_role: string
 }
@@ -531,7 +535,8 @@ export interface Exploration {
 }
 export interface ProjectInput {
   name: string; description?: string
-  connector_type: string; base_url: string; database: string; username: string; password: string
+  connector_type: string; connector_version: string
+  base_url: string; database: string; username: string; password: string
 }
 export interface ModuleSummary {
   id: number; project_id: number; name: string; description: string; case_count: number

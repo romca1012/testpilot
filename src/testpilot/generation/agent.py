@@ -70,6 +70,9 @@ class GenerationAgent:
         # Scopé au connecteur DU PROJET (Phase 1c) : sans ça, un futur 2e connecteur verrait
         # (et se ferait bloquer par) les steps spécifiques à un autre — faux positif AmbiguousStep.
         connector_type = (projet or {}).get("connector_type")
+        # Version DÉCLARÉE de l'instance (migration 38) — simple contexte informatif transmis au
+        # prompt, jamais une contrainte : vide (indéterminée) ⇒ aucune mention.
+        connector_version = (projet or {}).get("connector_version", "")
         shared_steps = steps_library.catalogue(connector_type=connector_type)
         ctx = ToolContext(
             module_name=plan.module_name,
@@ -79,7 +82,8 @@ class GenerationAgent:
         )
         run_loop(
             llm=self.llm,
-            system_prompt=prompt_mod.build_system_prompt(self.connector, shared_steps),
+            system_prompt=prompt_mod.build_system_prompt(
+                self.connector, shared_steps, connector_version),
             state=state,
             ctx=ctx,
             dry_runner=self.dry_runner,

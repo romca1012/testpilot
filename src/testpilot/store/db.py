@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 37
+_SCHEMA_VERSION = 38
 
 
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
@@ -146,6 +146,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_36_user_groups(conn)
     if version < 37:
         _migrate_37_project_group_access(conn)
+    if version < 38:
+        _migrate_38_connector_version(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -1574,3 +1576,18 @@ def _migrate_37_project_group_access(conn: sqlite3.Connection) -> None:
         " role TEXT NOT NULL"
         "   CHECK (role IN ('', 'no_access', 'lecture_seule', 'testeur', 'dev', 'admin')) ,"
         " PRIMARY KEY (project_id, group_id))")
+
+
+def _migrate_38_connector_version(conn: sqlite3.Connection) -> None:
+    """La VERSION du connecteur, distincte du connecteur lui-même (ex. Odoo 17 vs Odoo 19).
+
+    Un projet = une instance d'application (décision `0005`), mais rien jusqu'ici ne disait
+    QUELLE version de cette application tourne derrière — deux projets Odoo peuvent avoir des
+    comportements différents selon la version, sans que rien ne le documente. Chaîne libre,
+    jamais une liste fermée : chaque connecteur a son propre format (un numéro Odoo, un tag SAP
+    un jour, un build interne) — et le porteur doit pouvoir déclarer « indéterminée » (chaîne
+    vide) quand l'application ne l'expose pas, sans que rien ne force une valeur inventée.
+    """
+    if "connector_version" not in _column_names(conn, "project"):
+        conn.execute(
+            "ALTER TABLE project ADD COLUMN connector_version TEXT NOT NULL DEFAULT ''")

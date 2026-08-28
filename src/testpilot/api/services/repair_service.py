@@ -365,8 +365,11 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
     project_id = case.get("project_id")
     # Scope le catalogue de steps montré à l'agent de réparation au connecteur du projet
     # (Phase 1c) — absent (projet sans connecteur défini) ⇒ catalogue complet, comme avant.
-    connector_type = (ProjectRepo(conn).get(project_id) or {}).get("connector_type") \
-        if project_id else None
+    # `connector_version` (migration 38) suit le même sort : simple contexte informatif transmis
+    # au prompt, absent ⇒ chaîne vide, comportement d'avant.
+    projet_du_cas = ProjectRepo(conn).get(project_id) if project_id else None
+    connector_type = (projet_du_cas or {}).get("connector_type")
+    connector_version = (projet_du_cas or {}).get("connector_version", "")
     # ⚠️ Le texte de la spec vit désormais sur la SECTION (`case_group.spec_content`, §9c,
     # 2026-08-05), plus sur la version — `VersionRepo.create` continue d'exiger le paramètre,
     # donc une tentative de réparation doit le retrouver quelque part pour le reporter sur SA
@@ -423,6 +426,7 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             steps_content=version["steps_content"] or "",
             connector=connector,
             connector_type=connector_type,
+            connector_version=connector_version,
             # Le dry-run rattrape DANS la session ce qui, sinon, coûte un run réel pour rien :
             # un correctif qui ne parse plus, ou un step supprimé que le `.feature` réclame
             # encore. Mesuré au rejeu du 2026-07-17 (v12) : l'agent a retiré son step d'auth sans

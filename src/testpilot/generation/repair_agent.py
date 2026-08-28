@@ -47,7 +47,8 @@ class RepairProposal:
 
 
 def build_repair_prompt(connector: Connector | None = None,
-                        connector_type: str | None = None) -> str:
+                        connector_type: str | None = None,
+                        connector_version: str = "") -> str:
     """Prompt de réparation + catalogue des steps + règles du connecteur.
 
     Même catalogue que la génération : un correctif qui réinvente un step partagé serait rejeté
@@ -56,6 +57,9 @@ def build_repair_prompt(connector: Connector | None = None,
 
     `connector_type` (Phase 1c) : scope le catalogue au connecteur du projet — `None` (défaut)
     garde le catalogue complet, comportement identique à avant.
+
+    `connector_version` (migration 38) : même contexte informatif que `build_system_prompt` —
+    vide (indéterminée) ⇒ aucune mention.
 
     Phase 1d : même placement que `prompt.build_system_prompt` — catalogue en tête dans
     `<bibliotheque_de_steps>`, règles du connecteur en fin dans `<regles_connecteur>`.
@@ -72,8 +76,9 @@ def build_repair_prompt(connector: Connector | None = None,
 
     suffix = ""
     rules = connector.rules() if connector else ""
-    if rules:
-        bloc = "## Connecteur actif\n\n" + rules
+    version_ligne = f"Version déclarée : {connector_version}\n\n" if connector_version else ""
+    if rules or version_ligne:
+        bloc = version_ligne + (f"## Connecteur actif\n\n{rules}" if rules else "")
         nom = _nom_connecteur(connector)
         ouverture = f'<regles_connecteur nom="{nom}">' if nom else "<regles_connecteur>"
         suffix = f"\n\n---\n\n{ouverture}\n\n{bloc}\n\n</regles_connecteur>"
@@ -145,7 +150,7 @@ def _last_assistant_text(state: AgentState) -> str:
 def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "",
                 memoire: str = "",
                 llm: LLMAdapter | None = None, connector: Connector | None = None,
-                connector_type: str | None = None,
+                connector_type: str | None = None, connector_version: str = "",
                 dry_runner: DryRunner | None = None,
                 cost_tracker: CostTracker | None = None,
                 max_iterations: int | None = None) -> RepairProposal:
@@ -189,7 +194,7 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
     )
     run_loop(
         llm=llm,
-        system_prompt=build_repair_prompt(connector, connector_type),
+        system_prompt=build_repair_prompt(connector, connector_type, connector_version),
         state=state,
         ctx=ctx,
         dry_runner=dry_runner,
