@@ -27,10 +27,24 @@ dependencies = [
     # en transitif ; déclaré explicitement parce qu'on en dépend désormais directement — une
     # dépendance qu'on utilise sans la déclarer disparaît le jour où son porteur disparaît.
     "cryptography>=42.0",
+    # Fondation portable PostgreSQL (2026-08-28, phase 1/3 — voir docs/POSTGRES-MIGRATION.md).
+    # `sqlalchemy` porte le modèle de schéma indépendant du moteur (`store/schema_sa.py`) ;
+    # `alembic` porte les migrations générées depuis ce modèle. Les deux sont dans les
+    # dépendances PRINCIPALES et non `dev` : elles serviront au RUNTIME après la bascule
+    # (phase 3), pas seulement à générer des migrations en développement. Ce lot NE branche
+    # ni l'un ni l'autre sur `db.py`/`repositories.py` — 100 % additif, voir la note de conception.
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6", "black>=24.0", "httpx>=0.27"]
+dev = ["pytest>=8.0", "ruff>=0.6", "black>=24.0", "httpx>=0.27",
+    # Pilote PostgreSQL — nécessaire pour PROUVER la migration Alembic sur un vrai moteur
+    # Postgres (phase 1) et pour le double-run de vérification (phase 2). Pas encore en
+    # dépendance principale : le runtime ne s'y connecte pas tant que la bascule (phase 3)
+    # n'a pas eu lieu ; l'y faire monter sera une décision explicite de cette phase-là.
+    "psycopg[binary]>=3.1",
+]
 
 [project.scripts]
 testpilot = "testpilot.cli:main"
