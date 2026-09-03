@@ -2,10 +2,15 @@
 import { ref } from 'vue'
 import { api, LIBELLE_ROLE } from '../lib/api'
 import { useSession } from '../lib/useSession'
+import ChangePasswordModal from './ChangePasswordModal.vue'
 
 withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
 const { session } = useSession()
 const open = ref(false)
+// Accessible à TOUT rôle connecté — voir ChangePasswordModal.vue et
+// `access.py::_ECRITURES_TOUJOURS_AUTORISEES` : sécuriser son propre compte n'est jamais un geste
+// à restreindre par rôle, même pour Lecture seule.
+const showChangePassword = ref(false)
 
 async function logout() {
   open.value = false
@@ -25,7 +30,9 @@ async function logout() {
     <div v-if="open" role="menu" class="absolute right-0 z-40 mt-1 w-56 rounded-md border border-border bg-surface-overlay p-1 shadow-xl">
       <div class="border-b border-border px-3 py-2"><div class="truncate text-sm font-medium">{{ session.name }}</div><div class="text-xs text-muted-foreground">{{ LIBELLE_ROLE[session.role] || session.role }}</div></div>
       <RouterLink v-if="session.role === 'admin'" to="/admin/projects" role="menuitem" class="mt-1 block rounded px-3 py-2 text-sm hover:bg-accent" @click="open = false">Administration</RouterLink>
+      <button role="menuitem" class="mt-1 block w-full rounded px-3 py-2 text-left text-sm hover:bg-accent" @click="open = false; showChangePassword = true">Changer mon mot de passe</button>
       <button role="menuitem" class="block w-full rounded px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10" @click="logout">Se déconnecter</button>
     </div>
   </div>
+  <ChangePasswordModal :open="showChangePassword" @close="showChangePassword = false" />
 </template>

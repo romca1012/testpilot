@@ -480,3 +480,133 @@ def test_un_mot_de_passe_trop_court_est_refuse_A_LA_REINITIALISATION(client):
     client.post("/api/auth/logout")
     assert client.post("/api/auth/login",
                        json={"username": "Bob", "password": "ancienmdp"}).status_code == 200
+# ── 6. Changer SON PROPRE mot de passe (2026-09-03) ───────────────────────────
+# Jusqu'ici, seul un Admin pouvait réinitialiser le mot de passe D'UN AUTRE (section 4 ci-dessus,
+# `new_password` — sans exiger l'ancien). `PATCH /api/auth/password` couvre le geste symétrique :
+# un titulaire qui CONNAÎT encore son mot de passe change lui-même le sien.
+
+def test_changer_son_mot_de_passe_reussit_et_permet_de_se_reconnecter_avec_le_NOUVEAU(client):
+    _compte(client, "Awa", "ancienmdp", access.ROLE_TESTEUR)
+    _connecte(client, "Awa", "ancienmdp")
+
+    r = client.patch("/api/auth/password",
+                     json={"old_password": "ancienmdp", "new_password": "nouveaumdp"})
+    assert r.status_code == 200, r.text
+    assert r.json()["authenticated"] is True
+    assert r.json()["name"] == "Awa"
+
+    client.post("/api/auth/logout")
+    assert client.post("/api/auth/login",
+                       json={"username": "Awa", "password": "ancienmdp"}).status_code == 401
+    assert client.post("/api/auth/login",
+                       json={"username": "Awa", "password": "nouveaumdp"}).status_code == 200
+
+
+def test_changer_son_mot_de_passe_NE_DECONNECTE_PAS_la_session_en_cours(client):
+    """Un changement réussi ne doit jamais forcer une reconnexion — la session qui vient de le
+    prouver reste valide."""
+    _compte(client, "Awa", "ancienmdp", access.ROLE_TESTEUR)
+    _connecte(client, "Awa", "ancienmdp")
+
+    client.patch("/api/auth/password",
+                 json={"old_password": "ancienmdp", "new_password": "nouveaumdp"})
+
+    # Toujours connecté, SANS repasser par /api/auth/login : le cookie de session posé au login
+    # doit encore ouvrir l'accès.
+    assert client.get("/api/auth/session").json()["authenticated"] is True
+    assert client.get("/api/projects").status_code == 200
+
+
+def test_un_mauvais_ancien_mot_de_passe_est_refuse(client):
+    _compte(client, "Awa", "ancienmdp", access.ROLE_TESTEUR)
+    _connecte(client, "Awa", "ancienmdp")
+
+    r = client.patch("/api/auth/password",
+                     json={"old_password": "faux", "new_password": "nouveaumdp"})
+    assert r.status_code == 401
+    assert r.json()["code"] == "mot_de_passe_incorrect"
+
+    # Refusé => l'ANCIEN mot de passe doit toujours fonctionner.
+    client.post("/api/auth/logout")
+    assert client.post("/api/auth/login",
+                       json={"username": "Awa", "password": "ancienmdp"}).status_code == 200
+
+
+def test_un_nouveau_mot_de_passe_trop_court_est_refuse(client):
+    _compte(client, "Awa", "ancienmdp", access.ROLE_TESTEUR)
+    _connecte(client, "Awa", "ancienmdp")
+
+    r = client.patch("/api/auth/password",
+                     json={"old_password": "ancienmdp", "new_password": "court"})
+    assert r.status_code == 422
+
+    client.post("/api/auth/logout")
+    assert client.post("/api/auth/login",
+                       json={"username": "Awa", "password": "ancienmdp"}).status_code == 200
+
+
+@pytest.mark.sans_bouchon_auth
+def test_sans_session_le_changement_est_refuse(client):
+    """Sans le bouchon `_connecte_par_defaut` (`conftest.py`) — sinon un compte Admin de
+    complaisance masquerait ici le VRAI comportement (aucune session ⇒ le middleware `verrou_acces`
+    répond 401 avant même d'atteindre la route)."""
+    r = client.patch("/api/auth/password",
+                     json={"old_password": "x", "new_password": "nouveaumdp"})
+    assert r.status_code == 401
+
+
+def test_un_utilisateur_ne_peut_pas_changer_le_mot_de_passe_dun_AUTRE(client):
+    """Aucun `user_id` n'est accepté dans le corps de la requête : l'identité vient UNIQUEMENT de
+    la session. Une tentative de falsification (`user_id` pointant vers un autre compte) est
+    silencieusement ignorée par le schéma — c'est TOUJOURS le compte de la session qui change."""
+    bob_id = _compte(client, "Bob", "mdpbob123", access.ROLE_TESTEUR)
+    _compte(client, "Awa", "mdpawa123", access.ROLE_TESTEUR)
+    _connecte(client, "Awa", "mdpawa123")
+
+    r = client.patch("/api/auth/password", json={
+        "old_password": "mdpawa123", "new_password": "nouveauawa",
+        "user_id": bob_id,  # champ inconnu du schéma — doit être sans effet
+    })
+    assert r.status_code == 200
+
+    # Le mot de passe de BOB n'a pas bougé.
+    client.post("/api/auth/logout")
+    assert client.post("/api/auth/login",
+                       json={"username": "Bob", "password": "mdpbob123"}).status_code == 200
+    client.post("/api/auth/logout")
+    # Celui d'AWA, si.
+    assert client.post("/api/auth/login",
+                       json={"username": "Awa", "password": "nouveauawa"}).status_code == 200
+
+
+def test_lecture_seule_peut_changer_SON_PROPRE_mot_de_passe(client):
+    """Exception étroite et délibérée à « Lecture seule ne doit RIEN écrire » (section 3) — même
+    raisonnement que `/api/auth/logout` : sécuriser son propre compte n'est jamais un geste à
+    restreindre par rôle."""
+    _compte(client, "Lea", "ancienmdp", access.ROLE_LECTURE_SEULE)
+    _connecte(client, "Lea", "ancienmdp")
+
+    r = client.patch("/api/auth/password",
+                     json={"old_password": "ancienmdp", "new_password": "nouveaumdp"})
+    assert r.status_code == 200
+
+    client.post("/api/auth/logout")
+    assert client.post("/api/auth/login",
+                       json={"username": "Lea", "password": "nouveaumdp"}).status_code == 200
+
+
+def test_un_compte_desactive_entre_temps_ne_peut_pas_changer_son_mot_de_passe(client):
+    """Le middleware relit `is_active` EN BASE à chaque requête (voir `access.utilisateur_actuel`)
+    — une désactivation par un Admin doit couper l'accès tout de suite, y compris à cette route."""
+    uid = _compte(client, "Awa", "ancienmdp", access.ROLE_TESTEUR)
+    _connecte(client, "Awa", "ancienmdp")
+
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        UserRepo(conn).set_active(uid, False)
+    finally:
+        conn.close()
+
+    r = client.patch("/api/auth/password",
+                     json={"old_password": "ancienmdp", "new_password": "nouveaumdp"})
+    assert r.status_code == 401

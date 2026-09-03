@@ -950,9 +950,10 @@ class UserCreateIn(BaseModel):
 
 class UserPatchIn(BaseModel):
     """Les gestes d'un Admin sur un compte existant. `new_password` (2026-08-11) couvre le compte
-    qui a oublié le sien — un self-service par le titulaire lui-même reste à construire séparément.
-    `email` (2026-08-12) : nécessaire pour prévenir ce compte par email — voir
-    `notification_service`."""
+    qui a oublié le sien, sans exiger l'ancien — le self-service par le titulaire lui-même (qui
+    CONNAÎT encore son mot de passe et doit le prouver) vit séparément, en `PATCH /api/auth/password`
+    (`routes/auth.py::changer_son_mot_de_passe`, 2026-09-03). `email` (2026-08-12) : nécessaire pour
+    prévenir ce compte par email — voir `notification_service`."""
     role: str | None = None
     is_active: bool | None = None
     new_password: str | None = None
