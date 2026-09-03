@@ -1,6 +1,6 @@
 """Introspection du VRAI schéma SQLite — la vérité terrain pour la fondation PostgreSQL.
 
-Fondation portable PostgreSQL, phase 1/3 (voir docs/POSTGRES-MIGRATION.md). Ce script ne
+Fondation portable PostgreSQL, phase 1/3 (voir docs/ARCHITECTURE.md §4). Ce script ne
 retranscrit RIEN à la main depuis les 37 migrations de `store/db.py` : il appelle
 `get_initialized_db()` sur une base SQLite TEMPORAIRE (donc `schema.sql` PUIS les 37 migrations
 réellement appliquées, dans l'ordre réel), puis interroge SQLite lui-même — `sqlite_master`,

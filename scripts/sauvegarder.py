@@ -9,8 +9,8 @@ dans le process `uvicorn` ajoute un état de plus à surveiller (a-t-il bien tou
 redémarrage du serveur ? à un crash ?), pour un besoin que le SYSTÈME sait déjà rendre fiable — une
 tâche planifiée Windows ou un timer `cron`/`systemd` survit au serveur, se journalise à sa manière
 et ne consomme pas un thread applicatif pendant l'exécution. Ce script est conçu pour être appelé
-en ligne de commande, sans rien connaître de qui l'invoque — voir `docs/DEPLOIEMENT-V1-BETA.md`
-§6/§7 pour la commande exacte et le test de restauration.
+en ligne de commande, sans rien connaître de qui l'invoque — voir `docs/EXPLOITATION.md` §2
+pour la commande exacte et `docs/DEPLOIEMENT.md` §8 pour le test de restauration.
 
 **Ce que ce script sauvegarde, et ce qu'il NE sauvegarde PAS.** Seule `config.DB_PATH` est
 copiée ici. `data/domain/*.json` (la cartographie mesurée de chaque application) est DÉJÀ sous
@@ -18,8 +18,8 @@ contrôle de version git (décision `0021`, voir `.gitignore` : `!/data/domain/`
 créerait une deuxième « source de vérité » pour la même donnée, moins fiable que git (pas de
 diff humainement relisible, pas d'historique de commits). Le vrai risque non couvert par git est
 la BASE : elle change à chaque clic de l'interface, jamais commitée nulle part. `data/executions/`
-(la trace brute des exécutions) grandit déjà sans purge par choix documenté (§7 de
-`DEPLOIEMENT-V1-BETA.md`) — ce script ne la sauvegarde pas non plus : la répéter à chaque
+(la trace brute des exécutions) grandit déjà sans purge par choix documenté (§10 de
+`docs/DEPLOIEMENT.md`) — ce script ne la sauvegarde pas non plus : la répéter à chaque
 sauvegarde ferait grossir la rétention elle-même sans fin, exactement le problème qu'elle évite
 pour son propre compte. Limite assumée : une restauration ne recrée QUE le référentiel (base), pas
 les artefacts d'exécution ni les règles apprises.
@@ -91,7 +91,7 @@ def _copier_a_chaud(source: Path, cible: Path) -> None:
     (`testpilot.store.db._sauvegarder_avant_migration`), qui ne s'exécute qu'au démarrage, quand
     rien d'autre n'écrit encore. Un `shutil.copy2` pendant une écriture capturerait un état
     intermédiaire (page à moitié réécrite) — exactement le risque déjà documenté en
-    `docs/DEPLOIEMENT-V1-BETA.md` §6, qui impose d'arrêter le service avant une copie brute.
+    `docs/DEPLOIEMENT.md` §7.3, qui impose d'arrêter le service avant une copie brute.
     L'API `sqlite3.Connection.backup()` copie page par page sous un verrou de lecture cohérent,
     conçue précisément pour sauvegarder une base EN COURS D'UTILISATION.
     """
@@ -128,7 +128,7 @@ def restaurer(sauvegarde: Path, destination: Path | None = None) -> Path:
     c'est un geste de restauration explicite (invoqué à la main, ou par le test de bout en bout qui
     accompagne ce script), pas un clic qu'on pourrait déclencher par erreur en l'appelant deux fois.
     Le répertoire parent de `destination` est créé si besoin — restaurer vers un chemin encore
-    inexistant (une instance de contrôle, §7 de `docs/DEPLOIEMENT-V1-BETA.md`) est un usage voulu.
+    inexistant (une instance de contrôle, §8 de `docs/DEPLOIEMENT.md`) est un usage voulu.
     """
     sauvegarde = Path(sauvegarde)
     destination = Path(destination) if destination else config.DB_PATH
@@ -156,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError(
             "Cette commande sauvegarde SQLite uniquement. PostgreSQL doit être sauvegardé par "
             "le service managé (snapshots + restauration testée) ou pg_dump; voir "
-            "docs/POSTGRES-MIGRATION.md."
+            "docs/EXPLOITATION.md."
         )
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)

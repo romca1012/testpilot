@@ -146,8 +146,8 @@ test les compare exhaustivement**.
 
 | Brique | Version | Rôle | Pourquoi celle-là |
 |---|---|---|---|
-| **FastAPI** | ≥ 0.115 | l'API HTTP (51 routes) | typage natif, validation d'entrée gratuite, OpenAPI généré |
-| **Uvicorn** | ≥ 0.32 | le serveur | mono-processus, suffisant tant qu'on est sur SQLite |
+| **FastAPI** | ≥ 0.115 | l'API HTTP (90 routes) | typage natif, validation d'entrée gratuite, OpenAPI généré |
+| **Uvicorn** | ≥ 0.32 | le serveur | mono-processus ; PostgreSQL réel disponible en option (`TESTPILOT_DB_URL`) depuis 2026-09, voir `docs/ARCHITECTURE.md` §4 |
 | **SQLite** | *(stdlib)* | la persistance | zéro administration ; le schéma est écrit en **SQL portable PostgreSQL** pour que la bascule reste possible |
 | **Anthropic** | ≥ 0.40 | la génération | Claude, via un adaptateur maison (`llm/adapter.py`) |
 | **Behave** | ≥ 1.2.6 | le moteur BDD | Gherkin = un test lisible par le métier, exécutable par la machine |
@@ -290,7 +290,7 @@ cd frontend && npm run dev                # interface → :5173
 ```
 
 **En production, un seul** : `npm run build`, et l'API sert l'interface compilée sur son propre
-port. Procédure actuelle : `docs/DEPLOIEMENT-V1-BETA.md`.
+port. Procédure actuelle : `docs/DEPLOIEMENT.md`.
 
 ### Les variables d'environnement qui comptent
 

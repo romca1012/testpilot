@@ -1,15 +1,16 @@
 """Garde-fou anti-dérive — `store/schema_sa.py` (modèle portable PostgreSQL) doit rester
-SYNCHRONISÉ avec le VRAI schéma SQLite (`store/db.py` : `schema.sql` + 37 migrations).
+SYNCHRONISÉ avec le VRAI schéma SQLite (`store/db.py` : `schema.sql` + 38 migrations).
 
-Fondation portable PostgreSQL, phase 1/3 (voir docs/POSTGRES-MIGRATION.md). Ce lot est 100 %
-additif : `db.py`/`repositories.py` n'ont pas bougé, `schema_sa.py` n'est branché sur AUCUN
-runtime. Mais un fichier de modèle qui se contente d'être écrit une fois, puis jamais revérifié,
+Voir `docs/ARCHITECTURE.md` §4 pour l'état réel du runtime PostgreSQL (branché, pas seulement une
+fondation — `store/portable_connection.py`). `schema_sa.py` lui-même reste la cible d'Alembic
+(migrations de schéma), jamais importé par `db.py`/`repositories.py` — ceux-ci n'ont pas bougé.
+Mais un fichier de modèle qui se contente d'être écrit une fois, puis jamais revérifié,
 DÉRIVE en silence — exactement le mode de défaillance que la migration 19 a démontré dans `db.py`
 (« mes tests exerçaient la dérivation du verdict, jamais la persistance de la nouvelle valeur »).
 
 Ce fichier compare, table par table, colonne par colonne :
 - le VRAI schéma — obtenu en appelant `get_initialized_db()` sur une base SQLite neuve, donc en
-  traversant `schema.sql` PUIS les 37 migrations réellement appliquées, comme au démarrage du
+  traversant `schema.sql` PUIS les 38 migrations réellement appliquées, comme au démarrage du
   serveur (même discipline que `test_migration_28.py` : jamais une fixture SQL reconstruite à la
   main, aveugle à un défaut né dans `schema.sql` lui-même) ;
 - le schéma PORTABLE — obtenu en appliquant `schema_sa.metadata.create_all()` sur une AUTRE base
@@ -25,10 +26,10 @@ from __future__ import annotations
 import sqlite3
 
 import pytest
-from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine
 
+from alembic import command
 from testpilot import config
 from testpilot.store import schema_sa
 from testpilot.store.db import _SCHEMA_VERSION, get_initialized_db
@@ -54,7 +55,7 @@ def _colonnes(conn: sqlite3.Connection, table: str) -> dict[str, dict]:
 
 @pytest.fixture(scope="module")
 def vrai_schema(tmp_path_factory) -> sqlite3.Connection:
-    """Le VRAI schéma : `get_initialized_db()` — `schema.sql` PUIS les 37 migrations, comme au
+    """Le VRAI schéma : `get_initialized_db()` — `schema.sql` PUIS les 38 migrations, comme au
     démarrage réel du serveur."""
     chemin = tmp_path_factory.mktemp("vrai_schema") / "reel.db"
     conn = get_initialized_db(chemin)
