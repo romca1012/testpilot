@@ -82,18 +82,24 @@ def test_deux_comptes_au_meme_mot_de_passe_ont_des_hachages_DIFFERENTS():
     assert access.hacher_mot_de_passe("identique") != access.hacher_mot_de_passe("identique")
 
 
-def test_un_jeton_se_relit_avec_le_bon_user_id_et_username(monkeypatch):
+def test_un_jeton_se_relit_avec_le_bon_user_id_et_username(tmp_path, monkeypatch):
+    # Sans clé de session en environnement, `creer_jeton` en CRÉE une sous `config.DATA_DIR` —
+    # isolée ici, sinon elle atterrit dans le VRAI `data/` du poste (trouvé en CI, garde-fou
+    # `conftest.py`).
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     jeton = access.creer_jeton(42, "Awa")
     assert access.lire_jeton(jeton) == (42, "Awa")
 
 
-def test_un_jeton_falsifie_est_refuse():
+def test_un_jeton_falsifie_est_refuse(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)  # même isolation que ci-dessus
     jeton = access.creer_jeton(1, "Awa")
     falsifie = jeton[:-4] + "0000"
     assert access.lire_jeton(falsifie) is None
 
 
-def test_un_jeton_expire_est_refuse(monkeypatch):
+def test_un_jeton_expire_est_refuse(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)  # même isolation que ci-dessus
     monkeypatch.setattr(config, "SESSION_DAYS", 0)
     jeton = access.creer_jeton(1, "Awa")
     time.sleep(0.01)

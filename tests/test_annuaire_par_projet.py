@@ -43,6 +43,10 @@ def domaine_isole(tmp_path, monkeypatch):
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
+    # `DATA_DIR` aussi, pas seulement `DB_PATH` : un accès non authentifié crée la clé de
+    # chiffrement (`store/secrets.py`) sous `config.DATA_DIR/.secret_key` — sans ce monkeypatch,
+    # elle atterrit dans le VRAI `data/` du poste (trouvé en CI, garde-fou `conftest.py`).
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     exploration_service._JOBS.clear()
     return TestClient(app_mod.app)
 

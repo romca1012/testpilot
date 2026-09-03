@@ -54,7 +54,12 @@ def test_repositories_crud_sur_postgresql():
         conn.close()
 
 
-def test_api_utilise_postgresql_de_bout_en_bout():
+def test_api_utilise_postgresql_de_bout_en_bout(tmp_path, monkeypatch):
+    # `DATA_DIR` isolé : la connexion passe par PostgreSQL (fixture `postgres` ci-dessus), mais
+    # `access.creer_jeton` (session du login réel plus bas) crée sa clé de signature sous
+    # `config.DATA_DIR` quel que soit le moteur de base — sans isolation, elle atterrit dans le
+    # VRAI `data/` du poste (trouvé en CI, garde-fou `conftest.py`).
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     suffixe = uuid4().hex[:8]
     conn = get_initialized_db()
     try:
