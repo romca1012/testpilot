@@ -154,9 +154,8 @@ def _cmd_restaurer(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     if config.DB_URL.lower().startswith(("postgresql://", "postgresql+psycopg://")):
         raise RuntimeError(
-            "Cette commande sauvegarde SQLite uniquement. PostgreSQL doit être sauvegardé par "
-            "le service managé (snapshots + restauration testée) ou pg_dump; voir "
-            "docs/EXPLOITATION.md."
+            "Cette commande sauvegarde SQLite uniquement. Pour PostgreSQL, voir "
+            "scripts/sauvegarder_postgresql.py (pg_dump/pg_restore) — ou docs/EXPLOITATION.md."
         )
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
