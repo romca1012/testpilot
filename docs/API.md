@@ -10,9 +10,9 @@ autorise, la forme des erreurs, et ce que signifie une réponse mise en file d'a
 Une fois le serveur lancé (`uvicorn testpilot.api.app:app --reload`, voir `README.md`), FastAPI
 sert deux vues interactives, générées depuis le code des routes (`src/testpilot/api/routes/`) :
 
-- **`/docs`** — Swagger UI, interactif : chaque route peut s'appeler directement depuis le
+- **`/api/docs`** — Swagger UI, interactif et protégé par la session : chaque route peut s'appeler directement depuis le
   navigateur (« Try it out »), pratique en développement.
-- **`/redoc`** — ReDoc, lecture seule, plus dense : préférable pour parcourir l'ensemble des
+- **`/api/redoc`** — ReDoc, lecture seule et protégée par la session : préférable pour parcourir l'ensemble des
   routes d'une traite.
 
 Ces deux vues listent les **90 routes** réellement enregistrées dans
@@ -26,7 +26,9 @@ exacte d'une requête/réponse, les codes de statut possibles et les modèles de
 comprendre *pourquoi* une route se comporte ainsi, le code source de la route reste la référence —
 chaque fichier de `api/routes/` commente ses propres décisions.
 
-`GET /api/health` est la seule route qui ne demande aucune authentification et confirme que
+`GET /api/health`, `/api/health/live` et `/api/health/ready` ne demandent aucune authentification.
+La première conserve le contrat historique, `live` vérifie le processus et `ready` vérifie la
+base ainsi que le stockage. Ces routes confirment que
 l'instance répond (voir §2).
 
 ## 2. Authentification
@@ -57,11 +59,11 @@ authentification et n'est jamais suffisant seul pour passer le middleware d'acc�
 
 ### Ce que porte le jeton, et ce qu'il ne porte pas
 
-Le cookie signe `expiration.user_id.username.signature` — **jamais le rôle**. À chaque requête, le
-serveur relit en base le rôle et l'état actif (`is_active`) du compte
-(`access.utilisateur_actuel`) : une désactivation ou un changement de rôle par un Admin prend effet
-immédiatement, sans attendre l'expiration naturelle de la session. Un compte désactivé ou pointé
-par une session invalide/expirée reçoit un **401**.
+Le cookie signe `expiration.user_id.session_version.username.signature` — **jamais le rôle**. À
+chaque requête, le serveur relit en base le rôle, l'état actif et `session_version`. Une
+déconnexion, un changement de mot de passe, de rôle ou d'état incrémente cette version : toute
+copie d'un ancien cookie est immédiatement refusée. Un compte désactivé ou une session
+invalide/expirée/révoquée reçoit un **401**.
 
 ### Vérifier l'état de la session
 
@@ -78,15 +80,16 @@ Utile pour qu'un frontend sache s'il doit afficher l'écran de connexion, sans p
 POST /api/auth/logout
 ```
 
-Cette route reste accessible même à un compte en lecture seule (voir §3) : se déconnecter n'est
-jamais un geste que le rôle doit pouvoir bloquer.
+Cette route reste accessible même à un compte en lecture seule (voir §3). Elle efface le cookie et
+révoque côté serveur tous les jetons précédemment émis pour ce compte.
 
 ### Limitation des tentatives
 
 Après 5 échecs de connexion pour un même couple (adresse IP, identifiant) dans une fenêtre de 15
 minutes, l'API répond **429** avec un en-tête `Retry-After`. La réponse d'échec ne distingue
 jamais « identifiant inconnu » de « mot de passe faux » — un message trop précis faciliterait la
-découverte d'identifiants valides par tâtonnement.
+découverte d'identifiants valides par tâtonnement. Les échecs sont persistés dans la base : la
+limite reste commune aux processus et ne disparaît pas lors d'un redémarrage.
 
 ### Premier compte
 
@@ -192,7 +195,7 @@ Ce que ça veut dire pour un intégrateur :
 
 ## 6. Ce que ce document ne couvre pas
 
-- La liste exhaustive des routes et leurs schémas de requête/réponse : `/docs` et `/redoc`, générés
+- La liste exhaustive des routes et leurs schémas de requête/réponse : `/api/docs` et `/api/redoc`, générés
   à jour à chaque démarrage du serveur.
 - Le modèle de données (colonnes, contraintes) : `src/testpilot/store/schema.sql` et les migrations
   de `src/testpilot/store/db.py`.

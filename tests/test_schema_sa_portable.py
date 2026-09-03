@@ -27,12 +27,14 @@ import sqlite3
 
 import pytest
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine
 
 from alembic import command
 from testpilot import config
 from testpilot.store import schema_sa
 from testpilot.store.db import _SCHEMA_VERSION, get_initialized_db
+from testpilot.store.portable_connection import ALEMBIC_HEAD
 
 
 def _tables(conn: sqlite3.Connection) -> set[str]:
@@ -100,6 +102,10 @@ def test_la_version_de_reference_du_modele_portable_est_a_jour():
         "store/db.py a avancé (_SCHEMA_VERSION) sans que store/schema_sa.py ne suive"
         " (ALIGNED_WITH_SCHEMA_VERSION) — mets à jour le modèle portable ET son marqueur."
     )
+
+
+def test_runtime_postgresql_attend_exactement_la_revision_alembic_head():
+    assert ScriptDirectory.from_config(Config("alembic.ini")).get_current_head() == ALEMBIC_HEAD
 
 
 def test_les_deux_schemas_portent_exactement_les_memes_tables(vrai_schema, schema_portable):

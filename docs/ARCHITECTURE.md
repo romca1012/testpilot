@@ -248,7 +248,7 @@ qu'on a sous les yeux.*
 
 - Le déploiement (serveur, reverse proxy, sauvegarde, bascule PostgreSQL) : `docs/DEPLOIEMENT.md`.
   L'exploitation au quotidien (santé, pannes courantes) : `docs/EXPLOITATION.md`.
-- Le détail de chaque route HTTP : voir `docs/API.md` et la documentation générée (`/docs`,
-  `/redoc`).
+- Le détail de chaque route HTTP : voir `docs/API.md` et la documentation générée protégée
+  (`/api/docs`, `/api/redoc`).
 - Le détail du modèle de données (colonnes, contraintes) : la source de vérité est
   `src/testpilot/store/schema.sql` et la chaîne de migrations dans `src/testpilot/store/db.py`.

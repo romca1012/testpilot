@@ -7,8 +7,6 @@ elle tourne en tâche de fond (202 + polling du job), comme les exécutions.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -22,7 +20,7 @@ from fastapi import (
 
 from testpilot import config
 from testpilot.analysis import spec_analyzer
-from testpilot.api import erreurs, access, schemas
+from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import generation_service, spec_extract
 from testpilot.guardrails import concurrency
@@ -208,11 +206,6 @@ def reorder_cases(module_id: int, body: schemas.ReorderCasesIn, conn=Depends(get
 def add_case(module_id: int, body: schemas.AddCaseIn, background: BackgroundTasks,
              request: Request, conn=Depends(get_conn)):
     spec = body.spec_content
-    if not spec and body.spec_path:
-        path = Path(body.spec_path)
-        if not path.is_file():
-            raise HTTPException(status_code=422, detail=f"spécification introuvable : {path}")
-        spec = path.read_text(encoding="utf-8")
 
     try:
         # Le nom saisi à l'ouverture de session l'emporte sur le « ui » par défaut : sur un

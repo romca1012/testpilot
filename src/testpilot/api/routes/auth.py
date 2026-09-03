@@ -11,7 +11,6 @@ réellement autorisé (une décision se prend d'un seul côté).
 
 from __future__ import annotations
 
-import threading
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -20,14 +19,12 @@ from pydantic import BaseModel
 from testpilot import config
 from testpilot.api import access, erreurs
 from testpilot.api.deps import get_conn
-from testpilot.store.repositories import UserRepo
+from testpilot.store.repositories import LoginFailureRepo, UserRepo
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 LOGIN_MAX_ECHECS = 5
 LOGIN_FENETRE_SECONDES = 15 * 60
-_echecs_connexion: dict[str, list[float]] = {}
-_verrou_echecs = threading.Lock()
 # Même coût de vérification pour un identifiant inexistant : évite de révéler l'existence d'un
 # compte par une réponse sensiblement plus rapide.
 _HACHAGE_FACTICE = access.hacher_mot_de_passe("mot-de-passe-factice-non-utilisable")
@@ -36,34 +33,6 @@ _HACHAGE_FACTICE = access.hacher_mot_de_passe("mot-de-passe-factice-non-utilisab
 def _cle_limitation(request: Request, username: str) -> str:
     adresse = request.client.host if request.client else "inconnue"
     return f"{config.DB_PATH}|{adresse}|{username.casefold()}"
-
-
-def _echecs_recents(cle: str, maintenant: float) -> list[float]:
-    limite = maintenant - LOGIN_FENETRE_SECONDES
-    return [instant for instant in _echecs_connexion.get(cle, []) if instant > limite]
-
-
-def _est_bloque(cle: str, maintenant: float) -> bool:
-    with _verrou_echecs:
-        recents = _echecs_recents(cle, maintenant)
-        if recents:
-            _echecs_connexion[cle] = recents
-        else:
-            _echecs_connexion.pop(cle, None)
-        return len(recents) >= LOGIN_MAX_ECHECS
-
-
-def _enregistrer_echec(cle: str, maintenant: float) -> bool:
-    with _verrou_echecs:
-        recents = _echecs_recents(cle, maintenant)
-        recents.append(maintenant)
-        _echecs_connexion[cle] = recents
-        return len(recents) >= LOGIN_MAX_ECHECS
-
-
-def _oublier_echecs(cle: str) -> None:
-    with _verrou_echecs:
-        _echecs_connexion.pop(cle, None)
 
 
 def _refuser_trop_de_tentatives() -> None:
@@ -88,6 +57,19 @@ class SessionOut(BaseModel):
     role: str = ""
 
 
+def _poser_cookie_session(response: Response, utilisateur: dict, session_version: int | None = None):
+    version = int(session_version if session_version is not None
+                  else utilisateur.get("session_version", 1))
+    response.set_cookie(
+        access.COOKIE,
+        access.creer_jeton(utilisateur["id"], utilisateur["username"], version),
+        max_age=config.SESSION_DAYS * 86400,
+        httponly=True,
+        samesite="lax",
+        secure=config.COOKIE_SECURE,
+    )
+
+
 @router.get("/session", response_model=SessionOut)
 def session(request: Request, conn=Depends(get_conn)):
     utilisateur = access.utilisateur_actuel(conn, request)
@@ -106,34 +88,42 @@ def login(body: LoginIn, request: Request, response: Response, conn=Depends(get_
     """
     identifiant = (body.username or "").strip()
     cle_limitation = _cle_limitation(request, identifiant)
-    maintenant = time.monotonic()
-    if _est_bloque(cle_limitation, maintenant):
+    maintenant = time.time()
+    echecs = LoginFailureRepo(conn)
+    if echecs.count_recent(cle_limitation, maintenant, LOGIN_FENETRE_SECONDES) >= LOGIN_MAX_ECHECS:
         _refuser_trop_de_tentatives()
 
     utilisateur = UserRepo(conn).get_by_username(identifiant)
     hachage = utilisateur["password_hash"] if utilisateur is not None else _HACHAGE_FACTICE
     mot_de_passe_ok = access.verifier_mot_de_passe(body.password, hachage)
     if not mot_de_passe_ok or utilisateur is None or not utilisateur.get("is_active"):
-        if _enregistrer_echec(cle_limitation, maintenant):
+        if echecs.record(cle_limitation, maintenant,
+                         LOGIN_FENETRE_SECONDES) >= LOGIN_MAX_ECHECS:
             _refuser_trop_de_tentatives()
         response.status_code = 401
         return SessionOut(authenticated=False)
 
-    _oublier_echecs(cle_limitation)
+    echecs.clear(cle_limitation)
 
-    response.set_cookie(
-        access.COOKIE, access.creer_jeton(utilisateur["id"], utilisateur["username"]),
-        max_age=config.SESSION_DAYS * 86400,
-        httponly=True,      # inaccessible au JavaScript : un script tiers ne peut pas la voler
-        samesite="lax",     # pas envoyée depuis un autre site (protège des requêtes croisées)
-        secure=config.COOKIE_SECURE,  # obligatoire derrière HTTPS en production
-    )
+    # Les comptes historiques restent utilisables puis sont renforcés au premier login réussi.
+    if access.hachage_a_mettre_a_niveau(hachage):
+        nouvelle_version = UserRepo(conn).set_password_hash(
+            utilisateur["id"], access.hacher_mot_de_passe(body.password))
+        utilisateur["session_version"] = nouvelle_version
+
+    _poser_cookie_session(response, utilisateur)
     return SessionOut(authenticated=True, name=utilisateur["username"],
                       role=utilisateur["role"])
 
 
 @router.post("/logout", response_model=SessionOut)
-def logout(response: Response):
+def logout(request: Request, response: Response, conn=Depends(get_conn)):
+    # La route reste libre afin qu'un cookie invalide puisse toujours être effacé. Si la session
+    # est valide, sa version serveur est incrémentée : une copie volée du cookie ne survit pas à
+    # la déconnexion.
+    utilisateur = access.utilisateur_actuel(conn, request)
+    if utilisateur is not None:
+        UserRepo(conn).revoke_sessions(utilisateur["id"])
     response.delete_cookie(access.COOKIE)
     return SessionOut(authenticated=False)
 
@@ -144,7 +134,8 @@ class PasswordChangeIn(BaseModel):
 
 
 @router.patch("/password", response_model=SessionOut)
-def changer_son_mot_de_passe(body: PasswordChangeIn, request: Request, conn=Depends(get_conn)):
+def changer_son_mot_de_passe(body: PasswordChangeIn, request: Request, response: Response,
+                             conn=Depends(get_conn)):
     """Un titulaire de compte change SON PROPRE mot de passe — jamais celui d'un autre.
 
     ⚠️ L'identité vient EXCLUSIVEMENT de la session (`request.state.user`, posé par le middleware
@@ -182,6 +173,7 @@ def changer_son_mot_de_passe(body: PasswordChangeIn, request: Request, conn=Depe
             "requete_invalide",
             f"le mot de passe doit compter au moins {access.MOT_DE_PASSE_LONGUEUR_MIN} caractères")
 
-    UserRepo(conn).set_password_hash(
+    nouvelle_version = UserRepo(conn).set_password_hash(
         utilisateur["id"], access.hacher_mot_de_passe(body.new_password))
+    _poser_cookie_session(response, utilisateur, nouvelle_version)
     return SessionOut(authenticated=True, name=utilisateur["username"], role=utilisateur["role"])

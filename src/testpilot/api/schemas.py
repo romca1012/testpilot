@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from testpilot.verdict.status import MODE_AUTOMATIQUE
 
@@ -354,8 +354,12 @@ class AddCaseIn(BaseModel):
     atterrissent. Obligatoire côté ÉCRAN (même règle que `module_id`), mais le type reste
     `int | None` ici : le serveur n'impose rien qu'un appel direct à l'API ne pourrait franchir,
     et un `group_id` absent repli simplement sur l'enveloppe automatique (jamais bloquant)."""
+    # Refuser les anciens champs inconnus est une barrière de sécurité : `spec_path` permettait
+    # autrefois à un client API de faire lire un chemin arbitraire SUR LE SERVEUR. Un chemin local
+    # reste accepté par la CLI, jamais par une requête HTTP.
+    model_config = ConfigDict(extra="forbid")
+
     spec_content: str = ""
-    spec_path: str = ""
     title: str = ""
     author: str = "ui"
     group_id: int | None = None

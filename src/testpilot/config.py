@@ -11,11 +11,18 @@ from pathlib import Path
 try:
     from dotenv import load_dotenv
 
-    load_dotenv(override=True)
+    # Un fichier local ne doit jamais écraser les secrets injectés par le système, Kubernetes,
+    # AWS Secrets Manager ou GCP Secret Manager. En développement, les valeurs absentes restent
+    # chargées depuis `.env` ; les tests modifient directement ce module quand nécessaire.
+    load_dotenv(override=False)
 except ImportError:  # pragma: no cover - dépendance absente en CI minimale
     pass
 
 APP_VERSION = "0.1.0"
+
+PRODUCTION = os.getenv("TESTPILOT_PRODUCTION", "false").strip().lower() in {
+    "1", "true", "yes", "on",
+}
 
 # ── Racines de chemins ────────────────────────────────────────────────────────
 SRC_DIR = Path(__file__).resolve().parent
@@ -191,6 +198,10 @@ SECRET_KEY = os.getenv("TESTPILOT_SECRET_KEY", "")
 # `data/.session_secret` (voir `api/access.py::_cle`).
 SESSION_SECRET = os.getenv("TESTPILOT_SESSION_SECRET", "")
 
+# Jeton Bearer réservé au collecteur Prometheus. En développement il peut rester vide ; le
+# profil production exige une valeur longue afin que /metrics ne divulgue pas la volumétrie.
+METRICS_TOKEN = os.getenv("TESTPILOT_METRICS_TOKEN", "")
+
 # Durée d'une session ouverte.
 SESSION_DAYS = int(os.getenv("TESTPILOT_SESSION_DAYS", "30"))
 
@@ -207,6 +218,25 @@ COOKIE_SECURE = os.getenv("TESTPILOT_COOKIE_SECURE", "false").strip().lower() in
 # c'est le problème de démarrage que ces deux variables résolvent.
 ADMIN_USERNAME = os.getenv("TESTPILOT_ADMIN_USERNAME", "")
 ADMIN_PASSWORD = os.getenv("TESTPILOT_ADMIN_PASSWORD", "")
+
+
+def validate_production() -> None:
+    """Refuse un profil production incomplet au lieu de démarrer avec des replis de développement."""
+    if not PRODUCTION:
+        return
+    erreurs = []
+    if not DB_URL.startswith(("postgresql://", "postgresql+psycopg://")):
+        erreurs.append("TESTPILOT_DB_URL doit cibler PostgreSQL")
+    if not COOKIE_SECURE:
+        erreurs.append("TESTPILOT_COOKIE_SECURE doit valoir true")
+    if len((SESSION_SECRET or "").strip()) < 32:
+        erreurs.append("TESTPILOT_SESSION_SECRET doit contenir au moins 32 caractères")
+    if len((METRICS_TOKEN or "").strip()) < 32:
+        erreurs.append("TESTPILOT_METRICS_TOKEN doit contenir au moins 32 caractères")
+    if not (SECRET_KEY or "").strip():
+        erreurs.append("TESTPILOT_SECRET_KEY doit être fourni par le coffre de secrets")
+    if erreurs:
+        raise RuntimeError("configuration de production refusée : " + "; ".join(erreurs))
 
 # ── Le COMPTE DE SERVICE qui signe les résultats exécutés (2026-08-04) ────────
 # Quand la machine exécute un test, le résultat doit porter un auteur : sans lui, la colonne
@@ -275,7 +305,7 @@ SPEC_MAX_BYTES = int(os.getenv("TESTPILOT_SPEC_MAX_BYTES", str(20 * 1024 * 1024)
 
 # ── Sécurité : jamais la production ───────────────────────────────────────────
 if os.getenv("ODOO_ENV") == "prod":
-    raise EnvironmentError(
+    raise OSError(
         "SAFETY: refus d'exécution contre une instance Odoo de production."
     )
 

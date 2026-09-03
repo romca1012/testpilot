@@ -37,6 +37,8 @@ dependencies = [
     "alembic>=1.13",
     # Pilote du runtime PostgreSQL (phase 3) — plus seulement une preuve de développement.
     "psycopg[binary]>=3.1",
+    # Métriques HTTP et file de tâches au format Prometheus (`GET /metrics`).
+    "prometheus-client>=0.21",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +49,13 @@ testpilot = "testpilot.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+testpilot = [
+    "store/schema.sql",
+    "generation/prompts/*.md",
+    "reporting/templates/*.j2",
+]
 
 [tool.ruff]
 line-length = 100

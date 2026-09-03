@@ -23,6 +23,10 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Exécuter la suite backend
         run: pytest -q
+      - name: Auditer les dépendances Python connues
+        run: |
+          python -m pip install pip-audit
+          python -m pip_audit
 
   postgres:
     name: Backend — runtime PostgreSQL réel
@@ -59,7 +63,9 @@ jobs:
       - name: Appliquer les migrations Alembic sur la base jetable du service
         run: alembic upgrade head
       - name: Exécuter la preuve du runtime PostgreSQL réel
-        run: pytest -q tests/test_postgres_runtime.py tests/test_tables_avec_id_postgres.py -v
+        run: >-
+          pytest -q tests/test_migration_sqlite_postgres.py tests/test_postgres_runtime.py
+          tests/test_tables_avec_id_postgres.py -v
 
   frontend:
     name: Frontend — Node 22
@@ -77,6 +83,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Installer les dépendances verrouillées
         run: npm ci
+      - name: Auditer toutes les dépendances
+        run: npm audit --audit-level=moderate
       - name: Exécuter les tests
         run: npm test
       - name: Vérifier les types

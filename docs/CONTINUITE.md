@@ -366,8 +366,9 @@ code à écrire : c'est l'inventaire de ce que la Phase 1 (bibliothèque de step
   référent — ce sera **sa** décision, elle n'hérite pas de l'ordre d'affichage.
 
 ### 2.5 « Ajouter un cas » = fournir une SPEC — `0006`
-- **Jamais de coquille manuelle inerte.** `POST /api/modules/{id}/cases` accepte
-  `spec_content` (ou `spec_path`) et enchaîne **spec → analyse → génération → gate**, en
+- **Jamais de coquille manuelle inerte.** `POST /api/modules/{id}/cases` accepte uniquement
+  `spec_content` (ou un fichier préalablement téléversé par la route dédiée) et enchaîne
+  **spec → analyse → génération → gate**, en
   imposant le `module_id`. Tâche de fond (202 + polling du job), comme les exécutions.
 - Raison : un cas sans version ni Gherkin afficherait un cas qui ne teste rien (§3) — c'était
   précisément le « cas fantôme » de l'ancien prototype.

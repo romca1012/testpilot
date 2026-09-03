@@ -246,8 +246,9 @@ taper puis `Entrée` ouvre le bon cas · `Échap` ferme · une modale garde le f
 
 ## 5. Ce que ce plan ne traite PAS
 
-- **Postgres** : SQLite reste suffisant tant qu'on est mono-processus. À rouvrir quand plusieurs
-  workers ou plusieurs instances seront nécessaires (voir constat n°11).
+- **PostgreSQL** : cet arbitrage historique a été dépassé. Le runtime PostgreSQL, la migration
+  vérifiée depuis SQLite et les migrations Alembic sont disponibles ; le profil production
+  l'impose désormais. Voir `docs/DEPLOIEMENT.md` §4.
 - **Le fond fonctionnel** : le tableau « modules à retester », les six mécanismes du §5bis, le
   Plan (conteneur de runs) restent au `BACKLOG.md`. Ce document ne parle que de **fabrication**.
 

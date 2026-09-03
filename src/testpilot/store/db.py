@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 38
+_SCHEMA_VERSION = 40
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -218,6 +218,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_37_project_group_access(conn)
     if version < 38:
         _migrate_38_connector_version(conn)
+    if version < 39:
+        _migrate_39_session_version(conn)
+    if version < 40:
+        _migrate_40_login_failure(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -1661,3 +1665,26 @@ def _migrate_38_connector_version(conn: sqlite3.Connection) -> None:
     if "connector_version" not in _column_names(conn, "project"):
         conn.execute(
             "ALTER TABLE project ADD COLUMN connector_version TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_39_session_version(conn: sqlite3.Connection) -> None:
+    """Numéro de révocation des sessions d'un compte.
+
+    Un changement de mot de passe, de rôle, d'état ou une déconnexion incrémente cette valeur :
+    tous les jetons émis avec l'ancienne version deviennent immédiatement inutilisables.
+    """
+    if "session_version" not in _column_names(conn, "user"):
+        conn.execute(
+            "ALTER TABLE user ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1")
+
+
+def _migrate_40_login_failure(conn: sqlite3.Connection) -> None:
+    """Tentatives de connexion partagées entre processus et persistantes aux redémarrages."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS login_failure ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " attempt_key TEXT NOT NULL,"
+        " occurred_at REAL NOT NULL)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_login_failure_key_time"
+        " ON login_failure(attempt_key, occurred_at)")

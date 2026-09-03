@@ -127,6 +127,12 @@ horodatée est créée AVANT toute migration réellement en attente, dans ce mê
 PostgreSQL réel en option (`TESTPILOT_DB_URL`) : voir `docs/DEPLOIEMENT.md` pour la bascule et la
 migration des données existantes.
 
+Pour la production, utilisez `Dockerfile` et `compose.production.yml`. Le profil
+`TESTPILOT_PRODUCTION=true` refuse de démarrer sans PostgreSQL, cookie HTTPS et secrets externes.
+Swagger et ReDoc sont servis après connexion sous `/api/docs` et `/api/redoc`. Prometheus collecte
+`/metrics` avec le jeton Bearer `TESTPILOT_METRICS_TOKEN`.
+La disponibilité réelle se vérifie sur `GET /api/health/ready`.
+
 La base et les artefacts générés ne sont pas versionnés — **sauf** la cartographie du domaine
 (`data/domain/*.json`), qui est une **référence** dont la revue passe par le diff git (voir
 `docs/ARCHITECTURE.md` §4).

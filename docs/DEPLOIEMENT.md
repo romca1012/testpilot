@@ -12,8 +12,7 @@ les critères de GO du pilote sont fixés dans `docs/RELEASE-V1-BETA.md`.
 
 - FastAPI sert l'API et le frontend Vue compilé sur un même port ;
 - un reverse proxy fournit HTTPS ;
-- la base de données est **SQLite par défaut** (zéro configuration) ou **PostgreSQL**, en option
-  (§4) ;
+- la base est SQLite en développement ; le profil `TESTPILOT_PRODUCTION=true` impose PostgreSQL ;
 - `data/` conserve aussi les cartographies, règles apprises et artefacts d'exécution — ce
   répertoire local existe quel que soit le moteur de base choisi ;
 - des comptes réels et des rôles par projet protègent les données.
@@ -22,6 +21,29 @@ Ne lancez pas le serveur Vite (`npm run dev`) en production.
 
 ## 2. Installation reproductible
 
+### Voie recommandée : image Docker vérifiée
+
+Le dépôt fournit `Dockerfile`, `compose.production.yml`, `.dockerignore` et `requirements.lock`.
+L'image construit le frontend, installe les dépendances Python verrouillées, embarque Chromium et
+les outils PostgreSQL, puis tourne sous l'utilisateur non privilégié `pwuser`.
+
+Créer un fichier `.env` non versionné avec au minimum `POSTGRES_PASSWORD`, l'URL complète
+`TESTPILOT_DB_URL` (mot de passe encodé comme composant d'URL), `TESTPILOT_SECRET_KEY`,
+`TESTPILOT_SESSION_SECRET`, `TESTPILOT_METRICS_TOKEN` et, au premier démarrage seulement,
+`TESTPILOT_ADMIN_PASSWORD`.
+
+```bash
+docker compose -f compose.production.yml config --quiet
+docker compose -f compose.production.yml up -d --build
+docker compose -f compose.production.yml ps
+```
+
+Le service applique `alembic upgrade head` avant Uvicorn. Le port est lié à `127.0.0.1:8000` :
+le reverse proxy HTTPS du serveur est le seul point d'entrée attendu. Les volumes nommés
+`postgres-data` et `testpilot-data` rendent la base et les artefacts persistants sur l'hôte.
+
+### Installation sans conteneur
+
 Prérequis : **Python 3.10+** (testé en CI sur 3.10) et **Node.js 22**, accès réseau vers
 l'application testée et vers `api.anthropic.com`.
 
@@ -29,7 +51,8 @@ l'application testée et vers `api.anthropic.com`.
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
+python -m pip install -r requirements.lock
+python -m pip install --no-deps .
 python -m playwright install chromium
 
 Set-Location frontend
@@ -60,11 +83,12 @@ Copiez `.env.example` vers `.env` sans versionner ce dernier.
 | `ANTHROPIC_API_KEY` | génération assistée par IA |
 | `TESTPILOT_SECRET_KEY` | chiffrement des secrets des connexions projet |
 | `TESTPILOT_SESSION_SECRET` | signature des sessions utilisateur |
+| `TESTPILOT_METRICS_TOKEN` | jeton Bearer dédié au collecteur Prometheus (32 caractères minimum en production) |
 | `TESTPILOT_ADMIN_USERNAME` | amorçage du premier administrateur sur une base vide |
 | `TESTPILOT_ADMIN_PASSWORD` | mot de passe initial, à changer puis retirer |
 | `TESTPILOT_COOKIE_SECURE=true` | interdit l'envoi du cookie hors HTTPS |
 | `TESTPILOT_SESSION_DAYS=7` | durée recommandée pour le pilote |
-| `TESTPILOT_DB_URL` | **optionnel.** Vide = SQLite (défaut). Une URL PostgreSQL (`postgresql+psycopg://…`) bascule le runtime dessus — voir §4 |
+| `TESTPILOT_DB_URL` | optionnel en développement ; **obligatoire en production** et doit cibler PostgreSQL (`postgresql+psycopg://…`) — voir §4 |
 | `TESTPILOT_MAX_CONCURRENT_JOBS` | plafond de tâches de fond simultanées (génération, exécution, exploration), défaut 3 — voir `docs/EXPLOITATION.md` |
 
 Générez une clé Fernet pour `TESTPILOT_SECRET_KEY` :
@@ -73,8 +97,9 @@ Générez une clé Fernet pour `TESTPILOT_SECRET_KEY` :
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Générez séparément une autre valeur aléatoire longue pour `TESTPILOT_SESSION_SECRET`. Les deux
-secrets ont des responsabilités différentes et ne doivent pas être réutilisés.
+Générez séparément deux autres valeurs aléatoires longues pour `TESTPILOT_SESSION_SECRET` et
+`TESTPILOT_METRICS_TOKEN`. Ces secrets ont des responsabilités différentes et ne doivent pas être
+réutilisés.
 
 Le premier Admin est créé uniquement si la table des utilisateurs est vide. Après sa première
 connexion, changez son mot de passe, retirez `TESTPILOT_ADMIN_PASSWORD` de l'environnement, puis
@@ -195,6 +220,12 @@ développement.
 cookie et la connexion semblerait échouer.
 
 ## 6. Vérifications après démarrage
+
+Les sondes ont deux responsabilités distinctes :
+
+- `GET /api/health/live` confirme que le processus HTTP répond ;
+- `GET /api/health/ready` vérifie réellement la base et le stockage des artefacts. Une réponse
+  `503 not_ready` interdit d'envoyer du trafic à l'instance.
 
 ```powershell
 Invoke-RestMethod https://testpilot.<domaine-interne>/api/health

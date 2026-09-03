@@ -14,6 +14,7 @@ Quatre invariants que ce fichier fige :
 
 from __future__ import annotations
 
+import hashlib
 import time
 
 import pytest
@@ -82,13 +83,23 @@ def test_deux_comptes_au_meme_mot_de_passe_ont_des_hachages_DIFFERENTS():
     assert access.hacher_mot_de_passe("identique") != access.hacher_mot_de_passe("identique")
 
 
+def test_un_hachage_historique_reste_valide_et_doit_etre_renforce():
+    sel = bytes.fromhex("00" * 16)
+    ancien = hashlib.pbkdf2_hmac("sha256", b"ancienmdp", sel, 200_000)
+    hache = f"{sel.hex()}${ancien.hex()}"
+
+    assert access.verifier_mot_de_passe("ancienmdp", hache) is True
+    assert access.hachage_a_mettre_a_niveau(hache) is True
+    assert access.hachage_a_mettre_a_niveau(access.hacher_mot_de_passe("nouveau")) is False
+
+
 def test_un_jeton_se_relit_avec_le_bon_user_id_et_username(tmp_path, monkeypatch):
     # Sans clé de session en environnement, `creer_jeton` en CRÉE une sous `config.DATA_DIR` —
     # isolée ici, sinon elle atterrit dans le VRAI `data/` du poste (trouvé en CI, garde-fou
     # `conftest.py`).
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     jeton = access.creer_jeton(42, "Awa")
-    assert access.lire_jeton(jeton) == (42, "Awa")
+    assert access.lire_jeton(jeton) == (42, 1, "Awa")
 
 
 def test_un_jeton_falsifie_est_refuse(tmp_path, monkeypatch):
@@ -196,6 +207,9 @@ def test_identifiant_inconnu_est_refuse(client):
     r = client.post("/api/auth/login", json={"username": "personne", "password": "x"})
     assert r.status_code == 401
     assert r.json()["authenticated"] is False
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert r.headers["x-frame-options"] == "DENY"
+    assert r.headers["x-request-id"]
 
 
 def test_mauvais_mot_de_passe_est_refuse(client):
@@ -311,7 +325,7 @@ def test_une_desactivation_EN_COURS_DE_SESSION_coupe_l_acces_immediatement(clien
     assert client.get("/api/projects").status_code == 401
 
 
-def test_une_retrogradation_EN_COURS_DE_SESSION_bloque_l_ecriture_immediatement(client):
+def test_une_retrogradation_EN_COURS_DE_SESSION_revoque_la_session_immediatement(client):
     uid = _compte(client, "Awa", "mdp", access.ROLE_TESTEUR)
     _connecte(client, "Awa", "mdp")
     conn = get_initialized_db(config.DB_PATH)
@@ -328,7 +342,18 @@ def test_une_retrogradation_EN_COURS_DE_SESSION_bloque_l_ecriture_immediatement(
         conn.close()
 
     r = client.post(f"/api/projects/{pid}/modules", json={"name": "M2"})
-    assert r.status_code == 403
+    assert r.status_code == 401
+
+
+def test_logout_revoque_aussi_une_copie_du_cookie(client):
+    _compte(client, "Awa", "motdepasse", access.ROLE_TESTEUR)
+    _connecte(client, "Awa", "motdepasse")
+    ancien_cookie = client.cookies.get(access.COOKIE)
+
+    assert client.post("/api/auth/logout").status_code == 200
+    client.cookies.set(access.COOKIE, ancien_cookie)
+
+    assert client.get("/api/projects").status_code == 401
 
 
 # ── 4. Gestion des comptes — Admin seulement ──────────────────────────────────
@@ -515,6 +540,21 @@ def test_changer_son_mot_de_passe_NE_DECONNECTE_PAS_la_session_en_cours(client):
     # doit encore ouvrir l'accès.
     assert client.get("/api/auth/session").json()["authenticated"] is True
     assert client.get("/api/projects").status_code == 200
+
+
+def test_changer_son_mot_de_passe_revoque_le_cookie_precedent(client):
+    _compte(client, "Awa", "ancienmdp", access.ROLE_TESTEUR)
+    _connecte(client, "Awa", "ancienmdp")
+    ancien_cookie = client.cookies.get(access.COOKIE)
+
+    r = client.patch("/api/auth/password",
+                     json={"old_password": "ancienmdp", "new_password": "nouveaumdp"})
+    assert r.status_code == 200
+    nouveau_cookie = client.cookies.get(access.COOKIE)
+    assert nouveau_cookie != ancien_cookie
+
+    client.cookies.set(access.COOKIE, ancien_cookie)
+    assert client.get("/api/projects").status_code == 401
 
 
 def test_un_mauvais_ancien_mot_de_passe_est_refuse(client):

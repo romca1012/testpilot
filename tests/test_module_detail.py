@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 from testpilot import config
 from testpilot.api import app as app_mod
 from testpilot.api.services import generation_service
-from testpilot.generation.state import GenerationResult
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import (
     CaseRepo,
@@ -132,6 +131,18 @@ def test_ajout_sans_spec_est_refuse(client):
     conn = _conn()
     assert CaseRepo(conn).list_all(module_id=mid) == []   # rien créé
     conn.close()
+
+
+def test_ajout_refuse_un_chemin_de_fichier_serveur(client, tmp_path):
+    """L'API n'accepte jamais qu'un client lui désigne un fichier local au serveur."""
+    conn = _conn(); _, mid = _seed(conn); conn.close()
+    secret = tmp_path / "secret.txt"
+    secret.write_text("ne doit jamais être lu", encoding="utf-8")
+
+    resp = client.post(f"/api/modules/{mid}/cases", json={"spec_path": str(secret)})
+
+    assert resp.status_code == 422
+    assert "spec_path" in resp.text
 
 
 def test_ajout_sur_module_inexistant(client):

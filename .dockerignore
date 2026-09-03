@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+.demo-stable
+.venv*
+frontend/node_modules
+frontend/dist
+data
+behave_runtime/generated
+docs
+tests
+*.db
+.env
+__pycache__
+.pytest_cache
+.ruff_cache

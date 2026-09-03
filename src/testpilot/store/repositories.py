@@ -10,8 +10,9 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-import psycopg
 from datetime import datetime, timedelta, timezone
+
+import psycopg
 
 from testpilot import config
 from testpilot.store import secrets as secrets_mod
@@ -2675,7 +2676,9 @@ class UserRepo:
         return int(self.conn.execute("SELECT COUNT(*) AS n FROM user").fetchone()["n"])
 
     def set_role(self, user_id: int, role: str) -> None:
-        self.conn.execute("UPDATE user SET role=? WHERE id=?", (role, user_id))
+        self.conn.execute(
+            "UPDATE user SET role=?, session_version=session_version+1 WHERE id=?",
+            (role, user_id))
         self.conn.commit()
         ProjectMemberRepo(self.conn).sync_user(user_id)
 
@@ -2683,15 +2686,29 @@ class UserRepo:
         """⚠️ Prend effet IMMÉDIATEMENT (`api/access.py::utilisateur_actuel` relit ce champ à
         CHAQUE requête, jamais depuis le jeton) — désactiver quelqu'un doit couper l'accès tout
         de suite, pas attendre l'expiration naturelle de sa session."""
-        self.conn.execute("UPDATE user SET is_active=? WHERE id=?",
+        self.conn.execute("UPDATE user SET is_active=?, session_version=session_version+1 WHERE id=?",
                           (1 if is_active else 0, user_id))
         self.conn.commit()
         ProjectMemberRepo(self.conn).sync_user(user_id)
 
-    def set_password_hash(self, user_id: int, password_hash: str) -> None:
+    def set_password_hash(self, user_id: int, password_hash: str) -> int:
         """Réinitialisation par un Admin (2026-08-11) — pour un compte qui a oublié le sien."""
-        self.conn.execute("UPDATE user SET password_hash=? WHERE id=?", (password_hash, user_id))
+        self.conn.execute(
+            "UPDATE user SET password_hash=?, session_version=session_version+1 WHERE id=?",
+            (password_hash, user_id))
         self.conn.commit()
+        row = self.conn.execute(
+            "SELECT session_version FROM user WHERE id=?", (user_id,)).fetchone()
+        return int(row["session_version"]) if row else 0
+
+    def revoke_sessions(self, user_id: int) -> int:
+        """Invalide tous les jetons déjà émis pour ce compte et rend la nouvelle version."""
+        self.conn.execute(
+            "UPDATE user SET session_version=session_version+1 WHERE id=?", (user_id,))
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT session_version FROM user WHERE id=?", (user_id,)).fetchone()
+        return int(row["session_version"]) if row else 0
 
     def set_email(self, user_id: int, email: str) -> None:
         """Nécessaire pour prévenir ce compte par email (2026-08-12, `notification_service`) —
@@ -2709,6 +2726,33 @@ class UserRepo:
             q += " AND id != ?"
             params.append(exclude_user_id)
         return int(self.conn.execute(q, params).fetchone()["n"])
+        self.conn.commit()
+
+
+class LoginFailureRepo:
+    """Compteur anti-brute-force partagé par tous les processus via la base principale."""
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def count_recent(self, attempt_key: str, now: float, window_seconds: int) -> int:
+        cutoff = now - window_seconds
+        self.conn.execute("DELETE FROM login_failure WHERE occurred_at<=?", (cutoff,))
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM login_failure WHERE attempt_key=? AND occurred_at>?",
+            (attempt_key, cutoff)).fetchone()
+        self.conn.commit()
+        return int(row["n"])
+
+    def record(self, attempt_key: str, now: float, window_seconds: int) -> int:
+        self.conn.execute(
+            "INSERT INTO login_failure (attempt_key, occurred_at) VALUES (?,?)",
+            (attempt_key, now))
+        self.conn.commit()
+        return self.count_recent(attempt_key, now, window_seconds)
+
+    def clear(self, attempt_key: str) -> None:
+        self.conn.execute("DELETE FROM login_failure WHERE attempt_key=?", (attempt_key,))
         self.conn.commit()
 
 

@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      TESTPILOT_PRODUCTION: "true"
+      POSTGRES_DB: testpilot
+      POSTGRES_USER: testpilot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD obligatoire}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testpilot -d testpilot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  testpilot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >-
+      sh -c "python -m alembic upgrade head &&
+      python -m uvicorn testpilot.api.app:app --host 0.0.0.0 --port 8000
+      --workers 1 --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      # URL complète requise : le mot de passe doit être encodé comme composant d'URL.
+      TESTPILOT_DB_URL: ${TESTPILOT_DB_URL:?TESTPILOT_DB_URL obligatoire}
+      TESTPILOT_DATA_DIR: /var/lib/testpilot
+      TESTPILOT_SECRET_KEY: ${TESTPILOT_SECRET_KEY:?TESTPILOT_SECRET_KEY obligatoire}
+      TESTPILOT_SESSION_SECRET: ${TESTPILOT_SESSION_SECRET:?TESTPILOT_SESSION_SECRET obligatoire}
+      TESTPILOT_METRICS_TOKEN: ${TESTPILOT_METRICS_TOKEN:?TESTPILOT_METRICS_TOKEN obligatoire}
+      TESTPILOT_ADMIN_USERNAME: ${TESTPILOT_ADMIN_USERNAME:-admin}
+      TESTPILOT_ADMIN_PASSWORD: ${TESTPILOT_ADMIN_PASSWORD:-}
+      TESTPILOT_SESSION_DAYS: ${TESTPILOT_SESSION_DAYS:-7}
+      TESTPILOT_COOKIE_SECURE: "true"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TESTPILOT_MAX_CONCURRENT_JOBS: ${TESTPILOT_MAX_CONCURRENT_JOBS:-3}
+    volumes:
+      - testpilot-data:/var/lib/testpilot
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres-data:
+  testpilot-data:

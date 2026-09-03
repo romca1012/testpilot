@@ -51,7 +51,10 @@ _NOM_FICHIER_CLE_SESSION = ".session_secret"
 # route `POST`, donc une « écriture » aux yeux d'`ecriture_bloquee` — un compte Lecture seule ne
 # pouvait tout simplement PAS se déconnecter (403 « droits insuffisants » sur son propre bouton
 # « Se déconnecter »). Se déconnecter n'est jamais un geste à restreindre par rôle.
-_LIBRES = ("/api/health", "/api/auth/login", "/api/auth/session", "/api/auth/logout")
+_LIBRES = (
+    "/api/health", "/api/health/live", "/api/health/ready",
+    "/api/auth/login", "/api/auth/session", "/api/auth/logout",
+)
 
 # Hiérarchie croissante — l'index dans ce tuple EST le niveau de droits.
 ROLE_LECTURE_SEULE = "lecture_seule"
@@ -77,7 +80,9 @@ METHODES_ECRITURE = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 # aussi bien qu'un Admin.
 _ECRITURES_TOUJOURS_AUTORISEES = ("/api/auth/password",)
 
-_PBKDF2_ITERATIONS = 200_000
+_PBKDF2_ITERATIONS = 600_000
+_PBKDF2_ITERATIONS_HISTORIQUE = 200_000
+_PBKDF2_PREFIXE = "pbkdf2_sha256"
 
 # Plancher posé le 2026-08-11 : jusque-là, un mot de passe d'un seul caractère était accepté
 # (seule garde : non vide). Pas de politique plus riche (majuscule/chiffre/symbole) — un plancher
@@ -101,25 +106,47 @@ def role_suffisant(role: str, minimum: str) -> bool:
 # ── Mots de passe — PBKDF2-HMAC-SHA256, stdlib seule (zéro dépendance nouvelle) ────────────────
 
 def hacher_mot_de_passe(mot_de_passe: str) -> str:
-    """`sel_hex$hachage_hex`. Le sel est PAR MOT DE PASSE — deux comptes avec le même mot de passe
+    """`algorithme$itérations$sel$hachage`. Le sel est PAR MOT DE PASSE — deux comptes identiques
     ne doivent jamais produire le même hachage (sinon leur égalité se lirait dans la base)."""
     sel = os.urandom(16)
     h = hashlib.pbkdf2_hmac("sha256", (mot_de_passe or "").encode("utf-8"), sel,
                            _PBKDF2_ITERATIONS)
-    return f"{sel.hex()}${h.hex()}"
+    return f"{_PBKDF2_PREFIXE}${_PBKDF2_ITERATIONS}${sel.hex()}${h.hex()}"
 
 
 def verifier_mot_de_passe(propose: str, hache: str) -> bool:
     """Recalcule avec le MÊME sel que le hachage stocké, compare à temps constant."""
     try:
-        sel_hex, attendu_hex = (hache or "").split("$", 1)
+        morceaux = (hache or "").split("$")
+        if len(morceaux) == 4 and morceaux[0] == _PBKDF2_PREFIXE:
+            _algo, iterations_txt, sel_hex, attendu_hex = morceaux
+            iterations = int(iterations_txt)
+        elif len(morceaux) == 2:
+            # Compatibilité avec les comptes créés avant la migration du facteur de travail.
+            sel_hex, attendu_hex = morceaux
+            iterations = _PBKDF2_ITERATIONS_HISTORIQUE
+        else:
+            return False
         sel = bytes.fromhex(sel_hex)
         attendu = bytes.fromhex(attendu_hex)
+        if iterations < 1 or iterations > 10_000_000:
+            return False
     except (ValueError, AttributeError):
         return False
     calcule = hashlib.pbkdf2_hmac("sha256", (propose or "").encode("utf-8"), sel,
-                                  _PBKDF2_ITERATIONS)
+                                  iterations)
     return hmac.compare_digest(calcule, attendu)
+
+
+def hachage_a_mettre_a_niveau(hache: str) -> bool:
+    """Vrai pour l'ancien format ou un facteur inférieur au facteur courant."""
+    morceaux = (hache or "").split("$")
+    if len(morceaux) != 4 or morceaux[0] != _PBKDF2_PREFIXE:
+        return True
+    try:
+        return int(morceaux[1]) < _PBKDF2_ITERATIONS
+    except ValueError:
+        return True
 
 
 # ── Session — jeton signé, indépendant de tout mot de passe de compte ──────────────────────────
@@ -166,29 +193,29 @@ def _signer(charge: str) -> str:
     return hmac.new(_cle(), charge.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def creer_jeton(user_id: int, username: str) -> str:
-    """Jeton de session : `expiration.user_id.username.signature`. `username` y figure pour que
+def creer_jeton(user_id: int, username: str, session_version: int = 1) -> str:
+    """Jeton : `expiration.user_id.session_version.username.signature`. `username` y figure pour que
     `utilisateur_de` reste `request`-seul (aucune lecture base) — c'est le rôle, lui, qui se
     vérifie en base à chaque requête (voir le module docstring)."""
     expire = int(time.time()) + config.SESSION_DAYS * 86400
     nom_propre = (username or "").replace(".", " ").strip()[:60]
-    charge = f"{expire}.{user_id}.{nom_propre}"
+    charge = f"{expire}.{user_id}.{int(session_version)}.{nom_propre}"
     return f"{charge}.{_signer(charge)}"
 
 
-def lire_jeton(jeton: str | None) -> tuple[int, str] | None:
-    """`(user_id, username)` porté par un jeton valide, ou `None`. Jamais d'exception : une
+def lire_jeton(jeton: str | None) -> tuple[int, int, str] | None:
+    """`(user_id, session_version, username)` d'un jeton valide, ou `None`. Jamais d'exception : une
     entrée douteuse est une session absente, pas une panne."""
     if not jeton:
         return None
     try:
-        expire_txt, uid_txt, nom, signature = jeton.split(".", 3)
-        charge = f"{expire_txt}.{uid_txt}.{nom}"
+        expire_txt, uid_txt, version_txt, nom, signature = jeton.split(".", 4)
+        charge = f"{expire_txt}.{uid_txt}.{version_txt}.{nom}"
         if not hmac.compare_digest(signature, _signer(charge)):
             return None
         if int(expire_txt) < time.time():
             return None
-        return int(uid_txt), nom
+        return int(uid_txt), int(version_txt), nom
     except (ValueError, AttributeError):
         return None
 
@@ -200,7 +227,7 @@ def utilisateur_de(request: Request) -> str:
     (un compte vérifié, plus une déclaration libre)."""
     jeton = lire_jeton(request.cookies.get(COOKIE))
     if jeton:
-        return jeton[1]
+        return jeton[2]
     return (request.headers.get(_HEADER_UTILISATEUR) or "").strip()[:60]
 
 
@@ -214,9 +241,10 @@ def utilisateur_actuel(conn, request: Request) -> dict | None:
     jeton = lire_jeton(request.cookies.get(COOKIE))
     if jeton is None:
         return None
-    user_id, _nom = jeton
+    user_id, version_jeton, _nom = jeton
     utilisateur = UserRepo(conn).get(user_id)
-    if utilisateur is None or not utilisateur.get("is_active"):
+    if (utilisateur is None or not utilisateur.get("is_active")
+            or int(utilisateur.get("session_version", 1)) != version_jeton):
         return None
     return utilisateur
 
