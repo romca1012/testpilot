@@ -69,6 +69,14 @@ ACCES_PROJET_REFUSE = "no_access"
 # Méthodes HTTP considérées comme une ÉCRITURE — bloquées pour `lecture_seule` (middleware).
 METHODES_ECRITURE = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
+# Écritures qu'AUCUN rôle ne doit voir bloquer, même `lecture_seule` (2026-09-03) — DISTINCT de
+# `_LIBRES` ci-dessus : ces chemins restent authentifiés (la route a besoin de savoir QUI agit),
+# seule la garde de rôle d'`ecriture_bloquee` s'efface pour eux. Même raisonnement que le carve-out
+# de `/api/auth/logout` dans `_LIBRES` : sécuriser SON PROPRE compte n'est jamais un geste à
+# restreindre par rôle — un Lecture seule doit pouvoir changer un mot de passe qu'il sait compromis
+# aussi bien qu'un Admin.
+_ECRITURES_TOUJOURS_AUTORISEES = ("/api/auth/password",)
+
 _PBKDF2_ITERATIONS = 200_000
 
 # Plancher posé le 2026-08-11 : jusque-là, un mot de passe d'un seul caractère était accepté
@@ -224,11 +232,13 @@ def chemin_libre(chemin: str) -> bool:
 
 def ecriture_bloquee(role: str, method: str, chemin: str) -> bool:
     """Le rôle `lecture_seule` ne doit RIEN écrire, nulle part — vérifié UNE FOIS ici plutôt que
-    route par route (ça couvre aussi toute route future qui oublierait de se gater elle-même)."""
+    route par route (ça couvre aussi toute route future qui oublierait de se gater elle-même).
+    Exception étroite : `_ECRITURES_TOUJOURS_AUTORISEES` (changer son propre mot de passe)."""
     return (not role_suffisant(role, ROLE_TESTEUR)
             and method in METHODES_ECRITURE
             and chemin.startswith("/api/")
-            and chemin not in _LIBRES)
+            and chemin not in _LIBRES
+            and chemin not in _ECRITURES_TOUJOURS_AUTORISEES)
 
 
 def require_role(minimum: str):

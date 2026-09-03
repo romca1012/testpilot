@@ -1,8 +1,10 @@
 """Connexion — comptes utilisateurs réels (2026-08-07, remplace le mot de passe unique partagé
 du lot 2 du déploiement).
 
-Deux routes : ouvrir une session avec un COMPTE (identifiant + mot de passe, vérifiés contre la
-table `user`), et savoir où on en est. Le rôle est résolu et renvoyé pour que le frontend adapte
+Routes : ouvrir une session avec un COMPTE (identifiant + mot de passe, vérifiés contre la table
+`user`), savoir où on en est, se déconnecter, et — depuis le 2026-09-03 — changer SON PROPRE mot
+de passe (`PATCH /password`, voir `changer_son_mot_de_passe` : jusqu'ici, seul un Admin pouvait en
+réinitialiser un, `routes/users.py`). Le rôle est résolu et renvoyé pour que le frontend adapte
 l'affichage — mais c'est toujours le SERVEUR, via le middleware, qui fait foi sur ce qui est
 réellement autorisé (une décision se prend d'un seul côté).
 """
@@ -16,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from testpilot import config
-from testpilot.api import access
+from testpilot.api import access, erreurs
 from testpilot.api.deps import get_conn
 from testpilot.store.repositories import UserRepo
 
@@ -134,3 +136,52 @@ def login(body: LoginIn, request: Request, response: Response, conn=Depends(get_
 def logout(response: Response):
     response.delete_cookie(access.COOKIE)
     return SessionOut(authenticated=False)
+
+
+class PasswordChangeIn(BaseModel):
+    old_password: str = ""
+    new_password: str = ""
+
+
+@router.patch("/password", response_model=SessionOut)
+def changer_son_mot_de_passe(body: PasswordChangeIn, request: Request, conn=Depends(get_conn)):
+    """Un titulaire de compte change SON PROPRE mot de passe — jamais celui d'un autre.
+
+    ⚠️ L'identité vient EXCLUSIVEMENT de la session (`request.state.user`, posé par le middleware
+    `verrou_acces` sur toute requête authentifiée) — jamais d'un `user_id` dans le corps de la
+    requête, qui se falsifie tout aussi facilement qu'un nom dans un formulaire HTML.
+
+    Exige et vérifie l'ANCIEN mot de passe — différence structurante avec la réinitialisation par
+    un Admin (`PATCH /api/admin/users/{id}`, `users.py`), qui n'exige rien de l'ancien : l'Admin
+    agit précisément pour un compte qui a PERDU son mot de passe et ne peut donc pas le fournir ;
+    ici, le titulaire le connaît encore, c'est la preuve qu'on lui demande.
+
+    Pas de limitation de tentatives DÉDIÉE ici (contrairement à `/api/auth/login`, voir
+    `LOGIN_MAX_ECHECS` ci-dessus) : contrairement au login, cette route exige DÉJÀ une session
+    valide avant d'être seulement atteinte (`verrou_acces` répond 401 sinon) — un tâtonnement sur
+    l'ancien mot de passe suppose donc d'avoir déjà volé une session active, un scénario que
+    l'anti-brute-force du login ne couvre pas mieux : ajouter un second compteur ici ferait de la
+    friction sans fermer un risque que la connexion elle-même n'a pas déjà laissé passer.
+
+    La session en cours n'est PAS invalidée après un changement réussi : se protéger ne doit pas
+    déconnecter la personne qui vient de le faire — elle resterait alors devant un écran de
+    connexion juste après avoir prouvé qui elle est.
+    """
+    utilisateur = getattr(request.state, "user", None)
+    if utilisateur is None:  # ne devrait jamais arriver — le middleware l'a déjà exigé
+        raise HTTPException(status_code=401, detail="session requise")
+
+    # `.get(...)` plutôt que `[...]` : le bouchon de test `_connecte_par_defaut`
+    # (`tests/conftest.py`) pose un compte Admin de complaisance SANS `password_hash` quand aucun
+    # cookie n'est présent — hors tests, un `utilisateur` réel en porte toujours un.
+    if not access.verifier_mot_de_passe(body.old_password, utilisateur.get("password_hash", "")):
+        raise erreurs.ErreurMetier("mot_de_passe_incorrect", "l'ancien mot de passe est incorrect")
+
+    if len(body.new_password) < access.MOT_DE_PASSE_LONGUEUR_MIN:
+        raise erreurs.ErreurMetier(
+            "requete_invalide",
+            f"le mot de passe doit compter au moins {access.MOT_DE_PASSE_LONGUEUR_MIN} caractères")
+
+    UserRepo(conn).set_password_hash(
+        utilisateur["id"], access.hacher_mot_de_passe(body.new_password))
+    return SessionOut(authenticated=True, name=utilisateur["username"], role=utilisateur["role"])

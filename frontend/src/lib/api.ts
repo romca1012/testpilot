@@ -69,7 +69,8 @@ export class ApiError extends Error {
    * Codes existants : `introuvable`, `nom_deja_pris`, `conteneur_non_vide`,
    * `connexion_incomplete`, `aucune_version`, `relecture_requise`, `specification_vide`,
    * `metier_incomplet`, `etat_incompatible`, `campagne_vide`, `campagne_en_cours`,
-   * `campagne_archivee`, `exploration_en_cours`, `requete_invalide`, `non_gere`.
+   * `campagne_archivee`, `exploration_en_cours`, `requete_invalide`, `non_gere`,
+   * `mot_de_passe_incorrect` (2026-09-03 — ancien mot de passe faux à `PATCH /api/auth/password`).
    */
   constructor(public status: number, message: string, public code: string = '') {
     super(message)
@@ -84,6 +85,11 @@ export const api = {
   login: (username: string, password: string) =>
     request<Session>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: () => request<Session>('/api/auth/logout', { method: 'POST' }),
+  // Le titulaire change SON PROPRE mot de passe (2026-09-03) — jamais un `user_id` dans le corps,
+  // l'identité vient de la session côté serveur. Distinct de `patchUser({new_password})` : celui-ci
+  // reste réservé à l'Admin qui réinitialise un compte qui a PERDU le sien (pas d'ancien exigé).
+  changePassword: (old_password: string, new_password: string) =>
+    request<Session>('/api/auth/password', { method: 'PATCH', body: JSON.stringify({ old_password, new_password }) }),
 
   // ── Comptes — Admin seulement (le serveur le vérifie ; ces appels échoueraient en 403 sinon) ──
   listUsers: () => request<UserAccount[]>('/api/admin/users'),

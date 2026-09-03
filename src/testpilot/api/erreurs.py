@@ -85,6 +85,12 @@ CATALOGUE: dict[str, tuple[int, str]] = {
     # ── Requête mal formée / non géré ──
     "requete_invalide":       (422, "Requête invalide"),
     "non_gere":               (400, "Requête non prise en charge"),
+    # ── Changement de son propre mot de passe (2026-09-03) ──
+    # Distinct de `requete_invalide` (422, corps mal formé) : ici la requête est bien formée, mais
+    # l'ancien mot de passe fourni ne correspond pas à celui du compte — un refus d'AUTORISATION,
+    # pas de validation. 401 (et non 403) : même famille que `/api/auth/login`, qui répond déjà 401
+    # à un mot de passe faux.
+    "mot_de_passe_incorrect": (401, "Mot de passe incorrect"),
 }
 
 # Les services parlent leur propre langue (héritée) ; on la traduit ici, en un seul endroit,
