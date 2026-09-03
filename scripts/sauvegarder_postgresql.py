@@ -49,12 +49,13 @@ _RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_RACINE / "src"))
 sys.path.insert(0, str(_RACINE))
 
-from testpilot import config  # noqa: E402 — après l'ajustement de sys.path ci-dessus, volontairement
-
-from scripts.sauvegarder import (  # noqa: E402 — idem ; réutilise la rétention, indépendante du moteur
+from scripts.sauvegarder import (
     RETENTION_PAR_DEFAUT,
     _purger_anciennes,
     nom_sauvegarde,
+)
+from testpilot import (
+    config,
 )
 
 # Binaires configurables : une machine peut installer les outils client PostgreSQL hors du PATH
@@ -84,8 +85,10 @@ def _verifier_outil(binaire: str) -> str:
 
 def _pg_connection_env(url: str) -> tuple[dict, str]:
     """Décompose une URL `postgresql[+psycopg]://user:pass@host:port/base` en variables
-    d'environnement `PG*` que `pg_dump`/`pg_restore` lisent nativement, et rend le nom de base à
-    part (les deux outils le veulent en argument, lui n'a rien de secret)."""
+    d'environnement `PG*` que `pg_dump`/`pg_restore` lisent nativement, et rend aussi le nom de
+    base pour les messages et l'argument explicite de `pg_restore`. `PGDATABASE` est indispensable
+    à `pg_dump` : sans lui, PostgreSQL choisit par défaut une base portant le nom de l'utilisateur.
+    """
     normalisee = url.replace("postgresql+psycopg://", "postgresql://", 1)
     p = urlsplit(normalisee)
     if p.scheme != "postgresql":
@@ -102,6 +105,7 @@ def _pg_connection_env(url: str) -> tuple[dict, str]:
         env["PGUSER"] = unquote(p.username)
     if p.password:
         env["PGPASSWORD"] = unquote(p.password)
+    env["PGDATABASE"] = dbname
     return env, dbname
 
 
@@ -131,7 +135,7 @@ def sauvegarder(url: str | None = None, dossier: Path | None = None,
 
     resultat = subprocess.run(
         [pg_dump, "--format=custom", "--no-owner", "--no-privileges", "--file", str(cible)],
-        env=env, capture_output=True, text=True,
+        env=env, capture_output=True, text=True, check=False,  # returncode inspecté ci-dessous
     )
     if resultat.returncode != 0:
         cible.unlink(missing_ok=True)
@@ -165,7 +169,7 @@ def restaurer(sauvegarde: Path, url: str | None = None) -> str:
     resultat = subprocess.run(
         [pg_restore, "--clean", "--if-exists", "--no-owner", "--no-privileges",
          "--single-transaction", "--dbname", dbname, str(sauvegarde)],
-        env=env, capture_output=True, text=True,
+        env=env, capture_output=True, text=True, check=False,  # returncode inspecté ci-dessous
     )
     if resultat.returncode != 0:
         raise RuntimeError(
@@ -186,6 +190,18 @@ def _cmd_restaurer(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Toute erreur attendue (outil absent, mauvaise URL, sauvegarde introuvable...) sort ici en
+    # UNE ligne lisible sur stderr, jamais en trace Python brute — même discipline que
+    # scripts/migrate_sqlite_to_postgres.py. Une trace complète reste utile pour un bug RÉEL
+    # (imprévu) : elle continue de sortir normalement, ce `try` ne l'avale pas.
+    try:
+        return _main(argv)
+    except RuntimeError as exc:
+        print(f"ÉCHEC : {exc}", file=sys.stderr)
+        return 1
+
+
+def _main(argv: list[str] | None = None) -> int:
     if not config.DB_URL.lower().startswith(("postgresql://", "postgresql+psycopg://")):
         raise RuntimeError(
             "Cette commande sauvegarde PostgreSQL uniquement (TESTPILOT_DB_URL). Le runtime "
