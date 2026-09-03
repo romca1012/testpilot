@@ -59,7 +59,7 @@ def create_app() -> FastAPI:
         if request.method == "OPTIONS" or access.chemin_libre(request.url.path):
             return await call_next(request)
 
-        conn = get_initialized_db(config.DB_PATH)
+        conn = get_initialized_db()
         try:
             utilisateur = access.utilisateur_actuel(conn, request)
         finally:
@@ -155,7 +155,7 @@ def _amorcer_premier_admin() -> None:
 
     if not (config.ADMIN_USERNAME and config.ADMIN_PASSWORD):
         return
-    conn = get_initialized_db(config.DB_PATH)
+    conn = get_initialized_db()
     try:
         repo = UserRepo(conn)
         if repo.count() > 0:

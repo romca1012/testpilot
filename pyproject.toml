@@ -35,16 +35,12 @@ dependencies = [
     # ni l'un ni l'autre sur `db.py`/`repositories.py` — 100 % additif, voir la note de conception.
     "sqlalchemy>=2.0",
     "alembic>=1.13",
+    # Pilote du runtime PostgreSQL (phase 3) — plus seulement une preuve de développement.
+    "psycopg[binary]>=3.1",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6", "black>=24.0", "httpx>=0.27",
-    # Pilote PostgreSQL — nécessaire pour PROUVER la migration Alembic sur un vrai moteur
-    # Postgres (phase 1) et pour le double-run de vérification (phase 2). Pas encore en
-    # dépendance principale : le runtime ne s'y connecte pas tant que la bascule (phase 3)
-    # n'a pas eu lieu ; l'y faire monter sera une décision explicite de cette phase-là.
-    "psycopg[binary]>=3.1",
-]
+dev = ["pytest>=8.0", "ruff>=0.6", "black>=24.0", "httpx>=0.27"]
 
 [project.scripts]
 testpilot = "testpilot.cli:main"

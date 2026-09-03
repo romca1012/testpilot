@@ -147,7 +147,7 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
     # dans `_RUNNING`, et sa ligne `not_executed` sans le moindre message.
     conn = None
     try:
-        conn = get_initialized_db(config.DB_PATH)
+        conn = get_initialized_db()
         # Le runtime tape l'application DU PROJET du cas (décision 0005).
         runner = BehaveRunner(connection=resolve_connection(conn, case_id),
                               project_id=resolve_project_id(conn, case_id),
@@ -419,7 +419,7 @@ def _finalize_error(conn, execution_id, case_id, message: str) -> None:
         return
 
     try:
-        secours = get_initialized_db(config.DB_PATH)
+        secours = get_initialized_db()
     except Exception:
         logger.critical(
             "[run] exécution %s : le verdict d'échec est PERDU (connexion de secours "

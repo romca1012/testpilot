@@ -25,8 +25,11 @@ from __future__ import annotations
 import sqlite3
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine
 
+from testpilot import config
 from testpilot.store import schema_sa
 from testpilot.store.db import _SCHEMA_VERSION, get_initialized_db
 
@@ -69,6 +72,23 @@ def schema_portable() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     yield conn
     engine.dispose()
+
+
+@pytest.fixture(scope="module")
+def schema_alembic(tmp_path_factory) -> sqlite3.Connection:
+    """Le schéma qu'un déploiement neuf reçoit via ``alembic upgrade head``."""
+    chemin = tmp_path_factory.mktemp("schema_alembic") / "alembic.db"
+    cfg = Config("alembic.ini")
+    ancienne_url = config.DB_URL
+    config.DB_URL = f"sqlite:///{chemin.as_posix()}"
+    try:
+        command.upgrade(cfg, "head")
+    finally:
+        config.DB_URL = ancienne_url
+    conn = sqlite3.connect(chemin)
+    conn.row_factory = sqlite3.Row
+    yield conn
+    conn.close()
 
 
 def test_la_version_de_reference_du_modele_portable_est_a_jour():
@@ -148,3 +168,13 @@ def test_la_nullabilite_concorde(vrai_schema, schema_portable):
                     f"vs portable={portable[col]['not_null']}"
                 )
     assert not echecs, "Dérive de nullabilité détectée :\n" + "\n".join(echecs)
+
+
+def test_alembic_head_recree_toutes_les_tables_et_colonnes(schema_portable, schema_alembic):
+    """Empêche qu'une évolution soit présente dans ``schema_sa`` mais oubliée dans Alembic."""
+    tables_attendues = _tables(schema_portable)
+    assert _tables(schema_alembic) - {"alembic_version"} == tables_attendues
+    for table in sorted(tables_attendues):
+        assert _colonnes(schema_alembic, table).keys() == _colonnes(schema_portable, table).keys(), (
+            f"Alembic head n'est pas aligné avec schema_sa pour {table}"
+        )

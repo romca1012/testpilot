@@ -1,21 +1,16 @@
-"""Environnement Alembic — fondation PostgreSQL, phase 1/3 (voir docs/POSTGRES-MIGRATION.md).
+"""Environnement Alembic du schéma PostgreSQL de TestPilot.
 
-⚠️ **N'est branché sur RIEN aujourd'hui.** Ce scaffolding sert à PROUVER que le modèle portable
-(`testpilot.store.schema_sa`) se recrée proprement sur SQLite et sur PostgreSQL — la phase 3
-(bascule réelle) est un chantier séparé, qui décidera alors comment `db.py`/le déploiement
-appellent Alembic (ou pas) au démarrage.
+Le runtime utilise ce schéma lorsque ``TESTPILOT_DB_URL`` pointe vers PostgreSQL et refuse de
+démarrer si la révision appliquée n'est pas la révision courante.
 
 **Résolution de l'URL de connexion**, dans cet ordre :
 1. `TESTPILOT_DB_URL` (variable d'environnement) — ex. ``postgresql+psycopg://user:pass@host/db``
    pour pointer Alembic vers un PostgreSQL, jetable ou non.
-2. À défaut, repli sur le chemin SQLite ACTUEL de l'application (`testpilot.config.DB_PATH`) —
-   pour que quiconque n'a pas défini la variable obtienne un comportement identique à avant ce
-   lot : rien ne casse pour qui ignore l'existence de cette fondation.
+2. À défaut, repli sur le chemin SQLite local (`testpilot.config.DB_PATH`).
 """
 
 from __future__ import annotations
 
-import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -38,8 +33,8 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # La CIBLE que `autogenerate`/`upgrade` doivent recréer : le modèle portable, pas les migrations
-# SQLite de `db.py` (celles-ci restent le chemin réel tant que la bascule — phase 3 — n'a pas eu
-# lieu). Voir le garde-fou `tests/test_schema_sa_portable.py` qui vérifie leur synchronisation.
+# SQLite de `db.py`. `tests/test_schema_sa_portable.py` vérifie les trois chemins : schéma
+# SQLite historique, modèle portable et historique Alembic.
 target_metadata = schema_sa.metadata
 
 
@@ -50,7 +45,7 @@ def _url_de_connexion() -> str:
     exactement la base qu'il utilise déjà (`testpilot.config.DB_PATH`) — jamais une base neuve
     ailleurs, jamais une erreur de configuration silencieuse.
     """
-    depuis_env = os.environ.get("TESTPILOT_DB_URL")
+    depuis_env = testpilot_config.DB_URL
     if depuis_env:
         return depuis_env
     # `as_posix()` : SQLAlchemy attend des slashes, y compris sur Windows, dans une URL sqlite:///.

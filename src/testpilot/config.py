@@ -23,6 +23,9 @@ BASE_DIR = SRC_DIR.parent.parent  # racine du dépôt testpilot/
 
 DATA_DIR = Path(os.getenv("TESTPILOT_DATA_DIR", str(BASE_DIR / "data")))
 DB_PATH = Path(os.getenv("TESTPILOT_DB_PATH", str(DATA_DIR / "testpilot.db")))
+# Vide = runtime SQLite historique. Une URL PostgreSQL branche le runtime réel sur psycopg ;
+# Alembic utilise la même source de vérité.
+DB_URL = os.getenv("TESTPILOT_DB_URL", "").strip()
 REPORTS_DIR = DATA_DIR / "reports"
 
 BEHAVE_RUNTIME_DIR = BASE_DIR / "behave_runtime"

@@ -94,7 +94,7 @@ def run_campaign(run_id: int, case_ids: list[int], *, triggered_by: str = "") ->
     `triggered_by` (migration 32) : reporté sur CHAQUE exécution créée par cette campagne — c'est
     le même geste (« lancer CETTE campagne »), pas N déclenchements distincts.
     """
-    conn = get_initialized_db(config.DB_PATH)
+    conn = get_initialized_db()
     try:
         for case_id in case_ids:
             try:

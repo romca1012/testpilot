@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from testpilot import config
+from testpilot.store.portable_connection import PostgresConnection
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,16 @@ def get_initialized_db(db_path: Path | str | None = None) -> sqlite3.Connection:
     L'existence du fichier est testée **avant** `connect()` : ouvrir une connexion SQLite sur un
     chemin absent CRÉE le fichier (vide, sans schéma) — après quoi `path.exists()` mentirait.
     """
-    path = Path(db_path) if db_path else config.DB_PATH
+    if db_path is None and config.DB_URL.startswith(("postgresql://", "postgresql+psycopg://")):
+        # Le schéma PostgreSQL est géré par Alembic au déploiement, jamais recréé à chaque requête.
+        return PostgresConnection(config.DB_URL)  # type: ignore[return-value]
+
+    # `Path(...)` dans les DEUX branches : `config.DB_PATH` est un `Path` par défaut (`config.py`),
+    # mais un test peut légitimement le monkeypatcher avec une chaîne (ex. `PRAGMA database_list`
+    # renvoie le chemin en `str`, jamais en `Path`) — trouvé en pratique (2026-09-03) sur l'appel
+    # sans argument (`get_initialized_db()`), qui empruntait ce repli sans jamais passer par
+    # `Path(db_path)` comme le fait la branche explicite juste au-dessus.
+    path = Path(db_path) if db_path else Path(config.DB_PATH)
     existait_deja = path.exists()
     conn = connect(path)
     if existait_deja:

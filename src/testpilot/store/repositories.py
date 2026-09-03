@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import psycopg
 from datetime import datetime, timedelta, timezone
 
 from testpilot import config
@@ -17,6 +18,7 @@ from testpilot.store import secrets as secrets_mod
 from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE, MODES_EXECUTION
 
 logger = logging.getLogger(__name__)
+INTEGRITY_ERRORS = (sqlite3.IntegrityError, psycopg.IntegrityError)
 
 
 # ── Suppression douce (§7 du brief, 2026-07-24) ───────────────────────────────
@@ -2742,7 +2744,7 @@ class UserGroupRepo:
         try:
             cur = self.conn.execute(
                 "INSERT INTO user_group (name, created_at) VALUES (?,?)", (name, now_iso()))
-        except sqlite3.IntegrityError as exc:
+        except INTEGRITY_ERRORS as exc:
             raise DuplicateName(f"le groupe « {name} » existe déjà") from exc
         group_id = int(cur.lastrowid)
         self.replace_members(group_id, user_ids, commit=False)
@@ -2755,7 +2757,7 @@ class UserGroupRepo:
             raise ValueError("le nom du groupe est obligatoire")
         try:
             self.conn.execute("UPDATE user_group SET name=? WHERE id=?", (name, group_id))
-        except sqlite3.IntegrityError as exc:
+        except INTEGRITY_ERRORS as exc:
             raise DuplicateName(f"le groupe « {name} » existe déjà") from exc
         self.replace_members(group_id, user_ids, commit=False)
         self.conn.commit()

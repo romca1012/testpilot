@@ -243,7 +243,7 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
     from testpilot.generation.metier_writer import propose_metier
     from testpilot.guardrails.cost_tracker import CostTracker
 
-    conn = get_initialized_db(config.DB_PATH)
+    conn = get_initialized_db()
     try:
         # ⚠️ L'ANALYSE COÛTE, et son coût n'était compté NULLE PART — ni ici, ni en CLI.
         # `SpecAnalyzer()` sans `cost_tracker` laisse `plan.cost_usd` à 0.0 : un appel LLM
@@ -467,7 +467,7 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
     from testpilot.guardrails.cost_tracker import CostTracker
     from testpilot.store.repositories import ProjectRepo, VersionRepo
 
-    conn = get_initialized_db(config.DB_PATH)
+    conn = get_initialized_db()
     connector = None
     succes = False
     try:
@@ -545,7 +545,7 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
     from testpilot.guardrails.cost_tracker import CostTracker
     from testpilot.store.repositories import CaseGroupRepo, ProjectRepo, VersionRepo
 
-    conn = get_initialized_db(config.DB_PATH)
+    conn = get_initialized_db()
     connector = None
     try:
         module = ModuleRepo(conn).get(module_id)
