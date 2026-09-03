@@ -3,7 +3,7 @@
 ⚠️ **Ce module ne pilote AUCUN runtime aujourd'hui.** `db.py`/`repositories.py` restent seuls aux
 commandes (SQLite brut, `sqlite3.Row`, SQL à la main — décision délibérée à conserver côté
 requêtes). Ce fichier n'est que la CIBLE que la fondation Alembic (`alembic/`) sait recréer sur
-SQLite ET sur PostgreSQL, en vue de la bascule réelle (phase 3). Voir `docs/POSTGRES-MIGRATION.md`.
+SQLite ET sur PostgreSQL, en vue de la bascule réelle (phase 3). Voir `docs/ARCHITECTURE.md` §4.
 
 **Origine des tables ci-dessous : l'INTROSPECTION, pas une relecture des 37 migrations.** Chaque
 table/colonne/CHECK/index a été vérifié contre la sortie réelle de
@@ -28,7 +28,7 @@ future (38, 39…) ajoutée à `db.py` SANS son équivalent ici fait échouer ce
 **La preuve AUTOINCREMENT.** Chaque clé primaire entière auto-incrémentée est déclarée
 ``Integer`` + ``primary_key=True`` + ``autoincrement=True`` — SANS jamais écrire ``AUTOINCREMENT``
 ni ``SERIAL``/``IDENTITY`` à la main. C'est SQLAlchemy qui choisit le DDL propre à chaque moteur
-au moment du ``CREATE TABLE`` (voir `docs/POSTGRES-MIGRATION.md` pour l'extrait exact observé sur
+au moment du ``CREATE TABLE`` (voir `docs/ARCHITECTURE.md` §4 pour l'extrait exact observé sur
 les deux moteurs). C'est tout l'intérêt de ce module : ne plus jamais retaper un dialecte SQL.
 
 **Ce qui NE traverse PAS encore ce modèle (limites honnêtes, détaillées dans la note de
