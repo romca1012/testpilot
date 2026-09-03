@@ -181,11 +181,20 @@ def _fusionner_doublons(regles: list[RegleApprise]) -> list[RegleApprise]:
 
 
 @lru_cache(maxsize=8)
-def _lire(chemin_str: str, mtime: float) -> tuple[RegleApprise, ...]:
-    """Cache indexé sur (chemin, mtime) — même motif que `domain_model._charger`.
+def _lire(chemin_str: str, mtime: float, taille: int) -> tuple[RegleApprise, ...]:
+    """Cache indexé sur (chemin, mtime, taille) — même motif que `domain_model._charger`.
 
     Sans le `mtime`, un run qui vient d'apprendre une règle ne la verrait pas au run suivant dans
     le même processus : « affiché ≠ réel » appliqué à un cache.
+
+    ⚠️ **`mtime` seul ne suffit pas** — trouvé en pratique (2026-09-03), reproduit sur un système
+    de fichiers dont la résolution de l'horodatage est trop grossière : deux `enregistrer()`
+    rapprochés (le même test, quelques millisecondes d'écart) peuvent partager la MÊME `mtime`,
+    et le second écrit servirait alors la version mise en cache du premier. Même leçon déjà tirée
+    ailleurs dans ce dépôt (`tests/conftest.py`, le garde-fou anti-pollution, a abandonné le mtime
+    seul pour la même raison). `enregistrer()` ne fait qu'AJOUTER des lignes — la taille du
+    fichier grandit à chaque écriture, donc `taille` seule suffirait presque, mais rester sur les
+    DEUX reste moins cher qu'un hash de contenu tout en couvrant le cas qui a cassé ici.
     """
     lignes = Path(chemin_str).read_text(encoding="utf-8").splitlines()
     regles: list[RegleApprise] = []
@@ -216,7 +225,8 @@ def charger(project_id: int | None) -> list[RegleApprise]:
     try:
         if not fichier.exists():
             return []
-        return list(_lire(str(fichier), fichier.stat().st_mtime))
+        info = fichier.stat()  # UN seul appel : mtime et taille doivent décrire le même instant
+        return list(_lire(str(fichier), info.st_mtime, info.st_size))
     except OSError:
         logger.exception("[règles apprises] %s illisible — le résolveur travaillera sans", fichier)
         return []

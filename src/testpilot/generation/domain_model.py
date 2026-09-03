@@ -89,11 +89,16 @@ def chemin_legacy(connector_type: str = "odoo") -> Path:
 
 
 @lru_cache(maxsize=4)
-def _charger(chemin: str, mtime: float) -> dict:
-    """Cache indexé sur (chemin, mtime) : régénérer le modèle l'invalide sans redémarrage.
+def _charger(chemin: str, mtime: float, taille: int) -> dict:
+    """Cache indexé sur (chemin, mtime, taille) : régénérer le modèle l'invalide sans redémarrage.
 
     Sans le `mtime`, un `lru_cache` servirait éternellement la version d'avant le re-crawl — et on
     croirait le modèle à jour. Le motif « affiché ≠ réel » (§4.6), appliqué à un cache.
+
+    ⚠️ **`mtime` seul ne suffit pas** — trouvé sur `regles_apprises._lire` (même motif exact,
+    2026-09-03), corrigé ici en prévention : sur un système de fichiers à résolution
+    d'horodatage grossière, deux écritures rapprochées peuvent partager la même `mtime`. La
+    taille du fichier lève l'ambiguïté sans payer le coût d'un hash de contenu.
     """
     return json.loads(Path(chemin).read_text(encoding="utf-8"))
 
@@ -118,7 +123,8 @@ def charger_modele(projet: dict | None) -> dict | None:
         if chemin is None:
             return None
     try:
-        return _charger(str(chemin), chemin.stat().st_mtime)
+        info = chemin.stat()  # UN seul appel : mtime et taille doivent décrire le même instant
+        return _charger(str(chemin), info.st_mtime, info.st_size)
     except (OSError, json.JSONDecodeError):
         logger.exception("[domaine] modèle %s illisible — le smoke-check sera muet sur ce cas",
                          chemin)
@@ -139,7 +145,8 @@ def charger_par_projet_id(project_id) -> dict | None:
     if not chemin.exists():
         return None
     try:
-        return _charger(str(chemin), chemin.stat().st_mtime)
+        info = chemin.stat()  # UN seul appel : mtime et taille doivent décrire le même instant
+        return _charger(str(chemin), info.st_mtime, info.st_size)
     except (OSError, json.JSONDecodeError):
         logger.exception("[domaine] modèle %s illisible (runtime résolveur)", chemin)
         return None
