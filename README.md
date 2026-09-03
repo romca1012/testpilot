@@ -5,15 +5,16 @@ spécification, fait **valider le métier par un humain**, les **exécute réell
 l'application cible, et produit un **verdict honnête** — le statut « testé » n'est jamais une case
 cochée, toujours la conséquence d'une exécution réelle.
 
-- **Vous arrivez sur le projet ?** `docs/ONBOARDING.md` — ce que fait le produit, la stack
-  technique, la carte du code et les pièges connus. Commencez par là.
-- **Architecture** (contexte, conteneurs, composants, décisions qui comptent) :
-  `docs/ARCHITECTURE.md`.
-- **Utiliser l'API** (authentification, rôles, format d'erreur, plafond de charge) : `docs/API.md`.
-- **Vision et périmètre** : `docs/brief-produit-outil-test-management-ia.md` (seule source de
-  vérité, avec son journal d'amendements).
-- **Installer sur un serveur** : `docs/DEPLOIEMENT.md`. Exploiter au quotidien (santé, sauvegardes,
-  pannes courantes) : `docs/EXPLOITATION.md`.
+## Documentation
+
+| Besoin | Document |
+|---|---|
+| Comprendre le système (contexte, conteneurs, composants, décisions) | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Utiliser l'API (auth, rôles, format d'erreur, plafond de charge) | [`docs/API.md`](docs/API.md) |
+| Installer / déployer (SQLite ou PostgreSQL) | [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) |
+| Exploiter au quotidien (santé, sauvegardes, pannes courantes) | [`docs/EXPLOITATION.md`](docs/EXPLOITATION.md) |
+| Vision et périmètre produit (seule source de vérité, journal d'amendements) | [`docs/brief-produit-outil-test-management-ia.md`](docs/brief-produit-outil-test-management-ia.md) |
+| Carte du code et pièges connus, au fil de l'eau | [`docs/ONBOARDING.md`](docs/ONBOARDING.md) |
 
 ## Ce que le produit fait aujourd'hui
 
@@ -123,8 +124,9 @@ SQLite par défaut (`data/testpilot.db`, réglable via `TESTPILOT_DATA_DIR`/`TES
 schéma construit et mis à jour automatiquement à l'ouverture (`store/db.py`) — une sauvegarde
 horodatée est créée AVANT toute migration réellement en attente, dans ce même code de démarrage.
 PostgreSQL réel en option (`TESTPILOT_DB_URL`) : voir `docs/DEPLOIEMENT.md` pour la bascule et la
-migration des données existantes. La base et les
-artefacts générés ne sont pas versionnés — **sauf** la cartographie du domaine
+migration des données existantes.
+
+La base et les artefacts générés ne sont pas versionnés — **sauf** la cartographie du domaine
 (`data/domain/*.json`), qui est une **référence** dont la revue passe par le diff git (voir
 `docs/ARCHITECTURE.md` §4).
 
