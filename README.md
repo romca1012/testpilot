@@ -14,6 +14,7 @@ cochée, toujours la conséquence d'une exécution réelle.
 | Installer / déployer (SQLite ou PostgreSQL) | [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) |
 | Exploiter au quotidien (santé, sauvegardes, pannes courantes) | [`docs/EXPLOITATION.md`](docs/EXPLOITATION.md) |
 | Vision et périmètre produit (seule source de vérité, journal d'amendements) | [`docs/brief-produit-outil-test-management-ia.md`](docs/brief-produit-outil-test-management-ia.md) |
+| Point d'étape pour le management, sans jargon | [`docs/BRIEFING-MANAGEMENT.md`](docs/BRIEFING-MANAGEMENT.md) |
 | Carte du code et pièges connus, au fil de l'eau | [`docs/ONBOARDING.md`](docs/ONBOARDING.md) |
 
 ## Ce que le produit fait aujourd'hui
