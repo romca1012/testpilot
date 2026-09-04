@@ -84,12 +84,15 @@ Copiez `.env.example` vers `.env` sans versionner ce dernier.
 | `TESTPILOT_SECRET_KEY` | chiffrement des secrets des connexions projet |
 | `TESTPILOT_SESSION_SECRET` | signature des sessions utilisateur |
 | `TESTPILOT_METRICS_TOKEN` | jeton Bearer dédié au collecteur Prometheus (32 caractères minimum en production) |
+| `TESTPILOT_PUBLIC_URL` | origine HTTPS canonique, sans chemin, utilisée pour refuser les écritures cross-site |
+| `TESTPILOT_PASSWORD_MIN_LENGTH=12` | longueur minimale imposée aux nouveaux mots de passe en production |
 | `TESTPILOT_ADMIN_USERNAME` | amorçage du premier administrateur sur une base vide |
 | `TESTPILOT_ADMIN_PASSWORD` | mot de passe initial, à changer puis retirer |
 | `TESTPILOT_COOKIE_SECURE=true` | interdit l'envoi du cookie hors HTTPS |
 | `TESTPILOT_SESSION_DAYS=7` | durée recommandée pour le pilote |
 | `TESTPILOT_DB_URL` | optionnel en développement ; **obligatoire en production** et doit cibler PostgreSQL (`postgresql+psycopg://…`) — voir §4 |
 | `TESTPILOT_MAX_CONCURRENT_JOBS` | plafond de tâches de fond simultanées (génération, exécution, exploration), défaut 3 — voir `docs/EXPLOITATION.md` |
+| `TESTPILOT_JOB_RETENTION_DAYS=30` | conservation du journal technique des tâches terminées |
 
 Générez une clé Fernet pour `TESTPILOT_SECRET_KEY` :
 
@@ -104,6 +107,10 @@ réutilisés.
 Le premier Admin est créé uniquement si la table des utilisateurs est vide. Après sa première
 connexion, changez son mot de passe, retirez `TESTPILOT_ADMIN_PASSWORD` de l'environnement, puis
 redémarrez le service.
+
+Avant chaque démarrage de production, le Compose exécute `scripts/preflight.py --browser`. Ce
+contrôle refuse le démarrage si la configuration stricte, PostgreSQL, le volume d'artefacts ou
+Chromium ne sont pas utilisables.
 
 ## 4. Choisir le moteur de base de données : SQLite ou PostgreSQL
 
@@ -246,6 +253,12 @@ Puis vérifiez :
 5. un membre ne peut ouvrir une URL appartenant à un autre projet ;
 6. thèmes clair et sombre n'occultent aucune action principale.
 
+Le contrôle HTTP non destructif correspondant est automatisé :
+
+```bash
+python scripts/verify_deployment.py https://testpilot.example.com
+```
+
 Pour un contrôle continu de la santé de l'instance (y compris la charge des tâches de fond), voir
 `docs/EXPLOITATION.md`.
 
@@ -354,6 +367,9 @@ Ne testez jamais une restauration en écrasant directement l'instance active.
 ## 10. Limites connues
 
 - pilote interne uniquement ; serveur applicatif unique (un seul process `uvicorn`) ;
+- les tâches acceptées sont persistées avant le HTTP 202. Après redémarrage, celles qui étaient
+  encore en attente repartent ; une tâche déjà active est clôturée en échec et rendue relançable,
+  jamais rejouée automatiquement au risque de doubler un effet externe ;
 - SQLite reste le mode par défaut et le plus simple à opérer ; PostgreSQL est disponible (§4) mais
   sa sauvegarde n'est PAS outillée par ce dépôt — à la charge de l'infrastructure qui l'héberge ;
 - absence de scheduler applicatif, d'environnements multiples et de champs projet

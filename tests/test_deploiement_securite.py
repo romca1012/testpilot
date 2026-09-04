@@ -9,6 +9,8 @@ from testpilot.api.app import create_app
 
 def _profil_valide(monkeypatch):
     monkeypatch.setattr(config, "PRODUCTION", True)
+    monkeypatch.setattr(config, "PUBLIC_URL", "https://testpilot.example.test")
+    monkeypatch.setattr(config, "PASSWORD_MIN_LENGTH", 12)
     monkeypatch.setattr(config, "DB_URL", "postgresql+psycopg://u:p@db/testpilot")
     monkeypatch.setattr(config, "COOKIE_SECURE", True)
     monkeypatch.setattr(config, "SESSION_SECRET", "s" * 32)
@@ -19,6 +21,8 @@ def _profil_valide(monkeypatch):
 def test_production_refuse_sqlite_et_les_secrets_implicites(monkeypatch):
     _profil_valide(monkeypatch)
     monkeypatch.setattr(config, "DB_URL", "")
+    monkeypatch.setattr(config, "PUBLIC_URL", "http://incorrect/path")
+    monkeypatch.setattr(config, "PASSWORD_MIN_LENGTH", 8)
     monkeypatch.setattr(config, "COOKIE_SECURE", False)
     monkeypatch.setattr(config, "SESSION_SECRET", "court")
     monkeypatch.setattr(config, "METRICS_TOKEN", "court")
@@ -29,6 +33,8 @@ def test_production_refuse_sqlite_et_les_secrets_implicites(monkeypatch):
 
     message = str(erreur.value)
     assert "PostgreSQL" in message
+    assert "PUBLIC_URL" in message
+    assert "PASSWORD_MIN_LENGTH" in message
     assert "COOKIE_SECURE" in message
     assert "SESSION_SECRET" in message
     assert "METRICS_TOKEN" in message
@@ -38,6 +44,26 @@ def test_production_refuse_sqlite_et_les_secrets_implicites(monkeypatch):
 def test_production_accepte_un_profil_complet(monkeypatch):
     _profil_valide(monkeypatch)
     config.validate_production()
+
+
+def test_production_refuse_un_mot_de_passe_admin_trop_court(monkeypatch):
+    _profil_valide(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_PASSWORD", "trop-court")
+    with pytest.raises(RuntimeError, match="ADMIN_PASSWORD"):
+        config.validate_production()
+
+
+def test_production_refuse_une_requete_cross_site_avant_la_base(monkeypatch):
+    _profil_valide(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_USERNAME", "")
+    monkeypatch.setattr(config, "ADMIN_PASSWORD", "")
+    client = TestClient(create_app())
+    reponse = client.post(
+        "/api/auth/login", json={"username": "x", "password": "y"},
+        headers={"Origin": "https://attaquant.example", "Sec-Fetch-Site": "cross-site"},
+    )
+    assert reponse.status_code == 403
+    assert reponse.json()["detail"] == "origine refusée"
 
 
 @pytest.fixture

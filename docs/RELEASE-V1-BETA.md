@@ -213,3 +213,18 @@ doivent être nettoyés avant de rendre la CI strictement silencieuse.
 Restent externes au dépôt avant le déploiement pilote : choix du serveur, nom DNS interne,
 certificat/reverse proxy HTTPS, coffre de secrets, emplacement des sauvegardes et test de
 restauration sur cette infrastructure.
+
+## 9. Qualification technique actuelle — 4 septembre 2026
+
+- la suite backend complète passe : **1 641 tests**, sans échec (les scénarios opt-in dépendent
+  d'un PostgreSQL ou d'outils système explicites) ;
+- la suite frontend passe : **244 tests**, typage et build de production compris ;
+- la migration de données SQLite vers PostgreSQL et le runtime PostgreSQL sont éprouvés sur un
+  PostgreSQL 16 jetable ;
+- les tâches longues sont persistées avant le HTTP 202 : attente reprise après redémarrage,
+  traitement actif interrompu signalé et rendu relançable ;
+- `scripts/preflight.py --browser` vérifie configuration, base, stockage et Chromium avant le
+  démarrage ; `scripts/verify_deployment.py https://...` réalise le smoke test HTTP non destructif.
+
+Le GO équipes reste conditionné uniquement à la recette manuelle des douze points du §4 sur
+l'instance retenue, notamment la restauration réelle et les droits des quatre rôles.

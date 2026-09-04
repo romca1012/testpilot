@@ -17,7 +17,7 @@ from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import exploration_service
 from testpilot.api.services.project_membership_service import ProjectMembershipService
-from testpilot.guardrails import concurrency
+from testpilot.guardrails import durable_jobs
 from testpilot.store.repositories import (
     CaseGroupRepo,
     DuplicateName,
@@ -176,8 +176,8 @@ def start_exploration(project_id: int, background: BackgroundTasks, conn=Depends
 
     # Plafonné (guardrails/concurrency.py) : l'exploration ouvre elle aussi un navigateur réel —
     # attend son tour dans la file partagée avec générations et exécutions.
-    background.add_task(concurrency.run_gated, exploration_service.run_exploration, job_id,
-                        queue_label=f"exploration:{job_id}", **params)
+    durable_jobs.submit(conn, background, kind="exploration", args=[job_id], kwargs=params,
+                        queue_label=f"exploration:{job_id}")
     return schemas.ExplorationOut(running=True, job_id=job_id)
 
 

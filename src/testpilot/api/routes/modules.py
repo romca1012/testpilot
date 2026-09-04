@@ -23,7 +23,7 @@ from testpilot.analysis import spec_analyzer
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import generation_service, spec_extract
-from testpilot.guardrails import concurrency
+from testpilot.guardrails import concurrency, durable_jobs
 from testpilot.store.repositories import (
     CaseGroupRepo,
     CaseRepo,
@@ -219,8 +219,8 @@ def add_case(module_id: int, body: schemas.AddCaseIn, background: BackgroundTask
     # Plafonné (guardrails/concurrency.py) : la tâche de fond attend son tour dans la file
     # partagée avant de lancer réellement la génération (appels LLM) — le 202 répond, lui, tout
     # de suite.
-    background.add_task(concurrency.run_gated, generation_service.run_generation, job_id,
-                        queue_label=f"generation:{job_id}", **params)
+    durable_jobs.submit(conn, background, kind="generation", args=[job_id], kwargs=params,
+                        queue_label=f"generation:{job_id}")
     return schemas.GenerationJobOut(job_id=job_id, status="running")
 
 
@@ -278,6 +278,6 @@ def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: B
 
     # Même `job_id` que `start_generation` : la position dans la file reprend l'identité du job,
     # pas une nouvelle file par appel (guardrails/concurrency.py).
-    background.add_task(concurrency.run_gated, generation_service.resume_generation, job_id,
-                        queue_label=f"generation:{job_id}", **params)
+    durable_jobs.submit(conn, background, kind="generation_resume", args=[job_id], kwargs=params,
+                        queue_label=f"generation:{job_id}")
     return schemas.GenerationJobOut(job_id=job_id, status="running")

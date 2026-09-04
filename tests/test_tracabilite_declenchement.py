@@ -198,7 +198,13 @@ def _connecte(client, username: str, password: str):
 
 
 @pytest.fixture
-def client(conn):
+def client(conn, monkeypatch, tmp_path):
+    # Le lifespan et le middleware ouvrent leur propre connexion avant l'entree
+    # dans le corps du test : les chemins doivent donc etre isoles ici, avant la
+    # construction du TestClient.
+    db_path = conn.execute("PRAGMA database_list").fetchone()[2]
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(config, "DB_PATH", db_path)
     app.dependency_overrides[get_conn] = lambda: conn
     with TestClient(app) as c:
         yield c
@@ -209,13 +215,6 @@ def test_lancer_un_run_via_l_api_trace_le_vrai_compte_connecte(
         conn, client, monkeypatch, tmp_path):
     """Bout en bout, sur la route réellement câblée (`POST /api/cases/{id}/runs`) : c'est le
     compte de SESSION qui signe l'exécution, pas un mot générique."""
-    # ⚠️ Le middleware d'auth ouvre SA PROPRE connexion via `config.DB_PATH` (même piège que
-    # `test_reglages_instance.py`) — sans cet alignement, le jeton de « Awa » serait résolu
-    # contre une autre base que celle de ce test.
-    db_path = conn.execute("PRAGMA database_list").fetchone()[2]
-    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(config, "DB_PATH", db_path)
-
     pid = ProjectRepo(conn).create(name="P", connector_type="odoo", base_url="http://x:8069",
                                    database="db", username="qa", password="secret")
     cid, vid = _cas_pret(conn, project_id=pid)

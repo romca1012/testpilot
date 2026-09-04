@@ -23,6 +23,8 @@ APP_VERSION = "0.1.0"
 PRODUCTION = os.getenv("TESTPILOT_PRODUCTION", "false").strip().lower() in {
     "1", "true", "yes", "on",
 }
+PUBLIC_URL = os.getenv("TESTPILOT_PUBLIC_URL", "").strip().rstrip("/")
+PASSWORD_MIN_LENGTH = int(os.getenv("TESTPILOT_PASSWORD_MIN_LENGTH", "8"))
 
 # ── Racines de chemins ────────────────────────────────────────────────────────
 SRC_DIR = Path(__file__).resolve().parent
@@ -71,6 +73,7 @@ REPAIR_STALL_LIMIT = int(os.getenv("TESTPILOT_REPAIR_STALL_LIMIT", "3"))
 # n'existait avant ce garde-fou). 3 par défaut — prudent sur un poste/serveur partagé ; à ajuster
 # selon la machine qui héberge TestPilot, pas selon le nombre d'utilisateurs.
 MAX_CONCURRENT_JOBS = int(os.getenv("TESTPILOT_MAX_CONCURRENT_JOBS", "3"))
+BACKGROUND_JOB_RETENTION_DAYS = int(os.getenv("TESTPILOT_JOB_RETENTION_DAYS", "30"))
 
 # Plafond d'UN run d'agent (génération, analyse) — recalibré le 2026-07-17 sur mesure réelle.
 # Il valait $2,00 ≈ 1,85 EUR : presque le DOUBLE du §9 à lui seul, et **16,6× le coût réel**.
@@ -227,6 +230,10 @@ def validate_production() -> None:
     erreurs = []
     if not DB_URL.startswith(("postgresql://", "postgresql+psycopg://")):
         erreurs.append("TESTPILOT_DB_URL doit cibler PostgreSQL")
+    if not PUBLIC_URL.startswith("https://") or "/" in PUBLIC_URL[8:]:
+        erreurs.append("TESTPILOT_PUBLIC_URL doit être une origine HTTPS sans chemin")
+    if PASSWORD_MIN_LENGTH < 12:
+        erreurs.append("TESTPILOT_PASSWORD_MIN_LENGTH doit être au moins 12")
     if not COOKIE_SECURE:
         erreurs.append("TESTPILOT_COOKIE_SECURE doit valoir true")
     if len((SESSION_SECRET or "").strip()) < 32:
@@ -235,6 +242,8 @@ def validate_production() -> None:
         erreurs.append("TESTPILOT_METRICS_TOKEN doit contenir au moins 32 caractères")
     if not (SECRET_KEY or "").strip():
         erreurs.append("TESTPILOT_SECRET_KEY doit être fourni par le coffre de secrets")
+    if ADMIN_PASSWORD and len(ADMIN_PASSWORD) < PASSWORD_MIN_LENGTH:
+        erreurs.append("TESTPILOT_ADMIN_PASSWORD est plus court que la politique")
     if erreurs:
         raise RuntimeError("configuration de production refusée : " + "; ".join(erreurs))
 

@@ -19,6 +19,7 @@ from testpilot.api import access
 from testpilot.api.app import app
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import (
+    BackgroundJobRepo,
     CaseRepo,
     ExecutionRepo,
     ModuleRepo,
@@ -29,6 +30,22 @@ from testpilot.store.repositories import (
     UserRepo,
     VersionRepo,
 )
+
+
+def test_file_durable_reclame_atomiquement_un_job_sur_postgresql(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    job_id = f"durable-{uuid4().hex}"
+    conn = get_initialized_db()
+    try:
+        repo = BackgroundJobRepo(conn)
+        repo.creer(job_id, kind="execution", queue_label=job_id,
+                   payload={"args": [1], "kwargs": {}})
+        assert repo.claim(job_id) is True
+        assert repo.claim(job_id) is False
+        repo.terminer(job_id)
+        assert repo.get(job_id)["status"] == "completed"
+    finally:
+        conn.close()
 
 URL = os.getenv("TESTPILOT_TEST_POSTGRES_URL", "")
 pytestmark = pytest.mark.skipif(not URL, reason="PostgreSQL de test non configuré")

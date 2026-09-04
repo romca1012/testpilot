@@ -1,20 +1,19 @@
-"""Modèle de schéma PORTABLE (SQLAlchemy Core) — fondation PostgreSQL, phase 1/3.
+"""Modèle de schéma PORTABLE (SQLAlchemy Core), cible des migrations Alembic PostgreSQL.
 
-⚠️ **Ce module ne pilote AUCUN runtime aujourd'hui.** `db.py`/`repositories.py` restent seuls aux
-commandes (SQLite brut, `sqlite3.Row`, SQL à la main — décision délibérée à conserver côté
-requêtes). Ce fichier n'est que la CIBLE que la fondation Alembic (`alembic/`) sait recréer sur
-SQLite ET sur PostgreSQL, en vue de la bascule réelle (phase 3). Voir `docs/ARCHITECTURE.md` §4.
+Le runtime PostgreSQL est réellement branché via `store/portable_connection.py`. Les repositories
+conservent leur API SQL historique et l'adaptateur traduit les particularités nécessaires ; ce
+module reste la source déclarative utilisée par Alembic et par les contrôles de migration.
 
-**Origine des tables ci-dessous : l'INTROSPECTION, pas une relecture des 37 migrations.** Chaque
+**Origine des tables ci-dessous : l'INTROSPECTION, pas une relecture des 41 migrations.** Chaque
 table/colonne/CHECK/index a été vérifié contre la sortie réelle de
 ``python scripts/introspect_schema.py`` — lui-même construit en appelant
-``testpilot.store.db.get_initialized_db()`` (donc `schema.sql` PUIS les 37 migrations, dans
+``testpilot.store.db.get_initialized_db()`` (donc `schema.sql` PUIS les migrations, dans
 l'ordre réel) et en interrogeant SQLite (`sqlite_master`, `PRAGMA table_info`, etc.). Retranscrire
 les migrations à l'œil, une par une, est exactement le mode de défaillance que ce lot évite — voir
 la leçon de la migration 19 dans `db.py` (« mes tests exerçaient la dérivation du verdict, jamais
 la persistance de la nouvelle valeur »). Le garde-fou anti-dérive
 (`tests/test_schema_sa_portable.py`) vérifie que ce fichier reste synchronisé : toute migration
-future (38, 39…) ajoutée à `db.py` SANS son équivalent ici fait échouer ce test.
+future (42, 43…) ajoutée à `db.py` SANS son équivalent ici fait échouer ce test.
 
 **Conventions reprises de `schema.sql`** (elles ne sont pas réinventées ici) :
 - Timestamps en `Text` (ISO-8601 UTC), jamais un type date/heure natif du moteur.
@@ -31,16 +30,9 @@ ni ``SERIAL``/``IDENTITY`` à la main. C'est SQLAlchemy qui choisit le DDL propr
 au moment du ``CREATE TABLE`` (voir `docs/ARCHITECTURE.md` §4 pour l'extrait exact observé sur
 les deux moteurs). C'est tout l'intérêt de ce module : ne plus jamais retaper un dialecte SQL.
 
-**Ce qui NE traverse PAS encore ce modèle (limites honnêtes, détaillées dans la note de
-conception) :**
-- `COLLATE NOCASE` sur les index d'unicité (ex. `uq_project_name`) : une spécificité SQLite pour
-  laquelle Postgres n'a pas d'équivalent direct sans `citext` ou une expression d'index dédiée.
-  Les index sont recréés SANS cette collation ici — l'unicité insensible à la casse ASCII qu'elle
-  procurait sur SQLite n'est PAS garantie sous Postgres par ce seul modèle. Phase 2/3.
-- Le TRIGGER `trg_resultat_suit_le_mode_de_sa_campagne` (migration 27, sur `test_result`) : un
-  déclencheur SQL n'est pas portable via SQLAlchemy Core sans réécrire son corps par moteur. Il
-  n'est PAS reproduit ici ; l'invariant qu'il protège devra être réaffirmé explicitement en phase
-  2/3 (probablement côté application, ou par un DDL spécifique à chaque moteur dans Alembic).
+**Compléments PostgreSQL.** Les index d'unicité insensibles à la casse et le trigger
+`trg_resultat_suit_le_mode_de_sa_campagne` ne sont pas exprimés de façon portable ici : ils sont
+installés par la migration PostgreSQL dédiée `c4a1e95d7820`, puis vérifiés par les tests runtime.
 """
 
 from __future__ import annotations
@@ -62,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 40
+ALIGNED_WITH_SCHEMA_VERSION = 41
 
 metadata = MetaData()
 
@@ -525,6 +517,26 @@ user = Table(
     ),
     UniqueConstraint("username", name="uq_user_username"),
     sqlite_autoincrement=True,
+)
+
+
+background_job = Table(
+    "background_job",
+    metadata,
+    Column("id", Text, primary_key=True, autoincrement=False),
+    Column("kind", Text, nullable=False),
+    Column("queue_label", Text, nullable=False),
+    Column("payload", Text, nullable=False, server_default="{}"),
+    Column("status", Text, nullable=False),
+    Column("error", Text, nullable=False, server_default=""),
+    Column("created_at", Text, nullable=False),
+    Column("started_at", Text, nullable=False, server_default=""),
+    Column("finished_at", Text, nullable=False, server_default=""),
+    CheckConstraint(
+        "status IN ('queued','running','completed','failed')",
+        name="ck_background_job_status",
+    ),
+    Index("idx_background_job_status_created", "status", "created_at"),
 )
 
 

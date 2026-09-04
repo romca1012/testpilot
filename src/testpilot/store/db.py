@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 40
+_SCHEMA_VERSION = 41
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -222,6 +222,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_39_session_version(conn)
     if version < 40:
         _migrate_40_login_failure(conn)
+    if version < 41:
+        _migrate_41_background_job(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -1688,3 +1690,21 @@ def _migrate_40_login_failure(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_login_failure_key_time"
         " ON login_failure(attempt_key, occurred_at)")
+
+
+def _migrate_41_background_job(conn: sqlite3.Connection) -> None:
+    """File durable des traitements longs acceptés par l'API."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS background_job ("
+        " id TEXT PRIMARY KEY,"
+        " kind TEXT NOT NULL,"
+        " queue_label TEXT NOT NULL,"
+        " payload TEXT NOT NULL DEFAULT '{}',"
+        " status TEXT NOT NULL CHECK (status IN ('queued','running','completed','failed')),"
+        " error TEXT NOT NULL DEFAULT '',"
+        " created_at TEXT NOT NULL,"
+        " started_at TEXT NOT NULL DEFAULT '',"
+        " finished_at TEXT NOT NULL DEFAULT '')")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_background_job_status_created"
+        " ON background_job(status, created_at)")

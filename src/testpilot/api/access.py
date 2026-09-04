@@ -87,7 +87,7 @@ _PBKDF2_PREFIXE = "pbkdf2_sha256"
 # Plancher posé le 2026-08-11 : jusque-là, un mot de passe d'un seul caractère était accepté
 # (seule garde : non vide). Pas de politique plus riche (majuscule/chiffre/symbole) — un plancher
 # de longueur simple couvre l'essentiel pour une équipe interne, sans friction disproportionnée.
-MOT_DE_PASSE_LONGUEUR_MIN = 8
+MOT_DE_PASSE_LONGUEUR_MIN = config.PASSWORD_MIN_LENGTH
 
 
 def niveau(role: str) -> int:

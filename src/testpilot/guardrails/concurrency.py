@@ -8,20 +8,10 @@ ouvre un navigateur Playwright réel (CPU/mémoire non négligeables) et souvent
 Anthropic (coût, débit). Dix clics simultanés sur « Lancer » démarraient dix navigateurs et dix
 appels LLM en parallèle — jamais rejeté, jamais mis en attente, jamais visible.
 
-**Le choix fait ici** : un admission-control EN MÉMOIRE — sémaphore borné + file FIFO — et non
-une file externe (Celery/Redis). Même logique que l'anti-brute-force du login
-(`api/routes/auth.py`, `_echecs_connexion` : un dict + `threading.Lock`, pas de table) : un
-plafond de parallélisme n'a besoin que d'un compteur du PROCESSUS, pas d'un état qui doit
-survivre à un redémarrage. Introduire une file externe n'est justifié que si ce plafond simple
-s'avère insuffisant, MESURÉ — pas supposé à l'avance.
-
-**Limite assumée et non cachée** : une tâche en attente vit uniquement dans ce module, EN
-MÉMOIRE. Si le serveur redémarre pendant qu'une tâche patiente dans la file (jamais démarrée),
-elle est PERDUE — exactement comme n'importe quelle `BackgroundTasks` de FastAPI aujourd'hui
-(rien de nouveau n'est perdu ici ; la limite préexistait, elle n'est simplement pas comblée par
-ce lot). Sur plusieurs machines/processus (aucun aujourd'hui), chaque processus aurait SON PROPRE
-plafond, non partagé — un vrai frein multi-instance nécessiterait un état partagé (Redis...),
-hors périmètre ici.
+**Le choix fait ici** : le sémaphore et l'ordre d'admission restent en mémoire, tandis que
+`guardrails/durable_jobs.py` persiste chaque tâche AVANT la réponse 202. Les tâches qui n'avaient
+pas commencé survivent donc au redémarrage. Le plafond reste propre au processus : plusieurs
+workers ou machines nécessiteraient un ordonnanceur partagé.
 """
 
 from __future__ import annotations

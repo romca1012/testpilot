@@ -185,11 +185,12 @@ Ce que ça veut dire pour un intégrateur :
   toutes les tâches de fond plafonnées par ce mécanisme (génération, exécution, exploration), pas
   seulement la génération : c'est l'endpoint de suivi de job déjà existant le plus proche, étendu
   plutôt que dupliqué.
-- Cette file vit **en mémoire du processus**, sans persistance ni file externe (pas de
-  Celery/Redis). Une tâche encore en attente (jamais démarrée) au moment d'un redémarrage du
-  serveur est perdue — un comportement préexistant pour toute tâche de fond FastAPI, pas une
-  régression introduite par ce plafond. Sur un déploiement à plusieurs processus (aucun à ce jour),
-  chaque processus aurait son propre plafond, non partagé entre eux.
+- Le plafond d'exécution vit dans le processus, mais chaque tâche acceptée est d'abord inscrite
+  dans `background_job`. Une tâche encore en attente au redémarrage est rejouée. Une tâche déjà
+  active est marquée en échec et rendue relançable : elle n'est pas rejouée aveuglément, car un
+  navigateur ou une application externe ne peut pas participer à une transaction exactement-une-
+  fois. Sur plusieurs processus, chaque processus aurait encore son propre plafond ; ce mode reste
+  donc réservé au déploiement mono-processus.
 - Le plafond est un **frein sur un seul poste/serveur**, pas un ordonnanceur multi-instance : il
   n'a de sens que tant que TestPilot tourne en un seul processus.
 

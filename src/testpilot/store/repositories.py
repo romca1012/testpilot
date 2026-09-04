@@ -2623,6 +2623,85 @@ class GenerationJobRepo:
         self.conn.commit()
 
 
+class BackgroundJobRepo:
+    """Journal durable des tâches acceptées avant leur exécution hors requête HTTP."""
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def creer(self, job_id: str, *, kind: str, queue_label: str, payload: dict) -> None:
+        contenu = secrets_mod.chiffrer(json.dumps(payload, ensure_ascii=False))
+        self.conn.execute(
+            "INSERT INTO background_job (id, kind, queue_label, payload, status, created_at)"
+            " VALUES (?,?,?,?, 'queued', ?)",
+            (job_id, kind, queue_label, contenu, now_iso()),
+        )
+        self.conn.commit()
+
+    def get(self, job_id: str) -> dict | None:
+        row = self.conn.execute("SELECT * FROM background_job WHERE id=?", (job_id,)).fetchone()
+        if row is None:
+            return None
+        resultat = dict(row)
+        resultat["payload"] = self._payload(resultat["payload"])
+        return resultat
+
+    def claim(self, job_id: str) -> bool:
+        cur = self.conn.execute(
+            "UPDATE background_job SET status='running', started_at=?, error=''"
+            " WHERE id=? AND status='queued'",
+            (now_iso(), job_id),
+        )
+        self.conn.commit()
+        return cur.rowcount == 1
+
+    def terminer(self, job_id: str, *, erreur: str = "") -> None:
+        self.conn.execute(
+            "UPDATE background_job SET status=?, error=?, finished_at=? WHERE id=?",
+            ("failed" if erreur else "completed", erreur[:1000], now_iso(), job_id),
+        )
+        self.conn.commit()
+
+    def queued_ids(self) -> list[str]:
+        return [r["id"] for r in self.conn.execute(
+            "SELECT id FROM background_job WHERE status='queued' ORDER BY created_at, id")]
+
+    def interrompus(self) -> list[dict]:
+        rows = _rows(self.conn.execute(
+            "SELECT * FROM background_job WHERE status='running' ORDER BY created_at, id"))
+        if rows:
+            self.conn.execute(
+                "UPDATE background_job SET status='failed', error=?, finished_at=?"
+                " WHERE status='running'",
+                ("traitement interrompu par un arrêt du serveur; relance manuelle nécessaire",
+                 now_iso()),
+            )
+            self.conn.commit()
+        for row in rows:
+            row["payload"] = self._payload(row.get("payload"))
+        return rows
+
+    def purger_termines(self, avant_iso: str) -> int:
+        cur = self.conn.execute(
+            "DELETE FROM background_job WHERE status IN ('completed','failed')"
+            " AND finished_at<>'' AND finished_at<?",
+            (avant_iso,),
+        )
+        self.conn.commit()
+        return cur.rowcount
+
+    @staticmethod
+    def _payload(valeur: str | None) -> dict:
+        contenu = secrets_mod.dechiffrer(valeur)
+        try:
+            resultat = json.loads(contenu or "{}")
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("payload de tâche durable illisible") from exc
+        if not isinstance(resultat, dict):
+            raise RuntimeError("payload de tâche durable invalide")
+        return resultat
+
+
 def _depuis_iso(valeur: str) -> datetime | None:
     """Parse un horodatage écrit par `now_iso()` — tolérant : une valeur illisible ne doit
     jamais faire planter la détection de blocage, seulement la désactiver pour cette ligne."""

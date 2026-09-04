@@ -131,6 +131,8 @@ Pour la production, utilisez `Dockerfile` et `compose.production.yml`. Le profil
 `TESTPILOT_PRODUCTION=true` refuse de démarrer sans PostgreSQL, cookie HTTPS et secrets externes.
 Swagger et ReDoc sont servis après connexion sous `/api/docs` et `/api/redoc`. Prometheus collecte
 `/metrics` avec le jeton Bearer `TESTPILOT_METRICS_TOKEN`.
+Les traitements longs sont journalisés en base avant leur acceptation : les tâches encore en
+attente reprennent après redémarrage, sans rejouer automatiquement un traitement déjà actif.
 La disponibilité réelle se vérifie sur `GET /api/health/ready`.
 
 La base et les artefacts générés ne sont pas versionnés — **sauf** la cartographie du domaine

@@ -10,7 +10,7 @@ from testpilot.api import erreurs, access, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import generation_service, run_service, script_service
 from testpilot.generation import assertion_lint, domain_model, repair_diff, smoke_check
-from testpilot.guardrails import concurrency
+from testpilot.guardrails import durable_jobs
 from testpilot.store.repositories import (
     CaseRepo,
     DuplicateName,
@@ -239,8 +239,8 @@ def automate_case(case_id: int, background: BackgroundTasks, request: Request,
         raise erreurs.depuis_service(err.code, err.detail)
     # Plafonné (guardrails/concurrency.py) : la tâche de fond attend son tour dans la file
     # partagée avant de lancer réellement la génération — le clic répond, lui, immédiatement.
-    background.add_task(concurrency.run_gated, generation_service.run_automation, job_id,
-                        queue_label=f"automation:{job_id}", **params)
+    durable_jobs.submit(conn, background, kind="automation", args=[job_id], kwargs=params,
+                        queue_label=f"automation:{job_id}")
     return schemas.GenerationJobOut(job_id=job_id, status="running")
 
 
@@ -485,8 +485,9 @@ def start_run(case_id: int, background: BackgroundTasks, request: Request, conn=
         raise erreurs.depuis_service(err.code, err.detail)
     # Plafonné (guardrails/concurrency.py) : un run ouvre un navigateur Playwright réel — la
     # tâche de fond attend son tour, la réponse HTTP ne l'attend pas.
-    background.add_task(concurrency.run_gated, run_service.run_execution, eid, module, cid, vid,
-                        queue_label=f"execution:{eid}", triggered_by=triggered_by)
+    durable_jobs.submit(
+        conn, background, kind="execution", args=[eid, module, cid, vid],
+        kwargs={"triggered_by": triggered_by}, queue_label=f"execution:{eid}")
     return schemas.RunResponse(execution_id=eid, status="running")
 
 

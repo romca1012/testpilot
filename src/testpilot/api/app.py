@@ -12,6 +12,7 @@ import hmac
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -54,10 +55,21 @@ _FRONTEND_DIST = config.BASE_DIR / "frontend" / "dist"
 
 def create_app() -> FastAPI:
     config.validate_production()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        # Une tâche acceptée (202) existe en base avant la réponse. Les travaux qui n'avaient pas
+        # encore commencé repartent ici ; ceux interrompus sont clôturés explicitement, jamais
+        # rejoués à l'aveugle au risque de doubler un effet externe.
+        from testpilot.guardrails import durable_jobs
+        durable_jobs.recover_at_startup()
+        yield
+
     app = FastAPI(
         title="TestPilot API", version="0.1.0",
         description="Référentiel de tests à deux axes + gate de relecture (Inc. 1.1)",
         docs_url="/api/docs", redoc_url="/api/redoc", openapi_url="/api/openapi.json",
+        lifespan=lifespan,
     )
 
     async def entetes_securite_et_trace(request: Request, call_next):
@@ -107,6 +119,12 @@ def create_app() -> FastAPI:
         n'envoie pas le cookie de session sur cette requête-là (elle précède la vraie, qui seule
         le porte).
         """
+        if config.PRODUCTION and request.method not in {"GET", "HEAD", "OPTIONS"}:
+            origine = request.headers.get("Origin", "").rstrip("/")
+            contexte = request.headers.get("Sec-Fetch-Site", "").lower()
+            if contexte == "cross-site" or (origine and origine != config.PUBLIC_URL):
+                return JSONResponse(status_code=403, content={"detail": "origine refusée"})
+
         if request.method == "OPTIONS" or access.chemin_libre(request.url.path):
             return await call_next(request)
 

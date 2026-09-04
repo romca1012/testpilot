@@ -77,8 +77,8 @@ Chaque ligne ci-dessous a été vérifiée en la faisant tourner réellement, pa
   périodique programmable, testée par un cycle complet perte→restauration.
 - Choix du moteur de base de données — léger pour un pilote (SQLite) ou robuste pour plusieurs
   équipes (PostgreSQL), les deux vérifiés en conditions réelles.
-- Plafond de charge — un pic d'usage simultané est mis en file d'attente proprement, jamais perdu
-  ni source de ralentissement généralisé.
+- Plafond de charge — un pic d'usage simultané est mis en file persistée. Une tâche en attente
+  reprend après redémarrage ; une tâche interrompue est signalée et relançable, sans doublon caché.
 
 **Pas encore** :
 

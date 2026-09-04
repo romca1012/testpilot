@@ -79,8 +79,9 @@ Quatre conteneurs, pas plus :
   développement (CORS explicitement autorisé pour les origines Vite, voir `_DEV_ORIGINS`).
 - **API** — FastAPI (`api/app.py`), lancée par `uvicorn testpilot.api.app:app`. Porte
   l'authentification (middleware `verrou_acces`), les routes, les services applicatifs, et déclenche
-  les tâches longues (génération, exécution, exploration) en tâche de fond FastAPI
-  (`BackgroundTasks`), admises par une file d'attente à concurrence bornée (§4, `guardrails/`).
+  les tâches longues (génération, exécution, exploration) en tâche de fond FastAPI. Elles sont
+  inscrites dans `background_job` avant le HTTP 202, puis admises par une file à concurrence
+  bornée (`guardrails/durable_jobs.py` et `guardrails/concurrency.py`).
 - **Sous-processus d'exécution** — un vrai processus `behave` est lancé pour chaque run
   (`execution/behave_runner.py`), dans un dossier temporaire assemblé à la volée (harnais +
   bibliothèque de steps + le `.feature` du module). C'est ce sous-processus, piloté par Playwright,
