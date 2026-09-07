@@ -55,6 +55,13 @@ class SessionOut(BaseModel):
     authenticated: bool
     name: str = ""
     role: str = ""
+    must_change_password: bool = False
+    password_min_length: int = access.MOT_DE_PASSE_LONGUEUR_MIN
+
+
+def _session_out(user: dict) -> SessionOut:
+    return SessionOut(authenticated=True, name=user["username"], role=user["role"],
+                      must_change_password=bool(user.get("must_change_password")))
 
 
 def _poser_cookie_session(response: Response, utilisateur: dict, session_version: int | None = None):
@@ -75,8 +82,7 @@ def session(request: Request, conn=Depends(get_conn)):
     utilisateur = access.utilisateur_actuel(conn, request)
     if utilisateur is None:
         return SessionOut(authenticated=False)
-    return SessionOut(authenticated=True, name=utilisateur["username"],
-                      role=utilisateur["role"])
+    return _session_out(utilisateur)
 
 
 @router.post("/login", response_model=SessionOut)
@@ -96,7 +102,10 @@ def login(body: LoginIn, request: Request, response: Response, conn=Depends(get_
     utilisateur = UserRepo(conn).get_by_username(identifiant)
     hachage = utilisateur["password_hash"] if utilisateur is not None else _HACHAGE_FACTICE
     mot_de_passe_ok = access.verifier_mot_de_passe(body.password, hachage)
-    if not mot_de_passe_ok or utilisateur is None or not utilisateur.get("is_active"):
+    expired = bool(utilisateur and utilisateur.get("must_change_password")
+                   and utilisateur.get("password_expires_at")
+                   and utilisateur["password_expires_at"] <= maintenant)
+    if not mot_de_passe_ok or utilisateur is None or not utilisateur.get("is_active") or expired:
         if echecs.record(cle_limitation, maintenant,
                          LOGIN_FENETRE_SECONDES) >= LOGIN_MAX_ECHECS:
             _refuser_trop_de_tentatives()
@@ -108,12 +117,12 @@ def login(body: LoginIn, request: Request, response: Response, conn=Depends(get_
     # Les comptes historiques restent utilisables puis sont renforcés au premier login réussi.
     if access.hachage_a_mettre_a_niveau(hachage):
         nouvelle_version = UserRepo(conn).set_password_hash(
-            utilisateur["id"], access.hacher_mot_de_passe(body.password))
+            utilisateur["id"], access.hacher_mot_de_passe(body.password),
+            temporary=bool(utilisateur.get("must_change_password")))
         utilisateur["session_version"] = nouvelle_version
 
     _poser_cookie_session(response, utilisateur)
-    return SessionOut(authenticated=True, name=utilisateur["username"],
-                      role=utilisateur["role"])
+    return _session_out(utilisateur)
 
 
 @router.post("/logout", response_model=SessionOut)
@@ -162,18 +171,26 @@ def changer_son_mot_de_passe(body: PasswordChangeIn, request: Request, response:
     if utilisateur is None:  # ne devrait jamais arriver — le middleware l'a déjà exigé
         raise HTTPException(status_code=401, detail="session requise")
 
+    compteur = LoginFailureRepo(conn)
+    cle = f"password-change:{utilisateur['id']}"
+    maintenant = time.time()
+    if compteur.count_recent(cle, maintenant, LOGIN_FENETRE_SECONDES) >= LOGIN_MAX_ECHECS:
+        _refuser_trop_de_tentatives()
+
     # `.get(...)` plutôt que `[...]` : le bouchon de test `_connecte_par_defaut`
     # (`tests/conftest.py`) pose un compte Admin de complaisance SANS `password_hash` quand aucun
     # cookie n'est présent — hors tests, un `utilisateur` réel en porte toujours un.
     if not access.verifier_mot_de_passe(body.old_password, utilisateur.get("password_hash", "")):
+        compteur.record(cle, maintenant, LOGIN_FENETRE_SECONDES)
         raise erreurs.ErreurMetier("mot_de_passe_incorrect", "l'ancien mot de passe est incorrect")
 
-    if len(body.new_password) < access.MOT_DE_PASSE_LONGUEUR_MIN:
-        raise erreurs.ErreurMetier(
-            "requete_invalide",
-            f"le mot de passe doit compter au moins {access.MOT_DE_PASSE_LONGUEUR_MIN} caractères")
-
-    nouvelle_version = UserRepo(conn).set_password_hash(
-        utilisateur["id"], access.hacher_mot_de_passe(body.new_password))
+    access.verifier_politique_mot_de_passe(body.new_password, utilisateur["username"])
+    if body.old_password == body.new_password:
+        raise erreurs.ErreurMetier("requete_invalide", "choisissez un mot de passe différent du précédent")
+    nouvelle_version = UserRepo(conn).change_own_password(
+        utilisateur, access.hacher_mot_de_passe(body.new_password))
+    if nouvelle_version is None:
+        raise HTTPException(status_code=401, detail="session modifiée ; reconnectez-vous")
+    compteur.clear(cle)
     _poser_cookie_session(response, utilisateur, nouvelle_version)
     return SessionOut(authenticated=True, name=utilisateur["username"], role=utilisateur["role"])

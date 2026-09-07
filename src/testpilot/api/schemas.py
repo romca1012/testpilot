@@ -310,6 +310,9 @@ class CaseMetierIn(BaseModel):
     refs: str | None = None
     estimate: str | None = None
     editor: str = "ui"
+    # Version consultée par l'appelant à l'OUVERTURE du formulaire (audit 2026-09-07, édition
+    # concurrente) — `None` désactive le contrôle (compatibilité des anciens clients).
+    base_version_id: int | None = None
 
 
 class CaseMetierOut(BaseModel):
@@ -323,6 +326,7 @@ class ScriptEditIn(BaseModel):
     feature_content: str
     steps_content: str
     editor: str = "ui"
+    base_version_id: int | None = None  # même garde-fou anti-édition-concurrente que CaseMetierIn
 
 
 class SharedStepOut(BaseModel):

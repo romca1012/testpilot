@@ -93,6 +93,10 @@ def test_role_et_statut_inconnus_sont_refuses(client):
     pid = _project(client)
     assert client.post(f"/api/projects/{pid}/members",
                        json={"user_id": uid, "role": "super_admin"}).status_code == 422
+    # Un projet est fermé par défaut (audit 2026-09-07) : Awa doit être un membre réel du projet
+    # pour que le PATCH atteigne la validation du statut, plutôt qu'un 404 « membre introuvable ».
+    assert client.post(f"/api/projects/{pid}/members",
+                       json={"user_id": uid, "role": "dev"}).status_code == 201
     assert client.patch(f"/api/projects/{pid}/members/{uid}",
                         json={"status": "removed"}).status_code == 422
 
@@ -117,6 +121,10 @@ def test_un_admin_peut_partir_si_un_autre_admin_actif_reste(client):
     second_id = _user("Second", access.ROLE_ADMIN)
     client.post("/api/auth/login", json={"username": "Root", "password": "mdp"})
     pid = _project(client)
+    # Le rôle global Admin de Second ne lui donne plus rien sur ce projet fermé par défaut
+    # (audit 2026-09-07) : il doit être explicitement Admin DU PROJET pour rester le recours.
+    assert client.post(f"/api/projects/{pid}/members",
+                       json={"user_id": second_id, "role": "admin"}).status_code == 201
 
     result = client.patch(
         f"/api/projects/{pid}/members/{root_id}", json={"status": "suspended"})
@@ -171,6 +179,11 @@ def test_la_suspension_revoque_immediatement_une_session_deja_ouverte(client):
     awa_id = _user("Awa", access.ROLE_TESTEUR)
     client.post("/api/auth/login", json={"username": "Root", "password": "mdp"})
     pid = _project(client)
+    # Projet fermé par défaut (audit 2026-09-07) : Awa a besoin d'une invitation explicite avant
+    # de pouvoir constater qu'une suspension la lui retire IMMÉDIATEMENT — sans elle, son premier
+    # accès échouerait déjà pour une tout autre raison (jamais invitée).
+    assert client.post(f"/api/projects/{pid}/members",
+                       json={"user_id": awa_id, "role": "testeur"}).status_code == 201
     assert client.get(f"/api/projects/{pid}/modules").status_code == 200
 
     client.post("/api/auth/login", json={"username": "Awa", "password": "mdp"})
@@ -198,7 +211,7 @@ def test_un_admin_choisit_les_projets_a_la_creation_du_compte(client):
     p2 = client.post("/api/projects", json={"name": "Projet masqué"}).json()["id"]
 
     created = client.post("/api/admin/users", json={
-        "username": "Aminata", "password": "motdepasse", "role": "testeur",
+        "username": "Aminata", "password": "motdepasse-aminata", "role": "testeur",
         "projects": [{"project_id": p1, "role": "dev"}],
     })
     assert created.status_code == 200
@@ -217,7 +230,7 @@ def test_les_projets_d_un_compte_peuvent_etre_modifies_depuis_sa_fiche(client):
     client.post("/api/auth/login", json={"username": "Root", "password": "mdp"})
     pid = client.post("/api/projects", json={"name": "Portail"}).json()["id"]
     user_id = client.post("/api/admin/users", json={
-        "username": "Awa", "password": "motdepasse", "role": "testeur", "projects": [],
+        "username": "Awa", "password": "motdepasse-awa", "role": "testeur", "projects": [],
     }).json()["id"]
 
     updated = client.put(f"/api/admin/users/{user_id}/projects", json={

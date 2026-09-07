@@ -90,6 +90,19 @@ _PBKDF2_PREFIXE = "pbkdf2_sha256"
 MOT_DE_PASSE_LONGUEUR_MIN = config.PASSWORD_MIN_LENGTH
 
 
+def verifier_politique_mot_de_passe(value: str, username: str = "") -> None:
+    from testpilot.api.erreurs import ErreurMetier
+    if not MOT_DE_PASSE_LONGUEUR_MIN <= len(value) <= 128:
+        raise ErreurMetier("requete_invalide",
+                          f"le mot de passe doit compter entre {MOT_DE_PASSE_LONGUEUR_MIN} et 128 caractères")
+    faible = value.casefold().strip()
+    interdits = {"password", "password123", "password123456789", "123456789012345",
+                 "azerty123456789", "motdepasse", "motdepasse123456", "qwerty123456789",
+                 "testpilot123456789", "changeme123456789", "correct horse battery staple"}
+    if faible in interdits or len(set(faible)) < 3 or (username and faible == username.casefold()):
+        raise ErreurMetier("requete_invalide", "ce mot de passe est trop prévisible ; choisissez une phrase personnelle")
+
+
 def niveau(role: str) -> int:
     """Position d'un rôle dans la hiérarchie — plus haut = plus de droits. Rôle inconnu : le plus
     bas niveau possible, jamais une exception (un rôle corrompu ne doit jamais élever des droits)."""
@@ -245,6 +258,9 @@ def utilisateur_actuel(conn, request: Request) -> dict | None:
     utilisateur = UserRepo(conn).get(user_id)
     if (utilisateur is None or not utilisateur.get("is_active")
             or int(utilisateur.get("session_version", 1)) != version_jeton):
+        return None
+    if (utilisateur.get("must_change_password") and utilisateur.get("password_expires_at")
+            and utilisateur["password_expires_at"] <= time.time()):
         return None
     return utilisateur
 

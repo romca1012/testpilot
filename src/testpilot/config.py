@@ -24,7 +24,8 @@ PRODUCTION = os.getenv("TESTPILOT_PRODUCTION", "false").strip().lower() in {
     "1", "true", "yes", "on",
 }
 PUBLIC_URL = os.getenv("TESTPILOT_PUBLIC_URL", "").strip().rstrip("/")
-PASSWORD_MIN_LENGTH = int(os.getenv("TESTPILOT_PASSWORD_MIN_LENGTH", "8"))
+PASSWORD_MIN_LENGTH = int(os.getenv("TESTPILOT_PASSWORD_MIN_LENGTH", "15" if PRODUCTION else "8"))
+TEMPORARY_PASSWORD_HOURS = 24
 
 # ── Racines de chemins ────────────────────────────────────────────────────────
 SRC_DIR = Path(__file__).resolve().parent
@@ -232,8 +233,8 @@ def validate_production() -> None:
         erreurs.append("TESTPILOT_DB_URL doit cibler PostgreSQL")
     if not PUBLIC_URL.startswith("https://") or "/" in PUBLIC_URL[8:]:
         erreurs.append("TESTPILOT_PUBLIC_URL doit être une origine HTTPS sans chemin")
-    if PASSWORD_MIN_LENGTH < 12:
-        erreurs.append("TESTPILOT_PASSWORD_MIN_LENGTH doit être au moins 12")
+    if PASSWORD_MIN_LENGTH < 15:
+        erreurs.append("TESTPILOT_PASSWORD_MIN_LENGTH doit être au moins 15")
     if not COOKIE_SECURE:
         erreurs.append("TESTPILOT_COOKIE_SECURE doit valoir true")
     if len((SESSION_SECRET or "").strip()) < 32:

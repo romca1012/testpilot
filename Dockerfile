@@ -22,11 +22,12 @@ COPY pyproject.toml requirements.lock alembic.ini ./
 COPY alembic/ alembic/
 COPY src/ src/
 COPY scripts/ scripts/
+COPY behave_runtime/ behave_runtime/
 RUN python -m pip install --no-cache-dir -r requirements.lock \
     && python -m pip install --no-cache-dir --no-deps .
 COPY --from=frontend /build/frontend/dist frontend/dist/
 
-RUN install -d -o pwuser -g pwuser /var/lib/testpilot
+RUN install -d -o pwuser -g pwuser /var/lib/testpilot /app/behave_runtime/generated
 USER pwuser
 EXPOSE 8000
 CMD ["python", "-m", "uvicorn", "testpilot.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "127.0.0.1"]

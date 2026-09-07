@@ -91,6 +91,11 @@ CATALOGUE: dict[str, tuple[int, str]] = {
     # pas de validation. 401 (et non 403) : même famille que `/api/auth/login`, qui répond déjà 401
     # à un mot de passe faux.
     "mot_de_passe_incorrect": (401, "Mot de passe incorrect"),
+    # ── Édition concurrente d'un cas (audit 2026-09-07) ──
+    # Le formulaire a été ouvert sur une version qui n'est déjà plus la version courante :
+    # quelqu'un d'autre a enregistré entre-temps. Refusé plutôt que fabriqué une nouvelle version
+    # à partir d'un contenu périmé, qui aurait silencieusement écrasé son édition à lui.
+    "conflit_edition":        (409, "Ce cas a été modifié entre-temps"),
 }
 
 # Les services parlent leur propre langue (héritée) ; on la traduit ici, en un seul endroit,

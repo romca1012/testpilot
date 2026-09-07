@@ -15,6 +15,18 @@ def verifier(*, navigateur: bool = False) -> dict:
     config.validate_production()
     controles = {}
 
+    for relatif in (
+        "environment.py", "tp_json_formatter.py", "steps_library/_base_helpers.py",
+        "steps_library/_accent_matcher.py", "steps_library/generic/_generic_steps.py",
+        "steps_library/odoo/_odoo_steps.py", "steps_library/odoo/_odoo_background_steps.py",
+    ):
+        if not (config.BEHAVE_RUNTIME_DIR / relatif).is_file():
+            raise RuntimeError(f"harnais Behave incomplet : {relatif}")
+    controles["behave_runtime"] = "ok"
+    config.GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix=".preflight-", dir=config.GENERATED_DIR, delete=True):
+        controles["generated_directory"] = "ok"
+
     conn = get_initialized_db()
     try:
         conn.execute("SELECT 1").fetchone()

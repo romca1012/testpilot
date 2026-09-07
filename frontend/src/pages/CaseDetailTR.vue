@@ -8,7 +8,7 @@
 // retirés (jamais de Given/When/Then affiché, consigne du porteur). Provisoire, signalé comme tel.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, roleSuffisant, type CaseDetail, type ScenarioResultOut, type ScriptEffectifOut } from '../lib/api'
+import { api, ApiError, openProjectEvents, roleSuffisant, type CaseDetail, type ProjectEvent, type ScenarioResultOut, type ScriptEffectifOut } from '../lib/api'
 import { ETAT_ORDER, TYPE_ORDER, etatView, priorityView, typeView } from '../lib/status'
 import { useSession } from '../lib/useSession'
 import { useProjects } from '../lib/useProjects'
@@ -53,6 +53,45 @@ async function load() {
 onMounted(load)
 watch(caseId, load)
 
+// ── Temps réel (SSE, audit 2026-09-07) ────────────────────────────────────────
+// Écoute les changements du PROJET (un seul flux, filtré ici sur ce cas) : un collègue qui
+// édite/crée un cas prévient cet écran sans attendre un rechargement manuel. Confort, jamais
+// une autorité — voir le garde-fou `base_version_id` de `save()`/`saveScript()`, qui reste la
+// vraie protection si un événement est raté (onglet en veille, reconnexion, redémarrage serveur).
+let evenementsProjet: EventSource | null = null
+const notificationChangementDistant = ref(false)   // affiché seulement si on est en train d'éditer
+
+function ecouterEvenementsProjet() {
+  evenementsProjet?.close()
+  notificationChangementDistant.value = false
+  if (!pid.value) return
+  evenementsProjet = openProjectEvents(pid.value)
+  evenementsProjet.onmessage = (msg) => {
+    let evt: ProjectEvent
+    try { evt = JSON.parse(msg.data) } catch { return }
+    if (evt.case_id !== caseId.value) return   // un autre cas du même projet : rien ici
+    if (editing.value || editingScript.value) {
+      // Ne jamais recharger sous les pieds d'une saisie en cours — ça écraserait le brouillon en
+      // mémoire. On se contente de prévenir ; `save()` refusera de toute façon un conflit réel.
+      notificationChangementDistant.value = true
+      return
+    }
+    load()
+  }
+}
+onMounted(ecouterEvenementsProjet)
+watch(pid, ecouterEvenementsProjet)
+onBeforeUnmount(() => evenementsProjet?.close())
+
+// Bouton du bandeau ci-dessus : referme un éventuel formulaire ouvert (son brouillon est déjà
+// périmé, mieux vaut le dire tout de suite qu'au refus 409 de l'enregistrement) et recharge.
+async function voirVersionAJour() {
+  notificationChangementDistant.value = false
+  if (editing.value) { await rechargerApresConflit(); return }
+  if (editingScript.value) { await rechargerScriptApresConflit(); return }
+  await load()
+}
+
 // ── Navigation entre cas (Précédent / Suivant), bornée au MODULE du cas ───────
 // Chargée à part (best-effort) : une fratrie indisponible ne casse pas la page, elle désactive
 // juste les flèches.
@@ -95,6 +134,8 @@ const editingScript = ref(false)
 const scriptDraft = ref({ feature: '', steps: '' })
 const savingScript = ref(false)
 const scriptError = ref('')
+const scriptConflict = ref(false)   // même garde-fou anti-édition-concurrente que le métier
+const scriptBaseVersionId = ref<number | null>(null)
 
 // ── Consultation par VERSION (2026-08-11) — une régénération (spec plus évoluée, réparation...)
 // crée une NOUVELLE version, jamais un écrasement : sans sélecteur, seule la version COURANTE
@@ -169,7 +210,9 @@ function startEditScript() {
     feature: currentVersion.value?.feature_content || '',
     steps: currentVersion.value?.steps_content || '',
   }
+  scriptBaseVersionId.value = detail.value?.current_version_id ?? null
   scriptError.value = ''
+  scriptConflict.value = false
   editingScript.value = true
 }
 
@@ -177,15 +220,30 @@ async function saveScript() {
   if (!caseId.value) return
   savingScript.value = true
   scriptError.value = ''
+  scriptConflict.value = false
   try {
-    await api.updateCaseScript(caseId.value, scriptDraft.value.feature, scriptDraft.value.steps)
+    await api.updateCaseScript(caseId.value, scriptDraft.value.feature, scriptDraft.value.steps,
+                               scriptBaseVersionId.value)
     editingScript.value = false
     await load()
   } catch (e: any) {
-    scriptError.value = e?.message || 'Enregistrement impossible.'
+    if (e instanceof ApiError && e.code === 'conflit_edition') {
+      scriptConflict.value = true
+      scriptError.value = 'Quelqu’un d’autre vient d’enregistrer une modification sur ce cas. '
+        + 'Rechargez pour voir la version actuelle avant de reprendre votre saisie.'
+    } else {
+      scriptError.value = e?.message || 'Enregistrement impossible.'
+    }
   } finally {
     savingScript.value = false
   }
+}
+
+async function rechargerScriptApresConflit() {
+  await load()
+  editingScript.value = false
+  scriptError.value = ''
+  scriptConflict.value = false
 }
 
 // ── Dérivation PROVISOIRE depuis le Gherkin (à remplacer par les champs métier, étape 3) ──
@@ -254,7 +312,13 @@ const hasMetier = computed(() =>
 const editing = ref(false)
 const saving = ref(false)
 const saveError = ref('')
+const saveConflict = ref(false)   // true = édition concurrente (409 `conflit_edition`) → bouton Recharger
 const form = ref({ title: '', preconditions: '', steps: [] as string[], expected: '', refs: '', estimate: '' })
+// Version consultée à l'OUVERTURE du formulaire (audit 2026-09-07) — envoyée telle quelle au
+// serveur, qui refuse (409 `conflit_edition`) si elle n'est déjà plus la version courante :
+// quelqu'un d'autre a enregistré une édition entre-temps. Sans ça, `save()` écraserait
+// silencieusement son changement avec le contenu périmé qu'on a encore sous les yeux.
+const baseVersionId = ref<number | null>(null)
 
 function startEdit() {
   const v = currentVersion.value
@@ -269,7 +333,9 @@ function startEdit() {
     refs: c.value?.refs || '',
     estimate: c.value?.estimate || '',
   }
+  baseVersionId.value = detail.value?.current_version_id ?? null
   saveError.value = ''
+  saveConflict.value = false
   editing.value = true
 }
 function addStep() { form.value.steps.push('') }
@@ -278,6 +344,7 @@ function removeStep(i: number) { form.value.steps.splice(i, 1) }
 async function save() {
   saving.value = true
   saveError.value = ''
+  saveConflict.value = false
   try {
     await api.updateCaseMetier(caseId.value, {
       title: form.value.title,
@@ -286,14 +353,34 @@ async function save() {
       expected_result: form.value.expected,
       refs: form.value.refs,
       estimate: form.value.estimate,
+      base_version_id: baseVersionId.value,
     })
     editing.value = false
     await load()
   } catch (e: any) {
-    saveError.value = e?.message || 'Enregistrement impossible.'
+    // `conflit_edition` : quelqu'un a enregistré une édition PENDANT que ce formulaire était
+    // ouvert. Le message doit dire quoi faire — jamais réessayer tel quel, ça écraserait son
+    // changement avec le nôtre, périmé. `form` n'est PAS effacé : l'utilisateur peut reporter sa
+    // saisie à la main sur le contenu à jour après rechargement, plutôt que de la perdre.
+    if (e instanceof ApiError && e.code === 'conflit_edition') {
+      saveConflict.value = true
+      saveError.value = 'Quelqu’un d’autre vient d’enregistrer une modification sur ce cas. '
+        + 'Rechargez pour voir la version actuelle avant de reprendre votre saisie.'
+    } else {
+      saveError.value = e?.message || 'Enregistrement impossible.'
+    }
   } finally {
     saving.value = false
   }
+}
+
+// Reprend la version actuelle après un conflit : recharge le cas et referme le formulaire d'édition
+// (la saisie en cours reste visible tant qu'on ne rouvre pas « Éditer », le temps de la reporter).
+async function rechargerApresConflit() {
+  await load()
+  editing.value = false
+  saveError.value = ''
+  saveConflict.value = false
 }
 
 function backToList() { router.push({ name: 'cases', params: { pid: pid.value } }) }
@@ -389,6 +476,15 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
                   :can-automate="peutEditerScript && !hasGherkin" :automating="automating"
                   :prev-id="prevId" :next-id="nextId"
                   @back="backToList" @edit="startEdit" @delete="deleteCase" @automate="automate" @go="goCase" />
+
+      <!-- Prévenu en direct (SSE) qu'un collègue a modifié CE cas PENDANT que ce formulaire est
+           ouvert — pas de rechargement forcé (le brouillon serait perdu), juste une invitation :
+           le vrai filet reste le refus 409 si l'enregistrement finit sur une version périmée. -->
+      <div v-if="notificationChangementDistant" role="status"
+           class="mt-4 flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm">
+        <span>Quelqu'un d'autre vient de modifier ce cas. Votre saisie en cours n'est pas affectée pour l'instant.</span>
+        <Button variant="secondary" @click="voirVersionAJour">Voir la version à jour</Button>
+      </div>
 
       <!-- ====== DÉTAILS ====== -->
       <template v-if="tab === 'details'">
@@ -582,13 +678,18 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
               </label>
             </div>
 
-            <p v-if="saveError" class="text-sm text-destructive">{{ saveError }}</p>
+            <p v-if="saveError" role="alert" class="text-sm text-destructive">{{ saveError }}</p>
 
             <div class="flex items-center gap-3">
-              <Button variant="primary" :loading="saving" @click="save">
-                {{ saving ? 'Enregistrement…' : 'Enregistrer' }}
-              </Button>
-              <Button variant="secondary" @click="editing = false">Annuler</Button>
+              <template v-if="saveConflict">
+                <Button variant="primary" @click="rechargerApresConflit">Recharger</Button>
+              </template>
+              <template v-else>
+                <Button variant="primary" :loading="saving" @click="save">
+                  {{ saving ? 'Enregistrement…' : 'Enregistrer' }}
+                </Button>
+                <Button variant="secondary" @click="editing = false">Annuler</Button>
+              </template>
             </div>
           </section>
         </template>
@@ -686,12 +787,17 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
             Enregistrer crée une NOUVELLE version — jamais d'écrasement — et la remet en attente
             de relecture : cette modification n'a pas été validée par un dry-run.
           </p>
-          <p v-if="scriptError" class="text-sm text-destructive">{{ scriptError }}</p>
+          <p v-if="scriptError" role="alert" class="text-sm text-destructive">{{ scriptError }}</p>
           <div class="flex gap-2">
-            <Button variant="primary" :loading="savingScript" @click="saveScript">
-              {{ savingScript ? 'Enregistrement…' : 'Enregistrer' }}
-            </Button>
-            <Button variant="secondary" :disabled="savingScript" @click="editingScript = false">Annuler</Button>
+            <template v-if="scriptConflict">
+              <Button variant="primary" @click="rechargerScriptApresConflit">Recharger</Button>
+            </template>
+            <template v-else>
+              <Button variant="primary" :loading="savingScript" @click="saveScript">
+                {{ savingScript ? 'Enregistrement…' : 'Enregistrer' }}
+              </Button>
+              <Button variant="secondary" :disabled="savingScript" @click="editingScript = false">Annuler</Button>
+            </template>
           </div>
         </template>
       </div>

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 41
+_SCHEMA_VERSION = 42
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -224,8 +224,33 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_40_login_failure(conn)
     if version < 41:
         _migrate_41_background_job(conn)
+    if version < 42:
+        _migrate_42_password_ownership(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
+
+
+def _migrate_42_password_ownership(conn: sqlite3.Connection) -> None:
+    import time
+    if "must_change_password" not in _column_names(conn, "user"):
+        conn.execute("ALTER TABLE user ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
+        conn.execute("ALTER TABLE user ADD COLUMN password_expires_at INTEGER NOT NULL DEFAULT 0")
+        conn.execute("UPDATE user SET must_change_password=1, password_expires_at=?, "
+                     "session_version=session_version+1", (int(time.time()) + 7 * 86400,))
+        # Fige l'accès implicite ACTUEL en overrides explicites AVANT de fermer les projets :
+        # sans ça, `default_access='no_access'` couperait immédiatement tout compte qui n'a
+        # jamais eu besoin d'une exception — soit tout le monde, puisque c'est précisément le
+        # trou que ce correctif comble pour l'avenir. Idempotent : ne touche que les projets
+        # encore ouverts (`default_access=''`) et ne recrée jamais une ligne déjà présente.
+        conn.execute(
+            "INSERT INTO project_access (project_id, user_id, role) "
+            "SELECT p.id, u.id, u.role FROM project p CROSS JOIN user u "
+            "WHERE p.default_access='' AND NOT EXISTS ("
+            "  SELECT 1 FROM project_access pa WHERE pa.project_id=p.id AND pa.user_id=u.id)")
+        conn.execute("UPDATE project SET default_access='no_access' WHERE default_access=''")
+        from testpilot.store.repositories import ProjectMemberRepo
+        for project in conn.execute("SELECT id FROM project").fetchall():
+            ProjectMemberRepo(conn).sync_project(project["id"])
 
 
 def _migrate_1_project_module(conn: sqlite3.Connection) -> None:

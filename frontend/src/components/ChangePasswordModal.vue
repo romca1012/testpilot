@@ -4,13 +4,15 @@
 // depuis AccountMenu.vue, accessible à tout rôle connecté (y compris Lecture seule : sécuriser
 // son propre compte n'est pas un geste à restreindre, voir `access.py::_ECRITURES_TOUJOURS_AUTORISEES`
 // côté serveur).
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { api, ApiError } from '../lib/api'
+import { useSession } from '../lib/useSession'
 import Modal from './ui/Modal.vue'
 import Button from './ui/Button.vue'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
+const { session } = useSession()
 
 const ancien = ref('')
 const nouveau = ref('')
@@ -30,7 +32,10 @@ watch(() => props.open, (v) => {
   succes.value = false
 })
 
-const LONGUEUR_MIN = 8
+// Reflète le plancher RÉEL du serveur pour ce déploiement (`session.password_min_length`,
+// 15 en production depuis l'audit 2026-09-07) — un plancher affiché plus bas que celui appliqué
+// laisserait croire qu'un mot de passe valide côté écran sera accepté, puis le ferait refuser.
+const LONGUEUR_MIN = computed(() => session.value?.password_min_length || 8)
 
 function fermer() {
   emit('close')
@@ -38,8 +43,8 @@ function fermer() {
 
 async function valider() {
   erreur.value = ''
-  if (nouveau.value.length < LONGUEUR_MIN) {
-    erreur.value = `Le nouveau mot de passe doit compter au moins ${LONGUEUR_MIN} caractères.`
+  if (nouveau.value.length < LONGUEUR_MIN.value) {
+    erreur.value = `Le nouveau mot de passe doit compter au moins ${LONGUEUR_MIN.value} caractères.`
     return
   }
   if (nouveau.value !== confirmation.value) {

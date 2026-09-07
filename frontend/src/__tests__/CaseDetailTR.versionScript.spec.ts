@@ -14,6 +14,9 @@ import type { CaseDetail } from '../lib/api'
 const getCase = vi.fn()
 const getScriptEffectif = vi.fn()
 vi.mock('../lib/api', () => ({
+  // Temps réel (SSE, audit 2026-09-07) : un faux flux qui ne fait jamais rien — ces tests
+  // portent sur la consultation par version, pas sur la mise à jour en direct.
+  openProjectEvents: () => ({ close: () => {}, onmessage: null }),
   api: {
     getCase: (...a: any[]) => getCase(...a),
     getCaseScenarios: vi.fn().mockResolvedValue([]),

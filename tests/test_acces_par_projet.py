@@ -86,19 +86,19 @@ def test_une_exception_par_compte_prime_sur_l_acces_par_defaut(conn):
 # ── 2. `no_access` → 404, jamais 403, sur une route project_id-scoped ─────────
 
 def test_no_access_par_defaut_rend_404_sur_le_projet(client):
-    _compte(client, "Awa", access.ROLE_ADMIN)
-    root_id = _compte(client, "Root", access.ROLE_ADMIN)
-    _connecte(client, "Awa")
+    _compte(client, "Root", access.ROLE_ADMIN)
+    _connecte(client, "Root")
+    # Un projet créé par l'API est désormais privé par défaut (audit 2026-09-07) : Root, en tant
+    # que créateur, reçoit déjà une exception Admin explicite — pas besoin de l'ajouter à la main,
+    # ce qui laisse un Admin actif quand le défaut passe à `no_access` juste après.
     pid = client.post("/api/projects", json=_PROJET).json()["id"]
-    # Un défaut restrictif reste possible à condition de conserver un Admin explicite.
-    assert client.post(
-        f"/api/projects/{pid}/access/users", json={"user_id": root_id, "role": "admin"}
-    ).status_code == 200
     assert client.patch(
         f"/api/projects/{pid}/access", json={"default_access": access.ACCES_PROJET_REFUSE}
     ).status_code == 200
 
-    # Awa n'a pas d'exception : le défaut no_access s'applique bien à elle.
+    # Awa arrive APRÈS et n'a aucune exception : le défaut no_access s'applique bien à elle.
+    _compte(client, "Awa", access.ROLE_TESTEUR)
+    _connecte(client, "Awa")
     r = client.get(f"/api/projects/{pid}/modules")
     assert r.status_code == 404
 
@@ -126,11 +126,13 @@ def test_un_projet_no_access_disparait_de_la_liste_pour_ce_compte(client):
     pid_visible = client.post("/api/projects", json={**_PROJET, "name": "Visible"}).json()["id"]
     pid_cache = client.post("/api/projects", json={**_PROJET, "name": "Caché"}).json()["id"]
 
-    _compte(client, "Awa", access.ROLE_TESTEUR)
+    awa_uid = _compte(client, "Awa", access.ROLE_TESTEUR)
     conn = get_initialized_db(config.DB_PATH)
     try:
-        ProjectAccessRepo(conn).set_override(pid_cache, UserRepo(conn).get_by_username("Awa")["id"],
-                                             access.ACCES_PROJET_REFUSE)
+        # Les deux projets sont fermés par défaut (audit 2026-09-07) : Awa doit être invitée
+        # explicitement sur celui qui doit rester visible pour elle.
+        ProjectAccessRepo(conn).set_override(pid_visible, awa_uid, access.ROLE_TESTEUR)
+        ProjectAccessRepo(conn).set_override(pid_cache, awa_uid, access.ACCES_PROJET_REFUSE)
     finally:
         conn.close()
 
@@ -146,12 +148,14 @@ def test_un_projet_cache_reste_visible_pour_un_AUTRE_compte(client):
     _connecte(client, "Root")
     pid = client.post("/api/projects", json=_PROJET).json()["id"]
 
-    _compte(client, "Awa", access.ROLE_TESTEUR)
-    _compte(client, "Leo", access.ROLE_TESTEUR)
+    awa_uid = _compte(client, "Awa", access.ROLE_TESTEUR)
+    leo_uid = _compte(client, "Leo", access.ROLE_TESTEUR)
     conn = get_initialized_db(config.DB_PATH)
     try:
-        ProjectAccessRepo(conn).set_override(pid, UserRepo(conn).get_by_username("Awa")["id"],
-                                             access.ACCES_PROJET_REFUSE)
+        # Projet fermé par défaut (audit 2026-09-07) : Léo a besoin de sa propre invitation pour
+        # que « rester visible pour lui » veuille dire quelque chose.
+        ProjectAccessRepo(conn).set_override(pid, leo_uid, access.ROLE_TESTEUR)
+        ProjectAccessRepo(conn).set_override(pid, awa_uid, access.ACCES_PROJET_REFUSE)
     finally:
         conn.close()
 
@@ -196,20 +200,41 @@ def test_un_testeur_ne_peut_pas_gerer_l_acces(client):
                         json={"default_access": access.ROLE_TESTEUR}).status_code == 403
 
 
-def test_un_admin_ne_peut_pas_laisser_le_projet_sans_admin_actif(client):
-    """Le garde-fou Lot A : aucun réglage par défaut ne peut retirer le dernier Admin."""
+def test_fermer_le_defaut_ne_menace_pas_le_createur_deja_admin_explicite(client):
+    """Le créateur d'un projet reçoit une exception Admin explicite dès la création (audit
+    2026-09-07) : fermer ensuite le défaut ne le prive donc de rien, contrairement à l'ancien
+    modèle où son accès ne tenait qu'au repli sur le rôle global."""
     _compte(client, "Root", access.ROLE_ADMIN)
     _connecte(client, "Root")
     pid = client.post("/api/projects", json=_PROJET).json()["id"]
 
-    r = client.patch(f"/api/projects/{pid}/access",
-                     json={"default_access": access.ACCES_PROJET_REFUSE})
+    assert client.patch(
+        f"/api/projects/{pid}/access", json={"default_access": access.ACCES_PROJET_REFUSE}
+    ).status_code == 200
+    assert client.get(f"/api/projects/{pid}/modules").status_code == 200
+
+
+def test_un_admin_ne_peut_pas_laisser_le_projet_sans_admin_actif(client):
+    """Le garde-fou Lot A : retirer la SEULE exception Admin explicite d'un projet fermé par
+    défaut doit être refusé — sans elle, plus personne ne peut administrer le projet."""
+    _compte(client, "Root", access.ROLE_ADMIN)
+    _connecte(client, "Root")
+    pid = client.post("/api/projects", json=_PROJET).json()["id"]
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        root_id = UserRepo(conn).get_by_username("Root")["id"]
+    finally:
+        conn.close()
+    assert client.patch(
+        f"/api/projects/{pid}/access", json={"default_access": access.ACCES_PROJET_REFUSE}
+    ).status_code == 200
+
+    r = client.delete(f"/api/projects/{pid}/access/users/{root_id}")
     assert r.status_code == 409
     assert r.json()["code"] == "etat_incompatible"
 
-    # L'opération refusée est atomique : Root reste Admin et le défaut reste inchangé.
+    # L'opération refusée est atomique : Root reste Admin du projet.
     assert client.get(f"/api/projects/{pid}/modules").status_code == 200
-    assert client.get(f"/api/projects/{pid}/access").json()["default_access"] == ""
 
 
 def test_ajouter_et_retirer_une_exception_par_compte(client):
@@ -220,14 +245,15 @@ def test_ajouter_et_retirer_une_exception_par_compte(client):
 
     r = client.post(f"/api/projects/{pid}/access/users", json={"user_id": uid, "role": "dev"})
     assert r.status_code == 200
-    overrides = r.json()["overrides"]
-    assert len(overrides) == 1
-    assert overrides[0]["user_id"] == uid
-    assert overrides[0]["role"] == "dev"
+    # Root porte déjà sa propre exception Admin (créateur du projet, audit 2026-09-07) : on ne
+    # cherche que celle d'Awa, pas la taille totale de la liste.
+    awa = next(o for o in r.json()["overrides"] if o["user_id"] == uid)
+    assert awa["role"] == "dev"
 
     r = client.delete(f"/api/projects/{pid}/access/users/{uid}")
     assert r.status_code == 200
-    assert r.json()["overrides"] == []
+    # Il ne reste que l'exception Admin de Root (créateur) : celle d'Awa a bien disparu.
+    assert not any(o["user_id"] == uid for o in r.json()["overrides"])
 
 
 def test_un_role_inconnu_est_refuse(client):

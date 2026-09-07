@@ -11,11 +11,16 @@ projet, en plus du rôle global déjà vérifié par le middleware. `list_projec
 
 from __future__ import annotations
 
+import asyncio
+import json
+import queue as queue_mod
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
-from testpilot.api.services import exploration_service
+from testpilot.api.services import events_bus, exploration_service
 from testpilot.api.services.project_membership_service import ProjectMembershipService
 from testpilot.guardrails import durable_jobs
 from testpilot.store.repositories import (
@@ -87,22 +92,24 @@ def list_projects_for_admin(request: Request, conn=Depends(get_conn)):
 
 @router.post("", response_model=schemas.ProjectSummary, status_code=201,
              dependencies=[Depends(access.require_role(access.ROLE_ADMIN))])
-def create_project(body: schemas.ProjectIn, conn=Depends(get_conn)):
+def create_project(body: schemas.ProjectIn, request: Request = None, conn=Depends(get_conn)):
     if not body.name.strip():
         raise HTTPException(status_code=422, detail="le nom du projet est requis")
+    # ⚠️ PAS `... and request.state.user["id"]` : l'id `0` (compte Admin de complaisance posé par
+    # `tests/conftest.py::_connecte_par_defaut`) est un id VALIDE mais falsy en Python — le
+    # tronquer en `None` ici a déjà produit, une fois, un projet fermé sans AUCUN Admin explicite,
+    # y compris pour son propre créateur (mesuré 2026-09-07 : ~90 tests en échec en cascade).
+    utilisateur = getattr(request, "state", None) and getattr(request.state, "user", None)
     try:
-        ProjectRepo(conn).create(
+        project_id = ProjectRepo(conn).create(
             name=body.name.strip(), description=body.description,
             connector_type=body.connector_type, connector_version=body.connector_version,
             base_url=body.base_url, database=body.database,
-            username=body.username, password=body.password)
+            username=body.username, password=body.password, private=True,
+            owner_id=utilisateur["id"] if utilisateur is not None else None)
     except DuplicateName as exc:
         raise _conflict(exc) from exc
-    return schemas.project_summary(_summary_row(conn, _last_project_id(conn)))
-
-
-def _last_project_id(conn) -> int:
-    return conn.execute("SELECT MAX(id) AS m FROM project").fetchone()["m"]
+    return schemas.project_summary(_summary_row(conn, project_id))
 
 
 @router.patch("/{project_id}", response_model=schemas.ProjectSummary,
@@ -187,6 +194,63 @@ def list_modules(project_id: int, conn=Depends(get_conn)):
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
     return [schemas.module_summary(r) for r in ModuleRepo(conn).list_for_project(project_id)]
+
+
+async def _flux_evenements(project_id: int, request: Request):
+    """Le générateur SSE lui-même — extrait de la route pour être testable directement (asyncio,
+    sans passer par une vraie connexion HTTP en flux, mal supportée par le client de test)."""
+    q = events_bus.abonner(project_id)
+    try:
+        yield "retry: 3000\n\n"
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                # Bloquant côté thread (queue.Queue n'a pas d'attente async) — jamais sur la
+                # boucle asyncio elle-même, `to_thread` l'isole. Le délai borne l'attente pour
+                # qu'on revienne vérifier régulièrement si le navigateur est parti, et sert
+                # aussi de battement de cœur qui empêche un proxy intermédiaire de couper une
+                # connexion qu'il croirait inactive.
+                event = await asyncio.to_thread(q.get, True, 15)
+            except queue_mod.Empty:
+                yield ": heartbeat\n\n"
+                continue
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    finally:
+        events_bus.desabonner(project_id, q)
+
+
+@router.get("/{project_id}/events", dependencies=[Depends(access.require_project_access)])
+async def project_events(project_id: int, request: Request, conn=Depends(get_conn)):
+    """Flux Server-Sent Events : prévient en direct les écrans ouverts sur CE projet qu'un cas a
+    changé — édité, créé, déplacé — au lieu qu'ils affichent un contenu périmé jusqu'au prochain
+    rechargement manuel (audit 2026-09-07, « vrai temps réel »).
+
+    ⚠️ **Confort, jamais une autorité.** Un événement raté (onglet en veille, reconnexion,
+    redémarrage du serveur) ne doit JAMAIS pouvoir faire agir un écran sur une donnée qu'il
+    n'aurait pas relue lui-même — voir le garde-fou `expected_version_id` de `CaseRepo.update_metier`,
+    qui reste la VRAIE protection contre une édition concurrente. Ce flux ne fait qu'inviter à
+    recharger plus tôt ; jamais de décision métier prise sur la seule foi d'un événement reçu.
+
+    Gardé par `require_project_access` comme n'importe quelle autre route du projet : un compte
+    sans accès ne doit pas plus pouvoir ÉCOUTER ce qui change dans un projet fermé qu'il ne peut
+    le LIRE par les routes habituelles — la même fermeture par défaut s'applique ici.
+
+    SSE plutôt que WebSocket : un seul sens (serveur → écran) suffit à ce besoin, ça traverse les
+    réseaux d'entreprise sans configuration particulière (pas de handshake de protocole à part),
+    et le navigateur gère lui-même la reconnexion — rien à écrire côté client pour ça.
+    """
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    return StreamingResponse(
+        _flux_evenements(project_id, request), media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # Nginx bufferise les réponses en flux par défaut, ce qui retarderait chaque
+            # événement jusqu'au remplissage du tampon — inutile de le redécouvrir en
+            # production faute de l'avoir documenté ici.
+            "X-Accel-Buffering": "no",
+        })
 
 
 @router.get("/{project_id}/groups", response_model=list[schemas.GroupSummary],

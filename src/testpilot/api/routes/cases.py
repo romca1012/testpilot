@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from testpilot import config
 from testpilot.api import erreurs, access, schemas
 from testpilot.api.deps import get_conn
-from testpilot.api.services import generation_service, run_service, script_service
+from testpilot.api.services import events_bus, generation_service, run_service, script_service
 from testpilot.generation import assertion_lint, domain_model, repair_diff, smoke_check
 from testpilot.guardrails import durable_jobs
 from testpilot.store.repositories import (
@@ -17,6 +17,7 @@ from testpilot.store.repositories import (
     ExecutionRepo,
     ProjectRepo,
     ReviewRepo,
+    VersionConflict,
     VersionRepo,
 )
 from testpilot.verdict import review_gate
@@ -26,6 +27,15 @@ router = APIRouter(prefix="/api/cases", tags=["cases"])
 # Auteur des versions produites par la boucle de réparation (0014). Une version signée ainsi a
 # forcément un « avant » : celle qu'elle tentait de corriger.
 _AUTEUR_REPARATION = "repair-agent"
+
+
+def _publier_changement(case: dict, kind: str) -> None:
+    """Prévient les écrans ouverts sur ce PROJET (audit 2026-09-07, temps réel SSE) — best-effort,
+    voir `events_bus.publier`. `case` est le dict déjà lu par l'appelant : jamais une requête
+    supplémentaire juste pour trouver le `project_id`."""
+    project_id = case.get("project_id")
+    if project_id is not None:
+        events_bus.publier(project_id, {"kind": kind, "case_id": case["id"]})
 
 
 def _lint_reparation(current: dict | None, version_rows: list[dict]) -> list[dict]:
@@ -405,6 +415,7 @@ def update_case(case_id: int, body: schemas.CasePatch, conn=Depends(get_conn)):
                 detail=f"{nom} invalide ({' | '.join(_VOCABULAIRES[nom])})")
     if champs:
         cases.set_metadonnees(case_id, **champs)
+        _publier_changement(cases.get(case_id), "case_updated")
     return schemas.case_summary(cases.get(case_id))
 
 
@@ -426,13 +437,18 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
         version_id = cases.update_metier(
             case_id, title=body.title, preconditions=body.preconditions,
             test_steps=body.test_steps, expected_result=body.expected_result,
-            refs=body.refs, estimate=body.estimate, editor=body.editor)
+            refs=body.refs, estimate=body.estimate, editor=body.editor,
+            expected_version_id=body.base_version_id)
     except DuplicateName as exc:
         raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
+    except VersionConflict as exc:
+        raise erreurs.ErreurMetier("conflit_edition", str(exc)) from exc
     if version_id is not None:
         review_gate.auto_approve_metier(ReviewRepo(conn), case_id=case_id, version_id=version_id,
                                         repair_budget=config.REPAIR_BUDGET_DEFAULT)
-    return schemas.CaseMetierOut(case=schemas.case_summary(cases.get(case_id)),
+    cas_a_jour = cases.get(case_id)
+    _publier_changement(cas_a_jour, "case_metier_changed")
+    return schemas.CaseMetierOut(case=schemas.case_summary(cas_a_jour),
                                  version_id=version_id, version_created=version_id is not None)
 
 
@@ -447,9 +463,15 @@ def update_case_script(case_id: int, body: schemas.ScriptEditIn, conn=Depends(ge
     cases = CaseRepo(conn)
     if cases.get(case_id) is None:
         raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
-    version_id = cases.update_script(case_id, feature_content=body.feature_content,
-                                     steps_content=body.steps_content, editor=body.editor)
-    return schemas.CaseMetierOut(case=schemas.case_summary(cases.get(case_id)),
+    try:
+        version_id = cases.update_script(
+            case_id, feature_content=body.feature_content, steps_content=body.steps_content,
+            editor=body.editor, expected_version_id=body.base_version_id)
+    except VersionConflict as exc:
+        raise erreurs.ErreurMetier("conflit_edition", str(exc)) from exc
+    cas_a_jour = cases.get(case_id)
+    _publier_changement(cas_a_jour, "case_script_changed")
+    return schemas.CaseMetierOut(case=schemas.case_summary(cas_a_jour),
                                  version_id=version_id, version_created=version_id is not None)
 
 

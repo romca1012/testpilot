@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 41
+ALIGNED_WITH_SCHEMA_VERSION = 42
 
 metadata = MetaData()
 
@@ -512,6 +512,8 @@ user = Table(
     Column("created_at", Text, nullable=False),
     Column("email", Text, nullable=False, server_default=""),
     Column("session_version", Integer, nullable=False, server_default="1"),
+    Column("must_change_password", Integer, nullable=False, server_default="0"),
+    Column("password_expires_at", Integer, nullable=False, server_default="0"),
     CheckConstraint(
         "role IN ('lecture_seule', 'testeur', 'dev', 'admin')", name="ck_user_role"
     ),

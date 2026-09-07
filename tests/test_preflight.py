@@ -11,10 +11,20 @@ def test_preflight_verifie_base_et_repertoire(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_URL", "")
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "testpilot.db")
     monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(config, "GENERATED_DIR", tmp_path / "generated")
     resultat = preflight.verifier()
     assert resultat["database"] == "ok"
     assert resultat["data_directory"] == "ok"
+    assert resultat["behave_runtime"] == "ok"
+    assert resultat["generated_directory"] == "ok"
     assert not list(Path(config.DATA_DIR).glob(".preflight-*"))
+
+
+def test_preflight_refuse_image_sans_harnais(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "PRODUCTION", False)
+    monkeypatch.setattr(config, "BEHAVE_RUNTIME_DIR", tmp_path)
+    with pytest.raises(RuntimeError, match="harnais Behave incomplet"):
+        preflight.verifier()
 
 
 def test_smoke_refuse_http_hors_controle_local():

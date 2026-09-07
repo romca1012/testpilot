@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import uuid
 
 from testpilot import config
@@ -83,20 +84,49 @@ def slugify(text: str) -> str:
     return text
 
 
+# Réservation EN MÉMOIRE, en plus de la vérification en base (audit 2026-09-07, point 5) —
+# `unique_feature_slug` ne fait qu'un SELECT : entre ce contrôle et la persistance finale du cas
+# (après le LLM et le dry-run, potentiellement plusieurs dizaines de secondes plus tard), deux
+# générations concurrentes visant le même titre peuvent lire le même slug « libre » et écraser
+# l'une le fichier `.feature` de l'autre dans `GENERATED_DIR` avant qu'aucune des deux n'ait
+# persisté. Le déploiement cible tourne avec un seul worker uvicorn (`compose.production.yml`) :
+# toute la concurrence entre requêtes se joue donc DANS ce process, ce qu'un verrou en mémoire
+# suffit à fermer, sans toucher à l'écriture sur disque elle-même (audit, variante préférable
+# mais plus lourde, non retenue ici pour ce périmètre). Si l'architecture passe un jour à
+# plusieurs workers/process, ce verrou ne suffira plus : il faudra la réservation en base que
+# l'audit décrit.
+_SLUGS_RESERVES: set[str] = set()
+_SLUGS_VERROU = threading.Lock()
+
+
 def unique_feature_slug(conn, base: str) -> str:
     """Slug libre : un slug = un fichier ``.feature`` sur disque, donc unique GLOBALEMENT.
 
     Deux cas — d'un même module ou de deux modules différents — ne peuvent pas partager de slug,
     sinon leurs .feature s'écraseraient l'un l'autre. Appelé UNE FOIS PAR CAS (§9b) : chaque cas
-    planifié par le découpage obtient son propre fichier.
+    planifié par le découpage obtient son propre fichier. Réserve le slug choisi (voir
+    `_SLUGS_RESERVES`) — l'appelant doit la libérer avec `liberer_feature_slug` si la génération
+    n'aboutit finalement PAS à un cas persisté, sous peine de bloquer ce nom pour le reste de la
+    vie du process.
     """
     cases = CaseRepo(conn)
-    slug = base
-    suffix = 2
-    while cases.feature_slug_taken(slug):
-        slug = f"{base}_{suffix}"
-        suffix += 1
-    return slug
+    with _SLUGS_VERROU:
+        slug = base
+        suffix = 2
+        while cases.feature_slug_taken(slug) or slug in _SLUGS_RESERVES:
+            slug = f"{base}_{suffix}"
+            suffix += 1
+        _SLUGS_RESERVES.add(slug)
+        return slug
+
+
+def liberer_feature_slug(slug: str) -> None:
+    """Rend un slug réservé par `unique_feature_slug` qui n'a finalement écrit aucun cas —
+    échec technique, doublon de titre dans la même Section, etc. Sans appel, il resterait
+    indisponible pour rien jusqu'au prochain redémarrage : sans danger pour l'intégrité des
+    données, mais une gêne cumulative sur une instance longtemps vivante."""
+    with _SLUGS_VERROU:
+        _SLUGS_RESERVES.discard(slug)
 
 
 def start_generation(conn, module_id: int, *, spec_content: str, title: str = "",
@@ -608,6 +638,7 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                                         author=author, projet=project,
                                         refs=case.get("user_story", ""))
             except DuplicateName as exc:
+                liberer_feature_slug(slug)
                 erreurs.append(f"« {case['title']} » : {exc}")
                 continue
             except Exception as exc:
@@ -618,6 +649,7 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                 # continuer avec les autres.
                 logger.exception("[generation] cas « %s » (job %s) en échec technique",
                                  case["title"], job_id)
+                liberer_feature_slug(slug)
                 erreurs.append(f"« {case['title']} » : {exc}")
                 continue
 
@@ -631,6 +663,9 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                 _auto_approuver(conn, result.case_id, result.version_id)
                 case_ids.append(result.case_id)
             else:
+                # Le cas n'a pas été persisté avec ce slug (génération arrêtée avant la fin) :
+                # le rendre disponible, sinon ce titre reste bloqué pour rien.
+                liberer_feature_slug(slug)
                 erreurs.append(
                     f"« {case['title']} » : "
                     f"{result.error or result.stopped_reason or 'génération échouée'}")

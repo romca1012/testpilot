@@ -136,6 +136,9 @@ def create_app() -> FastAPI:
 
         if utilisateur is None:
             return JSONResponse(status_code=401, content={"detail": "session requise"})
+        if utilisateur.get("must_change_password") and request.url.path != "/api/auth/password":
+            return JSONResponse(status_code=403, content={
+                "code": "password_change_required", "detail": "changez votre mot de passe avant de continuer"})
         if access.ecriture_bloquee(utilisateur["role"], request.method, request.url.path):
             return JSONResponse(status_code=403, content={"detail": "droits insuffisants"})
 
@@ -275,7 +278,7 @@ def _amorcer_premier_admin() -> None:
             return
         repo.create(username=config.ADMIN_USERNAME,
                    password_hash=access.hacher_mot_de_passe(config.ADMIN_PASSWORD),
-                   role=access.ROLE_ADMIN)
+                   role=access.ROLE_ADMIN, must_change_password=True)
         logging.getLogger(__name__).info(
             "[accès] premier compte Admin créé : %s", config.ADMIN_USERNAME)
     finally:

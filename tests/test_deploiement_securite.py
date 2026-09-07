@@ -10,7 +10,7 @@ from testpilot.api.app import create_app
 def _profil_valide(monkeypatch):
     monkeypatch.setattr(config, "PRODUCTION", True)
     monkeypatch.setattr(config, "PUBLIC_URL", "https://testpilot.example.test")
-    monkeypatch.setattr(config, "PASSWORD_MIN_LENGTH", 12)
+    monkeypatch.setattr(config, "PASSWORD_MIN_LENGTH", 15)  # plancher prod depuis l'audit 2026-09-07
     monkeypatch.setattr(config, "DB_URL", "postgresql+psycopg://u:p@db/testpilot")
     monkeypatch.setattr(config, "COOKIE_SECURE", True)
     monkeypatch.setattr(config, "SESSION_SECRET", "s" * 32)

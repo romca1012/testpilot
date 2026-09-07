@@ -65,6 +65,7 @@ def _seed_case(conn, *, approved: bool) -> tuple[int, int]:
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     # Exécuteur réel -> fake (pas de Behave/Odoo dans les tests).
     monkeypatch.setattr(run_service, "Executor", _FakeExecutor)
     run_service._RUNNING.clear()

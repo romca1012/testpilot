@@ -58,6 +58,11 @@ def _call(kind: str, args: list, kwargs: dict) -> None:
 
 
 def run_job(job_id: str) -> None:
+    """Attendre la capacité avant de réclamer le travail persistant."""
+    concurrency.run_gated(_run_admitted_job, job_id, queue_label=f"durable:{job_id}")
+
+
+def _run_admitted_job(job_id: str) -> None:
     """Réclame atomiquement une tâche ; une seule exécution gagne, même après un rejeu."""
     conn = get_initialized_db()
     try:
@@ -73,10 +78,7 @@ def run_job(job_id: str) -> None:
 
     erreur = ""
     try:
-        concurrency.run_gated(
-            _call, kind, payload.get("args", []), payload.get("kwargs", {}),
-            queue_label=label,
-        )
+        _call(kind, payload.get("args", []), payload.get("kwargs", {}))
     except Exception as exc:
         erreur = str(exc) or type(exc).__name__
         logger.exception("[durable-job] %s (%s) en échec", job_id, kind)

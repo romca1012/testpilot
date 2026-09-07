@@ -40,6 +40,17 @@ class DuplicateName(ValueError):
     """
 
 
+class VersionConflict(ValueError):
+    """Édition concurrente du même cas (audit 2026-09-07, point « plusieurs comptes en même
+    temps ») — l'appelant a ouvert le formulaire sur une version qui n'est déjà plus la version
+    courante : quelqu'un d'autre a enregistré entre-temps. Sans ce garde-fou, `update_metier`/
+    `update_script` fabriquaient quand même une nouvelle version à partir du contenu PÉRIMÉ que
+    l'appelant avait sous les yeux — pas une corruption (l'historique garde tout), mais une perte
+    silencieuse : le champ que l'autre venait de changer se retrouvait écrasé par une valeur
+    obsolète, sans qu'aucune des deux personnes ne le sache. Levée par les repos, traduite en
+    HTTP 409 par les routes — jamais un `UPDATE` accepté sur la base d'un état qu'on n'a plus."""
+
+
 class NotEmpty(ValueError):
     """Un conteneur qu'on refuse de supprimer parce qu'il porte encore des enfants.
 
@@ -101,7 +112,8 @@ class ProjectRepo:
 
     def create(self, *, name: str, description: str = "", connector_type: str = "odoo",
                connector_version: str = "", base_url: str = "", database: str = "",
-               username: str = "", password: str = "") -> int:
+               username: str = "", password: str = "", private: bool = False,
+               owner_id: int | None = None) -> int:
         self.ensure_name_free(name)
         cur = self.conn.execute(
             "INSERT INTO project (name, description, connector_type, connector_version,"
@@ -110,6 +122,12 @@ class ProjectRepo:
              secrets_mod.chiffrer(password), now_iso()))
         self.conn.commit()
         project_id = int(cur.lastrowid)
+        if private:
+            self.conn.execute("UPDATE project SET default_access='no_access' WHERE id=?", (project_id,))
+            if owner_id is not None:
+                self.conn.execute("INSERT INTO project_access (project_id,user_id,role) VALUES (?,?,'admin')",
+                                  (project_id, owner_id))
+            self.conn.commit()
         ProjectMemberRepo(self.conn).sync_project(project_id)
         return project_id
 
@@ -1066,7 +1084,7 @@ class CaseRepo:
                       preconditions: str | None = None, test_steps: str | None = None,
                       expected_result: str | None = None,
                       refs: str | None = None, estimate: str | None = None,
-                      editor: str = "ui") -> int | None:
+                      editor: str = "ui", expected_version_id: int | None = None) -> int | None:
         """Édite le contenu métier d'un cas → **crée une NOUVELLE version** (décision `0022` n°10).
 
         ⚠️ **Jamais un `UPDATE` en place sur la version courante.** Une version est un état figé :
@@ -1081,11 +1099,20 @@ class CaseRepo:
         `refs`/`estimate` sont des métadonnées : elles vivent sur le CAS et ne créent pas de
         version (elles ne changent pas ce que le test vérifie).
 
+        `expected_version_id` (audit 2026-09-07, point « plusieurs comptes en simultané ») : la
+        version que l'appelant avait sous les yeux en ouvrant le formulaire. Fournie, et
+        différente de la version courante RÉELLE du cas → `VersionConflict` : quelqu'un d'autre a
+        déjà enregistré une édition depuis. `None` (appelant qui n'envoie rien, ex. anciens
+        clients/scripts) désactive le contrôle — comportement d'avant, inchangé.
+
         Rend l'id de la nouvelle version, ou `None` si aucun champ versionné n'a changé.
         """
         case = self.get(case_id)
         if case is None:
             return None
+        if expected_version_id is not None and case.get("current_version_id") != expected_version_id:
+            raise VersionConflict(
+                f"le cas {case_id} a été modifié par quelqu'un d'autre entre-temps")
         versions = VersionRepo(self.conn)
         current = versions.get(case.get("current_version_id")) if case.get("current_version_id") else None
 
@@ -1140,7 +1167,7 @@ class CaseRepo:
         return version_id
 
     def update_script(self, case_id: int, *, feature_content: str, steps_content: str,
-                      editor: str = "ui") -> int | None:
+                      editor: str = "ui", expected_version_id: int | None = None) -> int | None:
         """Édite directement le SCRIPT généré (Gherkin + Python) → **nouvelle version** (rôle
         Dev, 2026-08-07) — le MIROIR de `update_metier` : ici c'est le contenu MÉTIER qui est
         recopié tel quel, le contenu TECHNIQUE qui change.
@@ -1150,12 +1177,18 @@ class CaseRepo:
         risqué qu'éditer le texte métier : le gate bloque donc l'exécution jusqu'à relecture,
         automatiquement, sans règle supplémentaire à écrire.
 
+        `expected_version_id` : même garde-fou anti-édition-concurrente que `update_metier`
+        (voir sa docstring) — lève `VersionConflict` si fourni et périmé.
+
         Rend `None` si rien n'a changé (pas de version fantôme) — sinon l'id de la NOUVELLE
         version.
         """
         case = self.get(case_id)
         if case is None:
             return None
+        if expected_version_id is not None and case.get("current_version_id") != expected_version_id:
+            raise VersionConflict(
+                f"le cas {case_id} a été modifié par quelqu'un d'autre entre-temps")
         versions = VersionRepo(self.conn)
         current = (versions.get(case["current_version_id"])
                   if case.get("current_version_id") else None)
@@ -2724,7 +2757,8 @@ class UserRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def create(self, *, username: str, password_hash: str, role: str, email: str = "") -> int:
+    def create(self, *, username: str, password_hash: str, role: str, email: str = "",
+               must_change_password: bool = False) -> int:
         username = (username or "").strip()
         if not username:
             raise ValueError("le nom d'utilisateur est obligatoire")
@@ -2736,6 +2770,8 @@ class UserRepo:
                                       now_iso()))
         self.conn.commit()
         user_id = int(cur.lastrowid)
+        if must_change_password:
+            self.set_password_hash(user_id, password_hash, temporary=True)
         ProjectMemberRepo(self.conn).sync_user(user_id)
         return user_id
 
@@ -2770,11 +2806,15 @@ class UserRepo:
         self.conn.commit()
         ProjectMemberRepo(self.conn).sync_user(user_id)
 
-    def set_password_hash(self, user_id: int, password_hash: str) -> int:
+    def set_password_hash(self, user_id: int, password_hash: str, *, temporary: bool = False) -> int:
         """Réinitialisation par un Admin (2026-08-11) — pour un compte qui a oublié le sien."""
+        import time
+        from testpilot import config
+        expiry = int(time.time()) + config.TEMPORARY_PASSWORD_HOURS * 3600 if temporary else 0
         self.conn.execute(
-            "UPDATE user SET password_hash=?, session_version=session_version+1 WHERE id=?",
-            (password_hash, user_id))
+            "UPDATE user SET password_hash=?, session_version=session_version+1, "
+            "must_change_password=?, password_expires_at=? WHERE id=?",
+            (password_hash, int(temporary), expiry, user_id))
         self.conn.commit()
         row = self.conn.execute(
             "SELECT session_version FROM user WHERE id=?", (user_id,)).fetchone()
@@ -2788,6 +2828,16 @@ class UserRepo:
         row = self.conn.execute(
             "SELECT session_version FROM user WHERE id=?", (user_id,)).fetchone()
         return int(row["session_version"]) if row else 0
+
+    def change_own_password(self, user: dict, password_hash: str) -> int | None:
+        """Compare-and-swap : un reset ou une révocation concurrente ne peut être écrasé."""
+        cur = self.conn.execute(
+            "UPDATE user SET password_hash=?, session_version=session_version+1, "
+            "must_change_password=0, password_expires_at=0 "
+            "WHERE id=? AND session_version=? AND password_hash=? AND is_active=1",
+            (password_hash, user["id"], user["session_version"], user["password_hash"]))
+        self.conn.commit()
+        return int(user["session_version"]) + 1 if cur.rowcount == 1 else None
 
     def set_email(self, user_id: int, email: str) -> None:
         """Nécessaire pour prévenir ce compte par email (2026-08-12, `notification_service`) —

@@ -1,3 +1,6 @@
+# Copie de démo séparée (son propre dépôt, .git compris) — jamais mêlée à celui-ci.
+/.demo-stable/
+
 # Python
 __pycache__/
 *.py[cod]

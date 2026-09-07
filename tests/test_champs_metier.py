@@ -143,6 +143,60 @@ def test_les_metadonnees_ne_creent_PAS_de_version(conn):
     assert case["refs"] == "JIRA-42" and case["estimate"] == "15m"
 
 
+# ── Édition concurrente (audit 2026-09-07) — deux comptes sur le même cas ─────
+
+def test_deux_editions_concurrentes_la_seconde_est_refusee_pas_silencieuse(conn):
+    """Awa et Léo ouvrent tous les deux le formulaire sur la version v1. Awa enregistre en
+    premier (crée v2). Léo, lui, envoie toujours `base_version_id=v1` : sans garde-fou, sa
+    sauvegarde repartirait du contenu PÉRIMÉ qu'il a sous les yeux et écraserait le champ
+    qu'Awa vient de changer, sans avertir personne. Avec le garde-fou, Léo doit être refusé —
+    jamais silencieusement fusionné."""
+    cid, vid = _cas(conn)
+    cases = CaseRepo(conn)
+
+    # Awa enregistre la première — sa vue (v1) est encore la version courante.
+    awa_vid = cases.update_metier(cid, preconditions="Awa était là.", expected_version_id=vid)
+    assert awa_vid is not None
+    assert cases.get(cid)["current_version_id"] == awa_vid
+
+    # Léo, resté sur v1, tente d'enregistrer APRÈS elle : refusé, pas une v3 fabriquée dessus.
+    from testpilot.store.repositories import VersionConflict
+    with pytest.raises(VersionConflict):
+        cases.update_metier(cid, preconditions="Léo était là.", expected_version_id=vid)
+
+    # Rien n'a bougé côté cas : l'édition d'Awa reste la version courante, intacte.
+    assert cases.get(cid)["current_version_id"] == awa_vid
+    assert VersionRepo(conn).get(awa_vid)["preconditions"] == "Awa était là."
+
+
+def test_sans_base_version_id_le_controle_reste_desactive(conn):
+    """Compatibilité : un appelant qui n'envoie rien (ancien client) garde le comportement
+    d'avant — pas de régression pour ce qui ne participe pas au nouveau contrat."""
+    cid, vid = _cas(conn)
+    cases = CaseRepo(conn)
+    cases.update_metier(cid, preconditions="Une première édition.", expected_version_id=vid)
+
+    # Aucune exception : `expected_version_id` omis désactive le contrôle.
+    new_vid = cases.update_metier(cid, preconditions="Une seconde édition, sans contrôle.")
+    assert new_vid is not None
+
+
+def test_le_meme_garde_fou_protege_l_edition_du_script_dev(conn):
+    cid, vid = _cas(conn)
+    cases = CaseRepo(conn)
+
+    dev_vid = cases.update_script(cid, feature_content="# language: fr\nFonctionnalité: G\n",
+                                  steps_content="from behave import when\n",
+                                  expected_version_id=vid)
+    assert dev_vid is not None
+
+    from testpilot.store.repositories import VersionConflict
+    with pytest.raises(VersionConflict):
+        cases.update_script(cid, feature_content="# language: fr\nFonctionnalité: H\n",
+                            steps_content="from behave import when\n",
+                            expected_version_id=vid)
+
+
 def test_le_cas_porte_une_COPIE_du_titre_la_version_fait_foi(conn):
     """Le cas garde les valeurs courantes pour les listes/filtres ; la version reste la vérité."""
     cid, _vid = _cas(conn)

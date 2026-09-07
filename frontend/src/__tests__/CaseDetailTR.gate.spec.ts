@@ -19,6 +19,9 @@ const getCase = vi.fn()
 const runCase = vi.fn()
 vi.mock('../lib/api', () => ({
   roleSuffisant: () => true,
+  // Temps réel (SSE, audit 2026-09-07) : un faux flux qui ne fait jamais rien — ces tests ne
+  // portent pas sur la mise à jour en direct, juste sur le gate/l'onglet Script.
+  openProjectEvents: () => ({ close: () => {}, onmessage: null }),
   api: {
     getCase: (...a: any[]) => getCase(...a),
     getCaseScenarios: vi.fn().mockResolvedValue([]),

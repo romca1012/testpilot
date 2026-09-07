@@ -412,7 +412,7 @@ def test_desactiver_un_compte_NE_LE_SUPPRIME_PAS(client):
     _compte(client, "Root", "adminmdp", access.ROLE_ADMIN)
     _connecte(client, "Root", "adminmdp")
     bob = client.post("/api/admin/users",
-                      json={"username": "Bob", "password": "motdepasse",
+                      json={"username": "Bob", "password": "motdepasse-de-bob",
                             "role": access.ROLE_TESTEUR}).json()
 
     client.patch(f"/api/admin/users/{bob['id']}", json={"is_active": False})

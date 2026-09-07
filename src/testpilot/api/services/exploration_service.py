@@ -156,6 +156,7 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
 def run_exploration(job_id: str, *, project_id: int, connexion: dict,
                     max_pages: int = MAX_PAGES_DEFAUT) -> None:
     """Tâche de fond : cartographie l'application DU PROJET et range le résultat sous son id."""
+    _JOBS[job_id] = {"status": "running", "project_id": project_id, "error": "", "resume": ""}
     try:
         mesure = _crawl(connexion, max_pages)
         if not mesure.get("pages"):

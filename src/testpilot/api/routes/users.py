@@ -128,10 +128,7 @@ def get_user(user_id: int, conn=Depends(get_conn)):
 
 
 def _verifier_longueur_mot_de_passe(mot_de_passe: str) -> None:
-    if len(mot_de_passe) < access.MOT_DE_PASSE_LONGUEUR_MIN:
-        raise erreurs.ErreurMetier(
-            "requete_invalide",
-            f"le mot de passe doit compter au moins {access.MOT_DE_PASSE_LONGUEUR_MIN} caractères")
+    access.verifier_politique_mot_de_passe(mot_de_passe)
 
 
 def _verifier_acces_projets(conn, projects: list[schemas.UserProjectAccessIn]) -> None:
@@ -169,7 +166,7 @@ def create_user(body: schemas.UserCreateIn, request: Request, conn=Depends(get_c
     try:
         uid = UserRepo(conn).create(username=body.username,
                                     password_hash=access.hacher_mot_de_passe(body.password),
-                                    role=body.role, email=body.email)
+                                    role=body.role, email=body.email, must_change_password=True)
     except DuplicateName as exc:
         raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
     if body.projects is not None:
@@ -230,7 +227,7 @@ def patch_user(user_id: int, body: schemas.UserPatchIn, conn=Depends(get_conn)):
         repo.set_active(user_id, body.is_active)
     if body.new_password is not None:
         _verifier_longueur_mot_de_passe(body.new_password)
-        repo.set_password_hash(user_id, access.hacher_mot_de_passe(body.new_password))
+        repo.set_password_hash(user_id, access.hacher_mot_de_passe(body.new_password), temporary=True)
     if body.email is not None:
         repo.set_email(user_id, body.email)
     return _out(repo.get(user_id))

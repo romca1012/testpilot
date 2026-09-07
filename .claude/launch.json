@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": ".venv-v1/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "testpilot.api.app:app", "--reload", "--port", "8010"],
+      "port": 8010
     }
   ]
 }

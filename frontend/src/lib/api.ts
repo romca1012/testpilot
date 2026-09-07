@@ -18,6 +18,13 @@ const CREDENTIALS: RequestCredentials = 'include'
 let onUnauthorized: (() => void) | null = null
 export function setUnauthorizedHandler(fn: (() => void) | null) { onUnauthorized = fn }
 
+// Prévenu quand le serveur répond 403 `password_change_required` (audit 2026-09-07) : le compte
+// doit changer son mot de passe AVANT de pouvoir faire quoi que ce soit d'autre. Ça peut arriver
+// sur N'IMPORTE QUEL appel après la connexion (pas seulement au login) — d'où un handler global,
+// même patron que `onUnauthorized` ci-dessus, plutôt qu'une vérification route par route.
+let onPasswordChangeRequired: (() => void) | null = null
+export function setPasswordChangeRequiredHandler(fn: (() => void) | null) { onPasswordChangeRequired = fn }
+
 // Extraction d'erreur PARTAGÉE entre `request()` (JSON) et `requestForm()` (multipart) : les deux
 // parlent au même serveur RFC 9457, et dupliquer cette lecture aurait fait deux endroits où un
 // oubli (ex. ne pas relire `code`) casse silencieusement l'un des deux chemins sans casser l'autre.
@@ -33,6 +40,9 @@ async function erreurDepuis(resp: Response, path: string): Promise<never> {
   // La connexion elle-même peut répondre 401 (mot de passe faux) : c'est le formulaire qui le
   // dit, il ne faut pas le confondre avec une session expirée.
   if (resp.status === 401 && !path.startsWith('/api/auth/')) onUnauthorized?.()
+  // Idem pour le changement de mot de passe lui-même : un ancien mot de passe faux (401) ne doit
+  // jamais redéclencher l'écran de changement forcé qui vient déjà de l'afficher.
+  if (code === 'password_change_required' && path !== '/api/auth/password') onPasswordChangeRequired?.()
   throw new ApiError(resp.status, detail, code)
 }
 
@@ -70,7 +80,8 @@ export class ApiError extends Error {
    * `connexion_incomplete`, `aucune_version`, `relecture_requise`, `specification_vide`,
    * `metier_incomplet`, `etat_incompatible`, `campagne_vide`, `campagne_en_cours`,
    * `campagne_archivee`, `exploration_en_cours`, `requete_invalide`, `non_gere`,
-   * `mot_de_passe_incorrect` (2026-09-03 — ancien mot de passe faux à `PATCH /api/auth/password`).
+   * `mot_de_passe_incorrect` (2026-09-03 — ancien mot de passe faux à `PATCH /api/auth/password`),
+   * `conflit_edition` (2026-09-07 — édition concurrente du même cas, voir `CaseMetierIn.base_version_id`).
    */
   constructor(public status: number, message: string, public code: string = '') {
     super(message)
@@ -349,10 +360,13 @@ export const api = {
   updateCaseMetier: (id: number | string, body: CaseMetierIn) =>
     request<CaseMetierOut>(`/api/cases/${id}/metier`, { method: 'PATCH', body: JSON.stringify(body) }),
   // Édition DIRECTE du script généré — réservée au rôle Dev (le serveur le vérifie, 403 sinon).
-  // Jamais auto-approuvée : le gate rebloque l'exécution jusqu'à relecture.
-  updateCaseScript: (id: number | string, feature_content: string, steps_content: string) =>
+  // Jamais auto-approuvée : le gate rebloque l'exécution jusqu'à relecture. `baseVersionId` :
+  // même garde-fou anti-édition-concurrente que `updateCaseMetier` (409 `conflit_edition`).
+  updateCaseScript: (id: number | string, feature_content: string, steps_content: string,
+                    baseVersionId?: number | null) =>
     request<CaseMetierOut>(`/api/cases/${id}/script`, {
-      method: 'PATCH', body: JSON.stringify({ feature_content, steps_content }),
+      method: 'PATCH',
+      body: JSON.stringify({ feature_content, steps_content, base_version_id: baseVersionId ?? null }),
     }),
   reviewCase: (id: number | string, approved: boolean, comment = '', repair_budget?: number) =>
     request<ReviewResponse>(`/api/cases/${id}/review`, {
@@ -381,9 +395,35 @@ export const api = {
     `${API_BASE}/api/executions/${id}/artifacts/${encodeURIComponent(nom)}`,
 }
 
+// ── Temps réel (SSE, audit 2026-09-07) ──────────────────────────────────────
+// Un cas édité/créé ailleurs prévient les écrans ouverts sur SON PROJET — sans ça, un écran ne
+// se met à jour qu'au prochain rechargement manuel. Fonction à part de `api` (pas un `request()`)
+// : `EventSource` est une connexion longue durée gérée par le NAVIGATEUR (reconnexion automatique
+// comprise), pas un aller-retour fetch classique.
+export interface ProjectEvent {
+  kind: 'case_created' | 'case_updated' | 'case_metier_changed' | 'case_script_changed'
+  case_id: number
+}
+export function openProjectEvents(projectId: number | string): EventSource {
+  // `withCredentials` : en dev, front (:5173) et API (:8010) sont deux origines — sans ça, le
+  // cookie de session ne partirait pas avec la requête `EventSource` (même raison que
+  // `credentials: 'include'` sur `request()` plus haut).
+  return new EventSource(`${API_BASE}/api/projects/${projectId}/events`, { withCredentials: true })
+}
+
 // ── Types (miroir des DTO backend) ──────────────────────────────────────────
 /** État du verrou d'instance. `lock_enabled=false` → aucun verrou configuré (poste isolé). */
-export interface Session { lock_enabled: boolean; authenticated: boolean; name: string; role: string }
+export interface Session {
+  lock_enabled: boolean
+  authenticated: boolean
+  name: string
+  role: string
+  // Appropriation obligatoire du mot de passe (audit 2026-09-07) : vrai juste après la création
+  // du compte ou une réinitialisation par un Admin — tant que c'est vrai, le serveur refuse TOUTE
+  // autre écriture que `PATCH /api/auth/password` (403 `password_change_required`).
+  must_change_password: boolean
+  password_min_length: number
+}
 
 // Les 4 rôles, hiérarchie croissante — même ordre que `access.ROLES` côté serveur (la vérité
 // reste toujours le serveur ; ceci ne sert qu'à ADAPTER l'affichage, jamais à décider un droit).
@@ -567,6 +607,9 @@ export interface GroupDetail {
 export interface CaseMetierIn {
   title?: string; preconditions?: string; test_steps?: string
   expected_result?: string; refs?: string; estimate?: string; editor?: string
+  // Version consultée à l'ouverture du formulaire (audit 2026-09-07, édition concurrente) — le
+  // serveur répond 409 `conflit_edition` si elle n'est déjà plus la version courante du cas.
+  base_version_id?: number | null
 }
 export interface CaseMetierOut {
   case: CaseSummary; version_id: number | null; version_created: boolean

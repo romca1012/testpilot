@@ -22,7 +22,7 @@ from testpilot import config
 from testpilot.analysis import spec_analyzer
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
-from testpilot.api.services import generation_service, spec_extract
+from testpilot.api.services import events_bus, generation_service, spec_extract
 from testpilot.guardrails import concurrency, durable_jobs
 from testpilot.store.repositories import (
     CaseGroupRepo,
@@ -147,7 +147,11 @@ def create_manual_case(module_id: int, body: schemas.ManualCaseIn, request: Requ
             author=access.utilisateur_de(request) or "ui")
     except DuplicateName as exc:
         raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
-    return schemas.case_summary(CaseRepo(conn).get(cid))
+    nouveau_cas = CaseRepo(conn).get(cid)
+    projet_id = nouveau_cas.get("project_id") if nouveau_cas else None
+    if projet_id is not None:
+        events_bus.publier(projet_id, {"kind": "case_created", "case_id": cid})
+    return schemas.case_summary(nouveau_cas)
 
 
 @router.post("/{module_id}/cases/extract", response_model=schemas.SpecExtractOut,

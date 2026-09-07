@@ -70,6 +70,27 @@ def test_le_client_n_a_JAMAIS_besoin_de_lire_le_francais(client):
     assert r.status_code == 409
 
 
+def test_editer_un_cas_avec_une_version_perimee_rend_409_conflit_edition(client):
+    """Audit 2026-09-07 : deux comptes ouvrent le même cas, la seconde sauvegarde ne doit jamais
+    fabriquer silencieusement une version à partir d'un contenu périmé."""
+    pid = _projet(client)
+    mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
+    case = client.post(f"/api/modules/{mid}/cases/manual", json={
+        "title": "Cas", "test_steps": ["Une étape"], "expected_result": "Un résultat"}).json()
+    version_vue = client.get(f"/api/cases/{case['id']}").json()["current_version_id"]
+
+    # Première sauvegarde, sur la version vue : accord.
+    assert client.patch(f"/api/cases/{case['id']}/metier",
+                        json={"preconditions": "Awa d'abord", "base_version_id": version_vue}
+                        ).status_code == 200
+
+    # Seconde sauvegarde, toujours sur l'ANCIENNE version vue : refusée, pas fusionnée en silence.
+    r = client.patch(f"/api/cases/{case['id']}/metier",
+                     json={"preconditions": "Léo ensuite", "base_version_id": version_vue})
+    assert r.status_code == 409
+    assert r.json()["code"] == "conflit_edition"
+
+
 def test_les_erreurs_NON_converties_rendent_la_meme_forme(client):
     """Une `HTTPException` restée telle quelle ne doit pas produire un second format : un client
     n'a jamais à gérer deux formes d'erreur selon la route qu'il appelle."""

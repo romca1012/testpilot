@@ -3,7 +3,6 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      TESTPILOT_PRODUCTION: "true"
       POSTGRES_DB: testpilot
       POSTGRES_USER: testpilot
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD obligatoire}
@@ -28,9 +27,10 @@ services:
       --workers 1 --proxy-headers --forwarded-allow-ips='*'"
     environment:
       # URL complète requise : le mot de passe doit être encodé comme composant d'URL.
+      TESTPILOT_PRODUCTION: "true"
       TESTPILOT_DB_URL: ${TESTPILOT_DB_URL:?TESTPILOT_DB_URL obligatoire}
       TESTPILOT_PUBLIC_URL: ${TESTPILOT_PUBLIC_URL:?TESTPILOT_PUBLIC_URL obligatoire}
-      TESTPILOT_PASSWORD_MIN_LENGTH: ${TESTPILOT_PASSWORD_MIN_LENGTH:-12}
+      TESTPILOT_PASSWORD_MIN_LENGTH: ${TESTPILOT_PASSWORD_MIN_LENGTH:-15}
       TESTPILOT_DATA_DIR: /var/lib/testpilot
       TESTPILOT_SECRET_KEY: ${TESTPILOT_SECRET_KEY:?TESTPILOT_SECRET_KEY obligatoire}
       TESTPILOT_SESSION_SECRET: ${TESTPILOT_SESSION_SECRET:?TESTPILOT_SESSION_SECRET obligatoire}

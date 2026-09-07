@@ -9,9 +9,10 @@ import CasesShell from './components/CasesShell.vue'
 import InstanceAdminShell from './components/InstanceAdminShell.vue'
 import SimpleShell from './components/SimpleShell.vue'
 import LoginScreen from './pages/LoginScreen.vue'
+import ForcedPasswordChangeScreen from './pages/ForcedPasswordChangeScreen.vue'
 import PaletteCommandes from './components/PaletteCommandes.vue'
 import ThemeSwitch from './components/ThemeSwitch.vue'
-import { setUnauthorizedHandler } from './lib/api'
+import { setPasswordChangeRequiredHandler, setUnauthorizedHandler } from './lib/api'
 import { ROUTES_SANS_SHELL } from './lib/shell'
 import { useSession } from './lib/useSession'
 import { useSettings } from './lib/useSettings'
@@ -43,23 +44,37 @@ const { session, charger: chargerSession } = useSession()
 const { ensureLoaded: chargerReglages, get: getReglage } = useSettings()
 const sessionConnue = ref(false)
 const doitSeConnecter = ref(false)
+// Appropriation obligatoire du mot de passe (audit 2026-09-07) : compte tout juste créé par un
+// Admin, ou réinitialisé par lui. Distinct de `doitSeConnecter` — la session EST valide, mais le
+// serveur refuse déjà tout le reste (`password_change_required`, voir `api.ts`).
+const doitChangerMotDePasse = ref(false)
 
 async function verifierSession() {
   await chargerSession()
   doitSeConnecter.value = !session.value?.authenticated
-  if (session.value?.authenticated) await chargerReglages()
+  doitChangerMotDePasse.value = !!session.value?.must_change_password
+  if (session.value?.authenticated && !doitChangerMotDePasse.value) await chargerReglages()
   sessionConnue.value = true
 }
 
 onMounted(() => {
   setUnauthorizedHandler(() => { doitSeConnecter.value = true })
+  // Peut arriver sur N'IMPORTE QUEL appel après la connexion, pas seulement au login — un Admin
+  // a pu réinitialiser ce mot de passe pendant que la session était déjà ouverte ailleurs.
+  setPasswordChangeRequiredHandler(() => { doitChangerMotDePasse.value = true })
   verifierSession()
 })
 
 async function apresConnexion() {
   doitSeConnecter.value = false
-  await chargerReglages(true)
+  doitChangerMotDePasse.value = !!session.value?.must_change_password
+  if (!doitChangerMotDePasse.value) await chargerReglages(true)
   await router.replace('/projects')
+}
+
+async function apresChangementObligatoire() {
+  doitChangerMotDePasse.value = false
+  await chargerReglages(true)
 }
 
 watchEffect(() => {
@@ -73,9 +88,11 @@ watchEffect(() => {
 <template>
   <!-- Sur la connexion il n'existe encore aucun shell. Une fois connecté, chaque shell réserve
        sa propre place au sélecteur pour qu'il ne masque jamais une action de page. -->
-  <ThemeSwitch v-if="!sessionConnue || doitSeConnecter"
+  <ThemeSwitch v-if="!sessionConnue || doitSeConnecter || doitChangerMotDePasse"
                class="fixed right-4 top-4 z-40 md:right-6 md:top-5" />
   <LoginScreen v-if="sessionConnue && doitSeConnecter" @connected="apresConnexion" />
+  <ForcedPasswordChangeScreen v-else-if="sessionConnue && doitChangerMotDePasse"
+                              @changed="apresChangementObligatoire" />
   <template v-else-if="sessionConnue">
     <component :is="layout">
       <RouterView />
