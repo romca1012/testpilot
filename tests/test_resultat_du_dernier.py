@@ -36,7 +36,9 @@ from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE, statut_de_
 
 
 @pytest.fixture
-def conn(tmp_path):
+def conn(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(tmp_path / "resultats.db")
     yield c
     c.close()

@@ -17,7 +17,9 @@ def _user(conn, name: str, role: str, *, active: bool = True) -> int:
     return uid
 
 
-def test_backfill_preserve_role_global_defaut_et_exception(tmp_path):
+def test_backfill_preserve_role_global_defaut_et_exception(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "members.db")
     try:
         pid = ProjectRepo(conn).create(name="P")
@@ -34,7 +36,9 @@ def test_backfill_preserve_role_global_defaut_et_exception(tmp_path):
         conn.close()
 
 
-def test_backfill_exclut_no_access_et_suspend_un_compte_inactif(tmp_path):
+def test_backfill_exclut_no_access_et_suspend_un_compte_inactif(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "members.db")
     try:
         pid = ProjectRepo(conn).create(name="P")
@@ -52,7 +56,9 @@ def test_backfill_exclut_no_access_et_suspend_un_compte_inactif(tmp_path):
         conn.close()
 
 
-def test_repo_met_a_jour_et_retire_sans_effacement_physique(tmp_path):
+def test_repo_met_a_jour_et_retire_sans_effacement_physique(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "members.db")
     try:
         pid = ProjectRepo(conn).create(name="P")
@@ -67,7 +73,9 @@ def test_repo_met_a_jour_et_retire_sans_effacement_physique(tmp_path):
         conn.close()
 
 
-def test_migration_rejouable_sans_dupliquer(tmp_path):
+def test_migration_rejouable_sans_dupliquer(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "members.db")
     try:
         ProjectRepo(conn).create(name="P")
@@ -79,7 +87,9 @@ def test_migration_rejouable_sans_dupliquer(tmp_path):
         conn.close()
 
 
-def test_nouveau_projet_synchronise_les_utilisateurs_existants(tmp_path):
+def test_nouveau_projet_synchronise_les_utilisateurs_existants(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "members.db")
     try:
         uid = _user(conn, "Awa", access.ROLE_TESTEUR)
@@ -89,7 +99,9 @@ def test_nouveau_projet_synchronise_les_utilisateurs_existants(tmp_path):
         conn.close()
 
 
-def test_nouvel_utilisateur_synchronise_les_projets_existants(tmp_path):
+def test_nouvel_utilisateur_synchronise_les_projets_existants(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "members.db")
     try:
         pid = ProjectRepo(conn).create(name="Existant")
@@ -99,7 +111,9 @@ def test_nouvel_utilisateur_synchronise_les_projets_existants(tmp_path):
         conn.close()
 
 
-def test_defaut_exception_et_retrait_restent_synchronises(tmp_path):
+def test_defaut_exception_et_retrait_restent_synchronises(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "members.db")
     try:
         pid = ProjectRepo(conn).create(name="P")
@@ -122,7 +136,9 @@ def test_defaut_exception_et_retrait_restent_synchronises(tmp_path):
         conn.close()
 
 
-def test_role_global_et_desactivation_resynchronisent_les_membres(tmp_path):
+def test_role_global_et_desactivation_resynchronisent_les_membres(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "members.db")
     try:
         pid = ProjectRepo(conn).create(name="P")
@@ -139,7 +155,9 @@ def test_role_global_et_desactivation_resynchronisent_les_membres(tmp_path):
         conn.close()
 
 
-def test_resolveur_officiel_lit_project_member(tmp_path):
+def test_resolveur_officiel_lit_project_member(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "members.db")
     try:
         pid = ProjectRepo(conn).create(name="P")

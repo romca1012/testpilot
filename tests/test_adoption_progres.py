@@ -204,7 +204,9 @@ def test_regresser_n_est_pas_progresser():
 # ── La boucle complète ────────────────────────────────────────────────────────
 
 @pytest.fixture
-def conn(tmp_path):
+def conn(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(tmp_path / "p.db")
     yield c
     c.close()

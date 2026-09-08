@@ -22,7 +22,9 @@ from testpilot.store.repositories import CaseRepo, ExecutionRepo, VersionRepo
 
 
 @pytest.fixture
-def conn(tmp_path):
+def conn(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(tmp_path / "f.db")
     yield c
     c.close()
@@ -123,6 +125,8 @@ def test_un_echec_d_ouverture_ne_laisse_pas_l_execution_bloquee_en_cours(tmp_pat
 
     L'exécution restait alors dans `_RUNNING` pour toujours — « en cours » à l'écran, à jamais.
     """
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "g.db")
     cid, vid, eid = _cas(conn)
     conn.close()

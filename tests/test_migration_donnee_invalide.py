@@ -57,9 +57,11 @@ def _base_pre_19(path):
     return conn
 
 
-def test_base_neuve_porte_la_valeur_dans_les_trois_CHECK(tmp_path):
+def test_base_neuve_porte_la_valeur_dans_les_trois_CHECK(tmp_path, monkeypatch):
     """Une base fraîche (schema.sql à jour) doit enregistrer la valeur dans les CHECK des trois
     tables — sinon une base neuve replanterait comme la base migrée."""
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "neuve.db")
     for tbl in ("execution", "scenario_result", "test_case"):
         sql = conn.execute("SELECT sql FROM sqlite_master WHERE name=?", (tbl,)).fetchone()[0]

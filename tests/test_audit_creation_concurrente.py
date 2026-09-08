@@ -7,6 +7,8 @@ from testpilot.store.repositories import ProjectRepo
 
 
 def test_creation_renvoie_son_identifiant_meme_si_un_autre_projet_arrive(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "audit.db")
     original = ProjectRepo.create
 

@@ -40,11 +40,13 @@ def _dans_un_autre_thread(fn):
     return box.get("result"), box.get("error")
 
 
-def test_connexion_utilisable_depuis_un_autre_thread(tmp_path):
+def test_connexion_utilisable_depuis_un_autre_thread(tmp_path, monkeypatch):
     """Reproduit EXACTEMENT le motif FastAPI : créer ici, utiliser là.
 
     Sans `check_same_thread=False`, ce test lève ProgrammingError — c'est le HTTP 500 qu'on a vu.
     """
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "t.db")   # thread « dépendance »
     try:
         result, error = _dans_un_autre_thread(lambda: ProjectRepo(conn).list_all())  # thread « endpoint »
@@ -54,20 +56,24 @@ def test_connexion_utilisable_depuis_un_autre_thread(tmp_path):
         conn.close()
 
 
-def test_connexion_fermable_depuis_un_autre_thread(tmp_path):
+def test_connexion_fermable_depuis_un_autre_thread(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     # Le `finally` de la dépendance peut lui aussi tourner ailleurs que là où la connexion est née.
     conn = get_initialized_db(tmp_path / "t.db")
     _, error = _dans_un_autre_thread(conn.close)
     assert error is None
 
 
-def test_requetes_concurrentes_ne_cassent_pas(tmp_path):
+def test_requetes_concurrentes_ne_cassent_pas(tmp_path, monkeypatch):
     """Le vrai motif serveur : une connexion PAR requête, plusieurs requêtes en même temps.
 
     ⚠️ `check_same_thread=False` lève le contrôle de propriété, il n'ajoute AUCUN verrou :
     l'invariant « une connexion par requête » reste ce qui rend l'ensemble correct. Ce test le
     fige — s'il devenait une connexion globale partagée, on retomberait dans des courses.
     """
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     db = tmp_path / "t.db"
     get_initialized_db(db).close()   # schéma créé une fois
 

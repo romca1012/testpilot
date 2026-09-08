@@ -260,7 +260,9 @@ def test_migration_4_ramene_une_base_existante_a_la_cible(tmp_path):
     conn.close()
 
 
-def test_migration_4_idempotente(tmp_path):
+def test_migration_4_idempotente(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "base.db")
     _migrate_4_execution_field_fallbacks(conn)  # rejouée sur une base déjà à la cible
     _migrate_4_execution_field_fallbacks(conn)

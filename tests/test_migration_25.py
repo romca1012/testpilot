@@ -270,7 +270,9 @@ def _base_neuve(tmp_path):
     return get_initialized_db(tmp_path / "neuve.db")
 
 
-def test_une_base_neuve_est_a_la_version_cible_et_sans_statut_derive(tmp_path):
+def test_une_base_neuve_est_a_la_version_cible_et_sans_statut_derive(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = _base_neuve(tmp_path)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == _SCHEMA_VERSION
     assert "validation_status" not in _colonnes(conn, "test_case")

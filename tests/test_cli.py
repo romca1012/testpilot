@@ -85,7 +85,9 @@ def _real_bug_outcome():
 
 
 @pytest.fixture
-def conn(tmp_path):
+def conn(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(tmp_path / "t.db")
     yield c
     c.close()

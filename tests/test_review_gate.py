@@ -13,7 +13,9 @@ from testpilot.verdict import review_gate as gate
 
 
 @pytest.fixture
-def repos(tmp_path):
+def repos(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "t.db")
     yield CaseRepo(conn), VersionRepo(conn), ReviewRepo(conn)
     conn.close()

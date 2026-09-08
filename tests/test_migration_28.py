@@ -28,10 +28,12 @@ _VRAIE_BASE = Path(__file__).resolve().parent.parent / "data" / "testpilot.db"
 
 
 @pytest.mark.skipif(not _VRAIE_BASE.exists(), reason="pas de base réelle sur ce poste")
-def test_la_migration_28_ne_plante_PAS_sur_la_vraie_base_de_production(tmp_path):
+def test_la_migration_28_ne_plante_PAS_sur_la_vraie_base_de_production(tmp_path, monkeypatch):
     """LE test du défaut : passe par `init_db()` en entier (schema.sql PUIS migrations), sur
     une copie de la vraie base — jamais une fixture SQL reconstruite à la main, qui aurait été
     aveugle à un bug né dans `schema.sql` lui-même."""
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     copie = tmp_path / "production_copie.db"
     shutil.copy2(_VRAIE_BASE, copie)
 
@@ -48,9 +50,11 @@ def test_la_migration_28_ne_plante_PAS_sur_la_vraie_base_de_production(tmp_path)
         conn.close()
 
 
-def test_une_base_toute_neuve_traverse_aussi_init_db_sans_erreur(tmp_path):
+def test_une_base_toute_neuve_traverse_aussi_init_db_sans_erreur(tmp_path, monkeypatch):
     """Le pendant sur une base NEUVE (schema.sql seul, sans migration à jouer) — pour s'assurer
     que le correctif n'a pas cassé le chemin inverse."""
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "neuve.db")
     try:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == _SCHEMA_VERSION

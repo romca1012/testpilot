@@ -98,13 +98,15 @@ def test_la_memoire_est_PLAFONNEE():
 
 # ── Principe 1 : aucun texte de l'agent ──────────────────────────────────────
 
-def test_GARDE_la_memoire_ne_contient_AUCUN_texte_ecrit_par_l_agent(tmp_path):
+def test_GARDE_la_memoire_ne_contient_AUCUN_texte_ecrit_par_l_agent(tmp_path, monkeypatch):
     """⚠️ `what_was_tried` et `change_summary` sont de la PROSE de LLM.
 
     `_failure_report` porte déjà la doctrine : lui souffler sa propre conclusion l'enferme dans
     une piste qui peut être fausse (cas 6). La réinjecter d'une session à l'autre ancrerait cette
     piste **durablement** — pire que dans une seule session. Arbitrage du porteur, 2026-08-03.
     """
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "m.db")
     pid = ProjectRepo(conn).create(name="P", description="")
     mid = ModuleRepo(conn).create(project_id=pid, name="M", description="")
@@ -156,11 +158,13 @@ def test_sans_memoire_le_rapport_est_IDENTIQUE_a_avant():
 
 # ── L'agrégation par CAS, le trou que rien ne comblait ───────────────────────
 
-def test_GARDE_l_historique_traverse_les_EXECUTIONS_et_les_SESSIONS(tmp_path):
+def test_GARDE_l_historique_traverse_les_EXECUTIONS_et_les_SESSIONS(tmp_path, monkeypatch):
     """⚠️ Échoue sur le code d'avant : `RepairRepo` ne savait lire que par exécution.
 
     C'est exactement pour ça que chaque nouvelle session repartait aveugle.
     """
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "h.db")
     pid = ProjectRepo(conn).create(name="P", description="")
     mid = ModuleRepo(conn).create(project_id=pid, name="M", description="")
@@ -181,7 +185,9 @@ def test_GARDE_l_historique_traverse_les_EXECUTIONS_et_les_SESSIONS(tmp_path):
     assert {l["failure_signature"] for l in historique} == {"sig-1", "sig-2"}
 
 
-def test_l_historique_ne_MELANGE_PAS_deux_cas(tmp_path):
+def test_l_historique_ne_MELANGE_PAS_deux_cas(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "h2.db")
     pid = ProjectRepo(conn).create(name="P", description="")
     mid = ModuleRepo(conn).create(project_id=pid, name="M", description="")
@@ -199,8 +205,10 @@ def test_l_historique_ne_MELANGE_PAS_deux_cas(tmp_path):
     assert [l["failure_signature"] for l in RepairRepo(conn).historique_pour_cas(ids[0])] == ["s1"]
 
 
-def test_collecter_ne_LEVE_JAMAIS_meme_sans_projet(tmp_path):
+def test_collecter_ne_LEVE_JAMAIS_meme_sans_projet(tmp_path, monkeypatch):
     """Une mémoire indisponible ne doit jamais empêcher une réparation de se lancer."""
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "v.db")
     regles, faits = mr.collecter(conn, case_id=999, project_id=None)
     assert regles == [] and faits == []

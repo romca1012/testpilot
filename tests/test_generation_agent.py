@@ -83,6 +83,7 @@ def _plan():
 def _isolate_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "GENERATED_DIR", tmp_path / "gen")
     monkeypatch.setattr(config, "STEPS_LIBRARY_DIR", tmp_path / "steps_lib")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     (tmp_path / "steps_lib").mkdir()
 
 
