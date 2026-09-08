@@ -133,6 +133,7 @@ def test_automatiser_cree_une_version_AVEC_gherkin_sur_le_meme_cas(conn, monkeyp
 
 def test_api_automate_demarre_un_job(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     client = TestClient(app_mod.app)
     conn = get_initialized_db(config.DB_PATH)
     _, cid = _cas_manuel(conn)
