@@ -6,7 +6,18 @@
 // (2026-08-10, voir la session — Windows ne le retrouve dans aucune table de process, mais le
 // port répond encore). Remettre 'http://localhost:8000' une fois ce port libéré (redémarrage du
 // poste probablement nécessaire).
-export const API_BASE = import.meta.env.DEV ? 'http://localhost:8010' : ''
+//
+// `import.meta.env.BASE_URL` (audit déploiement Scaleway, 2026-09-08) : Vite l'expose
+// automatiquement à partir de `base` dans vite.config.ts (donc de `VITE_BASE_PATH` au build,
+// voir Dockerfile). Un déploiement sous un sous-chemin (ex. Traefik qui route `/dev` vers ce
+// conteneur) sert l'appli sous `/dev/`, mais SANS ce préfixe ici, `fetch('/api/...')` appellerait
+// `/api/...` à la racine du domaine — un chemin que Traefik ne route vers aucun conteneur
+// (sa règle est `PathPrefix('/dev')`) → 404 avant même d'atteindre FastAPI. `BASE_URL` vaut
+// toujours `/` par défaut (racine), donc `.replace(/\/$/, '')` redonne `''` sans rien changer
+// pour un déploiement classique.
+export const API_BASE = import.meta.env.DEV
+  ? 'http://localhost:8010'
+  : import.meta.env.BASE_URL.replace(/\/$/, '')
 
 // ⚠️ `credentials: 'include'` est INDISPENSABLE : le verrou d'instance (2026-07-24) tient dans un
 // cookie de session, et en développement le front (:5173) et l'API (:8000) sont deux origines —
@@ -25,11 +36,22 @@ export function setUnauthorizedHandler(fn: (() => void) | null) { onUnauthorized
 let onPasswordChangeRequired: (() => void) | null = null
 export function setPasswordChangeRequiredHandler(fn: (() => void) | null) { onPasswordChangeRequired = fn }
 
+// Message de repli quand la réponse n'est PAS un corps JSON RFC 9457 — typiquement une page
+// d'erreur brute posée par un intermédiaire EN AMONT de FastAPI (proxy, routeur Traefik) qui ne
+// connaît rien de notre contrat d'erreur et ne renvoie donc jamais de `detail` exploitable.
+// Avant (audit déploiement Scaleway, 2026-09-08) : on affichait `HTTP 404`/`HTTP 502` tel quel à
+// l'écran — un détail d'infrastructure illisible pour quelqu'un qui veut juste se connecter.
+function messageGenerique(status: number): string {
+  if (status === 404) return 'Ce service est introuvable pour le moment.'
+  if (status >= 500) return 'Le service est momentanément indisponible. Réessayez dans quelques instants.'
+  return 'Une erreur inattendue est survenue.'
+}
+
 // Extraction d'erreur PARTAGÉE entre `request()` (JSON) et `requestForm()` (multipart) : les deux
 // parlent au même serveur RFC 9457, et dupliquer cette lecture aurait fait deux endroits où un
 // oubli (ex. ne pas relire `code`) casse silencieusement l'un des deux chemins sans casser l'autre.
 async function erreurDepuis(resp: Response, path: string): Promise<never> {
-  let detail = `HTTP ${resp.status}`
+  let detail = messageGenerique(resp.status)
   let code = ''
   try {
     const body = await resp.json()
@@ -46,12 +68,24 @@ async function erreurDepuis(resp: Response, path: string): Promise<never> {
   throw new ApiError(resp.status, detail, code)
 }
 
+// `fetch` peut rejeter AVANT toute réponse HTTP (serveur injoignable, coupure réseau, CORS) — un
+// cas distinct de `erreurDepuis` (qui suppose une réponse reçue). Sans ce filet, l'écran afficherait
+// le message brut du navigateur (`Failed to fetch`, `NetworkError when attempting to fetch...`),
+// tout aussi illisible qu'un `HTTP 404` cru pour quelqu'un qui veut juste se connecter.
+async function appelReseau(faire: () => Promise<Response>): Promise<Response> {
+  try {
+    return await faire()
+  } catch {
+    throw new ApiError(0, 'Impossible de joindre le serveur. Vérifiez votre connexion.', 'panne_reseau')
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const resp = await fetch(`${API_BASE}${path}`, {
+  const resp = await appelReseau(() => fetch(`${API_BASE}${path}`, {
     credentials: CREDENTIALS,
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
-  })
+  }))
   if (!resp.ok) await erreurDepuis(resp, path)
   return resp.status === 204 ? (undefined as T) : resp.json()
 }
@@ -62,7 +96,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 // (une valeur qu'on ne peut pas reproduire à la main). Même logique d'erreur que `request()`
 // (`erreurDepuis`), donc même contrat `ApiError.code` côté écran — seul le transport diffère.
 async function requestForm<T>(path: string, body: FormData): Promise<T> {
-  const resp = await fetch(`${API_BASE}${path}`, { method: 'POST', credentials: CREDENTIALS, body })
+  const resp = await appelReseau(() =>
+    fetch(`${API_BASE}${path}`, { method: 'POST', credentials: CREDENTIALS, body }))
   if (!resp.ok) await erreurDepuis(resp, path)
   return resp.status === 204 ? (undefined as T) : resp.json()
 }
