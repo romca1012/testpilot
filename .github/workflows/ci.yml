@@ -25,6 +25,11 @@ jobs:
         run: pytest -q
       - name: Auditer les dépendances Python connues
         run: |
+          # setuptools préinstallé par le runner (hors de notre pyproject.toml, avant même
+          # d'installer TestPilot) porte une faille connue (PYSEC-2026-3447) tant qu'on ne
+          # l'upgrade pas explicitement ici — le plancher côté [build-system] ne s'applique
+          # qu'à un environnement de build isolé, jamais à celui que pip-audit inspecte.
+          python -m pip install --upgrade "setuptools>=83.0.0"
           python -m pip install pip-audit
           python -m pip_audit
 
