@@ -69,6 +69,35 @@ def test_cookie_de_session_est_secure_quand_le_profil_production_l_impose(
     assert "Secure" in r.headers["set-cookie"]
 
 
+def test_cookie_de_session_est_cantonne_au_sous_chemin_configure(client, monkeypatch):
+    """Sans cette isolation (audit déploiement Scaleway, 2026-09-08), deux environnements
+    TestPilot sur le MÊME domaine (ex. Traefik qui route /dev et /staging vers deux conteneurs)
+    écraseraient silencieusement le cookie de session l'un de l'autre — `path=/` implicite le
+    rend valide pour tout le domaine, identique par nom entre les deux environnements."""
+    _compte(client, "chemin-user", "mot-de-passe", access.ROLE_TESTEUR)
+    monkeypatch.setattr(config, "COOKIE_PATH", "/dev")
+
+    r = client.post("/api/auth/login", json={
+        "username": "chemin-user", "password": "mot-de-passe",
+    })
+
+    assert r.status_code == 200
+    assert "Path=/dev" in r.headers["set-cookie"]
+
+
+def test_la_deconnexion_efface_le_cookie_au_meme_sous_chemin(client, monkeypatch):
+    """Un `path` différent entre la pose et l'effacement ferait échouer l'effacement : un
+    navigateur n'efface un cookie que si (nom, path, domain) correspondent EXACTEMENT à
+    l'original — la déconnexion semblerait fonctionner sans invalider le cookie d'origine."""
+    _compte(client, "chemin-logout", "mot-de-passe", access.ROLE_TESTEUR)
+    monkeypatch.setattr(config, "COOKIE_PATH", "/dev")
+    client.post("/api/auth/login", json={"username": "chemin-logout", "password": "mot-de-passe"})
+
+    r = client.post("/api/auth/logout")
+
+    assert "Path=/dev" in r.headers["set-cookie"]
+
+
 # ── 1. Mots de passe et jetons ────────────────────────────────────────────────
 
 def test_un_mot_de_passe_hache_ne_se_relit_pas_en_clair():

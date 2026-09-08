@@ -79,7 +79,14 @@ export const routes = [
   { path: '/executions', redirect: '/projects' },
 ]
 
+// `import.meta.env.BASE_URL` (audit déploiement Scaleway, 2026-09-08) : sans lui, le routeur
+// suppose que l'appli vit à la racine du domaine. Servie sous un sous-chemin (ex. Traefik qui
+// route `/dev` vers ce conteneur), l'URL affichée est `/dev` — qu'AUCUNE route déclarée
+// ci-dessus ne correspond. Le HTML/JS/CSS se chargent (déjà réglé pour eux via `vite.config.ts`
+// et `api.ts`), Vue démarre, mais `<router-view>` ne trouve rien à afficher : une page BLANCHE,
+// sans la moindre erreur en console. `BASE_URL` vaut toujours `/` par défaut (racine), donc ce
+// réglage ne change rien pour un déploiement classique.
 export const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
 })

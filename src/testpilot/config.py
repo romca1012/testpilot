@@ -216,6 +216,17 @@ COOKIE_SECURE = os.getenv("TESTPILOT_COOKIE_SECURE", "false").strip().lower() in
     "1", "true", "yes", "on",
 }
 
+# `/` par défaut (comportement inchangé pour un déploiement classique à la racine). Un
+# déploiement sous un sous-chemin PARTAGEANT LE MÊME DOMAINE que d'autres environnements (ex.
+# Traefik qui route `/dev` ET `/staging` vers deux conteneurs distincts, audit déploiement
+# Scaleway 2026-09-08) doit le fixer à ce même sous-chemin (`/dev`) : sans ça, le cookie de
+# session (`path=/` implicite) est envoyé par le navigateur À TOUS les environnements du domaine,
+# et le DERNIER auquel on se connecte écrase silencieusement celui des autres — un token signé
+# pour /staging arrivant sur /dev y est simplement rejeté (secret différent), donc l'effet observé
+# est une déconnexion inexpliquée en changeant d'onglet, jamais une usurpation entre environnements
+# tant que chacun garde son propre `TESTPILOT_SESSION_SECRET`.
+COOKIE_PATH = os.getenv("TESTPILOT_COOKIE_PATH", "/").strip() or "/"
+
 # Le tout premier compte Admin, créé une seule fois au démarrage si la table `user` est encore
 # vide ET que les deux variables sont renseignées (`api/app.py::_amorcer_premier_admin`). Sans
 # elles, une base neuve n'a AUCUN compte, et personne ne peut se connecter pour en créer un —

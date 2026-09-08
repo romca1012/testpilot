@@ -74,6 +74,7 @@ def _poser_cookie_session(response: Response, utilisateur: dict, session_version
         httponly=True,
         samesite="lax",
         secure=config.COOKIE_SECURE,
+        path=config.COOKIE_PATH,
     )
 
 
@@ -133,7 +134,12 @@ def logout(request: Request, response: Response, conn=Depends(get_conn)):
     utilisateur = access.utilisateur_actuel(conn, request)
     if utilisateur is not None:
         UserRepo(conn).revoke_sessions(utilisateur["id"])
-    response.delete_cookie(access.COOKIE)
+    # ⚠️ `path` DOIT être identique à celui posé par `_poser_cookie_session` — un navigateur
+    # n'efface un cookie que si (nom, path, domain) correspondent EXACTEMENT à l'original. Sans
+    # ce rappel, `delete_cookie` poserait un DEUXIÈME cookie (même nom, path différent) au lieu
+    # d'effacer le premier : la déconnexion semblerait fonctionner tant qu'on ne regarde pas les
+    # cookies bruts, mais le jeton d'origine resterait valide et envoyé au serveur.
+    response.delete_cookie(access.COOKIE, path=config.COOKIE_PATH)
     return SessionOut(authenticated=False)
 
 
