@@ -24,7 +24,9 @@ def cle(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def conn(tmp_path, cle):
+def conn(tmp_path, cle, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(tmp_path / "sec.db")
     yield c
     c.close()

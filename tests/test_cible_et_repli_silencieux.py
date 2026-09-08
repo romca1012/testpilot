@@ -43,7 +43,9 @@ _COMPLETE = {"connector_type": "odoo", "name": "Recette", "base_url": "http://re
 
 
 @pytest.fixture
-def conn(tmp_path):
+def conn(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(tmp_path / "cible.db")
     yield c
     c.close()

@@ -87,7 +87,9 @@ def _isolate_paths(tmp_path, monkeypatch):
     (tmp_path / "steps_lib").mkdir()
 
 
-def test_happy_path_writes_files_and_awaits_review(tmp_path):
+def test_happy_path_writes_files_and_awaits_review(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "t.db")
     agent = GenerationAgent(
         llm=FakeLLM([_write_both(), _end_turn()]),

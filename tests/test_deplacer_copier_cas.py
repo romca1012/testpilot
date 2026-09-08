@@ -31,6 +31,8 @@ from testpilot.verdict.status import MODE_AUTOMATIQUE
 
 @pytest.fixture
 def conn(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     monkeypatch.setattr(config, "GENERATED_DIR", tmp_path / "generated")
     c = get_initialized_db(tmp_path / "deplacer_copier.db")
     yield c

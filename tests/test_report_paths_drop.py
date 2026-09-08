@@ -50,7 +50,9 @@ def client(tmp_path, monkeypatch):
     return TestClient(app_mod.app)
 
 
-def test_colonnes_absentes_dune_base_neuve(tmp_path):
+def test_colonnes_absentes_dune_base_neuve(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "n.db")
     colonnes = _column_names(conn, "execution")
     assert "report_json_path" not in colonnes
@@ -76,7 +78,9 @@ def test_migration_7_supprime_les_colonnes_dune_base_existante(tmp_path):
     conn.close()
 
 
-def test_migration_7_idempotente(tmp_path):
+def test_migration_7_idempotente(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     conn = get_initialized_db(tmp_path / "i.db")
     _migrate_7_drop_report_paths(conn)   # rejouée sur une base déjà à la cible
     _migrate_7_drop_report_paths(conn)

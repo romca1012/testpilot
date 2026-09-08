@@ -148,12 +148,14 @@ def test_sans_metier_le_prompt_reste_CELUI_D_AVANT():
 
 # ── La persistance : le métier se fige DANS la version ────────────────────────
 
-def test_le_metier_valide_est_ecrit_DANS_la_version(tmp_path):
+def test_le_metier_valide_est_ecrit_DANS_la_version(tmp_path, monkeypatch):
     """Décision `0022` n°10 : une version = LE CAS ENTIER, métier ET technique figés ensemble.
 
     C'est ce couple qui rend l'historique diffable et permet au gate d'approuver d'un seul geste.
     Échoue sur le code d'avant : `_persist` ne passait aucun champ métier.
     """
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     from testpilot.generation.agent import GenerationAgent
     from testpilot.generation.state import GenerationResult
 
@@ -179,9 +181,11 @@ def test_le_metier_valide_est_ecrit_DANS_la_version(tmp_path):
     conn.close()
 
 
-def test_sans_metier_les_champs_restent_VIDES_et_non_des_listes_fabriquees(tmp_path):
+def test_sans_metier_les_champs_restent_VIDES_et_non_des_listes_fabriquees(tmp_path, monkeypatch):
     """`""` et non `"[]"` : « jamais rédigé » et « rédigé vide » ne sont pas le même fait, et
     c'est ce champ qui décide si l'écran montre le document ou son repli dérivé."""
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     from testpilot.generation.agent import GenerationAgent
     from testpilot.generation.state import GenerationResult
 
@@ -204,10 +208,12 @@ def test_sans_metier_les_champs_restent_VIDES_et_non_des_listes_fabriquees(tmp_p
 
 # ── §9c : le texte de la spec change de propriétaire ──────────────────────────
 
-def test_avec_une_SECTION_la_version_NE_porte_PLUS_le_texte_de_la_spec(tmp_path):
+def test_avec_une_SECTION_la_version_NE_porte_PLUS_le_texte_de_la_spec(tmp_path, monkeypatch):
     """Avec une Section explicite (`group_id`), c'est ELLE qui porte le texte
     (`case_group.spec_content`, écrit par `generation_service` à sa création) — la version reste
     vide. C'est le chemin de la génération multi-cas (§9)."""
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     from testpilot.generation.agent import GenerationAgent
     from testpilot.generation.state import GenerationResult
     from testpilot.store.repositories import CaseGroupRepo
@@ -234,10 +240,12 @@ def test_avec_une_SECTION_la_version_NE_porte_PLUS_le_texte_de_la_spec(tmp_path)
     conn.close()
 
 
-def test_SANS_section_la_version_GARDE_le_texte_chemin_CLI_et_automatisation(tmp_path):
+def test_SANS_section_la_version_GARDE_le_texte_chemin_CLI_et_automatisation(tmp_path, monkeypatch):
     """Sans Section (`group_id=None` — chemin CLI, ou automatisation d'un cas manuel qui n'a ni
     `group_id` ni Section), rien d'autre ne porte le texte : le comportement d'AVANT est conservé
     pour ne rien perdre sur ces chemins-là (décision documentée au rapport de la session §9c)."""
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     from testpilot.generation.agent import GenerationAgent
     from testpilot.generation.state import GenerationResult
 
@@ -259,9 +267,11 @@ def test_SANS_section_la_version_GARDE_le_texte_chemin_CLI_et_automatisation(tmp
     conn.close()
 
 
-def test_refs_du_cas_recoit_le_nom_de_la_story(tmp_path):
+def test_refs_du_cas_recoit_le_nom_de_la_story(tmp_path, monkeypatch):
     """`refs` (champ existant, texte libre comme TestRail) est auto-rempli avec le nom de la user
     story dont ce cas est issu — aucune nouvelle colonne."""
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     from testpilot.generation.agent import GenerationAgent
     from testpilot.generation.state import GenerationResult
 

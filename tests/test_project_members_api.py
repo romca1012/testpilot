@@ -175,6 +175,7 @@ def test_les_autorisations_et_refus_sont_audites(client):
 
 
 def test_la_suspension_revoque_immediatement_une_session_deja_ouverte(client):
+    # DATA_DIR est déjà isolé par la fixture `client` elle-même — rien à ajouter ici.
     _user("Root", access.ROLE_ADMIN)
     awa_id = _user("Awa", access.ROLE_TESTEUR)
     client.post("/api/auth/login", json={"username": "Root", "password": "mdp"})

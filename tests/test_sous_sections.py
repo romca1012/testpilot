@@ -26,7 +26,8 @@ from testpilot.store.repositories import (
 
 
 @pytest.fixture
-def conn(tmp_path):
+def conn(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(tmp_path / "sous_sections.db")
     yield c
     c.close()

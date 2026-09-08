@@ -149,6 +149,8 @@ def test_api_automate_demarre_un_job(tmp_path, monkeypatch):
 
 
 def test_api_automate_cas_inconnu_404(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
     client = TestClient(app_mod.app)
 

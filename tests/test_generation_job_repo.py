@@ -74,8 +74,10 @@ def test_maj_case_ids_est_bien_persiste_en_JSON(conn):
     assert GenerationJobRepo(conn).get("job1")["case_ids"] == [10, 11, 12]
 
 
-def test_survit_a_une_NOUVELLE_connexion(conn, tmp_path):
+def test_survit_a_une_NOUVELLE_connexion(conn, tmp_path, monkeypatch):
     """Le cœur du correctif : ce que `_JOBS` (un dict Python) ne pouvait pas faire."""
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     mid = _module(conn)
     GenerationJobRepo(conn).creer("job1", module_id=mid, payload={"title": "Persistant"})
     conn.close()

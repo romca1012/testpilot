@@ -21,7 +21,9 @@ from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo, Revi
 
 
 @pytest.fixture
-def conn(tmp_path):
+def conn(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(tmp_path / "b.db")
     yield c
     c.close()

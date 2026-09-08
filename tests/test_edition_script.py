@@ -23,6 +23,8 @@ from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo, User
 
 @pytest.fixture
 def conn(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     monkeypatch.setattr(config, "GENERATED_DIR", tmp_path / "generated")
     c = get_initialized_db(tmp_path / "script.db")
     yield c

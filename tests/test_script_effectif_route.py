@@ -29,6 +29,8 @@ _STEP_GENERIC = (
 
 @pytest.fixture
 def conn(tmp_path, monkeypatch):
+    from testpilot import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     monkeypatch.setattr(config, "STEPS_LIBRARY_DIR", tmp_path / "steps_lib")
     generic = tmp_path / "steps_lib" / "generic"
     generic.mkdir(parents=True)
