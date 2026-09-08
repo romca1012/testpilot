@@ -17,6 +17,13 @@ const router = useRouter()
 const route = useRoute()
 const adminMode = computed(() => route.name === 'admin-projects')
 const { session } = useSession()
+// TestRail met le bouton « Add Project » directement sur LA page projets pour un compte
+// Administrator — jamais derrière un second écran séparé. `adminMode` (la route
+// /admin/projects) ne doit donc plus être la condition de la création : c'est le RÔLE qui
+// compte, sur les deux routes, puisque les deux affichent le même composant (audit déploiement
+// Scaleway, 2026-09-08 — un Admin sur une instance neuve, zéro projet, n'avait aucun moyen d'en
+// créer un depuis l'écran où il atterrit après connexion).
+const estAdmin = computed(() => session.value?.role === 'admin')
 const { ensureLoaded } = useProjects()
 const projects = ref<ProjectSummary[]>([])
 const loading = ref(true)
@@ -368,7 +375,7 @@ onMounted(async () => { await load(); await loadExplorations() })
           ? 'Configurez les projets, leurs applications et leurs accès.'
           : 'Choisissez le projet sur lequel vous souhaitez travailler.' }}</p>
       </div>
-      <Button v-if="adminMode" variant="primary" @click="openCreate">
+      <Button v-if="estAdmin" variant="primary" @click="openCreate">
         <Icon name="plus" class="h-4 w-4" /> Nouveau projet
       </Button>
     </header>
@@ -380,9 +387,13 @@ onMounted(async () => { await load(); await loadExplorations() })
       <div class="grid h-12 w-12 place-items-center rounded-full border border-border bg-surface text-muted-foreground">
         <Icon name="folder" class="h-5 w-5" />
       </div>
-      <p class="text-sm text-muted-foreground">{{ adminMode ? 'Aucun projet pour le moment.' : 'Aucun projet ne vous est actuellement attribué.' }}</p>
-      <p v-if="!adminMode" class="max-w-md text-xs leading-5 text-subtle-foreground">Contactez un administrateur TestPilot pour demander l’accès à un projet.</p>
-      <Button v-if="adminMode" variant="primary" @click="openCreate">
+      <p class="text-sm text-muted-foreground">{{ estAdmin ? 'Aucun projet pour le moment.' : 'Aucun projet ne vous est actuellement attribué.' }}</p>
+      <!-- Un non-admin ne peut de toute façon rien créer lui-même : le seul geste possible reste
+           de demander l'accès. Un Admin, en revanche, doit pouvoir créer ICI, tout de suite —
+           jamais un aiguillage vers un second écran (modèle TestRail : « Add Project » vit sur LA
+           page projets, pas ailleurs). -->
+      <p v-if="!estAdmin" class="max-w-md text-xs leading-5 text-subtle-foreground">Contactez un administrateur TestPilot pour demander l’accès à un projet.</p>
+      <Button v-else variant="primary" @click="openCreate">
         <Icon name="plus" class="h-4 w-4" /> Créer le premier projet
       </Button>
     </div>
