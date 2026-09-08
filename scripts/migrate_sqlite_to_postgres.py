@@ -52,8 +52,12 @@ def _empreinte(lignes: list[dict], colonnes: list[str]) -> str:
 def _lignes_sqlite(conn: sqlite3.Connection, table) -> list[dict]:
     colonnes = [c.name for c in table.columns]
     ordre = [c.name for c in table.primary_key.columns] or colonnes
-    sql = (f'SELECT {", ".join(f"\"{c}\"" for c in colonnes)} '
-           f'FROM "{table.name}" ORDER BY {", ".join(f"\"{c}\"" for c in ordre)}')
+    # ⚠️ Pas de backslash dans la partie expression d'un f-string imbriqué : refusé avant
+    # Python 3.12 (notre CI tourne en 3.10). D'où ces deux jointures extraites à part, avec des
+    # guillemets simples autour du f-string pour que le `"` littéral n'ait rien à échapper.
+    colonnes_sql = ", ".join(f'"{c}"' for c in colonnes)
+    ordre_sql = ", ".join(f'"{c}"' for c in ordre)
+    sql = f'SELECT {colonnes_sql} FROM "{table.name}" ORDER BY {ordre_sql}'
     return [dict(r) for r in conn.execute(sql)]
 
 
