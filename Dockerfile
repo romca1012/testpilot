@@ -4,6 +4,11 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# Vide par défaut (racine du domaine) — un déploiement servi sous un sous-chemin (ex. Traefik
+# qui route /dev vers ce conteneur, audit Scaleway 2026-09-08) le fournit au moment du build :
+# `docker build --build-arg BASE_PATH=/dev/`. Voir vite.config.ts pour ce que ça change.
+ARG BASE_PATH=""
+ENV VITE_BASE_PATH=$BASE_PATH
 RUN npm run build
 
 # L'image officielle Playwright fournit Chromium et ses bibliothèques système. Sa version doit
