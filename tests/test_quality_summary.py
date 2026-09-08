@@ -220,6 +220,7 @@ def test_agregat_sans_aucun_projet_autorise_est_vide(conn):
 
 def test_api_quality_summary(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     client = TestClient(app_mod.app)
     conn = get_initialized_db(config.DB_PATH)
     mid = ensure_default_module(conn, "m")
@@ -239,6 +240,7 @@ def test_api_quality_summary(tmp_path, monkeypatch):
 
 def test_api_quality_vide_rend_None(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api2.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     client = TestClient(app_mod.app)
 
     r = client.get("/api/executions/quality/summary")

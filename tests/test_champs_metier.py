@@ -233,6 +233,7 @@ def test_api_patch_metier_expose_la_version_creee(tmp_path, monkeypatch):
     from testpilot.api import app as app_mod
 
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(config.DB_PATH)
     cid, _vid = _cas(c)
     c.close()

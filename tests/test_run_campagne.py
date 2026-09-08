@@ -23,7 +23,8 @@ from testpilot.store.repositories import (
 
 
 @pytest.fixture
-def conn(tmp_path):
+def conn(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(tmp_path / "run.db")
     yield c
     c.close()
@@ -32,6 +33,7 @@ def conn(tmp_path):
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     return TestClient(app_mod.app)
 
 

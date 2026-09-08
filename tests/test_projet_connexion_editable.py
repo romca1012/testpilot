@@ -23,6 +23,7 @@ from testpilot.store.repositories import ProjectRepo
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     return TestClient(app_mod.app)
 
 

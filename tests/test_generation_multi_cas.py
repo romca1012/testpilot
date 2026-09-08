@@ -50,6 +50,7 @@ _PROJET_CONNECTE = {"name": "P", "connector_type": "odoo", "base_url": "http://r
 def conn(tmp_path, monkeypatch):
     path = tmp_path / "multi.db"
     monkeypatch.setattr(config, "DB_PATH", path)
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(path)
     yield c
     c.close()

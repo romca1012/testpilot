@@ -26,6 +26,7 @@ def client(tmp_path, monkeypatch):
     # Chaque test a sa PROPRE base (tmp_path) : le job de génération y vit désormais aussi
     # (migration 29, GenerationJobRepo) — plus de dict `_JOBS` global à nettoyer entre les tests.
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "mod.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     return TestClient(app_mod.app)
 
 

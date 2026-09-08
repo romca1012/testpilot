@@ -139,6 +139,7 @@ def test_les_approbations_existantes_heritent_du_defaut(tmp_path):
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     return TestClient(app_mod.app)
 
 

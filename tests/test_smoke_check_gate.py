@@ -48,6 +48,7 @@ _STEPS = 'from behave import when\n\n\n@when("je fais l\'action")\ndef step(cont
 @pytest.fixture
 def conn(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "gate.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     c = get_initialized_db(config.DB_PATH)
     app.dependency_overrides[get_conn] = lambda: c
     yield c

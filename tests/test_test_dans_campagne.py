@@ -27,6 +27,7 @@ from testpilot.api import app as app_mod
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "tests_de_campagne.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     return TestClient(app_mod.app)
 
 

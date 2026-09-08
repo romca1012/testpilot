@@ -44,6 +44,7 @@ class _FakeExecutor:
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "api.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     monkeypatch.setattr(run_service, "Executor", _FakeExecutor)
     run_service._RUNNING.clear()
     return TestClient(app_mod.app)

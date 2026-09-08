@@ -35,6 +35,7 @@ _COUT_PAR_APPEL = 0.045
 def conn(tmp_path, monkeypatch):
     path = tmp_path / "budget.db"
     monkeypatch.setattr(config, "DB_PATH", path)
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     monkeypatch.setattr(config, "COST_LIMIT_PER_RUN_USD", 0.06)
     c = get_initialized_db(path)
     yield c
