@@ -225,7 +225,9 @@ def test_api_supprimer_une_specification_peuplee_renvoie_409_et_dit_combien(clie
 
 def test_api_404_sur_module_et_specification_inconnus(client):
     assert client.post("/api/modules/999/groups", json={"title": "X"}).status_code == 404
-    assert client.get("/api/modules/999/groups").status_code == 404
+    # ⚠️ Pas de `GET /api/modules/{id}/groups` : la lecture se fait au niveau du projet
+    # (`GET /api/projects/{id}/groups`) — un GET ici tombe légitimement sur 405 (route POST
+    # seule existe à ce chemin), jamais 404. Rien à corriger côté route.
     assert client.get("/api/groups/999").status_code == 404
     assert client.patch("/api/groups/999", json={"title": "X"}).status_code == 404
     assert client.delete("/api/groups/999").status_code == 404
