@@ -351,6 +351,10 @@ def test_logout_revoque_aussi_une_copie_du_cookie(client):
     ancien_cookie = client.cookies.get(access.COOKIE)
 
     assert client.post("/api/auth/logout").status_code == 200
+    # `delete` avant `set` : même précaution que `test_changer_son_mot_de_passe_revoque_le_cookie_precedent`
+    # ci-dessus, pour ne jamais dépendre de la façon dont la bibliothèque HTTP du client de test
+    # traite un `set` sur un nom de cookie déjà suivi dans le jar.
+    client.cookies.delete(access.COOKIE)
     client.cookies.set(access.COOKIE, ancien_cookie)
 
     assert client.get("/api/projects").status_code == 401
@@ -553,6 +557,13 @@ def test_changer_son_mot_de_passe_revoque_le_cookie_precedent(client):
     nouveau_cookie = client.cookies.get(access.COOKIE)
     assert nouveau_cookie != ancien_cookie
 
+    # ⚠️ `delete` AVANT `set` : le client garde déjà une entrée pour ce cookie (posée par la
+    # réponse du changement de mot de passe ci-dessus) — `set` seul en ajoute une seconde au lieu
+    # de la remplacer, et lequel des deux part réellement dans la requête suivante dépend alors
+    # de la bibliothèque HTTP installée (constaté : 200 au lieu de 401 avec httpx2, reproduit
+    # sous Linux). Un problème du CLIENT de test, pas de l'application — voir `access.py::utilisateur_actuel`,
+    # inchangé, qui rejette bien une version de session périmée dès qu'un seul cookie est envoyé.
+    client.cookies.delete(access.COOKIE)
     client.cookies.set(access.COOKIE, ancien_cookie)
     assert client.get("/api/projects").status_code == 401
 
