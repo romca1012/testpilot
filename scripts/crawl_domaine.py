@@ -74,6 +74,14 @@ _HORS_PERIMETRE = re.compile(
     r"^/(web|odoo)(/|$|#)|^/@/|^/website/add/|/web/static|/web/session/logout"
     r"|nav_tabs_content|/export(/|$)|\.(css|js|png|jpg|jpeg|svg|ico|woff2?)$",
     re.IGNORECASE)
+
+# Exclusion GÉNÉRIQUE (connecteur `web`, audit multi-connecteurs 2026-09-08) : sans convention
+# d'URL à connaître (pas de `/web`, `/odoo` — c'est spécifique à Odoo), on ne peut exclure QUE ce
+# qui est universel — les assets statiques. Une application maison décidera de son propre
+# périmètre plus tard si besoin (ex. un motif fourni au moment de la création du projet) ; ce
+# premier jet ne devine rien de plus.
+_HORS_PERIMETRE_GENERIQUE = re.compile(
+    r"\.(css|js|png|jpg|jpeg|svg|ico|woff2?|pdf)$", re.IGNORECASE)
 def normalise(path: str) -> str:
     """`/en/formulaire/12` → `/formulaire/{id}`. Le gabarit, pas l'instance.
 
@@ -193,18 +201,27 @@ def _inspecter_page(page):
     }""")
 
 
-def crawler(ctx, nav, base_url, max_pages):
+def crawler(ctx, nav, base_url, max_pages, *, racines=None, hors_perimetre=None, relogin=None):
     """BFS sur les routes NORMALISÉES. `ctx.page` peut être recréée : le navigateur crashe.
 
     ⚠️ **Un crawl n'a pas le droit de mourir en route** : il rendrait une mesure tronquée qui
     ressemble à une mesure complète — le motif que ce projet traque (« l'absence de signal prise
     pour un signal positif »). Mesuré au 1ᵉʳ passage : le navigateur meurt (`Page crashed`) après
     ~35 pages. On le relance et on continue, plutôt que de rendre 34 routes en les croyant toutes.
+
+    `racines`/`hors_perimetre`/`relogin` (2026-09-08, multi-connecteurs) : `None` = défauts
+    Odoo (`RACINES`, `_HORS_PERIMETRE`, `H.playwright_login`) — comportement STRICTEMENT
+    inchangé pour l'appelant historique. `exploration_service.py` les fournit pour un connecteur
+    `web` (racine `/`, exclusion `_HORS_PERIMETRE_GENERIQUE`, connexion générique).
     """
+    racines = racines if racines is not None else RACINES
+    hors_perimetre = hors_perimetre if hors_perimetre is not None else _HORS_PERIMETRE
+    relogin = relogin if relogin is not None else H.playwright_login
+
     pages = {}
     transitions = defaultdict(set)
     onglets_internes = defaultdict(set)   # href="#..." : changent l'ÉTAT, pas la route
-    a_voir = list(RACINES)
+    a_voir = list(racines)
     vus_bruts = set()
     crashes = 0
 
@@ -227,7 +244,7 @@ def crawler(ctx, nav, base_url, max_pages):
                 print(f"    [~] navigateur relancé ({crashes}) et ré-authentifié")
                 try:
                     ctx.page = nav.new_page()
-                    H.playwright_login(ctx)
+                    relogin(ctx)
                 except Exception:
                     print("    [!!] relance impossible — mesure INCOMPLÈTE, à ne pas publier")
                     break
@@ -264,7 +281,7 @@ def crawler(ctx, nav, base_url, max_pages):
             cible = urlparse(urljoin(page.url, href))
             if cible.netloc and cible.netloc != urlparse(base_url).netloc:
                 continue                      # hors du site
-            if _HORS_PERIMETRE.search(cible.path):
+            if hors_perimetre.search(cible.path):
                 continue                      # back-office / assets : hors périmètre
             cible_norm = normalise(cible.path)
             if cible_norm != reelle:

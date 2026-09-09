@@ -12,9 +12,12 @@ existants (``from testpilot.connectors.odoo import build_probe_url, extract_form
 
 from __future__ import annotations
 
+import logging
 import urllib.error
 import urllib.request
 from urllib.parse import urljoin
+
+logger = logging.getLogger(__name__)
 
 # Champs de formulaire à ignorer : jetons techniques, pas des champs métier.
 _IGNORED_FIELD_PREFIXES = ("_",)
@@ -76,6 +79,41 @@ def _detect_submission(page) -> dict:
         "endpoint": endpoint or "",
         "trigger_selector": trigger_selector,
     }
+
+
+def tenter_connexion_generique(page, user: str, password: str) -> bool:
+    """Détection de connexion GÉNÉRIQUE (pas de convention d'URL à connaître, à la différence
+    d'Odoo) — partagée entre ``GenericWebConnector`` (exécution) et le crawl générique
+    (exploration, audit multi-connecteurs 2026-09-08) : les deux affrontent le même problème,
+    « repérer un formulaire de connexion sur une page qu'on n'a jamais vue ».
+
+    Heuristique : un mot de passe est l'identifiant le plus fiable d'un formulaire de connexion —
+    on cherche ``input[type=password]``, on prend le premier champ texte/email de la PAGE comme
+    identifiant (scope volontairement simple, pas un `closest('form')` — un premier jet à affiner
+    si un formulaire réel la met en défaut), on remplit et on valide.
+
+    Identifiant/mot de passe VIDES, ou aucun champ mot de passe sur la page : on considère
+    l'application accessible sans connexion et on continue tel quel — mieux vaut explorer sans
+    authentification que de bloquer sur une hypothèse de connexion fausse.
+
+    Retourne ``True`` si une tentative a réellement été soumise (jamais si la page ou les
+    identifiants ne s'y prêtaient pas).
+    """
+    if not user or not password:
+        return False
+    champ_mdp = page.query_selector("input[type='password']")
+    if champ_mdp is None:
+        return False
+    champ_identifiant = page.query_selector("input[type='email'], input[type='text']")
+    if champ_identifiant is None:
+        logger.warning("[connexion-générique] mot de passe détecté sans champ identifiant"
+                        " — connexion non tentée")
+        return False
+    champ_identifiant.fill(user, force=True)
+    champ_mdp.fill(password, force=True)
+    champ_mdp.press("Enter")
+    page.wait_for_load_state("networkidle")
+    return True
 
 
 def http_probe(url: str) -> dict:

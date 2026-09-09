@@ -123,6 +123,12 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
     Réutilise `scripts/crawl_domaine.py` — sa logique BFS, sa normalisation de routes et sa
     tolérance au crash du navigateur sont éprouvées sur une mesure réelle (38 routes). La
     dupliquer ici en ferait deux versions à maintenir, qui divergeraient.
+
+    Branche par `connector_type` (2026-09-08, multi-connecteurs) : Odoo garde EXACTEMENT son
+    chemin historique (login `/web/login?db=…`, racines `/my/home`+`/myservices`, exclusions du
+    back-office) ; tout autre connecteur passe par le crawl GÉNÉRIQUE — racine `/`, connexion
+    détectée sans convention d'URL (`GenericWebConnector`), exclusion limitée aux assets
+    statiques (rien à deviner sur le périmètre d'une appli qu'on ne connaît pas).
     """
     racine = Path(__file__).resolve().parents[4]
     for chemin in (racine / "scripts", racine / "behave_runtime" / "steps_library"):
@@ -131,16 +137,33 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
 
     from playwright.sync_api import sync_playwright
 
-    import _base_helpers as H
     import crawl_domaine as cd
+
+    connector_type = (connexion.get("connector_type") or "odoo").lower()
 
     with sync_playwright() as p:
         nav = p.chromium.launch()
-        ctx = types.SimpleNamespace(
-            page=nav.new_page(), odoo_url=connexion["base_url"], odoo_db=connexion["database"],
-            odoo_user=connexion["username"], odoo_password=connexion["password"])
-        H.playwright_login(ctx)
-        pages, transitions, onglets = cd.crawler(ctx, nav, connexion["base_url"], max_pages)
+        if connector_type == "odoo":
+            import _base_helpers as H
+            ctx = types.SimpleNamespace(
+                page=nav.new_page(), odoo_url=connexion["base_url"], odoo_db=connexion["database"],
+                odoo_user=connexion["username"], odoo_password=connexion["password"])
+            H.playwright_login(ctx)
+            pages, transitions, onglets = cd.crawler(ctx, nav, connexion["base_url"], max_pages)
+        else:
+            from testpilot.connectors._web_helpers import tenter_connexion_generique
+
+            def _connexion_generique(c) -> None:
+                c.page.goto(connexion["base_url"])
+                c.page.wait_for_load_state("networkidle")
+                tenter_connexion_generique(c.page, connexion["username"], connexion["password"])
+
+            ctx = types.SimpleNamespace(page=nav.new_page())
+            _connexion_generique(ctx)
+            pages, transitions, onglets = cd.crawler(
+                ctx, nav, connexion["base_url"], max_pages,
+                racines=["/"], hors_perimetre=cd._HORS_PERIMETRE_GENERIQUE,
+                relogin=_connexion_generique)
         try:
             nav.close()
         except Exception:

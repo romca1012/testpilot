@@ -18,6 +18,9 @@ Ce que ces tests figent :
 """
 
 import json
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -215,3 +218,59 @@ def test_un_plantage_du_crawl_ne_laisse_pas_le_job_en_cours(domaine_isole, monke
 
     assert exploration_service._JOBS["J"]["status"] == "failed"
     assert "navigateur mort" in exploration_service._JOBS["J"]["error"]
+
+
+# ── Branchement du crawl par connecteur (2026-09-08, multi-connecteurs) ────────
+# `_crawl` (pas `run_exploration`, monkeypatché ci-dessus) : on vérifie ICI que le VRAI code de
+# branchement appelle `crawl_domaine.crawler` avec les bons paramètres selon `connector_type` —
+# sans navigateur réel (playwright entièrement simulé par des MagicMock permissifs).
+def _preparer_crawl_domaine(monkeypatch):
+    """Importe `crawl_domaine` comme `_crawl` le fait, et bouchonne son `crawler` pour capter
+    les paramètres reçus au lieu de parcourir un vrai site."""
+    racine = Path(exploration_service.__file__).resolve().parents[4]
+    for chemin in (racine / "scripts", racine / "behave_runtime" / "steps_library"):
+        if str(chemin) not in sys.path:
+            sys.path.insert(0, str(chemin))
+    import crawl_domaine as cd
+
+    appels = {}
+
+    def fausse_crawler(ctx, nav, base_url, max_pages, **kwargs):
+        appels.update(kwargs)
+        return {}, {}, {}
+
+    monkeypatch.setattr(cd, "crawler", fausse_crawler)
+
+    faux_nav = MagicMock()
+    faux_nav.new_page.return_value = MagicMock()
+    faux_p = MagicMock()
+    faux_p.chromium.launch.return_value = faux_nav
+    faux_sync_playwright = MagicMock()
+    faux_sync_playwright.return_value.__enter__.return_value = faux_p
+    monkeypatch.setattr("playwright.sync_api.sync_playwright", faux_sync_playwright)
+
+    return appels, cd
+
+
+def test_le_crawl_generique_est_utilise_pour_un_connecteur_non_odoo(monkeypatch):
+    appels, cd = _preparer_crawl_domaine(monkeypatch)
+
+    exploration_service._crawl(
+        {"connector_type": "web", "base_url": "http://intranet", "username": "", "password": ""},
+        max_pages=5)
+
+    assert appels["racines"] == ["/"]
+    assert appels["hors_perimetre"] is cd._HORS_PERIMETRE_GENERIQUE
+    assert callable(appels["relogin"])
+
+
+def test_le_crawl_odoo_garde_son_chemin_historique(monkeypatch):
+    """⚠️ Aucun des nouveaux kwargs (racines/hors_perimetre/relogin) ne doit être transmis pour
+    Odoo — le chemin historique, éprouvé sur une mesure réelle, doit rester STRICTEMENT intact."""
+    appels, _cd = _preparer_crawl_domaine(monkeypatch)
+
+    exploration_service._crawl(
+        {"connector_type": "odoo", "base_url": "http://odoo-test", "database": "db",
+         "username": "admin", "password": "admin"}, max_pages=5)
+
+    assert appels == {}

@@ -23,7 +23,12 @@ import concurrent.futures
 import logging
 from urllib.parse import urljoin
 
-from testpilot.connectors._web_helpers import build_probe_url, extract_form, http_probe
+from testpilot.connectors._web_helpers import (
+    build_probe_url,
+    extract_form,
+    http_probe,
+    tenter_connexion_generique,
+)
 from testpilot.connectors.base import Connector
 
 logger = logging.getLogger(__name__)
@@ -146,28 +151,9 @@ class GenericWebConnector(Connector):
         return page
 
     def _tenter_connexion_generique(self, page) -> None:
-        """Identifiant/mot de passe VIDES, ou aucun champ mot de passe sur la page : on
-        considère l'application accessible sans connexion et on continue tel quel — mieux vaut
-        explorer sans authentification que de bloquer sur une hypothèse de connexion fausse.
-
-        Heuristique volontairement simple (premier `input[type=password]` + premier champ
-        texte/email de la page) plutôt qu'un scope strict "même <form>" — un premier jet à
-        affiner si un formulaire réel la met en défaut, pas une anticipation de tous les cas."""
-        if not self._user or not self._password:
-            return
-        champ_mdp = page.query_selector("input[type='password']")
-        if champ_mdp is None:
-            return
-        champ_identifiant = page.query_selector("input[type='email'], input[type='text']")
-        if champ_identifiant is None:
-            logger.warning("[web-générique] mot de passe détecté sans champ identifiant sur %s"
-                            " — connexion non tentée", self._url)
-            return
-        champ_identifiant.fill(self._user, force=True)
-        champ_mdp.fill(self._password, force=True)
-        champ_mdp.press("Enter")
-        page.wait_for_load_state("networkidle")
-        self._tentative_connexion_faite = True
+        """Délègue à la détection PARTAGÉE (``_web_helpers.tenter_connexion_generique``) — le
+        crawl générique d'exploration affronte le même problème et réutilise la même fonction."""
+        self._tentative_connexion_faite = tenter_connexion_generique(page, self._user, self._password)
 
     def _http_probe(self, url: str) -> dict:
         """Méthode (pas fonction directe) pour rester surchargeable hors-ligne en test."""
