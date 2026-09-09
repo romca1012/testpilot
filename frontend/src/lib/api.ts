@@ -140,8 +140,11 @@ export const api = {
   // ── Comptes — Admin seulement (le serveur le vérifie ; ces appels échoueraient en 403 sinon) ──
   listUsers: () => request<UserAccount[]>('/api/admin/users'),
   getUser: (id: number | string) => request<UserAccount>(`/api/admin/users/${id}`),
-  createUser: (payload: { username: string; password: string; role: string; email?: string; projects?: UserProjectChoice[] }) =>
-    request<UserAccount>('/api/admin/users', { method: 'POST', body: JSON.stringify(payload) }),
+  // `password` FACULTATIF (audit 2026-09-09) : vide (ou omis) fait générer un mot de passe
+  // temporaire côté serveur, envoyé par email si l'adresse est connue — un Admin qui invente et
+  // transmet lui-même le mot de passe d'un compte qu'il ne détient pas est la faille corrigée.
+  createUser: (payload: { username: string; password?: string; role: string; email?: string; projects?: UserProjectChoice[] }) =>
+    request<UserCreateResult>('/api/admin/users', { method: 'POST', body: JSON.stringify(payload) }),
   patchUser: (id: number, patch: { role?: string; is_active?: boolean; new_password?: string; email?: string }) =>
     request<UserAccount>(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   getUserProjects: (id: number) => request<UserProjectAccess[]>(`/api/admin/users/${id}/projects`),
@@ -473,6 +476,13 @@ export const LIBELLE_ROLE: Record<string, string> = {
 
 export interface UserAccount {
   id: number; username: string; role: string; email: string; is_active: boolean; created_at: string
+}
+// Réponse de la CRÉATION seulement (audit 2026-09-09) : `mot_de_passe_initial` n'est rempli que
+// si aucun email n'a pu partir — c'est alors le SEUL moyen de transmettre l'accès, à afficher une
+// fois puis jamais reconsultable (jamais renvoyé par `listUsers`/`getUser`).
+export interface UserCreateResult extends UserAccount {
+  email_envoye: boolean
+  mot_de_passe_initial: string | null
 }
 export interface UserProjectChoice { project_id: number; role: string }
 export interface UserProjectAccess extends UserProjectChoice {

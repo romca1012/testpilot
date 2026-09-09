@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ACCES_PROJET_REFUSE, api, LIBELLE_ROLE, ROLES,
-  type ProjectSummary, type UserAccount, type UserGroup, type UserProjectChoice,
+  type ProjectSummary, type UserAccount, type UserCreateResult, type UserGroup, type UserProjectChoice,
 } from '../lib/api'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
@@ -23,6 +23,9 @@ const onglet = ref<'users' | 'groups' | 'roles'>(ongletInitial)
 const showCreate = ref(false)
 const creation = ref(false)
 const nouveau = ref({ username: '', password: '', email: '', role: 'testeur' })
+// Affiché juste après la création (audit 2026-09-09) : le SEUL moment où le mot de passe
+// temporaire est visible si aucun email n'a pu partir — voir `creer()`.
+const resultatCreation = ref<UserCreateResult | null>(null)
 const accesCreation = ref<Record<number, string>>({})
 const showGroup = ref(false)
 const savingGroup = ref(false)
@@ -58,17 +61,23 @@ function choixProjets(source: Record<number, string>): UserProjectChoice[] {
 }
 
 async function creer() {
-  if (!nouveau.value.username.trim() || nouveau.value.password.length < 8) return
+  // Le mot de passe est FACULTATIF (audit 2026-09-09) — vide fait générer un temporaire côté
+  // serveur, envoyé par email. S'il est saisi, la politique (8 caractères mini) s'applique quand
+  // même : un choix explicite reste un choix vérifié.
+  if (!nouveau.value.username.trim()) return
+  if (nouveau.value.password && nouveau.value.password.length < 8) return
   creation.value = true
   erreur.value = ''
   try {
     const compte = await api.createUser({
-      username: nouveau.value.username.trim(), password: nouveau.value.password,
+      username: nouveau.value.username.trim(), password: nouveau.value.password || undefined,
       email: nouveau.value.email.trim(), role: nouveau.value.role,
       projects: choixProjets(accesCreation.value),
     })
     comptes.value = [...comptes.value, compte].sort((a, b) => a.username.localeCompare(b.username))
     showCreate.value = false
+    // Le mot de passe temporaire n'est JAMAIS reconsultable ensuite — c'est maintenant ou jamais.
+    if (!compte.email_envoye) resultatCreation.value = compte
   } catch (e: any) { erreur.value = e?.message || 'Création impossible.' }
   finally { creation.value = false }
 }
@@ -185,14 +194,30 @@ const actifs = computed(() => comptes.value.filter(c => c.is_active).length)
         <div class="grid gap-4 sm:grid-cols-2">
           <label class="text-sm font-medium">Identifiant *<input v-model="nouveau.username" name="username" autofocus class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3" /></label>
           <label class="text-sm font-medium">Adresse email<input v-model="nouveau.email" name="email" type="email" class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3" /></label>
-          <label class="text-sm font-medium">Mot de passe initial *<input v-model="nouveau.password" name="new-password" type="password" autocomplete="new-password" class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3" /><span class="mt-1 block text-xs font-normal text-muted-foreground">8 caractères minimum</span></label>
+          <label class="text-sm font-medium">Mot de passe initial<input v-model="nouveau.password" name="new-password" type="password" autocomplete="new-password" class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3" /><span class="mt-1 block text-xs font-normal text-muted-foreground">Facultatif — laissez vide pour en générer un et l’envoyer par email à ce compte (8 caractères minimum si vous le saisissez vous-même).</span></label>
           <label class="text-sm font-medium">Rôle dans l’instance *<select v-model="nouveau.role" class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3"><option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option></select></label>
         </div>
         <fieldset><legend class="font-semibold">Accès aux projets</legend><p class="mt-1 text-xs text-muted-foreground">« Aucun accès » masque entièrement le projet pour cet utilisateur.</p>
           <div class="mt-3 max-h-64 overflow-y-auto rounded-md border border-border"><div v-for="p in projets" :key="p.id" class="grid items-center gap-3 border-t border-border px-3 py-2 first:border-t-0 sm:grid-cols-[1fr_220px]"><span class="text-sm font-medium">{{ p.name }}</span><select v-model="accesCreation[p.id]" :aria-label="`Accès à ${p.name}`" class="h-10 rounded-md border border-border bg-surface px-2 text-sm"><option :value="ACCES_PROJET_REFUSE">Aucun accès</option><option v-for="r in ROLES" :key="r" :value="r">{{ LIBELLE_ROLE[r] }}</option></select></div><p v-if="!projets.length" class="p-4 text-sm text-muted-foreground">Aucun projet disponible.</p></div>
         </fieldset>
       </form>
-      <template #footer><Button @click="showCreate = false">Annuler</Button><Button type="submit" form="create-user" variant="primary" :loading="creation" :disabled="!nouveau.username.trim() || nouveau.password.length < 8">Créer l’utilisateur</Button></template>
+      <template #footer><Button @click="showCreate = false">Annuler</Button><Button type="submit" form="create-user" variant="primary" :loading="creation" :disabled="!nouveau.username.trim() || (!!nouveau.password && nouveau.password.length < 8)">Créer l’utilisateur</Button></template>
+    </Modal>
+
+    <!-- ══ Mot de passe temporaire — SEUL moment où il est visible (audit 2026-09-09) ══
+         N'apparaît QUE si l'email n'a pas pu partir (pas d'adresse, SMTP indisponible…) : c'est
+         alors le seul moyen dont dispose l'Admin de transmettre l'accès. -->
+    <Modal :open="!!resultatCreation" title="Compte créé" subtitle="Aucun email n'a pu être envoyé — transmettez ce mot de passe temporaire vous-même." @close="resultatCreation = null">
+      <div v-if="resultatCreation" class="space-y-3">
+        <p class="text-sm text-muted-foreground">Ce mot de passe ne sera plus jamais affiché. Le compte devra de toute façon en choisir un autre à sa première connexion.</p>
+        <div class="rounded-md border border-border bg-surface-raised p-3">
+          <div class="text-xs text-muted-foreground">Identifiant</div>
+          <div class="font-mono text-sm font-medium">{{ resultatCreation.username }}</div>
+          <div class="mt-2 text-xs text-muted-foreground">Mot de passe temporaire</div>
+          <div class="font-mono text-sm font-medium">{{ resultatCreation.mot_de_passe_initial }}</div>
+        </div>
+      </div>
+      <template #footer><Button variant="primary" @click="resultatCreation = null">J’ai noté le mot de passe</Button></template>
     </Modal>
 
     <Modal :open="showGroup" :title="groupForm.id ? 'Modifier le groupe' : 'Ajouter un groupe'" subtitle="Le groupe contient la liste complète des utilisateurs sélectionnés." max-width="max-w-2xl" @close="showGroup = false">

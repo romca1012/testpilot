@@ -430,6 +430,72 @@ def test_un_admin_cree_liste_et_modifie_un_compte(client):
     assert r.status_code == 200 and r.json()["is_active"] is False
 
 
+def test_creer_sans_mot_de_passe_en_genere_un_temporaire_et_le_rend_UNE_FOIS(client):
+    """⚠️ Le cœur du correctif (audit 2026-09-09) : un Admin qui invente et transmet lui-même
+    le mot de passe d'un compte qu'il ne détient pas est la faille — sans SMTP configuré (le cas
+    par défaut ici), le mot de passe généré doit revenir dans la réponse (sinon PERSONNE ne le
+    connaît, ni l'Admin ni le titulaire), et fonctionner pour se connecter."""
+    _compte(client, "Root", "adminmdp", access.ROLE_ADMIN)
+    _connecte(client, "Root", "adminmdp")
+
+    r = client.post("/api/admin/users", json={"username": "Leo", "role": access.ROLE_TESTEUR})
+    assert r.status_code == 200
+    corps = r.json()
+    assert corps["email_envoye"] is False
+    assert corps["mot_de_passe_initial"]
+    assert "password" not in corps and "password_hash" not in corps
+
+    r = client.post("/api/auth/login",
+                    json={"username": "Leo", "password": corps["mot_de_passe_initial"]})
+    assert r.status_code == 200
+    assert r.json()["must_change_password"] is True  # forcé, comme pour un mot de passe choisi
+
+
+def test_creer_avec_mot_de_passe_explicite_reste_possible(client):
+    """Un Admin qui préfère toujours choisir lui-même (remise en main propre, etc.) le peut
+    encore — le champ est facultatif, pas retiré."""
+    _compte(client, "Root", "adminmdp", access.ROLE_ADMIN)
+    _connecte(client, "Root", "adminmdp")
+
+    r = client.post("/api/admin/users",
+                    json={"username": "Bob", "password": "motdepasse-choisi", "role": access.ROLE_TESTEUR})
+    assert r.status_code == 200
+    assert r.json()["mot_de_passe_initial"] == "motdepasse-choisi"
+
+    assert client.post("/api/auth/login",
+                       json={"username": "Bob", "password": "motdepasse-choisi"}).status_code == 200
+
+
+def test_un_mot_de_passe_explicite_trop_court_reste_refuse(client):
+    """La politique de longueur s'applique toujours à un mot de passe CHOISI — seul le
+    générateur automatique (24 caractères) y échappe, jamais un humain qui en tape un."""
+    _compte(client, "Root", "adminmdp", access.ROLE_ADMIN)
+    _connecte(client, "Root", "adminmdp")
+
+    r = client.post("/api/admin/users",
+                    json={"username": "Bob", "password": "court", "role": access.ROLE_TESTEUR})
+    assert r.status_code == 422
+
+
+def test_creer_avec_email_et_notifications_activees_envoie_et_tait_le_mot_de_passe(
+        client, monkeypatch):
+    """Quand l'email PART réellement, le mot de passe ne doit JAMAIS apparaître dans la
+    réponse — sinon l'écran pourrait l'afficher en plus de l'avoir envoyé, doublant l'exposition."""
+    from testpilot.api.routes import users as users_route
+
+    monkeypatch.setattr(users_route.notification_service, "envoyer",
+                        lambda *a, **k: (True, ""))
+    _compte(client, "Root", "adminmdp", access.ROLE_ADMIN)
+    _connecte(client, "Root", "adminmdp")
+
+    r = client.post("/api/admin/users", json={
+        "username": "Leo", "email": "leo@exemple.fr", "role": access.ROLE_TESTEUR})
+    assert r.status_code == 200
+    corps = r.json()
+    assert corps["email_envoye"] is True
+    assert corps["mot_de_passe_initial"] is None
+
+
 def test_un_nom_d_utilisateur_deja_pris_est_refuse(client):
     _compte(client, "Root", "adminmdp", access.ROLE_ADMIN)
     _connecte(client, "Root", "adminmdp")

@@ -948,12 +948,28 @@ class UserProjectAccessListIn(BaseModel):
 
 class UserCreateIn(BaseModel):
     username: str
-    password: str
+    # Facultatif depuis l'audit 2026-09-09 : un Admin qui invente et transmet lui-même le mot de
+    # passe d'un compte qu'il ne détient pas est la faille qu'on corrige — vide (ou omis) fait
+    # générer un mot de passe temporaire côté serveur, envoyé par email si l'adresse est connue
+    # (voir `routes/users.py::create_user`). Le champ reste accepté explicitement pour ne rien
+    # retirer à un Admin qui préfère le communiquer lui-même (remise en main propre, etc.).
+    password: str = ""
     role: str
     email: str = ""
     # None conserve le comportement historique (accès dérivé du rôle global). Une liste,
     # même vide, représente au contraire le choix explicite fait par l'Admin dans l'écran.
     projects: list[UserProjectAccessIn] | None = None
+
+
+class UserCreateOut(UserOut):
+    """Réponse de la création SEULEMENT — jamais celle de la liste/lecture d'un compte (`UserOut`
+    ne porte jamais de mot de passe, même haché, et ça doit rester vrai partout ailleurs).
+
+    `mot_de_passe_initial` n'est rempli QUE si aucun email n'a pu être envoyé — c'est alors le
+    SEUL moyen dont dispose l'Admin de transmettre l'accès, affiché une fois, jamais reconsultable
+    ensuite (le compte devra de toute façon en choisir un autre à la première connexion)."""
+    email_envoye: bool = False
+    mot_de_passe_initial: str | None = None
 
 
 class UserPatchIn(BaseModel):

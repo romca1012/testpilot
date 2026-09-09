@@ -19,10 +19,13 @@ de « testeur » : sans cette garde, un Testeur pourrait se créer lui-même un 
 
 from __future__ import annotations
 
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
+from testpilot.api.services import notification_service
 from testpilot.api.services.project_membership_service import ProjectMembershipService
 from testpilot.store.repositories import (
     DuplicateName,
@@ -156,22 +159,45 @@ def _appliquer_acces_projets(conn, actor_user_id: int, user_id: int,
             service.remove(project_id, user_id)
 
 
-@router.post("", response_model=schemas.UserOut)
+@router.post("", response_model=schemas.UserCreateOut)
 def create_user(body: schemas.UserCreateIn, request: Request, conn=Depends(get_conn)):
+    """⚠️ **Le mot de passe n'est plus l'Admin qui l'invente** (audit 2026-09-09) : un Admin qui
+    transmet lui-même le mot de passe d'un compte qu'il ne détient pas est exactement la faille
+    corrigée ici — laisser `password` vide fait générer un mot de passe temporaire côté serveur
+    et l'envoyer par email si l'adresse est connue, comme pour n'importe quel autre service."""
     if body.role not in access.ROLES:
         raise erreurs.ErreurMetier("requete_invalide", f"rôle inconnu : « {body.role} »")
-    _verifier_longueur_mot_de_passe(body.password)
+    # Un mot de passe EXPLICITEMENT choisi par l'Admin reste vérifié contre la politique — celui
+    # qu'on génère ci-dessous (24 caractères aléatoires) la dépasse toujours largement.
+    if body.password:
+        _verifier_longueur_mot_de_passe(body.password)
+    mot_de_passe = body.password or secrets.token_urlsafe(18)
     if body.projects is not None:
         _verifier_acces_projets(conn, body.projects)
     try:
         uid = UserRepo(conn).create(username=body.username,
-                                    password_hash=access.hacher_mot_de_passe(body.password),
+                                    password_hash=access.hacher_mot_de_passe(mot_de_passe),
                                     role=body.role, email=body.email, must_change_password=True)
     except DuplicateName as exc:
         raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
     if body.projects is not None:
         _appliquer_acces_projets(conn, request.state.user["id"], uid, body.projects)
-    return _out(UserRepo(conn).get(uid))
+
+    email_envoye = False
+    if body.email:
+        email_envoye, _erreur = notification_service.envoyer(
+            conn, destinataire=body.email, sujet="Votre compte TestPilot",
+            corps=(f"Un compte TestPilot vient d'être créé pour vous.\n\n"
+                   f"Identifiant : {body.username}\n"
+                   f"Mot de passe temporaire : {mot_de_passe}\n\n"
+                   f"Connectez-vous puis choisissez votre propre mot de passe — le temporaire "
+                   f"ne sera plus valide une fois cette étape faite."))
+    sortie = _out(UserRepo(conn).get(uid))
+    return schemas.UserCreateOut(
+        **sortie.model_dump(), email_envoye=email_envoye,
+        # Affiché une seule fois : c'est le SEUL moyen de transmettre l'accès quand l'email n'a
+        # pas pu partir (pas d'adresse renseignée, SMTP indisponible…) — jamais reconsultable.
+        mot_de_passe_initial=None if email_envoye else mot_de_passe)
 
 
 @router.get("/{user_id}/projects", response_model=list[schemas.UserProjectAccessOut])
