@@ -27,7 +27,11 @@ async function logout() {
       <span v-if="!compact" class="min-w-0"><span class="block max-w-40 truncate text-sm font-medium">{{ session.name }}</span><span class="block text-xs text-muted-foreground">{{ LIBELLE_ROLE[session.role] || session.role }}</span></span>
       <svg class="h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
     </button>
-    <div v-if="open" role="menu" class="absolute right-0 z-40 mt-1 w-56 rounded-md border border-border bg-surface-overlay p-1 shadow-xl">
+    <!-- `max-h-[...] overflow-y-auto` (même garde que Modal.vue/PaletteCommandes.vue) : sans lui,
+         un menu ouvert près du haut d'une fenêtre COURTE déborde de la zone visible sans aucun
+         moyen de faire défiler pour voir la suite — « Se déconnecter » paraît tronqué alors que
+         rien n'est cassé, juste inatteignable (constaté en pratique, audit 2026-09-09). -->
+    <div v-if="open" role="menu" class="absolute right-0 z-40 mt-1 max-h-[calc(100dvh-5rem)] w-56 overflow-y-auto rounded-md border border-border bg-surface-overlay p-1 shadow-xl">
       <div class="border-b border-border px-3 py-2"><div class="truncate text-sm font-medium">{{ session.name }}</div><div class="text-xs text-muted-foreground">{{ LIBELLE_ROLE[session.role] || session.role }}</div></div>
       <RouterLink v-if="session.role === 'admin'" to="/admin/projects" role="menuitem" class="mt-1 block rounded px-3 py-2 text-sm hover:bg-accent" @click="open = false">Administration</RouterLink>
       <button role="menuitem" class="mt-1 block w-full rounded px-3 py-2 text-left text-sm hover:bg-accent" @click="open = false; showChangePassword = true">Changer mon mot de passe</button>
