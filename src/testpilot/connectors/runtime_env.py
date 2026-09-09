@@ -31,13 +31,30 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# connector_type → {variable d'environnement: colonne du projet}
+# connector_type → {variable d'environnement: colonne du projet} — colonnes REQUISES : sans
+# elles, `verifier_connexion` refuse de lancer quoi que ce soit contre cette connexion.
 _MAPPINGS: dict[str, dict[str, str]] = {
     "odoo": {
         "ODOO_URL": "base_url",
         "ODOO_DB": "database",
         "ODOO_USER": "username",
         "ODOO_PASSWORD": "password",
+    },
+    # Connecteur web générique (2026-09-08, multi-connecteurs) : SEULE l'URL est requise — à la
+    # différence d'Odoo, l'application ciblée peut très bien n'exiger aucune connexion (voir
+    # `connectors/generic_web.py::_tenter_connexion_generique`, qui explore sans authentification
+    # quand identifiant/mot de passe manquent).
+    "web": {
+        "WEB_URL": "base_url",
+    },
+}
+
+# Colonnes FACULTATIVES par connecteur : transmises au runtime SI renseignées (`project_env`),
+# mais jamais exigées par `verifier_connexion` — contrairement à `_MAPPINGS` ci-dessus.
+_MAPPINGS_OPTIONNEL: dict[str, dict[str, str]] = {
+    "web": {
+        "WEB_USER": "username",
+        "WEB_PASSWORD": "password",
     },
 }
 
@@ -114,8 +131,9 @@ def project_env(project: dict | None) -> dict[str, str]:
         logger.warning("[runtime] connecteur '%s' sans mapping d'environnement — "
                        "connexion globale utilisée", connector)
         return {}
+    toutes_les_colonnes = {**mapping, **_MAPPINGS_OPTIONNEL.get(connector, {})}
     env = {}
-    for var, column in mapping.items():
+    for var, column in toutes_les_colonnes.items():
         value = project.get(column)
         if value:  # vide → on laisse la config globale s'appliquer
             env[var] = str(value)

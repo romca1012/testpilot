@@ -122,6 +122,18 @@ _ODOO_DB       = os.environ.get("ODOO_DB", "odoo_test")
 _ODOO_USER     = os.environ.get("ODOO_USER", "admin")
 _ODOO_PASSWORD = os.environ.get("ODOO_PASSWORD", "admin")
 
+# Connecteur du projet (2026-09-08, multi-connecteurs) — posé par `BehaveRunner._subprocess_env`.
+# Défaut « odoo » : un run hors API (CLI, `.env` de la machine, qui ne pose jamais cette variable)
+# garde exactement le comportement d'avant cette variable.
+_CONNECTOR_TYPE = os.environ.get("TESTPILOT_CONNECTOR_TYPE", "odoo")
+
+
+def _doit_ouvrir_session_odoo(connector_type: str) -> bool:
+    """Un projet sans backend Odoo (ex. connecteur `web` générique) ferait échouer TOUT
+    scénario dès `before_scenario` si la session RPC s'ouvrait quand même — il n'y a rien à
+    quoi se connecter. Fonction PURE, testée hors-ligne (`test_behave_harness.py`)."""
+    return (connector_type or "odoo").lower() == "odoo"
+
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 @fixture
@@ -222,7 +234,8 @@ def _marquer_si_scenario_negatif(context, scenario) -> None:
 def before_scenario(context, scenario):
     """Initialise le registre de teardown et ouvre les connexions du scénario."""
     context.created = {}
-    use_fixture(odoo_session, context)
+    if _doit_ouvrir_session_odoo(_CONNECTOR_TYPE):
+        use_fixture(odoo_session, context)
     use_fixture(playwright_browser, context)
     _capturer_reponse_formulaire(context)
     _marquer_si_scenario_negatif(context, scenario)

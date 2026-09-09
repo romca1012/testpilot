@@ -51,6 +51,38 @@ def test_project_env_connecteur_inconnu_ou_absent():
     assert project_env({"connector_type": "sap", "base_url": "http://x"}) == {}
 
 
+# ── Connecteur web générique (2026-09-08, multi-connecteurs) ──────────────────
+# Seule différence structurelle avec Odoo : identifiant/mot de passe sont FACULTATIFS (voir
+# `connectors/generic_web.py` — l'application ciblée peut n'exiger aucune connexion).
+def test_project_env_mappe_la_connexion_web_generique():
+    env = project_env({"connector_type": "web", "base_url": "http://intranet:8080",
+                       "username": "bob", "password": "pwd"})
+    assert env == {"WEB_URL": "http://intranet:8080", "WEB_USER": "bob", "WEB_PASSWORD": "pwd"}
+
+
+def test_project_env_web_generique_sans_identifiant_ni_mot_de_passe():
+    """Rien à écarter : une application accessible sans connexion reste testable telle quelle."""
+    env = project_env({"connector_type": "web", "base_url": "http://intranet:8080"})
+    assert env == {"WEB_URL": "http://intranet:8080"}
+
+
+def test_verifier_connexion_web_generique_exige_seulement_l_url():
+    """⚠️ Contrairement à Odoo : identifiant/mot de passe manquants ne doivent JAMAIS refuser
+    le lancement d'un projet `web` — ce serait bloquer une application qui n'exige aucune
+    connexion, la situation même que ce connecteur existe pour couvrir."""
+    from testpilot.connectors.runtime_env import verifier_connexion
+
+    env = verifier_connexion({"connector_type": "web", "base_url": "http://intranet:8080"})
+    assert env == {"WEB_URL": "http://intranet:8080"}
+
+
+def test_verifier_connexion_web_generique_refuse_sans_url():
+    from testpilot.connectors.runtime_env import ConnexionIncomplete, verifier_connexion
+
+    with pytest.raises(ConnexionIncomplete):
+        verifier_connexion({"connector_type": "web", "base_url": ""})
+
+
 def test_project_env_ne_produit_jamais_odoo_env():
     # Le garde-fou anti-production ne doit jamais être piloté par un projet.
     env = project_env({"connector_type": "odoo", "base_url": "http://x", "database": "d",

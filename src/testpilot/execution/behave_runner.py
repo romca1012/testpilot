@@ -113,6 +113,13 @@ class BehaveRunner:
         # par instance). Absent → le résolveur le dira ; les steps fins classiques marchent sans.
         if self.project_id is not None:
             env["TESTPILOT_PROJECT_ID"] = str(self.project_id)
+        # Le connecteur (2026-09-08, multi-connecteurs) : `environment.py` en a besoin pour
+        # savoir s'il doit ouvrir une session RPC Odoo — un projet sans backend Odoo ferait
+        # échouer TOUT scénario dès `before_scenario` si cette session s'ouvrait quand même.
+        # Absent → défaut « odoo » côté `environment.py`, comportement inchangé pour un run
+        # hors API (CLI sans projet, ex. `.env` de la machine).
+        if self.connector_type is not None:
+            env["TESTPILOT_CONNECTOR_TYPE"] = self.connector_type
         return env
 
     def dry_run(self, module_name: str) -> BehaveResult:

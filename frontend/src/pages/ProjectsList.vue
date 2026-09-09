@@ -44,7 +44,13 @@ function openCreate() {
 const form = ref({
   name: '', connector_type: 'odoo', connector_version: '', base_url: '', database: '', username: '', password: '',
 })
-const CONNECTORS = [{ value: 'odoo', label: 'Odoo' }]  // extensible (§8 multi-connecteurs)
+// `web` (2026-09-08) : application quelconque identifiée par sa seule URL — pas besoin de
+// connaître le nom du système ciblé (voir `connectors/generic_web.py`). « Base de données » n'a
+// de sens que pour Odoo : masquée dans les deux formulaires ci-dessous pour les autres connecteurs.
+const CONNECTORS = [
+  { value: 'odoo', label: 'Odoo' },
+  { value: 'web', label: 'Application web (générique)' },
+]
 
 // Suppression
 const toDelete = ref<ProjectSummary | null>(null)
@@ -520,16 +526,22 @@ onMounted(async () => { await load(); await loadExplorations() })
           <div class="grid gap-3 sm:grid-cols-2">
             <input v-model="form.base_url" placeholder="URL (ex. http://localhost:10017)"
                    class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
-            <input v-model="form.database" placeholder="Base de données"
+            <input v-if="form.connector_type === 'odoo'" v-model="form.database" placeholder="Base de données"
                    class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
-            <input v-model="form.username" placeholder="Utilisateur"
+            <input v-model="form.username"
+                   :placeholder="form.connector_type === 'odoo' ? 'Utilisateur' : 'Utilisateur (facultatif)'"
                    class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
-            <input v-model="form.password" type="password" placeholder="Mot de passe"
+            <input v-model="form.password" type="password"
+                   :placeholder="form.connector_type === 'odoo' ? 'Mot de passe' : 'Mot de passe (facultatif)'"
                    class="h-9 rounded-md border border-border bg-surface-raised px-3 text-sm outline-none focus:border-primary/50" />
           </div>
           <p class="mt-2 text-xs text-muted-foreground">
             Facultatif ici — vous pourrez la renseigner et la corriger ensuite. Sans elle, aucune
             exploration ni exécution n'est possible.
+            <template v-if="form.connector_type !== 'odoo'">
+              Identifiant et mot de passe restent facultatifs même une fois l'URL renseignée :
+              une application accessible sans connexion reste explorable telle quelle.
+            </template>
           </p>
         </fieldset>
 
@@ -570,9 +582,9 @@ onMounted(async () => { await load(); await loadExplorations() })
           </label>
           <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label class="block"><span class="text-sm font-medium">URL</span><input v-model="edit.base_url" placeholder="http://localhost:10017" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
-            <label class="block"><span class="text-sm font-medium">Base de données</span><input v-model="edit.database" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
-            <label class="block"><span class="text-sm font-medium">Utilisateur</span><input v-model="edit.username" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
-            <label class="block"><span class="text-sm font-medium">Mot de passe</span><input v-model="edit.password" type="password" placeholder="Inchangé" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <label v-if="edit.connector_type === 'odoo'" class="block"><span class="text-sm font-medium">Base de données</span><input v-model="edit.database" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <label class="block"><span class="text-sm font-medium">Utilisateur{{ edit.connector_type === 'odoo' ? '' : ' (facultatif)' }}</span><input v-model="edit.username" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <label class="block"><span class="text-sm font-medium">Mot de passe{{ edit.connector_type === 'odoo' ? '' : ' (facultatif)' }}</span><input v-model="edit.password" type="password" placeholder="Inchangé" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
           </div>
           <p class="mt-2 text-xs text-muted-foreground">Le mot de passe n'est jamais réaffiché. Laissez ce champ vide pour le conserver tel quel.</p>
         </fieldset>

@@ -40,6 +40,18 @@ def test_shim_alias_installe_et_register_created():
     assert ctx.created == {"helpdesk.ticket": [42]}
 
 
+def test_la_session_odoo_ne_s_ouvre_que_pour_le_connecteur_odoo():
+    """Un projet `web` (générique, sans backend Odoo) ferait échouer TOUT scénario dès
+    `before_scenario` si la session RPC s'ouvrait quand même — audit multi-connecteurs,
+    2026-09-08 (voir `connectors/generic_web.py`)."""
+    mod = _load_environment()
+    assert mod._doit_ouvrir_session_odoo("odoo") is True
+    assert mod._doit_ouvrir_session_odoo("ODOO") is True  # insensible à la casse
+    assert mod._doit_ouvrir_session_odoo("web") is False
+    assert mod._doit_ouvrir_session_odoo("") is True   # défaut historique : pas de régression
+    assert mod._doit_ouvrir_session_odoo(None) is True  # idem, variable absente
+
+
 _PROBE_FEATURE = """# language: fr
 Fonctionnalité: Sonde du harnais Behave
   Scénario: la bibliothèque et le shim résolvent
