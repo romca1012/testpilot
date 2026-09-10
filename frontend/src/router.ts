@@ -74,6 +74,16 @@ export const routes = [
   // dérivée des vraies exécutions. Onglet de suivi, jamais un chiffre fabriqué.
   { path: '/projects/:pid/quality', name: 'quality', component: () => import('./pages/QualityDashboard.vue') },
 
+  // Plans de test (migration 43, 2026-09-10) : regroupe plusieurs campagnes existantes pour un
+  // rapport consolidé — troisième couche au-dessus des campagnes, purement organisationnelle.
+  { path: '/projects/:pid/plans', name: 'plans', component: () => import('./pages/PlansList.vue') },
+  { path: '/projects/:pid/plans/new', name: 'plan-new', component: () => import('./pages/PlansList.vue') },
+  { path: '/projects/:pid/plans/:id', name: 'plan-detail', component: () => import('./pages/PlanDetail.vue') },
+  // Planifications récurrentes (migration 43) : lance automatiquement une campagne sur une
+  // horloge — TOUJOURS en mode automatique, jamais de saisie manuelle possible (voir le
+  // formulaire, qui ne propose même pas ce choix).
+  { path: '/projects/:pid/schedules', name: 'schedules', component: () => import('./pages/SchedulesList.vue') },
+
   // Rétro-compat : anciens liens sans projet → accueil projets.
   { path: '/cases', redirect: '/projects' },
   { path: '/executions', redirect: '/projects' },

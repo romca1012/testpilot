@@ -178,6 +178,17 @@ export function resultModeView(code: string | null | undefined): StatusView | nu
   return (code && RESULT_MODE[code]) || null
 }
 
+// Un « auteur » de résultat ou de campagne peut être un acteur NON HUMAIN — jamais son nom
+// technique brut à l'écran (même invariant que le mode : mot + sens, pas un identifiant système).
+// Deux figures à ce jour : la réparation automatique d'un cas (`repair-agent`, 2026-08) et, depuis
+// la migration 43, une campagne lancée par une planification récurrente (`scheduler:<nom>`).
+export function libelleActeur(createdBy: string | null | undefined): string {
+  if (!createdBy) return '—'
+  if (createdBy === 'repair-agent') return 'réparation automatique'
+  if (createdBy.startsWith('scheduler:')) return `Lancement planifié — ${createdBy.slice('scheduler:'.length)}`
+  return createdBy
+}
+
 // Provenance du coût, en clair.
 export function costSourceLabel(code: string | null | undefined): string {
   if (code === 'anthropic_api') return 'mesuré via l\'API'

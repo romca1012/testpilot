@@ -1841,6 +1841,21 @@ class RunRepo:
             " FROM test_run r WHERE r.project_id=? ORDER BY r.id DESC",
             (MODE_MANUELLE, project_id)))
 
+    def for_plan(self, plan_id: int) -> list[dict]:
+        """Mêmes colonnes calculées que `list_for_project` (migration 43) — un Plan affiche
+        chacun de ses runs avec son PROPRE résumé complet, jamais un chiffre fusionné."""
+        return _rows(self.conn.execute(
+            "SELECT r.*,"
+            " (SELECT COUNT(*) FROM test_run_case rc WHERE rc.run_id=r.id) AS frozen_count,"
+            " (SELECT COUNT(DISTINCT tr.case_id) FROM test_result tr WHERE tr.run_id=r.id)"
+            "     AS tested_count,"
+            " (SELECT COUNT(*) FROM test_result tr"
+            "    JOIN (SELECT case_id, MAX(id) AS dernier FROM test_result WHERE run_id=r.id"
+            "          GROUP BY case_id) d ON d.dernier = tr.id"
+            "    WHERE tr.mode=?) AS manuel_count"
+            " FROM test_run r WHERE r.plan_id=? ORDER BY r.id DESC",
+            (MODE_MANUELLE, plan_id)))
+
     def case_ids(self, run_id: int) -> list[int]:
         """Les cas du run : recalculés (mode `all`) ou lus dans la liaison figée (`frozen`)."""
         run = self.get(run_id)
@@ -1943,6 +1958,133 @@ class RunRepo:
             sets.append("completed_at=?"); params.append(now_iso())
         params.append(run_id)
         self.conn.execute(f"UPDATE test_run SET {', '.join(sets)} WHERE id=?", params)
+        self.conn.commit()
+
+
+class PlanRepo:
+    """Plans de test (migration 43) — regroupe plusieurs campagnes SOUS UN MÊME rapport
+    consolidé. Purement organisationnel : ne change rien à l'exécution ni au lancement d'un run,
+    c'est la troisième couche au-dessus (`Projet → Plan → Campagnes → Cas → Résultats`)."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def create(self, *, project_id: int, name: str, description: str = "", refs: str = "",
+               created_by: str = "") -> int:
+        cur = self.conn.execute(
+            "INSERT INTO test_plan (project_id, name, description, refs, created_by, created_at)"
+            " VALUES (?,?,?,?,?,?)",
+            (project_id, name, description, refs, created_by, now_iso()))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def get(self, plan_id: int) -> dict | None:
+        row = self.conn.execute("SELECT * FROM test_plan WHERE id=?", (plan_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_for_project(self, project_id: int) -> list[dict]:
+        return _rows(self.conn.execute(
+            "SELECT * FROM test_plan WHERE project_id=? ORDER BY id DESC", (project_id,)))
+
+    def runs_of_plan(self, plan_id: int) -> list[dict]:
+        """Chaque run garde son PROPRE statut/mode/compteurs — jamais fusionnés en un seul
+        chiffre (une campagne manuelle et une automatique ne se lisent pas de la même façon).
+        Délègue à `RunRepo.for_plan` : mêmes colonnes calculées que la liste d'un projet."""
+        return RunRepo(self.conn).for_plan(plan_id)
+
+    def assign_run(self, plan_id: int, run_id: int) -> None:
+        self.conn.execute("UPDATE test_run SET plan_id=? WHERE id=?", (plan_id, run_id))
+        self.conn.commit()
+
+    def unassign_run(self, run_id: int) -> None:
+        self.conn.execute("UPDATE test_run SET plan_id=NULL WHERE id=?", (run_id,))
+        self.conn.commit()
+
+
+class ScheduledRunRepo:
+    """Planifications récurrentes (migration 43) — lance automatiquement une campagne sur une
+    horloge, en réutilisant TEL QUEL le moteur d'exécution existant (`campaign_service`).
+
+    ⚠️ Aucune colonne/paramètre `mode` : une planification est TOUJOURS automatique — voir
+    `scheduler_service.tick()`, qui force `MODE_AUTOMATIQUE` à la création du `test_run` qu'elle
+    engendre. Le lire depuis une entrée utilisateur serait la seule façon de se tromper ici."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def create(self, *, project_id: int, name: str, selection_mode: str = "frozen",
+               frequency: str, hour: int, minute: int, weekday: int | None = None,
+               case_ids: list[int] | None = None, created_by: str = "") -> int:
+        if frequency not in ("daily", "weekly"):
+            raise ValueError(f"fréquence inconnue : {frequency!r} — attendu 'daily' ou 'weekly'")
+        if frequency == "weekly" and weekday is None:
+            raise ValueError("une planification hebdomadaire doit préciser le jour (weekday)")
+        cur = self.conn.execute(
+            "INSERT INTO scheduled_run (project_id, name, selection_mode, frequency, hour,"
+            " minute, weekday, is_active, created_by, created_at)"
+            " VALUES (?,?,?,?,?,?,?,1,?,?)",
+            (project_id, name, selection_mode, frequency, hour, minute, weekday,
+             created_by, now_iso()))
+        scheduled_id = int(cur.lastrowid)
+        if selection_mode == "frozen":
+            for cid in dict.fromkeys(case_ids or []):
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO scheduled_run_case (scheduled_run_id, case_id)"
+                    " VALUES (?,?)", (scheduled_id, cid))
+        self.conn.commit()
+        return scheduled_id
+
+    def get(self, scheduled_id: int) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM scheduled_run WHERE id=?", (scheduled_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_for_project(self, project_id: int) -> list[dict]:
+        return _rows(self.conn.execute(
+            "SELECT * FROM scheduled_run WHERE project_id=? ORDER BY id DESC", (project_id,)))
+
+    def list_active(self) -> list[dict]:
+        """TOUTES les planifications actives, tous projets confondus — `scheduler_service.tick()`
+        balaie l'ensemble à chaque passage plutôt qu'un projet à la fois."""
+        return _rows(self.conn.execute(
+            "SELECT * FROM scheduled_run WHERE is_active=1 ORDER BY id"))
+
+    def case_ids(self, scheduled_id: int) -> list[int]:
+        """Même logique que `RunRepo.case_ids` : `all` reste VIVANT (recalculé à chaque
+        déclenchement), `frozen` est matérialisé dans `scheduled_run_case`."""
+        row = self.get(scheduled_id)
+        if row is None:
+            return []
+        if row["selection_mode"] == "all":
+            return [r["id"] for r in self.conn.execute(
+                "SELECT tc.id FROM test_case tc JOIN module m ON tc.module_id=m.id"
+                " JOIN project p ON m.project_id=p.id"
+                " WHERE m.project_id=? AND tc.deleted_at='' AND m.deleted_at=''"
+                " AND p.deleted_at='' ORDER BY tc.id", (row["project_id"],))]
+        return [r["case_id"] for r in self.conn.execute(
+            "SELECT src.case_id FROM scheduled_run_case src"
+            " JOIN test_case tc ON src.case_id=tc.id"
+            " LEFT JOIN module m ON tc.module_id=m.id"
+            " LEFT JOIN project p ON m.project_id=p.id"
+            " WHERE src.scheduled_run_id=? AND tc.deleted_at=''"
+            " AND (m.id IS NULL OR m.deleted_at='')"
+            " AND (p.id IS NULL OR p.deleted_at='') ORDER BY src.case_id", (scheduled_id,))]
+
+    def set_active(self, scheduled_id: int, active: bool) -> None:
+        self.conn.execute("UPDATE scheduled_run SET is_active=? WHERE id=?",
+                          (1 if active else 0, scheduled_id))
+        self.conn.commit()
+
+    def delete(self, scheduled_id: int) -> None:
+        self.conn.execute("DELETE FROM scheduled_run_case WHERE scheduled_run_id=?",
+                          (scheduled_id,))
+        self.conn.execute("DELETE FROM scheduled_run WHERE id=?", (scheduled_id,))
+        self.conn.commit()
+
+    def mark_triggered(self, scheduled_id: int, run_id: int, *, at: str | None = None) -> None:
+        self.conn.execute(
+            "UPDATE scheduled_run SET last_run_id=?, last_triggered_at=? WHERE id=?",
+            (run_id, at or now_iso(), scheduled_id))
         self.conn.commit()
 
 

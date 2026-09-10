@@ -10,7 +10,7 @@
 // Aucune pastille quand il n'y a pas de résultat : « non testé » se lit déjà dans le statut, et
 // une pastille vide laisserait croire à un mode inconnu.
 import { computed } from 'vue'
-import { resultModeView, toneClasses } from '../lib/status'
+import { libelleActeur, resultModeView, toneClasses } from '../lib/status'
 import Icon from './ui/Icon.vue'
 
 const props = defineProps<{
@@ -26,7 +26,7 @@ const view = computed(() => resultModeView(props.mode))
 const detail = computed(() => {
   if (!view.value) return ''
   const morceaux = [view.value.hint || '']
-  if (props.createdBy) morceaux.push(`Par : ${props.createdBy}`)
+  if (props.createdBy) morceaux.push(`Par : ${libelleActeur(props.createdBy)}`)
   if (props.at) morceaux.push(`Le : ${props.at.slice(0, 16).replace('T', ' à ')}`)
   return morceaux.filter(Boolean).join('\n')
 })

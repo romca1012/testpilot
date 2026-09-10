@@ -15,7 +15,9 @@ import { ROUTES_SANS_SHELL } from '../lib/shell'
 describe('shell de projet — toute route hors /projects/:pid doit s\'en passer', () => {
   it('ne publie plus de page vide « à venir » dans la navigation V1', () => {
     expect(routes.some((r: any) => r.name === 'cases-soon')).toBe(false)
-    expect(routes.some((r: any) => r.name === 'plan-new')).toBe(false)
+    // ⚠️ Inversé le 2026-09-10 : les Plans de test sont désormais une fonctionnalité réelle
+    // (migration 43), plus une action factice — voir `PlansList.vue`/`PlanDetail.vue`.
+    expect(routes.some((r: any) => r.name === 'plan-new')).toBe(true)
   })
 
   it('aucune route de premier niveau n\'est rendue dans le shell', () => {

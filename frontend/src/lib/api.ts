@@ -259,6 +259,33 @@ export const api = {
     request<RunSummary>(`/api/runs/${runId}/archive`, {
       method: 'POST', body: JSON.stringify({ archived }),
     }),
+  // ── Plans de test (migration 43) — regroupe plusieurs campagnes existantes ──
+  // Purement organisationnel : ne change rien à l'exécution ni au lancement d'une campagne.
+  createPlan: (projectId: number | string, body: { name: string; description?: string; refs?: string }) =>
+    request<PlanOut>(`/api/projects/${projectId}/plans`, { method: 'POST', body: JSON.stringify(body) }),
+  listPlans: (projectId: number | string) => request<PlanOut[]>(`/api/projects/${projectId}/plans`),
+  getPlan: (planId: number | string) => request<PlanDetail>(`/api/plans/${planId}`),
+  assignRunToPlan: (planId: number | string, runId: number | string) =>
+    request<PlanDetail>(`/api/plans/${planId}/runs/${runId}`, { method: 'POST' }),
+  unassignRunFromPlan: (planId: number | string, runId: number | string) =>
+    request<PlanDetail>(`/api/plans/${planId}/runs/${runId}`, { method: 'DELETE' }),
+  // ── Planifications récurrentes (migration 43) ──
+  // ⚠️ Aucun champ `mode` : une planification est TOUJOURS automatique — ce choix n'existe
+  // structurellement pas ici (voir `scheduler_service.py`).
+  createSchedule: (projectId: number | string, body: {
+    name: string; selection_mode: 'all' | 'frozen'; case_ids?: number[]
+    frequency: 'daily' | 'weekly'; hour: number; minute: number; weekday?: number | null
+  }) => request<ScheduledRun>(`/api/projects/${projectId}/schedules`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  listSchedules: (projectId: number | string) =>
+    request<ScheduledRun[]>(`/api/projects/${projectId}/schedules`),
+  patchSchedule: (scheduledId: number | string, patch: { is_active: boolean }) =>
+    request<ScheduledRun>(`/api/schedules/${scheduledId}`, {
+      method: 'PATCH', body: JSON.stringify(patch),
+    }),
+  deleteSchedule: (scheduledId: number | string) =>
+    request<void>(`/api/schedules/${scheduledId}`, { method: 'DELETE' }),
   startExploration: (id: number | string) =>
     request<Exploration>(`/api/projects/${id}/exploration`, { method: 'POST' }),
   listModules: (projectId: number | string) => request<ModuleSummary[]>(`/api/projects/${projectId}/modules`),
@@ -561,6 +588,10 @@ export interface RunSummary {
    *  doit jamais laisser croire que tout a été prouvé par la machine. */
   manuel_count: number
   is_archived: boolean; created_at: string
+  /** Le Plan de test (migration 43) qui regroupe cette campagne, s'il y en a un — `null`/absent =
+   *  hors de tout plan. Référence souple, jamais une FK dure côté serveur. Optionnel côté type :
+   *  champ ajouté après coup, les campagnes lues avant cette version n'en ont pas dans leur cache. */
+  plan_id?: number | null
 }
 /** Un cas DANS un run, avec son résultat (ou null = non testé). */
 export interface RunCaseResult {
@@ -585,6 +616,31 @@ export interface RunDetail {
   /** ⚠️ Itérée telle quelle par l'écran de saisie — JAMAIS retapée ici. La liste vit en Python
    *  et dans un CHECK de la base ; une troisième copie en TypeScript divergerait un jour. */
   statuts_manuels: string[]
+}
+
+/** Un Plan de test (migration 43) — regroupe plusieurs campagnes existantes pour un rapport
+ *  consolidé. Purement organisationnel : ne change rien à l'exécution ni au lancement d'un run. */
+export interface PlanOut {
+  id: number; project_id: number; name: string
+  description: string; refs: string; created_by: string; created_at: string
+}
+export interface PlanDetail {
+  plan: PlanOut
+  /** Chaque run garde son PROPRE résumé complet (dont `mode`) — jamais fusionné en un seul
+   *  chiffre qui mélangerait des verdicts humains (manuelle) et machine (automatique). */
+  runs: RunSummary[]
+}
+
+/** Une planification récurrente (migration 43) — lance automatiquement une campagne sur une
+ *  horloge, en réutilisant le moteur d'exécution existant.
+ *  ⚠️ AUCUN champ `mode` : une planification est TOUJOURS automatique — personne n'est présent
+ *  à 2h du matin pour saisir un résultat manuel, ce choix n'existe structurellement pas ici. */
+export interface ScheduledRun {
+  id: number; project_id: number; name: string
+  selection_mode: string; frequency: string; hour: number; minute: number
+  weekday: number | null; is_active: boolean
+  created_by: string; created_at: string
+  last_run_id: number | null; last_triggered_at: string | null
 }
 
 /** Un résultat de CE cas dans UNE campagne (la sienne ou une autre) — « où et quand », pas

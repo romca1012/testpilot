@@ -28,15 +28,16 @@
 // leur ordre et leurs couleurs ne sont écrits qu'à un seul endroit, `lib/status.ts`.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, roleSuffisant, type RunDetail as RunDetailDto, type RunCaseResult } from '../lib/api'
+import { api, roleSuffisant, type RunDetail as RunDetailDto, type RunCaseResult, type PlanOut } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useSession } from '../lib/useSession'
-import { testStatusMeta, TEST_STATUS_ORDER, type TestStatusCode } from '../lib/status'
+import { libelleActeur, testStatusMeta, TEST_STATUS_ORDER, type TestStatusCode } from '../lib/status'
 import ResultMode from '../components/ResultMode.vue'
 import AddResultDialog from '../components/AddResultDialog.vue'
 import RefsList from '../components/RefsList.vue'
 import Button from '../components/ui/Button.vue'
 import IconButton from '../components/ui/IconButton.vue'
+import Modal from '../components/ui/Modal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -59,6 +60,41 @@ async function load() {
 }
 onMounted(load)
 watch(runId, load)
+
+// ── Plan de test (migration 43) — purement organisationnel : rattacher/retirer ne touche à
+// RIEN de l'exécution. `plan_id` est une référence SOUPLE (pas de FK dure côté serveur), donc le
+// nom du plan actuel se lit dans la petite liste des plans du projet plutôt que sur le run lui-même.
+const showPlanPicker = ref(false)
+const plansDuProjet = ref<PlanOut[]>([])
+const planActuel = computed(() =>
+  plansDuProjet.value.find((p) => p.id === detail.value?.run.plan_id) || null)
+async function chargerPlans() {
+  try { plansDuProjet.value = await api.listPlans(pid.value) } catch { plansDuProjet.value = [] }
+}
+onMounted(chargerPlans)
+function ouvrirPlanPicker() {
+  showPlanPicker.value = true
+  chargerPlans()
+}
+async function assignerAuPlan(planId: number) {
+  if (!detail.value) return
+  try {
+    await api.assignRunToPlan(planId, detail.value.run.id)
+    showPlanPicker.value = false
+    await load()
+  } catch (e: any) {
+    window.alert(e?.message || 'Assignation impossible.')
+  }
+}
+async function retirerDuPlan() {
+  if (!detail.value || !planActuel.value) return
+  try {
+    await api.unassignRunFromPlan(planActuel.value.id, detail.value.run.id)
+    await load()
+  } catch (e: any) {
+    window.alert(e?.message || 'Retrait impossible.')
+  }
+}
 
 function statusOf(c: RunCaseResult): TestStatusCode { return c.statut as TestStatusCode }
 
@@ -312,6 +348,22 @@ async function resultatAjoute() {
       </div>
     </div>
 
+    <!-- Plan de test (migration 43) : purement organisationnel, n'agit sur rien ci-dessus. -->
+    <div class="mt-2 flex items-center gap-2 text-sm">
+      <template v-if="planActuel">
+        <span class="text-muted-foreground">Dans le plan :</span>
+        <RouterLink :to="{ name: 'plan-detail', params: { pid, id: String(planActuel.id) } }"
+                    class="text-primary hover:underline">{{ planActuel.name }}</RouterLink>
+        <button v-if="peutModifier" type="button" class="text-xs text-muted-foreground hover:text-destructive"
+                @click="retirerDuPlan">Retirer</button>
+      </template>
+      <button v-else-if="peutModifier" type="button"
+              class="text-xs text-muted-foreground hover:text-foreground underline decoration-dotted"
+              @click="ouvrirPlanPicker">
+        + Ajouter à un plan de test
+      </button>
+    </div>
+
     <!-- Bandeau « archivée » : dit pourquoi il n'y a plus de bouton Lancer (note fonctionnelle). -->
     <div v-if="archived" class="mt-3 flex items-start gap-2 rounded-lg border-l-4 border-muted-foreground/40 bg-secondary/50 px-4 py-3 text-sm text-muted-foreground">
       <svg class="w-4 h-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 001 1h12a1 1 0 001-1V8M10 12h4"/></svg>
@@ -496,7 +548,7 @@ async function resultatAjoute() {
               <!-- Colonne « Soumis par », comme TestRail. Un compte de service pour la machine, un
                    nom de session pour un humain — et « — » quand personne n'a signé, jamais un nom
                    deviné. -->
-              <td v-if="colonneVisible('soumis')" class="py-3 px-2.5 truncate text-muted-foreground">{{ c.created_by || '—' }}</td>
+              <td v-if="colonneVisible('soumis')" class="py-3 px-2.5 truncate text-muted-foreground">{{ libelleActeur(c.created_by) }}</td>
               <td class="py-3 px-2.5 text-right">
                 <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
                       :class="testStatusMeta(statusOf(c)).badge">
@@ -518,6 +570,23 @@ async function resultatAjoute() {
     <AddResultDialog :open="!!casSaisi" :run-id="runId" :cas="casSaisi"
                      :statuts="detail.statuts_manuels"
                      @close="casSaisi = null" @saved="resultatAjoute" />
+
+    <!-- ════════ Ajouter cette campagne à un plan ════════ -->
+    <Modal :open="showPlanPicker" title="Ajouter au plan de test"
+           subtitle="Rattache cette campagne à un plan existant — rien n'est relancé ni modifié."
+           @close="showPlanPicker = false">
+      <p v-if="!plansDuProjet.length" class="text-sm text-muted-foreground">
+        Aucun plan de test dans ce projet.
+        <RouterLink :to="{ name: 'plan-new', params: { pid } }" class="text-primary hover:underline">En créer un</RouterLink>.
+      </p>
+      <div v-else class="divide-y divide-border/40 -mx-1">
+        <button v-for="p in plansDuProjet" :key="p.id" type="button"
+                class="w-full text-left px-1 py-2.5 text-sm hover:bg-accent/30 rounded-md truncate"
+                @click="assignerAuPlan(p.id)">
+          {{ p.name }}
+        </button>
+      </div>
+    </Modal>
   </div>
 
   <div v-else class="text-sm text-muted-foreground">Exécution introuvable.</div>

@@ -11,7 +11,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, type RunActivite } from '../lib/api'
-import { testStatusMeta } from '../lib/status'
+import { libelleActeur, testStatusMeta } from '../lib/status'
 import { cleJour, jourLong } from '../lib/format'
 import CourbeResultats from '../components/CourbeResultats.vue'
 import ResultMode from '../components/ResultMode.vue'
@@ -91,7 +91,7 @@ function heure(iso: string): string { return (iso || '').slice(11, 16) }
                       class="text-primary hover:underline truncate min-w-0">{{ e.case_title }}</RouterLink>
           <ResultMode :mode="e.mode" :created-by="e.created_by" :at="e.created_at" />
           <span class="ml-auto text-xs text-muted-foreground shrink-0">
-            Testé par {{ e.created_by || '—' }} · {{ heure(e.created_at) }}
+            Testé par {{ libelleActeur(e.created_by) }} · {{ heure(e.created_at) }}
           </span>
         </li>
       </ul>

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 42
+_SCHEMA_VERSION = 43
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -226,6 +226,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_41_background_job(conn)
     if version < 42:
         _migrate_42_password_ownership(conn)
+    if version < 43:
+        _migrate_43_plans_et_planifications(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -251,6 +253,58 @@ def _migrate_42_password_ownership(conn: sqlite3.Connection) -> None:
         from testpilot.store.repositories import ProjectMemberRepo
         for project in conn.execute("SELECT id FROM project").fetchall():
             ProjectMemberRepo(conn).sync_project(project["id"])
+
+
+def _migrate_43_plans_et_planifications(conn: sqlite3.Connection) -> None:
+    """Plans de test (regroupement de campagnes) + planifications récurrentes (2026-09-10).
+
+    ⚠️ **Aucune colonne `mode` sur `scheduled_run`** : une planification est TOUJOURS automatique
+    — personne n'est présent à 2h du matin pour saisir un résultat manuel. `scheduler_service.tick()`
+    force `MODE_AUTOMATIQUE` à la création de chaque `test_run` qu'elle engendre ; le lire depuis
+    une entrée utilisateur serait la seule façon de se tromper ici, donc la colonne n'existe pas.
+
+    `test_run.plan_id` (colonne déjà présente depuis la migration 15, jamais FK dure « pour ne pas
+    dépendre d'une table encore absente ») reste SANS FK dure même maintenant que `test_plan`
+    existe — cohérent avec la même convention déjà appliquée à `execution.run_id` : une référence
+    logique, pas un verrou d'intégrité, pour ne jamais bloquer une migration future sur un
+    reconstruire-la-table SQLite.
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS test_plan ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " project_id INTEGER NOT NULL REFERENCES project(id),"
+        " name TEXT NOT NULL,"
+        " description TEXT NOT NULL DEFAULT '',"
+        " refs TEXT NOT NULL DEFAULT '',"
+        " created_by TEXT NOT NULL DEFAULT '',"
+        " created_at TEXT NOT NULL)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_plan_project ON test_plan(project_id)")
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS scheduled_run ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " project_id INTEGER NOT NULL REFERENCES project(id),"
+        " name TEXT NOT NULL,"
+        " selection_mode TEXT NOT NULL DEFAULT 'frozen'"
+        "     CHECK (selection_mode IN ('all', 'frozen')),"
+        " frequency TEXT NOT NULL CHECK (frequency IN ('daily', 'weekly')),"
+        " hour INTEGER NOT NULL CHECK (hour BETWEEN 0 AND 23),"
+        " minute INTEGER NOT NULL CHECK (minute BETWEEN 0 AND 59),"
+        " weekday INTEGER CHECK (weekday IS NULL OR weekday BETWEEN 0 AND 6),"
+        " is_active INTEGER NOT NULL DEFAULT 1,"
+        " created_by TEXT NOT NULL DEFAULT '',"
+        " created_at TEXT NOT NULL,"
+        " last_run_id INTEGER,"
+        " last_triggered_at TEXT)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scheduled_run_project ON scheduled_run(project_id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scheduled_run_active ON scheduled_run(is_active)")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS scheduled_run_case ("
+        " scheduled_run_id INTEGER NOT NULL REFERENCES scheduled_run(id) ON DELETE CASCADE,"
+        " case_id INTEGER NOT NULL,"
+        " PRIMARY KEY (scheduled_run_id, case_id))")
 
 
 def _migrate_1_project_module(conn: sqlite3.Connection) -> None:

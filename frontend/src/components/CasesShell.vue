@@ -30,6 +30,10 @@ const roleProjet = computed(() => currentProject.value?.effective_role || sessio
 const peutModifier = computed(() => roleSuffisant(roleProjet.value, 'testeur'))
 const peutGenerer = computed(() => roleSuffisant(roleProjet.value, 'dev'))
 const peutVoirQualite = computed(() => roleSuffisant(roleProjet.value, 'dev'))
+// Une planification s'exécute SANS présence humaine : coûts LLM/navigateur non supervisés en
+// cas d'erreur — réservée à Dev+, contrairement à la création d'une campagne à la main
+// (Testeur+, `peutModifier`). Les Plans, eux, n'exécutent rien : même plancher que les campagnes.
+const peutPlanifier = computed(() => roleSuffisant(roleProjet.value, 'dev'))
 const estAdminProjet = computed(() => roleSuffisant(roleProjet.value, 'admin'))
 
 // Modale UNIQUE de création de module (déclenchée d'ici « + Ajouter une section », et depuis la
@@ -214,7 +218,7 @@ const execSort = computed(() => (route.query.sort as string) || 'date')
 function setExecQuery(key: 'group' | 'sort', value: string) {
   router.replace({ name: 'executions', params: { pid: pid.value }, query: { ...route.query, [key]: value } })
 }
-function goRoute(name: 'run-new' | 'plan-new') {
+function goRoute(name: 'run-new' | 'plan-new' | 'plans' | 'schedules') {
   router.push({ name, params: { pid: pid.value } })
 }
 // « Ajouter un cas de test » = saisie MANUELLE (sans IA). Le module courant (si l'arbre en a un
@@ -264,7 +268,8 @@ function isActive(key: string) {
   const n = String(route.name)
   if (key === 'cases') return ['cases', 'case-detail', 'cases-all', 'module-detail',
                                'spec-detail', 'case-new', 'case-manual', 'corbeille'].includes(n)
-  if (key === 'exec') return ['executions', 'report', 'run-new', 'plan-new', ...ROUTES_RUN].includes(n)
+  if (key === 'exec') return ['executions', 'report', 'run-new', 'plan-new', 'plans', 'plan-detail',
+                              'schedules', ...ROUTES_RUN].includes(n)
   if (key === 'qualite') return n === 'quality'
   return false
 }
@@ -449,13 +454,22 @@ function switchProject(id: number) {
       </div>
       </template>
 
-      <!-- Contexte « Exécutions et résultats de test » : action run + filtres.
-           Les plans ne font pas partie de la bêta : ne pas publier une action factice. -->
+      <!-- Contexte « Exécutions et résultats de test » : action run + Plans + Planification + filtres. -->
       <template v-else-if="isActive('exec')">
       <div v-if="peutModifier" class="px-3 pb-3 flex flex-col gap-2">
         <Button variant="primary" class="w-full" @click="goRoute('run-new')">
           <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           Ajouter une exécution
+        </Button>
+        <Button variant="secondary" class="w-full" @click="goRoute('plans')">
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v10a2 2 0 01-2 2H9a2 2 0 01-2-2V5a2 2 0 012-2zM3 15v4a2 2 0 002 2h4"/></svg>
+          Plans de test
+        </Button>
+        <!-- Dev+ : une planification s'exécute SANS présence humaine — coûts non supervisés en
+             cas de réglage erroné, contrairement à un lancement manuel. -->
+        <Button v-if="peutPlanifier" variant="secondary" class="w-full" @click="goRoute('schedules')">
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Planification
         </Button>
       </div>
       <div class="px-3.5 pb-4 space-y-3 text-sm">

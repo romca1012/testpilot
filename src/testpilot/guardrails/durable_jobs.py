@@ -33,6 +33,22 @@ def submit(conn, background, *, kind: str, args: list | tuple = (), kwargs: dict
     return job_id
 
 
+def submit_immediat(conn, *, kind: str, args: list | tuple = (), kwargs: dict | None = None,
+                    queue_label: str) -> str:
+    """Comme `submit()`, pour un appelant SANS requête HTTP en cours (le scheduler — migration
+    43 — tourne dans une boucle de fond, jamais dans un cycle requête/réponse) : pas de
+    `BackgroundTasks` à qui confier l'exécution, donc un thread démarré directement — le même
+    geste que `recover_at_startup()` ci-dessous pour les tâches reprises au redémarrage."""
+    job_id = uuid.uuid4().hex
+    BackgroundJobRepo(conn).creer(
+        job_id, kind=kind, queue_label=queue_label,
+        payload={"args": list(args), "kwargs": kwargs or {}},
+    )
+    threading.Thread(target=run_job, args=(job_id,), daemon=True,
+                     name=f"testpilot-job-{job_id[:8]}").start()
+    return job_id
+
+
 def _call(kind: str, args: list, kwargs: dict) -> None:
     # Imports tardifs : ce module est chargé par les routes qui chargent déjà les services.
     from testpilot.api.services import (

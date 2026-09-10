@@ -234,6 +234,19 @@ COOKIE_PATH = os.getenv("TESTPILOT_COOKIE_PATH", "/").strip() or "/"
 ADMIN_USERNAME = os.getenv("TESTPILOT_ADMIN_USERNAME", "")
 ADMIN_PASSWORD = os.getenv("TESTPILOT_ADMIN_PASSWORD", "")
 
+# Planifications récurrentes (migration 43, `api/services/scheduler_service.py`) : la boucle de
+# fond n'existe QUE si explicitement activée. Défaut `false` délibéré — sans lui, un thread
+# infini démarrerait à CHAQUE construction de l'app FastAPI (`lifespan`), y compris pendant la
+# suite de tests (`TestClient(app)`), au risque de réveiller un `tick()` en pleine exécution d'un
+# AUTRE test et de lire `config.DATA_DIR`/`DB_PATH` au mauvais moment — exactement la classe de
+# bug (« un test touche la vraie base juste en lançant pytest ») déjà rencontrée une fois dans ce
+# dépôt (migration 38, cf. audit 2026-08-28). Un déploiement qui veut vraiment des planifications
+# actives le pose explicitement dans son `docker-compose.yml`.
+SCHEDULER_ENABLED = os.getenv("TESTPILOT_SCHEDULER_ENABLED", "false").strip().lower() in {
+    "1", "true", "yes", "on",
+}
+SCHEDULER_TICK_SECONDS = int(os.getenv("TESTPILOT_SCHEDULER_TICK_SECONDS", "60"))
+
 
 def validate_production() -> None:
     """Refuse un profil production incomplet au lieu de démarrer avec des replis de développement."""

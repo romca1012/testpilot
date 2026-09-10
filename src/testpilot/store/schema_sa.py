@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 42
+ALIGNED_WITH_SCHEMA_VERSION = 43
 
 metadata = MetaData()
 
@@ -398,6 +398,66 @@ test_run_case = Table(
     Column("case_id", Integer, ForeignKey("test_case.id"), nullable=False),
     PrimaryKeyConstraint("run_id", "case_id"),
     Index("idx_runcase_run", "run_id"),
+)
+
+
+# ── Plans de test — regroupement de campagnes (migration 43) ─────────────────
+# `test_run.plan_id` (ci-dessus) reste SANS FK dure vers cette table — même convention que
+# `execution.run_id` : une référence logique, jamais un verrou d'intégrité qui forcerait un
+# reconstruire-la-table SQLite au prochain changement.
+test_plan = Table(
+    "test_plan",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("project_id", Integer, ForeignKey("project.id"), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("description", Text, nullable=False, server_default=""),
+    Column("refs", Text, nullable=False, server_default=""),
+    Column("created_by", Text, nullable=False, server_default=""),
+    Column("created_at", Text, nullable=False),
+    Index("idx_plan_project", "project_id"),
+    sqlite_autoincrement=True,
+)
+
+
+# ── Planifications récurrentes (migration 43) ────────────────────────────────
+# ⚠️ AUCUNE colonne `mode` : une planification est TOUJOURS automatique (voir la docstring de
+# `_migrate_43_plans_et_planifications` dans `db.py` — personne n'est présent à 2h du matin pour
+# saisir un résultat manuel, donc ce choix n'existe même pas ici, pas seulement caché à l'écran).
+scheduled_run = Table(
+    "scheduled_run",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("project_id", Integer, ForeignKey("project.id"), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("selection_mode", Text, nullable=False, server_default="frozen"),
+    Column("frequency", Text, nullable=False),
+    Column("hour", Integer, nullable=False),
+    Column("minute", Integer, nullable=False),
+    Column("weekday", Integer, nullable=True),
+    Column("is_active", Integer, nullable=False, server_default="1"),
+    Column("created_by", Text, nullable=False, server_default=""),
+    Column("created_at", Text, nullable=False),
+    Column("last_run_id", Integer, nullable=True),
+    Column("last_triggered_at", Text, nullable=True),
+    CheckConstraint("selection_mode IN ('all', 'frozen')",
+                     name="ck_scheduled_run_selection_mode"),
+    CheckConstraint("frequency IN ('daily', 'weekly')", name="ck_scheduled_run_frequency"),
+    CheckConstraint("hour BETWEEN 0 AND 23", name="ck_scheduled_run_hour"),
+    CheckConstraint("minute BETWEEN 0 AND 59", name="ck_scheduled_run_minute"),
+    CheckConstraint("weekday IS NULL OR weekday BETWEEN 0 AND 6",
+                     name="ck_scheduled_run_weekday"),
+    Index("idx_scheduled_run_project", "project_id"),
+    Index("idx_scheduled_run_active", "is_active"),
+    sqlite_autoincrement=True,
+)
+
+scheduled_run_case = Table(
+    "scheduled_run_case",
+    metadata,
+    Column("scheduled_run_id", Integer, ForeignKey("scheduled_run.id"), nullable=False),
+    Column("case_id", Integer, nullable=False),
+    PrimaryKeyConstraint("scheduled_run_id", "case_id"),
 )
 
 

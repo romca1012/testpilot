@@ -34,8 +34,11 @@ import {
   type CaseSummary,
   type GroupSummary,
   type ModuleSummary,
+  type PlanDetail,
+  type PlanOut,
   type ProjectSummary,
   type RunSummary,
+  type ScheduledRun,
 } from './api'
 
 // ── Les clés de cache ────────────────────────────────────────────────────────────────────────
@@ -51,9 +54,12 @@ export const cles = {
   groupes: (pid: Id) => ['projet', Number(toValue(pid)), 'groupes'] as const,
   runs: (pid: Id) => ['projet', Number(toValue(pid)), 'runs'] as const,
   qualite: (pid: Id) => ['projet', Number(toValue(pid)), 'qualite'] as const,
+  plans: (pid: Id) => ['projet', Number(toValue(pid)), 'plans'] as const,
+  schedules: (pid: Id) => ['projet', Number(toValue(pid)), 'schedules'] as const,
   unCas: (id: Id) => ['cas', Number(toValue(id))] as const,
   unGroupe: (id: Id) => ['groupe', Number(toValue(id))] as const,
   unRun: (id: Id) => ['run', Number(toValue(id))] as const,
+  unPlan: (id: Id) => ['plan', Number(toValue(id))] as const,
 }
 
 // `undefined`/`null` INCLUS, délibérément : pendant une transition de route, `pid` passe
@@ -145,6 +151,33 @@ export function useUnGroupe(gid: Id) {
   })
 }
 
+/** Les Plans de test du projet (migration 43) — troisième couche, purement organisationnelle,
+ *  au-dessus des campagnes déjà listées par `useRuns`. */
+export function usePlans(pid: Id) {
+  return useQuery<PlanOut[]>({
+    queryKey: computed(() => cles.plans(pid)),
+    queryFn: () => api.listPlans(sur(pid)),
+    enabled: pret(pid),
+  })
+}
+
+export function useUnPlan(id: Id) {
+  return useQuery<PlanDetail>({
+    queryKey: computed(() => cles.unPlan(id)),
+    queryFn: () => api.getPlan(sur(id)),
+    enabled: pret(id),
+  })
+}
+
+/** Les planifications récurrentes du projet (migration 43) — toujours automatiques. */
+export function useSchedules(pid: Id) {
+  return useQuery<ScheduledRun[]>({
+    queryKey: computed(() => cles.schedules(pid)),
+    queryFn: () => api.listSchedules(sur(pid)),
+    enabled: pret(pid),
+  })
+}
+
 export function useUnCas(cid: Id) {
   return useQuery({
     queryKey: computed(() => cles.unCas(cid)),
@@ -212,5 +245,62 @@ export function useSupprimerCas(pid: Id) {
     mutationFn: (cid: number) => api.deleteCase(cid),
     // Le compteur de cas d'une spécification bouge aussi : on périme le projet entier.
     onSuccess: () => { qc.invalidateQueries({ queryKey: cles.projet(pid) }) },
+  })
+}
+
+export function useCreerPlan(pid: Id) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { name: string; description?: string; refs?: string }) => api.createPlan(sur(pid), v),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: cles.plans(pid) }) },
+  })
+}
+
+export function useAssignerRunAuPlan(pid: Id) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { planId: number; runId: number }) => api.assignRunToPlan(v.planId, v.runId),
+    onSuccess: (detail) => {
+      qc.setQueryData(cles.unPlan(detail.plan.id), detail)
+      qc.invalidateQueries({ queryKey: cles.plans(pid) })
+    },
+  })
+}
+
+export function useRetirerRunDuPlan(pid: Id) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { planId: number; runId: number }) => api.unassignRunFromPlan(v.planId, v.runId),
+    onSuccess: (detail) => {
+      qc.setQueryData(cles.unPlan(detail.plan.id), detail)
+      qc.invalidateQueries({ queryKey: cles.plans(pid) })
+    },
+  })
+}
+
+export function useCreerSchedule(pid: Id) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: {
+      name: string; selection_mode: 'all' | 'frozen'; case_ids?: number[]
+      frequency: 'daily' | 'weekly'; hour: number; minute: number; weekday?: number | null
+    }) => api.createSchedule(sur(pid), v),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: cles.schedules(pid) }) },
+  })
+}
+
+export function usePatchSchedule(pid: Id) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { id: number; is_active: boolean }) => api.patchSchedule(v.id, { is_active: v.is_active }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: cles.schedules(pid) }) },
+  })
+}
+
+export function useSupprimerSchedule(pid: Id) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.deleteSchedule(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: cles.schedules(pid) }) },
   })
 }

@@ -493,6 +493,25 @@ def project_id_depuis_run(conn, run_id) -> int | None:
     return ligne["project_id"] if ligne else None
 
 
+def project_id_depuis_plan(conn, plan_id) -> int | None:
+    try:
+        plan_id = int(plan_id)
+    except (TypeError, ValueError):
+        return None
+    ligne = conn.execute("SELECT project_id FROM test_plan WHERE id = ?", (plan_id,)).fetchone()
+    return ligne["project_id"] if ligne else None
+
+
+def project_id_depuis_scheduled_run(conn, scheduled_id) -> int | None:
+    try:
+        scheduled_id = int(scheduled_id)
+    except (TypeError, ValueError):
+        return None
+    ligne = conn.execute(
+        "SELECT project_id FROM scheduled_run WHERE id = ?", (scheduled_id,)).fetchone()
+    return ligne["project_id"] if ligne else None
+
+
 def project_id_depuis_result(conn, result_id) -> int | None:
     try:
         result_id = int(result_id)

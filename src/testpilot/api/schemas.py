@@ -630,6 +630,10 @@ class RunSummary(BaseModel):
     # est l'exécution, `is_archived` dit si on a le droit d'y toucher.
     is_archived: bool = False
     created_at: str = ""
+    # Le Plan de test (migration 43) qui regroupe cette campagne, s'il y en a un — RÉFÉRENCE
+    # SOUPLE (colonne simple sans FK dure, voir `db.py::_migrate_43...`). `None` = hors de tout
+    # plan, l'état normal d'une campagne créée avant cette fonctionnalité ou jamais rattachée.
+    plan_id: int | None = None
 
 
 class RunDetailOut(BaseModel):
@@ -649,6 +653,68 @@ class RunDetailOut(BaseModel):
     # TypeScript en ferait une troisième version, qui divergerait un jour en silence. C'est le
     # défaut qu'on a déjà payé une fois ici, avec le statut de lecture (§3.6 ONBOARDING).
     statuts_manuels: list[str] = []
+
+
+class ScheduledRunIn(BaseModel):
+    """Création d'une planification récurrente (migration 43). `case_ids` n'est utilisé qu'en
+    mode `frozen`, comme pour `RunIn`.
+
+    ⚠️ **Aucun champ `mode`** : une planification est TOUJOURS automatique — personne n'est
+    présent à 2h du matin pour saisir un résultat manuel. Ce n'est pas caché à l'écran, ce choix
+    n'existe structurellement pas ici (voir `scheduler_service.py`)."""
+    name: str
+    selection_mode: str = "frozen"     # all | frozen
+    case_ids: list[int] = []
+    frequency: str                     # daily | weekly
+    hour: int
+    minute: int
+    weekday: int | None = None         # requis si frequency == "weekly" (0=lundi)
+
+
+class ScheduledRunOut(BaseModel):
+    id: int
+    project_id: int
+    name: str
+    selection_mode: str
+    frequency: str
+    hour: int
+    minute: int
+    weekday: int | None = None
+    is_active: bool = True
+    created_by: str = ""
+    created_at: str = ""
+    last_run_id: int | None = None
+    last_triggered_at: str | None = None
+
+
+class ScheduledRunPatchIn(BaseModel):
+    is_active: bool | None = None
+
+
+class PlanIn(BaseModel):
+    """Un Plan regroupe plusieurs campagnes existantes pour un rapport consolidé — purement
+    organisationnel, ne change rien à l'exécution ni au lancement d'une campagne."""
+    name: str
+    description: str = ""
+    refs: str = ""
+
+
+class PlanOut(BaseModel):
+    id: int
+    project_id: int
+    name: str
+    description: str = ""
+    refs: str = ""
+    created_by: str = ""
+    created_at: str = ""
+
+
+class PlanDetailOut(BaseModel):
+    plan: PlanOut
+    # Chaque run garde son PROPRE résumé complet (dont `mode`) — jamais fusionné en un seul
+    # chiffre qui mélangerait des verdicts humains (manuelle) et des verdicts machine
+    # (automatique) sans le dire.
+    runs: list[RunSummary] = []
 
 
 class ResultAilleurs(BaseModel):

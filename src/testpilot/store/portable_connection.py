@@ -21,6 +21,9 @@ _TABLES_AVEC_ID = {
     "module", "project", "repair_attempt", "review_decision", "scenario_result", "test_case",
     "test_case_version", "test_result", "test_run", "user",
     "user_group", "result_attachment",
+    # Plans de test et planifications récurrentes (migration 43, 2026-09-10) : `PlanRepo.create`
+    # et `ScheduledRunRepo.create` utilisent `.lastrowid` comme toutes les tables ci-dessus.
+    "test_plan", "scheduled_run",
 }
 # Vérifié contre le VRAI schéma (`schema_sa.metadata`), pas retapé à l'œil (2026-09-03) :
 # `generation_attempt`/`test_scenario_result` ne correspondaient à AUCUNE table réelle (noms
@@ -29,7 +32,7 @@ _TABLES_AVEC_ID = {
 # vrai run. `generation_job` reste absente à raison : sa clé primaire est un TEXT (UUID) fourni
 # par l'appelant, jamais un entier généré par la base — `.lastrowid` n'y a jamais de sens.
 _INSERT = re.compile(r"^\s*INSERT\s+INTO\s+[\"']?([a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE)
-ALEMBIC_HEAD = "a94c6d8e2f53"
+ALEMBIC_HEAD = "41fbce28312f"
 _urls_verifiees: set[str] = set()
 _verrou_verification = threading.Lock()
 

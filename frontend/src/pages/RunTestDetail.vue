@@ -16,7 +16,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api, roleSuffisant, type TestDansRun } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useSession } from '../lib/useSession'
-import { etatView, priorityView, testStatusMeta, typeView } from '../lib/status'
+import { etatView, libelleActeur, priorityView, testStatusMeta, typeView } from '../lib/status'
 import { cleMois, formatDate, moisLong } from '../lib/format'
 import ResultHistory from '../components/ResultHistory.vue'
 import ResultMode from '../components/ResultMode.vue'
@@ -260,7 +260,7 @@ const parMois = computed(() => {
               <RouterLink :to="{ name: 'run-test', params: { pid, id: String(r.run_id), caseId: String(test.case_id) } }"
                           class="text-primary hover:underline truncate">{{ r.run_name }}</RouterLink>
               <span class="ml-auto text-xs text-muted-foreground shrink-0">
-                Testé par {{ r.created_by || '—' }} · {{ formatDate(r.created_at) }}
+                Testé par {{ libelleActeur(r.created_by) }} · {{ formatDate(r.created_at) }}
               </span>
             </li>
           </ul>

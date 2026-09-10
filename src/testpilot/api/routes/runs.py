@@ -30,7 +30,8 @@ def _summary(run: dict, case_count: int) -> schemas.RunSummary:
         tested_count=run.get("tested_count", 0),
         manuel_count=run.get("manuel_count", 0),
         is_archived=bool(run.get("is_archived")),
-        created_at=run.get("created_at", ""))
+        created_at=run.get("created_at", ""),
+        plan_id=run.get("plan_id"))
 
 
 @router.post("/api/projects/{project_id}/runs", response_model=schemas.RunSummary, status_code=201,

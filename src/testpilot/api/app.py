@@ -30,8 +30,10 @@ from testpilot.api.routes import (
     executions,
     groups,
     modules,
+    plans,
     projects,
     runs,
+    schedules,
     settings,
     users,
 )
@@ -63,6 +65,29 @@ def create_app() -> FastAPI:
         # rejoués à l'aveugle au risque de doubler un effet externe.
         from testpilot.guardrails import durable_jobs
         durable_jobs.recover_at_startup()
+        # Planifications récurrentes (migration 43) : voir `config.SCHEDULER_ENABLED` — la boucle
+        # ne démarre QUE si explicitement activée (jamais pendant les tests par défaut).
+        if config.SCHEDULER_ENABLED:
+            import threading
+            import time
+
+            from testpilot.api.services import scheduler_service
+            from testpilot.store.db import get_initialized_db
+
+            def _boucle_planification() -> None:
+                while True:
+                    time.sleep(config.SCHEDULER_TICK_SECONDS)
+                    conn = get_initialized_db()
+                    try:
+                        scheduler_service.tick(conn)
+                    except Exception:
+                        logging.getLogger(__name__).exception(
+                            "[scheduler] tick() en échec — la boucle continue")
+                    finally:
+                        conn.close()
+
+            threading.Thread(target=_boucle_planification, daemon=True,
+                             name="testpilot-scheduler").start()
         yield
 
     app = FastAPI(
@@ -234,6 +259,8 @@ def create_app() -> FastAPI:
     app.include_router(modules.router)
     app.include_router(groups.router)
     app.include_router(runs.router)
+    app.include_router(plans.router)
+    app.include_router(schedules.router)
     app.include_router(cases.router)
     app.include_router(executions.router)
     app.include_router(settings.router)
