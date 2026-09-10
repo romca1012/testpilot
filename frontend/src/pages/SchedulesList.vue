@@ -14,6 +14,7 @@ import { api, roleSuffisant, type CaseSummary } from '../lib/api'
 import { useSession } from '../lib/useSession'
 import { useProjects } from '../lib/useProjects'
 import { useSchedules, useCreerSchedule, usePatchSchedule, useSupprimerSchedule } from '../lib/donnees'
+import { localVersUtc, utcVersLocal } from '../lib/scheduleTime'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 
@@ -34,9 +35,13 @@ const loading = computed(() => isLoading.value && !schedulesData.value)
 const error = computed(() => (erreurSchedules.value ? 'Impossible de charger les planifications.' : ''))
 
 const JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
+// ⚠️ `hour`/`minute`/`weekday` sont stockés et comparés en UTC côté serveur (`scheduler_service.
+// tick()`) — jamais affichés bruts : reconvertis en heure LOCALE, celle que la personne a tapée
+// et reconnaît (voir `lib/scheduleTime.ts` pour la limite assumée autour du changement d'heure).
 function frequenceLabel(s: { frequency: string; hour: number; minute: number; weekday: number | null }) {
-  const heure = `${String(s.hour).padStart(2, '0')}h${String(s.minute).padStart(2, '0')}`
-  if (s.frequency === 'weekly') return `Chaque ${JOURS[s.weekday ?? 0]} à ${heure}`
+  const local = utcVersLocal({ hour: s.hour, minute: s.minute, weekday: s.frequency === 'weekly' ? (s.weekday ?? 0) : null })
+  const heure = `${String(local.hour).padStart(2, '0')}h${String(local.minute).padStart(2, '0')}`
+  if (s.frequency === 'weekly') return `Chaque ${JOURS[local.weekday ?? 0]} à ${heure}`
   return `Chaque jour à ${heure}`
 }
 function dernierDeclenchement(s: { last_triggered_at: string | null }) {
@@ -64,9 +69,13 @@ async function supprimerSchedule(s: { id: number; name: string }) {
 
 // ── Création (modale, route « schedules », toujours la même liste) ─────────────────────────
 const showCreate = ref(false)
-const today = new Date()
+// ⚠️ PAS de date dans le nom par défaut : une planification est RÉCURRENTE (elle survit au jour
+// de sa création), contrairement au nom par défaut d'un run ponctuel (`AddTestRunForm.vue`).
+// `scheduler_service._declencher` ajoute déjà la date du DÉCLENCHEMENT sur chaque run engendré —
+// en dater aussi la planification aurait produit des noms doublement datés (et de plus en plus
+// faux avec le temps, ex. « Régression nocturne 2026-09-10 — 2026-09-15 »).
 const form = reactive({
-  name: `Régression nocturne ${today.toISOString().slice(0, 10)}`,
+  name: 'Régression nocturne',
   selection: 'all' as 'all' | 'frozen',
   frequency: 'daily' as 'daily' | 'weekly',
   weekday: 0,
@@ -104,7 +113,7 @@ const canSubmit = computed(() =>
 const creerSchedule = useCreerSchedule(pid)
 const createError = ref('')
 function resetForm() {
-  form.name = `Régression nocturne ${new Date().toISOString().slice(0, 10)}`
+  form.name = 'Régression nocturne'
   form.selection = 'all'; form.frequency = 'daily'; form.weekday = 0; form.hour = 2; form.minute = 0
   selected.value = []
   createError.value = ''
@@ -114,14 +123,20 @@ async function submit() {
   if (!canSubmit.value) return
   createError.value = ''
   try {
+    // Le formulaire recueille l'heure LOCALE (celle que la personne connaît) — jamais envoyée
+    // telle quelle : le serveur compare en UTC (`scheduler_service.tick()`), voir scheduleTime.ts.
+    const utc = localVersUtc({
+      hour: form.hour, minute: form.minute,
+      weekday: form.frequency === 'weekly' ? form.weekday : null,
+    })
     await creerSchedule.mutateAsync({
       name: form.name.trim(),
       selection_mode: form.selection,
       case_ids: form.selection === 'frozen' ? selected.value : [],
       frequency: form.frequency,
-      hour: form.hour,
-      minute: form.minute,
-      weekday: form.frequency === 'weekly' ? form.weekday : null,
+      hour: utc.hour,
+      minute: utc.minute,
+      weekday: utc.weekday,
     })
     showCreate.value = false
   } catch (e: any) {
@@ -220,7 +235,7 @@ function goBack() { router.push({ name: 'executions', params: { pid: pid.value }
             </select>
           </label>
           <label class="block">
-            <span class="text-sm font-medium">Heure</span>
+            <span class="text-sm font-medium">Heure <span class="font-normal text-xs text-muted-foreground">(votre heure locale)</span></span>
             <div class="mt-1 flex items-center gap-2">
               <input v-model.number="form.hour" type="number" min="0" max="23"
                      class="w-20 rounded-md bg-surface-raised border border-border px-3 py-2 text-sm focus:border-primary outline-none" />

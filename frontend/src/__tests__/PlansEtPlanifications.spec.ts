@@ -8,7 +8,12 @@
  *   propose même pas la question (`scheduled_run` n'a pas de colonne `mode`) ;
  * - la lecture des Plans/Planifications reste ouverte au rôle Testeur+, la création/l'activation
  *   d'une planification exige Dev+ (même plancher que le serveur, `require_project_role(ROLE_DEV)`).
+ * - `hour`/`minute` sont stockés et comparés en UTC côté serveur, mais SAISIS et AFFICHÉS en heure
+ *   LOCALE (bug corrigé le 2026-09-10, voir `lib/scheduleTime.ts`) — `TZ` fixé explicitement pour
+ *   que ces tests restent déterministes quel que soit le fuseau de la machine qui les exécute.
  */
+process.env.TZ = 'Europe/Paris'
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { monter } from './_montage'
@@ -99,7 +104,7 @@ beforeEach(() => {
   listGroups.mockResolvedValue([])
   listSchedules.mockResolvedValue([
     { id: 5, project_id: 1, name: 'Régression nocturne', selection_mode: 'all',
-      frequency: 'daily', hour: 2, minute: 0, weekday: null, is_active: true,
+      frequency: 'daily', hour: 0, minute: 0, weekday: null, is_active: true, // 0h UTC = 2h locale (été)
       created_by: 'bob', created_at: '2026-09-05T08:00:00', last_run_id: null, last_triggered_at: null },
   ])
 })
@@ -214,6 +219,10 @@ describe('SchedulesList — toujours automatique, jamais de choix de mode', () =
     expect(body).not.toHaveProperty('mode')
     expect(body.frequency).toBe('daily')
     expect(body.weekday).toBeNull()
+    // Le formulaire propose 2h00 LOCALE par défaut ; envoyée au serveur, elle doit être en UTC
+    // (0h00, été/UTC+2) — jamais l'heure tapée telle quelle (le bug du 2026-09-10).
+    expect(body.hour).toBe(0)
+    expect(body.minute).toBe(0)
   })
 
   it('un Testeur voit la liste mais pas les actions de création/activation (Dev+ seulement)', async () => {
