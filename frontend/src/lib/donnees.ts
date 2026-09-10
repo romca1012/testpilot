@@ -278,6 +278,26 @@ export function useRetirerRunDuPlan(pid: Id) {
   })
 }
 
+export function useEditerPlan(pid: Id) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { id: number; name?: string; description?: string; refs?: string }) =>
+      api.updatePlan(v.id, { name: v.name, description: v.description, refs: v.refs }),
+    onSuccess: (plan) => {
+      qc.invalidateQueries({ queryKey: cles.unPlan(plan.id) })
+      qc.invalidateQueries({ queryKey: cles.plans(pid) })
+    },
+  })
+}
+
+export function useSupprimerPlan(pid: Id) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.deletePlan(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: cles.plans(pid) }) },
+  })
+}
+
 export function useCreerSchedule(pid: Id) {
   const qc = useQueryClient()
   return useMutation({

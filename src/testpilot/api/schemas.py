@@ -699,6 +699,14 @@ class PlanIn(BaseModel):
     refs: str = ""
 
 
+class PlanPatchIn(BaseModel):
+    """Édition d'un plan existant — mêmes champs que la création, tous optionnels (seuls ceux
+    fournis changent). Jamais `project_id` : un plan ne change pas de projet."""
+    name: str | None = None
+    description: str | None = None
+    refs: str | None = None
+
+
 class PlanOut(BaseModel):
     id: int
     project_id: int

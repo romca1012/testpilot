@@ -23,6 +23,8 @@ const getPlan = vi.fn()
 const createPlan = vi.fn()
 const assignRunToPlan = vi.fn()
 const unassignRunFromPlan = vi.fn()
+const updatePlan = vi.fn()
+const deletePlan = vi.fn()
 const listSchedules = vi.fn()
 const createSchedule = vi.fn()
 const patchSchedule = vi.fn()
@@ -46,6 +48,8 @@ vi.mock('../lib/api', async (importOriginal) => {
       createPlan: (...a: any[]) => createPlan(...a),
       assignRunToPlan: (...a: any[]) => assignRunToPlan(...a),
       unassignRunFromPlan: (...a: any[]) => unassignRunFromPlan(...a),
+      updatePlan: (...a: any[]) => updatePlan(...a),
+      deletePlan: (...a: any[]) => deletePlan(...a),
       listSchedules: (...a: any[]) => listSchedules(...a),
       createSchedule: (...a: any[]) => createSchedule(...a),
       patchSchedule: (...a: any[]) => patchSchedule(...a),
@@ -169,7 +173,8 @@ describe('PlanDetail — jamais un chiffre qui fusionne manuel et automatique', 
   it('le picker d\'assignation exclut les runs déjà dans CE plan', async () => {
     const w = monter(PlanDetail)
     await flushPromises()
-    await w.find('button.shrink-0').trigger('click') // « + Ajouter une exécution »
+    const ajouter = w.findAll('button').find((b) => b.text() === '+ Ajouter une exécution')
+    await ajouter!.trigger('click')
     await flushPromises()
     const boutons = w.findAll('button').map((b) => b.text())
     // Sprint 41 (hors de tout plan) devient un candidat proposé dans la modale.
@@ -177,6 +182,35 @@ describe('PlanDetail — jamais un chiffre qui fusionne manuel et automatique', 
     // R10 (« Régression ») est DÉJÀ dans ce plan : un seul bouton porte son nom (la ligne de la
     // section Automatique) — il ne doit PAS être re-proposé comme candidat dans la modale.
     expect(boutons.filter((t) => t.includes('R10 —')).length).toBe(1)
+  })
+
+  it('éditer le plan pré-remplit le formulaire et envoie updatePlan', async () => {
+    updatePlan.mockResolvedValue({ id: 9, project_id: 1, name: 'Recette V3 bis',
+      description: 'Toutes les campagnes de la V3', refs: 'JIRA-42', created_by: '', created_at: '' })
+    const w = monter(PlanDetail)
+    await flushPromises()
+    const editer = w.findAll('button').find((b) => b.text() === 'Éditer')
+    await editer!.trigger('click')
+    await flushPromises()
+    const nomInput = w.find('#form-edit-plan input')
+    expect((nomInput.element as HTMLInputElement).value).toBe('Recette V3') // pré-rempli
+    await nomInput.setValue('Recette V3 bis')
+    await w.find('#form-edit-plan').trigger('submit.prevent')
+    await flushPromises()
+    expect(updatePlan).toHaveBeenCalledWith(9, expect.objectContaining({ name: 'Recette V3 bis' }))
+  })
+
+  it('supprimer le plan appelle deletePlan puis revient à la liste — sans toucher aux runs', async () => {
+    deletePlan.mockResolvedValue(undefined)
+    window.confirm = vi.fn(() => true)
+    const w = monter(PlanDetail)
+    await flushPromises()
+    const supprimer = w.findAll('button').find((b) => b.text() === 'Supprimer')
+    await supprimer!.trigger('click')
+    await flushPromises()
+    expect(deletePlan).toHaveBeenCalledWith(9)
+    expect(push).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'plans', params: { pid: '1' } }))
   })
 })
 

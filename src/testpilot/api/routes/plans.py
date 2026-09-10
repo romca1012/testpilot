@@ -46,6 +46,32 @@ def list_plans(project_id: int, conn=Depends(get_conn)):
     return [_out(p) for p in PlanRepo(conn).list_for_project(project_id)]
 
 
+@router.patch("/api/plans/{plan_id}", response_model=schemas.PlanOut,
+             dependencies=[Depends(access.require_project_access_depuis(
+                 "plan_id", access.project_id_depuis_plan))])
+def update_plan(plan_id: int, body: schemas.PlanPatchIn, conn=Depends(get_conn)):
+    """Renommer/éditer un plan — même plancher que sa création (Testeur+, purement
+    organisationnel). N'écrit que les champs fournis."""
+    if PlanRepo(conn).get(plan_id) is None:
+        raise HTTPException(status_code=404, detail=f"plan {plan_id} introuvable")
+    if body.name is not None and not body.name.strip():
+        raise HTTPException(status_code=422, detail="le nom du plan est requis")
+    PlanRepo(conn).update(plan_id, name=body.name.strip() if body.name is not None else None,
+                          description=body.description, refs=body.refs)
+    return _out(PlanRepo(conn).get(plan_id))
+
+
+@router.delete("/api/plans/{plan_id}", status_code=204,
+              dependencies=[Depends(access.require_project_access_depuis(
+                  "plan_id", access.project_id_depuis_plan))])
+def delete_plan(plan_id: int, conn=Depends(get_conn)):
+    """Supprime le PLAN — ses campagnes ne sont ni supprimées ni relancées, elles redeviennent
+    simplement hors de tout plan (voir `PlanRepo.delete`)."""
+    if PlanRepo(conn).get(plan_id) is None:
+        raise HTTPException(status_code=404, detail=f"plan {plan_id} introuvable")
+    PlanRepo(conn).delete(plan_id)
+
+
 @router.get("/api/plans/{plan_id}", response_model=schemas.PlanDetailOut,
            dependencies=[Depends(access.require_project_access_depuis(
                "plan_id", access.project_id_depuis_plan))])

@@ -2000,6 +2000,31 @@ class PlanRepo:
         self.conn.execute("UPDATE test_run SET plan_id=NULL WHERE id=?", (run_id,))
         self.conn.commit()
 
+    def update(self, plan_id: int, *, name: str | None = None, description: str | None = None,
+               refs: str | None = None) -> None:
+        """N'écrit que les champs FOURNIS (`None` = inchangé) — jamais `project_id`, un plan ne
+        change pas de projet."""
+        champs, valeurs = [], []
+        if name is not None:
+            champs.append("name=?"); valeurs.append(name)
+        if description is not None:
+            champs.append("description=?"); valeurs.append(description)
+        if refs is not None:
+            champs.append("refs=?"); valeurs.append(refs)
+        if not champs:
+            return
+        valeurs.append(plan_id)
+        self.conn.execute(f"UPDATE test_plan SET {', '.join(champs)} WHERE id=?", valeurs)
+        self.conn.commit()
+
+    def delete(self, plan_id: int) -> None:
+        """Supprime le PLAN, jamais les campagnes qu'il contenait — purement organisationnel,
+        les runs redeviennent simplement hors de tout plan (référence souple, `plan_id` vers
+        NULL), exactement comme un retrait manuel un par un."""
+        self.conn.execute("UPDATE test_run SET plan_id=NULL WHERE plan_id=?", (plan_id,))
+        self.conn.execute("DELETE FROM test_plan WHERE id=?", (plan_id,))
+        self.conn.commit()
+
 
 class ScheduledRunRepo:
     """Planifications récurrentes (migration 43) — lance automatiquement une campagne sur une

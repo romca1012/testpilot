@@ -97,6 +97,31 @@ def test_plan_regroupe_plusieurs_runs_chacun_avec_son_propre_mode(conn):
     assert modes == {r_auto: MODE_AUTOMATIQUE, r_manuel: MODE_MANUELLE}  # jamais fusionnés
 
 
+def test_editer_un_plan_ne_touche_que_les_champs_fournis(conn):
+    pid = ProjectRepo(conn).create(name="Portail")
+    plan_id = PlanRepo(conn).create(project_id=pid, name="Brouillon", description="", refs="")
+
+    PlanRepo(conn).update(plan_id, name="Régression 2.4")  # description/refs non fournis
+
+    plan = PlanRepo(conn).get(plan_id)
+    assert plan["name"] == "Régression 2.4"
+    assert plan["description"] == ""  # inchangé, pas écrasé par une chaîne vide
+
+
+def test_supprimer_un_plan_libere_ses_runs_sans_les_toucher(conn):
+    pid = ProjectRepo(conn).create(name="Portail")
+    plan_id = PlanRepo(conn).create(project_id=pid, name="Plan")
+    run_id = RunRepo(conn).create(project_id=pid, name="R", selection_mode="all")
+    PlanRepo(conn).assign_run(plan_id, run_id)
+
+    PlanRepo(conn).delete(plan_id)
+
+    assert PlanRepo(conn).get(plan_id) is None
+    run = RunRepo(conn).get(run_id)
+    assert run is not None  # la campagne survit
+    assert run["plan_id"] is None  # simplement rendue hors de tout plan
+
+
 def test_retirer_un_run_du_plan_le_laisse_intact_ailleurs(conn):
     pid = ProjectRepo(conn).create(name="Portail")
     plan_id = PlanRepo(conn).create(project_id=pid, name="Plan")
@@ -259,6 +284,29 @@ def test_get_plan_regroupe_les_runs_avec_leur_mode(client):
     assert detail["plan"]["id"] == plan_id
     assert len(detail["runs"]) == 1
     assert detail["runs"][0]["mode"] == "automatique"
+
+
+def test_editer_un_plan_via_l_api(client):
+    pid, _cid = _projet_avec_cas(client)
+    plan_id = client.post(f"/api/projects/{pid}/plans", json={"name": "Brouillon"}).json()["id"]
+
+    r = client.patch(f"/api/plans/{plan_id}", json={"name": "Régression 2.4", "refs": "JIRA-1"})
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "Régression 2.4"
+    assert r.json()["refs"] == "JIRA-1"
+
+
+def test_supprimer_un_plan_via_l_api_ne_supprime_pas_ses_runs(client):
+    pid, cid = _projet_avec_cas(client)
+    plan_id = client.post(f"/api/projects/{pid}/plans", json={"name": "Plan"}).json()["id"]
+    run_id = client.post(f"/api/projects/{pid}/runs", json={
+        "name": "R1", "selection_mode": "frozen", "case_ids": [cid], "mode": "automatique"}).json()["id"]
+    client.post(f"/api/plans/{plan_id}/runs/{run_id}")
+
+    r = client.delete(f"/api/plans/{plan_id}")
+    assert r.status_code == 204
+    assert client.get(f"/api/plans/{plan_id}").status_code == 404
+    assert client.get(f"/api/runs/{run_id}").status_code == 200  # la campagne existe toujours
 
 
 def test_desactiver_une_planification_ne_la_supprime_pas(client):

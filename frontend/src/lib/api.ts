@@ -269,6 +269,10 @@ export const api = {
     request<PlanDetail>(`/api/plans/${planId}/runs/${runId}`, { method: 'POST' }),
   unassignRunFromPlan: (planId: number | string, runId: number | string) =>
     request<PlanDetail>(`/api/plans/${planId}/runs/${runId}`, { method: 'DELETE' }),
+  updatePlan: (planId: number | string, body: { name?: string; description?: string; refs?: string }) =>
+    request<PlanOut>(`/api/plans/${planId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deletePlan: (planId: number | string) =>
+    request<void>(`/api/plans/${planId}`, { method: 'DELETE' }),
   // ── Planifications récurrentes (migration 43) ──
   // ⚠️ Aucun champ `mode` : une planification est TOUJOURS automatique — ce choix n'existe
   // structurellement pas ici (voir `scheduler_service.py`).

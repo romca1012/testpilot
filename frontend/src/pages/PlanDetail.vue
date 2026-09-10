@@ -6,12 +6,13 @@
 // vaut la personne qui l'a jouée. Les mélanger dans un seul taux de réussite ferait dire au Plan
 // « 80 % » sans que personne ne puisse savoir quelle part vient de qui — d'où deux sections
 // distinctes, jamais une moyenne commune.
-import { computed, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { roleSuffisant, type RunSummary } from '../lib/api'
 import { useSession } from '../lib/useSession'
 import { useProjects } from '../lib/useProjects'
-import { useUnPlan, useRuns, useAssignerRunAuPlan, useRetirerRunDuPlan } from '../lib/donnees'
+import { useUnPlan, useRuns, useAssignerRunAuPlan, useRetirerRunDuPlan,
+         useEditerPlan, useSupprimerPlan } from '../lib/donnees'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 
@@ -79,6 +80,42 @@ async function assignerRun(r: RunSummary) {
     assignError.value = e?.message || 'Assignation impossible.'
   }
 }
+
+// ── Éditer (nom/description/réfs) et supprimer le PLAN lui-même ────────────────────────────
+// Supprimer ne touche à AUCUNE campagne : elles redeviennent simplement hors de tout plan
+// (voir `PlanRepo.delete`) — jamais une suppression en cascade.
+const showEdit = ref(false)
+const editForm = reactive({ name: '', description: '', refs: '' })
+watch(plan, (p) => {
+  if (p) { editForm.name = p.name; editForm.description = p.description; editForm.refs = p.refs }
+}, { immediate: true })
+const editer = useEditerPlan(pid)
+const editError = ref('')
+async function enregistrerEdition() {
+  if (!plan.value || !editForm.name.trim()) return
+  editError.value = ''
+  try {
+    await editer.mutateAsync({ id: plan.value.id, name: editForm.name.trim(),
+                               description: editForm.description, refs: editForm.refs })
+    showEdit.value = false
+  } catch (e: any) {
+    editError.value = e?.message || 'Modification impossible.'
+  }
+}
+
+const supprimer = useSupprimerPlan(pid)
+async function supprimerPlan() {
+  if (!plan.value) return
+  const n = runs.value.length
+  const detail = n ? ` (${n} campagne(s) redeviendront hors de tout plan, elles ne sont pas touchées)` : ''
+  if (!window.confirm(`Supprimer le plan « ${plan.value.name} » ?${detail}`)) return
+  try {
+    await supprimer.mutateAsync(plan.value.id)
+    router.push({ name: 'plans', params: { pid: pid.value } })
+  } catch (e: any) {
+    window.alert(e?.message || 'Suppression impossible.')
+  }
+}
 </script>
 
 <template>
@@ -104,9 +141,11 @@ async function assignerRun(r: RunSummary) {
           <p v-if="plan.description" class="mt-1 text-sm text-muted-foreground">{{ plan.description }}</p>
           <p v-if="plan.refs" class="mt-1 text-xs text-muted-foreground">Réfs. {{ plan.refs }}</p>
         </div>
-        <Button v-if="peutModifier" variant="primary" class="shrink-0" @click="showAssign = true">
-          + Ajouter une exécution
-        </Button>
+        <div v-if="peutModifier" class="flex items-center gap-2 shrink-0">
+          <Button variant="ghost" size="sm" @click="showEdit = true">Éditer</Button>
+          <Button variant="ghost" size="sm" class="text-destructive" @click="supprimerPlan">Supprimer</Button>
+          <Button variant="primary" @click="showAssign = true">+ Ajouter une exécution</Button>
+        </div>
       </div>
 
       <p v-if="!runs.length" class="mt-10 text-center text-sm text-muted-foreground">
@@ -179,6 +218,35 @@ async function assignerRun(r: RunSummary) {
         </button>
       </div>
       <p v-if="assignError" class="mt-2 text-sm text-destructive">{{ assignError }}</p>
+    </Modal>
+
+    <!-- ════════ Éditer le plan ════════ -->
+    <Modal :open="showEdit" title="Éditer le plan de test" @close="showEdit = false">
+      <form id="form-edit-plan" class="space-y-4" @submit.prevent="enregistrerEdition">
+        <label class="block">
+          <span class="text-sm font-medium">Nom <span class="text-destructive">*</span></span>
+          <input v-model="editForm.name" required autofocus
+                 class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 text-sm focus:border-primary outline-none" />
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium">Description</span>
+          <textarea v-model="editForm.description" rows="2"
+                    class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 text-sm focus:border-primary outline-none"></textarea>
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium">Références</span>
+          <input v-model="editForm.refs"
+                 class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 text-sm focus:border-primary outline-none" />
+        </label>
+        <p v-if="editError" class="text-sm text-destructive">{{ editError }}</p>
+      </form>
+      <template #footer>
+        <Button type="button" variant="secondary" @click="showEdit = false">Annuler</Button>
+        <Button type="submit" form="form-edit-plan" variant="success"
+                :loading="editer.isPending.value" :disabled="!editForm.name.trim()">
+          Enregistrer
+        </Button>
+      </template>
     </Modal>
   </div>
 </template>
