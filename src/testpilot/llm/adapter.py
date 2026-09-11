@@ -92,11 +92,20 @@ def _params_echantillonnage(model: str, *, temperature: float, effort: str = "hi
     Haiku 4.5 et Sonnet 4.6 (notre défaut ACTUEL) l'acceptent. Ce helper rend l'un ou l'autre — donc
     **zéro régression sur le défaut** (Sonnet 4.6 reste dans la branche `temperature`), et le code est
     prêt le jour où le porteur bascule la génération sur Sonnet 5.
+
+    ⚠️ **`extra_body`, jamais `temperature=` en direct (2026-09-11).** Le SDK `anthropic` 1.x a
+    RETIRÉ `temperature`/`top_p`/`top_k` de la signature de `messages.create()` — pour TOUS les
+    modèles, pas seulement ceux qui la refusent côté API. `pyproject.toml` pinnait `anthropic>=0.40`
+    sans plafond : une image reconstruite a tiré la 1.2.0 et cassé CETTE branche (Haiku 4.5,
+    Sonnet 4.6 y compris) avec un `TypeError: Messages.create() got an unexpected keyword argument
+    'temperature'` — pas un 400, un vrai crash Python, avant même que la requête ne parte. La
+    passer dans `extra_body` la remet telle quelle dans le JSON envoyé à l'API : même valeur sur le
+    fil, compatible avec la signature 1.x.
     """
     m = (model or "").lower()
     if any(m.startswith(p) for p in _MODELES_ADAPTATIFS):
         return {"thinking": {"type": "adaptive"}, "output_config": {"effort": effort}}
-    return {"temperature": temperature}
+    return {"extra_body": {"temperature": temperature}}
 
 
 class LLMAdapter:
