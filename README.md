@@ -28,8 +28,14 @@ Créer un projet  →  saisir sa connexion (l'application testée)
         • « Générer des cas de test » = l'IA depuis une spec (texte ou fichier)
              → pause : l'IA rédige le métier, l'humain corrige → puis le Gherkin
    →  regrouper des cas en CAMPAGNE (run) — transverse, multi-modules
-   →  LANCER la campagne → verdict par cas × campagne
-   →  CLÔTURER (lecture seule, réversible)
+        • mode AUTOMATIQUE (la machine joue les cas) ou MANUELLE (un humain les joue), choisi
+          une fois à la création — jamais les deux pour une même campagne
+   →  LANCER la campagne (manuelle : geste répété, à la main) → verdict par cas × campagne
+        • ou la PLANIFIER (migration 43) : une horloge la relance toute seule — TOUJOURS en
+          mode automatique, jamais de saisie manuelle possible sur ce chemin
+   →  regrouper plusieurs campagnes dans un PLAN DE TEST (migration 43) — un rapport consolidé,
+        purement organisationnel, qui garde le mode de chaque campagne séparé (jamais fusionné)
+   →  CLÔTURER une campagne (lecture seule, réversible)
    →  suivre la qualité de génération et les coûts dans le temps
 ```
 

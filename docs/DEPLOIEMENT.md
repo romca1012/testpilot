@@ -364,6 +364,20 @@ Ne testez jamais une restauration en écrasant directement l'instance active.
 6. exécuter les tests ;
 7. démarrer le service et rejouer les contrôles du §6.
 
+### 9.1. Automatiser cette mise à jour (installation Docker, CI GitHub Actions)
+
+Pour une installation Docker (§2, voie recommandée), les étapes 3-4-7 ci-dessus (récupérer le
+commit, reconstruire l'image, redémarrer le service) peuvent être automatisées après chaque
+push vérifié par la CI — voir `.github/workflows/deploy-dev.yml` (déclenchement automatique
+après une CI verte sur `master`) et `deploy-staging.yml` (même script, déclenchement **manuel**
+uniquement — un environnement qu'une personne externe utilise ne doit jamais changer sans un
+geste délibéré). Les deux réutilisent une clé SSH dédiée par environnement, restreinte côté
+serveur à ne lancer qu'un script `deploy.sh` précis (`command=` dans `authorized_keys`) — jamais
+un accès shell libre, même en cas de fuite du secret GitHub. Les étapes 1-2 (arrêt annoncé,
+sauvegarde) et 5-6 (migrations PostgreSQL manuelles, tests) restent hors de cette automatisation :
+`deploy.sh` suppose une base SQLite (migration automatique au démarrage, §7.1) et une suite déjà
+vérifiée par la CI qui le précède.
+
 ## 10. Limites connues
 
 - pilote interne uniquement ; serveur applicatif unique (un seul process `uvicorn`) ;
@@ -372,8 +386,10 @@ Ne testez jamais une restauration en écrasant directement l'instance active.
   jamais rejouée automatiquement au risque de doubler un effet externe ;
 - SQLite reste le mode par défaut et le plus simple à opérer ; PostgreSQL est disponible (§4) mais
   sa sauvegarde n'est PAS outillée par ce dépôt — à la charge de l'infrastructure qui l'héberge ;
-- absence de scheduler applicatif, d'environnements multiples et de champs projet
-  personnalisables ;
+- planifications récurrentes disponibles depuis la migration 43 (2026-09-10, `TESTPILOT_SCHEDULER_ENABLED`,
+  off par défaut) — mono-worker uniquement : la boucle de fond tourne dans le process `uvicorn`
+  lui-même, un passage multi-worker nécessiterait un verrou pour éviter un double déclenchement ;
+- absence de champs projet personnalisables ;
 - un seul connecteur principal validé ;
 - artefacts (`data/executions/`) non purgés automatiquement ;
 - `scripts/sauvegarder.py` ne planifie rien lui-même (§7.2, appel externe requis), ne couvre que
