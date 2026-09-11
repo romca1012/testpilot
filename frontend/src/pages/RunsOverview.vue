@@ -71,16 +71,16 @@ const groups = computed(() => {
 function openRun(id: number) {
   router.push({ name: 'run-detail', params: { pid: pid.value, id: String(id) } })
 }
-function goNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) }
 </script>
 
 <template>
   <div>
     <div class="flex-1 min-w-0">
-      <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-semibold tracking-tight">Exécutions et résultats de test</h1>
-        <Button v-if="peutCreer" variant="primary" @click="goNew">+ Ajouter une exécution</Button>
-      </div>
+      <!-- ⚠️ Pas de bouton de création ICI (2026-09-11) : la barre latérale (CasesShell.vue)
+           en porte déjà un — comme pour « Cas de test ». Le dupliquer ici avait fini par recréer
+           exactement la confusion que ce principe évite : deux façons de faire le même geste,
+           visibles en même temps sur le même écran. -->
+      <h1 class="text-2xl font-semibold tracking-tight">Exécutions et résultats de test</h1>
 
       <div v-if="loading" class="mt-6 space-y-2">
         <div v-for="i in 4" :key="i" class="h-12 rounded-md bg-secondary animate-pulse"></div>
