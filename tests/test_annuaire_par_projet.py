@@ -224,9 +224,13 @@ def test_un_plantage_du_crawl_ne_laisse_pas_le_job_en_cours(domaine_isole, monke
 # `_crawl` (pas `run_exploration`, monkeypatché ci-dessus) : on vérifie ICI que le VRAI code de
 # branchement appelle `crawl_domaine.crawler` avec les bons paramètres selon `connector_type` —
 # sans navigateur réel (playwright entièrement simulé par des MagicMock permissifs).
-def _preparer_crawl_domaine(monkeypatch):
+def _preparer_crawl_domaine(monkeypatch, *, url_apres_connexion: str):
     """Importe `crawl_domaine` comme `_crawl` le fait, et bouchonne son `crawler` pour capter
-    les paramètres reçus au lieu de parcourir un vrai site."""
+    les paramètres reçus au lieu de parcourir un vrai site.
+
+    `url_apres_connexion` simule où la page réelle se trouve une fois `_connexion_generique`
+    exécutée (avec ou sans connexion réussie) — c'est CETTE valeur que `_crawl` doit lire pour
+    calculer sa racine (2026-09-11), jamais un `"/"` en dur (voir les deux tests ci-dessous)."""
     racine = Path(exploration_service.__file__).resolve().parents[4]
     for chemin in (racine / "scripts", racine / "behave_runtime" / "steps_library"):
         if str(chemin) not in sys.path:
@@ -241,8 +245,10 @@ def _preparer_crawl_domaine(monkeypatch):
 
     monkeypatch.setattr(cd, "crawler", fausse_crawler)
 
+    faux_page = MagicMock()
+    faux_page.url = url_apres_connexion
     faux_nav = MagicMock()
-    faux_nav.new_page.return_value = MagicMock()
+    faux_nav.new_page.return_value = faux_page
     faux_p = MagicMock()
     faux_p.chromium.launch.return_value = faux_nav
     faux_sync_playwright = MagicMock()
@@ -253,7 +259,10 @@ def _preparer_crawl_domaine(monkeypatch):
 
 
 def test_le_crawl_generique_est_utilise_pour_un_connecteur_non_odoo(monkeypatch):
-    appels, cd = _preparer_crawl_domaine(monkeypatch)
+    """Sans identifiants (`username`/`password` vides), `_connexion_generique` ne tente aucune
+    connexion — la page reste sur `base_url`, donc la racine calculée reste `"/"`, comportement
+    inchangé pour une appli accessible sans authentification."""
+    appels, cd = _preparer_crawl_domaine(monkeypatch, url_apres_connexion="http://intranet/")
 
     exploration_service._crawl(
         {"connector_type": "web", "base_url": "http://intranet", "username": "", "password": ""},
@@ -264,10 +273,28 @@ def test_le_crawl_generique_est_utilise_pour_un_connecteur_non_odoo(monkeypatch)
     assert callable(appels["relogin"])
 
 
+def test_la_racine_generique_suit_la_connexion_reussie_pas_un_slash_fige(monkeypatch):
+    """⚠️ Bug réel trouvé en conditions réelles (2026-09-11, SauceDemo sur /dev) : quand `"/"` EST
+    le formulaire de connexion, y retourner après une authentification réussie perd la session
+    tout juste établie (0 lien trouvé, le crawl s'arrête après 1 page) — pour une appli avec
+    connexion, la racine doit être la page où la connexion nous a RÉELLEMENT laissés."""
+    appels, _cd = _preparer_crawl_domaine(
+        monkeypatch, url_apres_connexion="http://intranet/inventory.html")
+
+    exploration_service._crawl(
+        {"connector_type": "web", "base_url": "http://intranet",
+         "username": "standard_user", "password": "secret_sauce"},
+        max_pages=5)
+
+    assert appels["racines"] == ["/inventory.html"]
+
+
 def test_le_crawl_odoo_garde_son_chemin_historique(monkeypatch):
     """⚠️ Aucun des nouveaux kwargs (racines/hors_perimetre/relogin) ne doit être transmis pour
     Odoo — le chemin historique, éprouvé sur une mesure réelle, doit rester STRICTEMENT intact."""
-    appels, _cd = _preparer_crawl_domaine(monkeypatch)
+    # `url_apres_connexion` sans effet ici : le chemin Odoo ne lit jamais `ctx.page.url` pour
+    # calculer une racine (il n'en calcule pas — voir l'assertion `appels == {}` ci-dessous).
+    appels, _cd = _preparer_crawl_domaine(monkeypatch, url_apres_connexion="http://odoo-test/web")
 
     exploration_service._crawl(
         {"connector_type": "odoo", "base_url": "http://odoo-test", "database": "db",

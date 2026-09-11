@@ -29,6 +29,7 @@ import uuid
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlparse
 
 from testpilot.generation import domain_model
 from testpilot.store.repositories import ProjectRepo
@@ -160,9 +161,15 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
 
             ctx = types.SimpleNamespace(page=nav.new_page())
             _connexion_generique(ctx)
+            # ⚠️ Racine = où la connexion nous a RÉELLEMENT laissés (2026-09-11), jamais "/" en dur
+            # : sur une appli dont "/" EST le formulaire de connexion (ex. SauceDemo), y retourner
+            # après coup perd la session tout juste établie — le crawl trouvait alors 0 lien et
+            # s'arrêtait après 1 seule page. Sans connexion tentée (pas d'identifiants fournis),
+            # `ctx.page.url` vaut simplement `base_url` : comportement inchangé pour ce cas.
+            depart = urlparse(ctx.page.url).path or "/"
             pages, transitions, onglets = cd.crawler(
                 ctx, nav, connexion["base_url"], max_pages,
-                racines=["/"], hors_perimetre=cd._HORS_PERIMETRE_GENERIQUE,
+                racines=[depart], hors_perimetre=cd._HORS_PERIMETRE_GENERIQUE,
                 relogin=_connexion_generique)
         try:
             nav.close()
