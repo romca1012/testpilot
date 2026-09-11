@@ -157,7 +157,7 @@ def playwright_browser(context):
     """Lance un navigateur Playwright pour le scénario (PLAYWRIGHT_HEADED=1 pour le voir)."""
     from playwright.sync_api import sync_playwright
 
-    headed = os.environ.get("PLAYWRIGHT_HEADED", "0") == "0"
+    headed = os.environ.get("PLAYWRIGHT_HEADED", "0") == "1"
     context._playwright = sync_playwright().start()
     context.browser = context._playwright.chromium.launch(headless=not headed)
     context.page = context.browser.new_page()
