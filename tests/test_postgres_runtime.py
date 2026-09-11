@@ -73,6 +73,32 @@ def test_repositories_crud_sur_postgresql():
         conn.close()
 
 
+def test_lister_les_acces_de_groupe_dun_projet_sur_postgresql():
+    """Trouvé en conditions réelles (2026-09-11, environnement /dev) : `g.name` était sélectionné
+    sans figurer dans le `GROUP BY` ni dans un agrégat — SQLite le tolère (colonne de fait
+    invariante par groupe), PostgreSQL le refuse strictement (`GroupingError`). Invisible dans la
+    suite par défaut (SQLite) ; ce test tourne sur le VRAI moteur qui l'a fait échouer."""
+    from testpilot.store.repositories import ProjectGroupAccessRepo, UserGroupRepo
+
+    suffixe = uuid4().hex[:8]
+    conn = get_initialized_db()
+    try:
+        pid = ProjectRepo(conn).create(name=f"Projet Accès Groupe {suffixe}")
+        gid = UserGroupRepo(conn).create(name=f"Groupe {suffixe}", user_ids=[])
+        conn.execute(
+            "INSERT INTO project_group_access (project_id, group_id, role) VALUES (?,?,?)",
+            (pid, gid, "testeur"))
+        conn.commit()
+
+        acces = ProjectGroupAccessRepo(conn).list_for_project(pid)
+
+        assert len(acces) == 1
+        assert acces[0]["role"] == "testeur"
+        assert acces[0]["group_name"] == f"Groupe {suffixe}"
+    finally:
+        conn.close()
+
+
 def test_api_utilise_postgresql_de_bout_en_bout(tmp_path, monkeypatch):
     # `DATA_DIR` isolé : la connexion passe par PostgreSQL (fixture `postgres` ci-dessus), mais
     # `access.creer_jeton` (session du login réel plus bas) crée sa clé de signature sous

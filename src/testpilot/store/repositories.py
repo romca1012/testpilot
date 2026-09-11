@@ -3127,12 +3127,18 @@ class ProjectGroupAccessRepo:
         self.conn = conn
 
     def list_for_project(self, project_id: int) -> list[dict]:
+        # ⚠️ `pga.role`/`g.name` DANS le GROUP BY (2026-09-11) : SQLite tolère de sélectionner une
+        # colonne hors du GROUP BY quand elle est de fait invariante par groupe (ici, `role` et
+        # `name` ne varient jamais pour un `group_id` donné) — PostgreSQL, lui, l'interdit
+        # strictement (`GroupingError`). Trouvé en conditions réelles : ce SGBD ne tourne QU'en
+        # PostgreSQL sur les environnements déployés, jamais dans la suite de tests par défaut
+        # (SQLite), donc rien ne l'avait attrapé avant un vrai déploiement.
         return _rows(self.conn.execute(
             "SELECT pga.project_id, pga.group_id, pga.role, g.name AS group_name,"
             " COUNT(gm.user_id) AS member_count"
             " FROM project_group_access pga JOIN user_group g ON g.id=pga.group_id"
             " LEFT JOIN user_group_member gm ON gm.group_id=g.id"
-            " WHERE pga.project_id=? GROUP BY pga.project_id,pga.group_id"
+            " WHERE pga.project_id=? GROUP BY pga.project_id,pga.group_id,pga.role,g.name"
             " ORDER BY g.name", (project_id,)))
 
     def roles_for_user(self, project_id: int, user_id: int) -> list[str]:
