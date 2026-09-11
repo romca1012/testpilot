@@ -197,6 +197,31 @@ def test_ne_se_declenche_pas_deux_fois_le_meme_jour(conn):
     assert scheduler_service.tick(conn, now=second_passage) == []  # pas une seconde fois
 
 
+def test_last_triggered_at_reprend_now_jamais_l_horloge_reelle(conn, monkeypatch):
+    """⚠️ Bug réel trouvé en CI le 2026-09-11, invisible en local : `_declencher` timbrait
+    `last_triggered_at` via `ScheduledRunRepo.mark_triggered`'s `now_iso()` — l'horloge RÉELLE —
+    au lieu du `now` simulé reçu par `tick()`. Ça ne se voyait QUE quand la date réelle différait
+    de la date simulée du test, ce qui arrivait par coïncidence de calendrier, pas de façon
+    fiable. Ici, `now_iso()` est poussée loin dans le futur : si `_declencher` s'en servait
+    encore (régression), `last_triggered_at` porterait cette date lointaine au lieu de celle du
+    `now` simulé, et ce test le verrait TOUJOURS, plus jamais par hasard."""
+    from testpilot.store import repositories
+    monkeypatch.setattr(repositories, "now_iso", lambda: "2099-01-01T00:00:00+00:00")
+
+    pid = ProjectRepo(conn).create(
+        name="Portail", base_url="http://x", database="db", username="u", password="p")
+    mid = ModuleRepo(conn).create(project_id=pid, name="Module")
+    CaseRepo(conn).create(title="Cas", module_id=mid, feature_slug="cas")
+    sid = ScheduledRunRepo(conn).create(project_id=pid, name="Nocturne", selection_mode="all",
+                                        frequency="daily", hour=2, minute=0)
+    maintenant = datetime(2026, 9, 10, 2, 5, tzinfo=timezone.utc)
+
+    scheduler_service.tick(conn, now=maintenant)
+
+    stocke = ScheduledRunRepo(conn).get(sid)["last_triggered_at"]
+    assert stocke.startswith("2026-09-10")  # le `now` simulé, jamais 2099 (l'horloge réelle truquée)
+
+
 def test_une_planification_desactivee_ne_se_declenche_jamais(conn):
     pid = ProjectRepo(conn).create(name="Portail")
     sid = ScheduledRunRepo(conn).create(project_id=pid, name="Nocturne", selection_mode="all",

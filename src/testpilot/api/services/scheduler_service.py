@@ -42,14 +42,22 @@ def _est_due(planif: dict, maintenant: datetime) -> bool:
     return True
 
 
-def _declencher(conn, repo: ScheduledRunRepo, planif: dict) -> int:
+def _declencher(conn, repo: ScheduledRunRepo, planif: dict, maintenant: datetime) -> int:
     """Crée une campagne fraîche et la lance, exactement comme `POST /runs` puis
     `POST /runs/{id}/launch` — la seule différence avec un geste humain est QUI l'a demandé
-    (`triggered_by`), jamais COMMENT elle s'exécute."""
+    (`triggered_by`), jamais COMMENT elle s'exécute.
+
+    ⚠️ **`maintenant` partout, jamais `datetime.now()` ici** (bug trouvé en CI le 2026-09-11,
+    invisible en local car l'horloge locale coïncidait par hasard avec les dates simulées des
+    tests) : `_est_due()` compare `last_triggered_at` à `maintenant` reçu de `tick()` (réel en
+    production, figé dans un test) — si `mark_triggered` timbrait avec l'horloge RÉELLE au lieu
+    de ce même `maintenant`, les deux dates ne coïncidaient plus dès que le jour changeait entre
+    l'écriture du test et son exécution, et la déduplication « pas deux fois le même jour »
+    cessait de fonctionner silencieusement."""
     case_ids = repo.case_ids(planif["id"])
     run_id = RunRepo(conn).create(
         project_id=planif["project_id"],
-        name=f"{planif['name']} — {datetime.now(timezone.utc).date().isoformat()}",
+        name=f"{planif['name']} — {maintenant.date().isoformat()}",
         selection_mode=planif["selection_mode"],
         mode=MODE_AUTOMATIQUE,  # ⚠️ TOUJOURS — jamais une valeur lue de `planif`
         case_ids=case_ids if planif["selection_mode"] == "frozen" else None,
@@ -58,7 +66,7 @@ def _declencher(conn, repo: ScheduledRunRepo, planif: dict) -> int:
     params = campaign_service.start_campaign(conn, run_id, triggered_by=acteur)
     durable_jobs.submit_immediat(conn, kind="campaign", kwargs=params,
                                  queue_label=f"campaign:{run_id}")
-    repo.mark_triggered(planif["id"], run_id)
+    repo.mark_triggered(planif["id"], run_id, at=maintenant.isoformat())
     return run_id
 
 
@@ -75,7 +83,7 @@ def tick(conn, *, now: datetime | None = None) -> list[int]:
         if not _est_due(planif, maintenant):
             continue
         try:
-            declenches.append(_declencher(conn, repo, planif))
+            declenches.append(_declencher(conn, repo, planif, maintenant))
         except Exception:
             logger.exception("[scheduler] planification %s (%s) : déclenchement en échec",
                              planif["id"], planif["name"])
