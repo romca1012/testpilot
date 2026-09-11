@@ -89,9 +89,15 @@ function openRun(id: number) {
         <p class="text-sm text-muted-foreground">{{ error }}</p>
         <Button variant="secondary" class="mt-3" @click="() => refetch()">Réessayer</Button>
       </div>
-      <p v-else-if="!runs.length" class="mt-10 text-center text-sm text-muted-foreground">
-        {{ peutCreer ? 'Aucune exécution pour ce projet. Créez-en une avec « Ajouter une exécution ».' : 'Aucune exécution pour ce projet.' }}
-      </p>
+      <!-- État vide : centré dans TOUT l'espace disponible (pas juste sous le titre) — sur une
+           page sans autre contenu, un message aligné en haut-gauche d'une zone par ailleurs vide
+           donne l'impression que la page est mal alignée, alors que la boîte l'est (2026-09-11,
+           signalé par le porteur sur une capture). -->
+      <div v-else-if="!runs.length" class="flex min-h-[50vh] items-center justify-center text-center">
+        <p class="text-sm text-muted-foreground">
+          {{ peutCreer ? 'Aucune exécution pour ce projet. Créez-en une avec « Ajouter une exécution ».' : 'Aucune exécution pour ce projet.' }}
+        </p>
+      </div>
 
       <div v-for="g in groups" :key="g.month" class="mt-5">
         <div class="text-sm font-medium text-muted-foreground border-b border-border/60 pb-1">{{ g.month }}</div>
