@@ -190,8 +190,12 @@ def _inspecter_page(page):
         });
         const liens = [];
         document.querySelectorAll('a[href]').forEach(a => {
+            // `id` (2026-09-11, connecteur générique) : le seul moyen fiable de RECLIQUER ce
+            // même lien plus tard (voir `crawler`, "ancres # suivies par clic") — un `href="#"`
+            // ne dit rien de la cible, et plusieurs liens partagent souvent le même texte
+            // (ex. "View details" répété une fois par produit sur une page catalogue).
             liens.push({href: a.getAttribute('href'), text: (a.textContent||'').trim().slice(0,40),
-                        role: a.getAttribute('role')});
+                        role: a.getAttribute('role'), id: a.getAttribute('id') || ''});
         });
         const formulaires = Array.from(document.querySelectorAll('form')).map(f => ({
             action: f.getAttribute('action') || '', method: (f.method||'get').toLowerCase(),
@@ -201,7 +205,44 @@ def _inspecter_page(page):
     }""")
 
 
-def crawler(ctx, nav, base_url, max_pages, *, racines=None, hors_perimetre=None, relogin=None):
+def _tester_ancre_hash(page, lien, url_avant):
+    """Cliquer un lien `href="#"` et voir s'il a RÉELLEMENT navigué (2026-09-11, connecteur
+    générique) — beaucoup d'applications modernes routent en JavaScript pur (History API), sans
+    jamais poser d'URL réelle dans `href` (mesuré sur SauceDemo : ses fiches produit sont des
+    `<a href="#" role="button">`, invisibles pour le suivi de lien classique).
+
+    ⚠️ **Garde de sécurité STRUCTURELLE, pas une simple précaution** : cette fonction ne reçoit
+    QUE des éléments venus de `infos["liens"]` (`document.querySelectorAll('a[href]')`) — jamais
+    `infos["actions"]`, qui inclut les `<button>`. Une exploration ne doit JAMAIS avoir d'effet de
+    bord (créer, modifier, payer) ; `<a>` porte conventionnellement une INTENTION DE NAVIGATION,
+    `<button>` une ACTION — convention vérifiée sur SauceDemo (ses "Add to cart" sont bien des
+    `<button>`, jamais des liens), mais qui reste une CONVENTION du site, pas une garantie du
+    langage : à ne jamais étendre aux boutons.
+
+    Sans `id` sur le lien, aucun moyen fiable de le RECLIQUER (plusieurs liens partagent souvent
+    le même texte, ex. une fiche produit par ligne de catalogue) — on renonce plutôt que de
+    cliquer au hasard. Restaure TOUJOURS la page de départ avant de rendre la main : le prochain
+    lien à tester (ou le reste du crawl) doit repartir d'un état connu, jamais de celui laissé par
+    ce clic.
+    """
+    lien_id = (lien.get("id") or "").strip()
+    if not lien_id:
+        return None
+    try:
+        page.click(f'[id="{lien_id}"]', timeout=3000)
+        page.wait_for_load_state("networkidle", timeout=5000)
+    except Exception:
+        return None
+    nouvelle_url = page.url
+    try:
+        page.goto(url_avant, wait_until="networkidle", timeout=20000)
+    except Exception:
+        pass  # la restauration a échoué : le prochain `goto` du BFS repartira de zéro de toute façon
+    return nouvelle_url if normalise(nouvelle_url) != normalise(url_avant) else None
+
+
+def crawler(ctx, nav, base_url, max_pages, *, racines=None, hors_perimetre=None, relogin=None,
+           suivre_ancres_hash=False):
     """BFS sur les routes NORMALISÉES. `ctx.page` peut être recréée : le navigateur crashe.
 
     ⚠️ **Un crawl n'a pas le droit de mourir en route** : il rendrait une mesure tronquée qui
@@ -213,6 +254,10 @@ def crawler(ctx, nav, base_url, max_pages, *, racines=None, hors_perimetre=None,
     Odoo (`RACINES`, `_HORS_PERIMETRE`, `H.playwright_login`) — comportement STRICTEMENT
     inchangé pour l'appelant historique. `exploration_service.py` les fournit pour un connecteur
     `web` (racine `/`, exclusion `_HORS_PERIMETRE_GENERIQUE`, connexion générique).
+
+    `suivre_ancres_hash` (2026-09-11) : `False` par défaut — comportement Odoo STRICTEMENT
+    inchangé (un `href="#"` y est TOUJOURS un onglet, jamais une page). `exploration_service.py`
+    le passe à `True` uniquement pour le connecteur `web` — voir `_tester_ancre_hash`.
     """
     racines = racines if racines is not None else RACINES
     hors_perimetre = hors_perimetre if hors_perimetre is not None else _HORS_PERIMETRE
@@ -271,12 +316,21 @@ def crawler(ctx, nav, base_url, max_pages, *, racines=None, hors_perimetre=None,
         print(f"  {len(pages):>3}. {reelle:<42} {len(infos['champs']):>2} champs  "
               f"{len(infos['formulaires'])} form")
 
+        url_page_courante = page.url
         for lien in infos["liens"]:
             href = (lien["href"] or "").strip()
             if not href or href.startswith(("mailto:", "tel:", "javascript:")):
                 continue
             if href.startswith("#"):
                 onglets_internes[reelle].add(lien["text"] or href)
+                if suivre_ancres_hash:
+                    cible_reelle = _tester_ancre_hash(page, lien, url_page_courante)
+                    if cible_reelle is not None:
+                        cible_norm = normalise(cible_reelle)
+                        if cible_norm != reelle:
+                            transitions[reelle].add(cible_norm)
+                        if cible_norm not in pages:
+                            a_voir.append(urlparse(cible_reelle).path or cible_reelle)
                 continue
             cible = urlparse(urljoin(page.url, href))
             if cible.netloc and cible.netloc != urlparse(base_url).netloc:

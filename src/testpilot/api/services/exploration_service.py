@@ -170,7 +170,7 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
             pages, transitions, onglets = cd.crawler(
                 ctx, nav, connexion["base_url"], max_pages,
                 racines=[depart], hors_perimetre=cd._HORS_PERIMETRE_GENERIQUE,
-                relogin=_connexion_generique)
+                relogin=_connexion_generique, suivre_ancres_hash=True)
         try:
             nav.close()
         except Exception:
