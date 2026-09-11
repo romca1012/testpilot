@@ -507,11 +507,18 @@ class ManualCaseIn(BaseModel):
 
     Titre + étapes + résultat attendu obligatoires (décision `0022` n°3.c) — un cas sans eux ne
     décrit rien. `test_steps` = liste JSON, comme partout ailleurs.
+
+    `group_id` (2026-09-11) : la Section DÉJÀ CHOISIE en arrivant sur ce formulaire — parité
+    TestRail, où « Add Test Case » se lance TOUJOURS depuis une Section déjà ouverte, et le cas y
+    atterrit directement plutôt que dans une section neuve créée pour lui seul. `None` = aucune
+    Section choisie (venu du bouton générique « Ajouter un cas », pas d'une Section précise) :
+    le cas garde alors le comportement d'avant (auto-enveloppé dans sa propre Section).
     """
     title: str
     preconditions: str = ""
     test_steps: list[str] = []
     expected_result: str = ""
+    group_id: int | None = None
 
 
 class SpecExtractOut(BaseModel):

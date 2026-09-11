@@ -825,7 +825,7 @@ class CaseRepo:
 
     def create_manual(self, *, module_id: int, title: str, preconditions: str = "",
                       test_steps: str = "", expected_result: str = "",
-                      author: str = "ui") -> int:
+                      author: str = "ui", group_id: int | None = None) -> int:
         """Crée un cas À LA MAIN — le bouton « Ajouter un cas de test », SANS IA (décision `0022`).
 
         Le cas naît avec son **document métier** (titre, préconditions, étapes, résultat attendu)
@@ -837,8 +837,13 @@ class CaseRepo:
         `origin='manual_converted'` : marque un cas d'origine humaine (par opposition à
         `ia_generated`), la seule valeur non-IA que le schéma autorise. Une version est créée
         d'emblée : c'est elle qui porte le métier (le métier vit sur la version, décision n°10).
+
+        `group_id` (2026-09-11) : quand l'appelant l'a choisi (venu d'une Section précise, jamais
+        du bouton générique), le cas y atterrit DIRECTEMENT — `CaseRepo.create` ne l'auto-enveloppe
+        alors plus dans une Section neuve rien que pour lui. Parité TestRail : plusieurs cas créés
+        depuis la MÊME Section se retrouvent ensemble, sans glisser-déposer après coup.
         """
-        cid = self.create(title=title, module_id=module_id, author=author,
+        cid = self.create(title=title, module_id=module_id, group_id=group_id, author=author,
                           origin="manual_converted", feature_slug="")
         VersionRepo(self.conn).create(
             test_case_id=cid, spec_content="", spec_hash="",

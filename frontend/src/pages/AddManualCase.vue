@@ -3,9 +3,10 @@
 // 2026-07-21). L'humain rédige le document métier : titre, préconditions, étapes, résultat
 // attendu. Le cas naît SANS Gherkin — il n'est pas exécutable tant qu'un test technique n'a pas
 // été généré. C'est l'inverse du bouton « Générer », qui lance l'IA.
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type ModuleSummary } from '../lib/api'
+import { useGroupes } from '../lib/donnees'
 import Button from '../components/ui/Button.vue'
 import IconButton from '../components/ui/IconButton.vue'
 
@@ -18,6 +19,31 @@ const moduleId = ref<number | null>(null)
 const NOUVEAU = -1
 const newModuleName = ref('')
 const creatingModule = computed(() => moduleId.value === NOUVEAU || modules.value.length === 0)
+
+// ── Section CIBLE (2026-09-11) — même patron EXACT que « Générer des cas » (AddTestCase.vue,
+// étape 3bis, 2026-08-07) : obligatoire, comme le Module, pour la MÊME raison. Avant ce jour,
+// seule la génération IA l'imposait ; la saisie manuelle auto-enveloppait chaque cas dans sa
+// propre Section invisible, jamais partagée — un écart entre les deux écrans, pas un choix
+// délibéré. Aligner l'un sur l'autre plutôt que d'inventer un troisième patron.
+const NOUVELLE_SECTION = -2
+const sectionId = ref<number | null>(null)
+const newSectionName = ref('')
+const { data: groupesData } = useGroupes(pid)
+const sectionsDuModule = computed(() => {
+  if (moduleId.value == null || moduleId.value === NOUVEAU) return []
+  const gs = (groupesData.value ?? []).filter((g) => g.module_id === moduleId.value)
+  const options: { id: number; label: string }[] = []
+  for (const s of gs.filter((g) => g.parent_group_id == null)) {
+    options.push({ id: s.id, label: s.title })
+    for (const sous of gs.filter((g) => g.parent_group_id === s.id)) {
+      options.push({ id: sous.id, label: `${s.title} › ${sous.title}` })
+    }
+  }
+  return options
+})
+const creatingSection = computed(() =>
+  sectionId.value === NOUVELLE_SECTION || sectionsDuModule.value.length === 0)
+watch(moduleId, () => { sectionId.value = null; newSectionName.value = '' })
 
 const form = ref({ title: '', preconditions: '', steps: [''], expected: '' })
 const saving = ref(false)
@@ -33,6 +59,18 @@ onMounted(async () => {
   modules.value = await api.listModules(pid.value)
   const wanted = Number(route.query.module)
   moduleId.value = modules.value.find((m) => m.id === wanted)?.id ?? modules.value[0]?.id ?? null
+  // Section pré-choisie : venue d'un clic sur « Ajouter un cas » DEPUIS une Section précise
+  // (TestCasesList.vue) — appel DIRECT plutôt qu'un watch sur `useGroupes` (dont la résolution
+  // asynchrone, via le cache vue-query, n'est pas garantie avant que ce bloc s'exécute) : on
+  // attend explicitement la réponse, puis on ne retient la Section QUE si elle appartient au
+  // module résolu ci-dessus — jamais fait confiance à l'URL seule.
+  const wantedSection = Number(route.query.section) || null
+  if (wantedSection) {
+    const groupes = await api.listGroups(pid.value)
+    if (groupes.some((g) => g.id === wantedSection && g.module_id === moduleId.value)) {
+      sectionId.value = wantedSection
+    }
+  }
 })
 
 function addStep() { form.value.steps.push('') }
@@ -51,11 +89,26 @@ async function submit() {
       modules.value.push(m); cible = m.id; moduleId.value = m.id
     }
     if (!cible) { saving.value = false; return }
+
+    // La Section, même geste que le module : créée à la demande si besoin, obligatoire pour la
+    // même raison (échec immédiat et lisible plutôt qu'un cas qui atterrit on ne sait où).
+    let groupeCible: number
+    if (creatingSection.value) {
+      if (!newSectionName.value.trim()) { saving.value = false; return }
+      const g = await api.createGroup(cible, { title: newSectionName.value.trim() })
+      groupeCible = g.id
+    } else if (sectionId.value != null) {
+      groupeCible = sectionId.value
+    } else {
+      saving.value = false; return   // garde-fou : le bouton est désactivé tant que rien n'est choisi
+    }
+
     const c = await api.createManualCase(cible, {
       title: form.value.title.trim(),
       preconditions: form.value.preconditions,
       test_steps: form.value.steps.map((s) => s.trim()).filter(Boolean),
       expected_result: form.value.expected.trim(),
+      group_id: groupeCible,
     })
     router.push({ name: 'case-detail', params: { pid: pid.value, id: String(c.id) } })
   } catch (e: any) {
@@ -98,6 +151,27 @@ function cancel() { router.push({ name: 'cases', params: { pid: pid.value } }) }
         </p>
       </label>
 
+      <!-- Section CIBLE : même patron exact que « Générer des cas » (AddTestCase.vue) —
+           obligatoire, comme le Module. Pré-remplie si on arrive depuis une Section précise de
+           l'arbre ; réinitialisée si le Module change (une Section n'existe que sous UN module). -->
+      <label class="block">
+        <span class="text-sm font-medium">Section <span class="text-destructive">*</span></span>
+        <select v-if="sectionsDuModule.length" v-model="sectionId"
+                class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2">
+          <option :value="null" disabled>Choisir une section…</option>
+          <option v-for="o in sectionsDuModule" :key="o.id" :value="o.id">{{ o.label }}</option>
+          <option :value="NOUVELLE_SECTION">+ Créer une section…</option>
+        </select>
+        <input v-if="creatingSection" v-model="newSectionName"
+               :class="sectionsDuModule.length ? 'mt-2' : 'mt-1'"
+               placeholder="Nom de la section (ex. Connexion)"
+               class="w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+        <p v-if="!sectionsDuModule.length && moduleId != null && moduleId !== NOUVEAU"
+           class="mt-1 text-xs text-muted-foreground">
+          Ce module n'a pas encore de section. Donnez-lui un nom pour commencer.
+        </p>
+      </label>
+
       <label class="block">
         <span class="text-sm font-medium">Titre <span class="text-destructive">*</span></span>
         <input v-model="form.title" placeholder="Phrase décrivant ce qui est vérifié"
@@ -133,7 +207,11 @@ function cancel() { router.push({ name: 'cases', params: { pid: pid.value } }) }
       <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
 
       <div class="flex items-center gap-3">
-        <Button type="submit" variant="primary" :disabled="saving || !complet" :loading="saving">
+        <Button type="submit" variant="primary" :loading="saving"
+                :disabled="saving || !complet
+                  || (creatingModule && !newModuleName.trim())
+                  || (creatingSection && !newSectionName.trim())
+                  || (!creatingSection && sectionId == null)">
           {{ saving ? 'Création…' : 'Créer le cas' }}
         </Button>
         <Button type="button" variant="secondary" @click="cancel">Annuler</Button>

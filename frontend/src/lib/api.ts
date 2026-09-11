@@ -307,6 +307,9 @@ export const api = {
   // « Ajouter un cas de test » = saisie MANUELLE (sans IA), à distinguer de addCase (l'IA).
   createManualCase: (moduleId: number | string, body: {
     title: string; preconditions?: string; test_steps: string[]; expected_result: string
+    // La Section déjà choisie (venu d'une Section précise dans l'arbre) — `undefined` = le cas
+    // reste auto-enveloppé dans sa propre Section, comme avant (bouton générique).
+    group_id?: number
   }) => request<CaseSummary>(`/api/modules/${moduleId}/cases/manual`, {
     method: 'POST', body: JSON.stringify(body),
   }),

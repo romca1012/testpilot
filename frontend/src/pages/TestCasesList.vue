@@ -373,12 +373,14 @@ async function supprimerGroupe() {
   }
 }
 
-// « Ajouter un cas » INLINE sous une Section/sous-section (même intention que le bouton du même
-// nom dans CasesShell.vue : saisie MANUELLE, sans IA, le module visé pré-sélectionné). Une
-// fonction LOCALE — la vérification de types réelle, mise en place le 2026-08-06, a attrapé
-// l'appel à une fonction du même nom qui n'existait QUE dans CasesShell.vue, jamais ici.
-function goCaseNew(moduleId: number) {
-  router.push({ name: 'case-manual', params: { pid: pid.value }, query: { module: String(moduleId) } })
+// « Ajouter un cas » INLINE sous une Section/sous-section — le module ET la Section d'où on
+// clique sont pré-sélectionnés (2026-09-11, parité TestRail : « Add Test Case » se lance depuis
+// une Section déjà ouverte, le cas y atterrit directement). Une fonction LOCALE — la vérification
+// de types réelle, mise en place le 2026-08-06, a attrapé l'appel à une fonction du même nom qui
+// n'existait QUE dans CasesShell.vue, jamais ici.
+function goCaseNew(moduleId: number, groupId?: number | null) {
+  router.push({ name: 'case-manual', params: { pid: pid.value },
+                query: { module: String(moduleId), ...(groupId ? { section: String(groupId) } : {}) } })
 }
 
 // Nombre de colonnes RÉELLEMENT affichées (checkbox + titre + chevron sont fixes, le reste
@@ -768,7 +770,7 @@ async function supprimerEnLot() {
                    cas orphelins — pas un vrai conteneur à sous-structurer). -->
               <tr v-if="g.group_id" class="border-t border-border/30">
                 <td :colspan="colonnesAffichees" class="pl-9 py-1.5 text-xs" :class="HAUTEUR_LIGNE[prefs.densite]">
-                  <button v-if="peutModifier" class="text-primary hover:underline" @click="goCaseNew(s.module.id)">Ajouter un cas</button>
+                  <button v-if="peutModifier" class="text-primary hover:underline" @click="goCaseNew(s.module.id, g.group_id)">Ajouter un cas</button>
                   <span v-if="peutModifier" class="text-muted-foreground/50 mx-1.5">|</span>
                   <button v-if="peutModifier" class="text-primary hover:underline" @click="ajouterSousSection(s.module.id, g.group_id)">Ajouter une sous-section</button>
                 </td>
@@ -839,7 +841,7 @@ async function supprimerEnLot() {
                 <!-- Pas de « Ajouter une sous-section » ici : une seule profondeur d'imbrication. -->
                 <tr class="border-t border-border/30">
                   <td :colspan="colonnesAffichees" class="pl-14 py-1.5 text-xs" :class="HAUTEUR_LIGNE[prefs.densite]">
-                    <button v-if="peutModifier" class="text-primary hover:underline" @click="goCaseNew(s.module.id)">Ajouter un cas</button>
+                    <button v-if="peutModifier" class="text-primary hover:underline" @click="goCaseNew(s.module.id, sg.group_id)">Ajouter un cas</button>
                   </td>
                 </tr>
               </tbody>

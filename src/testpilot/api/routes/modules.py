@@ -138,12 +138,22 @@ def create_manual_case(module_id: int, body: schemas.ManualCaseIn, request: Requ
     if not (body.title.strip() and steps and body.expected_result.strip()):
         raise HTTPException(status_code=422,
                             detail="titre, étapes et résultat attendu sont obligatoires")
+    # La Section choisie doit appartenir à CE module — sinon le cas atterrirait visuellement
+    # dans l'arbre d'un autre module que celui affiché, une incohérence silencieuse à refuser
+    # ici plutôt que de la laisser arriver en base.
+    if body.group_id is not None:
+        groupe = CaseGroupRepo(conn).get(body.group_id)
+        if groupe is None:
+            raise HTTPException(status_code=404, detail=f"section {body.group_id} introuvable")
+        if groupe["module_id"] != module_id:
+            raise HTTPException(status_code=422,
+                                detail="cette section appartient à un autre module")
     import json
     try:
         cid = CaseRepo(conn).create_manual(
             module_id=module_id, title=body.title.strip(),
             preconditions=body.preconditions, test_steps=json.dumps(steps, ensure_ascii=False),
-            expected_result=body.expected_result.strip(),
+            expected_result=body.expected_result.strip(), group_id=body.group_id,
             author=access.utilisateur_de(request) or "ui")
     except DuplicateName as exc:
         raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc

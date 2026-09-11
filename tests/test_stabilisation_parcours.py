@@ -84,6 +84,64 @@ def test_api_ajouter_cas_manuel(client):
     assert any(c["title"] == "Cas manuel" for c in client.get(f"/api/cases?module_id={mid}").json()["items"])
 
 
+def test_creer_un_cas_a_la_main_dans_une_section_choisie(conn):
+    """2026-09-11 — parité TestRail : deux cas créés depuis la MÊME Section s'y retrouvent
+    ENSEMBLE, sans passer par l'auto-enveloppe 1 cas = 1 Section (comportement par défaut quand
+    aucune Section n'est fournie, voir le test suivant)."""
+    from testpilot.store.repositories import CaseGroupRepo
+
+    mid = ensure_default_module(conn, "m")
+    section = CaseGroupRepo(conn).create(module_id=mid, title="Authentification")
+    cid1 = CaseRepo(conn).create_manual(module_id=mid, title="Cas A", test_steps="[]",
+                                        expected_result="r", group_id=section)
+    cid2 = CaseRepo(conn).create_manual(module_id=mid, title="Cas B", test_steps="[]",
+                                        expected_result="r", group_id=section)
+
+    assert CaseRepo(conn).get(cid1)["group_id"] == section
+    assert CaseRepo(conn).get(cid2)["group_id"] == section  # la MÊME section, pas deux nouvelles
+
+
+def test_creer_un_cas_a_la_main_sans_section_choisie_garde_l_auto_enveloppe(conn):
+    """Sans `group_id` (bouton générique, aucune Section précise) : comportement INCHANGÉ —
+    chaque cas reçoit sa propre Section privée, jamais partagée."""
+    mid = ensure_default_module(conn, "m")
+    cid1 = CaseRepo(conn).create_manual(module_id=mid, title="Cas A", test_steps="[]",
+                                        expected_result="r")
+    cid2 = CaseRepo(conn).create_manual(module_id=mid, title="Cas B", test_steps="[]",
+                                        expected_result="r")
+
+    g1, g2 = CaseRepo(conn).get(cid1)["group_id"], CaseRepo(conn).get(cid2)["group_id"]
+    assert g1 is not None and g2 is not None and g1 != g2
+
+
+def test_api_ajouter_cas_manuel_dans_une_section_existante(client):
+    _, mid = _module(client)
+    section = client.post(f"/api/modules/{mid}/groups",
+                          json={"title": "Authentification"}).json()["id"]
+
+    r = client.post(f"/api/modules/{mid}/cases/manual", json={
+        "title": "Connexion valide", "test_steps": ["a"], "expected_result": "r",
+        "group_id": section})
+
+    assert r.status_code == 201, r.text
+    assert r.json()["group_id"] == section
+
+
+def test_api_refuse_une_section_d_un_autre_module(client):
+    """La Section doit appartenir au MÊME module que celui visé — sinon le cas atterrirait
+    silencieusement dans l'arbre d'un module qu'on ne regarde pas."""
+    pid = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    m1 = client.post(f"/api/projects/{pid}/modules", json={"name": "M1"}).json()["id"]
+    m2 = client.post(f"/api/projects/{pid}/modules", json={"name": "M2"}).json()["id"]
+    section_de_m1 = client.post(f"/api/modules/{m1}/groups", json={"title": "S"}).json()["id"]
+
+    r = client.post(f"/api/modules/{m2}/cases/manual", json={
+        "title": "X", "test_steps": ["a"], "expected_result": "r", "group_id": section_de_m1})
+
+    assert r.status_code == 422
+    assert "autre module" in r.json()["detail"]
+
+
 def test_api_cas_manuel_exige_titre_etapes_resultat(client):
     _, mid = _module(client)
 
