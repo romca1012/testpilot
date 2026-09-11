@@ -1,0 +1,49 @@
+name: Deploy dev
+
+# Se déclenche APRÈS que la CI (ci.yml) ait réussi sur master — jamais en parallèle d'elle, et
+# jamais si elle échoue. On ne re-fait pas tourner les tests ici : c'est le rôle de "CI", celui-ci
+# n'est que le geste séparé "déployer ce qui vient d'être vérifié" (workflow_run se déclenche sur
+# la fin de "CI", quelle que soit son issue — le `if` du job ci-dessous ne laisse passer qu'un
+# succès). `workflow_dispatch` permet aussi de relancer un déploiement à la main (ex. après un
+# souci réseau transitoire) sans avoir à pousser un commit vide.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+# Rien à lire ni écrire sur le dépôt depuis ce runner : le code est récupéré côté SERVEUR (git
+# pull dans deploy.sh), jamais copié depuis ce job — pas besoin d'actions/checkout ici.
+permissions: {}
+
+# Un déploiement à la fois — un second push pendant qu'un déploiement tourne encore attend son
+# tour plutôt que de se chevaucher (`docker compose build` concurrent sur le même répertoire).
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Déployer sur /srv/testtool-dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      # ⚠️ La clé n'autorise RIEN d'autre que lancer deploy.sh (voir authorized_keys côté
+      # serveur, `command="/srv/testtool-dev/deploy.sh"`) : même si ce secret fuitait, il ne
+      # donnerait pas un accès shell libre à la machine — juste la capacité de relancer ce
+      # déploiement précis, exactement ce qu'un push légitime ferait déjà.
+      - name: Préparer la clé SSH dédiée au déploiement
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEV_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEV_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      # Le contenu de la commande envoyée n'a pas d'importance : le serveur force TOUJOURS
+      # l'exécution de deploy.sh quelle que soit la commande demandée (voir authorized_keys).
+      - name: Lancer deploy.sh sur le serveur
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${{ secrets.DEV_SSH_USER }}@${{ secrets.DEV_SSH_HOST }}" "deploy"
