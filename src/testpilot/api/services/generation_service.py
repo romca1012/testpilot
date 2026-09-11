@@ -490,7 +490,7 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
                    spec_content: str, metier: dict, author: str = "ui") -> None:
     """Tâche de fond : écrit le Gherkin d'un cas manuel DEPUIS son métier, sur le cas existant."""
     from testpilot.analysis.spec_analyzer import SpecAnalyzer
-    from testpilot.connectors.odoo import OdooConnector
+    from testpilot.connectors.factory import build_connector
     from testpilot.connectors.runtime_env import project_env
     from testpilot.execution.behave_runner import BehaveRunner
     from testpilot.generation.agent import GenerationAgent
@@ -503,7 +503,9 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
     try:
         module = ModuleRepo(conn).get(module_id)
         project = ProjectRepo(conn).get(module["project_id"]) if module else None
-        connector = OdooConnector.from_project(project)
+        # ⚠️ `build_connector`, jamais `OdooConnector` en dur (bug SauceDemo, 2026-09-11) : le
+        # connecteur DOIT suivre `project["connector_type"]`, comme le fait déjà l'exploration.
+        connector = build_connector(project)
         connector.connect()
         runner = BehaveRunner(connection=project_env(project),
                               project_id=(project or {}).get("id"),
@@ -568,7 +570,7 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
     import dataclasses
 
     from testpilot.analysis.spec_analyzer import SpecAnalyzer
-    from testpilot.connectors.odoo import OdooConnector
+    from testpilot.connectors.factory import build_connector
     from testpilot.connectors.runtime_env import project_env
     from testpilot.execution.behave_runner import BehaveRunner
     from testpilot.generation.agent import GenerationAgent
@@ -582,7 +584,9 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
         project = ProjectRepo(conn).get(module["project_id"]) if module else None
 
         # Génération ET dry-run tapent l'application DU PROJET du module (décision 0005).
-        connector = OdooConnector.from_project(project)
+        # ⚠️ `build_connector`, jamais `OdooConnector` en dur (bug SauceDemo, 2026-09-11) : voir
+        # `connectors/factory.py` pour le mécanisme complet du bug et son correctif.
+        connector = build_connector(project)
         connector.connect()
         runner = BehaveRunner(connection=project_env(project),
                               project_id=(project or {}).get("id"),

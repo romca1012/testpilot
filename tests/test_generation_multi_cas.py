@@ -94,6 +94,15 @@ def _neutraliser_pipeline_technique(monkeypatch, *, cout_par_cas=0.02):
     monkeypatch.setattr(agent_mod.GenerationAgent, "generate", faux_generate)
 
 
+_PROJET_WEB = {"name": "P-web", "connector_type": "web", "base_url": "https://www.saucedemo.com",
+              "username": "standard_user", "password": "secret_sauce"}
+
+
+def _module_web(conn) -> int:
+    pid = ProjectRepo(conn).create(**_PROJET_WEB)
+    return ModuleRepo(conn).create(project_id=pid, name="M-web")
+
+
 def _cas(titre: str, *, user_story: str = "") -> dict:
     return {"title": titre, "preconditions": "", "steps": [f"Étape de {titre}"],
            "expected_result": f"Verdict de {titre}", "user_story": user_story}
@@ -107,6 +116,60 @@ def _resume(conn, job_id: str, *, module_id: int, **kw):
     if GenerationJobRepo(conn).get(job_id) is None:
         GenerationJobRepo(conn).creer(job_id, module_id=module_id)
     generation_service.resume_generation(job_id, module_id=module_id, **kw)
+
+
+# ── Choix du connecteur selon `connector_type` (bug SauceDemo, 2026-09-11) ────────────────────
+
+def test_resume_generation_sur_un_projet_web_N_APPELLE_JAMAIS_odoo(conn, monkeypatch):
+    """⚠️ Le vrai bug qui a atteint `/dev` : `resume_generation` construisait TOUJOURS un
+    `OdooConnector`, même pour un projet `web` — `odoorpc` tentait alors du JSON-RPC contre un
+    site qui n'en a évidemment aucun (SauceDemo), et la génération technique plantait en
+    `HTTP Error 405: Method Not Allowed` avant d'écrire le moindre test, alors que l'exploration,
+    elle, avait parfaitement réussi sur ce même projet. Garde qu'AUCUN appel à
+    `OdooConnector.from_project` ne se produit pour un projet `web`, et que
+    `GenericWebConnector.from_project` est bien celui utilisé à sa place."""
+    from testpilot.analysis import spec_analyzer as sa
+    from testpilot.connectors import generic_web as gw_mod
+    from testpilot.connectors import odoo as odoo_mod
+
+    mid = _module_web(conn)
+    monkeypatch.setattr(sa.SpecAnalyzer, "analyze_spec_content",
+                        lambda self, slug, content: _plan(content))
+    monkeypatch.setattr("testpilot.execution.behave_runner.BehaveRunner", lambda **kw: object())
+
+    appels_odoo: list[int] = []
+    appels_web: list[int] = []
+
+    def _faux_connecteur(*_a, **_kw):
+        return type("C", (), {"connect": lambda s: None, "disconnect": lambda s: None})()
+
+    monkeypatch.setattr(odoo_mod.OdooConnector, "from_project",
+                        classmethod(lambda cls, *a, **kw: (appels_odoo.append(1),
+                                                           _faux_connecteur())[1]))
+    monkeypatch.setattr(gw_mod.GenericWebConnector, "from_project",
+                        classmethod(lambda cls, *a, **kw: (appels_web.append(1),
+                                                           _faux_connecteur())[1]))
+
+    reel_persist = agent_mod.GenerationAgent._persist
+
+    def faux_generate(self, plan, *, case_id=None, title="", author="", module_id=None,
+                      metier=None, group_id=None, projet=None, refs=""):
+        from testpilot.generation.state import GenerationResult
+        result = GenerationResult(success=True, module_name=plan.module_name,
+                                  stopped_reason="done", dry_run_passed=True, iterations=1,
+                                  cost_usd=0.02, feature_content="# f", steps_content="# s",
+                                  spec_hash="h", awaiting_review=True)
+        reel_persist(self, plan, result, case_id=case_id, title=title, author=author,
+                    module_id=module_id, metier=metier, group_id=group_id, refs=refs)
+        return result
+
+    monkeypatch.setattr(agent_mod.GenerationAgent, "generate", faux_generate)
+
+    _resume(conn, "job1", module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+           cases=[_cas("Connexion réussie")])
+
+    assert appels_odoo == [], "OdooConnector ne doit JAMAIS être construit pour un projet web"
+    assert appels_web == [1]
 
 
 # ── group_id choisi par l'utilisateur : aucune Section auto-créée ─────────────

@@ -250,11 +250,15 @@ def _connector_for(conn, case_id: int):
     de faire échouer la réparation.
     """
     try:
-        from testpilot.connectors.odoo import OdooConnector
+        # ⚠️ `build_connector`, jamais `OdooConnector` en dur (bug SauceDemo, 2026-09-11) : voir
+        # `connectors/factory.py`. Ce chemin est best-effort (except large ci-dessous), donc
+        # l'ancien bug ne faisait pas ÉCHOUER la réparation — mais lui faisait construire un
+        # connecteur du mauvais type pour tout projet non-Odoo, silencieusement.
+        from testpilot.connectors.factory import build_connector
         case = CaseRepo(conn).get(case_id)
         project_id = (case or {}).get("project_id")
         project = ProjectRepo(conn).get(project_id) if project_id else None
-        return OdooConnector.from_project(project) if project else None
+        return build_connector(project) if project else None
     except Exception:
         logger.warning("[repair] connecteur indisponible — règles génériques seules", exc_info=True)
         return None
