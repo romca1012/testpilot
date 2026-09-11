@@ -117,17 +117,36 @@ def tenter_connexion_generique(page, user: str, password: str) -> bool:
 
 
 def http_probe(url: str) -> dict:
-    """Sonde HTTP HEAD→GET. Isolée pour être surchargée hors-ligne en test."""
-    last = ""
-    for method in ("HEAD", "GET"):
+    """Sonde HTTP HEAD→GET. Isolée pour être surchargée hors-ligne en test.
+
+    ⚠️ **Bug corrigé (2026-09-11, SauceDemo sur /dev).** La branche `HTTPError` RENDAIT
+    immédiatement dès le HEAD, sans jamais essayer le GET annoncé par le nom de la fonction
+    (« HEAD→GET ») — seule la branche `URLError`/`OSError`, elle, `continue`ait vers le GET.
+    Beaucoup de serveurs (WAF, certains hébergeurs statiques) répondent 405 « Method Not Allowed »
+    à un HEAD tout en servant très bien le GET correspondant : `discover_route` (outil LLM de la
+    passe technique) rapportait alors une route comme cassée alors qu'elle ne l'était pas — l'IA
+    prend cette observation pour un fait mesuré (§6), pas une supposition, donc une fausse alerte
+    ici pouvait faire échouer ou mal orienter toute une génération. Même filet qu'`URLError` :
+    on tente le GET avant de conclure quoi que ce soit, et seul l'échec du DERNIER moyen essayé
+    devient le verdict rendu.
+    """
+    methodes = ("HEAD", "GET")
+    dernier_statut, dernier_motif = 0, ""
+    for i, method in enumerate(methodes):
+        est_dernier = i == len(methodes) - 1
         try:
             req = urllib.request.Request(url, method=method)
             with urllib.request.urlopen(req, timeout=10) as resp:
                 return {"url": url, "status": resp.status, "method": method, "note": "accessible"}
         except urllib.error.HTTPError as exc:
-            return {"url": url, "status": exc.code, "method": method,
-                    "note": exc.reason or "réponse HTTP d'erreur"}
-        except (urllib.error.URLError, OSError) as exc:
-            last = str(getattr(exc, "reason", exc))
+            dernier_statut, dernier_motif = exc.code, (exc.reason or "réponse HTTP d'erreur")
+            if est_dernier:
+                return {"url": url, "status": dernier_statut, "method": method, "note": dernier_motif}
             continue
-    return {"url": url, "status": 0, "method": "GET", "note": f"injoignable : {last}"}
+        except (urllib.error.URLError, OSError) as exc:
+            dernier_statut, dernier_motif = 0, str(getattr(exc, "reason", exc))
+            if est_dernier:
+                return {"url": url, "status": 0, "method": method,
+                        "note": f"injoignable : {dernier_motif}"}
+            continue
+    return {"url": url, "status": dernier_statut, "method": methodes[-1], "note": dernier_motif}
