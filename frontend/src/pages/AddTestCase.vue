@@ -57,6 +57,16 @@ const error = ref('')
 const jobId = ref('')
 let timer: number | undefined
 
+// ── Succès PARTIEL (2026-09-13) : certains cas peuvent échouer (ex. `dry_run_stalled` sur une
+// interaction que la bibliothèque de steps ne couvre pas encore) SANS faire échouer le lot —
+// `resume_generation` rend alors `status: "done"` (les cas réussis existent bel et bien) avec
+// `error` renseigné pour lister lesquels ont échoué et pourquoi. Avant ce correctif, ce cas
+// précis redirigeait EN SILENCE vers la liste des cas — `job.error` était lu nulle part sur ce
+// chemin — laissant croire que TOUT avait réussi alors que certains cas manquaient (constaté sur
+// SauceDemo : 12 cas demandés, 3 en échec `dry_run_stalled`, aucune indication à l'écran).
+const casReussis = ref(0)
+const avertissementPartiel = ref('')
+
 // ── Section cible, choisie AVANT la génération (étape 3bis) ───────────────────────────────────
 // Même patron exact que le Module : `-2` = « nouvelle section » (distinct de NOUVEAU, qui vaut
 // -1 et désigne un nouveau MODULE), obligatoire, réinitialisée si le module change (une Section
@@ -229,12 +239,22 @@ function poll() {
         deplies.value = new Set()
         etape.value = 'metier'
       } else if (job.status === 'done' && job.case_ids.length) {
-        // N cas générés mais PAS relus : on retourne à la liste, jamais directement à
-        // l'exécution — un seul cas ne mérite plus sa propre redirection dédiée (§9).
         // ⚠️ Cette page crée des cas en appelant l'API directement (hors couche `lib/donnees.ts`
         // pour la génération elle-même) : sans cette invalidation, l'arbre du shell (qui lit en
         // cache) restait périmé après une génération — écart constaté le 2026-08-06.
         qc.invalidateQueries({ queryKey: cles.projet(pid) })
+        if (job.error) {
+          // Succès PARTIEL : des cas existent, mais pas tous ceux demandés. On le DIT — rester
+          // sur cet écran, jamais rediriger en silence comme si tout s'était bien passé.
+          // `etape` doit avancer explicitement à 'gherkin' : rien d'autre ne le fait sur ce
+          // chemin (`addCase` → `poll()` direct, sans passer par `validerMetier()`).
+          etape.value = 'gherkin'
+          casReussis.value = job.case_ids.length
+          avertissementPartiel.value = job.error
+          return
+        }
+        // N cas générés mais PAS relus : on retourne à la liste, jamais directement à
+        // l'exécution — un seul cas ne mérite plus sa propre redirection dédiée (§9).
         router.push({ name: 'cases', params: { pid: pid.value }, query: { module: String(moduleId.value) } })
       } else {
         etape.value = 'form'
@@ -298,6 +318,17 @@ async function validerMetier() {
 
 // Abandonner à la pause : aucun cas n'a été créé, il n'y a donc rien à nettoyer.
 function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } }) }
+
+// Depuis le résumé de succès PARTIEL : les cas réussis existent déjà (invalidés plus haut), il
+// ne reste qu'à y aller — pas de nouvelle logique, le même trajet que le succès complet.
+function voirLesCas() {
+  router.push({ name: 'cases', params: { pid: pid.value }, query: { module: String(moduleId.value) } })
+}
+
+// Les échecs sont listés séparés par « ; » (`generation_service._record_generation_cost` et la
+// boucle de `resume_generation`) — une ligne par cas en échec, pour un affichage plus lisible
+// qu'un seul paragraphe compact.
+const echecsPartiels = computed(() => avertissementPartiel.value.split('; ').filter(Boolean))
 </script>
 
 <template>
@@ -506,6 +537,29 @@ function abandonner() { router.push({ name: 'cases', params: { pid: pid.value } 
     </template>
 
     <!-- ══════════ 3. L'ÉCRITURE DES TESTS ══════════ -->
+    <template v-else-if="avertissementPartiel">
+      <!-- Succès PARTIEL (2026-09-13) : des cas existent, mais pas tous — jamais rediriger en
+           silence comme si la totalité avait réussi (voir le commentaire dans `poll()`). -->
+      <p class="mt-1 text-sm text-muted-foreground">
+        <strong class="text-foreground">{{ casReussis }} cas</strong> sur {{ nbCasRetenus }}
+        ont été créés avec leur test technique. Les autres n'ont pas pu être générés :
+      </p>
+      <ul class="mt-4 space-y-2">
+        <li v-for="(echec, i) in echecsPartiels" :key="i"
+            class="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+          {{ echec }}
+        </li>
+      </ul>
+      <p class="mt-3 text-xs text-muted-foreground">
+        Ces cas ne sont PAS perdus : reprenez-les depuis « Ajouter un cas de test » avec la même
+        spécification, ou une version simplifiée de l'étape qui a bloqué.
+      </p>
+      <div class="mt-6">
+        <Button type="button" variant="primary" @click="voirLesCas">
+          Voir les {{ casReussis }} cas créés
+        </Button>
+      </div>
+    </template>
     <template v-else>
       <p class="mt-1 text-sm text-muted-foreground">
         Écriture des {{ nbCasRetenus }} tests techniques à partir des cas que vous venez de valider.

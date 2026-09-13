@@ -152,6 +152,26 @@ describe('AddTestCase — la pause métier (0022 n°5, étendue au §9, à PLAT 
       expect.objectContaining({ name: 'cases', params: { pid: '1' }, query: { module: '1' } }))
   })
 
+  it('un succès PARTIEL (des cas en échec) ne redirige JAMAIS en silence', async () => {
+    // ⚠️ Bug réel constaté sur SauceDemo (2026-09-13) : `resume_generation` peut rendre
+    // `status: "done"` avec des cas réussis ET un `error` listant ceux qui ont échoué
+    // (`dry_run_stalled`) — avant ce correctif, cet écran redirigeait vers la liste SANS jamais
+    // lire `job.error` sur ce chemin, laissant croire à un succès total.
+    const w = await jusquAuJob({
+      status: 'done', case_ids: [1, 2, 3], cases: null,
+      error: '« Cas A » : dry_run_stalled; « Cas B » : dry_run_stalled',
+    })
+
+    expect(push).not.toHaveBeenCalled()
+    expect(w.text()).toContain('3 cas')
+    expect(w.text()).toContain('Cas A')
+    expect(w.text()).toContain('Cas B')
+
+    await w.findAll('button').find((b) => b.text().includes('Voir les'))!.trigger('click')
+    expect(push).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'cases', params: { pid: '1' }, query: { module: '1' } }))
+  })
+
   it('affiche l\'erreur et rend la main quand la génération échoue', async () => {
     const w = await jusquAuJob({ status: 'failed', case_ids: [], cases: null,
                                 error: 'le document métier rendu est incomplet' })

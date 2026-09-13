@@ -127,6 +127,19 @@ _ODOO_PASSWORD = os.environ.get("ODOO_PASSWORD", "admin")
 # garde exactement le comportement d'avant cette variable.
 _CONNECTOR_TYPE = os.environ.get("TESTPILOT_CONNECTOR_TYPE", "odoo")
 
+# ⚠️ Connexion du connecteur `web` générique (bug SauceDemo, 2026-09-13) — posées par
+# `runtime_env.project_env()` / `BehaveRunner._subprocess_env` (`WEB_URL`/`WEB_USER`/
+# `WEB_PASSWORD`, déjà câblées côté runner) mais JAMAIS lues ici avant ce correctif : aucun
+# step de `generic/` n'avait de quoi naviguer vers l'application testée. Le navigateur restait
+# sur `about:blank` toute la durée du scénario, et l'IA détournait un step de clic d'onglet
+# (`j'accède à la section "…" du portail`, pensé pour un portail DÉJÀ chargé) en le prenant pour
+# une navigation initiale — capture d'écran finale entièrement blanche, échec sur l'assertion
+# finale plutôt que sur la vraie cause. Voir `steps_library/generic/_generic_steps.py` pour le
+# step qui les consomme.
+_WEB_URL      = os.environ.get("WEB_URL", "")
+_WEB_USER     = os.environ.get("WEB_USER", "")
+_WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
+
 
 def _doit_ouvrir_session_odoo(connector_type: str) -> bool:
     """Un projet sans backend Odoo (ex. connecteur `web` générique) ferait échouer TOUT
@@ -172,6 +185,11 @@ def before_all(context):
     context.odoo_db       = _ODOO_DB
     context.odoo_user     = _ODOO_USER
     context.odoo_password = _ODOO_PASSWORD
+    # Connecteur `web` générique (bug SauceDemo, 2026-09-13) — voir le commentaire sur
+    # `_WEB_URL` ci-dessus. Vide par défaut : un run Odoo (ou hors API) n'en a jamais besoin.
+    context.web_url      = _WEB_URL
+    context.web_user     = _WEB_USER
+    context.web_password = _WEB_PASSWORD
     # Projet du run (§2bis) : le résolveur déterministe s'en sert pour charger le bon annuaire.
     # Posé par BehaveRunner dans l'environnement du sous-processus ; absent hors run piloté.
     _pid = os.environ.get("TESTPILOT_PROJECT_ID")

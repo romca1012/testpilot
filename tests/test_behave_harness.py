@@ -52,6 +52,48 @@ def test_la_session_odoo_ne_s_ouvre_que_pour_le_connecteur_odoo():
     assert mod._doit_ouvrir_session_odoo(None) is True  # idem, variable absente
 
 
+def test_before_all_expose_web_url_pour_le_connecteur_generique(monkeypatch):
+    """⚠️ Bug SauceDemo (2026-09-13) : `WEB_URL`/`WEB_USER`/`WEB_PASSWORD` sont posées par
+    `BehaveRunner._subprocess_env` (via `runtime_env.project_env`) depuis toujours, mais
+    `environment.py` ne les lisait jamais — aucun step `generic/` n'avait de quoi naviguer vers
+    l'application. `context.web_url` (le pendant générique de `context.odoo_url`) doit être
+    rempli depuis ces variables d'environnement."""
+    monkeypatch.setenv("WEB_URL", "https://www.saucedemo.com")
+    monkeypatch.setenv("WEB_USER", "standard_user")
+    monkeypatch.setenv("WEB_PASSWORD", "secret_sauce")
+    mod = _load_environment()
+
+    class _Ctx:
+        pass
+
+    ctx = _Ctx()
+    mod.before_all(ctx)
+
+    assert ctx.web_url == "https://www.saucedemo.com"
+    assert ctx.web_user == "standard_user"
+    assert ctx.web_password == "secret_sauce"
+
+
+def test_before_all_web_url_vide_par_defaut_zero_regression(monkeypatch):
+    """GARDE NÉGATIVE : un run Odoo (ou hors API, qui ne pose jamais ces variables) ne doit
+    subir aucune régression — `context.web_url` existe mais reste vide, jamais `None` ni absent
+    (le step générique qui le lit teste sa valeur, pas sa présence)."""
+    monkeypatch.delenv("WEB_URL", raising=False)
+    monkeypatch.delenv("WEB_USER", raising=False)
+    monkeypatch.delenv("WEB_PASSWORD", raising=False)
+    mod = _load_environment()
+
+    class _Ctx:
+        pass
+
+    ctx = _Ctx()
+    mod.before_all(ctx)
+
+    assert ctx.web_url == ""
+    assert ctx.web_user == ""
+    assert ctx.web_password == ""
+
+
 _PROBE_FEATURE = """# language: fr
 Fonctionnalité: Sonde du harnais Behave
   Scénario: la bibliothèque et le shim résolvent

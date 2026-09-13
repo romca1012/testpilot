@@ -84,6 +84,27 @@ def step_no_error(context, kw1, kw2):
 _PRODUCT_PATHS = ("/description/", "/product/", "/detail/", "/formulaire-applicatif/")
 
 
+@given("j'accède à la page d'accueil de l'application")
+@when("j'accède à la page d'accueil de l'application")
+def step_access_home_page(context):
+    """Navigation INITIALE d'un connecteur `web` générique — le SEUL step qui charge une page
+    dans le navigateur avant toute interaction (bug SauceDemo, 2026-09-13).
+
+    ⚠️ **Pourquoi il fallait EXISTER, pas juste être appelé.** `context.page` démarre sur
+    `about:blank` (voir `environment.py::playwright_browser`) ; sans ce step, RIEN dans la
+    bibliothèque `generic/` ne charge jamais l'application. Avant ce step, l'IA détournait
+    « j'accède à la section "…" du portail » (pensé pour cliquer un ONGLET d'un portail
+    DÉJÀ chargé, pas pour naviguer) en lui passant "/" — sur une page blanche, ce clic
+    échoue ou ne fait rien, et le scénario continue à l'aveugle jusqu'à l'assertion finale,
+    qui échoue pour une raison qui n'a plus rien à voir avec la vraie cause.
+    """
+    if not context.web_url:
+        raise AssertionError(
+            "URL de l'application introuvable (WEB_URL absent) — vérifiez la connexion du "
+            "projet (adresse renseignée dans ses réglages).")
+    context.page.goto(context.web_url, wait_until="domcontentloaded")
+
+
 @given('je clique sur l\'onglet "{name}"')
 @when('je clique sur l\'onglet "{name}"')
 def step_click_portal_onglet(context, name):
@@ -120,6 +141,12 @@ def step_click_button_with_accessoires(context, label):
 @when('j\'accède à la section "{section_name}" du portail')
 @given('j\'accède à la section "{section_name}" du portail')
 def step_access_portal_section(context, section_name):
+    """Clique un ONGLET/lien d'un portail DÉJÀ CHARGÉ — ne navigue vers AUCUNE URL.
+
+    ⚠️ Jamais pour une navigation INITIALE (bug SauceDemo, 2026-09-13) : sur `about:blank`, ce
+    clic échoue à trouver quoi que ce soit. Utilisez « j'accède à la page d'accueil de
+    l'application » pour charger l'application pour la première fois.
+    """
     from playwright.sync_api import TimeoutError as PlaywrightTimeout
     try:
         context.page.get_by_text(section_name, exact=False).first.click(timeout=8000)
