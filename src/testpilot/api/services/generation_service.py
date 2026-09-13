@@ -332,6 +332,15 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
                         cost_usd=cout)
                     return
                 cases.append({**draft.as_dict(), "user_story": story.user_story})
+                # ⚠️ Pouls (2026-09-13, bug SauceDemo) : `GenerationJobRepo.get()` réputait un
+                # job "running" MORT (« le serveur a peut-être redémarré ») après
+                # `SEUIL_BLOQUE_SECONDES` (15 min) SANS LA MOINDRE écriture — or cette boucle
+                # n'écrivait rien avant sa toute fin. Une spec à beaucoup de cas dépassait
+                # légitimement ce délai (mesuré : 15 cas), et l'écran abandonnait alors que le
+                # job continuait réellement en fond — le job finissait « done » quelques minutes
+                # plus tard, mais plus personne ne regardait. Ce `maj()` sans argument ne touche
+                # que `updated_at` : le seuil protège maintenant CHAQUE cas, pas le lot entier.
+                GenerationJobRepo(conn).maj(job_id)
 
         total_cost = (analysis_tracker.total_cost + decoupage_tracker.total_cost
                      + metier_cost_total)
@@ -644,6 +653,7 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
             except DuplicateName as exc:
                 liberer_feature_slug(slug)
                 erreurs.append(f"« {case['title']} » : {exc}")
+                GenerationJobRepo(conn).maj(job_id)  # pouls — voir commentaire ci-dessous
                 continue
             except Exception as exc:
                 # ⚠️ Un cas ne doit JAMAIS pouvoir faire échouer TOUT le lot (mesuré le
@@ -655,6 +665,7 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                                  case["title"], job_id)
                 liberer_feature_slug(slug)
                 erreurs.append(f"« {case['title']} » : {exc}")
+                GenerationJobRepo(conn).maj(job_id)  # pouls — voir commentaire ci-dessous
                 continue
 
             # Le coût de CE cas (génération/Gherkin) lui est attribué directement — c'est le
@@ -673,6 +684,15 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                 erreurs.append(
                     f"« {case['title']} » : "
                     f"{result.error or result.stopped_reason or 'génération échouée'}")
+            # ⚠️ Pouls (2026-09-13, bug SauceDemo) : `GenerationJobRepo.get()` réputait un job
+            # "running" MORT (« le serveur a peut-être redémarré ») après SEUIL_BLOQUE_SECONDES
+            # (15 min) SANS LA MOINDRE écriture — or cette boucle n'écrivait rien avant sa toute
+            # fin. Une spec à beaucoup de cas (mesuré : 15) dépassait légitimement ce délai, et
+            # l'écran abandonnait alors que le job continuait réellement en fond — il finissait
+            # « done » quelques minutes plus tard, mais plus personne ne regardait. `maj()` sans
+            # argument ne touche que `updated_at` : le seuil protège maintenant CHAQUE cas, pas
+            # le lot entier.
+            GenerationJobRepo(conn).maj(job_id)
 
         # L'analyse partagée : une seule ligne orpheline, plutôt qu'une répartition arbitraire
         # entre les cas produits (voir docstring de `_record_generation_cost`).

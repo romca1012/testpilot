@@ -25,6 +25,7 @@ Ce que ces tests figent :
 """
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -170,6 +171,70 @@ def test_resume_generation_sur_un_projet_web_N_APPELLE_JAMAIS_odoo(conn, monkeyp
 
     assert appels_odoo == [], "OdooConnector ne doit JAMAIS être construit pour un projet web"
     assert appels_web == [1]
+
+
+def test_le_pouls_rafraichit_updated_at_apres_chaque_cas_pas_seulement_a_la_fin(conn, monkeypatch):
+    """⚠️ Le vrai bug qui a atteint `/dev` (2026-09-13) : `GenerationJobRepo.get()` réputait un
+    job "running" MORT (« le serveur a peut-être redémarré ») après SEUIL_BLOQUE_SECONDES
+    (15 min) SANS LA MOINDRE écriture — or `resume_generation` n'écrivait rien avant sa toute
+    fin. Une spec à 15 cas contre un site neuf dépassait légitimement ce délai : l'écran
+    abandonnait un job qui continuait pourtant réellement en fond, et finissait « done » quelques
+    minutes plus tard sans que personne ne le voie. Vieillit le job AVANT de lancer la boucle
+    (simule une passe métier déjà longue) : si le pouls fonctionne, `get()` ne doit JAMAIS
+    réputer le job mort pendant le traitement du deuxième cas, malgré ce vieillissement initial."""
+    from testpilot.generation import agent as agent_mod2
+    from testpilot.generation.state import GenerationResult
+    from testpilot.store.repositories import GenerationJobRepo
+
+    mid = _module(conn)
+    from testpilot.analysis import spec_analyzer as sa
+    monkeypatch.setattr(sa.SpecAnalyzer, "analyze_spec_content",
+                        lambda self, slug, content: _plan(content))
+    monkeypatch.setattr("testpilot.connectors.odoo.OdooConnector.from_project",
+                        lambda project: type("C", (), {"connect": lambda s: None,
+                                                       "disconnect": lambda s: None})())
+    monkeypatch.setattr("testpilot.execution.behave_runner.BehaveRunner", lambda **kw: object())
+
+    job_id = "job-pouls"
+    GenerationJobRepo(conn).creer(job_id, module_id=mid)
+
+    statut_vu_au_2e_cas = {}
+    reel_persist = agent_mod2.GenerationAgent._persist
+    appels = {"n": 0}
+
+    def faux_generate(self, plan, *, case_id=None, title="", author="", module_id=None,
+                      metier=None, group_id=None, projet=None, refs=""):
+        appels["n"] += 1
+        if appels["n"] == 1:
+            # Simule le TEMPS RÉELLEMENT ÉCOULÉ pendant la génération technique du premier cas
+            # (ex. 16 minutes sur un site neuf, sans bibliothèque de steps à réutiliser) — APRÈS
+            # le démarrage de la boucle, pas avant : c'est bien le scénario réel (un job qui
+            # avance légitimement lentement), pas un job mort avant même d'avoir commencé.
+            passe = (datetime.now(timezone.utc)
+                    - timedelta(seconds=GenerationJobRepo.SEUIL_BLOQUE_SECONDES + 60)).isoformat()
+            conn.execute("UPDATE generation_job SET updated_at=? WHERE id=?", (passe, job_id))
+            conn.commit()
+        if appels["n"] == 2:
+            # Le pouls du PREMIER cas (déclenché par `resume_generation` juste après ce
+            # vieillissement simulé) doit déjà avoir rafraîchi updated_at — get() ne doit donc
+            # PAS réputer le job mort ici.
+            statut_vu_au_2e_cas["status"] = GenerationJobRepo(conn).get(job_id)["status"]
+        result = GenerationResult(success=True, module_name=plan.module_name,
+                                  stopped_reason="done", dry_run_passed=True, iterations=1,
+                                  cost_usd=0.01, feature_content="# f", steps_content="# s",
+                                  spec_hash="h", awaiting_review=True)
+        reel_persist(self, plan, result, case_id=case_id, title=title, author=author,
+                    module_id=module_id, metier=metier, group_id=group_id, refs=refs)
+        return result
+
+    monkeypatch.setattr(agent_mod2.GenerationAgent, "generate", faux_generate)
+
+    _resume(conn, job_id, module_id=mid, title="Spec", spec_content="LE TEXTE", author="qa",
+           cases=[_cas("Cas A"), _cas("Cas B")])
+
+    assert statut_vu_au_2e_cas["status"] == "running", (
+        "le job a été déclaré mort en cours de route alors qu'il avançait réellement")
+    assert GenerationJobRepo(conn).get(job_id)["status"] == "done"
 
 
 # ── group_id choisi par l'utilisateur : aucune Section auto-créée ─────────────
