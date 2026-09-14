@@ -330,14 +330,18 @@ def test_laisser_vide_un_SELECT_choisit_son_option_vide():
 
 def test_un_select_SANS_option_vide_le_dit_clairement():
     """Sans option vide, le champ NE PEUT PAS être laissé vide. On le dit, plutôt que de laisser
-    une erreur de bas niveau qu'on diagnostiquerait en « champ introuvable »."""
+    une erreur de bas niveau qu'on diagnostiquerait en « champ introuvable ».
+
+    ⚠️ `ElementIntrouvableError`, pas `AssertionError` (correctif 2026-09-14, cas C45) : ce défaut
+    est TECHNIQUE (la forme du champ ne permet pas ce que le test demande), jamais une preuve que
+    l'application se comporte mal — voir `defect_taxonomy._EXCEPTION_TO_CAUSE`."""
     import _base_helpers as H
 
     page = _PageSelect(["paris", "lyon"])
     original = H.resolve_field_name
     H.resolve_field_name = lambda p, n: n
     try:
-        with pytest.raises(AssertionError, match="ne peut pas"):
+        with pytest.raises(H.ElementIntrouvableError, match="ne peut pas"):
             H.leave_field_empty(page, "agence")
     finally:
         H.resolve_field_name = original
