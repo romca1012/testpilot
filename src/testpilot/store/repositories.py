@@ -1912,6 +1912,10 @@ class RunRepo:
             f"SELECT id, title, last_execution_status, last_functional_status"
             f" FROM test_case WHERE id IN ({marqueurs})", ids)}
         derniers = ResultRepo(self.conn).derniers_du_run(run_id)
+        # « Qui supervise » ce cas dans CETTE campagne (2026-09-14, traçabilité — la table
+        # existait depuis la migration 25, rien ne la lisait). Même discipline que `derniers`
+        # ci-dessus : une requête pour TOUTE la campagne, jamais une par cas.
+        assignations = AssignmentRepo(self.conn).for_run(run_id)
 
         out = []
         for cid in ids:
@@ -1920,6 +1924,8 @@ class RunRepo:
                 continue  # supprimé entre les deux requêtes — on ne fabrique rien
             ligne = dict(case)
             ligne["result"] = derniers.get(cid)
+            assignation = assignations.get(cid)
+            ligne["assigned_to"] = (assignation or {}).get("assigned_to", "")
             out.append(ligne)
         return out
 
@@ -1963,6 +1969,62 @@ class RunRepo:
             sets.append("completed_at=?"); params.append(now_iso())
         params.append(run_id)
         self.conn.execute(f"UPDATE test_run SET {', '.join(sets)} WHERE id=?", params)
+        self.conn.commit()
+
+
+class AssignmentRepo:
+    """Qui SUPERVISE un cas dans une campagne (`run_case_assignment`, migration 25, 2026-08-04).
+
+    ⚠️ **Table créée depuis l'origine, mais jamais alimentée avant ce correctif (2026-09-14)** —
+    trouvé en auditant la traçabilité de l'application (inspiré de TestRail : chaque test d'un
+    run porte un « Assigné à »). L'écran affichait un « — » figé en le disant explicitement
+    dans son commentaire (`RunDetail.vue`).
+
+    ⚠️ **`assigned_to` reste du TEXTE LIBRE, pas une FK vers `user`** — même choix que
+    `created_by`/`triggered_by` partout ailleurs dans le projet : un compte supprimé plus tard
+    ne doit jamais effacer la trace de qui a été assigné (c'est justement ce que la
+    traçabilité protège). Le texte vient malgré tout des membres RÉELS du projet côté écran
+    (`ProjectMemberRepo`), jamais tapé à la main — le champ reste libre pour ne rien casser si
+    un membre quitte le projet entre-temps.
+
+    ⚠️ **Vaut pour un cas MANUEL comme AUTOMATIQUE** (demande explicite du porteur) : superviser
+    un résultat produit par une machine (relire, confirmer, investiguer un échec) est un geste
+    humain identique à celui de jouer un cas à la main — la table ne distingue pas les deux, la
+    campagne le fait déjà (`test_run.mode`).
+    """
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def get(self, run_id: int, case_id: int) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM run_case_assignment WHERE run_id=? AND case_id=?",
+            (run_id, case_id)).fetchone()
+        return dict(row) if row else None
+
+    def for_run(self, run_id: int) -> dict[int, dict]:
+        """Toutes les assignations d'une campagne, indexées par cas — UNE requête, jamais N
+        (même discipline que `ResultRepo.derniers_du_run`)."""
+        rows = _rows(self.conn.execute(
+            "SELECT * FROM run_case_assignment WHERE run_id=?", (run_id,)))
+        return {int(r["case_id"]): r for r in rows}
+
+    def set(self, run_id: int, case_id: int, *, assigned_to: str, assigned_by: str) -> None:
+        """Assigne (ou réassigne) — `ON CONFLICT` : une ligne par (run, cas), jamais un doublon
+        qui laisserait deviner laquelle fait foi."""
+        self.conn.execute(
+            "INSERT INTO run_case_assignment (run_id, case_id, assigned_to, assigned_by, assigned_at)"
+            " VALUES (?,?,?,?,?)"
+            " ON CONFLICT(run_id, case_id) DO UPDATE SET"
+            " assigned_to=excluded.assigned_to, assigned_by=excluded.assigned_by,"
+            " assigned_at=excluded.assigned_at",
+            (run_id, case_id, assigned_to, assigned_by, now_iso()))
+        self.conn.commit()
+
+    def clear(self, run_id: int, case_id: int) -> None:
+        """Retire l'assignation — jamais une ligne « assigné à rien », son absence EST le fait."""
+        self.conn.execute(
+            "DELETE FROM run_case_assignment WHERE run_id=? AND case_id=?", (run_id, case_id))
         self.conn.commit()
 
 

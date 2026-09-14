@@ -234,6 +234,14 @@ export const api = {
     request<ResultOut>(`/api/runs/${runId}/cases/${caseId}/results`, {
       method: 'POST', body: JSON.stringify(body),
     }),
+  // ── « Assigné à » : qui SUPERVISE ce cas DANS cette campagne (2026-09-14) ──
+  // Marche pour une campagne manuelle COMME automatique (contrairement à addResult) — superviser
+  // un résultat de machine est le même geste humain que jouer un cas à la main. `assigned_to: ''`
+  // retire l'assignation, même route qu'assigner (pas de DELETE séparé).
+  setAssignment: (runId: number | string, caseId: number | string, assigned_to: string) =>
+    request<AssignmentOut>(`/api/runs/${runId}/cases/${caseId}/assignment`, {
+      method: 'PUT', body: JSON.stringify({ assigned_to }),
+    }),
   // ── Pièces jointes d'un résultat (2026-08-05) ── TOUJOURS après `addResult` : la preuve
   // visuelle d'un test manuel est optionnelle, jamais une condition pour enregistrer le résultat.
   // multipart — `files` répété une fois par fichier, exactement ce qu'attend
@@ -614,6 +622,12 @@ export interface RunCaseResult {
   result_at: string
   /** Statut de lecture calculé par le SERVEUR (un statut manuel court-circuite la dérivation). */
   statut: string
+  /** Qui SUPERVISE ce cas DANS cette campagne (2026-09-14, traçabilité — inspiré de TestRail).
+   *  '' = personne assigné, jamais un nom deviné. Vaut pour un cas manuel comme automatique. */
+  assigned_to: string
+}
+export interface AssignmentOut {
+  case_id: number; assigned_to: string; assigned_by: string; assigned_at: string
 }
 export interface RunDetail {
   run: RunSummary; description: string; refs: string; cases: RunCaseResult[]

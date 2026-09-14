@@ -28,7 +28,10 @@
 // leur ordre et leurs couleurs ne sont écrits qu'à un seul endroit, `lib/status.ts`.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, roleSuffisant, type RunDetail as RunDetailDto, type RunCaseResult, type PlanOut } from '../lib/api'
+import {
+  api, roleSuffisant, type RunDetail as RunDetailDto, type RunCaseResult, type PlanOut,
+  type ProjectMember,
+} from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useSession } from '../lib/useSession'
 import { libelleActeur, testStatusMeta, TEST_STATUS_ORDER, type TestStatusCode } from '../lib/status'
@@ -72,6 +75,48 @@ async function chargerPlans() {
   try { plansDuProjet.value = await api.listPlans(pid.value) } catch { plansDuProjet.value = [] }
 }
 onMounted(chargerPlans)
+
+// ── « Assigné à » : qui SUPERVISE ce cas DANS cette campagne (2026-09-14) ────────────────────
+// ⚠️ La table `run_case_assignment` existait depuis la migration 25 (2026-08-04) sans jamais
+// être alimentée — inspiré de TestRail. Choisi parmi les membres RÉELS du projet (jamais tapé
+// à la main), et ça marche pour une campagne automatique COMME manuelle : superviser un résultat
+// de machine est le même geste humain que jouer un cas à la main.
+const membresDuProjet = ref<ProjectMember[]>([])
+async function chargerMembres() {
+  try { membresDuProjet.value = await api.listProjectMembers(pid.value) }
+  catch { membresDuProjet.value = [] }
+}
+onMounted(chargerMembres)
+
+// Un cas peut rester assigné à quelqu'un qui a depuis quitté le projet (le champ reste du texte
+// libre — voir `AssignmentRepo`, back-end) : on l'ajoute quand même à la liste plutôt que de le
+// faire disparaître silencieusement du sélecteur d'un nom qui, lui, n'a pas disparu de la base.
+function optionsAssignation(assignedTo: string): ProjectMember[] {
+  if (!assignedTo || membresDuProjet.value.some((m) => m.username === assignedTo)) {
+    return membresDuProjet.value
+  }
+  return [...membresDuProjet.value,
+          { user_id: -1, username: assignedTo, email: '', role: '', status: 'removed', created_at: '' }]
+}
+
+const assignationEnCours = ref<number | null>(null)
+async function assignerCas(caseId: number, assignedTo: string) {
+  if (!detail.value) return
+  assignationEnCours.value = caseId
+  // Optimiste : l'écran reflète le choix tout de suite, sans attendre le rechargement complet —
+  // une confirmation instantanée compte plus ici qu'une source de vérité à la milliseconde près.
+  const cas = detail.value.cases.find((c) => c.id === caseId)
+  const avant = cas?.assigned_to ?? ''
+  if (cas) cas.assigned_to = assignedTo
+  try {
+    await api.setAssignment(runId.value, caseId, assignedTo)
+  } catch (e: any) {
+    if (cas) cas.assigned_to = avant  // échec : on revient à ce qui était vraiment enregistré
+    window.alert(e?.message || 'Assignation impossible.')
+  } finally {
+    assignationEnCours.value = null
+  }
+}
 function ouvrirPlanPicker() {
   showPlanPicker.value = true
   chargerPlans()
@@ -536,10 +581,20 @@ async function resultatAjoute() {
                 @click="openCase(c)">
               <td class="py-3 pl-1 font-bold tabular-nums whitespace-nowrap text-muted-foreground">C{{ c.id }}</td>
               <td class="py-3 px-2.5 text-primary group-hover:underline leading-snug">{{ c.title }}</td>
-              <!-- « Assigné à » : la table `run_case_assignment` existe, RIEN ne l'alimente encore.
-                   On écrit « — » plutôt que d'inventer un nom — une colonne vide qui dit vrai vaut
-                   mieux qu'une colonne remplie qui ment. -->
-              <td v-if="colonneVisible('assigne')" class="py-3 px-2.5 text-muted-foreground">—</td>
+              <!-- « Assigné à » : qui SUPERVISE ce cas dans cette campagne (2026-09-14, inspiré
+                   de TestRail) — choisi parmi les membres RÉELS du projet, jamais tapé à la main.
+                   Lecture seule pour qui n'a pas le droit de modifier (même seuil que « + Résultat »). -->
+              <td v-if="colonneVisible('assigne')" class="py-3 px-2.5" @click.stop>
+                <select v-if="peutModifier && !archived" :value="c.assigned_to"
+                        :disabled="assignationEnCours === c.id"
+                        :aria-label="`Assigné à — ${c.title}`"
+                        class="w-full rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm hover:border-border hover:bg-surface-raised focus:border-primary focus:bg-surface-raised outline-none disabled:opacity-50"
+                        @change="assignerCas(c.id, ($event.target as HTMLSelectElement).value)">
+                  <option value="">Non assigné</option>
+                  <option v-for="m in optionsAssignation(c.assigned_to)" :key="m.user_id" :value="m.username">{{ m.username }}</option>
+                </select>
+                <span v-else class="text-muted-foreground">{{ c.assigned_to || '—' }}</span>
+              </td>
               <!-- Le MODE avant le statut : on lit « comment ça a été obtenu » puis « ce que ça
                    vaut ». L'inverse laisserait le statut s'imposer seul, ce qu'il ne doit jamais faire. -->
               <td v-if="colonneVisible('mode')" class="py-3 px-2.5">

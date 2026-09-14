@@ -562,6 +562,22 @@ class RunCaseResult(BaseModel):
     result_at: str = ""
     # Voir `statut` de CaseSummary : calculé par le serveur, jamais redérivé à l'écran.
     statut: str = "untested"
+    # Qui SUPERVISE ce cas dans CETTE campagne (2026-09-14, traçabilité — inspiré de TestRail).
+    # `""` = personne assigné, jamais un nom deviné. Vaut pour un cas manuel comme automatique.
+    assigned_to: str = ""
+
+
+class AssignmentIn(BaseModel):
+    """`""` retire l'assignation — même convention que `comment`/`refs` ailleurs : une chaîne
+    vide EST la valeur « rien », pas un champ à ignorer."""
+    assigned_to: str = ""
+
+
+class AssignmentOut(BaseModel):
+    case_id: int
+    assigned_to: str = ""
+    assigned_by: str = ""
+    assigned_at: str = ""
 
 
 class ResultIn(BaseModel):

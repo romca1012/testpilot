@@ -17,7 +17,9 @@ from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import attachment_service, campaign_service
 from testpilot.guardrails import durable_jobs
-from testpilot.store.repositories import CaseRepo, ProjectRepo, ResultRepo, RunRepo
+from testpilot.store.repositories import (
+    AssignmentRepo, CaseRepo, ProjectRepo, ResultRepo, RunRepo,
+)
 from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE, MODES_EXECUTION, STATUTS_MANUELS
 
 router = APIRouter(tags=["runs"])
@@ -146,7 +148,8 @@ def get_run(run_id: int, conn=Depends(get_conn)):
             # Un cas SANS résultat dans ce run est « non testé » — même règle que partout
             # ailleurs, calculée au même endroit. Un statut saisi À LA MAIN court-circuite la
             # dérivation : c'est le seul moyen d'intégrer un constat humain sans inventer de mesure.
-            statut=statut_de_test(ex, fo, manuel)))
+            statut=statut_de_test(ex, fo, manuel),
+            assigned_to=c.get("assigned_to", "") or ""))
     cibles = repo.cibles_du_run(run_id)
     return schemas.RunDetailOut(
         run=_summary(run, len(cases)), description=run.get("description", ""),
@@ -267,6 +270,33 @@ def add_result(run_id: int, case_id: int, body: schemas.ResultIn, request: Reque
     ligne = ResultRepo(conn).dernier(run_id, case_id)
     return _result_out(ligne if ligne and ligne["id"] == resultat_id else {"id": resultat_id,
                        "mode": MODE_MANUELLE, "statut_manuel": body.statut})
+
+
+# ── « Assigné à » : QUI SUPERVISE un cas dans cette campagne (2026-09-14) ────────────────────
+# ⚠️ La table `run_case_assignment` existe depuis la migration 25 (2026-08-04) mais rien ne
+# l'alimentait — trouvé en auditant la traçabilité de l'application (inspiré de TestRail).
+# Vaut pour un cas MANUEL comme AUTOMATIQUE (demande explicite du porteur) : superviser un
+# résultat de machine (relire, investiguer un échec) est le même geste humain que jouer un cas
+# à la main — aucune restriction de mode ici, contrairement à `add_result`.
+
+@router.put("/api/runs/{run_id}/cases/{case_id}/assignment", response_model=schemas.AssignmentOut,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "run_id", access.project_id_depuis_run))])
+def set_assignment(run_id: int, case_id: int, body: schemas.AssignmentIn, request: Request,
+                   conn=Depends(get_conn)):
+    """Assigne (ou réassigne) un cas à quelqu'un dans cette campagne — `assigned_to` vide retire
+    l'assignation, même geste qu'une suppression, une seule route plutôt que deux."""
+    _cas_de_campagne(conn, run_id, case_id)  # campagne inconnue / archivée / cas absent → refuse
+    cible = body.assigned_to.strip()
+    repo = AssignmentRepo(conn)
+    if not cible:
+        repo.clear(run_id, case_id)
+        return schemas.AssignmentOut(case_id=case_id)
+    repo.set(run_id, case_id, assigned_to=cible, assigned_by=access.utilisateur_de(request))
+    ligne = repo.get(run_id, case_id) or {}
+    return schemas.AssignmentOut(
+        case_id=case_id, assigned_to=ligne.get("assigned_to", cible),
+        assigned_by=ligne.get("assigned_by", ""), assigned_at=ligne.get("assigned_at", ""))
 
 
 # ── Les PIÈCES JOINTES d'un résultat (2026-08-05) ────────────────────────────────────────────
