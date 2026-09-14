@@ -1059,15 +1059,23 @@ def validation_error_inline(page):
     l'application à tort d'un défaut qui était le nôtre — précisément ce que le porteur a demandé
     de traquer (« une incapacité de notre app de pouvoir bien tester », pas un vrai défaut).
 
-    `role="alert"` est le signal WAI-ARIA STANDARD pour ce cas d'usage (« un message important et
-    bref vient d'apparaître ») — utile à N'IMPORTE QUELLE application accessible, pas seulement à
-    celle mesurée ici. On le vérifie en premier ; le motif Odoo reste en repli, PRÉSERVÉ tel quel,
-    pour les formulaires du website builder qui n'utilisent pas cet attribut.
+    ⚠️ **Une seule appli corrigée ne prouve rien de générique** (rappel explicite du porteur,
+    2026-09-14) : la suite de conformité (`tests/conformance/`) a rejoué ce même contrôle contre
+    une SECONDE appli réelle, différente — the-internet.herokuapp.com/login, qui affiche son
+    erreur en `<div class="flash error">Your username is invalid!</div>`, **sans AUCUN `role`**.
+    `role="alert"` seul aurait donc échoué là aussi. D'où trois signaux, du plus universel au plus
+    étroit :
+    1. `[role="alert"]` — le standard WAI-ARIA (SauceDemo) ;
+    2. une classe qui NOMME explicitement une erreur — `.error` (the-internet), `.alert-danger` /
+       `.is-invalid` (Bootstrap, conventions très répandues) ;
+    3. le motif Odoo `s_website_form_field.o_has_error`, PRÉSERVÉ tel quel.
+    Volontairement PAS `.alert` seul (sans qualificatif) : une appli Bootstrap l'emploie aussi pour
+    un succès ou une info — le confondre ferait passer un test qui n'a RIEN vu d'un refus.
     """
-    alertes = page.locator('[role="alert"]')
-    for i in range(min(alertes.count(), 5)):
+    candidats = page.locator('[role="alert"], .error, .alert-danger, .is-invalid')
+    for i in range(min(candidats.count(), 8)):
         try:
-            if alertes.nth(i).is_visible():
+            if candidats.nth(i).is_visible():
                 return
         except Exception:
             continue  # un élément qui disparaît entre le compte et la lecture : on continue
@@ -1084,7 +1092,12 @@ def validation_error_notification(page):
 
 
 def no_error_with_keywords(page, keyword1, keyword2):
-    error_elements = page.locator(".alert-danger, .o_notification.border-danger, .text-danger")
+    """⚠️ `[role="alert"]` ajouté (2026-09-14, garde anti-régression) : les trois autres
+    sélecteurs sont déjà génériques (`.alert-danger`/`.text-danger`, convention Bootstrap
+    répandue) SAUF `.o_notification.border-danger` — Odoo, mais vérifié EN PLUS des autres,
+    jamais comme seul chemin (contrairement au bug d'origine de `validation_error_inline`)."""
+    error_elements = page.locator(
+        '[role="alert"], .alert-danger, .o_notification.border-danger, .text-danger')
     for i in range(error_elements.count()):
         error_text = error_elements.nth(i).inner_text().lower()
         assert keyword1.lower() not in error_text and keyword2.lower() not in error_text, \

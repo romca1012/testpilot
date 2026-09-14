@@ -8,9 +8,14 @@ classe CSS du website builder Odoo. SauceDemo affiche pourtant l'erreur attendue
 par ce contrôle. Le cas C37 (formulaire de connexion vide, refus attendu ET obtenu) passait en
 `failed`, accusant l'application d'un défaut qui était en réalité le nôtre.
 
+⚠️ **Une appli corrigée ne prouve pas la généricité** — rejoué contre une SECONDE appli réelle
+(the-internet.herokuapp.com/login, `tests/conformance/`), qui affiche son erreur en
+`<div class="flash error">`, SANS AUCUN `role`. D'où trois signaux, du plus universel au plus
+étroit : `role="alert"`, une classe qui NOMME une erreur (`.error`/`.alert-danger`/`.is-invalid`),
+le motif Odoo en dernier repli.
+
 Ces tests figent la LOGIQUE de reconnaissance (jamais un site réel dans une suite pytest — trop
-lent, trop fragile) : `role="alert"` d'abord (signal WAI-ARIA standard, utile à toute application
-accessible), le motif Odoo ensuite en repli — préservé, jamais supprimé.
+lent, trop fragile ; la preuve contre les vraies applications vit dans `tests/conformance/`).
 """
 
 from __future__ import annotations
@@ -24,6 +29,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime"
 
 from _base_helpers import validation_error_inline
 
+_SELECTEUR_GENERIQUE = '[role="alert"], .error, .alert-danger, .is-invalid'
+
 
 class _FauxElement:
     def __init__(self, visible: bool):
@@ -33,9 +40,10 @@ class _FauxElement:
         return self._visible
 
 
-class _FauxLocatorAlertes:
-    """`page.locator('[role="alert"]')` — une liste d'éléments, visibles ou non, dans l'ordre où
-    Playwright les rendrait (le `.nth(i)` de `validation_error_inline` en dépend)."""
+class _FauxLocatorCandidats:
+    """`page.locator('[role="alert"], .error, .alert-danger, .is-invalid')` — une liste
+    d'éléments, visibles ou non, dans l'ordre où Playwright les rendrait (le `.nth(i)` de
+    `validation_error_inline` en dépend)."""
 
     def __init__(self, visibilites: tuple[bool, ...]):
         self._visibilites = visibilites
@@ -53,13 +61,13 @@ class _FauxLocatorOdoo:
 
 
 class _FaussePage:
-    def __init__(self, *, alertes: tuple[bool, ...] = (), odoo_visible: bool = False):
-        self._alertes = alertes
+    def __init__(self, *, candidats: tuple[bool, ...] = (), odoo_visible: bool = False):
+        self._candidats = candidats
         self._odoo_visible = odoo_visible
 
     def locator(self, selector):
-        if selector == '[role="alert"]':
-            return _FauxLocatorAlertes(self._alertes)
+        if selector == _SELECTEUR_GENERIQUE:
+            return _FauxLocatorCandidats(self._candidats)
         if "s_website_form_field" in selector:
             return _FauxLocatorOdoo(self._odoo_visible)
         raise AssertionError(f"sélecteur inattendu : {selector}")
@@ -67,30 +75,37 @@ class _FaussePage:
 
 def test_un_role_alert_visible_est_reconnu_meme_sans_aucune_classe_odoo():
     """Le cas SauceDemo C37, reproduit : aucune classe Odoo nulle part, un `role=alert` visible."""
-    page = _FaussePage(alertes=(True,))
+    page = _FaussePage(candidats=(True,))
+    validation_error_inline(page)   # ne doit PAS lever
+
+
+def test_une_classe_flash_error_sans_aucun_role_est_reconnue():
+    """Le cas the-internet.herokuapp.com, reproduit : `<div class="flash error">`, sans `role` —
+    couvert par le même sélecteur combiné (`.error`), pas par `role="alert"`."""
+    page = _FaussePage(candidats=(True,))
     validation_error_inline(page)   # ne doit PAS lever
 
 
 def test_le_motif_odoo_reste_reconnu_en_repli():
     """Le comportement d'AVANT ce correctif ne doit pas régresser sur Odoo."""
-    page = _FaussePage(alertes=(), odoo_visible=True)
+    page = _FaussePage(candidats=(), odoo_visible=True)
     validation_error_inline(page)   # ne doit PAS lever
 
 
-def test_un_role_alert_present_mais_invisible_ne_suffit_pas():
-    """Un `role=alert` dans le DOM mais caché (ex. un gabarit de toast jamais affiché) ne doit
+def test_un_candidat_present_mais_invisible_ne_suffit_pas():
+    """Un élément candidat dans le DOM mais caché (ex. un gabarit de toast jamais affiché) ne doit
     pas faire passer un formulaire qui n'a RIEN montré."""
-    page = _FaussePage(alertes=(False,), odoo_visible=False)
+    page = _FaussePage(candidats=(False,), odoo_visible=False)
     with pytest.raises(AssertionError, match="Aucune erreur de validation visible"):
         validation_error_inline(page)
 
 
-def test_le_premier_alert_invisible_n_empeche_pas_de_voir_le_second():
-    page = _FaussePage(alertes=(False, True))
+def test_le_premier_candidat_invisible_n_empeche_pas_de_voir_le_second():
+    page = _FaussePage(candidats=(False, True))
     validation_error_inline(page)   # ne doit PAS lever
 
 
 def test_aucune_erreur_nulle_part_leve_toujours():
-    page = _FaussePage(alertes=(), odoo_visible=False)
+    page = _FaussePage(candidats=(), odoo_visible=False)
     with pytest.raises(AssertionError, match="Aucune erreur de validation visible"):
         validation_error_inline(page)
