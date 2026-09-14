@@ -28,6 +28,7 @@ from testpilot.store.repositories import (
     RepairRepo,
     ResultRepo,
     ReviewRepo,
+    VersionRepo,
     now_iso,
 )
 from testpilot.verdict import defect_origin as do
@@ -132,6 +133,32 @@ def resolve_connector_type(conn, case_id: int) -> str | None:
     return (project_du_cas(conn, case_id) or {}).get("connector_type")
 
 
+def _assurer_script_sur_disque(conn, version_id: int, module_name: str) -> None:
+    """Réécrit le `.feature`/`_steps.py` de CETTE version sur disque avant de l'exécuter.
+
+    ⚠️ **Bug réel constaté le 2026-09-14** : 15/15 cas SauceDemo revenus « difficulté technique —
+    le test n'a pas pu démarrer » sur /dev, alors que leur Gherkin/steps restait intact EN BASE.
+    Cause : `BehaveRunner` lit le script SUR DISQUE, jamais depuis la base (`GENERATED_DIR`,
+    cf. son propre commentaire) — ce que `CaseRepo.copier`/`update_version` (`repositories.py`)
+    savent déjà et compensent en réécrivant le fichier à CHAQUE écriture de version. Mais
+    `GENERATED_DIR` (`behave_runtime/generated/`) vit HORS du volume persistant
+    (`testpilot-data:/var/lib/testpilot`, `compose.production.yml`) et le Dockerfile le recrée
+    VIDE à chaque build — un simple redéploiement (`deploy-dev.yml` tourne après CHAQUE CI verte
+    sur master) efface donc silencieusement tous les cas déjà générés, jusqu'à leur prochaine
+    régénération ou édition manuelle. La RE-exécution d'un cas déjà généré (run normal, campagne,
+    planification) n'avait, elle, aucun filet : on l'ajoute ici, au point d'entrée commun à toutes
+    ces voies. Idempotent — sans coût si le fichier existe déjà à l'identique.
+    """
+    version = VersionRepo(conn).get(version_id)
+    feature_content = (version or {}).get("feature_content") or ""
+    if not feature_content.strip():
+        return  # cas sans Gherkin généré : rien à réécrire, le runner le dira lui-même
+    config.GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    (config.GENERATED_DIR / f"{module_name}.feature").write_text(feature_content, encoding="utf-8")
+    (config.GENERATED_DIR / f"{module_name}_steps.py").write_text(
+        version.get("steps_content") or "", encoding="utf-8")
+
+
 def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int, *,
                   triggered_by: str = "") -> None:
     """Tâche de fond : lance Behave réel, calcule + persiste le verdict à deux axes.
@@ -148,6 +175,7 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
     conn = None
     try:
         conn = get_initialized_db()
+        _assurer_script_sur_disque(conn, version_id, module_name)
         # Le runtime tape l'application DU PROJET du cas (décision 0005).
         runner = BehaveRunner(connection=resolve_connection(conn, case_id),
                               project_id=resolve_project_id(conn, case_id),
