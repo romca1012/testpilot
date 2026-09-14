@@ -35,6 +35,9 @@ class _FauxElement:
         # `fill_field` ne lit que tagName puis .type sur cet élément — un input texte simple.
         return "input" if "tagName" in script else "text"
 
+    def wait_for(self, **kw):
+        pass  # `locate_field` : le champ existe déjà (`.first` pointe directement dessus)
+
     def fill(self, value):
         if self._leve_fill:
             raise RuntimeError("widget qui refuse .fill() (simulation)")

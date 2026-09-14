@@ -110,6 +110,8 @@ class _FauxLocatorFichier:
     def __init__(self): self.first = self
     def set_input_files(self, chemin): pass
     def evaluate(self, script, *a): return "file" if "type" in script else "input"
+    def count(self): return 1  # `locate_field` : le champ existe par son attribut `name`
+    def wait_for(self, **kw): pass
 
 
 class _FauxPageFichier:

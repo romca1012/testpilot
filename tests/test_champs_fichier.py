@@ -53,6 +53,12 @@ class _FauxLocator:
         # `fill_field` interroge le locator pour le tag puis le type de l'élément.
         return "input" if "tagName" in script else self.input_type
 
+    def count(self):
+        return 1  # `locate_field` : le champ existe par son attribut `name`, tel quel
+
+    def wait_for(self, **kw):
+        pass
+
 
 class _FauxPage:
     """Simule un `<input type="file">`. `page.evaluate` = l'ANCIEN chemin fautif (écriture JS)."""
@@ -60,6 +66,7 @@ class _FauxPage:
     def __init__(self, input_type="file"):
         self.input_type = input_type
         self.journal: list = []
+        self.url = "https://exemple.test/formulaire"
 
     def wait_for_selector(self, *a, **kw): pass
     def locator(self, sel): return _FauxLocator(self.journal, self.input_type)

@@ -114,11 +114,18 @@ class _Locator:
     def evaluate(self, script, *a): return self.type_reel
     def set_input_files(self, chemin): self.journal.append(("upload", chemin))
 
+    def count(self):
+        return 1  # `locate_field` : le champ existe par son attribut `name`, tel quel
+
+    def wait_for(self, **kw):
+        pass
+
 
 class _Page:
     def __init__(self, type_reel):
         self.journal: list = []
         self.type_reel = type_reel
+        self.url = "https://exemple.test/formulaire"
 
     def wait_for_selector(self, *a, **kw): pass
     def locator(self, sel): return _Locator(self.journal, self.type_reel)

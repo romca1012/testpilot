@@ -735,10 +735,19 @@ def select_option_strict(select_locator, value, field=""):
 
 
 def fill_field(page, name, value):
-    name = resolve_field_name(page, name)
+    # ⚠️ `locate_field` (cascade name → data-test(id) → classe CSS → libellé → placeholder)
+    # remplace ici `resolve_field_name` (name → libellé SEULEMENT) — étape 2 du plan de
+    # généricité (2026-09-14, après `select_field_value`) : un champ TEXTE, SELECT ou CASE À
+    # COCHER sans `name` (convention Odoo, cf. `locate_field`) est maintenant trouvé, puisque les
+    # branches ci-dessous agissent sur l'élément RÉSOLU (`el`), jamais sur une reconstruction
+    # `[name=...]`. Seuls le repli JS du texte et le groupe de radios (exigence du HTML : tous ses
+    # membres PARTAGENT `name`, ce n'est pas une convention Odoo) restent `name`-based ci-dessous —
+    # limite assumée, pas un oubli.
+    champ = locate_field(page, name, timeout=10000)
+    if champ.count() == 0:
+        raise ElementIntrouvableError(f"Champ '{name}' introuvable sur {page.url}")
+    el = champ.first
     safe = value.replace("\\", "\\\\").replace("'", "\\'")
-    page.wait_for_selector(f'[name="{name}"]', timeout=10000, state="attached")
-    el = page.locator(f'[name="{name}"]').first
     tag = el.evaluate("el => el.tagName.toLowerCase()")
     input_type = el.evaluate("el => (el.type || '').toLowerCase()")
     if tag == "select":
@@ -980,8 +989,12 @@ def attach_file(page, name, value=""):
     else:
         chemin.write_text("Fichier de test TestPilot.\n", encoding="utf-8")
 
-    page.wait_for_selector(f'[name="{name}"]', timeout=10000, state="attached")
-    cible = page.locator(f'[name="{name}"]').first
+    # `locate_field` (voir `fill_field`/`select_field_value`) — un champ fichier identifié
+    # SANS `name` (data-test, classe CSS, libellé) est désormais trouvé aussi.
+    champ = locate_field(page, name, timeout=10000)
+    if champ.count() == 0:
+        raise ElementIntrouvableError(f"Champ '{name}' introuvable sur {page.url}")
+    cible = champ.first
 
     # ⚠️ Refuser TOUT DE SUITE une cible qui n'est pas un champ fichier (2026-07-22).
     # Mesuré sur `/sinistre_client` : `info_sinistre_ids` est une CASE À COCHER dont le nom évoque
