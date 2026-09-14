@@ -576,6 +576,7 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
     les cas sur leur propre enveloppe automatique (`CaseRepo.create`) plutôt que d'échouer — validé
     UNE SEULE FOIS ici, pas cas par cas.
     """
+    import concurrent.futures
     import dataclasses
 
     from testpilot.analysis.spec_analyzer import SpecAnalyzer
@@ -587,31 +588,21 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
     from testpilot.store.repositories import CaseGroupRepo, ProjectRepo, VersionRepo
 
     conn = get_initialized_db()
-    connector = None
     try:
         module = ModuleRepo(conn).get(module_id)
         project = ProjectRepo(conn).get(module["project_id"]) if module else None
-
-        # Génération ET dry-run tapent l'application DU PROJET du module (décision 0005).
-        # ⚠️ `build_connector`, jamais `OdooConnector` en dur (bug SauceDemo, 2026-09-11) : voir
-        # `connectors/factory.py` pour le mécanisme complet du bug et son correctif.
-        connector = build_connector(project)
-        connector.connect()
-        runner = BehaveRunner(connection=project_env(project),
-                              project_id=(project or {}).get("id"),
-                              connector_type=(project or {}).get("connector_type"))
 
         # L'analyse est refaite ici, UNE SEULE FOIS pour toute la spec (partagée par tous les cas) :
         # elle alimente l'agent en matière technique (modèles, routes, champs requis) que le
         # document métier ne porte pas, et un `TestPlan` n'est pas sérialisable dans le job. Son
         # coût est réel, il est compté avec le reste — comme orpheline (voir plus bas) : aucun cas
         # particulier ne « paie » pour une analyse partagée par tous.
+        # ⚠️ Aucun connecteur ouvert ICI (2026-09-14) : l'analyse est du texte pur (LLM), et
+        # chaque cas ouvre désormais LE SIEN, en parallèle — voir plus bas. Un connecteur partagé
+        # ouvert ici, jamais utilisé, aurait juste gaspillé un navigateur pour rien.
         analysis_tracker = CostTracker()
         plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(
             slugify(title), spec_content)
-
-        agent = GenerationAgent(dry_runner=runner, connector=connector,
-                                case_repo=CaseRepo(conn), version_repo=VersionRepo(conn))
 
         # La Section est celle CHOISIE PAR L'UTILISATEUR avant la génération — plus aucune
         # création automatique ici (voir docstring). Invalide ou disparue entre-temps (Section
@@ -626,73 +617,103 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                                   "chacun dans sa propre enveloppe")
                 group_id = None
 
-        case_ids: list[int] = []
-        erreurs: list[str] = [erreur_section] if erreur_section else []
-        for case in cases:
-            # ⚠️ Budget PAR CAS, pas cumulé sur tout le lot (audit 2026-08-07, B2, bloquant) :
-            # `agent.cost_tracker` était créé UNE FOIS avant la boucle et réutilisé pour chaque
-            # cas — `total_cost` grossissait donc d'un cas à l'autre jusqu'à dépasser
-            # `COST_LIMIT_PER_RUN_USD` (0,50 $ par défaut), après quoi TOUS les cas suivants du
-            # lot échouaient en cascade dès leur premier appel, indépendamment de leur propre
-            # coût — et le coût cumulé du lot entier était attribué au ledger du cas qui avait
-            # fait déborder le plafond (double comptage). Chaque cas doit repartir avec son
-            # propre budget, comme en génération mono-cas.
-            agent.cost_tracker = CostTracker()
-            # Chaque cas d'une même spec a besoin de son PROPRE fichier `.feature` : l'analyse
-            # est partagée (`plan`), mais `module_name` (qui nomme le fichier) doit être
-            # distinct par cas — d'où la copie du plan avec un slug propre à ce cas.
-            slug = unique_feature_slug(conn, slugify(case["title"]))
-            case_plan = dataclasses.replace(plan, module_name=slug)
-            metier = {"title": case["title"], "preconditions": case["preconditions"],
-                     "steps": case["steps"], "expected_result": case["expected_result"]}
+        # ⚠️ Cas traités EN PARALLÈLE, bornés (2026-09-14, mesure réelle : 15 cas contre un site
+        # neuf ont dépassé 10 minutes en séquentiel — deux exécutions locales confirmées). Chaque
+        # cas est INDÉPENDANT (son propre fichier `.feature`, son propre budget de coût) : les
+        # traiter en même temps ne change RIEN au résultat produit, seulement le temps total.
+        #
+        # `connector`/`agent`/`conn` du dessus restent réservés à la préparation partagée
+        # (analyse, validation de la Section) — jamais partagés ENTRE deux cas concurrents : un
+        # ``sqlite3.Connection``/``psycopg`` n'est pas sûr à utiliser depuis deux threads à la
+        # fois, et un ``Connector`` porte une session Playwright propre à un seul fil d'exécution
+        # (voir `_run_in_browser`, thread dédié). Chaque tâche ci-dessous construit donc SA
+        # PROPRE connexion et SON PROPRE connecteur — le seul état vraiment partagé et dangereux,
+        # `unique_feature_slug`, a déjà son verrou (`_SLUGS_VERROU`) depuis l'origine.
+        #
+        # Doc officielle Playwright (`BrowserContext` — playwright.dev/python/docs/api/class-browser)
+        # : plusieurs sessions isolées peuvent tourner sur un seul navigateur physique via des
+        # contextes séparés, bien moins coûteux qu'un navigateur par cas — piste de raffinement
+        # future si le nombre de cas simultanés grandit ; un connecteur par tâche suffit ici.
+        def _traiter_un_cas(case: dict) -> dict:
+            conn_tache = get_initialized_db()
+            connecteur_tache = None
             try:
-                result = agent.generate(case_plan, group_id=group_id, metier=metier,
-                                        module_id=module_id, title=case["title"],
-                                        author=author, projet=project,
-                                        refs=case.get("user_story", ""))
-            except DuplicateName as exc:
-                liberer_feature_slug(slug)
-                erreurs.append(f"« {case['title']} » : {exc}")
-                GenerationJobRepo(conn).maj(job_id)  # pouls — voir commentaire ci-dessous
-                continue
-            except Exception as exc:
-                # ⚠️ Un cas ne doit JAMAIS pouvoir faire échouer TOUT le lot (mesuré le
-                # 2026-08-05) : les cas précédents de cette boucle sont déjà persistés en
-                # base au moment où celui-ci plante — les perdre de vue parce qu'un cas
-                # SUIVANT échoue techniquement serait pire que signaler ce seul échec et
-                # continuer avec les autres.
-                logger.exception("[generation] cas « %s » (job %s) en échec technique",
-                                 case["title"], job_id)
-                liberer_feature_slug(slug)
-                erreurs.append(f"« {case['title']} » : {exc}")
-                GenerationJobRepo(conn).maj(job_id)  # pouls — voir commentaire ci-dessous
-                continue
+                connecteur_tache = build_connector(project)
+                connecteur_tache.connect()
+                runner_tache = BehaveRunner(connection=project_env(project),
+                                            project_id=(project or {}).get("id"),
+                                            connector_type=(project or {}).get("connector_type"))
+                agent_tache = GenerationAgent(dry_runner=runner_tache, connector=connecteur_tache,
+                                              case_repo=CaseRepo(conn_tache),
+                                              version_repo=VersionRepo(conn_tache),
+                                              cost_tracker=CostTracker())
+                # Chaque cas d'une même spec a besoin de son PROPRE fichier `.feature` : l'analyse
+                # est partagée (`plan`), mais `module_name` (qui nomme le fichier) doit être
+                # distinct par cas — d'où la copie du plan avec un slug propre à ce cas.
+                slug = unique_feature_slug(conn_tache, slugify(case["title"]))
+                case_plan = dataclasses.replace(plan, module_name=slug)
+                metier = {"title": case["title"], "preconditions": case["preconditions"],
+                         "steps": case["steps"], "expected_result": case["expected_result"]}
+                try:
+                    result = agent_tache.generate(case_plan, group_id=group_id, metier=metier,
+                                                  module_id=module_id, title=case["title"],
+                                                  author=author, projet=project,
+                                                  refs=case.get("user_story", ""))
+                except DuplicateName as exc:
+                    liberer_feature_slug(slug)
+                    return {"erreur": f"« {case['title']} » : {exc}"}
+                except Exception as exc:
+                    # ⚠️ Un cas ne doit JAMAIS pouvoir faire échouer TOUT le lot (mesuré le
+                    # 2026-08-05) : les autres cas de ce lot sont traités indépendamment — les
+                    # perdre de vue parce que CELUI-CI plante serait pire que signaler ce seul
+                    # échec et laisser les autres aboutir.
+                    logger.exception("[generation] cas « %s » (job %s) en échec technique",
+                                     case["title"], job_id)
+                    liberer_feature_slug(slug)
+                    return {"erreur": f"« {case['title']} » : {exc}"}
 
-            # Le coût de CE cas (génération/Gherkin) lui est attribué directement — c'est le
-            # seul poste dépensé APRÈS que le cas existe, donc le seul qu'on peut lui imputer
-            # sans arbitraire.
-            _record_generation_cost(conn, case_id=result.case_id,
-                                    generation_usd=result.cost_usd)
+                # Le coût de CE cas (génération/Gherkin) lui est attribué directement — c'est le
+                # seul poste dépensé APRÈS que le cas existe, donc le seul qu'on peut lui imputer
+                # sans arbitraire.
+                _record_generation_cost(conn_tache, case_id=result.case_id,
+                                        generation_usd=result.cost_usd)
 
-            if result.success and result.case_id:
-                _auto_approuver(conn, result.case_id, result.version_id)
-                case_ids.append(result.case_id)
-            else:
+                if result.success and result.case_id:
+                    _auto_approuver(conn_tache, result.case_id, result.version_id)
+                    return {"case_id": result.case_id}
                 # Le cas n'a pas été persisté avec ce slug (génération arrêtée avant la fin) :
                 # le rendre disponible, sinon ce titre reste bloqué pour rien.
                 liberer_feature_slug(slug)
-                erreurs.append(
-                    f"« {case['title']} » : "
-                    f"{result.error or result.stopped_reason or 'génération échouée'}")
-            # ⚠️ Pouls (2026-09-13, bug SauceDemo) : `GenerationJobRepo.get()` réputait un job
-            # "running" MORT (« le serveur a peut-être redémarré ») après SEUIL_BLOQUE_SECONDES
-            # (15 min) SANS LA MOINDRE écriture — or cette boucle n'écrivait rien avant sa toute
-            # fin. Une spec à beaucoup de cas (mesuré : 15) dépassait légitimement ce délai, et
-            # l'écran abandonnait alors que le job continuait réellement en fond — il finissait
-            # « done » quelques minutes plus tard, mais plus personne ne regardait. `maj()` sans
-            # argument ne touche que `updated_at` : le seuil protège maintenant CHAQUE cas, pas
-            # le lot entier.
-            GenerationJobRepo(conn).maj(job_id)
+                return {"erreur": f"« {case['title']} » : "
+                        f"{result.error or result.stopped_reason or 'génération échouée'}"}
+            finally:
+                if connecteur_tache is not None:
+                    try:
+                        connecteur_tache.disconnect()
+                    except Exception:
+                        pass
+                conn_tache.close()
+
+        case_ids: list[int] = []
+        erreurs: list[str] = [erreur_section] if erreur_section else []
+        # Plafond partagé avec `MAX_CONCURRENT_JOBS` (convention déjà en place ailleurs dans le
+        # projet pour toute forme de parallélisme — cf. `guardrails/concurrency.py`) — jamais plus
+        # de fils que de cas à traiter.
+        concurrence = max(1, min(config.MAX_CONCURRENT_JOBS, len(cases)))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrence) as executor:
+            futures = [executor.submit(_traiter_un_cas, case) for case in cases]
+            for future in concurrent.futures.as_completed(futures):
+                resultat = future.result()
+                if "case_id" in resultat:
+                    case_ids.append(resultat["case_id"])
+                else:
+                    erreurs.append(resultat["erreur"])
+                # ⚠️ Pouls (2026-09-13, bug SauceDemo) : `GenerationJobRepo.get()` réputait un job
+                # "running" MORT (« le serveur a peut-être redémarré ») après SEUIL_BLOQUE_SECONDES
+                # (15 min) SANS LA MOINDRE écriture. `maj()` sans argument ne touche que
+                # `updated_at` : le seuil protège maintenant CHAQUE cas qui se termine, quel que
+                # soit l'ordre — pas le lot entier.
+                GenerationJobRepo(conn).maj(job_id)
 
         # L'analyse partagée : une seule ligne orpheline, plutôt qu'une répartition arbitraire
         # entre les cas produits (voir docstring de `_record_generation_cost`).
@@ -708,9 +729,6 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
         logger.exception("[generation] job %s (passe Gherkin) en échec : %s", job_id, exc)
         GenerationJobRepo(conn).maj(job_id, status="failed", error=str(exc)[:300])
     finally:
-        if connector is not None:
-            try:
-                connector.disconnect()
-            except Exception:
-                pass
+        # ⚠️ Aucun connecteur à fermer ICI (2026-09-14) : chaque tâche parallèle ouvre et ferme
+        # le sien (`_traiter_un_cas`, bloc `finally` interne) — rien ne survit à ce niveau.
         conn.close()

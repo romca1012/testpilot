@@ -31,12 +31,18 @@ def _champ(name, **kw):
 
 def test_le_step_d_intention_existe_dans_la_bibliotheque_et_le_catalogue():
     """Le LLM ne peut employer que ce qu'on lui montre (0003). Le step doit être au catalogue,
-    avec sa note qui dit qu'il est le chemin NOMINAL."""
+    avec sa note qui dit qu'il est le chemin NOMINAL.
+
+    ⚠️ Depuis le 2026-09-14 (bug SauceDemo), ce step est enregistré sous `@given` ET `@when` —
+    le prompt système autorise l'IA à l'enchaîner après un `Soit` comme après un `Quand` (`Et`
+    hérite du précédent). Le catalogue en rend donc DEUX entrées ; on vérifie qu'AU MOINS une
+    porte `when` (peu importe l'ordre), plutôt que de figer une position de liste."""
     steps = steps_library.catalogue()
     intention = [s for s in steps if s.label == _LABEL_INTENTION]
     assert intention, "le step d'intention n'est pas découvert dans la bibliothèque"
-    assert intention[0].keyword == "when"
-    assert "NOMINAL" in (intention[0].note or "").upper(), "sa note doit le désigner comme nominal"
+    assert {s.keyword for s in intention} >= {"given", "when"}
+    assert all("NOMINAL" in (s.note or "").upper() for s in intention), (
+        "sa note doit le désigner comme nominal, quelle que soit l'entrée")
 
 
 def test_le_prompt_recommande_le_step_d_intention_pour_creer():

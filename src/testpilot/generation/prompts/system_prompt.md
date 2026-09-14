@@ -222,6 +222,13 @@ Fonctionnalité: [Nom clair]
   Scénario: [Limite] — [description]
 ```
 
+⚠️ **`Fonctionnalité`, `Scénario`, `Contexte` : accents OBLIGATOIRES, toujours.** Ces mots sont des
+MOTS-CLÉS Gherkin (pas du texte libre) — `# language: fr` exige leur orthographe EXACTE.
+`Fonctionnalite` (sans accent) n'est reconnu par AUCUN mécanisme de tolérance : le fichier entier
+échoue à l'analyse (« No feature found »), un échec bien plus sévère et bien moins lisible qu'un
+step non défini. Cette règle ne s'applique QU'À ces mots-clés structurels — le reste du fichier
+(noms de variables Python dans `_steps.py`, identifiants) reste en ASCII comme d'habitude.
+
 ### Décorateurs — correspondance absolue
 | Gherkin | Python |
 |---|---|

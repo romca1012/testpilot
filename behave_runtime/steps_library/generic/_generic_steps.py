@@ -18,12 +18,25 @@ from _base_helpers import (
     wait_form_submission, force_name_field, remplir_formulaire_valide,
 )
 
+# ⚠️ Chaque step d'ACTION ci-dessous est déclaré sous `@given` ET `@when` (bug SauceDemo,
+# 2026-09-14) — jamais un seul. Le prompt système (`generation/prompts/system_prompt.md`,
+# tableau « Décorateurs — correspondance absolue ») dit lui-même à l'IA que `Et`/`Mais` HÉRITE
+# du type du step précédent : rien n'empêche (ni ne devrait empêcher) l'IA d'écrire
+# « Soit j'accède à la page d'accueil … / Et je renseigne le champ … » (chaîne au type Given)
+# aussi légitimement que « Quand je renseigne le champ … / Et … » (chaîne au type When). Avant
+# ce correctif, `je renseigne le champ`/`je clique sur le bouton`/etc. n'étaient enregistrés
+# qu'en `@when` : la première forme échouait en step UNDEFINED, un `dry_run_stalled` qui n'avait
+# rien à voir avec la vraie cause (mesuré : 9 cas sur 15 contre SauceDemo). Un step enregistré
+# deux fois ne perd rien : la fonction est la même, seul le mot-clé Gherkin qui l'invoque change.
 
+
+@given('je renseigne le champ "{field}" avec la valeur "{value}"')
 @when('je renseigne le champ "{field}" avec la valeur "{value}"')
 def step_fill(context, field, value):
     fill_field(context.page, field, value)
 
 
+@given('je remplis le formulaire de "{route}" avec des données valides')
 @when('je remplis le formulaire de "{route}" avec des données valides')
 def step_remplir_formulaire_valide(context, route):
     """Chemin NOMINAL (§2bis) : le déterministe remplit tout — le LLM ne nomme aucun champ.
@@ -32,6 +45,7 @@ def step_remplir_formulaire_valide(context, route):
     remplir_formulaire_valide(context, route)
 
 
+@given('je joins un fichier au champ "{field}"')
 @when('je joins un fichier au champ "{field}"')
 def step_attach(context, field):
     """Téléverse une pièce jointe de test dans un champ fichier (`<input type="file">`).
@@ -43,21 +57,25 @@ def step_attach(context, field):
     attach_file(context.page, field)
 
 
+@given('je sélectionne "{value}" dans le champ "{field}"')
 @when('je sélectionne "{value}" dans le champ "{field}"')
 def step_select(context, value, field):
     select_field_value(context.page, value, field)
 
 
+@given('je clique sur le bouton "{label}"')
 @when('je clique sur le bouton "{label}"')
 def step_click(context, label):
     click_button(context.page, label)
 
 
+@given('je laisse le champ "{field}" vide')
 @when('je laisse le champ "{field}" vide')
 def step_leave_empty(context, field):
     leave_field_empty(context.page, field)
 
 
+@given('je force le nom du ticket à "{value}"')
 @when('je force le nom du ticket à "{value}"')
 def step_force_name(context, value):
     force_name_field(context.page, value)
@@ -115,6 +133,7 @@ def step_click_portal_onglet(context, name):
     ], quoi=f"Onglet '{name}'")
 
 
+@given('je sélectionne le produit "{name}" dans la liste')
 @when('je sélectionne le produit "{name}" dans la liste')
 def step_select_product_in_list(context, name):
     click_first_actionable(context.page,
@@ -122,6 +141,7 @@ def step_select_product_in_list(context, name):
         quoi=f"Produit '{name}'")
 
 
+@given('je sélectionne le produit dans la liste contenant "{partial}"')
 @when('je sélectionne le produit dans la liste contenant "{partial}"')
 def step_select_product_partial(context, partial):
     # `:has-text` fait le « contient » (sous-chaîne, insensible à la casse) — plus tolérant que
@@ -131,6 +151,7 @@ def step_select_product_partial(context, partial):
         quoi=f"Produit contenant '{partial}'")
 
 
+@given('je clique sur le bouton "{label}" avec accessoires')
 @when('je clique sur le bouton "{label}" avec accessoires')
 def step_click_button_with_accessoires(context, label):
     click_first_actionable(context.page,

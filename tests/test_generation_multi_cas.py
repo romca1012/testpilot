@@ -181,7 +181,15 @@ def test_le_pouls_rafraichit_updated_at_apres_chaque_cas_pas_seulement_a_la_fin(
     abandonnait un job qui continuait pourtant réellement en fond, et finissait « done » quelques
     minutes plus tard sans que personne ne le voie. Vieillit le job AVANT de lancer la boucle
     (simule une passe métier déjà longue) : si le pouls fonctionne, `get()` ne doit JAMAIS
-    réputer le job mort pendant le traitement du deuxième cas, malgré ce vieillissement initial."""
+    réputer le job mort pendant le traitement du deuxième cas, malgré ce vieillissement initial.
+
+    ⚠️ Les cas sont désormais traités EN PARALLÈLE (2026-09-14, correctif de lenteur) : `conn`
+    (la connexion du TEST) ne doit JAMAIS être touchée depuis `faux_generate`, qui s'exécute dans
+    un thread ouvrier — sqlite refuse une connexion utilisée hors de son thread d'origine
+    (`sqlite3.InterfaceError`). On ouvre donc une connexion FRAÎCHE (même fichier, via
+    `config.DB_PATH` déjà pointé par la fixture) à chaque besoin, exactement comme le fait
+    `_traiter_un_cas` en production. La concurrence est bornée à 1 ici pour garder un ordre de
+    traitement déterministe (cas A puis cas B) — le pouls lui-même ne dépend pas de cet ordre."""
     from testpilot.generation import agent as agent_mod2
     from testpilot.generation.state import GenerationResult
     from testpilot.store.repositories import GenerationJobRepo
@@ -194,6 +202,7 @@ def test_le_pouls_rafraichit_updated_at_apres_chaque_cas_pas_seulement_a_la_fin(
                         lambda project: type("C", (), {"connect": lambda s: None,
                                                        "disconnect": lambda s: None})())
     monkeypatch.setattr("testpilot.execution.behave_runner.BehaveRunner", lambda **kw: object())
+    monkeypatch.setattr(config, "MAX_CONCURRENT_JOBS", 1)
 
     job_id = "job-pouls"
     GenerationJobRepo(conn).creer(job_id, module_id=mid)
@@ -212,13 +221,20 @@ def test_le_pouls_rafraichit_updated_at_apres_chaque_cas_pas_seulement_a_la_fin(
             # avance légitimement lentement), pas un job mort avant même d'avoir commencé.
             passe = (datetime.now(timezone.utc)
                     - timedelta(seconds=GenerationJobRepo.SEUIL_BLOQUE_SECONDES + 60)).isoformat()
-            conn.execute("UPDATE generation_job SET updated_at=? WHERE id=?", (passe, job_id))
-            conn.commit()
+            conn_frais = get_initialized_db(config.DB_PATH)
+            conn_frais.execute("UPDATE generation_job SET updated_at=? WHERE id=?",
+                               (passe, job_id))
+            conn_frais.commit()
+            conn_frais.close()
         if appels["n"] == 2:
             # Le pouls du PREMIER cas (déclenché par `resume_generation` juste après ce
             # vieillissement simulé) doit déjà avoir rafraîchi updated_at — get() ne doit donc
             # PAS réputer le job mort ici.
-            statut_vu_au_2e_cas["status"] = GenerationJobRepo(conn).get(job_id)["status"]
+            conn_frais = get_initialized_db(config.DB_PATH)
+            try:
+                statut_vu_au_2e_cas["status"] = GenerationJobRepo(conn_frais).get(job_id)["status"]
+            finally:
+                conn_frais.close()
         result = GenerationResult(success=True, module_name=plan.module_name,
                                   stopped_reason="done", dry_run_passed=True, iterations=1,
                                   cost_usd=0.01, feature_content="# f", steps_content="# s",

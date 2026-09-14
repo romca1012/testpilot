@@ -132,3 +132,42 @@ def test_dry_run_resout_bibliotheque_et_shim(tmp_path):
     assert not result.undefined_steps, f"steps non résolus : {result.undefined_steps}"
     assert not result.ambiguous_steps, f"steps ambigus : {result.ambiguous_steps}"
     assert result.success, f"dry-run échoué (rc={result.returncode})\n{result.raw_stderr}"
+
+
+# ── Steps d'action enregistrés sous « Soit » ET « Quand » (bug SauceDemo, 2026-09-14) ─────────
+# ⚠️ Le prompt système dit lui-même à l'IA que `Et` HÉRITE du type du step précédent — rien
+# n'empêche « Soit j'accède à la page d'accueil … / Et je renseigne le champ … » (chaîne au type
+# Given) d'être aussi légitime que « Quand je renseigne … / Et … » (chaîne au type When). Avant
+# ce correctif, les steps d'action de `generic/_generic_steps.py` n'étaient enregistrés qu'en
+# `@when` : la première forme échouait en step UNDEFINED — un `dry_run_stalled` sans rapport avec
+# la vraie cause (mesuré en conditions réelles : 9 cas sur 15 contre SauceDemo).
+
+_FEATURE_CHAINE_DEPUIS_SOIT = """# language: fr
+Fonctionnalité: Connexion chaînée depuis un Given (bug SauceDemo)
+  Scénario: la chaîne Soit puis Et doit résoudre les steps génériques
+    Soit j'accède à la page d'accueil de l'application
+    Et je renseigne le champ "user-name" avec la valeur "standard_user"
+    Et je renseigne le champ "password" avec la valeur "secret_sauce"
+    Et je clique sur le bouton "Login"
+"""
+
+
+def test_les_steps_generiques_resolvent_aussi_chaines_depuis_un_given(tmp_path):
+    """⚠️ Reproduit EXACTEMENT le bug SauceDemo : avant le correctif, ce dry-run rapportait
+    3 steps `undefined` (renseigner deux champs + cliquer), tous chaînés depuis un `Soit`."""
+    generated = tmp_path / "generated"
+    generated.mkdir()
+    (generated / "chaine_given.feature").write_text(_FEATURE_CHAINE_DEPUIS_SOIT, encoding="utf-8")
+    (generated / "chaine_given_steps.py").write_text("", encoding="utf-8")
+
+    runner = BehaveRunner(
+        runtime_dir=config.BEHAVE_RUNTIME_DIR,
+        generated_dir=generated,
+        steps_library_dir=config.STEPS_LIBRARY_DIR,
+        connector_type="web",
+    )
+    result = runner.dry_run("chaine_given")
+
+    assert not result.undefined_steps, f"steps non résolus : {result.undefined_steps}"
+    assert not result.ambiguous_steps, f"steps ambigus : {result.ambiguous_steps}"
+    assert result.success, f"dry-run échoué (rc={result.returncode})\n{result.raw_stderr}"
