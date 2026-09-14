@@ -505,6 +505,86 @@ def resolve_field_name(page, ident):
     return ident  # ni name ni libellé exploitable : on laisse échouer en aval (message d'origine)
 
 
+def locate_field(page, ident, *, timeout=8000):
+    """Résout un champ vers un `Locator` DIRECTEMENT utilisable — remplace, pour les appelants qui
+    n'ont besoin QUE de l'élément (pas de reconstruire un sélecteur combiné derrière), la stratégie
+    `resolve_field_name` (`name` d'abord, seul repli : le libellé humain).
+
+    ⚠️ **Cascade alignée sur la doc officielle Playwright/Testing Library** (recherche 2026-09-14,
+    demandée par le porteur) : « privilégier les attributs qui reflètent la façon dont
+    l'utilisateur ET les technologies d'assistance perçoivent la page » — `name`/classe CSS sont
+    explicitement déconseillés en dernier recours seulement dans la hiérarchie officielle,
+    `data-test`/`data-testid` juste avant. Odoo a besoin de `name` pour sa soumission de
+    formulaire classique côté serveur ; une SPA moderne (React, Vue…) n'a souvent AUCUNE raison
+    d'en poser un sur un contrôle qui ne soumet rien (filtre, tri) — d'où les bugs réels mesurés
+    cette session (cas C39 : le tri du catalogue SauceDemo n'a ni `name` ni libellé, seulement
+    une classe CSS et un `data-test` ; cas C45 : mécanisme voisin sur la sélection de produit).
+
+    ⚠️ **Adaptation délibérée, pas copie aveugle de la hiérarchie officielle** : celle-ci vise un
+    humain qui écrit un test en pensant « ce que je VOIS » (rôle, libellé, texte, EN PREMIER).
+    Ici, `ident` est un identifiant TECHNIQUE extrait par l'agent depuis l'annuaire crawlé —
+    « l'attribut HTML `name`, cas nominal » (0007). Le tenter d'abord comme un libellé humain
+    irait chercher une correspondance approximative avant d'essayer la correspondance technique
+    EXACTE, presque toujours disponible et strictement plus fiable pour CE cas d'usage. L'ordre
+    retenu essaie donc les identifiants TECHNIQUES exacts d'abord (`name`, `data-test`,
+    `data-testid`, classe CSS), et ne se rabat sur une interprétation « libellé humain » qu'en
+    dernier recours — exactement ce que `resolve_field_name` faisait déjà pour `name` seul (0007),
+    étendu ici aux conventions modernes sans `name` du tout.
+
+    Chaque résolution qui n'est PAS un `name` exact reste **tracée**, jamais silencieuse (0007/§5) :
+    un champ retrouvé par repli aujourd'hui peut disparaître demain sans que rien ne le dise.
+
+    ⚠️ **Attend, ne lit jamais `count()` à l'instant t** (même défaut que `click_first_actionable`
+    avant son propre correctif, cf. sa docstring) : un `wait_for(state="attached")` par palier,
+    jamais une lecture DOM instantanée qui perdrait la course sur un champ rendu en JS après coup.
+
+    Rend un `Locator` — potentiellement VIDE (`count() == 0`) si rien n'a matché après tous les
+    paliers : à l'appelant de décider comment échouer (message nommant le champ et l'URL, cf.
+    `ElementIntrouvableError`), comme il le faisait déjà avec le `name` brut rendu par
+    `resolve_field_name`.
+    """
+    candidats_techniques = [f'[name="{ident}"]', f'[data-test="{ident}"]',
+                            f'[data-testid="{ident}"]']
+    # La classe CSS seulement si `ident` est un identifiant CSS valide — un libellé humain avec
+    # espaces produirait sinon un sélecteur INVALIDE, pas juste « rien trouvé » (même garde que
+    # le correctif C39 sur `select_field_value`, désormais partagée ici).
+    if re.fullmatch(r"[A-Za-z_-][A-Za-z0-9_-]*", ident):
+        candidats_techniques.append(f".{ident}")
+
+    # Un SEUL budget d'attente, partagé entre tous les candidats techniques — même esprit que
+    # `click_first_actionable` (un candidat qui timeout n'attend pas au détriment des suivants),
+    # mais ancré sur l'ATTACHEMENT au DOM (on veut TROUVER l'élément), pas l'actionnabilité.
+    try:
+        page.locator(", ".join(candidats_techniques)).first.wait_for(
+            state="attached", timeout=timeout)
+    except PlaywrightTimeout:
+        pass  # aucun candidat technique attaché à temps : on tente le libellé/placeholder ensuite
+    else:
+        for selecteur in candidats_techniques:
+            loc = page.locator(selecteur)
+            if loc.count() > 0:
+                if selecteur != f'[name="{ident}"]':
+                    message = f"champ '{ident}' introuvable par name ; résolu via `{selecteur}`."
+                    logger.warning("%s %s", FIELD_FALLBACK_MARKER, message)
+                    _record_field_fallback(message)
+                return loc
+
+    for nom_repli, loc in (("libellé", page.get_by_label(ident, exact=False)),
+                           ("placeholder", page.get_by_placeholder(ident, exact=False))):
+        try:
+            loc.first.wait_for(state="attached", timeout=2000)
+        except PlaywrightTimeout:
+            continue
+        message = f"champ '{ident}' introuvable par attribut technique ; résolu via son {nom_repli}."
+        logger.warning("%s %s", FIELD_FALLBACK_MARKER, message)
+        _record_field_fallback(message)
+        return loc
+
+    # Rien trouvé : rend le premier candidat (vide) — l'appelant échoue avec SON message, qui
+    # nomme le champ et l'URL (comportement inchangé pour le cas "vraiment introuvable").
+    return page.locator(candidats_techniques[0])
+
+
 class ElementIntrouvableError(Exception):
     """Aucun élément actionnable trouvé pour l'action demandée (même famille que
     `InvalidOptionValueError`/`DonneeRefuseeError` ci-dessous — décision 0015, prolongée le
@@ -984,35 +1064,29 @@ def select_field_value(page, value, field):
     `select_option_strict` lit les options d'abord : valeur OU libellé (le repli de `0007`, mais
     **tracé**, jamais muet), et sinon une erreur qui nomme les valeurs possibles.
     """
-    field = resolve_field_name(page, field)
-    # ⚠️ Un `<select>` qui sert de FILTRE (tri, recherche) n'a souvent AUCUN attribut `name` — ce
-    # n'est pas un champ de formulaire soumis, `name` ne lui sert à rien (bug réel, cas C39,
-    # SauceDemo, 2026-09-14 : `<select class="product_sort_container"
+    # ⚠️ `locate_field` (cascade name → data-test(id) → classe CSS → libellé) remplace ici la
+    # résolution `name`-seul de `resolve_field_name` — un `<select>` qui sert de FILTRE (tri,
+    # recherche) n'a souvent AUCUN attribut `name`, ce n'est pas un champ de formulaire soumis
+    # (bug réel, cas C39, SauceDemo, 2026-09-14 : `<select class="product_sort_container"
     # data-test="product-sort-container">`, sans `name` du tout — l'agent avait pourtant
-    # correctement identifié le contrôle par sa classe CSS, visible dans l'annuaire). `name` reste
-    # tenté en premier (le plus fiable, cf. `resolve_field_name`) ; `data-test`/`data-testid` (la
-    # convention la plus répandue pour un contrôle SANS `name`) et la classe CSS littérale suivent.
-    # La classe n'est essayée que si `field` est un identifiant CSS valide — sinon un libellé
-    # humain avec espaces produirait un sélecteur invalide, pas juste « rien trouvé ».
-    _classe = f", select.{field}" if re.fullmatch(r"[A-Za-z_-][A-Za-z0-9_-]*", field) else ""
-    selecteur_select = (
-        f"select[name='{field}'], select[data-test='{field}'], "
-        f"select[data-testid='{field}']{_classe}")
-    selecteur_radio = f"input[type='radio'][name='{field}'][value='{value}']"
-    select = page.locator(selecteur_select)
-    radio = page.locator(selecteur_radio)
-    # Ancré sur l'ÉLÉMENT : on attend que le select OU le radio soit présent, au lieu d'un `count()`
-    # instantané qui perd la course si le champ est rendu en JS. `count()` ne sert plus qu'à
-    # BRANCHER une fois le champ là (plus une course). Plus de `wait_for_timeout` fixe.
+    # correctement identifié le contrôle par sa classe CSS, visible dans l'annuaire).
+    champ = locate_field(page, field)
+    tag = champ.first.evaluate("el => el.tagName.toLowerCase()") if champ.count() > 0 else None
+
+    if tag == "select":
+        select_option_strict(champ.first, value, field=field)
+        return
+
+    # Pas de <select> : repli radio, `name` DÉLIBÉRÉMENT ICI (pas `locate_field`) — un groupe de
+    # radios PARTAGE le même `name` sur tous ses membres, une EXIGENCE du HTML pour que le
+    # navigateur les traite comme un seul groupe exclusif, pas une convention propre à Odoo.
+    radio = page.locator(f"input[type='radio'][name='{field}'][value='{value}']")
     try:
-        page.locator(f"{selecteur_select}, {selecteur_radio}").first.wait_for(
+        page.locator(f"input[type='radio'][name='{field}']").first.wait_for(
             state="attached", timeout=8000)
     except PlaywrightTimeout:
         raise ElementIntrouvableError(
             f"Champ select ou radio '{field}' introuvable sur {page.url} (valeur: '{value}')")
-    if select.count() > 0:
-        select_option_strict(select.first, value, field=field)
-        return
     if radio.count() > 0:
         radio.first.check(force=True)
         return

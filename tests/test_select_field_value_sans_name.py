@@ -1,17 +1,17 @@
-"""`select_field_value` ne trouvait un `<select>` que par son attribut `name` — bug réel cas C39
-(SauceDemo, 2026-09-14) : le menu de tri du catalogue (`<select class="product_sort_container"
-data-test="product-sort-container">`) n'a AUCUN attribut `name` — ce n'est pas un champ de
-formulaire soumis, juste un filtre d'affichage. Le step échouait TOUJOURS ; la capture montrait
-pourtant le tri déjà par défaut sur A-Z (SauceDemo), donnant l'illusion trompeuse d'un « tri qui
-ne fonctionne pas » alors que le tri n'avait jamais été DÉCLENCHÉ.
+"""`locate_field` — la résolution UNIFIÉE d'un champ, remplaçant les cascades ad hoc dispersées
+(bug réel cas C39, SauceDemo, 2026-09-14 : `select_field_value` ne trouvait un `<select>` que par
+son attribut `name`). Étape 1 du plan de généricité demandé par le porteur (recherche du
+2026-09-14, doc officielle Playwright/Testing Library) : une cascade UNIQUE, appliquée d'abord à
+`select_field_value` — le premier appelant migré.
 
-L'agent avait pourtant correctement nommé le contrôle : `product_sort_container` est très
-exactement sa classe CSS. `select_field_value` tente désormais, dans l'ordre : `name`, `data-test`,
-`data-testid`, puis la classe CSS littérale (seulement si `field` est un identifiant CSS valide —
-un libellé humain avec espaces ne doit jamais produire un sélecteur invalide).
+Le menu de tri du catalogue SauceDemo n'a AUCUN attribut `name` — ce n'est pas un champ de
+formulaire soumis, juste un filtre d'affichage (`<select class="product_sort_container"
+data-test="product-sort-container">`). `locate_field` tente, dans l'ordre : `name`, `data-test`,
+`data-testid`, la classe CSS littérale (seulement si syntaxiquement valide), puis le libellé et
+le placeholder — chaque repli étant TRACÉ (0007/§5), jamais silencieux.
 
 Preuve dynamique contre le vrai SauceDemo : `tests/test_conformite_connecteur_web.py`. Ces tests-ci
-verrouillent la LOGIQUE du repli (jamais un site réel dans une suite pytest).
+verrouillent la LOGIQUE de la cascade et de l'attente (jamais un site réel dans une suite pytest).
 """
 
 from __future__ import annotations
@@ -20,99 +20,147 @@ import sys
 from pathlib import Path
 
 import pytest
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"))
 
-from _base_helpers import ElementIntrouvableError, select_field_value  # noqa: E402
+from _base_helpers import (  # noqa: E402
+    ElementIntrouvableError, locate_field, select_field_value,
+)
 
 
-class _FauxOption:
-    def __init__(self, value, texte):
-        self.value, self.texte = value, texte
+class _FauxElement:
+    """Ce que `.first` rend sur un élément trouvé — assez pour `evaluate()` (tag ET options,
+    cette dernière lue par `select_option_strict`) ET `wait_for()` (paliers libellé/placeholder
+    de `locate_field`)."""
 
-
-class _FauxSelect:
-    def __init__(self, options):
-        self._options = options
+    def __init__(self, tag="select", options=(("az", "Name (A to Z)"), ("za", "Name (Z to A)"))):
+        self.tag = tag
+        self.options = options
         self.valeur_choisie = None
 
-    def evaluate(self, _script):
-        return [[o.value, o.texte] for o in self._options]
+    def evaluate(self, script):
+        if "tagName" in script:
+            return self.tag
+        if "options" in script:  # `select_option_strict._options_of`
+            return [list(o) for o in self.options]
+        return None
+
+    def wait_for(self, **_kw):
+        pass
 
     def select_option(self, value):
         self.valeur_choisie = value
 
-    def wait_for(self, **_kw):
-        pass  # existe déjà : rien à attendre dans ce faux
 
-
-class _FauxLocatorUnique:
-    """Un seul élément — celui qui existe VRAIMENT selon le test (name, data-test, ou classe)."""
-
-    def __init__(self, element=None):
-        self._element = element
-        self.first = element if element is not None else self
+class _FauxLocator:
+    def __init__(self, trouve: bool, element: _FauxElement | None = None):
+        self._trouve = trouve
+        self.first = element if (trouve and element is not None) else self
 
     def count(self):
-        return 1 if self._element is not None else 0
+        return 1 if self._trouve else 0
 
     def wait_for(self, **_kw):
-        if self._element is None:
-            from playwright.sync_api import TimeoutError as PlaywrightTimeout
+        if not self._trouve:
             raise PlaywrightTimeout("introuvable")
 
-
-class _FauxLocatorVide(_FauxLocatorUnique):
-    def __init__(self):
-        super().__init__(element=None)
+    def evaluate(self, _script):
+        # `.first` retombe ici quand rien n'a été trouvé (voir __init__) : jamais appelé en
+        # pratique côté production (toujours gardé par un `count() > 0`), présent pour la sûreté.
+        return None
 
 
 class _FaussePage:
-    """Un seul `<select>` réel, exposé UNIQUEMENT via l'attribut choisi par le test — les autres
-    sélecteurs CSS ne trouvent rien, comme sur la vraie page SauceDemo."""
+    """Simule SauceDemo : EXACTEMENT un sélecteur technique (ou un libellé/placeholder) existe —
+    les autres ne trouvent rien, comme sur la vraie page."""
 
-    def __init__(self, select, *, via: str):
-        self._select = select
-        self._via = via  # "name" | "data-test" | "data-testid" | "classe"
+    def __init__(self, *, selecteur_existant: str = "", via_libelle=False, via_placeholder=False,
+                 tag="select"):
+        self._selecteur_existant = selecteur_existant
+        self._via_libelle = via_libelle
+        self._via_placeholder = via_placeholder
         self.url = "https://exemple.test/catalogue"
+        self._element = _FauxElement(tag=tag)
+
+    def locator(self, selecteur):
+        trouve = bool(self._selecteur_existant) and self._selecteur_existant in selecteur
+        return _FauxLocator(trouve, element=self._element if trouve else None)
 
     def get_by_label(self, _texte, exact=False):
-        return _FauxLocatorVide()  # aucun <label> ici : resolve_field_name rend `ident` tel quel
+        return _FauxLocator(self._via_libelle, element=self._element)
 
-    def locator(self, selecteur: str):
-        cible = {
-            "name": "select[name='product_sort_container']",
-            "data-test": "select[data-test='product_sort_container']",
-            "data-testid": "select[data-testid='product_sort_container']",
-            "classe": "select.product_sort_container",
-        }[self._via]
-        if selecteur == cible:
-            return _FauxLocatorUnique(self._select)
-        if selecteur.startswith("input[type='radio']"):
-            return _FauxLocatorVide()
-        if "," in selecteur:  # le sélecteur combiné du `wait_for`
-            return _FauxLocatorUnique(self._select) if cible in selecteur else _FauxLocatorVide()
-        return _FauxLocatorVide()
+    def get_by_placeholder(self, _texte, exact=False):
+        return _FauxLocator(self._via_placeholder, element=self._element)
 
 
-@pytest.mark.parametrize("via", ["name", "data-test", "data-testid", "classe"])
-def test_le_select_est_trouve_quel_que_soit_l_attribut_qui_le_porte(via):
+# ── 1. `locate_field` — la cascade, isolée ─────────────────────────────────────
+
+@pytest.mark.parametrize("attribut,selecteur", [
+    ("name", "[name=\"product_sort_container\"]"),
+    ("data-test", "[data-test=\"product_sort_container\"]"),
+    ("data-testid", "[data-testid=\"product_sort_container\"]"),
+    ("classe CSS", ".product_sort_container"),
+])
+def test_locate_field_trouve_par_chaque_attribut_technique(attribut, selecteur):
     """Le cas C39 : SEULE la classe CSS existe sur le vrai SauceDemo — mais `name`/`data-test`/
     `data-testid` doivent continuer à marcher pour les applis qui, elles, les posent."""
-    select = _FauxSelect([_FauxOption("az", "Name (A to Z)"), _FauxOption("za", "Name (Z to A)")])
-    page = _FaussePage(select, via=via)
+    page = _FaussePage(selecteur_existant=selecteur)
 
-    select_field_value(page, "Name (A to Z)", "product_sort_container")
+    loc = locate_field(page, "product_sort_container")
 
-    assert select.valeur_choisie == "az"
+    assert loc.count() > 0, f"non trouvé via {attribut}"
+
+
+def test_repli_sur_le_libelle_si_aucun_attribut_technique():
+    page = _FaussePage(via_libelle=True)
+
+    loc = locate_field(page, "Trier par")
+
+    assert loc.count() > 0
+
+
+def test_repli_sur_le_placeholder_en_dernier_recours():
+    page = _FaussePage(via_placeholder=True)
+
+    loc = locate_field(page, "Rechercher")
+
+    assert loc.count() > 0
+
+
+def test_rien_trouve_nulle_part_rend_un_locator_vide_pas_une_exception():
+    """`locate_field` ne lève JAMAIS — à l'appelant de décider comment échouer (même contrat que
+    `resolve_field_name`, qui rendait `ident` inchangé plutôt que de lever)."""
+    page = _FaussePage()
+
+    loc = locate_field(page, "champ_fantome")
+
+    assert loc.count() == 0
 
 
 def test_un_identifiant_avec_espaces_n_essaie_jamais_la_classe_css():
     """Un libellé humain (« Trier par nom », espaces compris) ne doit jamais produire
-    `select.Trier par nom` — un sélecteur CSS invalide, qui échouerait pour une MAUVAISE raison."""
-    select = _FauxSelect([_FauxOption("az", "Name (A to Z)")])
-    page = _FaussePage(select, via="classe")
-    page._via = "classe"
+    `.Trier par nom` — un sélecteur CSS invalide, qui échouerait pour une MAUVAISE raison."""
+    page = _FaussePage(selecteur_existant=".Trier par nom")  # n'existe QUE sous cette forme invalide
 
-    with pytest.raises(ElementIntrouvableError):
-        select_field_value(page, "Name (A to Z)", "Trier par nom")
+    loc = locate_field(page, "Trier par nom")
+
+    assert loc.count() == 0  # jamais tenté comme classe : correctement introuvable
+
+
+# ── 2. `select_field_value` — le premier appelant migré ────────────────────────
+
+def test_select_field_value_trouve_un_select_SANS_name_via_sa_classe():
+    """Reproduit le cas C39 réel : un `<select>` identifié UNIQUEMENT par sa classe CSS."""
+    page = _FaussePage(selecteur_existant=".product_sort_container", tag="select")
+
+    select_field_value(page, "za", "product_sort_container")
+
+    assert page._element.valeur_choisie == "za"
+
+
+def test_select_field_value_sans_select_ni_radio_leve_element_introuvable():
+    page = _FaussePage()  # rien n'existe
+
+    with pytest.raises(ElementIntrouvableError, match="introuvable"):
+        select_field_value(page, "za", "champ_fantome")
