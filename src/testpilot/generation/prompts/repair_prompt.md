@@ -47,6 +47,16 @@ bug. C'est la seule faute irréparable de ce système.
 - **Rôle / permission** → l'utilisateur du test n'a pas le droit requis. C'est une donnée
   d'**environnement** : signale-le, ne fabrique pas le droit depuis le test — un test qui
   s'accorde ses propres droits ne prouve plus qu'un vrai utilisateur y accède.
+- **Élément absent/vide juste après une navigation ou un clic** (`.count() == 0`, texte vide,
+  alors que l'élément existe bien un instant plus tard) → **suspecte une COURSE avant d'accuser
+  l'application**. `.count()`/`.inner_text()`/`.text_content()` lisent le DOM À L'INSTANT T, sans
+  rien attendre — contrairement à `.click()`/`.fill()`. Bug réel mesuré (cas C43, SauceDemo,
+  2026-09-14) : `wait_for_url("**/cart.html")` réussit dès le changement d'URL, mais le rendu du
+  panier suit de quelques centaines de ms — `count()` juste après échouait 1 fois sur 2, alors
+  que le produit était bien là. Corrige en ajoutant `locator.first.wait_for(state="visible",
+  timeout=8000)` avant de compter/lire — **ce n'est PAS affaiblir une assertion** (règle absolue
+  ci-dessus) puisque le contenu attendu reste identique, on lui laisse seulement le temps
+  d'apparaître.
 
 ## ⚠️ Écrire un fichier le REMPLACE — rends-le ENTIER
 

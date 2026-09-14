@@ -178,6 +178,35 @@ assert redirige or erreur, "ni succès ni erreur de validation : issue inattendu
 Un `Alors`/`@then` qui ne contient **ni `assert` ni `raise`** n'affirme rien : c'est un test
 vide, tout aussi interdit.
 
+### Règle 5 — Attendre l'élément AVANT de le compter ou de le lire, jamais à l'instant t
+`.count()`, `.inner_text()`, `.text_content()` lisent le DOM **immédiatement**, sans attendre
+quoi que ce soit — contrairement à `.click()`/`.fill()`, qui ont leur propre attente intégrée
+(actionnabilité). Juste après une navigation ou une action, le contenu peut ne pas être encore
+rendu : l'application a bien changé d'URL, mais son rendu suit d'une fraction de seconde.
+
+⚠️ **Bug réel mesuré (cas C43, SauceDemo, 2026-09-14)** : `page.wait_for_url("**/cart.html")`
+réussit dès que l'URL change, PUIS `page.locator(".cart_item").count()` juste après — sans aucune
+attente entre les deux. Rejoué 8 fois de suite contre la vraie application : **4 échecs sur 8**
+(`count() == 0`, « aucun produit dans le panier ») alors que le produit y était à chaque fois,
+visible 300 ms plus tard. Le verdict était un pur coup de dés — jamais un vrai constat sur
+l'application.
+
+```python
+# FAUX — lit le DOM à l'instant t, avant que le rendu n'ait forcément eu lieu
+page.wait_for_url("**/cart.html")
+articles = page.locator(".cart_item")
+assert articles.count() > 0, "aucun produit dans le panier"
+
+# CORRECT — attend qu'AU MOINS UN élément soit visible avant de compter/lire quoi que ce soit
+page.wait_for_url("**/cart.html")
+page.locator(".cart_item").first.wait_for(state="visible", timeout=8000)
+articles = page.locator(".cart_item")
+assert articles.count() > 0, "aucun produit dans le panier"
+```
+
+La même règle vaut pour lire un texte, un prix, un statut : `locator.first.wait_for(state=...)`
+avant `.inner_text()`, jamais juste après un clic ou un changement d'URL.
+
 ---
 
 ## PILIER 1 — ANALYSE

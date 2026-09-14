@@ -45,6 +45,8 @@ _NON_OUTILS = {
     # Python / Behave
     "search_count", "wait_for_selector", "get_by_label", "get_by_role", "wait_for_load_state",
     "toggle_submit_button",
+    # Playwright — Règle 5 (attendre avant de lire/compter, bug réel cas C43, 2026-09-14)
+    "wait_for_url", "wait_for", "inner_text", "text_content",
 }
 
 
