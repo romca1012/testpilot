@@ -41,7 +41,9 @@ from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"))
 
-from _base_helpers import click_button, fill_field, validation_error_inline  # noqa: E402
+from _base_helpers import (  # noqa: E402
+    click_button, fill_field, select_product_in_list, validation_error_inline,
+)
 
 pytestmark = pytest.mark.conformance
 
@@ -134,3 +136,20 @@ def test_soumission_vide_affiche_une_erreur_reconnue(page, app):
     click_button(page, "Login")   # champs vides : refus attendu
 
     validation_error_inline(page)   # lève AssertionError si aucune erreur n'est reconnue
+
+
+def test_selection_produit_par_texte_marche_sans_url_odoo(page):
+    """`select_product_in_list` ne reconnaissait que des liens produit au format Odoo
+    (`/description/`, `/product/`, …) — cas C45, SauceDemo, 2026-09-14 : le lien produit y route
+    en JS pur (`href="#"`), donc AUCUN candidat n'aurait jamais pu matcher. Testé sur SauceDemo
+    seul (the-internet.herokuapp.com n'a pas de catalogue produit comparable)."""
+    app = next(a for a in _APPS if a.nom == "SauceDemo")
+    page.goto(app.url_login, wait_until="domcontentloaded")
+    fill_field(page, app.champ_identifiant, app.identifiant_valide)
+    fill_field(page, app.champ_mot_de_passe, app.mot_de_passe_valide)
+    click_button(page, "Login")
+
+    select_product_in_list(page, "Sauce Labs Backpack")
+
+    assert "inventory-item.html" in page.url, (
+        f"la sélection du produit n'a pas navigué vers sa fiche (url actuelle : {page.url})")

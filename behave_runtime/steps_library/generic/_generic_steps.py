@@ -16,6 +16,7 @@ from _base_helpers import (
     attach_file, leave_field_empty, click_first_actionable,
     no_error_with_keywords, validation_error_inline,
     wait_form_submission, force_name_field, remplir_formulaire_valide,
+    select_product_in_list, select_product_partial, NavigationImpossibleError,
 )
 
 # ⚠️ Chaque step d'ACTION ci-dessous est déclaré sous `@given` ET `@when` (bug SauceDemo,
@@ -99,9 +100,6 @@ def step_no_error(context, kw1, kw2):
 
 # ── Navigation portail — steps génériques (ex-_base_steps.py, aucun n'appelle context.odoo) ──
 
-_PRODUCT_PATHS = ("/description/", "/product/", "/detail/", "/formulaire-applicatif/")
-
-
 @given("j'accède à la page d'accueil de l'application")
 @when("j'accède à la page d'accueil de l'application")
 def step_access_home_page(context):
@@ -117,7 +115,10 @@ def step_access_home_page(context):
     qui échoue pour une raison qui n'a plus rien à voir avec la vraie cause.
     """
     if not context.web_url:
-        raise AssertionError(
+        # ⚠️ `NavigationImpossibleError`, pas `AssertionError` (correctif 2026-09-14, même famille
+        # que le cas C45) : une connexion de projet incomplète est un problème d'ENVIRONNEMENT,
+        # jamais une preuve que l'application se comporte mal — voir defect_taxonomy.
+        raise NavigationImpossibleError(
             "URL de l'application introuvable (WEB_URL absent) — vérifiez la connexion du "
             "projet (adresse renseignée dans ses réglages).")
     context.page.goto(context.web_url, wait_until="domcontentloaded")
@@ -136,19 +137,19 @@ def step_click_portal_onglet(context, name):
 @given('je sélectionne le produit "{name}" dans la liste')
 @when('je sélectionne le produit "{name}" dans la liste')
 def step_select_product_in_list(context, name):
-    click_first_actionable(context.page,
-        [f"a[href*='{p}']:has-text('{name}')" for p in _PRODUCT_PATHS],
-        quoi=f"Produit '{name}'")
+    # ⚠️ Délègue à `_base_helpers.select_product_in_list` — ce step avait sa PROPRE copie inline
+    # de `_PRODUCT_PATHS`/la logique de clic, désynchronisée du helper partagé : un correctif posé
+    # sur l'un (le repli générique `a:has-text(...)`, cas C45) restait sans AUCUN effet sur
+    # l'autre, réellement utilisé ici. Trouvé en reproduisant le bug en conditions réelles contre
+    # SauceDemo — le correctif « marchait » en isolation et jamais via ce step. Une seule
+    # implémentation, désormais : plus de duplication à faire diverger en silence.
+    select_product_in_list(context.page, name)
 
 
 @given('je sélectionne le produit dans la liste contenant "{partial}"')
 @when('je sélectionne le produit dans la liste contenant "{partial}"')
 def step_select_product_partial(context, partial):
-    # `:has-text` fait le « contient » (sous-chaîne, insensible à la casse) — plus tolérant que
-    # l'ancien `partial in inner_text`, et sans course au rendu.
-    click_first_actionable(context.page,
-        [f"a[href*='{p}']:has-text('{partial}')" for p in _PRODUCT_PATHS],
-        quoi=f"Produit contenant '{partial}'")
+    select_product_partial(context.page, partial)
 
 
 @given('je clique sur le bouton "{label}" avec accessoires')

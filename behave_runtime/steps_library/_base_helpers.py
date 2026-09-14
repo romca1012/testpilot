@@ -308,7 +308,7 @@ def click_first_actionable(page, candidats, *, quoi, timeout=8000):
             return
         except PlaywrightTimeout:
             continue
-    raise AssertionError(f"{quoi} : aucun élément actionnable sur {page.url}")
+    raise ElementIntrouvableError(f"{quoi} : aucun élément actionnable sur {page.url}")
 
 
 def click_button(page, label):
@@ -503,6 +503,49 @@ def resolve_field_name(page, ident):
             _record_field_fallback(message)                          # jusqu'au rapport (B+)
             return resolved
     return ident  # ni name ni libellé exploitable : on laisse échouer en aval (message d'origine)
+
+
+class ElementIntrouvableError(Exception):
+    """Aucun élément actionnable trouvé pour l'action demandée (même famille que
+    `InvalidOptionValueError`/`DonneeRefuseeError` ci-dessous — décision 0015, prolongée le
+    2026-09-14, cas C45 sur SauceDemo).
+
+    ⚠️ **Le même défaut qu'`InvalidOptionValueError`, une classe de plus dans la même famille.**
+    `click_first_actionable` (et les quelques helpers qui en partagent l'esprit —
+    `select_field_value`, `select_first_agence`) levaient un `AssertionError` NU quand ils ne
+    trouvaient RIEN à cliquer/sélectionner : Behave l'affiche « ASSERT FAILED: »,
+    `defect_taxonomy` la classe `assertion_mismatch`, et le verdict devient `non_conforme` — on
+    accuse l'APPLICATION d'un défaut alors que c'est NOTRE sélecteur qui n'a rien trouvé.
+
+    Mesuré sur le cas C45 (SauceDemo) : `select_product_in_list` ne cherchait des liens produit
+    que sous `/description/`, `/product/`, `/detail/`, `/formulaire-applicatif/` — des chemins
+    Odoo — quand SauceDemo route ses fiches produit en JS pur (`href="#"`). Le step échouait
+    SYSTÉMATIQUEMENT, sans jamais atteindre le formulaire de paiement que le scénario testait
+    réellement — et le verdict accusait pourtant ce formulaire d'un défaut de validation.
+
+    Playwright lève déjà correctement `TimeoutError`/`PlaywrightTimeoutError`, classées
+    `wrong_field_name` (voir `defect_taxonomy._EXCEPTION_TO_CAUSE`) — mais `click_first_actionable`
+    CONSOMME ce `TimeoutError` par candidat pour en essayer un autre, et son message final
+    consolidé (qui nomme TOUS les candidats essayés + l'URL, bien plus exploitable qu'un seul
+    `TimeoutError` isolé sur le DERNIER candidat) a besoin de sa PROPRE classe pour rester
+    classé du même bord technique.
+
+    Hérite de `Exception` (PAS de `AssertionError`) : Behave ne masque le nom de la classe que
+    pour `AssertionError` (« ASSERT FAILED: ») — une exception dédiée s'affiche
+    « ERROR: ElementIntrouvableError: … », et `defect_taxonomy` la reconnaît au type, sans
+    deviner sur un texte que l'agent (ou nous) aurait pu écrire différemment.
+    """
+
+
+class NavigationImpossibleError(Exception):
+    """Le parcours attendu (section, page, menu) est absent — un problème de PARCOURS, pas
+    l'application qui se comporte mal (même famille qu'`ElementIntrouvableError` ci-dessus).
+
+    Utilisée par `access_portal_section` : un `AssertionError` nu classait son
+    « PRÉREQUIS MANQUANT » en `assertion_mismatch` — un vrai bug applicatif présumé — alors que
+    c'est un problème de PARCOURS (le test n'est jamais arrivé à la bonne page), la même famille
+    que `HTTPError`, déjà classée `wrong_navigation`.
+    """
 
 
 class InvalidOptionValueError(ValueError):
@@ -913,7 +956,7 @@ def leave_field_empty(page, name):
     if tag == "select":
         valeurs = el.evaluate("el => Array.from(el.options).map(o => o.value)")
         if "" not in valeurs:
-            raise AssertionError(
+            raise ElementIntrouvableError(
                 f"le champ « {name} » est une liste déroulante SANS option vide : il ne peut pas "
                 f"être laissé vide. Valeurs possibles : {', '.join(v for v in valeurs if v)}")
         el.select_option("")
@@ -952,7 +995,7 @@ def select_field_value(page, value, field):
             f"select[name='{field}'], input[type='radio'][name='{field}']"
         ).first.wait_for(state="attached", timeout=8000)
     except PlaywrightTimeout:
-        raise AssertionError(
+        raise ElementIntrouvableError(
             f"Champ select ou radio '{field}' introuvable sur {page.url} (valeur: '{value}')")
     if select.count() > 0:
         select_option_strict(select.first, value, field=field)
@@ -960,7 +1003,10 @@ def select_field_value(page, value, field):
     if radio.count() > 0:
         radio.first.check(force=True)
         return
-    raise AssertionError(
+    # Le radio EXISTE, mais sans l'option demandée : même défaut qu'un `<select>` avec une
+    # valeur absente (0019) — c'est le test qui demande une valeur inexistante, pas l'application
+    # qui se comporte mal. Même classe, pour la même raison.
+    raise InvalidOptionValueError(
         f"Radio '{field}' présent mais sans l'option '{value}' sur {page.url}")
 
 
@@ -974,8 +1020,13 @@ def select_first_service_in_list(page):
 
 
 def select_product_in_list(page, name):
+    # ⚠️ Bug réel (cas C45, SauceDemo, 2026-09-14) : `_PRODUCT_PATHS` ne connaît que des chemins
+    # Odoo — SauceDemo route ses fiches produit en JS pur (`href="#"`), donc AUCUN candidat
+    # n'aurait jamais pu matcher. `a:has-text(...)` en repli (sans condition sur l'`href`) est le
+    # filet générique : n'importe quelle appli dont le lien produit porte le nom, peu importe sa
+    # cible réelle. Testé en réel : conserve le comportement Odoo (candidats plus précis d'abord).
     click_first_actionable(page,
-        [f"a[href*='{p}']:has-text('{name}')" for p in _PRODUCT_PATHS],
+        [f"a[href*='{p}']:has-text('{name}')" for p in _PRODUCT_PATHS] + [f"a:has-text('{name}')"],
         quoi=f"Produit '{name}'")
 
 
@@ -983,7 +1034,8 @@ def select_product_partial(page, partial):
     # `:has-text` fait le « contient » (sous-chaîne), désormais insensible à la casse — plus
     # tolérant que l'ancien `partial in inner_text`, et surtout sans course au rendu.
     click_first_actionable(page,
-        [f"a[href*='{p}']:has-text('{partial}')" for p in _PRODUCT_PATHS],
+        [f"a[href*='{p}']:has-text('{partial}')" for p in _PRODUCT_PATHS]
+        + [f"a:has-text('{partial}')"],
         quoi=f"Produit contenant '{partial}'")
 
 
@@ -1026,14 +1078,14 @@ def select_first_agence(page):
     try:
         select.first.wait_for(state="attached", timeout=8000)
     except PlaywrightTimeout:
-        raise AssertionError(f"Champ 'agence' introuvable sur {page.url}")
+        raise ElementIntrouvableError(f"Champ 'agence' introuvable sur {page.url}")
     options = select.locator("option")
     for i in range(options.count()):
         val = options.nth(i).get_attribute("value")
         if val and val.strip():
             select.first.select_option(val)
             return
-    raise AssertionError(f"Aucune option disponible dans le champ 'agence' sur {page.url}")
+    raise ElementIntrouvableError(f"Aucune option disponible dans le champ 'agence' sur {page.url}")
 
 
 def wait_form_submission(page):
@@ -1115,7 +1167,7 @@ def access_portal_section(page, section_name):
     try:
         page.get_by_text(section_name, exact=False).first.click(timeout=8000)
     except PlaywrightTimeout:
-        raise AssertionError(
+        raise NavigationImpossibleError(
             f"PRÉREQUIS MANQUANT : la section '{section_name}' est absente de {page.url}."
         )
 

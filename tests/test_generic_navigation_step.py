@@ -60,11 +60,15 @@ def test_charge_bien_la_page_d_accueil_via_web_url():
 
 def test_refuse_clairement_si_aucune_url_n_est_configuree():
     """Mieux vaut un message actionnable qu'un `page.goto(None)` ou un scénario qui continue à
-    l'aveugle sur `about:blank` (exactement le bug SauceDemo, en pire — silencieux)."""
+    l'aveugle sur `about:blank` (exactement le bug SauceDemo, en pire — silencieux).
+
+    ⚠️ `NavigationImpossibleError`, pas `AssertionError` (correctif 2026-09-14, cas C45) : une
+    connexion de projet incomplète est un problème d'ENVIRONNEMENT, jamais une preuve que
+    l'application se comporte mal — voir `defect_taxonomy._EXCEPTION_TO_CAUSE`."""
     mod = _charger_generic_steps()
     ctx = _Contexte(web_url="")
 
-    with pytest.raises(AssertionError, match="URL de l'application introuvable"):
+    with pytest.raises(mod.NavigationImpossibleError, match="URL de l'application introuvable"):
         mod.step_access_home_page(ctx)
 
     assert ctx.page.appels_goto == []

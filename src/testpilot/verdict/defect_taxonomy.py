@@ -102,6 +102,16 @@ _EXCEPTION_TO_CAUSE = {
     # Playwright : l'élément attendu n'est jamais apparu.
     "TimeoutError": WRONG_FIELD_NAME,
     "PlaywrightTimeoutError": WRONG_FIELD_NAME,
+    # AJOUTÉ (2026-09-14, cas C45 SauceDemo). Exception levée UNIQUEMENT par la bibliothèque
+    # partagée (`_base_helpers.click_first_actionable` et consorts) quand AUCUN candidat n'était
+    # actionnable — avant, un `AssertionError` nu classait ce défaut TECHNIQUE (notre sélecteur,
+    # pas l'application) en `assertion_mismatch`, un vrai bug applicatif présumé. Même famille que
+    # `InvalidOptionValueError`/`DonneeRefuseeError` : une classe DÉDIÉE, non ambiguë par
+    # construction — personne d'autre ne la lève.
+    "ElementIntrouvableError": WRONG_FIELD_NAME,
+    # Même défaut, pour un parcours (section/page absente) plutôt qu'un élément d'action —
+    # `access_portal_section`. Même famille que `HTTPError`, déjà classée ici.
+    "NavigationImpossibleError": WRONG_NAVIGATION,
     # Erreurs de PROGRAMMATION dans le code du step. L'application n'y est pour rien : c'est
     # notre code qui est faux, donc réparable par construction. C'était le trou le plus absurde
     # de l'ancienne version — un `TypeError` nu tombait en `unknown` → `indetermine`, et le

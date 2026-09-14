@@ -84,10 +84,15 @@ def test_essaie_les_candidats_dans_l_ordre_jusqu_au_premier_actionnable():
 def test_element_durablement_absent_echoue_vite_borne_et_nomme_la_cible_et_l_url():
     """Élément absent partout : échec RAPIDE (chaque candidat borné), non silencieux, avec un
     message qui nomme la CIBLE et l'URL — pour que le diagnostic porte la vraie cause (§0002),
-    pas un « introuvable » trompeur."""
+    pas un « introuvable » trompeur.
+
+    ⚠️ `ElementIntrouvableError`, PAS `AssertionError` (correctif 2026-09-14, cas C45 SauceDemo) :
+    un `AssertionError` nu ici classait ce défaut TECHNIQUE (notre sélecteur) en
+    `assertion_mismatch` — un vrai bug applicatif présumé, alors que l'application n'a jamais été
+    mise en cause. Voir `defect_taxonomy._EXCEPTION_TO_CAUSE`."""
     page = FauxPage("http://odoo/my/home", click_leve=True)  # tout timeout
 
-    with pytest.raises(AssertionError) as exc:
+    with pytest.raises(H.ElementIntrouvableError) as exc:
         H.click_first_actionable(
             page,
             ["[role='tab']:has-text('Ordinateurs')", "a:has-text('Ordinateurs')"],
