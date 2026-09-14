@@ -1048,8 +1048,34 @@ def wait_form_submission(page):
 
 
 def validation_error_inline(page):
+    """Une erreur de validation visible dans le formulaire — plusieurs applications, plusieurs
+    façons de le montrer.
+
+    ⚠️ **Vivait dans `generic/`, sous un nom générique, mais ne reconnaissait QUE Odoo** (bug réel,
+    cas C37 sur SauceDemo, 2026-09-14) : seul `s_website_form_field.o_has_error` — une classe CSS
+    du website builder Odoo — était vérifié. SauceDemo affichait pourtant, au bon endroit, EXACTEMENT
+    l'erreur attendue (« Epic sadface: Username is required ») — mais en `<h3 data-test="error"
+    role="alert">`, jamais reconnu par ce contrôle. Le cas passait en `failed`, accusant
+    l'application à tort d'un défaut qui était le nôtre — précisément ce que le porteur a demandé
+    de traquer (« une incapacité de notre app de pouvoir bien tester », pas un vrai défaut).
+
+    `role="alert"` est le signal WAI-ARIA STANDARD pour ce cas d'usage (« un message important et
+    bref vient d'apparaître ») — utile à N'IMPORTE QUELLE application accessible, pas seulement à
+    celle mesurée ici. On le vérifie en premier ; le motif Odoo reste en repli, PRÉSERVÉ tel quel,
+    pour les formulaires du website builder qui n'utilisent pas cet attribut.
+    """
+    alertes = page.locator('[role="alert"]')
+    for i in range(min(alertes.count(), 5)):
+        try:
+            if alertes.nth(i).is_visible():
+                return
+        except Exception:
+            continue  # un élément qui disparaît entre le compte et la lecture : on continue
+
     has_error = page.locator("[class*='s_website_form_field'].o_has_error").first
-    assert has_error.is_visible(), "Aucune erreur de validation visible dans le formulaire."
+    if has_error.is_visible():
+        return
+    raise AssertionError("Aucune erreur de validation visible dans le formulaire.")
 
 
 def validation_error_notification(page):
