@@ -635,15 +635,32 @@ def fill_field(page, name, value):
         # réussir : l'outil n'existait pas. On téléverse un vrai fichier de test.
         attach_file(page, name, value)
     else:
-        # Utiliser JS pour contourner les widgets Odoo et cibler le bon type d'élément
-        page.evaluate(f"""
-            const el = document.querySelector('textarea[name="{name}"], input[name="{name}"]');
-            if (el) {{
-                el.value = '{safe}';
-                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-            }}
-        """)
+        # ⚠️ `.fill()` NATIF Playwright d'ABORD (bug SauceDemo, 2026-09-14) — jamais le JS brut en
+        # premier recours. Mesuré en conditions réelles : `el.value = ...` + `dispatchEvent()`
+        # met bien la valeur dans le DOM (Playwright la relit sans problème), mais une appli qui
+        # garde son PROPRE état interne (au lieu de relire le DOM à la soumission — la plupart des
+        # frameworks modernes) ne voit jamais ce changement : le clic « Login » de SauceDemo
+        # traitait alors le champ comme VIDE (« Username is required » au lieu de « Username and
+        # password do not match »), alors que Playwright lui-même rapportait la bonne valeur.
+        # `.fill()` simule une vraie saisie au niveau du navigateur (CDP) — reconnue par n'importe
+        # quel framework, contrairement à un `dispatchEvent` synthétique. Le JS brut reste un
+        # REPLI, jamais supprimé : conservé pour les widgets Odoo qui l'exigeaient à l'origine
+        # (aucune preuve que `.fill()` y échoue, mais aucune preuve du contraire non plus — le
+        # risque de casser un chemin Odoo déjà éprouvé n'est pas à prendre sans site réel pour
+        # le vérifier).
+        try:
+            el.fill(value)  # ⚠️ la valeur BRUTE, pas `safe` : `.fill()` n'est pas du JS interpolé
+        except Exception as exc:
+            logger.warning("[fill_field] .fill() natif a échoué sur '%s' (%s) — repli JS", name,
+                           type(exc).__name__)
+            page.evaluate(f"""
+                const el = document.querySelector('textarea[name="{name}"], input[name="{name}"]');
+                if (el) {{
+                    el.value = '{safe}';
+                    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                }}
+            """)
         _verifier_valeur_retenue(page, name, value)
 
 
