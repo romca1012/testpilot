@@ -1,0 +1,41 @@
+name: Deploy staging
+
+# ⚠️ AUCUN déclenchement automatique sur push (contrairement à deploy-dev.yml) — /staging est ce
+# que la personne externe qui teste (Sidi) a sous les yeux : elle ne doit JAMAIS changer sans un
+# geste délibéré. Un simple clic dans l'onglet Actions de GitHub (bouton "Run workflow"), au lieu
+# d'exiger une reconnexion SSH pour le même geste manuel qu'avant.
+#
+# Toujours une SEULE branche (master) — pas de branche `staging` distincte : le besoin réel est
+# une CADENCE de déploiement différente de /dev, pas du code différent. Une branche à part
+# ajouterait un geste de fusion à chaque promotion, et le risque classique de divergence si un
+# correctif fait ailleurs n'est jamais reporté dessus — un coût que ce projet n'a pas à payer pour
+# ce qu'il achèterait en échange.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Déployer sur /srv/testtool-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # ⚠️ Clé DÉDIÉE à /staging, distincte de celle de /dev (STAGING_SSH_KEY vs DEV_SSH_KEY) —
+      # restreinte côté serveur à ne lancer QUE deploy.sh de /srv/testtool-staging, jamais celui
+      # de /dev : une fuite de l'une des deux clés ne compromet jamais l'autre environnement.
+      - name: Préparer la clé SSH dédiée au déploiement
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.STAGING_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Lancer deploy.sh sur le serveur
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}" "deploy"
