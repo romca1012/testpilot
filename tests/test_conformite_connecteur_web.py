@@ -42,7 +42,7 @@ from playwright.sync_api import sync_playwright
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"))
 
 from _base_helpers import (  # noqa: E402
-    click_button, fill_field, select_product_in_list, validation_error_inline,
+    click_button, fill_field, select_field_value, select_product_in_list, validation_error_inline,
 )
 
 pytestmark = pytest.mark.conformance
@@ -153,3 +153,23 @@ def test_selection_produit_par_texte_marche_sans_url_odoo(page):
 
     assert "inventory-item.html" in page.url, (
         f"la sélection du produit n'a pas navigué vers sa fiche (url actuelle : {page.url})")
+
+
+def test_selection_dans_un_select_sans_name_marche_par_sa_classe_css(page):
+    """`select_field_value` ne trouvait un `<select>` que par son attribut `name` — cas C39,
+    SauceDemo, 2026-09-14 : le menu de tri du catalogue n'a AUCUN `name` (juste une classe CSS et
+    un `data-test`), un filtre d'affichage, pas un champ de formulaire soumis. Testé sur SauceDemo
+    seul (the-internet.herokuapp.com n'a pas de tri comparable)."""
+    app = next(a for a in _APPS if a.nom == "SauceDemo")
+    page.goto(app.url_login, wait_until="domcontentloaded")
+    fill_field(page, app.champ_identifiant, app.identifiant_valide)
+    fill_field(page, app.champ_mot_de_passe, app.mot_de_passe_valide)
+    click_button(page, "Login")
+
+    select_field_value(page, "Name (Z to A)", "product_sort_container")
+
+    noms = page.locator(".inventory_item_name")
+    premier = noms.first.inner_text()
+    dernier = noms.nth(noms.count() - 1).inner_text()
+    assert premier > dernier, (
+        f"le tri Z-A n'a pas été appliqué (premier={premier!r}, dernier={dernier!r})")

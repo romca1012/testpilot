@@ -985,15 +985,28 @@ def select_field_value(page, value, field):
     **tracé**, jamais muet), et sinon une erreur qui nomme les valeurs possibles.
     """
     field = resolve_field_name(page, field)
-    select = page.locator(f"select[name='{field}']")
-    radio = page.locator(f"input[type='radio'][name='{field}'][value='{value}']")
+    # ⚠️ Un `<select>` qui sert de FILTRE (tri, recherche) n'a souvent AUCUN attribut `name` — ce
+    # n'est pas un champ de formulaire soumis, `name` ne lui sert à rien (bug réel, cas C39,
+    # SauceDemo, 2026-09-14 : `<select class="product_sort_container"
+    # data-test="product-sort-container">`, sans `name` du tout — l'agent avait pourtant
+    # correctement identifié le contrôle par sa classe CSS, visible dans l'annuaire). `name` reste
+    # tenté en premier (le plus fiable, cf. `resolve_field_name`) ; `data-test`/`data-testid` (la
+    # convention la plus répandue pour un contrôle SANS `name`) et la classe CSS littérale suivent.
+    # La classe n'est essayée que si `field` est un identifiant CSS valide — sinon un libellé
+    # humain avec espaces produirait un sélecteur invalide, pas juste « rien trouvé ».
+    _classe = f", select.{field}" if re.fullmatch(r"[A-Za-z_-][A-Za-z0-9_-]*", field) else ""
+    selecteur_select = (
+        f"select[name='{field}'], select[data-test='{field}'], "
+        f"select[data-testid='{field}']{_classe}")
+    selecteur_radio = f"input[type='radio'][name='{field}'][value='{value}']"
+    select = page.locator(selecteur_select)
+    radio = page.locator(selecteur_radio)
     # Ancré sur l'ÉLÉMENT : on attend que le select OU le radio soit présent, au lieu d'un `count()`
     # instantané qui perd la course si le champ est rendu en JS. `count()` ne sert plus qu'à
     # BRANCHER une fois le champ là (plus une course). Plus de `wait_for_timeout` fixe.
     try:
-        page.locator(
-            f"select[name='{field}'], input[type='radio'][name='{field}']"
-        ).first.wait_for(state="attached", timeout=8000)
+        page.locator(f"{selecteur_select}, {selecteur_radio}").first.wait_for(
+            state="attached", timeout=8000)
     except PlaywrightTimeout:
         raise ElementIntrouvableError(
             f"Champ select ou radio '{field}' introuvable sur {page.url} (valeur: '{value}')")
