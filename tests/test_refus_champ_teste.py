@@ -129,12 +129,21 @@ def test_attach_file_MARQUE_le_champ_comme_rempli():
 
 
 class _FauxLocatorTexte:
-    def __init__(self): self.first = self
-    def evaluate(self, script, *a): return "input" if "tagName" in script else "text"
+    def __init__(self, nom="rib_original"): self.first = self; self.nom = nom
+    def evaluate(self, script, *a):
+        if "tagName" in script:
+            return "input"
+        if ".type" in script or "el.type" in script:
+            return "text"
+        return self.nom  # `el.name || el.id || ''`, lu par `leave_field_empty`
+
     def fill(self, *a, **kw): pass
+    def count(self): return 1  # `locate_field` : le champ existe par son attribut `name`
+    def wait_for(self, **kw): pass
 
 
 class _FauxPageTexte:
+    def __init__(self): self.url = "https://exemple.test/formulaire"
     def wait_for_selector(self, *a, **kw): pass
     def locator(self, sel): return _FauxLocatorTexte()
 

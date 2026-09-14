@@ -307,11 +307,15 @@ class _FauxSelect:
     def select_option(self, v): self.journal.append(("select_option", v))
     def fill(self, *a, **kw): raise AssertionError("fill() ne doit JAMAIS être appelé sur un select")
 
+    def count(self): return 1  # `locate_field` : le champ existe par son attribut `name`
+    def wait_for(self, **kw): pass
+
 
 class _PageSelect:
     def __init__(self, valeurs):
         self.journal: list = []
         self.valeurs = valeurs
+        self.url = "https://exemple.test/formulaire"
 
     def wait_for_selector(self, *a, **kw): pass
     def locator(self, sel): return _FauxSelect(self.journal, self.valeurs)

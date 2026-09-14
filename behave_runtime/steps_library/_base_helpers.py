@@ -1037,12 +1037,21 @@ def leave_field_empty(page, name):
     n'existe pas, le champ **ne PEUT pas** être laissé vide : on le dit clairement plutôt que de
     laisser une erreur de bas niveau, qu'on diagnostiquerait à tort en « champ introuvable ».
     """
-    name = resolve_field_name(page, name)
+    # `locate_field` (voir `fill_field`/`select_field_value`) : un champ SANS `name` (data-test,
+    # classe CSS, libellé) peut aussi être laissé vide intentionnellement.
+    champ = locate_field(page, name, timeout=10000)
+    if champ.count() == 0:
+        raise ElementIntrouvableError(f"Champ '{name}' introuvable sur {page.url}")
+    el = champ.first
+    # ⚠️ Marqué avec l'identifiant RÉEL (`name`, sinon `id`) — celui que
+    # `verifier_soumission_non_bloquee` lira plus tard sur l'élément DEVENU invalide
+    # (`el.name || el.id`), pas forcément `name` tel quel si `locate_field` l'a résolu par un
+    # autre biais. Sans ça, un champ SANS `name` intentionnellement vide ne serait pas reconnu
+    # comme tel, et accuserait à tort le jeu de données du scénario.
+    identifiant_reel = el.evaluate("el => el.name || el.id || ''") or name
     # Mémorisé pour `verifier_soumission_non_bloquee` (2026-08-07) : CE champ vide est le sujet
     # même du test, jamais une preuve que le jeu de données du scénario est fautif.
-    _marquer(page, "_tp_champs_vides_intentionnels", name)
-    page.wait_for_selector(f'[name="{name}"]', timeout=10000, state="attached")
-    el = page.locator(f'[name="{name}"]').first
+    _marquer(page, "_tp_champs_vides_intentionnels", identifiant_reel)
     tag = el.evaluate("el => el.tagName.toLowerCase()")
     input_type = el.evaluate("el => (el.type || '').toLowerCase()")
 
