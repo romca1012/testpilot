@@ -774,14 +774,16 @@ def fill_field(page, name, value):
     # généricité (2026-09-14, après `select_field_value`) : un champ TEXTE, SELECT ou CASE À
     # COCHER sans `name` (convention Odoo, cf. `locate_field`) est maintenant trouvé, puisque les
     # branches ci-dessous agissent sur l'élément RÉSOLU (`el`), jamais sur une reconstruction
-    # `[name=...]`. Seuls le repli JS du texte et le groupe de radios (exigence du HTML : tous ses
-    # membres PARTAGENT `name`, ce n'est pas une convention Odoo) restent `name`-based ci-dessous —
-    # limite assumée, pas un oubli.
+    # `[name=...]`. Seul le groupe de radios (exigence du HTML : tous ses membres PARTAGENT
+    # `name`, ce n'est pas une convention Odoo) reste `name`-based ci-dessous — limite assumée,
+    # pas un oubli. Le repli JS du texte, lui, a rejoint `el` à l'étape 2.1 du plan de
+    # consolidation (2026-09-15) : c'était le DERNIER chemin `name`-only de cette fonction — un
+    # champ sans `name` qui déclenchait ce repli (ex. `.fill()` refusé par un widget non standard)
+    # échouait encore comme avant `locate_field`, exactement le trou que l'audit avait relevé.
     champ = locate_field(page, name, timeout=10000)
     if champ.count() == 0:
         raise ElementIntrouvableError(f"Champ '{name}' introuvable sur {page.url}")
     el = champ.first
-    safe = value.replace("\\", "\\\\").replace("'", "\\'")
     tag = el.evaluate("el => el.tagName.toLowerCase()")
     input_type = el.evaluate("el => (el.type || '').toLowerCase()")
     if tag == "select":
@@ -815,22 +817,26 @@ def fill_field(page, name, value):
         # risque de casser un chemin Odoo déjà éprouvé n'est pas à prendre sans site réel pour
         # le vérifier).
         try:
-            el.fill(value)  # ⚠️ la valeur BRUTE, pas `safe` : `.fill()` n'est pas du JS interpolé
+            el.fill(value)  # ⚠️ la valeur BRUTE : `.fill()` n'est pas du JS interpolé
         except Exception as exc:
             logger.warning("[fill_field] .fill() natif a échoué sur '%s' (%s) — repli JS", name,
                            type(exc).__name__)
-            page.evaluate(f"""
-                const el = document.querySelector('textarea[name="{name}"], input[name="{name}"]');
-                if (el) {{
-                    el.value = '{safe}';
-                    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                }}
-            """)
-        _verifier_valeur_retenue(page, name, value)
+            # ⚠️ Agit sur `el`, l'élément déjà résolu par `locate_field` — plus jamais une
+            # reconstruction `document.querySelector('[name="{name}"]')` (étape 2.1, 2026-09-15) :
+            # un champ atteint par data-test/data-testid/classe CSS/libellé, SANS `name` du tout,
+            # tombait encore dans ce trou avant ce correctif si `.fill()` levait dessus. La valeur
+            # est passée en ARGUMENT Playwright, jamais interpolée : aucun échappement manuel
+            # n'est donc nécessaire (`.fill()` juste au-dessus suit déjà cette règle).
+            el.evaluate(
+                """(elt, val) => {
+                    elt.value = val;
+                    elt.dispatchEvent(new Event('input', { bubbles: true }));
+                    elt.dispatchEvent(new Event('change', { bubbles: true }));
+                }""", value)
+        _verifier_valeur_retenue(page, el, name, value)
 
 
-def _verifier_valeur_retenue(page, name, ecrit) -> None:
+def _verifier_valeur_retenue(page, el, name, ecrit) -> None:
     """Le champ a-t-il GARDÉ ce qu'on a écrit ? — un contrôle sans aucune connaissance de règle.
 
     ⚠️ **Le défaut qu'il ferme** (mesuré le 2026-07-22 sur `/client_contentieux` et
@@ -847,13 +853,18 @@ def _verifier_valeur_retenue(page, name, ecrit) -> None:
     ⚠️ **Il échoue TÔT et pour ce qu'il est** : « ma donnée a été refusée », pas « l'application est
     en défaut ». C'est précisément la confusion qu'on traque.
 
+    ⚠️ **Relit `el`, l'élément déjà résolu par `locate_field`, plus jamais un `[name="{name}"]`
+    reconstruit côté page** (étape 2.1 du plan de consolidation, 2026-09-15) — `page` reste un
+    paramètre, mais seulement pour `_route_courante(page)` ci-dessous (situer le refus mesuré),
+    jamais pour relire la valeur. Un champ résolu par data-test/data-testid/classe CSS/libellé,
+    SANS `name`, échouait silencieusement ce contrôle avant ce correctif (retenu toujours `None`
+    faute d'attribut `name` à retrouver — le contrôle se taisait au lieu d'attraper la mutilation).
+
     Tolérant sur ce qui n'est pas une mutilation : espaces de bordure, et normalisations de casse
     (certains champs majusculisent) — les signaler produirait du bruit sans défaut réel.
     """
     try:
-        retenu = page.evaluate(
-            "(n) => { const el = document.querySelector(`[name=\"${n}\"]`);"
-            " return el ? String(el.value) : null; }", name)
+        retenu = el.evaluate("elt => (elt ? String(elt.value) : null)")
     except Exception:
         return  # un contrôle de sûreté ne fait jamais tomber un scénario par lui-même
     if retenu is None:
@@ -1197,7 +1208,15 @@ def click_button_with_accessoires(page, label):
 
 
 def force_name_field(page, value):
-    """Set the hidden name field using the JS native setter to bypass Odoo auto-generation."""
+    """Set the hidden name field using the JS native setter to bypass Odoo auto-generation.
+
+    ⚠️ **Délibérément NON migré vers `locate_field`** (étape 2.1 du plan de consolidation,
+    2026-09-15 — revu, pas oublié). Le champ ciblé (`[name="name"]`) n'est pas un identifiant
+    TECHNIQUE générique que l'agent a extrait de l'annuaire — c'est une connaissance Odoo câblée
+    en dur ici (Odoo auto-génère ce champ, et cette fonction existe pour contourner CETTE
+    particularité précise). Migrer vers `locate_field` ne rendrait rien plus générique : sur une
+    application sans cette particularité, cette fonction ne serait de toute façon jamais appelée.
+    """
     safe = value.replace("\\", "\\\\").replace("'", "\\'")
     # Ancré sur l'élément : sans cette attente, un champ rendu tardivement → `querySelector` nul →
     # le setter ne faisait RIEN, en silence (le nom restait celui auto-généré par Odoo).
@@ -1216,6 +1235,15 @@ def force_name_field(page, value):
 
 
 def select_first_agence(page):
+    """Sélectionne la première agence disponible dans le champ métier `agence`.
+
+    ⚠️ **Délibérément NON migré vers `locate_field`** (étape 2.1 du plan de consolidation,
+    2026-09-15 — revu, pas oublié). `agence` est un champ MÉTIER précis d'un projet Odoo/Sapian
+    donné, pas un identifiant technique quelconque extrait de l'annuaire par l'agent — son nom
+    technique (`name="agence"`) est connu et fixe par construction. Faire passer cette résolution
+    par la cascade générique n'apporterait rien : une application sans ce champ n'appelle de toute
+    façon jamais cette fonction.
+    """
     select = page.locator("select[name='agence']")
     # Ancré sur l'élément (plus de `count()` instantané ni de sleep fixe).
     try:
@@ -1307,6 +1335,16 @@ def navigate_menu(context, menu_path):
 
 
 def access_portal_section(page, section_name):
+    """Ouvre une section du portail identifiée par son intitulé VISIBLE.
+
+    ⚠️ **Délibérément NON migré vers `locate_field`** (étape 2.1 du plan de consolidation,
+    2026-09-15 — revu, pas oublié). Cette fonction résout déjà par texte visible (`get_by_text`)
+    — le palier le plus proche d'un usage humain, cohérent avec la hiérarchie officielle
+    Playwright/Testing Library que `locate_field` adapte pour les identifiants TECHNIQUES. Il n'y
+    a ici aucun identifiant technique à essayer d'abord : `section_name` EST déjà un libellé, pas
+    un `name`/`data-test` extrait de l'annuaire. La faire passer par `locate_field` ajouterait des
+    paliers qui ne correspondent à rien pour ce cas d'usage, sans gagner en robustesse.
+    """
     try:
         page.get_by_text(section_name, exact=False).first.click(timeout=8000)
     except PlaywrightTimeout:

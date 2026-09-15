@@ -81,32 +81,37 @@ def test_le_crawl_CAPTURE_le_title():
 # ── B. Le contrôle de mutilation ─────────────────────────────────────────────
 
 class _Page:
-    """Simule un champ qui RETIENT autre chose que ce qu'on lui a écrit."""
+    """Simule un ÉLÉMENT qui RETIENT autre chose que ce qu'on lui a écrit.
+
+    ⚠️ Depuis l'étape 2.1 du plan de consolidation (2026-09-15), `_verifier_valeur_retenue` relit
+    l'ÉLÉMENT déjà résolu par `locate_field` (`el.evaluate(...)`), plus jamais une reconstruction
+    `[name="..."]` côté page — cette fausse valeur sert donc à la fois de `page` (jamais lue ici,
+    `_route_courante` s'en contente via `getattr`) et d'`el` dans les appels ci-dessous."""
 
     def __init__(self, retenu):
         self.retenu = retenu
         self.ecrit = None
 
     def evaluate(self, script, *a):
-        if a:                       # relecture de la valeur retenue
-            return self.retenu
-        return None                 # l'écriture elle-même
+        return self.retenu
 
 
 def test_une_valeur_MUTILEE_est_detectee_immediatement():
     """⚠️ LE cas mesuré : `FAC-TEST-001` filtré en `001` par un masque de saisie JavaScript."""
     from _base_helpers import _verifier_valeur_retenue, DonneeRefuseeError
 
+    champ = _Page("001")
     with pytest.raises(DonneeRefuseeError, match="MODIFIÉ la valeur saisie"):
-        _verifier_valeur_retenue(_Page("001"), "numero_facture1", "FAC-TEST-001")
+        _verifier_valeur_retenue(champ, champ, "numero_facture1", "FAC-TEST-001")
 
 
 def test_le_message_DISCULPE_l_application():
     """La confusion qu'on traque depuis le début : ce n'est pas un défaut applicatif."""
     from _base_helpers import _verifier_valeur_retenue, DonneeRefuseeError
 
+    champ = _Page("001")
     with pytest.raises(DonneeRefuseeError) as err:
-        _verifier_valeur_retenue(_Page("001"), "numero_facture1", "FAC-TEST-001")
+        _verifier_valeur_retenue(champ, champ, "numero_facture1", "FAC-TEST-001")
 
     message = str(err.value)
     assert "ce n'est pas un défaut de l'application" in message
@@ -116,7 +121,8 @@ def test_le_message_DISCULPE_l_application():
 def test_une_valeur_INTACTE_passe():
     from _base_helpers import _verifier_valeur_retenue, DonneeRefuseeError
 
-    _verifier_valeur_retenue(_Page("1234567"), "numero_facture1", "1234567")
+    champ = _Page("1234567")
+    _verifier_valeur_retenue(champ, champ, "numero_facture1", "1234567")
 
 
 @pytest.mark.parametrize("retenu, ecrit", [
@@ -129,7 +135,8 @@ def test_les_normalisations_ANODINES_ne_declenchent_rien(retenu, ecrit):
     faire ignorer les vraies alertes."""
     from _base_helpers import _verifier_valeur_retenue, DonneeRefuseeError
 
-    _verifier_valeur_retenue(_Page(retenu), "nom", ecrit)
+    champ = _Page(retenu)
+    _verifier_valeur_retenue(champ, champ, "nom", ecrit)
 
 
 def test_un_champ_ABSENT_ne_declenche_rien():
@@ -137,7 +144,8 @@ def test_un_champ_ABSENT_ne_declenche_rien():
     message trompeur sur la valeur."""
     from _base_helpers import _verifier_valeur_retenue, DonneeRefuseeError
 
-    _verifier_valeur_retenue(_Page(None), "inexistant", "x")
+    champ = _Page(None)
+    _verifier_valeur_retenue(champ, champ, "inexistant", "x")
 
 
 def test_un_REFORMATAGE_par_espaces_internes_est_tolere():
@@ -146,8 +154,8 @@ def test_un_REFORMATAGE_par_espaces_internes_est_tolere():
     passe. Le crier serait un faux positif."""
     from _base_helpers import _verifier_valeur_retenue
 
-    _verifier_valeur_retenue(_Page("FR76 3000 6000 0112 3456 7890 189"),
-                             "iban_client", "FR7630006000011234567890189")
+    champ = _Page("FR76 3000 6000 0112 3456 7890 189")
+    _verifier_valeur_retenue(champ, champ, "iban_client", "FR7630006000011234567890189")
 
 
 def test_une_vraie_MUTILATION_reste_detectee_malgre_la_tolerance_espaces():
@@ -155,8 +163,9 @@ def test_une_vraie_MUTILATION_reste_detectee_malgre_la_tolerance_espaces():
     caractères. `FAC-TEST-001` → `001` diffère encore une fois les espaces retirés."""
     from _base_helpers import _verifier_valeur_retenue, DonneeRefuseeError
 
+    champ = _Page("0 0 1")
     with pytest.raises(DonneeRefuseeError):
-        _verifier_valeur_retenue(_Page("0 0 1"), "numero_facture1", "FAC-TEST-001")
+        _verifier_valeur_retenue(champ, champ, "numero_facture1", "FAC-TEST-001")
 
 
 class _PageQuiPlante:
@@ -168,7 +177,8 @@ def test_un_controle_qui_plante_ne_fait_pas_tomber_le_scenario():
     devenir lui-même une cause d'échec technique."""
     from _base_helpers import _verifier_valeur_retenue, DonneeRefuseeError
 
-    _verifier_valeur_retenue(_PageQuiPlante(), "nom", "valeur")
+    champ = _PageQuiPlante()
+    _verifier_valeur_retenue(champ, champ, "nom", "valeur")
 
 
 # ── Sur l'annuaire RÉEL, après re-mesure ────────────────────────────────────

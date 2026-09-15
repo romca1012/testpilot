@@ -183,7 +183,7 @@ def test_GARDE_une_valeur_mutilee_apprend_la_classe_conservee(sidecar):
     """
     page = _FakePage(["001"])
     with pytest.raises(DonneeRefuseeError):
-        H._verifier_valeur_retenue(page, "numero_facture1", "FAC-TEST-001")
+        H._verifier_valeur_retenue(page, page, "numero_facture1", "FAC-TEST-001")
 
     ligne = _lignes(sidecar)[0]
     assert ligne["type_contrainte"] == "filtre_saisie"
@@ -196,7 +196,7 @@ def test_une_classe_NON_prouvable_n_affirme_aucune_contrainte(sidecar):
     """Si aucune classe ne reconstruit le retenu, on noircit la valeur sans inventer de règle."""
     page = _FakePage(["totalement-autre-chose"])
     with pytest.raises(DonneeRefuseeError):
-        H._verifier_valeur_retenue(page, "champ", "FAC-TEST-001")
+        H._verifier_valeur_retenue(page, page, "champ", "FAC-TEST-001")
     ligne = _lignes(sidecar)[0]
     assert ligne["valeur_contrainte"] == ""
     assert ligne["valeur_refusee"] == "FAC-TEST-001"
@@ -238,7 +238,7 @@ def test_un_retenu_VIDE_ne_prouve_JAMAIS_de_classe(sidecar):
     """
     page = _FakePage([""])   # le champ a tout perdu : c'est EXACTEMENT le cas réel mesuré
     with pytest.raises(DonneeRefuseeError):
-        H._verifier_valeur_retenue(page, "date_debut", "01/01/2024")
+        H._verifier_valeur_retenue(page, page, "date_debut", "01/01/2024")
     ligne = _lignes(sidecar)[0]
     assert ligne["valeur_contrainte"] == ""   # jamais `[A-Za-z]` — aucune classe n'est prouvée
 
@@ -246,7 +246,7 @@ def test_un_retenu_VIDE_ne_prouve_JAMAIS_de_classe(sidecar):
 def test_un_reformatage_cosmetique_n_apprend_RIEN(sidecar):
     """Un IBAN réaffiché avec des espaces reste valide — la soumission passe (mesuré 2026-07-23)."""
     page = _FakePage(["FR76 3000 4000 0512 3456 7890 189"])
-    H._verifier_valeur_retenue(page, "iban", "FR7630004000051234567890189")
+    H._verifier_valeur_retenue(page, page, "iban", "FR7630004000051234567890189")
     assert _lignes(sidecar) == []
 
 
