@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 43
+_SCHEMA_VERSION = 44
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -228,6 +228,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_42_password_ownership(conn)
     if version < 43:
         _migrate_43_plans_et_planifications(conn)
+    if version < 44:
+        _migrate_44_connector_type_valide(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -305,6 +307,104 @@ def _migrate_43_plans_et_planifications(conn: sqlite3.Connection) -> None:
         " scheduled_run_id INTEGER NOT NULL REFERENCES scheduled_run(id) ON DELETE CASCADE,"
         " case_id INTEGER NOT NULL,"
         " PRIMARY KEY (scheduled_run_id, case_id))")
+
+
+def _migrate_44_connector_type_valide(conn: sqlite3.Connection) -> None:
+    """`project.connector_type` gagne un CHECK — audit « Le pari Mabl/Testim » (2026-09-15, P2).
+
+    ⚠️ **Avant ce correctif, une faute de frappe ne levait rien.** Seule la valeur `'odoo'` est
+    traitée spécialement (`connectors/factory.py::build_connector`) ; tout le reste — y compris
+    un typo — tombait déjà, en silence, dans le connecteur générique. Le CHECK ne CHANGE donc
+    aucun comportement d'exécution : il rend visible, dès l'écriture, ce qui était déjà vrai à la
+    lecture.
+
+    **Normalisation AVANT le CHECK, pas après.** Un projet existant dont `connector_type` porterait
+    déjà une valeur ni `'odoo'` ni `'web'` (improbable — rien ne l'a jamais écrit — mais possible
+    par une manipulation directe de la base) ferait échouer la reconstruction de table sur une
+    violation de contrainte, à l'ouverture du serveur. Le ramener à `'web'` PRÉSERVE exactement le
+    comportement déjà en vigueur pour cette ligne (`build_connector` la traite déjà comme
+    générique) — ce n'est pas une correction de donnée, c'est la même vérité écrite explicitement.
+
+    SQLite ne sait pas ajouter un CHECK par `ALTER TABLE` : reconstruction de `project`, même
+    procédé qu'à la migration 19, robuste à `IF NOT EXISTS` (présent dans `schema.sql` pour cette
+    table, contrairement aux tables ciblées par la 19 à l'époque) et à un nom déjà entre guillemets
+    (`project` n'a encore jamais été reconstruite, mais le motif protège une reconstruction future).
+
+    ⚠️ **`PRAGMA foreign_key_check` SANS argument (le choix de la migration 19) est le mauvais
+    garde ici — trouvé en rejouant CETTE migration sur une copie de la VRAIE base.** Sans argument,
+    la PRAGMA vérifie TOUTES les tables de la base, pas seulement celle qu'on reconstruit — et la
+    vraie base porte une ligne `project_member` orpheline (un `user` supprimé), un défaut de
+    donnée PRÉEXISTANT et SANS AUCUN RAPPORT avec `project`/`connector_type`. Un check global
+    aurait fait échouer cette migration (et donc bloqué le démarrage du serveur) sur un problème
+    qu'elle n'a ni créé ni le pouvoir de corriger. `PRAGMA foreign_key_check(project)` restreint le
+    contrôle aux clés étrangères SORTANTES de `project` elle-même (il n'y en a aucune : c'est une
+    table racine) — le risque réel de CETTE reconstruction, un nombre de lignes qui changerait,
+    est vérifié explicitement juste après, plutôt que délégué à une PRAGMA qui regarde ailleurs.
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='project'").fetchone()
+    sql = row["sql"] if row else ""
+    if not sql or re.search(r"connector_type\s+IN\s*\(", sql, re.IGNORECASE):
+        return  # table absente, ou déjà migrée → idempotent
+
+    conn.execute(
+        "UPDATE project SET connector_type='web' WHERE connector_type NOT IN ('odoo', 'web')")
+
+    new_sql, remplace = re.subn(
+        r"(connector_type\s+TEXT\s+NOT\s+NULL\s+DEFAULT\s+'odoo')",
+        r"\1 CHECK (connector_type IN ('odoo', 'web'))", sql, count=1, flags=re.IGNORECASE)
+    if not remplace:
+        logger.critical("[migration 44] définition de project.connector_type non reconnue dans le "
+                        "schéma stocké : la colonne reste SANS validation (sans effet fonctionnel, "
+                        "le comportement d'exécution ne dépendait déjà pas de ce CHECK).")
+        return
+
+    tmp = "project__migr44"
+    # Guillemets appariés par RÉFÉRENCE ARRIÈRE (`\2`), pas deux `?` indépendants : deux quantifieurs
+    # optionnels laisseraient passer un texte avec SEULEMENT la guillemet fermante (ex. après une
+    # première reconstruction, `CREATE TABLE "project" (` — repli sur `\b` cassé, testé et corrigé
+    # ici avant tout commit). Même motif que `_reconstruire_sans_colonne` (migration 25).
+    create_tmp, renomme = re.subn(
+        r'^(\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?)("?)project\2',
+        lambda m: f"{m.group(1)}{tmp}", new_sql, count=1, flags=re.IGNORECASE)
+    if not renomme:
+        logger.critical("[migration 44] en-tête CREATE TABLE de project non reconnue : la colonne "
+                        "reste SANS validation (sans effet fonctionnel).")
+        return
+
+    aux = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE tbl_name='project' AND type IN ('index','trigger')"
+        " AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%'").fetchall()
+    avant = conn.execute("SELECT COUNT(*) AS n FROM project").fetchone()["n"]
+
+    conn.commit()  # aucune transaction ouverte : PRAGMA foreign_keys est un no-op en transaction
+    old_iso = conn.isolation_level
+    conn.isolation_level = None  # autocommit : on gère BEGIN/COMMIT nous-mêmes (DDL+DML atomique)
+    try:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("BEGIN")
+        try:
+            conn.execute(f"DROP TABLE IF EXISTS {tmp}")
+            conn.execute(create_tmp)
+            conn.execute(f"INSERT INTO {tmp} SELECT * FROM project")
+            apres = conn.execute(f"SELECT COUNT(*) AS n FROM {tmp}").fetchone()["n"]
+            if apres != avant:
+                raise RuntimeError(
+                    f"reconstruction de project : {avant} lignes avant, {apres} après — abandon")
+            conn.execute("DROP TABLE project")
+            conn.execute(f"ALTER TABLE {tmp} RENAME TO project")
+            for a in aux:
+                conn.execute(a["sql"])  # index/triggers recréés (dropés avec l'ancienne table)
+            violations = conn.execute("PRAGMA foreign_key_check(project)").fetchall()
+            if violations:
+                raise RuntimeError(f"FK sortantes cassées sur project : {violations}")
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+        conn.execute("PRAGMA foreign_keys = ON")
+    finally:
+        conn.isolation_level = old_iso
 
 
 def _migrate_1_project_module(conn: sqlite3.Connection) -> None:

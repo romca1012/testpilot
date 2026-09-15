@@ -92,6 +92,13 @@ def test_project_repo_update_connection_edite_la_version(conn):
     assert ProjectRepo(conn).get(pid)["connector_version"] == "19"
 
 
+def test_un_connector_type_invalide_est_rejete_explicitement(conn):
+    """Migration 44 : avant ce CHECK, une faute de frappe tombait en silence dans le connecteur
+    générique — aucune erreur, aucun signal. Elle doit maintenant être refusée à l'écriture."""
+    with pytest.raises(sqlite3.IntegrityError):
+        ProjectRepo(conn).create(name="Faute de frappe", connector_type="odooo")
+
+
 # ── Migration d'une base d'AVANT la hiérarchie ────────────────────────────────
 def test_migration_depuis_ancien_schema(tmp_path):
     db = tmp_path / "old.db"

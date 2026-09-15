@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 43
+ALIGNED_WITH_SCHEMA_VERSION = 44
 
 metadata = MetaData()
 
@@ -66,6 +66,9 @@ project = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("name", Text, nullable=False),
     Column("description", Text, nullable=False, server_default=""),
+    # Migration 44 : seul `'odoo'` est traité spécialement (`connectors/factory.py`) — tout le
+    # reste tombe déjà dans le connecteur générique. Le CHECK rend cette réalité explicite plutôt
+    # que de laisser une faute de frappe s'y glisser sans le moindre signal.
     Column("connector_type", Text, nullable=False, server_default="odoo"),
     # Migration 38 : version DÉCLARÉE de cette instance — vide = indéterminée.
     Column("connector_version", Text, nullable=False, server_default=""),
@@ -78,6 +81,7 @@ project = Table(
     Column("created_at", Text, nullable=False),
     # Migration 31 : '' = rôle global (comportement d'avant), sinon `no_access` ou un rôle forcé.
     Column("default_access", Text, nullable=False, server_default=""),
+    CheckConstraint("connector_type IN ('odoo', 'web')", name="ck_project_connector_type"),
     # Partiel (vivants seulement) + NOCASE sur SQLite — voir la limite documentée en tête de
     # fichier : la collation n'est PAS reproduite ici, seule la clause `WHERE` l'est.
     Index("uq_project_name", "name", unique=True,
