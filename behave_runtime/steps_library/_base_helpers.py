@@ -50,6 +50,35 @@ def _record_field_fallback(message: str) -> None:
         pass
 
 
+# Chemin du fichier où consigner CHAQUE résolution de `locate_field` (pas seulement les replis) —
+# plan de consolidation, étape 1.2. Nom DUPLIQUÉ côté `execution/behave_result.py`, même raison et
+# même test d'accord que `FIELD_FALLBACK_FILE_ENV`/`REGLES_REFUS_FILE_ENV` ci-dessus.
+SELECTOR_TIER_FILE_ENV = "TP_SELECTOR_TIER_FILE"
+
+
+def _record_selector_tier(ident: str, tier: str) -> None:
+    """Consigne QUEL palier de `locate_field` a résolu ce champ, pour détecter une DÉRIVE d'un run
+    à l'autre (§1.2 du plan de consolidation, audit « Le pari Mabl/Testim » 2026-09-15).
+
+    ⚠️ **Contrairement à `_record_field_fallback`, appelé sur TOUS les paliers, y compris `name`.**
+    Un repli n'est intéressant qu'une fois qu'il s'est produit ; une dérive, elle, se lit en
+    comparant le palier d'AUJOURD'HUI à celui d'HIER — il faut donc le palier « name » (le cas
+    silencieux, le plus fréquent) tout autant que les replis, sinon la comparaison n'aurait rien
+    à quoi se raccrocher pour la toute première dérive d'un champ jusque-là stable.
+
+    Même discipline que le sidecar des replis : un fichier, jamais le log (absent d'un scénario
+    vert), jamais bloquant (`except OSError` silencieux), rien n'est posé hors d'un run Behave.
+    """
+    path = os.environ.get(SELECTOR_TIER_FILE_ENV)
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"ident": ident, "tier": tier}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 # ── Les règles APPRISES d'un refus (§5bis n°1) ───────────────────────────────
 #
 # Chemin du fichier où consigner les refus MESURÉS pendant le run, posé par BehaveRunner dans
@@ -545,11 +574,13 @@ def locate_field(page, ident, *, timeout=8000):
     """
     candidats_techniques = [f'[name="{ident}"]', f'[data-test="{ident}"]',
                             f'[data-testid="{ident}"]']
+    tiers_techniques = ["name", "data_test", "data_testid"]
     # La classe CSS seulement si `ident` est un identifiant CSS valide — un libellé humain avec
     # espaces produirait sinon un sélecteur INVALIDE, pas juste « rien trouvé » (même garde que
     # le correctif C39 sur `select_field_value`, désormais partagée ici).
     if re.fullmatch(r"[A-Za-z_-][A-Za-z0-9_-]*", ident):
         candidats_techniques.append(f".{ident}")
+        tiers_techniques.append("css_class")
 
     # Un SEUL budget d'attente, partagé entre tous les candidats techniques — même esprit que
     # `click_first_actionable` (un candidat qui timeout n'attend pas au détriment des suivants),
@@ -560,21 +591,24 @@ def locate_field(page, ident, *, timeout=8000):
     except PlaywrightTimeout:
         pass  # aucun candidat technique attaché à temps : on tente le libellé/placeholder ensuite
     else:
-        for selecteur in candidats_techniques:
+        for selecteur, tier in zip(candidats_techniques, tiers_techniques):
             loc = page.locator(selecteur)
             if loc.count() > 0:
+                _record_selector_tier(ident, tier)
                 if selecteur != f'[name="{ident}"]':
                     message = f"champ '{ident}' introuvable par name ; résolu via `{selecteur}`."
                     logger.warning("%s %s", FIELD_FALLBACK_MARKER, message)
                     _record_field_fallback(message)
                 return loc
 
-    for nom_repli, loc in (("libellé", page.get_by_label(ident, exact=False)),
-                           ("placeholder", page.get_by_placeholder(ident, exact=False))):
+    for nom_repli, tier, loc in (("libellé", "label", page.get_by_label(ident, exact=False)),
+                                 ("placeholder", "placeholder",
+                                  page.get_by_placeholder(ident, exact=False))):
         try:
             loc.first.wait_for(state="attached", timeout=2000)
         except PlaywrightTimeout:
             continue
+        _record_selector_tier(ident, tier)
         message = f"champ '{ident}' introuvable par attribut technique ; résolu via son {nom_repli}."
         logger.warning("%s %s", FIELD_FALLBACK_MARKER, message)
         _record_field_fallback(message)

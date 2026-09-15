@@ -24,10 +24,13 @@ from testpilot.execution.behave_result import (
     FIELD_FALLBACK_FILENAME,
     REGLES_REFUS_FILE_ENV,
     REGLES_REFUS_FILENAME,
+    SELECTOR_TIER_FILE_ENV,
+    SELECTOR_TIER_FILENAME,
     BehaveResult,
     parse_behave_json,
     read_field_fallbacks,
     read_refus_mesures,
+    read_selector_tiers,
 )
 
 logger = logging.getLogger(__name__)
@@ -101,7 +104,8 @@ class BehaveRunner:
         """
         env = {**os.environ, **self.connection,
                FIELD_FALLBACK_FILE_ENV: str(run_dir / FIELD_FALLBACK_FILENAME),
-               REGLES_REFUS_FILE_ENV: str(run_dir / REGLES_REFUS_FILENAME)}
+               REGLES_REFUS_FILE_ENV: str(run_dir / REGLES_REFUS_FILENAME),
+               SELECTOR_TIER_FILE_ENV: str(run_dir / SELECTOR_TIER_FILENAME)}
         # `src` importable dans le sous-processus : le résolveur déterministe (§2bis) importe
         # `testpilot.generation.{valeur_conforme,domain_model}`. Sans ça, `python -m behave`
         # (cwd = run_dir jetable) ne voit pas le paquet `testpilot`. On PRÉPEND pour primer sur
@@ -172,6 +176,10 @@ class BehaveRunner:
             # Refus MESURÉS pendant le run (§5bis n°1). Lus ici, avant le rmtree, puis appris.
             result.refus_mesures = read_refus_mesures(run_dir / REGLES_REFUS_FILENAME)
             self._apprendre(result, dry_run=dry_run)
+            # Paliers de résolution de chaque champ (§1.2 du plan de consolidation). Même moment
+            # de lecture (avant le rmtree), même sidecar que les deux mécanismes ci-dessus.
+            result.selector_tiers = read_selector_tiers(run_dir / SELECTOR_TIER_FILENAME)
+            self._detecter_derive(result, module_name, dry_run=dry_run)
             return result
         finally:
             shutil.rmtree(run_dir, ignore_errors=True)
@@ -207,6 +215,36 @@ class BehaveRunner:
             logger.info("[règles apprises] projet %s : %d refus mesuré(s) enregistré(s)",
                         self.project_id, apprises)
 
+    def _detecter_derive(self, result: BehaveResult, module_name: str, *, dry_run: bool) -> None:
+        """Persiste les paliers de résolution de ce run et journalise toute DÉRIVE (§1.2).
+
+        Mêmes trois bornes qu'`_apprendre`, pour les mêmes raisons :
+
+        - **jamais sur un dry-run** — aucun champ n'y est réellement résolu contre l'application ;
+        - **ici et nulle part ailleurs** — le seul point que `run_service` et `cli.py` traversent
+          tous les deux ;
+        - **best-effort, jamais fatal** — une dérive non enregistrée est un défaut mineur de
+          visibilité, jamais une raison de faire tomber une exécution réelle.
+        """
+        if dry_run or self.project_id is None or not result.selector_tiers:
+            return
+        try:
+            from testpilot.execution import selector_memory
+            derives = selector_memory.enregistrer(
+                self.project_id, module_name, result.selector_tiers,
+                execution_id=self.execution_id)
+        except Exception:
+            logger.warning("[mémoire sélecteurs] enregistrement impossible — le run reste intact",
+                           exc_info=True)
+            return
+        for derive in derives:
+            logger.warning(
+                "[dérive de sélecteur] projet %s, module %s, champ '%s' : résolu par « %s » "
+                "auparavant, désormais par « %s ». À surveiller — l'application a peut-être "
+                "changé sous ce champ.",
+                self.project_id, derive.module, derive.ident, derive.ancien_tier,
+                derive.nouveau_tier)
+
     def _archiver(self, run_dir: Path, module_name: str, *, dry_run: bool, journal: str) -> None:
         """Recopie la trace brute du run hors du dossier temporaire, avant sa destruction.
 
@@ -218,7 +256,9 @@ class BehaveRunner:
           résultat qu'on relit six mois plus tard doit être lisible avec le test de son époque ;
         - les **replis de champ** consignés pendant le run, s'il y en a eu ;
         - les **refus mesurés** : ce que l'application a refusé, et qui devient une règle apprise.
-          Archivé pour qu'on puisse relire *pourquoi* une valeur est interdite depuis ce run-là.
+          Archivé pour qu'on puisse relire *pourquoi* une valeur est interdite depuis ce run-là ;
+        - les **paliers de résolution** de chaque champ (§1.2) : ce qui a permis de détecter une
+          dérive éventuelle, à relire même quand la mémoire du projet a depuis été mise à jour.
 
         ⚠️ **Best-effort, jamais bloquant.** Un disque plein ou un droit manquant ne doit pas
         transformer un run réussi en échec : l'archivage échoue en silence journalisé. L'inverse
@@ -237,6 +277,7 @@ class BehaveRunner:
                 (run_dir / "steps" / f"{module_name}_steps.py", f"{module_name}_steps.py"),
                 (run_dir / FIELD_FALLBACK_FILENAME, f"{prefixe}.replis-de-champ.json"),
                 (run_dir / REGLES_REFUS_FILENAME, f"{prefixe}.refus-mesures.jsonl"),
+                (run_dir / SELECTOR_TIER_FILENAME, f"{prefixe}.paliers-de-selecteur.jsonl"),
             ):
                 if source.exists():
                     shutil.copy2(source, self.artifacts_dir / cible)

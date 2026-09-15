@@ -16,6 +16,7 @@ verrouillent la LOGIQUE de la cascade et de l'attente (jamais un site réel dans
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -25,7 +26,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"))
 
 from _base_helpers import (  # noqa: E402
-    ElementIntrouvableError, locate_field, select_field_value,
+    ElementIntrouvableError, SELECTOR_TIER_FILE_ENV, locate_field, select_field_value,
 )
 
 
@@ -96,36 +97,63 @@ class _FaussePage:
 
 # ── 1. `locate_field` — la cascade, isolée ─────────────────────────────────────
 
-@pytest.mark.parametrize("attribut,selecteur", [
-    ("name", "[name=\"product_sort_container\"]"),
-    ("data-test", "[data-test=\"product_sort_container\"]"),
-    ("data-testid", "[data-testid=\"product_sort_container\"]"),
-    ("classe CSS", ".product_sort_container"),
+@pytest.mark.parametrize("attribut,selecteur,tier_attendu", [
+    ("name", "[name=\"product_sort_container\"]", "name"),
+    ("data-test", "[data-test=\"product_sort_container\"]", "data_test"),
+    ("data-testid", "[data-testid=\"product_sort_container\"]", "data_testid"),
+    ("classe CSS", ".product_sort_container", "css_class"),
 ])
-def test_locate_field_trouve_par_chaque_attribut_technique(attribut, selecteur):
+def test_locate_field_trouve_par_chaque_attribut_technique(
+        tmp_path, monkeypatch, attribut, selecteur, tier_attendu):
     """Le cas C39 : SEULE la classe CSS existe sur le vrai SauceDemo — mais `name`/`data-test`/
-    `data-testid` doivent continuer à marcher pour les applis qui, elles, les posent."""
+    `data-testid` doivent continuer à marcher pour les applis qui, elles, les posent.
+
+    Consigne aussi le PALIER qui a résolu (§1.2, mémoire de dérive) — y compris `name`, le cas
+    silencieux : sans lui, la toute première dérive d'un champ jusque-là stable n'aurait rien à
+    quoi se comparer."""
+    sidecar = tmp_path / "tiers.jsonl"
+    monkeypatch.setenv(SELECTOR_TIER_FILE_ENV, str(sidecar))
     page = _FaussePage(selecteur_existant=selecteur)
 
     loc = locate_field(page, "product_sort_container")
 
     assert loc.count() > 0, f"non trouvé via {attribut}"
+    lignes = [json.loads(l) for l in sidecar.read_text(encoding="utf-8").splitlines()]
+    assert lignes == [{"ident": "product_sort_container", "tier": tier_attendu}]
 
 
-def test_repli_sur_le_libelle_si_aucun_attribut_technique():
+def test_repli_sur_le_libelle_si_aucun_attribut_technique(tmp_path, monkeypatch):
+    sidecar = tmp_path / "tiers.jsonl"
+    monkeypatch.setenv(SELECTOR_TIER_FILE_ENV, str(sidecar))
     page = _FaussePage(via_libelle=True)
 
     loc = locate_field(page, "Trier par")
 
     assert loc.count() > 0
+    lignes = [json.loads(l) for l in sidecar.read_text(encoding="utf-8").splitlines()]
+    assert lignes == [{"ident": "Trier par", "tier": "label"}]
 
 
-def test_repli_sur_le_placeholder_en_dernier_recours():
+def test_repli_sur_le_placeholder_en_dernier_recours(tmp_path, monkeypatch):
+    sidecar = tmp_path / "tiers.jsonl"
+    monkeypatch.setenv(SELECTOR_TIER_FILE_ENV, str(sidecar))
     page = _FaussePage(via_placeholder=True)
 
     loc = locate_field(page, "Rechercher")
 
     assert loc.count() > 0
+    lignes = [json.loads(l) for l in sidecar.read_text(encoding="utf-8").splitlines()]
+    assert lignes == [{"ident": "Rechercher", "tier": "placeholder"}]
+
+
+def test_locate_field_ne_consigne_rien_quand_rien_n_est_trouve(tmp_path, monkeypatch):
+    sidecar = tmp_path / "tiers.jsonl"
+    monkeypatch.setenv(SELECTOR_TIER_FILE_ENV, str(sidecar))
+    page = _FaussePage()
+
+    locate_field(page, "champ_fantome")
+
+    assert not sidecar.exists()
 
 
 def test_rien_trouve_nulle_part_rend_un_locator_vide_pas_une_exception():

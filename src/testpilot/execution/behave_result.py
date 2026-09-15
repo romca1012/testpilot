@@ -58,6 +58,10 @@ class BehaveResult:
     # Ce sont des FAITS, pas un verdict : ils n'influencent aucun statut, ils alimentent
     # l'apprentissage pour que le résolveur ne reproduise plus la valeur refusée.
     refus_mesures: list[dict] = field(default_factory=list)
+    # Le PALIER de `locate_field` qui a résolu chaque champ (plan de consolidation, §1.2) — un
+    # fait par champ résolu, y compris le cas silencieux `name`. Alimente la mémoire de dérive du
+    # projet, jamais le verdict : un changement de palier est un signal à surveiller, pas un échec.
+    selector_tiers: list[dict] = field(default_factory=list)
     dry_run: bool = False
     raw_stdout: str = ""
     raw_stderr: str = ""
@@ -150,6 +154,15 @@ REGLES_REFUS_FILENAME = "regles_refus.jsonl"
 
 _MAX_REFUS = 20
 
+# Sidecar du palier de résolution de CHAQUE champ (plan de consolidation, §1.2). Mêmes noms
+# dupliqués côté ``_base_helpers``, pour la même raison, et le même test d'accord.
+SELECTOR_TIER_FILE_ENV = "TP_SELECTOR_TIER_FILE"
+SELECTOR_TIER_FILENAME = "selector_tiers.jsonl"
+
+# Un run peut résoudre beaucoup plus de champs qu'il n'y a de refus (chaque `fill_field`/
+# `select_field_value` en écrit un) — plafond plus généreux que `_MAX_REFUS` pour autant.
+_MAX_SELECTOR_TIERS = 200
+
 
 def read_field_fallbacks(path, limit: int = _MAX_FIELD_FALLBACKS) -> list[str]:
     """Replis « libellé → nom technique » consignés pendant le run (décision 0007, phase B+).
@@ -210,6 +223,39 @@ def read_refus_mesures(path, limit: int = _MAX_REFUS) -> list[dict]:
             if len(mesures) >= limit:
                 break
     return mesures
+
+
+def read_selector_tiers(path, limit: int = _MAX_SELECTOR_TIERS) -> list[dict]:
+    """Les paliers de résolution consignés pendant le run, relus depuis le sidecar (§1.2).
+
+    Chaque ligne est un fait `{"ident": ..., "tier": ...}` — quel palier de `locate_field` a
+    résolu ce champ, y compris le palier silencieux `name`. Ce sont ces faits qui alimentent la
+    mémoire de dérive du projet (`testpilot.execution.selector_memory`).
+
+    Même raison qu'un fichier plutôt que le log : Behave ne recrache pas la sortie d'un scénario
+    capturé, et une résolution a lieu dans TOUS les scénarios, verts compris.
+
+    Tolérant : une ligne illisible est sautée, pas propagée. Fichier absent = aucune résolution
+    consignée (hors d'un run réel), jamais une erreur.
+    """
+    try:
+        content = Path(path).read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return []
+    resolutions: list[dict] = []
+    for line in content.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            objet = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(objet, dict):
+            resolutions.append(objet)
+            if len(resolutions) >= limit:
+                break
+    return resolutions
 
 
 def classify_failure(snippet: str) -> tuple[str, str]:
