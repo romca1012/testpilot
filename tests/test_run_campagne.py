@@ -343,6 +343,91 @@ def test_api_archiver_un_run_inconnu_404(client):
     assert client.post("/api/runs/999/archive", json={"archived": True}).status_code == 404
 
 
+# ── Lancement bloqué AVANT `trigger_run` : ne plus rester « Untested » en silence (2026-09-15) ──
+
+def test_lancement_bloque_needs_review_cree_une_execution_technical_error(conn):
+    """Un cas dont la version n'a jamais été validée (`needs_review`) doit obtenir un verdict
+    honnête dans l'historique du cas — pas seulement une ligne de journal serveur."""
+    from testpilot.api.services import run_service
+    from testpilot.store.repositories import VersionRepo
+
+    mid = ensure_default_module(conn, "m")
+    c1 = _cas(conn, mid, "a")
+    vid = VersionRepo(conn).create(test_case_id=c1, spec_content="", spec_hash="h",
+                                   feature_content="# f", steps_content="# s")
+    CaseRepo(conn).set_current_version(c1, vid)
+    # Gate JAMAIS approuvé (pas d'appel à auto_approve_metier) : needs_review.
+
+    eid = run_service.enregistrer_lancement_bloque(
+        conn, case_id=c1, code="needs_review", message="relecture humaine obligatoire")
+
+    assert eid is not None
+    execution = ExecutionRepo(conn).get(eid)
+    assert execution["execution_status"] == "technical_error"
+    assert execution["functional_status"] == "indetermine"
+    assert execution["version_id"] == vid
+    assert "relecture humaine obligatoire" in execution["error_message"]
+    # Le cas lui-même reflète ce dernier résultat (pas de silence côté fiche cas non plus).
+    assert CaseRepo(conn).get(c1)["last_execution_status"] == "technical_error"
+
+
+def test_lancement_bloque_rend_none_sans_version_ou_cas_introuvable(conn):
+    """`not_found`/`no_version` n'ont ni cas ni version valides à référencer (clé étrangère NOT
+    NULL) : aucune ligne ne doit être créée — un cas jamais généré reste honnêtement « Untested »."""
+    from testpilot.api.services import run_service
+
+    mid = ensure_default_module(conn, "m")
+    c1 = _cas(conn, mid, "a")  # jamais de version générée
+
+    assert run_service.enregistrer_lancement_bloque(
+        conn, case_id=c1, code="no_version", message="aucune version générée") is None
+    assert run_service.enregistrer_lancement_bloque(
+        conn, case_id=999999, code="not_found", message="cas introuvable") is None
+    assert ExecutionRepo(conn).list_for_case(c1) == []
+
+
+def test_campagne_avec_un_cas_bloque_needs_review_laisse_un_verdict_dans_le_run(conn, monkeypatch):
+    """Régression du bug réel du 2026-09-15 : une campagne qui bute sur `needs_review` doit
+    laisser une trace RATTACHÉE au run — pas un cas « Untested » sans explication alors que le
+    run affiche « Terminé »."""
+    from testpilot.api.services import campaign_service, run_service
+    from testpilot.store.repositories import ReviewRepo, VersionRepo
+    from testpilot.verdict import review_gate
+
+    mid = ensure_default_module(conn, "m")
+    c1, c2 = _cas(conn, mid, "a"), _cas(conn, mid, "b")
+    vid1 = VersionRepo(conn).create(test_case_id=c1, spec_content="", spec_hash="h",
+                                    feature_content="# f", steps_content="# s")
+    CaseRepo(conn).set_current_version(c1, vid1)
+    # c1 : gate JAMAIS approuvé → needs_review au déclenchement.
+    vid2 = VersionRepo(conn).create(test_case_id=c2, spec_content="", spec_hash="h",
+                                    feature_content="# f", steps_content="# s")
+    CaseRepo(conn).set_current_version(c2, vid2)
+    review_gate.auto_approve_metier(ReviewRepo(conn), case_id=c2, version_id=vid2)  # c2 : approuvé
+
+    rid = RunRepo(conn).create(project_id=1, name="C", selection_mode="frozen", case_ids=[c1, c2])
+
+    joues: list[int] = []
+    monkeypatch.setattr(run_service, "run_execution",
+                        lambda eid, slug, cid, vid, **kw: joues.append(cid))
+    monkeypatch.setattr(config, "DB_PATH", conn.execute("PRAGMA database_list").fetchone()[2])
+
+    params = campaign_service.start_campaign(conn, rid)
+    campaign_service.run_campaign(**params)
+
+    assert joues == [c2], "seul le cas dont le gate est ouvert est vraiment joué"
+    conn2 = get_initialized_db(config.DB_PATH)
+    cases = RunRepo(conn2).cases_with_results(rid)
+    resultat_c1 = next(c["result"] for c in cases if c["id"] == c1)
+    assert resultat_c1 is not None, "le cas bloqué ne doit plus rester « Untested » en silence"
+    assert resultat_c1["execution_status"] == "technical_error"
+    rattachees = conn2.execute(
+        "SELECT COUNT(*) c FROM execution WHERE run_id=?", (rid,)).fetchone()["c"]
+    assert rattachees == 2, "le cas bloqué obtient aussi une exécution rattachée au run"
+    assert RunRepo(conn2).get(rid)["status"] == "completed"
+    conn2.close()
+
+
 def test_un_cas_inclus_dans_un_run_reste_SUPPRIMABLE(conn):
     """⚠️ Régression réelle (2026-07-21) : `test_run_case` référence `test_case`, et la cascade de
     `CaseRepo.delete` ne la nettoyait pas → `FOREIGN KEY constraint failed`, le cas devenait

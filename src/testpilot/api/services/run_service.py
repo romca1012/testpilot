@@ -104,6 +104,45 @@ def trigger_run(conn, case_id: int, *, triggered_by: str = "") -> tuple[int, str
     return eid, case["feature_slug"], case_id, version_id
 
 
+def enregistrer_lancement_bloque(conn, *, case_id: int, code: str, message: str,
+                                  run_id: int | None = None,
+                                  triggered_by: str = "") -> int | None:
+    """Rend visible, dans l'historique du cas, un lancement bloqué AVANT `trigger_run` — au lieu
+    de ne laisser trace que dans le journal serveur (bug réel, 2026-09-15) : une campagne qui
+    butait sur `needs_review`/`no_connection` journalisait `RunError` puis passait au cas suivant,
+    qui restait « Untested » sans rien à l'écran pour dire pourquoi — le run, lui, se terminait
+    « Terminé » comme si tout avait joué. Réutilise `_ecrire_erreur`, le même mécanisme
+    d'affichage qu'un plantage technique en cours de run : aucun nouveau composant d'écran.
+
+    Seuls `needs_review` et `no_connection` ont une VERSION réelle à rattacher — le gate n'est
+    évalué qu'après lecture de `current_version_id` (cf. `trigger_run`). Pour `not_found` et
+    `no_version`, il n'existe ni cas ni version valides à référencer (clé étrangère NOT NULL sur
+    `execution.version_id`) ; rend `None` sans rien créer — un cas jamais généré reste
+    honnêtement « Untested », l'appelant continue de se contenter du journal serveur.
+
+    `run_id`, quand fourni (campagne), est rattaché **avant** la clôture — même ordre que le
+    chemin normal (`campaign_service.run_campaign`) : `ResultRepo.enregistrer_execution` ignore
+    toute exécution SANS `run_id` au moment où `finalize` s'exécute (« hors campagne »), donc un
+    rattachement fait après coup laisserait le cas retomber dans le même silence qu'on corrige ici.
+    """
+    if code not in ("needs_review", "no_connection"):
+        return None
+    case = CaseRepo(conn).get(case_id)
+    version_id = (case or {}).get("current_version_id")
+    if not version_id:
+        return None
+    project = project_du_cas(conn, case_id)
+    execs = ExecutionRepo(conn)
+    trigger = "rerun" if execs.has_for_version(version_id) else "first_run"
+    eid = execs.create(test_case_id=case_id, version_id=version_id, trigger=trigger,
+                       cible=cible_de(project), triggered_by=triggered_by)
+    if run_id is not None:
+        conn.execute("UPDATE execution SET run_id=? WHERE id=?", (run_id, eid))
+        conn.commit()
+    _ecrire_erreur(conn, eid, case_id, message)
+    return eid
+
+
 def resolve_connection(conn, case_id: int) -> dict[str, str]:
     """Connexion (variables d'env) du PROJET auquel appartient le cas.
 
