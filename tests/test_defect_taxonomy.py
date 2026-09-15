@@ -101,6 +101,30 @@ def test_unknown_quand_texte_neutre_et_type_absent():
     assert dt.classify_failure(f) == dt.UNKNOWN
 
 
+# --- Garde contre les collisions de sous-chaîne (incident CI 2026-09-15) --------
+#
+# Le garde d'ordre 0009 (`test_case_order.py`) cherchait « position » par containment
+# (`"position" in texte`) et se déclenchait à tort sur « supposition ». Même défaut de fond,
+# ici : `_KEYWORDS` matchait par containment avant ce correctif — « attendu » aurait été
+# reconnu dans « inattendu », qui n'a pourtant rien à voir avec une comparaison attendu/obtenu.
+
+def test_mot_cle_ne_matche_pas_a_l_interieur_d_un_autre_mot():
+    texte = "un comportement inattendu, sans lien avec une comparaison quelconque"
+    assert dt.classify_failure(_fail(tb=texte)) == dt.UNKNOWN
+
+
+def test_aucun_mot_cle_ne_matche_quand_il_est_englobe_par_des_lettres():
+    """Garde systématique, pas seulement le cas « attendu »/« inattendu » : entourer N'IMPORTE
+    QUEL mot-clé de lettres quelconques ne doit jamais produire son propre classement — sinon
+    le containment nu serait toujours présent ailleurs dans la table."""
+    for category, kws in dt._KEYWORDS.items():
+        for kw, pattern in zip(kws, dt._KEYWORD_PATTERNS[category]):
+            if not (kw[0].isalpha() and kw[-1].isalpha()):
+                continue  # mots-clés à ponctuation en bout (aucun ici aujourd'hui, garde future)
+            texte = f"xx{kw}xx"
+            assert not pattern.search(texte), f"{kw!r} matche à tort dans {texte!r}"
+
+
 # --- Agrégation : comptage et cause dominante -----------------------------------
 
 def test_classify_failures_compte_et_omet_les_zeros():

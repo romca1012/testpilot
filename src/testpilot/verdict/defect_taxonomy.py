@@ -236,6 +236,18 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# ⚠️ Compilés à LIMITE DE MOT (`\b...\b`), jamais en simple containment (`kw in text`).
+# Incident réel (2026-09-15, CI) : un garde de ce dépôt cherchait un mot-clé par containment et
+# s'est déclenché à tort sur un mot totalement différent qui le contenait comme sous-chaîne —
+# même défaut de fond, ailleurs dans le code. Ici, un mot-clé comme « route » matchait déjà,
+# avant ce correctif, n'importe quelle occurrence de « routeur » ou « routine » : le containment
+# ne protège d'aucune collision, la limite de mot si (aux limites Unicode habituelles — un accent
+# reste un caractère de mot).
+_KEYWORD_PATTERNS: dict[str, tuple[re.Pattern, ...]] = {
+    category: tuple(re.compile(rf"\b{re.escape(kw)}\b") for kw in kws)
+    for category, kws in _KEYWORDS.items()
+}
+
 
 def exception_type(text: str) -> str:
     """Nom de la classe d'exception réellement levée. `''` si aucune n'est identifiable.
@@ -296,8 +308,8 @@ def classify_failure(failure) -> str:
     text = _message_text(failure)
     if text:
         for category in CATEGORIES:
-            for kw in _KEYWORDS.get(category, ()):
-                if kw in text:
+            for pattern in _KEYWORD_PATTERNS.get(category, ()):
+                if pattern.search(text):
                     return category
     return UNKNOWN
 
