@@ -112,3 +112,31 @@ describe('CaseDetailTR — plus de gate ; vigilance en info + renvoi vers Run/Pl
     expect(runCase).not.toHaveBeenCalled()
   })
 })
+
+// Bug réel (2026-09-15) : un cas généré puis jamais retouché reste `needs_review` À VIE — la
+// seule approbation prévue par §4.3 (enregistrer le formulaire métier) n'arrive jamais pour lui.
+// L'écran affichait quand même « ce test est prêt », et AUCUN bouton ne permettait de débloquer
+// le cas. `ReviewGate` (déjà écrit depuis avant §4.3, jamais monté) redevient le filet pour CE
+// cas précis — sans réapparaître quand la relecture est déjà acquise (couvert ci-dessus).
+describe('CaseDetailTR — relecture bloquée : le filet réapparaît', () => {
+  it('affiche le gate de relecture au lieu de « ce test est prêt »', async () => {
+    const w = await page(A_RELIRE)
+    expect(w.findComponent({ name: 'ReviewGate' }).exists()).toBe(true)
+    expect(w.text()).not.toContain('Ce test est prêt')
+    const btn = w.findAll('button').find((b) => b.text().includes('Approuver la version'))
+    expect(btn).toBeDefined()
+  })
+
+  it('approuver recharge le cas et fait réapparaître le renvoi vers les runs', async () => {
+    const { api } = await import('../lib/api')
+    const w = await page(A_RELIRE)
+    getCase.mockResolvedValue(detail(APPROUVE))  // ce que l'API renverra APRÈS approbation
+
+    await w.findAll('button').find((b) => b.text().includes('Approuver la version'))!.trigger('click')
+    await flushPromises()
+
+    expect(api.reviewCase).toHaveBeenCalledWith(1, true, '', expect.any(Number))
+    expect(w.findComponent({ name: 'ReviewGate' }).exists()).toBe(false)
+    expect(w.text()).toContain('Exécutions et résultats de test')
+  })
+})

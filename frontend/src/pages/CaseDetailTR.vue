@@ -18,6 +18,7 @@ import DefectsTab from '../components/case/DefectsTab.vue'
 import HistoryTab from '../components/case/HistoryTab.vue'
 import CodeView from '../components/CodeView.vue'
 import RefsList from '../components/RefsList.vue'
+import ReviewGate from '../components/ReviewGate.vue'
 import Button from '../components/ui/Button.vue'
 import IconButton from '../components/ui/IconButton.vue'
 
@@ -448,11 +449,22 @@ async function deleteCase() {
 const c = computed(() => detail.value?.case ?? null)
 
 // ── Points de vigilance (smoke-check) ─────────────────────────────────────────
-// ⚠️ Amendement §4.3 (2026-07-21) : la validation métier à la création vaut relecture. Plus de
-// gate humain ni de budget de réparation ICI (la réparation est gérée au niveau du Run). On garde
-// seulement les SIGNAUX du smoke-check, en information — ils disent « ce test pourrait ne rien
-// créer », sans plus rien à approuver.
+// ⚠️ Amendement §4.3 (2026-07-21) : la validation métier à la création vaut relecture — la
+// SEULE approbation attendue est l'auto-approbation qui suit l'enregistrement du formulaire
+// métier (`PATCH .../metier`). On garde les SIGNAUX du smoke-check, en information — ils disent
+// « ce test pourrait ne rien créer », sans plus rien à approuver ICI dans le cas normal.
 const lintWarnings = computed(() => detail.value?.gate?.lint_warnings || [])
+
+// ── Relecture bloquée (bug réel, 2026-09-15) ──────────────────────────────────
+// L'auto-approbation §4.3 suppose qu'une version REÇOIT toujours une édition métier avant sa
+// première exécution — faux pour un cas généré puis jamais retouché : il reste ÉTERNELLEMENT
+// `needs_review`, sans QUE RIEN ne l'affiche (l'écran disait « ce test est prêt » à sa place),
+// et le seul moyen de le débloquer était le hasard d'un enregistrement du formulaire métier.
+// On réutilise `ReviewGate` (déjà écrit, jamais monté depuis §4.3) SEULEMENT dans ce cas — un
+// gate déjà approuvé garde le comportement §4.3 inchangé (aucune approbation à afficher).
+const gate = computed(() => detail.value?.gate ?? null)
+const needsReview = computed(() => hasGherkin.value && gate.value != null && !gate.value.allowed)
+async function onReviewed() { await load() }
 
 onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
 </script>
@@ -617,9 +629,25 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
             </ul>
           </section>
 
+          <!-- ════════ RELECTURE BLOQUÉE ════════
+               Un cas resté `needs_review` (jamais retouché depuis sa génération) ne peut être
+               lancé par AUCUN run — sans action ici, il reste bloqué indéfiniment (bug réel,
+               2026-09-15). L'auto-approbation §4.3 reste le chemin normal ; ceci est le filet. -->
+          <section v-if="needsReview" class="mt-8">
+            <h2 class="font-semibold pb-2 border-b border-border">Relecture requise</h2>
+            <p class="mt-2 text-xs text-muted-foreground">
+              Ce test ne peut pas être lancé depuis un run tant que sa version n'a pas été
+              approuvée. Modifier puis enregistrer le contenu métier ci-dessus l'approuve
+              aussi — ou décidez directement ici.
+            </p>
+            <div class="mt-3">
+              <ReviewGate :case-id="caseId" :gate="gate" @reviewed="onReviewed" />
+            </div>
+          </section>
+
           <!-- ════════ EXÉCUTION — renvoi vers Run/Plan ════════
                Un cas ne s'exécute pas seul : il se joue dans un Run. On indique où. -->
-          <section v-if="hasGherkin" class="mt-8">
+          <section v-if="hasGherkin && !needsReview" class="mt-8">
             <h2 class="font-semibold pb-2 border-b border-border">Exécution</h2>
             <div class="mt-3 rounded-lg border border-border bg-primary/5 p-4 text-sm text-muted-foreground">
               Ce test est prêt. Les exécutions se lancent depuis
