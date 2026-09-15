@@ -84,3 +84,58 @@ def test_un_appel_qui_leve_ne_fait_jamais_tomber_l_appelant():
     texte, cout = propose_explication(_verdict_failed(), llm=FakeLLM("", leve=True))
 
     assert texte == "" and cout == 0.0
+
+
+# ── Le défaut qui produisait des explications FAUSSES (2026-09-14, cas réel SauceDemo) ─────────
+#
+# Un test attendait le message d'erreur de connexion AVEC un point final ; SauceDemo l'affiche
+# SANS. L'application avait donc PARFAITEMENT refusé la connexion — mais le commentaire généré
+# affirmait « l'application a accepté la connexion... un problème de sécurité dans le système
+# d'authentification », un récit inventé à partir du seul TITRE du scénario (qui annonce une
+# connexion refusée), jamais du vrai écart mesuré (un point final manquant).
+
+def _verdict_connexion_refusee_avec_ecart_texte() -> CaseVerdict:
+    return CaseVerdict(
+        execution_status="success", functional_status="non_conforme",
+        scenarios=[ScenarioVerdict(
+            "[Erreur] Connexion refusée avec mot de passe incorrect pour un utilisateur valide",
+            "success", "non_conforme", cause_category="assertion_mismatch",
+            error=("Message d'erreur inattendu.\n"
+                   "  Attendu (contient) : 'Username and password do not match any user in "
+                   "this service.'\n"
+                   "  Obtenu            : 'Epic sadface: Username and password do not match "
+                   "any user in this service'"))],
+        scenarios_passed=0, scenarios_failed=1)
+
+
+def test_le_prompt_transmet_le_vrai_detail_mesure_pas_seulement_le_titre():
+    """LE correctif : sans le détail réel, le LLM ne voyait que le titre + une étiquette
+    générale — et devinait. Le détail mesuré (ScenarioVerdict.error) doit désormais lui parvenir."""
+    llm = FakeLLM(json.dumps({"explication": "ok"}))
+
+    propose_explication(_verdict_connexion_refusee_avec_ecart_texte(), llm=llm)
+
+    prompt = llm.prompts[0]
+    assert "Ce que le test a réellement mesuré" in prompt
+    assert "Username and password do not match any user in this service." in prompt
+    assert "Epic sadface: Username and password do not match any user in this service" in prompt
+
+
+def test_un_scenario_reussi_ne_porte_aucun_detail_d_erreur():
+    """Rien à mesurer sur un succès — la ligne PAR SCÉNARIO ne doit apparaître QUE pour un échec.
+    (La phrase existe par ailleurs dans la consigne système elle-même — on teste ici le résumé
+    PAR SCÉNARIO directement, `_resume_scenario`, pas la présence du mot dans tout le prompt.)"""
+    from testpilot.verdict.explication import _resume_scenario
+
+    ligne = _resume_scenario(_verdict_passed().scenarios[0])
+
+    assert "Ce que le test a réellement mesuré" not in ligne
+
+
+def test_le_systeme_interdit_explicitement_de_deviner_depuis_le_titre():
+    """Le prompt système doit porter la consigne, pas seulement le prompt utilisateur — sinon un
+    modèle qui ignore une instruction noyée dans les données continuerait d'inventer."""
+    from testpilot.verdict.explication import _SYSTEM
+
+    assert "titre" in _SYSTEM.lower()
+    assert "réellement mesuré" in _SYSTEM

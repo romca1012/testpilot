@@ -29,7 +29,14 @@ _SYSTEM = ("Tu expliques le résultat d'un test automatique à un lecteur qui ne
            "Tu écris en français clair, jamais en langage technique : aucun nom de classe "
            "d'erreur, aucun sélecteur, aucune trace de pile, aucun terme de code. Une ou deux "
            "phrases factuelles qui disent CE QUI a été vérifié et POURQUOI le résultat est "
-           "celui-là. Réponds uniquement en JSON valide.")
+           "celui-là. "
+           "⚠️ Base-toi UNIQUEMENT sur « Ce que le test a réellement mesuré » quand cette ligne "
+           "est fournie pour un scénario — jamais sur ce que son TITRE semble annoncer. Le titre "
+           "dit l'INTENTION du scénario, pas ce qui s'est passé : un titre « connexion refusée » "
+           "qui échoue ne veut pas forcément dire que l'application a accepté la connexion — "
+           "lis le détail mesuré pour savoir. Si aucun détail réel n'est fourni, reste prudent "
+           "et général plutôt que d'inventer une cause plausible mais fausse. "
+           "Réponds uniquement en JSON valide.")
 
 _SCHEMA = {
     "type": "object",
@@ -38,12 +45,28 @@ _SCHEMA = {
     "additionalProperties": False,
 }
 
+# Même borne que `run_service._persist` (`error_summary=(s.error or "")[:500]`) — assez pour
+# porter une comparaison attendu/obtenu, jamais une trace de pile entière.
+_ERREUR_MAX = 500
+
 
 def _resume_scenario(s) -> str:
     cause = dt.LABELS.get(s.cause_category, "") if s.cause_category else ""
     etat = "réussi" if s.functional_status == "conforme" else "en échec"
     detail = f" ({cause})" if cause else ""
-    return f"- « {s.name} » : {etat}{detail}"
+    ligne = f"- « {s.name} » : {etat}{detail}"
+    # ⚠️ **Le défaut qui produisait des explications FAUSSES** (mesuré le 2026-09-14, SauceDemo) :
+    # sans ce détail, le LLM ne voyait que le TITRE du scénario + une étiquette générale
+    # (« assertion métier en échec ») — et RECONSTRUISAIT un récit à partir de ce que le scénario
+    # était censé vérifier, pas de ce qui s'était réellement passé. Cas mesuré : un message
+    # d'erreur attendu avec un point final, obtenu sans — l'application avait PARFAITEMENT refusé
+    # la connexion, et le commentaire généré a pourtant affirmé « l'application a accepté la
+    # connexion... un problème de sécurité dans le système d'authentification ». Le détail RÉEL
+    # de la comparaison (porté par `ScenarioVerdict.error`, déjà mesuré, jamais transmis jusqu'ici)
+    # doit primer sur toute reconstruction à partir du seul titre.
+    if s.functional_status != "conforme" and (s.error or "").strip():
+        ligne += f"\n  Ce que le test a réellement mesuré : {s.error.strip()[:_ERREUR_MAX]}"
+    return ligne
 
 
 def _build_prompt(verdict: CaseVerdict, module_name: str) -> str:
@@ -64,7 +87,9 @@ Réponds en JSON : {{"explication": "..."}}
 RÈGLES IMPÉRATIVES :
 1. Explique CE QUI a été vérifié et POURQUOI ce résultat, en une ou deux phrases.
 2. Jamais de jargon technique — écris pour quelqu'un qui ne code pas.
-3. Si le résultat est positif, dis ce qui a été confirmé, pas seulement « tout est bon »."""
+3. Si le résultat est positif, dis ce qui a été confirmé, pas seulement « tout est bon ».
+4. Si une ligne « Ce que le test a réellement mesuré » est donnée pour un scénario en échec,
+   décris CE fait précis — jamais une supposition à partir du seul titre du scénario."""
 
 
 def _data_explication(llm, verdict: CaseVerdict, module_name: str, model: str,
