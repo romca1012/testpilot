@@ -19,6 +19,7 @@ on:
       - "behave_runtime/steps_library/**"
       - "tests/test_conformite_connecteur_web.py"
       - "tests/test_garde_generique_sans_marqueur_odoo.py"
+      - "tests/fixtures/torture_app/**"
   schedule:
     - cron: "17 2 * * *"   # chaque nuit — horaire décalé pour ne pas concourir avec d'autres jobs
   workflow_dispatch:

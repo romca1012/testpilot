@@ -27,6 +27,14 @@ n'a pas (`ci.yml` n'installe aucun navigateur). Lancée par `.github/workflows/c
 dérive de ces applications tierces (une mise à jour de SauceDemo peut changer son DOM sans que
 rien dans ce dépôt ne bouge).
 
+⚠️ **SauceDemo et the-internet restent COMPLAISANTES** (étape 1.3 du plan de consolidation,
+2026-09-15 — audit « Le pari Mabl/Testim ») : markup stable, attribut technique toujours présent,
+connexion en une seule page. Une fixture CONTRÔLÉE et VERSIONNÉE dans le dépôt
+(`tests/fixtures/torture_app/`) complète le filet avec ce que ces deux applications n'exercent
+jamais — identifiants d'éléments régénérés à chaque chargement, un champ atteignable SEULEMENT par
+son libellé, une connexion étalée sur DEUX écrans — sans dépendre d'une 3ᵉ application publique
+(fiabilité/CGU incertaines) : ce qu'elle mesure ne peut pas changer sous nos pieds.
+
 Lancer en local : `pytest -m conformance -v`
 """
 
@@ -173,3 +181,59 @@ def test_selection_dans_un_select_sans_name_marche_par_sa_classe_css(page):
     dernier = noms.nth(noms.count() - 1).inner_text()
     assert premier > dernier, (
         f"le tri Z-A n'a pas été appliqué (premier={premier!r}, dernier={dernier!r})")
+
+
+# ── Fixture « torture » locale (§1.3 du plan de consolidation, 2026-09-15) ──────────────────────
+#
+# SauceDemo et the-internet sont conçues pour être automatisées : markup stable, un attribut
+# technique (name/data-test) toujours présent, connexion en une seule page. Rien ne prouve que la
+# cascade tient face à une application plus dure — des identifiants d'éléments qui changent à
+# chaque chargement, un champ atteignable SEULEMENT par son libellé, une connexion étalée sur DEUX
+# écrans. Plutôt que de dépendre d'une 3ᵉ application publique (fiabilité/CGU incertaines), cette
+# fixture est CONTRÔLÉE et VERSIONNÉE dans le dépôt (`tests/fixtures/torture_app/`) : ce qu'elle
+# mesure ne peut pas changer sous nos pieds comme une vraie application tierce le pourrait.
+
+_TORTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "torture_app"
+
+
+def _page_torture(nom: str) -> str:
+    return (_TORTURE_DIR / nom).resolve().as_uri()
+
+
+def test_torture_locate_field_resout_un_champ_sans_le_moindre_identifiant_technique(page):
+    """Ni `name`, ni `data-test`, ni `id` stable (régénéré à CHAQUE chargement) : seul le libellé
+    visible permet de retrouver ce champ — le palier le plus proche d'un usage humain, jamais
+    exercé par SauceDemo/the-internet (les deux posent toujours un attribut technique stable)."""
+    page.goto(_page_torture("login1.html"))
+
+    fill_field(page, "Identifiant", "testpilot")
+    click_button(page, "Continuer")
+    page.wait_for_url(lambda url: "login2.html" in url, timeout=5000)
+
+    assert "login2.html" in page.url
+
+
+def test_torture_la_connexion_en_deux_ecrans_aboutit(page):
+    """La bibliothèque partagée (`locate_field`/`fill_field`/`click_button`) doit fonctionner sur
+    CHAQUE écran indépendamment. ⚠️ La détection AUTOMATIQUE d'une connexion à deux écrans (ce que
+    `tenter_connexion_generique` ferait toute seule) est une étape À PART du plan de consolidation
+    (§3.1), pas encore construite — ce test pilote les deux écrans explicitement, un par un."""
+    page.goto(_page_torture("login1.html"))
+    fill_field(page, "Identifiant", "testpilot")
+    click_button(page, "Continuer")
+    page.wait_for_url(lambda url: "login2.html" in url, timeout=5000)
+
+    fill_field(page, "Mot de passe", "secret")
+    click_button(page, "Se connecter")
+    page.wait_for_url(lambda url: "dashboard.html" in url, timeout=5000)
+
+    assert "dashboard.html" in page.url, (
+        f"la connexion en deux écrans n'a pas abouti (url actuelle : {page.url})")
+
+
+def test_torture_un_select_sans_name_marche_par_sa_classe_css(page):
+    page.goto(_page_torture("dashboard.html"))
+
+    select_field_value(page, "Z à A", "tri-catalogue")
+
+    assert page.locator(".tri-catalogue").input_value() == "za"

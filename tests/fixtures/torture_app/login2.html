@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Connexion — étape 2</title>
+</head>
+<body>
+<form id="etape2">
+  <label>Mot de passe <input type="password"></label>
+  <button type="submit">Se connecter</button>
+</form>
+<p id="erreur" hidden>Identifiants invalides.</p>
+<script>
+  // Même torture qu'à l'étape 1 : aucun identifiant technique stable sur ce champ non plus.
+  document.querySelector('input').id = 'f-' + Math.random().toString(36).slice(2);
+  document.getElementById('etape2').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var params = new URLSearchParams(location.search);
+    var identifiant = params.get('u') || '';
+    var motDePasse = document.querySelector('input').value;
+    if (identifiant === 'testpilot' && motDePasse === 'secret') {
+      location.href = 'dashboard.html';
+    } else {
+      document.getElementById('erreur').hidden = false;
+    }
+  });
+</script>
+</body>
+</html>
