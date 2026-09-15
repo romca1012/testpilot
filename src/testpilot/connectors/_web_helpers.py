@@ -81,37 +81,98 @@ def _detect_submission(page) -> dict:
     }
 
 
+class ConnexionGeneriqueImpossibleError(Exception):
+    """Ni le schéma à UN écran (identifiant + mot de passe ensemble) ni celui à DEUX écrans
+    (identifiant seul, puis mot de passe sur l'écran suivant) n'a permis de repérer un formulaire
+    de connexion exploitable — étape 3.1 du plan de consolidation (2026-09-15, audit « Le pari
+    Mabl/Testim »). Le cas le plus probable est un SSO/un second facteur (2FA), tous deux hors du
+    périmètre d'une détection générique par champs de formulaire : un jeton de session externe ou
+    un code à usage unique ne sont pas des données que `user`/`password` peuvent fournir.
+
+    ⚠️ **Une classe DÉDIÉE, plutôt qu'un retour `False` silencieux comme avant cette étape** — un
+    échec d'authentification à ce stade laissait l'exploration/la perception continuer SANS
+    connexion, sans que rien ne dise pourquoi, ce qui produit un annuaire ou une inspection de
+    formulaire mesurée sur la mauvaise page (celle de connexion) sans le moindre signal distinct
+    d'un « pas de connexion nécessaire ici » légitime.
+    """
+
+
+def _ressemble_a_un_premier_ecran_de_connexion(page) -> bool:
+    """Un écran minimal — EXACTEMENT un champ texte/email, plus un contrôle de soumission — pas
+    n'importe quelle page qui porte un champ texte quelconque (recherche, newsletter…).
+
+    ⚠️ **Ce garde existe pour éviter un FAUX POSITIF du schéma à deux écrans** (étape 3.1) : sans
+    lui, la détection soumettrait n'importe quel champ texte/email trouvé sur une page SANS mot de
+    passe, en pariant qu'il s'agit d'un premier écran de connexion — un pari qui se paierait cher
+    sur une page de recherche ou d'inscription à une newsletter. Un vrai premier écran de connexion
+    à deux étapes (ex. Google, Microsoft) est délibérément minimal ; ce n'est pas le cas d'une page
+    de contenu ordinaire qui porte un champ texte parmi d'autres.
+    """
+    champs = page.query_selector_all("input[type='email'], input[type='text']")
+    if len(champs) != 1:
+        return False
+    return page.query_selector("button, input[type='submit']") is not None
+
+
 def tenter_connexion_generique(page, user: str, password: str) -> bool:
     """Détection de connexion GÉNÉRIQUE (pas de convention d'URL à connaître, à la différence
     d'Odoo) — partagée entre ``GenericWebConnector`` (exécution) et le crawl générique
     (exploration, audit multi-connecteurs 2026-09-08) : les deux affrontent le même problème,
     « repérer un formulaire de connexion sur une page qu'on n'a jamais vue ».
 
-    Heuristique : un mot de passe est l'identifiant le plus fiable d'un formulaire de connexion —
-    on cherche ``input[type=password]``, on prend le premier champ texte/email de la PAGE comme
-    identifiant (scope volontairement simple, pas un `closest('form')` — un premier jet à affiner
-    si un formulaire réel la met en défaut), on remplit et on valide.
+    **Schéma à UN écran** (historique, comportement inchangé) : un mot de passe est l'identifiant
+    le plus fiable d'un formulaire de connexion — on cherche ``input[type=password]``, on prend le
+    premier champ texte/email de la PAGE comme identifiant (scope volontairement simple, pas un
+    `closest('form')` — un premier jet à affiner si un formulaire réel la met en défaut), on
+    remplit et on valide.
 
-    Identifiant/mot de passe VIDES, ou aucun champ mot de passe sur la page : on considère
-    l'application accessible sans connexion et on continue tel quel — mieux vaut explorer sans
-    authentification que de bloquer sur une hypothèse de connexion fausse.
+    **Schéma à DEUX écrans** (étape 3.1 du plan de consolidation, 2026-09-15 — de nombreuses
+    applications SaaS modernes, ex. Google/Microsoft, demandent l'identifiant seul avant de
+    révéler le mot de passe sur un second écran) : si aucun mot de passe n'apparaît mais que la
+    page RESSEMBLE à un premier écran minimal (`_ressemble_a_un_premier_ecran_de_connexion`), on
+    soumet l'identifiant seul puis on cherche le mot de passe sur l'écran suivant. Ni l'un ni
+    l'autre schéma ne matchant (SSO/2FA) → `ConnexionGeneriqueImpossibleError`, explicite et
+    distincte, plutôt qu'un échec silencieux dans un état ambigu.
+
+    Identifiant/mot de passe VIDES, ou aucun indice de formulaire de connexion sur la page : on
+    considère l'application accessible sans connexion et on continue tel quel — mieux vaut
+    explorer sans authentification que de bloquer sur une hypothèse de connexion fausse.
 
     Retourne ``True`` si une tentative a réellement été soumise (jamais si la page ou les
     identifiants ne s'y prêtaient pas).
     """
     if not user or not password:
         return False
+
     champ_mdp = page.query_selector("input[type='password']")
-    if champ_mdp is None:
-        return False
-    champ_identifiant = page.query_selector("input[type='email'], input[type='text']")
-    if champ_identifiant is None:
-        logger.warning("[connexion-générique] mot de passe détecté sans champ identifiant"
-                        " — connexion non tentée")
-        return False
-    champ_identifiant.fill(user, force=True)
-    champ_mdp.fill(password, force=True)
-    champ_mdp.press("Enter")
+    if champ_mdp is not None:
+        champ_identifiant = page.query_selector("input[type='email'], input[type='text']")
+        if champ_identifiant is None:
+            logger.warning("[connexion-générique] mot de passe détecté sans champ identifiant"
+                            " — connexion non tentée")
+            return False
+        champ_identifiant.fill(user, force=True)
+        champ_mdp.fill(password, force=True)
+        champ_mdp.press("Enter")
+        page.wait_for_load_state("networkidle")
+        return True
+
+    if not _ressemble_a_un_premier_ecran_de_connexion(page):
+        return False  # pas d'indice de connexion du tout : comportement historique inchangé
+
+    champ_identifiant_seul = page.query_selector("input[type='email'], input[type='text']")
+    champ_identifiant_seul.fill(user, force=True)
+    champ_identifiant_seul.press("Enter")
+    page.wait_for_load_state("networkidle")
+
+    champ_mdp_ecran_suivant = page.query_selector("input[type='password']")
+    if champ_mdp_ecran_suivant is None:
+        raise ConnexionGeneriqueImpossibleError(
+            "aucun champ mot de passe trouvé après soumission de l'identifiant sur "
+            f"{getattr(page, 'url', '?')} — probablement un SSO/second facteur (2FA), hors du "
+            "périmètre de cette détection générique.")
+    champ_mdp_ecran_suivant.fill(password, force=True)
+    champ_mdp_ecran_suivant.press("Enter")
     page.wait_for_load_state("networkidle")
     return True
 

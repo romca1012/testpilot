@@ -25,7 +25,13 @@ class _FakeChamp:
 
 
 class _FakePage:
-    """Page duck-typée : renvoie un champ préparé selon le sélecteur, ou None."""
+    """Page duck-typée : renvoie un champ préparé selon le sélecteur, ou None.
+
+    ⚠️ `query_selector_all` ne reconnaît PAS `button`/`input[type='submit']` (seulement
+    `query_selector` le fait, et seulement pour password/email/text) — délibéré : cette page
+    factice simple ne doit jamais ressembler à un premier écran de connexion à deux étapes
+    (`_ressemble_a_un_premier_ecran_de_connexion`, étape 3.1), qui a son propre fichier de test
+    dédié (`test_connexion_generique_deux_ecrans.py`) avec une page factice qui change d'état."""
 
     def __init__(self, mdp=None, identifiant=None):
         self._mdp = mdp
@@ -38,6 +44,11 @@ class _FakePage:
         if "email" in selector or "text" in selector:
             return self._identifiant
         return None
+
+    def query_selector_all(self, selector):
+        if ("email" in selector or "text" in selector) and self._identifiant is not None:
+            return [self._identifiant]
+        return []
 
     def wait_for_load_state(self, *_args, **_kwargs):
         self.attente_reseau_appelee = True

@@ -53,6 +53,8 @@ from _base_helpers import (  # noqa: E402
     click_button, fill_field, select_field_value, select_product_in_list, validation_error_inline,
 )
 
+from testpilot.connectors._web_helpers import tenter_connexion_generique  # noqa: E402
+
 pytestmark = pytest.mark.conformance
 
 
@@ -237,3 +239,17 @@ def test_torture_un_select_sans_name_marche_par_sa_classe_css(page):
     select_field_value(page, "Z à A", "tri-catalogue")
 
     assert page.locator(".tri-catalogue").input_value() == "za"
+
+
+def test_torture_tenter_connexion_generique_detecte_seule_la_connexion_a_deux_ecrans(page):
+    """Étape 3.1 du plan de consolidation : la détection AUTOMATIQUE (pas un pilotage manuel
+    écran par écran comme les deux tests ci-dessus) doit franchir les DEUX écrans toute seule,
+    en conditions réelles — exactement ce que `GenericWebConnector`/le crawl générique lui
+    délèguent."""
+    page.goto(_page_torture("login1.html"))
+
+    resultat = tenter_connexion_generique(page, "testpilot", "secret")
+
+    assert resultat is True
+    assert "dashboard.html" in page.url, (
+        f"la détection à deux écrans n'a pas abouti (url actuelle : {page.url})")
