@@ -111,6 +111,66 @@ def test_generic_relogin_hook_delegue_a_la_detection_partagee(monkeypatch):
     assert appels == [(ctx.page, "bob", "secret")]
 
 
+def test_generic_relogin_hook_mesure_la_page_de_connexion_avant_de_s_authentifier(monkeypatch):
+    """Correctif du 2026-09-15 (cas réel SauceDemo, audit « Le pari Mabl/Testim ») : le BFS
+    démarre APRÈS la connexion, là où elle a laissé la page (`crawl_roots`) — sans cette mesure,
+    les champs de connexion (souvent le SEUL endroit où ils existent) ne sont jamais visités,
+    et « Points de vigilance » (`smoke_check.check_champs_existants`) les signale à tort comme
+    inconnus sur chaque cas qui s'y réfère, quelle que soit la fraîcheur du crawl."""
+    sys.path.insert(0, str(RACINE / "scripts"))
+    import testpilot.connectors.generic_web as gw
+    monkeypatch.setattr(gw, "tenter_connexion_generique", lambda page, user, password: True)
+
+    mesure = {"champs": [{"name": "user-name", "tag": "input"}], "actions": [], "liens": [],
+             "formulaires": [], "titre": "Connexion"}
+
+    class _PageConnexion:
+        url = "http://app.local/login"
+
+        def goto(self, _url, **_k):
+            pass
+
+        def wait_for_load_state(self, *_a, **_k):
+            pass
+
+        def evaluate(self, _script):
+            return mesure
+
+    conn = GenericWebConnector(url="http://app.local", user="bob", password="secret")
+    ctx = types.SimpleNamespace(page=_PageConnexion())
+
+    conn.crawl_relogin_hook()(ctx)
+
+    route, infos = ctx.page_connexion
+    assert infos == mesure
+    assert route  # normalisée par domain_model, non vide
+
+
+def test_generic_relogin_hook_mesure_best_effort_jamais_fatale():
+    """Un échec de mesure (page sans `.url`/`.evaluate`, navigateur qui plante…) ne doit JAMAIS
+    empêcher la connexion elle-même — même arbitrage que partout ailleurs dans ce dépôt."""
+    class _PageSansMesurePossible:
+        def goto(self, _url, **_k):
+            pass
+
+        def wait_for_load_state(self, *_a, **_k):
+            pass
+
+        def query_selector(self, _selector):
+            return None  # aucun champ de connexion : `tenter_connexion_generique` ne fait rien
+
+        def query_selector_all(self, _selector):
+            return []
+        # pas de `.url`, pas de `.evaluate` : la mesure doit échouer proprement, pas planter
+
+    conn = GenericWebConnector(url="http://app.local", user="bob", password="secret")
+    ctx = types.SimpleNamespace(page=_PageSansMesurePossible())
+
+    conn.crawl_relogin_hook()(ctx)  # ne doit lever AUCUNE exception
+
+    assert not hasattr(ctx, "page_connexion")
+
+
 def test_odoo_relogin_hook_pose_le_contexte_puis_delegue_a_playwright_login(monkeypatch):
     sys.path.insert(0, str(RACINE / "behave_runtime" / "steps_library"))
     import _base_helpers as H
@@ -233,3 +293,66 @@ def test_exploration_service_ne_branche_plus_sur_connector_type(monkeypatch):
 
     assert connecteur.connecte == [True], "le premier login doit passer par le connecteur"
     assert set(resultat["pages"]) == {"/accueil-factice", "/autre-page"}
+
+
+def test_exploration_service_complete_les_pages_avec_la_mesure_de_connexion(monkeypatch):
+    """Corollaire du correctif `generic_web.py::crawl_relogin_hook` (2026-09-15) : `_crawl` doit
+    reporter ce que le connecteur a mesuré sur la page de connexion dans le résultat final — le
+    BFS, lui, ne la visite jamais (il démarre après coup, là où la connexion l'a laissé)."""
+    import testpilot.api.services.exploration_service as es
+
+    class _ConnecteurAvecMesureDeConnexion(_ConnecteurFactice):
+        def crawl_relogin_hook(self):
+            def _login(ctx):
+                self.connecte.append(True)
+                ctx.page.goto("http://factice.local/accueil-factice")
+                ctx.page_connexion = ("/login", {"champs": [{"name": "user-name"}]})
+            return _login
+
+    connecteur = _ConnecteurAvecMesureDeConnexion()
+    monkeypatch.setattr("testpilot.connectors.factory.build_connector",
+                        lambda *_a, **_k: connecteur)
+
+    page = _FakePage({"/accueil-factice": [], "/autre-page": []})
+    fake_pw = _FakePlaywrightContext(_FakeBrowser(page))
+    monkeypatch.setattr("playwright.sync_api.sync_playwright", lambda: fake_pw)
+
+    resultat = es._crawl(
+        {"base_url": "http://factice.local", "database": "", "username": "", "password": "",
+         "connector_type": "un-type-que-personne-ne-connait", "nom": "Test"},
+        max_pages=10)
+
+    assert resultat["pages"]["/login"]["champs"] == [{"name": "user-name"}]
+
+
+def test_exploration_service_ne_supprase_jamais_une_mesure_du_bfs_par_celle_de_connexion(
+        monkeypatch):
+    """Si la page de connexion était (improbablement) AUSSI atteinte par le BFS, sa mesure à LUI
+    doit toujours primer — jamais écrasée après coup par celle, plus précoce, du crochet de
+    connexion (`setdefault`, pas une assignation)."""
+    import testpilot.api.services.exploration_service as es
+
+    class _ConnecteurAvecMesureDeConnexion(_ConnecteurFactice):
+        def crawl_relogin_hook(self):
+            def _login(ctx):
+                self.connecte.append(True)
+                ctx.page.goto("http://factice.local/accueil-factice")
+                ctx.page_connexion = ("/accueil-factice", {"champs": [{"name": "perime"}]})
+            return _login
+
+    connecteur = _ConnecteurAvecMesureDeConnexion()
+    monkeypatch.setattr("testpilot.connectors.factory.build_connector",
+                        lambda *_a, **_k: connecteur)
+
+    page = _FakePage({"/accueil-factice": []})
+    fake_pw = _FakePlaywrightContext(_FakeBrowser(page))
+    monkeypatch.setattr("playwright.sync_api.sync_playwright", lambda: fake_pw)
+
+    resultat = es._crawl(
+        {"base_url": "http://factice.local", "database": "", "username": "", "password": "",
+         "connector_type": "un-type-que-personne-ne-connait", "nom": "Test"},
+        max_pages=10)
+
+    # La route "/accueil-factice" a bien été mesurée par le BFS (via _FakePage.evaluate) : sa
+    # mesure réelle doit primer sur celle, plus pauvre, déposée par le crochet de connexion.
+    assert resultat["pages"]["/accueil-factice"]["champs"] != [{"name": "perime"}]

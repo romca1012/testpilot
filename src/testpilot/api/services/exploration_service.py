@@ -154,6 +154,17 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
             racines=connector.crawl_roots(ctx.page),
             hors_perimetre=connector.crawl_exclusion_pattern(),
             relogin=relogin, suivre_ancres_hash=connector.crawl_follow_hash_anchors())
+        # ⚠️ La page de CONNEXION elle-même n'est jamais visitée par le BFS ci-dessus (il démarre
+        # APRÈS la connexion, là où elle a laissé la page — `crawl_roots`) : sans ce complément,
+        # ses champs (souvent le SEUL endroit où ils existent) restent invisibles à l'annuaire,
+        # et « Points de vigilance » (`smoke_check.check_champs_existants`) les signale à tort
+        # comme inconnus sur chaque cas qui s'y réfère (correctif du 2026-09-15, cas réel
+        # SauceDemo). `setdefault` : une mesure du BFS, plus complète, prime toujours si les deux
+        # coïncidaient un jour.
+        page_connexion = getattr(ctx, "page_connexion", None)
+        if page_connexion:
+            route, infos = page_connexion
+            pages.setdefault(route, infos)
         try:
             nav.close()
         except Exception:

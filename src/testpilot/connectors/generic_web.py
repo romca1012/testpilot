@@ -135,10 +135,33 @@ class GenericWebConnector(Connector):
         """(Re)connexion GÉNÉRIQUE : mêmes identifiants et même détection que `_ensure_page`, sur
         la page du CRAWL plutôt que sur la page interne de perception (`self._page`) — les deux
         affrontent le même problème (aucune convention d'URL à connaître) et réutilisent donc la
-        même fonction PARTAGÉE (`_web_helpers.tenter_connexion_generique`)."""
+        même fonction PARTAGÉE (`_web_helpers.tenter_connexion_generique`).
+
+        ⚠️ **Mesure la page de CONNEXION elle-même, AVANT de s'authentifier** (correctif du
+        2026-09-15 — audit « Le pari Mabl/Testim », faux positif trouvé en diagnostiquant un cas
+        réel). Le BFS du crawl démarre APRÈS la connexion, là où elle a laissé la page
+        (`Connector.crawl_roots`) — sans cette mesure, les champs de connexion (`user-name`,
+        `password`…) ne sont JAMAIS visités, jamais mesurés, et « Points de vigilance » (`
+        smoke_check.check_champs_existants`) signale à tort ces champs comme inconnus sur
+        CHAQUE cas qui s'y réfère, quelle que soit la fraîcheur du crawl.
+
+        Résultat déposé sur `ctx.page_connexion` (`(route, infos)`), lu par
+        `exploration_service._crawl` après le crawl pour compléter `pages` — jamais l'écraser
+        (une mesure du BFS, plus complète, prime toujours). Best-effort : un échec de mesure ne
+        doit jamais empêcher la connexion elle-même.
+        """
         def _connexion(ctx) -> None:
             ctx.page.goto(self._url)
             ctx.page.wait_for_load_state("networkidle")
+            try:
+                import crawl_domaine as cd
+                from testpilot.generation import domain_model
+                ctx.page_connexion = (
+                    domain_model.normaliser_route(ctx.page.url), cd._inspecter_page(ctx.page))
+            except Exception:
+                logger.warning("[web-générique] mesure de la page de connexion impossible — "
+                               "ses champs resteront invisibles pour « Points de vigilance »",
+                               exc_info=True)
             tenter_connexion_generique(ctx.page, self._user, self._password)
         return _connexion
 

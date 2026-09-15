@@ -41,6 +41,7 @@ Lancer en local : `pytest -m conformance -v`
 from __future__ import annotations
 
 import sys
+import types
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -310,3 +311,31 @@ def test_le_crawl_ne_change_rien_pour_un_champ_deja_nomme(page):
 
     identifiant = next(c for c in infos["champs"] if c["name"] == app.champ_identifiant)
     assert identifiant["identifie_par"] == "name"
+
+
+def test_l_exploration_complete_mesure_desormais_les_champs_de_la_page_de_connexion(page):
+    """Faux positif RÉEL trouvé le 2026-09-15 : « Points de vigilance » signalait `user-name`/
+    `password` comme inconnus de l'application, sur une exploration pourtant toute fraîche — le
+    BFS ne visite jamais la page de connexion (il démarre après coup, là où elle a laissé la
+    page). Le crochet de (re)connexion du connecteur, le point d'entrée réel d'une exploration,
+    doit désormais les rapporter.
+
+    ⚠️ Exerce directement `crawl_relogin_hook()` sur la page PARTAGÉE de ce fichier plutôt que
+    `_crawl()` (qui ouvrirait son PROPRE navigateur Playwright) — Playwright refuse deux
+    instances `sync_playwright()` actives dans le même thread ; `_crawl()`'s propre logique de
+    fabrication du connecteur/dispatch est déjà couverte par `test_crawl_polymorphisme.py`.
+    """
+    from testpilot.connectors.factory import build_connector
+
+    app = next(a for a in _APPS if a.nom == "SauceDemo")
+    connector = build_connector({"connector_type": "web", "base_url": app.url_login,
+                                 "username": app.identifiant_valide,
+                                 "password": app.mot_de_passe_valide, "database": ""})
+    ctx = types.SimpleNamespace(page=page)
+
+    connector.crawl_relogin_hook()(ctx)
+
+    assert hasattr(ctx, "page_connexion"), "la mesure de la page de connexion a échoué"
+    _route, infos = ctx.page_connexion
+    noms = {c["name"] for c in infos["champs"]}
+    assert {app.champ_identifiant, app.champ_mot_de_passe} <= noms
