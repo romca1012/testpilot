@@ -89,7 +89,7 @@ RÈGLES IMPÉRATIVES :
 2. Jamais de jargon technique — écris pour quelqu'un qui ne code pas.
 3. Si le résultat est positif, dis ce qui a été confirmé, pas seulement « tout est bon ».
 4. Si une ligne « Ce que le test a réellement mesuré » est donnée pour un scénario en échec,
-   décris CE fait précis — jamais une supposition à partir du seul titre du scénario."""
+   décris CE fait précis — jamais une idée devinée depuis le seul titre du scénario."""
 
 
 def _data_explication(llm, verdict: CaseVerdict, module_name: str, model: str,
