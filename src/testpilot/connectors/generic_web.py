@@ -127,6 +127,21 @@ class GenericWebConnector(Connector):
         url = build_probe_url(self._url, path_pattern, sample_id)
         return self._http_probe(url)
 
+    # ── Crawl de l'annuaire (étape 1.1 du plan de consolidation) ────────────────
+    # `crawl_roots`/`crawl_exclusion_pattern`/`crawl_follow_hash_anchors` : le défaut GÉNÉRIQUE de
+    # `Connector` convient tel quel (c'est lui qui a été mesuré sur SauceDemo) — seule la connexion
+    # est propre à ce connecteur.
+    def crawl_relogin_hook(self):
+        """(Re)connexion GÉNÉRIQUE : mêmes identifiants et même détection que `_ensure_page`, sur
+        la page du CRAWL plutôt que sur la page interne de perception (`self._page`) — les deux
+        affrontent le même problème (aucune convention d'URL à connaître) et réutilisent donc la
+        même fonction PARTAGÉE (`_web_helpers.tenter_connexion_generique`)."""
+        def _connexion(ctx) -> None:
+            ctx.page.goto(self._url)
+            ctx.page.wait_for_load_state("networkidle")
+            tenter_connexion_generique(ctx.page, self._user, self._password)
+        return _connexion
+
     # ── Interne (réseau isolé, surchargeable en test) ──────────────────────────
     def _run_in_browser(self, fn, *args):
         if self._executor is None:

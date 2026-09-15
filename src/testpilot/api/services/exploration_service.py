@@ -29,7 +29,6 @@ import uuid
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
-from urllib.parse import urlparse
 
 from testpilot.generation import domain_model
 from testpilot.store.repositories import ProjectRepo
@@ -125,11 +124,13 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
     tolérance au crash du navigateur sont éprouvées sur une mesure réelle (38 routes). La
     dupliquer ici en ferait deux versions à maintenir, qui divergeraient.
 
-    Branche par `connector_type` (2026-09-08, multi-connecteurs) : Odoo garde EXACTEMENT son
-    chemin historique (login `/web/login?db=…`, racines `/my/home`+`/myservices`, exclusions du
-    back-office) ; tout autre connecteur passe par le crawl GÉNÉRIQUE — racine `/`, connexion
-    détectée sans convention d'URL (`GenericWebConnector`), exclusion limitée aux assets
-    statiques (rien à deviner sur le périmètre d'une appli qu'on ne connaît pas).
+    ⚠️ **Ne branche plus sur `connector_type` (étape 1.1 du plan de consolidation, 2026-09-15).**
+    Jusqu'ici, ce service choisissait racines/exclusion/connexion par un `if connector_type ==
+    "odoo": ... else: ...` en dur — exactement le défaut que `connectors/factory.py` avait déjà
+    fermé pour la génération et la réparation (2026-09-11), mais pas encore ici. Les 4 paramètres
+    du crawl viennent maintenant du connecteur du projet (`Connector.crawl_roots`/
+    `crawl_exclusion_pattern`/`crawl_relogin_hook`/`crawl_follow_hash_anchors`) : un 3ᵉ type de
+    connecteur n'exige plus de modifier ce fichier, seulement d'implémenter ces 4 méthodes.
     """
     racine = Path(__file__).resolve().parents[4]
     for chemin in (racine / "scripts", racine / "behave_runtime" / "steps_library"):
@@ -139,38 +140,20 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
     from playwright.sync_api import sync_playwright
 
     import crawl_domaine as cd
+    from testpilot.connectors.factory import build_connector
 
-    connector_type = (connexion.get("connector_type") or "odoo").lower()
+    connector = build_connector(connexion)
 
     with sync_playwright() as p:
         nav = p.chromium.launch()
-        if connector_type == "odoo":
-            import _base_helpers as H
-            ctx = types.SimpleNamespace(
-                page=nav.new_page(), odoo_url=connexion["base_url"], odoo_db=connexion["database"],
-                odoo_user=connexion["username"], odoo_password=connexion["password"])
-            H.playwright_login(ctx)
-            pages, transitions, onglets = cd.crawler(ctx, nav, connexion["base_url"], max_pages)
-        else:
-            from testpilot.connectors._web_helpers import tenter_connexion_generique
-
-            def _connexion_generique(c) -> None:
-                c.page.goto(connexion["base_url"])
-                c.page.wait_for_load_state("networkidle")
-                tenter_connexion_generique(c.page, connexion["username"], connexion["password"])
-
-            ctx = types.SimpleNamespace(page=nav.new_page())
-            _connexion_generique(ctx)
-            # ⚠️ Racine = où la connexion nous a RÉELLEMENT laissés (2026-09-11), jamais "/" en dur
-            # : sur une appli dont "/" EST le formulaire de connexion (ex. SauceDemo), y retourner
-            # après coup perd la session tout juste établie — le crawl trouvait alors 0 lien et
-            # s'arrêtait après 1 seule page. Sans connexion tentée (pas d'identifiants fournis),
-            # `ctx.page.url` vaut simplement `base_url` : comportement inchangé pour ce cas.
-            depart = urlparse(ctx.page.url).path or "/"
-            pages, transitions, onglets = cd.crawler(
-                ctx, nav, connexion["base_url"], max_pages,
-                racines=[depart], hors_perimetre=cd._HORS_PERIMETRE_GENERIQUE,
-                relogin=_connexion_generique, suivre_ancres_hash=True)
+        ctx = types.SimpleNamespace(page=nav.new_page())
+        relogin = connector.crawl_relogin_hook()
+        relogin(ctx)  # première connexion — la même fonction sert de repli après un crash
+        pages, transitions, onglets = cd.crawler(
+            ctx, nav, connexion["base_url"], max_pages,
+            racines=connector.crawl_roots(ctx.page),
+            hors_perimetre=connector.crawl_exclusion_pattern(),
+            relogin=relogin, suivre_ancres_hash=connector.crawl_follow_hash_anchors())
         try:
             nav.close()
         except Exception:

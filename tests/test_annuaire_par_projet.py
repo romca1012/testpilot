@@ -290,14 +290,22 @@ def test_la_racine_generique_suit_la_connexion_reussie_pas_un_slash_fige(monkeyp
 
 
 def test_le_crawl_odoo_garde_son_chemin_historique(monkeypatch):
-    """⚠️ Aucun des nouveaux kwargs (racines/hors_perimetre/relogin) ne doit être transmis pour
-    Odoo — le chemin historique, éprouvé sur une mesure réelle, doit rester STRICTEMENT intact."""
+    """⚠️ Mis à jour à l'étape 1.1 du plan de consolidation (2026-09-15) : `_crawl` ne branche
+    plus sur `connector_type` — il transmet désormais TOUJOURS ses 4 paramètres explicitement,
+    Odoo compris, via `OdooConnector.crawl_roots`/`crawl_exclusion_pattern`/`crawl_relogin_hook`/
+    `crawl_follow_hash_anchors`. L'invariant à protéger n'est donc plus « aucun kwarg transmis »
+    (un détail d'implémentation, devenu faux par construction) mais « les MÊMES valeurs qu'avant »
+    — le chemin historique, éprouvé sur une mesure réelle, ne doit pas avoir changé de résultat.
+    """
     # `url_apres_connexion` sans effet ici : le chemin Odoo ne lit jamais `ctx.page.url` pour
-    # calculer une racine (il n'en calcule pas — voir l'assertion `appels == {}` ci-dessous).
-    appels, _cd = _preparer_crawl_domaine(monkeypatch, url_apres_connexion="http://odoo-test/web")
+    # calculer une racine (`OdooConnector.crawl_roots` l'ignore, racines historiques figées).
+    appels, cd = _preparer_crawl_domaine(monkeypatch, url_apres_connexion="http://odoo-test/web")
 
     exploration_service._crawl(
         {"connector_type": "odoo", "base_url": "http://odoo-test", "database": "db",
          "username": "admin", "password": "admin"}, max_pages=5)
 
-    assert appels == {}
+    assert appels["racines"] == cd.RACINES
+    assert appels["hors_perimetre"].pattern == cd._HORS_PERIMETRE.pattern
+    assert appels["suivre_ancres_hash"] is False
+    assert callable(appels["relogin"])

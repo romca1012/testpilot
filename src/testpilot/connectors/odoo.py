@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import re
 from urllib.parse import urljoin, urlparse
 
 from testpilot import config
@@ -28,6 +29,19 @@ from testpilot.connectors.base import Connector
 from testpilot.connectors._web_helpers import build_probe_url, extract_form, http_probe  # noqa: F401
 
 logger = logging.getLogger(__name__)
+
+# Racines et périmètre du crawl (étape 1.1 du plan de consolidation) — DUPLIQUÉS depuis
+# `scripts/crawl_domaine.py` (`RACINES`/`_HORS_PERIMETRE`), pas importés : ce script est
+# AUTONOME (utilisable en CLI sans le moindre projet ni connecteur, `python
+# scripts/crawl_domaine.py`) et doit donc rester capable de tourner sans dépendre d'ici. Deux
+# points d'entrée, une seule vérité voulue : `tests/test_crawl_polymorphisme.py` tient l'accord
+# des deux copies, comme `FIELD_FALLBACK_FILE_ENV` le fait déjà pour un autre couple de constantes
+# dupliquées entre le paquet et la bibliothèque de steps.
+_CRAWL_RACINES = ["/my/home", "/myservices"]
+_CRAWL_HORS_PERIMETRE = re.compile(
+    r"^/(web|odoo)(/|$|#)|^/@/|^/website/add/|/web/static|/web/session/logout"
+    r"|nav_tabs_content|/export(/|$)|\.(css|js|png|jpg|jpeg|svg|ico|woff2?)$",
+    re.IGNORECASE)
 
 
 class OdooConnector(Connector):
@@ -135,6 +149,45 @@ class OdooConnector(Connector):
         """Sonde une route en HTTP léger (HEAD puis repli GET) : statut + méthode."""
         url = build_probe_url(self._url, path_pattern, sample_id)
         return self._http_probe(url)
+
+    # ── Crawl de l'annuaire (étape 1.1 du plan de consolidation) ────────────────
+    def crawl_roots(self, page) -> list[str]:
+        """Racines HISTORIQUES du portail (décision `0020`) — indépendantes de `page`, à
+        l'inverse du défaut générique : comportement STRICTEMENT inchangé."""
+        return list(_CRAWL_RACINES)
+
+    def crawl_exclusion_pattern(self) -> re.Pattern:
+        """Périmètre HISTORIQUE : le portail client, jamais le back-office Odoo (`/web`, `/odoo`)
+        — voir `scripts/crawl_domaine.py` pour la décision assumée en détail."""
+        return _CRAWL_HORS_PERIMETRE
+
+    def crawl_follow_hash_anchors(self) -> bool:
+        """Comportement HISTORIQUE inchangé : un `href="#..."` reste TOUJOURS un onglet interne,
+        jamais une transition de page, sur le portail Odoo."""
+        return False
+
+    def crawl_relogin_hook(self):
+        """Connexion portail Odoo (`/web/login?db=…`) SUR LA PAGE DU CRAWL — délègue à
+        `behave_runtime.steps_library._base_helpers.playwright_login`, la même fonction que
+        `scripts/crawl_domaine.py` utilise depuis toujours, plutôt que d'en réimplémenter une
+        variante qui dériverait de la vraie (celle-ci porte la post-condition qui compte :
+        attendre d'avoir RÉELLEMENT quitté `/web/login`, pas une simple absence de requête réseau).
+
+        ⚠️ **Import différé, et seulement utilisable après le montage de `sys.path` que fait
+        l'appelant** (`exploration_service.py::_crawl`, seul appelant réel de cette méthode pour un
+        crawl) : `_base_helpers` vit dans `behave_runtime/steps_library/`, hors du paquet
+        `testpilot` — l'importer au niveau du module romprait le démarrage normal du serveur, qui
+        ne monte jamais ce chemin. `_ensure_page()` ci-dessus, lui, gère sa PROPRE session
+        (perception `inspect_form`/`discover_route`) et n'a jamais eu ce besoin.
+        """
+        def _login(ctx) -> None:
+            import _base_helpers as H
+            ctx.odoo_url = self._url
+            ctx.odoo_db = self._database
+            ctx.odoo_user = self._user
+            ctx.odoo_password = self._password
+            H.playwright_login(ctx)
+        return _login
 
     # ── Écriture (runtime / teardown) ──────────────────────────────────────────
     def create(self, model: str, vals: dict) -> int:

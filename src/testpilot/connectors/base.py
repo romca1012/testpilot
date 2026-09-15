@@ -12,7 +12,17 @@ Les méthodes de perception (``get_schema``, ``search``/``read``, ``inspect_form
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
+from urllib.parse import urlparse
+
+# Exclusion GÉNÉRIQUE par défaut (étape 1.1 du plan de consolidation, 2026-09-15 — audit « Le
+# pari Mabl/Testim ») : sans convention d'URL à connaître, seul ce qui est UNIVERSEL à toute
+# application web peut être exclu sans deviner son périmètre. Même motif que
+# `scripts/crawl_domaine.py::_HORS_PERIMETRE_GENERIQUE` (audit multi-connecteurs 2026-09-08) —
+# repris ici comme le défaut de l'INTERFACE, plutôt que dupliqué dans chaque connecteur générique.
+_HORS_PERIMETRE_GENERIQUE = re.compile(
+    r"\.(css|js|png|jpg|jpeg|svg|ico|woff2?|pdf)$", re.IGNORECASE)
 
 
 class Connector(ABC):
@@ -60,3 +70,54 @@ class Connector(ABC):
     def rules(self) -> str:
         """Règles spécifiques au connecteur, injectées dans le prompt. Vide par défaut."""
         return ""
+
+    # ── Crawl de l'annuaire (étape 1.1 du plan de consolidation, 2026-09-15) ────
+    #
+    # ⚠️ **Ce que ces 4 méthodes remplacent.** `exploration_service.py::_crawl` choisissait ses
+    # paramètres de crawl par un `if connector_type == "odoo": ... else: ...` en dur — ajouter un
+    # 3ᵉ type de connecteur exigeait de modifier CE service, pas seulement d'écrire une nouvelle
+    # classe. Exactement le défaut que `connectors/factory.py::build_connector` a déjà fermé une
+    # fois pour la génération et la réparation (2026-09-11) ; le crawl était le dernier point
+    # encore couplé. Les défauts CONCRETS ci-dessous sont le comportement GÉNÉRIQUE déjà mesuré et
+    # éprouvé (SauceDemo) — c'est lui qui devient « le défaut », pas un cas spécial de plus.
+
+    def crawl_roots(self, page) -> list[str]:
+        """Chemin(s) où DÉMARRER le parcours BFS du crawl.
+
+        Défaut générique : là où la connexion a RÉELLEMENT laissé la page — jamais une racine en
+        dur. Sur une application dont `/` EST le formulaire de connexion (ex. SauceDemo), y
+        retourner après coup perdrait la session tout juste établie (bug réel, 2026-09-11) :
+        `page` est déjà la page du navigateur juste après le premier appel du repli de
+        `crawl_relogin_hook()`.
+        """
+        return [urlparse(page.url).path or "/"]
+
+    def crawl_exclusion_pattern(self) -> re.Pattern:
+        """Motif des chemins à NE JAMAIS visiter pendant le crawl.
+
+        Défaut générique : uniquement les assets statiques, universels à toute application web —
+        sans convention d'URL à connaître, exclure davantage reviendrait à deviner le périmètre
+        d'une application qu'on ne connaît pas.
+        """
+        return _HORS_PERIMETRE_GENERIQUE
+
+    def crawl_follow_hash_anchors(self) -> bool:
+        """Un lien `href="#..."` doit-il être tenté comme une transition de PAGE (clic + lecture
+        de l'URL réelle), au-delà du simple changement d'état d'onglet ?
+
+        Défaut générique : oui — beaucoup d'applications modernes (SPA) n'ont pas d'autre
+        convention de navigation qu'un clic qui change l'URL via l'History API (cas réel mesuré
+        sur le catalogue SauceDemo, 2026-09-11).
+        """
+        return True
+
+    @abstractmethod
+    def crawl_relogin_hook(self):
+        """Rend une fonction `(ctx) -> None` qui (re)connecte `ctx.page` — appelée une première
+        fois AVANT le crawl, puis à nouveau à chaque fois que le navigateur redémarre après un
+        crash pendant le parcours.
+
+        Pas de défaut générique possible : la connexion elle-même (identifiants, formulaire,
+        convention d'URL, absence éventuelle de connexion) est ce qui distingue le plus un
+        connecteur d'un autre — contrairement aux trois méthodes ci-dessus, purement structurelles.
+        """

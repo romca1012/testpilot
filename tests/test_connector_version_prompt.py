@@ -26,6 +26,7 @@ class _ConnecteurBidon(Connector):
     def discover_route(self, path_pattern: str, sample_id: int | None = None) -> dict: return {}
     def create(self, model: str, vals: dict) -> int: return 0
     def delete(self, model: str, ids: list[int]) -> bool: return True
+    def crawl_relogin_hook(self): return lambda ctx: None
 
 
 def test_la_version_absente_ne_produit_aucune_mention():
