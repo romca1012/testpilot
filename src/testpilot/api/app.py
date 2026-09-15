@@ -108,7 +108,17 @@ def create_app() -> FastAPI:
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; "
-            "script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            # ⚠️ Le hash autorise UN SEUL script précis : le repli anti-scintillement de thème
+            # écrit en clair dans `frontend/index.html` (jamais compilé par Vite, donc jamais
+            # servi depuis `'self'` comme un script de bundle). Trouvé en production (2026-09-15) :
+            # sans lui, ce script est bloqué en silence par le navigateur, et un rechargement
+            # complet de page (pas une navigation interne à la SPA) affiche un flash du mauvais
+            # thème. Recalculer ce hash (SHA-256, base64, du contenu EXACT entre les balises
+            # <script>...</script>) si ce snippet change jamais — sinon la CSP le bloquera de
+            # nouveau, silencieusement, sans qu'aucun test ne le voie (aucune requête HTTP n'est
+            # émise, le blocage a lieu dans le navigateur, jamais journalisé côté serveur).
+            "script-src 'self' 'sha256-dL9GPP0VEDahp+1yO3zWYNrtfyBO7/WmNuN4Xah4Q6U='; "
+            "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; connect-src 'self'"
         )
         if config.COOKIE_SECURE:

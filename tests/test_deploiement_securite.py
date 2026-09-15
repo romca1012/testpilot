@@ -1,5 +1,10 @@
 """Gardes qui empêchent un faux profil de production de démarrer."""
 
+import base64
+import hashlib
+import re
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -94,6 +99,38 @@ def test_sante_readiness_swagger_et_entetes(client_deploiement):
     assert live.headers["X-Content-Type-Options"] == "nosniff"
     assert live.headers["X-Frame-Options"] == "DENY"
     assert "frame-ancestors 'none'" in live.headers["Content-Security-Policy"]
+
+
+# ── Le hash CSP du script anti-scintillement de thème (bug réel, 2026-09-15) ────────────────────
+#
+# `frontend/index.html` porte un <script> écrit en clair (jamais compilé par Vite, donc jamais
+# servi depuis `'self'` comme un script de bundle) qui pose la classe de thème AVANT le premier
+# rendu — sans lui, la page affiche un flash du mauvais thème. La CSP (`script-src 'self'`, sans
+# `'unsafe-inline'`) le bloquait en SILENCE côté navigateur : aucune requête HTTP, donc rien côté
+# serveur ne le voyait. Trouvé en production en cliquant « lancer » sur un cas (un rechargement
+# complet de page, pas une navigation interne à la SPA, réexécute ce script). Le hash exact du
+# script est maintenant listé dans la CSP — ce test empêche les deux de diverger en silence si
+# quelqu'un modifie un jour ce script sans recalculer son hash.
+
+def _hash_csp_du_script_inline(chemin_index_html: Path) -> str:
+    brut = chemin_index_html.read_bytes()
+    match = re.search(rb"<script>(.*?)</script>", brut, re.DOTALL)
+    assert match, "aucun <script> inline trouvé dans index.html — ce test doit être mis à jour"
+    empreinte = hashlib.sha256(match.group(1)).digest()
+    return "sha256-" + base64.b64encode(empreinte).decode()
+
+
+def test_le_hash_csp_correspond_au_script_de_theme_reel(client_deploiement):
+    chemin = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
+    if not chemin.exists():
+        pytest.skip("frontend/index.html absent sur ce poste")
+
+    attendu = _hash_csp_du_script_inline(chemin)
+    reponse = client_deploiement.get("/api/health/live")
+
+    assert attendu in reponse.headers["Content-Security-Policy"], (
+        f"le script inline de frontend/index.html a changé sans que son hash CSP ne soit "
+        f"recalculé dans app.py — hash attendu : {attendu!r}")
 
 
 def test_metriques_exigent_le_jeton_configure(client_deploiement):
