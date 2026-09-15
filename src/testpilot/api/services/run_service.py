@@ -224,7 +224,9 @@ def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str
         runner.cibler_execution(execution_id)
     outcome = Executor(runner).execute(module_name)
     duration = time.perf_counter() - started
-    verdict = derive_verdict(outcome)
+    # Confiance du verdict selon le connecteur (étape 2.2) — déjà résolu plus haut pour scoper la
+    # bibliothèque de steps du runner ; réutilisé ici plutôt que reproduit.
+    verdict = derive_verdict(outcome, connector_type=resolve_connector_type(conn, case_id))
     _persist(conn, execution_id, case_id, verdict, outcome, duration, module_name)
     # Attaché ici plutôt que porté par ExecutionOutcome : le pilier execution ne connaît pas la
     # base, et n'a pas à la connaître.

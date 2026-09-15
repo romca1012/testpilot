@@ -139,3 +139,44 @@ def test_le_systeme_interdit_explicitement_de_deviner_depuis_le_titre():
 
     assert "titre" in _SYSTEM.lower()
     assert "réellement mesuré" in _SYSTEM
+
+
+# ── La note de confiance générique (étape 2.2 du plan de consolidation, 2026-09-15) ─────────────
+#
+# Ajoutée DÉTERMINISTIQUEMENT, jamais confiée au LLM : la fiabilité d'un verdict générique est un
+# fait structurel du connecteur, pas une nuance qu'un modèle de langage pourrait oublier de dire.
+
+def test_un_verdict_ui_only_recoit_la_note_deterministe():
+    from testpilot.verdict.status import GROUND_TRUTH_UI_ONLY
+
+    v = _verdict_passed()
+    v.ground_truth = GROUND_TRUTH_UI_ONLY
+    llm = FakeLLM(json.dumps({"explication": "Le formulaire a bien créé le ticket attendu."}))
+
+    texte, _cout = propose_explication(v, llm=llm)
+
+    assert texte.startswith("Le formulaire a bien créé le ticket attendu.")
+    assert "recouper le résultat avec une donnée de référence côté serveur" in texte
+
+
+def test_un_verdict_backend_verified_ne_recoit_aucune_note():
+    """Comportement HISTORIQUE inchangé pour un cas Odoo (défaut de `CaseVerdict.ground_truth`) :
+    aucune mention ajoutée, byte-identique à avant ce correctif."""
+    llm = FakeLLM(json.dumps({"explication": "Le formulaire a bien créé le ticket attendu."}))
+
+    texte, _cout = propose_explication(_verdict_passed(), llm=llm)
+
+    assert texte == "Le formulaire a bien créé le ticket attendu."
+
+
+def test_la_note_n_est_jamais_ajoutee_a_un_commentaire_vide():
+    """Un échec de génération reste `("", 0.0)` — la note ne doit pas transformer un défaut
+    mineur (commentaire manquant) en une demi-explication orpheline."""
+    from testpilot.verdict.status import GROUND_TRUTH_UI_ONLY
+
+    v = _verdict_passed()
+    v.ground_truth = GROUND_TRUTH_UI_ONLY
+
+    texte, cout = propose_explication(v, llm=FakeLLM("désolé, je ne peux pas"))
+
+    assert texte == "" and cout == 0.0

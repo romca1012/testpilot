@@ -30,6 +30,27 @@ FUNC_NOT_EVALUATED = "not_evaluated"
 # fonctionnel, jamais un 3ᵉ axe : l'invariant « les deux axes ne fusionnent jamais » tient.
 FUNC_DONNEE_INVALIDE = "donnee_invalide"
 
+# ── Confiance du verdict selon le CONNECTEUR (étape 2.2 du plan de consolidation, 2026-09-15 —
+# audit « Le pari Mabl/Testim ») ─────────────────────────────────────────────────────────────
+#
+# Un cas Odoo peut être recoupé contre une vérité de référence INTERROGEABLE (RPC : get_schema/
+# search/read) ; un cas sur le connecteur générique ne le peut PAS — `GenericWebConnector` lève
+# `NotImplementedError` sur ces 5 méthodes (aucun modèle de données, cf. sa docstring). Le verdict
+# d'un cas générique ne peut donc constater QUE ce que l'UI affiche, jamais une vérité côté base
+# de données comme un cas Odoo. Ce champ n'AJOUTE aucune capacité : il étiquette honnêtement une
+# différence de fiabilité déjà réelle aujourd'hui, plutôt que de présenter un verdict d'apparence
+# identique quel que soit le connecteur.
+GROUND_TRUTH_BACKEND_VERIFIED = "backend_verified"
+GROUND_TRUTH_UI_ONLY = "ui_only"
+
+
+def _ground_truth_pour(connector_type: str | None) -> str:
+    """`None` (appelant qui ne résout pas encore le connecteur, ex. `cli.py`, `repair_service.py`)
+    retombe sur `odoo` — comportement HISTORIQUE inchangé pour tout appelant qui ne fournit pas
+    ce paramètre, exactement le même repli que `connectors/factory.py::build_connector`."""
+    return (GROUND_TRUTH_BACKEND_VERIFIED if (connector_type or "odoo").lower() == "odoo"
+            else GROUND_TRUTH_UI_ONLY)
+
 
 @dataclass
 class ScenarioVerdict:
@@ -53,6 +74,10 @@ class CaseVerdict:
     scenarios: list[ScenarioVerdict] = field(default_factory=list)
     scenarios_passed: int = 0
     scenarios_failed: int = 0
+    # Confiance du verdict selon le connecteur (étape 2.2) — défaut `backend_verified` : préserve
+    # le comportement de tout appelant qui ne connaît pas encore le connecteur (ex. code existant
+    # qui construit un `CaseVerdict` directement, `report_service._verdict_from_db`).
+    ground_truth: str = GROUND_TRUTH_BACKEND_VERIFIED
 
 
 def _failures_by_scenario(failures) -> dict[str, list]:
@@ -89,16 +114,22 @@ def scenario_verdict(scenario, failures: list) -> ScenarioVerdict:
                            "", "", scenario.error)
 
 
-def derive_verdict(outcome: ExecutionOutcome) -> CaseVerdict:
-    """Calcule le verdict à deux axes d'un cas depuis son ExecutionOutcome brut."""
+def derive_verdict(outcome: ExecutionOutcome, *, connector_type: str | None = None) -> CaseVerdict:
+    """Calcule le verdict à deux axes d'un cas depuis son ExecutionOutcome brut.
+
+    `connector_type` (étape 2.2) : `None` par défaut — comportement HISTORIQUE inchangé pour tout
+    appelant qui ne le fournit pas encore (`cli.py`, `repair_service.py`). Seul `run_service.py`,
+    qui connaît déjà le projet du cas, le transmet réellement.
+    """
+    gt = _ground_truth_pour(connector_type)
     if not outcome.dry_run_passed:
         # Non résolvable (parsing/steps) → n'a jamais pu tourner techniquement.
-        return CaseVerdict(EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE)
+        return CaseVerdict(EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE, ground_truth=gt)
 
     real = outcome.real_run
     if real is None or real.returncode < 0:
         # Crash / timeout du sous-processus → interruption technique.
-        return CaseVerdict(EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE)
+        return CaseVerdict(EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE, ground_truth=gt)
     if real.returncode != 0 and not real.scenarios:
         # Le process a planté avec un code de retour POSITIF ordinaire (ex. exception Python non
         # rattrapée dans notre formatter JSON maison) — AVANT qu'aucun scénario n'ait pu être
@@ -107,14 +138,14 @@ def derive_verdict(outcome: ExecutionOutcome) -> CaseVerdict:
         # ci-dessous rendait `not_executed` : « le test n'a jamais tourné », alors qu'il a
         # réellement tourné et planté — le même piège que « l'absence de signal prise pour un
         # signal positif » déjà traqué ailleurs (`_finalize_error`, §4.6). Audit 2026-08-07 (B4).
-        return CaseVerdict(EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE)
+        return CaseVerdict(EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE, ground_truth=gt)
 
     grouped = _failures_by_scenario(real.failures)
     verdicts = [scenario_verdict(s, grouped.get(s.name, [])) for s in real.scenarios]
-    return aggregate(verdicts)
+    return aggregate(verdicts, connector_type=connector_type)
 
 
-def aggregate(verdicts: list[ScenarioVerdict]) -> CaseVerdict:
+def aggregate(verdicts: list[ScenarioVerdict], *, connector_type: str | None = None) -> CaseVerdict:
     """Agrège les verdicts par-scénario au niveau du cas — sans jamais masquer un échec."""
     passed = sum(1 for v in verdicts
                  if v.execution_status == EXEC_SUCCESS and v.functional_status == FUNC_CONFORME)
@@ -145,6 +176,7 @@ def aggregate(verdicts: list[ScenarioVerdict]) -> CaseVerdict:
         scenarios=verdicts,
         scenarios_passed=passed,
         scenarios_failed=len(verdicts) - passed,
+        ground_truth=_ground_truth_pour(connector_type),
     )
 
 

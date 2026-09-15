@@ -109,6 +109,55 @@ def test_returncode_non_nul_AVEC_au_moins_un_scenario_reste_un_echec_fonctionnel
     assert v.functional_status == st.FUNC_NON_CONFORME
 
 
+# ── Confiance du verdict selon le connecteur (étape 2.2 du plan de consolidation) ───────────────
+#
+# GenericWebConnector n'a aucune méthode RPC (get_schema/search/read lèvent NotImplementedError) :
+# un cas générique ne peut vérifier que ce que l'UI affiche, jamais une vérité côté base de données
+# comme un cas Odoo. Ce champ étiquette cette différence, il ne la crée pas.
+
+def test_sans_connector_type_le_verdict_reste_backend_verified():
+    """Comportement HISTORIQUE inchangé pour tout appelant qui ne fournit pas ce paramètre
+    (cli.py, repair_service.py) — même repli que `connectors/factory.py::build_connector`."""
+    v = st.derive_verdict(_outcome([BehaveScenario("[Nominal] ok", "passed")], []))
+    assert v.ground_truth == st.GROUND_TRUTH_BACKEND_VERIFIED
+
+
+def test_connector_type_odoo_est_backend_verified():
+    v = st.derive_verdict(
+        _outcome([BehaveScenario("[Nominal] ok", "passed")], []), connector_type="odoo")
+    assert v.ground_truth == st.GROUND_TRUTH_BACKEND_VERIFIED
+
+
+def test_connector_type_web_est_ui_only():
+    v = st.derive_verdict(
+        _outcome([BehaveScenario("[Nominal] ok", "passed")], []), connector_type="web")
+    assert v.ground_truth == st.GROUND_TRUTH_UI_ONLY
+
+
+def test_un_connector_type_inconnu_est_traite_comme_ui_only():
+    """Prudent par défaut : seul `odoo` est reconnu comme disposant d'une vérité de référence —
+    un type non reconnu ne doit jamais hériter silencieusement de cette confiance-là."""
+    v = st.derive_verdict(
+        _outcome([BehaveScenario("[Nominal] ok", "passed")], []), connector_type="sap")
+    assert v.ground_truth == st.GROUND_TRUTH_UI_ONLY
+
+
+def test_le_ground_truth_est_pose_meme_sur_un_echec_technique_precoce():
+    """Le connecteur est déjà connu avant même qu'un scénario tourne (dry-run raté, crash) — le
+    champ ne doit pas rester au défaut par accident sur ces chemins de sortie précoce."""
+    v = st.derive_verdict(
+        ExecutionOutcome("m", dry_run_passed=False, real_run=None), connector_type="web")
+    assert v.ground_truth == st.GROUND_TRUTH_UI_ONLY
+
+
+def test_aggregate_calcule_aussi_le_ground_truth_pour_un_appel_direct():
+    """`aggregate` est appelable directement (hors `derive_verdict`) — le paramètre doit s'y
+    comporter à l'identique, pas seulement via son unique appelant de production."""
+    v = st.aggregate([st.ScenarioVerdict("s", st.EXEC_SUCCESS, st.FUNC_CONFORME)],
+                     connector_type="web")
+    assert v.ground_truth == st.GROUND_TRUTH_UI_ONLY
+
+
 def test_returncode_zero_sans_scenario_reste_le_comportement_d_avant():
     """Une feature sans le moindre scénario (fichier vide) ressort en `0` — cas légitime, distinct
     du crash B4 (qui suppose un `returncode` NON nul) : comportement inchangé."""

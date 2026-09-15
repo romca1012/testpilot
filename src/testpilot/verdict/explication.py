@@ -21,9 +21,19 @@ from testpilot import config
 from testpilot.guardrails.cost_tracker import CostTracker
 from testpilot.llm.adapter import LLMAdapter
 from testpilot.verdict import defect_taxonomy as dt
-from testpilot.verdict.status import CaseVerdict
+from testpilot.verdict.status import GROUND_TRUTH_UI_ONLY, CaseVerdict
 
 logger = logging.getLogger(__name__)
+
+# Note DÉTERMINISTE, jamais confiée au LLM (étape 2.2 du plan de consolidation, 2026-09-15 — audit
+# « Le pari Mabl/Testim ») : la fiabilité d'un verdict générique est un FAIT structurel du
+# connecteur (`GenericWebConnector` n'a aucune méthode RPC — `connectors/generic_web.py`), pas une
+# nuance à faire deviner à un modèle de langage. Ajoutée APRÈS coup au texte de l'IA, jamais dans
+# le prompt : une IA qui « oublierait » de le mentionner laisserait croire à une vérification aussi
+# solide qu'un cas Odoo, exactement la confusion que ce champ existe pour éviter.
+_NOTE_UI_ONLY = (
+    "Vérification limitée à ce que l'écran affiche : cette application ne permet pas de "
+    "recouper le résultat avec une donnée de référence côté serveur.")
 
 _SYSTEM = ("Tu expliques le résultat d'un test automatique à un lecteur qui ne code pas. "
            "Tu écris en français clair, jamais en langage technique : aucun nom de classe "
@@ -134,4 +144,6 @@ def propose_explication(verdict: CaseVerdict, *, module_name: str = "",
         logger.warning("[explication] appel IA impossible — commentaire vide", exc_info=True)
         return "", 0.0
     texte = str(data.get("explication", "") or "").strip()
+    if texte and verdict.ground_truth == GROUND_TRUTH_UI_ONLY:
+        texte = f"{texte} {_NOTE_UI_ONLY}"
     return texte, round(tracker.total_cost, 6)
