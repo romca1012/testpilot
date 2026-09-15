@@ -272,6 +272,12 @@ def test_le_crawl_capture_desormais_un_champ_sans_name_via_son_data_test(page):
     fill_field(page, app.champ_identifiant, app.identifiant_valide)
     fill_field(page, app.champ_mot_de_passe, app.mot_de_passe_valide)
     click_button(page, "Login")
+    # ⚠️ `_inspecter_page` prend un INSTANTANÉ du DOM (`page.evaluate`, sans la moindre attente) —
+    # le vrai crawl l'appelle toujours juste après un `page.goto(..., wait_until="networkidle")`
+    # (voir `crawler()`). Ici, la navigation vient d'un clic de connexion, pas d'un `goto` : sans
+    # cette attente, la mesure peut tomber avant que le sélecteur ne soit rendu (flaky vu en CI,
+    # runner plus lent que le poste de développement).
+    page.wait_for_load_state("networkidle")
 
     infos = cd._inspecter_page(page)
 
