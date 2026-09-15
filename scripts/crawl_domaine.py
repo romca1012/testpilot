@@ -105,6 +105,22 @@ def _inspecter_page(page):
     Et les **CONTRAINTES** (`pattern`, `minlength`, `maxlength`, `min`, `max`, `step`) : sans
     elles, une valeur générée peut être refusée par le formulaire — et on diagnostiquerait à tort
     « l'application est cassée » alors que c'est la donnée du test qui l'est.
+
+    ⚠️ **`champ['name']` n'est PLUS nécessairement l'attribut HTML `name`** (suite de l'audit « Le
+    pari Mabl/Testim », 2026-09-15 — cas réel : le tri du catalogue SauceDemo n'a AUCUN `name`).
+    Avant ce correctif, la requête DOM elle-même exigeait `[name]` — un champ sans cet attribut
+    était **invisible pour le crawl**, absent de l'annuaire, et l'agent de génération devait
+    INVENTER un identifiant plausible (mesuré : « sort-by », qui ne correspond à rien de réel).
+    Exactement le trou que la cascade `locate_field` a fermé côté EXÉCUTION cette session, jamais
+    fermé côté MESURE. `champ['name']` porte désormais le premier identifiant qui existe, dans le
+    MÊME ordre de priorité que `locate_field` (name → data-test → data-testid → classe CSS UNIQUE
+    sur la page → libellé accessible) — pour que ce que l'agent lit corresponde à ce que
+    l'exécution sait résoudre. `prompt.py` relit cette clé telle quelle : aucun changement côté
+    prompt n'est nécessaire, la correction est entièrement contenue ici.
+
+    Une classe CSS n'est retenue que si elle est **UNIQUE sur la page** — une classe utilitaire
+    partagée par dix éléments (`form-control`, `btn`…) résoudrait le MAUVAIS champ à l'exécution,
+    ce qui serait pire qu'un champ non identifié du tout.
     """
     return page.evaluate("""() => {
         // Le libellé visible d'un champ : <label for=…>, label englobant, aria-label,
@@ -141,11 +157,33 @@ def _inspecter_page(page):
                      email: 'textbox', tel: 'textbox', url: 'textbox', search: 'searchbox',
                      password: 'textbox', date: 'textbox', text: 'textbox'})[t] || 'textbox';
         };
+        // L'identifiant technique retenu pour CE champ — MÊME ordre de priorité que
+        // `locate_field` côté exécution (audit « Le pari Mabl/Testim », 2026-09-15) : `name`
+        // d'abord, puis les attributs de test dédiés, puis une classe CSS mais SEULEMENT si elle
+        // est unique sur la page (sinon on résoudrait le mauvais champ), enfin le libellé
+        // accessible. `null` si rien de tout ça n'existe — un champ vraiment sans prise.
+        const identifiant = (el) => {
+            if (el.getAttribute('name')) return {valeur: el.getAttribute('name'), palier: 'name'};
+            if (el.getAttribute('data-test'))
+                return {valeur: el.getAttribute('data-test'), palier: 'data-test'};
+            if (el.getAttribute('data-testid'))
+                return {valeur: el.getAttribute('data-testid'), palier: 'data-testid'};
+            for (const cls of el.classList) {
+                if (document.querySelectorAll('.' + CSS.escape(cls)).length === 1) {
+                    return {valeur: cls, palier: 'classe'};
+                }
+            }
+            const lib = libelle(el);
+            if (lib) return {valeur: lib, palier: 'libelle'};
+            return null;
+        };
 
         const champs = [];
-        document.querySelectorAll('input[name], select[name], textarea[name]').forEach(el => {
+        document.querySelectorAll('input, select, textarea').forEach(el => {
+            const id = identifiant(el);
+            if (!id) return;  // aucune prise fiable : mieux vaut l'omettre que d'en inventer une
             const tag = el.tagName.toLowerCase();
-            const entry = {name: el.getAttribute('name'), tag,
+            const entry = {name: id.valeur, identifie_par: id.palier, tag,
                            type: (el.type || '').toLowerCase(),
                            required: el.required === true,
                            visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
@@ -199,7 +237,9 @@ def _inspecter_page(page):
         });
         const formulaires = Array.from(document.querySelectorAll('form')).map(f => ({
             action: f.getAttribute('action') || '', method: (f.method||'get').toLowerCase(),
-            champs: f.querySelectorAll('input[name], select[name], textarea[name]').length,
+            // Compte informatif (résumé humain du crawl) : mêmes champs que ci-dessus, sans
+            // `[name]` en dur — cohérent avec la capture élargie, pas seulement les champs nommés.
+            champs: f.querySelectorAll('input, select, textarea').length,
         }));
         return {champs, actions, liens, formulaires, titre: document.title};
     }""")

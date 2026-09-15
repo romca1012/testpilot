@@ -48,10 +48,12 @@ import pytest
 from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from _base_helpers import (  # noqa: E402
     click_button, fill_field, select_field_value, select_product_in_list, validation_error_inline,
 )
+import crawl_domaine as cd  # noqa: E402
 
 from testpilot.connectors._web_helpers import tenter_connexion_generique  # noqa: E402
 
@@ -253,3 +255,52 @@ def test_torture_tenter_connexion_generique_detecte_seule_la_connexion_a_deux_ec
     assert resultat is True
     assert "dashboard.html" in page.url, (
         f"la détection à deux écrans n'a pas abouti (url actuelle : {page.url})")
+
+
+# ── Le crawl capture un champ SANS name (audit « Le pari Mabl/Testim », cas réel 2026-09-15) ────
+#
+# Défaut RÉEL trouvé en diagnostiquant un cas généré : le tri du catalogue SauceDemo n'a AUCUN
+# attribut `name` — la requête DOM du crawl exigeait `[name]`, ce champ lui était donc INVISIBLE,
+# absent de l'annuaire. Sans donnée mesurée, l'agent de génération avait inventé un identifiant
+# plausible mais faux (« sort-by ») — introuvable à l'exécution, cas classé en Retest.
+
+def test_le_crawl_capture_desormais_un_champ_sans_name_via_son_data_test(page):
+    """Preuve directe du défaut corrigé : AVANT ce correctif, `product-sort-container` (le
+    sélecteur de tri, sans `name`) n'apparaissait dans AUCUN `champs` mesuré par le crawl."""
+    app = next(a for a in _APPS if a.nom == "SauceDemo")
+    page.goto(app.url_login, wait_until="domcontentloaded")
+    fill_field(page, app.champ_identifiant, app.identifiant_valide)
+    fill_field(page, app.champ_mot_de_passe, app.mot_de_passe_valide)
+    click_button(page, "Login")
+
+    infos = cd._inspecter_page(page)
+
+    tri = next((c for c in infos["champs"] if c["tag"] == "select"), None)
+    assert tri is not None, "le sélecteur de tri doit maintenant apparaître dans les champs mesurés"
+    assert tri["name"] == "product-sort-container"
+    assert tri["identifie_par"] == "data-test"
+
+
+def test_le_crawl_capture_un_champ_sans_aucun_attribut_technique_via_sa_classe_css(page):
+    """Le cas encore plus dur (ni `name`, ni `data-test`) : la fixture torture — la classe CSS
+    n'est retenue que parce qu'elle est UNIQUE sur la page (voir `_inspecter_page`)."""
+    page.goto(_page_torture("dashboard.html"))
+
+    infos = cd._inspecter_page(page)
+
+    tri = next((c for c in infos["champs"] if c["tag"] == "select"), None)
+    assert tri is not None
+    assert tri["name"] == "tri-catalogue"
+    assert tri["identifie_par"] == "classe"
+
+
+def test_le_crawl_ne_change_rien_pour_un_champ_deja_nomme(page):
+    """Comportement HISTORIQUE inchangé : un champ avec un vrai `name` continue de le porter
+    tel quel, jamais une classe ou un libellé à la place."""
+    app = next(a for a in _APPS if a.nom == "SauceDemo")
+    page.goto(app.url_login, wait_until="domcontentloaded")
+
+    infos = cd._inspecter_page(page)
+
+    identifiant = next(c for c in infos["champs"] if c["name"] == app.champ_identifiant)
+    assert identifiant["identifie_par"] == "name"
