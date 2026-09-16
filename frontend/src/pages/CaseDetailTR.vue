@@ -320,6 +320,20 @@ const form = ref({ title: '', preconditions: '', steps: [] as string[], expected
 // quelqu'un d'autre a enregistré une édition entre-temps. Sans ça, `save()` écraserait
 // silencieusement son changement avec le contenu périmé qu'on a encore sous les yeux.
 const baseVersionId = ref<number | null>(null)
+// Cliché du formulaire À L'OUVERTURE (2026-09-16) — sert à détecter un « Enregistrer » sans la
+// moindre modification. ⚠️ Sans lui, « Modifier » puis « Enregistrer » tel quel créait quand même
+// une version : le formulaire pré-remplit un champ jamais rédigé avec l'aperçu DÉRIVÉ du Gherkin
+// (juste en dessous) pour ne pas partir d'une page blanche — comparer au SERVEUR (vide vs. dérivé)
+// voyait donc un « changement » là où l'utilisateur n'a rien touché. On compare désormais le
+// formulaire à LUI-MÊME (avant/après édition), jamais à ce que la version stockait.
+const initialForm = ref<typeof form.value | null>(null)
+function chargeUtile(f: typeof form.value) {
+  return JSON.stringify({
+    title: f.title, preconditions: f.preconditions,
+    test_steps: JSON.stringify(f.steps.map((s) => s.trim()).filter(Boolean)),
+    expected_result: f.expected, refs: f.refs, estimate: f.estimate,
+  })
+}
 
 function startEdit() {
   const v = currentVersion.value
@@ -327,13 +341,14 @@ function startEdit() {
     title: c.value?.title || '',
     // À l'ouverture, on pré-remplit avec le métier réel s'il existe, SINON avec la dérivation :
     // l'utilisateur part de quelque chose de lisible au lieu d'une page blanche — et à partir du
-    // moment où il enregistre, c'est SON texte, assumé, plus une dérivation.
+    // moment où il enregistre UN CHANGEMENT RÉEL, c'est SON texte, assumé, plus une dérivation.
     preconditions: v?.preconditions || derived.value.preconditions.join('\n'),
     steps: metier.value.steps.length ? [...metier.value.steps] : [...derived.value.steps],
     expected: v?.expected_result || derived.value.expected.join(' '),
     refs: c.value?.refs || '',
     estimate: c.value?.estimate || '',
   }
+  initialForm.value = { ...form.value, steps: [...form.value.steps] }
   baseVersionId.value = detail.value?.current_version_id ?? null
   saveError.value = ''
   saveConflict.value = false
@@ -343,6 +358,12 @@ function addStep() { form.value.steps.push('') }
 function removeStep(i: number) { form.value.steps.splice(i, 1) }
 
 async function save() {
+  // Rien de touché depuis l'ouverture : on ferme, sans appeler le serveur — jamais de version
+  // fantôme pour un « Enregistrer » qui ne change rien.
+  if (initialForm.value && chargeUtile(form.value) === chargeUtile(initialForm.value)) {
+    editing.value = false
+    return
+  }
   saving.value = true
   saveError.value = ''
   saveConflict.value = false
