@@ -259,6 +259,9 @@ class _ConnecteurFactice(Connector):
     def discover_route(self, path_pattern, sample_id=None):
         raise NotImplementedError
 
+    def attempt_login(self, username, password):
+        raise NotImplementedError
+
     def create(self, model, vals):
         raise NotImplementedError
 

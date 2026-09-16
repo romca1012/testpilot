@@ -33,6 +33,15 @@ l'orchestrateur revérifie ensuite par la même analyse statique. Une seule tent
 - Si tu ne sais pas corriger un point avec certitude (aucune valeur de repli connue et sûre), dis-
   le clairement plutôt que d'inventer une référence plausible mais non vérifiée.
 
+## Un texte affiché s'observe, il ne se devine jamais de mémoire
+
+Si la correction touche une assertion sur un message lié à une tentative de connexion
+(identifiants valides, mot de passe erroné, compte verrouillé...), appelle `attempt_login` avec
+les identifiants exacts du scénario et utilise le texte qu'il rapporte — jamais un texte que tu
+crois connaître. Si le message porte un préfixe ou un fragment variable, affirme le fragment
+stable avec `in` plutôt que l'égalité stricte sur la totalité (sauf si le scénario vise
+explicitement le texte exact).
+
 ## Ce que tu peux modifier
 
 Contrairement à une réparation post-exécution, **rien n'est gelé ici** : cette version n'a jamais

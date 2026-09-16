@@ -57,6 +57,20 @@ class Connector(ABC):
     def discover_route(self, path_pattern: str, sample_id: int | None = None) -> dict:
         """Sonde une route : {url, status, method, note}."""
 
+    @abstractmethod
+    def attempt_login(self, username: str, password: str) -> dict:
+        """Tente une connexion avec CES identifiants précis (valides, erronés, verrouillés...)
+        et rend ce qui s'affiche RÉELLEMENT : {submitted, url, message, error}.
+
+        Perception, pas un état durable — sur un contexte de navigateur JETABLE, jamais la
+        session persistante de l'exploration : appelable plusieurs fois de suite avec des
+        identifiants différents (2026-09-16, amendement §4.3-bis étendu — un cas générait
+        « Sorry, this user has been locked out. » quand l'application affiche en réalité
+        « Epic sadface: Sorry, this user has been locked out. » : l'agent avait deviné ce texte
+        au lieu de l'observer). `message` est le texte du premier message d'erreur visible après
+        soumission (`""` si aucun) ; `error` porte la raison d'un échec de PERCEPTION (SSO/2FA,
+        aucun formulaire détecté) — jamais confondu avec un `message` d'erreur applicatif."""
+
     # ── Écriture (runtime des tests / teardown) ──────────────────────────────
     @abstractmethod
     def create(self, model: str, vals: dict) -> int:

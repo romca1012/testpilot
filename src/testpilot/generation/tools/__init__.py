@@ -78,6 +78,22 @@ TOOLS_DEFINITIONS: list[dict] = [
         },
     },
     {
+        "name": "attempt_login",
+        "description": (
+            "Soumet CES identifiants au formulaire de connexion et rend le message RÉELLEMENT "
+            "affiché après coup. À appeler AVANT d'écrire une assertion sur un message lié à une "
+            "tentative de connexion (identifiants valides, mot de passe erroné, compte "
+            "verrouillé...) — jamais deviner ce texte de mémoire."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "username": {"type": "string"},
+                "password": {"type": "string"},
+            },
+            "required": ["username", "password"],
+        },
+    },
+    {
         "name": "write_feature_file",
         # ⚠️ « REMPLACE » et « entier » : sans ce contrat, l'agent rend un EXTRAIT et écrase le
         # reste. Mesuré en run réel (0014 étape 6) sur le fichier de steps.
@@ -127,6 +143,10 @@ def dispatch(name: str, tool_input: dict, ctx: ToolContext) -> ToolOutcome:
         if name == "discover_route":
             return inspect_tools.discover_route(
                 ctx, tool_input.get("path_pattern", ""), tool_input.get("sample_id"),
+            )
+        if name == "attempt_login":
+            return inspect_tools.attempt_login(
+                ctx, tool_input.get("username", ""), tool_input.get("password", ""),
             )
         return ToolOutcome(observation=f"[tool inconnu : {name}]", ok=False)
     except Exception as exc:  # garde : un tool ne casse jamais la boucle

@@ -207,6 +207,44 @@ assert articles.count() > 0, "aucun produit dans le panier"
 La même règle vaut pour lire un texte, un prix, un statut : `locator.first.wait_for(state=...)`
 avant `.inner_text()`, jamais juste après un clic ou un changement d'URL.
 
+### Règle 6 — Un texte affiché s'OBSERVE, il ne se devine jamais de mémoire
+⚠️ **Bug réel mesuré (SauceDemo, 2026-09-16)** : un cas affirmait qu'un compte verrouillé affiche
+« Sorry, this user has been locked out. ». L'application affiche en réalité « **Epic sadface:**
+Sorry, this user has been locked out. ». Le texte avait été écrit de mémoire (SauceDemo est une
+application très documentée) au lieu d'être observé — le dry-run ne l'a jamais détecté (il ne fait
+que vérifier que les steps *matchent*, il n'exécute **aucune** assertion), et le cas a échoué à sa
+toute première exécution réelle, une fois approuvé.
+
+**Avant d'écrire une assertion sur un texte affiché lié à une tentative de connexion**
+(identifiants valides, mot de passe erroné, compte verrouillé, champ manquant...), appelle
+`attempt_login` avec les identifiants EXACTS du scénario et utilise le texte qu'il rapporte —
+jamais un texte que tu crois connaître, même pour une application célèbre. Playwright Codegen
+(l'outil officiel équivalent) applique le même principe : il lit l'`innerText` réel de l'élément
+au moment de l'enregistrement, il ne le demande jamais à l'auteur.
+
+**Exact ou partiel ?** Si le message porte un préfixe ou un fragment variable (horodatage,
+identifiant généré, préfixe de marque comme « Epic sadface: »), affirme le FRAGMENT STABLE avec
+`in`, pas l'égalité stricte sur la totalité — une correspondance partielle qui affirme ce qui
+compte vaut mieux qu'une correspondance totale qui casse au moindre habillage inchangé côté
+intention :
+
+```python
+# FRAGILE — casse si l'application ajoute un préfixe/habillage sans changer le fond du message
+assert message == "Sorry, this user has been locked out."
+
+# CORRECT — affirme ce que le scénario veut vraiment vérifier
+assert "this user has been locked out" in message
+```
+
+N'utilise l'égalité stricte que lorsque le scénario vise EXPLICITEMENT le texte exact (ex. un
+message dont la spec cite la formulation complète comme exigence).
+
+`attempt_login` n'est utile que pour un message lié à une CONNEXION. Pour tout autre texte affiché
+(confirmation, libellé, erreur de validation d'un formulaire métier), applique le même principe
+sans lui : ne l'écris que si tu l'as vu — via `inspect_page_form` pour la structure, ou en te
+limitant à une affirmation de PRÉSENCE (`.count() > 0`, Règle 4/5) plutôt qu'à un texte exact que
+tu n'as jamais observé.
+
 ---
 
 ## PILIER 1 — ANALYSE

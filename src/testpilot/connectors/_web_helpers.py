@@ -177,6 +177,77 @@ def tenter_connexion_generique(page, user: str, password: str) -> bool:
     return True
 
 
+# ── Lire un message d'erreur réellement affiché (2026-09-16 — audit « Le pari Mabl/Testim »,
+# amendement §4.3-bis étendu) ─────────────────────────────────────────────────────────────────
+#
+# ⚠️ **Pourquoi ceci existe.** Un cas généré affirmait qu'un compte verrouillé affiche « Sorry,
+# this user has been locked out. » — l'application affiche en réalité « Epic sadface: Sorry,
+# this user has been locked out. ». L'agent avait DEVINÉ ce texte depuis sa mémoire d'entraînement
+# au lieu de l'observer : rien dans le pipeline de génération ne lit jamais le DOM réel avant
+# d'écrire une assertion sur un texte affiché (`inspect_page_form`/`discover_route` n'observent
+# que la STRUCTURE des formulaires, jamais leur CONTENU). Playwright Codegen — l'outil officiel
+# équivalent — ne demande JAMAIS ce texte à l'auteur : il lit l'`innerText` réel de l'élément visé
+# au moment de l'enregistrement. On applique le même principe ici : observer avant d'écrire.
+
+_SELECTEURS_MESSAGE_ERREUR = (
+    '[role="alert"], .error, .alert-danger, .is-invalid, '
+    ".o_notification.border-danger, [class*='s_website_form_field'].o_has_error"
+)
+# ⚠️ MÊME liste, au caractère près, que `behave_runtime/steps_library/_base_helpers.py::
+# validation_error_inline` — validée contre DEUX applications réelles distinctes (SauceDemo :
+# `[role="alert"]` ; the-internet.herokuapp.com : `.error`), durcie le 2026-09-14 après un faux
+# négatif réel. Dupliquée ici plutôt qu'importée : `_base_helpers` vit hors du paquet `testpilot`
+# (voir `OdooConnector.crawl_relogin_hook`, même contrainte) et n'est chargeable qu'après un
+# montage de `sys.path` que ce module, appelé bien plus tôt (génération), n'a aucune raison de
+# faire. Toute évolution de cette liste doit être reportée dans les deux fichiers.
+
+
+def lire_message_erreur_visible(page) -> str:
+    """Le texte du premier message d'erreur VISIBLE et NON VIDE, ou `""` si aucun ne l'est.
+
+    ⚠️ **Un élément peut matcher le sélecteur, être visible, ET n'avoir aucun texte** — vérifié en
+    conditions réelles sur SauceDemo (2026-09-16) : la bannière d'erreur s'y compose de plusieurs
+    éléments `.error`/`[role="alert"]` imbriqués, dont un conteneur vide et le bouton « X » de
+    fermeture (lui aussi visible, lui aussi sans texte) AVANT le `<h3 data-test="error">` qui
+    porte le vrai message. S'arrêter au premier élément VISIBLE, sans regarder s'il a du texte,
+    aurait rendu une chaîne vide au lieu du message réel — on continue donc tant que le texte lu
+    est vide, jamais seulement tant que l'élément est invisible.
+
+    Best-effort, jamais fatal : un élément qui disparaît entre le comptage et la lecture est
+    ignoré, pas une exception qui remonte."""
+    candidats = page.locator(_SELECTEURS_MESSAGE_ERREUR)
+    for i in range(min(candidats.count(), 8)):
+        try:
+            candidat = candidats.nth(i)
+            if not candidat.is_visible():
+                continue
+            texte = candidat.inner_text().strip()
+            if texte:
+                return texte
+        except Exception:
+            continue
+    return ""
+
+
+def tenter_connexion_et_lire_resultat(page, user: str, password: str) -> dict:
+    """Remplit et soumet le formulaire de connexion avec CES identifiants précis (utile/erroné/
+    verrouillé...), puis rend ce qui s'affiche VRAIMENT — pour que l'agent de génération vérifie
+    un message avant de l'écrire dans une assertion, au lieu de le deviner.
+
+    Rend toujours un dict, jamais une exception : `error` porte la raison si l'identification a
+    échoué (SSO/2FA détecté, aucun formulaire trouvé, identifiants vides) — l'appelant reste alors
+    sans donnée observée, exactement comme avant l'ajout de cette fonction.
+    """
+    try:
+        soumis = tenter_connexion_generique(page, user, password)
+    except ConnexionGeneriqueImpossibleError as exc:
+        return {"submitted": False, "url": getattr(page, "url", ""), "message": "", "error": str(exc)}
+    if not soumis:
+        return {"submitted": False, "url": getattr(page, "url", ""), "message": "",
+                "error": "aucun formulaire de connexion détecté sur cette page, ou identifiants vides"}
+    return {"submitted": True, "url": page.url, "message": lire_message_erreur_visible(page), "error": ""}
+
+
 def http_probe(url: str) -> dict:
     """Sonde HTTP HEAD→GET. Isolée pour être surchargée hors-ligne en test.
 

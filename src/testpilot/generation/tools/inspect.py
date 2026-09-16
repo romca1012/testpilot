@@ -77,6 +77,39 @@ def discover_route(ctx: "ToolContext", path_pattern: str, sample_id: int | None 
     )
 
 
+def attempt_login(ctx: "ToolContext", username: str, password: str) -> "ToolOutcome":
+    """Observe ce que l'application affiche VRAIMENT pour CES identifiants — jamais un souvenir.
+
+    2026-09-16 (amendement §4.3-bis étendu) : avant d'écrire une assertion sur un message lié à
+    une tentative de connexion (identifiants valides, mot de passe erroné, compte verrouillé...),
+    APPELLE CE TOOL avec les identifiants exacts du scénario et utilise le texte RENDU — jamais
+    celui que tu crois connaître. Playwright Codegen (l'outil officiel équivalent) fait exactement
+    ça : il lit l'`innerText` réel plutôt que de le demander à l'auteur.
+    """
+    if ctx.connector is None:
+        return _outcome(_NO_CONNECTOR, ok=False)
+    if not username or not password:
+        return _outcome("[attempt_login] identifiant et mot de passe requis", ok=False)
+    resultat = ctx.connector.attempt_login(username, password)
+    if resultat.get("error"):
+        return _outcome(f"[attempt_login] impossible d'observer : {resultat['error']}", ok=False)
+    if not resultat.get("submitted"):
+        return _outcome("[attempt_login] aucun formulaire de connexion trouvé sur cette page",
+                        ok=False)
+    message = resultat.get("message") or ""
+    if message:
+        return _outcome(
+            f"Après soumission de « {username} » / « {password} », l'application affiche "
+            f"EXACTEMENT : {message!r} (URL résultante : {resultat.get('url', '?')}). "
+            "Utilise ce texte au caractère près si ton assertion en dépend — ou une correspondance "
+            "partielle stable si une partie du message est variable.")
+    return _outcome(
+        f"Après soumission de « {username} » / « {password} », aucun message d'erreur visible "
+        f"détecté (URL résultante : {resultat.get('url', '?')}) — la connexion a probablement "
+        "réussi, ou l'application affiche l'erreur autrement que par les motifs reconnus "
+        "([role=\"alert\"], .error, .alert-danger...).")
+
+
 def summarize_submission_mechanism(info: dict | None) -> str | None:
     """Résume un descriptif de soumission en une phrase actionnable. Pur (sans réseau)."""
     if not isinstance(info, dict):

@@ -27,6 +27,7 @@ from testpilot.connectors._web_helpers import (
     build_probe_url,
     extract_form,
     http_probe,
+    tenter_connexion_et_lire_resultat,
     tenter_connexion_generique,
 )
 from testpilot.connectors.base import Connector
@@ -126,6 +127,30 @@ class GenericWebConnector(Connector):
     def discover_route(self, path_pattern: str, sample_id: int | None = None) -> dict:
         url = build_probe_url(self._url, path_pattern, sample_id)
         return self._http_probe(url)
+
+    def attempt_login(self, username: str, password: str) -> dict:
+        try:
+            return self._run_in_browser(self._attempt_login_sync, username, password)
+        except Exception as exc:  # perception best-effort : jamais fatal pour l'agent
+            logger.warning("[web-générique] attempt_login a échoué : %s", exc)
+            return {"submitted": False, "url": "", "message": "", "error": str(exc)[:200]}
+
+    def _attempt_login_sync(self, username: str, password: str) -> dict:
+        """Un contexte de navigateur FRAIS et JETABLE — jamais `self._page` : la session
+        persistante est peut-être déjà authentifiée avec les VRAIS identifiants du projet
+        (`_ensure_page`), et y retenter une connexion avec des identifiants de SCÉNARIO (compte
+        verrouillé, mot de passe erroné...) ne reproduirait pas l'état « pas encore connecté »
+        que le scénario veut observer."""
+        self._ensure_page()  # s'assure que self._browser existe (démarrage paresseux)
+        contexte = self._browser.new_context()
+        try:
+            page = contexte.new_page()
+            page.set_default_timeout(self._timeout_ms)
+            page.goto(self._url)
+            page.wait_for_load_state("networkidle")
+            return tenter_connexion_et_lire_resultat(page, username, password)
+        finally:
+            contexte.close()
 
     # ── Crawl de l'annuaire (étape 1.1 du plan de consolidation) ────────────────
     # `crawl_roots`/`crawl_exclusion_pattern`/`crawl_follow_hash_anchors` : le défaut GÉNÉRIQUE de

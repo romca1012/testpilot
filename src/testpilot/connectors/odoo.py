@@ -26,7 +26,12 @@ from testpilot.connectors.base import Connector
 # (`connectors/_web_helpers.py`, audit multi-connecteurs 2026-09-08) — rien ici n'a jamais été
 # spécifique à Odoo. Réexportées pour ne pas casser un import existant
 # (`from testpilot.connectors.odoo import build_probe_url, extract_form`).
-from testpilot.connectors._web_helpers import build_probe_url, extract_form, http_probe  # noqa: F401
+from testpilot.connectors._web_helpers import (  # noqa: F401
+    build_probe_url,
+    extract_form,
+    http_probe,
+    lire_message_erreur_visible,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +154,35 @@ class OdooConnector(Connector):
         """Sonde une route en HTTP léger (HEAD puis repli GET) : statut + méthode."""
         url = build_probe_url(self._url, path_pattern, sample_id)
         return self._http_probe(url)
+
+    def attempt_login(self, username: str, password: str) -> dict:
+        try:
+            return self._run_in_browser(self._attempt_login_sync, username, password)
+        except Exception as exc:  # perception best-effort : jamais fatal pour l'agent
+            logger.warning("[odoo] attempt_login a échoué : %s", exc)
+            return {"submitted": False, "url": "", "message": "", "error": str(exc)[:200]}
+
+    def _attempt_login_sync(self, username: str, password: str) -> dict:
+        """Un contexte de navigateur FRAIS et JETABLE — jamais `self._page` : la session
+        persistante (`_ensure_page`) est déjà authentifiée avec les VRAIS identifiants du
+        projet, et y retenter une connexion avec des identifiants de SCÉNARIO ne reproduirait
+        pas l'état « pas encore connecté » que le scénario veut observer."""
+        self._ensure_page()  # s'assure que self._browser existe (démarrage paresseux)
+        contexte = self._browser.new_context()
+        try:
+            page = contexte.new_page()
+            page.set_default_timeout(self._timeout_ms)
+            page.goto(f"{self._url}/web/login?db={self._database}")
+            page.wait_for_selector("input[name='login']", state="attached",
+                                   timeout=self._timeout_ms)
+            page.locator("input[name='login']").fill(username, force=True)
+            page.locator("input[name='password']").fill(password, force=True)
+            page.locator("input[name='password']").press("Enter")
+            page.wait_for_load_state("networkidle")
+            return {"submitted": True, "url": page.url,
+                   "message": lire_message_erreur_visible(page), "error": ""}
+        finally:
+            contexte.close()
 
     # ── Crawl de l'annuaire (étape 1.1 du plan de consolidation) ────────────────
     def crawl_roots(self, page) -> list[str]:
