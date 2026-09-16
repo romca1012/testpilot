@@ -581,6 +581,12 @@ export interface ProjectSummary {
   // légitime quand l'application ne l'expose pas (migration 38), jamais une valeur à deviner.
   connector_version: string
   base_url: string; database: string; username: string
+  // Calibration en ÉCRITURE pendant la génération (migration 45, 2026-09-16) — éteinte par
+  // défaut : soumettre un vrai formulaire pourrait créer une donnée réelle. Le porteur du projet
+  // l'active explicitement s'il sait que l'application configurée le tolère. Disponible
+  // seulement pour un connecteur qui sait aussi supprimer ce qu'il crée (Odoo) — sans effet pour
+  // le connecteur générique, qui refuse toujours.
+  calibration_writes_enabled: boolean
   module_count: number; case_count: number
   effective_role: string
 }
@@ -710,6 +716,7 @@ export interface ProjectInput {
   name: string; description?: string
   connector_type: string; connector_version: string
   base_url: string; database: string; username: string; password: string
+  calibration_writes_enabled?: boolean
 }
 export interface ModuleSummary {
   id: number; project_id: number; name: string; description: string; case_count: number

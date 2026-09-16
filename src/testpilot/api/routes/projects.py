@@ -141,6 +141,8 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
         project_id, connector_type=body.connector_type, connector_version=body.connector_version,
         base_url=body.base_url, database=body.database, username=body.username,
         password=body.password)
+    if body.calibration_writes_enabled is not None:
+        repo.set_calibration_writes_enabled(project_id, body.calibration_writes_enabled)
     return schemas.project_summary(_summary_row(conn, project_id))
 
 

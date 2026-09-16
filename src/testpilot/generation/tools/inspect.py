@@ -110,6 +110,48 @@ def attempt_login(ctx: "ToolContext", username: str, password: str) -> "ToolOutc
         "([role=\"alert\"], .error, .alert-danger...).")
 
 
+def attempt_form_submission(ctx: "ToolContext", page_url: str, field_values: dict,
+                            model: str = "") -> "ToolOutcome":
+    """Calibration en écriture (2026-09-16) : réservée aux projets qui l'ont EXPLICITEMENT
+    autorisée (`project.calibration_writes_enabled`) — jamais activée par défaut, un formulaire
+    quelconque pourrait créer une vraie donnée. Refusée d'elle-même pour un connecteur qui ne
+    sait pas garantir un nettoyage après coup (le connecteur générique lève `NotImplementedError`
+    — seul Odoo, via RPC `delete`, l'implémente à ce jour)."""
+    if not ctx.calibration_writes_enabled:
+        return _outcome(
+            "[attempt_form_submission] calibration en écriture désactivée pour ce projet — "
+            "active-la dans ses réglages si cette application est un environnement de test, "
+            "ou limite ton assertion à une affirmation de présence sans texte exact deviné.",
+            ok=False)
+    if ctx.connector is None:
+        return _outcome(_NO_CONNECTOR, ok=False)
+    if not page_url or not field_values:
+        return _outcome("[attempt_form_submission] page_url et field_values requis", ok=False)
+    try:
+        resultat = ctx.connector.attempt_form_submission(page_url, field_values, model)
+    except NotImplementedError as exc:
+        return _outcome(f"[attempt_form_submission] {exc}", ok=False)
+    if resultat.get("error"):
+        return _outcome(f"[attempt_form_submission] impossible d'observer : {resultat['error']}",
+                        ok=False)
+    if not resultat.get("submitted"):
+        return _outcome("[attempt_form_submission] soumission impossible (raison inconnue)",
+                        ok=False)
+    message = resultat.get("message") or ""
+    nettoyage = ("nettoyée automatiquement" if resultat.get("cleaned_up")
+                else "PAS nettoyée automatiquement — vérifie/supprime-la manuellement si besoin")
+    if message:
+        return _outcome(
+            f"Après soumission, l'application affiche EXACTEMENT : {message!r} (URL résultante : "
+            f"{resultat.get('url', '?')}). Donnée de calibration {nettoyage}. Utilise ce texte au "
+            "caractère près si ton assertion en dépend, ou une correspondance partielle stable si "
+            "une partie est variable.")
+    return _outcome(
+        f"Après soumission, aucun message visible détecté (URL résultante : "
+        f"{resultat.get('url', '?')}). Donnée de calibration {nettoyage}. N'affirme pas un texte "
+        "que tu n'as pas observé — une affirmation de présence/redirection reste possible.")
+
+
 def summarize_submission_mechanism(info: dict | None) -> str | None:
     """Résume un descriptif de soumission en une phrase actionnable. Pur (sans réseau)."""
     if not isinstance(info, dict):

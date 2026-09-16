@@ -470,7 +470,7 @@ _AUTEUR_CORRECTION = "correction-agent"
 def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
                                module_name: str | None = None, connector=None,
                                connector_type: str | None = None, connector_version: str = "",
-                               dry_runner=None) -> None:
+                               dry_runner=None, calibration_writes_enabled: bool = False) -> None:
     """Décide du sort d'une version fraîchement générée — amendement §4.3-bis (2026-09-15),
     étendu (2026-09-16) : un point de vigilance déclenche une CORRECTION avant de reporter le
     problème à l'utilisateur, pas seulement un blocage.
@@ -519,7 +519,8 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
         feature_content=version.get("feature_content") or "",
         steps_content=version.get("steps_content") or "",
         connector=connector, connector_type=connector_type,
-        connector_version=connector_version, dry_runner=dry_runner)
+        connector_version=connector_version, dry_runner=dry_runner,
+        calibration_writes_enabled=calibration_writes_enabled)
     _record_generation_cost(conn, case_id=case_id, correction_usd=proposal.cost_usd)
 
     if not proposal.changed:
@@ -663,7 +664,8 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
                 conn, case_id, result.version_id, module_name=plan.module_name,
                 connector=connector, connector_type=(project or {}).get("connector_type"),
                 connector_version=(project or {}).get("connector_version", ""),
-                dry_runner=runner)
+                dry_runner=runner,
+                calibration_writes_enabled=bool((project or {}).get("calibration_writes_enabled")))
             GenerationJobRepo(conn).maj(job_id, status="done", case_ids=[case_id])
         else:
             GenerationJobRepo(conn).maj(job_id, status="failed",
@@ -810,7 +812,9 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                         connector=connecteur_tache,
                         connector_type=(project or {}).get("connector_type"),
                         connector_version=(project or {}).get("connector_version", ""),
-                        dry_runner=runner_tache)
+                        dry_runner=runner_tache,
+                        calibration_writes_enabled=bool(
+                            (project or {}).get("calibration_writes_enabled")))
                     return {"case_id": result.case_id}
                 # Le cas n'a pas été persisté avec ce slug (génération arrêtée avant la fin) :
                 # le rendre disponible, sinon ce titre reste bloqué pour rien.

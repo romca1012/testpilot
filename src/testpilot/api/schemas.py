@@ -43,6 +43,10 @@ class ProjectSummary(BaseModel):
     database: str = ""
     username: str = ""
     # password : jamais exposé par l'API (write-only, cf. décision 0005).
+    # Migration 45 : calibration en ÉCRITURE pendant la génération — éteinte par défaut, décidée
+    # par le porteur du projet (jamais activée implicitement, cf. `ProjectRepo.
+    # set_calibration_writes_enabled`).
+    calibration_writes_enabled: bool = False
     module_count: int = 0
     case_count: int = 0
     effective_role: str = ""
@@ -471,6 +475,9 @@ class ProjectPatch(BaseModel):
     database: str | None = None
     username: str | None = None
     password: str | None = None  # secret : accepté en entrée, jamais relu en sortie
+    # `None` = n'y touche pas, comme les autres champs de ce PATCH — pas de `""` ambigu possible
+    # pour un booléen, mais la même discipline (silence = inchangé) s'applique.
+    calibration_writes_enabled: bool | None = None
 
 
 class ExplorationOut(BaseModel):
@@ -1123,6 +1130,7 @@ def project_summary(row: dict) -> ProjectSummary:
         connector_type=row.get("connector_type", "odoo"),
         connector_version=row.get("connector_version", ""), base_url=row.get("base_url", ""),
         database=row.get("database", ""), username=row.get("username", ""),
+        calibration_writes_enabled=bool(row.get("calibration_writes_enabled", 0)),
         module_count=row.get("module_count", 0), case_count=row.get("case_count", 0),
         effective_role=row.get("effective_role", ""))
 

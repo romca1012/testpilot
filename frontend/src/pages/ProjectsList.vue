@@ -223,6 +223,7 @@ const saving = ref(false)
 const editError = ref('')
 const edit = ref({
   name: '', connector_type: 'odoo', connector_version: '', base_url: '', database: '', username: '', password: '',
+  calibration_writes_enabled: false,
 })
 
 function startEdit(p: ProjectSummary) {
@@ -235,6 +236,7 @@ function startEdit(p: ProjectSummary) {
     // ⚠️ TOUJOURS vide : l'API ne renvoie jamais le mot de passe (write-only). Le champ vide
     // signifie « inchangé », jamais « efface-le » — d'où le filtrage à l'enregistrement.
     password: '',
+    calibration_writes_enabled: p.calibration_writes_enabled,
   }
 }
 
@@ -290,13 +292,14 @@ async function saveEdit() {
   saving.value = true
   editError.value = ''
   try {
-    const patch: Record<string, string> = {
+    const patch: Record<string, string | boolean> = {
       name: edit.value.name.trim(),
       connector_type: edit.value.connector_type,
       connector_version: edit.value.connector_version,
       base_url: edit.value.base_url,
       database: edit.value.database,
       username: edit.value.username,
+      calibration_writes_enabled: edit.value.calibration_writes_enabled,
     }
     // Le mot de passe n'est envoyé QUE s'il a été saisi. L'omettre laisse le secret intact ;
     // envoyer "" l'effacerait — et toutes les exécutions du projet échoueraient ensuite.
@@ -587,6 +590,21 @@ onMounted(async () => { await load(); await loadExplorations() })
             <label class="block"><span class="text-sm font-medium">Mot de passe{{ edit.connector_type === 'odoo' ? '' : ' (facultatif)' }}</span><input v-model="edit.password" type="password" placeholder="Inchangé" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
           </div>
           <p class="mt-2 text-xs text-muted-foreground">Le mot de passe n'est jamais réaffiché. Laissez ce champ vide pour le conserver tel quel.</p>
+        </fieldset>
+        <fieldset v-if="edit.connector_type === 'odoo'" class="rounded-lg border border-border p-3">
+          <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Génération — calibration en écriture</legend>
+          <label class="flex items-start gap-2.5">
+            <input type="checkbox" v-model="edit.calibration_writes_enabled" class="mt-0.5" />
+            <span class="text-sm">
+              Autoriser l'IA à soumettre un vrai formulaire pendant la génération pour observer le
+              message réel affiché, puis à supprimer aussitôt ce qu'elle a créé.
+              <span class="mt-1 block text-xs text-muted-foreground">
+                Éteint par défaut : n'active que si <strong>{{ edit.base_url || 'cette application' }}</strong>
+                est un environnement de test — une donnée de calibration peut y être créée le temps de sa
+                vérification.
+              </span>
+            </span>
+          </label>
         </fieldset>
         <p v-if="editError" class="text-sm text-destructive">{{ editError }}</p>
       </form>

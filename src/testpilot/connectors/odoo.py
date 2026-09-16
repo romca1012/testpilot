@@ -31,6 +31,7 @@ from testpilot.connectors._web_helpers import (  # noqa: F401
     extract_form,
     http_probe,
     lire_message_erreur_visible,
+    soumettre_formulaire_et_lire_resultat,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,22 @@ logger = logging.getLogger(__name__)
 # des deux copies, comme `FIELD_FALLBACK_FILE_ENV` le fait déjà pour un autre couple de constantes
 # dupliquées entre le paquet et la bibliothèque de steps.
 _CRAWL_RACINES = ["/my/home", "/myservices"]
+
+# Identifiant Odoo dans l'URL après soumission d'un formulaire (migration 45, calibration en
+# écriture, 2026-09-16) — deux conventions selon la version : `#id=123&model=...` (client web
+# historique) ou un segment numérique final `/odoo/mon-modele/123` (client web récent). On ne
+# devine JAMAIS le modèle depuis le slug de l'URL (rien ne garantit qu'il corresponde au nom
+# technique) : `model` est fourni explicitement par l'appelant, qui le connaît déjà (il vient
+# d'inspecter ce même formulaire via `inspect_schema`).
+_ID_DEPUIS_URL_ODOO = re.compile(r"[?&#]id=(\d+)\b|/(\d+)(?:[/?#]|$)")
+
+
+def _extraire_id_depuis_url(url: str) -> int | None:
+    m = _ID_DEPUIS_URL_ODOO.search(url)
+    if not m:
+        return None
+    brut = m.group(1) or m.group(2)
+    return int(brut) if brut else None
 _CRAWL_HORS_PERIMETRE = re.compile(
     r"^/(web|odoo)(/|$|#)|^/@/|^/website/add/|/web/static|/web/session/logout"
     r"|nav_tabs_content|/export(/|$)|\.(css|js|png|jpg|jpeg|svg|ico|woff2?)$",
@@ -161,6 +178,55 @@ class OdooConnector(Connector):
         except Exception as exc:  # perception best-effort : jamais fatal pour l'agent
             logger.warning("[odoo] attempt_login a échoué : %s", exc)
             return {"submitted": False, "url": "", "message": "", "error": str(exc)[:200]}
+
+    def attempt_form_submission(self, page_url: str, field_values: dict,
+                                model: str = "") -> dict:
+        try:
+            resultat = self._run_in_browser(
+                self._attempt_form_submission_sync, page_url, field_values)
+        except Exception as exc:  # perception best-effort : jamais fatal pour l'agent
+            logger.warning("[odoo] attempt_form_submission a échoué : %s", exc)
+            return {"submitted": False, "url": "", "message": "", "cleaned_up": False,
+                    "error": str(exc)[:200]}
+        # ⚠️ Le nettoyage RPC vit ICI, HORS du thread Playwright dédié (`_run_in_browser`) — le
+        # client odoorpc (`self._client`) n'a aucune raison de partager ce thread, et mélanger
+        # les deux n'apporterait rien qu'une dépendance accidentelle entre deux mécanismes
+        # indépendants (perception UI vs RPC), déjà séparés partout ailleurs dans ce connecteur.
+        resultat["cleaned_up"] = False
+        if resultat.get("submitted") and model:
+            id_cree = _extraire_id_depuis_url(resultat["url"])
+            if id_cree is None:
+                logger.warning("[odoo] calibration : aucun identifiant reconnu dans l'URL %s — "
+                               "la donnée créée n'est PAS nettoyée automatiquement, à vérifier "
+                               "manuellement", resultat["url"])
+            else:
+                try:
+                    self.delete(model, [id_cree])
+                    resultat["cleaned_up"] = True
+                except Exception as exc:
+                    logger.warning("[odoo] calibration : nettoyage de %s#%s a échoué : %s — "
+                                   "à vérifier manuellement", model, id_cree, exc)
+        return resultat
+
+    def _attempt_form_submission_sync(self, page_url: str, field_values: dict) -> dict:
+        """Un contexte de navigateur FRAIS, mais AUTHENTIFIÉ — contrairement à `attempt_login`,
+        ce formulaire exige une session déjà connectée pour être atteignable. On copie l'état de
+        la session persistante (`_ensure_page`) dans un contexte jetable plutôt que de réutiliser
+        `self._page` directement : une soumission ratée ou une redirection inattendue ne doit
+        jamais laisser la session principale de l'exploration dans un état inconnu."""
+        page_principale = self._ensure_page()
+        etat = page_principale.context.storage_state()
+        contexte = self._browser.new_context(storage_state=etat)
+        try:
+            page = contexte.new_page()
+            page.set_default_timeout(self._timeout_ms)
+            target = (page_url if page_url.startswith("http")
+                     else urljoin(self._url + "/", page_url.lstrip("/")))
+            page.goto(target)
+            page.wait_for_load_state("networkidle")
+            return soumettre_formulaire_et_lire_resultat(page, field_values)
+        finally:
+            contexte.close()
 
     def _attempt_login_sync(self, username: str, password: str) -> dict:
         """Un contexte de navigateur FRAIS et JETABLE — jamais `self._page` : la session

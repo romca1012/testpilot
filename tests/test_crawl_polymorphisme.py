@@ -262,6 +262,9 @@ class _ConnecteurFactice(Connector):
     def attempt_login(self, username, password):
         raise NotImplementedError
 
+    def attempt_form_submission(self, page_url, field_values, model=""):
+        raise NotImplementedError
+
     def create(self, model, vals):
         raise NotImplementedError
 

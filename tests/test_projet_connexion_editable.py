@@ -113,6 +113,32 @@ def test_renommer_ne_touche_pas_a_la_connexion(client):
     assert r.json()["connector_version"] == "17"
 
 
+# ── Calibration en écriture (migration 45, 2026-09-16) — éteinte par défaut, décidée par PATCH ──
+
+def test_calibration_writes_enabled_est_eteinte_a_la_creation(client):
+    pid = _projet(client)
+    assert client.get("/api/projects").json()[0]["calibration_writes_enabled"] is False
+
+
+def test_calibration_writes_enabled_est_activable_par_patch(client):
+    pid = _projet(client)
+
+    r = client.patch(f"/api/projects/{pid}", json={"calibration_writes_enabled": True})
+
+    assert r.json()["calibration_writes_enabled"] is True
+
+
+def test_calibration_writes_enabled_absent_du_corps_ne_change_rien(client):
+    """Comme le mot de passe : absent du PATCH, `None` ne doit JAMAIS être pris pour « désactive-
+    le » — sinon renommer un projet éteindrait silencieusement un réglage déjà activé."""
+    pid = _projet(client)
+    client.patch(f"/api/projects/{pid}", json={"calibration_writes_enabled": True})
+
+    r = client.patch(f"/api/projects/{pid}", json={"name": "Renommé"})
+
+    assert r.json()["calibration_writes_enabled"] is True
+
+
 def test_un_nom_deja_pris_reste_un_409(client):
     _projet(client)
     pid2 = _projet(client, name="Autre projet")

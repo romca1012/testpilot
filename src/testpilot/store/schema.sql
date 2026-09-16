@@ -25,6 +25,13 @@ CREATE TABLE IF NOT EXISTS project (
     database       TEXT    NOT NULL DEFAULT '',
     username       TEXT    NOT NULL DEFAULT '',
     password       TEXT    NOT NULL DEFAULT '',   -- secret : jamais renvoyé par l'API (write-only)
+    -- Calibration en ÉCRITURE pendant la génération (migration 45, 2026-09-16) : autorise l'agent
+    -- à soumettre un VRAI formulaire (pas seulement une connexion) pour observer le message réel
+    -- avant d'écrire une assertion dessus, puis à nettoyer ce qu'il a créé (Odoo, RPC delete).
+    -- ÉTEINT par défaut : soumettre un formulaire quelconque pourrait créer une vraie donnée —
+    -- seul le porteur du projet sait si CETTE application est un environnement de test qui le
+    -- tolère. Jamais activé implicitement.
+    calibration_writes_enabled INTEGER NOT NULL DEFAULT 0,
     -- Suppression DOUCE (migration 23, §7 du brief) : vide = vivant. Supprimer marque la date
     -- et l'auteur ; l'élément quitte toutes les listes et tous les compteurs, et se restaure.
     -- La destruction définitive existe (`purger()`), mais c'est un geste distinct et explicite.

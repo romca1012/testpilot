@@ -248,6 +248,71 @@ def tenter_connexion_et_lire_resultat(page, user: str, password: str) -> dict:
     return {"submitted": True, "url": page.url, "message": lire_message_erreur_visible(page), "error": ""}
 
 
+# ── Soumettre un VRAI formulaire de calibration (2026-09-16 — amendement §4.3-bis étendu) ──────
+#
+# ⚠️ **Réservé aux formulaires qu'un connecteur sait aussi ANNULER.** Contrairement à
+# `tenter_connexion_et_lire_resultat` (une connexion ne crée jamais de donnée, on peut la
+# retenter à l'infini), soumettre un formulaire métier CRÉE potentiellement un enregistrement
+# réel. Cette fonction n'est donc appelée que par un connecteur qui a les moyens de nettoyer
+# derrière lui (Odoo, RPC `delete`) — jamais par le connecteur générique, qui n'a aucune garantie
+# de suppression et refuse explicitement (`GenericWebConnector.attempt_form_submission`).
+
+_SELECTEURS_MESSAGE_CONFIRMATION = _SELECTEURS_MESSAGE_ERREUR + ", .alert, .alert-success, .o_notification"
+# ⚠️ Contrairement à `_SELECTEURS_MESSAGE_ERREUR`, `.alert` NU (sans qualificatif) est INCLUS ici
+# volontairement : `validation_error_inline` l'exclut parce qu'il cherche SPÉCIFIQUEMENT une
+# erreur (un `.alert` de succès y serait un faux positif). Ici, on veut n'IMPORTE QUEL message
+# réellement affiché, succès ou erreur — c'est l'appelant (le test généré) qui décide ensuite ce
+# que ce texte doit valoir, pas cette fonction.
+
+
+def lire_message_confirmation_visible(page) -> str:
+    """Comme `lire_message_erreur_visible`, élargi aux messages de SUCCÈS — l'issue attendue
+    après soumission d'un formulaire de calibration n'est pas forcément une erreur."""
+    candidats = page.locator(_SELECTEURS_MESSAGE_CONFIRMATION)
+    for i in range(min(candidats.count(), 8)):
+        try:
+            candidat = candidats.nth(i)
+            if not candidat.is_visible():
+                continue
+            texte = candidat.inner_text().strip()
+            if texte:
+                return texte
+        except Exception:
+            continue
+    return ""
+
+
+def soumettre_formulaire_et_lire_resultat(page, valeurs: dict) -> dict:
+    """Remplit CES champs (par nom technique) sur le formulaire réel, le soumet, et rend ce qui
+    s'affiche VRAIMENT. Ne nettoie RIEN (aucun accès RPC ici) : c'est à l'appelant — le seul à
+    savoir identifier et supprimer ce qui vient d'être créé — de s'en charger après coup.
+
+    Rend toujours un dict, jamais une exception. `error` porte la raison si aucun des champs
+    fournis n'a été trouvé, ou si aucun déclencheur de soumission n'a été détecté.
+    """
+    trouves = 0
+    for nom, valeur in valeurs.items():
+        champ = page.query_selector(f"[name='{nom}']")
+        if champ is None:
+            continue
+        champ.fill(str(valeur), force=True)
+        trouves += 1
+    if not trouves:
+        return {"submitted": False, "url": getattr(page, "url", ""), "message": "",
+                "error": "aucun des champs fournis n'a été trouvé sur cette page"}
+
+    declencheur = _detect_submission(page).get("trigger_selector") or ""
+    bouton = page.query_selector(declencheur) if declencheur else None
+    if bouton is None:
+        return {"submitted": False, "url": getattr(page, "url", ""), "message": "",
+                "error": "aucun déclencheur de soumission détecté sur cette page"}
+
+    bouton.click()
+    page.wait_for_load_state("networkidle")
+    return {"submitted": True, "url": page.url,
+           "message": lire_message_confirmation_visible(page), "error": ""}
+
+
 def http_probe(url: str) -> dict:
     """Sonde HTTP HEAD→GET. Isolée pour être surchargée hors-ligne en test.
 

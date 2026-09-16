@@ -213,6 +213,19 @@ class ProjectRepo:
         self.conn.execute(f"UPDATE project SET {', '.join(sets)} WHERE id=?", params)
         self.conn.commit()
 
+    def set_calibration_writes_enabled(self, project_id: int, enabled: bool) -> None:
+        """Autorise (ou retire) la calibration en ÉCRITURE pendant la génération (migration 45).
+
+        À part de `update_connection` : ce n'est pas une information de connexion, c'est une
+        décision de POLITIQUE — le porteur du projet accepte, ou pas, qu'un formulaire réel soit
+        soumis (et nettoyé, cf. `OdooConnector.attempt_form_submission`) pendant la génération.
+        Éteint par défaut (migration 45), jamais activé implicitement.
+        """
+        self.conn.execute(
+            "UPDATE project SET calibration_writes_enabled=? WHERE id=?",
+            (1 if enabled else 0, project_id))
+        self.conn.commit()
+
     def delete(self, project_id: int, par: str = "") -> None:
         """Met le projet A LA CORBEILLE — lui et toute sa descendance disparaissent des ecrans.
 

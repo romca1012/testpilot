@@ -22,6 +22,10 @@ class ToolContext:
     generated_dir: Path
     connector: Connector | None = None
     reserved_steps: frozenset[str] = field(default_factory=frozenset)
+    # Migration 45 (2026-09-16) : calibration en ÉCRITURE pendant la génération — éteinte par
+    # défaut, activée par le porteur du projet (`project.calibration_writes_enabled`). Vérifiée
+    # ICI (le tool), pas dans le connecteur : un connecteur ne connaît pas les réglages du projet.
+    calibration_writes_enabled: bool = False
 
 
 @dataclass
@@ -94,6 +98,25 @@ TOOLS_DEFINITIONS: list[dict] = [
         },
     },
     {
+        "name": "attempt_form_submission",
+        "description": (
+            "Remplit CES champs (par nom technique) sur le VRAI formulaire et le soumet, puis "
+            "rend le message RÉELLEMENT affiché — et nettoie ce qui a été créé quand c'est "
+            "possible. Réservé aux formulaires qui CRÉENT un enregistrement (pas la connexion, "
+            "voir `attempt_login`) et aux projets qui ont explicitement autorisé cette "
+            "calibration en écriture. Fournis `model` (le nom technique du modèle Odoo) pour "
+            "que la donnée créée puisse être supprimée après lecture du message."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page_url": {"type": "string"},
+                "field_values": {"type": "object"},
+                "model": {"type": "string"},
+            },
+            "required": ["page_url", "field_values"],
+        },
+    },
+    {
         "name": "write_feature_file",
         # ⚠️ « REMPLACE » et « entier » : sans ce contrat, l'agent rend un EXTRAIT et écrase le
         # reste. Mesuré en run réel (0014 étape 6) sur le fichier de steps.
@@ -147,6 +170,11 @@ def dispatch(name: str, tool_input: dict, ctx: ToolContext) -> ToolOutcome:
         if name == "attempt_login":
             return inspect_tools.attempt_login(
                 ctx, tool_input.get("username", ""), tool_input.get("password", ""),
+            )
+        if name == "attempt_form_submission":
+            return inspect_tools.attempt_form_submission(
+                ctx, tool_input.get("page_url", ""), tool_input.get("field_values") or {},
+                tool_input.get("model", ""),
             )
         return ToolOutcome(observation=f"[tool inconnu : {name}]", ok=False)
     except Exception as exc:  # garde : un tool ne casse jamais la boucle

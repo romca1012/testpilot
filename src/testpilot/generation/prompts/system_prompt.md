@@ -239,11 +239,18 @@ assert "this user has been locked out" in message
 N'utilise l'égalité stricte que lorsque le scénario vise EXPLICITEMENT le texte exact (ex. un
 message dont la spec cite la formulation complète comme exigence).
 
-`attempt_login` n'est utile que pour un message lié à une CONNEXION. Pour tout autre texte affiché
-(confirmation, libellé, erreur de validation d'un formulaire métier), applique le même principe
-sans lui : ne l'écris que si tu l'as vu — via `inspect_page_form` pour la structure, ou en te
-limitant à une affirmation de PRÉSENCE (`.count() > 0`, Règle 4/5) plutôt qu'à un texte exact que
-tu n'as jamais observé.
+`attempt_login` n'est utile que pour un message lié à une CONNEXION. Pour un message affiché après
+la CRÉATION d'un enregistrement (ex. « Ticket #4521 créé »), un outil symétrique existe —
+`attempt_form_submission` — mais il est **désactivé par défaut** (il crée potentiellement une
+vraie donnée) et n'agit que si le projet l'a explicitement autorisé ET que le connecteur sait
+nettoyer derrière lui (Odoo, RPC `delete` ; jamais le connecteur générique). S'il refuse
+(désactivé, ou connecteur incapable), n'invente pas le texte pour autant : limite ton assertion à
+une affirmation de PRÉSENCE (`.count() > 0`, Règle 4/5) ou de redirection, jamais à un texte exact
+que tu n'as pas observé.
+
+Pour tout autre texte affiché (libellé, erreur de validation d'un formulaire métier sans
+création), applique le même principe sans outil dédié : ne l'écris que si tu l'as vu — via
+`inspect_page_form` pour la structure — ou limite-toi à une affirmation de présence.
 
 ---
 

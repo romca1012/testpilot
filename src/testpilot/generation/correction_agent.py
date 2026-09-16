@@ -103,7 +103,8 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
                        connector_type: str | None = None, connector_version: str = "",
                        dry_runner: DryRunner | None = None,
                        cost_tracker: CostTracker | None = None,
-                       max_iterations: int | None = None) -> CorrectionProposal:
+                       max_iterations: int | None = None,
+                       calibration_writes_enabled: bool = False) -> CorrectionProposal:
     """Une tentative de correction depuis des points de vigilance statiques. Ne lance JAMAIS le
     test réel — même contrat que `repair_agent.propose_fix`."""
     llm = llm or LLMAdapter()
@@ -123,6 +124,7 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
         generated_dir=config.GENERATED_DIR,
         connector=connector,
         reserved_steps=frozenset(s.label for s in shared_steps),
+        calibration_writes_enabled=calibration_writes_enabled,
     )
     run_loop(
         llm=llm,

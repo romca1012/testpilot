@@ -25,6 +25,7 @@ class _ConnecteurBidon(Connector):
     def inspect_form(self, page_url: str) -> dict: return {}
     def discover_route(self, path_pattern: str, sample_id: int | None = None) -> dict: return {}
     def attempt_login(self, username: str, password: str) -> dict: return {}
+    def attempt_form_submission(self, page_url: str, field_values: dict, model: str = "") -> dict: return {}
     def create(self, model: str, vals: dict) -> int: return 0
     def delete(self, model: str, ids: list[int]) -> bool: return True
     def crawl_relogin_hook(self): return lambda ctx: None

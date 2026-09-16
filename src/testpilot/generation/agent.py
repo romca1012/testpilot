@@ -79,6 +79,8 @@ class GenerationAgent:
             generated_dir=config.GENERATED_DIR,
             connector=self.connector,
             reserved_steps=frozenset(s.label for s in shared_steps),
+            # Migration 45 (2026-09-16) : décision du PROJET, jamais un défaut du connecteur.
+            calibration_writes_enabled=bool((projet or {}).get("calibration_writes_enabled")),
         )
         run_loop(
             llm=self.llm,

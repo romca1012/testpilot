@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 44
+_SCHEMA_VERSION = 45
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -230,6 +230,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_43_plans_et_planifications(conn)
     if version < 44:
         _migrate_44_connector_type_valide(conn)
+    if version < 45:
+        _migrate_45_calibration_writes(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -405,6 +407,23 @@ def _migrate_44_connector_type_valide(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA foreign_keys = ON")
     finally:
         conn.isolation_level = old_iso
+
+
+def _migrate_45_calibration_writes(conn: sqlite3.Connection) -> None:
+    """`project.calibration_writes_enabled` — amendement §4.3-bis étendu (2026-09-16).
+
+    Autorise l'agent de génération à soumettre un VRAI formulaire (au-delà de la connexion,
+    `attempt_login`) pour observer le message réel avant d'écrire une assertion dessus, puis à
+    nettoyer ce qu'il crée (Odoo, RPC delete — cf. `OdooConnector.attempt_form_submission`).
+    ÉTEINT par défaut sur tout projet existant : soumettre un formulaire quelconque pourrait créer
+    une vraie donnée, seul le porteur du projet sait si l'application configurée le tolère.
+
+    Simple `ADD COLUMN` (pas de CHECK ajouté) : contrairement à la migration 44, aucune
+    reconstruction de table n'est nécessaire ici.
+    """
+    if "calibration_writes_enabled" not in _column_names(conn, "project"):
+        conn.execute(
+            "ALTER TABLE project ADD COLUMN calibration_writes_enabled INTEGER NOT NULL DEFAULT 0")
 
 
 def _migrate_1_project_module(conn: sqlite3.Connection) -> None:

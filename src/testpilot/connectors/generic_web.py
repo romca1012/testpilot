@@ -128,6 +128,13 @@ class GenericWebConnector(Connector):
         url = build_probe_url(self._url, path_pattern, sample_id)
         return self._http_probe(url)
 
+    def attempt_form_submission(self, page_url: str, field_values: dict,
+                                model: str = "") -> dict:
+        raise NotImplementedError(
+            "ce connecteur ne peut pas garantir la suppression de ce qu'il crée (aucune API de "
+            "modèle, cf. docstring du module) — la calibration en écriture par soumission de "
+            "formulaire est réservée à un connecteur qui expose create/delete (Odoo).")
+
     def attempt_login(self, username: str, password: str) -> dict:
         try:
             return self._run_in_browser(self._attempt_login_sync, username, password)
