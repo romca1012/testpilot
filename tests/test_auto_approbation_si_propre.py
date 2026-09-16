@@ -91,27 +91,27 @@ def test_lint_warnings_for_version_rend_vide_sans_version_courante(conn):
     assert warnings == []
 
 
-# ── `_auto_approuver_si_propre` — le nouveau critère d'approbation automatique ──────────────────
+# ── `_finaliser_version_generee` — le nouveau critère d'approbation automatique ──────────────────
 
-def test_auto_approuver_si_propre_approuve_un_cas_sans_avertissement(conn):
+def test_finaliser_version_generee_approuve_un_cas_sans_avertissement(conn):
     cid, vid = _cas_avec_version(conn, steps_content=_STEPS_PROPRES)
     assert review_gate.evaluate_gate(ReviewRepo(conn), vid).allowed is False
 
-    generation_service._auto_approuver_si_propre(conn, cid, vid)
+    generation_service._finaliser_version_generee(conn, cid, vid)
 
     decision = review_gate.evaluate_gate(ReviewRepo(conn), vid)
     assert decision.allowed is True
     assert ReviewRepo(conn).latest_for_version(vid)["reviewer"] == "validation-metier"
 
 
-def test_auto_approuver_si_propre_laisse_a_relire_un_cas_avec_point_de_vigilance(conn):
+def test_finaliser_version_generee_laisse_a_relire_un_cas_avec_point_de_vigilance(conn):
     """🔴 Le test du resserrement : AVANT §4.3-bis, ce cas aurait été approuvé quand même — c'est
     exactement le bug (un cas jamais retouché reste ensuite bloqué à vie, sans qu'aucun écran ne
     le montre). APRÈS, il reste `needs_review`, et surtout, on peut désormais TOMBER dessus depuis
     la fiche du cas (mêmes lint_warnings que la route)."""
     cid, vid = _cas_avec_version(conn, steps_content=_STEPS_TAUTOLOGIQUES)
 
-    generation_service._auto_approuver_si_propre(conn, cid, vid)
+    generation_service._finaliser_version_generee(conn, cid, vid)
 
     decision = review_gate.evaluate_gate(ReviewRepo(conn), vid)
     assert decision.allowed is False
@@ -119,10 +119,106 @@ def test_auto_approuver_si_propre_laisse_a_relire_un_cas_avec_point_de_vigilance
     assert ReviewRepo(conn).latest_for_version(vid) is None, "aucune approbation n'a été tracée"
 
 
-def test_auto_approuver_si_propre_ignore_un_cas_sans_version(conn):
+def test_finaliser_version_generee_ignore_un_cas_sans_version(conn):
     """`version_id=None` (génération arrêtée avant persistance) : rien à approuver, rien ne
     plante."""
-    generation_service._auto_approuver_si_propre(conn, case_id=999, version_id=None)
+    generation_service._finaliser_version_generee(conn, case_id=999, version_id=None)
+
+
+# ── Correction automatique (2026-09-16) — le signal sert à CORRIGER, pas seulement à bloquer ────
+#
+# ⚠️ Demande explicite du porteur : « on ne vient pas reporter les problèmes de génération à
+# l'utilisateur mais lui proposer une génération correcte ». Le blocage seul (§4.3-bis) restait
+# une fin de non-recevoir ; une tentative de correction automatique doit précéder le report à un
+# humain — budget confirmé à UNE tentative (2026-09-16).
+
+def test_finaliser_version_generee_approuve_apres_une_correction_reussie(conn, monkeypatch):
+    """Signal détecté, correction possible ET réussie → une NOUVELLE version (corrigée) devient
+    la version courante, et ELLE est approuvée automatiquement — le cas d'origine reste dans
+    l'historique, jamais réécrit sur place (§7)."""
+    from testpilot.generation import correction_agent
+
+    cid, vid = _cas_avec_version(conn, steps_content=_STEPS_TAUTOLOGIQUES)
+    steps_corriges = ('from behave import then\n\n\n@then("truc")\n'
+                      'def s(context):\n    assert context.page.title() == "Attendu"\n')
+
+    def fausse_correction(**kw):
+        assert kw["lint_warnings"], "les points de vigilance doivent être transmis à l'agent"
+        return correction_agent.CorrectionProposal(
+            changed=True, feature_content=kw["feature_content"], steps_content=steps_corriges,
+            summary="Assertion remplacée par une vérification réelle.", cost_usd=0.01,
+            stopped_reason="done")
+    monkeypatch.setattr(correction_agent, "propose_correction", fausse_correction)
+
+    generation_service._finaliser_version_generee(
+        conn, cid, vid, module_name="c", connector=None, dry_runner=object())
+
+    versions = VersionRepo(conn).list_for_case(cid)
+    assert len(versions) == 2, "la correction crée une NOUVELLE version, jamais un écrasement"
+    version_courante = CaseRepo(conn).get(cid)["current_version_id"]
+    assert version_courante != vid, "la version courante est la version CORRIGÉE"
+    corrigee = VersionRepo(conn).get(version_courante)
+    assert corrigee["steps_content"] == steps_corriges
+    assert corrigee["created_by"] == "correction-agent"
+    assert corrigee["title"] == VersionRepo(conn).get(vid)["title"], \
+        "le métier de la version d'origine est conservé"
+    decision = review_gate.evaluate_gate(ReviewRepo(conn), version_courante)
+    assert decision.allowed is True, "la version corrigée, propre, est approuvée automatiquement"
+
+
+def test_finaliser_version_generee_reste_a_relire_si_la_correction_echoue(conn, monkeypatch):
+    """Signal détecté, correction TENTÉE mais toujours signalée après coup → reste à relire, mais
+    avec la MEILLEURE tentative de l'IA (pas la version brute d'origine)."""
+    from testpilot.generation import correction_agent
+
+    cid, vid = _cas_avec_version(conn, steps_content=_STEPS_TAUTOLOGIQUES)
+    steps_toujours_fautifs = ('from behave import then\n\n\n@then("autre")\n'
+                              'def s(context):\n    assert True\n')
+
+    def fausse_correction(**kw):
+        return correction_agent.CorrectionProposal(
+            changed=True, feature_content=kw["feature_content"],
+            steps_content=steps_toujours_fautifs, summary="Tentative infructueuse.",
+            cost_usd=0.01, stopped_reason="done")
+    monkeypatch.setattr(correction_agent, "propose_correction", fausse_correction)
+
+    generation_service._finaliser_version_generee(
+        conn, cid, vid, module_name="c", connector=None, dry_runner=object())
+
+    version_courante = CaseRepo(conn).get(cid)["current_version_id"]
+    assert version_courante != vid, "la tentative de correction devient quand même la courante"
+    decision = review_gate.evaluate_gate(ReviewRepo(conn), version_courante)
+    assert decision.allowed is False
+    assert decision.needs_review is True
+
+
+def test_finaliser_version_generee_reste_a_relire_si_l_agent_ne_propose_rien(conn, monkeypatch):
+    """L'agent de correction peut avouer ne pas savoir corriger (`changed=False`, cf. son prompt)
+    — aucune version fabriquée dans ce cas, le cas reste sur sa version d'origine, à relire."""
+    from testpilot.generation import correction_agent
+
+    cid, vid = _cas_avec_version(conn, steps_content=_STEPS_TAUTOLOGIQUES)
+    monkeypatch.setattr(correction_agent, "propose_correction",
+                        lambda **kw: correction_agent.CorrectionProposal(
+                            changed=False, stopped_reason="incomplete"))
+
+    generation_service._finaliser_version_generee(
+        conn, cid, vid, module_name="c", connector=None, dry_runner=object())
+
+    assert CaseRepo(conn).get(cid)["current_version_id"] == vid, "aucune version fabriquée"
+    assert len(VersionRepo(conn).list_for_case(cid)) == 1
+    assert review_gate.evaluate_gate(ReviewRepo(conn), vid).allowed is False
+
+
+def test_finaliser_version_generee_ne_tente_pas_de_corriger_sans_dry_runner(conn):
+    """Sans `dry_runner` (ex. appel isolé, cf. tests ci-dessus) : la correction serait invalidable
+    — on n'appelle même pas l'agent, comportement §4.3-bis inchangé (reste à relire)."""
+    cid, vid = _cas_avec_version(conn, steps_content=_STEPS_TAUTOLOGIQUES)
+
+    generation_service._finaliser_version_generee(conn, cid, vid, module_name="c")
+
+    assert CaseRepo(conn).get(cid)["current_version_id"] == vid
+    assert review_gate.evaluate_gate(ReviewRepo(conn), vid).allowed is False
 
 
 # ── Bout en bout via `run_automation` — la même politique s'applique au cas manuel automatisé ──
@@ -234,7 +330,7 @@ def modele_en_place(tmp_path, monkeypatch):
     domain_model._charger.cache_clear()
 
 
-def test_auto_approuver_si_propre_laisse_a_relire_une_valeur_inventee(conn, modele_en_place):
+def test_finaliser_version_generee_laisse_a_relire_une_valeur_inventee(conn, modele_en_place):
     """0021 : un champ/valeur qui n'existe pas dans le domaine mesuré bloque aussi l'approbation
     automatique — pas seulement une assertion infalsifiable (0008)."""
     pid = ProjectRepo(conn).create(name="P", connector_type="odoo")
@@ -245,7 +341,7 @@ def test_auto_approuver_si_propre_laisse_a_relire_une_valeur_inventee(conn, mode
                                    steps_content=_STEPS_PROPRES)
     CaseRepo(conn).set_current_version(cid, vid)
 
-    generation_service._auto_approuver_si_propre(conn, cid, vid)
+    generation_service._finaliser_version_generee(conn, cid, vid)
 
     assert review_gate.evaluate_gate(ReviewRepo(conn), vid).allowed is False
 
@@ -301,7 +397,7 @@ def test_needing_review_omet_un_cas_approuve(client):
     vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="h",
                                    feature_content="# f", steps_content=_STEPS_PROPRES)
     CaseRepo(conn).set_current_version(cid, vid)
-    generation_service._auto_approuver_si_propre(conn, cid, vid)
+    generation_service._finaliser_version_generee(conn, cid, vid)
 
     corps = client.get(f"/api/cases/needing-review?project_id={pid}").json()
 

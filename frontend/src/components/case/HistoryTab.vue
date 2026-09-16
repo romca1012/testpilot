@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Onglet « Historique » — vraies données : la timeline des VERSIONS du cas (test_case_version).
-// Création = v1 ; Mise à jour = versions suivantes (dont les réparations `repair-agent`, 0014).
+// Création = v1 ; Mise à jour = versions suivantes (dont les réparations `repair-agent`, 0014,
+// et les corrections automatiques `correction-agent`, amendement §4.3-bis, 2026-09-16).
 // Groupé par date. Pas de bandeau commercial (retiré, comme demandé).
 import { computed } from 'vue'
 import type { VersionOut } from '../../lib/api'
@@ -19,15 +20,21 @@ function fmtDateTime(iso: string) {
 }
 function dayKey(iso: string) { return new Date(iso).toISOString().slice(0, 10) }
 
+// Auteurs AUTOMATIQUES connus, étiquetés en clair — un `created_by` technique brut
+// (« repair-agent », « correction-agent ») n'a de sens pour personne à l'écran.
+const AUTEURS_AUTOMATIQUES: Record<string, string> = {
+  'repair-agent': 'Réparation automatique',
+  'correction-agent': 'Correction automatique',
+}
+function auteurAffiche(createdBy: string) {
+  return AUTEURS_AUTOMATIQUES[createdBy] || createdBy || 'auteur inconnu'
+}
+
 // Versions triées (récentes d'abord), enrichies du type d'action.
 const entries = computed(() =>
   [...props.versions]
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .map((v) => ({
-      ...v,
-      isCreation: v.version_number === 1,
-      byRepair: v.created_by === 'repair-agent',
-    })))
+    .map((v) => ({ ...v, isCreation: v.version_number === 1 })))
 
 // Groupées par jour.
 const groups = computed(() => {
@@ -52,7 +59,7 @@ const groups = computed(() => {
           <span v-else class="rounded-md bg-secondary text-secondary-foreground text-xs font-semibold px-2.5 py-1">Mise à jour</span>
           <span class="text-sm font-medium">Version : {{ v.version_number }}</span>
           <span class="text-xs text-muted-foreground tabular-nums">{{ fmtDateTime(v.created_at) }}</span>
-          <span class="text-xs text-muted-foreground">· {{ v.byRepair ? 'Réparation automatique' : (v.created_by || 'auteur inconnu') }}</span>
+          <span class="text-xs text-muted-foreground">· {{ auteurAffiche(v.created_by) }}</span>
           <button v-if="(v.feature_content || '').trim()" class="ml-auto text-xs text-primary hover:underline"
                   @click="emit('voir-script', v.id)">
             Voir le script →

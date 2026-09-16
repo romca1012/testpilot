@@ -455,6 +455,16 @@ const c = computed(() => detail.value?.case ?? null)
 // « ce test pourrait ne rien créer », sans plus rien à approuver ICI dans le cas normal.
 const lintWarnings = computed(() => detail.value?.gate?.lint_warnings || [])
 
+// Auteurs AUTOMATIQUES connus, étiquetés en clair — un `created_by` technique brut
+// (« repair-agent », « correction-agent ») n'a de sens pour personne à l'écran.
+const AUTEURS_AUTOMATIQUES: Record<string, string> = {
+  'repair-agent': 'réparation automatique',
+  'correction-agent': 'correction automatique',
+}
+function auteurAffiche(createdBy: string) {
+  return AUTEURS_AUTOMATIQUES[createdBy] || createdBy || 'auteur inconnu'
+}
+
 // ── Relecture bloquée (bug réel, 2026-09-15) ──────────────────────────────────
 // L'auto-approbation §4.3 suppose qu'une version REÇOIT toujours une édition métier avant sa
 // première exécution — faux pour un cas généré puis jamais retouché : il reste ÉTERNELLEMENT
@@ -749,7 +759,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
             <option v-for="v in [...detail.versions].sort((a, b) => b.version_number - a.version_number)"
                     :key="v.id" :value="v.id">
               Version {{ v.version_number }} — {{ new Date(v.created_at).toLocaleDateString('fr-FR') }}
-              — {{ v.created_by === 'repair-agent' ? 'réparation automatique' : (v.created_by || 'auteur inconnu') }}
+              — {{ auteurAffiche(v.created_by) }}
               {{ v.id === detail.current_version_id ? '(courante)' : '' }}
             </option>
           </select>

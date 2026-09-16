@@ -183,7 +183,7 @@ def start_generation(conn, module_id: int, *, spec_content: str, title: str = ""
 
 def _record_generation_cost(conn, *, case_id: int | None, analysis_usd: float = 0.0,
                             decoupage_usd: float = 0.0, metier_usd: float = 0.0,
-                            generation_usd: float = 0.0) -> None:
+                            generation_usd: float = 0.0, correction_usd: float = 0.0) -> None:
     """Écrit au ledger ce que la création de cas a coûté — analyse, découpage, métier ET
     génération, chacune sa propre ligne.
 
@@ -233,6 +233,11 @@ def _record_generation_cost(conn, *, case_id: int | None, analysis_usd: float = 
         ("decoupage", config.MODEL_FAST, decoupage_usd),
         ("metier", config.MODEL_FAST, metier_usd),
         ("generation", config.MODEL_GENERATION, generation_usd),
+        # Correction automatique d'un point de vigilance (amendement §4.3-bis étendu, 2026-09-16) :
+        # même modèle que la génération (elle réécrit le même genre de fichiers), phase À PART —
+        # sinon un cas corrigé aurait l'air d'avoir coûté sa génération deux fois sans qu'on sache
+        # pourquoi (même raison que découpage/métier, cf. docstring ci-dessus).
+        ("correction", config.MODEL_GENERATION, correction_usd),
     ):
         if not cost:
             continue
@@ -242,7 +247,7 @@ def _record_generation_cost(conn, *, case_id: int | None, analysis_usd: float = 
         except Exception:
             logger.exception("[generation] coût %s de %s USD NON enregistré (cas %s) — le budget "
                              "§9 sera sous-évalué d'autant", phase, cost, case_id)
-    total = analysis_usd + decoupage_usd + metier_usd + generation_usd
+    total = analysis_usd + decoupage_usd + metier_usd + generation_usd + correction_usd
     if case_id is None and total:
         # Inscrit, mais sans propriétaire : on le DIT, pour que la dépense soit explicable.
         logger.warning("[generation] $%.4f dépensés SANS cas créé — inscrits au ledger sans "
@@ -459,19 +464,33 @@ def _auto_approuver(conn, case_id: int, version_id: int | None) -> None:
                          "le cas restera à relire", version_id, case_id)
 
 
-def _auto_approuver_si_propre(conn, case_id: int, version_id: int | None) -> None:
-    """Amendement §4.3-bis (2026-09-15) : la validation métier ne vaut relecture QUE si le cas
-    sort « propre » de la génération — aucun point de vigilance à vérifier.
+_AUTEUR_CORRECTION = "correction-agent"
 
-    ⚠️ **Pourquoi ce second amendement.** §4.3 approuvait TOUJOURS, quel que soit le résultat du
-    smoke-check — mais aucun écran ne montre jamais les cas restés `needs_review` : un cas
-    généré puis jamais retouché (aucune édition manuelle du formulaire métier, qui aurait ré-
-    approuvé via `PATCH .../metier`) y reste bloqué **à vie**, sans qu'aucun humain ne le sache
-    (bug réel, cas 82, 2026-09-15). Approuver quand même un cas avec de VRAIS signaux à vérifier
-    ne protégeait donc personne — l'humain censé les lire ne les voyait jamais. On resserre :
-    seul un cas SANS aucun point de vigilance est digne de confiance sans un regard humain ; les
-    autres restent bloqués, mais pour de vrai (une liste dédiée doit encore les rendre trouvables
-    — chantier séparé, ceci ne fait que cesser de les approuver à tort).
+
+def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
+                               module_name: str | None = None, connector=None,
+                               connector_type: str | None = None, connector_version: str = "",
+                               dry_runner=None) -> None:
+    """Décide du sort d'une version fraîchement générée — amendement §4.3-bis (2026-09-15),
+    étendu (2026-09-16) : un point de vigilance déclenche une CORRECTION avant de reporter le
+    problème à l'utilisateur, pas seulement un blocage.
+
+    ⚠️ **Pourquoi corriger plutôt que seulement bloquer.** §4.3-bis se contentait de refuser
+    l'approbation automatique d'un cas signalé (0008 assertion infalsifiable, 0021 champ/valeur
+    absent du domaine mesuré) — un vrai progrès sur §4.3 (qui approuvait quand même), mais qui
+    reportait TOUJOURS le problème à un humain alors que l'IA qui a écrit le test peut souvent le
+    corriger elle-même : c'est tout l'intérêt de générer avec un LLM plutôt qu'à la main.
+
+    1. Propre → approuvée automatiquement (§4.3-bis, inchangé).
+    2. Signalée, correction possible (`module_name`/`dry_runner` fournis par l'appelant — les
+       deux tests unitaires isolés ne les fournissent pas, et c'est très bien : ils veulent la
+       décision de gate, pas un appel LLM) → **UNE** tentative de correction
+       (`correction_agent.propose_correction`, budget confirmé avec le porteur, 2026-09-16),
+       revérifiée à son tour :
+         - propre → approuvée automatiquement, la version CORRIGÉE devient la version courante ;
+         - toujours signalée → reste à relire, mais avec la meilleure tentative de l'IA, pas la
+           version brute — visible dans `GET /api/cases/needing-review`.
+    3. Signalée, sans de quoi corriger → reste à relire (comportement de §4.3-bis, inchangé).
     """
     if version_id is None:
         return
@@ -479,13 +498,55 @@ def _auto_approuver_si_propre(conn, case_id: int, version_id: int | None) -> Non
     case = CaseRepo(conn).get(case_id)
     if case is None:
         return
-    warnings = lint_warnings_for_version(conn, case, VersionRepo(conn).list_for_case(case_id),
-                                         version_id)
-    if warnings:
+    version_rows = VersionRepo(conn).list_for_case(case_id)
+    warnings = lint_warnings_for_version(conn, case, version_rows, version_id)
+    if not warnings:
+        _auto_approuver(conn, case_id, version_id)
+        return
+
+    if not (module_name and dry_runner is not None):
         logger.info("[generation] cas %s (version %s) reste à relire — %d point(s) de "
                    "vigilance", case_id, version_id, len(warnings))
         return
-    _auto_approuver(conn, case_id, version_id)
+
+    version = next((v for v in version_rows if v["id"] == version_id), None)
+    if version is None:
+        return
+
+    from testpilot.generation import correction_agent
+    proposal = correction_agent.propose_correction(
+        module_name=module_name, lint_warnings=warnings,
+        feature_content=version.get("feature_content") or "",
+        steps_content=version.get("steps_content") or "",
+        connector=connector, connector_type=connector_type,
+        connector_version=connector_version, dry_runner=dry_runner)
+    _record_generation_cost(conn, case_id=case_id, correction_usd=proposal.cost_usd)
+
+    if not proposal.changed:
+        logger.info("[generation] cas %s : aucune correction automatique proposée (%s) — reste "
+                   "à relire avec %d point(s) de vigilance", case_id, proposal.stopped_reason,
+                   len(warnings))
+        return
+
+    version_corrigee_id = VersionRepo(conn).create(
+        test_case_id=case_id, spec_content=version.get("spec_content") or "",
+        spec_hash=version.get("spec_hash") or "",
+        feature_content=proposal.feature_content, steps_content=proposal.steps_content,
+        change_summary=("Correction automatique (points de vigilance) — "
+                        + proposal.summary)[:500],
+        created_by=_AUTEUR_CORRECTION, title=version.get("title") or "",
+        preconditions=version.get("preconditions") or "",
+        test_steps=version.get("test_steps") or "",
+        expected_result=version.get("expected_result") or "")
+    CaseRepo(conn).set_current_version(case_id, version_corrigee_id)
+
+    version_rows_apres = VersionRepo(conn).list_for_case(case_id)
+    warnings_apres = lint_warnings_for_version(conn, case, version_rows_apres, version_corrigee_id)
+    if not warnings_apres:
+        _auto_approuver(conn, case_id, version_corrigee_id)
+    else:
+        logger.info("[generation] cas %s : correction tentée, %d point(s) de vigilance "
+                   "restants — reste à relire", case_id, len(warnings_apres))
 
 
 def _spec_from_metier(metier: dict) -> str:
@@ -598,7 +659,11 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
 
         if result.success:
             succes = True
-            _auto_approuver_si_propre(conn, case_id, result.version_id)
+            _finaliser_version_generee(
+                conn, case_id, result.version_id, module_name=plan.module_name,
+                connector=connector, connector_type=(project or {}).get("connector_type"),
+                connector_version=(project or {}).get("connector_version", ""),
+                dry_runner=runner)
             GenerationJobRepo(conn).maj(job_id, status="done", case_ids=[case_id])
         else:
             GenerationJobRepo(conn).maj(job_id, status="failed",
@@ -740,7 +805,12 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                                         generation_usd=result.cost_usd)
 
                 if result.success and result.case_id:
-                    _auto_approuver_si_propre(conn_tache, result.case_id, result.version_id)
+                    _finaliser_version_generee(
+                        conn_tache, result.case_id, result.version_id, module_name=slug,
+                        connector=connecteur_tache,
+                        connector_type=(project or {}).get("connector_type"),
+                        connector_version=(project or {}).get("connector_version", ""),
+                        dry_runner=runner_tache)
                     return {"case_id": result.case_id}
                 # Le cas n'a pas été persisté avec ce slug (génération arrêtée avant la fin) :
                 # le rendre disponible, sinon ce titre reste bloqué pour rien.

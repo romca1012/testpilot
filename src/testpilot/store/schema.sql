@@ -339,7 +339,7 @@ CREATE TABLE IF NOT EXISTS cost_ledger (
     period_month TEXT    NOT NULL,               -- 'YYYY-MM'
     test_case_id INTEGER,                         -- le CAS qui a coûté (lien de référence, §9)
     execution_id INTEGER,                         -- contexte : le run concerné, si c'en est un
-    phase        TEXT    NOT NULL DEFAULT '',     -- analysis | generation | repair | report
+    phase        TEXT    NOT NULL DEFAULT '',     -- analysis | generation | correction | repair | report
     model        TEXT    NOT NULL DEFAULT '',
     cost_usd     REAL    NOT NULL DEFAULT 0,
     source       TEXT    NOT NULL DEFAULT 'estimated'
