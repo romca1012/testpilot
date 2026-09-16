@@ -423,6 +423,11 @@ export const api = {
     if (opts.limit) p.set('limit', String(opts.limit))
     return request<PageCas>(`/api/cases?${p.toString()}`)
   },
+  // Cas bloqués sur le gate de relecture — la liste que l'amendement §4.3-bis rend nécessaire
+  // (voir `CaseARelire`) : sans elle, un cas approuvé à tort disparaissait ; un cas bloqué à
+  // raison resterait invisible, exactement le bug qu'il faut ne PAS reproduire.
+  casesNeedingReview: (projectId: number | string) =>
+    request<CaseARelire[]>(`/api/cases/needing-review?project_id=${projectId}`),
   // Ordre d'AFFICHAGE des cas d'un module (décision 0009). En LOT : un glissement change N
   // positions. Le serveur recalcule les positions et renvoie la liste dans son ordre.
   reorderCases: (moduleId: number | string, caseIds: number[]) =>
@@ -741,6 +746,14 @@ export interface CaseMetierOut {
  *  `total` est le nombre de cas correspondant au filtre — pas le nombre chargé : c'est lui qui
  *  permet d'écrire « 40 sur 2 000 » plutôt que de laisser croire la liste complète. */
 export interface PageCas { items: CaseSummary[]; next_cursor: string | null; total: number }
+
+/** Un cas bloqué sur le gate de relecture (amendement §4.3-bis, 2026-09-15) : l'approbation
+ * automatique à la génération ne joue plus que pour un cas SANS point de vigilance — celui-ci en
+ * a au moins un, et doit rester TROUVABLE plutôt que bloqué en silence (bug réel, cas 82). */
+export interface CaseARelire {
+  case_id: number; title: string; module_name: string; version_id: number
+  reason: string; lint_warnings_count: number
+}
 
 export interface CaseSummary {
   id: number; title: string; module: string; module_id: number | null; project_id: number | null

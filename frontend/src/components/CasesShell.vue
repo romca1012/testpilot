@@ -258,6 +258,10 @@ function openModule(moduleId: number) {
 const nav = computed(() => [
   { key: 'cases', label: 'Cas de test', to: { name: 'cases', params: { pid: pid.value } },
     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+  ...(peutModifier.value ? [{ key: 'a-relire', label: 'Cas à relire',
+    to: { name: 'cases-needing-review', params: { pid: pid.value } },
+    icon: 'M12 9v4m0 4h.01M10.3 3.9L2.7 17a2 2 0 001.7 3h15.2a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z' },
+  ] : []),
   { key: 'exec', label: 'Exécutions et résultats de test', to: { name: 'executions', params: { pid: pid.value } },
     icon: 'M14.7 11.2l-5.2-3a1 1 0 00-1.5.8v6a1 1 0 001.5.9l5.2-3a1 1 0 000-1.7z' },
   ...(peutVoirQualite.value ? [{ key: 'qualite', label: 'Qualité de génération', to: { name: 'quality', params: { pid: pid.value } },
@@ -268,6 +272,7 @@ function isActive(key: string) {
   const n = String(route.name)
   if (key === 'cases') return ['cases', 'case-detail', 'cases-all', 'module-detail',
                                'spec-detail', 'case-new', 'case-manual', 'corbeille'].includes(n)
+  if (key === 'a-relire') return n === 'cases-needing-review'
   if (key === 'exec') return ['executions', 'report', 'run-new', 'plan-new', 'plans', 'plan-detail',
                               'schedules', ...ROUTES_RUN].includes(n)
   if (key === 'qualite') return n === 'quality'

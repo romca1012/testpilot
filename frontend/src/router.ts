@@ -74,6 +74,12 @@ export const routes = [
   // dérivée des vraies exécutions. Onglet de suivi, jamais un chiffre fabriqué.
   { path: '/projects/:pid/quality', name: 'quality', component: () => import('./pages/QualityDashboard.vue') },
 
+  // Cas à relire (amendement §4.3-bis, 2026-09-15) : les cas dont l'approbation automatique a été
+  // refusée (point de vigilance réel) doivent rester trouvables — sinon ils restent bloqués et
+  // invisibles (bug réel, cas 82).
+  { path: '/projects/:pid/needing-review', name: 'cases-needing-review',
+   component: () => import('./pages/CasesNeedingReview.vue') },
+
   // Plans de test (migration 43, 2026-09-10) : regroupe plusieurs campagnes existantes pour un
   // rapport consolidé — troisième couche au-dessus des campagnes, purement organisationnelle.
   { path: '/projects/:pid/plans', name: 'plans', component: () => import('./pages/PlansList.vue') },
