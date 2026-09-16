@@ -47,15 +47,21 @@ _METIER_SCHEMA = {
 
 def _data_metier(llm, plan: TestPlan, model: str, cost_tracker, brief: str = "") -> dict:
     """Le dict du document métier. Sorties structurées si l'adaptateur les expose (`call_json`),
-    sinon parsing tolérant — ce qui garde inchangés les adaptateurs minimaux (fakes de test)."""
-    user = _build_prompt(plan, brief)
+    sinon parsing tolérant — ce qui garde inchangés les adaptateurs minimaux (fakes de test).
+
+    ⚠️ **`cached_prefix` = la partie STABLE, `user_content` = le cas précis.** `propose_metier`
+    est appelé une fois PAR CAS pour la MÊME spec (`decoupage` en découpe N) — la spec ne change
+    pas d'un cas à l'autre, seul `brief` change. Voir `adapter._contenu_utilisateur`.
+    """
+    stable = _build_prompt(plan)
+    variable = _consigne_cas(brief)
     modele = model or config.MODEL_FAST
     if hasattr(llm, "call_json"):
-        return llm.call_json(system_prompt=_SYSTEM, user_content=user, schema=_METIER_SCHEMA,
-                             model=modele, max_tokens=2000, cost_tracker=cost_tracker,
-                             label="metier") or {}
-    raw = llm.call_simple(system_prompt=_SYSTEM, user_content=user, model=modele,
-                          max_tokens=2000, cost_tracker=cost_tracker, label="metier")
+        return llm.call_json(system_prompt=_SYSTEM, cached_prefix=stable, user_content=variable,
+                             schema=_METIER_SCHEMA, model=modele, max_tokens=2000,
+                             cost_tracker=cost_tracker, label="metier") or {}
+    raw = llm.call_simple(system_prompt=_SYSTEM, cached_prefix=stable, user_content=variable,
+                          model=modele, max_tokens=2000, cost_tracker=cost_tracker, label="metier")
     match = re.search(r"\{.*\}", raw or "", re.DOTALL)
     if not match:
         return {}
@@ -126,25 +132,20 @@ def _clean_step(raw: str) -> str:
     return _GHERKIN_KW.sub("", s).strip()
 
 
-def _build_prompt(plan: TestPlan, brief: str = "") -> str:
-    # `brief` vient du découpage (`decoupage.propose_decoupage`) : il dit CE CAS précis à écrire
-    # dans le contexte de la spécification entière — il s'AJOUTE au texte complet, il ne le
-    # remplace jamais (l'agent a besoin de tout le contexte pour rédiger un document cohérent).
-    consigne_cas = (
-        f"""
+def _build_prompt(plan: TestPlan) -> str:
+    """La partie STABLE du prompt métier — indépendante du cas précis (`brief`).
 
-CE CAS PRÉCIS :
-{brief}
-
-Rédige UNIQUEMENT ce cas — pas les autres cas de la même spécification, ils sont rédigés
-séparément. Le brief ci-dessus dit ce qui le distingue des autres ; le reste de la spécification
-est le contexte dans lequel il s'inscrit.
-""" if brief else "")
+    ⚠️ **Ordre délibéré pour le cache de prompt (audit coûts, 2026-09-16).** Tout ce qui NE
+    dépend PAS de `brief` (la spec, le format JSON, les règles) vit ici, en un seul bloc
+    contigu — c'est ce bloc que `_data_metier` marque `cache_control: ephemeral`. Le cas précis
+    (`_consigne_cas`, ci-dessous) vient TOUJOURS après, jamais mélangé dedans : le moindre octet
+    variable AVANT la fin du préfixe cassait le cache pour tout le monde.
+    """
     return f"""Rédige LE DOCUMENT MÉTIER d'un cas de test, à partir de cette spécification.
 
 SPÉCIFICATION :
 {plan.raw_spec}
-{consigne_cas}
+
 Réponds en JSON :
 {{
   "title": "phrase métier décrivant ce qui est vérifié",
@@ -165,6 +166,24 @@ RÈGLES IMPÉRATIVES :
 4. Écris pour un testeur MÉTIER : pas de sélecteur CSS, pas de nom de modèle technique,
    pas de route. Ce document sera lu par quelqu'un qui ne code pas.
 5. Titre, étapes et résultat attendu sont OBLIGATOIRES et ne peuvent pas être vides."""
+
+
+def _consigne_cas(brief: str = "") -> str:
+    """La partie VARIABLE du prompt — CE CAS précis, jamais mise en cache.
+
+    `brief` vient du découpage (`decoupage.propose_decoupage`) : il dit CE CAS précis à écrire
+    dans le contexte de la spécification entière — il s'AJOUTE au texte complet (`_build_prompt`),
+    il ne le remplace jamais (l'agent a besoin de tout le contexte pour rédiger un document
+    cohérent). Vide (défaut) : un seul document pour toute la spec — le chemin CLI / cas manuel.
+    """
+    if not brief:
+        return ""
+    return f"""CE CAS PRÉCIS :
+{brief}
+
+Rédige UNIQUEMENT ce cas — pas les autres cas de la même spécification, ils sont rédigés
+séparément. Le brief ci-dessus dit ce qui le distingue des autres ; le reste de la spécification
+est le contexte dans lequel il s'inscrit."""
 
 
 def propose_metier(plan: TestPlan, *, llm: LLMAdapter | None = None,

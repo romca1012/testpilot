@@ -76,6 +76,28 @@ def with_history_cache(messages: list[dict]) -> list[dict]:
     return out
 
 
+def _contenu_utilisateur(cached_prefix: str, user_content: str):
+    """Le `content` d'un message utilisateur pour `call_simple`/`call_json`.
+
+    ⚠️ **Pourquoi ce découpage (audit coûts, 2026-09-16).** `metier_writer.propose_metier` est
+    appelé UNE FOIS PAR CAS pour la MÊME spécification (`decoupage` en a extrait N) — jusqu'ici, le
+    texte complet de la spec repartait en clair, en entier, à chaque appel : 11 appels "metier" du
+    ledger réel, aucun cache, plein tarif à chaque fois. Sans `cached_prefix`, un seul bloc texte
+    (comportement d'avant, zéro régression pour tout appelant qui ne le passe pas). Avec, DEUX
+    blocs — le préfixe STABLE (la spec, les règles) marqué `cache_control: ephemeral`, suivi du
+    texte VARIABLE (le brief du cas précis, jamais caché puisqu'il change à chaque appel). Le
+    premier appel d'un lot paie l'écriture du cache (~1,25x) ; les suivants, dans les ~5 minutes,
+    relisent ce préfixe à ~0,1x — à condition qu'il dépasse le seuil minimal de mise en cache du
+    modèle (silencieux sinon, jamais une erreur : `usage.cache_read_input_tokens` le confirme).
+    """
+    if not cached_prefix:
+        return user_content
+    blocs = [{"type": "text", "text": cached_prefix, "cache_control": {"type": "ephemeral"}}]
+    if user_content:
+        blocs.append({"type": "text", "text": user_content})
+    return blocs
+
+
 # Modèles qui REJETTENT `temperature` (400) et veulent la pensée adaptative + `effort`
 # (doc API Claude : Sonnet 5, Opus 4.8/4.7, Fable 5). Les autres (Haiku 4.5, Sonnet 4.6) gardent
 # `temperature`. On teste par PRÉFIXE : les alias n'ont pas de suffixe de date, mais on veut aussi
@@ -141,16 +163,22 @@ class LLMAdapter:
         )
 
     def call_simple(self, *, system_prompt: str = "", user_content: str = "",
-                    model: str = "", max_tokens: int = 2000, cost_tracker=None,
-                    label: str = "call_simple") -> str:
-        """Appel sans outil (analyse de spec, recommandations). Retourne le texte brut."""
+                    cached_prefix: str = "", model: str = "", max_tokens: int = 2000,
+                    cost_tracker=None, label: str = "call_simple") -> str:
+        """Appel sans outil (analyse de spec, recommandations). Retourne le texte brut.
+
+        `cached_prefix` — bloc STABLE placé AVANT `user_content`, avec un point de cache
+        (`cache_control: ephemeral`). Pour un même appelant qui répète le même préfixe sur
+        plusieurs appels rapprochés (ex. la spec complète, une fois par cas) — voir
+        `_contenu_utilisateur`. Vide (défaut) : comportement d'avant, un seul bloc texte.
+        """
         model_id = model or config.MODEL_FAST
         resp = self._client_().messages.create(
             model=model_id,
             max_tokens=max_tokens,
             **_params_echantillonnage(model_id, temperature=0.1),
             system=[{"type": "text", "text": system_prompt or "Réponds de façon concise."}],
-            messages=[{"role": "user", "content": user_content}],
+            messages=[{"role": "user", "content": _contenu_utilisateur(cached_prefix, user_content)}],
         )
         self._track(cost_tracker, resp, model_id, label)
         # Réponse tronquée : la sortie (souvent du JSON à parser) peut être incomplète. On le
@@ -161,7 +189,8 @@ class LLMAdapter:
                            "sortie possiblement incomplète", label, max_tokens)
         return resp.content[0].text if resp.content else ""
 
-    def call_json(self, *, system_prompt: str = "", user_content: str = "", schema: dict,
+    def call_json(self, *, system_prompt: str = "", user_content: str = "",
+                  cached_prefix: str = "", schema: dict,
                   model: str = "", max_tokens: int = 2000, cost_tracker=None,
                   label: str = "call_json") -> dict:
         """Rend un DICT — via SORTIES STRUCTURÉES quand le modèle les honore (§2bis A2).
@@ -181,14 +210,15 @@ class LLMAdapter:
                 model=model_id,
                 max_tokens=max_tokens,
                 system=[{"type": "text", "text": system_prompt or "Réponds en JSON."}],
-                messages=[{"role": "user", "content": user_content}],
+                messages=[{"role": "user",
+                          "content": _contenu_utilisateur(cached_prefix, user_content)}],
                 output_config={"format": {"type": "json_schema", "schema": schema}},
             )
         except Exception as exc:  # output_config refusé (modèle/version) → repli, sans surcoût
             logger.warning("call_json[%s] : sortie structurée indisponible (%s) — repli parsing "
                            "tolérant", label, type(exc).__name__)
-            return self._json_par_repli(system_prompt, user_content, model_id, max_tokens,
-                                        cost_tracker, label)
+            return self._json_par_repli(system_prompt, cached_prefix, user_content, model_id,
+                                        max_tokens, cost_tracker, label)
         self._track(cost_tracker, resp, model_id, label)
         if getattr(resp, "stop_reason", "") == "max_tokens":
             logger.warning("call_json[%s] : réponse TRONQUÉE (max_tokens=%s) — JSON possiblement "
@@ -203,12 +233,12 @@ class LLMAdapter:
             m = re.search(r"\{.*\}", text or "", re.DOTALL)
             return json.loads(m.group(0)) if m else {}
 
-    def _json_par_repli(self, system_prompt, user_content, model_id, max_tokens,
+    def _json_par_repli(self, system_prompt, cached_prefix, user_content, model_id, max_tokens,
                         cost_tracker, label) -> dict:
         """Le comportement d'AVANT : appel simple + extraction tolérante du premier objet JSON."""
-        raw = self.call_simple(system_prompt=system_prompt, user_content=user_content,
-                               model=model_id, max_tokens=max_tokens, cost_tracker=cost_tracker,
-                               label=label)
+        raw = self.call_simple(system_prompt=system_prompt, cached_prefix=cached_prefix,
+                               user_content=user_content, model=model_id, max_tokens=max_tokens,
+                               cost_tracker=cost_tracker, label=label)
         m = re.search(r"\{.*\}", raw or "", re.DOTALL)
         if not m:
             return {}
