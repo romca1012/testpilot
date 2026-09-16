@@ -169,6 +169,19 @@ class GateOut(BaseModel):
     lint_warnings: list[LintWarning] = []
 
 
+class CaseARelireOut(BaseModel):
+    """Un cas bloqué sur le gate de relecture — la LISTE que l'amendement §4.3-bis (2026-09-15)
+    rend nécessaire : un cas dont l'approbation automatique a été refusée (points de vigilance)
+    doit rester TROUVABLE, pas seulement bloqué. Sans cette liste, on retombe dans le bug qu'on
+    corrige (cas 82) — bloqué, mais invisible."""
+    case_id: int
+    title: str
+    module_name: str = ""
+    version_id: int
+    reason: str
+    lint_warnings_count: int = 0
+
+
 class ExecutionSummary(BaseModel):
     id: int
     test_case_id: int

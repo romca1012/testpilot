@@ -9,7 +9,6 @@ from testpilot import config
 from testpilot.api import erreurs, access, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import events_bus, generation_service, run_service, script_service
-from testpilot.generation import assertion_lint, domain_model, repair_diff, smoke_check
 from testpilot.guardrails import durable_jobs
 from testpilot.store.repositories import (
     CaseRepo,
@@ -24,10 +23,6 @@ from testpilot.verdict import review_gate
 
 router = APIRouter(prefix="/api/cases", tags=["cases"])
 
-# Auteur des versions produites par la boucle de réparation (0014). Une version signée ainsi a
-# forcément un « avant » : celle qu'elle tentait de corriger.
-_AUTEUR_REPARATION = "repair-agent"
-
 
 def _publier_changement(case: dict, kind: str) -> None:
     """Prévient les écrans ouverts sur ce PROJET (audit 2026-09-07, temps réel SSE) — best-effort,
@@ -36,50 +31,6 @@ def _publier_changement(case: dict, kind: str) -> None:
     project_id = case.get("project_id")
     if project_id is not None:
         events_bus.publier(project_id, {"kind": kind, "case_id": case["id"]})
-
-
-def _lint_reparation(current: dict | None, version_rows: list[dict]) -> list[dict]:
-    """Rayon d'explosion d'une réparation, comparé à la version qui la précède (0017).
-
-    Rend une liste vide dès que la comparaison n'aurait pas de sens — première version, version
-    écrite par la génération ou par un humain, ou prédécesseur introuvable. **Signaler dans ces
-    cas-là serait une alerte inventée**, aussi nuisible qu'une alerte tue.
-    """
-    if not current or current.get("created_by") != _AUTEUR_REPARATION:
-        return []
-    precedentes = [v for v in version_rows if v["id"] < current["id"]]
-    if not precedentes:
-        return []
-    avant = max(precedentes, key=lambda v: v["id"])
-    return repair_diff.blast_radius(avant.get("steps_content") or "",
-                                    current.get("steps_content") or "")
-
-
-def _smoke_check_domaine(conn, case: dict, current: dict | None) -> list[dict]:
-    """Le Gherkin référence-t-il des champs/valeurs qui existent ? (étape 4 du chantier `0021`).
-
-    Le modèle vit **par connecteur** (`data/domain/odoo.json`) : le domaine d'Odoo n'est pas celui
-    du prochain ERP (§8 — architecture multi-connecteurs dès le départ).
-
-    Rend `[]` dès qu'il n'y a rien à comparer — pas de version, pas de projet, pas de modèle.
-    ⚠️ **Ce silence ne vaut pas validation** : il signifie « je n'ai pas regardé », pas « c'est
-    bon ». Le distinguer d'un vrai « rien à signaler » demanderait de le dire au relecteur — ce
-    que le bandeau ne fait pas encore, et c'est une limite assumée de cette étape.
-
-    Best-effort : un modèle absent ou illisible ne doit **jamais** casser l'affichage d'un cas —
-    ce module informe, il ne gouverne rien.
-    """
-    if not current or not case.get("project_id"):
-        return []
-    projet = ProjectRepo(conn).get(case["project_id"])
-    if not projet:
-        return []
-    # L'annuaire est propre au PROJET (son instance), plus au type de connecteur.
-    modele = domain_model.charger_modele(projet)
-    if not modele:
-        return []
-    return smoke_check.smoke_check(current.get("feature_content") or "",
-                                   current.get("steps_content") or "", modele=modele)
 
 
 _CURSEUR_SEP = ":"
@@ -146,6 +97,58 @@ def list_cases(request: Request, project_id: int | None = None, module_id: int |
         items=[schemas.case_summary(r) for r in lignes],
         next_cursor=_CURSEUR_SEP.join(str(x) for x in suivant) if suivant else None,
         total=total)
+
+
+# ── Cas bloqués sur le gate de relecture (amendement §4.3-bis, 2026-09-15) ───────────────────
+# ⚠️ Déclarée AVANT `/{case_id}` — même raison que les actions en lot ci-dessous : sinon FastAPI
+# ferait correspondre « needing-review » au paramètre `case_id`, avec une erreur de validation
+# incompréhensible à l'écran au lieu du résultat attendu.
+
+@router.get("/needing-review", response_model=list[schemas.CaseARelireOut])
+def cases_needing_review(request: Request, project_id: int, conn=Depends(get_conn)):
+    """Les cas dont la version courante n'a jamais été approuvée — TROUVABLES, pour de vrai.
+
+    Depuis §4.3-bis, l'approbation automatique à la génération ne joue plus que pour un cas
+    SANS aucun point de vigilance ; un cas avec un vrai signal (0008/0017/0021) reste bloqué. Sans
+    cette liste, il resterait bloqué **et invisible** — exactement le bug qui a motivé le
+    resserrement (cas 82, 2026-09-15). Un cas manuel jamais automatisé (une version SANS Gherkin —
+    `create_manual` en crée une d'emblée, mais vide) n'a rien à approuver et n'apparaît pas ici :
+    il n'a jamais été soumis au gate, `trigger_run` ne le bloque sur rien.
+    """
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    utilisateur = getattr(request.state, "user", None)
+    role = access.role_effectif_projet(conn, utilisateur, project_id)
+    if role == access.ACCES_PROJET_REFUSE:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+
+    tous_les_cas = CaseRepo(conn).list_all(project_id=project_id)
+    version_rows_par_cas = {c["id"]: VersionRepo(conn).list_for_case(c["id"])
+                            for c in tous_les_cas if c.get("current_version_id")}
+    candidats = []
+    for c in tous_les_cas:
+        version_id = c.get("current_version_id")
+        if not version_id:
+            continue
+        courante = next((v for v in version_rows_par_cas[c["id"]] if v["id"] == version_id), None)
+        if not (courante and (courante.get("feature_content") or "").strip()):
+            continue
+        candidats.append(c)
+    approuvees = ReviewRepo(conn).approved_version_ids(
+        [c["current_version_id"] for c in candidats])
+    bloques = [c for c in candidats if c["current_version_id"] not in approuvees]
+
+    out = []
+    for c in bloques:
+        version_id = c["current_version_id"]
+        decision = review_gate.evaluate_gate(ReviewRepo(conn), version_id)
+        warnings = generation_service.lint_warnings_for_version(
+            conn, c, version_rows_par_cas[c["id"]], version_id)
+        out.append(schemas.CaseARelireOut(
+            case_id=c["id"], title=c["title"], module_name=c.get("module_name") or "",
+            version_id=version_id, reason=decision.reason,
+            lint_warnings_count=len(warnings)))
+    return out
 
 
 # ── Actions en LOT (lot C, 2026-07-24) ───────────────────────────────────────────────────────
@@ -323,23 +326,12 @@ def get_case(case_id: int, conn=Depends(get_conn)):
     gate = None
     if version_id:
         decision = review_gate.evaluate_gate(ReviewRepo(conn), version_id)
-        # Lint non-bloquant des assertions de la version courante (décision 0008) : informe le
-        # relecteur sans jamais changer `allowed` — le gate reste souverain.
-        current = next((v for v in version_rows if v["id"] == version_id), None)
-        warnings = assertion_lint.lint_steps(current.get("steps_content", "") if current else "")
-        # Rayon d'explosion d'une RÉPARATION (0017) : l'agent réécrit le fichier entier, donc il
-        # peut abîmer un step qui marchait — c'est ce qui a coûté deux tentatives au cas 1 le
-        # 2026-07-17. Détective, jamais bloquant : `allowed` n'est pas touché. On ne compare que
-        # si la version courante vient de l'agent de réparation ; une version écrite par un
-        # humain ou par la génération n'a pas de « avant » à quoi se mesurer.
-        warnings += _lint_reparation(current, version_rows)
-        # Le test référence-t-il des champs/valeurs qui EXISTENT ? (étape 4 du chantier `0021`).
-        # Lu dans le modèle du domaine VERSIONNÉ (`data/domain/{connecteur}.json`, crawl
-        # déterministe relu par un humain) — aucun LLM, aucune I/O réseau, coût nul.
-        # Détective comme les deux précédents : `allowed` n'est jamais touché. Le faux positif est
-        # RÉEL (champ apparaissant après interaction, select peuplé en JS, scénario `[ERREUR]` qui
-        # vise volontairement un id invalide) — d'où le §6 du brief et la borne du principe 2.
-        warnings += _smoke_check_domaine(conn, case, current)
+        # Les « points de vigilance » (0008 assertions, 0017 réparation, 0021 smoke-check) — MÊME
+        # calcul que celui qui décide de l'approbation automatique à la génération
+        # (`generation_service.lint_warnings_for_version`, amendement §4.3-bis, 2026-09-15) : un
+        # seul point de vérité pour « ce cas est-il propre ? », jamais deux calculs qui pourraient
+        # diverger. Informe le relecteur sans jamais changer `allowed` — le gate reste souverain.
+        warnings = generation_service.lint_warnings_for_version(conn, case, version_rows, version_id)
         gate = schemas.GateOut(allowed=decision.allowed, needs_review=decision.needs_review,
                                reason=decision.reason,
                                repair_budget=ReviewRepo(conn).repair_budget_for_version(version_id),

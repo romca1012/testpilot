@@ -408,6 +408,38 @@ def validate_metier(conn, job_id: str, cases: list[dict]) -> dict:
            "group_id": job.get("group_id"), "cases": validated}
 
 
+_AUTEUR_REPARATION = "repair-agent"
+
+
+def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], version_id: int
+                              ) -> list[dict]:
+    """Les « points de vigilance » d'UNE version — MÊME calcul que celui affiché sur la fiche du
+    cas (`routes/cases.py::get_case`) : assertions qui ne peuvent jamais échouer (0008), rayon
+    d'explosion d'une réparation (0017), champs/valeurs absents du domaine mesuré (0021). Extrait
+    ici (2026-09-15) pour servir aussi de critère à l'approbation automatique — un seul point de
+    calcul, jamais deux qui pourraient diverger sur ce qu'est « un cas propre »."""
+    from testpilot.generation import assertion_lint, domain_model, repair_diff, smoke_check
+    from testpilot.store.repositories import ProjectRepo
+
+    current = next((v for v in version_rows if v["id"] == version_id), None)
+    warnings = assertion_lint.lint_steps(current.get("steps_content", "") if current else "")
+
+    if current and current.get("created_by") == _AUTEUR_REPARATION:
+        precedentes = [v for v in version_rows if v["id"] < current["id"]]
+        if precedentes:
+            avant = max(precedentes, key=lambda v: v["id"])
+            warnings += repair_diff.blast_radius(avant.get("steps_content") or "",
+                                                 current.get("steps_content") or "")
+
+    if current and case.get("project_id"):
+        projet = ProjectRepo(conn).get(case["project_id"])
+        modele = domain_model.charger_modele(projet) if projet else None
+        if modele:
+            warnings += smoke_check.smoke_check(current.get("feature_content") or "",
+                                                current.get("steps_content") or "", modele=modele)
+    return warnings
+
+
 def _auto_approuver(conn, case_id: int, version_id: int | None) -> None:
     """Approuve la version au titre de la validation métier (amendement §4.3, 2026-07-21).
 
@@ -425,6 +457,35 @@ def _auto_approuver(conn, case_id: int, version_id: int | None) -> None:
     except Exception:
         logger.exception("[generation] auto-approbation de la version %s (cas %s) échouée — "
                          "le cas restera à relire", version_id, case_id)
+
+
+def _auto_approuver_si_propre(conn, case_id: int, version_id: int | None) -> None:
+    """Amendement §4.3-bis (2026-09-15) : la validation métier ne vaut relecture QUE si le cas
+    sort « propre » de la génération — aucun point de vigilance à vérifier.
+
+    ⚠️ **Pourquoi ce second amendement.** §4.3 approuvait TOUJOURS, quel que soit le résultat du
+    smoke-check — mais aucun écran ne montre jamais les cas restés `needs_review` : un cas
+    généré puis jamais retouché (aucune édition manuelle du formulaire métier, qui aurait ré-
+    approuvé via `PATCH .../metier`) y reste bloqué **à vie**, sans qu'aucun humain ne le sache
+    (bug réel, cas 82, 2026-09-15). Approuver quand même un cas avec de VRAIS signaux à vérifier
+    ne protégeait donc personne — l'humain censé les lire ne les voyait jamais. On resserre :
+    seul un cas SANS aucun point de vigilance est digne de confiance sans un regard humain ; les
+    autres restent bloqués, mais pour de vrai (une liste dédiée doit encore les rendre trouvables
+    — chantier séparé, ceci ne fait que cesser de les approuver à tort).
+    """
+    if version_id is None:
+        return
+    from testpilot.store.repositories import CaseRepo, VersionRepo
+    case = CaseRepo(conn).get(case_id)
+    if case is None:
+        return
+    warnings = lint_warnings_for_version(conn, case, VersionRepo(conn).list_for_case(case_id),
+                                         version_id)
+    if warnings:
+        logger.info("[generation] cas %s (version %s) reste à relire — %d point(s) de "
+                   "vigilance", case_id, version_id, len(warnings))
+        return
+    _auto_approuver(conn, case_id, version_id)
 
 
 def _spec_from_metier(metier: dict) -> str:
@@ -537,7 +598,7 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
 
         if result.success:
             succes = True
-            _auto_approuver(conn, case_id, result.version_id)
+            _auto_approuver_si_propre(conn, case_id, result.version_id)
             GenerationJobRepo(conn).maj(job_id, status="done", case_ids=[case_id])
         else:
             GenerationJobRepo(conn).maj(job_id, status="failed",
@@ -679,7 +740,7 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                                         generation_usd=result.cost_usd)
 
                 if result.success and result.case_id:
-                    _auto_approuver(conn_tache, result.case_id, result.version_id)
+                    _auto_approuver_si_propre(conn_tache, result.case_id, result.version_id)
                     return {"case_id": result.case_id}
                 # Le cas n'a pas été persisté avec ce slug (génération arrêtée avant la fin) :
                 # le rendre disponible, sinon ce titre reste bloqué pour rien.

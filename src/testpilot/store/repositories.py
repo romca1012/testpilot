@@ -1542,6 +1542,26 @@ class ReviewRepo:
         latest = self.latest_for_version(version_id)
         return bool(latest and latest["decision"] == "approved")
 
+    def approved_version_ids(self, version_ids: list[int]) -> set[int]:
+        """Parmi CES versions, celles dont la DERNIÈRE décision est `approved` — en UNE requête.
+
+        Sert à trouver les cas bloqués sur tout un projet sans évaluer le gate un par un (2026-09-
+        15, `GET /api/cases/needing-review`) : un projet de plusieurs centaines de cas ferait
+        sinon autant d'allers-retours que de cas, pour une question qui se répond en un seul.
+        Même forme que `ResultRepo.derniers_du_run` (MAX(id) par groupe, jamais 2×N requêtes).
+        """
+        ids = [int(v) for v in version_ids if v]
+        if not ids:
+            return set()
+        marqueurs = ",".join("?" * len(ids))
+        rows = self.conn.execute(
+            f"SELECT rd.version_id FROM review_decision rd"
+            f" JOIN (SELECT version_id, MAX(id) AS dernier FROM review_decision"
+            f"       WHERE version_id IN ({marqueurs}) GROUP BY version_id) d"
+            f" ON d.dernier = rd.id"
+            f" WHERE rd.decision = 'approved'", ids)
+        return {int(r["version_id"]) for r in rows}
+
     def list_for_case(self, test_case_id: int) -> list[dict]:
         """Historique des décisions de relecture d'un cas (toutes versions), anté-chronologique."""
         return _rows(self.conn.execute(
