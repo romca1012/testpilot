@@ -39,9 +39,12 @@ Ce que ce schéma dit, précisément :
   `read`, `inspect_form`, `discover_route`, `create`, `delete`…), mais un seul mapping de connexion
   existe (`connectors/runtime_env.py`, `_MAPPINGS = {"odoo": {...}}`) — l'abstraction attend son
   deuxième connecteur pour être éprouvée.
-- **L'API Anthropic** sert à deux usages distincts : générer un test (modèle configuré par
-  `TESTPILOT_MODEL_GENERATION`, défaut `claude-sonnet-4-6` — voir `src/testpilot/config.py`) et le
-  réparer (`TESTPILOT_MODEL_REPAIR`, défaut `claude-haiku-4-5-20251001`).
+- **L'API Anthropic** sert à générer un test ET à le réparer via le même modèle : `react_loop.run_loop`
+  (utilisé par la génération et par `repair_agent.propose_fix`) n'impose jamais de `model=` explicite,
+  donc les deux passent par le défaut de `LLMAdapter.call_with_tools` — `TESTPILOT_MODEL_GENERATION`,
+  défaut `claude-sonnet-4-6` (voir `src/testpilot/config.py`). `TESTPILOT_MODEL_REPAIR` existe dans la
+  config mais n'est câblé sur aucun appel réel — historiquement source d'une étiquette de coût fausse
+  dans `cost_ledger`, corrigée le 2026-09-16 (`repair_service._record_cost`).
 - **La base de données** est SQLite par défaut, sans configuration ; PostgreSQL est un runtime
   réel disponible via `TESTPILOT_DB_URL` — voir §4 « SQLite par défaut, PostgreSQL réel en
   option ».
