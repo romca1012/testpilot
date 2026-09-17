@@ -167,14 +167,22 @@ def odoo_session(context):
 
 @fixture
 def playwright_browser(context):
-    """Lance un navigateur Playwright pour le scénario (PLAYWRIGHT_HEADED=1 pour le voir)."""
+    """Lance un navigateur Playwright pour le scénario (PLAYWRIGHT_HEADED=1 pour le voir).
+
+    Un `BrowserContext` explicite (plutôt que le sucre `browser.new_page()`) est nécessaire pour
+    pouvoir démarrer la trace AVANT la création de la page, comme le recommande la doc officielle
+    (playwright.dev/python/docs/trace-viewer-intro) — voir `_demarrer_trace`.
+    """
     from playwright.sync_api import sync_playwright
 
     headed = os.environ.get("PLAYWRIGHT_HEADED", "0") == "1"
     context._playwright = sync_playwright().start()
     context.browser = context._playwright.chromium.launch(headless=not headed)
-    context.page = context.browser.new_page()
+    context._browser_context = context.browser.new_context()
+    _demarrer_trace(context)
+    context.page = context._browser_context.new_page()
     yield context.page
+    context._browser_context.close()
     context.browser.close()
     context._playwright.stop()
 
@@ -249,6 +257,31 @@ def _marquer_si_scenario_negatif(context, scenario) -> None:
         marquer_scenario_attend_un_refus(context.page)
 
 
+def _demarrer_trace(context) -> None:
+    """Démarre la trace Playwright du scénario (timeline des actions, snapshots DOM, réseau).
+
+    ⚠️ **Pourquoi en plus de la capture d'écran.** La doc officielle Playwright est explicite : pour
+    diagnostiquer un échec, la trace est recommandée AU-DESSUS des captures d'écran/vidéos — une
+    capture n'est qu'un instant figé, la trace rejoue tout le scénario dans le trace viewer
+    (playwright.dev/python/docs/trace-viewer-intro). `screenshots=True, snapshots=True,
+    sources=True` : ce sont exactement les trois options de l'exemple officiel, pour un trace
+    viewer complet (pas seulement les captures, aussi les snapshots DOM interactifs et le code).
+
+    Pas en `--dry-run` (même garde que `_capturer_ecran`) : la page reste `about:blank`, tracer ne
+    produirait qu'une trace vide. Best-effort ABSOLU : `context._tracing_started` retombe à `False`
+    au moindre souci, et `_capturer_trace` s'en remet à ce drapeau pour ne jamais appeler `stop()`
+    sur une trace qui n'a pas démarré.
+    """
+    context._tracing_started = False
+    if getattr(context.config, "dry_run", False):
+        return
+    try:
+        context._browser_context.tracing.start(screenshots=True, snapshots=True, sources=True)
+        context._tracing_started = True
+    except Exception as exc:
+        print(f"[trace] démarrage de trace impossible : {exc}")
+
+
 def before_scenario(context, scenario):
     """Initialise le registre de teardown et ouvre les connexions du scénario."""
     context.created = {}
@@ -259,7 +292,7 @@ def before_scenario(context, scenario):
     _marquer_si_scenario_negatif(context, scenario)
 
 
-def _capturer_ecran(context, scenario) -> None:
+def _capturer_ecran(context, scenario, n: int) -> None:
     """Capture l'état visuel de la page à la fin du scénario, TOUS statuts confondus (§A du plan
     « fiabiliser le verdict automatique », 2026-08-06).
 
@@ -283,6 +316,9 @@ def _capturer_ecran(context, scenario) -> None:
 
     Best-effort ABSOLU (même principe que `_capturer_reponse_formulaire`) : un souci de capture ne
     doit jamais faire échouer ou masquer le verdict réel du scénario.
+
+    `n` est calculé UNE FOIS par `after_scenario` et partagé avec `_capturer_trace` : capture et
+    trace du même scénario portent ainsi le même numéro (`01-passed.png` / `01-passed.zip`).
     """
     if getattr(context.config, "dry_run", False):
         return
@@ -292,18 +328,47 @@ def _capturer_ecran(context, scenario) -> None:
     try:
         dossier = Path("screenshots")
         dossier.mkdir(exist_ok=True)
-        n = getattr(context, "_indice_scenario", 0) + 1
-        context._indice_scenario = n
         statut = scenario.status.name if getattr(scenario, "status", None) else "inconnu"
         page.screenshot(path=str(dossier / f"{n:02d}-{statut}.png"), full_page=True)
     except Exception as exc:
         print(f"[capture] écran non capturé pour le scénario « {scenario.name} » : {exc}")
 
 
+def _capturer_trace(context, scenario, n: int) -> None:
+    """Exporte la trace Playwright du scénario en `.zip` (voir `_demarrer_trace` pour le pourquoi).
+
+    Appelée depuis `after_scenario`, donc AVANT la fermeture du `BrowserContext` (celle-ci n'a lieu
+    qu'au nettoyage de la fixture `playwright_browser`, après `after_scenario` — voir sa docstring).
+    `context.tracing.stop(path=...)` a besoin du contexte encore ouvert pour exporter.
+
+    Écrit en RELATIF (`traces/`), même motif que `_capturer_ecran` : `_archiver` rapatrie ce dossier
+    avant le `rmtree` du run_dir.
+
+    Ne s'exécute que si `_demarrer_trace` a réellement démarré la trace (`_tracing_started`) — ni en
+    `--dry-run`, ni après un échec de démarrage déjà journalisé là-bas. Best-effort ABSOLU : jamais
+    fatal, jamais un motif d'échec ou de masquage du verdict réel du scénario.
+    """
+    if not getattr(context, "_tracing_started", False):
+        return
+    browser_context = getattr(context, "_browser_context", None)
+    if browser_context is None:
+        return
+    try:
+        dossier = Path("traces")
+        dossier.mkdir(exist_ok=True)
+        statut = scenario.status.name if getattr(scenario, "status", None) else "inconnu"
+        browser_context.tracing.stop(path=str(dossier / f"{n:02d}-{statut}.zip"))
+    except Exception as exc:
+        print(f"[trace] trace non exportée pour le scénario « {scenario.name} » : {exc}")
+
+
 def after_scenario(context, scenario):
-    """Capture une preuve visuelle, PUIS supprime UNIQUEMENT les enregistrements produits par le
-    test (jamais les prérequis)."""
-    _capturer_ecran(context, scenario)
+    """Capture une preuve visuelle et une trace, PUIS supprime UNIQUEMENT les enregistrements
+    produits par le test (jamais les prérequis)."""
+    n = getattr(context, "_indice_scenario", 0) + 1
+    context._indice_scenario = n
+    _capturer_ecran(context, scenario, n)
+    _capturer_trace(context, scenario, n)
 
     odoo = getattr(context, "odoo", None)
     if odoo is None:

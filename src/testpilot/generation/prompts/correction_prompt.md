@@ -45,6 +45,19 @@ présence/redirection observable. Si le message porte un préfixe ou un fragment
 le fragment stable avec `in` plutôt que l'égalité stricte sur la totalité (sauf si le scénario
 vise explicitement le texte exact).
 
+## Une visibilité s'affirme en réessayant, jamais à l'instant t
+
+Si ta correction touche (ou t'amène à relire) une assertion du type `assert x.is_visible()` ou
+`assert x.inner_text() == ...` : ces lectures constatent le DOM **immédiatement**, sans attendre
+quoi que ce soit — contrairement à `.click()`/`.fill()`. Un élément qui apparaît quelques centaines
+de ms plus tard fait échouer l'assertion au hasard (bug réel mesuré, cas C43 SauceDemo,
+2026-09-14 ; `is_visible()` corrigé de la même façon dans la bibliothèque partagée, audit
+fiabilité 2026-09-17). Remplace `assert x.is_visible()` par `expect(x).to_be_visible()`
+(`from playwright.sync_api import expect`, réessaie jusqu'à 5 s par défaut) ; pour un `.count()`/
+`.inner_text()` après une navigation ou un clic, fais précéder d'un `locator.first.wait_for(
+state="visible", timeout=8000)`. Ce n'est pas changer l'intention du scénario — le contenu attendu
+reste identique, on lui laisse seulement le temps d'apparaître.
+
 ## Ce que tu peux modifier
 
 Contrairement à une réparation post-exécution, **rien n'est gelé ici** : cette version n'a jamais

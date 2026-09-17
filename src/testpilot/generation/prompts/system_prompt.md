@@ -179,10 +179,28 @@ Un `Alors`/`@then` qui ne contient **ni `assert` ni `raise`** n'affirme rien : c
 vide, tout aussi interdit.
 
 ### Règle 5 — Attendre l'élément AVANT de le compter ou de le lire, jamais à l'instant t
-`.count()`, `.inner_text()`, `.text_content()` lisent le DOM **immédiatement**, sans attendre
-quoi que ce soit — contrairement à `.click()`/`.fill()`, qui ont leur propre attente intégrée
-(actionnabilité). Juste après une navigation ou une action, le contenu peut ne pas être encore
-rendu : l'application a bien changé d'URL, mais son rendu suit d'une fraction de seconde.
+`.count()`, `.inner_text()`, `.text_content()`, **`.is_visible()`** lisent le DOM **immédiatement**,
+sans attendre quoi que ce soit — contrairement à `.click()`/`.fill()`, qui ont leur propre attente
+intégrée (actionnabilité). Juste après une navigation ou une action, le contenu peut ne pas être
+encore rendu : l'application a bien changé d'URL, mais son rendu suit d'une fraction de seconde.
+
+⚠️ **`is_visible()` en particulier trompe par son nom** — il donne l'impression d'attendre la
+visibilité, mais c'est un constat instantané comme les autres (doc officielle Playwright : « the
+test won't wait a single second, it will just check the locator is there and return immediately »).
+`assert element.is_visible()` échoue donc au hasard si l'élément apparaît quelques centaines de
+millisecondes plus tard — même défaut mesuré que ci-dessous, retrouvé et corrigé dans la
+bibliothèque partagée (`validation_error_notification`, `_base_helpers.py`, audit 2026-09-17).
+**Quand l'assertion porte DIRECTEMENT sur la visibilité d'UN élément**, utilise l'assertion
+officielle qui réessaie d'elle-même au lieu d'un `assert` + `.wait_for()` séparés :
+
+```python
+# FAUX — constat unique, échoue si l'élément n'est pas encore rendu
+assert page.locator(".alert-danger").first.is_visible(), "aucune erreur affichée"
+
+# CORRECT — réessaie jusqu'à son propre délai (5 s par défaut) avant de conclure
+from playwright.sync_api import expect
+expect(page.locator(".alert-danger").first).to_be_visible()
+```
 
 ⚠️ **Bug réel mesuré (cas C43, SauceDemo, 2026-09-14)** : `page.wait_for_url("**/cart.html")`
 réussit dès que l'URL change, PUIS `page.locator(".cart_item").count()` juste après — sans aucune

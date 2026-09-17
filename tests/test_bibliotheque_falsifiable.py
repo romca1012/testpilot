@@ -23,9 +23,10 @@ _LIB = Path("behave_runtime/steps_library")
 _DELEGUENT_OU_ATTENDENT = {
     "step_wait_form",          # attente (@when + @then), pas une assertion
     "step_no_dup",             # → no_duplicate() : assert len(ids) <= 1
-    "step_validation_error",   # → validation_error_inline() : assert has_error.is_visible()
+    "step_validation_error",   # → validation_error_inline() : raise AssertionError (via _poll_until)
     "step_no_partial_record",  # assertit directement
-    "step_notification_error", # → validation_error_notification() : assert
+    "step_notification_error", # → validation_error_notification() : expect(...).to_be_visible()
+    "step_validation_error_shown", # idem, _odoo_steps.py — délègue au MÊME helper (audit 2026-09-17)
     # ⚠️ Les trois suivants délèguent une VRAIE assertion (vérifié), mais leur helper contient un
     # `warnings.warn(...) + return` quand le snapshot initial manque : dans CE cas le @then passe
     # sans rien vérifier. Défaut RÉEL de la même famille que 0010, signalé au porteur — non

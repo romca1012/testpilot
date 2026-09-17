@@ -12,6 +12,7 @@ from behave import given, then, when
 # autres fichiers de la bibliothèque.
 from _base_helpers import (
     memorize_record_count, check_count_not_increased, check_count_increased_by_one, no_duplicate,
+    validation_error_notification,
 )
 
 
@@ -250,5 +251,7 @@ def step_login_portal(context):
 
 @then('une notification d\'erreur de validation est affichée dans l\'interface Odoo')
 def step_validation_error_shown(context):
-    error = context.page.locator(".o_notification_manager .o_notification.border-danger").first
-    assert error.is_visible(), "Aucune notification d'erreur visible dans l'interface."
+    # Délègue à `_base_helpers.validation_error_notification` — ce step réimplémentait le MÊME
+    # sélecteur + la MÊME assertion en double (audit fiabilité, 2026-09-17), avec le défaut que le
+    # helper partagé vient de corriger (assertion non-rétentative, `expect()` désormais).
+    validation_error_notification(context.page)

@@ -258,7 +258,10 @@ class BehaveRunner:
         - les **refus mesurés** : ce que l'application a refusé, et qui devient une règle apprise.
           Archivé pour qu'on puisse relire *pourquoi* une valeur est interdite depuis ce run-là ;
         - les **paliers de résolution** de chaque champ (§1.2) : ce qui a permis de détecter une
-          dérive éventuelle, à relire même quand la mémoire du projet a depuis été mise à jour.
+          dérive éventuelle, à relire même quand la mémoire du projet a depuis été mise à jour ;
+        - les **traces Playwright** par scénario (§ fiabiliser l'exécution automatique, volet 2) :
+          la doc officielle Playwright les recommande au-dessus des captures d'écran pour
+          diagnostiquer un échec — timeline complète, snapshots DOM, réseau, console.
 
         ⚠️ **Best-effort, jamais bloquant.** Un disque plein ou un droit manquant ne doit pas
         transformer un run réussi en échec : l'archivage échoue en silence journalisé. L'inverse
@@ -290,6 +293,16 @@ class BehaveRunner:
                 cible_captures.mkdir(exist_ok=True)
                 for fichier in captures.glob("*.png"):
                     shutil.copy2(fichier, cible_captures / fichier.name)
+            # Traces Playwright par scenario (dossier "traces/" ecrit par environment.py,
+            # `_capturer_trace`) : recommandees par la doc officielle Playwright au-dessus des
+            # captures d'ecran pour diagnostiquer un echec (timeline complete, snapshots DOM,
+            # reseau, console) ; memes motif et garde dry-run que les captures ci-dessus.
+            traces = run_dir / "traces"
+            if traces.is_dir():
+                cible_traces = self.artifacts_dir / "traces"
+                cible_traces.mkdir(exist_ok=True)
+                for fichier in traces.glob("*.zip"):
+                    shutil.copy2(fichier, cible_traces / fichier.name)
         except OSError:
             logger.warning("[artefacts] archivage impossible vers %s — le run, lui, est intact",
                            self.artifacts_dir, exc_info=True)

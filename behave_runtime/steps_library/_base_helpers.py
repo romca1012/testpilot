@@ -12,7 +12,7 @@ import time
 import warnings
 import re
 from dataclasses import asdict, dataclass
-from playwright.sync_api import TimeoutError as PlaywrightTimeout
+from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect
 
 logger = logging.getLogger(__name__)
 
@@ -1294,24 +1294,45 @@ def validation_error_inline(page):
     3. le motif Odoo `s_website_form_field.o_has_error`, PRÉSERVÉ tel quel.
     Volontairement PAS `.alert` seul (sans qualificatif) : une appli Bootstrap l'emploie aussi pour
     un succès ou une info — le confondre ferait passer un test qui n'a RIEN vu d'un refus.
-    """
-    candidats = page.locator('[role="alert"], .error, .alert-danger, .is-invalid')
-    for i in range(min(candidats.count(), 8)):
-        try:
-            if candidats.nth(i).is_visible():
-                return
-        except Exception:
-            continue  # un élément qui disparaît entre le compte et la lecture : on continue
 
-    has_error = page.locator("[class*='s_website_form_field'].o_has_error").first
-    if has_error.is_visible():
-        return
-    raise AssertionError("Aucune erreur de validation visible dans le formulaire.")
+    ⚠️ **Relu, jamais lu une seule fois (doc Playwright, audit fiabilité 2026-09-17).** La
+    documentation officielle prévient explicitement : `is_visible()` appelé nu « won't wait a
+    single second, it will just check the locator is there and return immediately » — à l'inverse
+    des assertions officielles (`expect(...).to_be_visible()`), qui réessaient. Mais ici il n'y a
+    pas UN candidat à attendre, il y en a PLUSIEURS (rôle, classe, motif Odoo) et il faut celui qui
+    est VRAIMENT visible, pas juste `.first` dans l'ordre du DOM — exactement le bug déjà corrigé
+    une fois dans cette fonction (un candidat présent mais cachée ne doit pas suffire). Playwright
+    n'a pas d'assertion native pour « au moins un candidat parmi plusieurs devient visible » ; sa
+    propre doc, pour un contrôle sur mesure, renvoie vers une boucle de relecture bornée — c'est
+    `_poll_until` (déjà utilisé plus bas pour les comptages Odoo), réutilisé ici tel quel plutôt que
+    dupliqué.
+    """
+    def _un_candidat_visible() -> bool:
+        candidats = page.locator('[role="alert"], .error, .alert-danger, .is-invalid')
+        for i in range(min(candidats.count(), 8)):
+            try:
+                if candidats.nth(i).is_visible():
+                    return True
+            except Exception:
+                continue  # un élément qui disparaît entre le compte et la lecture : on continue
+        has_error = page.locator("[class*='s_website_form_field'].o_has_error").first
+        try:
+            return has_error.is_visible()
+        except Exception:
+            return False
+
+    trouve, _ = _poll_until(_un_candidat_visible, lambda v: v)
+    if not trouve:
+        raise AssertionError("Aucune erreur de validation visible dans le formulaire.")
 
 
 def validation_error_notification(page):
+    """⚠️ `expect(...).to_be_visible()`, pas `assert ... .is_visible()` (audit fiabilité,
+    2026-09-17) : ICI un seul candidat, cas d'école de l'assertion web-first officielle de
+    Playwright — elle réessaie jusqu'à son délai par défaut au lieu de constater une seule fois,
+    immédiatement, avant même que la notification n'ait eu le temps de s'afficher."""
     error = page.locator(".o_notification_manager .o_notification.border-danger").first
-    assert error.is_visible(), "Aucune notification d'erreur visible dans l'interface."
+    expect(error).to_be_visible()
 
 
 def no_error_with_keywords(page, keyword1, keyword2):

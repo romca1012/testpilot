@@ -48,15 +48,23 @@ bug. C'est la seule faute irréparable de ce système.
   d'**environnement** : signale-le, ne fabrique pas le droit depuis le test — un test qui
   s'accorde ses propres droits ne prouve plus qu'un vrai utilisateur y accède.
 - **Élément absent/vide juste après une navigation ou un clic** (`.count() == 0`, texte vide,
-  alors que l'élément existe bien un instant plus tard) → **suspecte une COURSE avant d'accuser
-  l'application**. `.count()`/`.inner_text()`/`.text_content()` lisent le DOM À L'INSTANT T, sans
-  rien attendre — contrairement à `.click()`/`.fill()`. Bug réel mesuré (cas C43, SauceDemo,
-  2026-09-14) : `wait_for_url("**/cart.html")` réussit dès le changement d'URL, mais le rendu du
-  panier suit de quelques centaines de ms — `count()` juste après échouait 1 fois sur 2, alors
-  que le produit était bien là. Corrige en ajoutant `locator.first.wait_for(state="visible",
-  timeout=8000)` avant de compter/lire — **ce n'est PAS affaiblir une assertion** (règle absolue
-  ci-dessus) puisque le contenu attendu reste identique, on lui laisse seulement le temps
-  d'apparaître.
+  `is_visible()` qui rend `False`, alors que l'élément existe bien un instant plus tard) →
+  **suspecte une COURSE avant d'accuser l'application**. `.count()`/`.inner_text()`/
+  `.text_content()`/**`.is_visible()`** lisent le DOM À L'INSTANT T, sans rien attendre —
+  contrairement à `.click()`/`.fill()`. Bug réel mesuré (cas C43, SauceDemo, 2026-09-14) :
+  `wait_for_url("**/cart.html")` réussit dès le changement d'URL, mais le rendu du panier suit de
+  quelques centaines de ms — `count()` juste après échouait 1 fois sur 2, alors que le produit
+  était bien là. Corrige selon le cas :
+  - avant de **compter/lire** (`.count()`, `.inner_text()`) : `locator.first.wait_for(
+    state="visible", timeout=8000)` juste avant ;
+  - quand l'assertion porte **directement sur la visibilité d'UN élément** (`assert
+    x.is_visible()`) : remplace par `expect(x).to_be_visible()` (`from playwright.sync_api import
+    expect`), qui réessaie de lui-même au lieu de constater une seule fois — même correctif déjà
+    appliqué à la bibliothèque partagée (`validation_error_notification`, `_base_helpers.py`,
+    audit fiabilité 2026-09-17).
+
+  **Ce n'est PAS affaiblir une assertion** (règle absolue ci-dessus) puisque le contenu attendu
+  reste identique, on lui laisse seulement le temps d'apparaître.
 
 ## ⚠️ Écrire un fichier le REMPLACE — rends-le ENTIER
 
