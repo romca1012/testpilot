@@ -237,12 +237,6 @@ def supprimer_en_lot(body: schemas.LotCasIn, request: Request, conn=Depends(get_
                 "case_id", access.project_id_depuis_case, access.ROLE_DEV))])
 def automate_case(case_id: int, background: BackgroundTasks, request: Request,
                   conn=Depends(get_conn)):
-    """AUTOMATISER un cas manuel : générer son test technique DEPUIS son métier (décision `0022`
-    n°6). L'IA lit le titre/préconditions/étapes/résultat déjà saisis et écrit le Gherkin.
-
-    Tâche de fond (LLM, quelques minutes), suivie via `GET /api/modules/jobs/{id}` — comme la
-    génération. Le front ne propose ce bouton que pour un cas SANS test technique.
-    """
     # ⚠️ Résolu SYNCHRONE, avant `background.add_task` (migration 32) — une fois en tâche de
     # fond, il n'y a plus de `Request` à lire.
     try:

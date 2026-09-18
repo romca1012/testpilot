@@ -45,7 +45,8 @@ class GenerationAgent:
     def generate(self, plan: TestPlan, *, case_id: int | None = None,
                  title: str = "", author: str = "", module_id: int | None = None,
                  metier: dict | None = None, group_id: int | None = None,
-                 projet: dict | None = None, refs: str = "") -> GenerationResult:
+                 projet: dict | None = None, refs: str = "",
+                 failure_context: list[dict] | None = None) -> GenerationResult:
         """`metier` — le document métier VALIDÉ (passe 4b de `0022`). Présent, il fixe le périmètre
         du Gherkin et se fige DANS la version, avec lui (décision n°10 : une version = le cas
         entier). Absent, le comportement est celui d'avant (chemin CLI et cas legacy).
@@ -65,6 +66,9 @@ class GenerationAgent:
         modele = domain_model.charger_modele(projet)
         state.messages.append({"role": "user",
                                "content": prompt_mod.build_initial_message(plan, modele, metier)})
+        if failure_context:
+            state.messages[0]["content"] = [
+                {"type": "text", "text": state.messages[0]["content"]}, *failure_context]
         # Un seul catalogue pour les deux usages : ce qu'on MONTRE à l'agent (prompt) et ce
         # qu'on lui REFUSE à l'écriture (redéfinition). Cf. décision 0003.
         # Scopé au connecteur DU PROJET (Phase 1c) : sans ça, un futur 2e connecteur verrait

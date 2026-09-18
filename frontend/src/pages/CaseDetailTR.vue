@@ -407,12 +407,10 @@ async function rechargerApresConflit() {
 
 function backToList() { router.push({ name: 'cases', params: { pid: pid.value } }) }
 
-// Automatiser un cas MANUEL : générer son test technique depuis le métier saisi. Tâche de fond
-// (LLM), suivie par le même mécanisme de job que la génération. Au bout, le cas a un Gherkin →
-// `hasGherkin` devient vrai, le bouton disparaît, le gate + l'exécution apparaissent.
 const automating = ref(false)
 let autoTimer: number | undefined
 async function automate() {
+  if (automating.value) return
   automating.value = true
   error.value = ''
   try {
@@ -516,7 +514,7 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
          sous « Cas de test » — ici on ne rend que le CONTENU de l'onglet actif. -->
     <div class="min-w-0 p-6 md:p-8 max-w-5xl">
       <CaseHeader :c="c" :can-edit="peutModifier" :can-delete="peutSupprimer"
-                  :can-automate="peutEditerScript && !hasGherkin" :automating="automating"
+                  :can-automate="peutEditerScript" :has-gherkin="hasGherkin" :automating="automating"
                   :prev-id="prevId" :next-id="nextId"
                   @back="backToList" @edit="startEdit" @delete="deleteCase" @automate="automate" @go="goCase" />
 

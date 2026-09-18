@@ -550,7 +550,7 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None,
         lines.append("\n" + _section_metier(metier))
         if plan.raw_spec:
             lines.append("\n## Spécification originale (contexte)\n")
-            lines.append(plan.raw_spec[:3000])
+            lines.append(plan.raw_spec)
         return "\n".join(lines)
 
     lines.append("\n## Scénarios à couvrir\n")
