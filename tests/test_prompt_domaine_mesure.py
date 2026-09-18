@@ -163,3 +163,50 @@ def test_sur_l_annuaire_REEL_le_fait_de_0020_est_present():
     assert "Envoyer" not in s, "le gabarit doit rester écarté sur les données réelles"
     # Borne de coût : l'entrée est renvoyée à CHAQUE tour de la boucle ReAct.
     assert len(s) < 5000, f"section trop lourde ({len(s)} car.) — elle est payée à chaque tour"
+
+
+# ── Modèles back-office (menus, 2026-09-18) — le trou « Parc IT » ─────────────────────────────
+#
+# Sans cette section, un module purement back-office (mesuré : « Parc IT ») restait invisible
+# deux fois : hors périmètre du crawl (`crawl_exclusion_pattern` exclut `/web`/`/odoo`), et son
+# nom de modèle technique impossible à deviner sans lui — mesuré : `company_id` au lieu du vrai
+# `partner_id`, `equipment_type_id` au lieu du vrai `product_id`.
+
+def test_les_modeles_backoffice_decouverts_sont_donnes():
+    modele = _modele()
+    modele["modeles_backoffice"] = [
+        {"menu": "Générer des équipements", "model": "equipment.order"},
+        {"menu": "Affectation d'équipements", "model": "equipment.assignation.order"},
+    ]
+
+    s = pm._section_modeles_backoffice(modele)
+
+    assert "`equipment.order`" in s and "Générer des équipements" in s
+    assert "`equipment.assignation.order`" in s
+    assert "inspect_schema" in s
+
+
+def test_la_DATE_de_mesure_est_dite_aussi_pour_les_modeles_backoffice():
+    modele = _modele()
+    modele["modeles_backoffice"] = [{"menu": "Équipements", "model": "maintenance.equipment"}]
+
+    s = pm._section_modeles_backoffice(modele)
+
+    assert "2026-07-17" in s
+
+
+def test_sans_modele_backoffice_decouvert_AUCUNE_section_n_est_produite():
+    """Mieux vaut le silence qu'un fait inventé — même règle que pour les champs requis."""
+    assert pm._section_modeles_backoffice(None) == ""
+    assert pm._section_modeles_backoffice(_modele()) == ""
+    assert pm._section_modeles_backoffice(_modele()) == "", "modeles_backoffice absent du modèle"
+
+
+def test_la_section_backoffice_est_branchee_dans_le_message_initial():
+    modele = _modele()
+    modele["modeles_backoffice"] = [{"menu": "Générer des équipements", "model": "equipment.order"}]
+
+    msg = pm.build_initial_message(_plan(), modele, None)
+
+    assert "BACK-OFFICE" in msg
+    assert "`equipment.order`" in msg

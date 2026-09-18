@@ -165,6 +165,16 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
         if page_connexion:
             route, infos = page_connexion
             pages.setdefault(route, infos)
+        # ⚠️ Complément au BFS, jamais un remplacement (2026-09-18, module Parc IT/Odoo) : le
+        # crawl n'atteint JAMAIS le back-office d'un connecteur comme Odoo — un module qui n'y vit
+        # que là (menus, pas de lien portail) reste invisible au BFS quoi qu'il arrive, et son nom
+        # de modèle technique impossible à deviner sans lui. Best-effort : un connecteur qui n'a
+        # pas ce mécanisme (défaut de `Connector.discover_menus`) rend simplement `[]`.
+        try:
+            modeles_backoffice = connector.discover_menus(ctx.page)
+        except Exception as exc:
+            logger.warning("[exploration] découverte des menus a échoué : %s", exc)
+            modeles_backoffice = []
         try:
             nav.close()
         except Exception:
@@ -174,6 +184,7 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
         "pages": pages,
         "transitions": {k: sorted(v) for k, v in transitions.items()},
         "onglets_internes": {k: sorted(v) for k, v in onglets.items()},
+        "modeles_backoffice": modeles_backoffice,
     }
 
 

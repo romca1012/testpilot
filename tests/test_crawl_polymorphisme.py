@@ -362,3 +362,57 @@ def test_exploration_service_ne_supprase_jamais_une_mesure_du_bfs_par_celle_de_c
     # La route "/accueil-factice" a bien été mesurée par le BFS (via _FakePage.evaluate) : sa
     # mesure réelle doit primer sur celle, plus pauvre, déposée par le crochet de connexion.
     assert resultat["pages"]["/accueil-factice"]["champs"] != [{"name": "perime"}]
+
+
+# ── Complément back-office : `discover_menus` (2026-09-18, module Parc IT/Odoo) ────────────────
+
+def test_crawl_reporte_les_modeles_decouverts_par_menu(monkeypatch):
+    """`_crawl` doit transmettre ce que `connector.discover_menus` a trouvé — le mécanisme qui a
+    permis de découvrir « Parc IT » (equipment.order…), invisible au BFS car hors périmètre."""
+    import testpilot.api.services.exploration_service as es
+
+    class _ConnecteurAvecMenus(_ConnecteurFactice):
+        def discover_menus(self, page):
+            return [{"menu": "Générer des équipements", "model": "equipment.order"}]
+
+    connecteur = _ConnecteurAvecMenus()
+    monkeypatch.setattr("testpilot.connectors.factory.build_connector",
+                        lambda *_a, **_k: connecteur)
+
+    page = _FakePage({"/accueil-factice": [], "/autre-page": []})
+    fake_pw = _FakePlaywrightContext(_FakeBrowser(page))
+    monkeypatch.setattr("playwright.sync_api.sync_playwright", lambda: fake_pw)
+
+    resultat = es._crawl(
+        {"base_url": "http://factice.local", "database": "", "username": "", "password": "",
+         "connector_type": "un-type-que-personne-ne-connait", "nom": "Test"},
+        max_pages=10)
+
+    assert resultat["modeles_backoffice"] == [
+        {"menu": "Générer des équipements", "model": "equipment.order"}]
+
+
+def test_crawl_survit_a_un_echec_de_discover_menus(monkeypatch):
+    """Best-effort : un connecteur dont `discover_menus` plante ne doit jamais faire échouer
+    l'exploration entière — même arbitrage que partout ailleurs dans ce fichier."""
+    import testpilot.api.services.exploration_service as es
+
+    class _ConnecteurQuiExplose(_ConnecteurFactice):
+        def discover_menus(self, page):
+            raise RuntimeError("session expirée")
+
+    connecteur = _ConnecteurQuiExplose()
+    monkeypatch.setattr("testpilot.connectors.factory.build_connector",
+                        lambda *_a, **_k: connecteur)
+
+    page = _FakePage({"/accueil-factice": []})
+    fake_pw = _FakePlaywrightContext(_FakeBrowser(page))
+    monkeypatch.setattr("playwright.sync_api.sync_playwright", lambda: fake_pw)
+
+    resultat = es._crawl(
+        {"base_url": "http://factice.local", "database": "", "username": "", "password": "",
+         "connector_type": "un-type-que-personne-ne-connait", "nom": "Test"},
+        max_pages=10)
+
+    assert resultat["modeles_backoffice"] == []
+    assert resultat["pages"]  # le crawl lui-même n'a pas été affecté

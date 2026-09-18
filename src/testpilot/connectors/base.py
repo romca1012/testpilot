@@ -149,3 +149,20 @@ class Connector(ABC):
         convention d'URL, absence éventuelle de connexion) est ce qui distingue le plus un
         connecteur d'un autre — contrairement aux trois méthodes ci-dessus, purement structurelles.
         """
+
+    def discover_menus(self, page) -> list[dict]:
+        """Modèles métier accessibles au compte connecté via un mécanisme de MENU propre à
+        l'application — {menu, model} — au-delà de ce que le crawl atteint par les liens.
+
+        Complément du crawl, jamais un remplacement (décision 2026-09-18, module Parc IT/Odoo) :
+        `crawl_exclusion_pattern` exclut délibérément le back-office d'un connecteur comme Odoo
+        (`/web`, `/odoo`), donc un module purement back-office reste hors du crawl QUOI QU'IL
+        ARRIVE — son nom de modèle technique doit venir d'ailleurs, ou `inspect_schema` ne peut
+        même pas être appelé dessus (il faut déjà connaître le nom pour l'interroger).
+
+        `page` est la session déjà AUTHENTIFIÉE du crawl (`crawl_relogin_hook` vient de tourner) :
+        aucune nouvelle connexion, aucun accès RPC ne doit être nécessaire ici.
+
+        Défaut générique : rien — sans convention de menu propre à l'application (une page web
+        quelconque n'en a pas), il n'y a rien à énumérer sans deviner."""
+        return []

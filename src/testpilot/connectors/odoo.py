@@ -16,8 +16,10 @@ hors-ligne), la couche réseau est isolée dans des méthodes surchargeables.
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import logging
 import re
+import uuid
 from urllib.parse import urljoin, urlparse
 
 from testpilot import config
@@ -288,6 +290,71 @@ class OdooConnector(Connector):
             ctx.odoo_password = self._password
             H.playwright_login(ctx)
         return _login
+
+    def discover_menus(self, page) -> list[dict]:
+        """Énumère TOUS les menus (portail + back-office) que le compte connecté peut RÉELLEMENT
+        voir, et résout chacun vers son modèle technique réel — sans dépendre du crawl.
+
+        Mesuré en conditions réelles (Sapian, 2026-09-18) : le web client Odoo construit son
+        propre arbre de menus via `GET /web/webclient/load_menus/<valeur-jetable>`, DÉJÀ filtré
+        par les droits du compte connecté — un menu qu'un groupe de sécurité cache n'y apparaît
+        simplement pas. C'est ce qui a permis de découvrir « Parc IT » (`equipment.order`,
+        `equipment.assignation.order`, `maintenance.equipment`) — invisible au crawl, puisque
+        `crawl_exclusion_pattern` exclut tout `/web`, et donc absent de tout ce qu'`inspect_schema`
+        pouvait trouver tant que personne ne connaissait déjà ces noms de modèle.
+
+        Chaque entrée porte `actionID` + `actionModel` (le modèle de l'ACTION, ex.
+        `ir.actions.act_window` — jamais le modèle métier lui-même). Une lecture groupée de son
+        `res_model` donne le vrai nom technique — exactement ce qu'`inspect_schema` attend.
+
+        `page` est la session déjà authentifiée par `crawl_relogin_hook` : on réutilise son
+        `request` (mêmes cookies que la page), jamais une nouvelle connexion ni odoorpc — best
+        effort, comme toute perception de ce connecteur : un échec ne doit jamais faire échouer
+        l'exploration, seulement la priver de ce complément.
+        """
+        try:
+            reponse = page.request.get(
+                f"{self._url}/web/webclient/load_menus/{uuid.uuid4().hex}")
+            menus = reponse.json()
+        except Exception as exc:
+            logger.warning("[odoo] découverte des menus impossible : %s", exc)
+            return []
+        if not isinstance(menus, dict):
+            return []
+
+        action_ids = sorted({
+            m["actionID"] for m in menus.values()
+            if isinstance(m, dict) and m.get("actionModel") == "ir.actions.act_window"
+            and isinstance(m.get("actionID"), int)
+        })
+        if not action_ids:
+            return []
+
+        try:
+            reponse = page.request.post(
+                f"{self._url}/web/dataset/call_kw",
+                data=json.dumps({
+                    "jsonrpc": "2.0", "method": "call",
+                    "params": {"model": "ir.actions.act_window", "method": "read",
+                              "args": [action_ids, ["res_model"]], "kwargs": {}}}),
+                headers={"Content-Type": "application/json"})
+            modeles = {r["id"]: r["res_model"] for r in reponse.json().get("result") or []
+                      if r.get("res_model")}
+        except Exception as exc:
+            logger.warning("[odoo] résolution des modèles de menu impossible : %s", exc)
+            return []
+
+        vus, resultat = set(), []
+        for m in menus.values():
+            if not isinstance(m, dict) or m.get("actionModel") != "ir.actions.act_window":
+                continue
+            modele = modeles.get(m.get("actionID"))
+            nom = m.get("name", "")
+            if not modele or (modele, nom) in vus:
+                continue
+            vus.add((modele, nom))
+            resultat.append({"menu": nom, "model": modele})
+        return resultat
 
     # ── Écriture (runtime / teardown) ──────────────────────────────────────────
     def create(self, model: str, vals: dict) -> int:

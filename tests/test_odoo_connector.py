@@ -104,3 +104,93 @@ def test_odoo_connector_satisfait_l_interface():
 def test_from_config_cable_les_valeurs_par_defaut():
     conn = OdooConnector.from_config()
     assert conn._url and conn._database and conn._user
+
+
+# ── discover_menus — découverte des modèles back-office par énumération de menus ──────────────
+#
+# Formes JSON reprises TELLES QUE MESURÉES en direct sur l'instance Sapian (2026-09-18) : le web
+# client Odoo construit son propre arbre de menus déjà filtré par les droits du compte, via
+# `GET /web/webclient/load_menus/<jetable>` — c'est ce qui a révélé « Parc IT »
+# (equipment.order / equipment.assignation.order / maintenance.equipment), invisible au crawl.
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class _FakeRequestContext:
+    """Reprend `page.request` (API Playwright) : `.get`/`.post` renvoient un objet `.json()`."""
+
+    def __init__(self, menus_payload, actions_payload):
+        self._menus_payload = menus_payload
+        self._actions_payload = actions_payload
+        self.appels = []
+
+    def get(self, url):
+        self.appels.append(("GET", url))
+        return _FakeResponse(self._menus_payload)
+
+    def post(self, url, data=None, headers=None):
+        self.appels.append(("POST", url, data))
+        return _FakeResponse(self._actions_payload)
+
+
+class _FakePageAvecRequest:
+    def __init__(self, request):
+        self.request = request
+
+
+def test_discover_menus_resout_les_modeles_reels_depuis_les_menus():
+    menus = {
+        "688": {"id": 688, "name": "Générer des équipements", "actionID": 966,
+                "actionModel": "ir.actions.act_window"},
+        "689": {"id": 689, "name": "Affectation d'équipements", "actionID": 968,
+                "actionModel": "ir.actions.act_window"},
+        "740": {"id": 740, "name": "Équipements", "actionID": 983,
+                "actionModel": "ir.actions.act_window"},
+        # bruit à ignorer : sans actionModel act_window, ou sans actionID.
+        "1": {"id": 1, "name": "Séparateur", "actionID": False, "actionModel": False},
+        "2": {"id": 2, "name": "Serveur", "actionID": 12, "actionModel": "ir.actions.server"},
+    }
+    actions = {"jsonrpc": "2.0", "id": None, "result": [
+        {"id": 966, "res_model": "equipment.order"},
+        {"id": 968, "res_model": "equipment.assignation.order"},
+        {"id": 983, "res_model": "maintenance.equipment"},
+    ]}
+    request = _FakeRequestContext(menus, actions)
+    conn = OdooConnector("http://sapian.local", "db", "u", "p")
+
+    resultat = conn.discover_menus(_FakePageAvecRequest(request))
+
+    modeles = {r["model"] for r in resultat}
+    assert modeles == {"equipment.order", "equipment.assignation.order", "maintenance.equipment"}
+    assert {"menu": "Générer des équipements", "model": "equipment.order"} in resultat
+    # Un seul aller-retour de RÉSOLUTION groupée — pas un appel par action.
+    assert sum(1 for a in request.appels if a[0] == "POST") == 1
+
+
+def test_discover_menus_ne_leve_jamais_si_le_reseau_echoue():
+    class _RequestQuiExplose:
+        def get(self, url):
+            raise RuntimeError("session expirée")
+
+    conn = OdooConnector("http://sapian.local", "db", "u", "p")
+    resultat = conn.discover_menus(_FakePageAvecRequest(_RequestQuiExplose()))
+    assert resultat == []
+
+
+def test_discover_menus_rend_vide_sans_action_act_window():
+    menus = {"1": {"id": 1, "name": "Serveur", "actionID": 12, "actionModel": "ir.actions.server"}}
+    request = _FakeRequestContext(menus, {"result": []})
+    conn = OdooConnector("http://sapian.local", "db", "u", "p")
+    assert conn.discover_menus(_FakePageAvecRequest(request)) == []
+
+
+def test_discover_menus_est_le_defaut_vide_sur_l_interface_de_base():
+    """Un connecteur qui n'a pas ce mécanisme (défaut de `Connector`) ne casse rien — best
+    effort, comme partout ailleurs dans ce dépôt."""
+    from testpilot.connectors.generic_web import GenericWebConnector
+    assert GenericWebConnector(url="http://app.local").discover_menus(object()) == []

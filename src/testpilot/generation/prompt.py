@@ -406,6 +406,38 @@ def _section_domaine_mesure(plan: TestPlan, modele: dict | None) -> str:
     return "\n".join(lignes)
 
 
+def _section_modeles_backoffice(modele: dict | None) -> str:
+    """Les modèles BACK-OFFICE (menus Odoo) que le compte connecté peut réellement voir —
+    complément au crawl, qui n'atteint jamais `/web`/`/odoo` (`crawl_exclusion_pattern`).
+
+    ⚠️ **Le trou que ça bouche.** `inspect_schema(modele)` lit déjà le VRAI schéma RPC, sans
+    dépendre du crawl — mais exige de connaître le nom technique du modèle. Un module purement
+    back-office (mesuré : « Parc IT ») restait invisible deux fois : absent du crawl (hors
+    périmètre), et son nom de modèle impossible à deviner (mesuré : `company_id` au lieu du vrai
+    `partner_id`, `equipment_type_id` au lieu du vrai `product_id`). Cette liste vient de
+    `OdooConnector.discover_menus` : le web client Odoo lui-même, interrogé via
+    `/web/webclient/load_menus`, déjà filtré par les droits du compte — si un menu apparaît ici,
+    le compte du projet peut vraiment l'ouvrir.
+    """
+    menus = (modele or {}).get("modeles_backoffice") or []
+    if not menus:
+        return ""
+    date = (modele or {}).get("mesure_le", "?")
+    lignes = [
+        f"## Modèles BACK-OFFICE accessibles (menus mesurés le {date}, hors périmètre du crawl)",
+        "",
+        "Le crawl du portail ne visite jamais `/web`/`/odoo` : ces modèles existent et sont "
+        "accessibles au compte du projet, mais leurs champs ne figurent PAS dans la section "
+        "ci-dessus. Appelle `inspect_schema(\"<modèle>\")` AVANT d'écrire un cas qui les "
+        "concerne — n'invente jamais un nom de champ pour l'un d'eux :",
+        "",
+    ]
+    for entree in menus[:40]:
+        lignes.append(f"  - `{entree['model']}` — menu « {entree['menu']} »")
+    lignes.append("")
+    return "\n".join(lignes)
+
+
 def _section_metier(metier: dict) -> str:
     """Le document métier VALIDÉ PAR UN HUMAIN — la source du Gherkin (décision `0022` n°5/6).
 
@@ -464,6 +496,10 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None,
     domaine = _section_domaine_mesure(plan, modele)
     if domaine:
         lines.append("\n" + domaine)
+
+    backoffice = _section_modeles_backoffice(modele)
+    if backoffice:
+        lines.append("\n" + backoffice)
 
     # La contrainte de complétude AVANT les scénarios : elle conditionne la façon de les écrire.
     contrainte = _section_champs_requis(plan, modele)
