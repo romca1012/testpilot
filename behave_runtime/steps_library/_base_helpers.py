@@ -1392,9 +1392,27 @@ def no_error_with_keywords(page, keyword1, keyword2):
 
 
 def navigate_menu(context, menu_path):
-    context.page.goto(context.odoo_url, wait_until="domcontentloaded")
-    for part in [p.strip() for p in menu_path.split(">")]:
-        # clic auto-attendu (actionnabilité) ; pas de networkidle entre les niveaux.
+    """Un menu Odoo (ex. « Parc IT / Générer des équipements ») vit dans le BACK-OFFICE — jamais
+    sur la racine `context.odoo_url`, qui rend le portail applicatif custom quand l'instance en a
+    un (mesuré en RUN RÉEL, staging Sapian, 2026-09-18 : la page d'accueil est le « Portail des
+    services SAPIAN », sans aucune trace de « Parc IT » — le clic expirait après 8 s à chercher un
+    texte absent de cet écran). `/web#action=menu` est le sélecteur d'applications STANDARD
+    d'Odoo — présent sur toute instance, jamais spécifique à Sapian — qui affiche réellement les
+    icônes d'applications (Discuss, Parc IT, Ventes…) dont ce step a besoin pour cliquer dessus.
+
+    ⚠️ **Le séparateur de niveaux n'est jamais imposé nulle part** (aucune convention documentée
+    dans le prompt de génération) — mesuré en RUN RÉEL (résultat #3, staging Sapian, 2026-09-18) :
+    l'IA a écrit `"Parc IT / Générer des équipements"` avec `/`, alors que ce step ne coupait que
+    sur `>`. Sans séparateur reconnu, TOUTE la chaîne partait comme un seul texte à chercher —
+    qui n'existe nulle part tel quel, d'où le timeout. `/` ET `>` sont désormais acceptés,
+    exactement comme le motif déjà appliqué à `check_step_soumission` ce matin (le comportement
+    RÉEL varie, mieux vaut le tolérer qu'imposer une convention que personne ne connaît).
+    """
+    back_office_url = f"{context.odoo_url.rstrip('/')}/web#action=menu"
+    context.page.goto(back_office_url, wait_until="domcontentloaded")
+    for part in [p.strip() for p in re.split(r"[/>]", menu_path)]:
+        if not part:
+            continue
         context.page.get_by_text(part, exact=True).first.click(timeout=8000)
 
 

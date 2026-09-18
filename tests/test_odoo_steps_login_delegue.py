@@ -179,3 +179,29 @@ def test_navigate_menu_ignore_les_segments_vides():
     steps.step_navigate_menu(ctx, "/Parc IT//Équipements/")
 
     assert page.clics == ["Parc IT", "Équipements"]
+
+
+def test_navigation_helper_et_step_restent_identiques_apres_divergence_mesuree(monkeypatch):
+    """18/09/2026 : le helper visitait le portail avec un chemin non découpé, le step non."""
+    steps = _charger_odoo_steps()
+    import _base_helpers as helpers
+
+    assert steps.navigate_menu is helpers.navigate_menu
+    calls = []
+    monkeypatch.setattr(steps, "navigate_menu", lambda context, path: calls.append((context, path)))
+    context = object()
+    steps.step_navigate_menu(context, "Parc IT / Équipements")
+    assert calls == [(context, "Parc IT / Équipements")]
+
+
+def test_langue_des_libelles_mesures_conservee_sans_traduction_devinee():
+    steps = _charger_odoo_steps()
+    import _base_helpers as helpers
+
+    for navigate in (helpers.navigate_menu, steps.step_navigate_menu):
+        page = _FakePageMenu()
+        page.clics = []
+        context = types.SimpleNamespace(page=page, odoo_url="https://odoo.example/")
+        navigate(context, "/Parc IT//Générer des équipements > Equipment/")
+        assert page.urls_visitees == ["https://odoo.example/web#action=menu"]
+        assert page.clics == ["Parc IT", "Générer des équipements", "Equipment"]
