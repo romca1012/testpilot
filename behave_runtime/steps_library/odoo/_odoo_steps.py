@@ -213,7 +213,16 @@ def step_no_partial_record(context, field, model):
 @given('je navigue vers le menu Odoo "{menu_path}"')
 @when('je navigue vers le menu Odoo "{menu_path}"')
 def step_navigate_menu(context, menu_path):
-    context.page.goto(context.odoo_url, wait_until="domcontentloaded")
+    """Un menu Odoo (ex. « Parc IT / Générer des équipements ») vit dans le BACK-OFFICE — jamais
+    sur la racine `context.odoo_url`, qui rend le portail applicatif custom quand l'instance en a
+    un (mesuré en RUN RÉEL, staging Sapian, 2026-09-18 : la page d'accueil est le « Portail des
+    services SAPIAN », sans aucune trace de « Parc IT » — le clic expirait après 8 s à chercher un
+    texte absent de cet écran). `/web#action=menu` est le sélecteur d'applications STANDARD
+    d'Odoo — présent sur toute instance, jamais spécifique à Sapian — qui affiche réellement les
+    icônes d'applications (Discuss, Parc IT, Ventes…) dont ce step a besoin pour cliquer dessus.
+    """
+    back_office_url = f"{context.odoo_url.rstrip('/')}/web#action=menu"
+    context.page.goto(back_office_url, wait_until="domcontentloaded")
     for part in [p.strip() for p in menu_path.split(">")]:
         # clic auto-attendu (actionnabilité) ; pas de networkidle entre les niveaux.
         context.page.get_by_text(part, exact=True).first.click(timeout=8000)

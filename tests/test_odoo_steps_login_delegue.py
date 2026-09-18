@@ -92,3 +92,59 @@ def test_aucun_doublon_local_de_playwright_login_ne_subsiste():
     — c'est exactement la duplication qui a laissé ce bug non corrigé une fois."""
     steps = _charger_odoo_steps()
     assert not hasattr(steps, "_playwright_login")
+
+
+# ── Navigation menu : le back-office, jamais la racine du portail ─────────────────────────────
+#
+# Bug RÉEL mesuré en run (staging Sapian, 2026-09-18) : une fois le login corrigé, le step
+# « je navigue vers le menu Odoo "Parc IT / Générer des équipements" » atterrissait sur le
+# PORTAIL applicatif custom (`context.odoo_url`, sa page d'accueil), où « Parc IT » n'apparaît
+# jamais — seulement dans le sélecteur d'applications back-office (`/web#action=menu`, vérifié en
+# direct : icône « Parc IT » bien présente). Le clic sur un texte absent expirait après 8 s.
+
+class _Clickable:
+    def __init__(self, journal, texte):
+        self._journal = journal
+        self._texte = texte
+
+    @property
+    def first(self):
+        return self
+
+    def click(self, timeout=None):
+        self._journal.append(self._texte)
+
+
+class _FakePageMenu:
+    def __init__(self):
+        self.urls_visitees = []
+
+    def goto(self, url, **_k):
+        self.urls_visitees.append(url)
+
+    def get_by_text(self, texte, exact=True):
+        return _Clickable(self.clics, texte)
+
+
+def test_navigate_menu_part_du_selecteur_d_applications_back_office():
+    steps = _charger_odoo_steps()
+    page = _FakePageMenu()
+    page.clics = []
+    ctx = types.SimpleNamespace(page=page, odoo_url="https://sapian.example.com")
+
+    steps.step_navigate_menu(ctx, "Parc IT > Générer des équipements")
+
+    assert page.urls_visitees == ["https://sapian.example.com/web#action=menu"], (
+        "jamais la racine du portail — Parc IT n'y vit pas")
+    assert page.clics == ["Parc IT", "Générer des équipements"]
+
+
+def test_navigate_menu_tolere_un_slash_final_sur_odoo_url():
+    steps = _charger_odoo_steps()
+    page = _FakePageMenu()
+    page.clics = []
+    ctx = types.SimpleNamespace(page=page, odoo_url="https://sapian.example.com/")
+
+    steps.step_navigate_menu(ctx, "Parc IT")
+
+    assert page.urls_visitees == ["https://sapian.example.com/web#action=menu"]
