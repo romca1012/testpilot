@@ -12,7 +12,7 @@ from behave import given, then, when
 # autres fichiers de la bibliothèque.
 from _base_helpers import (
     memorize_record_count, check_count_not_increased, check_count_increased_by_one, no_duplicate,
-    validation_error_notification,
+    validation_error_notification, playwright_login,
 )
 
 
@@ -219,24 +219,12 @@ def step_navigate_menu(context, menu_path):
         context.page.get_by_text(part, exact=True).first.click(timeout=8000)
 
 
-def _playwright_login(context):
-    login_url = f"{context.odoo_url.rstrip('/')}/web/login?db={context.odoo_db}"
-    context.page.goto(login_url, wait_until="domcontentloaded")
-    context.page.wait_for_selector("input[name='login']", state="attached", timeout=15000)
-    context.page.locator("input[name='login']").fill(context.odoo_user, force=True)
-    context.page.locator("input[name='password']").fill(context.odoo_password, force=True)
-    context.page.locator("input[name='password']").press("Enter")
-    # Post-condition CONCRÈTE d'un login réussi : on a QUITTÉ la page de login (session établie).
-    # Remplace `networkidle`, que le bus long-polling d'Odoo ne stabilise jamais.
-    context.page.wait_for_url(lambda url: "/web/login" not in url, timeout=15000)
-
-
 @given('je navigue vers l\'URL du portail "{url}"')
 @when('je navigue vers l\'URL du portail "{url}"')
 def step_navigate_url(context, url):
     full_url = url if url.startswith("http") else f"{context.odoo_url.rstrip('/')}{url}"
     if context.page.url in ("about:blank", ""):
-        _playwright_login(context)
+        playwright_login(context)
     # domcontentloaded (fiable) ; l'interaction suivante auto-attendra sa cible.
     context.page.goto(full_url, wait_until="domcontentloaded")
 
@@ -244,8 +232,17 @@ def step_navigate_url(context, url):
 @given('je me connecte avec mes identifiants utilisateur')
 @when('je me connecte avec mes identifiants utilisateur')
 def step_login_portal(context):
-    """CONNECTE réellement le NAVIGATEUR (Playwright) et TERMINE sur l'accueil du portail (context.odoo_url), PAS sur le catalogue : pour cliquer un onglet de service (ex. « Ordinateurs », qui vit sur /myservices), NAVIGUE d'abord vers sa page avec « je navigue vers l'URL du portail "…" » — sinon le clic expire, l'onglet n'est pas là où le step d'auth t'a déposé (0020). Indispensable AVANT toute navigation sur une page du portail, sinon la session est anonyme et la page ne se rend pas. NE RÉIMPLÉMENTE JAMAIS l'authentification : le champ `input[name='login']` existe mais n'est PAS visible, un `fill()` nu expire au bout de 30 s — ce step le sait (`state="attached"` + `force=True`). Réutilise-le, ne le recopie pas."""
-    _playwright_login(context)
+    """CONNECTE réellement le NAVIGATEUR (Playwright) et TERMINE sur l'accueil du portail (context.odoo_url), PAS sur le catalogue : pour cliquer un onglet de service (ex. « Ordinateurs », qui vit sur /myservices), NAVIGUE d'abord vers sa page avec « je navigue vers l'URL du portail "…" » — sinon le clic expire, l'onglet n'est pas là où le step d'auth t'a déposé (0020). Indispensable AVANT toute navigation sur une page du portail, sinon la session est anonyme et la page ne se rend pas.
+
+    ⚠️ Délègue à `_base_helpers.playwright_login` — NE RÉIMPLÉMENTE JAMAIS l'authentification ici.
+    Un doublon local a existé (avant le 2026-09-18) : il rendait `input[name='login']` seulement
+    `state="attached"`, jamais `"visible"` — sur un formulaire replié derrière un SSO (Sapian), le
+    champ reste attaché mais masqué, le `fill(force=True)` s'exécute en pure perte, et Playwright
+    finit par expirer en attendant la navigation post-login (`Timeout 15000ms exceeded`) — mesuré
+    en RUN RÉEL (résultat #1, cas « Refus de création d'un équipement… », staging Sapian) alors
+    que le correctif SSO (`3ceee7c`) n'avait été appliqué qu'au chemin du CRAWL, jamais à ce step
+    d'exécution — deux implémentations séparées du même geste, une seule corrigée."""
+    playwright_login(context)
     context.page.goto(context.odoo_url, wait_until="domcontentloaded")
 
 

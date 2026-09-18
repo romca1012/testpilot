@@ -1,0 +1,94 @@
+"""`_odoo_steps.py` déléguait à un doublon local de la connexion Playwright — jamais corrigé
+quand `_base_helpers.playwright_login` l'a été (commit `3ceee7c`, formulaire replié derrière un
+SSO, 2026-09-17). Mesuré en RUN RÉEL (résultat #1, staging Sapian, 2026-09-18) : le step
+d'exécution « je me connecte avec mes identifiants utilisateur » attendait
+`input[name='login']` en `state="attached"` (jamais `"visible"`) — sur le formulaire replié, le
+`fill(force=True)` s'exécutait en pure perte et Playwright expirait en attendant la navigation
+post-login (`Timeout 15000ms exceeded`). Le CRAWL, lui, avait déjà le correctif — deux gestes
+identiques, un seul corrigé.
+
+Ces tests prouvent la délégation, pas le comportement Playwright réel (déjà couvert par les
+tests de `_base_helpers.playwright_login` lui-même).
+"""
+
+from __future__ import annotations
+
+import sys
+import types
+from pathlib import Path
+
+RACINE = Path(__file__).resolve().parent.parent
+_STEPS_LIB = RACINE / "behave_runtime" / "steps_library"
+
+
+def _charger_odoo_steps():
+    sys.path.insert(0, str(_STEPS_LIB))
+    sys.path.insert(0, str(_STEPS_LIB / "odoo"))
+    import _odoo_steps as steps
+    return steps
+
+
+def test_step_login_portal_delegue_a_playwright_login_corrige(monkeypatch):
+    steps = _charger_odoo_steps()
+    import _base_helpers as H
+
+    appels = []
+    monkeypatch.setattr(H, "playwright_login", lambda ctx: appels.append(ctx))
+    monkeypatch.setattr(steps, "playwright_login", H.playwright_login)
+
+    class _Page:
+        url = "about:blank"
+
+        def goto(self, url, **_k):
+            self.url = url
+
+    ctx = types.SimpleNamespace(page=_Page(), odoo_url="http://x")
+    steps.step_login_portal(ctx)
+
+    assert appels == [ctx], "le step doit déléguer à la fonction déjà corrigée, pas la recopier"
+
+
+def test_step_navigate_url_delegue_aussi_si_page_vierge(monkeypatch):
+    """Même geste que le crawl (`crawl_roots`) : sur une page vierge, se connecter D'ABORD."""
+    steps = _charger_odoo_steps()
+    import _base_helpers as H
+
+    appels = []
+    monkeypatch.setattr(H, "playwright_login", lambda ctx: appels.append(ctx))
+    monkeypatch.setattr(steps, "playwright_login", H.playwright_login)
+
+    class _Page:
+        url = "about:blank"
+
+        def goto(self, url, **_k):
+            self.url = url
+
+    ctx = types.SimpleNamespace(page=_Page(), odoo_url="http://x")
+    steps.step_navigate_url(ctx, "/myservices")
+
+    assert appels == [ctx]
+
+
+def test_step_navigate_url_ne_relogue_pas_si_deja_sur_une_page():
+    steps = _charger_odoo_steps()
+
+    class _Page:
+        url = "http://x/myservices"
+
+        def goto(self, url, **_k):
+            self.url = url
+
+    appels = []
+    steps.playwright_login = lambda ctx: appels.append(ctx)  # type: ignore[attr-defined]
+    ctx = types.SimpleNamespace(page=_Page(), odoo_url="http://x")
+
+    steps.step_navigate_url(ctx, "/autre")
+
+    assert appels == [], "une session déjà établie ne doit jamais être re-authentifiée"
+
+
+def test_aucun_doublon_local_de_playwright_login_ne_subsiste():
+    """Garde anti-régression : la fonction locale `_playwright_login` ne doit jamais réapparaître
+    — c'est exactement la duplication qui a laissé ce bug non corrigé une fois."""
+    steps = _charger_odoo_steps()
+    assert not hasattr(steps, "_playwright_login")
