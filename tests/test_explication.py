@@ -169,6 +169,76 @@ def test_un_verdict_backend_verified_ne_recoit_aucune_note():
     assert texte == "Le formulaire a bien créé le ticket attendu."
 
 
+# ── Citer ou replier (backlog 1.3) ────────────────────────────────────────────
+#
+# Le défaut SauceDemo (ci-dessus) n'était corrigé que par une INSTRUCTION de prompt — jamais
+# vérifié après coup. Un modèle qui ignore l'instruction (ou une future régression de prompt)
+# reproduirait le même récit inventé sans qu'aucun contrôle ne le détecte.
+
+def test_une_explication_SANS_citation_verifiable_recoit_un_repli_sur():
+    """Le cas mesuré, rejoué : le récit peut sembler plausible, mais rien ne le rattache au vrai
+    détail mesuré — il ne doit jamais atteindre l'utilisateur tel quel."""
+    payload = json.dumps({
+        "explication": "L'application a accepté la connexion, un problème de sécurité existe.",
+        "citation": "",
+    })
+
+    texte, _cout = propose_explication(
+        _verdict_connexion_refusee_avec_ecart_texte(), llm=FakeLLM(payload))
+
+    assert "problème de sécurité" not in texte
+    assert texte == (
+        "Un résultat a été mesuré pour ce test, mais l'explication automatique n'a pas pu être "
+        "confirmée par rapport au détail réellement observé — voir le détail technique du "
+        "scénario pour l'analyse exacte.")
+
+
+def test_une_citation_reformulee_ne_suffit_pas():
+    """La citation doit être un extrait MOT POUR MOT du détail mesuré — une paraphrase fidèle sur
+    le fond ne prouve pas que l'explication s'appuie vraiment sur le fait réel."""
+    payload = json.dumps({
+        "explication": "Le message de refus affiché diffère légèrement de celui attendu.",
+        "citation": "un message d'erreur différent de celui attendu a été affiché",
+    })
+
+    texte, _cout = propose_explication(
+        _verdict_connexion_refusee_avec_ecart_texte(), llm=FakeLLM(payload))
+
+    assert texte != "Le message de refus affiché diffère légèrement de celui attendu."
+
+
+def test_une_explication_AVEC_citation_verifiable_est_conservee():
+    payload = json.dumps({
+        "explication": "L'application a bien refusé la connexion ; seul le texte exact du "
+                       "message diffère de celui attendu (point final manquant).",
+        "citation": "Epic sadface: Username and password do not match any user in this service",
+    })
+
+    texte, _cout = propose_explication(
+        _verdict_connexion_refusee_avec_ecart_texte(), llm=FakeLLM(payload))
+
+    assert texte.startswith("L'application a bien refusé la connexion")
+
+
+def test_aucune_citation_requise_quand_rien_n_a_ete_mesure():
+    """Un verdict sans échec n'a rien à confronter — exiger une citation serait absurde."""
+    payload = json.dumps({"explication": "Le formulaire a bien créé le ticket attendu.",
+                          "citation": ""})
+
+    texte, _cout = propose_explication(_verdict_passed(), llm=FakeLLM(payload))
+
+    assert texte == "Le formulaire a bien créé le ticket attendu."
+
+
+def test_le_prompt_demande_explicitement_une_citation_verifiable():
+    llm = FakeLLM(json.dumps({"explication": "ok", "citation": ""}))
+
+    propose_explication(_verdict_connexion_refusee_avec_ecart_texte(), llm=llm)
+
+    assert "citation" in llm.prompts[0].lower()
+    assert "mot pour mot" in llm.prompts[0].lower()
+
+
 def test_la_note_n_est_jamais_ajoutee_a_un_commentaire_vide():
     """Un échec de génération reste `("", 0.0)` — la note ne doit pas transformer un défaut
     mineur (commentaire manquant) en une demi-explication orpheline."""

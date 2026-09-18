@@ -50,10 +50,18 @@ _SYSTEM = ("Tu expliques le résultat d'un test automatique à un lecteur qui ne
 
 _SCHEMA = {
     "type": "object",
-    "properties": {"explication": {"type": "string"}},
-    "required": ["explication"],
+    "properties": {"explication": {"type": "string"}, "citation": {"type": "string"}},
+    "required": ["explication", "citation"],
     "additionalProperties": False,
 }
+
+# Repli SÛR (backlog 1.3) : jamais un récit inventé, quand la citation attendue est absente ou
+# introuvable dans ce qui a été réellement mesuré — même principe que la note UI_ONLY ci-dessus,
+# transposé de « fait structurel » à « affirmation non vérifiable ».
+_EXPLICATION_REPLI = (
+    "Un résultat a été mesuré pour ce test, mais l'explication automatique n'a pas pu être "
+    "confirmée par rapport au détail réellement observé — voir le détail technique du scénario "
+    "pour l'analyse exacte.")
 
 # Même borne que `run_service._persist` (`error_summary=(s.error or "")[:500]`) — assez pour
 # porter une comparaison attendu/obtenu, jamais une trace de pile entière.
@@ -79,6 +87,14 @@ def _resume_scenario(s) -> str:
     return ligne
 
 
+def _detail_reel_combine(verdict: CaseVerdict) -> str:
+    """Tout ce qui a été RÉELLEMENT mesuré, jamais un titre — la seule matière sur laquelle une
+    citation peut être vérifiée (backlog 1.3)."""
+    return "\n".join(
+        s.error.strip()[:_ERREUR_MAX] for s in verdict.scenarios
+        if s.functional_status != "conforme" and (s.error or "").strip())
+
+
 def _build_prompt(verdict: CaseVerdict, module_name: str) -> str:
     lignes = "\n".join(_resume_scenario(s) for s in verdict.scenarios) \
         or "(aucun scénario n'a pu être joué)"
@@ -92,14 +108,17 @@ Scénarios réussis : {verdict.scenarios_passed} sur {len(verdict.scenarios)}
 Détail par scénario :
 {lignes}
 
-Réponds en JSON : {{"explication": "..."}}
+Réponds en JSON : {{"explication": "...", "citation": "..."}}
 
 RÈGLES IMPÉRATIVES :
 1. Explique CE QUI a été vérifié et POURQUOI ce résultat, en une ou deux phrases.
 2. Jamais de jargon technique — écris pour quelqu'un qui ne code pas.
 3. Si le résultat est positif, dis ce qui a été confirmé, pas seulement « tout est bon ».
 4. Si une ligne « Ce que le test a réellement mesuré » est donnée pour un scénario en échec,
-   décris CE fait précis — jamais une idée devinée depuis le seul titre du scénario."""
+   décris CE fait précis — jamais une idée devinée depuis le seul titre du scénario.
+5. `citation` : s'il existe au moins une ligne « Ce que le test a réellement mesuré » ci-dessus,
+   copie MOT POUR MOT l'extrait exact sur lequel ton explication se base — jamais une
+   reformulation. Sans une telle ligne (tout a réussi, rien à confronter), laisse citation vide."""
 
 
 def _data_explication(llm, verdict: CaseVerdict, module_name: str, model: str,
@@ -144,6 +163,21 @@ def propose_explication(verdict: CaseVerdict, *, module_name: str = "",
         logger.warning("[explication] appel IA impossible — commentaire vide", exc_info=True)
         return "", 0.0
     texte = str(data.get("explication", "") or "").strip()
+
+    # ⚠️ Citer ou replier (backlog 1.3) : technique Anthropic (guide « reduce hallucinations »),
+    # transposée de « fait structurel » (la note UI_ONLY ci-dessus) à « affirmation non
+    # vérifiable ». S'il existe un détail RÉELLEMENT mesuré à confronter, l'explication doit
+    # citer un extrait vérifiable de ce détail — sinon repli sûr, jamais le récit non vérifié
+    # (c'est exactement le défaut mesuré le 2026-09-14 sur SauceDemo : un récit plausible mais
+    # faux, construit sur le seul titre du scénario).
+    detail_reel = _detail_reel_combine(verdict)
+    if texte and detail_reel:
+        citation = str(data.get("citation", "") or "").strip()
+        if not citation or citation.lower() not in detail_reel.lower():
+            logger.warning(
+                "[explication] citation absente ou introuvable dans le détail mesuré — repli sûr")
+            texte = _EXPLICATION_REPLI
+
     if texte and verdict.ground_truth == GROUND_TRUTH_UI_ONLY:
         texte = f"{texte} {_NOTE_UI_ONLY}"
     return texte, round(tracker.total_cost, 6)
