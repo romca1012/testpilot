@@ -406,7 +406,23 @@ def _section_domaine_mesure(plan: TestPlan, modele: dict | None) -> str:
     return "\n".join(lignes)
 
 
-def _section_modeles_backoffice(modele: dict | None) -> str:
+# ⚠️ **Pas de plafond serré, contrairement aux routes/selects ci-dessus.** Une première version
+# tronquait aux 30 premiers, triés par pertinence lexicale (mots du module/des entités de la spec
+# recoupant le libellé du menu). Mesuré en conditions réelles (Sapian, 2026-09-18, `module_name`
+# = "Parc IT") : `equipment.order`/`equipment.assignation.order` — les deux modèles que ce
+# mécanisme existe pour révéler — n'ont JAMAIS matché (« équipements » n'apparaît nulle part dans
+# "Parc IT", et un rapprochement français/anglais spec↔menu est trop fragile pour qu'on lui fasse
+# confiance) : ils restaient noyés et tronqués derrière ~150 menus standard (Comptabilité,
+# Mailing…). Une troncature qui peut cacher EXACTEMENT le fait que ce mécanisme existe pour
+# révéler est pire qu'un prompt plus long — donc tout est listé, sans exception. Seul l'ORDRE
+# d'affichage utilise la pertinence lexicale (les correspondances probables en tête, pour la
+# lisibilité) ; `_PLAFOND_SECURITE` n'est qu'un garde-fou contre un cas pathologique, jamais le
+# mécanisme actif de limitation.
+_PLAFOND_SECURITE_BACKOFFICE = 250
+_MOT_SIGNIFICATIF = re.compile(r"\w{4,}", re.UNICODE)
+
+
+def _section_modeles_backoffice(plan: TestPlan, modele: dict | None) -> str:
     """Les modèles BACK-OFFICE (menus Odoo) que le compte connecté peut réellement voir —
     complément au crawl, qui n'atteint jamais `/web`/`/odoo` (`crawl_exclusion_pattern`).
 
@@ -422,6 +438,17 @@ def _section_modeles_backoffice(modele: dict | None) -> str:
     menus = (modele or {}).get("modeles_backoffice") or []
     if not menus:
         return ""
+    mots_cles = {m.lower() for m in _MOT_SIGNIFICATIF.findall(plan.module_name or "")}
+    for entite in plan.models or []:
+        mots_cles.update(m.lower() for m in _MOT_SIGNIFICATIF.findall(entite))
+
+    def pertinent(entree: dict) -> bool:
+        texte = f"{entree.get('menu', '')} {entree.get('model', '')}".lower()
+        return any(mot in texte for mot in mots_cles)
+
+    tries = sorted(menus, key=lambda e: 0 if (mots_cles and pertinent(e)) else 1)
+    retenus = tries[:_PLAFOND_SECURITE_BACKOFFICE]
+
     date = (modele or {}).get("mesure_le", "?")
     lignes = [
         f"## Modèles BACK-OFFICE accessibles (menus mesurés le {date}, hors périmètre du crawl)",
@@ -432,8 +459,11 @@ def _section_modeles_backoffice(modele: dict | None) -> str:
         "concerne — n'invente jamais un nom de champ pour l'un d'eux :",
         "",
     ]
-    for entree in menus[:40]:
+    for entree in retenus:
         lignes.append(f"  - `{entree['model']}` — menu « {entree['menu']} »")
+    if len(menus) > len(retenus):
+        lignes.append(f"  *(+{len(menus) - len(retenus)} autres — garde-fou de sécurité "
+                      f"({_PLAFOND_SECURITE_BACKOFFICE}) atteint, cas anormal à signaler)*")
     lignes.append("")
     return "\n".join(lignes)
 
@@ -497,7 +527,7 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None,
     if domaine:
         lines.append("\n" + domaine)
 
-    backoffice = _section_modeles_backoffice(modele)
+    backoffice = _section_modeles_backoffice(plan, modele)
     if backoffice:
         lines.append("\n" + backoffice)
 

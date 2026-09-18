@@ -179,7 +179,7 @@ def test_les_modeles_backoffice_decouverts_sont_donnes():
         {"menu": "Affectation d'équipements", "model": "equipment.assignation.order"},
     ]
 
-    s = pm._section_modeles_backoffice(modele)
+    s = pm._section_modeles_backoffice(_plan(), modele)
 
     assert "`equipment.order`" in s and "Générer des équipements" in s
     assert "`equipment.assignation.order`" in s
@@ -190,16 +190,45 @@ def test_la_DATE_de_mesure_est_dite_aussi_pour_les_modeles_backoffice():
     modele = _modele()
     modele["modeles_backoffice"] = [{"menu": "Équipements", "model": "maintenance.equipment"}]
 
-    s = pm._section_modeles_backoffice(modele)
+    s = pm._section_modeles_backoffice(_plan(), modele)
 
     assert "2026-07-17" in s
 
 
 def test_sans_modele_backoffice_decouvert_AUCUNE_section_n_est_produite():
     """Mieux vaut le silence qu'un fait inventé — même règle que pour les champs requis."""
-    assert pm._section_modeles_backoffice(None) == ""
-    assert pm._section_modeles_backoffice(_modele()) == ""
-    assert pm._section_modeles_backoffice(_modele()) == "", "modeles_backoffice absent du modèle"
+    assert pm._section_modeles_backoffice(_plan(), None) == ""
+    assert pm._section_modeles_backoffice(_plan(), _modele()) == "", "modeles_backoffice absent"
+
+
+def test_aucun_modele_n_est_jamais_omis_meme_sans_rapport_apparent():
+    """Régression RÉELLE (Sapian, 2026-09-18) : `equipment.order`/`equipment.assignation.order`
+    — les deux modèles que ce mécanisme existe pour révéler — n'ont JAMAIS matché le mot-clé du
+    module (« Parc IT » ne recoupe pas « équipements » côté texte), et une troncature aux 30
+    premiers les a fait disparaître, noyés derrière ~150 menus standard (Comptabilité, Mailing…).
+    Une troncature qui peut cacher EXACTEMENT le fait que ce mécanisme sert à révéler est pire
+    qu'un prompt plus long : plus AUCUN modèle découvert n'est omis, quel que soit son rang."""
+    bruit = [{"menu": f"Menu générique {i}", "model": f"generic.model.{i}"} for i in range(150)]
+    modele = _modele()
+    modele["modeles_backoffice"] = bruit + [
+        {"menu": "Générer des équipements", "model": "equipment.order"}]
+
+    s = pm._section_modeles_backoffice(_plan(module_name="Parc IT"), modele)
+
+    assert "`equipment.order`" in s, "aucun modèle découvert ne doit jamais être omis"
+    assert s.count("generic.model") == 150, "le bruit n'est pas omis non plus — juste relégué"
+
+
+def test_les_correspondances_lexicales_passent_en_tete_pour_la_lisibilite():
+    bruit = [{"menu": f"Menu générique {i}", "model": f"generic.model.{i}"} for i in range(5)]
+    modele = _modele()
+    modele["modeles_backoffice"] = bruit + [
+        {"menu": "Générer des équipements", "model": "equipment.order"}]
+
+    s = pm._section_modeles_backoffice(_plan(module_name="équipements"), modele)
+
+    assert s.index("equipment.order") < s.index("generic.model"), (
+        "la correspondance lexicale doit apparaître avant le bruit, pas seulement survivre")
 
 
 def test_la_section_backoffice_est_branchee_dans_le_message_initial():
