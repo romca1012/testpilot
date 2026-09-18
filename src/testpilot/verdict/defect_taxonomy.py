@@ -78,6 +78,17 @@ LABELS = {
 # donnée de ce module que le composant jugé ne fabrique pas.
 _EXCEPTION_LINE_RE = re.compile(r"^\s*([\w.]+(?:Error|Exception|Timeout))\b", re.MULTILINE)
 
+# ⚠️ **Le MÊME `TimeoutError` couvre deux causes distinctes** (backlog 1.4, mesuré en run réel —
+# résultat #1, staging Sapian, 2026-09-18) : un élément introuvable (sélecteur/libellé faux,
+# `wrong_field_name`) ou une NAVIGATION qui n'arrive jamais (page bloquée ailleurs — session,
+# connexion — `wrong_navigation`). Le nom de la classe seul ne les distingue pas ; le journal
+# d'appel Playwright, lui, le dit explicitement (« waiting for navigation to … ») — un texte
+# produit par l'OUTIL qui a échoué, jamais par l'agent (décision 0015 exclut `step_text`, pas le
+# journal d'exécution de l'appel qui a levé l'exception). Sans ce raffinement, un `TimeoutError`
+# sur `wait_for_url` (session bloquée) était classé « champ introuvable » — un diagnostic qui
+# aurait orienté une réparation vers le mauvais problème.
+_NAVIGATION_WAIT_RE = re.compile(r"waiting for navigation", re.IGNORECASE)
+
 # ⚠️ Behave n'écrit JAMAIS « AssertionError ». Vérifié dans la source (behave 1.3.3,
 # ``model.py:1888``) :
 #
@@ -297,7 +308,11 @@ def classify_failure(failure) -> str:
     if _BEHAVE_ASSERT_RE.search(brut):
         return ASSERTION_MISMATCH
 
-    cause = _EXCEPTION_TO_CAUSE.get(exception_type(brut))
+    exc_type = exception_type(brut)
+    if exc_type in ("TimeoutError", "PlaywrightTimeoutError") and _NAVIGATION_WAIT_RE.search(brut):
+        return WRONG_NAVIGATION
+
+    cause = _EXCEPTION_TO_CAUSE.get(exc_type)
     if cause:
         return cause
 

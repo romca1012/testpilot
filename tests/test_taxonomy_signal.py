@@ -180,6 +180,29 @@ def test_le_type_d_exception_decide(exc, attendu):
     assert dt.classify_failure(FakeFailure(raw=exc)) == attendu
 
 
+# ── Un même TimeoutError, deux causes distinctes (backlog 1.4) ────────────────────────────────
+#
+# Mesuré en run réel (résultat #1, staging Sapian, 2026-09-18) : un TimeoutError sur
+# `wait_for_url` (session de connexion bloquée sur un formulaire SSO replié) classé
+# `wrong_field_name` — alors qu'aucun champ ni sélecteur n'était en cause. Le nom de la classe
+# seul ne distingue pas « élément introuvable » de « navigation qui n'arrive jamais » ; le
+# journal d'appel Playwright, lui, le dit.
+
+def test_un_timeout_sur_une_navigation_est_distingue_d_un_element_introuvable():
+    """Le cas réel rejoué : même classe d'exception, cause différente selon ce qui était attendu."""
+    navigation_bloquee = FakeFailure(raw=(
+        "playwright._impl._errors.TimeoutError: Timeout 15000ms exceeded.\n"
+        "=========================== logs ===========================\n"
+        "waiting for navigation to \"https://sapian.example.com/web\" until 'load'\n"
+        "============================================================"))
+    element_introuvable = FakeFailure(raw=(
+        "playwright._impl._errors.TimeoutError: Locator.click: Timeout 8000ms exceeded.\n"
+        "waiting for get_by_text(\"Nouveau\", exact=True).first"))
+
+    assert dt.classify_failure(navigation_bloquee) == dt.WRONG_NAVIGATION
+    assert dt.classify_failure(element_introuvable) == dt.WRONG_FIELD_NAME
+
+
 def test_exception_type_retient_la_derniere_de_la_chaine():
     """Dans un `raise ... from ...`, c'est la DERNIÈRE qui a interrompu le step."""
     chaine = ("ValueError: rien trouvé\n"
