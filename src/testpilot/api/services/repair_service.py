@@ -32,6 +32,7 @@ cette porte, et sans elle `progresse` serait une invitation au masquage d'échec
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 
@@ -431,6 +432,7 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             # Le fichier ACTUEL : `write_steps_file` le REMPLACE, l'agent doit donc partir de
             # son contenu et le rendre entier — sans lui, il réécrit de mémoire et tronque.
             steps_content=version["steps_content"] or "",
+            verified_fields=json.loads(version.get("verified_fields") or "{}"),
             connector=connector,
             connector_type=connector_type,
             connector_version=connector_version,
@@ -481,6 +483,7 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             steps_content=proposal.steps_content or version["steps_content"],
             change_summary=proposal.summary[:500] or "Réparation automatique",
             created_by="repair-agent",
+            verified_fields=json.dumps(proposal.verified_fields, ensure_ascii=False),
         )
         session.attempts += 1
         circuit.record(failure_signature(failures))

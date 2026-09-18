@@ -24,6 +24,7 @@ class AgentState:
     stall_count: int = 0
     stalled: bool = False
     stopped_reason: str = ""
+    verified_fields: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -45,3 +46,4 @@ class GenerationResult:
     awaiting_review: bool = False
     case_id: int | None = None
     version_id: int | None = None
+    verified_fields: dict[str, list[str]] = field(default_factory=dict)

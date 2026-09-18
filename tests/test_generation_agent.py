@@ -160,3 +160,45 @@ def test_write_steps_rejects_shared_step_redefinition(tmp_path):
     assert outcome.ok is False
     assert "AmbiguousStep" in outcome.observation
     assert not (tmp_path / "gen" / "demo_steps.py").exists()
+
+
+def test_parc_it_inspection_back_office_survit_a_la_generation_et_a_la_persistance(tmp_path):
+    """2026-09-18 : le crawl portail omet les champs RPC de equipment.order."""
+    import json
+    from types import SimpleNamespace
+
+    connector = SimpleNamespace(get_schema=lambda _: {"product_id": {"type": "many2one"}},
+                                rules=lambda: "")
+    conn = get_initialized_db(tmp_path / "parc_it.db")
+    try:
+        inspect = LLMResponse(stop_reason="tool_use", tool_calls=[
+            ToolUseBlock(id="schema", name="inspect_schema", input={"model": "equipment.order"})])
+        agent = GenerationAgent(
+            llm=FakeLLM([inspect, _write_both()]), connector=connector,
+            dry_runner=FakeDryRunner([DR(True)]), case_repo=CaseRepo(conn),
+            version_repo=VersionRepo(conn))
+        result = agent.generate(_plan())
+        assert result.success
+        expected = {"inspect_schema:equipment.order": ["product_id"]}
+        assert result.verified_fields == expected
+        assert json.loads(VersionRepo(conn).get(result.version_id)["verified_fields"]) == expected
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("kind", ["correction", "repair"])
+def test_parc_it_registre_conserve_dans_les_boucles_de_correction(kind):
+    from types import SimpleNamespace
+    from testpilot.generation.correction_agent import propose_correction
+    from testpilot.generation.repair_agent import propose_fix
+
+    initial = {"inspect_schema:equipment.order": ["product_id"]}
+    common = dict(module_name="parc_it", llm=FakeLLM([_inspect(), _end_turn()]),
+                  connector=SimpleNamespace(get_schema=lambda _: {"partner_id": {}}, rules=lambda: ""),
+                  verified_fields=initial)
+    if kind == "correction":
+        result = propose_correction(lint_warnings=[], feature_content="", steps_content="", **common)
+    else:
+        result = propose_fix(scenarios=[], failures=[], **common)
+    assert result.verified_fields == {**initial, "inspect_schema:x": ["partner_id"]}
+    assert initial == {"inspect_schema:equipment.order": ["product_id"]}

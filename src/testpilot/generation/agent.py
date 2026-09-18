@@ -114,6 +114,7 @@ class GenerationAgent:
             steps_content=state.steps_content,
             spec_hash=spec_hash(plan.raw_spec),
             awaiting_review=success,
+            verified_fields=state.verified_fields,
         )
 
     def _persist(self, plan: TestPlan, result: GenerationResult, *,
@@ -161,6 +162,7 @@ class GenerationAgent:
             steps_path=str(result.steps_path or ""),
             change_summary="Génération IA",
             created_by=author,
+            verified_fields=_json.dumps(result.verified_fields, ensure_ascii=False),
             # ── Le MÉTIER se fige DANS la version, avec le technique (décision `0022` n°10) ──
             # Sans ça, les champs de la migration 14 restaient vides sur tout cas généré et
             # l'écran en dérivait un aperçu depuis le Gherkin : un texte qui avait l'air rédigé

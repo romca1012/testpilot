@@ -969,7 +969,10 @@ class CaseRepo:
                 title=version.get("title") or titre,
                 preconditions=version.get("preconditions") or "",
                 test_steps=version.get("test_steps") or "",
-                expected_result=version.get("expected_result") or "")
+                expected_result=version.get("expected_result") or "",
+                verified_fields=(version.get("verified_fields") or "")
+                if source.get("project_id") == ModuleRepo(self.conn).get(groupe["module_id"])["project_id"]
+                else "{}")
             self.set_current_version(new_id, vid)
 
             # ⚠️ Le RUNNER lit le script SUR DISQUE (`config.GENERATED_DIR/{slug}.feature`),
@@ -1175,6 +1178,7 @@ class CaseRepo:
             created_by=editor,
             title=new_title, preconditions=new_pre, test_steps=new_steps,
             expected_result=new_expected,
+            verified_fields=(current or {}).get("verified_fields", ""),
         )
         # Le CAS porte une COPIE courante du titre pour les listes et les filtres.
         # La VERSION fait foi — même règle que le raccourci de résultat.
@@ -1224,7 +1228,8 @@ class CaseRepo:
             title=(current or {}).get("title") or case.get("title", ""),
             preconditions=(current or {}).get("preconditions", ""),
             test_steps=(current or {}).get("test_steps", ""),
-            expected_result=(current or {}).get("expected_result", ""))
+            expected_result=(current or {}).get("expected_result", ""),
+            verified_fields=(current or {}).get("verified_fields", ""))
         self.set_current_version(case_id, version_id)
 
         # ⚠️ Le RUNNER lit le script SUR DISQUE (`config.GENERATED_DIR/{slug}.feature`), jamais
@@ -1466,7 +1471,7 @@ class VersionRepo:
                feature_content: str, steps_content: str, feature_path: str = "",
                steps_path: str = "", change_summary: str = "", created_by: str = "",
                title: str = "", preconditions: str = "", test_steps: str = "",
-               expected_result: str = "") -> int:
+               expected_result: str = "", verified_fields: str = "") -> int:
         """Crée une version — **le CAS ENTIER**, métier ET technique (décision `0022` n°10).
 
         Les champs métier (`title`, `preconditions`, `test_steps`, `expected_result`)
@@ -1482,11 +1487,11 @@ class VersionRepo:
             "INSERT INTO test_case_version (test_case_id, version_number, spec_content,"
             " spec_hash, feature_content, steps_content, feature_path, steps_path,"
             " change_summary, created_at, created_by,"
-            " title, preconditions, test_steps, expected_result)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " title, preconditions, test_steps, expected_result, verified_fields)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (test_case_id, number, spec_content, spec_hash, feature_content, steps_content,
              feature_path, steps_path, change_summary, now_iso(), created_by,
-             title, preconditions, test_steps, expected_result),
+             title, preconditions, test_steps, expected_result, verified_fields),
         )
         self.conn.commit()
         return int(cur.lastrowid)

@@ -134,6 +134,10 @@ def _apply_effect(state: AgentState, tool_name: str, outcome) -> None:
     """Reporte les effets d'un tool réussi sur l'état de génération."""
     if not outcome.ok:
         return
+    if tool_name in {"inspect_schema", "inspect_page_form"}:
+        for source, names in outcome.verified_fields.items():
+            state.verified_fields[source] = sorted(
+                set(state.verified_fields.get(source, [])) | set(names))
     if tool_name == "write_feature_file" and outcome.feature_content is not None:
         state.feature_written = True
         state.feature_content = outcome.feature_content

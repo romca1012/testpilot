@@ -197,6 +197,7 @@ CREATE TABLE IF NOT EXISTS test_case_version (
     expected_result TEXT    NOT NULL DEFAULT '',   -- UNE phrase de verdict global (décision 3.a)
     feature_content TEXT    NOT NULL DEFAULT '',
     steps_content   TEXT    NOT NULL DEFAULT '',
+    verified_fields TEXT    NOT NULL DEFAULT '',
     feature_path    TEXT    NOT NULL DEFAULT '',
     steps_path      TEXT    NOT NULL DEFAULT '',
     change_summary  TEXT    NOT NULL DEFAULT '',

@@ -15,7 +15,7 @@ avant que l'appelant ne le persiste comme nouvelle version.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from testpilot import config
 from testpilot.generation import steps_library
@@ -41,6 +41,7 @@ class CorrectionProposal:
     summary: str = ""          # ce que l'agent dit avoir fait — montré à un humain tel quel
     cost_usd: float = 0.0
     stopped_reason: str = ""
+    verified_fields: dict[str, list[str]] = field(default_factory=dict)
 
 
 def build_correction_prompt(connector: Connector | None = None,
@@ -104,7 +105,8 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
                        dry_runner: DryRunner | None = None,
                        cost_tracker: CostTracker | None = None,
                        max_iterations: int | None = None,
-                       calibration_writes_enabled: bool = False) -> CorrectionProposal:
+                       calibration_writes_enabled: bool = False,
+                       verified_fields: dict[str, list[str]] | None = None) -> CorrectionProposal:
     """Une tentative de correction depuis des points de vigilance statiques. Ne lance JAMAIS le
     test réel — même contrat que `repair_agent.propose_fix`."""
     llm = llm or LLMAdapter()
@@ -114,7 +116,7 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
     # Les fichiers EXISTENT déjà sur disque et ont déjà passé un dry-run à la génération : on part
     # de cet état, comme `repair_agent.propose_fix` (même rationale, cf. sa docstring).
     state = AgentState(module_name=module_name, feature_written=True, steps_written=True,
-                       dry_run_passed=True)
+                       dry_run_passed=True, verified_fields=dict(verified_fields or {}))
     state.messages.append({"role": "user",
                            "content": _signal_report(lint_warnings, feature_content, steps_content)})
 
@@ -142,6 +144,7 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
         logger.info("[correction] l'agent n'a rien réécrit (%s)", state.stopped_reason)
     return CorrectionProposal(
         changed=changed,
+        verified_fields=state.verified_fields,
         feature_content=state.feature_content or feature_content,
         steps_content=state.steps_content or steps_content,
         summary=_last_assistant_text(state),

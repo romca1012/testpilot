@@ -32,7 +32,9 @@ def inspect_schema(ctx: "ToolContext", model: str) -> "ToolOutcome":
     for name, meta in list(schema.items())[:50]:
         req = "requis" if meta.get("required") else "optionnel"
         lines.append(f"- {name} ({meta.get('type', '?')}, {req})")
-    return _outcome("\n".join(lines))
+    outcome = _outcome("\n".join(lines))
+    outcome.verified_fields = {f"inspect_schema:{model}": list(schema)[:50]}
+    return outcome
 
 
 def query_data(ctx: "ToolContext", model: str, fields, limit: int = 3) -> "ToolOutcome":
@@ -59,10 +61,14 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
     fields = info.get("fields", [])
     required = [f["name"] for f in fields if f.get("required")]
     submission = summarize_submission_mechanism(info.get("submission"))
-    return _outcome(
+    names = [f["name"] for f in fields if f.get("name")]
+    outcome = _outcome(
         f"Formulaire {page_url} : {len(fields)} champ(s), requis={required}. "
+        f"Noms observés : {names}. "
         f"Soumission : {submission or 'inconnue'}."
     )
+    outcome.verified_fields = {f"inspect_page_form:{page_url}": names}
+    return outcome
 
 
 def discover_route(ctx: "ToolContext", path_pattern: str, sample_id: int | None = None) -> "ToolOutcome":

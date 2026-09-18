@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 45
+ALIGNED_WITH_SCHEMA_VERSION = 46
 
 metadata = MetaData()
 
@@ -214,6 +214,7 @@ test_case_version = Table(
     Column("expected_result", Text, nullable=False, server_default=""),
     Column("feature_content", Text, nullable=False, server_default=""),
     Column("steps_content", Text, nullable=False, server_default=""),
+    Column("verified_fields", Text, nullable=False, server_default=""),
     Column("feature_path", Text, nullable=False, server_default=""),
     Column("steps_path", Text, nullable=False, server_default=""),
     Column("change_summary", Text, nullable=False, server_default=""),

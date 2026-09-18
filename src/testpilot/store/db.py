@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 45
+_SCHEMA_VERSION = 46
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -232,6 +232,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_44_connector_type_valide(conn)
     if version < 45:
         _migrate_45_calibration_writes(conn)
+    if version < 46:
+        _migrate_46_verified_fields(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -1906,3 +1908,8 @@ def _migrate_41_background_job(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_background_job_status_created"
         " ON background_job(status, created_at)")
+
+
+def _migrate_46_verified_fields(conn: sqlite3.Connection) -> None:
+    if "verified_fields" not in _column_names(conn, "test_case_version"):
+        conn.execute("ALTER TABLE test_case_version ADD COLUMN verified_fields TEXT NOT NULL DEFAULT ''")

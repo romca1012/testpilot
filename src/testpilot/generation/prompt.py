@@ -50,6 +50,13 @@ def build_system_prompt(connector: Connector | None = None,
     est transmis à l'agent.
     """
     base = _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+    base += (
+        "\n\nChaque nom de champ utilisé doit être cité à l'identique dans le crawl fourni "
+        "ou dans le résultat d'un appel inspect_schema(modèle) / inspect_page_form(URL). "
+        "Avant d'utiliser un champ absent du crawl, inspecte sa source. Le registre est "
+        "alimenté uniquement par les résultats des outils, jamais par tes déclarations. "
+        "Un champ absent du crawl et du registre sera signalé à la relecture."
+    )
 
     prefix = ""
     catalogue = steps_library.as_prompt_section(shared_steps or [])

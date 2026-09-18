@@ -14,7 +14,7 @@ est ainsi rattrapé sans coûter une exécution réelle.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from testpilot import config
 from testpilot.generation import steps_library
@@ -44,6 +44,7 @@ class RepairProposal:
     # suivante, et le ledger comme la session seraient faux à la hausse.
     cost_usd: float = 0.0
     stopped_reason: str = ""
+    verified_fields: dict[str, list[str]] = field(default_factory=dict)
 
 
 def build_repair_prompt(connector: Connector | None = None,
@@ -153,7 +154,8 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
                 connector_type: str | None = None, connector_version: str = "",
                 dry_runner: DryRunner | None = None,
                 cost_tracker: CostTracker | None = None,
-                max_iterations: int | None = None) -> RepairProposal:
+                max_iterations: int | None = None,
+                verified_fields: dict[str, list[str]] | None = None) -> RepairProposal:
     """Une tentative de correction. Ne lance JAMAIS le test réel (design (b)).
 
     ⚠️ **`cost_tracker` doit être PARTAGÉ entre les tentatives d'un même cas.** Sans lui, on en
@@ -177,7 +179,7 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
     # `feature_content`/`steps_content` restent VIDES : c'est à ça qu'on saura ce que l'agent a
     # réellement réécrit (le tool `_apply_effect` les remplit).
     state = AgentState(module_name=module_name, feature_written=True, steps_written=True,
-                       dry_run_passed=True)
+                       dry_run_passed=True, verified_fields=dict(verified_fields or {}))
     # ⚠️ La mémoire va dans le MESSAGE, jamais dans `build_repair_prompt` : le prompt système
     # est identique pour tous les cas, donc son cache est partagé par tous. Le rendre unique par
     # cas coûterait bien plus que la mémoire ne fait gagner.
@@ -208,6 +210,7 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
         logger.info("[repair] l'agent n'a rien réécrit (%s)", state.stopped_reason)
     return RepairProposal(
         changed=changed,
+        verified_fields=state.verified_fields,
         feature_content=state.feature_content,
         steps_content=state.steps_content,
         summary=_last_assistant_text(state),

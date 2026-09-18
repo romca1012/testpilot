@@ -23,6 +23,7 @@ pris pour un simple « timeout ».
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import threading
@@ -439,9 +440,11 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
     if current and case.get("project_id"):
         projet = ProjectRepo(conn).get(case["project_id"])
         modele = domain_model.charger_modele(projet) if projet else None
-        if modele:
-            warnings += smoke_check.smoke_check(current.get("feature_content") or "",
-                                                current.get("steps_content") or "", modele=modele)
+        registry = current.get("verified_fields")
+        if modele or registry:
+            warnings += smoke_check.smoke_check(
+                current.get("feature_content") or "", current.get("steps_content") or "",
+                modele=modele, verified_fields=json.loads(registry) if registry else None)
     return warnings
 
 
@@ -520,7 +523,8 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
         steps_content=version.get("steps_content") or "",
         connector=connector, connector_type=connector_type,
         connector_version=connector_version, dry_runner=dry_runner,
-        calibration_writes_enabled=calibration_writes_enabled)
+        calibration_writes_enabled=calibration_writes_enabled,
+        verified_fields=json.loads(version.get("verified_fields") or "{}"))
     _record_generation_cost(conn, case_id=case_id, correction_usd=proposal.cost_usd)
 
     if not proposal.changed:
@@ -538,7 +542,8 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
         created_by=_AUTEUR_CORRECTION, title=version.get("title") or "",
         preconditions=version.get("preconditions") or "",
         test_steps=version.get("test_steps") or "",
-        expected_result=version.get("expected_result") or "")
+        expected_result=version.get("expected_result") or "",
+        verified_fields=json.dumps(proposal.verified_fields, ensure_ascii=False))
     CaseRepo(conn).set_current_version(case_id, version_corrigee_id)
 
     version_rows_apres = VersionRepo(conn).list_for_case(case_id)

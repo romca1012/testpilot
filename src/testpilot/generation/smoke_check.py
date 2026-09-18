@@ -344,7 +344,8 @@ def check_valeurs_de_select(feature_content: str, modele: dict) -> list[dict]:
     return [w.as_dict() for w in warnings]
 
 
-def check_champs_existants(feature_content: str, modele: dict) -> list[dict]:
+def check_champs_existants(feature_content: str, modele: dict,
+                           verified_fields: dict[str, list[str]] | None = None) -> list[dict]:
     """Les champs référencés existent-ils quelque part ? — le motif `0007`.
 
     ⚠️ Union sur TOUT le domaine, comme les selects : on ne signale que l'introuvable **partout**.
@@ -353,7 +354,9 @@ def check_champs_existants(feature_content: str, modele: dict) -> list[dict]:
     faire.
     """
     connus = _index_champs(modele)
-    if not connus:
+    for names in (verified_fields or {}).values():
+        connus.update(names)
+    if not connus and verified_fields is None:
         return []
     date = modele.get("mesure_le", "?")
     warnings: list[SmokeWarning] = []
@@ -368,23 +371,22 @@ def check_champs_existants(feature_content: str, modele: dict) -> list[dict]:
             kind="champ_inconnu", step=champ, line=num,
             message=(f"Aucun champ « {champ} » relevé sur l'application. Si c'est un libellé "
                      f"affiché, le nom technique est attendu ({{field}} = attribut HTML `name`, "
-                     f"cf. 0007). (modèle mesuré le {date})")))
+                     f"cf. 0007). (crawl mesuré le {date}, inspections de cette version incluses)")))
     return [w.as_dict() for w in warnings]
 
 
-def smoke_check(feature_content: str, steps_content: str = "", modele: dict | None = None
-                ) -> list[dict]:
-    """Tous les contrôles. Rend `[]` si aucun modèle : **pas de modèle ⇒ aucun avis**.
+def smoke_check(feature_content: str, steps_content: str = "", modele: dict | None = None,
+                verified_fields: dict[str, list[str]] | None = None) -> list[dict]:
+    """Sans crawl, seules les inspections de la version peuvent étayer l'avis sur les champs.
 
-    ⚠️ Silence volontaire sans modèle, et il faut le dire : un module qui « ne trouve rien » parce
-    qu'il n'a **rien à quoi comparer** ressemble à un module qui **valide**. C'est le motif que ce
-    projet traque (« l'absence de signal prise pour un signal positif »). L'appelant doit donc
-    savoir si un modèle existe — il ne peut pas le déduire d'une liste vide.
+    `None` désigne une version ancienne sans registre ; `{}` une génération instrumentée
+    qui n'a observé aucun champ. Les confondre ferait taire une génération sans preuve.
     """
     if not modele or not modele.get("pages"):
-        return []
+        return (check_champs_existants(feature_content, modele or {}, verified_fields)
+                if verified_fields is not None else [])
     return (check_valeurs_de_select(feature_content, modele)
-            + check_champs_existants(feature_content, modele)
+            + check_champs_existants(feature_content, modele, verified_fields)
             + check_champs_requis_remplis(feature_content, modele)
             # Seul contrôle qui ne consulte PAS le modèle (il lit la structure du scénario) : il
             # reste sous le garde « pas de modèle ⇒ pas d'avis » pour que le gate ait un

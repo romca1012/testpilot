@@ -35,6 +35,7 @@ class ToolOutcome:
     ok: bool = True
     feature_content: str | None = None
     steps_content: str | None = None
+    verified_fields: dict[str, list[str]] = field(default_factory=dict)
 
 
 TOOLS_DEFINITIONS: list[dict] = [
