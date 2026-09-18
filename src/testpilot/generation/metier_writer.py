@@ -11,6 +11,18 @@ Cette passe est **délibérément séparée de l'analyse** (`SpecAnalyzer`) : l'
 matière technique pour l'agent (modèles, routes, sélecteurs) ; ici on écrit du français destiné à
 un lecteur humain. Les fusionner produirait un document contaminé par du vocabulaire technique —
 exactement ce que le §5 du brief réserve au mode dev.
+
+⚠️ **Délibérément SANS citation-ou-retrait (backlog 1.2), à la différence de `spec_analyzer.py`
+et `decoupage.py`.** Deux raisons, pas un oubli :
+1. Ce document est une ÉLABORATION en étapes concrètes d'une capacité décrite en général par la
+   spec ("l'utilisateur peut réinitialiser son mot de passe" → "1. Cliquer sur…"), pas une
+   citation par nature — exiger un extrait mot pour mot par étape rejetterait des documents
+   parfaitement fidèles, exactement le faux positif bloquant que ce projet refuse partout
+   ailleurs (`check_step_soumission`, `smoke_check` : détective, jamais bloquant).
+2. Cette passe est déjà protégée par le garde-fou le plus fort du dépôt : AUCUN coût technique
+   n'est engagé avant qu'un humain valide ce document (décision `0022` n°5). Une user story
+   hallucinée ne peut de toute façon plus l'atteindre — `decoupage.propose_decoupage` l'aurait
+   déjà écartée faute de citation vérifiable.
 """
 
 from __future__ import annotations

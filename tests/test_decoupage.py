@@ -14,7 +14,11 @@ from testpilot.analysis.plan import TestPlan
 from testpilot.generation.decoupage import StoryPlan, _build_prompt, propose_decoupage
 
 
-def _plan(spec="La spec complète du module."):
+_SPEC_PAR_DEFAUT = ("La spec complète du module : la connexion se fait avec identifiant et mot "
+                   "de passe ; la réinitialisation du mot de passe envoie un lien par email.")
+
+
+def _plan(spec=_SPEC_PAR_DEFAUT):
     return TestPlan(module_name="m", models=[], scenarios=[], personas=["u"], portal_routes=[],
                     risks=[], connector_type="odoo", cost_usd=0.0, raw_spec=spec)
 
@@ -31,9 +35,10 @@ class FakeLLM:
 
 _BON_JSON = json.dumps({
     "stories": [
-        {"user_story": "Connexion",
+        {"user_story": "Connexion", "citation": "la connexion se fait avec identifiant et mot de passe",
          "cases": [{"title": "Connexion réussie", "brief": "identifiants valides"}]},
         {"user_story": "Réinitialisation du mot de passe",
+         "citation": "la réinitialisation du mot de passe envoie un lien par email",
          "cases": [
              {"title": "Demande valide", "brief": "email connu, lien envoyé"},
              {"title": "Email inconnu", "brief": "email absent du système, refus"},
@@ -77,8 +82,9 @@ def test_le_nombre_de_cas_par_story_est_CELUI_DU_MODELE_pas_un_nombre_fixe():
 def test_une_story_SANS_titre_est_ELIMINEE():
     """Un titre de story vide ne peut rien nommer sur l'écran — on ne fabrique pas de nom."""
     payload = json.dumps({"stories": [
-        {"user_story": "  ", "cases": [{"title": "Un cas", "brief": "b"}]},
-        {"user_story": "Connexion", "cases": [{"title": "Connexion réussie", "brief": "b"}]},
+        {"user_story": "  ", "citation": "connexion", "cases": [{"title": "Un cas", "brief": "b"}]},
+        {"user_story": "Connexion", "citation": "la connexion se fait avec identifiant",
+         "cases": [{"title": "Connexion réussie", "brief": "b"}]},
     ]})
 
     stories = propose_decoupage(_plan(), llm=FakeLLM(payload))
@@ -89,8 +95,9 @@ def test_une_story_SANS_titre_est_ELIMINEE():
 def test_une_story_SANS_AUCUN_cas_exploitable_est_ELIMINEE():
     """Une story sans cas ne couvre rien — la garder créerait une Section vide."""
     payload = json.dumps({"stories": [
-        {"user_story": "Story vide", "cases": []},
-        {"user_story": "Connexion", "cases": [{"title": "Connexion réussie", "brief": "b"}]},
+        {"user_story": "Story vide", "citation": "connexion", "cases": []},
+        {"user_story": "Connexion", "citation": "la connexion se fait avec identifiant",
+         "cases": [{"title": "Connexion réussie", "brief": "b"}]},
     ]})
 
     stories = propose_decoupage(_plan(), llm=FakeLLM(payload))
@@ -100,7 +107,7 @@ def test_une_story_SANS_AUCUN_cas_exploitable_est_ELIMINEE():
 
 def test_un_cas_SANS_titre_est_ELIMINE_mais_pas_toute_sa_story():
     payload = json.dumps({"stories": [
-        {"user_story": "Connexion", "cases": [
+        {"user_story": "Connexion", "citation": "la connexion se fait avec identifiant", "cases": [
             {"title": "", "brief": "b"},
             {"title": "Connexion réussie", "brief": "b"},
         ]},
@@ -115,6 +122,37 @@ def test_un_cas_SANS_titre_est_ELIMINE_mais_pas_toute_sa_story():
 def test_une_reponse_illisible_ne_FABRIQUE_aucune_story():
     """Même prudence que `metier_writer` : un plan vide et signalé, jamais des stories inventées."""
     stories = propose_decoupage(_plan(), llm=FakeLLM("désolé, je ne peux pas"))
+
+    assert stories == []
+
+
+# ── Citer ou retirer (backlog 1.2) ────────────────────────────────────────────
+#
+# Un site « texte pur » (aucun outil d'observation) : jusqu'ici, une user story plausible pour
+# le domaine mais absente de la spec traversait cette étape sans aucun contrôle.
+
+def test_une_story_SANS_citation_verifiable_est_ecartee():
+    payload = json.dumps({"stories": [
+        {"user_story": "Suppression du compte", "citation": "la suppression est instantanée",
+         "cases": [{"title": "Suppression réussie", "brief": "b"}]},
+        {"user_story": "Connexion", "citation": "la connexion se fait avec identifiant",
+         "cases": [{"title": "Connexion réussie", "brief": "b"}]},
+    ]})
+
+    stories = propose_decoupage(_plan(), llm=FakeLLM(payload))
+
+    assert [s.user_story for s in stories] == ["Connexion"]
+
+
+def test_une_citation_reformulee_ne_suffit_pas():
+    """La citation doit être un extrait MOT POUR MOT — une paraphrase fidèle sur le fond ne
+    prouve pas que la story vient réellement de la spec."""
+    payload = json.dumps({"stories": [
+        {"user_story": "Connexion", "citation": "l'utilisateur s'authentifie sur la plateforme",
+         "cases": [{"title": "Connexion réussie", "brief": "b"}]},
+    ]})
+
+    stories = propose_decoupage(_plan(), llm=FakeLLM(payload))
 
     assert stories == []
 

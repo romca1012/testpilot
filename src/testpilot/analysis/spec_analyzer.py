@@ -58,6 +58,50 @@ def _parse_submission(raw: dict | None) -> SubmissionSpec | None:
     )
 
 
+def _citer_ou_retirer(entries: list, content: str, module_name: str) -> list[str]:
+    """Ne garde un modèle proposé que s'il est accompagné d'une citation VÉRIFIABLE — une
+    sous-chaîne réelle de la spec source. Technique documentée par Anthropic (guide « reduce
+    hallucinations ») : ancrer sur des citations exactes, retirer une affirmation qu'aucune
+    citation ne soutient.
+
+    ⚠️ **Ce que ça bouche.** Ce pilier est un site « texte pur » (`call_simple`, aucun outil
+    d'observation) — jusqu'ici, un modèle inventé (plausible pour le domaine mais absent de la
+    spec) traversait cette étape sans aucun contrôle : le seul garde-fou existant
+    (`generation/smoke_check.py`) n'intervient que bien plus tard, sur un Gherkin déjà écrit.
+
+    Repli rétrocompatible : le LLM peut encore répondre par une liste de chaînes nues (ancien
+    format, ou modèle qui n'a pas suivi la consigne) — accepté seulement si le nom lui-même
+    apparaît tel quel dans la spec, jamais accepté à l'aveugle.
+    """
+    retenues: list[str] = []
+    contenu_lower = content.lower()
+    for entree in entries or []:
+        if isinstance(entree, str):
+            nom = entree.strip()
+            if not nom:
+                continue
+            if nom.lower() in contenu_lower:
+                retenues.append(nom)
+            else:
+                logger.warning(
+                    "[analyzer] %s : modèle '%s' proposé sans citation vérifiable — écarté",
+                    module_name, nom)
+            continue
+        if not isinstance(entree, dict):
+            continue
+        nom = str(entree.get("name", "")).strip()
+        citation = str(entree.get("citation", "")).strip()
+        if not nom:
+            continue
+        if citation and citation.lower() in contenu_lower:
+            retenues.append(nom)
+        else:
+            logger.warning(
+                "[analyzer] %s : modèle '%s' écarté — citation absente ou introuvable dans la "
+                "spec (%r)", module_name, nom, citation[:80])
+    return retenues
+
+
 class SpecAnalyzer:
     def __init__(self, llm: LLMAdapter | None = None, cost_tracker=None,
                  connector_type: str = "odoo", model: str = ""):
@@ -87,6 +131,8 @@ class SpecAnalyzer:
         if not extracted.get("scenarios"):
             logger.warning("[analyzer] 0 scénario extrait pour '%s'", module_name)
 
+        modeles_verifies = _citer_ou_retirer(extracted.get("models", []), content, module_name)
+
         scenarios = [
             ScenarioIntent(
                 name=s.get("name", "Scénario"),
@@ -104,7 +150,7 @@ class SpecAnalyzer:
 
         return TestPlan(
             module_name=module_name,
-            models=extracted.get("models", []),
+            models=modeles_verifies,
             scenarios=scenarios,
             personas=extracted.get("personas", ["utilisateur"]),
             portal_routes=extracted.get("portal_routes", []),
@@ -124,7 +170,7 @@ class SpecAnalyzer:
         return f"""Analyse cette spécification fonctionnelle pour un système de type « {self.connector_type} ».
 Extrais en JSON :
 {{
-  "models": ["sale.order", ...],
+  "models": [{{"name": "sale.order", "citation": "phrase EXACTE de la spec qui nomme ce modèle"}}, ...],
   "personas": ["acheteur", "manager"],
   "portal_routes": ["/my/orders", ...],
   "ambiguities": ["..."],
@@ -154,6 +200,9 @@ RÈGLES D'EXTRACTION (n'invente JAMAIS — champ absent ⇒ valeur vide) :
   DÉCOUVRIRA en explorant l'application (boîte noire). Ne devine jamais une URL/sélecteur.
 - assertions[] : pour chaque champ vérifié après soumission, utilise le NOM EXACT du champ
   tel qu'écrit dans la spec.
+- models[].citation : copie MOT POUR MOT un extrait de la spec ci-dessous qui nomme ce modèle —
+  jamais une reformulation. Un modèle dont la citation ne se retrouve pas telle quelle dans le
+  texte source sera écarté avant même d'atteindre la génération.
 
 Réponds UNIQUEMENT en JSON valide. Génère au minimum 3 scénarios (1 nominal, 1 erreur, 1 limite).
 

@@ -45,9 +45,10 @@ _STORY_SCHEMA = {
     "type": "object",
     "properties": {
         "user_story": {"type": "string"},
+        "citation": {"type": "string"},
         "cases": {"type": "array", "items": _CASE_BRIEF_SCHEMA},
     },
-    "required": ["user_story", "cases"],
+    "required": ["user_story", "citation", "cases"],
     "additionalProperties": False,
 }
 
@@ -105,6 +106,7 @@ Réponds en JSON :
   "stories": [
     {{
       "user_story": "nom de la user story, en langage métier",
+      "citation": "extrait MOT POUR MOT de la spécification ci-dessus d'où vient cette story",
       "cases": [
         {{"title": "phrase métier décrivant ce que CE cas vérifie",
           "brief": "en une ou deux phrases, ce qui distingue ce cas des autres de la même story"}}
@@ -115,6 +117,9 @@ Réponds en JSON :
 
 RÈGLES IMPÉRATIVES :
 1. Chaque user story vient de la spécification — n'en invente aucune qu'elle ne décrit pas.
+   `citation` DOIT être un extrait copié TEL QUEL de la spécification (jamais une reformulation)
+   — une story dont la citation ne se retrouve pas mot pour mot dans le texte source sera
+   écartée avant même d'atteindre la rédaction du cas.
 2. Le TITRE de chaque cas est une phrase métier, jamais un préfixe de classement
    (« [NOMINAL] … » est INTERDIT).
 3. Le BRIEF dit à qui rédigera ce cas ce qui le distingue des autres — pas un résumé de la
@@ -151,20 +156,35 @@ def propose_decoupage(plan: TestPlan, *, llm: LLMAdapter | None = None,
     Une user story sans aucun cas exploitable, ou un titre de cas vide, est éliminée en silence
     plutôt que de fabriquer un plan à trous — la même prudence que `metier_writer.propose_metier`
     pour un document illisible.
+
+    ⚠️ **Citer ou retirer (backlog 1.2).** Ce pilier est un site « texte pur » (aucun outil
+    d'observation) : sans vérification, une user story plausible pour le domaine mais absente de
+    la spécification traverserait cette étape sans aucun contrôle. Chaque story doit donc citer,
+    mot pour mot, l'extrait de la spec dont elle vient — une story dont la citation ne se
+    retrouve pas telle quelle dans `plan.raw_spec` est écartée, jamais acceptée sur la foi de son
+    propre libellé (technique documentée par Anthropic, guide « reduce hallucinations »).
     """
     llm = llm or LLMAdapter()
     data = _data_decoupage(llm, plan, model, cost_tracker)
     stories_raw = data.get("stories") or []
+    spec_lower = (plan.raw_spec or "").lower()
     stories: list[StoryPlan] = []
     for s in stories_raw:
         user_story = str((s or {}).get("user_story", "")).strip()
+        citation = str((s or {}).get("citation", "")).strip()
         cases = [
             CaseBrief(title=str(c.get("title", "")).strip(), brief=str(c.get("brief", "")).strip())
             for c in ((s or {}).get("cases") or [])
             if str(c.get("title", "")).strip()
         ]
-        if user_story and cases:
-            stories.append(StoryPlan(user_story=user_story, cases=cases))
+        if not (user_story and cases):
+            continue
+        if not citation or citation.lower() not in spec_lower:
+            logger.warning(
+                "[decoupage] user story '%s' écartée — citation absente ou introuvable dans la "
+                "spec (%r)", user_story, citation[:80])
+            continue
+        stories.append(StoryPlan(user_story=user_story, cases=cases))
     if not stories:
         logger.warning("[decoupage] aucune user story exploitable — plan vide")
     return stories
