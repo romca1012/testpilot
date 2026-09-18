@@ -73,7 +73,8 @@ def _append_user_text(state: AgentState, text: str) -> None:
 
 
 def run_loop(*, llm, system_prompt: str, state: AgentState, ctx: ToolContext,
-             dry_runner, cost_tracker, max_iterations: int, stall_limit: int) -> AgentState:
+             dry_runner, cost_tracker, max_iterations: int, stall_limit: int,
+             model: str = "") -> AgentState:
     """Exécute la boucle jusqu'à un dry-run vert ou l'activation d'un garde-fou."""
     for i in range(max_iterations):
         state.iterations = i + 1
@@ -83,6 +84,7 @@ def run_loop(*, llm, system_prompt: str, state: AgentState, ctx: ToolContext,
                 messages=state.messages,
                 tools=TOOLS_DEFINITIONS,
                 cost_tracker=cost_tracker,
+                **({"model": model} if model else {}),
             )
         except CostLimitExceeded:
             state.stopped_reason = "cost_exceeded"

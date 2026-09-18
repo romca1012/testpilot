@@ -131,17 +131,14 @@ def _record_cost(conn, execution_id: int | None, cost_usd: float) -> None:
     Best-effort : une écriture de comptabilité ne doit jamais faire échouer une réparation qui,
     elle, a réussi — mais elle ne doit pas non plus disparaître en silence (§4.6).
 
-    ⚠️ **`model=config.MODEL_GENERATION`, pas `MODEL_REPAIR`.** `repair_agent.propose_fix` appelle
-    `react_loop.run_loop` → `LLMAdapter.call_with_tools` sans jamais passer de `model=` explicite
-    — l'appel tourne donc sur le défaut de `call_with_tools`, `config.MODEL_GENERATION`.
-    `MODEL_REPAIR` n'est appelé nulle part sur ce chemin ; l'utiliser ici comme étiquette faisait
-    passer un appel Sonnet dans le ledger pour un appel Haiku (3x moins cher au token), rendant les
-    coûts de la phase "repair" invérifiables.
+    Le 2026-09-18, la sonde de call_with_tools confirme l'absence de modèle explicite :
+    la réparation utilisait le défaut de génération. Le modèle désormais transmis par
+    repair_agent et celui du ledger doivent rester identiques (backlog 0.3).
     """
     if not cost_usd:
         return
     try:
-        CostRepo(conn).add_entry(phase="repair", model=config.MODEL_GENERATION,
+        CostRepo(conn).add_entry(phase="repair", model=config.MODEL_REPAIR,
                                  cost_usd=cost_usd, source=config.COST_SOURCE,
                                  execution_id=execution_id)
         if execution_id is not None:

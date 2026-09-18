@@ -196,6 +196,7 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
     )
     run_loop(
         llm=llm,
+        model=config.MODEL_REPAIR,
         system_prompt=build_repair_prompt(connector, connector_type, connector_version),
         state=state,
         ctx=ctx,

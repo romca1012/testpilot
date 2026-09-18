@@ -235,10 +235,10 @@ def _record_generation_cost(conn, *, case_id: int | None, analysis_usd: float = 
         ("metier", config.MODEL_FAST, metier_usd),
         ("generation", config.MODEL_GENERATION, generation_usd),
         # Correction automatique d'un point de vigilance (amendement §4.3-bis étendu, 2026-09-16) :
-        # même modèle que la génération (elle réécrit le même genre de fichiers), phase À PART —
+        # phase À PART —
         # sinon un cas corrigé aurait l'air d'avoir coûté sa génération deux fois sans qu'on sache
         # pourquoi (même raison que découpage/métier, cf. docstring ci-dessus).
-        ("correction", config.MODEL_GENERATION, correction_usd),
+        ("correction", config.MODEL_REPAIR, correction_usd),
     ):
         if not cost:
             continue

@@ -130,6 +130,7 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
     )
     run_loop(
         llm=llm,
+        model=config.MODEL_REPAIR,
         system_prompt=build_correction_prompt(connector, connector_type, connector_version),
         state=state,
         ctx=ctx,
