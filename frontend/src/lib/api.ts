@@ -711,6 +711,10 @@ export interface Exploration {
   // Règles de validation mesurées (motif, longueur, bornes) : le seul signe visible qu'une
   // cartographie est fraîche. Zéro règle sur un portail qui en a = mesure à refaire.
   contraintes: number
+  // Modèles BACK-OFFICE découverts par énumération de menus (2026-09-18, `discover_menus`) —
+  // seul signe visible que ce complément a bien tourné sur CETTE mesure, sans lire le fichier
+  // `data/domain/…json` à la main.
+  modeles_backoffice: number
 }
 export interface ProjectInput {
   name: string; description?: string

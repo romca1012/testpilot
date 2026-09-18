@@ -454,6 +454,12 @@ onMounted(async () => { await load(); await loadExplorations() })
               <span v-if="explorations[p.id].contraintes" class="text-muted-foreground">
                 · {{ explorations[p.id].contraintes }} règles de saisie
               </span>
+              <!-- Modèles BACK-OFFICE découverts par énumération de menus (Odoo uniquement,
+                   2026-09-18) : le crawl n'atteint jamais /web ni /odoo — c'est le seul signe
+                   visible que ce complément a bien tourné sur cette mesure. -->
+              <span v-if="explorations[p.id].modeles_backoffice" class="text-muted-foreground">
+                · {{ explorations[p.id].modeles_backoffice }} modèles back-office
+              </span>
               <span class="text-subtle-foreground"> — mesuré le {{ explorations[p.id].mesure_le }}</span>
             </template>
             <template v-else>

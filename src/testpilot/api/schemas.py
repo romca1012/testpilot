@@ -497,6 +497,9 @@ class ExplorationOut(BaseModel):
     # seul indicateur VISIBLE qu'une cartographie est fraîche : routes et champs bougent peu, les
     # règles n'apparaissent qu'avec la mesure enrichie (cf. `exploration_service.etat`).
     contraintes: int = 0
+    # Modèles BACK-OFFICE découverts par énumération de menus (2026-09-18, `discover_menus`,
+    # Odoo uniquement) — seul signe visible que ce complément a bien tourné sur cette mesure.
+    modeles_backoffice: int = 0
     resume: str = ""
     error: str = ""
 

@@ -84,6 +84,11 @@ def etat(project_id: int, projet: dict | None = None) -> dict:
         # ne pouvait le trahir. Les routes et les champs bougent peu ; les règles, elles, n'existent
         # que depuis la mesure enrichie. Zéro règle sur un portail qui en a = mesure à refaire.
         "contraintes": sum(1 for c in champs if c.get("contraintes")),
+        # Complément back-office (2026-09-18) : sans ça, rien à l'écran ne dit si
+        # `discover_menus` a effectivement tourné sur CETTE exploration — visible seulement en
+        # lisant le fichier `data/domain/…json` à la main. Même motif que les règles de validation
+        # ci-dessus : un signe visible qu'une mesure a bien apporté ce qu'elle promet.
+        "modeles_backoffice": len((modele or {}).get("modeles_backoffice") or []),
         "resume": domain_model.resume(modele),
     }
 

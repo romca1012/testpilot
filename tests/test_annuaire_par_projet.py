@@ -208,6 +208,29 @@ def test_une_mesure_reussie_est_datee_et_tracee(domaine_isole, monkeypatch):
     assert exploration_service._JOBS["J"]["status"] == "done"
 
 
+def test_l_etat_expose_le_compte_de_modeles_backoffice(domaine_isole, monkeypatch):
+    """Sans ce compte, rien à l'écran ne dit si `discover_menus` a effectivement tourné sur cette
+    mesure — le seul moyen de le savoir était de lire le fichier `data/domain/…json` à la main
+    (mesuré : projet Sapian, 149 modèles trouvés via l'énumération de menus, 2026-09-18)."""
+    monkeypatch.setattr(exploration_service, "_crawl", lambda connexion, max_pages: {
+        "pages": {"/my": {"champs": []}}, "transitions": {}, "onglets_internes": {},
+        "modeles_backoffice": [{"menu": "Générer des équipements", "model": "equipment.order"},
+                               {"menu": "Équipements", "model": "equipment.assignation.order"}]})
+    exploration_service._JOBS["J"] = {"status": "running", "project_id": 6, "error": "", "resume": ""}
+
+    exploration_service.run_exploration(
+        "J", project_id=6, connexion={"base_url": "http://a", "connector_type": "odoo", "nom": "P"})
+
+    projet = {"id": 6, "base_url": "http://a"}
+    assert exploration_service.etat(6, projet)["modeles_backoffice"] == 2
+
+
+def test_l_etat_ne_plante_pas_sans_modeles_backoffice_mesures():
+    """Une exploration WEB générique (ou une mesure antérieure à cette fonctionnalité) n'a pas
+    cette clé — `etat()` doit rendre 0, jamais planter sur une clé absente."""
+    assert exploration_service.etat(999, None)["modeles_backoffice"] == 0
+
+
 def test_un_plantage_du_crawl_ne_laisse_pas_le_job_en_cours(domaine_isole, monkeypatch):
     def boum(connexion, max_pages):
         raise RuntimeError("navigateur mort")

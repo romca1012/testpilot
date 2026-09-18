@@ -225,6 +225,25 @@ describe("ProjectsList — exploration de l'application (étape 2 du flux)", () 
     expect(w.text()).not.toContain('règles de saisie')
   })
 
+  it('affiche les MODÈLES BACK-OFFICE découverts (Odoo, énumération de menus)', async () => {
+    // Sans ce compteur, rien à l'écran ne dit si `discover_menus` a effectivement tourné sur
+    // cette mesure — le seul moyen de le savoir était de lire le fichier domain/…json à la main
+    // (mesuré : projet Sapian, 149 modèles trouvés, 2026-09-18).
+    getExploration.mockResolvedValue({ ...EXPLORE, modeles_backoffice: 149 })
+    const w = mount(ProjectsList, { global: { stubs } })
+    await flushPromises()
+
+    expect(w.text()).toContain('149 modèles back-office')
+  })
+
+  it("N'AFFICHE PAS un compteur de modèles back-office à zéro", async () => {
+    getExploration.mockResolvedValue({ ...EXPLORE, modeles_backoffice: 0 })
+    const w = mount(ProjectsList, { global: { stubs } })
+    await flushPromises()
+
+    expect(w.text()).not.toContain('modèles back-office')
+  })
+
   it("DÉSACTIVE le bouton tant qu'aucune connexion n'est saisie", async () => {
     // « Affiché ≠ réel » : ne jamais proposer une action que le serveur refusera (422).
     listProjects.mockResolvedValue([{ ...PROJET, base_url: '' }])
