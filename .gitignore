@@ -58,3 +58,7 @@ data/regles-apprises/
 
 # Claude Code — préférences locales (personnelles, pas partagées)
 .claude/settings.local.json
+
+# Scratch de validation locale d'un agent (logs de serveur, scripts de vérification ponctuels) —
+# jamais une source de vérité, jamais à committer.
+/.local-preview/
