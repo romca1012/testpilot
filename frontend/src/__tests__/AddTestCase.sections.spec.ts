@@ -133,7 +133,7 @@ describe('« + Créer une section… », AVANT le premier appel LLM', () => {
     await w.find('form').trigger('submit')
     await flushPromises()
 
-    expect(createGroup).toHaveBeenCalledWith(1, { title: 'Toute nouvelle' })
+    expect(createGroup).toHaveBeenCalledWith(1, { title: 'Toute nouvelle', spec_content: 'La spécification' })
     expect(addCase).toHaveBeenCalledWith(1, 'La spécification', '', 99)
   })
 

@@ -211,7 +211,7 @@ describe('AddTestCase — un projet NEUF n\'est plus un cul-de-sac', () => {
     await flushPromises()
 
     expect(createModule).toHaveBeenCalledWith('1', 'Demande de matériel')
-    expect(createGroup).toHaveBeenCalledWith(9, { title: 'Connexion' })
+    expect(createGroup).toHaveBeenCalledWith(9, { title: 'Connexion', spec_content: 'La spécification' })
     expect(addCase).toHaveBeenCalledWith(9, 'La spécification', '', 60)
   })
 
