@@ -135,9 +135,24 @@ _AFFIRME_CREATION = (
 )
 
 # Steps qui SOUMETTENT réellement (action), par opposition à l'attente passive.
+#
+# ⚠️ **Faux positif RÉEL, mesuré sur le cas C19 (Parc IT, 2026-09-18)** : le motif quoté exigeait
+# une correspondance EXACTE au libellé du bouton (`"Envoyer"`, rien d'autre) — `je clique sur le
+# bouton "Confirmer"` ne matchait donc PAS, alors que « Confirmer » est le VRAI bouton de
+# soumission documenté (PDF Parc IT : « cliquer sur Confirmer », et `equipment_order.py::
+# confirm_order()` crée bel et bien l'enregistrement). Le contrôle criait « rien ne sera créé »
+# sur un scénario qui soumettait déjà correctement — exactement le risque qu'une fausse alerte
+# fait perdre confiance dans le signal vrai. Deux corrections, mesurées sur les 6 sections du
+# document Parc IT (boutons réels : Confirmer, Valider l'affectation, Confirmer la
+# réaffectation, Confirmer le changement) :
+# 1. Ajout de « confirme »/« confirmer » aux verbes reconnus.
+# 2. Le motif quoté n'exige plus une correspondance EXACTE — un libellé de plusieurs mots
+#    contenant le verbe (« Confirmer la réaffectation ») doit compter, pas seulement le mot seul.
 _SOUMET = (
-    re.compile(r'\b(?:soumets?|soumis|soumet|envoie|envoi|valide)\b', re.IGNORECASE),
-    re.compile(r'clique[^"\n]*"(?:Envoyer|Soumettre|Valider|Submit)"', re.IGNORECASE),
+    re.compile(r'\b(?:soumets?|soumis|soumet|envoie|envoi|valide|confirme|confirmer)\b',
+              re.IGNORECASE),
+    re.compile(r'clique[^"\n]*"[^"]*\b(?:Envoyer|Soumettre|Valider|Confirmer|Submit|Confirm)\b'
+              r'[^"]*"', re.IGNORECASE),
 )
 # ⚠️ « j'attends la soumission du formulaire » N'EST PAS une soumission : le helper partagé
 # (`wait_form_submission`) ne fait qu'ATTENDRE, il ne clique rien. C'est la cause exacte du

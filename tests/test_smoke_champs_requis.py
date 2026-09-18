@@ -137,6 +137,35 @@ def test_v20_la_soumission_absente_est_signalee_et_l_attente_passive_denoncee():
     assert "attend" in ws[0]["message"], "le message doit dénoncer l'attente passive"
 
 
+def test_confirmer_est_reconnu_comme_une_vraie_soumission():
+    """Faux positif RÉEL, mesuré sur le cas C19 (Parc IT, 2026-09-18) : « Confirmer » est le VRAI
+    bouton de soumission documenté (PDF Parc IT, `equipment_order.py::confirm_order()`), mais
+    n'était pas reconnu — le contrôle criait « rien ne sera créé » sur un scénario qui soumettait
+    déjà correctement."""
+    c19 = ('# language: fr\nFonctionnalité: F\n\n'
+          '  Scénario: [Nominal] Créer un équipement\n'
+          '    Quand je clique sur le bouton "Nouveau"\n'
+          '    Et je sélectionne le produit dans la liste contenant "AP5705S"\n'
+          '    Et je clique sur le bouton "Confirmer"\n'
+          "    Et j'attends la soumission du formulaire\n"
+          '    Alors le nombre total d\'enregistrements dans le modèle "equipment.order" '
+          'augmente de 1\n')
+
+    assert smoke_check.check_step_soumission(c19) == []
+
+
+def test_un_libelle_de_bouton_a_plusieurs_mots_contenant_le_verbe_est_reconnu():
+    """Les vrais boutons du module Parc IT ne sont pas des mots seuls : « Confirmer la
+    réaffectation », « Valider l'affectation », « Confirmer le changement ». Une correspondance
+    EXACTE au libellé quoté les aurait tous manqués."""
+    scenario = ('# language: fr\nFonctionnalité: F\n\n'
+               '  Scénario: [Nominal] Réaffecter\n'
+               '    Et je clique sur le bouton "Confirmer la réaffectation"\n'
+               '    Alors le nombre total d\'enregistrements dans le modèle "t" augmente de 1\n')
+
+    assert smoke_check.check_step_soumission(scenario) == []
+
+
 def test_un_scenario_qui_ne_pretend_RIEN_creer_n_a_pas_a_soumettre():
     """Garde anti-faux-positif : une consultation n'a aucune soumission à faire."""
     consultation = ('# language: fr\nFonctionnalité: F\n\n'
