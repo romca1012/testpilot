@@ -148,3 +148,34 @@ def test_navigate_menu_tolere_un_slash_final_sur_odoo_url():
     steps.step_navigate_menu(ctx, "Parc IT")
 
     assert page.urls_visitees == ["https://sapian.example.com/web#action=menu"]
+
+
+def test_navigate_menu_accepte_le_separateur_slash():
+    """Bug RÉEL, mesuré en run (résultat #3, staging Sapian, 2026-09-18) : aucune convention de
+    séparateur n'est documentée nulle part dans le prompt de génération — l'IA a écrit
+    `"Parc IT / Générer des équipements"` avec `/`, alors que le step ne coupait que sur `>`.
+    Sans séparateur reconnu, toute la chaîne partait comme un seul texte à chercher, qui n'existe
+    nulle part — d'où le `Timeout 8000ms exceeded` observé. `/` doit être accepté au même titre
+    que `>`, sans qu'aucun cas existant n'ait besoin d'être régénéré."""
+    steps = _charger_odoo_steps()
+    page = _FakePageMenu()
+    page.clics = []
+    ctx = types.SimpleNamespace(page=page, odoo_url="https://sapian.example.com")
+
+    steps.step_navigate_menu(ctx, "Parc IT / Générer des équipements")
+
+    assert page.clics == ["Parc IT", "Générer des équipements"], (
+        "la chaîne entière ne doit plus jamais partir comme un seul texte à chercher")
+
+
+def test_navigate_menu_ignore_les_segments_vides():
+    """Un séparateur en tête, en fin, ou doublé ne doit jamais produire une recherche sur un
+    texte vide (qui matcherait n'importe quel élément et casserait la navigation)."""
+    steps = _charger_odoo_steps()
+    page = _FakePageMenu()
+    page.clics = []
+    ctx = types.SimpleNamespace(page=page, odoo_url="https://sapian.example.com")
+
+    steps.step_navigate_menu(ctx, "/Parc IT//Équipements/")
+
+    assert page.clics == ["Parc IT", "Équipements"]

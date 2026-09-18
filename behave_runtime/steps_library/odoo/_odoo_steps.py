@@ -4,6 +4,7 @@ Un step vit ici s'il touche `context.odoo` (RPC), une variable `ODOO_*`, ou un s
 propre au web client Odoo (`.o_notification_manager`) — voir `../generic/_generic_steps.py` pour
 le critère complet et pourquoi cette séparation existe (audit DA 2026-08-13).
 """
+import re
 import sys
 
 from behave import given, then, when
@@ -220,10 +221,20 @@ def step_navigate_menu(context, menu_path):
     texte absent de cet écran). `/web#action=menu` est le sélecteur d'applications STANDARD
     d'Odoo — présent sur toute instance, jamais spécifique à Sapian — qui affiche réellement les
     icônes d'applications (Discuss, Parc IT, Ventes…) dont ce step a besoin pour cliquer dessus.
+
+    ⚠️ **Le séparateur de niveaux n'est jamais imposé nulle part** (aucune convention documentée
+    dans le prompt de génération) — mesuré en RUN RÉEL (résultat #3, staging Sapian, 2026-09-18) :
+    l'IA a écrit `"Parc IT / Générer des équipements"` avec `/`, alors que ce step ne coupait que
+    sur `>`. Sans séparateur reconnu, TOUTE la chaîne partait comme un seul texte à chercher —
+    qui n'existe nulle part tel quel, d'où le timeout. `/` ET `>` sont désormais acceptés,
+    exactement comme le motif déjà appliqué à `check_step_soumission` ce matin (le comportement
+    RÉEL varie, mieux vaut le tolérer qu'imposer une convention que personne ne connaît).
     """
     back_office_url = f"{context.odoo_url.rstrip('/')}/web#action=menu"
     context.page.goto(back_office_url, wait_until="domcontentloaded")
-    for part in [p.strip() for p in menu_path.split(">")]:
+    for part in [p.strip() for p in re.split(r"[/>]", menu_path)]:
+        if not part:
+            continue
         # clic auto-attendu (actionnabilité) ; pas de networkidle entre les niveaux.
         context.page.get_by_text(part, exact=True).first.click(timeout=8000)
 
