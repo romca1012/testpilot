@@ -200,7 +200,14 @@ async function submit() {
     if (!newSectionName.value.trim()) return
     error.value = ''
     try {
-      const g = await api.createGroup(cible, { title: newSectionName.value.trim() })
+      // ⚠️ `spec_content` DOIT partir ici : c'est la même valeur envoyée séparément à `addCase`
+      // ci-dessous pour la génération, mais sans elle la Section reste créée avec un document
+      // VIDE en base (`schema_sa.py` : défaut `''`) — la fiche Spécification (`SpecDetail.vue`)
+      // relit ensuite cette même colonne et affiche une zone de texte vide, sans qu'aucun appel
+      // ne vienne jamais la combler après coup (bug réel, 2026-09-18 : la spec ayant servi à
+      // générer des cas était irrécupérable depuis l'écran qui est censé la montrer).
+      const g = await api.createGroup(cible, {
+        title: newSectionName.value.trim(), spec_content: spec.value })
       groupeCible = g.id
     } catch (e: any) {
       error.value = e?.message || 'Création de la section impossible.'
