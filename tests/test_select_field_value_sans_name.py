@@ -192,3 +192,134 @@ def test_select_field_value_sans_select_ni_radio_leve_element_introuvable():
 
     with pytest.raises(ElementIntrouvableError, match="introuvable"):
         select_field_value(page, "za", "champ_fantome")
+
+
+# ── 3. Champ RELATIONNEL Odoo (many2one) — bug réel Parc IT, 2026-09-18/22 ─────────────────────
+#
+# `select_field_value` ne savait gérer QUE select/radio — un `product_id` (rendu comme un
+# `<input type="text">` qui ouvre une liste de résultats) levait `ElementIntrouvableError` en
+# cherchant un radio qui n'a jamais existé. Vérifié EN DIRECT sur Sapian (2026-09-22) avant ce
+# correctif : voir `select_many2one_odoo` pour le détail de l'interaction mesurée.
+
+from _base_helpers import select_many2one_odoo  # noqa: E402
+
+
+class _ElementM2O:
+    def __init__(self):
+        self.clicked = False
+        self.rempli_directement = None
+
+    def click(self, **_kw):
+        self.clicked = True
+
+    def fill(self, value, **_kw):
+        # Ne doit JAMAIS être appelé : `.fill()` ne déclenche aucune recherche côté Odoo
+        # (mesuré) — seules de vraies frappes (`page.keyboard.type`) le font.
+        self.rempli_directement = value
+
+
+class _LocatorM2O:
+    """Locator minimal : `.or_()`, `.first`, `.wait_for()`, `.click()` — assez pour
+    `select_many2one_odoo` et `click_first_actionable`."""
+
+    def __init__(self, trouve: bool, on_click=None):
+        self._trouve = trouve
+        self._on_click = on_click
+        self.first = self
+
+    def or_(self, autre):
+        return _LocatorM2O(self._trouve or autre._trouve,
+                          on_click=self._on_click or autre._on_click)
+
+    def wait_for(self, state="visible", timeout=None):
+        if not self._trouve:
+            raise PlaywrightTimeout("introuvable")
+
+    def click(self, timeout=None):
+        if not self._trouve:
+            raise PlaywrightTimeout("introuvable")
+        if self._on_click:
+            self._on_click()
+
+
+class _PageM2O:
+    """Simule l'ouverture d'Odoo : `.o_dialog` apparaît (ou pas), une carte kanban correspond
+    (ou pas) — jamais le menu déroulant compact dans ces tests (non mesuré sur le champ réel)."""
+
+    def __init__(self, *, dialogue_ouvre: bool = True, carte_correspond: bool = True):
+        self.url = "https://exemple.test/equipment_order"
+        self.keyboard = self
+        self.frappes: list[str] = []
+        self._dialogue_ouvre = dialogue_ouvre
+        self._carte_correspond = carte_correspond
+        self.selection: str | None = None
+
+    def type(self, text, delay=None):
+        self.frappes.append(text)
+
+    def locator(self, selecteur):
+        if selecteur == ".o_dialog":
+            return _LocatorM2O(self._dialogue_ouvre)
+        if "o-autocomplete" in selecteur or "ui-autocomplete" in selecteur:
+            return _LocatorM2O(False)
+        if "o_kanban_record" in selecteur:
+            trouve = self._dialogue_ouvre and self._carte_correspond
+            return _LocatorM2O(trouve, on_click=lambda: setattr(self, "selection", "kanban"))
+        return _LocatorM2O(False)
+
+
+def test_select_many2one_odoo_tape_de_vraies_frappes_jamais_fill():
+    page = _PageM2O()
+    champ = _ElementM2O()
+
+    select_many2one_odoo(page, champ, "GOOGLE PIXEL 8", field="product_id")
+
+    assert champ.clicked
+    assert page.frappes == ["GOOGLE PIXEL 8"]
+    assert champ.rempli_directement is None, "`.fill()` ne déclenche aucune recherche côté Odoo"
+
+
+def test_select_many2one_odoo_clique_la_carte_kanban_correspondante():
+    page = _PageM2O()
+    champ = _ElementM2O()
+
+    select_many2one_odoo(page, champ, "GOOGLE PIXEL 8", field="product_id")
+
+    assert page.selection == "kanban"
+
+
+def test_select_many2one_odoo_leve_si_aucune_liste_n_apparait():
+    """Ni `.o_dialog` ni le menu déroulant compact ne sont apparus — un champ RÉELLEMENT
+    introuvable, pas un défaut de sélecteur maquillé."""
+    page = _PageM2O(dialogue_ouvre=False)
+    champ = _ElementM2O()
+
+    with pytest.raises(ElementIntrouvableError, match="product_id"):
+        select_many2one_odoo(page, champ, "GOOGLE PIXEL 8", field="product_id")
+
+
+def test_select_many2one_odoo_leve_si_la_boite_s_ouvre_sans_correspondance():
+    """La boîte de dialogue apparaît (les droits sont bons, la recherche a tourné), mais AUCUNE
+    carte ne correspond à la valeur demandée — un vrai « valeur introuvable », pas une erreur de
+    connexion à la boîte elle-même."""
+    page = _PageM2O(carte_correspond=False)
+    champ = _ElementM2O()
+
+    with pytest.raises(ElementIntrouvableError):
+        select_many2one_odoo(page, champ, "PRODUIT INCONNU", field="product_id")
+
+
+def test_select_field_value_dispatche_vers_le_many2one_pour_un_champ_input(monkeypatch):
+    """L'intégration : `select_field_value` doit reconnaître un `<input>` (ni select, ni radio)
+    et le router vers `select_many2one_odoo` — c'est CE branchement qui manquait sur le cas réel
+    Parc IT (`product_id`), où l'ancien code retombait tout droit sur le message radio/select."""
+    import _base_helpers as helpers
+
+    appels = []
+    monkeypatch.setattr(helpers, "select_many2one_odoo",
+                        lambda page, champ, value, field="": appels.append((value, field)))
+
+    page = _FaussePage(selecteur_existant="[name=\"product_id\"]", tag="input")
+    select_field_value(page, "GOOGLE PIXEL 8", "product_id")
+
+    assert appels == [("GOOGLE PIXEL 8", "product_id")]

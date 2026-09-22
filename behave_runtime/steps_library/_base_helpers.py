@@ -1187,9 +1187,19 @@ def select_field_value(page, value, field):
         select_option_strict(champ.first, value, field=field)
         return
 
-    # Pas de <select> : repli radio, `name` DÉLIBÉRÉMENT ICI (pas `locate_field`) — un groupe de
-    # radios PARTAGE le même `name` sur tous ses membres, une EXIGENCE du HTML pour que le
-    # navigateur les traite comme un seul groupe exclusif, pas une convention propre à Odoo.
+    # ⚠️ Champ RELATIONNEL Odoo (many2one) — `product_id`, `partner_id`… — rendu comme un
+    # `<input type="text">`, jamais un `<select>` ni un lien de catalogue portail. Mesuré en
+    # RUN RÉEL (Parc IT, champ `product_id`, 2026-09-18) : `select_field_value` levait
+    # `ElementIntrouvableError` en cherchant un radio qui n'a jamais existé — l'ancien code
+    # n'avait tout simplement AUCUNE branche pour ce widget. Vérifié EN DIRECT sur Sapian
+    # (2026-09-22) avant d'écrire ce correctif : voir `select_many2one_odoo` ci-dessous.
+    if tag == "input":
+        select_many2one_odoo(page, champ.first, value, field=field)
+        return
+
+    # Pas de <select>/<input> : repli radio, `name` DÉLIBÉRÉMENT ICI (pas `locate_field`) — un
+    # groupe de radios PARTAGE le même `name` sur tous ses membres, une EXIGENCE du HTML pour que
+    # le navigateur les traite comme un seul groupe exclusif, pas une convention propre à Odoo.
     radio = page.locator(f"input[type='radio'][name='{field}'][value='{value}']")
     try:
         page.locator(f"input[type='radio'][name='{field}']").first.wait_for(
@@ -1205,6 +1215,58 @@ def select_field_value(page, value, field):
     # qui se comporte mal. Même classe, pour la même raison.
     raise InvalidOptionValueError(
         f"Radio '{field}' présent mais sans l'option '{value}' sur {page.url}")
+
+
+def select_many2one_odoo(page, champ, value: str, *, field: str = "") -> None:
+    """Sélectionne `value` dans un champ RELATIONNEL Odoo (many2one) — `product_id`,
+    `partner_id`, `employee_id`… Ni `select_field_value` (select/radio) ni
+    `select_product_in_list` (lien de catalogue portail) ne correspondent à ce widget : un champ
+    texte qui, une fois qu'on y tape, ouvre une liste de résultats à cliquer.
+
+    ⚠️ **Vérifié EN DIRECT sur Sapian** (formulaire « Générer des équipements », champ Produit,
+    2026-09-22) — jamais deviné depuis la documentation officielle d'Odoo, qui ne descend pas à
+    ce niveau de détail (vérifié aussi, `developer/reference/frontend/`, avant d'écrire quoi que
+    ce soit ici) :
+    1. Taper `value` CARACTÈRE PAR CARACTÈRE (`page.keyboard.type`, jamais `champ.fill()` — mesuré
+       inefficace : aucune requête de recherche Odoo n'était déclenchée, la liste restait
+       inchangée) déclenche la recherche.
+    2. Sur CE champ précis, une boîte `.o_dialog` s'ouvre, listant des cartes `.o_kanban_record`
+       cliquables — le nom du produit choisi apparaît sur la carte. Le menu déroulant compact
+       (`.o-autocomplete--dropdown-menu`, standard sur un many2one plus simple) n'a pas été
+       mesuré sur CE champ ; les deux formes sont tentées, la boîte de dialogue en premier car
+       seule confirmée ici.
+
+    ⚠️ **Une « Erreur d'accès » Odoo (droits insuffisants sur le modèle CIBLE du champ, ex.
+    `product.template`) n'est jamais un sélecteur introuvable** — mesurée en conditions réelles :
+    ce champ précis a exigé un droit Inventaire/Administrateur sur le compte de test avant de
+    fonctionner. Cette fonction ne l'intercepte jamais : elle doit remonter telle quelle plutôt
+    que d'être maquillée en défaut de sélecteur.
+
+    ⚠️ **Limite assumée** : la liste peut rester non filtrée le temps que la recherche Odoo
+    s'applique (mesuré : la boîte s'est parfois ouverte avec les N premiers résultats bruts avant
+    filtrage) — `click_first_actionable` cherche `value` dans ce qui est déjà rendu, pas au-delà
+    d'une pagination. Sur un jeu de données avec BEAUCOUP d'homonymes potentiels, préférer une
+    valeur de recherche assez distinctive pour apparaître tôt dans la liste.
+    """
+    champ.click()
+    page.keyboard.type(value, delay=20)
+
+    dialogue = page.locator(".o_dialog")
+    dropdown = page.locator(".o-autocomplete--dropdown-menu, .ui-autocomplete")
+    try:
+        dialogue.or_(dropdown).first.wait_for(state="visible", timeout=8000)
+    except PlaywrightTimeout:
+        raise ElementIntrouvableError(
+            f"Champ relationnel '{field}' : aucune liste de résultats n'est apparue après la "
+            f"saisie de '{value}' sur {page.url}")
+
+    valeur_echappee = value.replace("'", "\\'")
+    click_first_actionable(page, [
+        f".o_dialog .o_kanban_record:has-text('{valeur_echappee}')",
+        f".o_dialog tr.o_data_row:has-text('{valeur_echappee}')",
+        f".o-autocomplete--dropdown-menu li:has-text('{valeur_echappee}')",
+        f".ui-autocomplete .ui-menu-item:has-text('{valeur_echappee}')",
+    ], quoi=f"Résultat '{value}' pour le champ relationnel '{field}'")
 
 
 _PRODUCT_PATHS = ("/description/", "/product/", "/detail/", "/formulaire-applicatif/")
