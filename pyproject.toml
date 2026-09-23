@@ -1,7 +1,7 @@
 [build-system]
 # >=83.0.0 : corrige PYSEC-2026-3447 (pip-audit le signalait sur la version fournie par défaut
 # par les runners CI — >=68 la laissait passer puisque c'est un plancher, pas un plafond).
-requires = ["setuptools>=83.0.0"]
+requires = ["setuptools>=84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -16,41 +16,41 @@ dependencies = [
     # (`src/testpilot/llm/adapter.py::_params_echantillonnage`). Borner évite qu'une prochaine
     # majeure ne recasse le même genre de chose en silence entre un `pip install` local et un
     # build Docker distant.
-    "anthropic>=1.2,<2",
-    "python-dotenv>=1.0",
-    "jinja2>=3.1",
-    "behave>=1.2.6",
-    "playwright>=1.40",
-    "OdooRPC>=0.9",
-    "pdfplumber>=0.11",
+    "anthropic>=1.7.0,<2",
+    "python-dotenv>=1.2.3",
+    "jinja2>=3.1.6",
+    "behave>=1.3.3",
+    "playwright>=1.63.0",
+    "OdooRPC>=0.10.1",
+    "pdfplumber>=0.11.10",
     # Import des spécifications Word (`spec_extract._docx`). La dépendance était utilisée sans
     # être déclarée : une installation propre réussissait, puis le premier .docx échouait.
-    "python-docx>=1.1",
-    "fastapi>=0.115",
-    "uvicorn>=0.32",
+    "python-docx>=1.2.0",
+    "fastapi>=0.141.1",
+    "uvicorn>=0.53.0",
     # Requis par les routes FastAPI qui acceptent UploadFile/Form (import de spécification et
     # pièces jointes). Sans lui, Uvicorn ouvre le port mais l'application plante à l'import.
-    "python-multipart>=0.0.9",
+    "python-multipart>=0.0.32",
     # Chiffrement au repos du secret de connexion d'un projet (2026-07-24). Était déjà présent
     # en transitif ; déclaré explicitement parce qu'on en dépend désormais directement — une
     # dépendance qu'on utilise sans la déclarer disparaît le jour où son porteur disparaît.
-    "cryptography>=42.0",
+    "cryptography>=50.0.1",
     # Fondation portable PostgreSQL (2026-08-28, phase 1/3 — voir docs/ARCHITECTURE.md §4).
     # `sqlalchemy` porte le modèle de schéma indépendant du moteur (`store/schema_sa.py`) ;
     # `alembic` porte les migrations générées depuis ce modèle. Les deux sont dans les
     # dépendances PRINCIPALES et non `dev` : elles serviront au RUNTIME après la bascule
     # (phase 3), pas seulement à générer des migrations en développement. Ce lot NE branche
     # ni l'un ni l'autre sur `db.py`/`repositories.py` — 100 % additif, voir la note de conception.
-    "sqlalchemy>=2.0",
-    "alembic>=1.13",
+    "sqlalchemy>=2.0.54",
+    "alembic>=1.20.0",
     # Pilote du runtime PostgreSQL (phase 3) — plus seulement une preuve de développement.
-    "psycopg[binary]>=3.1",
+    "psycopg[binary]>=3.3.6",
     # Métriques HTTP et file de tâches au format Prometheus (`GET /metrics`).
-    "prometheus-client>=0.21",
+    "prometheus-client>=0.26.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6", "black>=24.0", "httpx>=0.27"]
+dev = ["pytest>=9.1.1", "ruff>=0.16.8", "black>=26.5.1", "httpx>=0.28.1"]
 
 [project.scripts]
 testpilot = "testpilot.cli:main"
