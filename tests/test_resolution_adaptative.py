@@ -413,11 +413,15 @@ class _FakePageMenuAdaptatif:
         self.url = "about:blank"
         self.urls_visitees = []
         self.clics = []
+        self.attentes = []
         self._echoue_sur = set(echoue_sur)
 
     def goto(self, url, **_k):
         self.urls_visitees.append(url)
         self.url = url
+
+    def wait_for_selector(self, selecteur, **_kw):
+        self.attentes.append(selecteur)  # grille "déjà rendue" dans ce fake — rien à attendre.
 
     def get_by_text(self, texte, exact=True):
         if texte in self._echoue_sur:
@@ -439,6 +443,20 @@ def test_navigate_menu_reussit_directement_sans_jamais_appeler_l_adaptatif(monke
 
     assert page.clics == ["Assistance", "Tickets"]
     assert appele == []
+
+
+def test_navigate_menu_attend_le_rendu_de_la_grille_dapplications():
+    """Lot 5 du plan de fiabilisation (2026-09-23) : la grille d'applications (`.o_app`) n'existe
+    pas encore à `domcontentloaded` — mesuré en campagne réelle (Sapian, cas 128, 2 essais sur 3
+    échoués sur ce timeout précis). `navigate_menu` doit attendre son rendu avant le premier clic,
+    même patron que l'attente `.o_field_widget` déjà appliquée aux formulaires."""
+    page = _FakePageMenuAdaptatif(echoue_sur=set())
+    import types
+    ctx = types.SimpleNamespace(page=page, odoo_url="https://sapian.example.com")
+
+    navigate_menu(ctx, "Assistance")
+
+    assert page.attentes == [".o_app"]
 
 
 def test_navigate_menu_repli_adaptatif_sur_un_libelle_dans_une_autre_langue(monkeypatch):

@@ -207,6 +207,124 @@ def test_locate_field_filtre_par_visibilite_quand_plusieurs_candidats_techniques
     assert loc.count() == 1  # le Locator filtré ":visible", pas les 3 candidats bruts
 
 
+# ── Descente dans un conteneur non éditable (Sapian, 2026-09-23) ─────────────────────────────
+#
+# Odoo pose le nom technique STABLE d'un champ sur le `<div class="o_field_widget">` qui ENGLOBE
+# le vrai contrôle, jamais sur l'`<input>`/`<textarea>` interne (qui, lui, n'a souvent aucun
+# `name` et un `id` volatil selon l'ordre de montage de la session — un `id` capturé à la
+# génération ne correspond à RIEN à l'exécution, une session différente).
+
+class _ElementInterne:
+    def __init__(self, tag):
+        self._tag = tag
+
+    def evaluate(self, script, *_a):
+        return self._tag if "tagName" in script else ""
+
+
+class _LocatorInterne:
+    """`conteneur.locator("input, select, textarea")` — les contrôles réellement DANS le
+    conteneur résolu."""
+
+    def __init__(self, elements, *, filtre_visible=False):
+        self._elements = elements
+        self._filtre_visible = filtre_visible
+
+    def count(self):
+        return len(self._elements)
+
+    @property
+    def first(self):
+        return self._elements[0] if self._elements else self
+
+    def locator(self, selecteur):
+        if selecteur == ":visible" or selecteur.endswith(":visible"):
+            return _LocatorInterne(self._elements[:1] if self._elements else [],
+                                   filtre_visible=True)
+        return self
+
+
+class _LocatorConteneur:
+    def __init__(self, *, tag="div", enfants=(), plusieurs_visibles=False):
+        self._tag = tag
+        self._enfants = list(enfants)
+        self._plusieurs_visibles = plusieurs_visibles
+
+    @property
+    def first(self):
+        return self
+
+    def count(self):
+        return 1
+
+    def wait_for(self, **_kw):
+        pass
+
+    def evaluate(self, script, *_a):
+        return self._tag if "tagName" in script else ""
+
+    def locator(self, selecteur):
+        if "input" in selecteur and "select" in selecteur:
+            if self._plusieurs_visibles:
+                return _LocatorInterne(self._enfants)
+            return _LocatorInterne(self._enfants[:1] if self._enfants else [])
+        return _LocatorInterne([])
+
+
+class _PageChampDansConteneur:
+    def __init__(self, conteneur):
+        self.url = "https://exemple.test/web#action=1&model=helpdesk.ticket&view_type=form"
+        self._conteneur = conteneur
+
+    def locator(self, _selecteur):
+        return self._conteneur
+
+
+def test_locate_field_descend_dans_un_conteneur_non_editable():
+    """Le VRAI cas mesuré (Sapian, 2026-09-23, cas 127) : `[name="name"]` résolvait le `<div
+    class="o_field_widget">` englobant, jamais la `<textarea>` réelle — `fill_field` échouait sur
+    un élément non éditable. `locate_field` doit descendre vers le contrôle réel."""
+    conteneur = _LocatorConteneur(tag="div", enfants=[_ElementInterne("textarea")])
+    page = _PageChampDansConteneur(conteneur)
+
+    loc = locate_field(page, "name")
+
+    assert loc.count() == 1
+    assert loc.first.evaluate("el => el.tagName.toLowerCase()") == "textarea"
+
+
+def test_locate_field_sans_controle_interne_retombe_sur_le_conteneur():
+    """Repli STRICTEMENT inchangé si aucun contrôle éditable n'existe dans le conteneur résolu —
+    mieux vaut rendre le conteneur (l'appelant échouera avec un message clair) que rien du tout."""
+    conteneur = _LocatorConteneur(tag="div", enfants=[])
+    page = _PageChampDansConteneur(conteneur)
+
+    loc = locate_field(page, "name")
+
+    assert loc is conteneur
+
+
+def test_locate_field_preferre_le_controle_interne_visible_si_plusieurs():
+    conteneur = _LocatorConteneur(tag="div", plusieurs_visibles=True,
+                                  enfants=[_ElementInterne("input"), _ElementInterne("input")])
+    page = _PageChampDansConteneur(conteneur)
+
+    loc = locate_field(page, "team_id")
+
+    assert loc.count() == 1  # le filtre ":visible" a réduit à un seul contrôle
+
+
+def test_locate_field_ne_descend_jamais_quand_l_element_resolu_est_deja_editable():
+    """Garde anti-régression : un `<input>`/`<select>`/`<textarea>` déjà résolu ne doit JAMAIS
+    déclencher une recherche d'enfant — comportement inchangé pour l'immense majorité des cas
+    (portail générique, formulaires HTML classiques)."""
+    page = _FaussePage(selecteur_existant='[name="product_id"]', tag="input")
+
+    loc = locate_field(page, "product_id")
+
+    assert loc.count() == 1
+
+
 def test_rien_trouve_nulle_part_rend_un_locator_vide_pas_une_exception():
     """`locate_field` ne lève JAMAIS — à l'appelant de décider comment échouer (même contrat que
     `resolve_field_name`, qui rendait `ident` inchangé plutôt que de lever)."""

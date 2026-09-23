@@ -653,6 +653,29 @@ def locate_field(page, ident, *, timeout=8000):
                     loc_visible = page.locator(f"{selecteur}:visible")
                     if loc_visible.count() > 0:
                         loc = loc_visible
+                # ⚠️ Un sélecteur technique peut résoudre un CONTENEUR non éditable, jamais le
+                # contrôle lui-même — mesuré en conditions réelles (Sapian, 2026-09-23) : Odoo
+                # pose le nom technique STABLE d'un champ sur le `<div class="o_field_widget">`
+                # qui ENGLOBE le vrai contrôle, jamais sur l'`<input>`/`<textarea>` interne (qui,
+                # lui, n'a souvent AUCUN `name` et un `id` volatil dépendant du nombre de widgets
+                # déjà montés dans la session — un `id` capturé à la génération ne correspond
+                # donc à RIEN à l'exécution, une session différente). Descend vers le premier
+                # contrôle éditable réellement présent DANS l'élément résolu, jamais l'inverse
+                # (un `<input>` déjà résolu n'a aucune raison d'avoir un enfant à chercher).
+                tag = loc.first.evaluate("el => el.tagName.toLowerCase()")
+                if tag not in ("input", "select", "textarea"):
+                    interne = loc.locator("input, select, textarea")
+                    if interne.count() > 0:
+                        if interne.count() > 1:
+                            interne_visible = interne.locator(":visible")
+                            if interne_visible.count() > 0:
+                                interne = interne_visible
+                        message = (f"champ '{ident}' résolu par `{selecteur}` pointe un "
+                                  f"conteneur ({tag}), pas un contrôle éditable ; descendu "
+                                  f"vers son contrôle interne.")
+                        logger.warning("%s %s", FIELD_FALLBACK_MARKER, message)
+                        _record_field_fallback(message)
+                        loc = interne.first if interne.count() > 1 else interne
                 if selecteur != f'[name="{ident}"]':
                     message = f"champ '{ident}' introuvable par name ; résolu via `{selecteur}`."
                     logger.warning("%s %s", FIELD_FALLBACK_MARKER, message)
@@ -1377,6 +1400,14 @@ def force_name_field(page, value):
     en dur ici (Odoo auto-génère ce champ, et cette fonction existe pour contourner CETTE
     particularité précise). Migrer vers `locate_field` ne rendrait rien plus générique : sur une
     application sans cette particularité, cette fonction ne serait de toute façon jamais appelée.
+
+    ⚠️ **`[name="name"]` résout le `<div class="o_field_widget">` englobant, pas le contrôle
+    lui-même** — même trou que celui corrigé dans `locate_field` (Sapian, 2026-09-23) : le web
+    client Odoo (OWL) pose le nom technique sur le conteneur, jamais sur l'`<input>`/`<textarea>`
+    interne. Sans descendre dedans, `querySelector('[name="name"]')` renvoie le conteneur, dont
+    aucun prototype de setter natif ne s'applique (`HTMLInputElement`/`HTMLTextAreaElement`
+    exigent le VRAI élément de formulaire). Le tag réel varie aussi selon la vue (mesuré :
+    `<textarea>` sur le formulaire de ticket Helpdesk) — le setter choisi doit s'adapter.
     """
     safe = value.replace("\\", "\\\\").replace("'", "\\'")
     # Ancré sur l'élément : sans cette attente, un champ rendu tardivement → `querySelector` nul →
@@ -1384,12 +1415,17 @@ def force_name_field(page, value):
     page.locator('[name="name"]').wait_for(state="attached", timeout=8000)
     page.evaluate(f"""
         (() => {{
-            const el = document.querySelector('[name="name"]');
+            const conteneur = document.querySelector('[name="name"]');
+            const el = conteneur && conteneur.matches('input, textarea')
+                ? conteneur
+                : (conteneur ? conteneur.querySelector('input, textarea') : null);
             if (el) {{
-                const setter = Object.getOwnPropertyDescriptor(
-                    window.HTMLInputElement.prototype, 'value'
-                ).set;
+                const proto = el.tagName.toLowerCase() === 'textarea'
+                    ? window.HTMLTextAreaElement.prototype
+                    : window.HTMLInputElement.prototype;
+                const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
                 setter.call(el, '{safe}');
+                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
             }}
         }})()
     """)
@@ -1564,6 +1600,18 @@ def navigate_menu(context, menu_path):
     """
     back_office_url = f"{context.odoo_url.rstrip('/')}/web#action=menu"
     context.page.goto(back_office_url, wait_until="domcontentloaded")
+    # ⚠️ **Même trou que celui corrigé sur les formulaires** (`_inspect_sync`, Sapian,
+    # 2026-09-23) : la grille d'applications (`.o_app`) n'existe PAS ENCORE à `domcontentloaded`
+    # — mesuré : 0 tuile immédiatement après le chargement, 25 après ~2 s de rendu client (OWL).
+    # Sans cette attente, le PREMIER clic (`get_by_text(...).first.click(timeout=8000)`) peut
+    # timeout sur une grille encore vide selon la variabilité réseau/rendu — mesuré en campagne
+    # réelle (Sapian, 2026-09-23, cas 128 : 2 essais sur 3 échoués sur ce timeout précis). Une
+    # `networkidle` a été écartée ailleurs pour la même raison qu'ici (bus de longpolling Odoo) ;
+    # `wait_for_selector`, best-effort, ne bloque jamais une grille qui ne se chargerait jamais.
+    try:
+        context.page.wait_for_selector(".o_app", timeout=5000)
+    except PlaywrightTimeout:
+        pass
     for part in [p.strip() for p in re.split(r"[/>]", menu_path)]:
         if not part:
             continue

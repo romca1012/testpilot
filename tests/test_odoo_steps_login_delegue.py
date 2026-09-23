@@ -124,6 +124,9 @@ class _FakePageMenu:
         self.urls_visitees.append(url)
         self.url = url
 
+    def wait_for_selector(self, *_a, **_kw):
+        pass  # grille d'applications déjà "rendue" dans ce fake — rien à attendre.
+
     def get_by_text(self, texte, exact=True):
         return _Clickable(self.clics, texte)
 

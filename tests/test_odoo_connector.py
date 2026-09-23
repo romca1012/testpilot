@@ -6,7 +6,9 @@ la sonde HTTP (réseau isolé et surchargé), et la conformité à l'interface `
 """
 
 from testpilot.connectors.base import Connector
-from testpilot.connectors.odoo import OdooConnector, build_probe_url, extract_form
+from testpilot.connectors.odoo import (
+    OdooConnector, _extract_odoo_form_fields, build_probe_url, extract_form,
+)
 
 
 class _FakeEl:
@@ -137,11 +139,12 @@ def test_echec_authentification_ne_fuit_pas_de_navigateur(monkeypatch):
 # que 3 champs réels y sont bien présents une fois le rendu client (OWL) terminé.
 
 class _PageAvecAttente:
-    def __init__(self, url, controls, attend_leve=False):
+    def __init__(self, url, controls, attend_leve=False, champs_odoo=None):
         self.url = url
         self._controls = controls
         self.appels_wait = []
         self._attend_leve = attend_leve
+        self._champs_odoo = champs_odoo if champs_odoo is not None else []
 
     def goto(self, *args, **kwargs):
         pass
@@ -157,17 +160,28 @@ class _PageAvecAttente:
     def query_selector(self, selector):
         return None
 
+    def evaluate(self, _script):
+        # `_extract_odoo_form_fields` (route `/web#`) lit le DOM via UN SEUL `evaluate` — jamais
+        # `query_selector_all` (contrairement à `extract_form`, générique, pour une page portail).
+        return self._champs_odoo
+
 
 def test_inspect_form_attend_le_rendu_client_sur_une_url_web_hash():
-    page = _PageAvecAttente("https://target.test/web#action=907&model=survey.survey"
-                            "&view_type=form&cids=1", [_FakeEl({"name": "title_0", "type": "text"})])
+    page = _PageAvecAttente(
+        "https://target.test/web#action=907&model=survey.survey&view_type=form&cids=1", [],
+        champs_odoo=[{"name": "title", "tag": "textarea", "type": "text", "required": True,
+                     "visible": True, "label": "", "options": []}])
     conn = OdooConnector("https://target.test", "db", "u", "p")
     conn._ensure_page = lambda: page
 
     result = conn.inspect_form("/web#action=907&model=survey.survey&view_type=form&cids=1")
 
     assert page.appels_wait == [".o_field_widget"]
-    assert [f["name"] for f in result["fields"]] == ["title_0"]
+    # Le nom STABLE du wrapper (`title`), jamais l'`id` volatil d'un contrôle interne — c'est
+    # exactement la différence que `_extract_odoo_form_fields` existe pour faire (Sapian,
+    # 2026-09-23, cas 127 : `title_0` observé à la génération ne correspondait à rien à
+    # l'exécution).
+    assert [f["name"] for f in result["fields"]] == ["title"]
 
 
 def test_inspect_form_n_attend_rien_sur_une_page_portail_ordinaire():
@@ -196,6 +210,27 @@ def test_inspect_form_survit_si_le_widget_n_apparait_jamais():
 
     assert result["error"] == ""
     assert result["fields"] == []
+
+
+def test_extract_odoo_form_fields_enveloppe_le_resultat_du_dom():
+    """`_extract_odoo_form_fields` délègue TOUTE la lecture DOM à un unique `evaluate` (le
+    sélecteur `.o_field_widget[name]` lui-même n'est vérifiable qu'en conditions réelles,
+    documenté et vérifié manuellement — voir l'en-tête du module) ; ce test verrouille seulement
+    le contrat d'enveloppe : champs relayés tels quels, url/langue renseignées, aucune soumission
+    inventée (Odoo sauvegarde via un clic, jamais un `<form action=...>`)."""
+    class _PageOdoo:
+        url = "https://target.test/web#action=1&model=x&view_type=form"
+
+        def evaluate(self, _script):
+            return [{"name": "title", "tag": "textarea", "type": "text", "required": True,
+                    "visible": True, "label": "", "options": []}]
+
+    result = _extract_odoo_form_fields(_PageOdoo())
+
+    assert result["fields"] == [{"name": "title", "tag": "textarea", "type": "text",
+                                 "required": True, "visible": True, "label": "", "options": []}]
+    assert result["submission"] == {}
+    assert result["url"] == "https://target.test/web#action=1&model=x&view_type=form"
 
 
 def test_odoo_connector_satisfait_l_interface():

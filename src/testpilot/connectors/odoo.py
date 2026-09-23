@@ -67,6 +67,46 @@ _CRAWL_HORS_PERIMETRE = re.compile(
     r"|nav_tabs_content|/export(/|$)|\.(css|js|png|jpg|jpeg|svg|ico|woff2?)$",
     re.IGNORECASE)
 
+# Extraction de formulaire SPÉCIFIQUE au web client Odoo (`/web#...`) — jamais un formulaire
+# portail (servi côté serveur, déjà couvert par `extract_form`, générique et partagé).
+#
+# ⚠️ **Pourquoi `extract_form` (générique) échoue ici** — mesuré en conditions réelles (Sapian,
+# 2026-09-23, cas 127) : il lit `el.get_attribute("name")` sur `input, select, textarea`, et se
+# rabat sur `id` quand `name` est vide — ce qui arrive à PRESQUE TOUS les contrôles du web client
+# Odoo (OWL). Cet `id` (ex. `name_0`, `partner_id_0`) est un COMPTEUR DE MONTAGE propre à la
+# session du navigateur, jamais stable d'une navigation à l'autre : une génération qui l'observe
+# via une URL directe (session « neuve », compteur bas) capture une valeur qui ne correspond à
+# RIEN dans la session de l'EXÉCUTION réelle (menu → liste → « Nouveau », compteur déjà avancé
+# par tout ce qui a été monté avant). Le nom TECHNIQUE stable existe pourtant bel et bien — porté
+# par le `<div class="o_field_widget" name="...">` qui ENGLOBE le contrôle, jamais par le
+# contrôle lui-même. Vérifié : le même formulaire, chargé 4 fois de suite, redonne le même nom
+# stable à chaque fois, contrairement à l'`id` interne.
+def _extract_odoo_form_fields(page) -> dict:
+    champs = page.evaluate("""() => {
+        const wrappers = Array.from(document.querySelectorAll('.o_field_widget[name]'));
+        return wrappers.map(w => {
+            const control = w.querySelector('input, select, textarea');
+            let label = '';
+            const id = control ? control.getAttribute('id') : null;
+            const labelFor = id ? document.querySelector(`label[for="${id}"]`) : null;
+            if (labelFor) { label = labelFor.innerText.trim(); }
+            return {
+                name: w.getAttribute('name'),
+                tag: control ? control.tagName.toLowerCase() : '',
+                type: control ? (control.getAttribute('type') || control.tagName.toLowerCase())
+                              : 'custom',
+                required: w.classList.contains('o_required_modifier'),
+                visible: !!(w.offsetWidth || w.offsetHeight || w.getClientRects().length),
+                label: label,
+                options: (control && control.tagName === 'SELECT')
+                    ? Array.from(control.options).map(o => [o.value, o.textContent.trim()])
+                    : [],
+            };
+        });
+    }""")
+    return {"fields": champs, "submission": {}, "url": getattr(page, "url", ""),
+           "language": ""}
+
 
 class OdooConnector(Connector):
 
@@ -181,7 +221,9 @@ class OdooConnector(Connector):
             except Exception:
                 pass  # best-effort : un formulaire sans champ (ou une vue non-formulaire) est un
                       # résultat légitime, jamais une raison de faire échouer l'inspection.
-        result = extract_form(page)
+            result = _extract_odoo_form_fields(page)
+        else:
+            result = extract_form(page)
         result["error"] = ""
         return result
 

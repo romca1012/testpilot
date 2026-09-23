@@ -28,6 +28,24 @@ def test_parc_it_equipment_order_product_id_observe_passe_champs_absents_signale
     assert state.verified_fields == {"inspect_schema:equipment.order": ["product_id"]}
 
 
+def test_inspect_schema_signale_le_step_a_utiliser_pour_un_champ_many2one(tmp_path):
+    """Refus SILENCIEUX mesuré en conditions réelles (Sapian, 2026-09-23, cas 127) : un champ
+    relationnel Odoo rempli via `fill_field` (« je renseigne … avec la valeur … ») pose la valeur
+    dans le DOM sans jamais sélectionner un enregistrement réel — Odoo refuse l'enregistrement
+    sans message lisible. `inspect_schema` doit dire, dès l'observation, quel step utiliser."""
+    connector = SimpleNamespace(get_schema=lambda _: {
+        "partner_id": {"type": "many2one", "required": True},
+        "name": {"type": "char", "required": True}})
+    ctx = ToolContext("assistance", tmp_path, connector=connector)
+
+    outcome = dispatch("inspect_schema", {"model": "helpdesk.ticket"}, ctx)
+
+    assert "champ RELATIONNEL" in outcome.observation
+    assert 'je sélectionne "<valeur>" dans le champ "partner_id"' in outcome.observation
+    ligne_name = next(l for l in outcome.observation.splitlines() if l.startswith("- name "))
+    assert "RELATIONNEL" not in ligne_name
+
+
 def test_champ_absent_crawl_et_registre_vide_est_signale():
     assert smoke_check(feature("invented"), verified_fields={})[0]["step"] == "invented"
     assert smoke_check(feature("invented")) == []

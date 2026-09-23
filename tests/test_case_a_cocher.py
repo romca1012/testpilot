@@ -111,7 +111,12 @@ class _Locator:
         self.journal, self.type_reel = journal, type_reel
         self.first = self
 
-    def evaluate(self, script, *a): return self.type_reel
+    def evaluate(self, script, *a):
+        # Vrai `<input>` HTML dans tous ces tests (checkbox/radio/texte/vide sont des VALEURS de
+        # `type`, jamais des noms de balise) — `locate_field` interroge maintenant aussi la
+        # balise pour détecter un conteneur non éditable (Sapian, 2026-09-23) ; y répondre
+        # correctement évite de déclencher à tort cette descente sur un `<input>` déjà résolu.
+        return "input" if "tagName" in script else self.type_reel
     def set_input_files(self, chemin): self.journal.append(("upload", chemin))
 
     def count(self):

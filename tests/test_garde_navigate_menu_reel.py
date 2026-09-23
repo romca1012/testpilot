@@ -91,6 +91,7 @@ def _ecrire_aire_de_run_menu(tmp_path, *, echoue_sur: str, resolution) -> Behave
         "    def goto(self, url, **_k):\n"
         "        self.urls_visitees.append(url)\n"
         "        self.url = url\n"
+        "    def wait_for_selector(self, *a, **kw): pass\n"
         f"    def get_by_text(self, texte, exact=True):\n"
         f"        if texte == {echoue_sur!r}: return _LocatorTimeout()\n"
         "        return _LocatorOk(self.clics, texte)\n"

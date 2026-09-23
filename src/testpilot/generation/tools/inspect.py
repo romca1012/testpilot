@@ -31,7 +31,20 @@ def inspect_schema(ctx: "ToolContext", model: str) -> "ToolOutcome":
     lines = [f"Champs de `{model}` :"]
     for name, meta in list(schema.items())[:50]:
         req = "requis" if meta.get("required") else "optionnel"
-        lines.append(f"- {name} ({meta.get('type', '?')}, {req})")
+        ligne = f"- {name} ({meta.get('type', '?')}, {req})"
+        if meta.get("type") == "many2one":
+            # ⚠️ **Silencieux, refus RÉEL mesuré** (Sapian, 2026-09-23, cas 127) : un champ
+            # relationnel Odoo est rendu comme un `<input type="text">` — taper une valeur avec
+            # « je renseigne … avec la valeur … » (`fill_field`) POSE la valeur dans le DOM sans
+            # jamais sélectionner un enregistrement réel ; le champ reste vide côté serveur, et
+            # Odoo refuse l'enregistrement SANS message lisible. Le step qui déclenche la bonne
+            # interaction (`select_many2one_odoo`, déjà vérifié en conditions réelles) est
+            # « je sélectionne … dans le champ … ».
+            ligne += (" — champ RELATIONNEL : utilise « je sélectionne "
+                     f"\"<valeur>\" dans le champ \"{name}\" », jamais « je renseigne … avec la "
+                     "valeur … » (qui ne sélectionne rien, l'enregistrement serait refusé sans "
+                     "message lisible)")
+        lines.append(ligne)
     outcome = _outcome("\n".join(lines))
     outcome.verified_fields = {f"inspect_schema:{model}": list(schema)[:50]}
     from testpilot.generation.evidence import record_observation
