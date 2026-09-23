@@ -26,6 +26,8 @@ verdict métier exploitable. L'audit du 2026-09-23 a identifié les causes suiva
 | F4 | `status.scenario_verdict` | `passed` → `conforme` sans preuve qu'une assertion s'est exécutée ; `assertion_lint` statique et non bloquant | Tests verts par construction |
 | F5 | `status.statut_de_test` | `technical_error` est toujours couplé à `indetermine` → `retest` ; `blocked` n'est jamais produit automatiquement | Panne d'environnement confondue avec script cassé |
 | F6 | `environment.py` l.118 et l.397-409 | Teardown limité à `helpdesk.ticket` ; restauration de `employee_front_role_ids` (champ Sapian) dans le harnais générique | Pollution, collisions d'unicité au rejeu, code client dans le socle |
+| F7 | `_base_helpers.py` : `verifier_soumission_non_bloquee`, `_refus_par_le_navigateur`, `click_first_actionable` | Le contrôle de refus se déclenche sur N'IMPORTE QUEL clic (y compris une navigation intermédiaire — onglet, lien, changement d'étape d'un formulaire multi-écrans), pas seulement sur une vraie soumission | Faux `donnee_invalide` : accuse le jeu de données à tort alors qu'aucune soumission n'a eu lieu (mesuré en campagne réelle le 2026-09-23, cas 95, projet 1) — trouvé en cherchant à valider le lot 01 |
+| F8 | `_base_helpers.py` : chaîne de diagnostic de refus (`diagnostic_soumission`, assertions générées sur le texte d'un message attendu) | Une assertion générée fige un texte de message DEVINÉ par l'agent plutôt qu'observé pendant la génération | Faux `non_conforme`/`failed` : l'application refuse correctement, c'est le texte attendu par le test qui est faux (mesuré le 2026-09-23, cas 97, projet 1) |
 
 ### 2.2 Manques de couverture
 
@@ -40,6 +42,13 @@ verdict métier exploitable. L'audit du 2026-09-23 a identifié les causes suiva
 | C7 | Odoo | Pas de détection de version à l'exécution (`/odoo/…` ≥ 17.2 vs `/web#…`, structures DOM 16/17/18) |
 | C8 | Mesure | Aucune instance Odoo de référence : la conformité ne tourne que sur SauceDemo / the-internet, la fiabilité Odoo n'est mesurable que sur la recette client |
 | C9 | Agents | Outils de perception limités aux formulaires (`inspect_page_form`) ; aucune vue des boutons/états d'une vue Odoo ni de l'arbre d'accessibilité d'une page ; aucune règle « assertion uniquement en `Alors` » |
+| C10 | Génération | Valeurs de champ écrites par l'agent sans avoir été observées (masque de saisie non relevé, référence relationnelle/option de liste inexistante) — même défaut mesuré deux fois en campagne réelle le 2026-09-23 : `numero_facture1` transformé par un masque de saisie (cas 99, 101, 126 — 3 essais sur 8), produit inventé absent du catalogue (cas 13). Même cause racine que le correctif many2one déjà fait pour `inspect_schema` : une valeur saisie doit avoir été vue |
+
+**Note (2026-09-23)** : le timeout de clic menu mesuré en campagne réelle (cas 128, projet 12,
+3 essais sur 3) — `discover_menus` capture le libellé anglais du menu alors que la session
+d'exécution tourne en français — est rattaché aux sous-lots **07c** (contexte navigateur figé,
+`locale`/`timezone_id`) et **08a** (détection de version) déjà prévus par le plan. Pas de nouveau
+défaut ni de nouveau lot pour ce point.
 
 ## 3. Indicateurs de réussite
 
@@ -92,6 +101,13 @@ statuts : ils passent en premier. Le lot 04 construit le banc qui sert à prouve
 | 08 | `/lot-08-odoo-erp` | Détection de version, sélecteurs par version, vocabulaire ERP, effets en chaîne (C6, C7) | D8, D9 | 04 | L |
 | 09 | `/lot-09-agents` | Outils de perception, prompts, garde de réparation des assertions (C9) | D4 | 07, 08 | M |
 | 10 | `/lot-10-mesure-cloture` | Campagne de mesure complète, mise à jour de la documentation | — | tous | S |
+| 11 | `/lot-11-faux-verdicts-soumission` | Faux `donnee_invalide`/`non_conforme` trouvés en campagne réelle : refus déclenché hors soumission (F7), assertion sur message deviné (F8) | — | 01 | S |
+| 12 | `/lot-12-valeurs-observees` | Valeurs de champ écrites sans avoir été observées : masque de saisie, référence relationnelle inexistante (C10) | — | 01, 11 | M |
+
+Les lots 11 et 12 sont issus de la campagne de validation du lot 01 (2026-09-23,
+`docs/mesures/campagne-lot01-2026-09-23.md`), pas du diagnostic initial du 2026-09-23 en §2 —
+insérés dans l'ordre car ils corrigent des faux statuts (11) et une source d'erreurs techniques
+répétée (12), au même titre que les lots 01-03.
 
 ### Suivi
 
@@ -107,6 +123,8 @@ statuts : ils passent en premier. Le lot 04 construit le banc qui sert à prouve
 | 08 | à faire | | |
 | 09 | à faire | | |
 | 10 | à faire | | |
+| 11 | à faire | | |
+| 12 | à faire | | |
 
 ## 6. Ce que chaque lot garantit (résumé)
 
