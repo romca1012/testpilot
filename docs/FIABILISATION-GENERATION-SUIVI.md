@@ -378,6 +378,35 @@ avant validation du prochain tour de campagne.
 
 9 tests ajoutés/étendus au total pour ces trois correctifs.
 
+## Second pilote (23 septembre) : le correctif « grille d'applications » était insuffisant
+
+Une deuxième campagne complète (6 essais, mêmes 2 cas, après les 3 correctifs ci-dessus,
+0,72 USD) a montré un résultat **moins bon** que le premier pilote : 0/6 conforme (contre 1/6),
+4/6 erreur technique. Cause dominante : **le même timeout sur le clic « Assistance »/« Sondages »
+que le correctif du matin était censé fermer s'est reproduit** (3 essais sur 6).
+
+Remesuré à froid juste après la campagne : le premier chargement de session met **5,23 s** pour
+que le texte du menu racine devienne attaché au DOM, contre <0,1 s sur les chargements suivants
+de LA MÊME session — la marge de 5 s posée le matin était insuffisante pour ce cold-start,
+suffisante seulement dans mon test isolé du moment. Relevée à 15 s. Non re-testé en campagne
+complète à ce stade (coût/temps) — seulement en tests unitaires et en mesure ponctuelle réelle.
+
+Cet aller-retour illustre une limite déjà nommée par le plan lui-même : un correctif vérifié sur
+UNE mesure ponctuelle peut rester insuffisant face à la variabilité réelle d'une SPA Odoo sous
+charge — la vraie preuve reste la campagne, pas la sonde isolée qui l'a inspirée.
+
+**Root cause réévaluée après reproduction fidèle des conditions réelles** (navigateur
+Playwright VRAIMENT neuf, jamais réutilisé, comme chaque scénario en lance un) : ce n'est pas
+principalement le rendu client (`.o_app`) qui varie — c'est la **connexion elle-même**. Mesuré :
+16,83 s pour une connexion complète, contre 2,06 s une autre fois — facteur ×8, sur l'instance
+d'essai Sapian (`dev.odoo.com`, publique/partagée, performance hors de notre contrôle).
+`playwright_login` avait lui-même trois attentes à 15 s, jamais élargies avant ce jour — un
+timeout aurait pu s'y produire indépendamment de tout ce qui a été corrigé dans `navigate_menu`.
+Relevées à 25 s (connexion) et 10 s (clic du repli SSO), avec la même logique de marge
+confortable au-dessus du pire cas mesuré. Reconfirmé en conditions réelles après correctif :
+connexion réussie en 15,72 s, un cas qui aurait pu échouer sur l'ancienne marge de 15 s.
+79 tests ciblés passent sans régression.
+
 ## Sources complémentaires vérifiées le 23 septembre
 
 - [Tarifs Anthropic](https://platform.claude.com/docs/en/about-claude/pricing) et

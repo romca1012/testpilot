@@ -1601,15 +1601,20 @@ def navigate_menu(context, menu_path):
     back_office_url = f"{context.odoo_url.rstrip('/')}/web#action=menu"
     context.page.goto(back_office_url, wait_until="domcontentloaded")
     # ⚠️ **Même trou que celui corrigé sur les formulaires** (`_inspect_sync`, Sapian,
-    # 2026-09-23) : la grille d'applications (`.o_app`) n'existe PAS ENCORE à `domcontentloaded`
-    # — mesuré : 0 tuile immédiatement après le chargement, 25 après ~2 s de rendu client (OWL).
-    # Sans cette attente, le PREMIER clic (`get_by_text(...).first.click(timeout=8000)`) peut
-    # timeout sur une grille encore vide selon la variabilité réseau/rendu — mesuré en campagne
-    # réelle (Sapian, 2026-09-23, cas 128 : 2 essais sur 3 échoués sur ce timeout précis). Une
+    # 2026-09-23) : la grille d'applications (`.o_app`) n'existe PAS ENCORE à `domcontentloaded`.
     # `networkidle` a été écartée ailleurs pour la même raison qu'ici (bus de longpolling Odoo) ;
     # `wait_for_selector`, best-effort, ne bloque jamais une grille qui ne se chargerait jamais.
+    #
+    # ⚠️ **Marge relevée à 15 s après un premier correctif insuffisant** (Sapian, 2026-09-23) :
+    # une marge de 5 s avait d'abord semblé confirmée (mesuré : 0 tuile à `domcontentloaded`,
+    # 25 après ~2 s dans un test isolé) — mais le clic sur « Assistance » a continué à timeout de
+    # façon intermittente EN CAMPAGNE RÉELLE (plusieurs essais consécutifs sur la même cible).
+    # Remesuré ensuite, à froid, juste après une campagne : 5,23 s pour que le premier chargement
+    # de session rende « Assistance » attaché, contre <0,1 s sur les chargements suivants de LA
+    # MÊME session — un cold-start peut donc dépasser une marge de 5 s. Chargements suivants du
+    # même segment inchangés (retour quasi immédiat dès que la grille est déjà rendue une fois).
     try:
-        context.page.wait_for_selector(".o_app", timeout=5000)
+        context.page.wait_for_selector(".o_app", timeout=15000)
     except PlaywrightTimeout:
         pass
     for part in [p.strip() for p in re.split(r"[/>]", menu_path)]:
