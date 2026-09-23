@@ -239,3 +239,101 @@ def test_la_section_backoffice_est_branchee_dans_le_message_initial():
 
     assert "BACK-OFFICE" in msg
     assert "`equipment.order`" in msg
+
+
+# ── Libellés de menu APPRIS par exécution réelle (Lot 2, 2026-09-23) ─────────────────────────
+#
+# `discover_menus` capture le libellé dans la langue de la session de CRAWL, pas nécessairement
+# celle de la session d'EXÉCUTION (mesuré : « Surveys » capturé, « Sondages » affiché en run réel,
+# Sapian 2026-09-22). Sans ce rappel dans le prompt, le repli adaptatif de `navigate_menu`
+# retrouvait déjà le bon libellé pour CE run, mais la régénération suivante reproposait
+# indéfiniment le même libellé faux.
+
+@pytest.fixture()
+def memoire_menus(tmp_path, monkeypatch):
+    from testpilot.generation import menu_appris as ma
+    monkeypatch.setattr(ma, "MEMOIRE_DIR", tmp_path / "menus-appris")
+    ma._lire.cache_clear()
+    yield ma
+    ma._lire.cache_clear()
+
+
+def test_un_libelle_appris_est_rappele_a_cote_du_chemin_mesure(memoire_menus):
+    memoire_menus.enregistrer(12, [{"segment_original": "Surveys", "libelle_reel": "Sondages"}])
+    modele = _modele()
+    modele["project_id"] = 12
+    modele["modeles_backoffice"] = [
+        {"menu": "Sondages", "model": "survey.survey", "menu_path": "Assistance / Surveys"}]
+
+    s = pm._section_modeles_backoffice(_plan(), modele)
+
+    assert "Assistance / Surveys" in s, "le chemin mesuré reste affiché, jamais remplacé en silence"
+    assert "« Surveys » confirmé « Sondages » en exécution réelle" in s
+
+
+def test_sans_libellé_appris_correspondant_aucune_note_n_est_ajoutee(memoire_menus):
+    memoire_menus.enregistrer(12, [{"segment_original": "Surveys", "libelle_reel": "Sondages"}])
+    modele = _modele()
+    modele["project_id"] = 12
+    modele["modeles_backoffice"] = [
+        {"menu": "Équipements", "model": "maintenance.equipment",
+         "menu_path": "Parc IT / Équipements"}]
+
+    s = pm._section_modeles_backoffice(_plan(), modele)
+
+    assert "» confirmé «" not in s, "un segment jamais appris ne doit produire aucune note"
+
+
+def test_les_projets_ne_partagent_pas_leur_memoire_de_menus(memoire_menus):
+    memoire_menus.enregistrer(99, [{"segment_original": "Surveys", "libelle_reel": "Sondages"}])
+    modele = _modele()
+    modele["project_id"] = 12  # un AUTRE projet que celui qui a appris "Surveys"
+    modele["modeles_backoffice"] = [
+        {"menu": "Sondages", "model": "survey.survey", "menu_path": "Assistance / Surveys"}]
+
+    s = pm._section_modeles_backoffice(_plan(), modele)
+
+    assert "» confirmé «" not in s, "la mémoire d'un autre projet ne doit jamais s'appliquer ici"
+
+
+# ── URL du formulaire de création, sans passer par le menu (Lot 2, 2026-09-23) ───────────────
+#
+# Diagnostic réel (Sapian, cas 128) : le seul evidence_id cité pour le champ `title` était le
+# schéma RPC, jamais une observation de page — `inspect_page_form` n'a pas d'URL à viser pour le
+# formulaire de CRÉATION, qui n'apparaît que derrière un clic sur « Nouveau ». Vérifié en
+# conditions réelles sur Sapian : `.../web#action=<id>&model=<modèle>&view_type=form&cids=1`
+# ouvre exactement le même formulaire par un simple `goto`, sans aucun clic.
+
+def test_l_id_action_est_donne_a_cote_du_modele_pour_construire_l_url_du_formulaire():
+    modele = _modele()
+    modele["base_url"] = "https://sapian.example.com"
+    modele["modeles_backoffice"] = [
+        {"menu": "Sondages", "model": "survey.survey", "action_id": 907}]
+
+    s = pm._section_modeles_backoffice(_plan(), modele)
+
+    assert "(id action 907)" in s
+    assert "view_type=form&cids=1" in s
+    assert "https://sapian.example.com/web#action=<id action>&model=<modèle>" in s
+
+
+def test_sans_base_url_aucune_instruction_durl_n_est_donnee():
+    """Mieux vaut le silence qu'une instruction qui pointerait vers une URL invalide."""
+    modele = _modele()
+    modele["modeles_backoffice"] = [{"menu": "Sondages", "model": "survey.survey",
+                                     "action_id": 907}]
+
+    s = pm._section_modeles_backoffice(_plan(), modele)
+
+    assert "view_type=form" not in s
+    assert "(id action 907)" in s, "l'id action reste affiché même sans base_url exploitable"
+
+
+def test_sans_action_id_connu_aucune_mention_n_est_ajoutee():
+    modele = _modele()
+    modele["base_url"] = "https://sapian.example.com"
+    modele["modeles_backoffice"] = [{"menu": "Équipements", "model": "maintenance.equipment"}]
+
+    s = pm._section_modeles_backoffice(_plan(), modele)
+
+    assert "(id action" not in s

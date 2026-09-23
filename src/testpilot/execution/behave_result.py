@@ -62,6 +62,10 @@ class BehaveResult:
     # fait par champ résolu, y compris le cas silencieux `name`. Alimente la mémoire de dérive du
     # projet, jamais le verdict : un changement de palier est un signal à surveiller, pas un échec.
     selector_tiers: list[dict] = field(default_factory=list)
+    # Libellés de menu APPRIS par le repli adaptatif de `navigate_menu` (Lot 2, 2026-09-23) — un
+    # fait par segment résolu adaptativement. Niveau RUN, même raison que `selector_tiers`.
+    # Alimente `testpilot.generation.menu_appris`, jamais le verdict.
+    menus_appris: list[dict] = field(default_factory=list)
     dry_run: bool = False
     raw_stdout: str = ""
     raw_stderr: str = ""
@@ -163,6 +167,16 @@ SELECTOR_TIER_FILENAME = "selector_tiers.jsonl"
 # `select_field_value` en écrit un) — plafond plus généreux que `_MAX_REFUS` pour autant.
 _MAX_SELECTOR_TIERS = 200
 
+# Sidecar des libellés de menu APPRIS par le repli adaptatif de `navigate_menu` (Lot 2 du plan de
+# fiabilisation, 2026-09-23). Mêmes noms dupliqués côté `_base_helpers`, pour la même raison, et le
+# même test d'accord.
+MENU_LEARNED_FILE_ENV = "TP_MENU_APPRIS_FILE"
+MENU_LEARNED_FILENAME = "menus_appris.jsonl"
+
+# Un segment de menu n'est résolu qu'une poignée de fois par run (une navigation par scénario) —
+# plafond nettement plus bas que `_MAX_SELECTOR_TIERS`.
+_MAX_MENUS_APPRIS = 100
+
 
 def read_field_fallbacks(path, limit: int = _MAX_FIELD_FALLBACKS) -> list[str]:
     """Replis « libellé → nom technique » consignés pendant le run (décision 0007, phase B+).
@@ -256,6 +270,41 @@ def read_selector_tiers(path, limit: int = _MAX_SELECTOR_TIERS) -> list[dict]:
             if len(resolutions) >= limit:
                 break
     return resolutions
+
+
+def read_menus_appris(path, limit: int = _MAX_MENUS_APPRIS) -> list[dict]:
+    """Les libellés de menu APPRIS pendant le run, relus depuis le sidecar (Lot 2, 2026-09-23).
+
+    Chaque ligne est un fait `{"segment_original": ..., "libelle_reel": ..., "menu_path": ...}` —
+    quel segment de menu cherché par le Gherkin a réellement été atteint via QUEL libellé, quand
+    `navigate_menu` a dû recourir au repli adaptatif (« Chantier F »). Ce sont ces faits qui
+    alimentent la mémoire de menus du projet (`testpilot.generation.menu_appris`), que la
+    génération relit pour ne plus reproposer un libellé déjà connu pour être faux.
+
+    Même raison qu'un fichier plutôt que le log : Behave ne recrache pas la sortie d'un scénario
+    capturé, et un repli adaptatif de navigation a justement lieu dans un scénario qui finit vert.
+
+    Tolérant : une ligne illisible est sautée, pas propagée. Fichier absent = aucun repli de
+    navigation nécessaire pendant ce run (le cas nominal), jamais une erreur.
+    """
+    try:
+        content = Path(path).read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return []
+    faits: list[dict] = []
+    for line in content.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            objet = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(objet, dict):
+            faits.append(objet)
+            if len(faits) >= limit:
+                break
+    return faits
 
 
 def classify_failure(snippet: str) -> tuple[str, str]:

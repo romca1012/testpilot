@@ -118,9 +118,11 @@ class _Clickable:
 class _FakePageMenu:
     def __init__(self):
         self.urls_visitees = []
+        self.url = "about:blank"
 
     def goto(self, url, **_k):
         self.urls_visitees.append(url)
+        self.url = url
 
     def get_by_text(self, texte, exact=True):
         return _Clickable(self.clics, texte)

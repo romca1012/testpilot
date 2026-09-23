@@ -119,6 +119,24 @@ def test_runner_designe_toujours_le_sidecar_des_replis(tmp_path):
     assert env[FIELD_FALLBACK_FILE_ENV] == str(tmp_path / FIELD_FALLBACK_FILENAME)
 
 
+def test_deux_appels_successifs_produisent_des_jetons_de_tentative_differents(tmp_path):
+    """Lot 4 du plan de fiabilisation (2026-09-23) : `_subprocess_env` est appelé une fois PAR
+    tentative physique (`dry_run`/`real_run`) — un rejeu après timeout doit recevoir un jeton
+    DIFFÉRENT, sinon la valeur « rendue unique pour cette tentative » collisionnerait quand même
+    avec ce que la tentative précédente a créé."""
+    runner = BehaveRunner()
+    premier = runner._subprocess_env(tmp_path)["TESTPILOT_ATTEMPT_TOKEN"]
+    second = runner._subprocess_env(tmp_path)["TESTPILOT_ATTEMPT_TOKEN"]
+    assert premier != second
+
+
+def test_le_jeton_de_tentative_porte_l_execution_id_pour_etre_tracable(tmp_path):
+    runner = BehaveRunner()
+    runner.cibler_execution(188)
+    jeton = runner._subprocess_env(tmp_path)["TESTPILOT_ATTEMPT_TOKEN"]
+    assert jeton.startswith("188-")
+
+
 def test_connexion_atteint_reellement_le_sous_processus_behave(tmp_path, monkeypatch):
     """Preuve du câblage : l'env du projet est bien remis à subprocess.run (pas seulement calculé)."""
     import subprocess as sp

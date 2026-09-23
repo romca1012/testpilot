@@ -13,7 +13,7 @@ import re
 from testpilot import config
 from testpilot.analysis.plan import NavStep, TestPlan
 from testpilot.connectors.base import Connector
-from testpilot.generation import domain_model, steps_library
+from testpilot.generation import domain_model, menu_appris, steps_library
 from testpilot.generation.steps_library import SharedStep
 
 _SYSTEM_PROMPT_PATH = config.PROMPTS_DIR / "system_prompt.md"
@@ -429,6 +429,29 @@ _PLAFOND_SECURITE_BACKOFFICE = 250
 _MOT_SIGNIFICATIF = re.compile(r"\w{4,}", re.UNICODE)
 
 
+_SEGMENT_MENU = re.compile(r"[/>]")
+
+
+def _libelles_appris_pour(chemin: str, appris: dict) -> str:
+    """Note à ajouter à un chemin de menu quand un ou plusieurs de ses segments ont un libellé
+    RÉEL différent, appris d'une exécution passée (Lot 2 du plan de fiabilisation, 2026-09-23).
+
+    Ferme la boucle laissée ouverte par « Chantier F » : le repli adaptatif de `navigate_menu`
+    retrouve le bon libellé pour CE run, mais sans ce rappel dans le prompt, la génération
+    suivante repropose indéfiniment le même libellé faux mesuré par `discover_menus`.
+    """
+    if not chemin or not appris:
+        return ""
+    notes = []
+    for segment in (s.strip() for s in _SEGMENT_MENU.split(chemin)):
+        fait = appris.get(segment)
+        if fait and fait.libelle_reel and fait.libelle_reel != segment:
+            notes.append(f"« {segment} » confirmé « {fait.libelle_reel} » en exécution réelle")
+    if not notes:
+        return ""
+    return " — " + "; ".join(notes)
+
+
 def _section_modeles_backoffice(plan: TestPlan, modele: dict | None) -> str:
     """Les modèles BACK-OFFICE (menus Odoo) que le compte connecté peut réellement voir —
     complément au crawl, qui n'atteint jamais `/web`/`/odoo` (`crawl_exclusion_pattern`).
@@ -441,10 +464,30 @@ def _section_modeles_backoffice(plan: TestPlan, modele: dict | None) -> str:
     `OdooConnector.discover_menus` : le web client Odoo lui-même, interrogé via
     `/web/webclient/load_menus`, déjà filtré par les droits du compte — si un menu apparaît ici,
     le compte du projet peut vraiment l'ouvrir.
+
+    ⚠️ **`discover_menus` capture le libellé dans LA LANGUE de la session de crawl** — mesuré en
+    RUN RÉEL (Sapian, 2026-09-22, cas C127) : « Surveys » capturé, « Sondages » affiché à
+    l'exécution. `menu_appris.charger` relit les libellés RÉELS qu'un repli adaptatif a déjà dû
+    trouver pour ce projet, projet par projet (`modele["project_id"]`, déjà posé par
+    `domain_model.charger_modele`) — sans ça, ce trou de langue se répéterait à chaque
+    régénération, indéfiniment.
+
+    ⚠️ **Aucune preuve UI du formulaire de CRÉATION — mesuré en diagnostic réel (Sapian,
+    2026-09-23, cas 128) : le seul `evidence_id` cité pour le champ `title` était le schéma RPC,
+    jamais une observation de page — l'agent n'appelle jamais `inspect_page_form` sur le
+    formulaire de création d'un modèle back-office, faute d'URL à lui donner (il n'apparaît que
+    derrière un clic sur « Nouveau », après une navigation menu qu'`inspect_page_form` — un simple
+    `page.goto` — ne sait pas rejouer).** Vérifié en conditions réelles (Sapian, même run) :
+    `{base_url}/web#action=<id action>&model=<modèle>&view_type=form&cids=1` ouvre EXACTEMENT le
+    même formulaire qu'un clic sur « Nouveau », par un simple `goto` — aucun clic requis. L'« id
+    action » de chaque modèle est donné ci-dessous ; `discover_menus` le capture déjà depuis
+    `actionID` (jamais deviné).
     """
     menus = (modele or {}).get("modeles_backoffice") or []
     if not menus:
         return ""
+    appris = menu_appris.charger((modele or {}).get("project_id"))
+    base_url = (modele or {}).get("base_url", "").rstrip("/")
     mots_cles = {m.lower() for m in _MOT_SIGNIFICATIF.findall(plan.module_name or "")}
     for entite in plan.models or []:
         mots_cles.update(m.lower() for m in _MOT_SIGNIFICATIF.findall(entite))
@@ -464,10 +507,31 @@ def _section_modeles_backoffice(plan: TestPlan, modele: dict | None) -> str:
         "accessibles au compte du projet, mais leurs champs ne figurent PAS dans la section "
         "ci-dessus. Appelle `inspect_schema(\"<modèle>\")` AVANT d'écrire un cas qui les "
         "concerne — n'invente jamais un nom de champ pour l'un d'eux :",
-        "",
+        "Pour naviguer, utilise le chemin mesuré lorsqu'il est fourni ; un simple libellé "
+        "de menu ne prouve pas sa hiérarchie. Ne traduis pas les libellés et n'ajoute pas "
+        "de sous-menu supposé — SAUF quand une entrée précise « confirmé « X » en exécution "
+        "réelle » : ce libellé-là a déjà été vérifié sur un écran réel, préfère-le au chemin "
+        "mesuré pour le segment concerné. Un schéma RPC ne prouve ni le libellé d'un bouton "
+        "ni la présence d'un champ dans la vue : observe la page avec inspect_page_form "
+        "avant de choisir les actions UI et le mécanisme d'enregistrement.",
     ]
+    if base_url:
+        lignes.append(
+            "Pour observer le VRAI formulaire de création d'un modèle ci-dessous (jamais un "
+            "schéma RPC ne le remplace) : appelle inspect_page_form avec l'URL "
+            f"`{base_url}/web#action=<id action>&model=<modèle>&view_type=form&cids=1` — "
+            "sans passer par le menu ni cliquer « Nouveau ». <id action> est donné entre "
+            "parenthèses à côté de chaque modèle."
+        )
+    lignes.append("")
     for entree in retenus:
-        lignes.append(f"  - `{entree['model']}` — menu « {entree['menu']} »")
+        chemin = entree.get("menu_path")
+        navigation = f"chemin mesuré « {chemin} »" if chemin else f"menu « {entree['menu']} »"
+        navigation += _libelles_appris_pour(chemin or entree.get("menu", ""), appris)
+        action_id = entree.get("action_id")
+        if action_id is not None:
+            navigation += f" (id action {action_id})"
+        lignes.append(f"  - `{entree['model']}` — {navigation}")
     if len(menus) > len(retenus):
         lignes.append(f"  *(+{len(menus) - len(retenus)} autres — garde-fou de sécurité "
                       f"({_PLAFOND_SECURITE_BACKOFFICE}) atteint, cas anormal à signaler)*")

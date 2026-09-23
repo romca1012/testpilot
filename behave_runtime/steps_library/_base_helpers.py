@@ -16,6 +16,19 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect
 
 logger = logging.getLogger(__name__)
 
+# ⚠️ Import PLAT, AU NIVEAU MODULE — jamais différé à l'intérieur d'une fonction (bug RÉEL mesuré
+# en run, Sapian, 2026-09-22 : `ModuleNotFoundError: No module named '_adaptive_resolution'`).
+# Behave n'ajoute `steps/` à `sys.path` que PENDANT la phase de chargement des définitions de
+# steps (`load_step_definitions`) — un import DIFFÉRÉ, déclenché PENDANT l'exécution d'un
+# scénario (bien après cette phase), échoue silencieusement car `steps/` n'y est plus. `_base_helpers`
+# lui-même EST chargé pendant cette phase (`_odoo_steps.py`/`_generic_steps.py` l'importent au
+# niveau module) : un import ICI, au niveau module, hérite du même moment favorable. Optionnel
+# (`None` si absent) : la collecte dry-run n'exige pas le paquet applicatif complet.
+try:
+    import _adaptive_resolution
+except ImportError:
+    _adaptive_resolution = None
+
 # Marqueur du repli « libellé → nom technique » (décision 0007). Émis dans le log pour la
 # visibilité en mode dev (§5). ⚠️ NE PAS s'en servir pour remonter le repli au rapport : Behave
 # capture stdout/stderr/logging et ne les recrache PAS sur un scénario VERT dès qu'un
@@ -75,6 +88,33 @@ def _record_selector_tier(ident: str, tier: str) -> None:
     try:
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps({"ident": ident, "tier": tier}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+# Chemin du fichier où consigner les libellés de menu APPRIS par le repli adaptatif de
+# `navigate_menu` (Lot 2 du plan de fiabilisation, 2026-09-23). Nom DUPLIQUÉ côté
+# `execution/behave_result.py`, même raison et même test d'accord que les sidecars ci-dessus.
+MENU_LEARNED_FILE_ENV = "TP_MENU_APPRIS_FILE"
+
+
+def _record_menu_appris(segment_original: str, libelle_reel: str, menu_path: str) -> None:
+    """Consigne quel libellé RÉEL a permis de franchir un segment de menu que `navigate_menu`
+    ne trouvait pas tel quel (Lot 2, 2026-09-23 — ferme la boucle laissée ouverte par
+    « Chantier F » : le repli adaptatif retrouvait déjà le bon libellé pour CE run, mais rien ne
+    le renvoyait vers la génération, qui reproposait indéfiniment le même libellé faux).
+
+    Même discipline que les sidecars ci-dessus : un fichier, jamais le log (absent d'un scénario
+    vert), jamais bloquant (`except OSError` silencieux), rien n'est posé hors d'un run Behave.
+    """
+    path = os.environ.get(MENU_LEARNED_FILE_ENV)
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(
+                {"segment_original": segment_original, "libelle_reel": libelle_reel,
+                 "menu_path": menu_path}, ensure_ascii=False) + "\n")
     except OSError:
         pass
 
@@ -291,58 +331,9 @@ def field_m2o_contains(env, model, record_id, field, partial):
 # ── Playwright / navigateur helpers ──────────────────────────────────────────
 
 def playwright_login(context):
-    """Connexion Odoo — `/web/login`, robuste face à un formulaire replié derrière un SSO.
-
-    ⚠️ **Bug réel mesuré (instance Sapian, 2026-09-17).** Le template `web.login` STANDARD
-    d'Odoo (`addons/web/views/webclient_templates.xml`) rend `.field-login` visible par défaut,
-    même avec des fournisseurs OAuth configurés (`o_login_auth`) — vérifié sur la source Odoo
-    17.0 officielle avant de généraliser quoi que ce soit, pas supposé. Certaines instances
-    personnalisent par-dessus : Sapian masque `.field-login` en CSS et exige un clic sur un
-    <details>/<summary> ("Connexion externe par email") pour l'ouvrir — SANS que cliquer ce
-    <summary> suffise réellement (le <details> s'ouvre, mais la classe qui montre le champ,
-    `.oe_login_form.sapian-open`, n'apparaît qu'en la posant directement).
-
-    Deux formulations différentes du même problème existent donc dans la nature (Odoo nu :
-    rien à faire ; Sapian : un clic ET une classe). **Motif officiel Playwright pour "l'un OU
-    l'autre selon le site, sans convention fixe"** (doc Locators, `.or_()`) : attendre le champ
-    de connexion OU un indice de repli SSO, plutôt que de figer une seule hypothèse.
-    """
-    login_url = f"{context.odoo_url.rstrip('/')}/web/login?db={context.odoo_db}"
-    context.page.goto(login_url, wait_until="domcontentloaded")
-
-    login_field = context.page.locator("input[name='login']")
-    # Texte volontairement large (FR/EN, plusieurs formulations) — jamais le texte EXACT d'une
-    # seule instance : c'est justement ce qui a manqué la première fois.
-    repli_sso = context.page.get_by_text(re.compile(
-        r"connexion.*email|login.*email|external.*email|par\s*email", re.IGNORECASE))
-    # `.wait_for()` sur le résultat de `.or_()`, jamais `expect(...)` : `expect()` exige un VRAI
-    # objet Playwright (il lève sur tout le reste, y compris un bouchon de test) — `.wait_for()`
-    # est une méthode de Locator ordinaire, compatible avec les deux.
-    login_field.or_(repli_sso).first.wait_for(state="visible", timeout=15000)
-
-    if not login_field.is_visible():
-        try:
-            repli_sso.first.click(timeout=5000)
-        except Exception:
-            pass
-        # Best-effort, sans condition sur le texte cliqué : une classe `sapian-open` absente du
-        # DOM d'une autre instance ne fait simplement rien (`querySelectorAll` sur 0 élément).
-        try:
-            context.page.evaluate(
-                "document.querySelectorAll('.oe_login_form')"
-                ".forEach(f => f.classList.add('sapian-open'))")
-        except Exception:
-            pass
-
-    # `state="visible"`, pas `"attached"` : un champ attaché mais masqué se faisait remplir par
-    # `force=True` en pure perte (bug d'origine, avant ce correctif).
-    login_field.wait_for(state="visible", timeout=15000)
-    context.page.locator("input[name='login']").fill(context.odoo_user, force=True)
-    context.page.locator("input[name='password']").fill(context.odoo_password, force=True)
-    context.page.locator("input[name='password']").press("Enter")
-    # Post-condition CONCRÈTE d'un login réussi : on a QUITTÉ la page de login (session établie).
-    # Remplace `networkidle`, que le bus long-polling d'Odoo ne stabilise jamais.
-    context.page.wait_for_url(lambda url: "/web/login" not in url, timeout=15000)
+    """Même connexion UI pour l'exécution et la perception du générateur."""
+    from testpilot.connectors.odoo_login import playwright_login as login
+    return login(context)
 
 
 def navigate(context, url):
@@ -353,7 +344,7 @@ def navigate(context, url):
     context.page.goto(full_url, wait_until="domcontentloaded")
 
 
-def click_first_actionable(page, candidats, *, quoi, timeout=8000):
+def click_first_actionable(page, candidats, *, quoi, timeout=8000, ident: str = ""):
     """Clique le PREMIER candidat qui devient ACTIONNABLE — l'attente est ancrée sur l'ÉLÉMENT,
     jamais sur le réseau.
 
@@ -369,8 +360,12 @@ def click_first_actionable(page, candidats, *, quoi, timeout=8000):
     un `get_by_role("tab")` cherché sur un onglet pas encore rendu).
 
     Budget borné et réparti : chaque candidat reçoit au moins 2 s ; le total ne dépasse pas
-    `max(2000, timeout/len)`·len. Tous les candidats épuisés → `AssertionError` qui nomme `quoi`
-    ET l'URL — pour que le diagnostic porte la vraie cause, pas un « introuvable » trompeur (§0002).
+    `max(2000, timeout/len)`·len. Tous les candidats épuisés → dernier recours ADAPTATIF si `ident`
+    est fourni (« Chantier F », même mécanisme que `locate_field`/`navigate_menu` — mesuré en run
+    réel, Sapian, 2026-09-22 : un sous-menu résolu par repli adaptatif menait à un bouton dont le
+    libellé exact/rôle Playwright ne matchait aucun candidat CSS codé en dur). Sans `ident`
+    (défaut), comportement STRICTEMENT inchangé. Tout épuisé → `ElementIntrouvableError` qui nomme
+    `quoi` ET l'URL — pour que le diagnostic porte la vraie cause, pas un « introuvable » trompeur.
     """
     par_candidat = max(2000, timeout // max(1, len(candidats)))
     for c in candidats:
@@ -380,6 +375,11 @@ def click_first_actionable(page, candidats, *, quoi, timeout=8000):
             return
         except PlaywrightTimeout:
             continue
+    if ident:
+        resolu = _repli_adaptatif(page, ident, quoi)
+        if resolu is not None:
+            resolu.click(timeout=par_candidat)
+            return
     raise ElementIntrouvableError(f"{quoi} : aucun élément actionnable sur {page.url}")
 
 
@@ -390,7 +390,7 @@ def click_button(page, label):
         page.get_by_role("button", name=label, exact=False),
         page.get_by_role("link", name=label, exact=False),
         f':is(a, button, input[type="submit"]):has-text("{label}")',
-    ], quoi=f"Bouton '{label}'")
+    ], quoi=f"Bouton '{label}'", ident=label)
     verifier_soumission_non_bloquee(page)
 
 
@@ -638,6 +638,21 @@ def locate_field(page, ident, *, timeout=8000):
             loc = page.locator(selecteur)
             if loc.count() > 0:
                 _record_selector_tier(ident, tier)
+                if loc.count() > 1:
+                    # ⚠️ Bug RÉEL mesuré en run (Sapian, 2026-09-22) : `[name="name"]` matchait
+                    # PLUSIEURS éléments sur le formulaire de création d'un ticket Helpdesk — le
+                    # `.first` de l'appelant (`fill_field`) a rempli un champ CACHÉ (probablement
+                    # un widget technique invisible), jamais le VRAI titre affiché à l'écran ;
+                    # Odoo a alors refusé silencieusement la sauvegarde (titre resté vide).
+                    # Playwright a raison de fournir TOUS les candidats bruts (la course
+                    # `attached` porte sur "quelque chose existe", pas "c'est le bon") — mais un
+                    # utilisateur ne peut PHYSIQUEMENT PAS remplir un champ qu'il ne voit pas :
+                    # `:visible` (pseudo-classe Playwright native, testée) élimine ce cas sans
+                    # deviner. Repli sur `loc` tel quel si RIEN de visible (comportement
+                    # STRICTEMENT inchangé pour tout candidat déjà mono-résultat).
+                    loc_visible = page.locator(f"{selecteur}:visible")
+                    if loc_visible.count() > 0:
+                        loc = loc_visible
                 if selecteur != f'[name="{ident}"]':
                     message = f"champ '{ident}' introuvable par name ; résolu via `{selecteur}`."
                     logger.warning("%s %s", FIELD_FALLBACK_MARKER, message)
@@ -657,9 +672,50 @@ def locate_field(page, ident, *, timeout=8000):
         _record_field_fallback(message)
         return loc
 
+    # ── Dernier recours : résolution ADAPTATIVE (« Chantier F », F.2/F.3) ──────────────────────
+    # Tous les paliers déterministes ont échoué. Sans `intention` (le texte du step, posé par
+    # `before_step` sur `page` — voir `environment.py`), on n'a rien à transmettre à un modèle :
+    # comportement STRICTEMENT inchangé (aucun appel LLM, aucun coût, même retour qu'avant F).
+    resolu = _repli_adaptatif(page, ident, getattr(page, "_tp_intention_step", ""))
+    if resolu is not None:
+        return resolu
+
     # Rien trouvé : rend le premier candidat (vide) — l'appelant échoue avec SON message, qui
     # nomme le champ et l'URL (comportement inchangé pour le cas "vraiment introuvable").
     return page.locator(candidats_techniques[0])
+
+
+def _repli_adaptatif(page, ident: str, intention: str, *, valeur: str = ""):
+    """Dernier recours partagé (« Chantier F », F.2/F.3) — `locate_field` (résolution de champ) ET
+    `navigate_menu` (clic sur un libellé de menu) l'utilisent tous les deux : même mécanisme, deux
+    points d'entrée différents (un identifiant technique de champ dans un cas, un libellé de menu
+    dans l'autre), jamais dupliqué.
+
+    Rend un `Locator` si le modèle a choisi un élément RÉEL de la page avec confiance, sinon
+    `None` — jamais d'exception : à l'appelant de décider comment échouer, exactement comme avant
+    que ce palier n'existe. Sans `intention`, court-circuite à zéro coût (aucun import, aucun
+    appel réseau) — comportement STRICTEMENT inchangé pour tout appelant qui ne la fournit pas.
+    """
+    if os.environ.get('TESTPILOT_QUALIFICATION') == '1':
+        return None
+    if not intention or _adaptive_resolution is None:
+        return None
+    resolu = _adaptive_resolution.resoudre_champ_adaptatif(page, ident, intention, valeur=valeur)
+    # ⚠️ Le diagnostic (succès ET échec) est toujours consigné dans le sidecar, jamais seulement
+    # loggé — un `logger.warning` seul ne survit à AUCUN scénario avec ce formatter JSON custom
+    # (Behave capture le logging en mémoire et ne le recrache nulle part ici, mesuré en run réel
+    # le 2026-09-22 : le premier jet de ce palier était devenu totalement muet sur un vrai échec).
+    diagnostic = getattr(page, "_tp_dernier_diagnostic_adaptatif", "")
+    if resolu is None:
+        if diagnostic:
+            _record_field_fallback(f"résolution adaptative de '{ident}' sans succès : {diagnostic}")
+        return None
+    _record_selector_tier(ident, "adaptive")
+    message = (f"'{ident}' introuvable par tout palier déterministe ; résolu par résolution "
+              f"ADAPTATIVE (intention : « {intention} » — {diagnostic}).")
+    logger.warning("%s %s", FIELD_FALLBACK_MARKER, message)
+    _record_field_fallback(message)
+    return resolu
 
 
 class ElementIntrouvableError(Exception):
@@ -1266,7 +1322,7 @@ def select_many2one_odoo(page, champ, value: str, *, field: str = "") -> None:
         f".o_dialog tr.o_data_row:has-text('{valeur_echappee}')",
         f".o-autocomplete--dropdown-menu li:has-text('{valeur_echappee}')",
         f".ui-autocomplete .ui-menu-item:has-text('{valeur_echappee}')",
-    ], quoi=f"Résultat '{value}' pour le champ relationnel '{field}'")
+    ], quoi=f"Résultat '{value}' pour le champ relationnel '{field}'", ident=value)
 
 
 _PRODUCT_PATHS = ("/description/", "/product/", "/detail/", "/formulaire-applicatif/")
@@ -1286,7 +1342,7 @@ def select_product_in_list(page, name):
     # cible réelle. Testé en réel : conserve le comportement Odoo (candidats plus précis d'abord).
     click_first_actionable(page,
         [f"a[href*='{p}']:has-text('{name}')" for p in _PRODUCT_PATHS] + [f"a:has-text('{name}')"],
-        quoi=f"Produit '{name}'")
+        quoi=f"Produit '{name}'", ident=name)
 
 
 def select_product_partial(page, partial):
@@ -1295,7 +1351,7 @@ def select_product_partial(page, partial):
     click_first_actionable(page,
         [f"a[href*='{p}']:has-text('{partial}')" for p in _PRODUCT_PATHS]
         + [f"a:has-text('{partial}')"],
-        quoi=f"Produit contenant '{partial}'")
+        quoi=f"Produit contenant '{partial}'", ident=partial)
 
 
 def click_onglet(page, name):
@@ -1303,13 +1359,13 @@ def click_onglet(page, name):
         f".nav-link:has-text('{name}')", f".nav-item a:has-text('{name}')",
         f"[role='tab']:has-text('{name}')", f"li a:has-text('{name}')",
         f"a:has-text('{name}')", f"button:has-text('{name}')",
-    ], quoi=f"Onglet '{name}'")
+    ], quoi=f"Onglet '{name}'", ident=name)
 
 
 def click_button_with_accessoires(page, label):
     click_first_actionable(page,
         [f".btn-{label}", f":is(button, a):has-text('{label}')"],
-        quoi=f"Bouton '{label}' (accessoires)")
+        quoi=f"Bouton '{label}' (accessoires)", ident=label)
 
 
 def force_name_field(page, value):
@@ -1453,6 +1509,12 @@ def no_error_with_keywords(page, keyword1, keyword2):
             f"Erreur contenant '{keyword1}' ou '{keyword2}' trouvée : {error_text}"
 
 
+# Plafond de résolutions adaptatives successives sur UN MÊME segment de `navigate_menu` (un clic
+# qui n'a fait qu'ouvrir un sous-menu local, jamais naviguer) — borne le pire cas (une page dont
+# aucun état ne fait jamais progresser l'URL) à un nombre fini de tours, jamais une boucle infinie.
+_MAX_TENTATIVES_ADAPTATIVES_MENU = 3
+
+
 def navigate_menu(context, menu_path):
     """Un menu Odoo (ex. « Parc IT / Générer des équipements ») vit dans le BACK-OFFICE — jamais
     sur la racine `context.odoo_url`, qui rend le portail applicatif custom quand l'instance en a
@@ -1469,13 +1531,78 @@ def navigate_menu(context, menu_path):
     qui n'existe nulle part tel quel, d'où le timeout. `/` ET `>` sont désormais acceptés,
     exactement comme le motif déjà appliqué à `check_step_soumission` ce matin (le comportement
     RÉEL varie, mieux vaut le tolérer qu'imposer une convention que personne ne connaît).
+
+    ⚠️ **Repli ADAPTATIF si le libellé exact est introuvable** (mesuré en RUN RÉEL, Sapian,
+    2026-09-22 : `discover_menus` avait capturé « Surveys », mais la session d'exécution affiche
+    le menu en français — « Sondages » — et `get_by_text(exact=True)` timeout sur un texte qui
+    n'existe simplement pas dans CETTE langue d'affichage). Même dernier recours que
+    `locate_field` (`_repli_adaptatif`, « Chantier F ») : si le clic exact échoue, on montre à un
+    modèle rapide les libellés RÉELLEMENT affichés sur l'écran de menu et on lui demande de
+    choisir celui qui correspond à l'intention — jamais un texte inventé, uniquement un élément
+    qui existe vraiment. Si lui non plus ne trouve rien, l'échec d'origine (`TimeoutError`,
+    classé `wrong_navigation` par `defect_taxonomy`) remonte tel quel.
+
+    ⚠️ **Un clic adaptatif peut n'ouvrir qu'un sous-menu, sans naviguer** (mesuré en RUN RÉEL,
+    Sapian, 2026-09-22, cas C127 : l'instantané des candidats est pris AVANT l'ouverture d'un menu
+    déroulant — « Tous les tickets » n'existe pas encore dans le DOM au moment de la capture, donc
+    le modèle a choisi le meilleur candidat VISIBLE, le lien PARENT « Tickets », qui ouvre le
+    sous-menu sans y naviguer). Un simple retry déterministe ne suffirait pas : le segment cherché
+    est en anglais (« All Tickets »), l'item réel du sous-menu en français (« Tous les tickets »)
+    — aucun `get_by_text(exact=True)` ne les fera jamais correspondre.
+
+    ⚠️ **Ni l'URL seule ni un signal DOM ne suffisent à détecter la non-progression** — deux
+    essais successifs, tous deux mesurés en run RÉEL (Sapian, 2026-09-22, cas C127) : l'URL SEULE
+    échoue car Odoo charge une vue par défaut EN MÊME TEMPS qu'il ouvre un sous-menu (l'URL change
+    sans que l'item recherché soit atteint) ; un signal de recouvrement DOM (candidats avant/après
+    un clic) s'est révélé peu discriminant, l'interface commune d'Odoo (barre d'outils, filtres,
+    pagination) dominant le nombre de candidats sur TOUTES les vues, quel que soit le seuil
+    choisi. On demande donc DIRECTEMENT au modèle — qui a déjà vu la liste complète des candidats
+    — s'il pense avoir choisi un menu/groupe générique plutôt qu'une destination finale précise
+    (`menu_parent_probable`, posé sur `page._tp_dernier_choix_menu_parent` par
+    `resoudre_champ_adaptatif`) et on retente sur CE MÊME segment si c'est le cas — plafonné pour
+    ne jamais boucler indéfiniment.
     """
     back_office_url = f"{context.odoo_url.rstrip('/')}/web#action=menu"
     context.page.goto(back_office_url, wait_until="domcontentloaded")
     for part in [p.strip() for p in re.split(r"[/>]", menu_path)]:
         if not part:
             continue
-        context.page.get_by_text(part, exact=True).first.click(timeout=8000)
+        for tentative in range(_MAX_TENTATIVES_ADAPTATIVES_MENU):
+            try:
+                context.page.get_by_text(part, exact=True).first.click(timeout=8000)
+                break
+            except PlaywrightTimeout:
+                resolu = _repli_adaptatif(context.page, part, menu_path)
+                if resolu is None:
+                    raise
+                resolu.click(timeout=8000)
+                # Apprend, pour ce projet, le libellé RÉEL qui vient de faire franchir CE segment
+                # (Lot 2, 2026-09-23) — que ce clic soit la destination finale ou seulement une
+                # étape intermédiaire (menu parent) importe peu ICI : si un second clic est
+                # nécessaire sur le MÊME `part` (reboucle ci-dessous), il réécrit la même clé avec
+                # le libellé plus précis qu'il vient de trouver — dernier écrit gagne à la lecture
+                # (`menu_appris.charger`), donc le libellé final l'emporte naturellement.
+                libelle_reel = getattr(context.page, "_tp_dernier_libelle_choisi", "")
+                if libelle_reel:
+                    _record_menu_appris(part, libelle_reel, menu_path)
+                # ⚠️ L'URL SEULE ne suffit pas (bug réel, Sapian 2026-09-22, cas C127) : cliquer
+                # sur un item de menu PARENT (« Tickets ») charge SA PROPRE vue par défaut EN PLUS
+                # d'ouvrir son sous-menu — l'URL change, mais l'item recherché n'est pas encore
+                # atteint. Un signal DOM (recouvrement des candidats avant/après) s'était révélé
+                # peu fiable ici — l'interface commune d'Odoo (barre d'outils, filtres) domine le
+                # nombre de candidats sur TOUTES les vues, quel que soit le seuil choisi. On
+                # demande donc DIRECTEMENT au modèle (qui a déjà vu la liste complète) s'il pense
+                # avoir choisi un menu/groupe plutôt qu'une destination finale — voir
+                # `page._tp_dernier_choix_menu_parent`, posé par `resoudre_champ_adaptatif`.
+                menu_parent = getattr(context.page, "_tp_dernier_choix_menu_parent", False)
+                if not menu_parent:
+                    break  # le modèle est confiant : segment franchi
+                # Sinon : probablement un menu/groupe qui vient d'ouvrir un sous-menu — reboucler
+                # sur CE MÊME segment, DOM maintenant enrichi (l'item réel y est peut-être visible).
+        else:
+            raise ElementIntrouvableError(
+                f"Menu '{part}' : {_MAX_TENTATIVES_ADAPTATIVES_MENU} résolutions adaptatives "
+                f"successives sans faire progresser la navigation, sur {context.page.url}")
 
 
 def access_portal_section(page, section_name):
@@ -1795,6 +1922,15 @@ def _capturer_dernier_enregistrement(context, model) -> None:
     try:
         context.last_record_ids = context.odoo.env[model].search([], order="id desc", limit=1)
         context.last_record_model = model
+        # `write_test_plan` (100 % steps du catalogue) n'a AUCUN Python custom pour appeler
+        # `register_created` — sans cette ligne, chaque scénario généré par ce chemin (celui que
+        # le prompt recommande désormais par défaut) laisserait ses données de test sur la cible
+        # réelle. Sûr ICI, et seulement ici : `_poll_until` vient de PROUVER un enregistrement de
+        # plus qu'au snapshot — contrairement aux steps « … existe dans le modèle … », qui peuvent
+        # pointer un enregistrement PRÉEXISTANT et qu'il ne faut jamais enregistrer pour suppression.
+        from features.environment import register_created
+        for record_id in context.last_record_ids:
+            register_created(context, model, record_id)
     except Exception:
         logger.warning("[comptage] dernier enregistrement de '%s' non capturé — les steps "
                        "« CET enregistrement » suivants le signaleront", model, exc_info=True)

@@ -202,6 +202,12 @@ def before_all(context):
     # Posé par BehaveRunner dans l'environnement du sous-processus ; absent hors run piloté.
     _pid = os.environ.get("TESTPILOT_PROJECT_ID")
     context.project_id = int(_pid) if _pid and _pid.isdigit() else None
+    # Jeton unique de CETTE tentative physique (Lot 4 du plan de fiabilisation, 2026-09-23) —
+    # le step partagé « … rendue unique pour cette tentative » (`generic/_generic_steps.py`)
+    # le lit pour qu'une valeur potentiellement contrainte par une règle d'unicité côté
+    # application ne collisionne jamais avec une tentative précédente. `"tentative-locale"` hors
+    # run piloté (CLI, tests) : jamais vide, pour qu'un appel direct du step ne lève pas.
+    context.tentative_token = os.environ.get("TESTPILOT_ATTEMPT_TOKEN", "tentative-locale")
 
 
 def _capturer_reponse_formulaire(context):
@@ -280,6 +286,24 @@ def _demarrer_trace(context) -> None:
         context._tracing_started = True
     except Exception as exc:
         print(f"[trace] démarrage de trace impossible : {exc}")
+
+
+def before_step(context, step):
+    """Pose le texte du step COURANT sur `context.page` — l'« intention » du Chantier F (F.0).
+
+    Les steps Gherkin de ce dépôt sont déjà des phrases lisibles (« je sélectionne le produit
+    contenant… ») : c'est exactement l'intention sémantique dont a besoin la résolution adaptative
+    de `locate_field` (voir `_base_helpers.py`) quand toute la cascade déterministe a échoué. Rien
+    à construire pour l'obtenir — seulement la transmettre.
+
+    Posée sur `page` (pas `context`) : même patron que `_tp_scenario_attend_un_refus`/
+    `_tp_champs_vides_intentionnels` dans `_base_helpers.py`, pour que `locate_field(page, ident)`
+    y accède sans changement de signature. `context.page` peut ne pas encore exister avant le tout
+    premier step d'un scénario (login) — `getattr` silencieux dans ce cas, jamais fatal.
+    """
+    page = getattr(context, "page", None)
+    if page is not None:
+        page._tp_intention_step = step.name
 
 
 def before_scenario(context, scenario):

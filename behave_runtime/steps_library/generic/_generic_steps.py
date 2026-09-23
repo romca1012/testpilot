@@ -37,6 +37,22 @@ def step_fill(context, field, value):
     fill_field(context.page, field, value)
 
 
+@given('je renseigne le champ "{field}" avec la valeur "{value}" rendue unique pour cette '
+      'tentative')
+@when('je renseigne le champ "{field}" avec la valeur "{value}" rendue unique pour cette '
+     'tentative')
+def step_fill_unique(context, field, value):
+    """Suffixe `value` par un jeton unique à cette tentative — pour un champ à contrainte
+    d'unicité (référence, code, e-mail…), jamais pour un champ ordinaire.
+
+    Lot 4 du plan de fiabilisation (2026-09-23) : une valeur fixe collisionnerait avec ce
+    qu'une tentative précédente a créé si son nettoyage a échoué entre-temps. N'utilise ce
+    step QUE pour les champs qui en ont réellement besoin ; le step nominal reste
+    `… avec la valeur …`.
+    """
+    fill_field(context.page, field, f"{value} {context.tentative_token}")
+
+
 @given('je remplis le formulaire de "{route}" avec des données valides')
 @when('je remplis le formulaire de "{route}" avec des données valides')
 def step_remplir_formulaire_valide(context, route):

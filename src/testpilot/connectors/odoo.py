@@ -163,8 +163,24 @@ class OdooConnector(Connector):
         """Séquence Playwright réelle — exécutée DANS le thread worker (voir _run_in_browser)."""
         page = self._ensure_page()
         target = page_url if page_url.startswith("http") else urljoin(self._url + "/", page_url.lstrip("/"))
-        page.goto(target)
-        page.wait_for_load_state("networkidle")
+        page.goto(target, wait_until="domcontentloaded")
+        if '/web/login' in urlparse(page.url).path and '/web/login' not in urlparse(target).path:
+            raise RuntimeError('Session web absente ou expirée : la page demandée redirige vers la connexion')
+        # ⚠️ **Un formulaire back-office (`/web#...`) n'est PAS prêt à `domcontentloaded`** — mesuré
+        # en conditions réelles (Sapian, 2026-09-23, cas 128) : `extract_form` juste après le goto
+        # rendait 0 champ sur le formulaire de création d'un sondage, alors que 3 champs réels y
+        # sont bien présents une fois le rendu client terminé. `domcontentloaded` ne dit que « le
+        # HTML du coquille SPA est chargé » — les widgets `.o_field_widget` d'Odoo (OWL) se montent
+        # ensuite via JS, après des appels RPC asynchrones. `networkidle` a été écarté : le bus de
+        # longpolling d'Odoo garde une connexion ouverte en continu, qui ne devient jamais idle.
+        # Scopé à `/web#` (jamais une page portail, servie côté serveur, déjà complète à
+        # `domcontentloaded`) — comportement STRICTEMENT inchangé pour tout appelant existant.
+        if '/web#' in target:
+            try:
+                page.wait_for_selector('.o_field_widget', timeout=5000)
+            except Exception:
+                pass  # best-effort : un formulaire sans champ (ou une vue non-formulaire) est un
+                      # résultat légitime, jamais une raison de faire échouer l'inspection.
         result = extract_form(page)
         result["error"] = ""
         return result
@@ -344,16 +360,41 @@ class OdooConnector(Connector):
             logger.warning("[odoo] résolution des modèles de menu impossible : %s", exc)
             return []
 
+        # Conserver la hiérarchie mesurée : un libellé de feuille seul ne permet pas
+        # de générer un parcours fiable (ex. Assistance / Tickets / Tous les tickets).
+        parents = {}
+        for parent_id, parent in menus.items():
+            if isinstance(parent, dict):
+                for child_id in parent.get("children", []) or []:
+                    parents[str(child_id)] = str(parent_id)
+
+        def chemin_menu(menu_id):
+            parties, visites = [], set()
+            courant = str(menu_id)
+            while courant in menus and courant not in visites:
+                visites.add(courant)
+                entree = menus[courant]
+                if not isinstance(entree, dict):
+                    break
+                if courant != "root" and entree.get("name"):
+                    parties.append(entree["name"])
+                courant = parents.get(courant)
+            return " / ".join(reversed(parties))
+
         vus, resultat = set(), []
-        for m in menus.values():
+        for menu_id, m in menus.items():
             if not isinstance(m, dict) or m.get("actionModel") != "ir.actions.act_window":
                 continue
             modele = modeles.get(m.get("actionID"))
             nom = m.get("name", "")
-            if not modele or (modele, nom) in vus:
+            chemin = chemin_menu(menu_id)
+            if not modele or (modele, chemin) in vus:
                 continue
-            vus.add((modele, nom))
-            resultat.append({"menu": nom, "model": modele})
+            vus.add((modele, chemin))
+            entree = {"menu": nom, "model": modele, "action_id": m["actionID"]}
+            if chemin and chemin != nom:
+                entree["menu_path"] = chemin
+            resultat.append(entree)
         return resultat
 
     # ── Écriture (runtime / teardown) ──────────────────────────────────────────
@@ -386,14 +427,17 @@ class OdooConnector(Connector):
         self._browser = self._playwright.chromium.launch(headless=self._headless)
         page = self._browser.new_context().new_page()
         page.set_default_timeout(self._timeout_ms)
-        # Connexion web Odoo (portail). force=True : les inputs de login Odoo ne sont pas
-        # toujours « visibles » au sens Playwright (widgets/overlay) → fill classique timeout.
-        page.goto(f"{self._url}/web/login?db={self._database}")
-        page.wait_for_selector("input[name='login']", state="attached", timeout=self._timeout_ms)
-        page.locator("input[name='login']").fill(self._user, force=True)
-        page.locator("input[name='password']").fill(self._password, force=True)
-        page.locator("input[name='password']").press("Enter")
-        page.wait_for_load_state("networkidle")
+        from types import SimpleNamespace
+        from testpilot.connectors.odoo_login import playwright_login
+        try:
+            playwright_login(SimpleNamespace(page=page, odoo_url=self._url,
+                             odoo_db=self._database, odoo_user=self._user,
+                             odoo_password=self._password))
+        except Exception:
+            self._browser.close()
+            self._playwright.stop()
+            self._browser = self._playwright = None
+            raise
         self._page = page
         return page
 

@@ -154,6 +154,21 @@ def test_confirmer_est_reconnu_comme_une_vraie_soumission():
     assert smoke_check.check_step_soumission(c19) == []
 
 
+def test_enregistrer_est_reconnu_comme_une_vraie_soumission():
+    """Même classe de faux positif que « Confirmer » (C19), cette fois sur Odoo : « Enregistrer »
+    est le libellé STANDARD du bouton de sauvegarde des formulaires backoffice Odoo — un cas
+    généré qui clique dessus ne doit pas déclencher « rien ne sera créé »."""
+    odoo = ('# language: fr\nFonctionnalité: F\n\n'
+           '  Scénario: [Nominal] Créer un ticket\n'
+           '    Quand je clique sur le bouton "Nouveau"\n'
+           '    Et je remplis le champ "Sujet" avec la valeur "Test"\n'
+           '    Et je clique sur le bouton "Enregistrer"\n'
+           '    Alors le nombre total d\'enregistrements dans le modèle "helpdesk.ticket" '
+           'augmente de 1\n')
+
+    assert smoke_check.check_step_soumission(odoo) == []
+
+
 def test_un_libelle_de_bouton_a_plusieurs_mots_contenant_le_verbe_est_reconnu():
     """Les vrais boutons du module Parc IT ne sont pas des mots seuls : « Confirmer la
     réaffectation », « Valider l'affectation », « Confirmer le changement ». Une correspondance

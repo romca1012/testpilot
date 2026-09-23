@@ -95,6 +95,109 @@ def test_inspect_form_ne_leve_jamais_et_signale_l_erreur():
     assert result["error"]
 
 
+def test_inspection_refuse_login_a_la_place_de_la_page_demandee():
+    class Page:
+        url = 'https://target.test/en/web/login'
+        def goto(self, *args, **kwargs):
+            pass
+    conn = OdooConnector('https://target.test', 'db', 'u', 'p')
+    conn._ensure_page = lambda: Page()
+    result = conn.inspect_form('/web#action=42')
+    assert result['fields'] == []
+    assert 'Session web absente ou expirée' in result['error']
+    conn.disconnect()
+
+
+def test_echec_authentification_ne_fuit_pas_de_navigateur(monkeypatch):
+    from types import SimpleNamespace
+    from testpilot.connectors import odoo_login
+    import playwright.sync_api
+    closed = []
+    page = SimpleNamespace(set_default_timeout=lambda _: None)
+    browser = SimpleNamespace(new_context=lambda: SimpleNamespace(new_page=lambda: page),
+                              close=lambda: closed.append('browser'))
+    runtime = SimpleNamespace(chromium=SimpleNamespace(launch=lambda **_: browser),
+                              stop=lambda: closed.append('runtime'))
+    monkeypatch.setattr(playwright.sync_api, 'sync_playwright',
+                        lambda: SimpleNamespace(start=lambda: runtime))
+    def refused(_):
+        raise RuntimeError('session refusée')
+    monkeypatch.setattr(odoo_login, 'playwright_login', refused)
+    conn = OdooConnector('https://target.test', 'db', 'u', 'p')
+    result = conn.inspect_form('/web')
+    assert 'session refusée' in result['error']
+    assert closed == ['browser', 'runtime'] and conn._page is None
+    conn.disconnect()
+
+
+# ── `/web#` back-office : attendre le rendu client avant d'extraire (Lot 2, 2026-09-23) ──────
+#
+# Mesuré en conditions réelles (Sapian, cas 128) : `extract_form` juste après `domcontentloaded`
+# rendait 0 champ sur un formulaire de création Odoo (`/web#action=...&view_type=form`), alors
+# que 3 champs réels y sont bien présents une fois le rendu client (OWL) terminé.
+
+class _PageAvecAttente:
+    def __init__(self, url, controls, attend_leve=False):
+        self.url = url
+        self._controls = controls
+        self.appels_wait = []
+        self._attend_leve = attend_leve
+
+    def goto(self, *args, **kwargs):
+        pass
+
+    def wait_for_selector(self, selector, timeout=None):
+        self.appels_wait.append(selector)
+        if self._attend_leve:
+            raise TimeoutError("jamais apparu")
+
+    def query_selector_all(self, selector):
+        return self._controls
+
+    def query_selector(self, selector):
+        return None
+
+
+def test_inspect_form_attend_le_rendu_client_sur_une_url_web_hash():
+    page = _PageAvecAttente("https://target.test/web#action=907&model=survey.survey"
+                            "&view_type=form&cids=1", [_FakeEl({"name": "title_0", "type": "text"})])
+    conn = OdooConnector("https://target.test", "db", "u", "p")
+    conn._ensure_page = lambda: page
+
+    result = conn.inspect_form("/web#action=907&model=survey.survey&view_type=form&cids=1")
+
+    assert page.appels_wait == [".o_field_widget"]
+    assert [f["name"] for f in result["fields"]] == ["title_0"]
+
+
+def test_inspect_form_n_attend_rien_sur_une_page_portail_ordinaire():
+    """Comportement STRICTEMENT inchangé pour toute page déjà servie complète côté serveur —
+    une page portail n'a jamais de `.o_field_widget` : y attendre coûterait du temps pour rien."""
+    page = _PageAvecAttente("https://target.test/myservices",
+                            [_FakeEl({"name": "sujet", "type": "text"})])
+    conn = OdooConnector("https://target.test", "db", "u", "p")
+    conn._ensure_page = lambda: page
+
+    result = conn.inspect_form("/myservices")
+
+    assert page.appels_wait == []
+    assert [f["name"] for f in result["fields"]] == ["sujet"]
+
+
+def test_inspect_form_survit_si_le_widget_n_apparait_jamais():
+    """Best-effort : un formulaire réellement sans champ (ou une vue non-formulaire) reste un
+    résultat légitime — l'inspection ne doit jamais échouer À CAUSE de l'attente elle-même."""
+    page = _PageAvecAttente("https://target.test/web#action=1&view_type=kanban", [],
+                            attend_leve=True)
+    conn = OdooConnector("https://target.test", "db", "u", "p")
+    conn._ensure_page = lambda: page
+
+    result = conn.inspect_form("/web#action=1&view_type=kanban")
+
+    assert result["error"] == ""
+    assert result["fields"] == []
+
+
 def test_odoo_connector_satisfait_l_interface():
     # Toutes les méthodes abstraites sont implémentées → instanciable.
     conn = OdooConnector("http://localhost:10017", "db", "u", "p")
@@ -167,9 +270,26 @@ def test_discover_menus_resout_les_modeles_reels_depuis_les_menus():
 
     modeles = {r["model"] for r in resultat}
     assert modeles == {"equipment.order", "equipment.assignation.order", "maintenance.equipment"}
-    assert {"menu": "Générer des équipements", "model": "equipment.order"} in resultat
+    assert {"menu": "Générer des équipements", "model": "equipment.order",
+           "action_id": 966} in resultat
     # Un seul aller-retour de RÉSOLUTION groupée — pas un appel par action.
     assert sum(1 for a in request.appels if a[0] == "POST") == 1
+
+
+def test_discover_menus_conserve_l_action_id_pour_le_formulaire_de_creation():
+    """Lot 2 du plan de fiabilisation (2026-09-23) : `action_id` permet de construire l'URL du
+    formulaire de CRÉATION (`.../web#action=<id>&model=<model>&view_type=form&cids=1`, vérifiée
+    en conditions réelles sur Sapian) sans jamais naviguer par le menu — c'est ce qui manquait
+    pour qu'`inspect_page_form` observe le vrai formulaire avant que le Gherkin ne soit écrit."""
+    menus = {"688": {"id": 688, "name": "Générer des équipements", "actionID": 966,
+                     "actionModel": "ir.actions.act_window"}}
+    actions = {"result": [{"id": 966, "res_model": "equipment.order"}]}
+    request = _FakeRequestContext(menus, actions)
+    conn = OdooConnector("http://sapian.local", "db", "u", "p")
+
+    resultat = conn.discover_menus(_FakePageAvecRequest(request))
+
+    assert resultat[0]["action_id"] == 966
 
 
 def test_discover_menus_ne_leve_jamais_si_le_reseau_echoue():
@@ -194,3 +314,30 @@ def test_discover_menus_est_le_defaut_vide_sur_l_interface_de_base():
     effort, comme partout ailleurs dans ce dépôt."""
     from testpilot.connectors.generic_web import GenericWebConnector
     assert GenericWebConnector(url="http://app.local").discover_menus(object()) == []
+
+
+def test_discover_menus_conserve_les_chemins_et_les_feuilles_homonymes():
+    menus = {
+        'root': {'children': [1, 2]},
+        '1': {'name': 'Assistance', 'children': [3]},
+        '2': {'name': 'Ventes', 'children': [4]},
+        '3': {'name': 'Tickets', 'actionID': 10, 'actionModel': 'ir.actions.act_window'},
+        '4': {'name': 'Tickets', 'actionID': 10, 'actionModel': 'ir.actions.act_window'},
+    }
+    actions = {'result': [{'id': 10, 'res_model': 'helpdesk.ticket'}]}
+    request = _FakeRequestContext(menus, actions)
+    conn = OdooConnector('http://sapian.local', 'db', 'u', 'p')
+    result = conn.discover_menus(_FakePageAvecRequest(request))
+    assert {r['menu_path'] for r in result} == {'Assistance / Tickets', 'Ventes / Tickets'}
+    assert all(r['menu'] == 'Tickets' for r in result)
+    from types import SimpleNamespace
+
+    from testpilot.generation.prompt import _section_modeles_backoffice
+    from testpilot.generation.smoke_check import smoke_check
+
+    modele = {'modeles_backoffice': result}
+    prompt = _section_modeles_backoffice(
+        SimpleNamespace(module_name='assistance', models=['helpdesk.ticket']), modele)
+    assert 'chemin mesuré « Assistance / Tickets »' in prompt
+    assert smoke_check('Quand je navigue vers le menu Odoo "Assistance / Tickets"',
+                       modele=modele) == []

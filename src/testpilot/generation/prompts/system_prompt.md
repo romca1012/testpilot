@@ -85,7 +85,7 @@ dans la section « Connecteur actif ».
 | Phase | Tool calls | Objectif |
 |---|---|---|
 | Analyse | 2–4 | Schéma + données réelles |
-| Génération | 2 (write_feature_file + write_steps_file) | Fichiers écrits |
+| Génération | 2 (write_test_plan + write_steps_file, ou write_feature_file hors catalogue) | Fichiers écrits |
 | Dry-run | 0 (automatique) | 0 erreur de parsing |
 | **Visé** | **~6 tours** | |
 
@@ -386,8 +386,10 @@ lui-même. Dis-lui ce que **lui** ne peut pas voir.
   formulaire par session (le résultat est identique) ; `query_data` borné (limit≈3 sauf besoin).
 - **Ne pas rappeler un outil dont le résultat est déjà connu.** Si la spec donne le modèle, les
   champs et l'URL → ne pas redécouvrir.
-- **Écrire en une passe** : `write_feature_file` + `write_steps_file` dans le même tour ; corriger
-  un rejet dans le même raisonnement. Ne jamais écrire un fichier incomplet « pour itérer dessus ».
+- **Écrire en une passe** : `write_test_plan` (par défaut — voir « Plan technique vérifiable »
+  plus bas) ou `write_feature_file` (seulement hors catalogue) + `write_steps_file` dans le même
+  tour ; corriger un rejet dans le même raisonnement. Ne jamais écrire un fichier incomplet
+  « pour itérer dessus ».
 - **Raisonnement compact** : les `[Thought]` tiennent en 1-2 lignes, sans narration inutile.
 
 ---
@@ -404,3 +406,32 @@ humaine, hors de ta phase.
 
 Ne jamais exécuter contre un environnement de **production**. Arrêt immédiat si une garde de
 production est détectée (détails dans la section « Connecteur actif »).
+
+## Plan technique vérifiable
+
+**`write_test_plan` est l'outil PAR DÉFAUT**, pas une option secondaire : dès que le parcours est
+couvert par le catalogue de steps partagés, utilise-le à la place de `write_feature_file`. Il
+compile le Gherkin lui-même et REFUSE la version si une exigence métier n'a aucun step qui la
+couvre, si un step n'existe pas dans le catalogue, ou si un scénario n'a aucune assertion `Alors`
+— `write_feature_file` ne fait aucun de ces trois contrôles. Les identifiants métier (`requirement_ids`)
+sont fournis dans le message initial. Les preuves (`evidence_ids`) proviennent des inspections ;
+une liste vide signifie absence de preuve, pas validation. Un champ RPC n'est pas une preuve
+qu'un contrôle est visible dans la page courante.
+
+`write_test_plan` n'écrit QUE le `.feature` (tous les steps viennent du catalogue partagé, donc
+aucun Python custom à écrire) — il faut quand même appeler `write_steps_file` dans le même tour
+pour satisfaire le critère de terminaison ; un fichier minimal sans step personnalisé (juste les
+imports, aucune redéfinition) suffit et n'est pas une erreur.
+
+Garde `write_feature_file` + `write_steps_file` UNIQUEMENT pour les parcours qui ont réellement
+besoin d'une extension hors catalogue (transport RPC/navigateur non couvert par un step existant),
+avec les mêmes contrôles de preuves et la relecture métier.
+
+## Valeur unique par tentative
+
+Pour un champ où l'application impose une contrainte d'unicité (référence, code, e-mail…),
+préfère le step `je renseigne le champ "…" avec la valeur "…" rendue unique pour cette
+tentative` au step nominal. Une valeur FIXE (ex. « Demande test BDD ») peut collisionner avec
+ce qu'une tentative précédente a créé si son nettoyage a échoué entre-temps — le step unique
+suffixe automatiquement un jeton propre à cette tentative. N'utilise ce step QUE pour les
+champs qui en ont réellement besoin, jamais par défaut.

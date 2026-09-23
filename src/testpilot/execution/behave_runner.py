@@ -16,12 +16,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 
 from testpilot import config
 from testpilot.execution.behave_result import (
     FIELD_FALLBACK_FILE_ENV,
     FIELD_FALLBACK_FILENAME,
+    MENU_LEARNED_FILE_ENV,
+    MENU_LEARNED_FILENAME,
     REGLES_REFUS_FILE_ENV,
     REGLES_REFUS_FILENAME,
     SELECTOR_TIER_FILE_ENV,
@@ -29,6 +32,7 @@ from testpilot.execution.behave_result import (
     BehaveResult,
     parse_behave_json,
     read_field_fallbacks,
+    read_menus_appris,
     read_refus_mesures,
     read_selector_tiers,
 )
@@ -105,7 +109,8 @@ class BehaveRunner:
         env = {**os.environ, **self.connection,
                FIELD_FALLBACK_FILE_ENV: str(run_dir / FIELD_FALLBACK_FILENAME),
                REGLES_REFUS_FILE_ENV: str(run_dir / REGLES_REFUS_FILENAME),
-               SELECTOR_TIER_FILE_ENV: str(run_dir / SELECTOR_TIER_FILENAME)}
+               SELECTOR_TIER_FILE_ENV: str(run_dir / SELECTOR_TIER_FILENAME),
+               MENU_LEARNED_FILE_ENV: str(run_dir / MENU_LEARNED_FILENAME)}
         # `src` importable dans le sous-processus : le résolveur déterministe (§2bis) importe
         # `testpilot.generation.{valeur_conforme,domain_model}`. Sans ça, `python -m behave`
         # (cwd = run_dir jetable) ne voit pas le paquet `testpilot`. On PRÉPEND pour primer sur
@@ -124,6 +129,16 @@ class BehaveRunner:
         # hors API (CLI sans projet, ex. `.env` de la machine).
         if self.connector_type is not None:
             env["TESTPILOT_CONNECTOR_TYPE"] = self.connector_type
+        # Un jeton UNIQUE par tentative PHYSIQUE (Lot 4 du plan de fiabilisation, 2026-09-23) —
+        # `_subprocess_env` est appelé une fois PAR APPEL de `dry_run`/`real_run`, donc une fois
+        # par tentative réelle, y compris un rejeu après timeout (0007 B+, `Executor`). Un cas
+        # généré qui suffixe une valeur potentiellement sujette à une contrainte d'unicité côté
+        # application (voir le step partagé « … rendue unique pour cette tentative ») ne collisionne
+        # donc jamais avec une tentative précédente, même si son nettoyage a échoué entre-temps.
+        # `execution_id` d'abord (traçable dans les artefacts), un suffixe aléatoire ensuite (deux
+        # tentatives de la MÊME exécution ne doivent jamais partager le même jeton).
+        env["TESTPILOT_ATTEMPT_TOKEN"] = (
+            f"{self.execution_id if self.execution_id is not None else 'x'}-{uuid.uuid4().hex[:6]}")
         return env
 
     def dry_run(self, module_name: str) -> BehaveResult:
@@ -180,6 +195,10 @@ class BehaveRunner:
             # de lecture (avant le rmtree), même sidecar que les deux mécanismes ci-dessus.
             result.selector_tiers = read_selector_tiers(run_dir / SELECTOR_TIER_FILENAME)
             self._detecter_derive(result, module_name, dry_run=dry_run)
+            # Libellés de menu APPRIS par le repli adaptatif (Lot 2, 2026-09-23). Même moment de
+            # lecture (avant le rmtree), même sidecar que les mécanismes ci-dessus.
+            result.menus_appris = read_menus_appris(run_dir / MENU_LEARNED_FILENAME)
+            self._apprendre_menus(result, dry_run=dry_run)
             return result
         finally:
             shutil.rmtree(run_dir, ignore_errors=True)
@@ -245,6 +264,35 @@ class BehaveRunner:
                 self.project_id, derive.module, derive.ident, derive.ancien_tier,
                 derive.nouveau_tier)
 
+    def _apprendre_menus(self, result: BehaveResult, *, dry_run: bool) -> None:
+        """Persiste les libellés de menu appris de ce run (Lot 2 du plan de fiabilisation,
+        2026-09-23) — ferme la boucle laissée ouverte par « Chantier F » : le repli adaptatif de
+        `navigate_menu` retrouve déjà le bon libellé pour CE run, mais rien ne le renvoyait vers
+        la génération avant ce câblage.
+
+        Mêmes trois bornes qu'`_apprendre`/`_detecter_derive`, pour les mêmes raisons :
+
+        - **jamais sur un dry-run** — aucune navigation n'y est réellement tentée contre
+          l'application ;
+        - **ici et nulle part ailleurs** — le seul point que `run_service` et `cli.py`
+          traversent tous les deux ;
+        - **best-effort, jamais fatal** — un libellé non appris est un défaut mineur de qualité de
+          génération, jamais une raison de faire tomber une exécution réelle.
+        """
+        if dry_run or self.project_id is None or not result.menus_appris:
+            return
+        try:
+            from testpilot.generation import menu_appris
+            appris = menu_appris.enregistrer(self.project_id, result.menus_appris,
+                                             execution_id=self.execution_id)
+        except Exception:
+            logger.warning("[menus appris] apprentissage impossible — le run reste intact",
+                           exc_info=True)
+            return
+        if appris:
+            logger.info("[menus appris] projet %s : %d libellé(s) de menu appris",
+                        self.project_id, appris)
+
     def _archiver(self, run_dir: Path, module_name: str, *, dry_run: bool, journal: str) -> None:
         """Recopie la trace brute du run hors du dossier temporaire, avant sa destruction.
 
@@ -259,6 +307,9 @@ class BehaveRunner:
           Archivé pour qu'on puisse relire *pourquoi* une valeur est interdite depuis ce run-là ;
         - les **paliers de résolution** de chaque champ (§1.2) : ce qui a permis de détecter une
           dérive éventuelle, à relire même quand la mémoire du projet a depuis été mise à jour ;
+        - les **libellés de menu appris** (Lot 2, 2026-09-23) : quel libellé RÉEL a permis de
+          franchir un segment que le Gherkin ne trouvait pas tel quel, à relire même quand la
+          mémoire du projet a depuis été mise à jour ;
         - les **traces Playwright** par scénario (§ fiabiliser l'exécution automatique, volet 2) :
           la doc officielle Playwright les recommande au-dessus des captures d'écran pour
           diagnostiquer un échec — timeline complète, snapshots DOM, réseau, console.
@@ -281,6 +332,7 @@ class BehaveRunner:
                 (run_dir / FIELD_FALLBACK_FILENAME, f"{prefixe}.replis-de-champ.json"),
                 (run_dir / REGLES_REFUS_FILENAME, f"{prefixe}.refus-mesures.jsonl"),
                 (run_dir / SELECTOR_TIER_FILENAME, f"{prefixe}.paliers-de-selecteur.jsonl"),
+                (run_dir / MENU_LEARNED_FILENAME, f"{prefixe}.menus-appris.jsonl"),
             ):
                 if source.exists():
                     shutil.copy2(source, self.artifacts_dir / cible)

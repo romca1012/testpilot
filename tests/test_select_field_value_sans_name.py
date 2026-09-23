@@ -156,6 +156,57 @@ def test_locate_field_ne_consigne_rien_quand_rien_n_est_trouve(tmp_path, monkeyp
     assert not sidecar.exists()
 
 
+class _LocatorPlusieursCandidats:
+    """Simule `[name="name"]` matchant PLUSIEURS éléments (un champ caché + le vrai titre) — le
+    cas RÉEL mesuré en run (Sapian, 2026-09-22) : le formulaire de création d'un ticket Helpdesk
+    avait un `[name="name"]` caché en plus du vrai titre, et `.first` prenait le mauvais."""
+
+    def __init__(self, *, avec_visible: bool):
+        self._avec_visible = avec_visible
+
+    @property
+    def first(self):
+        return self
+
+    def count(self):
+        return 1 if self._avec_visible else 3  # ":visible" filtre à 1 ; le brut en voit 3
+
+    def wait_for(self, **_kw):
+        pass
+
+    def evaluate(self, _script):
+        return "input"
+
+    def get_attribute(self, _attr):
+        return "text"
+
+
+class _PageChampAmbigu:
+    def __init__(self):
+        self.url = "https://exemple.test/ticket"
+
+    def locator(self, selecteur):
+        return _LocatorPlusieursCandidats(avec_visible=":visible" in selecteur)
+
+    def get_by_label(self, _texte, exact=False):
+        return _LocatorPlusieursCandidats(avec_visible=False)
+
+    def get_by_placeholder(self, _texte, exact=False):
+        return _LocatorPlusieursCandidats(avec_visible=False)
+
+
+def test_locate_field_filtre_par_visibilite_quand_plusieurs_candidats_techniques(tmp_path,
+                                                                                 monkeypatch):
+    """Le VRAI bug mesuré (Sapian, 2026-09-22) : `[name="name"]` matchait plusieurs éléments sur
+    le formulaire de ticket Helpdesk, `.first` prenait un champ CACHÉ (jamais le vrai titre
+    visible) — Odoo refusait alors silencieusement la sauvegarde (titre resté vide). Un humain ne
+    peut PHYSIQUEMENT PAS remplir un champ qu'il ne voit pas : `locate_field` doit préférer le(s)
+    candidat(s) visible(s) dès que le palier technique en trouve plus d'un."""
+    page = _PageChampAmbigu()
+    loc = locate_field(page, "name")
+    assert loc.count() == 1  # le Locator filtré ":visible", pas les 3 candidats bruts
+
+
 def test_rien_trouve_nulle_part_rend_un_locator_vide_pas_une_exception():
     """`locate_field` ne lève JAMAIS — à l'appelant de décider comment échouer (même contrat que
     `resolve_field_name`, qui rendait `ident` inchangé plutôt que de lever)."""

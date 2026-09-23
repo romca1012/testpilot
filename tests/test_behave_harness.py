@@ -94,6 +94,37 @@ def test_before_all_web_url_vide_par_defaut_zero_regression(monkeypatch):
     assert ctx.web_password == ""
 
 
+def test_before_all_expose_le_jeton_de_tentative(monkeypatch):
+    """Lot 4 du plan de fiabilisation (2026-09-23) : le step partagé « … rendue unique pour
+    cette tentative » lit `context.tentative_token`, posé ici depuis la variable d'environnement
+    que `BehaveRunner._subprocess_env` désigne à CHAQUE appel de `dry_run`/`real_run`."""
+    monkeypatch.setenv("TESTPILOT_ATTEMPT_TOKEN", "188-a1b2c3")
+    mod = _load_environment()
+
+    class _Ctx:
+        pass
+
+    ctx = _Ctx()
+    mod.before_all(ctx)
+
+    assert ctx.tentative_token == "188-a1b2c3"
+
+
+def test_le_jeton_de_tentative_a_une_valeur_par_defaut_hors_run_pilote(monkeypatch):
+    """GARDE NÉGATIVE : un appel direct du step (CLI, tests) sans `BehaveRunner` ne doit jamais
+    lever — `context.tentative_token` doit toujours exister, jamais vide ni absent."""
+    monkeypatch.delenv("TESTPILOT_ATTEMPT_TOKEN", raising=False)
+    mod = _load_environment()
+
+    class _Ctx:
+        pass
+
+    ctx = _Ctx()
+    mod.before_all(ctx)
+
+    assert ctx.tentative_token == "tentative-locale"
+
+
 _PROBE_FEATURE = """# language: fr
 Fonctionnalité: Sonde du harnais Behave
   Scénario: la bibliothèque et le shim résolvent

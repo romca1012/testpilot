@@ -10,6 +10,8 @@ Tests déterministes sans Odoo : un faux `context` reproduit juste `context.odoo
 """
 
 import ast
+import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -20,7 +22,20 @@ from behave_runtime.steps_library._base_helpers import (
     check_count_not_increased,
     memorize_record_count,
 )
+from testpilot import config
 from testpilot.generation import steps_library
+
+
+def _installer_shim_features_environment():
+    """Même shim que `test_behave_harness.py` : rend `features.environment` importable, pour
+    que le `from features.environment import register_created` (import différé, dans
+    `_capturer_dernier_enregistrement`) résolve sans dépendre d'un vrai run Behave."""
+    spec = importlib.util.spec_from_file_location(
+        "environment", config.BEHAVE_RUNTIME_DIR / "environment.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["environment"] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 class _FakeModel:
@@ -86,6 +101,34 @@ def test_snapshot_puis_augmentation_de_1_passe():
     memorize_record_count(ctx, MODEL)
     ctx.odoo = _FakeOdoo(count=11)          # l'action a créé un enregistrement
     check_count_increased_by_one(ctx, MODEL)
+
+
+def test_le_nouvel_enregistrement_est_enregistre_pour_nettoyage():
+    """`write_test_plan` (100 % steps du catalogue) n'a aucun Python custom pour appeler
+    `register_created` — sans ce câblage, chaque scénario qui passe par « augmente de 1 »
+    laisserait ses données sur la cible réelle. `_FakeModel.search` renvoie `[4242]` : c'est
+    l'identifiant que `_capturer_dernier_enregistrement` doit relayer à `register_created`."""
+    _installer_shim_features_environment()
+    ctx = _Context(count=10)
+    ctx.created = {}
+    memorize_record_count(ctx, MODEL)
+    ctx.odoo = _FakeOdoo(count=11)
+    check_count_increased_by_one(ctx, MODEL)
+
+    assert ctx.created == {MODEL: [4242]}
+
+
+def test_un_enregistrement_preexistant_verifie_par_ailleurs_n_est_jamais_enregistre():
+    """Garde anti-régression inverse : seule la voie « augmente de 1 » (comptage PROUVÉ) doit
+    déclencher `register_created`. Un `context` sans `.created` (les steps « … existe dans le
+    modèle … » n'en posent pas) ne doit jamais lever — le best-effort documenté doit tenir."""
+    _installer_shim_features_environment()
+    ctx = _Context(count=10)  # pas de ctx.created : simule un contexte qui n'en a jamais eu besoin
+    memorize_record_count(ctx, MODEL)
+    ctx.odoo = _FakeOdoo(count=11)
+    check_count_increased_by_one(ctx, MODEL)  # ne doit pas lever malgré l'AttributeError interne
+
+    assert ctx.last_record_ids == [4242]
 
 
 def test_snapshot_puis_augmentation_inattendue_echoue():

@@ -148,11 +148,16 @@ _AFFIRME_CREATION = (
 # 1. Ajout de « confirme »/« confirmer » aux verbes reconnus.
 # 2. Le motif quoté n'exige plus une correspondance EXACTE — un libellé de plusieurs mots
 #    contenant le verbe (« Confirmer la réaffectation ») doit compter, pas seulement le mot seul.
+#
+# ⚠️ **Même classe de faux positif, cette fois sur Odoo** : « Enregistrer »/« Save » est le
+# libellé STANDARD du bouton de sauvegarde Odoo (formulaires backoffice génériques), absent des
+# deux motifs ci-dessus — chaque cas généré contre Odoo qui clique sur « Enregistrer » déclenche
+# à tort le même « point de vigilance » que Parc IT avec « Confirmer ». Ajouté par le même patron.
 _SOUMET = (
-    re.compile(r'\b(?:soumets?|soumis|soumet|envoie|envoi|valide|confirme|confirmer)\b',
-              re.IGNORECASE),
-    re.compile(r'clique[^"\n]*"[^"]*\b(?:Envoyer|Soumettre|Valider|Confirmer|Submit|Confirm)\b'
-              r'[^"]*"', re.IGNORECASE),
+    re.compile(r'\b(?:soumets?|soumis|soumet|envoie|envoi|valide|confirme|confirmer'
+              r'|enregistre|enregistrer|save)\b', re.IGNORECASE),
+    re.compile(r'clique[^"\n]*"[^"]*\b(?:Envoyer|Soumettre|Valider|Confirmer|Submit|Confirm'
+              r'|Enregistrer|Save)\b[^"]*"', re.IGNORECASE),
 )
 # ⚠️ « j'attends la soumission du formulaire » N'EST PAS une soumission : le helper partagé
 # (`wait_form_submission`) ne fait qu'ATTENDRE, il ne clique rien. C'est la cause exacte du
@@ -375,6 +380,38 @@ def check_champs_existants(feature_content: str, modele: dict,
     return [w.as_dict() for w in warnings]
 
 
+def check_menus_observes(feature_content: str, modele: dict) -> list[dict]:
+    """Signale un chemin non mesuré, sans supposer la cartographie exhaustive."""
+    menus = {str(entry.get("menu_path") or entry.get("menu", "")).strip()
+             for entry in (modele.get("modeles_backoffice") or []) if entry.get("menu")}
+    if not menus:
+        return []
+
+    def normaliser(menu):
+        return tuple(part.strip().casefold() for part in menu.split("/") if part.strip())
+
+    connus = {normaliser(menu) for menu in menus}
+    motif = re.compile(r'^\s*(?:Quand|Et|Soit|Lorsque|Alors|Mais)\s+'
+                       r'je navigue vers le menu Odoo "([^"]+)"\s*$', re.IGNORECASE)
+    warnings = []
+    for num, line in enumerate(feature_content.splitlines(), 1):
+        match = motif.match(line)
+        if not match:
+            continue
+        menu = match.group(1)
+        chemin = normaliser(menu)
+        # Les parents d'une feuille mesurée sont aussi des chemins connus.
+        if chemin and any(c[:len(chemin)] == chemin for c in connus):
+            continue
+        warnings.append(SmokeWarning(
+            kind="menu_non_observe", step=menu, line=num,
+            message=(f"Le chemin « {menu} » n'est pas étayé par les menus mesurés le "
+                     f"{modele.get('mesure_le', '?')}. Vérifie le chemin et la langue du "
+                     "compte connecté ; ne traduis pas les libellés et n'invente pas de "
+                     "sous-menu. La cartographie peut être incomplète ou ancienne.")).as_dict())
+    return warnings
+
+
 def smoke_check(feature_content: str, steps_content: str = "", modele: dict | None = None,
                 verified_fields: dict[str, list[str]] | None = None) -> list[dict]:
     """Sans crawl, seules les inspections de la version peuvent étayer l'avis sur les champs.
@@ -382,10 +419,11 @@ def smoke_check(feature_content: str, steps_content: str = "", modele: dict | No
     `None` désigne une version ancienne sans registre ; `{}` une génération instrumentée
     qui n'a observé aucun champ. Les confondre ferait taire une génération sans preuve.
     """
+    menus = check_menus_observes(feature_content, modele or {})
     if not modele or not modele.get("pages"):
-        return (check_champs_existants(feature_content, modele or {}, verified_fields)
-                if verified_fields is not None else [])
-    return (check_valeurs_de_select(feature_content, modele)
+        return menus + (check_champs_existants(feature_content, modele or {}, verified_fields)
+                        if verified_fields is not None else [])
+    return (menus + check_valeurs_de_select(feature_content, modele)
             + check_champs_existants(feature_content, modele, verified_fields)
             + check_champs_requis_remplis(feature_content, modele)
             # Seul contrôle qui ne consulte PAS le modèle (il lit la structure du scénario) : il

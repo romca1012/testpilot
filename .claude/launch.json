@@ -10,7 +10,7 @@
     {
       "name": "backend",
       "runtimeExecutable": ".venv-v1/Scripts/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "testpilot.api.app:app", "--reload", "--port", "8010"],
+      "runtimeArgs": ["-m", "uvicorn", "testpilot.api.app:app", "--reload", "--reload-dir", "src", "--port", "8010"],
       "port": 8010
     }
   ]

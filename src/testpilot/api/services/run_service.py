@@ -199,7 +199,7 @@ def _assurer_script_sur_disque(conn, version_id: int, module_name: str) -> None:
 
 
 def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int, *,
-                  triggered_by: str = "") -> None:
+                  triggered_by: str = "", qualification: bool = False) -> None:
     """Tâche de fond : lance Behave réel, calcule + persiste le verdict à deux axes.
 
     Puis tente une RÉPARATION si le gate l'a autorisée (décision 0014) : la boucle vit dans
@@ -219,7 +219,8 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
         runner = BehaveRunner(connection=resolve_connection(conn, case_id),
                               project_id=resolve_project_id(conn, case_id),
                               connector_type=resolve_connector_type(conn, case_id))
-        outcome = _execute_and_persist(conn, execution_id, case_id, module_name, runner)
+        outcome = _execute_and_persist(conn, execution_id, case_id, module_name, runner,
+                                       **({'qualification': True} if qualification else {}))
         # ⚠️ Isolé du verdict déjà persisté ci-dessus (audit 2026-08-07, défaut bloquant) : un
         # plantage PENDANT la réparation ne doit JAMAIS écraser un verdict RÉEL déjà écrit —
         # `ExecutionRepo.finalize` n'a aucune garde contre un second appel, donc laisser cette
@@ -228,8 +229,9 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
         # détecté) par « erreur technique » — la réparation est un bonus après coup, jamais une
         # condition de validité du verdict original.
         try:
-            _maybe_repair(conn, case_id=case_id, version_id=version_id, module_name=module_name,
-                          outcome=outcome, runner=runner, triggered_by=triggered_by)
+            if not qualification:
+                _maybe_repair(conn, case_id=case_id, version_id=version_id, module_name=module_name,
+                              outcome=outcome, runner=runner, triggered_by=triggered_by)
         except Exception:
             logger.exception("[run] réparation de l'exécution %s en échec — le verdict "
                              "d'origine reste acquis, non touché", execution_id)
@@ -247,7 +249,8 @@ def dossier_artefacts(execution_id: int) -> Path:
     return Path(config.DATA_DIR) / "executions" / str(execution_id)
 
 
-def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str, runner):
+def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str, runner,
+                         *, qualification: bool = False):
     """Un run réel + son verdict persisté. `outcome.execution_id` porte la ligne concernée."""
     started = time.perf_counter()
     # ⚠️ Redésigné AVANT chaque run, pas une fois à la construction : le même runner sert les
@@ -261,7 +264,37 @@ def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str
     # pas celle d'une tentative précédente réutilisant le même runner.
     if hasattr(runner, "cibler_execution"):
         runner.cibler_execution(execution_id)
-    outcome = Executor(runner).execute(module_name)
+    from testpilot.store.execution_attempts import ExecutionAttemptRepo
+    from testpilot.generation.provenance import execution_provenance
+
+    attempts = ExecutionAttemptRepo(conn)
+    attempt_ids = {}
+    provenance = execution_provenance(conn, execution_id)
+    provenance['qualification'] = qualification
+
+    def start_attempt(number, reason):
+        path = chemin / f"attempt-{number}"
+        attempt_ids[number] = attempts.start(
+            execution_id, number, reason=reason, artifacts_path=str(path), provenance=provenance)
+        if hasattr(runner, 'cibler_artefacts'):
+            runner.cibler_artefacts(path)
+
+    def finish_attempt(number, result, duration):
+        attempts.finish(attempt_ids[number], result, duration,
+                        connector_type=resolve_connector_type(conn, case_id))
+        # Vue de compatibilité du dernier résultat ; les dossiers attempt-N restent intacts.
+        path = chemin / f"attempt-{number}"
+        if path.is_dir():
+            shutil.copytree(path, chemin, dirs_exist_ok=True)
+
+    executor = Executor(runner)
+    executor.on_attempt_start = start_attempt
+    executor.on_attempt_finish = finish_attempt
+    if qualification:
+        executor.max_retries = 0
+        if hasattr(runner, 'connection'):
+            runner.connection = {**runner.connection, 'TESTPILOT_QUALIFICATION': '1'}
+    outcome = executor.execute(module_name)
     duration = time.perf_counter() - started
     # Confiance du verdict selon le connecteur (étape 2.2) — déjà résolu plus haut pour scoper la
     # bibliothèque de steps du runner ; réutilisé ici plutôt que reproduit.
@@ -370,6 +403,10 @@ def _joindre_captures(conn, execution_id: int, result_id: int | None) -> None:
     if result_id is None:
         return
     source_dir = dossier_artefacts(execution_id) / "screenshots"
+    from testpilot.store.execution_attempts import ExecutionAttemptRepo
+    attempts = ExecutionAttemptRepo(conn).list_for_execution(execution_id)
+    if attempts:
+        source_dir = Path(attempts[-1]['artifacts_path']) / 'screenshots'
     if not source_dir.is_dir():
         return
     try:
