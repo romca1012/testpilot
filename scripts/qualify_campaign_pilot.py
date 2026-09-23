@@ -1,16 +1,22 @@
-"""Campagne pilote (REDUITE) du Lot 5 -- 2 cas Odoo reels (127, 128), 3 generations
-independantes chacun, une seule execution physique par generation.
+"""Campagne pilote (REDUITE) du Lot 5 -- generalise le 23/09/2026 pour accepter n'importe quel
+projet/cas Odoo (--project-id/--cases/--iterations), plutot que les 2 cas (127, 128) du projet 12
+codes en dur a l'origine. Par defaut (aucun argument), le comportement reste celui du pilote
+d'origine : 2 cas du projet 12, 3 generations independantes chacun, une seule execution physique
+par generation.
 
 Perimetre reduit, approuve explicitement le 23/09/2026 : le corpus complet du plan (30 cas,
-20 Odoo + 10 web) n'existe pas encore -- 0 cas web-generique defini, et le projet 1 (22 cas
-Odoo) pointe vers un Odoo local injoignable au moment de ce pilote. Ce script ne pretend PAS
+20 Odoo + 10 web) n'existe pas encore -- 0 cas web-generique defini. Ce script ne pretend PAS
 qualifier le Lot 5 au sens du plan approuve (seuils 86/90, 27/30, etc, non applicables a un
-echantillon de 6 essais) -- il mesure un signal reel sur les 2 seuls cas actuellement joignables
-(projet 12, staging Sapian), avec la meme rigueur de protocole que possible a cette echelle :
-generation independante, execution physique unique (aucun rejeu, aucune reparation, aucune
-resolution adaptative -- TESTPILOT_QUALIFICATION=1), isolation des memoires apprises entre les
-3 essais d'un meme cas, verification independante (requete RPC fraiche, hors des assertions du
-Gherkin genere).
+petit echantillon) -- il mesure un signal reel sur les cas explicitement demandes, avec la meme
+rigueur de protocole que possible a cette echelle : generation independante, execution physique
+unique (aucun rejeu, aucune reparation, aucune resolution adaptative -- TESTPILOT_QUALIFICATION=1),
+isolation des memoires apprises entre les essais d'un meme cas, verification independante
+(requete RPC fraiche, hors des assertions du Gherkin genere).
+
+Sans --expected-base-url explicite, un projet different du projet 12 par defaut ne verifie AUCUNE
+URL attendue avant de lancer -- l'appelant est responsable d'avoir confirme que la cible (base_url
+du projet en base) est la bonne avant de lancer une campagne qui va reellement creer des
+enregistrements dessus.
 """
 from __future__ import annotations
 
@@ -41,10 +47,10 @@ from testpilot.execution import selector_memory
 from testpilot.store.repositories import CaseRepo, ProjectRepo
 from testpilot.verdict.status import derive_verdict
 
-PROJECT_ID = 12
-CASE_IDS = (127, 128)
-ITERATIONS = (1, 2, 3)
-EXPECTED_BASE_URL = 'https://sapian-portail-integration-38039788.dev.odoo.com'
+DEFAULT_PROJECT_ID = 12
+DEFAULT_CASE_IDS = (127, 128)
+DEFAULT_ITERATIONS = (1, 2, 3)
+DEFAULT_EXPECTED_BASE_URL = 'https://sapian-portail-integration-38039788.dev.odoo.com'
 
 MEMOIRES = (menu_appris, selector_memory, regles_apprises)
 
@@ -69,13 +75,13 @@ def _restaurer_memoires(snapshot: dict) -> None:
         module._lire.cache_clear()
 
 
-def _charger_metier(conn, case_id: int) -> dict:
+def _charger_metier(conn, case_id: int, project_id: int) -> dict:
     row = conn.execute(
         'SELECT v.* FROM test_case c JOIN module m ON m.id=c.module_id '
         'JOIN test_case_version v ON v.id=c.current_version_id '
-        'WHERE c.id=? AND m.project_id=? AND c.deleted_at=\'\'', (case_id, PROJECT_ID)).fetchone()
+        'WHERE c.id=? AND m.project_id=? AND c.deleted_at=\'\'', (case_id, project_id)).fetchone()
     if not row:
-        raise ValueError(f'cas {case_id} introuvable pour le projet {PROJECT_ID}')
+        raise ValueError(f'cas {case_id} introuvable pour le projet {project_id}')
     source = dict(row)
     return {'title': source['title'], 'preconditions': source['preconditions'],
            'steps': json.loads(source['test_steps']), 'expected_result': source['expected_result']}
@@ -107,14 +113,14 @@ def _verification_independante(connector, model: str, since_epoch: float) -> dic
 
 
 def _un_essai(case_id: int, iteration: int, out_dir: Path, project: dict, connexion: dict,
-             budget: QualificationBudget) -> dict:
-    trial = f'pilote-c{case_id}-i{iteration}-20260923'
+             budget: QualificationBudget, project_id: int) -> dict:
+    trial = f'pilote-p{project_id}-c{case_id}-i{iteration}-20260923'
     trial_dir = out_dir / trial
     trial_dir.mkdir(parents=True)
 
     with sqlite3.connect((ROOT / 'data/testpilot.db').as_uri() + '?mode=ro', uri=True) as conn:
         conn.row_factory = sqlite3.Row
-        metier = _charger_metier(conn, case_id)
+        metier = _charger_metier(conn, case_id, project_id)
 
     config.GENERATED_DIR = trial_dir / 'generated'
     config.GENERATED_DIR.mkdir()
@@ -131,7 +137,7 @@ def _un_essai(case_id: int, iteration: int, out_dir: Path, project: dict, connex
     os.environ['TESTPILOT_QUALIFICATION'] = '1'
     connector = build_connector(project)
     dry_runner = BehaveRunner(generated_dir=config.GENERATED_DIR, connector_type='odoo',
-                              project_id=PROJECT_ID, connection=connexion)
+                              project_id=project_id, connection=connexion)
     dry_runner.cibler_artefacts(trial_dir / 'generation')
     debut = time.time()
     try:
@@ -162,7 +168,7 @@ def _un_essai(case_id: int, iteration: int, out_dir: Path, project: dict, connex
     # Execution physique UNIQUE : max_retries=0, meme sous TESTPILOT_QUALIFICATION=1 (deja
     # sans resolution adaptative -- verifie plus haut dans le module _base_helpers).
     run_runner = BehaveRunner(generated_dir=config.GENERATED_DIR, connector_type='odoo',
-                              project_id=PROJECT_ID, connection=connexion)
+                              project_id=project_id, connection=connexion)
     run_runner.cibler_artefacts(trial_dir / 'execution')
     outcome = Executor(run_runner, max_retries=0).execute(module_name)
     verdict = derive_verdict(outcome, connector_type='odoo')
@@ -186,24 +192,43 @@ def _un_essai(case_id: int, iteration: int, out_dir: Path, project: dict, connex
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', required=True)
+    parser.add_argument('--project-id', type=int, default=DEFAULT_PROJECT_ID)
+    parser.add_argument('--cases', type=str, default=None,
+                        help='ids de cas separes par des virgules (defaut : pilote 127,128)')
+    parser.add_argument('--iterations', type=str, default=None,
+                        help='numeros d\'iteration separes par des virgules (defaut : 1,2,3)')
+    parser.add_argument('--expected-base-url', type=str, default=None,
+                        help='garde-fou : refuse de lancer si le project.base_url differe')
     args = parser.parse_args()
+    project_id = args.project_id
+    case_ids = tuple(int(c) for c in args.cases.split(',')) if args.cases else DEFAULT_CASE_IDS
+    iterations = (tuple(int(i) for i in args.iterations.split(','))
+                 if args.iterations else DEFAULT_ITERATIONS)
+    expected_base_url = (args.expected_base_url if args.expected_base_url is not None
+                        else (DEFAULT_EXPECTED_BASE_URL if project_id == DEFAULT_PROJECT_ID else None))
     out_dir = ROOT / '.local-preview' / 'qualification' / args.out
     out_dir.mkdir(parents=True, exist_ok=False)
 
     with sqlite3.connect(ROOT / 'data' / 'testpilot.db') as conn:
         conn.row_factory = sqlite3.Row
-        project = ProjectRepo(conn).get(PROJECT_ID)
-    if project is None or project['base_url'] != EXPECTED_BASE_URL:
-        raise ValueError('projet 12 introuvable ou staging different du perimetre approuve')
+        project = ProjectRepo(conn).get(project_id)
+    if project is None:
+        raise ValueError(f'projet {project_id} introuvable')
+    if expected_base_url is not None and project['base_url'] != expected_base_url:
+        raise ValueError(
+            f'projet {project_id} : base_url {project["base_url"]!r} differe du perimetre '
+            f'approuve {expected_base_url!r} -- passe --expected-base-url pour confirmer '
+            f'explicitement un changement de cible.')
     connexion = verifier_connexion(project)
 
     budget = QualificationBudget(out_dir / 'budget.db')
     resultats = []
-    for case_id in CASE_IDS:
-        for iteration in ITERATIONS:
-            snapshot = _snapshot_memoires(PROJECT_ID)
+    for case_id in case_ids:
+        for iteration in iterations:
+            snapshot = _snapshot_memoires(project_id)
             try:
-                rapport = _un_essai(case_id, iteration, out_dir, project, connexion, budget)
+                rapport = _un_essai(case_id, iteration, out_dir, project, connexion, budget,
+                                    project_id)
             finally:
                 _restaurer_memoires(snapshot)
             resultats.append(rapport)
