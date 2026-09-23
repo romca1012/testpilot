@@ -1,0 +1,2380 @@
+{
+  "connector_type": "web",
+  "projet": "Test connecteur générique",
+  "project_id": 9,
+  "base_url": "https://the-internet.herokuapp.com/login",
+  "mesure_le": "2026-09-09",
+  "methode": "crawl déterministe Playwright, aucun LLM",
+  "pages": {
+    "/": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/abtest",
+          "text": "A/B Testing",
+          "role": null
+        },
+        {
+          "href": "/add_remove_elements/",
+          "text": "Add/Remove Elements",
+          "role": null
+        },
+        {
+          "href": "/basic_auth",
+          "text": "Basic Auth",
+          "role": null
+        },
+        {
+          "href": "/broken_images",
+          "text": "Broken Images",
+          "role": null
+        },
+        {
+          "href": "/challenging_dom",
+          "text": "Challenging DOM",
+          "role": null
+        },
+        {
+          "href": "/checkboxes",
+          "text": "Checkboxes",
+          "role": null
+        },
+        {
+          "href": "/context_menu",
+          "text": "Context Menu",
+          "role": null
+        },
+        {
+          "href": "/digest_auth",
+          "text": "Digest Authentication",
+          "role": null
+        },
+        {
+          "href": "/disappearing_elements",
+          "text": "Disappearing Elements",
+          "role": null
+        },
+        {
+          "href": "/drag_and_drop",
+          "text": "Drag and Drop",
+          "role": null
+        },
+        {
+          "href": "/dropdown",
+          "text": "Dropdown",
+          "role": null
+        },
+        {
+          "href": "/dynamic_content",
+          "text": "Dynamic Content",
+          "role": null
+        },
+        {
+          "href": "/dynamic_controls",
+          "text": "Dynamic Controls",
+          "role": null
+        },
+        {
+          "href": "/dynamic_loading",
+          "text": "Dynamic Loading",
+          "role": null
+        },
+        {
+          "href": "/entry_ad",
+          "text": "Entry Ad",
+          "role": null
+        },
+        {
+          "href": "/exit_intent",
+          "text": "Exit Intent",
+          "role": null
+        },
+        {
+          "href": "/download",
+          "text": "File Download",
+          "role": null
+        },
+        {
+          "href": "/upload",
+          "text": "File Upload",
+          "role": null
+        },
+        {
+          "href": "/floating_menu",
+          "text": "Floating Menu",
+          "role": null
+        },
+        {
+          "href": "/forgot_password",
+          "text": "Forgot Password",
+          "role": null
+        },
+        {
+          "href": "/login",
+          "text": "Form Authentication",
+          "role": null
+        },
+        {
+          "href": "/frames",
+          "text": "Frames",
+          "role": null
+        },
+        {
+          "href": "/geolocation",
+          "text": "Geolocation",
+          "role": null
+        },
+        {
+          "href": "/horizontal_slider",
+          "text": "Horizontal Slider",
+          "role": null
+        },
+        {
+          "href": "/hovers",
+          "text": "Hovers",
+          "role": null
+        },
+        {
+          "href": "/infinite_scroll",
+          "text": "Infinite Scroll",
+          "role": null
+        },
+        {
+          "href": "/inputs",
+          "text": "Inputs",
+          "role": null
+        },
+        {
+          "href": "/jqueryui/menu",
+          "text": "JQuery UI Menus",
+          "role": null
+        },
+        {
+          "href": "/javascript_alerts",
+          "text": "JavaScript Alerts",
+          "role": null
+        },
+        {
+          "href": "/javascript_error",
+          "text": "JavaScript onload event error",
+          "role": null
+        },
+        {
+          "href": "/key_presses",
+          "text": "Key Presses",
+          "role": null
+        },
+        {
+          "href": "/large",
+          "text": "Large & Deep DOM",
+          "role": null
+        },
+        {
+          "href": "/windows",
+          "text": "Multiple Windows",
+          "role": null
+        },
+        {
+          "href": "/nested_frames",
+          "text": "Nested Frames",
+          "role": null
+        },
+        {
+          "href": "/notification_message",
+          "text": "Notification Messages",
+          "role": null
+        },
+        {
+          "href": "/redirector",
+          "text": "Redirect Link",
+          "role": null
+        },
+        {
+          "href": "/download_secure",
+          "text": "Secure File Download",
+          "role": null
+        },
+        {
+          "href": "/shadowdom",
+          "text": "Shadow DOM",
+          "role": null
+        },
+        {
+          "href": "/shifting_content",
+          "text": "Shifting Content",
+          "role": null
+        },
+        {
+          "href": "/slow",
+          "text": "Slow Resources",
+          "role": null
+        },
+        {
+          "href": "/tables",
+          "text": "Sortable Data Tables",
+          "role": null
+        },
+        {
+          "href": "/status_codes",
+          "text": "Status Codes",
+          "role": null
+        },
+        {
+          "href": "/typos",
+          "text": "Typos",
+          "role": null
+        },
+        {
+          "href": "/tinymce",
+          "text": "WYSIWYG Editor",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/"
+    },
+    "/abtest": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/abtest"
+    },
+    "/add_remove_elements": {
+      "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "Add Element",
+          "soumet": true,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/add_remove_elements/"
+    },
+    "/basic_auth": {
+      "champs": [],
+      "actions": [],
+      "liens": [],
+      "formulaires": [],
+      "titre": "",
+      "url_exemple": "/basic_auth"
+    },
+    "/broken_images": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/broken_images"
+    },
+    "/challenging_dom": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "",
+          "text": "qux",
+          "role": null
+        },
+        {
+          "href": "",
+          "text": "bar",
+          "role": null
+        },
+        {
+          "href": "",
+          "text": "baz",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/challenging_dom"
+    },
+    "/checkboxes": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [
+        {
+          "action": "",
+          "method": "get",
+          "champs": 0
+        }
+      ],
+      "titre": "The Internet",
+      "url_exemple": "/checkboxes"
+    },
+    "/context_menu": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/context_menu"
+    },
+    "/digest_auth": {
+      "champs": [],
+      "actions": [],
+      "liens": [],
+      "formulaires": [],
+      "titre": "",
+      "url_exemple": "/digest_auth"
+    },
+    "/disappearing_elements": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/",
+          "text": "Home",
+          "role": null
+        },
+        {
+          "href": "/about/",
+          "text": "About",
+          "role": null
+        },
+        {
+          "href": "/contact-us/",
+          "text": "Contact Us",
+          "role": null
+        },
+        {
+          "href": "/portfolio/",
+          "text": "Portfolio",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/disappearing_elements"
+    },
+    "/drag_and_drop": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/drag_and_drop"
+    },
+    "/dropdown": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/dropdown"
+    },
+    "/dynamic_content": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/dynamic_content?with_content=static",
+          "text": "click here",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/dynamic_content"
+    },
+    "/dynamic_controls": {
+      "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "Remove",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Enable",
+          "soumet": true,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [
+        {
+          "action": "",
+          "method": "get",
+          "champs": 0
+        },
+        {
+          "action": "",
+          "method": "get",
+          "champs": 0
+        }
+      ],
+      "titre": "The Internet",
+      "url_exemple": "/dynamic_controls"
+    },
+    "/dynamic_loading": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/dynamic_loading/1",
+          "text": "Example 1: Element on page that is hidde",
+          "role": null
+        },
+        {
+          "href": "/dynamic_loading/2",
+          "text": "Example 2: Element rendered after the fa",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/dynamic_loading"
+    },
+    "/entry_ad": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "",
+          "text": "click here",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/entry_ad"
+    },
+    "/exit_intent": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/exit_intent"
+    },
+    "/download": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "download/hello.txt",
+          "text": "hello.txt",
+          "role": null
+        },
+        {
+          "href": "download/r2_test_upload_75le5tg4.txt",
+          "text": "r2_test_upload_75le5tg4.txt",
+          "role": null
+        },
+        {
+          "href": "download/git-cheatsheet.pdf",
+          "text": "git-cheatsheet.pdf",
+          "role": null
+        },
+        {
+          "href": "download/tmpm59jy4px.txt",
+          "text": "tmpm59jy4px.txt",
+          "role": null
+        },
+        {
+          "href": "download/test_sample.txt",
+          "text": "test_sample.txt",
+          "role": null
+        },
+        {
+          "href": "download/some-file.txt",
+          "text": "some-file.txt",
+          "role": null
+        },
+        {
+          "href": "download/test_upload.txt",
+          "text": "test_upload.txt",
+          "role": null
+        },
+        {
+          "href": "download/image-compressed.pdf",
+          "text": "image-compressed.pdf",
+          "role": null
+        },
+        {
+          "href": "download/random_data_17.txt",
+          "text": "random_data_17.txt",
+          "role": null
+        },
+        {
+          "href": "download/cb-proof.bin",
+          "text": "cb-proof.bin",
+          "role": null
+        },
+        {
+          "href": "download/cb-proof.png",
+          "text": "cb-proof.png",
+          "role": null
+        },
+        {
+          "href": "download/sample-upload.txt",
+          "text": "sample-upload.txt",
+          "role": null
+        },
+        {
+          "href": "download/myfile.txt",
+          "text": "myfile.txt",
+          "role": null
+        },
+        {
+          "href": "download/test.txt",
+          "text": "test.txt",
+          "role": null
+        },
+        {
+          "href": "download/pdf-1mb.pdf",
+          "text": "pdf-1mb.pdf",
+          "role": null
+        },
+        {
+          "href": "download/hello.json",
+          "text": "hello.json",
+          "role": null
+        },
+        {
+          "href": "download/upexlogo_1788898248851.png",
+          "text": "upexlogo_1788898248851.png",
+          "role": null
+        },
+        {
+          "href": "download/sample.docx",
+          "text": "sample.docx",
+          "role": null
+        },
+        {
+          "href": "download/dummy.csv",
+          "text": "dummy.csv",
+          "role": null
+        },
+        {
+          "href": "download/r2_test_upload_2p1yqpec.txt",
+          "text": "r2_test_upload_2p1yqpec.txt",
+          "role": null
+        },
+        {
+          "href": "download/gauntlet.txt",
+          "text": "gauntlet.txt",
+          "role": null
+        },
+        {
+          "href": "download/t1.txt",
+          "text": "t1.txt",
+          "role": null
+        },
+        {
+          "href": "download/temp_upload.txt",
+          "text": "temp_upload.txt",
+          "role": null
+        },
+        {
+          "href": "download/tmpd58p64ix.txt",
+          "text": "tmpd58p64ix.txt",
+          "role": null
+        },
+        {
+          "href": "download/raport.txt",
+          "text": "raport.txt",
+          "role": null
+        },
+        {
+          "href": "download/random_data_18.txt",
+          "text": "random_data_18.txt",
+          "role": null
+        },
+        {
+          "href": "download/testing.mp3",
+          "text": "testing.mp3",
+          "role": null
+        },
+        {
+          "href": "download/examplefile.json",
+          "text": "examplefile.json",
+          "role": null
+        },
+        {
+          "href": "download/cb-proof.txt",
+          "text": "cb-proof.txt",
+          "role": null
+        },
+        {
+          "href": "download/test_file.txt",
+          "text": "test_file.txt",
+          "role": null
+        },
+        {
+          "href": "download/playwright-upload.txt",
+          "text": "playwright-upload.txt",
+          "role": null
+        },
+        {
+          "href": "download/upload_test.txt",
+          "text": "upload_test.txt",
+          "role": null
+        },
+        {
+          "href": "download/Images.txt",
+          "text": "Images.txt",
+          "role": null
+        },
+        {
+          "href": "download/nospace.docx",
+          "text": "nospace.docx",
+          "role": null
+        },
+        {
+          "href": "download/testing.pdf",
+          "text": "testing.pdf",
+          "role": null
+        },
+        {
+          "href": "download/testing_firefox.pdf",
+          "text": "testing_firefox.pdf",
+          "role": null
+        },
+        {
+          "href": "download/dummy.pdf",
+          "text": "dummy.pdf",
+          "role": null
+        },
+        {
+          "href": "download/upexlogo_1788898260497.png",
+          "text": "upexlogo_1788898260497.png",
+          "role": null
+        },
+        {
+          "href": "download/testing_edge.pdf",
+          "text": "testing_edge.pdf",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/download"
+    },
+    "/upload": {
+      "champs": [
+        {
+          "name": "file",
+          "tag": "input",
+          "type": "file",
+          "required": false,
+          "visible": true,
+          "role": "button",
+          "label": ""
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "Upload",
+          "soumet": true,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [
+        {
+          "action": "",
+          "method": "post",
+          "champs": 1
+        }
+      ],
+      "titre": "The Internet",
+      "url_exemple": "/upload"
+    },
+    "/floating_menu": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "#home",
+          "text": "Home",
+          "role": null
+        },
+        {
+          "href": "#news",
+          "text": "News",
+          "role": null
+        },
+        {
+          "href": "#contact",
+          "text": "Contact",
+          "role": null
+        },
+        {
+          "href": "#about",
+          "text": "About",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/floating_menu"
+    },
+    "/forgot_password": {
+      "champs": [
+        {
+          "name": "email",
+          "tag": "input",
+          "type": "text",
+          "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "E-mail"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "Retrieve password",
+          "soumet": true,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [
+        {
+          "action": "/forgot_password",
+          "method": "post",
+          "champs": 1
+        }
+      ],
+      "titre": "The Internet",
+      "url_exemple": "/forgot_password"
+    },
+    "/login": {
+      "champs": [
+        {
+          "name": "username",
+          "tag": "input",
+          "type": "text",
+          "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Username"
+        },
+        {
+          "name": "password",
+          "tag": "input",
+          "type": "password",
+          "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Password"
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "Login",
+          "soumet": true,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [
+        {
+          "action": "/authenticate",
+          "method": "post",
+          "champs": 2
+        }
+      ],
+      "titre": "The Internet",
+      "url_exemple": "/login"
+    },
+    "/frames": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/nested_frames",
+          "text": "Nested Frames",
+          "role": null
+        },
+        {
+          "href": "/iframe",
+          "text": "iFrame",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/frames"
+    },
+    "/geolocation": {
+      "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "Where am I?",
+          "soumet": true,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/geolocation"
+    },
+    "/horizontal_slider": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/horizontal_slider"
+    },
+    "/hovers": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/users/1",
+          "text": "View profile",
+          "role": null
+        },
+        {
+          "href": "/users/2",
+          "text": "View profile",
+          "role": null
+        },
+        {
+          "href": "/users/3",
+          "text": "View profile",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/hovers"
+    },
+    "/infinite_scroll": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/infinite_scroll/3",
+          "text": "next page",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/infinite_scroll"
+    },
+    "/inputs": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/inputs"
+    },
+    "/jqueryui/menu": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://api.jqueryui.com/menu/",
+          "text": "JQuery UI Menus",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "Disabled",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "Should not see this",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "Enabled",
+          "role": null
+        },
+        {
+          "href": "#",
+          "text": "Downloads",
+          "role": null
+        },
+        {
+          "href": "/download/jqueryui/menu/menu.pdf",
+          "text": "PDF",
+          "role": null
+        },
+        {
+          "href": "/download/jqueryui/menu/menu.csv",
+          "text": "CSV",
+          "role": null
+        },
+        {
+          "href": "/download/jqueryui/menu/menu.xls",
+          "text": "Excel",
+          "role": null
+        },
+        {
+          "href": "/jqueryui",
+          "text": "Back to JQuery UI",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/jqueryui/menu"
+    },
+    "/javascript_alerts": {
+      "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "Click for JS Alert",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Click for JS Confirm",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Click for JS Prompt",
+          "soumet": true,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/javascript_alerts"
+    },
+    "/javascript_error": {
+      "champs": [],
+      "actions": [],
+      "liens": [],
+      "formulaires": [],
+      "titre": "Page with JavaScript errors on load",
+      "url_exemple": "/javascript_error"
+    },
+    "/key_presses": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [
+        {
+          "action": "",
+          "method": "get",
+          "champs": 0
+        }
+      ],
+      "titre": "The Internet",
+      "url_exemple": "/key_presses"
+    },
+    "/large": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/large"
+    },
+    "/windows": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/windows/new",
+          "text": "Click Here",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/windows"
+    },
+    "/nested_frames": {
+      "champs": [],
+      "actions": [],
+      "liens": [],
+      "formulaires": [],
+      "titre": "",
+      "url_exemple": "/nested_frames"
+    },
+    "/notification_message_rendered": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "#",
+          "text": "×",
+          "role": null
+        },
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/notification_message",
+          "text": "Click here",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/notification_message_rendered"
+    },
+    "/redirector": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "redirect",
+          "text": "here",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/redirector"
+    },
+    "/download_secure": {
+      "champs": [],
+      "actions": [],
+      "liens": [],
+      "formulaires": [],
+      "titre": "",
+      "url_exemple": "/download_secure"
+    },
+    "/shadowdom": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/shadowdom"
+    },
+    "/shifting_content": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/shifting_content/menu",
+          "text": "Example 1: Menu Element",
+          "role": null
+        },
+        {
+          "href": "/shifting_content/image",
+          "text": "Example 2: An image",
+          "role": null
+        },
+        {
+          "href": "/shifting_content/list",
+          "text": "Example 3: List",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/shifting_content"
+    },
+    "/tables": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "#edit",
+          "text": "edit",
+          "role": null
+        },
+        {
+          "href": "#delete",
+          "text": "delete",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/tables"
+    },
+    "/status_codes": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://www.iana.org/assignments/http-status-codes/http-status-codes.xhtml",
+          "text": "here",
+          "role": null
+        },
+        {
+          "href": "status_codes/200",
+          "text": "200",
+          "role": null
+        },
+        {
+          "href": "status_codes/301",
+          "text": "301",
+          "role": null
+        },
+        {
+          "href": "status_codes/404",
+          "text": "404",
+          "role": null
+        },
+        {
+          "href": "status_codes/500",
+          "text": "500",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/status_codes"
+    },
+    "/typos": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/typos"
+    },
+    "/tinymce": {
+      "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "File",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Edit",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Format",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Undo",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Redo",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Formats",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Bold",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Italic",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Align left",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Align center",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Align right",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Justify",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Decrease indent",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Increase indent",
+          "soumet": false,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "https://www.tiny.cloud/?utm_campaign=editor_referral&utm_medium=poweredby&utm_source=tinymce&utm_content=v5",
+          "text": "Powered by Tiny",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        },
+        {
+          "href": "https://www.tiny.cloud/docs/tinymce/latest/usage-based-billing/?utm_campaign=editor_blocked_learn_more&utm_source=tiny&utm_medium=referral",
+          "text": "Learn more.",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/tinymce"
+    },
+    "/about": {
+      "champs": [],
+      "actions": [],
+      "liens": [],
+      "formulaires": [],
+      "titre": "",
+      "url_exemple": "/about/"
+    },
+    "/contact-us": {
+      "champs": [],
+      "actions": [],
+      "liens": [],
+      "formulaires": [],
+      "titre": "",
+      "url_exemple": "/contact-us/"
+    },
+    "/portfolio": {
+      "champs": [],
+      "actions": [],
+      "liens": [],
+      "formulaires": [],
+      "titre": "",
+      "url_exemple": "/portfolio/"
+    },
+    "/dynamic_loading/{id}": {
+      "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "Start",
+          "soumet": true,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/dynamic_loading/1"
+    },
+    "/iframe": {
+      "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "File",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Edit",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Format",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Undo",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Redo",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Formats",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Bold",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Italic",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Align left",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Align center",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Align right",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Justify",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Decrease indent",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Increase indent",
+          "soumet": false,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "https://www.tiny.cloud/?utm_campaign=editor_referral&utm_medium=poweredby&utm_source=tinymce&utm_content=v5",
+          "text": "Powered by Tiny",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        },
+        {
+          "href": "https://www.tiny.cloud/docs/tinymce/latest/usage-based-billing/?utm_campaign=editor_blocked_learn_more&utm_source=tiny&utm_medium=referral",
+          "text": "Learn more.",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/iframe"
+    },
+    "/users/{id}": {
+      "champs": [],
+      "actions": [],
+      "liens": [],
+      "formulaires": [],
+      "titre": "",
+      "url_exemple": "/users/1"
+    },
+    "/infinite_scroll/{id}": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "/infinite_scroll/4",
+          "text": "next page",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "",
+      "url_exemple": "/infinite_scroll/3"
+    },
+    "/jqueryui": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://jqueryui.com/",
+          "text": "JQuery UI",
+          "role": null
+        },
+        {
+          "href": "/jqueryui/menu",
+          "text": "Menu",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/jqueryui"
+    },
+    "/windows/new": {
+      "champs": [],
+      "actions": [],
+      "liens": [],
+      "formulaires": [],
+      "titre": "New Window",
+      "url_exemple": "/windows/new"
+    },
+    "/shifting_content/menu": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/shifting_content/menu?mode=random",
+          "text": "click here",
+          "role": null
+        },
+        {
+          "href": "/shifting_content/menu?pixel_shift=100",
+          "text": "click here",
+          "role": null
+        },
+        {
+          "href": "/shifting_content/menu?mode=random&pixel_shift=100",
+          "text": "click here",
+          "role": null
+        },
+        {
+          "href": "/",
+          "text": "Home",
+          "role": null
+        },
+        {
+          "href": "/about/",
+          "text": "About",
+          "role": null
+        },
+        {
+          "href": "/contact-us/",
+          "text": "Contact Us",
+          "role": null
+        },
+        {
+          "href": "/portfolio/",
+          "text": "Portfolio",
+          "role": null
+        },
+        {
+          "href": "/gallery/",
+          "text": "Gallery",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/shifting_content/menu"
+    },
+    "/shifting_content/image": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/shifting_content/image?mode=random",
+          "text": "click here",
+          "role": null
+        },
+        {
+          "href": "/shifting_content/image?pixel_shift=100",
+          "text": "click here",
+          "role": null
+        },
+        {
+          "href": "/shifting_content/image?mode=random&pixel_shift=100",
+          "text": "click here",
+          "role": null
+        },
+        {
+          "href": "/shifting_content/image?image_type=simple",
+          "text": "click here",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/shifting_content/image"
+    },
+    "/shifting_content/list": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/shifting_content/list"
+    },
+    "/status_codes/{id}": {
+      "champs": [],
+      "actions": [],
+      "liens": [
+        {
+          "href": "https://github.com/tourdedave/the-internet",
+          "text": "",
+          "role": null
+        },
+        {
+          "href": "/status_codes",
+          "text": "here",
+          "role": null
+        },
+        {
+          "href": "http://elementalselenium.com/",
+          "text": "Elemental Selenium",
+          "role": null
+        }
+      ],
+      "formulaires": [],
+      "titre": "The Internet",
+      "url_exemple": "/status_codes/200"
+    },
+    "/gallery": {
+      "champs": [],
+      "actions": [],
+      "liens": [],
+      "formulaires": [],
+      "titre": "",
+      "url_exemple": "/gallery/"
+    }
+  },
+  "transitions": {
+    "/": [
+      "/abtest",
+      "/add_remove_elements",
+      "/basic_auth",
+      "/broken_images",
+      "/challenging_dom",
+      "/checkboxes",
+      "/context_menu",
+      "/digest_auth",
+      "/disappearing_elements",
+      "/download",
+      "/download_secure",
+      "/drag_and_drop",
+      "/dropdown",
+      "/dynamic_content",
+      "/dynamic_controls",
+      "/dynamic_loading",
+      "/entry_ad",
+      "/exit_intent",
+      "/floating_menu",
+      "/forgot_password",
+      "/frames",
+      "/geolocation",
+      "/horizontal_slider",
+      "/hovers",
+      "/infinite_scroll",
+      "/inputs",
+      "/javascript_alerts",
+      "/javascript_error",
+      "/jqueryui/menu",
+      "/key_presses",
+      "/large",
+      "/login",
+      "/nested_frames",
+      "/notification_message",
+      "/redirector",
+      "/shadowdom",
+      "/shifting_content",
+      "/slow",
+      "/status_codes",
+      "/tables",
+      "/tinymce",
+      "/typos",
+      "/upload",
+      "/windows"
+    ],
+    "/disappearing_elements": [
+      "/",
+      "/about",
+      "/contact-us",
+      "/portfolio"
+    ],
+    "/dynamic_loading": [
+      "/dynamic_loading/{id}"
+    ],
+    "/download": [
+      "/download/Images.txt",
+      "/download/cb-proof.bin",
+      "/download/cb-proof.txt",
+      "/download/dummy.csv",
+      "/download/examplefile.json",
+      "/download/gauntlet.txt",
+      "/download/hello.json",
+      "/download/hello.txt",
+      "/download/myfile.txt",
+      "/download/nospace.docx",
+      "/download/playwright-upload.txt",
+      "/download/r2_test_upload_2p1yqpec.txt",
+      "/download/r2_test_upload_75le5tg4.txt",
+      "/download/random_data_17.txt",
+      "/download/random_data_18.txt",
+      "/download/raport.txt",
+      "/download/sample-upload.txt",
+      "/download/sample.docx",
+      "/download/some-file.txt",
+      "/download/t1.txt",
+      "/download/temp_upload.txt",
+      "/download/test.txt",
+      "/download/test_file.txt",
+      "/download/test_sample.txt",
+      "/download/test_upload.txt",
+      "/download/testing.mp3",
+      "/download/tmpd58p64ix.txt",
+      "/download/tmpm59jy4px.txt",
+      "/download/upload_test.txt"
+    ],
+    "/frames": [
+      "/iframe",
+      "/nested_frames"
+    ],
+    "/hovers": [
+      "/users/{id}"
+    ],
+    "/infinite_scroll": [
+      "/infinite_scroll/{id}"
+    ],
+    "/jqueryui/menu": [
+      "/download/jqueryui/menu/menu.csv",
+      "/download/jqueryui/menu/menu.xls",
+      "/jqueryui"
+    ],
+    "/windows": [
+      "/windows/new"
+    ],
+    "/notification_message_rendered": [
+      "/notification_message"
+    ],
+    "/redirector": [
+      "/redirect"
+    ],
+    "/shifting_content": [
+      "/shifting_content/image",
+      "/shifting_content/list",
+      "/shifting_content/menu"
+    ],
+    "/status_codes": [
+      "/status_codes/{id}"
+    ],
+    "/jqueryui": [
+      "/jqueryui/menu"
+    ],
+    "/shifting_content/menu": [
+      "/",
+      "/about",
+      "/contact-us",
+      "/gallery",
+      "/portfolio"
+    ],
+    "/status_codes/{id}": [
+      "/status_codes"
+    ]
+  },
+  "onglets_internes": {
+    "/challenging_dom": [
+      "delete",
+      "edit"
+    ],
+    "/floating_menu": [
+      "About",
+      "Contact",
+      "Home",
+      "News"
+    ],
+    "/jqueryui/menu": [
+      "Disabled",
+      "Downloads",
+      "Enabled",
+      "Should not see this"
+    ],
+    "/notification_message_rendered": [
+      "×"
+    ],
+    "/tables": [
+      "delete",
+      "edit"
+    ]
+  }
+}

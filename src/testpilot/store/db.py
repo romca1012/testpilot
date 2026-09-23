@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 46
+_SCHEMA_VERSION = 47
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -234,6 +234,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_45_calibration_writes(conn)
     if version < 46:
         _migrate_46_verified_fields(conn)
+    if version < 47:
+        _migrate_47_execution_attempt(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -1913,3 +1915,23 @@ def _migrate_41_background_job(conn: sqlite3.Connection) -> None:
 def _migrate_46_verified_fields(conn: sqlite3.Connection) -> None:
     if "verified_fields" not in _column_names(conn, "test_case_version"):
         conn.execute("ALTER TABLE test_case_version ADD COLUMN verified_fields TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_47_execution_attempt(conn):
+    for column in ('observation_evidence', 'generation_provenance', 'technical_plan'):
+        if column not in _column_names(conn, 'test_case_version'):
+            conn.execute(f"ALTER TABLE test_case_version ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+    conn.execute('''CREATE TABLE IF NOT EXISTS execution_attempt (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        execution_id INTEGER NOT NULL REFERENCES execution(id) ON DELETE CASCADE,
+        attempt_number INTEGER NOT NULL CHECK (attempt_number > 0),
+        reason TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT NOT NULL DEFAULT '',
+        execution_status TEXT NOT NULL DEFAULT 'pending',
+        functional_status TEXT NOT NULL DEFAULT 'indetermine',
+        duration_seconds REAL NOT NULL DEFAULT 0,
+        artifacts_path TEXT NOT NULL DEFAULT '',
+        provenance TEXT NOT NULL DEFAULT '{}',
+        result_json TEXT NOT NULL DEFAULT '{}',
+        UNIQUE(execution_id, attempt_number))''')

@@ -598,6 +598,11 @@ export interface QualityDay {
 export interface Quality {
   total: number; ran: number; technical_error: number; not_executed: number
   ran_rate: number | null; by_day: QualityDay[]
+  first_attempt?: {
+    measured: number; ran: number; usable_verdicts: number; technical_error: number
+    retried: number; unmeasured: number; pending: number
+    ran_rate: number | null; usable_verdict_rate: number | null
+  }
 }
 
 /** Un run (campagne). `tested_count`/`case_count` → % de complétion. */

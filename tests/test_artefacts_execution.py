@@ -57,6 +57,25 @@ def _execution(conn, *, artifacts_path: str = "") -> int:
 
 # ── 1. L'archivage, avant la destruction du dossier de run ────────────────────
 
+def test_artefacts_de_premiere_tentative_accessibles_apres_rejeu(client, tmp_path):
+    from testpilot.store.execution_attempts import ExecutionAttemptRepo
+    with get_initialized_db() as conn:
+        eid = _execution(conn)
+        for number in (1, 2):
+            folder = tmp_path / f'attempt-{number}'
+            folder.mkdir()
+            (folder / 'execution.log').write_text(f'tentative {number}')
+            ExecutionAttemptRepo(conn).start(eid, number, reason='initial' if number == 1 else 'ui_timeout',
+                                              artifacts_path=str(folder))
+    rows = client.get(f'/api/executions/{eid}/attempts').json()
+    assert [r['attempt_number'] for r in rows] == [1, 2]
+    assert all('artifacts_path' not in r for r in rows)
+    assert client.get(f'/api/executions/{eid}/artifacts/execution.log?attempt=1').text == 'tentative 1'
+    assert client.get(f'/api/executions/{eid}/artifacts/execution.log?attempt=2').text == 'tentative 2'
+    assert client.get(f'/api/executions/{eid}/artifacts?attempt=3').status_code == 404
+    assert client.get(f'/api/executions/{eid}/artifacts?attempt=0').status_code == 422
+
+
 def test_le_runner_archive_la_trace_avant_de_detruire_le_dossier(tmp_path, monkeypatch):
     """Le cœur du correctif : ce que le `rmtree` emportait est désormais recopié avant."""
     archives = tmp_path / "archives"

@@ -1,0 +1,508 @@
+{
+  "connector_type": "web",
+  "projet": "SauceDemo",
+  "project_id": 11,
+  "base_url": "https://www.saucedemo.com/",
+  "mesure_le": "2026-09-16",
+  "methode": "crawl déterministe Playwright, aucun LLM",
+  "pages": {
+    "/inventory.html": {
+      "champs": [
+        {
+          "name": "product-sort-container",
+          "identifie_par": "data-test",
+          "tag": "select",
+          "type": "select-one",
+          "required": false,
+          "visible": true,
+          "role": "combobox",
+          "label": "Sort products",
+          "options": [
+            [
+              "az",
+              "Name (A to Z)"
+            ],
+            [
+              "za",
+              "Name (Z to A)"
+            ],
+            [
+              "lohi",
+              "Price (low to high)"
+            ],
+            [
+              "hilo",
+              "Price (high to low)"
+            ]
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "Open Menu",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "All Items",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Dynamic Catalog",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Logout",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Reset App State",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close Menu",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Cart, empty",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View details for Sauce Labs Backpack",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View details for Sauce Labs Backpack",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Add to cart",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View details for Sauce Labs Bike Light",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View details for Sauce Labs Bike Light",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Add to cart",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View details for Sauce Labs Bolt T-Shirt",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View details for Sauce Labs Bolt T-Shirt",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Add to cart",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View details for Sauce Labs Fleece Jacket",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View details for Sauce Labs Fleece Jacket",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Add to cart",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View details for Sauce Labs Onesie",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View details for Sauce Labs Onesie",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Add to cart",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View details for Test.allTheThings() T-Shirt (Red)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "View details for Test.allTheThings() T-Shirt (Red)",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Add to cart",
+          "soumet": true,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "#",
+          "text": "All Items",
+          "role": "button",
+          "id": "inventory_sidebar_link"
+        },
+        {
+          "href": "#",
+          "text": "Dynamic Catalog",
+          "role": "button",
+          "id": "dynamic_catalog_sidebar_link"
+        },
+        {
+          "href": "https://saucelabs.com/",
+          "text": "About",
+          "role": null,
+          "id": "about_sidebar_link"
+        },
+        {
+          "href": "#",
+          "text": "Logout",
+          "role": "button",
+          "id": "logout_sidebar_link"
+        },
+        {
+          "href": "#",
+          "text": "Reset App State",
+          "role": "button",
+          "id": "reset_sidebar_link"
+        },
+        {
+          "href": "#",
+          "text": "",
+          "role": "button",
+          "id": "item_4_img_link"
+        },
+        {
+          "href": "#",
+          "text": "Sauce Labs Backpack",
+          "role": "button",
+          "id": "item_4_title_link"
+        },
+        {
+          "href": "#",
+          "text": "",
+          "role": "button",
+          "id": "item_0_img_link"
+        },
+        {
+          "href": "#",
+          "text": "Sauce Labs Bike Light",
+          "role": "button",
+          "id": "item_0_title_link"
+        },
+        {
+          "href": "#",
+          "text": "",
+          "role": "button",
+          "id": "item_1_img_link"
+        },
+        {
+          "href": "#",
+          "text": "Sauce Labs Bolt T-Shirt",
+          "role": "button",
+          "id": "item_1_title_link"
+        },
+        {
+          "href": "#",
+          "text": "",
+          "role": "button",
+          "id": "item_5_img_link"
+        },
+        {
+          "href": "#",
+          "text": "Sauce Labs Fleece Jacket",
+          "role": "button",
+          "id": "item_5_title_link"
+        },
+        {
+          "href": "#",
+          "text": "",
+          "role": "button",
+          "id": "item_2_img_link"
+        },
+        {
+          "href": "#",
+          "text": "Sauce Labs Onesie",
+          "role": "button",
+          "id": "item_2_title_link"
+        },
+        {
+          "href": "#",
+          "text": "",
+          "role": "button",
+          "id": "item_3_img_link"
+        },
+        {
+          "href": "#",
+          "text": "Test.allTheThings() T-Shirt (Red)",
+          "role": "button",
+          "id": "item_3_title_link"
+        },
+        {
+          "href": "https://x.com/saucelabs",
+          "text": "X",
+          "role": null,
+          "id": ""
+        },
+        {
+          "href": "https://www.facebook.com/saucelabs",
+          "text": "Facebook",
+          "role": null,
+          "id": ""
+        },
+        {
+          "href": "https://www.linkedin.com/company/sauce-labs/",
+          "text": "LinkedIn",
+          "role": null,
+          "id": ""
+        }
+      ],
+      "formulaires": [],
+      "titre": "Swag Labs",
+      "url_exemple": "/inventory.html"
+    },
+    "/inventory-item.html": {
+      "champs": [],
+      "actions": [
+        {
+          "role": "button",
+          "label": "Open Menu",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "All Items",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Dynamic Catalog",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Logout",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Reset App State",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Close Menu",
+          "soumet": false,
+          "visible": false
+        },
+        {
+          "role": "button",
+          "label": "Cart, empty",
+          "soumet": false,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Back to products",
+          "soumet": true,
+          "visible": true
+        },
+        {
+          "role": "button",
+          "label": "Add to cart",
+          "soumet": true,
+          "visible": true
+        }
+      ],
+      "liens": [
+        {
+          "href": "#",
+          "text": "All Items",
+          "role": "button",
+          "id": "inventory_sidebar_link"
+        },
+        {
+          "href": "#",
+          "text": "Dynamic Catalog",
+          "role": "button",
+          "id": "dynamic_catalog_sidebar_link"
+        },
+        {
+          "href": "https://saucelabs.com/",
+          "text": "About",
+          "role": null,
+          "id": "about_sidebar_link"
+        },
+        {
+          "href": "#",
+          "text": "Logout",
+          "role": "button",
+          "id": "logout_sidebar_link"
+        },
+        {
+          "href": "#",
+          "text": "Reset App State",
+          "role": "button",
+          "id": "reset_sidebar_link"
+        },
+        {
+          "href": "https://x.com/saucelabs",
+          "text": "X",
+          "role": null,
+          "id": ""
+        },
+        {
+          "href": "https://www.facebook.com/saucelabs",
+          "text": "Facebook",
+          "role": null,
+          "id": ""
+        },
+        {
+          "href": "https://www.linkedin.com/company/sauce-labs/",
+          "text": "LinkedIn",
+          "role": null,
+          "id": ""
+        }
+      ],
+      "formulaires": [],
+      "titre": "Swag Labs",
+      "url_exemple": "/inventory-item.html"
+    },
+    "/": {
+      "champs": [
+        {
+          "name": "user-name",
+          "identifie_par": "name",
+          "tag": "input",
+          "type": "text",
+          "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Username"
+        },
+        {
+          "name": "password",
+          "identifie_par": "name",
+          "tag": "input",
+          "type": "password",
+          "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": "Password"
+        },
+        {
+          "name": "login-button",
+          "identifie_par": "name",
+          "tag": "input",
+          "type": "submit",
+          "required": false,
+          "visible": true,
+          "role": "textbox",
+          "label": ""
+        }
+      ],
+      "actions": [
+        {
+          "role": "button",
+          "label": "Login",
+          "soumet": true,
+          "visible": true
+        }
+      ],
+      "liens": [],
+      "formulaires": [
+        {
+          "action": "",
+          "method": "get",
+          "champs": 3
+        }
+      ],
+      "titre": "Swag Labs"
+    }
+  },
+  "transitions": {
+    "/inventory.html": [
+      "/inventory-item.html"
+    ]
+  },
+  "onglets_internes": {
+    "/inventory.html": [
+      "#",
+      "All Items",
+      "Dynamic Catalog",
+      "Logout",
+      "Reset App State",
+      "Sauce Labs Backpack",
+      "Sauce Labs Bike Light",
+      "Sauce Labs Bolt T-Shirt",
+      "Sauce Labs Fleece Jacket",
+      "Sauce Labs Onesie",
+      "Test.allTheThings() T-Shirt (Red)"
+    ],
+    "/inventory-item.html": [
+      "All Items",
+      "Dynamic Catalog",
+      "Logout",
+      "Reset App State"
+    ]
+  }
+}

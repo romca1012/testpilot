@@ -27,6 +27,15 @@ async function page(q: any) {
 }
 
 describe('QualityDashboard', () => {
+  it('distingue une première tentative échouée du succès après rejeu', async () => {
+    const w = await page({ total: 1, ran: 1, technical_error: 0, not_executed: 0,
+      ran_rate: 1, by_day: [], first_attempt: { measured: 1, ran: 0,
+        usable_verdicts: 0, technical_error: 1, retried: 1, unmeasured: 0,
+        pending: 0, ran_rate: 0, usable_verdict_rate: 0 } })
+    expect(w.get('[aria-labelledby="first-attempt-title"]').text()).toContain('0 %')
+    expect(w.get('[aria-labelledby="first-attempt-title"]').text()).toContain('1 avec rejeu')
+    expect(w.text()).toContain('Résultat final historique: 100 %')
+  })
   it("DIT qu'il n'y a aucune mesure au lieu d'afficher 0 %", async () => {
     const w = await page({ total: 0, ran: 0, technical_error: 0, not_executed: 0,
                            ran_rate: null, by_day: [] })

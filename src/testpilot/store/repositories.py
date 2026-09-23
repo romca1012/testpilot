@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 import psycopg
 
 from testpilot import config
+from testpilot.generation.provenance import revision_metadata
 from testpilot.store import secrets as secrets_mod
 from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE, MODES_EXECUTION
 
@@ -972,7 +973,7 @@ class CaseRepo:
                 expected_result=version.get("expected_result") or "",
                 verified_fields=(version.get("verified_fields") or "")
                 if source.get("project_id") == ModuleRepo(self.conn).get(groupe["module_id"])["project_id"]
-                else "{}")
+                else "{}", **revision_metadata(version))
             self.set_current_version(new_id, vid)
 
             # ⚠️ Le RUNNER lit le script SUR DISQUE (`config.GENERATED_DIR/{slug}.feature`),
@@ -1179,6 +1180,7 @@ class CaseRepo:
             title=new_title, preconditions=new_pre, test_steps=new_steps,
             expected_result=new_expected,
             verified_fields=(current or {}).get("verified_fields", ""),
+            **revision_metadata(current),
         )
         # Le CAS porte une COPIE courante du titre pour les listes et les filtres.
         # La VERSION fait foi — même règle que le raccourci de résultat.
@@ -1229,7 +1231,8 @@ class CaseRepo:
             preconditions=(current or {}).get("preconditions", ""),
             test_steps=(current or {}).get("test_steps", ""),
             expected_result=(current or {}).get("expected_result", ""),
-            verified_fields=(current or {}).get("verified_fields", ""))
+            verified_fields=(current or {}).get("verified_fields", ""),
+            **revision_metadata(current))
         self.set_current_version(case_id, version_id)
 
         # ⚠️ Le RUNNER lit le script SUR DISQUE (`config.GENERATED_DIR/{slug}.feature`), jamais
@@ -1471,7 +1474,9 @@ class VersionRepo:
                feature_content: str, steps_content: str, feature_path: str = "",
                steps_path: str = "", change_summary: str = "", created_by: str = "",
                title: str = "", preconditions: str = "", test_steps: str = "",
-               expected_result: str = "", verified_fields: str = "") -> int:
+               expected_result: str = "", verified_fields: str = "",
+               observation_evidence: str = "", generation_provenance: str = "",
+               technical_plan: str = "") -> int:
         """Crée une version — **le CAS ENTIER**, métier ET technique (décision `0022` n°10).
 
         Les champs métier (`title`, `preconditions`, `test_steps`, `expected_result`)
@@ -1487,11 +1492,13 @@ class VersionRepo:
             "INSERT INTO test_case_version (test_case_id, version_number, spec_content,"
             " spec_hash, feature_content, steps_content, feature_path, steps_path,"
             " change_summary, created_at, created_by,"
-            " title, preconditions, test_steps, expected_result, verified_fields)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " title, preconditions, test_steps, expected_result, verified_fields,"
+            " observation_evidence, generation_provenance, technical_plan)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (test_case_id, number, spec_content, spec_hash, feature_content, steps_content,
              feature_path, steps_path, change_summary, now_iso(), created_by,
-             title, preconditions, test_steps, expected_result, verified_fields),
+             title, preconditions, test_steps, expected_result, verified_fields,
+             observation_evidence, generation_provenance, technical_plan),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -1656,6 +1663,7 @@ class ExecutionRepo:
         # Une interruption ne prouve ni la réussite ni l'échec de la génération. Elle reste
         # visible, mais ne dégrade pas artificiellement le taux.
         ran_rate = (total["success"] / mesures_concluantes) if mesures_concluantes else None
+        from testpilot.store.execution_attempts import summarize_first_attempts
         return {
             "total": n,
             "ran": total["success"],
@@ -1663,6 +1671,8 @@ class ExecutionRepo:
             "not_executed": total["not_executed"],
             "ran_rate": ran_rate,
             "by_day": sorted(par_jour.values(), key=lambda d: d["jour"]),
+            "first_attempt": summarize_first_attempts(
+                self.conn, project_id=project_id, allowed_project_ids=allowed_project_ids),
         }
 
     def create(self, *, test_case_id: int, version_id: int, trigger: str = "first_run",

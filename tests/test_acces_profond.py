@@ -241,6 +241,8 @@ def test_execution_no_access_404(client, arbre):
     _prepare(client, arbre)
     assert client.get(f"/api/executions/{arbre.execution_id}").status_code == 404
     assert client.get(f"/api/executions/{arbre.execution_id}/artifacts").status_code == 404
+    assert client.get(f"/api/executions/{arbre.execution_id}/attempts").status_code == 404
+    assert client.get(f"/api/executions/{arbre.execution_id}/artifacts?attempt=1").status_code == 404
 
 
 def test_run_no_access_404(client, arbre):

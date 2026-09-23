@@ -523,6 +523,7 @@ class QualityOut(BaseModel):
     not_executed: int = 0
     ran_rate: float | None = None
     by_day: list[QualityDayOut] = []
+    first_attempt: dict = {}
 
 
 class ManualCaseIn(BaseModel):

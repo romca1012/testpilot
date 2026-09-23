@@ -132,3 +132,44 @@ def _connecte_par_defaut(monkeypatch, request):
         return {"id": 0, "username": "test", "role": access.ROLE_ADMIN, "is_active": 1}
 
     monkeypatch.setattr(access, "utilisateur_actuel", _bouchon)
+
+
+@pytest.fixture(autouse=True)
+def _scheduler_desactive(monkeypatch):
+    """Coupe la boucle de planification (migration 43) pendant TOUTE la suite — quel que soit
+    `.env`.
+
+    ⚠️ **Bug trouvé en instrumentant l'instabilité aléatoire du sweep complet (2026-09-22).** Le
+    commentaire dans `src/testpilot/api/app.py` (`lifespan`) promet que la boucle « ne démarre QUE
+    si explicitement activée (jamais pendant les tests par défaut) » — mais `config.SCHEDULER_ENABLED`
+    est lu depuis `.env` au chargement du module `config`, AU NIVEAU PROCESSUS : quand `.env` du
+    dépôt contient `TESTPILOT_SCHEDULER_ENABLED=true` (utile pour tester la planification en
+    local), ce `true` s'applique aussi au processus pytest, silencieusement, sans qu'aucun test ne
+    l'ait demandé.
+
+    Neuf fichiers de tests (`test_assignation_cas.py`, `test_deploiement_securite.py`,
+    `test_notifications_email.py`, `test_pieces_jointes.py`, `test_postgres_runtime.py`,
+    `test_reglages_instance.py`, `test_saisie_manuelle.py`, `test_tracabilite_declenchement.py`,
+    `test_type_et_etat.py`) ont une fixture `client` qui fait `with TestClient(app) as c: ...` —
+    la forme CONTEXTE, qui déclenche réellement le `lifespan` de FastAPI (vérifié dans
+    `starlette/testclient.py` : un `TestClient(app)` sans `with` ne le déclenche PAS, seul
+    `__enter__` le fait). Chaque test de ces fichiers qui utilise `client` démarre donc un nouveau
+    thread daemon `testpilot-scheduler` ; sortir du `with` ferme le `lifespan` mais PAS ce thread
+    (`_boucle_planification` tourne dans sa propre boucle `while True`, jamais annulée). Sur un
+    sweep complet, ça peut accumuler jusqu'à une centaine de threads résiduels.
+
+    Chaque thread se réveille après `time.sleep(config.SCHEDULER_TICK_SECONDS)` puis appelle
+    `get_initialized_db()` **sans argument** — donc sur `config.DB_PATH` tel qu'il est au moment de
+    son réveil, pas au moment de sa création. Comme `config.DB_PATH` est ré-écrit par
+    `monkeypatch.setattr` à chaque nouveau test isolé (`tmp_path`), un thread résiduel qui se
+    réveille au mauvais moment retombe sur la base du test EN COURS à cet instant précis, en
+    parallèle de ce test qui vient de créer cette même base fraîche → course avec
+    `_run_migrations` (symptôme observé : `sqlite3.OperationalError: duplicate column name: ...`
+    ou `table X has no column named ...`, 1 FAILED + quelques ERROR, différents à chaque run,
+    même backend réel arrêté).
+
+    Échappatoire explicite pour un futur test qui voudrait vraiment vérifier le scheduler lui-même :
+    `monkeypatch.setattr(config, "SCHEDULER_ENABLED", True)` dans CE test (cette fixture tourne
+    avant le corps du test, donc un `monkeypatch` posé dans le test prend le dessus).
+    """
+    monkeypatch.setattr(config, "SCHEDULER_ENABLED", False)

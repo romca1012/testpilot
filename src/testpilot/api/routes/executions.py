@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from testpilot.api import access, schemas
@@ -15,6 +15,28 @@ from testpilot.reporting import report as report_mod
 from testpilot.store.repositories import ExecutionRepo, ProjectRepo
 
 router = APIRouter(prefix="/api/executions", tags=["executions"])
+
+
+@router.get("/{execution_id}/attempts",
+           dependencies=[Depends(access.require_project_access_depuis(
+               "execution_id", access.project_id_depuis_execution))])
+def list_attempts(execution_id: int, conn=Depends(get_conn)):
+    from testpilot.store.execution_attempts import ExecutionAttemptRepo
+    keys = ('attempt_number', 'reason', 'started_at', 'finished_at',
+            'execution_status', 'functional_status', 'duration_seconds')
+    return [{key: row[key] for key in keys}
+            for row in ExecutionAttemptRepo(conn).list_for_execution(execution_id)]
+
+
+def _artifact_path(conn, row, attempt: int | None) -> str:
+    if attempt is None:
+        return (row.get('artifacts_path') or '').strip()
+    from testpilot.store.execution_attempts import ExecutionAttemptRepo
+    matching = next((a for a in ExecutionAttemptRepo(conn).list_for_execution(row['id'])
+                     if a['attempt_number'] == attempt), None)
+    if matching is None:
+        raise HTTPException(status_code=404, detail='tentative introuvable')
+    return (matching.get('artifacts_path') or '').strip()
 
 
 @router.get("", response_model=list[schemas.ExecutionSummary])
@@ -82,7 +104,8 @@ def get_execution(execution_id: int, conn=Depends(get_conn)):
 @router.get("/{execution_id}/artifacts", response_model=schemas.ArtifactsOut,
            dependencies=[Depends(access.require_project_access_depuis(
                "execution_id", access.project_id_depuis_execution))])
-def list_artifacts(execution_id: int, conn=Depends(get_conn)):
+def list_artifacts(execution_id: int, conn=Depends(get_conn),
+                   attempt: int | None = Query(default=None, ge=1)):
     """La trace BRUTE de cette exécution : ce que la machine a réellement vu.
 
     Sans elle, un verdict « erreur technique » ou « refus silencieux » ne laisse rien à
@@ -95,7 +118,7 @@ def list_artifacts(execution_id: int, conn=Depends(get_conn)):
     if row is None:
         raise HTTPException(status_code=404, detail=f"exécution {execution_id} introuvable")
 
-    chemin = (row.get("artifacts_path") or "").strip()
+    chemin = _artifact_path(conn, row, attempt)
     if not chemin:
         return schemas.ArtifactsOut(
             available=False,
@@ -138,7 +161,8 @@ def _libelle(nom: str) -> str:
 @router.get("/{execution_id}/artifacts/{nom}", response_class=PlainTextResponse,
            dependencies=[Depends(access.require_project_access_depuis(
                "execution_id", access.project_id_depuis_execution))])
-def get_artifact(execution_id: int, nom: str, conn=Depends(get_conn)):
+def get_artifact(execution_id: int, nom: str, conn=Depends(get_conn),
+                 attempt: int | None = Query(default=None, ge=1)):
     """Le contenu d'un artefact.
 
     ⚠️ **Le nom demandé n'est jamais concaténé au chemin.** On liste le dossier et on cherche une
@@ -149,7 +173,10 @@ def get_artifact(execution_id: int, nom: str, conn=Depends(get_conn)):
     row = ExecutionRepo(conn).get(execution_id)
     if row is None:
         raise HTTPException(status_code=404, detail=f"exécution {execution_id} introuvable")
-    dossier = Path((row.get("artifacts_path") or "").strip() or ".")
+    chemin = _artifact_path(conn, row, attempt)
+    if not chemin:
+        raise HTTPException(status_code=404, detail="aucune trace conservée pour cette exécution")
+    dossier = Path(chemin)
     if not dossier.is_dir():
         raise HTTPException(status_code=404, detail="aucune trace conservée pour cette exécution")
 

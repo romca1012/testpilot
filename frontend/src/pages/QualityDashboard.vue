@@ -54,8 +54,8 @@ const maxJour = computed(() =>
       <h1 class="text-2xl font-semibold tracking-tight">Qualité de génération</h1>
       <p class="mt-1 text-sm text-muted-foreground">
         Un test fraîchement généré tourne-t-il <strong class="text-foreground">sans erreur
-        technique</strong> ? Mesuré sur les exécutions réelles au premier jet — pas la conformité
-        de l'application, juste : le test a-t-il pu s'exécuter.
+        technique</strong> ? La première tentative est mesurée séparément du résultat final,
+        qui peut inclure un rejeu. Une réussite technique ne prouve pas la fidélité métier du test.
       </p>
     </header>
 
@@ -70,6 +70,20 @@ const maxJour = computed(() =>
     </div>
 
     <template v-else-if="data">
+      <section class="mt-6 rounded-xl border border-border bg-card p-5" aria-labelledby="first-attempt-title">
+        <h2 id="first-attempt-title" class="font-semibold">Première tentative réelle</h2>
+        <p v-if="data.first_attempt?.ran_rate == null" class="mt-2 text-sm text-muted-foreground">
+          Première tentative non mesurée : les résultats historiques ne permettent pas de reconstituer ce taux.
+        </p>
+        <p v-else class="mt-2 text-sm">
+          <strong>{{ Math.round(data.first_attempt.ran_rate * 100) }} %</strong> de réussite technique :
+          {{ data.first_attempt.ran }} sur {{ data.first_attempt.measured }} premières tentatives terminées.
+        </p>
+        <p v-if="data.first_attempt" class="mt-2 text-sm text-muted-foreground">
+          {{ data.first_attempt.unmeasured }} sans trace de première tentative ·
+          {{ data.first_attempt.pending }} en cours · {{ data.first_attempt.retried }} avec rejeu.
+        </p>
+      </section>
       <!-- Aucune donnée : on le DIT, on n'affiche pas « 0 % » -->
       <div v-if="!data.total" class="mt-8 rounded-xl border border-border bg-card px-5 py-10 text-center">
         <p class="text-sm text-muted-foreground">
@@ -81,7 +95,7 @@ const maxJour = computed(() =>
       <template v-else>
         <!-- Le chiffre phare + le détail des trois états -->
         <div class="mt-6 grid gap-3 sm:grid-cols-4">
-          <StatTile label="Réussite technique (1er jet)" :value="pct === null ? '—' : pct + ' %'"
+          <StatTile label="Résultat final historique" :value="pct === null ? '—' : pct + ' %'"
                     :tone="tone" icon="check" />
           <StatTile label="Tests qui ont tourné" :value="data.ran" tone="success" icon="check" />
           <StatTile label="Erreurs techniques" :value="data.technical_error"
@@ -134,9 +148,9 @@ const maxJour = computed(() =>
         </section>
 
         <p class="mt-8 text-xs text-subtle-foreground">
-          Mesure au <strong>premier jet</strong> (hors réparation et rejeux) : c'est la qualité de
-          la génération elle-même, pas celle du filet qui la rattrape. Chiffres dérivés des runs
-          réels — aucune valeur saisie à la main.
+          Le tableau historique porte sur les exécutions initiales, hors réparations et relances
+          manuelles. Leur résultat final peut inclure un rejeu automatique après timeout.
+          Seule la mesure « Première tentative réelle » exclut ce rejeu.
         </p>
       </template>
     </template>

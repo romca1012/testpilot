@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 46
+ALIGNED_WITH_SCHEMA_VERSION = 47
 
 metadata = MetaData()
 
@@ -215,6 +215,9 @@ test_case_version = Table(
     Column("feature_content", Text, nullable=False, server_default=""),
     Column("steps_content", Text, nullable=False, server_default=""),
     Column("verified_fields", Text, nullable=False, server_default=""),
+    Column("observation_evidence", Text, nullable=False, server_default=""),
+    Column("generation_provenance", Text, nullable=False, server_default=""),
+    Column("technical_plan", Text, nullable=False, server_default=""),
     Column("feature_path", Text, nullable=False, server_default=""),
     Column("steps_path", Text, nullable=False, server_default=""),
     Column("change_summary", Text, nullable=False, server_default=""),
@@ -712,4 +715,24 @@ project_group_access = Table(
         name="ck_project_group_access_role",
     ),
     PrimaryKeyConstraint("project_id", "group_id"),
+)
+
+# Tentatives physiques : un rejeu ne remplace jamais son premier résultat.
+execution_attempt = Table(
+    'execution_attempt', metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('execution_id', Integer, ForeignKey('execution.id', ondelete='CASCADE'), nullable=False),
+    Column('attempt_number', Integer, nullable=False),
+    Column('reason', Text, nullable=False),
+    Column('started_at', Text, nullable=False),
+    Column('finished_at', Text, nullable=False, server_default=''),
+    Column('execution_status', Text, nullable=False, server_default='pending'),
+    Column('functional_status', Text, nullable=False, server_default='indetermine'),
+    Column('duration_seconds', Float, nullable=False, server_default='0'),
+    Column('artifacts_path', Text, nullable=False, server_default=''),
+    Column('provenance', Text, nullable=False, server_default='{}'),
+    Column('result_json', Text, nullable=False, server_default='{}'),
+    CheckConstraint('attempt_number > 0', name='ck_execution_attempt_number'),
+    UniqueConstraint('execution_id', 'attempt_number', name='uq_execution_attempt_number'),
+    sqlite_autoincrement=True,
 )

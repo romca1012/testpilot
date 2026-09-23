@@ -73,6 +73,28 @@ def test_repositories_crud_sur_postgresql():
         conn.close()
 
 
+def test_premiere_tentative_et_preuves_sur_postgresql():
+    from testpilot.store.execution_attempts import ExecutionAttemptRepo, summarize_first_attempts
+    from testpilot.execution.behave_result import BehaveResult, BehaveScenario
+    conn = get_initialized_db()
+    try:
+        pid = ProjectRepo(conn).create(name=f'Qualification PG {uuid4().hex}')
+        mid = ModuleRepo(conn).create(project_id=pid, name='Qualification')
+        cid = CaseRepo(conn).create(title='Premier essai', module_id=mid, feature_slug='qualification')
+        vid = VersionRepo(conn).create(test_case_id=cid, spec_content='', spec_hash='',
+                                      feature_content='F', steps_content='', observation_evidence='[]',
+                                      generation_provenance='{"qualification":true}')
+        eid = ExecutionRepo(conn).create(test_case_id=cid, version_id=vid, trigger='first_run')
+        attempts = ExecutionAttemptRepo(conn)
+        aid = attempts.start(eid, 1, reason='initial')
+        attempts.finish(aid, BehaveResult(True, 0, scenarios=[BehaveScenario('cas', 'passed')]), .1)
+        assert aid > 0 and len(attempts.list_for_execution(eid)) == 1
+        assert summarize_first_attempts(conn, project_id=pid)['ran_rate'] == 1
+        assert VersionRepo(conn).get(vid)['observation_evidence'] == '[]'
+    finally:
+        conn.close()
+
+
 def test_lister_les_acces_de_groupe_dun_projet_sur_postgresql():
     """Trouvé en conditions réelles (2026-09-11, environnement /dev) : `g.name` était sélectionné
     sans figurer dans le `GROUP BY` ni dans un agrégat — SQLite le tolère (colonne de fait

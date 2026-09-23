@@ -17,7 +17,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 _TABLES_AVEC_ID = {
-    "access_audit", "case_group", "cost_ledger", "execution",
+    "access_audit", "case_group", "cost_ledger", "execution", "execution_attempt",
     "module", "project", "repair_attempt", "review_decision", "scenario_result", "test_case",
     "test_case_version", "test_result", "test_run", "user",
     "user_group", "result_attachment",
@@ -32,7 +32,7 @@ _TABLES_AVEC_ID = {
 # vrai run. `generation_job` reste absente à raison : sa clé primaire est un TEXT (UUID) fourni
 # par l'appelant, jamais un entier généré par la base — `.lastrowid` n'y a jamais de sens.
 _INSERT = re.compile(r"^\s*INSERT\s+INTO\s+[\"']?([a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE)
-ALEMBIC_HEAD = "b46f18092026"
+ALEMBIC_HEAD = "c47f22092026"
 _urls_verifiees: set[str] = set()
 _verrou_verification = threading.Lock()
 
