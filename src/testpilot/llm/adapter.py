@@ -204,6 +204,8 @@ class LLMAdapter:
         d'avant : `call_simple` + extraction tolérante `{…}`. Le repli n'est pris que sur un échec
         de REQUÊTE (aucun double coût) ; une requête honorée n'est facturée qu'une fois.
         """
+        import anthropic
+
         model_id = model or config.MODEL_FAST
         try:
             resp = self._client_().messages.create(
@@ -214,7 +216,13 @@ class LLMAdapter:
                           "content": _contenu_utilisateur(cached_prefix, user_content)}],
                 output_config={"format": {"type": "json_schema", "schema": schema}},
             )
-        except Exception as exc:  # output_config refusé (modèle/version) → repli, sans surcoût
+        except (anthropic.BadRequestError, TypeError) as exc:
+            # Les deux SEULS signaux légitimes de « output_config non supporté » : un vrai rejet
+            # 400 de l'API (modèle qui ne l'honore pas), ou un SDK trop ancien qui ne connaît pas
+            # encore ce paramètre (TypeError levée AVANT tout appel réseau). Toute autre exception
+            # (réseau, auth, rate-limit, 5xx) doit remonter telle quelle — un `except Exception` ici
+            # la maquillait en simple absence de sortie structurée et déclenchait un second appel
+            # PAYANT en repli, sur une erreur qui n'a rien à voir avec le format de sortie.
             logger.warning("call_json[%s] : sortie structurée indisponible (%s) — repli parsing "
                            "tolérant", label, type(exc).__name__)
             return self._json_par_repli(system_prompt, cached_prefix, user_content, model_id,

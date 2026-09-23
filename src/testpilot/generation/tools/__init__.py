@@ -26,6 +26,13 @@ class ToolContext:
     # défaut, activée par le porteur du projet (`project.calibration_writes_enabled`). Vérifiée
     # ICI (le tool), pas dans le connecteur : un connecteur ne connaît pas les réglages du projet.
     calibration_writes_enabled: bool = False
+    qualification: bool = False
+    target_sha256: str = ""
+    observations: list[dict] = field(default_factory=list)
+    calibration_attempts: list[str] = field(default_factory=list)
+    technical_plan: dict = field(default_factory=dict)
+    requirements: dict[str, str] = field(default_factory=dict)
+    shared_steps: list = field(default_factory=list)
 
 
 @dataclass
@@ -148,16 +155,46 @@ TOOLS_DEFINITIONS: list[dict] = [
 ]
 
 
+from testpilot.generation.technical_plan import SCHEMA as TECHNICAL_PLAN_SCHEMA
+
+TOOLS_DEFINITIONS.append({
+    'name': 'write_test_plan',
+    'description': 'Compile un plan technique ENTIER en Gherkin à partir des étapes du catalogue. '
+                   'Relie les scénarios aux identifiants métier fournis et aux preuves observées. '
+                   'Écris ensuite le fichier de steps (vide si tout vient du catalogue).',
+    'input_schema': TECHNICAL_PLAN_SCHEMA,
+})
+
+
 def dispatch(name: str, tool_input: dict, ctx: ToolContext) -> ToolOutcome:
     """Route un appel de tool vers son implémentation. Jamais d'exception vers la boucle."""
     try:
+        from testpilot.generation.tool_validation import validate_tool_input
+        definition = next((t for t in TOOLS_DEFINITIONS if t['name'] == name), None)
+        if definition:
+            error = validate_tool_input(tool_input, definition['input_schema'])
+            if error:
+                return ToolOutcome(observation=f"[arguments invalides : {error}]", ok=False)
+        if name in {'attempt_login', 'attempt_form_submission'}:
+            if ctx.qualification:
+                return ToolOutcome(observation='[qualification : calibration métier interdite]', ok=False)
+            ctx.calibration_attempts.append(name)
         if name == "write_feature_file":
-            return write_tools.write_feature_file(ctx, tool_input.get("content", ""))
+            outcome = write_tools.write_feature_file(ctx, tool_input.get("content", ""))
+            if outcome.ok:
+                ctx.technical_plan = {}  # une réécriture libre invalide le lien du plan précédent
+            return outcome
+        if name == 'write_test_plan':
+            from testpilot.generation.technical_plan import write_test_plan
+            return write_test_plan(ctx, tool_input)
         if name == "write_steps_file":
             return write_tools.write_steps_file(ctx, tool_input.get("content", ""))
         if name == "inspect_schema":
             return inspect_tools.inspect_schema(ctx, tool_input.get("model", ""))
         if name == "query_data":
+            if ctx.qualification:
+                return ToolOutcome(observation='[qualification : utiliser les prérequis de test '
+                                   'déclarés ; lecture libre de données métier désactivée]', ok=False)
             return inspect_tools.query_data(
                 ctx, tool_input.get("model", ""),
                 tool_input.get("fields"), tool_input.get("limit", 3),

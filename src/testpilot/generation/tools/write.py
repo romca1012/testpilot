@@ -59,12 +59,24 @@ def _forbidden_transport(tree: ast.AST, content: str) -> str:
 def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if not content.strip():
         return _outcome("[write_feature_file] contenu vide", ok=False)
+    from behave.parser import ParserError, parse_feature
+    try:
+        feature = parse_feature(content, language="fr")
+        scenarios = list(feature.walk_scenarios()) if feature else []
+        outlines_vides = feature and any(
+            hasattr(s, "examples") and not s.scenarios
+            for s in feature.walk_scenarios(with_outlines=True))
+    except ParserError as exc:
+        return _outcome(f"[write_feature_file] GHERKIN_INVALIDE : {exc}", ok=False)
+    if not scenarios or outlines_vides or any(not scenario.steps for scenario in scenarios):
+        return _outcome(
+            "[write_feature_file] SCENARIO_VIDE : fournis au moins un scénario avec des "
+            "étapes ; chaque plan de scénario doit avoir des exemples exécutables.", ok=False)
     path = ctx.generated_dir / f"{ctx.module_name}.feature"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
-    scenarios = content.count("Scénario:") + content.count("Scenario:")
     return _outcome(
-        f"[write_feature_file] OK — {path.name}, {scenarios} scénario(s).",
+        f"[write_feature_file] OK — {path.name}, {len(scenarios)} scénario(s).",
         feature_content=content,
     )
 

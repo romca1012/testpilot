@@ -68,7 +68,7 @@ class _FakeBoutonSoumission:
         self.clique = True
 
     def get_attribute(self, name):
-        return None
+        return 'submit' if name == 'type' else None
 
 
 class _PageFormulaire:

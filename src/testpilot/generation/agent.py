@@ -46,7 +46,8 @@ class GenerationAgent:
                  title: str = "", author: str = "", module_id: int | None = None,
                  metier: dict | None = None, group_id: int | None = None,
                  projet: dict | None = None, refs: str = "",
-                 failure_context: list[dict] | None = None) -> GenerationResult:
+                 failure_context: list[dict] | None = None,
+                 qualification: bool = False) -> GenerationResult:
         """`metier` — le document métier VALIDÉ (passe 4b de `0022`). Présent, il fixe le périmètre
         du Gherkin et se fige DANS la version, avec lui (décision n°10 : une version = le cas
         entier). Absent, le comportement est celui d'avant (chemin CLI et cas legacy).
@@ -85,11 +86,27 @@ class GenerationAgent:
             reserved_steps=frozenset(s.label for s in shared_steps),
             # Migration 45 (2026-09-16) : décision du PROJET, jamais un défaut du connecteur.
             calibration_writes_enabled=bool((projet or {}).get("calibration_writes_enabled")),
+            qualification=qualification,
         )
+        from testpilot.generation.provenance import fingerprint, target_fingerprint
+        ctx.target_sha256 = target_fingerprint(projet)
+        ctx.shared_steps = shared_steps
+        ctx.requirements = {'expected_result': (metier or {}).get('expected_result') or plan.raw_spec}
+        ctx.requirements.update({f'step:{i}': str(step)
+                                 for i, step in enumerate((metier or {}).get('steps') or [], 1)})
+        import json
+        requirements_message = ('\nIdentifiants métier pour write_test_plan : '
+                                + json.dumps(ctx.requirements, ensure_ascii=False))
+        if isinstance(state.messages[0]['content'], str):
+            state.messages[0]['content'] += requirements_message
+        else:
+            state.messages[0]['content'][0]['text'] += requirements_message
+        system_prompt = prompt_mod.build_system_prompt(self.connector, shared_steps, connector_version)
+        from testpilot.generation.tools import TOOLS_DEFINITIONS
+        input_sha256 = fingerprint(state.messages[0])
         run_loop(
             llm=self.llm,
-            system_prompt=prompt_mod.build_system_prompt(
-                self.connector, shared_steps, connector_version),
+            system_prompt=system_prompt,
             state=state,
             ctx=ctx,
             dry_runner=self.dry_runner,
@@ -98,6 +115,17 @@ class GenerationAgent:
             stall_limit=self.stall_limit,
         )
         result = self._build_result(plan, state)
+        result.observation_evidence = ctx.observations
+        result.technical_plan = ctx.technical_plan
+        result.generation_provenance = {
+            'model': config.MODEL_GENERATION, 'system_prompt_sha256': fingerprint(system_prompt),
+            'input_sha256': input_sha256, 'tools_sha256': fingerprint(TOOLS_DEFINITIONS),
+            'requirements_sha256': fingerprint(ctx.requirements),
+            'domain_sha256': fingerprint(modele), 'target_sha256': ctx.target_sha256,
+            'calibration_attempts': ctx.calibration_attempts, 'qualification': qualification,
+            'artifact_sha256': fingerprint([result.feature_content, result.steps_content]),
+            'cost_usd': result.cost_usd, 'iterations': result.iterations,
+        }
         if result.success and self.case_repo is not None and self.version_repo is not None:
             self._persist(plan, result, case_id=case_id, title=title, author=author,
                           module_id=module_id, metier=metier, group_id=group_id, refs=refs)
@@ -167,6 +195,9 @@ class GenerationAgent:
             change_summary="Génération IA",
             created_by=author,
             verified_fields=_json.dumps(result.verified_fields, ensure_ascii=False),
+            observation_evidence=_json.dumps(result.observation_evidence, ensure_ascii=False),
+            generation_provenance=_json.dumps(result.generation_provenance, ensure_ascii=False),
+            technical_plan=_json.dumps(result.technical_plan, ensure_ascii=False),
             # ── Le MÉTIER se fige DANS la version, avec le technique (décision `0022` n°10) ──
             # Sans ça, les champs de la migration 14 restaient vides sur tout cas généré et
             # l'écran en dérivait un aperçu depuis le Gherkin : un texte qui avait l'air rédigé

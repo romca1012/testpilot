@@ -47,3 +47,6 @@ class GenerationResult:
     case_id: int | None = None
     version_id: int | None = None
     verified_fields: dict[str, list[str]] = field(default_factory=dict)
+    observation_evidence: list[dict] = field(default_factory=list)
+    generation_provenance: dict = field(default_factory=dict)
+    technical_plan: dict = field(default_factory=dict)

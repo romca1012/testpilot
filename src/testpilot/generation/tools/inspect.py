@@ -34,6 +34,10 @@ def inspect_schema(ctx: "ToolContext", model: str) -> "ToolOutcome":
         lines.append(f"- {name} ({meta.get('type', '?')}, {req})")
     outcome = _outcome("\n".join(lines))
     outcome.verified_fields = {f"inspect_schema:{model}": list(schema)[:50]}
+    from testpilot.generation.evidence import record_observation
+    evidence_id = record_observation(ctx, source='rpc', resource=model,
+                       fields=[{'name': name, **meta} for name, meta in list(schema.items())[:50]])
+    outcome.observation += f'\nPreuve {evidence_id} (RPC, présence UI non démontrée).'
     return outcome
 
 
@@ -68,6 +72,11 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
         f"Soumission : {submission or 'inconnue'}."
     )
     outcome.verified_fields = {f"inspect_page_form:{page_url}": names}
+    from testpilot.generation.evidence import record_observation
+    evidence_id = record_observation(ctx, source='ui', resource=info.get('url') or page_url,
+                       fields=fields, language=info.get('language', ''),
+                       submission=info.get('submission'))
+    outcome.observation += f'\nPreuve UI {evidence_id} : {ctx.observations[-1]["fields"]}'
     return outcome
 
 

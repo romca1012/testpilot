@@ -60,9 +60,22 @@ def extract_form(page) -> dict:
             "required": el.get_attribute("required") is not None,
             "type": input_type,
         })
+        if hasattr(el, 'evaluate'):
+            fields[-1].update(el.evaluate('''el => ({
+                tag: el.tagName.toLowerCase(),
+                label: el.labels?.[0]?.textContent?.trim() || el.getAttribute('aria-label') || '',
+                visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+                options: el.tagName === 'SELECT' ? Array.from(el.options).map(
+                    o => [o.value, o.textContent.trim()]) : [],
+                min: el.getAttribute('min'), max: el.getAttribute('max'),
+                maxlength: el.getAttribute('maxlength'), pattern: el.getAttribute('pattern')
+            })'''))
 
     submission = _detect_submission(page)
-    return {"fields": fields, "submission": submission}
+    html = page.query_selector('html')
+    return {"fields": fields, "submission": submission,
+            "url": getattr(page, 'url', ''),
+            "language": html.get_attribute('lang') or '' if html else ''}
 
 
 def _detect_submission(page) -> dict:
@@ -73,9 +86,12 @@ def _detect_submission(page) -> dict:
     trigger_selector = ""
     if trigger is not None:
         name = trigger.get_attribute("name")
-        trigger_selector = f"[name='{name}']" if name else "button[type='submit']"
+        # Ne pas inventer un bouton submit si seul un bouton JS a été observé.
+        trigger_selector = f"[name='{name}']" if name else ''
+        if not name and trigger.get_attribute('type') == 'submit':
+            trigger_selector = "button[type='submit'], input[type='submit']"
     return {
-        "mechanism": "button_click",
+        "mechanism": "button_click" if trigger is not None else "unknown",
         "endpoint": endpoint or "",
         "trigger_selector": trigger_selector,
     }

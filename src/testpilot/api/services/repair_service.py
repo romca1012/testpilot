@@ -33,6 +33,7 @@ cette porte, et sans elle `progresse` serait une invitation au masquage d'échec
 from __future__ import annotations
 
 import json
+from testpilot.generation.provenance import revision_metadata
 import logging
 from dataclasses import dataclass, field
 
@@ -481,6 +482,11 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             change_summary=proposal.summary[:500] or "Réparation automatique",
             created_by="repair-agent",
             verified_fields=json.dumps(proposal.verified_fields, ensure_ascii=False),
+            title=version.get('title') or '',
+            preconditions=version.get('preconditions') or '',
+            test_steps=version.get('test_steps') or '',
+            expected_result=version.get('expected_result') or '',
+            **revision_metadata(version),
         )
         session.attempts += 1
         circuit.record(failure_signature(failures))

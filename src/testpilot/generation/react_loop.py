@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 
+from testpilot.execution.behave_result import meaningful_error
 from testpilot.generation.state import AgentState
 from testpilot.generation.tools import TOOLS_DEFINITIONS, ToolContext, dispatch
 from testpilot.guardrails.cost_tracker import CostLimitExceeded
@@ -27,8 +28,15 @@ def _assistant_message(resp, raw) -> dict:
     return {"role": "assistant", "content": blocks or [{"type": "text", "text": ""}]}
 
 
+def _dryrun_diagnostic(result) -> str:
+    """Cause utile des erreurs de parsing/import, même sans step indéfini."""
+    return meaningful_error(
+        getattr(result, "raw_stderr", "") or getattr(result, "raw_stdout", ""), limit=1500)
+
+
 def _dryrun_signature(result) -> str:
-    basis = "|".join(sorted(result.undefined_steps) + sorted(result.ambiguous_steps))
+    basis = repr((sorted(result.undefined_steps), sorted(result.ambiguous_steps),
+                  getattr(result, "returncode", None), _dryrun_diagnostic(result)))
     return hashlib.sha1(basis.encode("utf-8")).hexdigest()[:16]
 
 
@@ -63,6 +71,7 @@ def _maybe_dry_run(state: AgentState, dry_runner, stall_limit: int) -> str:
         state,
         "[dry-run] échec de parsing — "
         f"undefined={result.undefined_steps} ambiguous={result.ambiguous_steps}. "
+        f"Diagnostic Behave : {_dryrun_diagnostic(result) or 'aucun diagnostic disponible'}. "
         "Corrige le .feature ou les steps, puis rappelle write_*_file.",
     )
     return "failed"
@@ -140,7 +149,7 @@ def _apply_effect(state: AgentState, tool_name: str, outcome) -> None:
         for source, names in outcome.verified_fields.items():
             state.verified_fields[source] = sorted(
                 set(state.verified_fields.get(source, [])) | set(names))
-    if tool_name == "write_feature_file" and outcome.feature_content is not None:
+    if tool_name in {"write_feature_file", "write_test_plan"} and outcome.feature_content is not None:
         state.feature_written = True
         state.feature_content = outcome.feature_content
         state.dry_run_passed = False  # le contenu a changé : revalider

@@ -24,6 +24,7 @@ pris pour un simple « timeout ».
 from __future__ import annotations
 
 import json
+from testpilot.generation.provenance import revision_metadata
 import logging
 import re
 import threading
@@ -429,6 +430,13 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
 
     current = next((v for v in version_rows if v["id"] == version_id), None)
     warnings = assertion_lint.lint_steps(current.get("steps_content", "") if current else "")
+    if current and current.get('observation_evidence'):
+        from testpilot.generation.evidence import contextual_warnings
+        from testpilot.generation.provenance import target_fingerprint
+        project = ProjectRepo(conn).get(case.get('project_id'))
+        warnings += contextual_warnings(
+            current.get('feature_content') or '', json.loads(current['observation_evidence']),
+            target_sha256=target_fingerprint(project), base_url=(project or {}).get('base_url', ''))
 
     if current and current.get("created_by") == _AUTEUR_REPARATION:
         precedentes = [v for v in version_rows if v["id"] < current["id"]]
@@ -547,7 +555,8 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
         preconditions=version.get("preconditions") or "",
         test_steps=version.get("test_steps") or "",
         expected_result=version.get("expected_result") or "",
-        verified_fields=json.dumps(proposal.verified_fields, ensure_ascii=False))
+        verified_fields=json.dumps(proposal.verified_fields, ensure_ascii=False),
+        **revision_metadata(version))
     CaseRepo(conn).set_current_version(case_id, version_corrigee_id)
 
     version_rows_apres = VersionRepo(conn).list_for_case(case_id)
