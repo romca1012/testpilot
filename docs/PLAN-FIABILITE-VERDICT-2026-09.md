@@ -20,7 +20,7 @@ verdict métier exploitable. L'audit du 2026-09-23 a identifié les causes suiva
 
 | Réf | Où | Défaut | Conséquence |
 |---|---|---|---|
-| F1 | `_base_helpers.py` : `record_count_not_increased` (l.278), `memorize_record_count` (l.1704), `check_count_not_increased` (l.1772), `check_count_increased_by_one` (l.1987) | Comptage global `search_count([])` | Faux PASSED si un tiers crée pendant que le test échoue ; faux FAILED si deux créations |
+| F1 | `_base_helpers.py` : `record_count_not_increased` (l.278), `memorize_record_count` (l.1704), `check_count_not_increased` (l.1772), `check_count_increased_by_one` (l.1987) | Comptage global `search_count([])` | Faux PASSED si un tiers crée pendant que le test échoue ; faux FAILED si deux créations. **Corrigé par le lot 01** (comptage cloisonné par `id > max_id`, affiné par un marqueur de tentative sur les champs à contrainte d'unicité). **Résidu documenté par D10** : sans marqueur (champs sans contrainte d'unicité — la majorité), une création tierce unique dans la même fenêtre de quelques secondes reste indiscernable de celle du scénario ; fermer ce résidu à zéro exigerait un marqueur sur TOUT scénario de création (hors périmètre du lot 01, cf. D10) |
 | F2 | `defect_taxonomy.classify_failure` + `@given` de `odoo/_odoo_background_steps.py` et `_odoo_steps.py` | Tout `AssertionError` devient `ASSERTION_MISMATCH`, quel que soit le type de step | Prérequis absent ou bug du test rapporté comme défaut applicatif |
 | F3 | `_adaptive_resolution.py`, `executor.py` (retry l.64) | Un vert obtenu par résolution LLM ou au 2ᵉ essai n'est pas distingué | Régressions d'UI absorbées en silence |
 | F4 | `status.scenario_verdict` | `passed` → `conforme` sans preuve qu'une assertion s'est exécutée ; `assertion_lint` statique et non bloquant | Tests verts par construction |
@@ -48,7 +48,7 @@ du lot 05, et reportés dans `docs/QUALITE-GENERATION-*.md`.
 
 | Indicateur | Définition | Cible |
 |---|---|---|
-| I1 — Faux PASSED | bugs injectés dont le cas sort `passed` / bugs injectés couverts | **0** |
+| I1 — Faux PASSED | bugs injectés dont le cas sort `passed` / bugs injectés couverts | **0**, sous réserve du résidu D10 (F1 sans marqueur de tentative) |
 | I2 — Faux FAILED | cas `failed` sur l'instance saine / cas exécutés | ≤ 2 % |
 | I3 — Exécution au 1er passage | cas sans `technical_error` au premier run / cas générés | ≥ 85 % (départ : 43 %) |
 | I4 — Verdict exploitable | cas `passed` ou `failed` au 1er passage / cas générés | ≥ 75 % (départ : 14 %) |
@@ -73,6 +73,7 @@ Claude Code **ne démarre pas** un lot dont une décision requise n'est pas coch
 | D7 | Oracle backend du connecteur web | Réglage de projet optionnel `oracle` (HTTP JSON authentifié, ou SQL lecture seule) ; présent ⇒ `ground_truth = backend_verified` | 07 | ☐ |
 | D8 | Plusieurs comptes par projet (droits, changement d'utilisateur) | Table `project_account` (libellé, identifiant, secret chiffré via `store/secrets.py`, rôle métier) ; steps « en tant que "<libellé>" » | 07, 08 | ☐ |
 | D9 | Versions Odoo supportées et instance de référence | 16.0, 17.0, 18.0 Community + données de démo ; modules `sale_management`, `purchase`, `stock`, `account`, `crm`, `project` (helpdesk est Enterprise : exclu du banc) | 04, 08 | ☐ |
+| D10 | F1 : sur un scénario de création SANS marqueur de tentative (champ sans contrainte d'unicité — la majorité des cas), le comptage cloisonné (`id > max_id`) ne peut pas distinguer un unique enregistrement du scénario d'un unique enregistrement créé par un tiers dans la même fenêtre — aucune information disponible ne permet de trancher sans marqueur (le `create_uid` est exclu, cf. formulaires publics). Accepte-t-on ce résidu (I1 non strictement à 0) plutôt que d'imposer un marqueur à TOUT scénario de création (changerait le contrat de génération, hors périmètre du lot 01) ? | **Résidu accepté** : le risque exige la coïncidence de trois conditions (tiers actif sur le même modèle, même fenêtre de quelques secondes, ET échec réel du scénario) — rare hors instance à fort trafic concurrent. Généraliser le marqueur à tout scénario de création reste une amélioration valide, à traiter comme un lot séparé si le résidu se matérialise en pratique | 01 | ☑ (validée le 2026-09-23) |
 
 ## 5. Lots
 
@@ -81,7 +82,7 @@ statuts : ils passent en premier. Le lot 04 construit le banc qui sert à prouve
 
 | Lot | Commande | Objet | Décisions | Dépend de | Taille |
 |---|---|---|---|---|---|
-| 01 | `/lot-01-comptages` | Comptages cloisonnés au scénario (F1) | — | — | S |
+| 01 | `/lot-01-comptages` | Comptages cloisonnés au scénario (F1) | D10 | — | S |
 | 02 | `/lot-02-causes-preconditions` | Cause selon le type de step, prérequis → `blocked` (F2, F5) | D1, D2 | — | M |
 | 03 | `/lot-03-preuve-constat` | Preuve runtime qu'une assertion a été exécutée ; gardes d'écriture (F4) | D3, D4 | 02 | M |
 | 04 | `/lot-04-banc-mesure` | Instance Odoo de référence, bugs injectés, pannes injectées, script d'indicateurs, CI nocturne (C8) | D9 | — | L |
@@ -96,7 +97,7 @@ statuts : ils passent en premier. Le lot 04 construit le banc qui sert à prouve
 
 | Lot | Statut | Date | Rapport |
 |---|---|---|---|
-| 01 | à faire | | |
+| 01 | terminé | 2026-09-23 | `docs/RAPPORT-LOT-01-COMPTAGES-2026-09-23.md` |
 | 02 | à faire | | |
 | 03 | à faire | | |
 | 04 | à faire | | |
