@@ -39,38 +39,60 @@ def _installer_shim_features_environment():
 
 
 class _FakeModel:
-    def __init__(self, count, boom=False):
-        self._count, self._boom = count, boom
+    """`count=N` reproduit l'ancien comportement (ids `1..N`, count global) pour ne PAS toucher
+    les corps des tests existants (§F1, 2026-09-23 : seule cette doublure change d'interface,
+    jamais les assertions qu'elle sert). `ids=`/`champs=` explicites pour les scénarios
+    multi-acteurs (tiers concurrent) de `test_comptage_cloisonne.py`, où le "plus grand id
+    existant" ne suffit plus à représenter deux créateurs distincts."""
+
+    def __init__(self, count=0, ids=None, boom=False, champs=None):
+        self._ids = list(ids) if ids is not None else list(range(1, count + 1))
+        self._boom = boom
+        self._champs = champs or {}  # {id: {champ: valeur}} — pour l'affinage par marqueur
+
+    def with_context(self, **_kw):
+        return self
 
     def search_count(self, _domain):
         if self._boom:
             raise RuntimeError("connexion RPC perdue")
-        return self._count
+        return len(self._ids)
 
-    def search(self, _domain, **_kw):
-        """Présent sur le vrai modèle odoorpc — `check_count_increased_by_one` s'en sert pour
-        capturer l'enregistrement créé (2026-08-07)."""
+    def search(self, domain=(), order=None, limit=None, **_kw):
+        """Présent sur le vrai modèle odoorpc — `_crees_par_ce_scenario`/`memorize_record_count`
+        s'en servent pour cloisonner au scénario (§F1, 2026-09-23), plus qu'un `count` brut."""
         if self._boom:
             raise RuntimeError("connexion RPC perdue")
-        return [4242]
+        ids = list(self._ids)
+        for condition in domain:
+            champ, op, valeur = condition
+            if champ == "id" and op == ">":
+                ids = [i for i in ids if i > valeur]
+            elif op == "like":
+                ids = [i for i in ids if valeur in str(self._champs.get(i, {}).get(champ, ""))]
+        if order == "id desc":
+            ids = sorted(ids, reverse=True)
+        if limit is not None:
+            ids = ids[:limit]
+        return ids
 
 
 class _FakeEnv:
-    def __init__(self, count, boom=False):
-        self._m = _FakeModel(count, boom)
+    def __init__(self, count=0, ids=None, boom=False, champs=None):
+        self._m = _FakeModel(count=count, ids=ids, boom=boom, champs=champs)
 
     def __getitem__(self, _model):
         return self._m
 
 
 class _FakeOdoo:
-    def __init__(self, count, boom=False):
-        self.env = _FakeEnv(count, boom)
+    def __init__(self, count=0, ids=None, boom=False, champs=None):
+        self.env = _FakeEnv(count=count, ids=ids, boom=boom, champs=champs)
 
 
 class _Context:
-    def __init__(self, count, boom=False):
-        self.odoo = _FakeOdoo(count, boom)
+    def __init__(self, count=0, ids=None, boom=False, champs=None):
+        self.odoo = _FakeOdoo(count=count, ids=ids, boom=boom, champs=champs)
 
 
 MODEL = "helpdesk.ticket"
@@ -106,8 +128,9 @@ def test_snapshot_puis_augmentation_de_1_passe():
 def test_le_nouvel_enregistrement_est_enregistre_pour_nettoyage():
     """`write_test_plan` (100 % steps du catalogue) n'a aucun Python custom pour appeler
     `register_created` — sans ce câblage, chaque scénario qui passe par « augmente de 1 »
-    laisserait ses données sur la cible réelle. `_FakeModel.search` renvoie `[4242]` : c'est
-    l'identifiant que `_capturer_dernier_enregistrement` doit relayer à `register_created`."""
+    laisserait ses données sur la cible réelle. Avec `count=10` puis `count=11`, le SEUL id qui
+    apparaît au-delà du relevé (§F1, domaine `id > 10`) est `11` : c'est ce que
+    `_capturer_dernier_enregistrement` doit relayer à `register_created`."""
     _installer_shim_features_environment()
     ctx = _Context(count=10)
     ctx.created = {}
@@ -115,7 +138,7 @@ def test_le_nouvel_enregistrement_est_enregistre_pour_nettoyage():
     ctx.odoo = _FakeOdoo(count=11)
     check_count_increased_by_one(ctx, MODEL)
 
-    assert ctx.created == {MODEL: [4242]}
+    assert ctx.created == {MODEL: [11]}
 
 
 def test_un_enregistrement_preexistant_verifie_par_ailleurs_n_est_jamais_enregistre():
@@ -128,14 +151,18 @@ def test_un_enregistrement_preexistant_verifie_par_ailleurs_n_est_jamais_enregis
     ctx.odoo = _FakeOdoo(count=11)
     check_count_increased_by_one(ctx, MODEL)  # ne doit pas lever malgré l'AttributeError interne
 
-    assert ctx.last_record_ids == [4242]
+    assert ctx.last_record_ids == [11]
 
 
 def test_snapshot_puis_augmentation_inattendue_echoue():
+    """§F1 (2026-09-23) : deux créations DEPUIS le relevé, sans marqueur de tentative pour les
+    départager, sont une AMBIGUÏTÉ signalée — jamais une simple comparaison `12 != 11` : c'est
+    exactement le message que le lot demande (« … créations détectées … impossible de
+    distinguer »), pas l'ancien « devrait être 11, obtenu 12 »."""
     ctx = _Context(count=10)
     memorize_record_count(ctx, MODEL)
     ctx.odoo = _FakeOdoo(count=12)          # deux créations : le test DOIT échouer
-    with pytest.raises(AssertionError, match="devrait être 11"):
+    with pytest.raises(AssertionError, match="2 créations détectées"):
         check_count_increased_by_one(ctx, MODEL)
 
 
@@ -149,7 +176,7 @@ def test_snapshot_puis_creation_indue_echoue():
     ctx = _Context(count=10)
     memorize_record_count(ctx, MODEL)
     ctx.odoo = _FakeOdoo(count=11)
-    with pytest.raises(AssertionError, match="a augmenté"):
+    with pytest.raises(AssertionError, match="créé.*malgré l'attente d'aucune création"):
         check_count_not_increased(ctx, MODEL)
 
 
