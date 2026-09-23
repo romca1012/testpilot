@@ -275,13 +275,6 @@ def field_not_empty(env, model, record_id, field):
     assert value not in (False, None, "", []), f"Le champ '{field}' est vide."
 
 
-def record_count_not_increased(env, model, initial_count):
-    current = env[model].search_count([])
-    assert current <= initial_count, (
-        f"Nombre d'enregistrements dans '{model}' a augmenté ({initial_count} → {current})."
-    )
-
-
 def no_duplicate(env, model, field, value):
     ids = env[model].search([(field, "=", value)])
     assert len(ids) <= 1, (
@@ -1706,15 +1699,33 @@ def _count_attr(model: str) -> str:
     return f"_initial_count_{model.replace('.', '_')}"
 
 
-def memorize_record_count(context, model):
-    """Mémorise le nombre d'enregistrements du modèle, pour comparaison après l'action.
+def _max_id_attr(model: str) -> str:
+    return f"_initial_max_id_{model.replace('.', '_')}"
 
-    Échoue si le comptage est impossible : sans snapshot, toute vérification en aval serait creuse
-    (cf. `_require_snapshot`). Mieux vaut échouer ICI, où la cause est visible, que laisser le
-    scénario finir au vert sans rien avoir prouvé.
+
+def memorize_record_count(context, model):
+    """Mémorise le nombre d'enregistrements du modèle (diagnostic) ET l'id maximal existant
+    (preuve — §F1 du plan de fiabilité du verdict, 2026-09-23), pour comparaison après l'action.
+
+    ⚠️ **Le comptage global seul ment sur une instance partagée** (F1, 2026-09-23) : un tiers qui
+    crée pendant que CE scénario échoue produit un faux `conforme` ; un tiers qui crée pendant
+    qu'il réussit produit un faux `non_conforme`. Le compte global reste relevé (diagnostic
+    affiché en cas d'échec), mais la PREUVE de création devient l'id maximal, comparé plus tard
+    par `_crees_par_ce_scenario` via un domaine `id > max_id` — cloisonné à ce qui apparaît
+    APRÈS ce relevé précis, jamais à « combien il y en a en tout ».
+
+    `active_test=False` sur le relevé du max id : un enregistrement que l'action testée
+    archiverait aussitôt (workflow qui désactive à la création) doit compter comme créé.
+
+    Échoue si le relevé est impossible : sans lui, toute vérification en aval serait creuse
+    (cf. `_require_snapshot`/`_require_max_id`). Mieux vaut échouer ICI, où la cause est visible,
+    que laisser le scénario finir au vert sans rien avoir prouvé.
     """
     try:
         setattr(context, _count_attr(model), context.odoo.env[model].search_count([]))
+        derniers = context.odoo.env[model].with_context(active_test=False).search(
+            [], order="id desc", limit=1)
+        setattr(context, _max_id_attr(model), derniers[0] if derniers else 0)
     except Exception as exc:
         raise AssertionError(
             f"Impossible de mémoriser le nombre d'enregistrements de '{model}' : {exc}. "
@@ -1723,10 +1734,15 @@ def memorize_record_count(context, model):
 
 
 def _require_snapshot(context, model) -> int:
-    """Renvoie le snapshot initial, ou ÉCHOUE en nommant le step manquant.
+    """Renvoie le comptage global initial (diagnostic), ou ÉCHOUE en nommant le step manquant.
 
     Ne jamais remplacer par un `return` silencieux : le `@then` appelant passerait sans rien
     vérifier, et un scénario vert affirmerait un comptage que personne n'a mesuré (§4.2/§4.4).
+
+    ⚠️ **Conservé tel quel (AssertionError) — ne pas fusionner avec `_require_max_id`** : c'est
+    ce contrat précis, éprouvé par `tests/test_comptage_falsifiable.py`, qui doit continuer à
+    signaler à l'utilisateur qu'un step lui manque. Appelé EN PREMIER par les fonctions de
+    contrôle, il reste le signal reçu quand `memorize_record_count` n'a jamais été invoqué.
     """
     attr = _count_attr(model)
     if not hasattr(context, attr):
@@ -1736,6 +1752,72 @@ def _require_snapshot(context, model) -> int:
             f"« {_COUNT_SNAPSHOT_STEP.format(model=model)} » avant l'action."
         )
     return getattr(context, attr)
+
+
+def _require_max_id(context, model) -> int:
+    """Renvoie l'id maximal relevé par `memorize_record_count` (§F1, point 5 du plan).
+
+    ⚠️ **`RuntimeError`, jamais `AssertionError`** : contrairement à `_require_snapshot` (appelé
+    en premier par les fonctions de contrôle, et qui reste le signal historique d'un step de
+    relevé manquant — voir sa docstring), une absence ICI signifierait que le comptage global a
+    pu être relevé mais pas l'id maximal — un état incohérent qui ne peut survenir qu'à cause
+    d'une erreur d'ÉCRITURE du test (ex. un ancien `context` réutilisé hors de son scénario),
+    jamais d'un comportement de l'application. Une erreur de code de test n'est pas un désaccord
+    sur ce que l'application a fait : `RuntimeError` le distingue de tout `AssertionError` posé
+    par un contrôle qui, lui, a vraiment observé l'application.
+    """
+    attr = _max_id_attr(model)
+    if not hasattr(context, attr):
+        raise RuntimeError(
+            f"[code de test] Aucun id maximal relevé pour '{model}' : `memorize_record_count` "
+            f"n'a pas été appelé (ou a échoué) avant ce contrôle."
+        )
+    return getattr(context, attr)
+
+
+def _crees_par_ce_scenario(context, model) -> list[int]:
+    """Les ids RÉELLEMENT créés par CE scénario depuis son relevé (§F1) — jamais un comptage
+    global, qui voit toute activité concurrente sur une instance partagée.
+
+    Domaine `[("id", ">", max_id)]`, `active_test=False` (un enregistrement archivé par l'action
+    testée compte quand même comme une création). Affiné par le marqueur de tentative SI ET
+    SEULEMENT SI un step « … rendue unique pour cette tentative » a été utilisé dans CE scénario
+    (`context._tp_derniere_valeur_unique`, posé par `step_fill_unique` — `generic/_generic_steps.py`) :
+    recherche alors aussi ce jeton dans le champ concerné, pour isoler l'enregistrement du
+    scénario parmi d'éventuelles créations concurrentes.
+
+    ⚠️ **N'affine JAMAIS par `create_uid`** (décision explicite du plan) : un formulaire PUBLIC
+    crée avec l'utilisateur public — filtrer dessus confondrait entre eux tous les visiteurs
+    anonymes ayant soumis pendant la même fenêtre, un défaut pire que celui qu'on corrige ici.
+
+    ⚠️ **Le marqueur, quand il existe, fait FOI — même s'il réduit à ZÉRO**, pas seulement pour
+    départager plusieurs candidats. C'est le SEUL rempart contre le cas résiduel qu'`id > max_id`
+    seul ne peut jamais trancher : exactement UNE création concurrente, sans aucun lien avec ce
+    scénario, prise à tort pour la sienne (le même faux `conforme` que ce lot corrige, version
+    minimale). Si le scénario a posé un jeton et qu'AUCUN enregistrement ne le porte, c'est que
+    SA création n'a pas abouti — peu importe qu'un tiers en ait produit une autre entre-temps.
+    Sans marqueur du tout, ce cas précis reste indiscernable — limite assumée et validée par le
+    porteur (décision D10, `docs/PLAN-FIABILITE-VERDICT-2026-09.md` §4, 2026-09-23) : `create_uid`
+    le résoudrait, mais confondrait tous les visiteurs anonymes d'un formulaire public entre eux —
+    un défaut pire que celui qu'on corrige.
+
+    Best-effort seulement sur l'ÉCHEC de la recherche affinée (champ marqué absent de ce modèle —
+    le jeton a été posé pour un AUTRE modèle dans un scénario multi-étapes) : dans ce cas précis,
+    et LUI SEUL, on retombe sur la liste brute plutôt que de lever pour une commodité de
+    désambiguïsation qui ne s'applique simplement pas ici.
+    """
+    max_id = _require_max_id(context, model)
+    env = context.odoo.env[model].with_context(active_test=False)
+    domaine = [("id", ">", max_id)]
+    ids = env.search(domaine)
+    marqueur = getattr(context, "_tp_derniere_valeur_unique", None)
+    if marqueur:
+        champ, jeton = marqueur
+        try:
+            return env.search(domaine + [(champ, "like", jeton)])
+        except Exception:
+            pass  # champ absent de CE modèle : le marqueur ne s'y applique pas, repli sur `ids`.
+    return ids
 
 
 # Fenêtre pendant laquelle on considère que la création asynchrone a « eu le temps de se
@@ -1775,15 +1857,26 @@ def _poll_until(lire, predicat, *, timeout=None, intervalle=0.3, _clock=None, _s
 
 
 def check_count_not_increased(context, model):
-    """Le négatif attend TOUTE la fenêtre : on cherche une augmentation pendant `COUNT_SETTLE_TIMEOUT`
-    ; si aucune n'apparaît, on conclut « rien créé ». Attendre moins laisserait passer une création
-    tardive à tort (faux négatif, §4.4 inacceptable)."""
-    initial = _require_snapshot(context, model)
-    augmente, current = _poll_until(
-        lambda: context.odoo.env[model].search_count([]), lambda c: c > initial)
-    assert not augmente, (
-        f"Nombre d'enregistrements dans '{model}' a augmenté ({initial} → {current})."
-    )
+    """Le négatif attend TOUTE la fenêtre : on cherche une création DE CE SCÉNARIO pendant
+    `COUNT_SETTLE_TIMEOUT` ; si aucune n'apparaît, on conclut « rien créé ». Attendre moins
+    laisserait passer une création tardive à tort (faux négatif, §4.4 inacceptable).
+
+    ⚠️ **Cloisonné au scénario (§F1, 2026-09-23)** : comparait auparavant le comptage GLOBAL
+    (`search_count([])`), qui accuse à tort le scénario d'une création faite par un TIERS pendant
+    qu'il tourne, sur une instance partagée. `_crees_par_ce_scenario` ne voit que ce qui apparaît
+    après le relevé de CE scénario (`id > max_id`), jamais l'activité d'un autre utilisateur.
+    """
+    _require_snapshot(context, model)  # diagnostic + garde historique (step manquant → message)
+    max_id = _require_max_id(context, model)
+    augmente, ids = _poll_until(
+        lambda: _crees_par_ce_scenario(context, model), lambda v: len(v) > 0)
+    if augmente:
+        global_actuel = context.odoo.env[model].search_count([])
+        raise AssertionError(
+            f"Enregistrement(s) créé(s) par ce scénario dans '{model}' malgré l'attente d'aucune "
+            f"création : ids {ids} (domaine [('id', '>', {max_id})]). "
+            f"Comptage global (diagnostic, inclut l'activité concurrente) : {global_actuel}."
+        )
 
 
 # Ce que la PAGE dit quand rien n'a été créé — par ordre de force du signal.
@@ -1952,8 +2045,15 @@ def diagnostic_soumission(page) -> str:
         return f"(diagnostic de soumission indisponible : {type(exc).__name__})"
 
 
-def _capturer_dernier_enregistrement(context, model) -> None:
-    """Pose `last_record_ids`/`last_record_model` sur l'enregistrement qui vient d'être créé.
+def _capturer_dernier_enregistrement(context, model, record_ids) -> None:
+    """Pose `last_record_ids`/`last_record_model` sur l'enregistrement identifié par
+    `_crees_par_ce_scenario`, et l'ajoute au registre de nettoyage.
+
+    ⚠️ **Ne relit plus l'id par `order="id desc"` (§F1, 2026-09-23)** : cette relecture globale
+    pouvait pointer l'enregistrement d'un TIERS créé après celui du scénario, exactement le
+    défaut que le cloisonnement par `id > max_id` corrige juste avant d'arriver ici — la liste
+    `record_ids` fournie par l'appelant est déjà exacte, une seconde requête « le plus récent »
+    ne ferait que réintroduire la même course.
 
     ⚠️ **Le trou mesuré le 2026-08-07** (`/retenue_garantie`, cas 120) : un scénario nominal qui
     enchaîne « le nombre … augmente de 1 » puis « le champ … de CET enregistrement … » plantait
@@ -1963,9 +2063,6 @@ def _capturer_dernier_enregistrement(context, model) -> None:
     erreur TECHNIQUE (« à retester ») sur un scénario où l'application avait parfaitement
     fonctionné — le pire des verdicts, celui qui ne dit rien.
 
-    L'identifiant le plus RÉCENT est le nouveau : `_poll_until` vient de confirmer qu'il y en a
-    exactement un de plus qu'au snapshot.
-
     ⚠️ **Best-effort, jamais bloquant** — même arbitrage que l'archivage et la capture d'écran.
     Le contrat de `check_count_increased_by_one` est le COMPTAGE, et il est déjà rempli quand on
     arrive ici : une commodité pour les steps suivants ne doit pas faire échouer un step dont
@@ -1973,16 +2070,17 @@ def _capturer_dernier_enregistrement(context, model) -> None:
     clairement (« Aucun enregistrement en contexte… »), sans jamais se taire.
     """
     try:
-        context.last_record_ids = context.odoo.env[model].search([], order="id desc", limit=1)
+        context.last_record_ids = record_ids
         context.last_record_model = model
         # `write_test_plan` (100 % steps du catalogue) n'a AUCUN Python custom pour appeler
         # `register_created` — sans cette ligne, chaque scénario généré par ce chemin (celui que
         # le prompt recommande désormais par défaut) laisserait ses données de test sur la cible
-        # réelle. Sûr ICI, et seulement ici : `_poll_until` vient de PROUVER un enregistrement de
-        # plus qu'au snapshot — contrairement aux steps « … existe dans le modèle … », qui peuvent
-        # pointer un enregistrement PRÉEXISTANT et qu'il ne faut jamais enregistrer pour suppression.
+        # réelle. Sûr ICI, et seulement ici : `_crees_par_ce_scenario` vient de PROUVER que cet
+        # enregistrement a été créé APRÈS le relevé du scénario — contrairement aux steps
+        # « … existe dans le modèle … », qui peuvent pointer un enregistrement PRÉEXISTANT et
+        # qu'il ne faut jamais enregistrer pour suppression.
         from features.environment import register_created
-        for record_id in context.last_record_ids:
+        for record_id in record_ids:
             register_created(context, model, record_id)
     except Exception:
         logger.warning("[comptage] dernier enregistrement de '%s' non capturé — les steps "
@@ -1990,20 +2088,44 @@ def _capturer_dernier_enregistrement(context, model) -> None:
 
 
 def check_count_increased_by_one(context, model):
-    """Le positif attend que le ticket APPARAISSE (jusqu'à `COUNT_SETTLE_TIMEOUT`). S'il n'apparaît
-    pas dans la fenêtre, l'assertion échoue avec le message d'origine — un vrai « non créé » reste
-    détecté, seule la course disparaît.
+    """Le positif attend qu'EXACTEMENT UN enregistrement DE CE SCÉNARIO apparaisse (jusqu'à
+    `COUNT_SETTLE_TIMEOUT`). S'il n'apparaît pas dans la fenêtre, l'assertion échoue avec le
+    message d'origine — un vrai « non créé » reste détecté, seule la course disparaît.
 
-    ⚠️ **Le message d'échec porte désormais le DIAGNOSTIC de la page** (2026-07-22) : « rien n'a
-    été créé » est un constat, pas une explication, et c'est sur ce constat nu qu'on a accusé
-    l'application à tort pendant toute une campagne de mesure. Voir `diagnostic_soumission`.
+    ⚠️ **Cloisonné au scénario (§F1, 2026-09-23)** : comparait auparavant le comptage GLOBAL
+    (`search_count([]) == initial + 1`), qui produit un faux `conforme` si un tiers crée pendant
+    que CE scénario échoue en réalité (le compte global « retombe juste » par coïncidence), et un
+    faux `non_conforme` si un tiers crée EN PLUS du scénario (`initial + 2 ≠ initial + 1`, alors
+    que le scénario a parfaitement réussi). `_crees_par_ce_scenario` ne voit que les ids créés
+    après le relevé de CE scénario (`id > max_id`), affinés par le marqueur de tentative quand un
+    step « … rendue unique … » l'a posé — jamais l'activité d'un tiers sur l'instance partagée.
+    Plusieurs créations NON affinables restent une AMBIGUÏTÉ signalée, jamais un succès par défaut.
+
+    ⚠️ **Le message d'échec porte le DIAGNOSTIC de la page** (2026-07-22) : « rien n'a été créé »
+    est un constat, pas une explication, et c'est sur ce constat nu qu'on a accusé l'application
+    à tort pendant toute une campagne de mesure. Voir `diagnostic_soumission`.
     """
-    initial = _require_snapshot(context, model)
-    ok, current = _poll_until(
-        lambda: context.odoo.env[model].search_count([]), lambda c: c == initial + 1)
-    if ok:
-        _capturer_dernier_enregistrement(context, model)
+    _require_snapshot(context, model)  # diagnostic + garde historique (step manquant → message)
+    max_id = _require_max_id(context, model)
+    ok, ids = _poll_until(
+        lambda: _crees_par_ce_scenario(context, model), lambda v: len(v) >= 1)
+    if ok and len(ids) == 1:
+        _capturer_dernier_enregistrement(context, model, ids)
         return
+    if ok and len(ids) > 1:
+        # ⚠️ Plusieurs créations DEPUIS le relevé de CE scénario, et l'affinage par marqueur de
+        # tentative (dans `_crees_par_ce_scenario`) n'a pas su les départager : impossible de dire
+        # laquelle est celle du scénario. Une ambiguïté n'est JAMAIS un succès par défaut — même
+        # motif que `record_ids` multiples ailleurs dans la bibliothèque (0007).
+        global_actuel = context.odoo.env[model].search_count([])
+        raise AssertionError(
+            f"{len(ids)} créations détectées dans '{model}' depuis id > {max_id} (domaine "
+            f"[('id', '>', {max_id})]), impossible de distinguer celle de ce scénario : "
+            f"ids {ids}. Comptage global (diagnostic, inclut l'activité concurrente) : "
+            f"{global_actuel}. Ajoutez un step « … rendue unique pour cette tentative » sur un "
+            f"champ discriminant pour lever l'ambiguïté."
+        )
+    current = len(ids)  # `_poll_until` a déjà relu jusqu'à expiration : pas de nouvel appel RPC.
     page = getattr(context, "page", None)
     # ⚠️ §2bis 4ᵉ verdict — AVANT d'accuser l'application. Si rien n'a été créé PARCE QUE le
     # navigateur a refusé notre donnée (validation native), le verdict est `donnee_invalide`, pas
@@ -2034,14 +2156,17 @@ def check_count_increased_by_one(context, model):
             # Refus serveur sans champ nommé, sur une saisie valide côté navigateur : l'app rejette
             # en silence une donnée recevable = défaut de comportement (arbitrage porteur 2026-07-23).
             raise AssertionError(
-                f"Nombre d'enregistrements dans '{model}' devrait être {initial + 1}, obtenu "
-                f"{current}.\nLE SERVEUR A REFUSÉ la soumission sans nommer de champ : « {detail} ». "
-                f"La donnée était pourtant acceptée par le navigateur.")
-        # genre == "cree" : le serveur dit avoir créé (id), mais le compteur ne le voit pas — modèle
-        # différent, ou délai au-delà de la fenêtre. On tombe sur le constat de comptage ci-dessous.
+                f"Aucune création détectée dans '{model}' depuis id > {max_id} (domaine "
+                f"[('id', '>', {max_id})]).\nLE SERVEUR A REFUSÉ la soumission sans nommer de "
+                f"champ : « {detail} ». La donnée était pourtant acceptée par le navigateur.")
+        # genre == "cree" : le serveur dit avoir créé (id), mais le comptage cloisonné ne le voit
+        # pas — modèle différent, ou délai au-delà de la fenêtre. On tombe sur le constat ci-dessous.
 
     # Sinon (refus serveur affiché à l'écran, ou silence total) : constat de comptage + explication.
+    global_actuel = context.odoo.env[model].search_count([])
     pourquoi = diagnostic_soumission(page) if page is not None else ""
     raise AssertionError(
-        f"Nombre d'enregistrements dans '{model}' devrait être {initial + 1}, obtenu {current}."
+        f"Aucune création détectée dans '{model}' depuis id > {max_id} (domaine "
+        f"[('id', '>', {max_id})]) ; {current} trouvée(s) au lieu d'une. "
+        f"Comptage global (diagnostic, inclut l'activité concurrente) : {global_actuel}."
         + (f"\n{pourquoi}" if pourquoi else ""))

@@ -51,6 +51,10 @@ def step_fill_unique(context, field, value):
     `… avec la valeur …`.
     """
     fill_field(context.page, field, f"{value} {context.tentative_token}")
+    # Lot 01 du plan de fiabilité du verdict (2026-09-23, F1) : mémorise QUEL champ porte le
+    # jeton de cette tentative, pour que `_crees_par_ce_scenario` puisse isoler l'enregistrement
+    # du scénario si une création concurrente survient entre son relevé et son contrôle.
+    context._tp_derniere_valeur_unique = (field, context.tentative_token)
 
 
 @given('je remplis le formulaire de "{route}" avec des données valides')
