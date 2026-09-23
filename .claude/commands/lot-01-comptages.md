@@ -5,7 +5,9 @@ description: Lot 01 — Comptages cloisonnés au scénario (défaut F1, faux PAS
 # Lot 01 — Comptages cloisonnés au scénario
 
 Lis `CLAUDE.md` puis la section F1 de `docs/PLAN-FIABILITE-VERDICT-2026-09.md`.
-Décision requise : aucune. Branche : `lot-01-comptages`.
+Décision requise à l'origine : aucune. **Une décision est apparue pendant l'exécution du lot**
+(D10, §4 du plan — résidu de faux PASSED sur un scénario de création sans marqueur de tentative),
+validée par le porteur le 2026-09-23. Branche : `lot-01-comptages`.
 
 ## Pourquoi
 
