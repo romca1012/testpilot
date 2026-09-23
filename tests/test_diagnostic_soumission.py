@@ -172,7 +172,13 @@ class _Env(dict):
 
 
 class _Modele:
+    """`search_count` reste au diagnostic (jamais la preuve, §F1) ; `search`/`with_context`
+    représentent l'absence de toute création DEPUIS le relevé — aucun domaine ne renvoie rien,
+    exactement le cas « rien créé » que ces deux tests posent."""
+
     def search_count(self, _): return 26222
+    def with_context(self, **_kw): return self
+    def search(self, domain=(), order=None, limit=None, **_kw): return []
 
 
 class _Odoo:
@@ -183,8 +189,11 @@ class _Context:
     def __init__(self, page):
         self.page = page
         self.odoo = _Odoo()
-        # Le snapshot pris par « …est enregistré pour comparaison » (cf. `_count_attr`).
+        # Le snapshot pris par « …est enregistré pour comparaison » (cf. `_count_attr`), ET l'id
+        # maximal relevé par `memorize_record_count` (§F1, 2026-09-23) — sans lui, `_require_max_id`
+        # lève un `RuntimeError` [code de test] avant même d'atteindre ce que ce test vérifie.
         self._initial_count_helpdesk_ticket = 26222
+        self._initial_max_id_helpdesk_ticket = 26222
 
 
 def test_donnee_refusee_nativement_leve_le_4e_verdict_au_comptage(monkeypatch):
@@ -217,5 +226,7 @@ def test_un_refus_SILENCIEUX_reste_un_constat_de_comptage(monkeypatch):
         H.check_count_increased_by_one(ctx, "helpdesk.ticket")
 
     message = str(err.value)
-    assert "devrait être 26223, obtenu 26222" in message, "le constat de comptage est préservé"
+    # §F1 (2026-09-23) : le constat cite désormais le domaine cloisonné au scénario, plus le
+    # comptage global en diagnostic seul — jamais « devrait être N, obtenu M » (comptage global).
+    assert "Aucune création détectée dans 'helpdesk.ticket' depuis id > 26222" in message
     assert "SILENCIEUX" in message

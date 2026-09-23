@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "behave_runtime" / 
 
 import _base_helpers as H  # noqa: E402
 from _base_helpers import DonneeRefuseeError, verifier_soumission_non_bloquee  # noqa: E402
+from tests.test_comptage_falsifiable import _installer_shim_features_environment  # noqa: E402
 
 
 class _Page:
@@ -220,20 +221,27 @@ def test_environment_MARQUE_bien_les_scenarios_negatifs():
 # ── Le contexte d'enregistrement après un comptage réussi (cas 120) ───────────
 
 class _FauxModeleCree:
-    def __init__(self, ids=None, boom=False): self.ids, self.boom = ids or [777], boom
+    """`search` distingue le relevé initial de `memorize_record_count` (`order="id desc",
+    limit=1`, rend l'id maximal AVANT création) de la preuve cloisonnée (`_crees_par_ce_scenario`,
+    domaine `id > max_id`, §F1 2026-09-23) — sans cette distinction, un seul comportement de
+    `search` ne peut plus représenter les deux relevés que la nouvelle preuve exige."""
+
+    def __init__(self, ids=None, max_id_initial=10): self.ids, self.max_id_initial = ids or [777], max_id_initial
+    def with_context(self, **_kw): return self
     def search_count(self, _d): return 11
-    def search(self, _d, **_kw):
-        if self.boom:
-            raise RuntimeError("RPC perdu")
-        return self.ids
+
+    def search(self, domain=(), order=None, limit=None, **_kw):
+        if order == "id desc" and limit == 1:
+            return [self.max_id_initial]
+        return list(self.ids)
 
 
 class _CtxCree:
-    def __init__(self, boom=False):
-        modele = _FauxModeleCree(boom=boom)
+    def __init__(self):
+        modele = _FauxModeleCree()
         self.odoo = type("O", (), {"env": type("E", (), {
             "__getitem__": lambda s, n: modele})()})()
-        setattr(self, H._count_attr("helpdesk.ticket"), 10)
+        H.memorize_record_count(self, "helpdesk.ticket")
 
 
 def test_un_comptage_reussi_POSE_l_enregistrement_pour_les_steps_suivants():
@@ -249,12 +257,26 @@ def test_un_comptage_reussi_POSE_l_enregistrement_pour_les_steps_suivants():
     assert ctx.last_record_model == "helpdesk.ticket"
 
 
-def test_une_capture_IMPOSSIBLE_ne_fait_PAS_echouer_le_comptage():
-    """Best-effort : le contrat de ce step est le COMPTAGE, déjà rempli. Une commodité pour les
-    steps suivants ne doit jamais faire tomber une assertion qui a réussi — le step suivant le
-    signalera clairement de lui-même."""
-    ctx = _CtxCree(boom=True)
+def test_registre_de_nettoyage_impossible_ne_fait_PAS_echouer_le_comptage(monkeypatch):
+    """Best-effort : le contrat de ce step est le COMPTAGE, déjà rempli quand on atteint la
+    capture. Une commodité pour les steps suivants (le nettoyage automatique de l'enregistrement)
+    ne doit jamais faire tomber une assertion qui a réussi.
+
+    ⚠️ **Écart avec l'ancien test (§F1, 2026-09-23), assumé et documenté au rapport de lot** :
+    avant, `_capturer_dernier_enregistrement` RELISAIT l'id par RPC — une panne à cet endroit
+    empêchait même `last_record_ids` d'être posé. Depuis ce lot, la liste d'ids est déjà PROUVÉE
+    par `_crees_par_ce_scenario` avant d'arriver ici (la même preuve que le comptage lui-même) :
+    seul l'enregistrement pour NETTOYAGE (`register_created`) peut encore échouer, et
+    `last_record_ids`/`last_record_model` restent posés malgré cet échec — un comportement
+    strictement plus robuste pour les steps suivants, pas une régression."""
+    _installer_shim_features_environment()
+
+    def _boom(*_a, **_kw):
+        raise RuntimeError("RPC perdu")
+
+    monkeypatch.setattr(sys.modules["features.environment"], "register_created", _boom)
+    ctx = _CtxCree()
 
     H.check_count_increased_by_one(ctx, "helpdesk.ticket")  # ne lève PAS
 
-    assert not hasattr(ctx, "last_record_ids"), "rien posé, mais rien de silencieux non plus"
+    assert ctx.last_record_ids == [777], "capturé malgré l'échec du seul enregistrement de nettoyage"
