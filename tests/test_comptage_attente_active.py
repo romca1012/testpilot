@@ -25,22 +25,30 @@ import _base_helpers as H  # noqa: E402
 
 
 class _FakeModel:
-    """`search_count` rend les valeurs de `counts`, une par appel (la dernière ensuite)."""
+    """§F1 (2026-09-23) : la preuve n'est plus `search_count` (comptage global) mais `search`
+    cloisonné (`id > max_id`, voir `_crees_par_ce_scenario`). `apparait_au_poll` simule la MÊME
+    race qu'avant (création asynchrone visible seulement après N relectures), traduite dans la
+    nouvelle preuve : le ticket 4242 n'apparaît dans `search()` qu'à partir du Nᵉ appel."""
 
-    def __init__(self, counts):
-        self.counts = list(counts)
-        self.appels = 0
+    def __init__(self, apparait_au_poll, max_id_initial=10, id_cree=4242):
+        self.apparait_au_poll = apparait_au_poll  # None = jamais
+        self.max_id_initial = max_id_initial
+        self.id_cree = id_cree
+        self.appels_poll = 0
+
+    def with_context(self, **_kw):
+        return self
 
     def search_count(self, _domain):
-        v = self.counts[min(self.appels, len(self.counts) - 1)]
-        self.appels += 1
-        return v
+        return self.max_id_initial  # diagnostic seul désormais (§F1), jamais la preuve
 
-    def search(self, _domain, **_kw):
-        """Le vrai modèle odoorpc en a un — `check_count_increased_by_one` s'en sert pour capturer
-        l'enregistrement créé (2026-08-07). Sans lui ici, le faux serait moins capable que le vrai
-        et le test passerait à côté de ce que la production fait vraiment."""
-        return [4242]
+    def search(self, domain=(), order=None, limit=None, **_kw):
+        if order == "id desc" and limit == 1:
+            return [self.max_id_initial]  # relevé initial (memorize_record_count)
+        self.appels_poll += 1
+        if self.apparait_au_poll is not None and self.appels_poll >= self.apparait_au_poll:
+            return [self.id_cree]
+        return []
 
 
 class _FakeEnv:
@@ -52,9 +60,10 @@ class _FakeEnv:
 
 
 class _Ctx:
-    def __init__(self, counts, initial):
-        self.odoo = type("O", (), {"env": _FakeEnv(_FakeModel(counts))})()
-        setattr(self, H._count_attr("helpdesk.ticket"), initial)
+    def __init__(self, apparait_au_poll, max_id_initial=10):
+        modele = _FakeModel(apparait_au_poll, max_id_initial=max_id_initial)
+        self.odoo = type("O", (), {"env": _FakeEnv(modele)})()
+        H.memorize_record_count(self, "helpdesk.ticket")
 
 
 @pytest.fixture(autouse=True)
@@ -86,21 +95,21 @@ def test_poll_respecte_la_borne_et_ne_boucle_pas_a_l_infini():
 
 def test_positif_reussit_quand_le_ticket_apparait_en_RETARD():
     """La régression exacte : lecture unique aurait vu N et échoué ; le poll attend le ticket."""
-    ctx = _Ctx(counts=[10, 10, 11], initial=10)  # ticket visible au 3ᵉ poll
+    ctx = _Ctx(apparait_au_poll=3)  # ticket visible au 3ᵉ poll
     H.check_count_increased_by_one(ctx, "helpdesk.ticket")  # ne lève pas
 
 
 def test_positif_echoue_si_le_ticket_n_est_JAMAIS_cree():
     """La correction ne masque pas un vrai défaut : rien créé → échec, message d'origine."""
-    ctx = _Ctx(counts=[10], initial=10)  # reste à 10
-    with pytest.raises(AssertionError, match="devrait être 11, obtenu 10"):
+    ctx = _Ctx(apparait_au_poll=None)  # jamais créé
+    with pytest.raises(AssertionError, match=r"Aucune création détectée.*depuis id > 10"):
         H.check_count_increased_by_one(ctx, "helpdesk.ticket")
 
 
 # ── Le négatif : même fenêtre 8 s — garde anti-faux-négatif ───────────────────
 
 def test_negatif_passe_quand_rien_n_est_cree():
-    ctx = _Ctx(counts=[10], initial=10)
+    ctx = _Ctx(apparait_au_poll=None)
     H.check_count_not_increased(ctx, "helpdesk.ticket")  # ne lève pas
 
 
@@ -108,8 +117,8 @@ def test_negatif_detecte_une_creation_TARDIVE_a_tort():
     """⚠️ Le point de la correction de plan : le négatif attend la MÊME fenêtre que le positif.
     Une création qui surgit en retard (à tort) doit être vue, pas ratée par une fenêtre trop
     courte. Ici le ticket apparaît au 3ᵉ poll — dans la fenêtre — et DOIT faire échouer."""
-    ctx = _Ctx(counts=[10, 10, 11], initial=10)
-    with pytest.raises(AssertionError, match="a augmenté"):
+    ctx = _Ctx(apparait_au_poll=3)
+    with pytest.raises(AssertionError, match=r"créé.*malgré l'attente d'aucune création"):
         H.check_count_not_increased(ctx, "helpdesk.ticket")
 
 

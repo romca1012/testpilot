@@ -29,6 +29,12 @@ class _Modele:
     def search_count(self, _):
         return 100  # inchangé après soumission → « rien créé »
 
+    def with_context(self, **_kw):
+        return self
+
+    def search(self, domain=(), order=None, limit=None, **_kw):
+        return []  # rien créé DEPUIS le relevé, quel que soit le domaine (§F1, 2026-09-23)
+
 
 class _Env(dict):
     def __getitem__(self, k):
@@ -61,6 +67,9 @@ class _Context:
         self.page = _Page()
         self.odoo = _Odoo()
         self._initial_count_helpdesk_ticket = 100
+        # Id maximal relevé (§F1, 2026-09-23) — sans lui, `_require_max_id` lève un `RuntimeError`
+        # [code de test] avant même d'atteindre la réponse serveur que ces tests vérifient.
+        self._initial_max_id_helpdesk_ticket = 100
         self.reponse_formulaire = reponse
 
 
@@ -119,7 +128,9 @@ def test_sans_reponse_serveur_le_silence_reste_un_constat():
     ctx = _Context(None)
     with pytest.raises(AssertionError) as err:
         H.check_count_increased_by_one(ctx, "helpdesk.ticket")
-    assert "devrait être 101, obtenu 100" in str(err.value)
+    # §F1 (2026-09-23) : constat cloisonné au scénario (« depuis id > 100 »), plus « devrait
+    # être N, obtenu M » (comptage global, abandonné par ce lot).
+    assert "Aucune création détectée dans 'helpdesk.ticket' depuis id > 100" in str(err.value)
     assert "SILENCIEUX" in str(err.value)
 
 
@@ -130,4 +141,4 @@ def test_reponse_id_ne_masque_pas_un_compteur_a_zero():
     with pytest.raises(AssertionError) as err:
         H.check_count_increased_by_one(ctx, "helpdesk.ticket")
     assert not isinstance(err.value, H.DonneeRefuseeError)
-    assert "devrait être 101, obtenu 100" in str(err.value)
+    assert "Aucune création détectée dans 'helpdesk.ticket' depuis id > 100" in str(err.value)
