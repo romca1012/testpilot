@@ -56,9 +56,16 @@ def step_fill_unique(context, field, value):
 @given('je remplis le formulaire de "{route}" avec des données valides')
 @when('je remplis le formulaire de "{route}" avec des données valides')
 def step_remplir_formulaire_valide(context, route):
-    """Chemin NOMINAL (§2bis) : le déterministe remplit tout — le LLM ne nomme aucun champ.
-    Pour un scénario NÉGATIF (tester un refus), on garde les steps fins « je renseigne le
-    champ … avec la valeur … », où la mauvaise valeur EST le sujet du test."""
+    """Chemin NOMINAL (§2bis), PORTAIL UNIQUEMENT — jamais un back-office (`/web`, `/odoo`), échec certain.
+
+    Le déterministe remplit tout, le LLM ne nomme aucun champ. Les routes back-office sont hors
+    du périmètre du crawl (`crawl_exclusion_pattern`) et absentes de
+    l'annuaire — l'échec (`ResolveurIncompletError`) est certain, mesuré en RUN RÉEL (Sapian,
+    2026-09-23, cas 127 : « formulaire introuvable dans l'annuaire pour route='helpdesk.ticket' »).
+    Sur un back-office, utilise les steps fins « je renseigne … » / « je sélectionne … ». Pour un
+    scénario NÉGATIF (tester un refus) même sur portail, ces steps fins restent aussi requis —
+    la mauvaise valeur EST le sujet du test.
+    """
     remplir_formulaire_valide(context, route)
 
 

@@ -302,6 +302,82 @@ pas encore un problème à corriger seul.
 de blocage si le widget n'apparaît jamais, comportement portail inchangé). 109 tests ciblés
 passent sans régression sur l'ensemble touché aujourd'hui.
 
+## Lot 5 — pilote réduit (2 cas, projet 12) et trois défauts réels trouvés et corrigés
+
+Périmètre réduit approuvé le 23 septembre : le corpus complet du plan (30 cas, 20 Odoo + 10 web)
+n'existe pas encore (0 cas web-générique, projet 1 injoignable en local). Script
+[`scripts/qualify_campaign_pilot.py`](../../../AXENEO/testpilot/scripts/qualify_campaign_pilot.py) :
+2 cas (127, 128), 3 générations indépendantes chacun, exécution physique unique
+(`TESTPILOT_QUALIFICATION=1`, `max_retries=0`), isolation des mémoires apprises entre essais
+(snapshot/restauration de `menu_appris`/`selector_memory`/`regles_apprises`), verdict calculé par
+`derive_verdict` (même logique qu'en production), vérification RPC indépendante best-effort.
+
+Le premier essai de validation a immédiatement échoué techniquement, révélant en cascade **trois
+défauts réels distincts**, tous vérifiés en conditions réelles avant correction (jamais devinés) :
+
+1. **Nom de champ volatil.** Le web client Odoo (OWL) pose le nom technique STABLE d'un champ sur
+   le `<div class="o_field_widget" name="...">` qui ENGLOBE le contrôle, jamais sur l'`<input>`/
+   `<textarea>` interne — qui, lui, n'a souvent aucun `name` et un `id` (`name_0`, `partner_id_0`)
+   dépendant du nombre de widgets déjà montés dans LA SESSION du navigateur. Un nom observé à la
+   génération (session isolée, compteur bas) ne correspond à RIEN à l'exécution (session réelle,
+   compteur avancé). Corrigé en deux temps, vérifiés séparément sur le vrai formulaire Sapian :
+   - [`connectors/odoo.py::_extract_odoo_form_fields`](../../../AXENEO/testpilot/src/testpilot/connectors/odoo.py)
+     lit `.o_field_widget[name]` (stable) au lieu de `input/select/textarea` + repli sur `id`
+     (volatil), pour toute URL `/web#` — révèle au passage des champs qu'`extract_form` ratait
+     entièrement (widgets sans `<input>` natif : `priority`, `tag_ids`…).
+   - [`_base_helpers.py::locate_field`](../../../AXENEO/testpilot/behave_runtime/steps_library/_base_helpers.py)
+     descend désormais vers le premier contrôle éditable réel quand un sélecteur technique résout
+     un conteneur non éditable, avant de rendre la main — jamais l'inverse.
+2. **Absence de guidance many2one.** Un champ relationnel (`partner_id`) rempli via
+   `fill_field` (« je renseigne … avec la valeur … ») pose la valeur dans le DOM sans jamais
+   sélectionner un enregistrement réel — Odoo refuse alors l'enregistrement SANS message lisible
+   (verdict honnête : `non_conforme`, cause non tranchée automatiquement). Le step correct
+   (`select_many2one_odoo`, déjà écrit et vérifié une session précédente) existait, mais rien ne
+   disait à l'agent de l'utiliser. Corrigé : `inspect_schema`
+   ([`generation/tools/inspect.py`](../../../AXENEO/testpilot/src/testpilot/generation/tools/inspect.py))
+   annonce désormais, ligne par ligne, quel step utiliser pour un champ `many2one`. Reproduit
+   avec succès en re-générant le cas 127 : le Gherkin utilise maintenant « je sélectionne … dans
+   le champ "partner_id" ».
+3. **`force_name_field` héritait du même trou.** Cette fonction pré-existante (contourne
+   l'auto-génération Odoo du titre) résolvait `[name="name"]` en assumant que c'était directement
+   le contrôle — même erreur que (1), plus un prototype de setter figé sur `HTMLInputElement`
+   alors que le champ réel est une `<textarea>` sur ce formulaire. Corrigée pour descendre dans
+   le conteneur et choisir le bon prototype selon le tag réel ; vérifiée directement sur le vrai
+   formulaire Sapian (valeur posée sur le vrai contrôle, confirmé par lecture DOM).
+
+25 tests ajoutés/étendus (`test_odoo_connector.py`, `test_select_field_value_sans_name.py`,
+`test_case_a_cocher.py`, `test_generation_verified_fields.py`, `test_force_name_field.py` —
+nouveau). 194 tests ciblés passent sans régression.
+
+**Résultat mesuré après les trois correctifs** (cas 127, re-généré) : `execution_status: success`
+pour la première fois de toute cette investigation — plus aucune erreur technique de résolution
+de champ. La chaîne complète (génération → exécution → verdict correct) sur ce cas précis reste
+à confirmer par un nouvel essai, non relancé à ce stade pour ne pas consommer davantage le budget
+avant validation du prochain tour de campagne.
+
+## Trois défauts de la campagne pilote corrigés (23 septembre)
+
+1. **Vérification indépendante du pilote, deux bugs dans mon propre script** (pas dans
+   TestPilot) : `time.mktime` interprétait `write_date` (déjà en UTC côté Odoo) comme une heure
+   LOCALE — décalage silencieux qui masquait même l'essai réellement réussi (`nouveaux: 0` malgré
+   un succès confirmé par le Gherkin) ; `search(model, [], limit=0)` ramenait la totalité du
+   modèle (37 955 tickets mesurés) avant lecture côté client — cause du `TimeoutError`
+   systématique sur `helpdesk.ticket`. Corrigé : seuil construit explicitement en UTC, filtre
+   `write_date >=` appliqué CÔTÉ SERVEUR avec une limite de sécurité. 4 tests ajoutés.
+2. **`remplir_formulaire_valide` utilisé à tort sur un cas back-office** — ce step est
+   structurellement incompatible avec `/web`/`/odoo` (hors du périmètre du crawl dont il dépend),
+   et rien ne le disait à l'agent. Corrigé : la note affichée dans le catalogue de prompt le dit
+   désormais explicitement (« NOMINAL, PORTAIL UNIQUEMENT — jamais un back-office, échec
+   certain »).
+3. **Grille d'applications Odoo (`.o_app`) pas prête à `domcontentloaded`** — même trou que celui
+   déjà corrigé sur les formulaires, cette fois sur la page d'accueil du back-office
+   (`/web#action=menu`) : 0 tuile immédiatement après le chargement, 25 après ~2 s de rendu
+   client. Cause du timeout intermittent sur le clic « Sondages » (2 essais sur 3 en campagne
+   réelle). Corrigé par la même attente `wait_for_selector` best-effort déjà employée pour les
+   formulaires. 1 test de garde ajouté ; vérifié en conditions réelles (Sapian).
+
+9 tests ajoutés/étendus au total pour ces trois correctifs.
+
 ## Sources complémentaires vérifiées le 23 septembre
 
 - [Tarifs Anthropic](https://platform.claude.com/docs/en/about-claude/pricing) et
