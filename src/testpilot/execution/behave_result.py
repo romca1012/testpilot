@@ -42,6 +42,11 @@ class BehaveScenario:
     status: str  # passed | failed | skipped
     duration: float = 0.0
     error: str = ""
+    # Lot 03 (D3) : nombre de CONSTATS réussis consignés sous un `Alors` pendant ce scénario
+    # (`_base_helpers.constater*`). `None` = le mécanisme n'a pas tourné (dry-run, résultat construit
+    # à la main, exécution antérieure au lot) : la règle « aucun constat » ne s'applique alors PAS.
+    # `0` = il a tourné et rien n'a été constaté avec succès.
+    constats_reussis: int | None = None
 
 
 @dataclass
@@ -71,6 +76,9 @@ class BehaveResult:
     # fait par segment résolu adaptativement. Niveau RUN, même raison que `selector_tiers`.
     # Alimente `testpilot.generation.menu_appris`, jamais le verdict.
     menus_appris: list[dict] = field(default_factory=list)
+    # Lot 03 (D3) : les constats consignés pendant le run réel (`{"scenario", "step_type", "ok"}`).
+    # `None` = mécanisme absent (dry-run, résultat hors runner) ; `[]` = run réel sans aucun constat.
+    constats: list[dict] | None = None
     dry_run: bool = False
     raw_stdout: str = ""
     raw_stderr: str = ""
@@ -282,6 +290,58 @@ def read_selector_tiers(path, limit: int = _MAX_SELECTOR_TIERS) -> list[dict]:
             if len(resolutions) >= limit:
                 break
     return resolutions
+
+
+# Sidecar des CONSTATS (lot 03, D3) — chaque `constater*` de la bibliothèque, réussi ou échoué. Mêmes
+# noms dupliqués côté `_base_helpers` (l'importer d'ici tirerait Playwright dans la couche API), même
+# test d'accord. Plafond très large : un run en consigne quelques dizaines ; couper serait retomber
+# du côté PRUDENT (constats non comptés → `indetermine`), jamais du côté `conforme`.
+CONSTATS_FILE_ENV = "TP_CONSTATS_FILE"
+CONSTATS_FILENAME = "constats.jsonl"
+_MAX_CONSTATS = 20000
+
+
+def read_constats(path, limit: int = _MAX_CONSTATS) -> list[dict]:
+    """Les constats consignés pendant le run réel, relus depuis le sidecar.
+
+    Tolérant : une ligne illisible est sautée. Fichier absent = aucun constat consigné (`[]`) — dans
+    un run RÉEL, c'est précisément l'information que le verdict attend (`aucun_constat`).
+    """
+    try:
+        contenu = Path(path).read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return []
+    constats: list[dict] = []
+    for ligne in contenu.splitlines():
+        ligne = ligne.strip()
+        if not ligne:
+            continue
+        try:
+            objet = json.loads(ligne)
+        except ValueError:
+            continue
+        if isinstance(objet, dict):
+            constats.append(objet)
+            if len(constats) >= limit:
+                break
+    return constats
+
+
+def rattacher_constats(result: BehaveResult, constats: list[dict]) -> None:
+    """Pose `result.constats` et, par scénario, le nombre de constats RÉUSSIS consignés sous un
+    `Alors` (`step_type == "then"`).
+
+    ⚠️ Seuls les constats `then` comptent : une vérification exécutée sous un `Quand`/`Soit` ne
+    prouve pas le résultat que l'`Alors` annonce. Un type inconnu ne compte pas non plus (côté
+    prudent). Le rattachement se fait par NOM de scénario ; deux scénarios de même nom (lignes d'un
+    « Plan du scénario ») partagent leur décompte — limite assumée.
+    """
+    result.constats = constats
+    for scenario in result.scenarios:
+        scenario.constats_reussis = sum(
+            1 for c in constats
+            if c.get("scenario") == scenario.name and c.get("ok") is True
+            and c.get("step_type") == "then")
 
 
 def read_menus_appris(path, limit: int = _MAX_MENUS_APPRIS) -> list[dict]:

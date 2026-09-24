@@ -51,6 +51,9 @@ PRECONDITION_NON_REMPLIE = "precondition_non_remplie"
 # F10 (D12, 2026-09-24) : le serveur a planté (HTTP 5xx) en traitant l'action testée — `non_conforme`
 # avec le code HTTP comme preuve.
 ERREUR_SERVEUR_5XX = "erreur_serveur_5xx"
+# Lot 03 (D3) : le scénario est allé au bout SANS qu'aucune vérification ne se soit exécutée (aucun
+# constat réussi consigné sous un `Alors`). Ce n'est pas une panne : rien n'a été prouvé.
+AUCUN_CONSTAT = "aucun_constat"
 MISSING_SERVER_CONTEXT = "missing_server_context"
 DONNEE_REFUSEE = "donnee_refusee"
 BROKEN_TEST_CODE = "broken_test_code"
@@ -64,7 +67,7 @@ REFUS_NON_EXPLIQUE = "refus_non_explique"
 UNKNOWN = "unknown"
 
 CATEGORIES = (
-    PRECONDITION_NON_REMPLIE, ERREUR_SERVEUR_5XX, MISSING_SERVER_CONTEXT, DONNEE_REFUSEE, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
+    PRECONDITION_NON_REMPLIE, ERREUR_SERVEUR_5XX, AUCUN_CONSTAT, MISSING_SERVER_CONTEXT, DONNEE_REFUSEE, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
     MISSING_ROLE, ASSERTION_MISMATCH, RESOLVEUR_INCOMPLET, REFUS_NON_EXPLIQUE, UNKNOWN,
 )
 
@@ -72,6 +75,7 @@ LABELS = {
     PRECONDITION_NON_REMPLIE: "Prérequis non rempli (environnement)",
     ERREUR_SERVEUR_5XX: "Erreur interne du serveur (HTTP 5xx)",
     REFUS_NON_EXPLIQUE: "Refus non expliqué (à instruire)",
+    AUCUN_CONSTAT: "Aucune vérification exécutée",
     MISSING_SERVER_CONTEXT: "Contexte serveur manquant",
     DONNEE_REFUSEE: "Donnée du test refusée (à corriger)",
     BROKEN_TEST_CODE: "Erreur dans le code du test",

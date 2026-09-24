@@ -11,8 +11,10 @@ Règles verrouillées (issues des erreurs récurrentes du prototype) :
 from __future__ import annotations
 
 import ast
+import functools
 from typing import TYPE_CHECKING
 
+from testpilot import config
 from testpilot.generation import steps_library
 from testpilot.generation.references import message_refus, verifier_references
 
@@ -112,6 +114,139 @@ def _forbidden_recount(tree: ast.AST) -> str:
     return ""
 
 
+# ── Gardes de PLACEMENT des assertions (lot 03, D4 — régime BLOQUANT) ────────────────────────────
+#
+# Le runtime (D3) prouve qu'un scénario vert a exécuté au moins un constat ; ces gardes disent à
+# l'agent, AVANT tout run, où l'écrire. Un refus déterministe coûte moins qu'un run réel raté.
+# Dérogation au régime détectif de 0008 (`assertion_lint`, inchangé pour les tautologies) : la faute
+# est mesurable au runtime, donc le refus n'est pas une hypothèse.
+
+_CONSTATER = {"constater", "constater_visible", "constater_texte"}
+
+
+def _nom_appele(noeud: ast.Call) -> str:
+    cible = noeud.func
+    if isinstance(cible, ast.Name):
+        return cible.id
+    if isinstance(cible, ast.Attribute):
+        return cible.attr
+    return ""
+
+
+def _decorateurs(func) -> set[str]:
+    noms = set()
+    for deco in func.decorator_list:
+        cible = deco.func if isinstance(deco, ast.Call) else deco
+        if isinstance(cible, ast.Name):
+            noms.add(cible.id)
+        elif isinstance(cible, ast.Attribute):
+            noms.add(cible.attr)
+    return noms
+
+
+@functools.lru_cache(maxsize=4)
+def _noms_qui_constatent(chemin: str, mtime: float) -> frozenset[str]:
+    """Les noms de la bibliothèque qui CONSIGNENT un constat : `constater*`, les fonctions décorées
+    `@constat`, et — point fixe — toute fonction qui en appelle une. Lu dans `_base_helpers.py` par
+    AST : le code reste la source de vérité, aucune liste à tenir à jour."""
+    try:
+        with open(chemin, encoding="utf-8") as handle:
+            arbre = ast.parse(handle.read())
+    except (OSError, SyntaxError):
+        return frozenset(_CONSTATER)
+    fonctions = {n.name: n for n in arbre.body if isinstance(n, ast.FunctionDef)}
+    noms = set(_CONSTATER) | {nom for nom, f in fonctions.items() if "constat" in _decorateurs(f)}
+    change = True
+    while change:
+        change = False
+        for nom, f in fonctions.items():
+            if nom in noms:
+                continue
+            if any(isinstance(n, ast.Call) and _nom_appele(n) in noms for n in ast.walk(f)):
+                noms.add(nom)
+                change = True
+    return frozenset(noms)
+
+
+def _helpers_qui_constatent() -> frozenset[str]:
+    chemin = config.STEPS_LIBRARY_DIR / "_base_helpers.py"
+    try:
+        mtime = chemin.stat().st_mtime
+    except OSError:
+        mtime = 0.0
+    return _noms_qui_constatent(str(chemin), mtime)
+
+
+def _affirme(noeud: ast.AST) -> str:
+    """Ce qui, dans ce nœud, est une ASSERTION écrite à la main ou un constat, sinon `""`."""
+    if isinstance(noeud, ast.Assert):
+        return "`assert`"
+    if isinstance(noeud, ast.Raise) and noeud.exc is not None:
+        cible = noeud.exc.func if isinstance(noeud.exc, ast.Call) else noeud.exc
+        if isinstance(cible, ast.Name) and cible.id == "AssertionError":
+            return "`raise AssertionError`"
+    if isinstance(noeud, ast.Call):
+        nom = _nom_appele(noeud)
+        if nom == "expect":
+            return "`expect(...)`"
+        if nom in _CONSTATER:
+            return f"`{nom}(...)`"
+    return ""
+
+
+def _avale_l_echec(handler: ast.ExceptHandler) -> bool:
+    """Un `except` nu, `except Exception` ou `except BaseException` qui ne relève JAMAIS."""
+    if handler.type is None:
+        large = True
+    else:
+        cible = handler.type
+        nom = cible.id if isinstance(cible, ast.Name) else getattr(cible, "attr", "")
+        large = nom in {"Exception", "BaseException", "AssertionError"}
+    return large and not any(isinstance(n, ast.Raise) for n in ast.walk(handler))
+
+
+def _forbidden_assertion_placement(tree: ast.AST) -> str:
+    """Décrit la première faute de placement d'assertion (D4), sinon chaîne vide.
+
+    1. une assertion ou un constat dans une fonction `@given`/`@when`/`@step` (sans `@then`) : le type
+       du step est un signal de structure — une assertion hors `Alors` est classée « prérequis non
+       rempli » (`@given`) ou « test cassé » (`@when`), jamais comme un constat sur l'application ;
+    2. une fonction `@then` qui n'appelle ni `constater*` ni un helper de la bibliothèque qui en
+       appelle : elle ne peut consigner aucun constat, donc ne prouve rien ;
+    3. dans une fonction `@then`, un `except` large dont le corps ne relève pas : il avale l'échec.
+
+    ⚠️ **Filet, pas preuve** : une assertion posée dans un helper NON décoré défini dans le fichier
+    et appelé depuis un `@given`/`@when` n'est pas vue ; le runtime (D3) attrape ce qui reste.
+    """
+    constatent = _helpers_qui_constatent()
+    for func in ast.walk(tree):
+        if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        decorateurs = _decorateurs(func)
+        est_then = "then" in decorateurs
+        est_contexte = bool(decorateurs & {"given", "when", "step"}) and not est_then
+        if est_contexte:
+            for n in ast.walk(func):
+                trouve = _affirme(n)
+                if trouve:
+                    return (f"{trouve} dans le step `{func.name}` (`@given`/`@when`) : une assertion "
+                            "n'a sa place que dans un `@then`. Dans un Soit/Quand, prépare ou agis ; "
+                            "déplace la vérification dans un step « Alors »")
+        if est_then:
+            appels = {_nom_appele(n) for n in ast.walk(func) if isinstance(n, ast.Call)}
+            if not (appels & constatent):
+                return (f"le step `@then` `{func.name}` n'appelle ni `constater(...)` ni un helper de "
+                        "la bibliothèque qui constate : il ne peut consigner aucun constat, donc ne "
+                        "prouve rien. Écris `constater(condition, \"message\")` "
+                        "(ou `constater_visible` / `constater_texte`)")
+            for n in ast.walk(func):
+                if isinstance(n, ast.ExceptHandler) and _avale_l_echec(n):
+                    return (f"le step `@then` `{func.name}` contient un `except` large qui ne relève "
+                            "pas : il avale l'échec de la vérification. Retire le `try/except`, ou "
+                            "relève l'exception (`raise`)")
+    return ""
+
+
 def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if not content.strip():
         return _outcome("[write_feature_file] contenu vide", ok=False)
@@ -193,6 +328,15 @@ def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
         return _outcome(
             "[write_steps_file] AmbiguousStep : ces steps existent déjà dans la "
             f"bibliothèque partagée, ne les redéfinis pas : {clashing}.",
+            ok=False,
+        )
+
+    # 5. Placement des assertions (lot 03, D4) : régime BLOQUANT, comme le transport et le comptage.
+    faute = _forbidden_assertion_placement(tree)
+    if faute:
+        return _outcome(
+            f"[write_steps_file] ASSERTION_MAL_PLACEE : {faute}. Les vérifications s'écrivent "
+            "`constater(...)` UNIQUEMENT dans un step `@then`, puis rappelle write_steps_file.",
             ok=False,
         )
 

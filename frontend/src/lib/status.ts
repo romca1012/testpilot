@@ -120,6 +120,7 @@ const CAUSE: Record<string, string> = {
   assertion_mismatch: 'Assertion métier en échec',
   resolveur_incomplet: 'Test non automatisable (résolveur)',
   refus_non_explique: 'Refus non expliqué (à instruire)',
+  aucun_constat: 'Aucune vérification exécutée',
   unknown: 'Indéterminé',
 }
 /** Libellé français d'une cause ; une cause inconnue du front reste lisible (« à instruire »). */

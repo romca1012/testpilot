@@ -29,8 +29,12 @@ from testpilot.execution.behave_result import (
     REGLES_REFUS_FILENAME,
     SELECTOR_TIER_FILE_ENV,
     SELECTOR_TIER_FILENAME,
+    CONSTATS_FILE_ENV,
+    CONSTATS_FILENAME,
     BehaveResult,
     parse_behave_json,
+    rattacher_constats,
+    read_constats,
     read_field_fallbacks,
     read_menus_appris,
     read_refus_mesures,
@@ -110,7 +114,8 @@ class BehaveRunner:
                FIELD_FALLBACK_FILE_ENV: str(run_dir / FIELD_FALLBACK_FILENAME),
                REGLES_REFUS_FILE_ENV: str(run_dir / REGLES_REFUS_FILENAME),
                SELECTOR_TIER_FILE_ENV: str(run_dir / SELECTOR_TIER_FILENAME),
-               MENU_LEARNED_FILE_ENV: str(run_dir / MENU_LEARNED_FILENAME)}
+               MENU_LEARNED_FILE_ENV: str(run_dir / MENU_LEARNED_FILENAME),
+               CONSTATS_FILE_ENV: str(run_dir / CONSTATS_FILENAME)}
         # `src` importable dans le sous-processus : le résolveur déterministe (§2bis) importe
         # `testpilot.generation.{valeur_conforme,domain_model}`. Sans ça, `python -m behave`
         # (cwd = run_dir jetable) ne voit pas le paquet `testpilot`. On PRÉPEND pour primer sur
@@ -199,6 +204,10 @@ class BehaveRunner:
             # lecture (avant le rmtree), même sidecar que les mécanismes ci-dessus.
             result.menus_appris = read_menus_appris(run_dir / MENU_LEARNED_FILENAME)
             self._apprendre_menus(result, dry_run=dry_run)
+            # Constats consignés (lot 03, D3) — run RÉEL seulement : un dry-run n'exécute aucun step,
+            # « aucun constat » n'y voudrait rien dire. Même moment de lecture (avant le rmtree).
+            if not dry_run:
+                rattacher_constats(result, read_constats(run_dir / CONSTATS_FILENAME))
             return result
         finally:
             shutil.rmtree(run_dir, ignore_errors=True)

@@ -96,6 +96,13 @@ def _failures_by_scenario(failures) -> dict[str, list]:
 def scenario_verdict(scenario, failures: list) -> ScenarioVerdict:
     """Projette un scénario behave + ses échecs sur les deux axes."""
     if scenario.status == "passed":
+        if getattr(scenario, "constats_reussis", None) == 0:
+            # Lot 03 (D3) : le scénario est allé au bout, mais AUCUN constat réussi n'a été consigné
+            # sous un `Alors` (assertion dans une branche non prise, `Alors` qui ne fait qu'attendre…).
+            # Un vert sans preuve n'est pas `conforme` — `indetermine`, à revérifier. `None` (mécanisme
+            # absent : dry-run, résultat hors runner) laisse le comportement historique.
+            return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_INDETERMINE,
+                                   "", dt.AUCUN_CONSTAT, "Aucune vérification exécutée")
         return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_CONFORME)
 
     if scenario.status == "failed":

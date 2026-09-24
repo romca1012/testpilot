@@ -164,8 +164,8 @@ if "/succes" in url:
 else:
     assert erreur_visible or "/succes" not in url   # ← tautologie : ne peut jamais échouer
 
-# CORRECT — on affirme l'attendu ; l'assertion échoue si l'app dévie
-assert "/succes" in url
+# CORRECT — on affirme l'attendu ; le constat échoue si l'app dévie
+constater("/succes" in url, "l'issue n'est pas la page de succès")
 ```
 
 **Plusieurs issues acceptables ?** Une spec peut légitimement accepter « soit succès, soit
@@ -176,12 +176,17 @@ sur toute **troisième** issue (page blanche, plantage, donnée partielle). Jama
 # CORRECT — deux issues acceptables, mais l'assertion échoue sur une mauvaise 3e issue
 redirige = "/succes" in page.url
 erreur   = page.locator(".alert-danger").count() > 0
-assert redirige or erreur, "ni succès ni erreur de validation : issue inattendue"
+constater(redirige or erreur, "ni succès ni erreur de validation : issue inattendue")
 # + affirme l'invariant que la spec garantit dans TOUS les cas (ex. aucun enregistrement partiel)
 ```
 
-Un `Alors`/`@then` qui ne contient **ni `assert` ni `raise`** n'affirme rien : c'est un test
-vide, tout aussi interdit.
+**Où et comment écrire une assertion.** Une vérification s'écrit `constater(condition, "message")`
+(`from _base_helpers import constater` ; variantes `constater_visible(locator)` et
+`constater_texte(locator, attendu)`), **uniquement dans un step `@then`** — jamais un `assert` ou un
+`expect(` nu, jamais dans un `@given`/`@when`. Un `@then` qui n'appelle aucun `constater*` (ni un step/helper de
+la bibliothèque qui constate) n'affirme rien : c'est un test vide, et un `except Exception` qui avale l'échec est
+tout aussi interdit. `write_steps_file` REFUSE ces trois cas ; à l'exécution, un scénario sans aucun constat réussi
+n'est jamais « conforme ».
 
 ### Règle 5 — Attendre l'élément AVANT de le compter ou de le lire, jamais à l'instant t
 `.count()`, `.inner_text()`, `.text_content()`, **`.is_visible()`** lisent le DOM **immédiatement**,
@@ -203,8 +208,8 @@ officielle qui réessaie d'elle-même au lieu d'un `assert` + `.wait_for()` sép
 assert page.locator(".alert-danger").first.is_visible(), "aucune erreur affichée"
 
 # CORRECT — réessaie jusqu'à son propre délai (5 s par défaut) avant de conclure
-from playwright.sync_api import expect
-expect(page.locator(".alert-danger").first).to_be_visible()
+from _base_helpers import constater_visible   # enveloppe expect(...).to_be_visible() + consigne le constat
+constater_visible(page.locator(".alert-danger").first, "aucune erreur affichée")
 ```
 
 ⚠️ **Bug réel mesuré (cas C43, SauceDemo, 2026-09-14)** : `page.wait_for_url("**/cart.html")`
@@ -224,7 +229,7 @@ assert articles.count() > 0, "aucun produit dans le panier"
 page.wait_for_url("**/cart.html")
 page.locator(".cart_item").first.wait_for(state="visible", timeout=8000)
 articles = page.locator(".cart_item")
-assert articles.count() > 0, "aucun produit dans le panier"
+constater(articles.count() > 0, "aucun produit dans le panier")
 ```
 
 La même règle vaut pour lire un texte, un prix, un statut : `locator.first.wait_for(state=...)`
@@ -262,7 +267,7 @@ intention :
 assert message == "Sorry, this user has been locked out."
 
 # CORRECT — affirme ce que le scénario veut vraiment vérifier
-assert "this user has been locked out" in message
+constater("this user has been locked out" in message, "message de verrouillage inattendu")
 ```
 
 N'utilise l'égalité stricte que lorsque le scénario vise EXPLICITEMENT le texte exact (ex. un

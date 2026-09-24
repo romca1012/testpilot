@@ -58,8 +58,8 @@ bug. C'est la seule faute irréparable de ce système.
   - avant de **compter/lire** (`.count()`, `.inner_text()`) : `locator.first.wait_for(
     state="visible", timeout=8000)` juste avant ;
   - quand l'assertion porte **directement sur la visibilité d'UN élément** (`assert
-    x.is_visible()`) : remplace par `expect(x).to_be_visible()` (`from playwright.sync_api import
-    expect`), qui réessaie de lui-même au lieu de constater une seule fois — même correctif déjà
+    x.is_visible()`) : remplace par `constater_visible(x)` (`from _base_helpers import
+    constater_visible`, enveloppe de `expect(...).to_be_visible()`), qui réessaie de lui-même au lieu de constater une seule fois — même correctif déjà
     appliqué à la bibliothèque partagée (`validation_error_notification`, `_base_helpers.py`,
     audit fiabilité 2026-09-17).
 
