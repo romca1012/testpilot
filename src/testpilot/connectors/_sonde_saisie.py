@@ -299,7 +299,21 @@ def sonder_formulaire(page, url: str) -> dict:
             resultat["statut"] = "erreur"
             resultat["raison"] = str(exc)[:200]
     finally:
-        actif["oui"] = False  # d'abord : même si `unroute` échoue, la garde devient inerte
+        if jetable is not None:
+            # Le dernier `fill("")` (vidage du champ) peut émettre une requête que le gestionnaire
+            # d'interception ne traite qu'au tour suivant : on lui laisse le temps AVANT de rendre la
+            # garde inerte, sinon l'écriture passerait sans être consignée, statut « ok » (revue du
+            # lot 12, point 9). Une écriture apparue dans cette fenêtre interrompt la sonde.
+            avant_attente = len(ecritures)
+            try:
+                jetable.wait_for_timeout(_SETTLE_MS)
+            except Exception:
+                pass
+            if len(ecritures) > avant_attente:
+                _marquer_interruption(resultat, ecritures)
+                for select in (resultat.get("selects") or {}).values():
+                    select["independant"] = False  # observation invalidée
+        actif["oui"] = False  # ensuite : même si `unroute` échoue, la garde devient inerte
         if contexte is not None:
             try:
                 # Pages apparues pendant le chargement initial ou l'attente de 300 ms, avant la garde et
