@@ -468,6 +468,11 @@ class _Appli(BaseHTTPRequestHandler):
         "Navigator.prototype.sendBeacon.call(navigator, '/k_proto', 'x');"
         "navigator.sendBeacon('/k_ecrase', 'x');"
         "});</script></body></html>")
+    _PAGE_KEEPALIVE_UNDEFINED = (
+        "<html><body><form><input name='champ' type='text'></form><script>"
+        "window.addEventListener('pagehide', function () {"
+        "fetch(new Request('/k_undef', {method: 'POST', keepalive: true, body: 'x'}),"
+        " {keepalive: undefined});});</script></body></html>")
     _PAGE_OUVRE = ("<html><body><form><input name='champ' type='text'></form><script>"
                    "window.open('/popup?boot=1');</script></body></html>")
 
@@ -476,6 +481,11 @@ class _Appli(BaseHTTPRequestHandler):
             type(self).lectures.append(self.path)
             self.send_response(204)
             self.end_headers()
+        elif self.path == "/keepalive_undefined" and self._authentifie():
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(self._PAGE_KEEPALIVE_UNDEFINED.encode("utf-8"))
         elif self.path == "/beacons_formes" and self._authentifie():
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -1339,3 +1349,29 @@ def test_sans_navigation_ni_page_vue_aucune_attente_supplementaire():
     sonde.sonder_formulaire(persistante, "https://app.test/en/form/1")
 
     assert attentes == [], "aucun retardataire à attendre : 0 ms de plus"
+
+
+@pytest.mark.conformance
+def test_reel_keepalive_undefined_dans_les_options_laisse_celui_du_request_et_est_neutralise():
+    """Spec Fetch : un membre `undefined` vaut « absent ». `fetch(req_keepalive, {keepalive:
+    undefined})` reste donc keepalive et partait au serveur à la fermeture (`'keepalive' in o` le
+    prenait pour faux)."""
+    from playwright.sync_api import sync_playwright
+
+    srv = _serveur("")
+    url = f"http://127.0.0.1:{srv.server_port}/keepalive_undefined"
+    try:
+        with sync_playwright() as p:
+            navigateur = p.chromium.launch(headless=True)
+            contexte = navigateur.new_context()
+            contexte.add_cookies([{"name": "session", "value": "ok", "url": url}])
+            page = contexte.new_page()
+
+            resultat = sonde.sonder_formulaire(page, url)
+            page.wait_for_timeout(800)
+            navigateur.close()
+    finally:
+        srv.shutdown()
+
+    assert resultat["statut"] == "ok", resultat
+    assert "/k_undef" not in " ".join(_Appli.ecritures), f"reçu : {_Appli.ecritures}"

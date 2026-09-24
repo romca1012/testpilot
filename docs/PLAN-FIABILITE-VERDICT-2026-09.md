@@ -157,7 +157,7 @@ répétée (12), au même titre que les lots 01-03.
 | 09 | à faire | | |
 | 10 | à faire | | |
 | 11 | terminé | 2026-09-24 | `docs/RAPPORT-LOT-11-2026-09-24.md` |
-| 12 | terminé (sous réserve de la revue et de la fusion) | 2026-09-24 | `docs/RAPPORT-LOT-12-2026-09-24.md` |
+| 12 | terminé | 2026-09-24 | `docs/RAPPORT-LOT-12-2026-09-24.md` ; PR n° 6 (https://github.com/romca1012/testpilot/pull/6) |
 
 ## 6. Ce que chaque lot garantit (résumé)
 

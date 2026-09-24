@@ -115,7 +115,9 @@ _JS_NEUTRALISE_FERMETURE = """(() => {
   // `Request` (`fetch(new Request(u, {keepalive: true}))`) ; des options explicites l'emportent.
   const f = window.fetch;
   const estKeepalive = (u, o) => {
-    if (o && 'keepalive' in o) { return !!o.keepalive; }
+    // Un membre `undefined` vaut « absent » (spec Fetch) : `{keepalive: undefined}` laisse donc le
+    // `keepalive` du `Request` s'appliquer.
+    if (o && o.keepalive !== undefined) { return !!o.keepalive; }
     return typeof Request !== 'undefined' && u instanceof Request && u.keepalive === true;
   };
   window.fetch = function (u, o) {
