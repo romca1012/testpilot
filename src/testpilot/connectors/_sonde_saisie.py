@@ -173,16 +173,31 @@ def sonder_formulaire(page, url: str) -> dict:
     permis, raison = url_sondable(url)
     if not permis:
         return {"statut": "ignoree", "raison": raison, "champs": {}}
-    jetable = None
+    jetable = contexte = garde = ecoute = None
+    annexes: list = []
     ecritures: list[str] = []
     resultat: dict = {"statut": "ok", "raison": "", "champs": {}}
     try:
-        jetable = page.context.new_page()
+        contexte = page.context
+        jetable = contexte.new_page()
         jetable.goto(url, wait_until="domcontentloaded")
         jetable.wait_for_timeout(300)  # laisse finir les scripts d'initialisation (tracking, etc.)
         # Interception ouverte APRÈS le chargement : seules les requêtes provoquées par NOTRE saisie
         # comptent (un POST de suivi au chargement n'est pas une sauvegarde de brouillon).
-        jetable.route("**/*", _garde_reseau(ecritures))
+        # Posée sur le CONTEXTE, pas sur la page : une fenêtre ouverte par `window.open` ou
+        # `target="_blank"` est une nouvelle page du même contexte (cookies de session compris) qui
+        # n'hérite PAS d'une garde de page — mesuré le 2026-09-24 en Chromium : un GET partait au
+        # serveur, statut « ok ». Retirée dans le `finally`.
+        garde = _garde_reseau(ecritures)
+
+        def ecoute(nouvelle) -> None:
+            # Toute page nouvelle pendant la sonde est une interruption (défaut sûr), quelle que soit
+            # la façon dont elle a été ouverte ; elle est fermée à la fin.
+            annexes.append(nouvelle)
+            ecritures.append(f"{_MARQUE_NAVIGATION}(nouvelle page ouverte pendant la sonde)")
+
+        contexte.on("page", ecoute)
+        contexte.route("**/*", garde)
         base, dependants, etat = _options_selects_ou_vide(jetable), set(), {"complet": True}
 
         def surveiller() -> None:
@@ -233,11 +248,25 @@ def sonder_formulaire(page, url: str) -> dict:
             resultat["statut"] = "erreur"
             resultat["raison"] = str(exc)[:200]
     finally:
-        if jetable is not None:
-            try:
-                jetable.close(run_before_unload=False)
-            except Exception:
-                pass
+        if contexte is not None:
+            # La garde est posée sur le contexte PARTAGÉ de l'exploration : la laisser en place
+            # casserait la suite de l'exploration. Chaque retrait est protégé séparément.
+            if garde is not None:
+                try:
+                    contexte.unroute("**/*", garde)
+                except Exception as exc:
+                    logger.warning("[sonde de saisie] garde non retirée : %s", exc)
+            if ecoute is not None:
+                try:
+                    contexte.remove_listener("page", ecoute)
+                except Exception:
+                    pass
+        for ouverte in [*annexes, jetable]:
+            if ouverte is not None:
+                try:
+                    ouverte.close(run_before_unload=False)
+                except Exception:
+                    pass
     return resultat
 
 
