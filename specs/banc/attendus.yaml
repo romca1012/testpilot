@@ -9,6 +9,12 @@
 #
 # Seules les paires (défaut, cas) DÉCRITES ici sont mesurées : un cas qu'un défaut ne concerne pas n'est pas
 # rejoué sous ce défaut, et une paire non décrite n'entre dans aucun indicateur (« hors périmètre », pas « zéro »).
+#
+# ⚠️ EXCEPTION À LA RÈGLE CI-DESSUS, à lire avant de faire confiance au fichier : les deux lignes `sain` de
+# `ui_onglet_formulaire` et `ui_refus_sauvegarde` (2e commit, `4d42b4c`) ont été écrites APRÈS avoir vu ces deux cas
+# tourner sur l'instance saine (exploration : `passed` les deux). Tout le reste du fichier — dont la ligne
+# `message_absent → ui_refus_sauvegarde`, jamais jouée sous défaut à ce moment — a été écrit avant tout run d'un cas
+# sur le banc. Aucun attendu existant n'a été modifié ou supprimé après un run.
 version: 1
 
 # Instance SAINE (aucun défaut actif) : tous les cas doivent passer. Sert l'indicateur I2 (faux FAILED).
