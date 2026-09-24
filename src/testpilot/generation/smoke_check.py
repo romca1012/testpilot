@@ -128,6 +128,11 @@ def _index_champs(modele: dict) -> set[str]:
 
 _ROUTE_NAV = re.compile(r'navigue\s+vers\s+(?:l\'URL\s+du\s+portail\s+)?"(?P<url>[^"]+)"', re.IGNORECASE)
 
+# ⚠️ Préfixe des sources `verified_fields` qui portent un TEXTE observé (§F8, 2026-09-23),
+# jamais un nom de champ — `check_champs_existants` doit les ignorer, `check_messages_observes`
+# (plus bas) est seul à les lire.
+MESSAGE_SOURCE_PREFIX = "message:"
+
 # Un scénario qui AFFIRME une création : c'est là, et seulement là, qu'une soumission est due.
 _AFFIRME_CREATION = (
     re.compile(r"augmente\s+de\s+1", re.IGNORECASE),
@@ -359,7 +364,9 @@ def check_champs_existants(feature_content: str, modele: dict,
     faire.
     """
     connus = _index_champs(modele)
-    for names in (verified_fields or {}).values():
+    for source, names in (verified_fields or {}).items():
+        if source.startswith(MESSAGE_SOURCE_PREFIX):
+            continue  # §F8 : un texte de message observé n'est pas un nom de champ
         connus.update(names)
     if not connus and verified_fields is None:
         return []
@@ -377,6 +384,65 @@ def check_champs_existants(feature_content: str, modele: dict,
             message=(f"Aucun champ « {champ} » relevé sur l'application. Si c'est un libellé "
                      f"affiché, le nom technique est attendu ({{field}} = attribut HTML `name`, "
                      f"cf. 0007). (crawl mesuré le {date}, inspections de cette version incluses)")))
+    return [w.as_dict() for w in warnings]
+
+
+# ── Un message affiché doit avoir été OBSERVÉ, jamais deviné (§F8, 2026-09-23) ────────────────
+#
+# ⚠️ **Le défaut mesuré en campagne réelle** (cas 97, projet Sapian portail, 23/09) : un step
+# personnalisé (« le message de validation HTML5 contenant "…" est affiché sur le champ "…" »)
+# figeait un texte DEVINÉ par l'agent — la Règle 6 du prompt le lui interdisait déjà explicitement,
+# mais une règle lue par l'agent n'est pas une preuve (0011, décision 0015 : le texte de l'agent
+# n'est jamais une source de vérité). Ce contrôle est le filet STRUCTUREL, indépendant de ce que
+# l'agent choisit de suivre. Le refus réel de l'application était bien réel — c'est le TEXTE du
+# test qui se trompait, produisant un faux `non_conforme` (l'app a raison, le test a tort).
+#
+# Réutilise le registre `verified_fields` déjà threadé partout dans la génération (0007), sous un
+# préfixe dédié (`MESSAGE_SOURCE_PREFIX`, défini plus haut) — jamais un second mécanisme parallèle
+# (cf. many2one, même principe : une valeur ou un texte affirmé doit être ADOSSÉ à une observation
+# RÉELLE, pas à la mémoire de l'agent).
+
+_MESSAGE_ATTENDU = re.compile(r'\bmessage\b[^"\n]{0,60}"(?P<message>[^"]+)"', re.IGNORECASE)
+
+
+def _messages_observes(verified_fields: dict[str, list[str]] | None) -> set[str]:
+    return {texte for source, valeurs in (verified_fields or {}).items()
+            if source.startswith(MESSAGE_SOURCE_PREFIX) for texte in valeurs}
+
+
+def check_messages_observes(feature_content: str,
+                            verified_fields: dict[str, list[str]] | None) -> list[dict]:
+    """Un texte de message attendu dans une assertion (`Alors`/`Et`/`Mais`) doit correspondre à un
+    message RÉELLEMENT observé pendant la génération — sinon c'est une invention, exactement le
+    motif du cas 97 (§F8).
+
+    ⚠️ **Limite assumée, comme le reste de ce module** : ne détecte que les tournures qui passent
+    le texte attendu en PARAMÈTRE Gherkin (quoté dans le `.feature`) — un step personnalisé qui
+    figerait le texte entièrement en Python, sans jamais le faire transiter par le `.feature`,
+    échapperait à ce contrôle (faux négatif accepté, §4.4, jamais un faux positif bloquant).
+
+    `verified_fields is None` (version ancienne sans registre) ne peut rien prouver ni infirmer :
+    silence, comme `check_champs_existants` dans le même cas.
+    """
+    if verified_fields is None:
+        return []
+    observes = _messages_observes(verified_fields)
+    warnings: list[SmokeWarning] = []
+    for num, ligne in enumerate(feature_content.split("\n"), 1):
+        if not re.match(r"\s*(?:Alors|Et|Mais)\b", ligne, re.IGNORECASE):
+            continue
+        trouve = _MESSAGE_ATTENDU.search(ligne)
+        if not trouve:
+            continue
+        texte = trouve.group("message")
+        if any(texte in obs or obs in texte for obs in observes):
+            continue
+        warnings.append(SmokeWarning(
+            kind="message_non_observe", step=texte[:60], line=num,
+            message=(f"Le texte « {texte} » n'a jamais été observé pendant la génération (aucun "
+                     f"outil d'inspection ne l'a rapporté). Un message affiché s'observe, il ne se "
+                     f"devine jamais (Règle 6) — vérifie-le via `attempt_form_submission` si le "
+                     f"projet l'autorise, ou limite l'assertion à une présence sans texte exact.")))
     return [w.as_dict() for w in warnings]
 
 
@@ -420,10 +486,14 @@ def smoke_check(feature_content: str, steps_content: str = "", modele: dict | No
     qui n'a observé aucun champ. Les confondre ferait taire une génération sans preuve.
     """
     menus = check_menus_observes(feature_content, modele or {})
+    # §F8 : ne consulte ni `modele` ni le crawl, seulement `verified_fields` — s'applique donc
+    # dans les DEUX branches, comme `check_step_soumission` pour la même raison structurelle.
+    messages = check_messages_observes(feature_content, verified_fields)
     if not modele or not modele.get("pages"):
-        return menus + (check_champs_existants(feature_content, modele or {}, verified_fields)
-                        if verified_fields is not None else [])
-    return (menus + check_valeurs_de_select(feature_content, modele)
+        return menus + messages + (
+            check_champs_existants(feature_content, modele or {}, verified_fields)
+            if verified_fields is not None else [])
+    return (menus + messages + check_valeurs_de_select(feature_content, modele)
             + check_champs_existants(feature_content, modele, verified_fields)
             + check_champs_requis_remplis(feature_content, modele)
             # Seul contrôle qui ne consulte PAS le modèle (il lit la structure du scénario) : il
