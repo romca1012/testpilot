@@ -38,7 +38,9 @@ _INVERSE_CMP = {
 
 # Un corps de `@then` « affirme » s'il appelle une fonction dont le nom évoque une vérification
 # (helper d'assertion partagé) — évite de crier sur un step qui délègue son assertion.
-_ASSERTION_CALL_RE = re.compile(r"(?i)(assert|verify|check|expect|ensure)")
+# Lot 03 : `constat` couvre `constater`, `constater_visible` et `constater_texte` — la forme d'assertion
+# de la bibliothèque (Règle 4).
+_ASSERTION_CALL_RE = re.compile(r"(?i)(assert|verify|check|expect|ensure|constat)")
 
 ALWAYS_TRUE_CONSTANT = "always_true_constant"
 TAUTOLOGY_NEGATION_IN_ELSE = "tautology_negation_in_else"
@@ -80,7 +82,7 @@ def lint_steps(content: str) -> list[dict]:
         if _is_then(func) and not _has_assertion(func):
             warnings.append(LintWarning(
                 step=label, line=func.lineno, kind=THEN_WITHOUT_ASSERTION,
-                message="Ce step `@then` n'affirme rien (ni assert, ni raise) : il ne peut pas "
+                message="Ce step `@then` n'affirme rien (ni constater, ni assert, ni raise) : il ne peut pas "
                         "échouer — c'est un test vide.",
             ))
 
@@ -109,6 +111,12 @@ def _lint_asserts(body, negated_tests, label, out) -> None:
     for stmt in body:
         if isinstance(stmt, ast.Assert):
             _check_assert(stmt, negated_tests, label, out)
+        elif _est_appel_constater(stmt):
+            # Lot 03 : `constater(cond, ...)` est une assertion — sa condition subit les MÊMES contrôles
+            # d'infalsifiabilité qu'un `assert` (sinon `constater(True)` consignerait un constat réussi
+            # sans rien vérifier et rendrait le scénario `conforme`).
+            _check_test(stmt.value.args[0] if stmt.value.args else stmt.value.keywords[0].value,
+                        stmt.lineno, negated_tests, label, out)
         elif isinstance(stmt, ast.If):
             _lint_asserts(stmt.body, negated_tests, label, out)
             _lint_asserts(stmt.orelse, negated_tests + [stmt.test], label, out)
@@ -125,8 +133,21 @@ def _lint_asserts(body, negated_tests, label, out) -> None:
         # les FunctionDef imbriquées sont traitées par _iter_functions (walk global)
 
 
+def _est_appel_constater(stmt) -> bool:
+    """`constater(condition, ...)` en instruction (la condition en premier argument ou `condition=`)."""
+    if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)):
+        return False
+    cible = stmt.value.func
+    nom = cible.id if isinstance(cible, ast.Name) else getattr(cible, "attr", "")
+    return nom == "constater" and bool(stmt.value.args or stmt.value.keywords)
+
+
 def _check_assert(node: ast.Assert, negated_tests, label, out) -> None:
-    test = node.test
+    _check_test(node.test, node.lineno, negated_tests, label, out)
+
+
+def _check_test(test, lineno, negated_tests, label, out) -> None:
+    node = type("_N", (), {"lineno": lineno})()
 
     # 1. Constante vraie, directement ou comme opérande d'un `or`.
     if _is_truthy_constant(test):
@@ -194,10 +215,15 @@ def _est_contexte(func) -> bool:
 
 
 def _affirme_directement(func) -> bool:
-    """Un `assert`, ou un `raise AssertionError(...)`, écrit DANS le corps du step."""
+    """Un `assert`, un `raise AssertionError(...)` ou un `constater*(...)`, écrit DANS le corps du step."""
     for node in ast.walk(func):
         if isinstance(node, ast.Assert):
             return True
+        if isinstance(node, ast.Call):
+            cible = node.func
+            nom = cible.id if isinstance(cible, ast.Name) else getattr(cible, "attr", "")
+            if nom in ("constater", "constater_visible", "constater_texte"):
+                return True
         if isinstance(node, ast.Raise) and node.exc is not None:
             cible = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
             if isinstance(cible, ast.Name) and cible.id == "AssertionError":
