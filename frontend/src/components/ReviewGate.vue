@@ -27,6 +27,8 @@ const FAMILLES: Record<string, string> = {
   // 0021 — le test référence quelque chose qui n'existe pas dans l'application.
   valeur_option_inexistante: 'donnée',
   champ_inconnu: 'donnée',
+  // Lot 11 (F8) — un texte de message affirmé n'a jamais été observé pendant la génération.
+  message_non_observe: 'donnée',
 }
 
 // Repli explicite : un `kind` inconnu s'affiche quand même. Le taire ferait disparaître un

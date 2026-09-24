@@ -11,6 +11,7 @@ import sys
 import time
 import warnings
 import re
+from urllib.parse import parse_qsl
 from dataclasses import asdict, dataclass
 from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect
 
@@ -377,11 +378,37 @@ def click_first_actionable(page, candidats, *, quoi, timeout=8000, ident: str = 
 
 
 def _chemin_sans_fragment(url: str) -> str:
-    """Le chemin (+ requête) d'une URL, SANS son fragment `#…` — le back-office Odoo route
-    entièrement par fragment (`/web#action=…`, `/odoo/…#…`) : une navigation SPA interne (menu,
-    changement de vue, sauvegarde) ne change JAMAIS cette partie, contrairement à un VRAI
-    changement de document (`<a href="/autre/chemin">` d'un portail, par exemple)."""
+    """Le chemin (+ requête) d'une URL, SANS son fragment `#…`."""
     return url.split("#", 1)[0]
+
+
+# Clés du fragment Odoo (16 / 17.0 : `/web#action=…&menu_id=…&model=…&view_type=…`) dont le
+# changement désigne une AUTRE vue, donc une navigation. `id` en est volontairement absent :
+# l'apparition ou le changement de la seule clé `id` (même `model`) est une SAUVEGARDE — la vue
+# reste la même, le contrôle de soumission doit s'exécuter.
+_CLES_FRAGMENT_NAVIGATION = ("action", "menu_id", "model", "view_type")
+
+
+def _est_navigation(avant: str, apres: str) -> bool:
+    """Ce clic a-t-il fait CHANGER DE PAGE ou de VUE ? (§F7, 2026-09-23/24)
+
+    | transition d'URL                                                  | contrôle exécuté |
+    |-------------------------------------------------------------------|------------------|
+    | chemin différent (`/en/servicemetiers` → `/en/mutation/67`)       | non              |
+    | chemin `/odoo/…` (≥ 17.2) différent                               | non              |
+    | même chemin, fragment `action`/`menu_id`/`model`/`view_type` change | non            |
+    | même chemin, seul `id` apparaît/change (sauvegarde Odoo 16/17.0)  | oui              |
+    | même chemin, fragment identique ou seulement `#` (`href="#"`)     | oui              |
+    | URL strictement identique (dialogue, AJAX portail)                | oui              |
+
+    Le fragment est lu comme une chaîne de requête (`a=1&b=2`) ; une clé absente d'un côté et
+    présente de l'autre compte comme un changement.
+    """
+    if _chemin_sans_fragment(avant) != _chemin_sans_fragment(apres):
+        return True
+    frag_avant = dict(parse_qsl(avant.partition("#")[2]))
+    frag_apres = dict(parse_qsl(apres.partition("#")[2]))
+    return any(frag_avant.get(k) != frag_apres.get(k) for k in _CLES_FRAGMENT_NAVIGATION)
 
 
 def click_button(page, label):
@@ -402,9 +429,16 @@ def click_button(page, label):
     de tout `<form>` — aucune règle basée sur la balise/le type de l'élément ne les distingue
     correctement du cas fautif. Seul le changement de CHEMIN d'URL (hors fragment) sépare
     proprement les trois : le lien de navigation du cas 95 change de chemin, les deux autres
-    (soumission AJAX portail, sauvegarde back-office en SPA) ne changent jamais que le fragment.
+    (soumission AJAX portail, sauvegarde back-office en SPA) ne changent jamais le chemin.
+
+    ⚠️ **Angle mort corrigé le 2026-09-24** : sur Odoo 16 / 17.0 la navigation du back-office ne
+    change QUE le fragment (`/web#action=A` → `/web#action=B`, chemin identique) — voir
+    `_est_navigation` pour la règle exacte (table transition → contrôle) et l'exception `id`.
+    ⚠️ **Limite** : la garde lit `page.url` juste après le clic ; si la navigation n'est pas encore
+    validée à cet instant, le contrôle tourne sur l'ancienne page (comme avant le lot, sans
+    régression) et le faux `donnee_invalide` peut réapparaître par intermittence.
     """
-    avant = _chemin_sans_fragment(page.url)
+    avant = page.url
     click_first_actionable(page, [
         page.get_by_role("button", name=label, exact=True),
         page.get_by_role("link", name=label, exact=True),
@@ -412,7 +446,7 @@ def click_button(page, label):
         page.get_by_role("link", name=label, exact=False),
         f':is(a, button, input[type="submit"]):has-text("{label}")',
     ], quoi=f"Bouton '{label}'", ident=label)
-    if _chemin_sans_fragment(page.url) == avant:
+    if not _est_navigation(avant, page.url):
         verifier_soumission_non_bloquee(page)
 
 

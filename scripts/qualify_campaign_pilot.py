@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sqlite3
 import sys
 import time
@@ -32,6 +33,46 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
+
+# ⚠️ ISOLATION DES DONNEES (2026-09-24) : une mesure ne modifie JAMAIS les memoires apprises de
+# production (`data/`). La campagne tourne sur une COPIE horodatee (`TESTPILOT_DATA_DIR`), posee
+# AVANT tout import de `testpilot` (config.DATA_DIR et les dossiers de memoire en derivent a
+# l'import) et heritee par les sous-processus Behave. Ce qu'une campagne apprend est examine
+# puis importe EXPLICITEMENT, jamais ecrit en production par effet de bord. Cause : le
+# 2026-09-24, `_restaurer_memoires` a supprime `data/selecteurs/projet-1.jsonl` pendant qu'une
+# suite pytest tournait, et la garde « donnees reelles » a fait echouer un test sans rapport.
+# Regle operationnelle : ne jamais lancer la suite pytest et une campagne en meme temps.
+# `.secret_key` : sans elle, les mots de passe de projet ne se dechiffrent pas dans la copie. Les
+# deux dossiers (`.local-preview/`, `data/`) sont ignores par git.
+_A_COPIER = ('testpilot.db', '.secret_key', 'domain', 'menus-appris', 'selecteurs', 'regles-apprises',
+             'specifications')
+
+
+def _isoler_donnees(out_name: str) -> Path:
+    horodatage = datetime.now().strftime('%Y%m%d-%H%M%S')
+    cible = ROOT / '.local-preview' / 'qualification' / out_name / f'data-{horodatage}'
+    cible.mkdir(parents=True, exist_ok=False)
+    for nom in _A_COPIER:
+        source = ROOT / 'data' / nom
+        if source.is_dir():
+            shutil.copytree(source, cible / nom)
+        elif source.is_file():
+            shutil.copy2(source, cible / nom)
+    os.environ['TESTPILOT_DATA_DIR'] = str(cible)
+    os.environ.pop('TESTPILOT_DB_PATH', None)
+    return cible
+
+
+def _nom_de_sortie_demande() -> str:
+    for i, arg in enumerate(sys.argv):
+        if arg == '--out' and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        if arg.startswith('--out='):
+            return arg.split('=', 1)[1]
+    return ''
+
+
+DATA_DIR_ISOLE = _isoler_donnees(_nom_de_sortie_demande()) if _nom_de_sortie_demande() else None
 
 from testpilot import config
 from testpilot.analysis.plan import ScenarioIntent, TestPlan
@@ -118,7 +159,7 @@ def _un_essai(case_id: int, iteration: int, out_dir: Path, project: dict, connex
     trial_dir = out_dir / trial
     trial_dir.mkdir(parents=True)
 
-    with sqlite3.connect((ROOT / 'data/testpilot.db').as_uri() + '?mode=ro', uri=True) as conn:
+    with sqlite3.connect(config.DB_PATH.as_uri() + '?mode=ro', uri=True) as conn:
         conn.row_factory = sqlite3.Row
         metier = _charger_metier(conn, case_id, project_id)
 
@@ -133,7 +174,8 @@ def _un_essai(case_id: int, iteration: int, out_dir: Path, project: dict, connex
     (trial_dir / 'input.json').write_text(json.dumps(metier, ensure_ascii=False, indent=2),
                                           encoding='utf-8')
 
-    rapport = {'case_id': case_id, 'iteration': iteration, 'trial': trial}
+    rapport = {'case_id': case_id, 'iteration': iteration, 'trial': trial,
+              'data_dir': str(config.DATA_DIR)}
     os.environ['TESTPILOT_QUALIFICATION'] = '1'
     connector = build_connector(project)
     dry_runner = BehaveRunner(generated_dir=config.GENERATED_DIR, connector_type='odoo',
@@ -207,9 +249,10 @@ def main():
     expected_base_url = (args.expected_base_url if args.expected_base_url is not None
                         else (DEFAULT_EXPECTED_BASE_URL if project_id == DEFAULT_PROJECT_ID else None))
     out_dir = ROOT / '.local-preview' / 'qualification' / args.out
-    out_dir.mkdir(parents=True, exist_ok=False)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    print(json.dumps({'data_dir_isole': str(config.DATA_DIR)}, ensure_ascii=True))
 
-    with sqlite3.connect(ROOT / 'data' / 'testpilot.db') as conn:
+    with sqlite3.connect(config.DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         project = ProjectRepo(conn).get(project_id)
     if project is None:
