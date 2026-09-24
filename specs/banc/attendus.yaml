@@ -1,0 +1,70 @@
+# Attendus du banc de mesure (lot 04) — ÉCRITS PAR UN HUMAIN, jamais déduits d'un run.
+#
+# Chaque statut est celui de LECTURE d'un cas (passed | failed | blocked | retest) et se déduit de la SPEC du
+# cas et de la description du défaut (banc/odoo_addons/tp_bugs_injectes), avant tout run. Un attendu qu'on
+# corrigerait en regardant un résultat ne mesurerait plus rien : si un run le contredit, c'est un constat à
+# instruire (le cas, le défaut ou le verdict), jamais une ligne à réécrire.
+#
+# ⚠️ À RELIRE PAR LE PORTEUR (lot 04, critère : « attendus relus par le porteur »).
+#
+# Seules les paires (défaut, cas) DÉCRITES ici sont mesurées : un cas qu'un défaut ne concerne pas n'est pas
+# rejoué sous ce défaut, et une paire non décrite n'entre dans aucun indicateur (« hors périmètre », pas « zéro »).
+version: 1
+
+# Instance SAINE (aucun défaut actif) : tous les cas doivent passer. Sert l'indicateur I2 (faux FAILED).
+sain:
+  vente_livraison: passed
+  vente_total: passed
+  vente_client_obligatoire: passed
+  vente_etat_confirme: passed
+  facture_validation: passed
+  droit_suppression: passed
+  ui_champ_requis: passed
+  achat_confirmation: passed
+  stock_reception: passed
+  crm_opportunite: passed
+  projet_tache: passed
+  vente_comptage: passed
+  portail_acces: passed
+
+# Défauts injectés, un par un. Sert l'indicateur I1 (faux PASSED) : le cas concerné doit ÉCHOUER (`failed`).
+defauts:
+  # Confirmer un devis ne crée pas de bon de livraison.
+  vente_sans_livraison:
+    vente_livraison: failed
+  # `amount_total` d'une commande de vente décalé de 1 %.
+  total_faux:
+    vente_total: failed
+  # `partner_id` optionnel sur la commande de vente : la création sans client n'est plus refusée.
+  client_non_requis:
+    vente_client_obligatoire: failed
+  # `action_confirm` laisse l'état `draft` sans erreur : ni bon de livraison, ni état `sale`.
+  etat_bloque:
+    vente_livraison: failed
+    vente_etat_confirme: failed
+  # La validation de facture ne passe pas en `posted`.
+  facture_non_postee:
+    facture_validation: failed
+  # `banc_commercial` peut supprimer une commande confirmée.
+  droit_trop_large:
+    droit_suppression: failed
+  # Aucun message d'erreur visible sur un champ requis vide.
+  message_absent:
+    ui_champ_requis: failed
+
+# Pannes d'environnement injectées. Sert l'indicateur I5 : le cas concerné doit être `blocked` (jamais `failed`,
+# jamais `retest`) — le test n'a pas pu être joué, ce n'est ni l'application ni le test.
+pannes:
+  # Odoo arrêté (`docker compose stop odoo`).
+  odoo_arrete:
+    attendu: blocked
+    cas: [vente_livraison, facture_validation, ui_champ_requis]
+  # Mot de passe du compte du projet erroné.
+  mauvais_mot_de_passe:
+    attendu: blocked
+    cas: [vente_livraison, facture_validation, ui_champ_requis]
+  # Module requis désinstallé (`crm`, requis par le Contexte du cas).
+  module_desinstalle:
+    attendu: blocked
+    module: crm
+    cas: [crm_opportunite]
