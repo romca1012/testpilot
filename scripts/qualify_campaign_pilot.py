@@ -155,6 +155,30 @@ def _boucle_essais(case_ids, iterations, lancer, plafond: float | None = None):
     return resultats, None
 
 
+def _explorer(project: dict, urls, out_dir: Path) -> list:
+    """Re-explore des formulaires avec la SONDE active, sur les donnees isolees (lot 12) : rien n'est
+    genere ni execute. Ecrit `exploration.json` — ce que la sonde a observe champ par champ, et
+    quels formulaires ont ete marques « sauvegarde automatique detectee »."""
+    connector = build_connector(project)
+    connector.connect()
+    rapport = []
+    try:
+        for url in urls:
+            info = connector.inspect_form(url)
+            sonde = info.get('sonde') or {}
+            rapport.append({
+                'url': url, 'erreur': info.get('error') or '',
+                'champs_de_la_page': [f.get('name') for f in info.get('fields') or []],
+                'sonde': sonde,
+                'sauvegarde_automatique_detectee': 'sauvegarde automatique' in str(
+                    sonde.get('raison') or '')})
+    finally:
+        connector.disconnect()
+    (out_dir / 'exploration.json').write_text(json.dumps(rapport, ensure_ascii=False, indent=2,
+                                                         default=str), encoding='utf-8')
+    return rapport
+
+
 def _masquer_secrets(texte: str, project: dict) -> str:
     """Retire d'un texte destine a un artefact TOUT secret connu : mot de passe du projet, cle API,
     cle de chiffrement (jamais ecrite dans un `result.json`, un rapport ou une trace)."""
@@ -344,6 +368,9 @@ def main():
                         help='numeros d\'iteration separes par des virgules (defaut : 1,2,3)')
     parser.add_argument('--expected-base-url', type=str, default=None,
                         help='garde-fou : refuse de lancer si le project.base_url differe')
+    parser.add_argument('--explorer-urls', type=str, default=None,
+                        help='URLs de formulaires separees par des virgules : re-exploration avec '
+                             'la sonde active (rien n\'est genere ni execute), exploration.json')
     parser.add_argument('--max-cost-usd', type=float, default=None,
                         help='plafond de cout de la campagne : aucun essai lance au-dela '
                              '(arret reel entre deux essais, code de sortie 3)')
@@ -382,6 +409,16 @@ def main():
             f'approuve {expected_base_url!r} -- passe --expected-base-url pour confirmer '
             f'explicitement un changement de cible.')
     connexion = verifier_connexion(project)  # connexion du projet incomplete -> leve avant tout essai
+
+    if args.explorer_urls:
+        urls = [u.strip() for u in args.explorer_urls.split(',') if u.strip()]
+        for entree in _explorer(project, urls, out_dir):
+            print(json.dumps({'url': entree['url'], 'statut_sonde': entree['sonde'].get('statut'),
+                              'sauvegarde_automatique_detectee':
+                                  entree['sauvegarde_automatique_detectee'],
+                              'champs_sondes': list((entree['sonde'].get('champs') or {}))},
+                             ensure_ascii=True), flush=True)
+        return
 
     budget = QualificationBudget(out_dir / 'budget.db')
 

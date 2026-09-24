@@ -117,6 +117,17 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
     evidence_id = record_observation(ctx, source='ui', resource=info.get('url') or page_url,
                        fields=fields, language=info.get('language', ''),
                        submission=info.get('submission'))
+    sonde = info.get("sonde")
+    if sonde:
+        # Trace COMPACTE de ce que la sonde a fait sur cette page (statut, raison, valeurs retenues) :
+        # sans elle, un run mesuré ne dit pas si la sonde a tourné ni si le formulaire a été marqué
+        # « sauvegarde automatique détectée » — elle est persistée avec `observation_evidence`.
+        ctx.observations[-1]["sonde"] = {
+            "statut": sonde.get("statut"), "raison": str(sonde.get("raison") or "")[:200],
+            "champs": {nom: {"retenus": {lib: s_.get("retenu") for lib, s_ in
+                                         (c.get("sondes") or {}).items()},
+                             "exemple_stable": c.get("exemple_stable")}
+                       for nom, c in (sonde.get("champs") or {}).items()}}
     outcome.observation += f'\nPreuve UI {evidence_id} : {ctx.observations[-1]["fields"]}'
     return outcome
 
