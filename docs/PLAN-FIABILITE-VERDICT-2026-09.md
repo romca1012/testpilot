@@ -94,8 +94,8 @@ Claude Code **ne démarre pas** un lot dont une décision requise n'est pas coch
 
 | ID | Question | Proposition | Lots | Statut |
 |---|---|---|---|---|
-| D1 | Nouvelle cause `precondition_non_remplie` et projection vers un statut `blocked` automatique | Ajouter la cause ; `execution_status = blocked` (nouvelle valeur de l'axe exécution) + `functional_status = indetermine` ; lecture `blocked`. Les deux axes restent séparés | 02 | ☐ |
-| D2 | Un `AssertionError` levé dans un `Quand` | Cause `broken_test_code` (le test affirme dans une action) → `retest` | 02 | ☐ |
+| D1 | Nouvelle cause `precondition_non_remplie` et projection vers un statut `blocked` automatique | Ajouter la cause ; `execution_status = blocked` (nouvelle valeur de l'axe exécution) + `functional_status = indetermine` ; lecture `blocked`. Les deux axes restent séparés | 02 | ☑ (validée le 2026-09-24) |
+| D2 | Un `AssertionError` levé dans un `Quand` | Cause `broken_test_code` (le test affirme dans une action) → `retest` | 02 | ☑ (validée le 2026-09-24) |
 | D3 | Scénario vert sans aucun constat exécuté | `functional_status = indetermine`, cause `aucun_constat` → `retest`. Jamais `conforme` | 03 | ☐ |
 | D4 | Les nouvelles gardes d'écriture (assertion hors `Alors`, `Alors` sans `constater`) bloquent-elles `write_steps_file` ? | **Bloquantes** : l'agent reçoit un refus déterministe et corrige, ce qui coûte moins qu'un run réel raté. Dérogation au régime détectif de 0008 justifiée par le runtime (D3) qui rend la faute mesurable | 03, 09 | ☐ |
 | D5 | Confiance du verdict | Champ `confiance` ∈ {`nominale`, `auto_resolue`, `apres_retry`} sur le résultat ; `passed` non nominal affiché « Réussi — à confirmer » ; option de campagne **stricte** (sans résolution adaptative ni retry) | 05 | ☐ |
@@ -117,6 +117,8 @@ l'exécution (C1 : `WEB_USER`/`WEB_PASSWORD` ne sont lus par aucun step, les tes
 anonyme). Le sous-lot **07a** est petit et ne dépend que de `PreconditionNonRemplieError` (lot 02),
 d'où son passage juste après le lot 02, avant le banc de mesure. Le lot 12 (valeurs observées)
 passe en premier : il est prêt, mesuré en campagne réelle, et ne dépend que des lots 01 et 11.
+
+Précision du 2026-09-24 (porteur) : **un collaborateur externe a besoin de tester une application web authentifiée**. C'est ce besoin concret qui place la connexion à l'exécution (07a) juste après les causes et prérequis (02), devant le banc de mesure (04) et l'Odoo ERP (08). Vérifié : aucun lot déjà terminé (01, 11, 12) ne contredit cet ordre — 12 dépend de 01 et 11 ; 02 ne dépend de rien ; 07a de 02 ; 03 de 02 ; 05 de 02 et 04 ; 06 de 01 ; 07b-e de 02, 03 et 07a ; 08 de 04 ; 09 de 07b-e et 08. Le sous-lot 07a couvre le **formulaire de connexion simple** ; SSO, TOTP et session injectée restent au lot 07b et ne doivent pas être annoncés comme couverts.
 
 | Lot | Commande | Objet | Décisions | Dépend de | Taille |
 |---|---|---|---|---|---|
