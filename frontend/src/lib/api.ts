@@ -593,10 +593,10 @@ export interface ProjectSummary {
 /** Santé technique de la génération (axe EXÉCUTION, premier jet). `ran_rate` = null quand aucune
  *  mesure : « rien mesuré » n'est pas « 0 % de réussite ». */
 export interface QualityDay {
-  jour: string; success: number; technical_error: number; not_executed: number
+  jour: string; success: number; technical_error: number; blocked: number; not_executed: number
 }
 export interface Quality {
-  total: number; ran: number; technical_error: number; not_executed: number
+  total: number; ran: number; technical_error: number; blocked: number; not_executed: number
   ran_rate: number | null; by_day: QualityDay[]
   first_attempt?: {
     measured: number; ran: number; usable_verdicts: number; technical_error: number

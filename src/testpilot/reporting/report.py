@@ -31,6 +31,7 @@ _TEMPLATE_NAME = "report.html.j2"
 EXEC_LABELS = {
     "success": "Exécuté",
     "technical_error": "Erreur technique",
+    "blocked": "Bloqué (prérequis non rempli)",
     "not_executed": "Non exécuté",
 }
 FUNC_LABELS = {

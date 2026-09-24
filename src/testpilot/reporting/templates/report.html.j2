@@ -64,7 +64,7 @@
       <div class="axis">
         <div class="k">Axe exécution</div>
         <div class="v">
-          <span class="pill {% if r.execution_status == 'success' %}ok{% elif r.execution_status == 'technical_error' %}bad{% else %}neutral{% endif %}">{{ r.execution_label }}</span>
+          <span class="pill {% if r.execution_status == 'success' %}ok{% elif r.execution_status == 'technical_error' %}bad{% elif r.execution_status == 'blocked' %}warn{% else %}neutral{% endif %}">{{ r.execution_label }}</span>
         </div>
         <div class="note">Le test a-t-il pu tourner techniquement ?</div>
       </div>
@@ -103,7 +103,7 @@
         {% for s in r.scenarios %}
         <tr>
           <td>{{ s.name }}</td>
-          <td><span class="pill {% if s.execution_status == 'success' %}ok{% else %}bad{% endif %}">{{ exec_labels.get(s.execution_status, s.execution_status) }}</span></td>
+          <td><span class="pill {% if s.execution_status == 'success' %}ok{% elif s.execution_status == 'blocked' %}warn{% else %}bad{% endif %}">{{ exec_labels.get(s.execution_status, s.execution_status) }}</span></td>
           <td><span class="pill {% if s.functional_status == 'conforme' %}ok{% elif s.functional_status == 'non_conforme' %}bad{% elif s.functional_status == 'indetermine' %}warn{% else %}neutral{% endif %}">{{ func_labels.get(s.functional_status, s.functional_status) }}</span></td>
           <td>{{ s.cause_label or '—' }}</td>
           <td class="err">{{ s.error or '' }}</td>
