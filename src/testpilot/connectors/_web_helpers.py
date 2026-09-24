@@ -68,7 +68,11 @@ def extract_form(page) -> dict:
                 options: el.tagName === 'SELECT' ? Array.from(el.options).map(
                     o => [o.value, o.textContent.trim()]) : [],
                 min: el.getAttribute('min'), max: el.getAttribute('max'),
-                maxlength: el.getAttribute('maxlength'), pattern: el.getAttribute('pattern')
+                maxlength: el.getAttribute('maxlength'), pattern: el.getAttribute('pattern'),
+                minlength: el.getAttribute('minlength'), inputmode: el.getAttribute('inputmode'),
+                placeholder: el.getAttribute('placeholder'), title: el.getAttribute('title'),
+                data_mask: el.getAttribute('data-mask'),
+                inputmask: el.getAttribute('data-inputmask') || el.getAttribute('inputmask')
             })'''))
 
     submission = _detect_submission(page)

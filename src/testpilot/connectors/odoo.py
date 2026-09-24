@@ -23,6 +23,7 @@ import uuid
 from urllib.parse import urljoin, urlparse
 
 from testpilot import config
+from testpilot.connectors._sonde_saisie import sonder_formulaire
 from testpilot.connectors.base import Connector
 # Perception UI pure (formulaire, sonde HTTP) : PARTAGÉE avec les autres connecteurs
 # (`connectors/_web_helpers.py`, audit multi-connecteurs 2026-09-08) — rien ici n'a jamais été
@@ -224,6 +225,9 @@ class OdooConnector(Connector):
             result = _extract_odoo_form_fields(page)
         else:
             result = extract_form(page)
+            # Lot 12 (D10 bis) : sonde de saisie, portail SEULEMENT (jamais le back-office `/web#`,
+            # exclu ci-dessus par la branche, ni `/odoo/…` — `url_sondable`). Ne lève jamais.
+            result["sonde"] = sonder_formulaire(page, page.url or target)
         result["error"] = ""
         return result
 

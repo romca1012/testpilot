@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Masques de saisie</title>
+</head>
+<body>
+<!-- Lot 12 (2026-09-24) : champs à MASQUE JAMAIS VUS pendant la conception de la sonde de saisie
+     (`connectors/_sonde_saisie.py`) — la mesure « cas non vus » du lot. Aucun n'a été réglé pour
+     la sonde : `numero_facture1` (groupes de 7 du portail Sapian) a servi à la concevoir, pas
+     ceux-ci. Chaque masque filtre à la saisie (JS) et pose une règle de validité (`setCustomValidity`),
+     comme le fait le portail réel ; aucun `pattern`/`maxlength` HTML (le crawl statique ne les verrait pas). -->
+<form>
+  <label>Téléphone (paires, 10 chiffres)
+    <input name="telephone" type="text" data-masque="paires"></label>
+  <label>Numéro de carte (groupes de 4, sans plafond)
+    <input name="carte" type="text" data-masque="carte"></label>
+  <label>IBAN (2 lettres, 2 chiffres, 3 groupes de 4)
+    <input name="iban" type="text" data-masque="iban"></label>
+  <label>Commentaire (aucun masque)
+    <input name="commentaire" type="text"></label>
+</form>
+<script>
+function grouper(chaine, taille) {
+  return chaine.replace(new RegExp('(.{' + taille + '})(?=.)', 'g'), '$1 ');
+}
+const masques = {
+  paires: (v) => grouper(v.replace(/\D/g, '').slice(0, 10), 2),
+  carte:  (v) => grouper(v.replace(/\D/g, ''), 4),
+  iban:   (v) => grouper(v.replace(/[^A-Za-z0-9]/g, '').toUpperCase(), 4),
+};
+const regles = {
+  paires: [/^\d\d( \d\d){4}$/, 'Saisissez 10 chiffres.'],
+  carte:  [/^\d{4}( \d{4})*$/, 'Saisissez des groupes complets de quatre chiffres.'],
+  iban:   [/^[A-Z]{2}\d{2}( [A-Z0-9]{4}){3}$/, 'Saisissez un IBAN valide.'],
+};
+document.querySelectorAll('input[data-masque]').forEach((el) => {
+  el.addEventListener('input', () => {
+    el.value = masques[el.dataset.masque](el.value);
+    const [motif, message] = regles[el.dataset.masque];
+    el.setCustomValidity(motif.test(el.value) ? '' : message);
+  });
+});
+</script>
+</body>
+</html>
