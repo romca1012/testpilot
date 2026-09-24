@@ -99,9 +99,12 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
     # champs de CETTE route seulement — texte de l'application cité comme donnée, plafond de taille.
     for champ in fields:
         # Lot 12 (D11) : un `<select>` dont TOUTES les options ont été relevées fait autorité.
-        if champ.get("tag") == "select" and champ.get("options") and champ.get("name"):
+        # Un select qui ne contient encore que son placeholder (valeur vide) est peuplé plus tard par
+        # JavaScript : ses options ne sont PAS exhaustives, il ne fait autorité pour rien.
+        reelles = [(v, t) for v, t in (champ.get("options") or []) if str(v).strip()]
+        if champ.get("tag") == "select" and reelles and champ.get("name"):
             ctx.options_select.setdefault(champ["name"], set()).update(
-                {str(v) for v, _t in champ["options"]} | {str(t) for _v, t in champ["options"]})
+                {str(v) for v, _t in reelles} | {str(t) for _v, t in reelles})
     liens = [str(t) for t in (info.get("liens") or []) if str(t).strip()][:60]
     if liens:
         # Le catalogue visible n'est PAS exhaustif (pagination, filtres) : il ne fait pas

@@ -20,9 +20,13 @@ sans deviner à nouveau.
 
 from __future__ import annotations
 
+import re
+
 from testpilot.generation.smoke_check import _extraire_champ_valeur, _scenarios, plus_proches
 
 _LIMITE_PROPOSITIONS = 200
+# Paramètre de Scénario Plan (`<client>`) : une valeur de gabarit, pas une valeur saisie.
+_PARAMETRE = re.compile(r"<[^<>]+>")
 
 
 def _cree_plus_tot(valeur: str, lignes_avant: list[str]) -> bool:
@@ -45,7 +49,8 @@ def verifier_references(feature_content: str, options_select: dict, champs_relat
             if not trouve:
                 continue
             champ, valeur = trouve
-            if not valeur.strip() or "rendue unique" in ligne or _cree_plus_tot(valeur, lignes[:i]):
+            if (not valeur.strip() or "rendue unique" in ligne or _PARAMETRE.search(valeur)
+                    or _cree_plus_tot(valeur, lignes[:i])):
                 continue
             numero = ligne0 + i + 1
             options = options_select.get(champ)
