@@ -310,3 +310,77 @@ def test_une_panne_qui_ne_peut_pas_etre_posee_est_non_mesuree_jamais_un_succes()
                     "raison": "panne non posée : RuntimeError: docker introuvable"}]
     assert banc.calculer_indicateurs(obs, {"pannes": {"odoo_arrete": {"attendu": "blocked", "cas": ["a"]}}})[
         "I5"]["valeur"] is None
+
+
+# ── Revue du lot 04 : la mesure ne doit jamais rester verte sans avoir vérifié ce qu'elle prétend vérifier ──
+
+def test_i5_non_mesure_alors_que_le_reste_l_est_ne_donne_pas_un_vert():
+    """Docker absent : `odoo_arrete` non posée, les autres pannes mesurées... ou tout I5 vide — jamais code 0."""
+    obs = [o for o in _toutes_bonnes() if not o["config"].startswith("panne:")]
+
+    i = banc.calculer_indicateurs(obs, ATTENDUS)
+
+    assert i["I5"]["valeur"] is None and i["I2"]["valeur"] == 0.0
+    assert banc.code_de_sortie(i) == 3
+
+
+def test_i1_non_mesure_alors_que_le_sain_l_est_ne_donne_pas_un_vert():
+    obs = [o for o in _toutes_bonnes() if not o["config"].startswith("defaut:")]
+
+    assert banc.code_de_sortie(banc.calculer_indicateurs(obs, ATTENDUS)) == 3
+
+
+def test_une_mesure_partielle_configs_n_est_pas_jugee_sur_les_portes_absentes():
+    obs = [o for o in _toutes_bonnes() if o["config"] == "sain"]
+
+    assert banc.code_de_sortie(banc.calculer_indicateurs(obs, ATTENDUS), complet=False) == 0
+
+
+def test_un_defaut_dont_le_cas_sort_retest_ou_blocked_n_a_pas_ete_exerce_donc_code_1():
+    obs = _toutes_bonnes()
+    obs[4] = _obs("defaut:bug_1", "a", "retest")
+
+    i = banc.calculer_indicateurs(obs, ATTENDUS)
+
+    assert i["I1"]["non_exerces"] == [{"config": "defaut:bug_1", "cas": "a", "statut": "retest"}]
+    assert banc.code_de_sortie(i) == 1
+
+
+def test_le_banc_refuse_ODOO_ENV_prod_au_lieu_de_le_supprimer(monkeypatch):
+    monkeypatch.setenv("ODOO_ENV", "prod")
+
+    with pytest.raises(SystemExit, match="ODOO_ENV=prod"):
+        banc._isoler_donnees()
+
+
+class _RpcBanc:
+    def __init__(self, installe):
+        self.installe = installe
+
+    def rpc(self):
+        import types
+        modele = types.SimpleNamespace(search=lambda dom: [1] if self.installe else [])
+        return types.SimpleNamespace(env={"ir.module.module": modele})
+
+
+def test_verifier_banc_refuse_une_base_qui_n_est_pas_banc_ou_sans_le_module():
+    i = banc.InstanceBanc("http://127.0.0.1:18069", base="prod_client")
+    with pytest.raises(SystemExit, match="« banc »"):
+        i.verifier_banc()
+
+    i = banc.InstanceBanc("http://127.0.0.1:18069")
+    i.rpc = _RpcBanc(False).rpc
+    with pytest.raises(SystemExit, match="tp_bugs_injectes"):
+        i.verifier_banc()
+
+    i.rpc = _RpcBanc(True).rpc
+    i.verifier_banc()
+
+
+def test_un_module_de_panne_laisse_uninstalled_par_un_run_interrompu_est_remis_en_etat_au_depart():
+    instance = _InstanceFausse()
+
+    banc.mesurer_fige(instance, _ATT_MODULE, executer=lambda c, x: {"cas": c, "statut": "passed"},
+                      journal=lambda *_: None, configs={"sain"})
+
+    assert instance.journal[0] == ("installe", "crm")

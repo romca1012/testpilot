@@ -137,7 +137,11 @@ def calculer_indicateurs(observations: list[dict], attendus: dict, generation: d
     return {
         "I1": {"valeur": _ratio(len(faux_passed), len(defauts)), "faux_passed": len(faux_passed),
                "paires_mesurees": len(defauts), "par_defaut": par_defaut,
-               "defauts_manques": sorted(c for c, d in par_defaut.items() if d["manque"])},
+               "defauts_manques": sorted(c for c, d in par_defaut.items() if d["manque"]),
+               # Une paire sous défaut qui ne sort NI `failed` NI `passed` (blocked, retest…) : le défaut n'a
+               # pas été exercé — ni détecté, ni manqué. Ne compte pas comme un succès.
+               "non_exerces": [{"config": o["config"], "cas": o["cas"], "statut": o["statut"]}
+                               for o in defauts if o["statut"] not in ("failed", "passed")]},
         "I2": {"valeur": _ratio(len(faux_failed), len(sain)), "faux_failed": len(faux_failed),
                "cas_mesures": len(sain)},
         "I3": {"valeur": _ratio(gen.get("sans_erreur_technique", 0), gen.get("generes", 0)) if gen else None,
@@ -156,13 +160,23 @@ def calculer_indicateurs(observations: list[dict], attendus: dict, generation: d
     }
 
 
-def code_de_sortie(indicateurs: dict) -> int:
-    """0 : rien à signaler ; 1 : un faux PASSED ou un blocage mal attribué ; 3 : RIEN de mesuré."""
+def code_de_sortie(indicateurs: dict, *, complet: bool = True) -> int:
+    """0 : rien à signaler ; 1 : un faux PASSED, un défaut mal exercé ou un blocage mal attribué ;
+    3 : un indicateur de PORTE non mesuré (ou rien de mesuré).
+
+    `complet=True` (mesure publiée, sans `--configs`) : I1 et I5 sont les portes du banc — si l'un des deux n'a
+    aucune observation (docker absent, Odoo tombé, Chromium planté), le banc n'a PAS vérifié ce qu'il prétend
+    vérifier : code 3, jamais un vert. Un défaut dont une paire sort autre chose que `failed` / `passed`
+    (`blocked`, `retest`…) n'a pas été exercé correctement : code 1.
+    """
     i1, i5 = indicateurs["I1"], indicateurs["I5"]
     rien = (i1["valeur"] is None and indicateurs["I2"]["valeur"] is None and i5["valeur"] is None)
-    if i1["faux_passed"] > 0 or (i5["valeur"] is not None and i5["valeur"] < 1.0):
+    if (i1["faux_passed"] > 0 or i1.get("non_exerces")
+            or (i5["valeur"] is not None and i5["valeur"] < 1.0)):
         return 1
-    return 3 if rien else 0
+    if rien or (complet and (i1["valeur"] is None or i5["valeur"] is None)):
+        return 3
+    return 0
 
 
 # ── Rendu ────────────────────────────────────────────────────────────────────────────────────
@@ -242,6 +256,15 @@ class InstanceBanc:
             except Exception:
                 time.sleep(3)
         return False
+
+    def verifier_banc(self) -> None:
+        """Refuse une instance qui n'est pas LE banc : base `banc` et module `tp_bugs_injectes` installé.
+        (`127.0.0.1` peut être un tunnel vers une instance client : l'hôte seul ne prouve rien.)"""
+        if self.base != "banc":
+            raise SystemExit(f"Refus : la base du banc s'appelle « banc », pas « {self.base} ».")
+        modele = self.rpc().env["ir.module.module"]
+        if not modele.search([("name", "=", "tp_bugs_injectes"), ("state", "=", "installed")]):
+            raise SystemExit("Refus : le module tp_bugs_injectes n'est pas installé — ce n'est pas le banc.")
 
     def fixer_defauts(self, actifs: set[str], codes: list[str]) -> None:
         """Active exactement les défauts `actifs` (tous les autres à 0)."""
@@ -332,6 +355,11 @@ def mesurer_fige(instance: InstanceBanc, attendus: dict, executer=executer_cas, 
         observations.append(observation)
         journal(f"  {config:<34} {cas:<26} {observation.get('statut') or 'NON MESURÉ'}")
 
+    # Reprise après un run interrompu (SIGKILL, délai CI) : un module laissé `uninstalled` par une panne précédente
+    # fausserait TOUTE la mesure suivante — on le remet en état avant de commencer.
+    for panne in (attendus.get("pannes") or {}).values():
+        if panne.get("module"):
+            instance.installer(panne["module"])
     journal("== Instance saine")
     instance.fixer_defauts(set(), codes)
     for cas in (attendus.get("sain") or {}) if voulu("sain") else ():
@@ -428,7 +456,8 @@ def _isoler_donnees() -> Path:
     """Une mesure ne modifie JAMAIS `data/` : dossier de données JETABLE, posé avant tout import de `testpilot`."""
     dossier = Path(os.environ.get("BANC_DATA_DIR") or tempfile.mkdtemp(prefix="banc_data_"))
     os.environ["TESTPILOT_DATA_DIR"] = str(dossier)
-    os.environ.pop("ODOO_ENV", None)
+    if os.environ.get("ODOO_ENV") == "prod":  # jamais contourné ni supprimé (CLAUDE.md §4) : on REFUSE
+        raise SystemExit("Refus : ODOO_ENV=prod — le banc ne tourne jamais dans un environnement de production.")
     sys.path.insert(0, str(RACINE / "src"))
     sys.path.insert(0, str(RACINE))
     return dossier
@@ -468,6 +497,7 @@ def main(argv=None) -> int:
         print(f"Instance injoignable sur {args.url} — lance `scripts/banc_init.sh {args.version}`.", file=sys.stderr)
         return 2
 
+    instance.verifier_banc()
     generation = None
     if mode == "figé":
         observations = mesurer_fige(instance, attendus,
@@ -483,7 +513,7 @@ def main(argv=None) -> int:
                                 "observations": len(observations)}}
     md, js = ecrire_sortie(args.version, mode, indicateurs, observations, contexte, args.sortie)
     print(f"\nRapport : {md}\nJSON    : {js}")
-    code = code_de_sortie(indicateurs)
+    code = code_de_sortie(indicateurs, complet=not args.configs)
     print(f"I1 {_fmt(indicateurs['I1']['valeur'])} · I2 {_fmt(indicateurs['I2']['valeur'])} · "
           f"I5 {_fmt(indicateurs['I5']['valeur'])} → code de sortie {code}")
     return code
