@@ -133,3 +133,39 @@ def test_la_liste_des_helpers_qui_constatent_est_lue_dans_la_bibliotheque():
     assert {"constater", "constater_visible", "constater_texte", "validation_error_inline",
             "check_count_increased_by_one", "no_duplicate"} <= noms
     assert "fill_field" not in noms and "wait_form_submission" not in noms
+
+
+# ── Revue du lot 03 : le lint (0008) doit connaître `constater` ─────────────────────────────
+
+def _kinds(code):
+    from testpilot.generation.assertion_lint import lint_steps
+    return [w["kind"] for w in lint_steps(code)]
+
+
+def test_constater_true_est_signale_comme_une_constante_vraie():
+    """Sans cela, `constater(True)` consignerait un constat RÉUSSI sans rien vérifier : faux PASSED."""
+    code = _ENTETE + "@then('ok')\ndef s(context):\n    constater(True, 'ok')\n"
+
+    assert "always_true_constant" in _kinds(code)
+
+
+def test_constater_avec_un_ou_toujours_vrai_ou_une_negation_de_else_est_signale():
+    ou = _ENTETE + "@then('ok')\ndef s(context):\n    constater(context.x or True, 'ok')\n"
+    negation = _ENTETE + ("@then('ok')\ndef s(context):\n    if '/succes' in context.page.url:\n        pass\n"
+                          "    else:\n        constater('/succes' not in context.page.url, 'ok')\n")
+
+    assert "always_true_constant" in _kinds(ou)
+    assert "tautology_negation_in_else" in _kinds(negation)
+
+
+def test_un_then_qui_constate_une_vraie_condition_n_est_pas_signale():
+    code = _ENTETE + ("@then('ok')\ndef s(context):\n    constater(context.x == 1, 'x')\n"
+                      "    constater_visible(context.page.locator('a'), 'a')\n")
+
+    assert _kinds(code) == []
+
+
+def test_un_step_given_qui_constate_est_signale_au_gate_aussi():
+    code = _ENTETE + "@given('prep')\ndef s(context):\n    constater(context.x == 1, 'x')\n"
+
+    assert "assertion_dans_contexte" in _kinds(code)

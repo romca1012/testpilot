@@ -157,3 +157,18 @@ def test_l_explication_dit_qu_aucune_verification_ne_s_est_executee():
 def test_l_axe_fonctionnel_reste_dans_ses_valeurs_connues(valeur):
     """Aucune nouvelle valeur d'enum : `aucun_constat` est une CAUSE, pas un statut (pas de migration)."""
     assert st.FUNC_INDETERMINE == valeur
+
+
+def test_un_scenario_aucun_constat_n_ouvre_aucune_boucle_de_reparation_payante():
+    """Un vert sans constat ne produit AUCUN échec Behave : le circuit de réparation n'a rien à réparer
+    (`evaluate` ne poursuit jamais sans échec). Le coût des « Retest » transitoires (D3) ne se double donc
+    pas d'une réparation automatique."""
+    from testpilot.guardrails.repair_circuit import CircuitState, evaluate
+
+    v = st.derive_verdict(_outcome([_scenario(constats=0)]))
+    assert v.scenarios[0].cause_category == dt.AUCUN_CONSTAT
+    assert _outcome([_scenario(constats=0)]).real_run.failures == []
+
+    decision = evaluate(CircuitState(max_iterations=5, stall_limit=3), [])
+
+    assert decision.should_continue is False
