@@ -196,6 +196,9 @@ class RefusMesure:
     valeur_refusee: str = ""
     origine: str = "navigateur"
     preuve: str = ""
+    # Lot 12 (2026-09-24) : ce que le champ a RETENU, en champ structuré (avant : seulement dans
+    # le texte de `preuve`, inexploitable par machine). Vide hors filtre de saisie.
+    valeur_retenue: str = ""
 
 
 def _route_courante(page) -> str:
@@ -1065,7 +1068,7 @@ def _verifier_valeur_retenue(page, el, name, ecrit) -> None:
                      type_contrainte="filtre_saisie",
                      valeur_contrainte=_classe_conservee(attendu, retenu),
                      valeur_refusee=attendu, origine="filtre_saisie",
-                     preuve=f"le champ a retenu {retenu!r}")])
+                     preuve=f"le champ a retenu {retenu!r}", valeur_retenue=retenu)])
 
 
 # Les classes de caractères qu'un filtre de saisie peut conserver, de la plus stricte à la plus

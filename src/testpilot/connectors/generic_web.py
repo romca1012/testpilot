@@ -30,6 +30,7 @@ from testpilot.connectors._web_helpers import (
     tenter_connexion_et_lire_resultat,
     tenter_connexion_generique,
 )
+from testpilot.connectors._sonde_saisie import sonder_formulaire
 from testpilot.connectors.base import Connector
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,7 @@ class GenericWebConnector(Connector):
         page.goto(target)
         page.wait_for_load_state("networkidle")
         result = extract_form(page)
+        result["sonde"] = sonder_formulaire(page, page.url or target)  # lot 12 : ne lève jamais
         result["error"] = ""
         return result
 

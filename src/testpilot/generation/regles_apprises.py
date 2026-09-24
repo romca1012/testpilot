@@ -98,6 +98,7 @@ class RegleApprise:
     valeur_refusee: str
     origine: str
     preuve: str = ""        # message du NAVIGATEUR ou de l'APPLICATION — informatif, jamais clé
+    valeur_retenue: str = ""  # lot 12 : ce que le champ a RETENU (filtre de saisie) — hors clé
     premiere_le: str = ""
     derniere_le: str = ""
     occurrences: int = 1
@@ -150,6 +151,7 @@ def _depuis_json(brut: dict) -> RegleApprise | None:
         valeur_refusee=_texte(brut.get("valeur_refusee")),
         origine=_texte(brut.get("origine")) or "navigateur",
         preuve=_texte(brut.get("preuve")),
+        valeur_retenue=_texte(brut.get("valeur_retenue")),
         premiere_le=_texte(brut.get("mesure_le")),
         derniere_le=_texte(brut.get("mesure_le")),
         occurrences=1,
@@ -176,6 +178,7 @@ def _fusionner_doublons(regles: list[RegleApprise]) -> list[RegleApprise]:
             # La preuve la plus RÉCENTE prime : si l'application a reformulé son message, c'est
             # celui que l'utilisateur verra aujourd'hui.
             preuve=regle.preuve or connue.preuve,
+            valeur_retenue=regle.valeur_retenue or connue.valeur_retenue,
         )
     return list(par_cle.values())
 
@@ -283,6 +286,7 @@ def _en_dict(brut) -> dict | None:
         "valeur_refusee": _texte(lecture("valeur_refusee")),
         "origine": _texte(lecture("origine")) or "navigateur",
         "preuve": _texte(lecture("preuve")),
+        "valeur_retenue": _texte(lecture("valeur_retenue")),
     }
 
 

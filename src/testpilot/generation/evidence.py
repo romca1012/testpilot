@@ -20,7 +20,9 @@ def record_observation(ctx, *, source: str, resource: str, fields: list[dict],
         'resource': resource, 'target_sha256': ctx.target_sha256,
         'observed_at': datetime.now(timezone.utc).isoformat(), 'language': language,
         'fields': [{key: f[key] for key in ('name', 'type', 'tag', 'label', 'required', 'options',
-                                          'visible', 'min', 'max', 'maxlength', 'pattern')
+                                          'visible', 'min', 'max', 'maxlength', 'pattern',
+                                          'minlength', 'inputmode', 'placeholder', 'title',
+                                          'data_mask', 'inputmask')
                     if key in f} for f in fields],
         'submission': submission,
     })
