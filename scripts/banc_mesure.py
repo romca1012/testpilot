@@ -176,7 +176,8 @@ def _fmt(valeur, *, pourcent=True, unite=""):
 def rendre_markdown(indicateurs: dict, contexte: dict, observations: list[dict]) -> str:
     i = indicateurs
     lignes = [
-        f"# Banc de mesure — Odoo {contexte['version']} — {contexte['date']}", "",
+        f"# Banc de mesure — Odoo {contexte['version']} — {contexte['date']}"
+        + (f" — {contexte['etiquette']}" if contexte.get("etiquette") else ""), "",
         f"Mode : **{contexte['mode']}** · commit `{contexte.get('commit', '?')}` · image `{contexte.get('image', '?')}` · "
         f"données de la mesure : `{contexte.get('data_dir', '?')}`", "",
         "## Indicateurs", "",
@@ -353,7 +354,13 @@ def mesurer_fige(instance: InstanceBanc, attendus: dict, executer=executer_cas, 
             continue
         journal(f"== Panne {code}")
         if code == "odoo_arrete":
-            instance.arreter()
+            try:
+                instance.arreter()
+            except Exception as exc:  # la panne n'a pas pu être posée : NON MESURÉ, pas un succès
+                for cas in panne["cas"]:
+                    observations.append({"config": config, "cas": cas, "statut": None,
+                                         "raison": f"panne non posée : {type(exc).__name__}: {exc}"})
+                continue
             try:
                 for cas in panne["cas"]:
                     lancer(config, cas, _connexion(instance))
@@ -405,6 +412,8 @@ def ecrire_sortie(version: str, mode: str, indicateurs: dict, observations: list
     dossier.mkdir(parents=True, exist_ok=True)
     base = dossier / f"banc-{version}-{contexte['date']}" if mode == "figé" else \
         dossier / f"banc-{version}-{contexte['date']}-{mode}"
+    if contexte.get("etiquette"):
+        base = Path(f"{base}-{contexte['etiquette']}")
     # ⚠️ `Path.with_suffix` prendrait « .0-2026-09-24 » (de « 17.0-2026-09-24 ») pour une extension et l'écraserait.
     md, js = Path(f"{base}.md"), Path(f"{base}.json")
     md.write_text(rendre_markdown(indicateurs, contexte, observations), encoding="utf-8")
@@ -437,6 +446,8 @@ def main(argv=None) -> int:
     parser.add_argument("--plafond-cout", type=float, default=None,
                         help="mode génération : plafond de coût en dollars (obligatoire)")
     parser.add_argument("--sortie", type=Path, default=SORTIE)
+    parser.add_argument("--etiquette", default="",
+                        help="suffixe du nom des fichiers et mention du contexte (ex. « avant-lots-01-03 »)")
     parser.add_argument("--configs", default=None,
                         help="MISE AU POINT seulement : configurations séparées par des virgules (sain, defaut:<code>, "
                              "panne:<code>) — une mesure publiée ne s'en sert jamais")
@@ -467,7 +478,7 @@ def main(argv=None) -> int:
 
     indicateurs = calculer_indicateurs(observations, attendus, generation)
     contexte = {"version": args.version, "mode": mode, "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                "commit": _commit(), "image": _image(args.version), "data_dir": str(data_dir),
+                "commit": _commit(), "image": _image(args.version), "data_dir": str(data_dir), "etiquette": args.etiquette,
                 "echantillon": {"cas_figes": len(list(CAS_FIGES.glob("*.feature"))),
                                 "observations": len(observations)}}
     md, js = ecrire_sortie(args.version, mode, indicateurs, observations, contexte, args.sortie)

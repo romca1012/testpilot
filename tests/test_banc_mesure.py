@@ -295,3 +295,18 @@ def test_la_panne_est_levee_meme_si_un_cas_plante_pendant_la_panne():
                       executer=executer, journal=lambda *_: None)
 
     assert ("demarrage",) in instance.journal, "Odoo doit être relancé quoi qu'il arrive"
+
+
+def test_une_panne_qui_ne_peut_pas_etre_posee_est_non_mesuree_jamais_un_succes():
+    class _Instance(_InstanceFausse):
+        def arreter(self):
+            raise RuntimeError("docker introuvable")
+
+    obs = banc.mesurer_fige(_Instance(), {"pannes": {"odoo_arrete": {"attendu": "blocked", "cas": ["a"]}}},
+                            executer=lambda cas, connexion: {"cas": cas, "statut": "blocked"},
+                            journal=lambda *_: None)
+
+    assert obs == [{"config": "panne:odoo_arrete", "cas": "a", "statut": None,
+                    "raison": "panne non posée : RuntimeError: docker introuvable"}]
+    assert banc.calculer_indicateurs(obs, {"pannes": {"odoo_arrete": {"attendu": "blocked", "cas": ["a"]}}})[
+        "I5"]["valeur"] is None
