@@ -1647,17 +1647,21 @@ class ExecutionRepo:
                 f" GROUP BY jour, statut ORDER BY jour", params))
 
         lignes = _compte("")
-        total = {"success": 0, "technical_error": 0, "not_executed": 0}
+        total = {"success": 0, "technical_error": 0, "blocked": 0, "not_executed": 0}
         par_jour: dict[str, dict] = {}
         for r in lignes:
             statut = r["statut"] if r["statut"] in total else "not_executed"
             total[statut] += r["n"]
             jour = par_jour.setdefault(r["jour"], {"jour": r["jour"], "success": 0,
-                                                   "technical_error": 0, "not_executed": 0})
+                                                   "technical_error": 0, "blocked": 0,
+                                                   "not_executed": 0})
             jour[statut] += r["n"]
 
         n = sum(total.values())
-        mesures_concluantes = total["success"] + total["technical_error"]
+        # `blocked` (lot 02) compte AVEC `technical_error` : avant ce lot, un prérequis manquant ou
+        # une fixture en échec finissait `technical_error`, donc dans ce dénominateur — la série
+        # historique reste comparable. Ce n'est pas une interruption : le test n'a pas tourné.
+        mesures_concluantes = total["success"] + total["technical_error"] + total["blocked"]
         # `ran_rate` reste None (et non 0.0) sans donnée : « aucune mesure » n'est pas « 0 % de
         # réussite » — le motif du repli silencieux qu'on refuse partout (§4.6).
         # Une interruption ne prouve ni la réussite ni l'échec de la génération. Elle reste
@@ -1668,6 +1672,7 @@ class ExecutionRepo:
             "total": n,
             "ran": total["success"],
             "technical_error": total["technical_error"],
+            "blocked": total["blocked"],
             "not_executed": total["not_executed"],
             "ran_rate": ran_rate,
             "by_day": sorted(par_jour.values(), key=lambda d: d["jour"]),

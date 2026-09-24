@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 47
+_SCHEMA_VERSION = 48
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -236,8 +236,72 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_46_verified_fields(conn)
     if version < 47:
         _migrate_47_execution_attempt(conn)
+    if version < 48:
+        _migrate_48_execution_blocked(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
+
+
+def _migrate_48_execution_blocked(conn: sqlite3.Connection) -> None:
+    """L'axe exécution accepte la valeur `blocked` (lot 02, décision D1).
+
+    ⚠️ Même piège que la migration 19 (`donnee_invalide`) : une valeur branchée dans toute la couche
+    Python mais refusée par les CHECK de la base ferait PLANTER la persistance (`IntegrityError`) d'un
+    cas correctement jugé `blocked`, qui retomberait en `technical_error` — le statut qu'on veut
+    justement ne plus produire. Trois tables portent le CHECK : `execution`, `scenario_result`,
+    `test_case.last_execution_status`.
+
+    SQLite ne modifie pas un CHECK par `ALTER TABLE` : on RECONSTRUIT chaque table (procédé en 12
+    étapes) en réutilisant son propre `CREATE TABLE` lu depuis `sqlite_master`, avec un remplacement
+    CIBLÉ de la liste — pas de re-transcription manuelle. Atomique et idempotent par table (déjà
+    migrée, ou liste non reconnue → sautée, jamais cassée en silence) ; `foreign_key_check` après.
+    """
+    remplacements = {
+        "execution": ("'success', 'technical_error', 'not_executed')",
+                      "'success', 'technical_error', 'not_executed', 'blocked')"),
+        "test_case": ("'success', 'technical_error', 'not_executed')",
+                      "'success', 'technical_error', 'not_executed', 'blocked')"),
+        "scenario_result": ("execution_status IN ('success', 'technical_error')",
+                            "execution_status IN ('success', 'technical_error', 'blocked')"),
+    }
+    conn.commit()  # aucune transaction ouverte : PRAGMA foreign_keys est un no-op en transaction
+    old_iso = conn.isolation_level
+    conn.isolation_level = None  # autocommit : BEGIN/COMMIT gérés ici (DDL+DML atomiques)
+    try:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        for tbl, (ancien, nouveau) in remplacements.items():
+            row = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (tbl,)).fetchone()
+            sql = row["sql"] if row else ""
+            if not sql or "'blocked'" in sql:
+                continue  # table absente, ou déjà migrée → idempotent
+            new_sql = sql.replace(ancien, nouveau)
+            if new_sql == sql:
+                continue  # liste non reconnue : ne rien casser en silence
+            tmp = f"{tbl}__migr48"
+            create_tmp = new_sql.replace(f"CREATE TABLE {tbl}", f"CREATE TABLE {tmp}", 1)
+            aux = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE tbl_name=? AND type IN ('index','trigger')"
+                " AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%'", (tbl,)).fetchall()
+            conn.execute("BEGIN")
+            try:
+                conn.execute(f"DROP TABLE IF EXISTS {tmp}")
+                conn.execute(create_tmp)
+                conn.execute(f"INSERT INTO {tmp} SELECT * FROM {tbl}")  # colonnes identiques
+                conn.execute(f"DROP TABLE {tbl}")
+                conn.execute(f"ALTER TABLE {tmp} RENAME TO {tbl}")
+                for a in aux:
+                    conn.execute(a["sql"])  # index/triggers recréés (dropés avec l'ancienne table)
+                violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+                if violations:
+                    raise RuntimeError(f"FK cassées après reconstruction de {tbl} : {violations}")
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        conn.execute("PRAGMA foreign_keys = ON")
+    finally:
+        conn.isolation_level = old_iso
 
 
 def _migrate_42_password_ownership(conn: sqlite3.Connection) -> None:

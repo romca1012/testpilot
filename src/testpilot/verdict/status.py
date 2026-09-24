@@ -20,6 +20,12 @@ from testpilot.verdict import defect_taxonomy as dt
 EXEC_SUCCESS = "success"
 EXEC_TECHNICAL_ERROR = "technical_error"
 EXEC_NOT_EXECUTED = "not_executed"
+# Lot 02 (D1) : le test n'a PAS pu être joué parce qu'un PRÉREQUIS d'environnement n'est pas rempli
+# (module non installé, session RPC absente, fixture/connexion en échec). Ni une panne de notre code
+# (`technical_error` → à revérifier), ni un constat sur l'application. Nouvelle VALEUR de l'axe
+# exécution, jamais un 3ᵉ axe : l'invariant « les deux axes ne fusionnent jamais » tient. Produite
+# AUTOMATIQUEMENT par la cause `precondition_non_remplie`, jamais réparée automatiquement.
+EXEC_BLOCKED = "blocked"
 # Axe fonctionnel
 FUNC_CONFORME = "conforme"
 FUNC_NON_CONFORME = "non_conforme"
@@ -105,6 +111,11 @@ def scenario_verdict(scenario, failures: list) -> ScenarioVerdict:
             # l'application n'est PAS en cause. On n'accuse plus : on nomme un test à corriger.
             return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_DONNEE_INVALIDE,
                                    failure_type, cause, scenario.error, step_text)
+        if cause == dt.PRECONDITION_NON_REMPLIE:
+            # Le test n'a jamais pu commencer à juger : un prérequis d'ENVIRONNEMENT manque (lot 02,
+            # D1). `indetermine` côté fonctionnel — on n'a rien constaté sur l'application.
+            return ScenarioVerdict(scenario.name, EXEC_BLOCKED, FUNC_INDETERMINE,
+                                   failure_type, cause, scenario.error, step_text)
         # Cause technique (ou indéterminée) → le test n'a pas pu juger le fonctionnel.
         return ScenarioVerdict(scenario.name, EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE,
                                failure_type, cause, scenario.error, step_text)
@@ -154,6 +165,11 @@ def aggregate(verdicts: list[ScenarioVerdict], *, connector_type: str | None = N
         execution_status = EXEC_NOT_EXECUTED
     elif any(v.execution_status == EXEC_TECHNICAL_ERROR for v in verdicts):
         execution_status = EXEC_TECHNICAL_ERROR
+    elif any(v.execution_status == EXEC_BLOCKED for v in verdicts):
+        # Priorité `technical_error` > `blocked` > `success` : une panne de notre code reste visible
+        # (à revérifier) ; un prérequis manquant prime sur un succès partiel, jamais sur un constat
+        # (un `non_conforme` surface toujours, ci-dessous, quelle que soit l'exécution).
+        execution_status = EXEC_BLOCKED
     else:
         execution_status = EXEC_SUCCESS
 
@@ -236,6 +252,8 @@ def statut_de_test(execution: str | None, functional: str | None,
     - `non_conforme` → **failed** ;
     - `donnee_invalide` → **retest** (4ᵉ verdict) : le test est à corriger. **Jamais `failed`**,
       qui accuserait l'application, ni `passed`, alors que rien n'a été prouvé ;
+    - exécution `blocked` (lot 02, D1) → **blocked**, AVANT la règle `indetermine → retest` : un
+      prérequis d'environnement manquant n'est ni un test à revérifier ni un défaut de l'application ;
     - `indetermine` → **retest** s'il a tourné, **untested** s'il n'a jamais été lancé ;
     - sans verdict fonctionnel, c'est le déroulement qui parle : `technical_error` → **blocked**,
       `success` → **passed** ;
@@ -249,6 +267,8 @@ def statut_de_test(execution: str | None, functional: str | None,
         return STATUT_FAILED
     if functional == FUNC_DONNEE_INVALIDE:
         return STATUT_RETEST
+    if execution == EXEC_BLOCKED:
+        return STATUT_BLOCKED
     if functional == FUNC_INDETERMINE:
         return STATUT_UNTESTED if execution == EXEC_NOT_EXECUTED else STATUT_RETEST
     if execution == EXEC_TECHNICAL_ERROR:
@@ -268,6 +288,7 @@ def _case_derive(execution: str, functional: str) -> str:
         f" WHEN {functional} = '{FUNC_CONFORME}' THEN '{STATUT_PASSED}'"
         f" WHEN {functional} = '{FUNC_NON_CONFORME}' THEN '{STATUT_FAILED}'"
         f" WHEN {functional} = '{FUNC_DONNEE_INVALIDE}' THEN '{STATUT_RETEST}'"
+        f" WHEN {execution} = '{EXEC_BLOCKED}' THEN '{STATUT_BLOCKED}'"
         f" WHEN {functional} = '{FUNC_INDETERMINE}' THEN"
         f"   (CASE WHEN {execution} = '{EXEC_NOT_EXECUTED}' THEN '{STATUT_UNTESTED}'"
         f"         ELSE '{STATUT_RETEST}' END)"

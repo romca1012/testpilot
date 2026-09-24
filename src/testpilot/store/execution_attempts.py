@@ -66,6 +66,7 @@ def summarize_first_attempts(conn, *, project_id=None, allowed_project_ids=None)
                  r['functional_status'] in ('conforme', 'non_conforme') for r in measured)
     return {'measured': len(measured), 'ran': ran, 'usable_verdicts': useful,
             'technical_error': sum(r['execution_status'] == 'technical_error' for r in measured),
+            'blocked': sum(r['execution_status'] == 'blocked' for r in measured),
             'retried': sum(r['retried'] for r in rows),
             'unmeasured': sum(r['finished_at'] is None for r in rows),
             'pending': sum(r['finished_at'] == '' for r in rows),

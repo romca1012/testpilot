@@ -650,14 +650,14 @@ def _regeneration_failure_context(conn, case_id: int) -> list[dict]:
 
     repo = ExecutionRepo(conn)
     failure = next((e for e in reversed(repo.list_for_case(case_id))
-                    if e["execution_status"] == "technical_error"
+                    if e["execution_status"] in {"technical_error", "blocked"}
                     or e["functional_status"] in {"non_conforme", "donnee_invalide"}), None)
     if failure is None:
         return []
     # Exécution locale 146 (2026-09-18) : error_message vide malgré une DonneeRefuseeError
     # dans scenario_result et une capture 01-error.png. Le résumé seul perd la preuve.
     scenarios = [s for s in repo.list_scenario_results(failure["id"])
-                 if s["execution_status"] == "technical_error"
+                 if s["execution_status"] in {"technical_error", "blocked"}
                  or s["functional_status"] in {"non_conforme", "donnee_invalide"}]
     comments = [a["human_comment"] for a in RepairRepo(conn).list_for_execution(failure["id"])
                 if a.get("human_comment")]

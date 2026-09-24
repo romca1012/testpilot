@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 47
+ALIGNED_WITH_SCHEMA_VERSION = 48
 
 metadata = MetaData()
 
@@ -177,7 +177,7 @@ test_case = Table(
     CheckConstraint("origin IN ('ia_generated', 'manual_converted')", name="ck_test_case_origin"),
     CheckConstraint("priority IN ('low', 'medium', 'high')", name="ck_test_case_priority"),
     CheckConstraint(
-        "last_execution_status IN ('success', 'technical_error', 'not_executed')",
+        "last_execution_status IN ('success', 'technical_error', 'not_executed', 'blocked')",
         name="ck_test_case_last_execution_status",
     ),
     CheckConstraint(
@@ -274,7 +274,7 @@ execution = Table(
     # INTEGER` sans REFERENCES) — repris à l'identique, NULL = exécutions mono-cas héritées.
     Column("run_id", Integer, nullable=True),
     CheckConstraint(
-        "execution_status IN ('success', 'technical_error', 'not_executed')",
+        "execution_status IN ('success', 'technical_error', 'not_executed', 'blocked')",
         name="ck_execution_execution_status",
     ),
     CheckConstraint(
@@ -303,7 +303,7 @@ scenario_result = Table(
     Column("error_summary", Text, nullable=False, server_default=""),
     Column("step_text", Text, nullable=False, server_default=""),
     CheckConstraint(
-        "execution_status IN ('success', 'technical_error')",
+        "execution_status IN ('success', 'technical_error', 'blocked')",
         name="ck_scenario_result_execution_status",
     ),
     CheckConstraint(
