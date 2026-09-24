@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "behave_runtime" / 
 from _base_helpers import (  # noqa: E402
     DonneeRefuseeError,
     _chemin_sans_fragment,
+    _est_navigation,
     click_button,
 )
 
@@ -109,12 +110,61 @@ def test_un_clic_qui_reste_sur_la_meme_page_declenche_toujours_le_controle():
         click_button(page, "Envoyer")
 
 
-def test_un_clic_qui_ne_change_que_le_fragment_declenche_toujours_le_controle():
-    """Le back-office Odoo route tout son état applicatif par fragment (`/web#action=…`) — un
-    changement de fragment seul n'est PAS une navigation vers une autre page."""
-    page = _FauxPage(url_avant="https://x/web#action=206&view_type=kanban",
-                     url_apres="https://x/web#action=180&view_type=form",
+# ── Odoo 16 / 17.0 : la navigation ne change QUE le fragment (angle mort levé le 2026-09-24) ──
+
+_BASE = "https://x/web"
+
+
+@pytest.mark.parametrize("avant,apres,navigation", [
+    # chemin différent : navigation (cas 95)
+    ("https://x/en/servicemetiers", "https://x/en/mutation/67", True),
+    # chemin /odoo/… (≥ 17.2) : comportement conservé (le chemin change)
+    ("https://x/odoo/action-180", "https://x/odoo/action-206", True),
+    # clic de menu Odoo 16/17.0 : /web#action=A → /web#action=B
+    (f"{_BASE}#action=206&model=helpdesk.team&view_type=kanban",
+     f"{_BASE}#action=180&model=helpdesk.ticket&view_type=list", True),
+    # changement de vue seul
+    (f"{_BASE}#action=180&model=helpdesk.ticket&view_type=list",
+     f"{_BASE}#action=180&model=helpdesk.ticket&view_type=form", True),
+    # changement de menu seul
+    (f"{_BASE}#menu_id=1&action=180&model=m&view_type=form",
+     f"{_BASE}#menu_id=2&action=180&model=m&view_type=form", True),
+    # SAUVEGARDE : même vue, seule la clé id apparaît → le contrôle DOIT s'exécuter
+    (f"{_BASE}#model=x&view_type=form", f"{_BASE}#model=x&view_type=form&id=42", False),
+    # SAUVEGARDE : `id` change (même model) → contrôle
+    (f"{_BASE}#model=x&view_type=form&id=41", f"{_BASE}#model=x&view_type=form&id=42", False),
+    # URL strictement identique (dialogue, AJAX portail) → contrôle
+    (f"{_BASE}#action=1&model=x", f"{_BASE}#action=1&model=x", False),
+    # `href="#"` portail : fragment vide → contrôle
+    ("https://x/en/mutation/67", "https://x/en/mutation/67#", False),
+    # ordre des clés sans importance
+    (f"{_BASE}#model=x&action=1&cids=1", f"{_BASE}#action=1&cids=1&model=x", False),
+])
+def test_table_transition_url_controle(avant, apres, navigation):
+    assert _est_navigation(avant, apres) is navigation
+
+
+def test_clic_de_menu_odoo_par_fragment_ne_declenche_pas_le_controle():
+    page = _FauxPage(url_avant=f"{_BASE}#action=206&model=helpdesk.team&view_type=kanban",
+                     url_apres=f"{_BASE}#action=180&model=helpdesk.ticket&view_type=list",
+                     invalides=[_champ_invalide_manquant("name")])
+
+    click_button(page, "Tickets")  # ne lève PAS
+
+
+def test_sauvegarde_odoo_par_fragment_declenche_le_controle():
+    page = _FauxPage(url_avant=f"{_BASE}#model=helpdesk.ticket&view_type=form",
+                     url_apres=f"{_BASE}#model=helpdesk.ticket&view_type=form&id=42",
                      invalides=[{"nom": "name", "msg": "requis", "valeur": "", "manquant": True}])
 
     with pytest.raises(DonneeRefuseeError):
-        click_button(page, "Nouveau")
+        click_button(page, "Enregistrer")
+
+
+def test_un_dialogue_sans_changement_d_url_ne_produit_pas_de_faux_refus():
+    """Le clic ouvre une boîte de dialogue : l'URL ne bouge pas, le contrôle s'exécute, mais aucun
+    `<form>` natif n'est invalide (le back-office n'en a pas) → rien à accuser."""
+    page = _FauxPage(url_avant=f"{_BASE}#model=x&view_type=form&id=7",
+                     url_apres=f"{_BASE}#model=x&view_type=form&id=7", invalides=[])
+
+    click_button(page, "Confirmer")  # ne lève PAS

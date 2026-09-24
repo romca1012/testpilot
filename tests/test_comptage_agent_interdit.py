@@ -32,6 +32,9 @@ _ENTETE = "from behave import when, then\n"
     "    context.n = len(context.odoo.env['helpdesk.ticket'].read([1], ['name']))\n",
     # forme 4 : len() d'une variable issue d'un search
     "    ids = context.odoo.env['helpdesk.ticket'].search([])\n    context.n = len(ids)\n",
+    # forme 5 : alias local du modèle (la forme la plus probable pour un LLM)
+    "    M = context.odoo.env['helpdesk.ticket']\n    context.n = M.search_count([])\n",
+    "    M = context.odoo.env['helpdesk.ticket']\n    context.n = len(M.search([]))\n",
 ])
 def test_GARDE_les_formes_de_recomptage_sont_refusees(tmp_path, corps):
     code = _ENTETE + "@then('je compte')\ndef s(context):\n" + corps
@@ -87,3 +90,14 @@ def test_le_prompt_ne_recommande_plus_search_count_comme_exemple():
     prompt = Path("src/testpilot/generation/prompts/system_prompt.md").read_text(encoding="utf-8")
 
     assert 'env["model"].search_count([])' not in prompt
+
+
+def test_limites_documentees_les_contournements_indirects_ne_sont_pas_vus(tmp_path):
+    """Verrouille la LIMITE par un test plutôt qu'une doc que personne ne lit : si ce test échoue,
+    le garde a gagné une capacité — mettre à jour la docstring de `_forbidden_recount`."""
+    code = _ENTETE + (
+        "@then('je compte')\n"
+        "def s(context):\n"
+        "    context.n = sum(1 for _ in context.odoo.env['helpdesk.ticket'].search([]))\n")
+
+    assert _ecrire(tmp_path, code).ok is True

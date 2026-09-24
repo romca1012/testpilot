@@ -59,15 +59,15 @@ def _forbidden_transport(tree: ast.AST, content: str) -> str:
 _LECTURES_RPC = {"search", "read", "search_read"}
 
 
-def _touche_env(noeud: ast.AST) -> bool:
+def _touche_env(noeud: ast.AST, alias: frozenset = frozenset()) -> bool:
     return any((isinstance(n, ast.Attribute) and n.attr in {"env", "odoo"})
-               or (isinstance(n, ast.Name) and n.id in {"env", "odoo"})
+               or (isinstance(n, ast.Name) and (n.id in {"env", "odoo"} or n.id in alias))
                for n in ast.walk(noeud))
 
 
-def _est_lecture_rpc(noeud: ast.AST) -> bool:
+def _est_lecture_rpc(noeud: ast.AST, alias: frozenset = frozenset()) -> bool:
     return (isinstance(noeud, ast.Call) and isinstance(noeud.func, ast.Attribute)
-            and noeud.func.attr in _LECTURES_RPC and _touche_env(noeud.func.value))
+            and noeud.func.attr in _LECTURES_RPC and _touche_env(noeud.func.value, alias))
 
 
 def _forbidden_recount(tree: ast.AST) -> str:
@@ -77,24 +77,36 @@ def _forbidden_recount(tree: ast.AST) -> str:
     RPC) contourne les helpers cloisonnés du lot 01 (`id > max_id`) et réintroduit le faux
     PASSED de F1 — dans le code GÉNÉRÉ, là où aucun test du dépôt ne le voit (mesuré en
     campagne réelle, cas 95, 23/09). Détection par AST : ni un commentaire ni une chaîne ne
-    déclenchent, et un `len()` sur une variable n'est vu que si elle vient d'une lecture RPC.
+    déclenchent, un `len()` sur une variable n'est vu que si elle vient d'une lecture RPC, et
+    un alias local d'un modèle (`M = context.odoo.env['m']` puis `M.search_count([])`) est suivi.
+
+    ⚠️ **Limites assumées — c'est un filet, pas une preuve d'absence de comptage** : ne sont PAS
+    vus `getattr(m, 'search_count')`, un comptage indirect (`sum(1 for _ in m.search([]))`,
+    `read_group`), un alias posé hors de la fonction (niveau module) ou passé en argument. Un
+    agent déterminé les contourne ; ce garde ferme la forme littérale que l'agent produit
+    réellement (mesuré : cas 95) et redirige vers le catalogue. Faux positif assumé : tout
+    `len(search(...))` sur `env`/`odoo`, même légitime, est refusé.
     """
     portees = [n for n in ast.walk(tree)
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))] or [tree]
     for portee in portees:
+        affectations = [n for n in ast.walk(portee) if isinstance(n, ast.Assign)]
+        alias = frozenset(
+            c.id for n in affectations if isinstance(n.value, (ast.Subscript, ast.Attribute))
+            and _touche_env(n.value) for c in n.targets if isinstance(c, ast.Name))
         issus_de_lecture = {
-            cible.id for n in ast.walk(portee) if isinstance(n, ast.Assign)
-            and _est_lecture_rpc(n.value) for cible in n.targets if isinstance(cible, ast.Name)}
+            c.id for n in affectations if _est_lecture_rpc(n.value, alias)
+            for c in n.targets if isinstance(c, ast.Name)}
         for n in ast.walk(portee):
             if not isinstance(n, ast.Call):
                 continue
             if (isinstance(n.func, ast.Attribute) and n.func.attr == "search_count"
-                    and _touche_env(n.func.value)):
+                    and _touche_env(n.func.value, alias)):
                 return "appel à `search_count` sur `context.odoo.env`"
             if isinstance(n.func, ast.Name) and n.func.id == "len" and n.args:
                 arg = n.args[0]
-                if _est_lecture_rpc(arg) or (isinstance(arg, ast.Name)
-                                             and arg.id in issus_de_lecture):
+                if _est_lecture_rpc(arg, alias) or (isinstance(arg, ast.Name)
+                                                    and arg.id in issus_de_lecture):
                     return "`len()` d'une lecture `search`/`read` sur `context.odoo.env`"
     return ""
 

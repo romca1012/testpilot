@@ -68,6 +68,19 @@ du lot 05, et reportés dans `docs/QUALITE-GENERATION-*.md`.
 Toujours publier l'échantillon (nombre de cas, versions Odoo, date). Ne jamais moyenner des
 régimes différents (PRINCIPES).
 
+**Règles de mesure (2026-09-24)** :
+
+- **Une mesure ne modifie jamais les mémoires apprises de production ; toute mémoire apprise
+  pendant une campagne est examinée puis importée explicitement.** Le script de campagne tourne sur
+  une copie horodatée de `data/` (`TESTPILOT_DATA_DIR`), dont le chemin figure dans sa sortie et
+  dans chaque `result.json` (`data_dir`).
+- Ne jamais lancer la suite pytest et une campagne en même temps sur le même poste (une campagne
+  concurrente a fait échouer la garde « données réelles » de la suite le 2026-09-24).
+- **F7 (lot 11)** : le signal de navigation (chemin d'URL + clés de fragment `action`, `menu_id`,
+  `model`, `view_type`) est mesuré sur Odoo 17.0+e (staging Sapian) ; sa validation sur **16.0 et
+  17.0 Community**, avec un scénario Behave COMPLET de vrai refus au corpus, est à faire sur le
+  banc du **lot 04**.
+
 ## 4. Registre des décisions à valider par le porteur
 
 Claude Code **ne démarre pas** un lot dont une décision requise n'est pas cochée.
