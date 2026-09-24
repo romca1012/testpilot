@@ -21,7 +21,7 @@ from testpilot import config
 from testpilot.guardrails.cost_tracker import CostTracker
 from testpilot.llm.adapter import LLMAdapter
 from testpilot.verdict import defect_taxonomy as dt
-from testpilot.verdict.status import GROUND_TRUTH_UI_ONLY, CaseVerdict
+from testpilot.verdict.status import EXEC_BLOCKED, GROUND_TRUTH_UI_ONLY, CaseVerdict
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,13 @@ logger = logging.getLogger(__name__)
 _NOTE_UI_ONLY = (
     "Vérification limitée à ce que l'écran affiche : cette application ne permet pas de "
     "recouper le résultat avec une donnée de référence côté serveur.")
+
+# Note DÉTERMINISTE (lot 02, D1), jamais confiée au LLM — même principe que `_NOTE_UI_ONLY` : « bloqué »
+# ne dit RIEN de l'application. Une IA qui l'oublierait ou l'enroberait laisserait croire à un défaut.
+_NOTE_BLOQUE = (
+    "Ce test n'a pas pu être joué : un prérequis de l'environnement n'est pas rempli (par exemple "
+    "un module non installé, une connexion impossible ou des données déjà présentes). Ce n'est "
+    "pas un défaut de l'application ni du test — il faut préparer l'environnement, puis relancer.")
 
 _SYSTEM = ("Tu expliques le résultat d'un test automatique à un lecteur qui ne code pas. "
            "Tu écris en français clair, jamais en langage technique : aucun nom de classe "
@@ -71,6 +78,8 @@ _ERREUR_MAX = 500
 def _resume_scenario(s) -> str:
     cause = dt.LABELS.get(s.cause_category, "") if s.cause_category else ""
     etat = "réussi" if s.functional_status == "conforme" else "en échec"
+    if s.execution_status == EXEC_BLOCKED:
+        etat = "bloqué avant d'avoir pu être joué"
     detail = f" ({cause})" if cause else ""
     ligne = f"- « {s.name} » : {etat}{detail}"
     # ⚠️ **Le défaut qui produisait des explications FAUSSES** (mesuré le 2026-09-14, SauceDemo) :
@@ -95,6 +104,16 @@ def _detail_reel_combine(verdict: CaseVerdict) -> str:
         if s.functional_status != "conforme" and (s.error or "").strip())
 
 
+def _avertissement_bloque(verdict: CaseVerdict) -> str:
+    """Un test bloqué n'a RIEN constaté sur l'application : le dire au modèle, sinon il reconstruit
+    un récit d'échec à partir du titre du scénario (défaut mesuré le 2026-09-14)."""
+    if verdict.execution_status != EXEC_BLOCKED:
+        return ""
+    return ("⚠️ Ce test n'a PAS pu être joué : un prérequis de l'environnement n'est pas rempli. "
+            "Ne conclus JAMAIS que l'application est défectueuse ni que le test est faux ; "
+            "dis seulement qu'il n'a pas pu commencer.\n\n")
+
+
 def _build_prompt(verdict: CaseVerdict, module_name: str) -> str:
     lignes = "\n".join(_resume_scenario(s) for s in verdict.scenarios) \
         or "(aucun scénario n'a pu être joué)"
@@ -105,7 +124,7 @@ Résultat technique (le test a-t-il pu s'exécuter) : {verdict.execution_status}
 Résultat fonctionnel (l'application s'est-elle comportée comme attendu) : {verdict.functional_status}
 Scénarios réussis : {verdict.scenarios_passed} sur {len(verdict.scenarios)}
 
-Détail par scénario :
+{_avertissement_bloque(verdict)}Détail par scénario :
 {lignes}
 
 Réponds en JSON : {{"explication": "...", "citation": "..."}}
@@ -180,4 +199,6 @@ def propose_explication(verdict: CaseVerdict, *, module_name: str = "",
 
     if texte and verdict.ground_truth == GROUND_TRUTH_UI_ONLY:
         texte = f"{texte} {_NOTE_UI_ONLY}"
+    if texte and verdict.execution_status == EXEC_BLOCKED:
+        texte = f"{texte} {_NOTE_BLOQUE}"
     return texte, round(tracker.total_cost, 6)

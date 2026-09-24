@@ -6,6 +6,16 @@ import {
 
 describe('status mapping — deux axes distincts + vocabulaire utilisateur', () => {
 
+  it("blocked (lot 02) : libellé français, ton d'avertissement, jamais la valeur brute ni « Erreur technique »", () => {
+    const v = executionView('blocked')
+    expect(v.label).toBe('Bloqué (prérequis)')
+    expect(v.label).not.toBe(executionView('technical_error').label)
+    expect(v.tone).toBe('warning')
+    // L'infobulle doit dire que ce n'est NI l'application NI un test cassé.
+    expect(v.hint).toMatch(/ni un défaut de l'application ni un test cassé/i)
+    expect(JSON.stringify(v)).not.toContain('blocked')
+  })
+
   it('provenance du coût et slug de module en clair', () => {
     expect(costSourceLabel('estimated')).toBe('estimé')
     expect(costSourceLabel('anthropic_api')).toBe('mesuré via l\'API')

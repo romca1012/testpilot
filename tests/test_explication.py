@@ -250,3 +250,48 @@ def test_la_note_n_est_jamais_ajoutee_a_un_commentaire_vide():
     texte, cout = propose_explication(v, llm=FakeLLM("désolé, je ne peux pas"))
 
     assert texte == "" and cout == 0.0
+
+
+# ── Lot 02 (D1) : un test `blocked` n'a rien constaté sur l'application ─────────────────────
+
+def _verdict_bloque() -> CaseVerdict:
+    return CaseVerdict(
+        execution_status="blocked", functional_status="indetermine",
+        scenarios=[ScenarioVerdict(
+            "Rejet d'un SIREN invalide", "blocked", "indetermine",
+            cause_category="precondition_non_remplie",
+            error="PreconditionNonRemplieError: Le module Odoo 'x' n'est pas installé.")],
+        scenarios_passed=0, scenarios_failed=1)
+
+
+def test_un_test_bloque_recoit_toujours_la_note_deterministe():
+    """La note n'est PAS confiée au modèle : une IA qui l'oublierait laisserait croire à un défaut."""
+    payload = json.dumps({"explication": "Le test n'a pas pu commencer.",
+                          "citation": "n'est pas installé"})
+
+    texte, _ = propose_explication(_verdict_bloque(), llm=FakeLLM(payload))
+
+    assert texte.startswith("Le test n'a pas pu commencer.")
+    assert "un prérequis de l'environnement n'est pas rempli" in texte
+    assert "Ce n'est pas un défaut de l'application ni du test" in texte
+
+
+def test_le_prompt_d_un_test_bloque_interdit_de_conclure_a_un_defaut():
+    llm = FakeLLM(json.dumps({"explication": "x", "citation": ""}))
+
+    propose_explication(_verdict_bloque(), llm=llm)
+
+    prompt = llm.prompts[0]
+    assert "PAS pu être joué" in prompt
+    assert "Ne conclus JAMAIS que l'application est défectueuse" in prompt
+    assert "bloqué avant d'avoir pu être joué" in prompt
+
+
+def test_les_autres_statuts_ne_recoivent_ni_note_ni_avertissement_de_blocage():
+    """Non-régression : les prompts et textes des statuts existants ne changent pas."""
+    llm = FakeLLM(json.dumps({"explication": "Le ticket a été créé."}))
+
+    texte, _ = propose_explication(_verdict_passed(), llm=llm)
+
+    assert texte == "Le ticket a été créé."
+    assert "PAS pu être joué" not in llm.prompts[0]

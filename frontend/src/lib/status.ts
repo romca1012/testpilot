@@ -26,6 +26,12 @@ export const AXIS = {
 const EXECUTION: Record<string, StatusView> = {
   success: { label: 'A tourné', icon: 'check', tone: 'success' },
   technical_error: { label: 'Erreur technique', icon: 'x', tone: 'destructive' },
+  // Lot 02 (D1) : un PRÉREQUIS d'environnement manque (module non installé, connexion impossible…).
+  // Ni un défaut de l'application, ni un test cassé : ne pas le confondre avec « Erreur technique ».
+  blocked: { label: 'Bloqué (prérequis)', icon: 'half', tone: 'warning',
+    hint: 'Le test n\'a pas pu être joué : un prérequis de l\'environnement n\'est pas rempli (module non '
+        + 'installé, connexion impossible, données déjà présentes…). Ce n\'est ni un défaut de '
+        + 'l\'application ni un test cassé : il faut préparer l\'environnement, puis relancer.' },
   not_executed: { label: 'Pas lancé', icon: 'circle', tone: 'muted' },
 }
 

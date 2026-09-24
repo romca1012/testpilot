@@ -77,6 +77,25 @@ def test_le_taux_compte_ce_qui_a_TOURNE_pas_ce_qui_est_conforme(conn):
     assert abs(s["ran_rate"] - 2 / 3) < 1e-9
 
 
+def test_un_run_blocked_est_compte_a_part_et_dans_le_denominateur_du_taux(conn):
+    """Lot 02 (D1). Avant ce lot, un prérequis manquant finissait `technical_error`, donc dans ce
+    dénominateur : la série historique reste comparable. Il n'est PAS une interruption (`not_executed`,
+    exclue du taux) : le test n'a pas tourné, et le taux dit « combien tournent »."""
+    mid = ensure_default_module(conn, "m")
+    c1, v1 = _cas(conn, mid)
+    c2, v2 = _cas(conn, mid)
+    c3, v3 = _cas(conn, mid)
+    _run(conn, c1, v1, execution_status="success", functional_status="conforme")
+    _run(conn, c2, v2, execution_status="blocked")
+    _run(conn, c3, v3, execution_status="technical_error")
+
+    s = ExecutionRepo(conn).quality_summary()
+
+    assert (s["total"], s["ran"], s["blocked"], s["technical_error"], s["not_executed"]) == (3, 1, 1, 1, 0)
+    assert abs(s["ran_rate"] - 1 / 3) < 1e-9
+    assert s["by_day"][0]["blocked"] == 1
+
+
 def test_seul_le_PREMIER_JET_compte(conn):
     """Rejeux et réparations mesurent une re-exécution ou le filet, pas la qualité de génération.
     Les inclure gonflerait ou masquerait le vrai taux du premier jet.

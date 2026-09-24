@@ -91,3 +91,22 @@ def test_write_report_ecrit_json_et_html(tmp_path):
     assert json_path.suffix == ".json" and html_path.suffix == ".html"
     # Le JSON écrit est relisible et cohérent.
     assert json.loads(json_path.read_text(encoding="utf-8"))["module_name"] == "demande_materiel"
+
+
+# ── Lot 02 (D1) : `blocked` a un libellé français, jamais la valeur brute ───────────────────
+
+def test_le_rapport_libelle_blocked_en_francais_et_le_distingue_d_une_erreur_technique():
+    from testpilot.verdict.status import EXEC_BLOCKED, FUNC_INDETERMINE
+
+    verdict = CaseVerdict(EXEC_BLOCKED, FUNC_INDETERMINE, scenarios=[
+        ScenarioVerdict("cas", EXEC_BLOCKED, FUNC_INDETERMINE,
+                        cause_category=dt.PRECONDITION_NON_REMPLIE, error="module absent")])
+
+    report = rp.build_report(verdict, module_name="m")
+    html = rp.render_html(report)
+
+    assert report.execution_label == "Bloqué (prérequis non rempli)"
+    assert "Bloqué (prérequis non rempli)" in html
+    assert "Prérequis non rempli (environnement)" in html, "libellé de la cause, pas la valeur brute"
+    assert ">blocked<" not in html and "precondition_non_remplie" not in html
+    assert 'class="pill warn"' in html, "ton d'avertissement, pas le rouge d'une panne"

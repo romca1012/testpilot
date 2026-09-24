@@ -45,7 +45,7 @@ const tone = computed(() => {
 
 // Barres par jour : hauteur relative au plus gros total, empilées success / erreur / interrompu.
 const maxJour = computed(() =>
-  Math.max(1, ...(data.value?.by_day || []).map((d) => d.success + d.technical_error + d.not_executed)))
+  Math.max(1, ...(data.value?.by_day || []).map((d) => d.success + d.technical_error + (d.blocked || 0) + d.not_executed)))
 </script>
 
 <template>
@@ -94,12 +94,14 @@ const maxJour = computed(() =>
 
       <template v-else>
         <!-- Le chiffre phare + le détail des trois états -->
-        <div class="mt-6 grid gap-3 sm:grid-cols-4">
+        <div class="mt-6 grid gap-3 sm:grid-cols-5">
           <StatTile label="Résultat final historique" :value="pct === null ? '—' : pct + ' %'"
                     :tone="tone" icon="check" />
           <StatTile label="Tests qui ont tourné" :value="data.ran" tone="success" icon="check" />
           <StatTile label="Erreurs techniques" :value="data.technical_error"
                     :tone="data.technical_error ? 'destructive' : 'muted'" icon="x" />
+          <StatTile label="Bloqués (prérequis)" :value="data.blocked || 0"
+                    :tone="data.blocked ? 'warning' : 'muted'" icon="half" />
           <StatTile label="Interrompus" :value="data.not_executed"
                     :tone="data.not_executed ? 'warning' : 'muted'" icon="dot" />
         </div>
@@ -107,7 +109,9 @@ const maxJour = computed(() =>
         <p class="mt-3 text-xs text-muted-foreground">
           {{ data.ran }} run{{ data.ran > 1 ? 's' : '' }} sur {{ data.total }} ont pu s'exécuter.
           « Erreur technique » = le test n'a pas pu tourner (sélecteur ou route introuvable,
-          timeout…) ; « interrompu » = arrêté avant de tourner. Un test qui tourne et trouve un
+          timeout…) ; « bloqué » = un prérequis de l'environnement manque (module non installé,
+          connexion impossible) — compté dans le taux comme une erreur technique, car le test n'a
+          pas tourné ; « interrompu » = arrêté avant de tourner. Un test qui tourne et trouve un
           bug compte comme une réussite technique. Les interruptions restent visibles mais sont
           exclues du taux, car elles ne prouvent ni la réussite ni l’échec de la génération.
         </p>
@@ -119,11 +123,13 @@ const maxJour = computed(() =>
                role="img" aria-label="Évolution quotidienne de la réussite technique des tests générés">
             <div v-for="d in data.by_day" :key="d.jour" class="flex flex-col items-center gap-1.5 shrink-0" style="width: 48px">
               <div class="w-full flex flex-col-reverse rounded-md overflow-hidden bg-secondary/40"
-                   :style="{ height: '110px' }" :title="`${d.jour} — ${d.success} ok / ${d.technical_error} erreur / ${d.not_executed} interrompu`">
+                   :style="{ height: '110px' }" :title="`${d.jour} — ${d.success} ok / ${d.technical_error} erreur / ${d.blocked || 0} bloqué / ${d.not_executed} interrompu`">
                 <div v-if="d.success" class="bg-success/80"
                      :style="{ height: (d.success / maxJour * 110) + 'px' }"></div>
                 <div v-if="d.technical_error" class="bg-destructive/80"
                      :style="{ height: (d.technical_error / maxJour * 110) + 'px' }"></div>
+                <div v-if="d.blocked" class="bg-muted-foreground/60"
+                     :style="{ height: (d.blocked / maxJour * 110) + 'px' }"></div>
                 <div v-if="d.not_executed" class="bg-warning/70"
                      :style="{ height: (d.not_executed / maxJour * 110) + 'px' }"></div>
               </div>
@@ -133,15 +139,16 @@ const maxJour = computed(() =>
           <div class="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
             <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-success/80"></span>A tourné</span>
             <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-destructive/80"></span>Erreur technique</span>
+            <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-muted-foreground/60"></span>Bloqué</span>
             <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-warning/70"></span>Interrompu</span>
           </div>
           <table class="sr-only">
             <caption>Données quotidiennes de qualité de génération</caption>
-            <thead><tr><th>Date</th><th>A tourné</th><th>Erreur technique</th><th>Interrompu</th></tr></thead>
+            <thead><tr><th>Date</th><th>A tourné</th><th>Erreur technique</th><th>Bloqué</th><th>Interrompu</th></tr></thead>
             <tbody>
               <tr v-for="d in data.by_day" :key="`table-${d.jour}`">
                 <th scope="row">{{ d.jour }}</th>
-                <td>{{ d.success }}</td><td>{{ d.technical_error }}</td><td>{{ d.not_executed }}</td>
+                <td>{{ d.success }}</td><td>{{ d.technical_error }}</td><td>{{ d.blocked || 0 }}</td><td>{{ d.not_executed }}</td>
               </tr>
             </tbody>
           </table>

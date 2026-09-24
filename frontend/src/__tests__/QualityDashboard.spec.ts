@@ -36,6 +36,24 @@ describe('QualityDashboard', () => {
     expect(w.get('[aria-labelledby="first-attempt-title"]').text()).toContain('1 avec rejeu')
     expect(w.text()).toContain('Résultat final historique: 100 %')
   })
+  it('affiche les tests bloqués (prérequis) à part, sans les confondre avec les erreurs techniques', async () => {
+    const w = await page({ total: 3, ran: 1, technical_error: 1, blocked: 1, not_executed: 0,
+      ran_rate: 1 / 3, by_day: [
+        { jour: '2026-09-24', success: 1, technical_error: 1, blocked: 1, not_executed: 0 }] })
+
+    expect(w.text()).toContain('Bloqués (prérequis)')
+    expect(w.text()).toContain('compté dans le taux comme une erreur technique')
+    expect(w.text()).not.toContain('blocked')
+  })
+
+  it("reste lisible face à une ancienne réponse d'API sans `blocked`", async () => {
+    const w = await page({ total: 2, ran: 2, technical_error: 0, not_executed: 0,
+      ran_rate: 1, by_day: [{ jour: '2026-07-21', success: 2, technical_error: 0, not_executed: 0 }] })
+
+    expect(w.text()).toContain('Bloqués (prérequis)')
+    expect(w.text()).not.toContain('NaN')
+  })
+
   it("DIT qu'il n'y a aucune mesure au lieu d'afficher 0 %", async () => {
     const w = await page({ total: 0, ran: 0, technical_error: 0, not_executed: 0,
                            ran_rate: null, by_day: [] })
