@@ -1,0 +1,6 @@
+# Fichiers dont un HASH est calculé : la fin de ligne doit être identique sur tout poste (Windows
+# inclus, où core.autocrlf convertit en CRLF et change le hash — 2026-09-24).
+# - frontend/index.html : hash CSP de son script inline (api/app.py, test_deploiement_securite).
+# - prompts du générateur : system_prompt_sha256 de la provenance (generation/agent.py).
+frontend/index.html text eol=lf
+src/testpilot/generation/prompts/*.md text eol=lf
