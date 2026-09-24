@@ -277,7 +277,12 @@ def _migrate_48_execution_blocked(conn: sqlite3.Connection) -> None:
                 continue  # table absente, ou déjà migrée → idempotent
             new_sql = sql.replace(ancien, nouveau)
             if new_sql == sql:
-                continue  # liste non reconnue : ne rien casser en silence
+                # Ne rien casser… mais le DIRE : la migration passera à la version 48 alors que cette
+                # table refuserait encore `blocked` (`IntegrityError` à la persistance, cas retombé en
+                # `technical_error` sans cause visible — revue du lot 02).
+                logger.warning("[migration 48] liste du CHECK de %s non reconnue : table NON migrée, "
+                               "`blocked` y sera refusé", tbl)
+                continue
             tmp = f"{tbl}__migr48"
             # ⚠️ Le nom peut être ENTRE GUILLEMETS : SQLite réécrit `CREATE TABLE "execution"` dès
             # qu'une table a été renommée (`ALTER TABLE … RENAME`, comme le fait la migration 19).
@@ -287,7 +292,9 @@ def _migrate_48_execution_blocked(conn: sqlite3.Connection) -> None:
             create_tmp = re.sub(rf'CREATE TABLE\s+"?{re.escape(tbl)}"?', f"CREATE TABLE {tmp}",
                                 new_sql, count=1)
             if tmp not in create_tmp:
-                continue  # forme de CREATE TABLE inconnue : ne rien casser en silence
+                logger.warning("[migration 48] en-tête CREATE TABLE de %s non reconnu : table NON "
+                               "migrée, `blocked` y sera refusé", tbl)
+                continue
             aux = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE tbl_name=? AND type IN ('index','trigger')"
                 " AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%'", (tbl,)).fetchall()

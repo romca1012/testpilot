@@ -43,6 +43,10 @@ _ASSERTION_CALL_RE = re.compile(r"(?i)(assert|verify|check|expect|ensure)")
 ALWAYS_TRUE_CONSTANT = "always_true_constant"
 TAUTOLOGY_NEGATION_IN_ELSE = "tautology_negation_in_else"
 THEN_WITHOUT_ASSERTION = "then_without_assertion"
+# Lot 02 : un step `@given`/`@step` qui AFFIRME quelque chose. Sous « Soit », l'échec est classé
+# `blocked` (prérequis non rempli, décision D1), jamais `failed` : un vrai constat sur l'application
+# posé là serait présenté comme un problème d'environnement.
+ASSERTION_DANS_CONTEXTE = "assertion_dans_contexte"
 
 
 @dataclass(frozen=True)
@@ -78,6 +82,15 @@ def lint_steps(content: str) -> list[dict]:
                 step=label, line=func.lineno, kind=THEN_WITHOUT_ASSERTION,
                 message="Ce step `@then` n'affirme rien (ni assert, ni raise) : il ne peut pas "
                         "échouer — c'est un test vide.",
+            ))
+
+        if _est_contexte(func) and _affirme_directement(func):
+            warnings.append(LintWarning(
+                step=label, line=func.lineno, kind=ASSERTION_DANS_CONTEXTE,
+                message="Ce step `@given`/`@step` affirme quelque chose (assert ou AssertionError) : "
+                        "sous « Soit », un échec est classé « bloqué » (prérequis non rempli), jamais "
+                        "comme un défaut de l'application. Pour constater le comportement de "
+                        "l'application, écris un step `@then` (« Alors »).",
             ))
 
     warnings.sort(key=lambda w: (w.line, w.kind))
@@ -172,6 +185,24 @@ def _step_label(func) -> str:
 
 def _is_then(func) -> bool:
     return any(_deco_name(d) == "then" for d in func.decorator_list)
+
+
+def _est_contexte(func) -> bool:
+    """`@given` ou `@step` SANS `@then` : un step d'assertion garde son décorateur `@then`."""
+    noms = {_deco_name(d) for d in func.decorator_list}
+    return bool(noms & {"given", "step"}) and "then" not in noms
+
+
+def _affirme_directement(func) -> bool:
+    """Un `assert`, ou un `raise AssertionError(...)`, écrit DANS le corps du step."""
+    for node in ast.walk(func):
+        if isinstance(node, ast.Assert):
+            return True
+        if isinstance(node, ast.Raise) and node.exc is not None:
+            cible = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
+            if isinstance(cible, ast.Name) and cible.id == "AssertionError":
+                return True
+    return False
 
 
 def _deco_name(deco) -> str:

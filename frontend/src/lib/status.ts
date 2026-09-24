@@ -105,6 +105,28 @@ const DEFECT_ORIGIN: Record<string, StatusView> = {
   indetermine: { label: 'Origine à investiguer', icon: 'circle', tone: 'muted' },
 }
 
+// ── CAUSE d'un échec (`cause_category`) — jamais brute à l'écran (§4.7) ───────────────────────
+// ⚠️ Miroir de `LABELS` dans `src/testpilot/verdict/defect_taxonomy.py` : un test Python compare les
+// deux tables, une cause ajoutée d'un seul côté fait échouer la suite.
+const CAUSE: Record<string, string> = {
+  precondition_non_remplie: 'Prérequis non rempli (environnement)',
+  erreur_serveur_5xx: 'Erreur interne du serveur (HTTP 5xx)',
+  missing_server_context: 'Contexte serveur manquant',
+  donnee_refusee: 'Donnée du test refusée (à corriger)',
+  broken_test_code: 'Erreur dans le code du test',
+  wrong_navigation: 'Navigation erronée',
+  wrong_field_name: 'Champ/sélecteur introuvable',
+  missing_role: 'Rôle/permission manquant',
+  assertion_mismatch: 'Assertion métier en échec',
+  resolveur_incomplet: 'Test non automatisable (résolveur)',
+  refus_non_explique: 'Refus non expliqué (à instruire)',
+  unknown: 'Indéterminé',
+}
+/** Libellé français d'une cause ; une cause inconnue du front reste lisible (« à instruire »). */
+export function causeLabel(code: string | null | undefined): string {
+  return (code && CAUSE[code]) || 'Cause à instruire'
+}
+
 export function executionView(code: string | null | undefined): StatusView {
   return (code && EXECUTION[code]) || EXECUTION.not_executed
 }
