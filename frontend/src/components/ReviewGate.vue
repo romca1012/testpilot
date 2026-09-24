@@ -29,6 +29,8 @@ const FAMILLES: Record<string, string> = {
   champ_inconnu: 'donnée',
   // Lot 11 (F8) — un texte de message affirmé n'a jamais été observé pendant la génération.
   message_non_observe: 'donnée',
+  // Lot 12 — un produit choisi dans une liste n'a jamais été observé pendant la génération.
+  produit_non_observe: 'donnée',
 }
 
 // Repli explicite : un `kind` inconnu s'affiche quand même. Le taire ferait disparaître un

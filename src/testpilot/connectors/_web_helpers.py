@@ -77,9 +77,25 @@ def extract_form(page) -> dict:
 
     submission = _detect_submission(page)
     html = page.query_selector('html')
-    return {"fields": fields, "submission": submission,
+    return {"fields": fields, "submission": submission, "liens": _liens_visibles(page),
             "url": getattr(page, 'url', ''),
             "language": html.get_attribute('lang') or '' if html else ''}
+
+
+def _liens_visibles(page) -> list:
+    """Textes des liens VISIBLES (≤ 60 liens, ≤ 80 caractères chacun) — le catalogue d'une page
+    (lot 12). Best-effort : une page factice sans `evaluate` (tests) ou un échec rend `[]`."""
+    evaluer = getattr(page, "evaluate", None)
+    if evaluer is None:
+        return []
+    try:
+        liens = evaluer("""() => Array.from(new Set(Array.from(document.querySelectorAll('a[href]'))
+            .filter(a => a.offsetWidth || a.offsetHeight || a.getClientRects().length)
+            .map(a => (a.innerText || a.getAttribute('title') || '').trim().replace(/\\s+/g, ' '))
+            .filter(t => t && t.length <= 80))).slice(0, 60)""")
+    except Exception:
+        return []
+    return liens if isinstance(liens, list) else []
 
 
 def _detect_submission(page) -> dict:

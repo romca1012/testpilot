@@ -14,6 +14,7 @@ import ast
 from typing import TYPE_CHECKING
 
 from testpilot.generation import steps_library
+from testpilot.generation.references import message_refus, verifier_references
 
 if TYPE_CHECKING:
     from testpilot.generation.tools import ToolContext, ToolOutcome
@@ -127,6 +128,15 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
         return _outcome(
             "[write_feature_file] SCENARIO_VIDE : fournis au moins un scénario avec des "
             "étapes ; chaque plan de scénario doit avoir des exemples exécutables.", ok=False)
+    # Lot 12 (D11) : référence PROUVÉE inexistante → refus bloquant, là où la source fait autorité
+    # (champ relationnel Odoo par `name_search` RPC ; `<select>` entièrement relevé).
+    recherche = None
+    if ctx.connector is not None:
+        def recherche(modele, texte, limite):
+            return ctx.connector.name_search(modele, texte, limite)
+    refus = verifier_references(content, ctx.options_select, ctx.champs_relationnels, recherche)
+    if refus:
+        return _outcome(message_refus(refus), ok=False)
     path = ctx.generated_dir / f"{ctx.module_name}.feature"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")

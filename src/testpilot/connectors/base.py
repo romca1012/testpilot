@@ -49,6 +49,14 @@ class Connector(ABC):
     def read(self, model: str, ids: list[int], fields: list[str]) -> list[dict]:
         """Lit les champs demandés pour une liste d'IDs."""
 
+    def name_search(self, model: str, name: str, limit: int = 8) -> list[tuple[int, str]]:
+        """Enregistrements de `model` dont le nom affiché correspond à `name` : `[(id, nom)]`.
+
+        Optionnel (lot 12, D11) : sert à PROUVER qu'une référence relationnelle existe. Un
+        connecteur sans modèle de données lève `NotImplementedError` — le contrôle ne refuse alors
+        rien (une source qui ne peut pas juger ne condamne pas)."""
+        raise NotImplementedError("ce connecteur n'expose pas de recherche par nom")
+
     @abstractmethod
     def inspect_form(self, page_url: str) -> dict:
         """Observe un formulaire réel : {fields: [{name, required, type}], submission: {...}, error: ""}."""

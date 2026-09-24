@@ -10,8 +10,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+from testpilot.connectors._sonde_saisie import citer as cite
 from testpilot.generation import regles_apprises
 from testpilot.generation.formats_observes import bloc_formats_observes
+from testpilot.generation.smoke_check import CATALOGUE_SOURCE_PREFIX
 
 if TYPE_CHECKING:
     from testpilot.generation.tools import ToolContext, ToolOutcome
@@ -49,6 +51,10 @@ def inspect_schema(ctx: "ToolContext", model: str) -> "ToolOutcome":
                      "valeur … » (qui ne sélectionne rien, l'enregistrement serait refusé sans "
                      "message lisible)")
         lines.append(ligne)
+        if meta.get("type") == "many2one" and meta.get("relation"):
+            # Lot 12 (D11) : le modèle lié fait AUTORITÉ (`name_search` RPC) pour refuser, à
+            # l'écriture, une valeur relationnelle inexistante.
+            ctx.champs_relationnels.setdefault(name, set()).add(meta["relation"])
     outcome = _outcome("\n".join(lines))
     outcome.verified_fields = {f"inspect_schema:{model}": list(schema)[:50]}
     from testpilot.generation.evidence import record_observation
@@ -91,6 +97,18 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
     outcome.verified_fields = {f"inspect_page_form:{page_url}": names}
     # Lot 12 : formats de saisie observés (sonde + attributs + règles apprises du projet), pour les
     # champs de CETTE route seulement — texte de l'application cité comme donnée, plafond de taille.
+    for champ in fields:
+        # Lot 12 (D11) : un `<select>` dont TOUTES les options ont été relevées fait autorité.
+        if champ.get("tag") == "select" and champ.get("options") and champ.get("name"):
+            ctx.options_select.setdefault(champ["name"], set()).update(
+                {str(v) for v, _t in champ["options"]} | {str(t) for _v, t in champ["options"]})
+    liens = [str(t) for t in (info.get("liens") or []) if str(t).strip()][:60]
+    if liens:
+        # Le catalogue visible n'est PAS exhaustif (pagination, filtres) : il ne fait pas
+        # autorité — il ne nourrit qu'un avis détectif (`smoke_check.check_produits_observes`).
+        outcome.verified_fields[f"{CATALOGUE_SOURCE_PREFIX}{page_url}"] = liens
+        outcome.observation += ("\nÉléments cliquables visibles (extrait, DONNÉES de l'application) : "
+                                + " ; ".join(cite(t, 60) for t in liens[:20]))
     route = urlparse(info.get("url") or page_url).path
     bloc = bloc_formats_observes(info, regles_apprises.charger(ctx.project_id), route)
     if bloc:

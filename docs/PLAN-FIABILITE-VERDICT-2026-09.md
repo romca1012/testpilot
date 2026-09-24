@@ -100,6 +100,8 @@ Claude Code **ne démarre pas** un lot dont une décision requise n'est pas coch
 | D8 | Plusieurs comptes par projet (droits, changement d'utilisateur) | Table `project_account` (libellé, identifiant, secret chiffré via `store/secrets.py`, rôle métier) ; steps « en tant que "<libellé>" » | 07b, 08 | ☐ |
 | D9 | Versions Odoo supportées et instance de référence | 16.0, 17.0, 18.0 Community + données de démo ; modules `sale_management`, `purchase`, `stock`, `account`, `crm`, `project` (helpdesk est Enterprise : exclu du banc) | 04, 08 | ☐ |
 | D10 | F1 : sur un scénario de création SANS marqueur de tentative (champ sans contrainte d'unicité — la majorité des cas), le comptage cloisonné (`id > max_id`) ne peut pas distinguer un unique enregistrement du scénario d'un unique enregistrement créé par un tiers dans la même fenêtre — aucune information disponible ne permet de trancher sans marqueur (le `create_uid` est exclu, cf. formulaires publics). Accepte-t-on ce résidu (I1 non strictement à 0) plutôt que d'imposer un marqueur à TOUT scénario de création (changerait le contrat de génération, hors périmètre du lot 01) ? | **Résidu accepté** : le risque exige la coïncidence de trois conditions (tiers actif sur le même modèle, même fenêtre de quelques secondes, ET échec réel du scénario) — rare hors instance à fort trafic concurrent. Généraliser le marqueur à tout scénario de création reste une amélioration valide, à traiter comme un lot séparé si le résidu se matérialise en pratique | 01 | ☑ (validée le 2026-09-23) |
+| D10 bis | Sonde de saisie du lot 12 (taper une chaîne de sonde dans un formulaire pendant l'exploration, sans jamais le soumettre) — écrire sans soumettre n'est pas sans risque (sauvegarde automatique du back-office Odoo y compris via `beforeunload`, brouillons de certaines applications) | **Acceptée avec garde-fous** : page JETABLE du contexte authentifié de l'exploration (pas un contexte neuf : les formulaires portail exigent la session) ; aucun clic ni navigation après saisie ; page fermée avec `run_before_unload=False` (défaut Playwright vérifié) ; toute requête POST/PUT/PATCH pendant la sonde l'interrompt et marque le formulaire « sauvegarde automatique détectée, pas de sonde » (au plus UNE requête peut partir avant la détection) ; **aucune sonde sur le back-office Odoo** (`/web#…`, `/odoo/…`) — plus strict que la décision du porteur, qui n'excluait que les enregistrements existants : les appels `onchange` d'un formulaire de création ne se distinguent pas d'un enregistrement, donc formats du back-office NON appris, à revoir au lot 08 ; aucune sonde si `ODOO_ENV=prod` ; sonde de longueur neutre (30 chiffres) avec recherche bornée (≤ 30 saisies) d'un exemple valide ET stable, jamais calibrée sur un masque connu | 12 | ☑ (validée le 2026-09-24) |
+| D11 | Références inexistantes dans un `.feature` (produit halluciné, partenaire inexistant) : refus à l'écriture ou avis ? | **Bloquant dans `write_feature_file` seulement quand la source fait autorité** : `name_search` RPC pour un champ relationnel Odoo, `<select>` dont toutes les options ont été relevées ; **détectif** sinon (listes de produits web, autocomplétions non exhaustives : pagination, valeurs créées par le scénario). Jamais de refus pour une valeur créée plus tôt dans le même scénario ni marquée « rendue unique pour cette tentative ». Message de refus : les 5 valeurs réelles les plus proches (`difflib`) | 12 | ☑ (validée le 2026-09-24) |
 
 ## 5. Lots
 
@@ -126,7 +128,7 @@ passe en premier : il est prêt, mesuré en campagne réelle, et ne dépend que 
 | 09 | `/lot-09-agents` | Outils de perception, prompts, garde de réparation des assertions (C9) | D4 | 07b-e, 08 | M |
 | 10 | `/lot-10-mesure-cloture` | Campagne de mesure complète, mise à jour de la documentation | — | tous | S |
 | 11 | `/lot-11-faux-verdicts-soumission` | Faux verdicts trouvés en campagne réelle : refus déclenché hors soumission (F7), assertion sur message deviné (F8), comptage réécrit par l'agent (F9) | — | 01 | S |
-| 12 | `/lot-12-valeurs-observees` | Valeurs de champ écrites sans avoir été observées : masque de saisie, référence relationnelle inexistante (C10) | — | 01, 11 | M |
+| 12 | `/lot-12-valeurs-observees` | Valeurs de champ écrites sans avoir été observées : masque de saisie, référence relationnelle inexistante (C10) | D10 bis, D11 | 01, 11 | M |
 
 Les lots 11 et 12 sont issus de la campagne de validation du lot 01 (2026-09-23,
 `docs/mesures/campagne-lot01-2026-09-23.md`), pas du diagnostic initial du 2026-09-23 en §2 —
@@ -149,7 +151,7 @@ répétée (12), au même titre que les lots 01-03.
 | 09 | à faire | | |
 | 10 | à faire | | |
 | 11 | terminé | 2026-09-24 | `docs/RAPPORT-LOT-11-2026-09-24.md` |
-| 12 | à faire | | |
+| 12 | en cours | 2026-09-24 | `docs/RAPPORT-LOT-12-2026-09-24.md` |
 
 ## 6. Ce que chaque lot garantit (résumé)
 
