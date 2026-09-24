@@ -185,6 +185,11 @@ class _PagePersistante:
     def __init__(self, page_jetable):
         self.context = _ContexteAuthentifie(page_jetable)
         page_jetable.contexte = self.context
+        self.tardifs = []  # évènements qui n'arrivent que pendant une ATTENTE de la page persistante
+
+    def wait_for_timeout(self, _ms):
+        while self.tardifs:
+            self.tardifs.pop(0)()
 
 
 def _groupes(taille, separateur):
@@ -1016,6 +1021,7 @@ def test_reel_window_open_et_target_blank_n_atteignent_pas_le_serveur_et_ne_lais
             page = contexte.new_page()
 
             resultat = sonde.sonder_formulaire(page, url)
+            page.wait_for_timeout(500)  # la page orpheline apparaît 10 à 40 ms APRÈS la sonde
             pages_restantes = len(contexte.pages)
             # La garde a bien été retirée du contexte partagé : la page d'origine navigue à nouveau.
             page.goto(f"http://127.0.0.1:{srv.server_port}/form")
@@ -1159,6 +1165,7 @@ def test_reel_une_fenetre_ouverte_par_le_chargement_meme_de_la_page_est_fermee()
             page = contexte.new_page()
 
             resultat = sonde.sonder_formulaire(page, url)
+            page.wait_for_timeout(500)
             pages_restantes = len(contexte.pages)
             navigateur.close()
     finally:
@@ -1297,3 +1304,38 @@ def test_photographie_reussie_ne_signale_aucune_degradation():
     resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
 
     assert "perception_degradee" not in resultat
+
+
+def test_une_fenetre_qui_apparait_apres_la_fin_de_la_sonde_est_fermee():
+    """Mesuré le 2026-09-24 : la page ouverte par `window.open` / `target="_blank"` apparaît 10 à
+    40 ms APRÈS le retour de la sonde. Sans attente des retardataires (garde et écouteur encore
+    posés) elle restait ouverte, en `chrome-error://`."""
+    persistante_ref: list = []
+
+    def popup_tardif(page):
+        for h in list(page.handlers):  # la navigation de la fenêtre est abandonnée par la garde
+            h(_Route(_RequeteNavigation("GET", "https://app.test/popup")))
+        persistante_ref[0].tardifs.append(page.contexte.ouvrir_page_annexe)
+
+    page = _PageJetable({"code": ""}, selects={"type": ["", "a", "b"], "pays": list(_PAYS)},
+                        au_choix={"type": popup_tardif}, valide=r"\d*")
+    persistante = _PagePersistante(page)
+    persistante_ref.append(persistante)
+
+    resultat = sonde.sonder_formulaire(persistante, "https://app.test/en/form/1")
+
+    (annexe,) = persistante.context.annexes
+    assert annexe.fermeture == {"run_before_unload": False}, "la page tardive est fermée"
+    assert resultat["statut"] == "interrompue"
+    assert persistante.context.retirees == persistante.context.gardes, "garde retirée ensuite"
+
+
+def test_sans_navigation_ni_page_vue_aucune_attente_supplementaire():
+    page = _PageJetable({"code": ""}, valide=r"\d*")
+    persistante = _PagePersistante(page)
+    attentes: list = []
+    persistante.wait_for_timeout = lambda ms: attentes.append(ms)
+
+    sonde.sonder_formulaire(persistante, "https://app.test/en/form/1")
+
+    assert attentes == [], "aucun retardataire à attendre : 0 ms de plus"
