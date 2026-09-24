@@ -90,16 +90,29 @@ _JS_CHAMPS = """() => Array.from(document.querySelectorAll('input')).filter(el =
 # de fermer. Limite assumée : une image GET (`new Image().src = …`) à la fermeture n'est pas une écriture.
 _JS_NEUTRALISE_FERMETURE = """(() => {
   window.__tpFermeture = false;
-  const original = navigator.sendBeacon ? navigator.sendBeacon.bind(navigator) : null;
-  try {
-    Object.defineProperty(navigator, 'sendBeacon', {configurable: true, value: function () {
-      if (window.__tpFermeture) { return true; }
-      return original ? original.apply(null, arguments) : false;
-    }});
-  } catch (e) {}
+  // `sendBeacon` est remplacé sur le PROTOTYPE (`Navigator.prototype.sendBeacon.call(...)` ne
+  // contourne plus) et reste inscriptible : une page qui le réassigne (polyfill, mock, mode strict)
+  // ne lève pas d'erreur qu'elle n'aurait pas sans nous.
+  const proto = (typeof Navigator !== 'undefined') ? Navigator.prototype : null;
+  const original = proto && proto.sendBeacon ? proto.sendBeacon : null;
+  if (proto) {
+    try {
+      Object.defineProperty(proto, 'sendBeacon', {configurable: true, writable: true,
+        value: function () {
+          if (window.__tpFermeture) { return true; }
+          return original ? original.apply(this, arguments) : false;
+        }});
+    } catch (e) {}
+  }
+  // `fetch` : `keepalive` peut venir des options (`fetch(u, {keepalive: true})`) OU d'un objet
+  // `Request` (`fetch(new Request(u, {keepalive: true}))`) ; des options explicites l'emportent.
   const f = window.fetch;
+  const estKeepalive = (u, o) => {
+    if (o && 'keepalive' in o) { return !!o.keepalive; }
+    return typeof Request !== 'undefined' && u instanceof Request && u.keepalive === true;
+  };
   window.fetch = function (u, o) {
-    if (window.__tpFermeture && o && o.keepalive) {
+    if (window.__tpFermeture && estKeepalive(u, o)) {
       return Promise.resolve(new Response(null, {status: 204}));
     }
     return f.apply(this, arguments);
