@@ -221,3 +221,31 @@ def test_le_catalogue_n_est_jamais_pris_pour_des_noms_de_champ_et_smoke_check_le
 def test_le_kind_produit_non_observe_a_un_libelle_francais_a_l_ecran():
     vue = Path("frontend/src/components/ReviewGate.vue").read_text(encoding="utf-8")
     assert "produit_non_observe: 'donnée'" in vue
+
+
+# ── Revue du lot 12 : refus à tort (paramètre de Scénario Plan, select peuplé par JavaScript) ──
+
+def test_un_parametre_de_scenario_plan_n_est_jamais_refuse():
+    """`<client>` est un gabarit remplacé par les Exemples, pas une valeur saisie : sans cette
+    exception le refus revenait à chaque réécriture et l'agent ne pouvait pas s'en sortir."""
+    feature = _feature('Quand je sélectionne "<client>" dans le champ "partner_id"')
+
+    assert refs.verifier_references(feature, {}, {"partner_id": {"res.partner"}},
+                                    _name_search) == []
+    assert refs.verifier_references(
+        _feature('Et je sélectionne "<type>" dans le champ "types_demandes"'),
+        {"types_demandes": {"a", "Option A"}}, {}, None) == []
+
+
+def test_un_select_qui_ne_contient_que_son_placeholder_ne_fait_pas_autorite(tmp_path):
+    class _C:
+        def inspect_form(self, url):
+            return {"url": url, "submission": {}, "fields": [
+                {"name": "etat", "tag": "select", "options": [["", "Choisir…"]]},
+                {"name": "pays", "tag": "select", "options": [["", "Choisir…"], ["fr", "France"]]}]}
+
+    ctx = ToolContext(module_name="m", generated_dir=tmp_path, connector=_C())
+    inspect_tools.inspect_page_form(ctx, "https://app.test/formulaire/1")
+
+    assert "etat" not in ctx.options_select
+    assert ctx.options_select["pays"] == {"fr", "France"}
