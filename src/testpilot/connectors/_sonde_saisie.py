@@ -137,7 +137,14 @@ def sonder_formulaire(page, url: str) -> dict:
         for nom in list(jetable.evaluate(_JS_CHAMPS))[:_CHAMPS_MAX]:
             if ecritures:
                 break
-            resultat["champs"][nom] = _sonder_champ(jetable, nom, ecritures)
+            try:
+                resultat["champs"][nom] = _sonder_champ(jetable, nom, ecritures)
+            except Exception as exc:
+                # Un champ qui se laisse mal sonder ne doit pas faire perdre les autres (mesuré le
+                # 2026-09-24 sur retenue_garantie/1 : un `type=number` a fait échouer tout le
+                # formulaire, donc aussi les champs texte qui suivaient).
+                resultat["champs"][nom] = {"sondes": {}, "exemple_stable": None,
+                                           "erreur": str(exc)[:120]}
         if ecritures:
             resultat["statut"] = "interrompue"
             resultat["raison"] = ("sauvegarde automatique détectée, pas de sonde : "
@@ -164,13 +171,21 @@ def _lire(loc) -> dict:
 def _sonder_champ(page, nom: str, ecritures: list) -> dict:
     loc = page.locator(_selecteur(nom)).first
 
-    def remplir(valeur: str) -> None:
-        loc.fill(valeur)
+    def remplir(valeur: str) -> bool:
+        """`False` si le navigateur REFUSE la saisie (Playwright ne tape pas de lettres dans un
+        `type=number`, par exemple) : rien n'a été écrit, la chaîne est simplement inapplicable."""
+        try:
+            loc.fill(valeur)
+        except Exception:
+            return False
         page.wait_for_timeout(_SETTLE_MS)
+        return True
 
     sondes: dict = {}
     for libelle, chaine in CHAINES_SONDE:
-        remplir(chaine)
+        if not remplir(chaine):
+            sondes[libelle] = {"ecrit": chaine, "refuse": True}
+            continue
         if ecritures:
             break
         sondes[libelle] = {"ecrit": chaine, **_lire(loc)}
@@ -203,15 +218,13 @@ def _chercher_exemple_stable(loc, sondes: dict, ecritures: list, remplir):
         if budget[0] < 2 or not candidat:
             return None
         budget[0] -= 1
-        remplir(candidat)
-        if ecritures:
+        if not remplir(candidat) or ecritures:
             return None
         premiere = _lire(loc)
         if not (premiere["valide"] and premiere["retenu"].strip()):
             return None
         budget[0] -= 1
-        remplir(premiere["retenu"])
-        if ecritures:
+        if not remplir(premiere["retenu"]) or ecritures:
             return None
         seconde = _lire(loc)
         if seconde["retenu"] == premiere["retenu"] and seconde["valide"]:
@@ -251,6 +264,8 @@ def resume_pour_agent(nom: str, champ: dict) -> str:
     """Une ligne d'observation par champ — texte de l'application cité comme DONNÉE, tronqué."""
     parties = []
     for libelle, s in (champ.get("sondes") or {}).items():
+        if s.get("refuse"):
+            continue
         if s.get("retenu") != s.get("ecrit"):
             parties.append(f"{libelle}: {citer(s.get('ecrit'), 40)} → retenu {citer(s.get('retenu'))}")
         if s.get("message"):

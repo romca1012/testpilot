@@ -415,3 +415,45 @@ def test_reel_mesure_sur_des_masques_jamais_vus_pendant_la_conception():
     assert re.fullmatch(r"\d{4}( \d{4})*", champs["carte"]["exemple_stable"] or "")
     assert champs["iban"]["exemple_stable"] is None
     assert not sonde.resume_pour_agent("commentaire", champs["commentaire"]),         "un champ sans masque ne produit aucune observation"
+
+
+# ── Champ que le navigateur refuse de remplir (`type=number` et lettres) — mesuré le 2026-09-24 ─────
+
+def _refuse_les_lettres(saisi):
+    if not saisi.isdigit():
+        raise ValueError("Cannot type text into input[type=number]")
+    return saisi
+
+
+def test_un_champ_qui_refuse_les_lettres_ne_fait_pas_echouer_le_formulaire():
+    """Sur retenue_garantie/1, `fill("abcdefgh")` dans un `type=number` levait et faisait tomber
+    TOUT le formulaire (statut « erreur ») : les champs texte suivants n'étaient jamais sondés."""
+    page = _PageJetable({"montant": "", "code": ""}, valide=r"\d+",
+                        retention={"montant": _refuse_les_lettres})
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert resultat["statut"] == "ok", resultat
+    montant = resultat["champs"]["montant"]
+    assert montant["sondes"]["lettres"] == {"ecrit": "abcdefgh", "refuse": True}
+    assert montant["sondes"]["chiffres"]["retenu"] == "123456789012345678901234567890"
+    assert set(resultat["champs"]["code"]["sondes"]) == {"lettres", "chiffres", "melange"}
+    assert "refuse" not in sonde.resume_pour_agent("montant", montant)
+
+
+def test_une_erreur_imprevue_sur_un_champ_laisse_les_autres_champs_sondes():
+    page = _PageJetable({"a": "", "b": ""}, valide=r"\d+")
+    lire_normal = page.lire
+
+    def lire(nom):
+        if nom == "a":
+            raise RuntimeError("page fermee")
+        return lire_normal(nom)
+
+    page.lire = lire
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert resultat["statut"] == "ok"
+    assert "page fermee" in resultat["champs"]["a"]["erreur"]
+    assert set(resultat["champs"]["b"]["sondes"]) == {"lettres", "chiffres", "melange"}
