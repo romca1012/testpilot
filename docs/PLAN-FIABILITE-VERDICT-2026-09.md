@@ -153,7 +153,7 @@ répétée (12), au même titre que les lots 01-03.
 | 01 | terminé | 2026-09-23 | `docs/RAPPORT-LOT-01-COMPTAGES-2026-09-23.md` |
 | 02 | terminé (fusionné le 2026-09-24, revue faite, F10 traité par D12) | 2026-09-24 | `docs/RAPPORT-LOT-02-2026-09-24.md` ; PR n° 7 (https://github.com/romca1012/testpilot/pull/7) |
 | 03 | terminé (fusionné le 2026-09-24, revue faite) | 2026-09-24 | `docs/RAPPORT-LOT-03-2026-09-24.md` ; PR n° 9 (https://github.com/romca1012/testpilot/pull/9) ; mesures : `docs/mesures/lot03-constats-2026-09-24.md` |
-| 04 | terminé (sous réserve de la relecture des attendus, de la revue et de la CI) | 2026-09-24 | `docs/RAPPORT-LOT-04-2026-09-24.md` ; mesures : `docs/mesures/banc-*-2026-09-24*.md` |
+| 04 | terminé (fusionné le 2026-09-24, revue faite ; attendus à relire par le porteur) | 2026-09-24 | `docs/RAPPORT-LOT-04-2026-09-24.md` ; PR n° 10 (https://github.com/romca1012/testpilot/pull/10) ; mesures : `docs/mesures/banc-*-2026-09-24*.md` |
 | 05 | à faire | | |
 | 06 | à faire | | |
 | 07a | terminé (fusionné le 2026-09-24, revue faite) | 2026-09-24 | `docs/RAPPORT-LOT-07A-2026-09-24.md` ; PR n° 8 (https://github.com/romca1012/testpilot/pull/8) ; mesures : `docs/mesures/lot07a-connexion-execution-2026-09-24.md` |
