@@ -60,6 +60,13 @@ _ESSAIS_RECHERCHE_MAX = 30
 _SETTLE_MS = 40
 # Un select masqué (widget de remplacement) ne doit pas bloquer la sonde 30 s : échec rapide.
 _SELECT_TIMEOUT_MS = 2000
+# Une fenêtre ouverte par la saisie (`window.open`, `target="_blank"`) n'apparaît côté Playwright que
+# 10 à 40 ms APRÈS la fin de la sonde (mesuré le 2026-09-24 : une page `chrome-error://` restait
+# ouverte dans 4 essais sur 20 avec `window.open` et 18 sur 20 avec `target="_blank"`). Quand on a vu
+# passer une navigation ou une page nouvelle, on attend donc ces retardataires, garde et écouteur
+# encore posés, avant de conclure.
+_ATTENTE_RETARDATAIRES_MS = 150
+_TOURS_RETARDATAIRES = 2
 
 _METHODES_ECRITURE = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _METHODES_RPC_LECTURE = frozenset({"read", "search_read", "search", "search_count", "name_search",
@@ -307,55 +314,8 @@ def sonder_formulaire(page, url: str) -> dict:
             resultat["statut"] = "erreur"
             resultat["raison"] = str(exc)[:200]
     finally:
-        if jetable is not None:
-            # Le dernier `fill("")` (vidage du champ) peut émettre une requête que le gestionnaire
-            # d'interception ne traite qu'au tour suivant : on lui laisse le temps AVANT de rendre la
-            # garde inerte, sinon l'écriture passerait sans être consignée, statut « ok » (revue du
-            # lot 12, point 9). Une écriture apparue dans cette fenêtre interrompt la sonde.
-            avant_attente = len(ecritures)
-            try:
-                jetable.wait_for_timeout(_SETTLE_MS)
-            except Exception:
-                pass
-            if len(ecritures) > avant_attente:
-                _marquer_interruption(resultat, ecritures)
-                for select in (resultat.get("selects") or {}).values():
-                    select["independant"] = False  # observation invalidée
-        actif["oui"] = False  # ensuite : même si `unroute` échoue, la garde devient inerte
-        if contexte is not None:
-            try:
-                # Pages apparues pendant le chargement initial ou l'attente de 300 ms, avant la garde et
-                # l'écouteur (une fenêtre ouverte par le chargement même de la page). Seulement si la
-                # photographie initiale a réussi.
-                if avant_pages is not None:
-                    for nouvelle in contexte.pages:
-                        if nouvelle not in avant_pages and nouvelle is not jetable \
-                                and nouvelle not in annexes:
-                            annexes.append(nouvelle)
-            except Exception:
-                pass
-            # La garde est posée sur le contexte PARTAGÉ de l'exploration : la laisser en place
-            # casserait la suite de l'exploration. Chaque retrait est protégé séparément.
-            if garde is not None:
-                try:
-                    contexte.unroute("**/*", garde)
-                except Exception as exc:
-                    logger.warning("[sonde de saisie] garde non retirée : %s", exc)
-            if ecoute is not None:
-                try:
-                    contexte.remove_listener("page", ecoute)
-                except Exception:
-                    pass
-        for ouverte in [*annexes, jetable]:
-            if ouverte is not None:
-                try:
-                    ouverte.evaluate(_JS_MARQUE_FERMETURE)  # neutralise les beacons de fermeture
-                except Exception:
-                    pass
-                try:
-                    ouverte.close(run_before_unload=False)
-                except Exception:
-                    pass
+        _terminer(page, jetable, contexte, garde, ecoute, actif, annexes, avant_pages, ecritures,
+                  resultat)
     return resultat
 
 
@@ -368,6 +328,92 @@ def _marquer_interruption(resultat: dict, ecritures: list) -> None:
                               + ecritures[0][len(_MARQUE_NAVIGATION):][:120])
     else:
         resultat["raison"] = "sauvegarde automatique détectée, pas de sonde : " + ecritures[0][:120]
+
+
+def _fermer_pages(pages, fermees: list) -> None:
+    """Ferme chaque page une seule fois : marqueur de fermeture (neutralise les beacons de
+    `pagehide`) puis `close(run_before_unload=False)`."""
+    for ouverte in pages:
+        if ouverte is None or ouverte in fermees:
+            continue
+        fermees.append(ouverte)
+        try:
+            ouverte.evaluate(_JS_MARQUE_FERMETURE)
+        except Exception:
+            pass
+        try:
+            ouverte.close(run_before_unload=False)
+        except Exception:
+            pass
+
+
+def _balayer_pages(contexte, avant_pages, jetable, annexes: list) -> None:
+    """Ajoute aux annexes toute page du contexte absente de la photographie initiale. Rien si la
+    photographie a échoué (`None`) : on ne saurait pas quelles pages sont à nous."""
+    if avant_pages is None:
+        return
+    try:
+        for nouvelle in contexte.pages:
+            if nouvelle not in avant_pages and nouvelle is not jetable and nouvelle not in annexes:
+                annexes.append(nouvelle)
+    except Exception:
+        pass
+
+
+def _terminer(page, jetable, contexte, garde, ecoute, actif, annexes, avant_pages, ecritures,
+              resultat) -> None:
+    """Fin de sonde : la garde et l'écouteur restent posés jusqu'à la dernière page fermée."""
+    if jetable is not None:
+        # Le dernier `fill("")` (vidage du champ) peut émettre une requête que le gestionnaire
+        # d'interception ne traite qu'au tour suivant : on lui laisse le temps AVANT de rendre la
+        # garde inerte, sinon l'écriture passerait sans être consignée, statut « ok » (revue du
+        # lot 12, point 9). Une écriture apparue dans cette fenêtre interrompt la sonde.
+        avant_attente = len(ecritures)
+        try:
+            jetable.wait_for_timeout(_SETTLE_MS)
+        except Exception:
+            pass
+        if len(ecritures) > avant_attente:
+            _marquer_interruption(resultat, ecritures)
+            for select in (resultat.get("selects") or {}).values():
+                select["independant"] = False  # observation invalidée
+    fermees: list = []
+    if contexte is not None:
+        # Pages apparues pendant le chargement initial ou l'attente de 300 ms, avant la garde et
+        # l'écouteur (une fenêtre ouverte par le chargement même de la page).
+        _balayer_pages(contexte, avant_pages, jetable, annexes)
+        _fermer_pages([*annexes, jetable], fermees)
+        # Retardataires : une fenêtre ouverte par la saisie apparaît APRÈS la fin de la sonde. Attente
+        # seulement si on a vu passer une navigation ou une page (sinon 0 ms de plus).
+        vu = bool(annexes) or any(e.startswith(_MARQUE_NAVIGATION) for e in ecritures)
+        avant_retardataires = len(ecritures)
+        for _ in range(_TOURS_RETARDATAIRES if vu else 0):
+            try:
+                page.wait_for_timeout(_ATTENTE_RETARDATAIRES_MS)
+            except Exception:
+                break
+            _balayer_pages(contexte, avant_pages, jetable, annexes)
+            _fermer_pages(annexes, fermees)
+        if len(ecritures) > avant_retardataires:
+            for select in (resultat.get("selects") or {}).values():
+                select["independant"] = False  # une page tardive invalide l'observation
+    elif jetable is not None:
+        _fermer_pages([jetable], fermees)
+    actif["oui"] = False  # ensuite : même si `unroute` échoue, la garde devient inerte
+    if contexte is not None:
+        # La garde est posée sur le contexte PARTAGÉ de l'exploration : la laisser en place casserait la
+        # suite de l'exploration. Chaque retrait est protégé séparément.
+        if garde is not None:
+            try:
+                contexte.unroute("**/*", garde)
+            except Exception as exc:
+                logger.warning("[sonde de saisie] garde non retirée : %s", exc)
+        if ecoute is not None:
+            try:
+                contexte.remove_listener("page", ecoute)
+            except Exception:
+                pass
+    _marquer_interruption(resultat, ecritures)  # une page tardive est aussi une interruption
 
 
 def _options_selects_ou_vide(page) -> dict:
