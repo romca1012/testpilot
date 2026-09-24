@@ -1,12 +1,12 @@
 ---
-description: Lot 07 — Tester toute application web authentifiée : connexion, session, contexte, vocabulaire, oracle (C1-C5)
-argument-hint: "[sous-lot : a | b | c | d | e — vide = tous, dans l'ordre]"
+description: Lot 07b-e — Application web authentifiée : session, contexte, vocabulaire, oracle (C2-C5) — la connexion à l'exécution (07a) est un lot à part
+argument-hint: "[sous-lot : b | c | d | e — vide = tous, dans l'ordre]"
 ---
 
-# Lot 07 — Connecteur web générique complet
+# Lot 07b-e — Connecteur web générique complet (hors connexion)
 
-Lis `CLAUDE.md`, C1-C5 du plan. Décisions requises : **D7** (sous-lot e) et **D8** (sous-lot b).
-Dépend des lots 02 et 03. Sous-lot demandé : `$ARGUMENTS`. Une branche par sous-lot :
+Lis `CLAUDE.md`, C2-C5 du plan. Décisions requises : **D7** (sous-lot e) et **D8** (sous-lot b).
+Dépend des lots 02, 03 et **07a** (`/lot-07a-connexion-execution`, séparé le 2026-09-24). Sous-lot demandé : `$ARGUMENTS`. Une branche par sous-lot :
 `lot-07<x>-…`.
 
 ## À lire d'abord
@@ -18,21 +18,6 @@ Dépend des lots 02 et 03. Sous-lot demandé : `$ARGUMENTS`. Une branche par sou
 - `behave_runtime/steps_library/generic/_generic_steps.py`, `_base_helpers.py`.
 - `tests/test_conformite_connecteur_web.py`, `tests/fixtures/torture_app/`.
 - `src/testpilot/store/secrets.py`.
-
-## 07a — Connexion à l'exécution (C1) — le manque bloquant
-
-Aujourd'hui l'exploration se connecte mais les tests tournent en **anonyme** : `WEB_USER` /
-`WEB_PASSWORD` ne sont lus par aucun step.
-
-1. Step générique `je me connecte avec mes identifiants utilisateur` pour le connecteur `web`,
-   qui **délègue** à `tenter_connexion_generique` (même fonction que l'exploration — jamais une
-   seconde implémentation, cf. l'incident du 2026-09-18 documenté dans `odoo/_odoo_steps.py`).
-   Attention au conflit de libellé avec le step Odoo : les deux vivent dans des dossiers
-   distincts copiés selon le connecteur ; vérifie qu'aucun projet ne charge les deux.
-2. Échec de connexion → `PreconditionNonRemplieError` (→ `blocked`, lot 02), avec l'URL et le
-   schéma tenté. Identifiants vides sur une application qui exige une connexion → idem.
-3. Critère de connexion réussie **vérifié** : l'URL a quitté la page de connexion **et** aucun
-   champ mot de passe visible, ou un sélecteur « connecté » déclaré dans les réglages du projet.
 
 ## 07b — Session réutilisée et stratégies d'authentification (C2)
 
@@ -95,8 +80,6 @@ structure HTML. Aucun sélecteur propre à une application.
 
 ## Critères d'acceptation
 
-- [ ] Un cas généré sur une application web authentifiée s'exécute connecté, sans step écrit par
-      l'agent pour se connecter.
 - [ ] L'exploration et l'exécution utilisent le même code de connexion et le même contexte.
 - [ ] Chaque nouveau step affirmatif a un test de falsifiabilité.
 
