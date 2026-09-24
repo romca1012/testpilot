@@ -508,6 +508,7 @@ class QualityDayOut(BaseModel):
     jour: str
     success: int = 0
     technical_error: int = 0
+    blocked: int = 0
     not_executed: int = 0
 
 
@@ -520,6 +521,7 @@ class QualityOut(BaseModel):
     total: int = 0
     ran: int = 0
     technical_error: int = 0
+    blocked: int = 0
     not_executed: int = 0
     ran_rate: float | None = None
     by_day: list[QualityDayOut] = []

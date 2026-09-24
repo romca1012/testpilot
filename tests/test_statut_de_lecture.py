@@ -24,6 +24,7 @@ import sqlite3
 import pytest
 
 from testpilot.verdict.status import (
+    EXEC_BLOCKED,
     EXEC_NOT_EXECUTED,
     EXEC_SUCCESS,
     EXEC_TECHNICAL_ERROR,
@@ -42,7 +43,7 @@ from testpilot.verdict.status import (
     statut_de_test,
 )
 
-EXECUTIONS = [EXEC_SUCCESS, EXEC_TECHNICAL_ERROR, EXEC_NOT_EXECUTED, None]
+EXECUTIONS = [EXEC_SUCCESS, EXEC_TECHNICAL_ERROR, EXEC_BLOCKED, EXEC_NOT_EXECUTED, None]
 FONCTIONNELS = [FUNC_CONFORME, FUNC_NON_CONFORME, FUNC_INDETERMINE, FUNC_NOT_EVALUATED,
                 FUNC_DONNEE_INVALIDE, None]
 # Les valeurs REFUSÉES comptent autant que les acceptées : c'est sur elles que les deux formes
@@ -61,6 +62,10 @@ MANUELS = [None, "", *STATUTS_MANUELS, STATUT_UNTESTED, "n_importe_quoi"]
     (EXEC_SUCCESS, FUNC_INDETERMINE, STATUT_RETEST),
     (EXEC_NOT_EXECUTED, FUNC_INDETERMINE, STATUT_UNTESTED),
     (EXEC_TECHNICAL_ERROR, FUNC_NOT_EVALUATED, STATUT_BLOCKED),
+    # Lot 02 (D1) : `blocked` AVANT la règle `indetermine → retest`.
+    (EXEC_BLOCKED, FUNC_INDETERMINE, STATUT_BLOCKED),
+    (EXEC_BLOCKED, FUNC_NOT_EVALUATED, STATUT_BLOCKED),
+    (EXEC_BLOCKED, FUNC_NON_CONFORME, STATUT_FAILED),  # un constat surface toujours
     (EXEC_SUCCESS, FUNC_NOT_EVALUATED, STATUT_PASSED),
     (None, None, STATUT_UNTESTED),
 ])
@@ -118,7 +123,8 @@ def test_la_forme_SQL_donne_le_MEME_resultat_sur_TOUTES_les_combinaisons():
 
     Deux implémentations d'une même règle divergent toujours — la seule question est quand, et
     combien de temps avant qu'on s'en aperçoive. Ici, la divergence est impossible à ignorer :
-    192 combinaisons comparées une à une (4 exécutions × 6 fonctionnels × 8 statuts manuels).
+    240 combinaisons comparées une à une (5 exécutions × 6 fonctionnels × 8 statuts manuels) — `blocked`
+    (lot 02, D1) compris : sa règle doit exister DANS LES DEUX FORMES.
     """
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE t (ex TEXT, fo TEXT, de TEXT)")

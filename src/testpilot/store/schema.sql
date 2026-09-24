@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS test_case (
     estimate               TEXT    NOT NULL DEFAULT '',   -- estimation de durée (alimente le burndown)
     -- Référence logique vers la version courante (pas de FK dure : cycle case<->version).
     current_version_id     INTEGER,
-    last_execution_status  TEXT    CHECK (last_execution_status IN ('success', 'technical_error', 'not_executed')),
+    last_execution_status  TEXT    CHECK (last_execution_status IN ('success', 'technical_error', 'not_executed', 'blocked')),
     last_functional_status TEXT    CHECK (last_functional_status IN ('conforme', 'non_conforme', 'indetermine', 'not_evaluated', 'donnee_invalide')),
     last_executed_at       TEXT,
     -- ── Raccourci du DERNIER résultat, les deux modes confondus (migrations 25 puis 27) ───
@@ -235,7 +235,7 @@ CREATE TABLE IF NOT EXISTS execution (
     test_case_id      INTEGER NOT NULL,
     version_id        INTEGER NOT NULL,
     execution_status  TEXT    NOT NULL DEFAULT 'not_executed'
-                                CHECK (execution_status IN ('success', 'technical_error', 'not_executed')),
+                                CHECK (execution_status IN ('success', 'technical_error', 'not_executed', 'blocked')),
     functional_status TEXT    NOT NULL DEFAULT 'not_evaluated'
                                 CHECK (functional_status IN ('conforme', 'non_conforme', 'indetermine', 'not_evaluated', 'donnee_invalide')),
     scenarios_total   INTEGER NOT NULL DEFAULT 0,
@@ -293,7 +293,7 @@ CREATE TABLE IF NOT EXISTS scenario_result (
     execution_id      INTEGER NOT NULL,
     scenario_name     TEXT    NOT NULL,
     execution_status  TEXT    NOT NULL
-                                CHECK (execution_status IN ('success', 'technical_error')),
+                                CHECK (execution_status IN ('success', 'technical_error', 'blocked')),
     functional_status TEXT    NOT NULL
                                 CHECK (functional_status IN ('conforme', 'non_conforme', 'indetermine', 'donnee_invalide')),
     failure_type      TEXT    NOT NULL DEFAULT '',
