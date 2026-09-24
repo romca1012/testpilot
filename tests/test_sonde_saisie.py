@@ -59,7 +59,10 @@ class _PageJetable:
     """Pas de `click`, pas de `keyboard` : tout clic lèverait `AttributeError` (test « aucun clic »)."""
 
     def __init__(self, champs, retention=None, ecritures=None, valide=r"\d{7}(/\d{7})*",
-                 poster_au_fill=None, selects=None, au_choix=None, au_remplissage=None):
+                 poster_au_fill=None, selects=None, au_choix=None, au_remplissage=None,
+                 ecritures_differees=None):
+        self.ecritures_differees = ecritures_differees or {}  # {champ: (méthode, url)} au vidage
+        self.file = []  # évènements réseau traités seulement au PROCHAIN `wait_for_timeout`
         self.url = "https://app.test/en/form/1"
         self.selects = selects or {}                # {nom: [valeurs d'option]} — état COURANT
         self.au_choix = au_choix or {}              # {nom du select choisi: fonction(page)}
@@ -83,7 +86,13 @@ class _PageJetable:
         self.gotos.append(url)
 
     def wait_for_timeout(self, _ms):
-        pass
+        """Playwright ne traite les évènements réseau que pendant une attente : on le simule."""
+        while self.file:
+            methode, url = self.file.pop(0)
+            for h in self.handlers:
+                route = _Route(_Requete(methode, url))
+                h(route)
+                self.routes.append(route)
 
     def evaluate(self, js):
         if js == sonde._JS_SELECTS:
@@ -101,6 +110,8 @@ class _PageJetable:
     def remplir(self, nom, valeur):
         self.remplissages.append((nom, valeur))
         self.champs[nom] = self.retention.get(nom, lambda v: v)(valeur)
+        if valeur == "" and nom in self.ecritures_differees:
+            self.file.append(self.ecritures_differees[nom])
         if nom in self.au_remplissage:
             self.au_remplissage[nom](self, valeur)
         if nom in self.ecritures or self.poster_au_fill == len(self.remplissages):
@@ -1209,3 +1220,31 @@ def test_reel_toutes_les_formes_de_fetch_keepalive_et_de_sendbeacon_sont_neutral
     assert "/erreur_assign" not in _Appli.lectures, (
         "réassigner sendBeacon ne doit pas lever (writable: true)")
     assert _Appli.ecritures == [], f"requêtes de fermeture reçues : {_Appli.ecritures}"
+
+
+def test_une_ecriture_emise_par_le_dernier_vidage_est_interceptee_avant_de_couper_la_garde():
+    """Le vidage du champ (`fill("")`) émet un POST que Playwright ne traite qu'à l'attente suivante :
+    sans attente avant de rendre la garde inerte, l'écriture passait (`continue_`) sans être
+    consignée et le statut restait « ok »."""
+    page = _PageJetable({"code": ""}, selects={"type": ["", "a", "b"], "pays": list(_PAYS)},
+                        valide=r"\d*",
+                        ecritures_differees={"code": ("POST", "https://app.test/draft")})
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert resultat["statut"] == "interrompue", resultat
+    assert "sauvegarde automatique" in resultat["raison"]
+    assert page.routes[-1].abandonnee and not page.routes[-1].continuee, (
+        "l'écriture a été abandonnée, pas laissée passer")
+    assert all(not v["independant"] for v in resultat["selects"].values()), (
+        "observation invalidée : aucun select ne reste déclaré indépendant")
+
+
+def test_sans_ecriture_dans_la_fenetre_finale_le_resultat_est_inchange():
+    page = _PageJetable({"code": ""}, selects={"type": ["", "a", "b"], "pays": list(_PAYS)},
+                        valide=r"\d*")
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert resultat["statut"] == "ok"
+    assert all(v["independant"] for v in resultat["selects"].values())
