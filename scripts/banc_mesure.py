@@ -411,7 +411,7 @@ def ecrire_sortie(version: str, mode: str, indicateurs: dict, observations: list
                   dossier: Path = SORTIE) -> tuple[Path, Path]:
     dossier.mkdir(parents=True, exist_ok=True)
     base = dossier / f"banc-{version}-{contexte['date']}" if mode == "figé" else \
-        dossier / f"banc-{version}-{contexte['date']}-{mode}"
+        dossier / f"banc-{version}-{contexte['date']}-generation"  # ASCII : un nom de fichier sans accent
     if contexte.get("etiquette"):
         base = Path(f"{base}-{contexte['etiquette']}")
     # ⚠️ `Path.with_suffix` prendrait « .0-2026-09-24 » (de « 17.0-2026-09-24 ») pour une extension et l'écraserait.
