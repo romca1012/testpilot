@@ -200,7 +200,10 @@ def step_access_portal_section(context, section_name):
     try:
         context.page.get_by_text(section_name, exact=False).first.click(timeout=8000)
     except PlaywrightTimeout:
-        raise AssertionError(
+        # Un PARCOURS impossible (la section n'est pas là où le test l'attendait), pas un constat sur
+        # l'application : même exception que `_base_helpers.access_portal_section`. Une `AssertionError`
+        # nue devenait `non_conforme` en `@then`/`@when`, un bug applicatif présumé (lot 02, F2).
+        raise NavigationImpossibleError(
             f"PRÉREQUIS MANQUANT : la section '{section_name}' est absente de {context.page.url}. "
             "Vérifiez que des produits avec portal_active=True et la catégorie correspondante "
             "existent dans Odoo."

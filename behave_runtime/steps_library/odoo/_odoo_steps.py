@@ -12,9 +12,24 @@ from behave import given, then, when
 # Import à PLAT (layout d'exécution sans package features/ — cf. environment.py), comme les
 # autres fichiers de la bibliothèque.
 from _base_helpers import (
+    PreconditionNonRemplieError,
     memorize_record_count, check_count_not_increased, check_count_increased_by_one, no_duplicate,
     validation_error_notification, playwright_login, navigate_menu,
 )
+
+
+def _exiger_enregistrement_en_contexte(context, message: str, *, avec_modele: bool = False) -> None:
+    """Un step qui lit « cet enregistrement » suppose qu'un step PRÉCÉDENT l'a mis en contexte.
+
+    Son absence est un BUG DU TEST (le scénario est mal composé), jamais un constat sur
+    l'application : `RuntimeError`, pas `AssertionError` — Behave écrit « ASSERT FAILED » pour une
+    assertion, et un `then` en assertion devient `non_conforme` (lot 02, F2). Une `RuntimeError` reste
+    un échec d'exécution à revérifier (`retest`).
+    """
+    manque = not hasattr(context, "last_record_ids") or (
+        avec_modele and not hasattr(context, "last_record_model"))
+    if manque:
+        raise RuntimeError(message)
 
 
 # ── Comptage / dédoublonnage (ex-_generic_steps.py — appelaient context.odoo malgré le nom) ──
@@ -81,9 +96,8 @@ def step_record_exists_contains(context, field, value, model):
 @then('le champ "{field}" de cet enregistrement dans le modèle "{model}" '
       'est égal à "{expected}"')
 def step_field_equals(context, field, model, expected):
-    assert hasattr(context, "last_record_ids"), (
-        "Aucun enregistrement en contexte. Utilisez d'abord un step 'existe dans le modèle'."
-    )
+    _exiger_enregistrement_en_contexte(
+        context, "Aucun enregistrement en contexte. Utilisez d'abord un step 'existe dans le modèle'.")
     record = context.odoo.env[model].browse(context.last_record_ids[0])
     actual = record.read([field])[0][field]
     assert str(actual) == expected, (
@@ -93,9 +107,9 @@ def step_field_equals(context, field, model, expected):
 
 @then('le champ "{field}" de cet enregistrement est égal à "{expected}"')
 def step_field_equals_simple(context, field, expected):
-    assert hasattr(context, "last_record_ids") and hasattr(context, "last_record_model"), (
-        "Aucun enregistrement en contexte. Utilisez d'abord un step qui crée ou trouve un enregistrement."
-    )
+    _exiger_enregistrement_en_contexte(
+        context, "Aucun enregistrement en contexte. Utilisez d'abord un step qui crée ou trouve un "
+                 "enregistrement.", avec_modele=True)
     record = context.odoo.env[context.last_record_model].browse(context.last_record_ids[0])
     actual = record.read([field])[0][field]
     assert str(actual) == expected, (
@@ -105,7 +119,9 @@ def step_field_equals_simple(context, field, expected):
 
 @then('le champ "{field}" de cet enregistrement n\'est pas vide')
 def step_field_not_empty(context, field):
-    assert hasattr(context, "last_record_ids") and hasattr(context, "last_record_model")
+    _exiger_enregistrement_en_contexte(
+        context, "Aucun enregistrement en contexte. Utilisez d'abord un step qui crée ou trouve un "
+                 "enregistrement.", avec_modele=True)
     record = context.odoo.env[context.last_record_model].browse(context.last_record_ids[0])
     value = record.read([field])[0][field]
     assert value not in (False, None, "", []), f"Le champ '{field}' est vide."
@@ -113,10 +129,9 @@ def step_field_not_empty(context, field):
 
 @then('le champ "{field}" de cet enregistrement dans le modèle "{model}" pointe vers "{expected}"')
 def step_field_m2o_equals(context, field, model, expected):
-    assert hasattr(context, "last_record_ids"), (
-        "Aucun enregistrement en contexte. Utilisez d'abord un step 'existe dans le modèle' — ou "
-        "une vérification de comptage qui en trouve un (0022 A+, 2026-08-07)."
-    )
+    _exiger_enregistrement_en_contexte(
+        context, "Aucun enregistrement en contexte. Utilisez d'abord un step 'existe dans le modèle' — ou "
+                 "une vérification de comptage qui en trouve un (0022 A+, 2026-08-07).")
     Model = context.odoo.env[model]
     record_data = Model.browse(context.last_record_ids[0]).read([field])[0]
     actual = record_data[field]
@@ -133,10 +148,9 @@ def step_field_m2o_equals(context, field, model, expected):
 
 @then('le champ "{field}" de cet enregistrement contient le nom "{partial}"')
 def step_field_m2o_contains(context, field, partial):
-    assert hasattr(context, "last_record_ids") and hasattr(context, "last_record_model"), (
-        "Aucun enregistrement en contexte. Utilisez d'abord un step qui crée ou trouve un "
-        "enregistrement."
-    )
+    _exiger_enregistrement_en_contexte(
+        context, "Aucun enregistrement en contexte. Utilisez d'abord un step qui crée ou trouve un "
+                 "enregistrement.", avec_modele=True)
     Model = context.odoo.env[context.last_record_model]
     record_data = Model.browse(context.last_record_ids[0]).read([field])[0]
     actual = record_data[field]
@@ -165,17 +179,19 @@ def step_no_test_records(context, prefix, model):
         except Exception:
             pass
         ids = Model.search([("name", "=like", f"{prefix}%")])
-        assert not ids, (
-            f"Des enregistrements résiduels existent dans '{model}' "
-            f"(préfixe '{prefix}', IDs : {list(ids)}). "
-            "Supprimez-les manuellement dans Odoo avant de relancer les tests."
-        )
-    except AssertionError:
-        raise
     except Exception as exc:
         print(
             f"[WARN odoo-autotest] Vérification pré-test impossible sur '{model}' : {exc}",
             file=sys.stderr,
+        )
+        return
+    # ⚠️ HORS du `try` : `PreconditionNonRemplieError` est une `Exception`, le `except Exception` ci-dessus
+    # l'aurait avalée en simple avertissement — le prérequis aurait « passé » sans rien vérifier.
+    if ids:
+        raise PreconditionNonRemplieError(
+            f"Des enregistrements résiduels existent dans '{model}' "
+            f"(préfixe '{prefix}', IDs : {list(ids)}). "
+            "Supprimez-les manuellement dans Odoo avant de relancer les tests."
         )
 
 
