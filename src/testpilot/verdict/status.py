@@ -102,7 +102,12 @@ def scenario_verdict(scenario, failures: list) -> ScenarioVerdict:
         cause = dt.dominant_category(failures) or dt.UNKNOWN
         failure_type = failures[0].failure_type if failures else ""
         step_text = failures[0].step_text if failures else ""
-        if cause == dt.ASSERTION_MISMATCH:
+        if cause == dt.REFUS_NON_EXPLIQUE:
+            # A tourné jusqu'au bout, mais rien n'explique le refus : ni constat sur l'application ni
+            # panne du test. Manque d'observabilité → `indetermine` (jamais `non_conforme`).
+            return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_INDETERMINE,
+                                   failure_type, cause, scenario.error, step_text)
+        if cause in (dt.ASSERTION_MISMATCH, dt.ERREUR_SERVEUR_5XX):
             # A tourné techniquement, mais le comportement métier est faux → constat produit.
             return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_NON_CONFORME,
                                    failure_type, cause, scenario.error, step_text)

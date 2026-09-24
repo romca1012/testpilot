@@ -123,15 +123,21 @@ def test_refus_generique_donne_non_conforme_EXPLIQUE():
     assert "Contrainte métier violée" in msg
 
 
-def test_sans_reponse_serveur_le_silence_reste_un_constat():
-    """Aucune réponse captée → comportement d'avant : constat de comptage + « SILENCIEUX »."""
+def test_sans_reponse_serveur_le_silence_total_est_indetermine_refus_non_explique():
+    """⚠️ ATTENDU MODIFIÉ PAR DÉCISION (D12, 2026-09-24, F10) — pas pour faire passer un test.
+
+    Avant : aucune réponse captée → `AssertionError` « REFUS SILENCIEUX » → `non_conforme`, alors que le
+    message joint disait lui-même « l'outil NE conclut PAS à un défaut sans preuve » (le statut
+    affirmait ce que le message refusait d'affirmer). Le porteur a tranché : un SILENCE TOTAL (ni
+    réponse HTTP d'erreur, ni JSON, ni message affiché, ni champ invalide) est un manque
+    d'observabilité, pas une preuve de défaut → `RefusNonExpliqueError` → `indetermine`. Le constat de
+    comptage cloisonné reste en tête du message."""
     ctx = _Context(None)
-    with pytest.raises(AssertionError) as err:
+    with pytest.raises(H.RefusNonExpliqueError) as err:
         H.check_count_increased_by_one(ctx, "helpdesk.ticket")
-    # §F1 (2026-09-23) : constat cloisonné au scénario (« depuis id > 100 »), plus « devrait
-    # être N, obtenu M » (comptage global, abandonné par ce lot).
+    assert not isinstance(err.value, AssertionError), "un silence n'est pas un constat sur l'application"
     assert "Aucune création détectée dans 'helpdesk.ticket' depuis id > 100" in str(err.value)
-    assert "SILENCIEUX" in str(err.value)
+    assert "REFUS NON EXPLIQUÉ" in str(err.value)
 
 
 def test_reponse_id_ne_masque_pas_un_compteur_a_zero():

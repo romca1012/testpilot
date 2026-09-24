@@ -80,6 +80,12 @@ _ORIGIN_BY_CAUSE = {
     # doit pas ouvrir la réparation automatique d'un `blocked`.
     dt.PRECONDITION_NON_REMPLIE: INDETERMINE,
 
+    # F10 (D12) : un 5xx est une preuve de défaut CÔTÉ SERVEUR — on le remonte tel quel, jamais
+    # réparé (réécrire le test ne fait pas cesser un plantage serveur).
+    dt.ERREUR_SERVEUR_5XX: VRAI_BUG,
+    # F10 (D12) : rien n'explique le refus — jugement humain, jamais de réparation automatique.
+    dt.REFUS_NON_EXPLIQUE: INDETERMINE,
+
     dt.UNKNOWN: INDETERMINE,
 }
 

@@ -855,6 +855,27 @@ class PreconditionNonRemplieError(Exception):
     """
 
 
+class ErreurServeur5xxError(Exception):
+    """Le SERVEUR a planté (HTTP 5xx) en traitant l'action testée (F10, décision D12).
+
+    Le code HTTP est un signal du RUNTIME (la réponse réellement reçue), jamais un texte deviné : une
+    exception non gérée côté serveur sur une saisie que le navigateur a acceptée est un défaut de
+    l'application, même si notre donnée en est le déclencheur (le serveur doit répondre par une
+    validation, pas planter). Classe DÉDIÉE, non ambiguë par construction : `non_conforme` avec le
+    code et le message capturés comme preuve. Même sur un scénario qui attendait un REFUS : le serveur
+    a planté au lieu de refuser proprement, ce n'est pas le refus attendu.
+    """
+
+
+class RefusNonExpliqueError(Exception):
+    """Rien n'a été créé et RIEN ne l'explique : ni réponse HTTP d'erreur, ni message affiché, ni
+    champ invalide côté navigateur (F10, décision D12).
+
+    C'est un manque d'observabilité de l'outil, ni une preuve de succès ni une preuve de défaut
+    applicatif : `indetermine`, jamais `non_conforme`, jamais réparé automatiquement.
+    """
+
+
 class InvalidOptionValueError(ValueError):
     """Le test passe à un `<select>` une valeur que l'application n'offre pas (décision `0019`).
 
@@ -1955,10 +1976,16 @@ def check_count_not_increased(context, model):
             f"création : ids {ids} (domaine [('id', '>', {max_id})]). "
             f"Comptage global (diagnostic, inclut l'activité concurrente) : {global_actuel}."
         )
+    # Rien n'a été créé — MAIS un 5xx n'est pas la preuve d'un refus propre : le serveur a planté.
+    erreur_5xx = _premiere_reponse_5xx(context)
+    if erreur_5xx is not None:
+        raise ErreurServeur5xxError(_message_erreur_serveur(
+            erreur_5xx, _texte_erreur_visible(getattr(context, "page", None)), refus_attendu=True))
 
 
 # Ce que la PAGE dit quand rien n'a été créé — par ordre de force du signal.
 _SELECTEURS_ERREUR = (
+    "#s_website_form_result.text-danger",  # « An error has occured, the form has not been sent. »
     ".o_notification.border-danger",   # notification Odoo
     ".alert-danger",                   # bandeau Bootstrap
     "[role='alert']",                  # rôle d'accessibilité
@@ -1975,6 +2002,64 @@ _DIAGNOSTIC_MAX = 380
 
 def _borner(texte: str) -> str:
     return texte if len(texte) <= _DIAGNOSTIC_MAX else texte[:_DIAGNOSTIC_MAX - 1].rstrip() + "…"
+
+
+def _reponses_formulaire(context) -> list:
+    """Les traces `{status, url}` capturées par `environment._capturer_reponse_formulaire`."""
+    reps = getattr(context, "reponses_formulaire", None)
+    return [r for r in reps if isinstance(r, dict)] if isinstance(reps, list) else []
+
+
+def _statut_http(trace) -> int:
+    try:
+        return int(trace.get("status", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _premiere_reponse_5xx(context):
+    for trace in _reponses_formulaire(context):
+        if _statut_http(trace) >= 500:
+            return trace
+    return None
+
+
+def _a_une_reponse_d_erreur(context) -> bool:
+    """Une réponse HTTP 4xx/5xx a été captée : le serveur a DIT quelque chose."""
+    return any(_statut_http(t) >= 400 for t in _reponses_formulaire(context))
+
+
+def _texte_erreur_visible(page) -> str:
+    """Le premier message d'erreur VISIBLE de la page (`_SELECTEURS_ERREUR`), ou `''`."""
+    if page is None:
+        return ""
+    try:
+        for selecteur in _SELECTEURS_ERREUR:
+            elements = page.locator(selecteur)
+            for i in range(min(elements.count(), 3)):
+                el = elements.nth(i)
+                if not el.is_visible():
+                    continue
+                texte = " ".join((el.inner_text() or "").split())[:200]
+                if texte:
+                    return texte
+    except Exception:
+        return ""
+    return ""
+
+
+def _message_erreur_serveur(trace, texte: str, *, refus_attendu: bool) -> str:
+    """La preuve : le code HTTP reçu, le message affiché, et ce que le scénario attendait."""
+    message = f"LE SERVEUR A PLANTÉ (HTTP {_statut_http(trace)}) en traitant la soumission"
+    if texte:
+        message += f" ; la page affiche : « {texte} »"
+    message += ". Exception non gérée côté serveur (code HTTP reçu, pas un texte deviné)."
+    if refus_attendu:
+        message += (" Ce scénario attendait un REFUS : le serveur a planté au lieu de refuser "
+                    "proprement — ce n'est PAS le refus attendu.")
+    else:
+        message += " Cette soumission aurait dû aboutir."
+    return message
 
 
 def _refus_par_le_navigateur(page) -> list:
@@ -2102,17 +2187,11 @@ def diagnostic_soumission(page) -> str:
                 "⚠️ L'application n'est PAS en cause ici.")
 
         # 2. Ce que le serveur a répondu, s'il a répondu quelque chose de lisible.
-        for selecteur in _SELECTEURS_ERREUR:
-            elements = page.locator(selecteur)
-            for i in range(min(elements.count(), 3)):
-                el = elements.nth(i)
-                if not el.is_visible():
-                    continue
-                texte = " ".join((el.inner_text() or "").split())[:200]
-                if texte:
-                    return _borner(
-                        f"L'APPLICATION A REFUSÉ la soumission et l'affiche : « {texte} ». "
-                        "⚠️ Vérifier si ce refus est légitime avant de conclure au défaut.")
+        texte = _texte_erreur_visible(page)
+        if texte:
+            return _borner(
+                f"L'APPLICATION A REFUSÉ la soumission et l'affiche : « {texte} ». "
+                "⚠️ Vérifier si ce refus est légitime avant de conclure au défaut.")
 
         return _borner(
             "REFUS SILENCIEUX : rien créé, et NI la page NI le serveur n'ont donné de raison "
@@ -2221,6 +2300,7 @@ def check_count_increased_by_one(context, model):
     # ⚠️ §2bis étape 3a — la RÉPONSE SERVEUR, quand le navigateur n'a rien bloqué. C'est ce qui
     # lève les refus SILENCIEUX (rien créé, page muette) : la page ne dit rien, le serveur si.
     refus = _refus_serveur(context)
+    genre = detail = None
     if refus is not None:
         genre, detail = refus
         if genre == "champs":
@@ -2230,6 +2310,17 @@ def check_count_increased_by_one(context, model):
                 f"LE SERVEUR A REFUSÉ D'ENREGISTRER — champ(s) invalide(s) : {detail}. "
                 f"⚠️ L'APPLICATION N'EST PAS EN CAUSE : c'est le jeu de données du test.",
                 _refus_serveur_mesures(page, detail))
+
+    # ⚠️ F10 (D12) — le CODE HTTP, quand le serveur a planté. Après `champs` (le serveur a nommé NOS
+    # champs : donnée invalide, l'app n'est pas en cause) et AVANT `generique` : un 5xx est la preuve
+    # la plus forte d'un défaut côté serveur (exception non gérée), et il porte son code comme preuve.
+    erreur_5xx = _premiere_reponse_5xx(context)
+    if erreur_5xx is not None:
+        raise ErreurServeur5xxError(
+            f"Aucune création détectée dans '{model}' depuis id > {max_id}. "
+            + _message_erreur_serveur(erreur_5xx, _texte_erreur_visible(page), refus_attendu=False))
+
+    if refus is not None:
         if genre == "generique":
             # Refus serveur sans champ nommé, sur une saisie valide côté navigateur : l'app rejette
             # en silence une donnée recevable = défaut de comportement (arbitrage porteur 2026-07-23).
@@ -2243,8 +2334,20 @@ def check_count_increased_by_one(context, model):
     # Sinon (refus serveur affiché à l'écran, ou silence total) : constat de comptage + explication.
     global_actuel = context.odoo.env[model].search_count([])
     pourquoi = diagnostic_soumission(page) if page is not None else ""
+    # ⚠️ F10 (D12) — le SILENCE TOTAL : ni réponse serveur exploitable (JSON ni code d'erreur), ni
+    # message affiché, ni champ invalide. Rien ne désigne l'application : `indetermine`, jamais
+    # `non_conforme` — le message disait déjà « l'outil NE conclut PAS à un défaut sans preuve ».
+    if refus is None and not _a_une_reponse_d_erreur(context) and not _texte_erreur_visible(page):
+        raise RefusNonExpliqueError(
+            f"Aucune création détectée dans '{model}' depuis id > {max_id} (domaine "
+            f"[('id', '>', {max_id})]). REFUS NON EXPLIQUÉ : aucune réponse HTTP d'erreur captée, "
+            "aucun message affiché, aucun champ invalide côté navigateur. Rien ne désigne "
+            "l'application : à instruire côté application (logs serveur du POST).")
+    statut_http = next((_statut_http(t) for t in _reponses_formulaire(context)
+                        if _statut_http(t) >= 400), 0)
     raise AssertionError(
         f"Aucune création détectée dans '{model}' depuis id > {max_id} (domaine "
         f"[('id', '>', {max_id})]) ; {current} trouvée(s) au lieu d'une. "
         f"Comptage global (diagnostic, inclut l'activité concurrente) : {global_actuel}."
+        + (f"\nHTTP {statut_http} reçu sur la soumission." if statut_http else "")
         + (f"\n{pourquoi}" if pourquoi else ""))

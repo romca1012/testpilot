@@ -48,6 +48,9 @@ def normalize_error(text: str) -> str:
 # Causes racines — ordre = priorité (sévérité décroissante), tranche les égalités.
 # Lot 02 (D1) : en tête — un prérequis d'environnement non rempli empêche tout le reste d'être jugé.
 PRECONDITION_NON_REMPLIE = "precondition_non_remplie"
+# F10 (D12, 2026-09-24) : le serveur a planté (HTTP 5xx) en traitant l'action testée — `non_conforme`
+# avec le code HTTP comme preuve.
+ERREUR_SERVEUR_5XX = "erreur_serveur_5xx"
 MISSING_SERVER_CONTEXT = "missing_server_context"
 DONNEE_REFUSEE = "donnee_refusee"
 BROKEN_TEST_CODE = "broken_test_code"
@@ -56,15 +59,19 @@ WRONG_FIELD_NAME = "wrong_field_name"
 MISSING_ROLE = "missing_role"
 ASSERTION_MISMATCH = "assertion_mismatch"
 RESOLVEUR_INCOMPLET = "resolveur_incomplet"
+# F10 (D12) : rien créé et RIEN ne l'explique — `indetermine`, jamais réparé automatiquement.
+REFUS_NON_EXPLIQUE = "refus_non_explique"
 UNKNOWN = "unknown"
 
 CATEGORIES = (
-    PRECONDITION_NON_REMPLIE, MISSING_SERVER_CONTEXT, DONNEE_REFUSEE, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
-    MISSING_ROLE, ASSERTION_MISMATCH, RESOLVEUR_INCOMPLET, UNKNOWN,
+    PRECONDITION_NON_REMPLIE, ERREUR_SERVEUR_5XX, MISSING_SERVER_CONTEXT, DONNEE_REFUSEE, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
+    MISSING_ROLE, ASSERTION_MISMATCH, RESOLVEUR_INCOMPLET, REFUS_NON_EXPLIQUE, UNKNOWN,
 )
 
 LABELS = {
     PRECONDITION_NON_REMPLIE: "Prérequis non rempli (environnement)",
+    ERREUR_SERVEUR_5XX: "Erreur interne du serveur (HTTP 5xx)",
+    REFUS_NON_EXPLIQUE: "Refus non expliqué (à instruire)",
     MISSING_SERVER_CONTEXT: "Contexte serveur manquant",
     DONNEE_REFUSEE: "Donnée du test refusée (à corriger)",
     BROKEN_TEST_CODE: "Erreur dans le code du test",
@@ -129,6 +136,10 @@ _EXCEPTION_TO_CAUSE = {
     # AJOUTÉ (lot 02, D1). Levée UNIQUEMENT par un step de Contexte de la bibliothèque quand un
     # PRÉREQUIS d'environnement n'est pas rempli. Classe dédiée, non ambiguë par construction.
     "PreconditionNonRemplieError": PRECONDITION_NON_REMPLIE,
+    # AJOUTÉ (F10, D12). Levées UNIQUEMENT par la bibliothèque partagée d'après le CODE HTTP reçu et
+    # l'absence de tout signal : classes dédiées, non ambiguës par construction.
+    "ErreurServeur5xxError": ERREUR_SERVEUR_5XX,
+    "RefusNonExpliqueError": REFUS_NON_EXPLIQUE,
     # Erreurs de PROGRAMMATION dans le code du step. L'application n'y est pour rien : c'est
     # notre code qui est faux, donc réparable par construction. C'était le trou le plus absurde
     # de l'ancienne version — un `TypeError` nu tombait en `unknown` → `indetermine`, et le
