@@ -116,6 +116,45 @@ def _controle_prealable(data_dir: Path | None, api_key: str) -> list:
     return problemes
 
 
+def _cout_de(rapport: dict) -> float:
+    return float(((rapport or {}).get('generation') or {}).get('cost_usd') or 0.0)
+
+
+def _raison_d_arret(cumul: float, cout_max_essai: float, plafond: float | None) -> str:
+    """Pourquoi NE PAS lancer le prochain essai, ou `''`. Aucun essai n'est lance au-dela du
+    plafond : le cout du prochain est inconnu d'avance, on retient le PLUS CHER deja observe (0 pour
+    le tout premier) — on ne lance jamais quand le cumul + le plus cher observe depasserait deja le
+    plafond (un essai encore plus cher que tous les precedents reste possible : limite documentee)."""
+    if plafond is None:
+        return ''
+    if cumul >= plafond:
+        return f'cumul {cumul:.3f} $ >= plafond {plafond:.3f} $'
+    if cumul + cout_max_essai > plafond:
+        return (f'cumul {cumul:.3f} $ + essai le plus cher observe {cout_max_essai:.3f} $ '
+                f'> plafond {plafond:.3f} $')
+    return ''
+
+
+def _boucle_essais(case_ids, iterations, lancer, plafond: float | None = None):
+    """Lance `lancer(case_id, iteration)` pour chaque essai, en s'ARRETANT AVANT le premier essai
+    qui pourrait depasser `plafond` (2026-09-24 : le plafond etait une simple intention, pas un
+    arret). Rend `(resultats, arret)` — `arret` vaut `None` si tout a ete lance."""
+    resultats, cumul, cout_max = [], 0.0, 0.0
+    for case_id in case_ids:
+        for iteration in iterations:
+            raison = _raison_d_arret(cumul, cout_max, plafond)
+            if raison:
+                return resultats, {'raison': raison, 'cumul_usd': round(cumul, 6),
+                                   'essais_lances': len(resultats),
+                                   'prochain': {'case_id': case_id, 'iteration': iteration}}
+            rapport = lancer(case_id, iteration)
+            resultats.append(rapport)
+            cout = _cout_de(rapport)
+            cumul += cout
+            cout_max = max(cout_max, cout)
+    return resultats, None
+
+
 def _masquer_secrets(texte: str, project: dict) -> str:
     """Retire d'un texte destine a un artefact TOUT secret connu : mot de passe du projet, cle API,
     cle de chiffrement (jamais ecrite dans un `result.json`, un rapport ou une trace)."""
@@ -305,6 +344,9 @@ def main():
                         help='numeros d\'iteration separes par des virgules (defaut : 1,2,3)')
     parser.add_argument('--expected-base-url', type=str, default=None,
                         help='garde-fou : refuse de lancer si le project.base_url differe')
+    parser.add_argument('--max-cost-usd', type=float, default=None,
+                        help='plafond de cout de la campagne : aucun essai lance au-dela '
+                             '(arret reel entre deux essais, code de sortie 3)')
     args = parser.parse_args()
     # ⚠️ Echec BRUYANT si l'isolation n'est pas active (revue verdict-reviewer, 2026-09-24) : un
     # `--out` mal reconnu par l'analyse precoce de `sys.argv`, ou un `TESTPILOT_DB_PATH` reinjecte
@@ -342,32 +384,37 @@ def main():
     connexion = verifier_connexion(project)  # connexion du projet incomplete -> leve avant tout essai
 
     budget = QualificationBudget(out_dir / 'budget.db')
-    resultats = []
-    for case_id in case_ids:
-        for iteration in iterations:
-            snapshot = _snapshot_memoires(project_id)
-            try:
-                rapport = _un_essai(case_id, iteration, out_dir, project, connexion, budget,
-                                    project_id)
-            finally:
-                _restaurer_memoires(snapshot)
-            resultats.append(rapport)
-            gen = rapport.get('generation') or {}
-            exe = rapport.get('execution') or {}
-            verif = rapport.get('verification_independante') or {}
-            print(json.dumps({
-                'case_id': case_id, 'iteration': iteration,
-                'generation_success': gen.get('success'), 'dry_run_passed': gen.get('dry_run_passed'),
-                'execution_status': exe.get('execution_status'),
-                'functional_status': exe.get('functional_status'),
-                'verif_independante_nouveaux': verif.get('nouveaux'),
-                'cost_usd': gen.get('cost_usd'),
-                'budget_total_usd': rapport.get('budget', {}).get('charged_or_reserved_usd'),
-            }, ensure_ascii=True))
 
+    def lancer(case_id, iteration):
+        snapshot = _snapshot_memoires(project_id)
+        try:
+            rapport = _un_essai(case_id, iteration, out_dir, project, connexion, budget, project_id)
+        finally:
+            _restaurer_memoires(snapshot)
+        gen = rapport.get('generation') or {}
+        exe = rapport.get('execution') or {}
+        verif = rapport.get('verification_independante') or {}
+        print(json.dumps({
+            'case_id': case_id, 'iteration': iteration,
+            'generation_success': gen.get('success'), 'dry_run_passed': gen.get('dry_run_passed'),
+            'execution_status': exe.get('execution_status'),
+            'functional_status': exe.get('functional_status'),
+            'verif_independante_nouveaux': verif.get('nouveaux'),
+            'cost_usd': gen.get('cost_usd'),
+            'budget_total_usd': rapport.get('budget', {}).get('charged_or_reserved_usd'),
+        }, ensure_ascii=True), flush=True)
+        return rapport
+
+    resultats, arret = _boucle_essais(case_ids, iterations, lancer, args.max_cost_usd)
     (out_dir / 'campagne.json').write_text(json.dumps(resultats, ensure_ascii=False, indent=2,
                                                        default=str), encoding='utf-8')
+    if arret:
+        (out_dir / 'arret_plafond.json').write_text(
+            json.dumps(arret, ensure_ascii=False, indent=2), encoding='utf-8')
+        print(json.dumps({'arret_plafond': arret}, ensure_ascii=True), flush=True)
     budget.conn.close()
+    if arret:
+        raise SystemExit(3)  # campagne INCOMPLETE : jamais confondue avec une campagne terminee
 
 
 if __name__ == '__main__':

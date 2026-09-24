@@ -151,3 +151,79 @@ def test_main_refuse_de_lancer_un_essai_sans_cle_api(monkeypatch, tmp_path):
 
     with pytest.raises(SystemExit, match="controle prealable"):
         script.main()
+
+
+# ── Arrêt RÉEL sur plafond de coût (le plafond n'était qu'une intention) ────────────────────
+
+def _essai_a(cout):
+    return lambda case_id, iteration: {"generation": {"cost_usd": cout}, "case": case_id,
+                                       "iteration": iteration}
+
+
+def test_aucun_essai_n_est_lance_au_dela_du_plafond():
+    lances = []
+
+    def lancer(case_id, iteration):
+        lances.append((case_id, iteration))
+        return _essai_a(0.5)(case_id, iteration)
+
+    resultats, arret = script._boucle_essais((99, 101), (1, 2, 3), lancer, plafond=1.2)
+
+    # 0 $ (1er) -> 0,5 $ + plus cher 0,5 = 1,0 <= 1,2 (2e) -> 1,0 + 0,5 = 1,5 > 1,2 : arrêt.
+    assert lances == [(99, 1), (99, 2)] and len(resultats) == 2
+    assert arret["essais_lances"] == 2 and arret["prochain"] == {"case_id": 99, "iteration": 3}
+    assert "plafond" in arret["raison"]
+    assert sum(script._cout_de(r) for r in resultats) <= 1.2
+
+
+def test_sans_plafond_tous_les_essais_sont_lances():
+    resultats, arret = script._boucle_essais((99, 101), (1, 2), _essai_a(9.0), plafond=None)
+
+    assert len(resultats) == 4 and arret is None
+
+
+def test_un_plafond_deja_atteint_n_autorise_aucun_essai():
+    resultats, arret = script._boucle_essais((99,), (1, 2), _essai_a(1.0), plafond=0.0)
+
+    assert resultats == [] and arret["essais_lances"] == 0
+
+
+def test_un_essai_sans_cout_connu_compte_pour_zero_sans_planter():
+    resultats, arret = script._boucle_essais((99,), (1, 2, 3), lambda c, i: {"generation": None},
+                                             plafond=0.1)
+
+    assert len(resultats) == 3 and arret is None
+
+
+def test_main_sort_avec_le_code_3_quand_le_plafond_interrompt_la_campagne(monkeypatch, tmp_path):
+    import contextlib
+
+    copie = tmp_path / "copie"
+    copie.mkdir()
+    (copie / "testpilot.db").write_bytes(b"x")
+    monkeypatch.setattr(sys, "argv", ["qualify", "--out", "x", "--cases", "99", "--iterations",
+                                      "1,2,3", "--max-cost-usd", "0.3", "--project-id", "1"])
+    monkeypatch.setattr(script, "DATA_DIR_ISOLE", copie)
+    monkeypatch.setattr(script, "ROOT", tmp_path)
+    monkeypatch.setattr(script.config, "DATA_DIR", copie)
+    monkeypatch.setattr(script.config, "DB_PATH", copie / "testpilot.db")
+    monkeypatch.setattr(script.config, "ANTHROPIC_API_KEY", "cle")
+    monkeypatch.setattr(script, "verifier_connexion", lambda p: {})
+    monkeypatch.setattr(script.ProjectRepo, "get", lambda self, pid: {"base_url": "u"})
+    fausse_conn = type("Conn", (), {"close": lambda self: None})()
+    monkeypatch.setattr(script, "QualificationBudget",
+                        lambda chemin: type("B", (), {"conn": fausse_conn})())
+    monkeypatch.setattr(script, "_snapshot_memoires", lambda pid: {})
+    monkeypatch.setattr(script, "_restaurer_memoires", lambda snap: None)
+    lances = []
+    monkeypatch.setattr(script, "_un_essai", lambda *a, **k: lances.append(a[:2]) or {
+        "generation": {"cost_usd": 0.2}, "budget": {}})
+    monkeypatch.setattr(script.sqlite3, "connect", lambda *a, **k: contextlib.nullcontext(
+        type("K", (), {"row_factory": None})()))
+
+    with pytest.raises(SystemExit) as sortie:
+        script.main()
+
+    assert sortie.value.code == 3
+    assert len(lances) == 1, "0,2 $ + le plus cher observé 0,2 $ > plafond 0,3 $ : arrêt avant le 2e"
+    assert (tmp_path / ".local-preview" / "qualification" / "x" / "arret_plafond.json").is_file()
