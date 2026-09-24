@@ -30,6 +30,11 @@ class ToolContext:
     # Lot 12 : le projet, pour relire SES règles apprises (formats de saisie déjà mesurés) — `None`
     # hors projet (tests, outils isolés) : aucune règle, jamais une erreur.
     project_id: int | None = None
+    # Lot 12 (D11) : ce que l'exploration a PROUVÉ, pour refuser à l'écriture une référence
+    # inexistante. `options_select` : `<select>` dont toutes les options ont été relevées ;
+    # `champs_relationnels` : champ many2one → modèle(s) lié(s) (ambigu si plusieurs).
+    options_select: dict[str, set[str]] = field(default_factory=dict)
+    champs_relationnels: dict[str, set[str]] = field(default_factory=dict)
     target_sha256: str = ""
     observations: list[dict] = field(default_factory=list)
     calibration_attempts: list[str] = field(default_factory=list)

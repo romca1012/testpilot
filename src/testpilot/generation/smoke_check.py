@@ -35,6 +35,7 @@ jamais bloquer — et la raison pour laquelle chaque avertissement dit **la date
 
 from __future__ import annotations
 
+import difflib
 import re
 from dataclasses import dataclass
 
@@ -132,6 +133,10 @@ _ROUTE_NAV = re.compile(r'navigue\s+vers\s+(?:l\'URL\s+du\s+portail\s+)?"(?P<url
 # jamais un nom de champ — `check_champs_existants` doit les ignorer, `check_messages_observes`
 # (plus bas) est seul à les lire.
 MESSAGE_SOURCE_PREFIX = "message:"
+
+# ⚠️ Préfixe des sources `verified_fields` qui portent le CATALOGUE visible d'une page (liens,
+# produits — lot 12, 2026-09-24) : des textes, jamais des noms de champ.
+CATALOGUE_SOURCE_PREFIX = "catalogue:"
 
 # Un scénario qui AFFIRME une création : c'est là, et seulement là, qu'une soumission est due.
 _AFFIRME_CREATION = (
@@ -365,8 +370,8 @@ def check_champs_existants(feature_content: str, modele: dict,
     """
     connus = _index_champs(modele)
     for source, names in (verified_fields or {}).items():
-        if source.startswith(MESSAGE_SOURCE_PREFIX):
-            continue  # §F8 : un texte de message observé n'est pas un nom de champ
+        if source.startswith((MESSAGE_SOURCE_PREFIX, CATALOGUE_SOURCE_PREFIX)):
+            continue  # §F8 / lot 12 : un texte observé (message, catalogue) n'est pas un nom de champ
         connus.update(names)
     if not connus and verified_fields is None:
         return []
@@ -453,6 +458,52 @@ def check_messages_observes(feature_content: str,
     return [w.as_dict() for w in warnings]
 
 
+def plus_proches(valeur: str, candidats, n: int = 5) -> list[str]:
+    """Les `n` valeurs réelles les plus proches de `valeur` (insensible à la casse, `difflib`)."""
+    bas = {str(c).lower(): str(c) for c in candidats if str(c).strip()}
+    return [bas[t] for t in difflib.get_close_matches(str(valeur).lower(), list(bas), n=n,
+                                                      cutoff=0.0)]
+
+
+_PRODUIT = (re.compile(r'produit\s+"(?P<p>[^"]+)"\s+dans\s+la\s+liste', re.IGNORECASE),
+            re.compile(r'produit\s+dans\s+la\s+liste\s+contenant\s+"(?P<p>[^"]+)"', re.IGNORECASE))
+
+
+def check_produits_observes(feature_content: str,
+                            verified_fields: dict[str, list[str]] | None) -> list[dict]:
+    """Un produit choisi dans une liste web doit avoir été OBSERVÉ pendant la génération (lot 12).
+
+    ⚠️ **DÉTECTIF, jamais bloquant (D11)** : une liste de produits observée n'est pas exhaustive
+    (pagination, filtres, produit créé par le scénario) — elle ne fait pas autorité. Avertit si le
+    produit n'apparaît dans aucun catalogue relevé (avec les 5 plus proches), ou si aucun
+    catalogue n'a été observé du tout (`{}` instrumenté ≠ `None` ancien registre, comme F8).
+    """
+    if verified_fields is None:
+        return []
+    observes = [t for source, textes in verified_fields.items()
+                if source.startswith(CATALOGUE_SOURCE_PREFIX) for t in textes]
+    warnings: list[SmokeWarning] = []
+    for numero, ligne in enumerate(feature_content.split("\n"), 1):
+        for motif in _PRODUIT:
+            m = motif.search(ligne)
+            if not m:
+                continue
+            produit = m.group("p")
+            if any(produit.lower() in t.lower() or (len(t) >= 4 and t.lower() in produit.lower())
+                   for t in observes):
+                break
+            proches = ", ".join(f"« {p} »" for p in plus_proches(produit, observes))
+            detail = (f"Éléments réellement observés les plus proches : {proches}." if observes
+                      else "Aucune liste de produits n'a été observée pendant la génération.")
+            warnings.append(SmokeWarning(
+                kind="produit_non_observe", step=produit[:60], line=numero,
+                message=(f"Le produit « {produit} » n'a jamais été observé sur l'application. "
+                         f"{detail} Un produit s'observe (inspecte la page de la liste), il ne se "
+                         f"devine pas.")))
+            break
+    return [w.as_dict() for w in warnings]
+
+
 def check_menus_observes(feature_content: str, modele: dict) -> list[dict]:
     """Signale un chemin non mesuré, sans supposer la cartographie exhaustive."""
     menus = {str(entry.get("menu_path") or entry.get("menu", "")).strip()
@@ -495,7 +546,8 @@ def smoke_check(feature_content: str, steps_content: str = "", modele: dict | No
     menus = check_menus_observes(feature_content, modele or {})
     # §F8 : ne consulte ni `modele` ni le crawl, seulement `verified_fields` — s'applique donc
     # dans les DEUX branches, comme `check_step_soumission` pour la même raison structurelle.
-    messages = check_messages_observes(feature_content, verified_fields)
+    messages = (check_messages_observes(feature_content, verified_fields)
+                + check_produits_observes(feature_content, verified_fields))
     if not modele or not modele.get("pages"):
         return menus + messages + (
             check_champs_existants(feature_content, modele or {}, verified_fields)

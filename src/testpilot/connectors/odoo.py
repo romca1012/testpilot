@@ -191,6 +191,11 @@ class OdooConnector(Connector):
     def read(self, model: str, ids: list[int], fields: list[str]) -> list[dict]:
         return self._client.env[model].browse(ids).read(fields)
 
+    def name_search(self, model: str, name: str, limit: int = 8) -> list[tuple[int, str]]:
+        """`name_search` RPC natif d'Odoo (`ilike`) : le serveur EST la source de vérité (D11)."""
+        trouves = self._client.env[model].name_search(name=name, operator="ilike", limit=limit)
+        return [(int(i), str(nom)) for i, nom in trouves]
+
     # ── Perception UI (Playwright) ─────────────────────────────────────────────
     def inspect_form(self, page_url: str) -> dict:
         """Observe le vrai formulaire portail rendu (champs réels, champs cachés injectés)."""
