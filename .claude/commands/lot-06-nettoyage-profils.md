@@ -30,6 +30,12 @@ projets. Et `generic/_generic_steps.py` contient des steps propres à une applic
 
 1. **Registre complet** : tout id créé par le scénario et identifié (lot 01, `register_created`,
    captures RPC) est enregistré avec son modèle, dans l'ordre de création.
+   **Ajout du 2026-09-24 — une création sans step de comptage n'est pas nettoyée** (ticket 30298,
+   campagne réelle : les steps de comptage personnalisés n'enregistraient rien ; F9 ferme cette
+   cause, pas le cas général). Un scénario qui crée sans aucun step de comptage laisse un résidu :
+   relever le `max_id` des modèles touchés même sans comptage demandé (par exemple à partir des
+   modèles apparaissant dans les réponses RPC/formulaire capturées), pour pouvoir nettoyer
+   `id > max_id` sur ces modèles.
 2. **Teardown générique Odoo** (ordre inverse de création), par enregistrement :
    `unlink` ; en cas de refus, tentative d'annulation si le modèle expose `action_cancel` /
    `button_cancel` puis `unlink` ; sinon `write({"active": False})` si le champ existe ; sinon

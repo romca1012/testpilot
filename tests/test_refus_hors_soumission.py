@@ -137,6 +137,11 @@ _BASE = "https://x/web"
     (f"{_BASE}#action=1&model=x", f"{_BASE}#action=1&model=x", False),
     # `href="#"` portail : fragment vide → contrôle
     ("https://x/en/mutation/67", "https://x/en/mutation/67#", False),
+    # LIMITE DOCUMENTÉE (revue du 2026-09-24) : `view_type` absent avant la sauvegarde d'un NOUVEL
+    # enregistrement, puis présent avec `id` → classé navigation (contrôle sauté). Odoo pose
+    # normalement `view_type=form` dès l'ouverture du formulaire : cas non observé en réel, à
+    # confirmer sur le banc (lot 04). Le contrôle de comptage du lot 01 rattrape un refus non vu.
+    (f"{_BASE}#model=x", f"{_BASE}#model=x&view_type=form&id=42", True),
     # ordre des clés sans importance
     (f"{_BASE}#model=x&action=1&cids=1", f"{_BASE}#action=1&cids=1&model=x", False),
 ])

@@ -42,25 +42,72 @@ sys.path.insert(0, str(ROOT / 'src'))
 # 2026-09-24, `_restaurer_memoires` a supprime `data/selecteurs/projet-1.jsonl` pendant qu'une
 # suite pytest tournait, et la garde « donnees reelles » a fait echouer un test sans rapport.
 # Regle operationnelle : ne jamais lancer la suite pytest et une campagne en meme temps.
-# `.secret_key` : sans elle, les mots de passe de projet ne se dechiffrent pas dans la copie. Les
-# deux dossiers (`.local-preview/`, `data/`) sont ignores par git.
-_A_COPIER = ('testpilot.db', '.secret_key', 'domain', 'menus-appris', 'selecteurs', 'regles-apprises',
+#
+# ⚠️ **La cle de chiffrement n'est JAMAIS copiee sur disque** : `secrets.py` lit
+# `TESTPILOT_SECRET_KEY` en priorite — on la lit a sa SOURCE et on la transmet par l'environnement
+# du processus (herite par Behave). La copie de la base ne contient que des mots de passe chiffres,
+# inutilisables sans elle. Les copies au-dela des `_COPIES_A_GARDER` plus recentes sont purgees.
+# ⚠️ Non isole : `config.GENERATED_DIR` (sous `behave_runtime/`, pas sous `DATA_DIR`) — le script
+# le redirige lui-meme vers le dossier de chaque essai (`config.GENERATED_DIR = trial_dir / …`).
+_A_COPIER = ('testpilot.db', 'domain', 'menus-appris', 'selecteurs', 'regles-apprises',
              'specifications')
+_COPIES_A_GARDER = 3
 
 
-def _isoler_donnees(out_name: str) -> Path:
+def _poser_cle_depuis_source(source: Path) -> bool:
+    """Lit `<source>/.secret_key` et la pose dans `TESTPILOT_SECRET_KEY` (sans ecraser une valeur
+    deja fournie par l'environnement). Rend vrai si une cle est disponible pour le processus."""
+    if os.environ.get('TESTPILOT_SECRET_KEY', '').strip():
+        return True
+    fichier = source / '.secret_key'
+    if fichier.is_file():
+        os.environ['TESTPILOT_SECRET_KEY'] = fichier.read_text(encoding='utf-8').strip()
+        return True
+    return False
+
+
+def _purger_anciennes_copies(qualif: Path, garder: int = _COPIES_A_GARDER) -> list:
+    copies = sorted(qualif.glob('*/data-*'), key=lambda d: d.name.rsplit('data-', 1)[-1],
+                    reverse=True)
+    purgees = []
+    for ancienne in copies[garder:]:
+        shutil.rmtree(ancienne, ignore_errors=True)
+        purgees.append(str(ancienne))
+    return purgees
+
+
+def _isoler_donnees(out_name: str, source: Path | None = None, racine: Path = ROOT) -> Path:
+    source = Path(source or os.environ.get('TESTPILOT_CAMPAIGN_SOURCE_DATA') or racine / 'data')
     horodatage = datetime.now().strftime('%Y%m%d-%H%M%S')
-    cible = ROOT / '.local-preview' / 'qualification' / out_name / f'data-{horodatage}'
+    qualif = racine / '.local-preview' / 'qualification'
+    cible = qualif / out_name / f'data-{horodatage}'
     cible.mkdir(parents=True, exist_ok=False)
+    try:
+        cible.chmod(0o700)  # sans effet reel sous Windows (droits herites du profil utilisateur)
+    except OSError:
+        pass
     for nom in _A_COPIER:
-        source = ROOT / 'data' / nom
-        if source.is_dir():
-            shutil.copytree(source, cible / nom)
-        elif source.is_file():
-            shutil.copy2(source, cible / nom)
+        origine = source / nom
+        if origine.is_dir():
+            shutil.copytree(origine, cible / nom)
+        elif origine.is_file():
+            shutil.copy2(origine, cible / nom)
+    _poser_cle_depuis_source(source)
     os.environ['TESTPILOT_DATA_DIR'] = str(cible)
     os.environ.pop('TESTPILOT_DB_PATH', None)
+    for purgee in _purger_anciennes_copies(qualif):
+        print(json.dumps({'copie_purgee': purgee}, ensure_ascii=True))
     return cible
+
+
+def _masquer_secrets(texte: str, project: dict) -> str:
+    """Retire d'un texte destine a un artefact TOUT secret connu : mot de passe du projet, cle API,
+    cle de chiffrement (jamais ecrite dans un `result.json`, un rapport ou une trace)."""
+    for secret in (project.get('password'), os.environ.get('TESTPILOT_SECRET_KEY'),
+                   os.environ.get('ANTHROPIC_API_KEY')):
+        if secret and len(str(secret)) >= 6:
+            texte = texte.replace(str(secret), '[secret]')
+    return texte
 
 
 def _nom_de_sortie_demande() -> str:
@@ -185,13 +232,14 @@ def _un_essai(case_id: int, iteration: int, out_dir: Path, project: dict, connex
     try:
         connector.connect()
         result = GenerationAgent(
-            llm=QualificationLLM(budget, trial, secrets=(project['password'], config.ANTHROPIC_API_KEY)),
+            llm=QualificationLLM(budget, trial, secrets=(project['password'], config.ANTHROPIC_API_KEY,
+                                                          os.environ.get('TESTPILOT_SECRET_KEY'))),
             connector=connector, dry_runner=dry_runner,
         ).generate(plan, metier=metier, projet=project, qualification=True)
         rapport['generation'] = asdict(result)
     except Exception as exc:
         rapport['generation_error_type'] = type(exc).__name__
-        rapport['generation_error'] = str(exc).replace(project['password'], '[secret]')[:1500]
+        rapport['generation_error'] = _masquer_secrets(str(exc), project)[:1500]
         connector.disconnect()
         rapport['budget'] = budget.summary()
         (trial_dir / 'result.json').write_text(json.dumps(rapport, ensure_ascii=False, indent=2,
@@ -232,7 +280,7 @@ def _un_essai(case_id: int, iteration: int, out_dir: Path, project: dict, connex
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument('--out', required=True)
     parser.add_argument('--project-id', type=int, default=DEFAULT_PROJECT_ID)
     parser.add_argument('--cases', type=str, default=None,
@@ -242,6 +290,16 @@ def main():
     parser.add_argument('--expected-base-url', type=str, default=None,
                         help='garde-fou : refuse de lancer si le project.base_url differe')
     args = parser.parse_args()
+    # ⚠️ Echec BRUYANT si l'isolation n'est pas active (revue verdict-reviewer, 2026-09-24) : un
+    # `--out` mal reconnu par l'analyse precoce de `sys.argv`, ou un `TESTPILOT_DB_PATH` reinjecte
+    # par `.env`, ferait sinon tourner la campagne sur le `data/` REEL sans aucune erreur.
+    if DATA_DIR_ISOLE is None:
+        raise SystemExit("isolation des donnees inactive (--out non reconnu) : campagne refusee")
+    if Path(config.DATA_DIR).resolve() != DATA_DIR_ISOLE.resolve():
+        raise SystemExit(f"config.DATA_DIR ({config.DATA_DIR}) n'est pas la copie isolee")
+    if DATA_DIR_ISOLE.resolve() not in Path(config.DB_PATH).resolve().parents:
+        raise SystemExit(f"config.DB_PATH ({config.DB_PATH}) est hors de la copie isolee : "
+                         "campagne refusee (TESTPILOT_DB_PATH reinjecte par .env ?)")
     project_id = args.project_id
     case_ids = tuple(int(c) for c in args.cases.split(',')) if args.cases else DEFAULT_CASE_IDS
     iterations = (tuple(int(i) for i in args.iterations.split(','))

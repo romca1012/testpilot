@@ -282,3 +282,11 @@ def test_les_entrees_de_message_ne_sont_jamais_prises_pour_des_noms_de_champ():
 
     assert len(avis) == 1 and avis[0]["kind"] == "champ_inconnu", (
         "le texte du message ne doit pas être confondu avec un nom de champ observé")
+
+
+def test_un_message_observe_trop_court_ne_disculpe_pas_n_importe_quel_texte():
+    """Un message observé vide ou d'un caractère est sous-chaîne de tout : il ne doit rien
+    disculper (revue verdict-reviewer, 2026-09-24)."""
+    for court in ("", " ", ".", "Erreur"):
+        verified = {f"{MESSAGE_SOURCE_PREFIX}attempt_form_submission:/x": [court]}
+        assert len(check_messages_observes(_FEATURE_MESSAGE_DEVINE, verified_fields=verified)) == 1
