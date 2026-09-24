@@ -376,7 +376,35 @@ def click_first_actionable(page, candidats, *, quoi, timeout=8000, ident: str = 
     raise ElementIntrouvableError(f"{quoi} : aucun élément actionnable sur {page.url}")
 
 
+def _chemin_sans_fragment(url: str) -> str:
+    """Le chemin (+ requête) d'une URL, SANS son fragment `#…` — le back-office Odoo route
+    entièrement par fragment (`/web#action=…`, `/odoo/…#…`) : une navigation SPA interne (menu,
+    changement de vue, sauvegarde) ne change JAMAIS cette partie, contrairement à un VRAI
+    changement de document (`<a href="/autre/chemin">` d'un portail, par exemple)."""
+    return url.split("#", 1)[0]
+
+
 def click_button(page, label):
+    """Clique le bouton/lien nommé `label`, puis vérifie une soumission bloquée — **seulement si
+    ce clic n'a pas fait CHANGER DE PAGE** (§F7, 2026-09-23).
+
+    ⚠️ **Le défaut mesuré en campagne réelle** (cas 95, projet Sapian portail, 23/09) :
+    `verifier_soumission_non_bloquee` inspectait les formulaires de la page COURANTE après
+    N'IMPORTE QUEL clic — y compris un `<a href="/en/mutation/67">` de navigation vers une étape
+    suivante d'un formulaire multi-écrans. Sur la page de DESTINATION, tous les champs sont
+    encore vides et donc « invalides » au sens HTML5 : le contrôle accusait à tort le jeu de
+    données du test alors qu'aucune soumission n'avait été tentée.
+
+    ⚠️ **Pourquoi le chemin d'URL, pas le type d'élément cliqué.** Sondé en direct sur les 3 cas
+    réels avant de choisir ce signal (jamais deviné) : le bouton « Envoyer » d'un formulaire
+    portail Sapian est lui-même un `<a href="#" role="button">` (pas un `<button type=submit>`),
+    et le bouton d'enregistrement du back-office Odoo (OWL) est un `<button type="button">` HORS
+    de tout `<form>` — aucune règle basée sur la balise/le type de l'élément ne les distingue
+    correctement du cas fautif. Seul le changement de CHEMIN d'URL (hors fragment) sépare
+    proprement les trois : le lien de navigation du cas 95 change de chemin, les deux autres
+    (soumission AJAX portail, sauvegarde back-office en SPA) ne changent jamais que le fragment.
+    """
+    avant = _chemin_sans_fragment(page.url)
     click_first_actionable(page, [
         page.get_by_role("button", name=label, exact=True),
         page.get_by_role("link", name=label, exact=True),
@@ -384,7 +412,8 @@ def click_button(page, label):
         page.get_by_role("link", name=label, exact=False),
         f':is(a, button, input[type="submit"]):has-text("{label}")',
     ], quoi=f"Bouton '{label}'", ident=label)
-    verifier_soumission_non_bloquee(page)
+    if _chemin_sans_fragment(page.url) == avant:
+        verifier_soumission_non_bloquee(page)
 
 
 def _marquer(page, attribut: str, nom: str) -> None:
