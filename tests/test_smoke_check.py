@@ -10,7 +10,12 @@ tranche en 3 secondes. Ici, elle est vue **avant le premier run**.
 
 import pytest
 
-from testpilot.generation.smoke_check import smoke_check
+from testpilot.generation.smoke_check import (
+    MESSAGE_SOURCE_PREFIX,
+    check_champs_existants,
+    check_messages_observes,
+    smoke_check,
+)
 
 # Extrait du modèle RÉEL, mesuré le 2026-07-17 sur « Portail Sapian »
 # (`scripts/crawl_domaine.py`). Les options sont celles de l'application, pas des valeurs
@@ -214,3 +219,66 @@ def test_la_navigation_manquante_de_0020_N_EST_PAS_vue():
 
     assert smoke_check(feature, modele=MODELE) == [], (
         "si ce test échoue, le smoke-check a gagné une capacité : mettre à jour la note 0021")
+
+
+# ── §F8 (2026-09-23) : un texte de message doit avoir été OBSERVÉ, pas deviné ─────────────────
+#
+# Rejoue le défaut mesuré en campagne réelle (cas 97, projet Sapian portail, 23/09/2026,
+# `docs/mesures/campagne-lot01-2026-09-23.md`) : un step personnalisé affirmait un message de
+# validation HTML5 exact que l'agent n'avait jamais observé — le message réel de l'application
+# était différent, ce qui a produit un faux `non_conforme` (l'app avait raison de refuser, c'est
+# le TEXTE du test qui se trompait).
+
+_FEATURE_MESSAGE_DEVINE = (
+    '  Alors le message de validation HTML5 contenant '
+    '"Veuillez saisir un numéro à 7 chiffres" est affiché sur le champ "code_client1"\n')
+
+
+def test_GARDE_un_message_jamais_observe_est_signale():
+    avis = check_messages_observes(_FEATURE_MESSAGE_DEVINE, verified_fields={})
+
+    assert len(avis) == 1
+    assert avis[0]["kind"] == "message_non_observe"
+    assert "Veuillez saisir un numéro à 7 chiffres" in avis[0]["message"]
+
+
+def test_un_message_reellement_observe_ne_declenche_rien():
+    """Le fragment observé (`attempt_form_submission`, via `MESSAGE_SOURCE_PREFIX`) DISCULPE le
+    texte du test — correspondance partielle dans les deux sens, comme les autres contrôles."""
+    verified = {f"{MESSAGE_SOURCE_PREFIX}attempt_form_submission:/mutation":
+                ["Veuillez saisir un numéro à 7 chiffres."]}
+
+    assert check_messages_observes(_FEATURE_MESSAGE_DEVINE, verified_fields=verified) == []
+
+
+def test_sans_registre_aucune_generation_instrumentee_le_smoke_check_se_tait():
+    """`verified_fields is None` (version ancienne) ne peut rien prouver ni infirmer — silence,
+    même contrat que `check_champs_existants` dans le même cas."""
+    assert check_messages_observes(_FEATURE_MESSAGE_DEVINE, verified_fields=None) == []
+
+
+def test_un_registre_VIDE_mais_instrumente_signale_quand_meme():
+    """`{}` (génération instrumentée, rien observé) N'EST PAS `None` — le motif exact que ce lot
+    corrige : le silence sur un registre vide masquerait précisément le cas 97."""
+    avis = check_messages_observes(_FEATURE_MESSAGE_DEVINE, verified_fields={})
+    assert len(avis) == 1
+
+
+def test_un_texte_hors_alors_nest_pas_concerne():
+    """Seules les lignes d'assertion (`Alors`/`Et`/`Mais`) sont concernées — une simple mention du
+    mot « message » dans un `Quand`/`Soit` n'affirme rien et ne doit rien déclencher."""
+    feature = '  Quand je clique sur le bouton "Envoyer un message"\n'
+    assert check_messages_observes(feature, verified_fields={}) == []
+
+
+def test_les_entrees_de_message_ne_sont_jamais_prises_pour_des_noms_de_champ():
+    """§F8 : une entrée `message:…` de `verified_fields` porte un TEXTE, jamais un nom de champ —
+    `check_champs_existants` doit continuer à l'ignorer, sinon un message qui contient par hasard
+    la même chaîne qu'un champ existant masquerait un vrai `champ_inconnu`."""
+    verified = {f"{MESSAGE_SOURCE_PREFIX}attempt_form_submission:/x": ["code_client1_invalide"]}
+    feature = '  Et je renseigne le champ "code_client1_invalide" avec la valeur "test"\n'
+
+    avis = check_champs_existants(feature, modele={}, verified_fields=verified)
+
+    assert len(avis) == 1 and avis[0]["kind"] == "champ_inconnu", (
+        "le texte du message ne doit pas être confondu avec un nom de champ observé")

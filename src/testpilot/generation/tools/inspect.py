@@ -169,11 +169,18 @@ def attempt_form_submission(ctx: "ToolContext", page_url: str, field_values: dic
     nettoyage = ("nettoyée automatiquement" if resultat.get("cleaned_up")
                 else "PAS nettoyée automatiquement — vérifie/supprime-la manuellement si besoin")
     if message:
-        return _outcome(
+        outcome = _outcome(
             f"Après soumission, l'application affiche EXACTEMENT : {message!r} (URL résultante : "
             f"{resultat.get('url', '?')}). Donnée de calibration {nettoyage}. Utilise ce texte au "
             "caractère près si ton assertion en dépend, ou une correspondance partielle stable si "
             "une partie est variable.")
+        # §F8 (2026-09-23) : ce message est désormais un OBSERVÉ — `smoke_check` (génération)
+        # doit pouvoir vérifier qu'un texte affirmé dans le `.feature` en découle vraiment, plutôt
+        # que d'être deviné (cas 97, campagne réelle du 23/09).
+        from testpilot.generation.smoke_check import MESSAGE_SOURCE_PREFIX
+        outcome.verified_fields = {f"{MESSAGE_SOURCE_PREFIX}attempt_form_submission:{page_url}":
+                                   [message]}
+        return outcome
     return _outcome(
         f"Après soumission, aucun message visible détecté (URL résultante : "
         f"{resultat.get('url', '?')}). Donnée de calibration {nettoyage}. N'affirme pas un texte "

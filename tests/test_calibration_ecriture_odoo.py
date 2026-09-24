@@ -322,6 +322,24 @@ def test_tool_attempt_form_submission_rapporte_le_message_et_le_nettoyage():
     assert "nettoyée automatiquement" in outcome.observation
 
 
+def test_tool_attempt_form_submission_enregistre_le_message_pour_smoke_check():
+    """§F8 (2026-09-23) : un message réellement observé doit alimenter `verified_fields`, sous le
+    préfixe `MESSAGE_SOURCE_PREFIX` — sans ça, `smoke_check.check_messages_observes` ne peut
+    jamais disculper un texte de message pourtant vu pendant la génération."""
+    from testpilot.generation.smoke_check import MESSAGE_SOURCE_PREFIX
+
+    outcome = inspect_tools.attempt_form_submission(
+        _ctx(_ConnecteurFactice({"submitted": True, "url": "u", "error": "",
+                                "message": "Le code client doit contenir exactement 7 chiffres.",
+                                "cleaned_up": True}),
+            calibration_writes_enabled=True),
+        "/mutation", {"code_client1": "123"})
+
+    cle = f"{MESSAGE_SOURCE_PREFIX}attempt_form_submission:/mutation"
+    assert outcome.verified_fields.get(cle) == [
+        "Le code client doit contenir exactement 7 chiffres."]
+
+
 def test_tool_attempt_form_submission_dit_quand_le_nettoyage_a_echoue():
     outcome = inspect_tools.attempt_form_submission(
         _ctx(_ConnecteurFactice({"submitted": True, "url": "u", "error": "",
