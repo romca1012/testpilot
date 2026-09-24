@@ -319,3 +319,49 @@ def test_aucun_step_generique_ni_web_ne_reference_context_odoo():
             for noeud in ast.walk(arbre):
                 if isinstance(noeud, ast.Attribute) and noeud.attr == "odoo"                         and isinstance(noeud.value, ast.Name) and noeud.value.id == "context":
                     pytest.fail(f"{chemin.name}:{noeud.lineno} référence context.odoo")
+
+
+# ── Revue du lot 07a : ne jamais laisser un cas tourner devant sa page de connexion ────────────
+
+def test_un_formulaire_que_la_detection_n_a_pas_pu_remplir_est_bloque_meme_a_l_entree(connexion):
+    """Mot de passe visible, identifiants renseignés, mais `tenter_connexion_generique` ne trouve pas de
+    champ identifiant (`False`) : avant la revue, le step d'entrée passait et le cas échouait sur son
+    `Alors` — `failed` imputé à l'application."""
+    connexion(soumis=False)
+    ctx = _contexte(_Page(mdp=True))
+
+    with pytest.raises(H.PreconditionNonRemplieError, match="n'a pas pu le remplir"):
+        generic.step_access_home_page(ctx)
+
+
+def test_une_page_illisible_n_est_jamais_une_connexion_reussie():
+    """`None` (lecture impossible) compte comme « mot de passe encore là »."""
+    assert H.connexion_reussie("https://a/login", "https://a/secure", None) is False
+    assert H.connexion_reussie("https://a/login", "https://a/secure", False) is True
+
+
+class _PageIllisible(_Page):
+    def locator(self, selecteur):
+        raise RuntimeError("Execution context was destroyed (navigation en cours)")
+
+
+def test_mot_de_passe_visible_rend_none_quand_la_page_n_est_pas_lisible():
+    assert H._mot_de_passe_visible(_PageIllisible()) is None
+    assert H._mot_de_passe_visible(_Page(mdp=True)) is True
+    assert H._mot_de_passe_visible(_Page(mdp=False)) is False
+
+
+def test_sans_identifiants_une_page_illisible_est_bloquee_pas_prise_pour_publique(connexion):
+    connexion()
+    ctx = _contexte(_PageIllisible(), user="", mdp="")
+
+    with pytest.raises(H.PreconditionNonRemplieError, match="n'a pas pu être lue"):
+        generic.step_access_home_page(ctx)
+
+
+def test_apres_la_tentative_une_page_illisible_est_une_connexion_non_aboutie(connexion, monkeypatch):
+    connexion(soumis=True, apres_url="https://app.test/secure")
+    monkeypatch.setattr(H, "_mot_de_passe_visible", lambda page: None)
+
+    with pytest.raises(H.PreconditionNonRemplieError, match="n'a pas abouti"):
+        generic.step_access_home_page(_contexte())

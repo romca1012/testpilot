@@ -75,7 +75,21 @@ puis sur ce lot). Coût (§8) : le prompt système gagne un paragraphe d'environ
 - Le step « … sans me connecter » est dans `generic/` (avec le step d'entrée), pas dans `web/` : il est visible du
   catalogue Odoo (où `web_url` est vide → `NavigationImpossibleError`, comme le step d'entrée déjà présent).
 
+Revue `verdict-reviewer` : verdict À CORRIGER, aucun bloquant, aucun chemin de faux PASSED trouvé. Corrigés dans ce lot :
+(1) un formulaire dont le champ identifiant n'est pas de type texte/email (détection générique qui ne saisit rien) laissait
+le step d'entrée passer et le cas échouer sur son `Alors` (`failed` imputé à l'application) : c'est maintenant un prérequis
+non rempli, en mode automatique aussi ; (3) `_mot_de_passe_visible` rend `None` quand la page n'est pas lisible, traité
+côté prudent (jamais « connexion réussie », jamais « application publique »). Le point (2) est un risque documenté ci-dessous.
+
 Risques / points à surveiller :
+- **Le critère de connexion ne voit que l'URL et le mot de passe.** Un mot de passe accepté suivi d'une redirection vers une
+  page de second facteur (champ OTP seul) ou « compte verrouillé » est jugé « connexion réussie » : le cas continue et échoue
+  (ou, avec un `Alors` faible, pourrait passer) sur une page qui n'est pas celle attendue. Signalé au porteur ; le lot 07b
+  (stratégies d'authentification) est le bon endroit pour reconnaître ces impasses.
+- **`_tp_connecte` n'est pas remis à zéro** après une déconnexion : « je me connecte… » après une déconnexion menant à une page
+  sans formulaire ne fait rien, sans erreur. Cas rare, non traité.
+- **L'avis `connexion_non_testee` dépend des libellés du catalogue** : reformuler un des deux steps le désactive sans qu'un test
+  casse. Le paragraphe du prompt est libellé « connecteur `web` » mais le prompt est partagé avec Odoo.
 - **Faux « bloqué », jamais faux PASSED.** Une application monopage dont l'URL ne change pas après connexion serait
   déclarée « connexion non aboutie » (le critère exige que l'URL parte) ; une application **publique** dont la page
   d'entrée affiche un champ mot de passe (formulaire dans l'en-tête) avec un projet sans identifiants serait bloquée.
@@ -100,6 +114,10 @@ Applications web **avec un formulaire de connexion simple** : identifiant + mot 
 deux écrans (identifiant puis mot de passe), dont l'URL renseignée dans le projet est la page de connexion (ou
 une page protégée qui y redirige), avec un compte de test enregistré dans le projet. Vérifié sur SauceDemo,
 the-internet et la fixture à deux écrans.
+
+Limite à ajouter : le champ identifiant doit être un `input` de type texte ou email, et la connexion est jugée réussie sur le seul
+signal « URL partie et plus de mot de passe » (une page de second facteur atteinte après un mot de passe accepté passerait pour
+une connexion réussie).
 
 **Pas couvert, à ne pas annoncer** (lot 07b) : SSO / OAuth (Google, Microsoft…), second facteur (TOTP, SMS), session
 injectée ou jeton, CAPTCHA, formulaire de connexion ouvert dans une fenêtre après un clic, page d'accueil sans
