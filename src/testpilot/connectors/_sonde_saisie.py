@@ -67,6 +67,7 @@ _METHODES_RPC_LECTURE = frozenset({"read", "search_read", "search", "search_coun
 # Bruit de fond d'Odoo (bus de notification, battement de session) : pas une sauvegarde.
 # `/web/session/` n'est PAS ignoré en bloc (revue du lot 12) : `POST /web/session/destroy` est une
 # déconnexion, une vraie écriture. Seuls les deux battements de session en lecture le sont.
+_MARQUE_NAVIGATION = "NAVIGATION "
 _ARRIERE_PLAN = ("/longpolling", "/websocket", "/bus/", "/web/webclient/",
                  "/web/session/check", "/web/session/get_session_info")
 _TYPES_SONDABLES = ("text", "tel", "search", "email", "url", "number")
@@ -125,12 +126,33 @@ def _est_ecriture_reelle(requete) -> bool:
     return True
 
 
+def _est_navigation(requete) -> bool:
+    try:
+        return bool(requete.is_navigation_request())
+    except Exception:
+        return False
+
+
+def _sans_fragment(url) -> str:
+    return str(url or "").split("#", 1)[0]
+
+
 def _garde_reseau(ecritures: list):
-    """Gestionnaire d'interception : abandonne toute écriture, laisse passer le reste."""
+    """Gestionnaire d'interception : abandonne toute écriture ET toute navigation, laisse passer le
+    reste.
+
+    Une NAVIGATION pendant la sonde (un `<select onchange="location=…">` de langue, de devise, de tri)
+    est un GET que la garde d'écriture laissait partir : effet de bord possible sur la session
+    authentifiée, et sonde des champs de la page d'ARRIVÉE attribuée à la route d'origine (revue du
+    lot 12). Elle est abandonnée avant d'atteindre le serveur et interrompt la sonde, comme une
+    écriture — D10 bis : « ni clic ni navigation après saisie »."""
     def garde(route):
         requete = route.request
         if _est_ecriture_reelle(requete):
             ecritures.append(f"{requete.method} {requete.url}")
+            route.abort()
+        elif _est_navigation(requete):
+            ecritures.append(f"{_MARQUE_NAVIGATION}{requete.method} {requete.url}")
             route.abort()
         else:
             route.continue_()
@@ -166,7 +188,8 @@ def sonder_formulaire(page, url: str) -> dict:
             dependants |= _changer_les_selects(jetable, base, ecritures)
         except Exception:
             complet = False
-        for nom in list(jetable.evaluate(_JS_CHAMPS))[:_CHAMPS_MAX]:
+        noms = [] if ecritures else list(jetable.evaluate(_JS_CHAMPS))[:_CHAMPS_MAX]
+        for nom in noms:
             if ecritures:
                 break
             try:
@@ -187,14 +210,18 @@ def sonder_formulaire(page, url: str) -> dict:
         # select est exhaustif (défaut sûr, D11 : refuser à tort coûte du budget, revue du lot 12).
         resultat["selects"] = {n: {"independant": bool(complet and not ecritures
                                                        and n not in dependants)} for n in base}
-        if ecritures:
-            resultat["statut"] = "interrompue"
-            resultat["raison"] = ("sauvegarde automatique détectée, pas de sonde : "
-                                  + ecritures[0][:120])
+        _marquer_interruption(resultat, ecritures)
     except Exception as exc:  # perception best-effort : jamais fatale
-        logger.warning("[sonde de saisie] échec sur %s : %s", url, exc)
-        resultat["statut"] = "erreur"
-        resultat["raison"] = str(exc)[:200]
+        if ecritures:
+            # Une écriture ou une navigation abandonnée peut laisser la page dans un état où la
+            # lecture suivante lève (page d'erreur, contexte détruit) : c'est une INTERRUPTION
+            # (défaut sûr, aucune sonde), pas une erreur de la sonde.
+            _marquer_interruption(resultat, ecritures)
+            resultat.setdefault("selects", {})
+        else:
+            logger.warning("[sonde de saisie] échec sur %s : %s", url, exc)
+            resultat["statut"] = "erreur"
+            resultat["raison"] = str(exc)[:200]
     finally:
         if jetable is not None:
             try:
@@ -202,6 +229,17 @@ def sonder_formulaire(page, url: str) -> dict:
             except Exception:
                 pass
     return resultat
+
+
+def _marquer_interruption(resultat: dict, ecritures: list) -> None:
+    if not ecritures:
+        return
+    resultat["statut"] = "interrompue"
+    if ecritures[0].startswith(_MARQUE_NAVIGATION):
+        resultat["raison"] = ("navigation détectée, pas de sonde : "
+                              + ecritures[0][len(_MARQUE_NAVIGATION):][:120])
+    else:
+        resultat["raison"] = "sauvegarde automatique détectée, pas de sonde : " + ecritures[0][:120]
 
 
 def _options_selects_ou_vide(page) -> dict:
@@ -221,7 +259,7 @@ def _changer_les_selects(page, base: dict, ecritures: list) -> set:
     dependants: set = set()
     if len(base) < 2:
         return dependants
-    courant = base
+    courant, depart = base, _sans_fragment(getattr(page, "url", ""))
     for nom in base:
         if ecritures:
             break
@@ -232,9 +270,21 @@ def _changer_les_selects(page, base: dict, ecritures: list) -> set:
             continue
         page.locator(_selecteur(nom)).first.select_option(reelles[-1], timeout=_SELECT_TIMEOUT_MS)
         page.wait_for_timeout(_SETTLE_MS)
+        if not ecritures and _sans_fragment(getattr(page, "url", "")) != depart:
+            # Filet : un changement d'URL qui n'a pas produit de requête (History API) est aussi
+            # une navigation ; ce qu'on lirait ensuite ne serait plus la route sondée.
+            ecritures.append(f"{_MARQUE_NAVIGATION}(URL changée) {page.url}")
         if ecritures:
             break
-        courant = {n["nom"]: n["options"] for n in page.evaluate(_JS_SELECTS)}
+        try:
+            courant = {n["nom"]: n["options"] for n in page.evaluate(_JS_SELECTS)}
+        except Exception:
+            # La navigation abandonnée n'a peut-être pas encore été traitée par le gestionnaire :
+            # on lui laisse le temps avant de conclure à une vraie erreur.
+            page.wait_for_timeout(_SETTLE_MS * 5)
+            if ecritures:
+                break
+            raise
         dependants |= {n for n, opts in base.items() if n != nom and courant.get(n) != opts}
     return dependants
 
