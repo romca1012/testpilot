@@ -1820,6 +1820,8 @@ def memorize_record_count(context, model):
     (cf. `_require_snapshot`/`_require_max_id`). Mieux vaut échouer ICI, où la cause est visible,
     que laisser le scénario finir au vert sans rien avoir prouvé.
     """
+    # Borne temporelle : le comptage (et le code HTTP) ne jugent que ce qui suit CE relevé.
+    context._tp_releve_t = time.monotonic()
     try:
         setattr(context, _count_attr(model), context.odoo.env[model].search_count([]))
         derniers = context.odoo.env[model].with_context(active_test=False).search(
@@ -1977,7 +1979,7 @@ def check_count_not_increased(context, model):
             f"Comptage global (diagnostic, inclut l'activité concurrente) : {global_actuel}."
         )
     # Rien n'a été créé — MAIS un 5xx n'est pas la preuve d'un refus propre : le serveur a planté.
-    erreur_5xx = _premiere_reponse_5xx(context)
+    erreur_5xx = _un_5xx_dans_le_scenario(context)
     if erreur_5xx is not None:
         raise ErreurServeur5xxError(_message_erreur_serveur(
             erreur_5xx, _texte_erreur_visible(getattr(context, "page", None)), refus_attendu=True))
@@ -2005,9 +2007,15 @@ def _borner(texte: str) -> str:
 
 
 def _reponses_formulaire(context) -> list:
-    """Les traces `{status, url}` capturées par `environment._capturer_reponse_formulaire`."""
+    """Les traces `{status, url, t}` capturées par `environment._capturer_reponse_formulaire`,
+    POSTÉRIEURES au relevé de comptage de ce scénario (une réponse antérieure n'est pas l'action
+    testée)."""
     reps = getattr(context, "reponses_formulaire", None)
-    return [r for r in reps if isinstance(r, dict)] if isinstance(reps, list) else []
+    if not isinstance(reps, list):
+        return []
+    releve = getattr(context, "_tp_releve_t", None)
+    return [r for r in reps if isinstance(r, dict)
+            and (releve is None or "t" not in r or r["t"] >= releve)]
 
 
 def _statut_http(trace) -> int:
@@ -2017,7 +2025,16 @@ def _statut_http(trace) -> int:
         return 0
 
 
-def _premiere_reponse_5xx(context):
+def _reponse_5xx_de_l_action(context):
+    """Le 5xx de l'action qu'on vient de JUGER : la DERNIÈRE réponse, si elle est un 5xx. Un 5xx plus
+    ancien suivi d'un refus propre n'est pas l'action testée (revue du lot 02)."""
+    reponses = _reponses_formulaire(context)
+    return reponses[-1] if reponses and _statut_http(reponses[-1]) >= 500 else None
+
+
+def _un_5xx_dans_le_scenario(context):
+    """Scénario NÉGATIF : chaque soumission était censée être refusée proprement ; un 5xx sur
+    n'importe laquelle est un plantage serveur, pas un refus."""
     for trace in _reponses_formulaire(context):
         if _statut_http(trace) >= 500:
             return trace
@@ -2029,8 +2046,12 @@ def _a_une_reponse_d_erreur(context) -> bool:
     return any(_statut_http(t) >= 400 for t in _reponses_formulaire(context))
 
 
-def _texte_erreur_visible(page) -> str:
-    """Le premier message d'erreur VISIBLE de la page (`_SELECTEURS_ERREUR`), ou `''`."""
+def _texte_erreur_visible(page, *, strict: bool = False) -> str:
+    """Le premier message d'erreur VISIBLE de la page (`_SELECTEURS_ERREUR`), ou `''`.
+
+    `strict=True` : une page qui plante LÈVE (le diagnostic doit alors dire « indisponible », et
+    l'appelant ne doit pas conclure à un silence qu'il n'a pas pu observer). Sinon : `''`.
+    """
     if page is None:
         return ""
     try:
@@ -2044,6 +2065,8 @@ def _texte_erreur_visible(page) -> str:
                 if texte:
                     return texte
     except Exception:
+        if strict:
+            raise
         return ""
     return ""
 
@@ -2187,7 +2210,7 @@ def diagnostic_soumission(page) -> str:
                 "⚠️ L'application n'est PAS en cause ici.")
 
         # 2. Ce que le serveur a répondu, s'il a répondu quelque chose de lisible.
-        texte = _texte_erreur_visible(page)
+        texte = _texte_erreur_visible(page, strict=True)
         if texte:
             return _borner(
                 f"L'APPLICATION A REFUSÉ la soumission et l'affiche : « {texte} ». "
@@ -2314,7 +2337,7 @@ def check_count_increased_by_one(context, model):
     # ⚠️ F10 (D12) — le CODE HTTP, quand le serveur a planté. Après `champs` (le serveur a nommé NOS
     # champs : donnée invalide, l'app n'est pas en cause) et AVANT `generique` : un 5xx est la preuve
     # la plus forte d'un défaut côté serveur (exception non gérée), et il porte son code comme preuve.
-    erreur_5xx = _premiere_reponse_5xx(context)
+    erreur_5xx = _reponse_5xx_de_l_action(context)
     if erreur_5xx is not None:
         raise ErreurServeur5xxError(
             f"Aucune création détectée dans '{model}' depuis id > {max_id}. "
@@ -2337,12 +2360,20 @@ def check_count_increased_by_one(context, model):
     # ⚠️ F10 (D12) — le SILENCE TOTAL : ni réponse serveur exploitable (JSON ni code d'erreur), ni
     # message affiché, ni champ invalide. Rien ne désigne l'application : `indetermine`, jamais
     # `non_conforme` — le message disait déjà « l'outil NE conclut PAS à un défaut sans preuve ».
-    if refus is None and not _a_une_reponse_d_erreur(context) and not _texte_erreur_visible(page):
+    # ⚠️ Seulement quand on a PU observer : sans page (scénario RPC seul), ou si la lecture de la page a
+    # planté, l'absence de signal n'est pas un silence — on garde le constat d'avant (non_conforme,
+    # « diagnostic indisponible » le cas échéant), jamais un `indetermine` par défaut de mesure.
+    try:
+        texte_visible = _texte_erreur_visible(page, strict=True) if page is not None else None
+    except Exception:
+        texte_visible = None
+    if (refus is None and texte_visible == "" and not _a_une_reponse_d_erreur(context)):
         raise RefusNonExpliqueError(
             f"Aucune création détectée dans '{model}' depuis id > {max_id} (domaine "
             f"[('id', '>', {max_id})]). REFUS NON EXPLIQUÉ : aucune réponse HTTP d'erreur captée, "
             "aucun message affiché, aucun champ invalide côté navigateur. Rien ne désigne "
-            "l'application : à instruire côté application (logs serveur du POST).")
+            "l'application : à instruire côté application (logs serveur du POST)."
+            + (f"\n{pourquoi}" if pourquoi else ""))
     statut_http = next((_statut_http(t) for t in _reponses_formulaire(context)
                         if _statut_http(t) >= 400), 0)
     raise AssertionError(

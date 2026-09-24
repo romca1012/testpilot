@@ -34,6 +34,7 @@ Comme Behave charge ``environment.py`` AVANT les modules de steps, l'alias est e
 """
 
 import os
+import time
 import sys
 import types
 from pathlib import Path
@@ -234,8 +235,12 @@ def _capturer_reponse_formulaire(context):
             if "/website/form/" not in response.url:
                 return
             # La trace est posée AVANT la lecture du corps : un corps non JSON ne doit pas la perdre.
+            # `t` : horodatage monotone — le comptage ne juge que les réponses POSTÉRIEURES à son relevé.
             context.reponses_formulaire.append(
-                {"status": int(response.status), "url": response.url})
+                {"status": int(response.status), "url": response.url, "t": time.monotonic()})
+            # Le JSON d'une soumission PRÉCÉDENTE ne doit pas survivre à une réponse non JSON plus
+            # récente (un `error_fields` périmé l'emporterait sur un 5xx actuel).
+            context.reponse_formulaire = None
             # Corps JSON attendu ; si ce n'en est pas (erreur 5xx HTML, redirect…), on garde la trace.
             context.reponse_formulaire = response.json()
         except Exception:
