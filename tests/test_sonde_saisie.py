@@ -51,12 +51,18 @@ class _Locator:
     def evaluate(self, _js):
         return self._page.lire(self._nom)
 
+    def select_option(self, valeur, **_kw):
+        self._page.choisir(self._nom, valeur)
+
 
 class _PageJetable:
     """Pas de `click`, pas de `keyboard` : tout clic lèverait `AttributeError` (test « aucun clic »)."""
 
     def __init__(self, champs, retention=None, ecritures=None, valide=r"\d{7}(/\d{7})*",
-                 poster_au_fill=None):
+                 poster_au_fill=None, selects=None, au_choix=None, au_remplissage=None):
+        self.selects = selects or {}                # {nom: [valeurs d'option]} — état COURANT
+        self.au_choix = au_choix or {}              # {nom du select choisi: fonction(page)}
+        self.au_remplissage = au_remplissage or {}  # {nom du champ tapé: fonction(page)}
         self.valide = re.compile(valide)            # ce que le navigateur juge valide
         self.poster_au_fill = poster_au_fill        # n° (1-based) du remplissage qui émet un POST
         self.champs = champs                        # {nom: valeur courante}
@@ -75,8 +81,15 @@ class _PageJetable:
     def wait_for_timeout(self, _ms):
         pass
 
-    def evaluate(self, _js):
+    def evaluate(self, js):
+        if js == sonde._JS_SELECTS:
+            return [{"nom": n, "options": list(o)} for n, o in self.selects.items()]
         return list(self.champs)
+
+    def choisir(self, nom, valeur):
+        self.remplissages.append((nom, f"select:{valeur}"))
+        if nom in self.au_choix:
+            self.au_choix[nom](self)
 
     def locator(self, selecteur):
         return _Locator(self, re.search(r'name="([^"]+)"', selecteur).group(1))
@@ -84,6 +97,8 @@ class _PageJetable:
     def remplir(self, nom, valeur):
         self.remplissages.append((nom, valeur))
         self.champs[nom] = self.retention.get(nom, lambda v: v)(valeur)
+        if nom in self.au_remplissage:
+            self.au_remplissage[nom](self)
         if nom in self.ecritures or self.poster_au_fill == len(self.remplissages):
             methode, url = self.ecritures.get(nom, ("POST", "https://app.test/draft"))
             for h in self.handlers:
@@ -319,6 +334,16 @@ class _Appli(BaseHTTPRequestHandler):
         "fetch": "fetch('/draft',{method:'POST',body:this.value});",
         "beacon": "navigator.sendBeacon('/draft', this.value);",
         "xhr": "var x=new XMLHttpRequest();x.open('PUT','/draft');x.send(this.value);",
+        # Lot 12, revue : le client Odoo LIT en POST (JSON-RPC) — seule la méthode du corps décide.
+        "rpc_read": "fetch('/web/dataset/call_kw/res.users/read',{method:'POST',headers:"
+                    "{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',"
+                    "method:'call',params:{model:'res.users',method:'read',args:[[1]],kwargs:{}}})});",
+        "rpc_write": "fetch('/web/dataset/call_kw/res.users/read',{method:'POST',headers:"
+                     "{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',"
+                     "method:'call',params:{model:'res.users',method:'write',args:[[1],{}],"
+                     "kwargs:{}}})});",
+        "session_destroy": "fetch('/web/session/destroy',{method:'POST',headers:"
+                           "{'Content-Type':'application/json'},body:'{}'});",
     }
 
     def log_message(self, *_a):
@@ -327,8 +352,28 @@ class _Appli(BaseHTTPRequestHandler):
     def _authentifie(self):
         return "session=ok" in (self.headers.get("Cookie") or "")
 
+    _PAGE_SELECTS = (
+        "<html><body><form>"
+        "<select name='pays' onchange=\"var v=document.getElementById('ville');"
+        "v.innerHTML=this.value=='be'?'<option value=&quot;&quot;>-</option>"
+        "<option value=bruxelles>Bruxelles</option><option value=liege>Liege</option>'"
+        ":'<option value=&quot;&quot;>-</option><option value=paris>Paris</option>"
+        "<option value=lyon>Lyon</option>'\">"
+        "<option value=''>-</option><option value=fr>France</option><option value=be>Belgique"
+        "</option></select>"
+        "<select name='ville' id='ville'><option value=''>-</option><option value=paris>Paris"
+        "</option><option value=lyon>Lyon</option></select>"
+        "<select name='type'><option value=''>-</option><option value=a>A</option>"
+        "<option value=b>B</option></select>"
+        "<input name='code' type='text'></form></body></html>")
+
     def do_GET(self):
-        if self.path == "/form" and self._authentifie():
+        if self.path == "/selects" and self._authentifie():
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(self._PAGE_SELECTS.encode("utf-8"))
+        elif self.path == "/form" and self._authentifie():
             corps = ("<html><body><form><input name='numero_facture1' type='text' oninput=\""
                      r"this.value=this.value.replace(/\D/g,'').replace(/(\d{7})(?=\d)/g,'$1/');"
                      + self._JS.get(self.brouillon, "") + "\"></form></body></html>")
@@ -522,3 +567,136 @@ def test_un_corps_illisible_ou_un_autre_chemin_reste_une_ecriture():
         _RequeteRpc("read", url="https://app.test/api/brouillon/read")) is True
     # Le suffixe d'URL ne décide de rien : `/read` dans l'URL mais méthode `write` dans le corps.
     assert sonde._est_ecriture_reelle(_RequeteRpc("write")) is True
+
+
+# ── Dépendance des selects (revue du lot 12) : indépendant SEULEMENT si observé inchangé ────────
+
+_PAYS = ["", "fr", "be"]
+_VILLES_FR = ["", "paris", "lyon"]
+
+
+def _villes_belges(page):
+    page.selects["ville"] = ["", "bruxelles", "liege"]
+
+
+def test_un_select_dont_les_options_changent_apres_un_autre_select_est_dependant():
+    page = _PageJetable({"code": ""}, selects={"pays": list(_PAYS), "ville": list(_VILLES_FR)},
+                        au_choix={"pays": _villes_belges}, valide=r"\d*")
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert resultat["selects"] == {"pays": {"independant": True}, "ville": {"independant": False}}
+
+
+def test_un_select_dont_les_options_changent_apres_une_saisie_texte_est_dependant():
+    page = _PageJetable({"cp": ""}, selects={"ville": list(_VILLES_FR)}, valide=r"\d*",
+                        au_remplissage={"cp": lambda p: p.selects.update(ville=["", "gand"])})
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert resultat["selects"] == {"ville": {"independant": False}}
+
+
+def test_deux_selects_dont_rien_ne_bouge_sont_confirmes_independants():
+    page = _PageJetable({"code": ""}, selects={"type": ["", "a", "b"], "pays": list(_PAYS)},
+                        valide=r"\d*")
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert resultat["selects"] == {"type": {"independant": True}, "pays": {"independant": True}}
+    assert ("type", "select:b") in page.remplissages
+
+
+def test_une_observation_incomplete_ne_declare_aucun_select_independant():
+    def echoue(_page):
+        raise RuntimeError("navigation pendant le changement")
+
+    page = _PageJetable({"code": ""}, selects={"type": ["", "a", "b"], "pays": list(_PAYS)},
+                        au_choix={"type": echoue}, valide=r"\d*")
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert resultat["selects"] == {"type": {"independant": False}, "pays": {"independant": False}}
+
+
+def test_une_ecriture_pendant_le_changement_de_select_interrompt_et_ne_confirme_rien():
+    page = _PageJetable({"code": ""}, selects={"type": ["", "a", "b"], "pays": list(_PAYS)},
+                        au_choix={"type": lambda p: [h(_Route(_Requete("POST", "https://app.test/d")))
+                                                     for h in p.handlers]}, valide=r"\d*")
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert resultat["statut"] == "interrompue"
+    assert all(not v["independant"] for v in resultat["selects"].values())
+
+
+# ── /web/session/destroy est une ÉCRITURE (déconnexion), pas du bruit de fond ───────────────────
+
+@pytest.mark.parametrize("chemin", ["/web/session/destroy", "/web/session/logout",
+                                    "/web/session/authenticate", "/web/session/change_password"])
+def test_une_action_de_session_reste_une_ecriture_a_abandonner(chemin):
+    ecritures: list = []
+    route = _Route(_Requete("POST", f"https://app.test{chemin}"))
+
+    sonde._garde_reseau(ecritures)(route)
+
+    assert route.abandonnee and not route.continuee and ecritures
+
+
+@pytest.mark.parametrize("chemin", ["/web/session/check", "/web/session/get_session_info"])
+def test_le_battement_de_session_en_lecture_reste_ignore(chemin):
+    route = _Route(_Requete("POST", f"https://app.test{chemin}"))
+
+    sonde._garde_reseau([])(route)
+
+    assert route.continuee and not route.abandonnee
+
+
+def _sonder_en_reel(brouillon, chemin="form"):
+    from playwright.sync_api import sync_playwright
+
+    srv = _serveur(brouillon)
+    url = f"http://127.0.0.1:{srv.server_port}/{chemin}"
+    try:
+        with sync_playwright() as p:
+            navigateur = p.chromium.launch(headless=True)
+            contexte = navigateur.new_context()
+            contexte.add_cookies([{"name": "session", "value": "ok", "url": url}])
+            resultat = sonde.sonder_formulaire(contexte.new_page(), url)
+            navigateur.close()
+    finally:
+        srv.shutdown()
+    return resultat
+
+
+@pytest.mark.conformance
+def test_reel_une_lecture_rpc_en_post_n_interrompt_pas_la_sonde():
+    """Le faux positif mesuré le 2026-09-24 (POST res.users/read) : en vrai navigateur, la lecture
+    PASSE (le serveur la reçoit) et la sonde va au bout."""
+    resultat = _sonder_en_reel("rpc_read")
+
+    assert resultat["statut"] == "ok", resultat
+    assert resultat["champs"]["numero_facture1"]["exemple_stable"]
+    assert _Appli.ecritures and all("/web/dataset/call_kw/res.users/read" in e
+                                    for e in _Appli.ecritures)
+
+
+@pytest.mark.conformance
+@pytest.mark.parametrize("brouillon", ["rpc_write", "session_destroy"])
+def test_reel_une_ecriture_rpc_ou_une_deconnexion_interrompt_et_n_atteint_pas_le_serveur(brouillon):
+    """Même URL `.../read` mais méthode `write` dans le corps : écriture. `/web/session/destroy` :
+    déconnexion, jamais ignorée."""
+    resultat = _sonder_en_reel(brouillon)
+
+    assert resultat["statut"] == "interrompue", resultat
+    assert _Appli.ecritures == []
+
+
+@pytest.mark.conformance
+def test_reel_pays_ville_sont_detectes_dependants_et_un_select_libre_est_independant():
+    resultat = _sonder_en_reel("", chemin="selects")
+
+    assert resultat["statut"] == "ok", resultat
+    assert resultat["selects"] == {"pays": {"independant": True}, "ville": {"independant": False},
+                                   "type": {"independant": True}}
+    assert not _Appli.ecritures
