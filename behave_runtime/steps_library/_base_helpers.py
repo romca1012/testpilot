@@ -360,15 +360,22 @@ def connexion_reussie(url_avant: str, url_apres: str, mot_de_passe_visible: bool
 
     Pure, testée hors navigateur.
     """
-    return _sans_fragment(url_avant) != _sans_fragment(url_apres) and not mot_de_passe_visible
+    # `None` (page illisible) compte comme « encore visible » : on ne déclare pas une connexion réussie
+    # sur une page qu'on n'a pas pu lire.
+    return _sans_fragment(url_avant) != _sans_fragment(url_apres) and mot_de_passe_visible is False
 
 
-def _mot_de_passe_visible(page) -> bool:
+def _mot_de_passe_visible(page):
+    """`True` / `False`, ou `None` si la page n'a PAS pu être lue (navigation en cours, page fermée).
+
+    ⚠️ Jamais un `False` par défaut : « je n'ai pas pu regarder » n'est pas « il n'y a pas de champ mot
+    de passe » (revue du lot 07a). Chaque appelant traite `None` du côté PRUDENT.
+    """
     try:
         champs = page.locator("input[type='password']")
         return any(champs.nth(i).is_visible() for i in range(min(champs.count(), 5)))
     except Exception:
-        return False
+        return None
 
 
 def _schema_de_connexion(page) -> str:
@@ -400,7 +407,12 @@ def connexion_web_utilisateur(context, *, explicite: bool = False) -> None:
     schema = _schema_de_connexion(page)
 
     if not utilisateur or not mot_de_passe:
-        if _mot_de_passe_visible(page):
+        visible = _mot_de_passe_visible(page)
+        if visible is None:
+            raise PreconditionNonRemplieError(
+                f"PRÉREQUIS MANQUANT : la page {url_avant} n'a pas pu être lue pour savoir si elle "
+                "demande une connexion (aucun identifiant renseigné dans le projet).")
+        if visible:
             raise PreconditionNonRemplieError(
                 f"PRÉREQUIS MANQUANT : {url_avant} demande une connexion (champ mot de passe "
                 "affiché) mais le projet n'a ni identifiant ni mot de passe renseigné — "
@@ -415,6 +427,14 @@ def connexion_web_utilisateur(context, *, explicite: bool = False) -> None:
             f"{exc}") from exc
 
     if not soumis:
+        # Un champ mot de passe EST là mais la détection n'a rien pu saisir (aucun champ identifiant
+        # de type texte/email, par exemple) : le cas tournerait devant la page de connexion et
+        # échouerait sur son `Alors`, attribué à tort à l'application (revue du lot 07a).
+        if _mot_de_passe_visible(page) is not False:
+            raise PreconditionNonRemplieError(
+                f"PRÉREQUIS MANQUANT : {url_avant} affiche un formulaire de connexion (champ mot de "
+                f"passe) mais la détection générique n'a pas pu le remplir (schéma tenté : "
+                f"{schema}) — champ identifiant introuvable ou de type non pris en charge.")
         if explicite and not getattr(context, "_tp_connecte", False):
             raise PreconditionNonRemplieError(
                 f"PRÉREQUIS MANQUANT : aucun formulaire de connexion trouvé sur {url_avant} "

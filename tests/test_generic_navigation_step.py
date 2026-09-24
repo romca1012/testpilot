@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,10 @@ class _PageEspion:
     def goto(self, url, **kwargs):
         self.appels_goto.append((url, kwargs))
         self.url = url
+
+    def locator(self, _selecteur):
+        # Une page lisible SANS champ mot de passe (une page illisible est désormais un prérequis manquant).
+        return types.SimpleNamespace(count=lambda: 0)
 
 
 class _Contexte:
