@@ -76,6 +76,9 @@ class _PageJetable:
         assert motif == "**/*"
         self.handlers.append(handler)
 
+    def add_init_script(self, script):
+        self.scripts_init = getattr(self, "scripts_init", []) + [script]
+
     def goto(self, url, **_kw):
         self.gotos.append(url)
 
@@ -132,6 +135,8 @@ class _ContexteAuthentifie:
         self._jetable, self.pages_ouvertes = page_jetable, 0
         self.gardes, self.ecouteurs, self.annexes = [], [], []
         self.retirees, self.ecouteurs_retires = [], []
+        self.unroute_echoue = False
+        self.pages = []                 # `context.pages` : pages déjà ouvertes (la persistante)
 
     def new_page(self):
         self.pages_ouvertes += 1
@@ -143,6 +148,8 @@ class _ContexteAuthentifie:
         self._jetable.handlers.append(handler)
 
     def unroute(self, motif, handler=None):
+        if self.unroute_echoue:
+            raise RuntimeError("unroute en échec")
         self.retirees.append(handler)
         if handler in self._jetable.handlers:
             self._jetable.handlers.remove(handler)
@@ -424,8 +431,28 @@ class _Appli(BaseHTTPRequestHandler):
                 "<option value=eur>EUR</option><option value=usd>USD</option></select>"
                 "<input name='champ_origine' type='text'></form></body></html>")
 
+    _PAGE_BEACONS = (
+        "<html><body><form><input name='champ' type='text'></form><script>"
+        "window.addEventListener('pagehide',function(){navigator.sendBeacon('/b_pagehide','x');"
+        "fetch('/b_keepalive',{method:'POST',keepalive:true,body:'x'});});"
+        "window.addEventListener('unload',function(){navigator.sendBeacon('/b_unload','x');});"
+        "window.addEventListener('visibilitychange',function(){if(document.visibilityState==="
+        "'hidden'){navigator.sendBeacon('/b_hidden','x');}});</script></body></html>")
+    _PAGE_OUVRE = ("<html><body><form><input name='champ' type='text'></form><script>"
+                   "window.open('/popup?boot=1');</script></body></html>")
+
     def do_GET(self):
-        if self.path.startswith("/popup?") and self._authentifie():
+        if self.path == "/beacons" and self._authentifie():
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(self._PAGE_BEACONS.encode("utf-8"))
+        elif self.path == "/ouvre_au_chargement" and self._authentifie():
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(self._PAGE_OUVRE.encode("utf-8"))
+        elif self.path.startswith("/popup?") and self._authentifie():
             type(self).popups.append(self.path)
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -881,7 +908,7 @@ def test_la_garde_est_posee_sur_le_contexte_et_retiree_a_la_fin():
     assert contexte.ecouteurs_retires == contexte.ecouteurs and len(contexte.ecouteurs) == 1
 
 
-def test_la_garde_est_retiree_meme_si_la_sonde_echoue():
+def test_une_panne_avant_la_pose_de_la_garde_ne_laisse_rien_a_retirer_et_ne_plante_pas():
     page = _PageJetable({"code": ""}, valide=r"\d*")
     page.goto = lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("page morte"))
     persistante = _PagePersistante(page)
@@ -889,7 +916,29 @@ def test_la_garde_est_retiree_meme_si_la_sonde_echoue():
     resultat = sonde.sonder_formulaire(persistante, "https://app.test/en/form/1")
 
     assert resultat["statut"] == "erreur"
-    assert persistante.context.gardes == []  # jamais posée : pas de retrait à faire, aucun plantage
+    assert persistante.context.gardes == [], "jamais posée : rien à retirer"
+    assert page.fermeture == {"run_before_unload": False}
+
+
+def test_la_garde_posee_est_retiree_meme_si_la_sonde_echoue_APRES_sa_pose():
+    """La panne survient une fois la garde posée (lecture des champs) : elle doit être retirée."""
+    page = _PageJetable({"code": ""}, valide=r"\d*")
+    evaluer = page.evaluate
+
+    def evaluer_puis_casser(js):
+        if js == sonde._JS_CHAMPS:
+            raise RuntimeError("page morte apres la pose de la garde")
+        return evaluer(js)
+
+    page.evaluate = evaluer_puis_casser
+    persistante = _PagePersistante(page)
+
+    resultat = sonde.sonder_formulaire(persistante, "https://app.test/en/form/1")
+
+    contexte = persistante.context
+    assert resultat["statut"] == "erreur"
+    assert len(contexte.gardes) == 1 and contexte.retirees == contexte.gardes
+    assert contexte.ecouteurs_retires == contexte.ecouteurs and len(contexte.ecouteurs) == 1
 
 
 def test_une_page_ouverte_pendant_la_sonde_l_interrompt_et_est_fermee():
@@ -944,3 +993,164 @@ def test_reel_window_open_et_target_blank_n_atteignent_pas_le_serveur_et_ne_lais
     assert "navigation détectée" in resultat["raison"]
     assert _Appli.popups == [], "aucun GET de la fenêtre ouverte n'a atteint le serveur"
     assert pages_restantes == 1, "ni la page jetable ni la fenêtre annexe ne sont restées ouvertes"
+
+
+# ── Fermeture propre : beacons, unroute en échec, pages apparues avant la garde ─────────────────
+
+def test_la_page_jetable_recoit_le_script_de_neutralisation_avant_son_chargement():
+    page = _PageJetable({"code": ""}, valide=r"\d*")
+    ordre: list = []
+    goto, add = page.goto, page.add_init_script
+    page.goto = lambda *a, **k: (ordre.append("goto"), goto(*a, **k))[1]
+    page.add_init_script = lambda s: (ordre.append("script"), add(s))[1]
+
+    sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert ordre[:2] == ["script", "goto"], "le script doit précéder tout script de la page"
+    assert "sendBeacon" in page.scripts_init[0] and "keepalive" in page.scripts_init[0]
+
+
+def test_la_garde_devient_inerte_meme_si_unroute_echoue():
+    page = _PageJetable({"code": ""}, valide=r"\d*")
+    persistante = _PagePersistante(page)
+    persistante.context.unroute_echoue = True
+
+    resultat = sonde.sonder_formulaire(persistante, "https://app.test/en/form/1")
+
+    assert resultat["statut"] == "ok"
+    (garde,) = persistante.context.gardes
+    assert garde in page.handlers, "l'échec d'unroute a bien laissé la garde posée"
+    ecriture = _Route(_Requete("POST", "https://app.test/draft"))
+    navigation = _Route(_RequeteNavigation("GET", "https://app.test/page-suivante"))
+    garde(ecriture)
+    garde(navigation)
+    assert ecriture.continuee and navigation.continuee
+    assert not ecriture.abandonnee and not navigation.abandonnee, (
+        "la garde restée sur le contexte partagé ne bloque plus rien")
+
+
+def test_une_page_apparue_avant_la_garde_est_fermee_a_la_fin():
+    """Fenêtre ouverte par le chargement même de la page (avant `context.on("page")`) : elle est
+    vue dans `context.pages` mais n'a déclenché aucun évènement."""
+    page = _PageJetable({"code": ""}, valide=r"\d*")
+    persistante = _PagePersistante(page)
+    orpheline = _PageAnnexe()
+    contexte = persistante.context
+    contexte.pages = [persistante]
+    new_page = contexte.new_page
+
+    def new_page_puis_popup():
+        jetable = new_page()
+        contexte.pages.extend([jetable, orpheline])  # la page jetable et une fenêtre du chargement
+        return jetable
+
+    contexte.new_page = new_page_puis_popup
+
+    sonde.sonder_formulaire(persistante, "https://app.test/en/form/1")
+
+    assert orpheline.fermeture == {"run_before_unload": False}
+
+
+@pytest.mark.conformance
+def test_reel_les_beacons_de_fermeture_n_atteignent_pas_le_serveur():
+    """Mesuré le 2026-09-24 : sans le script de neutralisation, `pagehide`, `unload` et
+    `visibilitychange` (sendBeacon) et un `fetch keepalive` envoyaient 4 POST APRÈS la fermeture."""
+    from playwright.sync_api import sync_playwright
+
+    srv = _serveur("")
+    url = f"http://127.0.0.1:{srv.server_port}/beacons"
+    try:
+        with sync_playwright() as p:
+            navigateur = p.chromium.launch(headless=True)
+            contexte = navigateur.new_context()
+            contexte.add_cookies([{"name": "session", "value": "ok", "url": url}])
+            page = contexte.new_page()
+
+            resultat = sonde.sonder_formulaire(page, url)
+            page.wait_for_timeout(800)  # les requêtes de fermeture partent APRÈS le close()
+            navigateur.close()
+    finally:
+        srv.shutdown()
+
+    assert resultat["statut"] == "ok", resultat
+    assert _Appli.ecritures == [], "aucun beacon de fermeture n'a atteint le serveur"
+
+
+@pytest.mark.conformance
+def test_reel_une_garde_dont_unroute_echoue_ne_bloque_plus_la_navigation_suivante():
+    """Sans le drapeau, la garde restée sur le contexte partagé abandonnait la navigation de
+    l'exploration suivante (`net::ERR_FAILED`)."""
+    from playwright.sync_api import sync_playwright
+
+    srv = _serveur("")
+    url = f"http://127.0.0.1:{srv.server_port}/form"
+    try:
+        with sync_playwright() as p:
+            navigateur = p.chromium.launch(headless=True)
+            contexte = navigateur.new_context()
+            contexte.add_cookies([{"name": "session", "value": "ok", "url": url}])
+            page = contexte.new_page()
+            unroute = contexte.unroute
+
+            def unroute_en_echec(*_a, **_k):
+                raise RuntimeError("unroute en échec")
+
+            contexte.unroute = unroute_en_echec
+            resultat = sonde.sonder_formulaire(page, url)
+            contexte.unroute = unroute
+
+            reponse = page.goto(f"http://127.0.0.1:{srv.server_port}/form")
+            statut_http = reponse.status if reponse else None
+            navigateur.close()
+    finally:
+        srv.shutdown()
+
+    assert resultat["statut"] == "ok", resultat
+    assert statut_http == 200, "la garde restée posée laisse passer la navigation suivante"
+
+
+@pytest.mark.conformance
+def test_reel_une_fenetre_ouverte_par_le_chargement_meme_de_la_page_est_fermee():
+    """`window.open` exécuté au chargement, avant la pose de la garde et de l'écouteur : la page
+    n'est ni gardée ni suivie ; le snapshot des pages du contexte la ferme à la fin."""
+    from playwright.sync_api import sync_playwright
+
+    srv = _serveur("")
+    url = f"http://127.0.0.1:{srv.server_port}/ouvre_au_chargement"
+    try:
+        with sync_playwright() as p:
+            navigateur = p.chromium.launch(headless=True)
+            contexte = navigateur.new_context()
+            contexte.add_cookies([{"name": "session", "value": "ok", "url": url}])
+            page = contexte.new_page()
+
+            resultat = sonde.sonder_formulaire(page, url)
+            pages_restantes = len(contexte.pages)
+            navigateur.close()
+    finally:
+        srv.shutdown()
+
+    assert resultat["statut"] != "erreur", resultat
+    assert pages_restantes == 1, "ni la page jetable ni la fenêtre du chargement ne sont restées"
+
+
+def test_le_marqueur_de_fermeture_est_pose_juste_avant_le_close_et_pas_avant():
+    """Pendant la sonde les beacons passent (un brouillon reste détecté) ; ils ne sont neutralisés
+    qu'une fois le marqueur posé, donc juste avant la fermeture."""
+    page = _PageJetable({"code": ""}, valide=r"\d*")
+    ordre: list = []
+    evaluer, fermer = page.evaluate, page.close
+
+    def evaluer_trace(js):
+        if js == sonde._JS_MARQUE_FERMETURE:
+            ordre.append("marqueur")
+            return None
+        return evaluer(js)
+
+    page.evaluate = evaluer_trace
+    page.close = lambda **k: (ordre.append("close"), fermer(**k))[1]
+
+    sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert ordre == ["marqueur", "close"]
+    assert "__tpFermeture" in page.scripts_init[0]
