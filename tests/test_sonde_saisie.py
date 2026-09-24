@@ -116,20 +116,57 @@ class _PageJetable:
         self.fermeture = {"run_before_unload": run_before_unload}
 
 
+class _PageAnnexe:
+    def __init__(self):
+        self.fermeture = None
+
+    def close(self, run_before_unload=None, **_kw):
+        self.fermeture = {"run_before_unload": run_before_unload}
+
+
 class _ContexteAuthentifie:
-    """`new_page()` seulement : un `new_context()` (session perdue) n'existe PAS ici."""
+    """`new_page()`, la garde et l'écoute des pages : un `new_context()` (session perdue) n'existe
+    PAS ici. La garde est posée sur le CONTEXTE (une popup n'hérite pas d'une garde de page)."""
 
     def __init__(self, page_jetable):
         self._jetable, self.pages_ouvertes = page_jetable, 0
+        self.gardes, self.ecouteurs, self.annexes = [], [], []
+        self.retirees, self.ecouteurs_retires = [], []
 
     def new_page(self):
         self.pages_ouvertes += 1
         return self._jetable
 
+    def route(self, motif, handler):
+        assert motif == "**/*"
+        self.gardes.append(handler)
+        self._jetable.handlers.append(handler)
+
+    def unroute(self, motif, handler=None):
+        self.retirees.append(handler)
+        if handler in self._jetable.handlers:
+            self._jetable.handlers.remove(handler)
+
+    def on(self, evenement, rappel):
+        assert evenement == "page"
+        self.ecouteurs.append(rappel)
+
+    def remove_listener(self, evenement, rappel):
+        self.ecouteurs_retires.append(rappel)
+
+    def ouvrir_page_annexe(self):
+        """Simule `window.open` : une page NOUVELLE du même contexte."""
+        annexe = _PageAnnexe()
+        self.annexes.append(annexe)
+        for rappel in list(self.ecouteurs):
+            rappel(annexe)
+        return annexe
+
 
 class _PagePersistante:
     def __init__(self, page_jetable):
         self.context = _ContexteAuthentifie(page_jetable)
+        page_jetable.contexte = self.context
 
 
 def _groupes(taille, separateur):
@@ -376,9 +413,30 @@ class _Appli(BaseHTTPRequestHandler):
         "<option value=usd>USD</option></select>"
         "<input name='champ_origine' type='text'></form></body></html>")
     lectures: list = []
+    popups: list = []
+    popup_js = "window.open('/popup?l='+this.value)"
+
+    def _page_popup_select(self):
+        return ("<html><body><form>"
+                "<select name='lang' onchange=\"" + self.popup_js + "\">"
+                "<option value=''>-</option><option value=fr>fr</option><option value=en>en</option>"
+                "</select><select name='devise'><option value=''>-</option>"
+                "<option value=eur>EUR</option><option value=usd>USD</option></select>"
+                "<input name='champ_origine' type='text'></form></body></html>")
 
     def do_GET(self):
-        if self.path.startswith("/arrivee") and self._authentifie():
+        if self.path.startswith("/popup?") and self._authentifie():
+            type(self).popups.append(self.path)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"<html><body>popup</body></html>")
+        elif self.path == "/popup_select" and self._authentifie():
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(self._page_popup_select().encode("utf-8"))
+        elif self.path.startswith("/arrivee") and self._authentifie():
             type(self).lectures.append(self.path)
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -417,6 +475,7 @@ class _Appli(BaseHTTPRequestHandler):
 def _serveur(brouillon):
     _Appli.ecritures = []
     _Appli.lectures = []
+    _Appli.popups = []
     _Appli.brouillon = brouillon
     srv = HTTPServer(("127.0.0.1", 0), _Appli)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -807,3 +866,81 @@ def test_un_select_que_la_saisie_texte_ne_touche_jamais_reste_independant():
 
     assert sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")[
         "selects"] == {"ville": {"independant": True}}
+
+
+# ── Garde au niveau du CONTEXTE : window.open / target=_blank (mesuré le 2026-09-24) ───────────
+
+def test_la_garde_est_posee_sur_le_contexte_et_retiree_a_la_fin():
+    page = _PageJetable({"code": ""}, valide=r"\d*")
+    persistante = _PagePersistante(page)
+
+    sonde.sonder_formulaire(persistante, "https://app.test/en/form/1")
+
+    contexte = persistante.context
+    assert len(contexte.gardes) == 1 and contexte.retirees == contexte.gardes
+    assert contexte.ecouteurs_retires == contexte.ecouteurs and len(contexte.ecouteurs) == 1
+
+
+def test_la_garde_est_retiree_meme_si_la_sonde_echoue():
+    page = _PageJetable({"code": ""}, valide=r"\d*")
+    page.goto = lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("page morte"))
+    persistante = _PagePersistante(page)
+
+    resultat = sonde.sonder_formulaire(persistante, "https://app.test/en/form/1")
+
+    assert resultat["statut"] == "erreur"
+    assert persistante.context.gardes == []  # jamais posée : pas de retrait à faire, aucun plantage
+
+
+def test_une_page_ouverte_pendant_la_sonde_l_interrompt_et_est_fermee():
+    annexes: list = []
+
+    def popup(page):
+        annexes.append(page.contexte.ouvrir_page_annexe())
+
+    page = _PageJetable({"code": ""}, selects={"type": ["", "a", "b"], "pays": list(_PAYS)},
+                        au_choix={"type": popup}, valide=r"\d*")
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert resultat["statut"] == "interrompue" and "navigation" in resultat["raison"]
+    assert resultat["champs"] == {}
+    assert annexes and all(a.fermeture == {"run_before_unload": False} for a in annexes), (
+        "aucune fenêtre orpheline : la page annexe est fermée sans beforeunload")
+    assert page.fermeture == {"run_before_unload": False}
+
+
+@pytest.mark.conformance
+@pytest.mark.parametrize("ouverture", ["window.open('/popup?l='+this.value)",
+                                       "var a=document.createElement('a');a.href='/popup?l='+"
+                                       "this.value;a.target='_blank';document.body.appendChild(a);"
+                                       "a.click()"])
+def test_reel_window_open_et_target_blank_n_atteignent_pas_le_serveur_et_ne_laissent_rien_ouvert(
+        ouverture):
+    """Reproduit la mesure du 2026-09-24 : `<select onchange="window.open(…)">` envoyait un GET
+    au serveur (statut « ok »). Garde sur le contexte : zéro GET reçu, sonde interrompue, et
+    aucune page orpheline dans le contexte à la fin."""
+    from playwright.sync_api import sync_playwright
+
+    _Appli.popup_js = ouverture
+    srv = _serveur("")
+    url = f"http://127.0.0.1:{srv.server_port}/popup_select"
+    try:
+        with sync_playwright() as p:
+            navigateur = p.chromium.launch(headless=True)
+            contexte = navigateur.new_context()
+            contexte.add_cookies([{"name": "session", "value": "ok", "url": url}])
+            page = contexte.new_page()
+
+            resultat = sonde.sonder_formulaire(page, url)
+            pages_restantes = len(contexte.pages)
+            # La garde a bien été retirée du contexte partagé : la page d'origine navigue à nouveau.
+            page.goto(f"http://127.0.0.1:{srv.server_port}/form")
+            navigateur.close()
+    finally:
+        srv.shutdown()
+
+    assert resultat["statut"] == "interrompue", resultat
+    assert "navigation détectée" in resultat["raison"]
+    assert _Appli.popups == [], "aucun GET de la fenêtre ouverte n'a atteint le serveur"
+    assert pages_restantes == 1, "ni la page jetable ni la fenêtre annexe ne sont restées ouvertes"
