@@ -405,9 +405,16 @@ def check_champs_existants(feature_content: str, modele: dict,
 _MESSAGE_ATTENDU = re.compile(r'\bmessage\b[^"\n]{0,60}"(?P<message>[^"]+)"', re.IGNORECASE)
 
 
+# Longueur minimale d'un message observé pour disculper un texte affirmé par SOUS-CHAÎNE : un
+# message vide ou d'un caractère (« », « . ») est sous-chaîne de n'importe quel texte et
+# disculperait tout (revue verdict-reviewer, 2026-09-24).
+_LONGUEUR_MIN_MESSAGE_OBSERVE = 8
+
+
 def _messages_observes(verified_fields: dict[str, list[str]] | None) -> set[str]:
     return {texte for source, valeurs in (verified_fields or {}).items()
-            if source.startswith(MESSAGE_SOURCE_PREFIX) for texte in valeurs}
+            if source.startswith(MESSAGE_SOURCE_PREFIX) for texte in valeurs
+            if len(str(texte).strip()) >= _LONGUEUR_MIN_MESSAGE_OBSERVE}
 
 
 def check_messages_observes(feature_content: str,
