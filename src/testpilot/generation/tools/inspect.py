@@ -132,6 +132,7 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
         # « sauvegarde automatique détectée » — elle est persistée avec `observation_evidence`.
         ctx.observations[-1]["sonde"] = {
             "statut": sonde.get("statut"), "raison": str(sonde.get("raison") or "")[:200],
+            "perception_degradee": list(sonde.get("perception_degradee") or []),
             "selects": {n: bool(v.get("independant"))
                         for n, v in (sonde.get("selects") or {}).items()},
             "champs": {nom: {"retenus": {lib: s_.get("retenu") for lib, s_ in

@@ -145,3 +145,16 @@ def test_la_sonde_laisse_une_trace_compacte_dans_les_preuves_de_l_observation():
     assert trace["statut"] == "interrompue" and "sauvegarde automatique" in trace["raison"]
     assert trace["champs"]["numero_facture1"] == {
         "retenus": {"chiffres": "1234567/8901234"}, "exemple_stable": "1234567/8901234"}
+
+
+def test_la_trace_de_la_sonde_transmet_la_perception_degradee():
+    sonde = {"statut": "ok", "champs": {}, "perception_degradee": ["photographie impossible"]}
+
+    class _Connecteur:
+        def inspect_form(self, url):
+            return _info(submission={}, sonde=sonde)
+
+    ctx = ToolContext(module_name="m", generated_dir=Path("."), connector=_Connecteur())
+    inspect_tools.inspect_page_form(ctx, f"https://app.test/en{ROUTE}")
+
+    assert ctx.observations[-1]["sonde"]["perception_degradee"] == ["photographie impossible"]
