@@ -245,6 +245,12 @@ jamais un texte que tu crois connaître, même pour une application célèbre. P
 (l'outil officiel équivalent) applique le même principe : il lit l'`innerText` réel de l'élément
 au moment de l'enregistrement, il ne le demande jamais à l'auteur.
 
+**Connexion à l'exécution (connecteur `web`).** « j'accède à la page d'accueil de l'application »
+connecte AUTOMATIQUEMENT avec les identifiants du projet : n'écris JAMAIS de step de connexion pour
+entrer dans l'application. Si le cas teste la connexion elle-même (échec, compte verrouillé…), ouvre-le
+avec « j'accède à la page de connexion sans me connecter », puis remplis les champs avec les steps
+habituels.
+
 **Exact ou partiel ?** Si le message porte un préfixe ou un fragment variable (horodatage,
 identifiant généré, préfixe de marque comme « Epic sadface: »), affirme le FRAGMENT STABLE avec
 `in`, pas l'égalité stricte sur la totalité — une correspondance partielle qui affirme ce qui

@@ -33,6 +33,8 @@ const FAMILLES: Record<string, string> = {
   message_non_observe: 'donnée',
   // Lot 12 — un produit choisi dans une liste n'a jamais été observé pendant la génération.
   produit_non_observe: 'donnée',
+  // Lot 07a — un cas déclaré « test de connexion » s'ouvrirait déjà connecté (connexion automatique).
+  connexion_non_testee: 'connexion',
 }
 
 // Repli explicite : un `kind` inconnu s'affiche quand même. Le taire ferait disparaître un

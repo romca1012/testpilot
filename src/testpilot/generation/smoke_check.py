@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import unicodedata
 from dataclasses import dataclass
 
 # ── Les tournures Gherkin qui posent une VALEUR dans un CHAMP ────────────────
@@ -534,6 +535,60 @@ def check_menus_observes(feature_content: str, modele: dict) -> list[dict]:
                      "compte connecté ; ne traduis pas les libellés et n'invente pas de "
                      "sous-menu. La cartographie peut être incomplète ou ancienne.")).as_dict())
     return warnings
+
+
+# ── Cas qui TESTE la connexion elle-même (lot 07a, C1) ────────────────────────────────────────
+#
+# ⚠️ Le step d'entrée « j'accède à la page d'accueil de l'application » connecte AUTOMATIQUEMENT
+# (identifiants du projet). Un cas dont le sujet est la connexion (échec, compte verrouillé…) doit
+# donc s'ouvrir par « j'accède à la page de connexion sans me connecter » — sinon il arrive déjà
+# connecté et ne peut plus tester ce qu'il annonce (il échoue, jamais ne passe à tort : c'est un
+# raté d'ergonomie, pas de verdict).
+#
+# ⚠️ **La détection porte sur l'INTENTION DÉCLARÉE à la génération** (titre, description, étapes
+# et résultat attendu MÉTIER du cas, validés par le métier), **jamais sur le Gherkin final** : le
+# texte que l'agent a écrit n'est pas la source de ce qu'il voulait tester (décision 0015). Seule la
+# PRÉSENCE de l'un des deux steps de la bibliothèque est lue dans le `.feature` (un libellé de
+# catalogue, pas une phrase libre). DÉTECTIF, jamais bloquant.
+_INTENTION_CONNEXION = tuple(re.compile(m) for m in (
+    r"echec\w*\s+(?:de\s+(?:la\s+)?)?(?:connexion|authentification|login)",
+    r"(?:connexion|authentification)\s+(?:refusee|impossible|echou\w*|en echec)",
+    r"impossible\s+de\s+se\s+connecter",
+    r"(?:mot\s+de\s+passe|identifiants?|login)\s+(?:errone\w*|incorrect\w*|invalides?|faux|inconnus?)",
+    r"(?:compte|utilisateur)\s+(?:verrouille|bloque|desactive|suspendu)\w*",
+    r"locked\s+out|wrong\s+password|invalid\s+(?:credentials|password)",
+))
+_STEPS_DE_CONNEXION = ("je me connecte avec mes identifiants utilisateur",
+                       "j'accede a la page de connexion sans me connecter")
+
+
+def _sans_accent(texte: str) -> str:
+    plat = unicodedata.normalize("NFD", (texte or "").replace("’", "'").lower())
+    return "".join(c for c in plat if unicodedata.category(c) != "Mn")
+
+
+def intention_de_connexion(intention: str) -> bool:
+    """L'intention déclarée du cas est-elle de TESTER la connexion (échec, verrouillage…) ?"""
+    texte = _sans_accent(intention)
+    return any(motif.search(texte) for motif in _INTENTION_CONNEXION)
+
+
+def check_intention_connexion(intention: str, feature_content: str) -> list[dict]:
+    """Avis (non bloquant) : le cas déclare tester la connexion mais n'emploie aucun des deux steps
+    de connexion de la bibliothèque — il s'ouvrira donc connecté automatiquement."""
+    if not intention_de_connexion(intention):
+        return []
+    feature = _sans_accent(feature_content)
+    if any(step in feature for step in _STEPS_DE_CONNEXION):
+        return []
+    return [SmokeWarning(
+        kind="connexion_non_testee", step="connexion", line=0,
+        message=("Ce cas est déclaré comme un test de connexion (échec, compte verrouillé…), mais "
+                 "aucun scénario n'emploie « j'accède à la page de connexion sans me connecter » "
+                 "ni « je me connecte avec mes identifiants utilisateur ». À l'exécution, "
+                 "« j'accède à la page d'accueil de l'application » connecte AUTOMATIQUEMENT avec "
+                 "les identifiants du projet : le cas arriverait déjà connecté. Ouvre-le avec « "
+                 "j'accède à la page de connexion sans me connecter ».")).as_dict()]
 
 
 def smoke_check(feature_content: str, steps_content: str = "", modele: dict | None = None,

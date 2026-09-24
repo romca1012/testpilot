@@ -418,6 +418,14 @@ def validate_metier(conn, job_id: str, cases: list[dict]) -> dict:
 _AUTEUR_REPARATION = "repair-agent"
 
 
+def _intention_declaree(case: dict, version: dict) -> str:
+    """Ce que le cas DÉCLARE tester (titre, description, étapes et résultat attendus MÉTIER) — le
+    contenu validé par le métier, pas le Gherkin technique."""
+    return "\n".join(str(x) for x in (
+        version.get("title") or case.get("title"), case.get("description"),
+        version.get("preconditions"), version.get("test_steps"), version.get("expected_result")) if x)
+
+
 def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], version_id: int
                               ) -> list[dict]:
     """Les « points de vigilance » d'UNE version — MÊME calcul que celui affiché sur la fiche du
@@ -447,6 +455,11 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
 
     if current and case.get("project_id"):
         projet = ProjectRepo(conn).get(case["project_id"])
+        # Lot 07a : seul le connecteur `web` connecte AUTOMATIQUEMENT à l'ouverture. L'intention est
+        # celle DÉCLARÉE (contenu métier de la version), jamais le Gherkin que l'agent a écrit.
+        if projet and (projet.get("connector_type") or "") == "web":
+            warnings += smoke_check.check_intention_connexion(
+                _intention_declaree(case, current), current.get("feature_content") or "")
         modele = domain_model.charger_modele(projet) if projet else None
         registry = current.get("verified_fields")
         if modele or registry:

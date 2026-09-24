@@ -369,7 +369,13 @@ class BehaveRunner:
         runtime (`from _base_helpers import ...`) — les exclure casserait tout run.
         """
         if self.connector_type is None:
-            return list(self.steps_library_dir.rglob("*.py"))
+            # « Tout copier » = ce que la bibliothèque contenait AVANT la séparation par connecteur, donc
+            # `generic/` + `odoo/` (le connecteur par défaut, cf. `environment._CONNECTOR_TYPE`). Les
+            # dossiers d'AUTRES connecteurs (`web/`, lot 07a) en sont exclus : deux connecteurs ne
+            # sont jamais chargés ensemble, et « je me connecte avec mes identifiants utilisateur »
+            # existe dans les deux (`AmbiguousStep`).
+            return [f for f in self.steps_library_dir.rglob("*.py")
+                    if f.relative_to(self.steps_library_dir).parts[0] != "web"]
         fichiers = list(self.steps_library_dir.glob("*.py"))  # helpers à la racine, toujours
         for sous_dossier in ("generic", self.connector_type):
             chemin = self.steps_library_dir / sous_dossier
