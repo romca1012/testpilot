@@ -139,6 +139,8 @@ def test_inspect_page_form_retient_les_selects_et_le_catalogue(tmp_path):
     class _C:
         def inspect_form(self, url):
             return {"url": url, "submission": {}, "liens": ["PC Portable Dell", "Écran 27 pouces"],
+                    "sonde": {"statut": "ok", "champs": {},
+                              "selects": {"types_demandes": {"independant": True}}},
                     "fields": [{"name": "types_demandes", "tag": "select",
                                 "options": [["a", "Option A"], ["b", "Option B"]]}]}
 
@@ -240,7 +242,8 @@ def test_un_parametre_de_scenario_plan_n_est_jamais_refuse():
 def test_un_select_qui_ne_contient_que_son_placeholder_ne_fait_pas_autorite(tmp_path):
     class _C:
         def inspect_form(self, url):
-            return {"url": url, "submission": {}, "fields": [
+            return {"url": url, "submission": {}, "sonde": {"statut": "ok", "selects": {
+                "etat": {"independant": True}, "pays": {"independant": True}}}, "fields": [
                 {"name": "etat", "tag": "select", "options": [["", "Choisir…"]]},
                 {"name": "pays", "tag": "select", "options": [["", "Choisir…"], ["fr", "France"]]}]}
 
@@ -249,3 +252,49 @@ def test_un_select_qui_ne_contient_que_son_placeholder_ne_fait_pas_autorite(tmp_
 
     assert "etat" not in ctx.options_select
     assert ctx.options_select["pays"] == {"fr", "France"}
+
+
+def _page_avec_select(sonde):
+    class _C:
+        def inspect_form(self, url):
+            info = {"url": url, "submission": {}, "fields": [
+                {"name": "ville", "tag": "select",
+                 "options": [["", "Choisir…"], ["paris", "Paris"], ["lyon", "Lyon"]]}]}
+            if sonde is not None:
+                info["sonde"] = sonde
+            return info
+    return _C()
+
+
+def test_un_select_dependant_ne_fait_pas_autorite_et_le_refus_d11_est_desactive(tmp_path):
+    """Pays → ville : la sonde a vu les options de `ville` changer ; « Bruxelles » ne doit pas être
+    refusé (la boucle de refus consommait du budget sans raison de fond)."""
+    ctx = ToolContext(module_name="m", generated_dir=tmp_path, connector=_page_avec_select(
+        {"statut": "ok", "selects": {"ville": {"independant": False}}}))
+    inspect_tools.inspect_page_form(ctx, "https://app.test/formulaire/1")
+
+    assert "ville" not in ctx.options_select
+    feature = _feature('Et je sélectionne "Bruxelles" dans le champ "ville"')
+    assert refs.verifier_references(feature, ctx.options_select, {}, None) == []
+
+
+def test_un_select_confirme_independant_garde_le_refus_d11_actif(tmp_path):
+    ctx = ToolContext(module_name="m", generated_dir=tmp_path, connector=_page_avec_select(
+        {"statut": "ok", "selects": {"ville": {"independant": True}}}))
+    inspect_tools.inspect_page_form(ctx, "https://app.test/formulaire/1")
+
+    feature = _feature('Et je sélectionne "Bruxelles" dans le champ "ville"')
+    (refus,) = refs.verifier_references(feature, ctx.options_select, {}, None)
+    assert refus["champ"] == "ville" and any(p.lower() == "paris" for p in refus["proches"])
+
+
+def test_sans_observation_de_la_sonde_un_select_n_est_jamais_exhaustif(tmp_path):
+    """Sonde absente (back-office, connecteur sans sonde), interrompue ou en erreur : défaut sûr."""
+    for sonde in (None, {"statut": "ignoree", "champs": {}},
+                  {"statut": "erreur", "raison": "x", "champs": {}},
+                  {"statut": "interrompue", "raison": "brouillon", "champs": {},
+                   "selects": {"ville": {"independant": False}}}):
+        ctx = ToolContext(module_name="m", generated_dir=tmp_path,
+                          connector=_page_avec_select(sonde))
+        inspect_tools.inspect_page_form(ctx, "https://app.test/formulaire/1")
+        assert ctx.options_select == {}, sonde

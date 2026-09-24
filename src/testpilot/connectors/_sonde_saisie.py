@@ -58,12 +58,17 @@ _ESSAIS_RECHERCHE_MAX = 30
 # émise par la saisie reste EN ATTENTE (jamais envoyée) tant que le gestionnaire d'interception n'a
 # pas tourné ; sans ce délai, la saisie suivante s'enchaînerait avant de savoir qu'il faut s'arrêter.
 _SETTLE_MS = 40
+# Un select masqué (widget de remplacement) ne doit pas bloquer la sonde 30 s : échec rapide.
+_SELECT_TIMEOUT_MS = 2000
 
 _METHODES_ECRITURE = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _METHODES_RPC_LECTURE = frozenset({"read", "search_read", "search", "search_count", "name_search",
                                    "name_get", "fields_get"})
 # Bruit de fond d'Odoo (bus de notification, battement de session) : pas une sauvegarde.
-_ARRIERE_PLAN = ("/longpolling", "/websocket", "/bus/", "/web/webclient/", "/web/session/")
+# `/web/session/` n'est PAS ignoré en bloc (revue du lot 12) : `POST /web/session/destroy` est une
+# déconnexion, une vraie écriture. Seuls les deux battements de session en lecture le sont.
+_ARRIERE_PLAN = ("/longpolling", "/websocket", "/bus/", "/web/webclient/",
+                 "/web/session/check", "/web/session/get_session_info")
 _TYPES_SONDABLES = ("text", "tel", "search", "email", "url", "number")
 _CHAMPS_MAX = 12
 _RETENU_MAX = 120
@@ -74,6 +79,10 @@ _JS_CHAMPS = """() => Array.from(document.querySelectorAll('input')).filter(el =
         && (el.name || el.id)
         && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
 }).map(el => el.name || el.id)""" % list(_TYPES_SONDABLES)
+
+_JS_SELECTS = """() => Array.from(document.querySelectorAll('select')).filter(
+    el => (el.name || el.id) && !el.disabled).map(
+    el => ({nom: el.name || el.id, options: Array.from(el.options).map(o => o.value)}))"""
 
 _JS_LIRE = """el => ({valeur: String(el.value), valide: el.checkValidity(),
     message: el.validationMessage || ''})"""
@@ -152,6 +161,11 @@ def sonder_formulaire(page, url: str) -> dict:
         # Interception ouverte APRÈS le chargement : seules les requêtes provoquées par NOTRE saisie
         # comptent (un POST de suivi au chargement n'est pas une sauvegarde de brouillon).
         jetable.route("**/*", _garde_reseau(ecritures))
+        base, dependants, complet = _options_selects_ou_vide(jetable), set(), True
+        try:
+            dependants |= _changer_les_selects(jetable, base, ecritures)
+        except Exception:
+            complet = False
         for nom in list(jetable.evaluate(_JS_CHAMPS))[:_CHAMPS_MAX]:
             if ecritures:
                 break
@@ -163,6 +177,16 @@ def sonder_formulaire(page, url: str) -> dict:
                 # formulaire, donc aussi les champs texte qui suivaient).
                 resultat["champs"][nom] = {"sondes": {}, "exemple_stable": None,
                                            "erreur": str(exc)[:120]}
+        if not ecritures and complet:
+            try:
+                apres = {n["nom"]: n["options"] for n in jetable.evaluate(_JS_SELECTS)}
+                dependants |= {n for n, opts in base.items() if apres.get(n) != opts}
+            except Exception:
+                complet = False
+        # Indépendant SEULEMENT si observé complet et inchangé : par défaut on n'affirme jamais qu'un
+        # select est exhaustif (défaut sûr, D11 : refuser à tort coûte du budget, revue du lot 12).
+        resultat["selects"] = {n: {"independant": bool(complet and not ecritures
+                                                       and n not in dependants)} for n in base}
         if ecritures:
             resultat["statut"] = "interrompue"
             resultat["raison"] = ("sauvegarde automatique détectée, pas de sonde : "
@@ -178,6 +202,41 @@ def sonder_formulaire(page, url: str) -> dict:
             except Exception:
                 pass
     return resultat
+
+
+def _options_selects_ou_vide(page) -> dict:
+    """`{nom: [valeurs d'option]}` des `<select>` de la page, ou `{}` si la lecture échoue."""
+    try:
+        return {n["nom"]: n["options"] for n in page.evaluate(_JS_SELECTS)}
+    except Exception:
+        return {}
+
+
+def _changer_les_selects(page, base: dict, ecritures: list) -> set:
+    """Change chaque select (dernière option réelle) et rend les selects dont les OPTIONS ont changé
+    ailleurs — ceux-là dépendent d'un autre champ (pays → ville) et ne sont pas exhaustifs.
+
+    Aucune saisie APRÈS une écriture interceptée ; une saisie qui échoue lève (l'appelant en déduit
+    « observation incomplète », donc aucun select déclaré indépendant)."""
+    dependants: set = set()
+    if len(base) < 2:
+        return dependants
+    courant = base
+    for nom in base:
+        if ecritures:
+            break
+        # Un select déjà vu dépendant n'a plus rien à prouver ; et on choisit dans ses options
+        # COURANTES (elles ont pu changer) : viser une option de l'état initial ferait échouer le choix.
+        reelles = [o for o in courant.get(nom, []) if str(o).strip()]
+        if nom in dependants or len(reelles) < 2:
+            continue
+        page.locator(_selecteur(nom)).first.select_option(reelles[-1], timeout=_SELECT_TIMEOUT_MS)
+        page.wait_for_timeout(_SETTLE_MS)
+        if ecritures:
+            break
+        courant = {n["nom"]: n["options"] for n in page.evaluate(_JS_SELECTS)}
+        dependants |= {n for n, opts in base.items() if n != nom and courant.get(n) != opts}
+    return dependants
 
 
 def _lire(loc) -> dict:

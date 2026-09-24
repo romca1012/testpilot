@@ -97,12 +97,17 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
     outcome.verified_fields = {f"inspect_page_form:{page_url}": names}
     # Lot 12 : formats de saisie observés (sonde + attributs + règles apprises du projet), pour les
     # champs de CETTE route seulement — texte de l'application cité comme donnée, plafond de taille.
+    # Un select ne fait autorité (D11) que si la sonde a OBSERVÉ que ses options ne dépendent d'aucun
+    # autre champ (pays → ville) : sans observation, jamais exhaustif (défaut sûr).
+    independants = {n for n, s_ in ((info.get("sonde") or {}).get("selects") or {}).items()
+                    if s_.get("independant") is True}
     for champ in fields:
         # Lot 12 (D11) : un `<select>` dont TOUTES les options ont été relevées fait autorité.
         # Un select qui ne contient encore que son placeholder (valeur vide) est peuplé plus tard par
         # JavaScript : ses options ne sont PAS exhaustives, il ne fait autorité pour rien.
         reelles = [(v, t) for v, t in (champ.get("options") or []) if str(v).strip()]
-        if champ.get("tag") == "select" and reelles and champ.get("name"):
+        if (champ.get("tag") == "select" and reelles and champ.get("name")
+                and champ["name"] in independants):
             ctx.options_select.setdefault(champ["name"], set()).update(
                 {str(v) for v, _t in reelles} | {str(t) for _v, t in reelles})
     liens = [str(t) for t in (info.get("liens") or []) if str(t).strip()][:60]
@@ -127,6 +132,8 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
         # « sauvegarde automatique détectée » — elle est persistée avec `observation_evidence`.
         ctx.observations[-1]["sonde"] = {
             "statut": sonde.get("statut"), "raison": str(sonde.get("raison") or "")[:200],
+            "selects": {n: bool(v.get("independant"))
+                        for n, v in (sonde.get("selects") or {}).items()},
             "champs": {nom: {"retenus": {lib: s_.get("retenu") for lib, s_ in
                                          (c.get("sondes") or {}).items()},
                              "exemple_stable": c.get("exemple_stable")}
