@@ -26,8 +26,8 @@ Port dédié : `18069` (`BANC_PORT`), lié à `127.0.0.1` seulement. Comptes : `
 | `compose.banc.yml`, `banc/images.env` | PostgreSQL + Odoo, images par digest, volume jetable |
 | `scripts/banc_init.sh` / `.ps1` | crée la base `banc`, installe les modules de D9 et `tp_bugs_injectes`, `odoo neutralize`, comptes, `fr_FR` |
 | `banc/odoo_addons/tp_bugs_injectes/` | 7 défauts activables un par un (`ir.config_parameter` `tp_bug.<code>` = `1`), inactifs par défaut, avec leurs tests Odoo |
-| `banc/cas_figes/` | 13 cas écrits à la main (feature + steps), tenant lieu de versions approuvées — mode `figé` |
-| `specs/banc/*.md` | les 13 specs correspondantes — mode `génération` |
+| `banc/cas_figes/` | 15 cas écrits à la main (feature + steps), tenant lieu de versions approuvées — mode `figé` |
+| `specs/banc/*.md` | les 15 specs correspondantes — mode `génération` |
 | `specs/banc/attendus.yaml` | le statut attendu de chaque cas, instance saine / sous chaque défaut / sous chaque panne — **écrit par un humain** |
 | `scripts/banc_mesure.py` | rejoue les cas et calcule I1–I6 ; sortie Markdown + JSON dans `docs/mesures/` |
 | `scripts/banc_projet.py` | crée (idempotent) le projet TestPilot « Banc Odoo <version> » et l'explore |

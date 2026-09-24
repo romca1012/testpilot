@@ -20,6 +20,9 @@ sain:
   facture_validation: passed
   droit_suppression: passed
   ui_champ_requis: passed
+  # Garde F7 (lot 11) : un clic d'onglet ne soumet rien et ne doit accuser aucune donnée ; un vrai refus de sauvegarde est vu.
+  ui_onglet_formulaire: passed
+  ui_refus_sauvegarde: passed
   achat_confirmation: passed
   stock_reception: passed
   crm_opportunite: passed
@@ -51,6 +54,7 @@ defauts:
   # Aucun message d'erreur visible sur un champ requis vide.
   message_absent:
     ui_champ_requis: failed
+    ui_refus_sauvegarde: failed
 
 # Pannes d'environnement injectées. Sert l'indicateur I5 : le cas concerné doit être `blocked` (jamais `failed`,
 # jamais `retest`) — le test n'a pas pu être joué, ce n'est ni l'application ni le test.
