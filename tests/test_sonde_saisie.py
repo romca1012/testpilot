@@ -60,6 +60,7 @@ class _PageJetable:
 
     def __init__(self, champs, retention=None, ecritures=None, valide=r"\d{7}(/\d{7})*",
                  poster_au_fill=None, selects=None, au_choix=None, au_remplissage=None):
+        self.url = "https://app.test/en/form/1"
         self.selects = selects or {}                # {nom: [valeurs d'option]} — état COURANT
         self.au_choix = au_choix or {}              # {nom du select choisi: fonction(page)}
         self.au_remplissage = au_remplissage or {}  # {nom du champ tapé: fonction(page)}
@@ -367,8 +368,28 @@ class _Appli(BaseHTTPRequestHandler):
         "<option value=b>B</option></select>"
         "<input name='code' type='text'></form></body></html>")
 
+    _PAGE_NAVIGUE = (
+        "<html><body><form>"
+        "<select name='lang' onchange=\"location='/arrivee?l='+this.value\">"
+        "<option value=''>-</option><option value=fr>fr</option><option value=en>en</option></select>"
+        "<select name='devise'><option value=''>-</option><option value=eur>EUR</option>"
+        "<option value=usd>USD</option></select>"
+        "<input name='champ_origine' type='text'></form></body></html>")
+    lectures: list = []
+
     def do_GET(self):
-        if self.path == "/selects" and self._authentifie():
+        if self.path.startswith("/arrivee") and self._authentifie():
+            type(self).lectures.append(self.path)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"<html><body><input name='champ_arrivee' type='text'></body></html>")
+        elif self.path == "/navigue" and self._authentifie():
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(self._PAGE_NAVIGUE.encode("utf-8"))
+        elif self.path == "/selects" and self._authentifie():
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
@@ -395,6 +416,7 @@ class _Appli(BaseHTTPRequestHandler):
 
 def _serveur(brouillon):
     _Appli.ecritures = []
+    _Appli.lectures = []
     _Appli.brouillon = brouillon
     srv = HTTPServer(("127.0.0.1", 0), _Appli)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -700,3 +722,66 @@ def test_reel_pays_ville_sont_detectes_dependants_et_un_select_libre_est_indepen
     assert resultat["selects"] == {"pays": {"independant": True}, "ville": {"independant": False},
                                    "type": {"independant": True}}
     assert not _Appli.ecritures
+
+
+# ── Navigation en GET pendant la sonde (revue du lot 12, point 9) ───────────────────────────────
+
+class _RequeteNavigation(_Requete):
+    def is_navigation_request(self):
+        return True
+
+
+def test_une_navigation_pendant_la_sonde_est_abandonnee_et_l_interrompt():
+    ecritures: list = []
+    route = _Route(_RequeteNavigation("GET", "https://app.test/website/lang/en"))
+
+    sonde._garde_reseau(ecritures)(route)
+
+    assert route.abandonnee and not route.continuee
+    assert ecritures[0].startswith(sonde._MARQUE_NAVIGATION)
+
+
+def test_un_get_qui_n_est_pas_une_navigation_reste_autorise():
+    route = _Route(_Requete("GET", "https://app.test/api/lecture"))
+
+    sonde._garde_reseau([])(route)
+
+    assert route.continuee and not route.abandonnee
+
+
+def test_un_changement_d_url_sans_requete_apres_un_select_interrompt_la_sonde():
+    def pousse_l_url(page):
+        page.url = "https://app.test/en/autre-page"
+
+    page = _PageJetable({"code": ""}, selects={"type": ["", "a", "b"], "pays": list(_PAYS)},
+                        au_choix={"type": pousse_l_url}, valide=r"\d*")
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert resultat["statut"] == "interrompue" and "navigation" in resultat["raison"]
+    assert resultat["champs"] == {}, "aucun champ sondé sur la page d'arrivée"
+    assert all(not v["independant"] for v in resultat["selects"].values())
+
+
+def test_un_simple_changement_de_fragment_n_est_pas_une_navigation():
+    def fragment(page):
+        page.url = "https://app.test/en/form/1#etape2"
+
+    page = _PageJetable({"code": ""}, selects={"type": ["", "a", "b"], "pays": list(_PAYS)},
+                        au_choix={"type": fragment}, valide=r"\d*")
+
+    assert sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")[
+        "statut"] == "ok"
+
+
+@pytest.mark.conformance
+def test_reel_un_select_qui_navigue_en_get_est_abandonne_et_aucun_champ_d_arrivee_n_est_lu():
+    """`<select onchange="location=…">` : la navigation GET est abandonnée AVANT le serveur (zéro
+    lecture reçue) et aucun champ de la page d'arrivée n'est attribué à la route d'origine."""
+    resultat = _sonder_en_reel("", chemin="navigue")
+
+    assert resultat["statut"] == "interrompue", resultat
+    assert "navigation détectée" in resultat["raison"]
+    assert _Appli.lectures == [], "la page d'arrivée n'a jamais été demandée au serveur"
+    assert "champ_arrivee" not in resultat["champs"]
+    assert resultat["champs"] == {}
