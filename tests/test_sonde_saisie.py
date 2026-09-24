@@ -99,7 +99,7 @@ class _PageJetable:
         self.remplissages.append((nom, valeur))
         self.champs[nom] = self.retention.get(nom, lambda v: v)(valeur)
         if nom in self.au_remplissage:
-            self.au_remplissage[nom](self)
+            self.au_remplissage[nom](self, valeur)
         if nom in self.ecritures or self.poster_au_fill == len(self.remplissages):
             methode, url = self.ecritures.get(nom, ("POST", "https://app.test/draft"))
             for h in self.handlers:
@@ -612,7 +612,7 @@ def test_un_select_dont_les_options_changent_apres_un_autre_select_est_dependant
 
 def test_un_select_dont_les_options_changent_apres_une_saisie_texte_est_dependant():
     page = _PageJetable({"cp": ""}, selects={"ville": list(_VILLES_FR)}, valide=r"\d*",
-                        au_remplissage={"cp": lambda p: p.selects.update(ville=["", "gand"])})
+                        au_remplissage={"cp": lambda p, v: p.selects.update(ville=["", "gand"])})
 
     resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
 
@@ -785,3 +785,25 @@ def test_reel_un_select_qui_navigue_en_get_est_abandonne_et_aucun_champ_d_arrive
     assert _Appli.lectures == [], "la page d'arrivée n'a jamais été demandée au serveur"
     assert "champ_arrivee" not in resultat["champs"]
     assert resultat["champs"] == {}
+
+
+def test_un_select_qui_redevient_identique_une_fois_le_champ_vide_est_quand_meme_dependant():
+    """Code postal → ville : la ville ne change que tant que le champ contient une valeur ; le
+    vidage la restaure. Comparer APRÈS le vidage la ferait passer pour indépendante."""
+    def villes_du_code(page, valeur):
+        page.selects["ville"] = ["", "gand"] if valeur else list(_VILLES_FR)
+
+    page = _PageJetable({"cp": ""}, selects={"ville": list(_VILLES_FR)}, valide=r"\d*",
+                        au_remplissage={"cp": villes_du_code})
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert page.selects["ville"] == _VILLES_FR, "l'état final est bien revenu à l'identique"
+    assert resultat["selects"] == {"ville": {"independant": False}}
+
+
+def test_un_select_que_la_saisie_texte_ne_touche_jamais_reste_independant():
+    page = _PageJetable({"cp": ""}, selects={"ville": list(_VILLES_FR)}, valide=r"\d*")
+
+    assert sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")[
+        "selects"] == {"ville": {"independant": True}}
