@@ -21,6 +21,8 @@ const FAMILLES: Record<string, string> = {
   always_true_constant: 'assertion',
   tautology_negation_in_else: 'assertion',
   then_without_assertion: 'assertion',
+  // Lot 02 — un constat posé sous « Soit » serait classé « bloqué », pas comme un défaut applicatif.
+  assertion_dans_contexte: 'assertion',
   // 0017 — la réparation a touché du code qui marchait.
   step_modifie: 'réparation',
   step_supprime: 'réparation',

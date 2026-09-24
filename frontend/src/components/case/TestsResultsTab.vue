@@ -4,7 +4,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ExecutionSummary, ScenarioResultOut } from '../../lib/api'
-import { executionView, testStatusMeta } from '../../lib/status'
+import { causeLabel, executionView, testStatusMeta } from '../../lib/status'
 import TestActivityChart from './TestActivityChart.vue'
 
 const props = defineProps<{
@@ -111,7 +111,7 @@ function openPlan(e: ExecutionSummary) {
           </span>
           <div class="min-w-0 flex-1">
             <div class="text-sm font-medium">{{ s.scenario_name }}</div>
-            <div class="text-xs text-muted-foreground mt-0.5">Déroulement : {{ executionView(s.execution_status).label }}<span v-if="s.cause_category"> · {{ s.cause_category }}</span></div>
+            <div class="text-xs text-muted-foreground mt-0.5">Déroulement : {{ executionView(s.execution_status).label }}<span v-if="s.cause_category"> · {{ causeLabel(s.cause_category) }}</span></div>
             <p v-if="s.error_summary" class="mt-1.5 text-xs text-muted-foreground bg-surface-raised/60 border border-border/60 rounded-md p-2 whitespace-pre-wrap break-words line-clamp-3">{{ s.error_summary }}</p>
           </div>
         </div>

@@ -1,10 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import {
-  executionView, functionalView, etatView, typeView, priorityView,
+  causeLabel, executionView, functionalView, etatView, typeView, priorityView,
   defectOriginView, costSourceLabel, prettyModule, toneClasses,
 } from '../lib/status'
 
 describe('status mapping — deux axes distincts + vocabulaire utilisateur', () => {
+
+  it('causeLabel : libellé français, jamais la valeur brute (lot 02, F10)', () => {
+    expect(causeLabel('precondition_non_remplie')).toBe('Prérequis non rempli (environnement)')
+    expect(causeLabel('erreur_serveur_5xx')).toBe('Erreur interne du serveur (HTTP 5xx)')
+    expect(causeLabel('refus_non_explique')).toBe('Refus non expliqué (à instruire)')
+    // Une cause inconnue du front reste lisible : jamais un identifiant brut à l'écran.
+    expect(causeLabel('une_cause_future')).toBe('Cause à instruire')
+    expect(causeLabel(null)).toBe('Cause à instruire')
+  })
 
   it("blocked (lot 02) : libellé français, ton d'avertissement, jamais la valeur brute ni « Erreur technique »", () => {
     const v = executionView('blocked')
