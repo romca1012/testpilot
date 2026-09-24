@@ -217,14 +217,22 @@ def sonder_formulaire(page, url: str) -> dict:
     if not permis:
         return {"statut": "ignoree", "raison": raison, "champs": {}}
     jetable = contexte = garde = ecoute = None
-    avant_pages: list = []
+    avant_pages: list | None = None  # `None` : photographie non faite ou échouée
     actif = {"oui": True}
     annexes: list = []
     ecritures: list[str] = []
     resultat: dict = {"statut": "ok", "raison": "", "champs": {}}
     try:
         contexte = page.context
-        avant_pages = list(contexte.pages)  # toute page apparue ensuite sera fermée à la fin
+        try:
+            avant_pages = list(contexte.pages)  # toute page apparue ensuite sera fermée à la fin
+        except Exception as exc:
+            # Sans photographie initiale on ne sait pas quelles pages sont à nous : le balayage de fin
+            # pourrait fermer la page persistante d'exploration. On ne balaie rien et on le DIT.
+            logger.warning("[sonde de saisie] photographie des pages impossible : %s", exc)
+            resultat["perception_degradee"] = [
+                "photographie des pages du contexte impossible : aucune page apparue pendant le "
+                "chargement n'a été fermée par balayage (les pages détectées par l'écouteur le sont)"]
         jetable = contexte.new_page()
         jetable.add_init_script(_JS_NEUTRALISE_FERMETURE)
         jetable.goto(url, wait_until="domcontentloaded")
@@ -317,11 +325,13 @@ def sonder_formulaire(page, url: str) -> dict:
         if contexte is not None:
             try:
                 # Pages apparues pendant le chargement initial ou l'attente de 300 ms, avant la garde et
-                # l'écouteur (une fenêtre ouverte par le chargement même de la page).
-                for nouvelle in contexte.pages:
-                    if nouvelle not in avant_pages and nouvelle is not jetable \
-                            and nouvelle not in annexes:
-                        annexes.append(nouvelle)
+                # l'écouteur (une fenêtre ouverte par le chargement même de la page). Seulement si la
+                # photographie initiale a réussi.
+                if avant_pages is not None:
+                    for nouvelle in contexte.pages:
+                        if nouvelle not in avant_pages and nouvelle is not jetable \
+                                and nouvelle not in annexes:
+                            annexes.append(nouvelle)
             except Exception:
                 pass
             # La garde est posée sur le contexte PARTAGÉ de l'exploration : la laisser en place

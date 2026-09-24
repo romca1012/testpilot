@@ -1248,3 +1248,52 @@ def test_sans_ecriture_dans_la_fenetre_finale_le_resultat_est_inchange():
 
     assert resultat["statut"] == "ok"
     assert all(v["independant"] for v in resultat["selects"].values())
+
+
+class _ContexteSansPages(_ContexteAuthentifie):
+    """`context.pages` lève : la photographie initiale est impossible."""
+    pages = property(lambda self: (_ for _ in ()).throw(RuntimeError("pages indisponibles")),
+                     lambda self, valeur: None)
+
+
+def test_photographie_impossible_ne_ferme_rien_par_balayage_et_le_consigne():
+    page = _PageJetable({"code": ""}, selects={"type": ["", "a", "b"], "pays": list(_PAYS)},
+                        valide=r"\d*")
+    persistante = _PagePersistante(page)
+    contexte = _ContexteSansPages(page)
+    persistante.context = page.contexte = contexte
+
+    resultat = sonde.sonder_formulaire(persistante, "https://app.test/en/form/1")
+
+    assert resultat["statut"] == "ok", "la sonde elle-même n'est pas touchée"
+    (degradation,) = resultat["perception_degradee"]
+    assert "photographie" in degradation and "aucune page" in degradation
+    assert page.fermeture == {"run_before_unload": False}, "sa propre page jetable est fermée"
+
+
+def test_photographie_impossible_ferme_quand_meme_les_pages_detectees_par_l_ecouteur():
+    """Le balayage est désactivé, pas le suivi par évènement : une popup ouverte par NOTRE saisie
+    est connue sans photographie et reste fermée."""
+    annexes: list = []
+
+    def popup(page):
+        annexes.append(page.contexte.ouvrir_page_annexe())
+
+    page = _PageJetable({"code": ""}, selects={"type": ["", "a", "b"], "pays": list(_PAYS)},
+                        au_choix={"type": popup}, valide=r"\d*")
+    persistante = _PagePersistante(page)
+    persistante.context = page.contexte = _ContexteSansPages(page)
+
+    resultat = sonde.sonder_formulaire(persistante, "https://app.test/en/form/1")
+
+    assert resultat["statut"] == "interrompue"
+    assert annexes and all(a.fermeture == {"run_before_unload": False} for a in annexes)
+    assert resultat["perception_degradee"]
+
+
+def test_photographie_reussie_ne_signale_aucune_degradation():
+    page = _PageJetable({"code": ""}, valide=r"\d*")
+
+    resultat = sonde.sonder_formulaire(_PagePersistante(page), "https://app.test/en/form/1")
+
+    assert "perception_degradee" not in resultat
