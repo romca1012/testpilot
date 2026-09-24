@@ -279,10 +279,24 @@ def _migrate_48_execution_blocked(conn: sqlite3.Connection) -> None:
             if new_sql == sql:
                 continue  # liste non reconnue : ne rien casser en silence
             tmp = f"{tbl}__migr48"
-            create_tmp = new_sql.replace(f"CREATE TABLE {tbl}", f"CREATE TABLE {tmp}", 1)
+            # ⚠️ Le nom peut être ENTRE GUILLEMETS : SQLite réécrit `CREATE TABLE "execution"` dès
+            # qu'une table a été renommée (`ALTER TABLE … RENAME`, comme le fait la migration 19).
+            # Un remplacement littéral de `CREATE TABLE execution` ne trouvait alors RIEN et la table
+            # temporaire portait le MÊME nom que l'originale (« table already exists ») — mesuré le
+            # 2026-09-24 sur la copie d'une vraie base (user_version 47), jamais sur une base neuve.
+            create_tmp = re.sub(rf'CREATE TABLE\s+"?{re.escape(tbl)}"?', f"CREATE TABLE {tmp}",
+                                new_sql, count=1)
+            if tmp not in create_tmp:
+                continue  # forme de CREATE TABLE inconnue : ne rien casser en silence
             aux = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE tbl_name=? AND type IN ('index','trigger')"
                 " AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%'", (tbl,)).fetchall()
+            # ⚠️ `foreign_key_check` couvre TOUTE la base. Une violation qui préexistait, sans rapport avec
+            # cette reconstruction (mesuré le 2026-09-24 sur la copie d'une vraie base : un
+            # `project_member` pointant vers un utilisateur supprimé), ferait échouer la migration — donc
+            # le démarrage — pour un défaut que nous n'avons pas causé. On ne réagit qu'aux violations
+            # NOUVELLES.
+            avant = {tuple(r) for r in conn.execute("PRAGMA foreign_key_check").fetchall()}
             conn.execute("BEGIN")
             try:
                 conn.execute(f"DROP TABLE IF EXISTS {tmp}")
@@ -292,9 +306,9 @@ def _migrate_48_execution_blocked(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE {tmp} RENAME TO {tbl}")
                 for a in aux:
                     conn.execute(a["sql"])  # index/triggers recréés (dropés avec l'ancienne table)
-                violations = conn.execute("PRAGMA foreign_key_check").fetchall()
-                if violations:
-                    raise RuntimeError(f"FK cassées après reconstruction de {tbl} : {violations}")
+                nouvelles = {tuple(r) for r in conn.execute("PRAGMA foreign_key_check").fetchall()} - avant
+                if nouvelles:
+                    raise RuntimeError(f"FK cassées après reconstruction de {tbl} : {sorted(nouvelles)}")
                 conn.execute("COMMIT")
             except Exception:
                 conn.execute("ROLLBACK")

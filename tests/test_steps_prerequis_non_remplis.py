@@ -159,3 +159,27 @@ def test_l_erreur_de_prerequis_est_classee_blocked_au_type_meme_dans_un_when():
                           step_type="when")
 
     assert dt.classify_failure(echec) == dt.PRECONDITION_NON_REMPLIE
+
+
+def test_un_releve_de_comptage_impossible_reste_une_assertion_mais_le_type_de_step_en_fait_un_blocage():
+    """`memorize_record_count` garde son `AssertionError` : un test de la décision 0011
+    (`test_snapshot_impossible_echoue_a_la_pose`) fige ce contrat, et il n'est pas nécessaire de le
+    changer — posé dans un step de Contexte (`given`), l'échec est classé `precondition_non_remplie`
+    par la règle du TYPE DE STEP (lot 02), donc `blocked`."""
+    from testpilot.execution.behave_result import BehaveFailure
+    from testpilot.verdict import defect_taxonomy as dt
+
+    helpers, _, _ = _charger()
+
+    class _ModeleEnPanne:
+        def search_count(self, *_a, **_k):
+            raise ConnectionError("RPC injoignable")
+
+    contexte = types.SimpleNamespace(odoo=types.SimpleNamespace(
+        env={"helpdesk.ticket": _ModeleEnPanne()}))
+    with pytest.raises(AssertionError, match="Impossible de mémoriser") as info:
+        helpers.memorize_record_count(contexte, "helpdesk.ticket")
+
+    echec = BehaveFailure("s", "", "assertion", "", raw=f"ASSERT FAILED: {info.value}",
+                          step_type="given")
+    assert dt.classify_failure(echec) == dt.PRECONDITION_NON_REMPLIE
