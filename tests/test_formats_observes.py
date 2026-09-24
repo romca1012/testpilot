@@ -126,3 +126,22 @@ def test_la_regle_7_du_prompt_est_courte_et_presente():
 
     assert "Formats de saisie" in regle and "DONNÉES" in regle
     assert len(regle) <= 1300, "le prompt coûte (§9) : une règle courte"
+
+
+def test_la_sonde_laisse_une_trace_compacte_dans_les_preuves_de_l_observation():
+    sonde = {"statut": "interrompue", "raison": "sauvegarde automatique détectée, pas de sonde : X",
+             "champs": {"numero_facture1": {"sondes": {"chiffres": {"retenu": "1234567/8901234",
+                                                                    "ecrit": "1" * 30}},
+                                            "exemple_stable": "1234567/8901234"}}}
+
+    class _Connecteur:
+        def inspect_form(self, url):
+            return _info(submission={}, sonde=sonde)
+
+    ctx = ToolContext(module_name="m", generated_dir=Path("."), connector=_Connecteur())
+    inspect_tools.inspect_page_form(ctx, f"https://app.test/en{ROUTE}")
+
+    trace = ctx.observations[-1]["sonde"]
+    assert trace["statut"] == "interrompue" and "sauvegarde automatique" in trace["raison"]
+    assert trace["champs"]["numero_facture1"] == {
+        "retenus": {"chiffres": "1234567/8901234"}, "exemple_stable": "1234567/8901234"}

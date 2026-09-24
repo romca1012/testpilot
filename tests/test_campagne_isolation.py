@@ -227,3 +227,32 @@ def test_main_sort_avec_le_code_3_quand_le_plafond_interrompt_la_campagne(monkey
     assert sortie.value.code == 3
     assert len(lances) == 1, "0,2 $ + le plus cher observé 0,2 $ > plafond 0,3 $ : arrêt avant le 2e"
     assert (tmp_path / ".local-preview" / "qualification" / "x" / "arret_plafond.json").is_file()
+
+
+# ── Mode « exploration seule » : la sonde active sur les données isolées, rien de généré ────────
+
+def test_explorer_ecrit_ce_que_la_sonde_a_observe_et_marque_les_sauvegardes_automatiques(
+        monkeypatch, tmp_path):
+    class _Connecteur:
+        def connect(self):
+            pass
+
+        def disconnect(self):
+            pass
+
+        def inspect_form(self, url):
+            if "brouillon" in url:
+                return {"fields": [{"name": "a"}], "sonde": {
+                    "statut": "interrompue", "champs": {},
+                    "raison": "sauvegarde automatique détectée, pas de sonde : POST /draft"}}
+            return {"fields": [{"name": "numero_facture1"}], "sonde": {
+                "statut": "ok", "champs": {"numero_facture1": {"sondes": {}, "exemple_stable": "1"}}}}
+
+    monkeypatch.setattr(script, "build_connector", lambda projet: _Connecteur())
+
+    rapport = script._explorer({}, ["https://x/f/1", "https://x/brouillon/2"], tmp_path)
+
+    assert [r["sauvegarde_automatique_detectee"] for r in rapport] == [False, True]
+    ecrit = __import__("json").loads((tmp_path / "exploration.json").read_text(encoding="utf-8"))
+    assert ecrit[0]["sonde"]["champs"]["numero_facture1"]["exemple_stable"] == "1"
+    assert ecrit[0]["champs_de_la_page"] == ["numero_facture1"]
