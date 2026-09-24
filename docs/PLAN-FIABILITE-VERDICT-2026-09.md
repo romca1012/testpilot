@@ -25,7 +25,7 @@ verdict métier exploitable. L'audit du 2026-09-23 a identifié les causes suiva
 | F3 | `_adaptive_resolution.py`, `executor.py` (retry l.64) | Un vert obtenu par résolution LLM ou au 2ᵉ essai n'est pas distingué | Régressions d'UI absorbées en silence |
 | F4 | `status.scenario_verdict` | `passed` → `conforme` sans preuve qu'une assertion s'est exécutée ; `assertion_lint` statique et non bloquant | Tests verts par construction |
 | F5 | `status.statut_de_test` | `technical_error` est toujours couplé à `indetermine` → `retest` ; `blocked` n'est jamais produit automatiquement | Panne d'environnement confondue avec script cassé |
-| F6 | `environment.py` l.118 et l.397-409 | Teardown limité à `helpdesk.ticket` ; restauration de `employee_front_role_ids` (champ Sapian) dans le harnais générique | Pollution, collisions d'unicité au rejeu, code client dans le socle |
+| F6 | `environment.py` l.118 et l.397-409 | Teardown limité à `helpdesk.ticket` ; restauration de `employee_front_role_ids` (champ Sapian) dans le harnais générique | Pollution, collisions d'unicité au rejeu, code client dans le socle. **Ajout du 2026-09-24 (ticket 30298)** : une création sans step de comptage n'est pas nettoyée — le registre ne voit que ce qui a été explicitement enregistré (`register_created`) ; F9 ferme la cause observée (les steps du catalogue enregistrent), pas le cas général |
 | F7 | `_base_helpers.py` : `verifier_soumission_non_bloquee`, `_refus_par_le_navigateur`, `click_first_actionable` | Le contrôle de refus se déclenche sur N'IMPORTE QUEL clic (y compris une navigation intermédiaire — onglet, lien, changement d'étape d'un formulaire multi-écrans), pas seulement sur une vraie soumission | Faux `donnee_invalide` : accuse le jeu de données à tort alors qu'aucune soumission n'a eu lieu (mesuré en campagne réelle le 2026-09-23, cas 95, projet 1) — trouvé en cherchant à valider le lot 01 |
 | F8 | `_base_helpers.py` : chaîne de diagnostic de refus (`diagnostic_soumission`, assertions générées sur le texte d'un message attendu) | Une assertion générée fige un texte de message DEVINÉ par l'agent plutôt qu'observé pendant la génération | Faux `non_conforme`/`failed` : l'application refuse correctement, c'est le texte attendu par le test qui est faux (mesuré le 2026-09-23, cas 97, projet 1) |
 | F9 | `generation/tools/write.py` : `write_steps_file` | Un step GÉNÉRÉ recompte lui-même (`search_count([])`, `len(search(...))`, `len(read(...))`) hors des helpers cloisonnés du lot 01 — le prompt et le message de refus recommandaient même ce motif | Réintroduit le faux PASSED/FAILED de F1 dans le code généré, là où aucun test du dépôt ne le voit (mesuré le 2026-09-23, cas 95 régénéré : comptage global décalé de 1 → faux `non_conforme`, ticket créé mais non nettoyé faute de `register_created`). **Corrigé par le lot 11** : refus bloquant par AST |
@@ -79,7 +79,10 @@ régimes différents (PRINCIPES).
 - **F7 (lot 11)** : le signal de navigation (chemin d'URL + clés de fragment `action`, `menu_id`,
   `model`, `view_type`) est mesuré sur Odoo 17.0+e (staging Sapian) ; sa validation sur **16.0 et
   17.0 Community**, avec un scénario Behave COMPLET de vrai refus au corpus, est à faire sur le
-  banc du **lot 04**.
+  banc du **lot 04**. Ajouter au corpus un clic sur un onglet de formulaire (notebook), qui ne
+  change pas l'URL, pour vérifier qu'il ne déclenche pas de faux `donnee_invalide`, et confirmer
+  la table sur 16 / 17.0 Community (sur 17.0+e, enregistrer laisse l'URL identique : l'apparition
+  de la clé `id` n'a pas été observée en réel).
 
 ## 4. Registre des décisions à valider par le porteur
 
@@ -94,14 +97,20 @@ Claude Code **ne démarre pas** un lot dont une décision requise n'est pas coch
 | D5 | Confiance du verdict | Champ `confiance` ∈ {`nominale`, `auto_resolue`, `apres_retry`} sur le résultat ; `passed` non nominal affiché « Réussi — à confirmer » ; option de campagne **stricte** (sans résolution adaptative ni retry) | 05 | ☐ |
 | D6 | Code propre à une instance client | Notion de **profil d'instance** : `behave_runtime/steps_library/<connecteur>/profils/<profil>.py`, sélectionné par un réglage du projet ; Sapian devient le premier profil | 06 | ☐ |
 | D7 | Oracle backend du connecteur web | Réglage de projet optionnel `oracle` (HTTP JSON authentifié, ou SQL lecture seule) ; présent ⇒ `ground_truth = backend_verified` | 07 | ☐ |
-| D8 | Plusieurs comptes par projet (droits, changement d'utilisateur) | Table `project_account` (libellé, identifiant, secret chiffré via `store/secrets.py`, rôle métier) ; steps « en tant que "<libellé>" » | 07, 08 | ☐ |
+| D8 | Plusieurs comptes par projet (droits, changement d'utilisateur) | Table `project_account` (libellé, identifiant, secret chiffré via `store/secrets.py`, rôle métier) ; steps « en tant que "<libellé>" » | 07b, 08 | ☐ |
 | D9 | Versions Odoo supportées et instance de référence | 16.0, 17.0, 18.0 Community + données de démo ; modules `sale_management`, `purchase`, `stock`, `account`, `crm`, `project` (helpdesk est Enterprise : exclu du banc) | 04, 08 | ☐ |
 | D10 | F1 : sur un scénario de création SANS marqueur de tentative (champ sans contrainte d'unicité — la majorité des cas), le comptage cloisonné (`id > max_id`) ne peut pas distinguer un unique enregistrement du scénario d'un unique enregistrement créé par un tiers dans la même fenêtre — aucune information disponible ne permet de trancher sans marqueur (le `create_uid` est exclu, cf. formulaires publics). Accepte-t-on ce résidu (I1 non strictement à 0) plutôt que d'imposer un marqueur à TOUT scénario de création (changerait le contrat de génération, hors périmètre du lot 01) ? | **Résidu accepté** : le risque exige la coïncidence de trois conditions (tiers actif sur le même modèle, même fenêtre de quelques secondes, ET échec réel du scénario) — rare hors instance à fort trafic concurrent. Généraliser le marqueur à tout scénario de création reste une amélioration valide, à traiter comme un lot séparé si le résidu se matérialise en pratique | 01 | ☑ (validée le 2026-09-23) |
 
 ## 5. Lots
 
-Ordre recommandé ci-dessous. Les lots 01 à 03 sont testables hors ligne et corrigent des faux
-statuts : ils passent en premier. Le lot 04 construit le banc qui sert à prouver tous les suivants.
+**Ordre d'exécution (révisé le 2026-09-24) : 12 → 02 → 07a → 03 → 04 → 07b-e → 08 → 05 → 06 → 09 → 10**
+(les lots 01 et 11 sont terminés). La numérotation des lots ne change pas ; seul l'ordre change.
+
+Raison : l'objectif « tester toute application web » est bloqué par l'absence de connexion à
+l'exécution (C1 : `WEB_USER`/`WEB_PASSWORD` ne sont lus par aucun step, les tests tournent en
+anonyme). Le sous-lot **07a** est petit et ne dépend que de `PreconditionNonRemplieError` (lot 02),
+d'où son passage juste après le lot 02, avant le banc de mesure. Le lot 12 (valeurs observées)
+passe en premier : il est prêt, mesuré en campagne réelle, et ne dépend que des lots 01 et 11.
 
 | Lot | Commande | Objet | Décisions | Dépend de | Taille |
 |---|---|---|---|---|---|
@@ -111,9 +120,10 @@ statuts : ils passent en premier. Le lot 04 construit le banc qui sert à prouve
 | 04 | `/lot-04-banc-mesure` | Instance Odoo de référence, bugs injectés, pannes injectées, script d'indicateurs, CI nocturne (C8) | D9 | — | L |
 | 05 | `/lot-05-confiance` | Confiance du verdict, mode strict (F3) | D5 | 02, 04 | M |
 | 06 | `/lot-06-nettoyage-profils` | Teardown générique, profils d'instance, sortie du code Sapian (F6) | D6 | 01 | M |
-| 07 | `/lot-07-web-generique` | Connexion à l'exécution, `storage_state`, contexte figé, vocabulaire universel, oracle (C1-C5) | D7, D8 | 02, 03 | L |
+| 07a | `/lot-07a-connexion-execution` | Connexion à l'exécution du connecteur web générique, échec → `blocked` (C1) | — | 02 | S |
+| 07b-e | `/lot-07-web-generique` | Session réutilisée / stratégies d'auth (b), contexte figé (c), vocabulaire universel (d), oracle (e) (C2-C5) | D7, D8 | 02, 03, 07a | L |
 | 08 | `/lot-08-odoo-erp` | Détection de version, sélecteurs par version, vocabulaire ERP, effets en chaîne (C6, C7) | D8, D9 | 04 | L |
-| 09 | `/lot-09-agents` | Outils de perception, prompts, garde de réparation des assertions (C9) | D4 | 07, 08 | M |
+| 09 | `/lot-09-agents` | Outils de perception, prompts, garde de réparation des assertions (C9) | D4 | 07b-e, 08 | M |
 | 10 | `/lot-10-mesure-cloture` | Campagne de mesure complète, mise à jour de la documentation | — | tous | S |
 | 11 | `/lot-11-faux-verdicts-soumission` | Faux verdicts trouvés en campagne réelle : refus déclenché hors soumission (F7), assertion sur message deviné (F8), comptage réécrit par l'agent (F9) | — | 01 | S |
 | 12 | `/lot-12-valeurs-observees` | Valeurs de champ écrites sans avoir été observées : masque de saisie, référence relationnelle inexistante (C10) | — | 01, 11 | M |
@@ -133,7 +143,8 @@ répétée (12), au même titre que les lots 01-03.
 | 04 | à faire | | |
 | 05 | à faire | | |
 | 06 | à faire | | |
-| 07 | à faire | | |
+| 07a | à faire | | |
+| 07b-e | à faire | | |
 | 08 | à faire | | |
 | 09 | à faire | | |
 | 10 | à faire | | |
@@ -197,7 +208,7 @@ CONTINUITE et le rapport de qualité mis à jour.
 2. Le porteur coche les décisions du §4 (date + initiales). Claude Code refuse un lot dont une
    décision requise n'est pas cochée.
 3. Ouvrir Claude Code à la racine du dépôt, puis pour chaque lot, dans l'ordre du §5 :
-   - `/lot-01-comptages` (les lots 07 et 08 acceptent un sous-lot : `/lot-07-web-generique a`) ;
+   - `/lot-01-comptages` (le lot 08 accepte un sous-lot : `/lot-08-odoo-erp a` ; la connexion à l'exécution est `/lot-07a-connexion-execution`, le reste du lot 07 `/lot-07-web-generique b`) ;
    - laisser Claude Code présenter son plan de fichiers avant d'écrire (mode plan conseillé) ;
    - à la fin, il lance le sous-agent `verdict-reviewer` et produit le rapport du lot ;
    - relire le rapport et le diff, puis fusionner. Mettre à jour le tableau de suivi du §5.

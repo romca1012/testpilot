@@ -4,7 +4,7 @@ description: Lot 09 — Mieux équiper les agents TestPilot : perception, prompt
 
 # Lot 09 — Agents de génération et de réparation
 
-Lis `CLAUDE.md` (§3 et §8 surtout), C9 du plan. Décision requise : **D4**. Dépend des lots 07 et
+Lis `CLAUDE.md` (§3 et §8 surtout), C9 du plan. Décision requise : **D4**. Dépend des lots 07a, 07b-e et
 08 (le vocabulaire à exposer doit exister). Branche : `lot-09-agents`.
 
 ## Pourquoi
