@@ -224,3 +224,7 @@ CONTINUITE et le rapport de qualité mis à jour.
 4. Une session Claude Code par lot (ou par sous-lot) : le contexte reste centré, et le rapport de
    fin sert de passation au lot suivant.
 5. À partir du lot 04, ne fusionner aucun lot qui dégrade I1 ou I5 sur le banc.
+
+## Suggestions à cadrer (hors décision, hors lot en cours)
+
+- **Affichage des cas `indetermine` (suggestion du lot 02, 2026-09-24, NON décidée).** Aujourd'hui un cas `indetermine` s'affiche « Retest » (règle `indetermine → retest`, `verdict/status.py`), ce qui peut laisser croire à un test cassé alors qu'il s'agit d'un refus non expliqué (`refus_non_explique`) ou d'un manque d'observabilité. Piste : afficher le libellé de la cause à côté du badge « Retest » pour ces cas, **sans créer de nouveau statut de lecture**. À cadrer (écrans concernés, tests) si l'on décide un jour de l'entreprendre ; ce n'est une action d'aucun lot en cours.
