@@ -183,32 +183,42 @@ def sonder_formulaire(page, url: str) -> dict:
         # Interception ouverte APRÈS le chargement : seules les requêtes provoquées par NOTRE saisie
         # comptent (un POST de suivi au chargement n'est pas une sauvegarde de brouillon).
         jetable.route("**/*", _garde_reseau(ecritures))
-        base, dependants, complet = _options_selects_ou_vide(jetable), set(), True
+        base, dependants, etat = _options_selects_ou_vide(jetable), set(), {"complet": True}
+
+        def surveiller() -> None:
+            """Relit les selects et note ceux dont les options ont changé depuis l'état initial.
+            Appelée après CHAQUE saisie texte, donc AVANT le vidage du champ : un select qui redevient
+            identique une fois le champ vidé (code postal → ville) serait sinon pris à tort pour
+            indépendant (revue du lot 12)."""
+            if not base:
+                return
+            try:
+                apres = {n["nom"]: n["options"] for n in jetable.evaluate(_JS_SELECTS)}
+                dependants.update(n for n, opts in base.items() if apres.get(n) != opts)
+            except Exception:
+                etat["complet"] = False
+
         try:
             dependants |= _changer_les_selects(jetable, base, ecritures)
         except Exception:
-            complet = False
+            etat["complet"] = False
         noms = [] if ecritures else list(jetable.evaluate(_JS_CHAMPS))[:_CHAMPS_MAX]
         for nom in noms:
             if ecritures:
                 break
             try:
-                resultat["champs"][nom] = _sonder_champ(jetable, nom, ecritures)
+                resultat["champs"][nom] = _sonder_champ(jetable, nom, ecritures, surveiller)
             except Exception as exc:
                 # Un champ qui se laisse mal sonder ne doit pas faire perdre les autres (mesuré le
                 # 2026-09-24 sur retenue_garantie/1 : un `type=number` a fait échouer tout le
                 # formulaire, donc aussi les champs texte qui suivaient).
                 resultat["champs"][nom] = {"sondes": {}, "exemple_stable": None,
                                            "erreur": str(exc)[:120]}
-        if not ecritures and complet:
-            try:
-                apres = {n["nom"]: n["options"] for n in jetable.evaluate(_JS_SELECTS)}
-                dependants |= {n for n, opts in base.items() if apres.get(n) != opts}
-            except Exception:
-                complet = False
+        if not ecritures and etat["complet"]:
+            surveiller()
         # Indépendant SEULEMENT si observé complet et inchangé : par défaut on n'affirme jamais qu'un
         # select est exhaustif (défaut sûr, D11 : refuser à tort coûte du budget, revue du lot 12).
-        resultat["selects"] = {n: {"independant": bool(complet and not ecritures
+        resultat["selects"] = {n: {"independant": bool(etat["complet"] and not ecritures
                                                        and n not in dependants)} for n in base}
         _marquer_interruption(resultat, ecritures)
     except Exception as exc:  # perception best-effort : jamais fatale
@@ -295,7 +305,7 @@ def _lire(loc) -> dict:
             "message": str(lu.get("message", ""))[:_RETENU_MAX]}
 
 
-def _sonder_champ(page, nom: str, ecritures: list) -> dict:
+def _sonder_champ(page, nom: str, ecritures: list, surveiller=None) -> dict:
     loc = page.locator(_selecteur(nom)).first
 
     def remplir(valeur: str) -> bool:
@@ -306,6 +316,8 @@ def _sonder_champ(page, nom: str, ecritures: list) -> dict:
         except Exception:
             return False
         page.wait_for_timeout(_SETTLE_MS)
+        if surveiller is not None and not ecritures:
+            surveiller()
         return True
 
     sondes: dict = {}
