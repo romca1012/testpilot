@@ -457,3 +457,23 @@ def test_une_erreur_imprevue_sur_un_champ_laisse_les_autres_champs_sondes():
     assert resultat["statut"] == "ok"
     assert "page fermee" in resultat["champs"]["a"]["erreur"]
     assert set(resultat["champs"]["b"]["sondes"]) == {"lettres", "chiffres", "melange"}
+
+
+@pytest.mark.conformance
+def test_reel_un_champ_type_number_ne_fait_pas_echouer_le_formulaire():
+    """Non-régression mesurée le 2026-09-24 sur retenue_garantie/1 : Playwright refuse de taper des
+    lettres dans un `type=number` ; le champ texte qui SUIT doit quand même être sondé."""
+    from playwright.sync_api import sync_playwright
+
+    page_html = ('data:text/html,<form><input name="montant" type="number" min="0" step="any">'
+                 '<input name="code" type="text"></form>')
+    with sync_playwright() as p:
+        navigateur = p.chromium.launch(headless=True)
+        page = navigateur.new_context().new_page()
+        resultat = sonde.sonder_formulaire(page, page_html)
+        navigateur.close()
+
+    assert resultat["statut"] == "ok", resultat
+    assert resultat["champs"]["montant"]["sondes"]["lettres"].get("refuse") is True
+    assert resultat["champs"]["montant"]["sondes"]["chiffres"]["retenu"]
+    assert set(resultat["champs"]["code"]["sondes"]) == {"lettres", "chiffres", "melange"}
