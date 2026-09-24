@@ -81,6 +81,32 @@ _JS_CHAMPS = """() => Array.from(document.querySelectorAll('input')).filter(el =
         && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
 }).map(el => el.name || el.id)""" % list(_TYPES_SONDABLES)
 
+# Injecté dans la page JETABLE avant tout script de la page. Mesuré le 2026-09-24 en Chromium : un
+# `sendBeacon` ou un `fetch({keepalive:true})` déclenché par `pagehide`, `unload` ou `visibilitychange`
+# atteint le serveur APRÈS la fermeture de la page, hors de portée de `route` (même maintenue après la
+# fermeture) et, pour deux sur trois, même hors ligne. Seule leur neutralisation à la source les arrête.
+# Pendant la sonde ils passent NORMALEMENT (donc la garde les voit : un brouillon envoyé par beacon à la
+# saisie reste détecté) ; ils ne sont supprimés qu'une fois `_JS_MARQUE_FERMETURE` évalué, juste avant
+# de fermer. Limite assumée : une image GET (`new Image().src = …`) à la fermeture n'est pas une écriture.
+_JS_NEUTRALISE_FERMETURE = """(() => {
+  window.__tpFermeture = false;
+  const original = navigator.sendBeacon ? navigator.sendBeacon.bind(navigator) : null;
+  try {
+    Object.defineProperty(navigator, 'sendBeacon', {configurable: true, value: function () {
+      if (window.__tpFermeture) { return true; }
+      return original ? original.apply(null, arguments) : false;
+    }});
+  } catch (e) {}
+  const f = window.fetch;
+  window.fetch = function (u, o) {
+    if (window.__tpFermeture && o && o.keepalive) {
+      return Promise.resolve(new Response(null, {status: 204}));
+    }
+    return f.apply(this, arguments);
+  };
+})();"""
+_JS_MARQUE_FERMETURE = "window.__tpFermeture = true"
+
 _JS_SELECTS = """() => Array.from(document.querySelectorAll('select')).filter(
     el => (el.name || el.id) && !el.disabled).map(
     el => ({nom: el.name || el.id, options: Array.from(el.options).map(o => o.value)}))"""
@@ -137,7 +163,7 @@ def _sans_fragment(url) -> str:
     return str(url or "").split("#", 1)[0]
 
 
-def _garde_reseau(ecritures: list):
+def _garde_reseau(ecritures: list, actif: dict | None = None):
     """Gestionnaire d'interception : abandonne toute écriture ET toute navigation, laisse passer le
     reste.
 
@@ -148,7 +174,11 @@ def _garde_reseau(ecritures: list):
     écriture — D10 bis : « ni clic ni navigation après saisie »."""
     def garde(route):
         requete = route.request
-        if _est_ecriture_reelle(requete):
+        if actif is not None and not actif.get("oui", True):
+            # Sonde terminée : si `unroute` a échoué, la garde reste posée sur le contexte PARTAGÉ de
+            # l'exploration ; elle laisse alors tout passer plutôt que de la casser.
+            route.continue_()
+        elif _est_ecriture_reelle(requete):
             ecritures.append(f"{requete.method} {requete.url}")
             route.abort()
         elif _est_navigation(requete):
@@ -174,12 +204,16 @@ def sonder_formulaire(page, url: str) -> dict:
     if not permis:
         return {"statut": "ignoree", "raison": raison, "champs": {}}
     jetable = contexte = garde = ecoute = None
+    avant_pages: list = []
+    actif = {"oui": True}
     annexes: list = []
     ecritures: list[str] = []
     resultat: dict = {"statut": "ok", "raison": "", "champs": {}}
     try:
         contexte = page.context
+        avant_pages = list(contexte.pages)  # toute page apparue ensuite sera fermée à la fin
         jetable = contexte.new_page()
+        jetable.add_init_script(_JS_NEUTRALISE_FERMETURE)
         jetable.goto(url, wait_until="domcontentloaded")
         jetable.wait_for_timeout(300)  # laisse finir les scripts d'initialisation (tracking, etc.)
         # Interception ouverte APRÈS le chargement : seules les requêtes provoquées par NOTRE saisie
@@ -188,7 +222,11 @@ def sonder_formulaire(page, url: str) -> dict:
         # `target="_blank"` est une nouvelle page du même contexte (cookies de session compris) qui
         # n'hérite PAS d'une garde de page — mesuré le 2026-09-24 en Chromium : un GET partait au
         # serveur, statut « ok ». Retirée dans le `finally`.
-        garde = _garde_reseau(ecritures)
+        # La garde est posée sur le contexte PARTAGÉ : une écriture ou une navigation de fond de la
+        # page persistante d'exploration pendant la sonde est aussi abandonnée et interrompt la sonde
+        # (défaut sûr : on perd un format ; aucune conséquence sur un verdict, la sonde ne produit
+        # qu'une perception). La page persistante n'est jamais saisie par la sonde.
+        garde = _garde_reseau(ecritures, actif)
 
         def ecoute(nouvelle) -> None:
             # Toute page nouvelle pendant la sonde est une interruption (défaut sûr), quelle que soit
@@ -248,7 +286,17 @@ def sonder_formulaire(page, url: str) -> dict:
             resultat["statut"] = "erreur"
             resultat["raison"] = str(exc)[:200]
     finally:
+        actif["oui"] = False  # d'abord : même si `unroute` échoue, la garde devient inerte
         if contexte is not None:
+            try:
+                # Pages apparues pendant le chargement initial ou l'attente de 300 ms, avant la garde et
+                # l'écouteur (une fenêtre ouverte par le chargement même de la page).
+                for nouvelle in contexte.pages:
+                    if nouvelle not in avant_pages and nouvelle is not jetable \
+                            and nouvelle not in annexes:
+                        annexes.append(nouvelle)
+            except Exception:
+                pass
             # La garde est posée sur le contexte PARTAGÉ de l'exploration : la laisser en place
             # casserait la suite de l'exploration. Chaque retrait est protégé séparément.
             if garde is not None:
@@ -263,6 +311,10 @@ def sonder_formulaire(page, url: str) -> dict:
                     pass
         for ouverte in [*annexes, jetable]:
             if ouverte is not None:
+                try:
+                    ouverte.evaluate(_JS_MARQUE_FERMETURE)  # neutralise les beacons de fermeture
+                except Exception:
+                    pass
                 try:
                     ouverte.close(run_before_unload=False)
                 except Exception:
