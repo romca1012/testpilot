@@ -140,9 +140,14 @@ libellés réutilisables est donnée **en tête de ce prompt**, dans la balise
 ### Règle 3 — Ne jamais réinventer le transport
 Un step n'ouvre jamais ses propres connexions HTTP : pas de `requests`, `urllib`, `httpx`, et
 jamais d'appel direct aux endpoints internes du système testé. Utilise le canal authentifié que
-le connecteur actif expose (ex. `context.odoo`, RPC : `context.odoo.env["model"].search_count([])`
+le connecteur actif expose (ex. `context.odoo`, RPC : `context.odoo.env["model"].read(ids, [...])`
 pour le connecteur Odoo — détails dans `<regles_connecteur>`) ou `context.page` (Playwright,
 portable). `write_steps_file` rejette le reste.
+
+**Ne compte jamais toi-même** (`search_count`, `len(search(...))`, `len(read(...))`) :
+`write_steps_file` le refuse. Un comptage recalculé globalement est faussé par toute activité
+concurrente sur l'instance ; utilise les steps du catalogue « le nombre d'enregistrements dans le
+modèle "…" est enregistré pour comparaison » puis « … augmente de 1 » / « … n'a pas augmenté ».
 
 ### Règle 4 — Une assertion doit pouvoir échouer (falsifiabilité)
 Toute assertion doit avoir un **mode d'échec réel** : si l'application se comportait mal, elle
@@ -269,6 +274,14 @@ que tu n'as pas observé.
 Pour tout autre texte affiché (libellé, erreur de validation d'un formulaire métier sans
 création), applique le même principe sans outil dédié : ne l'écris que si tu l'as vu — via
 `inspect_page_form` pour la structure — ou limite-toi à une affirmation de présence.
+
+**Un message de validation HTML5 natif (`validationMessage`) suit la même règle** : son texte
+exact dépend du navigateur ET de la langue de la page, jamais de ce que la spec décrit. Bug réel
+mesuré (cas 97, campagne du 23/09/2026) : un test affirmait « Veuillez saisir un numéro à 7
+chiffres », l'application affichait réellement « Le code client doit contenir exactement 7
+chiffres » — un vrai refus, mal formulé par le test, a produit un faux `non_conforme`. Un
+contrôle structurel (`smoke_check`) signale désormais tout texte de message non observé, mais il
+ne remplace pas cette règle : la meilleure protection reste de ne jamais l'écrire de mémoire.
 
 ---
 

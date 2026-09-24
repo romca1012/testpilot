@@ -56,6 +56,49 @@ def _forbidden_transport(tree: ast.AST, content: str) -> str:
     return ""
 
 
+_LECTURES_RPC = {"search", "read", "search_read"}
+
+
+def _touche_env(noeud: ast.AST) -> bool:
+    return any((isinstance(n, ast.Attribute) and n.attr in {"env", "odoo"})
+               or (isinstance(n, ast.Name) and n.id in {"env", "odoo"})
+               for n in ast.walk(noeud))
+
+
+def _est_lecture_rpc(noeud: ast.AST) -> bool:
+    return (isinstance(noeud, ast.Call) and isinstance(noeud.func, ast.Attribute)
+            and noeud.func.attr in _LECTURES_RPC and _touche_env(noeud.func.value))
+
+
+def _forbidden_recount(tree: ast.AST) -> str:
+    """Décrit un COMPTAGE écrit par l'agent (§F9, 2026-09-23), sinon chaîne vide.
+
+    Un step généré qui recompte lui-même (`search_count`, ou `len()` d'un `search`/`read`
+    RPC) contourne les helpers cloisonnés du lot 01 (`id > max_id`) et réintroduit le faux
+    PASSED de F1 — dans le code GÉNÉRÉ, là où aucun test du dépôt ne le voit (mesuré en
+    campagne réelle, cas 95, 23/09). Détection par AST : ni un commentaire ni une chaîne ne
+    déclenchent, et un `len()` sur une variable n'est vu que si elle vient d'une lecture RPC.
+    """
+    portees = [n for n in ast.walk(tree)
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))] or [tree]
+    for portee in portees:
+        issus_de_lecture = {
+            cible.id for n in ast.walk(portee) if isinstance(n, ast.Assign)
+            and _est_lecture_rpc(n.value) for cible in n.targets if isinstance(cible, ast.Name)}
+        for n in ast.walk(portee):
+            if not isinstance(n, ast.Call):
+                continue
+            if (isinstance(n.func, ast.Attribute) and n.func.attr == "search_count"
+                    and _touche_env(n.func.value)):
+                return "appel à `search_count` sur `context.odoo.env`"
+            if isinstance(n.func, ast.Name) and n.func.id == "len" and n.args:
+                arg = n.args[0]
+                if _est_lecture_rpc(arg) or (isinstance(arg, ast.Name)
+                                             and arg.id in issus_de_lecture):
+                    return "`len()` d'une lecture `search`/`read` sur `context.odoo.env`"
+    return ""
+
+
 def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if not content.strip():
         return _outcome("[write_feature_file] contenu vide", ok=False)
@@ -102,10 +145,22 @@ def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if forbidden:
         return _outcome(
             f"[write_steps_file] TRANSPORT_INTERDIT : {forbidden}. Un step ne fabrique pas ses "
-            "propres appels HTTP — utilise `context.odoo` (lecture/écriture RPC, ex. "
-            "`context.odoo.env['helpdesk.ticket'].search_count([])`) ou `context.page` "
+            "propres appels HTTP — utilise `context.odoo` (lecture/écriture RPC) ou `context.page` "
             "(Playwright) pour agir dans le navigateur. Réutilise d'abord les steps partagés "
             "listés dans le prompt, puis rappelle write_steps_file.",
+            ok=False,
+        )
+
+    # 3bis. Aucun comptage réécrit par l'agent (§F9) : régime BLOQUANT, comme le transport.
+    recompte = _forbidden_recount(tree)
+    if recompte:
+        return _outcome(
+            f"[write_steps_file] COMPTAGE_INTERDIT : {recompte}. Un step ne recompte pas les "
+            "enregistrements lui-même (un tiers actif sur l'instance fausserait le verdict). "
+            "Utilise les steps du catalogue : « le nombre d'enregistrements dans le modèle "
+            "\"<modèle>\" est enregistré pour comparaison », puis « … augmente de 1 » ou "
+            "« … n'a pas augmenté ». Si le besoin n'est pas couvert, dis-le dans ta réponse "
+            "plutôt que de compter toi-même.",
             ok=False,
         )
 
