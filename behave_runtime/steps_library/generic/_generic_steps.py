@@ -17,6 +17,7 @@ from _base_helpers import (
     no_error_with_keywords, validation_error_inline,
     wait_form_submission, force_name_field, remplir_formulaire_valide,
     select_product_in_list, select_product_partial, NavigationImpossibleError,
+    connexion_web_utilisateur,
 )
 
 # ⚠️ Chaque step d'ACTION ci-dessous est déclaré sous `@given` ET `@when` (bug SauceDemo,
@@ -141,6 +142,14 @@ def step_access_home_page(context):
     échoue ou ne fait rien, et le scénario continue à l'aveugle jusqu'à l'assertion finale,
     qui échoue pour une raison qui n'a plus rien à voir avec la vraie cause.
     """
+    _ouvrir_application(context)
+    # Lot 07a (C1) : la connexion est AUTOMATIQUE — l'agent n'écrit aucun step de connexion, et le
+    # test tourne connecté comme le fait l'exploration. Un cas qui teste la connexion ELLE-MÊME
+    # (échec, compte verrouillé…) utilise « j'accède à la page de connexion sans me connecter ».
+    connexion_web_utilisateur(context)
+
+
+def _ouvrir_application(context):
     if not context.web_url:
         # ⚠️ `NavigationImpossibleError`, pas `AssertionError` (correctif 2026-09-14, même famille
         # que le cas C45) : une connexion de projet incomplète est un problème d'ENVIRONNEMENT,
@@ -149,6 +158,18 @@ def step_access_home_page(context):
             "URL de l'application introuvable (WEB_URL absent) — vérifiez la connexion du "
             "projet (adresse renseignée dans ses réglages).")
     context.page.goto(context.web_url, wait_until="domcontentloaded")
+
+
+@given("j'accède à la page de connexion sans me connecter")
+@when("j'accède à la page de connexion sans me connecter")
+def step_access_login_page_without_login(context):
+    """Charge l'application SANS se connecter — pour tester la connexion elle-même (échec, compte verrouillé…).
+
+    À utiliser À LA PLACE de « j'accède à la page d'accueil de l'application » (qui, lui, connecte
+    automatiquement avec les identifiants du projet) ; les champs de connexion se remplissent alors
+    avec les steps habituels.
+    """
+    _ouvrir_application(context)
 
 
 @given('je clique sur l\'onglet "{name}"')

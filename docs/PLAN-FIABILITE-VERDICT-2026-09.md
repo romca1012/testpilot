@@ -152,7 +152,7 @@ répétée (12), au même titre que les lots 01-03.
 | 04 | à faire | | |
 | 05 | à faire | | |
 | 06 | à faire | | |
-| 07a | à faire | | |
+| 07a | terminé (sous réserve de la revue et de la fusion) | 2026-09-24 | `docs/RAPPORT-LOT-07A-2026-09-24.md` ; mesures : `docs/mesures/lot07a-connexion-execution-2026-09-24.md` |
 | 07b-e | à faire | | |
 | 08 | à faire | | |
 | 09 | à faire | | |

@@ -92,3 +92,15 @@ def test_catalogue_odoo_scope_egale_le_catalogue_sans_scope(tmp_path):
     labels_scopes = {s.label for s in steps_library.catalogue(connector_type="odoo")}
     labels_sans_scope = {s.label for s in steps_library.catalogue()}
     assert labels_scopes == labels_sans_scope
+
+
+def test_sans_connecteur_ne_copie_pas_les_steps_d_un_autre_connecteur_que_le_defaut():
+    """Lot 07a : `web/` et `odoo/` déclarent le même libellé « je me connecte avec mes identifiants
+    utilisateur » — les copier ensemble ferait lever `AmbiguousStep` à un run sans connecteur résolu
+    (mesuré : dry-run du harnais en échec). « Tout copier » vaut generic + le connecteur par défaut."""
+    runner = BehaveRunner(connector_type=None)
+    fichiers = {f.name for f in runner._steps_library_files()}
+
+    assert "_web_steps.py" not in fichiers
+    assert "_odoo_steps.py" in fichiers
+    assert "_web_steps.py" in {f.name for f in BehaveRunner(connector_type="web")._steps_library_files()}

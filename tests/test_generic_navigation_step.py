@@ -36,9 +36,14 @@ def _charger_generic_steps():
 class _PageEspion:
     def __init__(self):
         self.appels_goto: list[tuple[str, dict]] = []
+        # Lot 07a : le step d'entrée lit désormais l'URL courante (pour la connexion automatique) ;
+        # la double doit en porter une. Aucun identifiant dans ce contexte : aucune connexion tentée,
+        # et les assertions ci-dessous sont inchangées.
+        self.url = "about:blank"
 
     def goto(self, url, **kwargs):
         self.appels_goto.append((url, kwargs))
+        self.url = url
 
 
 class _Contexte:

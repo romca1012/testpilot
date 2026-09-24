@@ -15,6 +15,13 @@ from urllib.parse import parse_qsl
 from dataclasses import asdict, dataclass
 from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect
 
+# Connexion du connecteur `web` générique (lot 07a) : la MÊME fonction que l'exploration
+# (`GenericWebConnector`), jamais une seconde implémentation. Import au niveau module (CLAUDE.md §6) :
+# `testpilot` est sur le PYTHONPATH du sous-processus (`BehaveRunner._subprocess_env`).
+from testpilot.connectors._web_helpers import (
+    ConnexionGeneriqueImpossibleError, lire_message_erreur_visible, tenter_connexion_generique,
+)
+
 logger = logging.getLogger(__name__)
 
 # ⚠️ Import PLAT, AU NIVEAU MODULE — jamais différé à l'intérieur d'une fonction (bug RÉEL mesuré
@@ -331,6 +338,97 @@ def playwright_login(context):
     """Même connexion UI pour l'exécution et la perception du générateur."""
     from testpilot.connectors.odoo_login import playwright_login as login
     return login(context)
+
+
+# ── Connexion du connecteur `web` générique (lot 07a, C1) ────────────────────────────────────
+#
+# ⚠️ Avant ce lot, `WEB_USER`/`WEB_PASSWORD` étaient posés dans `before_all` et JAMAIS lus : les
+# cas tournaient en ANONYME alors que l'exploration se connectait. Un test « connecté » qui ne
+# l'était pas ne prouvait rien de ce qu'il affirmait.
+
+
+def _sans_fragment(url: str) -> str:
+    """Une URL comparable : sans fragment ni `/` final (`/inventory.html#x` ≡ `/inventory.html`)."""
+    return (url or "").split("#", 1)[0].rstrip("/")
+
+
+def connexion_reussie(url_avant: str, url_apres: str, mot_de_passe_visible: bool) -> bool:
+    """Le critère PAR DÉFAUT de connexion réussie — un signal du RUNTIME (URL, DOM), jamais un
+    texte de l'agent : l'URL a QUITTÉ la page de connexion ET aucun champ mot de passe n'est plus
+    visible. Les DEUX conditions : une connexion refusée garde la page de connexion (SauceDemo :
+    même URL + mot de passe encore là ; the-internet : redirection vers la même `/login`).
+
+    Pure, testée hors navigateur.
+    """
+    return _sans_fragment(url_avant) != _sans_fragment(url_apres) and not mot_de_passe_visible
+
+
+def _mot_de_passe_visible(page) -> bool:
+    try:
+        champs = page.locator("input[type='password']")
+        return any(champs.nth(i).is_visible() for i in range(min(champs.count(), 5)))
+    except Exception:
+        return False
+
+
+def _schema_de_connexion(page) -> str:
+    """Le schéma que la détection partagée va tenter, lu sur le DOM AVANT la tentative."""
+    if _mot_de_passe_visible(page):
+        return "un écran (identifiant et mot de passe ensemble)"
+    return "deux écrans (identifiant seul, puis mot de passe)"
+
+
+def connexion_web_utilisateur(context, *, explicite: bool = False) -> None:
+    """Connecte le navigateur avec `WEB_USER`/`WEB_PASSWORD` du projet, en DÉLÉGUANT à
+    `tenter_connexion_generique` — la fonction de l'exploration, jamais une seconde implémentation
+    (l'incident du 2026-09-18, documenté dans `odoo/_odoo_steps.py`, vient de deux copies du même
+    geste dont une seule était corrigée).
+
+    `explicite=False` (step d'entrée, connexion AUTOMATIQUE) : une application sans formulaire de
+    connexion sur sa page d'entrée reste utilisable telle quelle (comportement historique).
+    `explicite=True` (step « je me connecte… », en milieu de parcours) : ne trouver aucun
+    formulaire alors qu'on n'est pas connecté est un prérequis manquant.
+
+    Tout échec est un `PreconditionNonRemplieError` (→ `blocked`, lot 02) avec l'URL et le schéma
+    tentés : ce n'est jamais l'application qui « se comporte mal » tant que le test n'a pas pu
+    entrer. SSO/second facteur : hors périmètre (lot 07b), dit comme tel.
+    """
+    page = context.page
+    utilisateur = getattr(context, "web_user", "") or ""
+    mot_de_passe = getattr(context, "web_password", "") or ""
+    url_avant = page.url
+    schema = _schema_de_connexion(page)
+
+    if not utilisateur or not mot_de_passe:
+        if _mot_de_passe_visible(page):
+            raise PreconditionNonRemplieError(
+                f"PRÉREQUIS MANQUANT : {url_avant} demande une connexion (champ mot de passe "
+                "affiché) mais le projet n'a ni identifiant ni mot de passe renseigné — "
+                "complétez la connexion du projet.")
+        return
+
+    try:
+        soumis = tenter_connexion_generique(page, utilisateur, mot_de_passe)
+    except ConnexionGeneriqueImpossibleError as exc:
+        raise PreconditionNonRemplieError(
+            f"PRÉREQUIS MANQUANT : connexion impossible sur {url_avant} (schéma tenté : {schema}) — "
+            f"{exc}") from exc
+
+    if not soumis:
+        if explicite and not getattr(context, "_tp_connecte", False):
+            raise PreconditionNonRemplieError(
+                f"PRÉREQUIS MANQUANT : aucun formulaire de connexion trouvé sur {url_avant} "
+                f"(schéma tenté : {schema}) — le step de connexion n'a rien pu faire.")
+        return
+
+    if not connexion_reussie(url_avant, page.url, _mot_de_passe_visible(page)):
+        message = lire_message_erreur_visible(page)
+        raise PreconditionNonRemplieError(
+            f"PRÉREQUIS MANQUANT : la connexion n'a pas abouti sur {url_avant} (schéma tenté : "
+            f"{schema}) — URL après tentative : {page.url}"
+            + (f" ; message affiché : « {message} »" if message else "")
+            + ". Vérifiez l'identifiant et le mot de passe du projet.")
+    context._tp_connecte = True
 
 
 def navigate(context, url):
