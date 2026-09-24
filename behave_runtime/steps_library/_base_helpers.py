@@ -4,6 +4,7 @@ Chaque module *steps.py importe les helpers dont il a besoin
 et les encapsule dans ses propres @given/@when/@then.
 """
 
+import functools
 import json
 import logging
 import os
@@ -69,6 +70,105 @@ def _record_field_fallback(message: str) -> None:
             handle.write(message.replace("\n", " ") + "\n")
     except OSError:
         pass
+
+
+# ── Constats : la PREUVE RUNTIME qu'une vérification a été exécutée (lot 03, D3) ───────────────
+#
+# ⚠️ **Pourquoi.** Un scénario vert devenait `conforme` même si AUCUNE assertion ne s'était exécutée
+# (assertion dans une branche non prise, `Alors` qui ne fait qu'attendre). `assertion_lint` est
+# statique et non bloquant : il ne voit pas l'exécution. Chaque constat — réussi OU échoué — écrit
+# donc une ligne dans un sidecar (jamais le log, que Behave avale sur un scénario vert) :
+# `{"scenario", "step_type", "ok"}`. Le verdict lit ce fichier : pas de constat réussi consigné
+# sous un `Alors` → pas de `conforme` (`verdict/status.py`, cause `aucun_constat`).
+#
+# Le nom du scénario et le type du step courants sont posés par `environment.py` (`before_scenario`,
+# `before_step`) via `definir_etat_constat`. Le nom de la variable est DUPLIQUÉ côté runner
+# (`execution/behave_result.py::CONSTATS_FILE_ENV`), même raison et même test d'accord que les
+# autres sidecars.
+CONSTATS_FILE_ENV = "TP_CONSTATS_FILE"
+_ETAT_CONSTAT = {"scenario": "", "step_type": ""}
+
+
+def definir_etat_constat(scenario=None, step_type=None) -> None:
+    """Pose le scénario et/ou le type de step COURANTS (appelé par les hooks de `environment.py`)."""
+    if scenario is not None:
+        _ETAT_CONSTAT["scenario"] = scenario
+    if step_type is not None:
+        _ETAT_CONSTAT["step_type"] = step_type
+
+
+def _consigner_constat(ok: bool) -> None:
+    """Écrit une ligne dans le sidecar, s'il y en a un de désigné (jamais hors d'un run behave).
+
+    Un échec d'écriture est silencieux ET va dans le sens PRUDENT : un constat non consigné ne
+    compte pas, donc le scénario retombe en `indetermine`, jamais en `conforme`.
+    """
+    chemin = os.environ.get(CONSTATS_FILE_ENV)
+    if not chemin:
+        return
+    ligne = json.dumps({"scenario": _ETAT_CONSTAT["scenario"], "step_type": _ETAT_CONSTAT["step_type"],
+                        "ok": bool(ok)}, ensure_ascii=False)
+    try:
+        with open(chemin, "a", encoding="utf-8") as handle:
+            handle.write(ligne + "\n")
+    except OSError:
+        pass
+
+
+def constater(condition, message: str = "") -> None:
+    """Le SEUL moyen d'écrire une assertion sous un `Alors` : consigne le constat puis lève
+    `AssertionError(message)` si la condition est fausse. Réussi ou échoué, il laisse une trace."""
+    ok = bool(condition)
+    _consigner_constat(ok)
+    if not ok:
+        raise AssertionError(message)
+
+
+def constater_visible(locator, message: str = "", timeout=None) -> None:
+    """`expect(locator).to_be_visible()` (assertion web-first, elle réessaie) + constat consigné."""
+    try:
+        if timeout is None:
+            expect(locator).to_be_visible()
+        else:
+            expect(locator).to_be_visible(timeout=timeout)
+    except AssertionError as exc:
+        _consigner_constat(False)
+        raise AssertionError(message or str(exc)) from exc
+    _consigner_constat(True)
+
+
+def constater_texte(locator, attendu, message: str = "", timeout=None, exact: bool = False) -> None:
+    """`expect(locator).to_have_text / to_contain_text(attendu)` + constat consigné."""
+    options = {} if timeout is None else {"timeout": timeout}
+    try:
+        if exact:
+            expect(locator).to_have_text(attendu, **options)
+        else:
+            expect(locator).to_contain_text(attendu, **options)
+    except AssertionError as exc:
+        _consigner_constat(False)
+        raise AssertionError(message or str(exc)) from exc
+    _consigner_constat(True)
+
+
+def constat(fonction):
+    """Décorateur des helpers d'`Alors` dont la logique d'échec est structurée (plusieurs
+    `raise AssertionError(...)` avec diagnostic) : consigne UN constat par appel — réussi si la
+    fonction rend la main, échoué si elle lève une `AssertionError`.
+
+    Toute AUTRE exception (prérequis manquant, panne du test, 5xx…) n'est PAS un constat sur
+    l'application : rien n'est consigné, elle se propage telle quelle.
+    """
+    @functools.wraps(fonction)
+    def enveloppe(*args, **kwargs):
+        try:
+            resultat = fonction(*args, **kwargs)
+        except AssertionError:
+            _consigner_constat(False)
+            raise
+        _consigner_constat(True)
+        return resultat
+    return enveloppe
 
 
 # Chemin du fichier où consigner CHAQUE résolution de `locate_field` (pas seulement les replis) —
@@ -275,27 +375,25 @@ def record_exists_contains(env, model, field, value):
 def field_equals(env, model, record_id, field, expected):
     record = env[model].browse(record_id)
     actual = record.read([field])[0][field]
-    assert str(actual) == expected, (
-        f"Champ '{field}' dans '{model}' : attendu '{expected}', obtenu '{actual}'."
-    )
+    constater(str(actual) == expected,
+              f"Champ '{field}' dans '{model}' : attendu '{expected}', obtenu '{actual}'.")
 
 
 def field_not_empty(env, model, record_id, field):
     record = env[model].browse(record_id)
     value = record.read([field])[0][field]
-    assert value not in (False, None, "", []), f"Le champ '{field}' est vide."
+    constater(value not in (False, None, "", []), f"Le champ '{field}' est vide.")
 
 
 def no_duplicate(env, model, field, value):
     ids = env[model].search([(field, "=", value)])
-    assert len(ids) <= 1, (
-        f"Doublon détecté dans '{model}' : {len(ids)} enregistrements avec {field}='{value}'."
-    )
+    constater(len(ids) <= 1,
+              f"Doublon détecté dans '{model}' : {len(ids)} enregistrements avec {field}='{value}'.")
 
 
 def no_partial_record(env, model, field):
     ids = env[model].search([(field, "in", [False, ""])])
-    assert not ids, f"Enregistrements avec '{field}' vide dans '{model}' : {ids}"
+    constater(not ids, f"Enregistrements avec '{field}' vide dans '{model}' : {ids}")
 
 
 def field_m2o_equals(env, model, record_id, field, expected):
@@ -310,9 +408,8 @@ def field_m2o_equals(env, model, record_id, field, expected):
         actual_name = related_data["name"]
     else:
         actual_name = str(actual)
-    assert actual_name == expected, (
-        f"Champ '{field}' : attendu '{expected}', obtenu '{actual_name}' (display: {actual})"
-    )
+    constater(actual_name == expected,
+              f"Champ '{field}' : attendu '{expected}', obtenu '{actual_name}' (display: {actual})")
 
 
 def field_m2o_contains(env, model, record_id, field, partial):
@@ -327,9 +424,8 @@ def field_m2o_contains(env, model, record_id, field, partial):
         actual_name = related_data["name"]
     else:
         actual_name = str(actual)
-    assert partial in actual_name, (
-        f"Champ '{field}' : '{partial}' introuvable dans '{actual_name}' (display: {actual})"
-    )
+    constater(partial in actual_name,
+              f"Champ '{field}' : '{partial}' introuvable dans '{actual_name}' (display: {actual})")
 
 
 # ── Playwright / navigateur helpers ──────────────────────────────────────────
@@ -1677,6 +1773,7 @@ def wait_form_submission(page):
         pass
 
 
+@constat
 def validation_error_inline(page):
     """Une erreur de validation visible dans le formulaire — plusieurs applications, plusieurs
     façons de le montrer.
@@ -1739,7 +1836,7 @@ def validation_error_notification(page):
     Playwright — elle réessaie jusqu'à son délai par défaut au lieu de constater une seule fois,
     immédiatement, avant même que la notification n'ait eu le temps de s'afficher."""
     error = page.locator(".o_notification_manager .o_notification.border-danger").first
-    expect(error).to_be_visible()
+    constater_visible(error, "Aucune notification d'erreur de validation visible dans l'interface.")
 
 
 def no_error_with_keywords(page, keyword1, keyword2):
@@ -1749,10 +1846,11 @@ def no_error_with_keywords(page, keyword1, keyword2):
     jamais comme seul chemin (contrairement au bug d'origine de `validation_error_inline`)."""
     error_elements = page.locator(
         '[role="alert"], .alert-danger, .o_notification.border-danger, .text-danger')
-    for i in range(error_elements.count()):
-        error_text = error_elements.nth(i).inner_text().lower()
-        assert keyword1.lower() not in error_text and keyword2.lower() not in error_text, \
-            f"Erreur contenant '{keyword1}' ou '{keyword2}' trouvée : {error_text}"
+    textes = [error_elements.nth(i).inner_text().lower() for i in range(error_elements.count())]
+    # UN constat par appel — y compris quand aucun message d'erreur n'est affiché : c'est alors le
+    # constat d'ABSENCE, exécuté (une absence affirmée est une vérification, pas un `pass`).
+    fautif = next((t for t in textes if keyword1.lower() in t or keyword2.lower() in t), None)
+    constater(fautif is None, f"Erreur contenant '{keyword1}' ou '{keyword2}' trouvée : {fautif}")
 
 
 # Plafond de résolutions adaptatives successives sur UN MÊME segment de `navigate_menu` (un clic
@@ -2075,6 +2173,7 @@ def _poll_until(lire, predicat, *, timeout=None, intervalle=0.3, _clock=None, _s
         valeur = lire()
 
 
+@constat
 def check_count_not_increased(context, model):
     """Le négatif attend TOUTE la fenêtre : on cherche une création DE CE SCÉNARIO pendant
     `COUNT_SETTLE_TIMEOUT` ; si aucune n'apparaît, on conclut « rien créé ». Attendre moins
@@ -2385,6 +2484,7 @@ def _capturer_dernier_enregistrement(context, model, record_ids) -> None:
                        "« CET enregistrement » suivants le signaleront", model, exc_info=True)
 
 
+@constat
 def check_count_increased_by_one(context, model):
     """Le positif attend qu'EXACTEMENT UN enregistrement DE CE SCÉNARIO apparaisse (jusqu'à
     `COUNT_SETTLE_TIMEOUT`). S'il n'apparaît pas dans la fenêtre, l'assertion échoue avec le

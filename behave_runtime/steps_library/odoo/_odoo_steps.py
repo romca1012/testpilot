@@ -14,7 +14,7 @@ from behave import given, then, when
 from _base_helpers import (
     PreconditionNonRemplieError,
     memorize_record_count, check_count_not_increased, check_count_increased_by_one, no_duplicate,
-    validation_error_notification, playwright_login, navigate_menu,
+    validation_error_notification, playwright_login, navigate_menu, constater,
 )
 
 
@@ -72,9 +72,7 @@ def step_cleanup_test_records(context, prefix, models):
       'dans le modèle "{model}"')
 def step_record_exists_field_value(context, field, value, model):
     ids = context.odoo.env[model].search([(field, "=", value)])
-    assert ids, (
-        f"Aucun enregistrement trouvé dans '{model}' avec {field}='{value}'."
-    )
+    constater(ids, f"Aucun enregistrement trouvé dans '{model}' avec {field}='{value}'.")
     context.last_record_ids = ids
     context.last_record_model = model
 
@@ -86,9 +84,7 @@ def step_record_exists_contains(context, field, value, model):
     m = re.search(r'"([^"]+)"', field)
     actual_field = m.group(1) if m else field.strip()
     ids = context.odoo.env[model].search([(actual_field, "ilike", value)])
-    assert ids, (
-        f"Aucun enregistrement trouvé dans '{model}' où {actual_field} contient '{value}'."
-    )
+    constater(ids, f"Aucun enregistrement trouvé dans '{model}' où {actual_field} contient '{value}'.")
     context.last_record_ids = ids
     context.last_record_model = model
 
@@ -100,9 +96,8 @@ def step_field_equals(context, field, model, expected):
         context, "Aucun enregistrement en contexte. Utilisez d'abord un step 'existe dans le modèle'.")
     record = context.odoo.env[model].browse(context.last_record_ids[0])
     actual = record.read([field])[0][field]
-    assert str(actual) == expected, (
-        f"Champ '{field}' dans '{model}' : attendu '{expected}', obtenu '{actual}'."
-    )
+    constater(str(actual) == expected,
+              f"Champ '{field}' dans '{model}' : attendu '{expected}', obtenu '{actual}'.")
 
 
 @then('le champ "{field}" de cet enregistrement est égal à "{expected}"')
@@ -112,9 +107,7 @@ def step_field_equals_simple(context, field, expected):
                  "enregistrement.", avec_modele=True)
     record = context.odoo.env[context.last_record_model].browse(context.last_record_ids[0])
     actual = record.read([field])[0][field]
-    assert str(actual) == expected, (
-        f"Champ '{field}' : attendu '{expected}', obtenu '{actual}'."
-    )
+    constater(str(actual) == expected, f"Champ '{field}' : attendu '{expected}', obtenu '{actual}'.")
 
 
 @then('le champ "{field}" de cet enregistrement n\'est pas vide')
@@ -124,7 +117,7 @@ def step_field_not_empty(context, field):
                  "enregistrement.", avec_modele=True)
     record = context.odoo.env[context.last_record_model].browse(context.last_record_ids[0])
     value = record.read([field])[0][field]
-    assert value not in (False, None, "", []), f"Le champ '{field}' est vide."
+    constater(value not in (False, None, "", []), f"Le champ '{field}' est vide.")
 
 
 @then('le champ "{field}" de cet enregistrement dans le modèle "{model}" pointe vers "{expected}"')
@@ -141,9 +134,8 @@ def step_field_m2o_equals(context, field, model, expected):
         actual_name = context.odoo.env[related_model_name].browse(related_id).read(["name"])[0]["name"]
     else:
         actual_name = str(actual)
-    assert actual_name == expected, (
-        f"Champ '{field}' : attendu '{expected}', obtenu '{actual_name}' (display: {actual})"
-    )
+    constater(actual_name == expected,
+              f"Champ '{field}' : attendu '{expected}', obtenu '{actual_name}' (display: {actual})")
 
 
 @then('le champ "{field}" de cet enregistrement contient le nom "{partial}"')
@@ -160,9 +152,8 @@ def step_field_m2o_contains(context, field, partial):
         actual_name = context.odoo.env[related_model_name].browse(related_id).read(["name"])[0]["name"]
     else:
         actual_name = str(actual)
-    assert partial in actual_name, (
-        f"Champ '{field}' : '{partial}' introuvable dans '{actual_name}' (display: {actual})"
-    )
+    constater(partial in actual_name,
+              f"Champ '{field}' : '{partial}' introuvable dans '{actual_name}' (display: {actual})")
 
 
 # ── Préconditions de données ──────────────────────────────────────────────────
@@ -220,9 +211,7 @@ def step_no_test_records(context, prefix, model):
       'persisté dans le modèle "{model}"')
 def step_no_partial_record(context, field, model):
     ids = context.odoo.env[model].search([(field, "in", [False, ""])])
-    assert not ids, (
-        f"Enregistrements avec '{field}' vide dans '{model}' : {ids}"
-    )
+    constater(not ids, f"Enregistrements avec '{field}' vide dans '{model}' : {ids}")
 
 
 # ── Navigation Playwright — backend Odoo ──────────────────────────────────────

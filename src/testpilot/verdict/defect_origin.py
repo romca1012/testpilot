@@ -85,6 +85,8 @@ _ORIGIN_BY_CAUSE = {
     dt.ERREUR_SERVEUR_5XX: VRAI_BUG,
     # F10 (D12) : rien n'explique le refus — jugement humain, jamais de réparation automatique.
     dt.REFUS_NON_EXPLIQUE: INDETERMINE,
+    # Lot 03 (D3) : rien n'a été prouvé, ni pour ni contre l'application.
+    dt.AUCUN_CONSTAT: INDETERMINE,
 
     dt.UNKNOWN: INDETERMINE,
 }

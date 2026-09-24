@@ -37,6 +37,23 @@ _DELEGUENT_OU_ATTENDENT = {
 }
 
 
+_CONSTATER = {"constater", "constater_visible", "constater_texte"}
+
+
+def _assertit(noeud) -> bool:
+    """Assertion nue OU constat consigné (`constater*`, lot 03 : la forme d'assertion de la
+    bibliothèque, qui consigne en plus la preuve runtime)."""
+    for n in ast.walk(noeud):
+        if isinstance(n, (ast.Assert, ast.Raise)):
+            return True
+        if isinstance(n, ast.Call):
+            cible = n.func
+            nom = cible.id if isinstance(cible, ast.Name) else getattr(cible, "attr", "")
+            if nom in _CONSTATER:
+                return True
+    return False
+
+
 def _fonctions_then(path: Path):
     """(nom, nœud) des fonctions portant au moins un décorateur @then."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -85,7 +102,7 @@ def test_chaque_then_partage_assertit_ou_delegue_explicitement():
     suspects = []
     for py in sorted(_LIB.rglob("*.py")):
         for nom, node in _fonctions_then(py):
-            assertit = any(isinstance(n, (ast.Assert, ast.Raise)) for n in ast.walk(node))
+            assertit = _assertit(node)
             if not assertit and nom not in _DELEGUENT_OU_ATTENDENT:
                 suspects.append(f"{py.name}::{nom}")
     assert not suspects, (
@@ -106,6 +123,6 @@ def test_les_delegations_declarees_assertissent_vraiment(nom_helper, doit_assert
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef) and n.name == nom_helper), None)
     assert fn is not None, f"helper {nom_helper} introuvable"
-    assertit = any(isinstance(n, (ast.Assert, ast.Raise)) for n in ast.walk(fn))
+    assertit = _assertit(fn)
     assert assertit is doit_assertir, (
         f"{nom_helper} est déclaré comme « délègue une assertion » mais n'assertit rien.")

@@ -42,6 +42,8 @@ _NON_OUTILS = {
     "fill_field", "click_button", "leave_field_empty", "select_field_value",
     "register_created", "no_duplicate", "wait_form_submission", "count_records",
     "resolve_field_name", "validation_error_inline", "no_partial_record",
+    # lot 03 : les assertions s'écrivent avec ces helpers (Règle 4), ce ne sont pas des outils
+    "constater", "constater_visible", "constater_texte",
     # Python / Behave
     "search_count", "wait_for_selector", "get_by_label", "get_by_role", "wait_for_load_state",
     "toggle_submit_button",

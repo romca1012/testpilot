@@ -20,7 +20,9 @@ def _ecrire(tmp_path, code):
     return write_tools.write_steps_file(ctx, code)
 
 
-_ENTETE = "from behave import when, then\n"
+# D4 (lot 03) : les fixtures acceptees constatent par `constater(...)` (un `@then` sans constat est refuse).
+# Les ATTENDUS de ces tests (ce que la garde de comptage accepte ou refuse) sont inchanges.
+_ENTETE = "from behave import when, then\nfrom _base_helpers import constater\n"
 
 
 @pytest.mark.parametrize("corps", [
@@ -51,7 +53,7 @@ def test_un_fichier_qui_ne_compte_pas_est_accepte(tmp_path):
         "@then('le ticket existe')\n"
         "def s(context):\n"
         "    rows = context.odoo.env['helpdesk.ticket'].read([context.last_record_ids[0]], ['name'])\n"
-        "    assert rows[0]['name']\n")
+        "    constater(rows[0]['name'], 'nom vide')\n")
 
     assert _ecrire(tmp_path, code).ok is True
 
@@ -62,8 +64,8 @@ def test_un_len_sans_rapport_avec_le_rpc_est_accepte(tmp_path):
         "@then('le titre est court')\n"
         "def s(context):\n"
         "    titre = context.page.inner_text('h1')\n"
-        "    assert len(titre) < 80\n"
-        "    assert len([1, 2, 3]) == 3\n")
+        "    constater(len(titre) < 80, 'titre trop long')\n"
+        "    constater(len([1, 2, 3]) == 3, 'liste')\n")
 
     assert _ecrire(tmp_path, code).ok is True
 
@@ -74,7 +76,7 @@ def test_une_mention_en_commentaire_ou_chaine_ne_declenche_pas(tmp_path):
         "def s(context):\n"
         "    # ne pas appeler context.odoo.env[m].search_count([]) ici\n"
         "    message = \"search_count([]) est interdit\"\n"
-        "    assert message\n")
+        "    constater(message, 'vide')\n")
 
     assert _ecrire(tmp_path, code).ok is True
 
@@ -98,6 +100,7 @@ def test_limites_documentees_les_contournements_indirects_ne_sont_pas_vus(tmp_pa
     code = _ENTETE + (
         "@then('je compte')\n"
         "def s(context):\n"
-        "    context.n = sum(1 for _ in context.odoo.env['helpdesk.ticket'].search([]))\n")
+        "    context.n = sum(1 for _ in context.odoo.env['helpdesk.ticket'].search([]))\n"
+        "    constater(context.n >= 0, 'compte negatif')\n")
 
     assert _ecrire(tmp_path, code).ok is True

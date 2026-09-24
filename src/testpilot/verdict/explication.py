@@ -42,6 +42,11 @@ _NOTE_BLOQUE = (
     "un module non installé, une connexion impossible ou des données déjà présentes). Ce n'est "
     "pas un défaut de l'application ni du test — il faut préparer l'environnement, puis relancer.")
 
+# Note DÉTERMINISTE (lot 03, D3) : un test « vert » sans aucune vérification exécutée ne prouve rien.
+_NOTE_AUCUN_CONSTAT = (
+    "Ce test est allé au bout, mais aucune vérification ne s'est exécutée : rien n'a été constaté sur "
+    "l'application. Ce n'est pas une preuve qu'elle est conforme — le test est à revoir, puis à relancer.")
+
 _SYSTEM = ("Tu expliques le résultat d'un test automatique à un lecteur qui ne code pas. "
            "Tu écris en français clair, jamais en langage technique : aucun nom de classe "
            "d'erreur, aucun sélecteur, aucune trace de pile, aucun terme de code. Une ou deux "
@@ -201,4 +206,6 @@ def propose_explication(verdict: CaseVerdict, *, module_name: str = "",
         texte = f"{texte} {_NOTE_UI_ONLY}"
     if texte and verdict.execution_status == EXEC_BLOCKED:
         texte = f"{texte} {_NOTE_BLOQUE}"
+    if texte and any(getattr(v, "cause_category", "") == "aucun_constat" for v in verdict.scenarios):
+        texte = f"{texte} {_NOTE_AUCUN_CONSTAT}"
     return texte, round(tracker.total_cost, 6)

@@ -316,11 +316,17 @@ def before_step(context, step):
     page = getattr(context, "page", None)
     if page is not None:
         page._tp_intention_step = step.name
+    # Lot 03 : le type EFFECTIF du step (`Et`/`Mais` héritent) accompagne chaque constat consigné.
+    from _base_helpers import definir_etat_constat
+    definir_etat_constat(step_type=getattr(step, "step_type", "") or "")
 
 
 def before_scenario(context, scenario):
     """Initialise le registre de teardown et ouvre les connexions du scénario."""
     context.created = {}
+    # Lot 03 : le scénario courant, pour rattacher chaque constat consigné à SON scénario.
+    from _base_helpers import definir_etat_constat
+    definir_etat_constat(scenario=scenario.name, step_type="")
     if _doit_ouvrir_session_odoo(_CONNECTOR_TYPE):
         use_fixture(odoo_session, context)
     use_fixture(playwright_browser, context)
