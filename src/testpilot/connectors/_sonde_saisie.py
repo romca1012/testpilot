@@ -224,17 +224,26 @@ def _est_valide(sondes: dict, retenu: str) -> bool:
     return any(s.get("retenu") == retenu and s.get("valide") for s in sondes.values())
 
 
+def citer(texte, limite: int = 90) -> str:
+    """Un texte venu de l'application, nettoyé, tronqué, entre « » : une DONNÉE citée, jamais une
+    consigne (les guillemets internes sont retirés pour qu'il ne puisse pas « sortir » de la citation)."""
+    propre = re.sub(r"\s+", " ", str(texte or "").replace("«", " ").replace("»", " ")).strip()
+    if len(propre) > limite:
+        propre = propre[:limite - 1].rstrip() + "…"
+    return f"« {propre} »"
+
+
 def resume_pour_agent(nom: str, champ: dict) -> str:
     """Une ligne d'observation par champ — texte de l'application cité comme DONNÉE, tronqué."""
     parties = []
     for libelle, s in (champ.get("sondes") or {}).items():
         if s.get("retenu") != s.get("ecrit"):
-            parties.append(f"{libelle}: « {s.get('ecrit')} » → retenu « {s.get('retenu')} »")
+            parties.append(f"{libelle}: {citer(s.get('ecrit'), 40)} → retenu {citer(s.get('retenu'))}")
         if s.get("message"):
-            parties.append(f"{libelle}: message navigateur « {s['message']} »")
+            parties.append(f"{libelle}: message navigateur {citer(s['message'])}")
     if not parties:
         return ""
     ligne = f"- {nom} : " + " ; ".join(parties)
     if champ.get("exemple_stable"):
-        ligne += f" ; exemple stable (retapé = identique et valide) : « {champ['exemple_stable']} »"
-    return re.sub(r"\s+", " ", ligne)[:400]
+        ligne += f" ; exemple stable (retapé = identique et valide) : {citer(champ['exemple_stable'])}"
+    return ligne[:400]

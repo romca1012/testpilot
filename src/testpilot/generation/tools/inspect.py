@@ -8,6 +8,10 @@ résume un descriptif de formulaire sans aucun accès réseau.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
+
+from testpilot.generation import regles_apprises
+from testpilot.generation.formats_observes import bloc_formats_observes
 
 if TYPE_CHECKING:
     from testpilot.generation.tools import ToolContext, ToolOutcome
@@ -85,6 +89,12 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
         f"Soumission : {submission or 'inconnue'}."
     )
     outcome.verified_fields = {f"inspect_page_form:{page_url}": names}
+    # Lot 12 : formats de saisie observés (sonde + attributs + règles apprises du projet), pour les
+    # champs de CETTE route seulement — texte de l'application cité comme donnée, plafond de taille.
+    route = urlparse(info.get("url") or page_url).path
+    bloc = bloc_formats_observes(info, regles_apprises.charger(ctx.project_id), route)
+    if bloc:
+        outcome.observation += "\n" + bloc
     from testpilot.generation.evidence import record_observation
     evidence_id = record_observation(ctx, source='ui', resource=info.get('url') or page_url,
                        fields=fields, language=info.get('language', ''),
