@@ -224,12 +224,19 @@ def _capturer_reponse_formulaire(context):
     scénario = une soumission). Réinitialisé ici à chaque scénario.
     """
     context.reponse_formulaire = None
+    # Le CODE HTTP de chaque réponse de soumission (F10, 2026-09-24) — un signal du RUNTIME, pas un
+    # texte de l'agent. Le cas 99 recevait un `HTTP 500` (corps HTML, donc pas de JSON) que cette
+    # capture ignorait : l'outil concluait à un « refus silencieux » alors que le serveur avait planté.
+    context.reponses_formulaire = []
 
     def _on_response(response):
         try:
             if "/website/form/" not in response.url:
                 return
-            # Corps JSON attendu ; si ce n'en est pas (redirect HTML…), on ignore silencieusement.
+            # La trace est posée AVANT la lecture du corps : un corps non JSON ne doit pas la perdre.
+            context.reponses_formulaire.append(
+                {"status": int(response.status), "url": response.url})
+            # Corps JSON attendu ; si ce n'en est pas (erreur 5xx HTML, redirect…), on garde la trace.
             context.reponse_formulaire = response.json()
         except Exception:
             pass  # jamais fatal — l'absence de capture retombe sur le comportement muet d'avant
