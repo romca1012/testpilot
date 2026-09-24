@@ -60,6 +60,8 @@ _ESSAIS_RECHERCHE_MAX = 30
 _SETTLE_MS = 40
 
 _METHODES_ECRITURE = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+_METHODES_RPC_LECTURE = frozenset({"read", "search_read", "search", "search_count", "name_search",
+                                   "name_get", "fields_get"})
 # Bruit de fond d'Odoo (bus de notification, battement de session) : pas une sauvegarde.
 _ARRIERE_PLAN = ("/longpolling", "/websocket", "/bus/", "/web/webclient/", "/web/session/")
 _TYPES_SONDABLES = ("text", "tel", "search", "email", "url", "number")
@@ -88,6 +90,15 @@ def url_sondable(url: str) -> tuple[bool, str]:
     return True, ""
 
 
+def _methode_rpc(requete) -> str:
+    """Le champ `params.method` du corps JSON-RPC, ou `''` s'il est absent ou illisible."""
+    try:
+        corps = requete.post_data_json
+        return str(((corps or {}).get("params") or {}).get("method") or "")
+    except Exception:
+        return ""
+
+
 def _est_ecriture_reelle(requete) -> bool:
     try:
         if str(requete.method).upper() not in _METHODES_ECRITURE:
@@ -95,7 +106,14 @@ def _est_ecriture_reelle(requete) -> bool:
         chemin = urlparse(str(requete.url)).path
     except Exception:
         return True  # doute = on s'arrête
-    return not any(chemin.startswith(p) for p in _ARRIERE_PLAN)
+    if any(chemin.startswith(p) for p in _ARRIERE_PLAN):
+        return False
+    # Le client Odoo lit en POST (`/web/dataset/call_kw`) : mesuré le 2026-09-24, un `res.users/read`
+    # a interrompu la sonde à tort (2 essais sur 12). On juge la MÉTHODE du corps JSON-RPC, jamais le
+    # suffixe d'URL (cosmétique sur les Odoo récents) ; corps illisible ou méthode inconnue = écriture.
+    if chemin.startswith("/web/dataset/call_kw") and _methode_rpc(requete) in _METHODES_RPC_LECTURE:
+        return False
+    return True
 
 
 def _garde_reseau(ecritures: list):

@@ -477,3 +477,48 @@ def test_reel_un_champ_type_number_ne_fait_pas_echouer_le_formulaire():
     assert resultat["champs"]["montant"]["sondes"]["lettres"].get("refuse") is True
     assert resultat["champs"]["montant"]["sondes"]["chiffres"]["retenu"]
     assert set(resultat["champs"]["code"]["sondes"]) == {"lettres", "chiffres", "melange"}
+
+
+# ── Garde par MÉTHODE JSON-RPC (faux positif mesuré le 2026-09-24 : POST res.users/read) ────────
+
+class _RequeteRpc:
+    def __init__(self, methode=None, url="http://localhost:10017/web/dataset/call_kw/res.users/read",
+                 corps="ok", http="POST"):
+        self.method, self.url, self._corps, self._m = http, url, corps, methode
+
+    @property
+    def post_data_json(self):
+        if self._corps == "illisible":
+            raise ValueError("corps non JSON")
+        return {"jsonrpc": "2.0", "params": {"method": self._m}} if self._m is not None else None
+
+
+@pytest.mark.parametrize("methode", ["read", "search_read", "search", "search_count",
+                                     "name_search", "name_get", "fields_get"])
+def test_une_lecture_rpc_en_post_ne_l_interrompt_pas(methode):
+    requete = _RequeteRpc(methode)
+
+    assert sonde._est_ecriture_reelle(requete) is False
+    route = _Route(requete)
+    sonde._garde_reseau([])(route)
+    assert route.continuee and not route.abandonnee
+
+
+@pytest.mark.parametrize("methode", ["write", "create", "unlink", "action_confirm", "web_save",
+                                     "onchange", "methode_inconnue", "", None])
+def test_toute_autre_methode_rpc_interrompt_comme_avant(methode):
+    ecritures: list = []
+    route = _Route(_RequeteRpc(methode))
+
+    sonde._garde_reseau(ecritures)(route)
+
+    assert route.abandonnee and not route.continuee and len(ecritures) == 1
+
+
+def test_un_corps_illisible_ou_un_autre_chemin_reste_une_ecriture():
+    assert sonde._est_ecriture_reelle(_RequeteRpc("read", corps="illisible")) is True
+    # « read » sur un chemin qui n'est PAS call_kw n'est pas une lecture reconnue.
+    assert sonde._est_ecriture_reelle(
+        _RequeteRpc("read", url="https://app.test/api/brouillon/read")) is True
+    # Le suffixe d'URL ne décide de rien : `/read` dans l'URL mais méthode `write` dans le corps.
+    assert sonde._est_ecriture_reelle(_RequeteRpc("write")) is True
