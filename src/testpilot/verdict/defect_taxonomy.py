@@ -46,6 +46,8 @@ def normalize_error(text: str) -> str:
 
 
 # Causes racines — ordre = priorité (sévérité décroissante), tranche les égalités.
+# Lot 02 (D1) : en tête — un prérequis d'environnement non rempli empêche tout le reste d'être jugé.
+PRECONDITION_NON_REMPLIE = "precondition_non_remplie"
 MISSING_SERVER_CONTEXT = "missing_server_context"
 DONNEE_REFUSEE = "donnee_refusee"
 BROKEN_TEST_CODE = "broken_test_code"
@@ -57,11 +59,12 @@ RESOLVEUR_INCOMPLET = "resolveur_incomplet"
 UNKNOWN = "unknown"
 
 CATEGORIES = (
-    MISSING_SERVER_CONTEXT, DONNEE_REFUSEE, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
+    PRECONDITION_NON_REMPLIE, MISSING_SERVER_CONTEXT, DONNEE_REFUSEE, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
     MISSING_ROLE, ASSERTION_MISMATCH, RESOLVEUR_INCOMPLET, UNKNOWN,
 )
 
 LABELS = {
+    PRECONDITION_NON_REMPLIE: "Prérequis non rempli (environnement)",
     MISSING_SERVER_CONTEXT: "Contexte serveur manquant",
     DONNEE_REFUSEE: "Donnée du test refusée (à corriger)",
     BROKEN_TEST_CODE: "Erreur dans le code du test",
@@ -123,6 +126,9 @@ _EXCEPTION_TO_CAUSE = {
     # Même défaut, pour un parcours (section/page absente) plutôt qu'un élément d'action —
     # `access_portal_section`. Même famille que `HTTPError`, déjà classée ici.
     "NavigationImpossibleError": WRONG_NAVIGATION,
+    # AJOUTÉ (lot 02, D1). Levée UNIQUEMENT par un step de Contexte de la bibliothèque quand un
+    # PRÉREQUIS d'environnement n'est pas rempli. Classe dédiée, non ambiguë par construction.
+    "PreconditionNonRemplieError": PRECONDITION_NON_REMPLIE,
     # Erreurs de PROGRAMMATION dans le code du step. L'application n'y est pour rien : c'est
     # notre code qui est faux, donc réparable par construction. C'était le trou le plus absurde
     # de l'ancienne version — un `TypeError` nu tombait en `unknown` → `indetermine`, et le
@@ -295,10 +301,36 @@ def _message_text(failure) -> str:
 
 
 def classify_failure(failure) -> str:
-    """Cause racine : SIGNAL (rendu de Behave, type d'exception) → SYMPTÔME → INDICE.
+    """Cause racine : SIGNAL (rendu de Behave, type d'exception) → SYMPTÔME → INDICE, puis le TYPE
+    DU STEP en échec (lot 02, D1/D2).
 
     Le signal est décisif parce qu'il est le seul que le composant jugé ne produit pas.
+
+    ⚠️ **Le type du step est un signal de STRUCTURE** (`step_type` du JSON de Behave : given / when /
+    then, ou `hook` pour une fixture), jamais le libellé écrit par l'agent — `step_text` reste
+    exclu (décision 0015). Il ne change QUE le sens d'une assertion :
+
+    - `given` : ce que le Contexte affirme est un PRÉREQUIS → `precondition_non_remplie`
+      (environnement, pas application) ;
+    - `when` : une assertion dans une ACTION est un défaut du test → `broken_test_code` ;
+    - `then` : le seul endroit où un constat sur l'application se fait → inchangé ;
+    - `hook` : une fixture a échoué avant tout step → `precondition_non_remplie`, quel que soit le
+      type d'exception (l'environnement n'a pas pu être préparé).
     """
+    cause = _cause_par_signal(failure)
+    type_de_step = (getattr(failure, "step_type", "") or "").lower()
+    if type_de_step == "hook":
+        return PRECONDITION_NON_REMPLIE
+    if cause == ASSERTION_MISMATCH:
+        if type_de_step == "given":
+            return PRECONDITION_NON_REMPLIE
+        if type_de_step == "when":
+            return BROKEN_TEST_CODE
+    return cause
+
+
+def _cause_par_signal(failure) -> str:
+    """Le classement historique (signal → symptôme → indice), inchangé par le lot 02."""
     brut = runtime_error_text(failure)
 
     # Le rendu d'assertion de Behave est testé D'ABORD : c'est la forme la plus extérieure et la

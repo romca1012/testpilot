@@ -843,6 +843,18 @@ class NavigationImpossibleError(Exception):
     """
 
 
+class PreconditionNonRemplieError(Exception):
+    """Un PRÉREQUIS d'environnement affirmé par un step de Contexte n'est pas rempli (module Odoo
+    non installé, session RPC absente, utilisateur non authentifié, données résiduelles) — le test
+    ne peut PAS être joué, ce n'est pas l'application qui se comporte mal (lot 02, décision D1).
+
+    Hérite de `Exception` (PAS de `AssertionError`) : Behave ne masque le nom de la classe que pour
+    `AssertionError` (« ASSERT FAILED: ») ; celle-ci s'affiche « ERROR: PreconditionNonRemplieError »
+    et `defect_taxonomy` la reconnaît au TYPE — un signal posé par la bibliothèque, non ambigu par
+    construction (personne d'autre ne la lève). Projetée en `blocked`, jamais en `non_conforme`.
+    """
+
+
 class InvalidOptionValueError(ValueError):
     """Le test passe à un `<select>` une valeur que l'application n'offre pas (décision `0019`).
 

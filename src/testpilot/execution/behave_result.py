@@ -29,6 +29,11 @@ class BehaveFailure:
     failure_type: str
     traceback_summary: str
     raw: str = ""
+    # Le TYPE du step en échec, tel que Behave l'écrit dans son JSON (`step_type` : given | when |
+    # then ; `Et`/`Mais` héritent du type du step précédent — mesuré sur behave 1.3.3, 2026-09-24),
+    # ou `hook` pour une fixture (`before_scenario`…) en échec avant tout step. C'est un SIGNAL de
+    # structure produit par Behave, jamais le libellé écrit par l'agent (décision 0015).
+    step_type: str = ""
 
 
 @dataclass
@@ -83,6 +88,13 @@ class BehaveResult:
 # 'hook_error'/'cleanup_error' = fixture (before/after) en échec.
 _FAILING_STEP_STATUSES = frozenset({"failed", "error", "hook_error", "cleanup_error"})
 _FAILING_SCENARIO_STATUSES = frozenset({"failed", "error", "hook_error", "cleanup_error"})
+
+# Behave imprime « HOOK-ERROR in before_scenario: RuntimeError: … » : le JSON ne dit RIEN d'un hook
+# en échec (scénario `hook_error`, steps sans résultat, aucun message — mesuré le 2026-09-24). Ce
+# texte est produit par le RUNTIME, pas par l'agent : on le garde pour dire POURQUOI le test est bloqué.
+_HOOK_ERROR_RE = re.compile(r"HOOK-ERROR in (\w+):\s*(.+)")
+_TYPES_DE_STEP = ("given", "when", "then")
+STEP_TYPE_HOOK = "hook"
 
 _TIMEOUT_RE = re.compile(r"TimeoutError.*?:(.+?)(?:\n|$)", re.DOTALL)
 # ⚠️ « AssertionError: » n'apparaît PAS dans la sortie de Behave : `model.py:1888` (behave 1.3.3)
@@ -336,6 +348,14 @@ def classify_failure(snippet: str) -> tuple[str, str]:
     return "unknown", snippet[:150]
 
 
+def _type_du_step(step: dict, precedent: str) -> str:
+    """`given | when | then` du step. Behave le fournit et fait hériter `Et`/`Mais` ; si le champ
+    manquait (autre version), on reprend le type du step précédent plutôt que de deviner sur un
+    libellé — `""` tant qu'aucun step n'a déclaré son type."""
+    declare = str(step.get("step_type") or "").lower()
+    return declare if declare in _TYPES_DE_STEP else precedent
+
+
 def parse_behave_json(json_output: str, returncode: int, dry_run: bool = False,
                       combined_log: str = "") -> BehaveResult:
     """Parse la sortie JSON de Behave. Fallback minimal si le JSON est absent/illisible."""
@@ -353,6 +373,7 @@ def parse_behave_json(json_output: str, returncode: int, dry_run: bool = False,
         data = [data]
 
     undefined: set[str] = set()
+    messages_de_hook = [f"{m[1].strip()}" for m in _HOOK_ERROR_RE.findall(combined_log or "")]
     for feature in data:
         for scenario in feature.get("elements", []):
             if scenario.get("type") == "background":
@@ -361,7 +382,9 @@ def parse_behave_json(json_output: str, returncode: int, dry_run: bool = False,
             first_error = ""
             step_failed = 0
             duration = 0.0
+            type_precedent = ""
             for step in scenario.get("steps", []):
+                type_precedent = _type_du_step(step, type_precedent)
                 res = step.get("result", {})
                 status = res.get("status", "skipped")
                 duration += res.get("duration", 0.0) or 0.0
@@ -384,7 +407,7 @@ def parse_behave_json(json_output: str, returncode: int, dry_run: bool = False,
                         # réel (le 4ᵉ verdict ne se déclenchait pas — trouvé au rejeu du 2026-07-23).
                         # Cohérent avec `first_error` ci-dessus, qui prend déjà la queue.
                         failure_type=ftype, traceback_summary=summary[:300],
-                        raw=meaningful_error(err),
+                        raw=meaningful_error(err), step_type=type_precedent,
                     ))
                 elif status == "undefined":
                     undefined.add(full_step)
@@ -393,6 +416,16 @@ def parse_behave_json(json_output: str, returncode: int, dry_run: bool = False,
                         (error_text(res.get("error_message")) or full_step)[:200])
 
             sc_status = scenario.get("status", "")
+            if sc_status == "hook_error" and not step_failed:
+                # Fixture en échec AVANT tout step : le JSON ne porte ni step en échec ni message.
+                # On matérialise l'échec (sinon `scenario_verdict` ne verrait « aucune cause ») et
+                # on y joint le message que Behave a imprimé.
+                message = messages_de_hook.pop(0) if messages_de_hook else ""
+                first_error = message or "Échec d'une fixture Behave avant le premier step."
+                result.failures.append(BehaveFailure(
+                    scenario_name=name, step_text="", failure_type=STEP_TYPE_HOOK,
+                    traceback_summary="Fixture en échec avant tout step"[:300], raw=message,
+                    step_type=STEP_TYPE_HOOK))
             # Behave ≥1.3 distingue 'failed' (assertion) de 'error'/'hook_error' (exception,
             # échec de fixture). Tous sont des scénarios en échec côté verdict : on les
             # ramène explicitement à 'failed' plutôt que de compter dessus par accident.
