@@ -130,3 +130,67 @@ def test_la_migration_ne_touche_pas_une_table_dont_la_liste_est_inconnue(tmp_pat
     sql = conn.execute("SELECT sql FROM sqlite_master WHERE name='execution'").fetchone()[0]
     assert "'blocked'" not in sql and "'a', 'b'" in sql
     conn.close()
+
+
+def _base_pre_48_tables_renommees(chemin):
+    """Une VRAIE base : chaque table a été reconstruite par `ALTER TABLE … RENAME` (comme le fait la
+    migration 19), donc SQLite l'écrit `CREATE TABLE "execution"` — avec guillemets."""
+    conn = sqlite3.connect(str(chemin))
+    conn.row_factory = sqlite3.Row
+    conn.executescript(_SCHEMA_PRE_48)
+    conn.execute("INSERT INTO test_case (id, title, last_execution_status) VALUES (1, 'Cas', 'success')")
+    conn.execute("INSERT INTO execution (id, test_case_id, execution_status) VALUES (10, 1, 'technical_error')")
+    conn.execute("INSERT INTO scenario_result (id, execution_id, scenario_name, execution_status)"
+                 " VALUES (100, 10, 's', 'success')")
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    for table in ("scenario_result", "execution", "test_case"):
+        sql = conn.execute("SELECT sql FROM sqlite_master WHERE name=?", (table,)).fetchone()[0]
+        # Même procédé que la migration 19 : on renomme la NOUVELLE table sur l'ancien nom (renommer
+        # l'ancienne réécrirait les FK des autres tables vers le nom temporaire).
+        conn.execute(sql.replace(f"CREATE TABLE {table}", f"CREATE TABLE {table}__nouvelle", 1))
+        conn.execute(f"INSERT INTO {table}__nouvelle SELECT * FROM {table}")
+        conn.execute(f"DROP TABLE {table}")
+        conn.execute(f"ALTER TABLE {table}__nouvelle RENAME TO {table}")
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def test_reprise_sur_une_base_dont_les_tables_sont_entre_guillemets(tmp_path):
+    """⚠️ Le défaut mesuré le 2026-09-24 en rejouant sur la COPIE d'une vraie base (user_version 47) :
+    `table "execution" already exists`. Les bases neuves des autres tests ne le voyaient pas."""
+    conn = _base_pre_48_tables_renommees(tmp_path / "reelle.db")
+    for table in ("execution", "scenario_result", "test_case"):
+        sql = conn.execute("SELECT sql FROM sqlite_master WHERE name=?", (table,)).fetchone()[0]
+        assert f'CREATE TABLE "{table}"' in sql, "le scénario doit reproduire les guillemets de SQLite"
+
+    _migrate_48_execution_blocked(conn)
+
+    conn.execute("INSERT INTO scenario_result (execution_id, scenario_name, execution_status)"
+                 " VALUES (10, 's2', 'blocked')")
+    conn.execute("INSERT INTO execution (test_case_id, execution_status) VALUES (1, 'blocked')")
+    conn.execute("UPDATE test_case SET last_execution_status = 'blocked' WHERE id = 1")
+    conn.commit()
+    assert conn.execute("SELECT execution_status FROM scenario_result WHERE id=100").fetchone()[0] == "success"
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    conn.close()
+
+
+def test_une_violation_de_cle_etrangere_preexistante_ne_bloque_pas_la_migration(tmp_path):
+    """Mesuré le 2026-09-24 sur la copie d'une vraie base : `project_member` pointait vers un
+    utilisateur supprimé. La migration ne doit réagir qu'aux violations qu'ELLE introduirait — sinon un
+    défaut ancien et sans rapport ferait échouer le démarrage."""
+    conn = _base_pre_48(tmp_path / "orpheline.db")
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("INSERT INTO execution (id, test_case_id, execution_status) VALUES (99, 4242, 'success')")
+    conn.commit()
+    assert conn.execute("PRAGMA foreign_key_check").fetchall(), "la base de départ a bien une violation"
+
+    _migrate_48_execution_blocked(conn)  # ne lève pas
+
+    conn.execute("INSERT INTO execution (test_case_id, execution_status) VALUES (1, 'blocked')")
+    conn.commit()
+    assert conn.execute("SELECT count(*) FROM execution WHERE id=99").fetchone()[0] == 1, (
+        "la ligne orpheline est conservée telle quelle, jamais supprimée en silence")
+    conn.close()
