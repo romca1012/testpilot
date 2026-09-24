@@ -438,11 +438,34 @@ class _Appli(BaseHTTPRequestHandler):
         "window.addEventListener('unload',function(){navigator.sendBeacon('/b_unload','x');});"
         "window.addEventListener('visibilitychange',function(){if(document.visibilityState==="
         "'hidden'){navigator.sendBeacon('/b_hidden','x');}});</script></body></html>")
+    _PAGE_BEACONS_FORMES = (
+        "<html><body><form><input name='champ' type='text'></form><script>"
+        "'use strict';"
+        # une page qui RÉASSIGNE sendBeacon (polyfill enveloppant l'existant) : ne doit pas lever
+        "try { const prec = navigator.sendBeacon.bind(navigator);"
+        "navigator.sendBeacon = function (u, d) { return prec(u, d); }; }"
+        "catch (e) { fetch('/erreur_assign'); }"
+        "window.addEventListener('pagehide', function () {"
+        "fetch('/k_options', {method: 'POST', keepalive: true, body: 'x'});"
+        "fetch(new Request('/k_request', {method: 'POST', keepalive: true, body: 'x'}));"
+        "fetch(new Request('/k_init', {method: 'POST', body: 'x'}), {keepalive: true});"
+        "Navigator.prototype.sendBeacon.call(navigator, '/k_proto', 'x');"
+        "navigator.sendBeacon('/k_ecrase', 'x');"
+        "});</script></body></html>")
     _PAGE_OUVRE = ("<html><body><form><input name='champ' type='text'></form><script>"
                    "window.open('/popup?boot=1');</script></body></html>")
 
     def do_GET(self):
-        if self.path == "/beacons" and self._authentifie():
+        if self.path.startswith("/erreur_assign"):
+            type(self).lectures.append(self.path)
+            self.send_response(204)
+            self.end_headers()
+        elif self.path == "/beacons_formes" and self._authentifie():
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(self._PAGE_BEACONS_FORMES.encode("utf-8"))
+        elif self.path == "/beacons" and self._authentifie():
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
@@ -1154,3 +1177,35 @@ def test_le_marqueur_de_fermeture_est_pose_juste_avant_le_close_et_pas_avant():
 
     assert ordre == ["marqueur", "close"]
     assert "__tpFermeture" in page.scripts_init[0]
+    assert "Navigator.prototype" in page.scripts_init[0]
+    assert "writable: true" in page.scripts_init[0]
+
+
+@pytest.mark.conformance
+def test_reel_toutes_les_formes_de_fetch_keepalive_et_de_sendbeacon_sont_neutralisees():
+    """Mesuré le 2026-09-24 : `fetch(new Request(…, {keepalive:true}))` et
+    `Navigator.prototype.sendBeacon.call(navigator, …)` atteignaient le serveur à la fermeture malgré
+    la première version du script. Couvre : options directes, `Request` keepalive, options qui
+    activent keepalive sur un `Request`, appel par le prototype, et un `sendBeacon` réassigné par la
+    page (mode strict : la réassignation ne doit pas lever)."""
+    from playwright.sync_api import sync_playwright
+
+    srv = _serveur("")
+    url = f"http://127.0.0.1:{srv.server_port}/beacons_formes"
+    try:
+        with sync_playwright() as p:
+            navigateur = p.chromium.launch(headless=True)
+            contexte = navigateur.new_context()
+            contexte.add_cookies([{"name": "session", "value": "ok", "url": url}])
+            page = contexte.new_page()
+
+            resultat = sonde.sonder_formulaire(page, url)
+            page.wait_for_timeout(800)
+            navigateur.close()
+    finally:
+        srv.shutdown()
+
+    assert resultat["statut"] == "ok", resultat
+    assert "/erreur_assign" not in _Appli.lectures, (
+        "réassigner sendBeacon ne doit pas lever (writable: true)")
+    assert _Appli.ecritures == [], f"requêtes de fermeture reçues : {_Appli.ecritures}"
