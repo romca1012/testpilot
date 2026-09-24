@@ -87,6 +87,7 @@ class GenerationAgent:
             # Migration 45 (2026-09-16) : décision du PROJET, jamais un défaut du connecteur.
             calibration_writes_enabled=bool((projet or {}).get("calibration_writes_enabled")),
             qualification=qualification,
+            project_id=(projet or {}).get("id"),
         )
         from testpilot.generation.provenance import fingerprint, target_fingerprint
         ctx.target_sha256 = target_fingerprint(projet)

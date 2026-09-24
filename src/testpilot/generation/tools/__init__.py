@@ -27,6 +27,9 @@ class ToolContext:
     # ICI (le tool), pas dans le connecteur : un connecteur ne connaît pas les réglages du projet.
     calibration_writes_enabled: bool = False
     qualification: bool = False
+    # Lot 12 : le projet, pour relire SES règles apprises (formats de saisie déjà mesurés) — `None`
+    # hors projet (tests, outils isolés) : aucune règle, jamais une erreur.
+    project_id: int | None = None
     target_sha256: str = ""
     observations: list[dict] = field(default_factory=list)
     calibration_attempts: list[str] = field(default_factory=list)
