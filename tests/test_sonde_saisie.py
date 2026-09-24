@@ -23,6 +23,20 @@ class _Requete:
         self.method, self.url = method, url
 
 
+class _Route:
+    """Ce que Playwright passe au gestionnaire d'interception : abandonner ou laisser passer."""
+
+    def __init__(self, requete):
+        self.request = requete
+        self.abandonnee = self.continuee = False
+
+    def abort(self):
+        self.abandonnee = True
+
+    def continue_(self):
+        self.continuee = True
+
+
 class _Locator:
     def __init__(self, page, nom):
         self._page, self._nom = page, nom
@@ -48,11 +62,11 @@ class _PageJetable:
         self.champs = champs                        # {nom: valeur courante}
         self.retention = retention or {}            # {nom: fonction(saisi) -> retenu}
         self.ecritures = ecritures or {}            # {nom: (méthode, url)} émis au remplissage
-        self.handlers, self.remplissages, self.gotos = [], [], []
+        self.handlers, self.remplissages, self.gotos, self.routes = [], [], [], []
         self.fermeture = None
 
-    def on(self, evenement, handler):
-        assert evenement == "request"
+    def route(self, motif, handler):
+        assert motif == "**/*"
         self.handlers.append(handler)
 
     def goto(self, url, **_kw):
@@ -73,7 +87,9 @@ class _PageJetable:
         if nom in self.ecritures or self.poster_au_fill == len(self.remplissages):
             methode, url = self.ecritures.get(nom, ("POST", "https://app.test/draft"))
             for h in self.handlers:
-                h(_Requete(methode, url))
+                route = _Route(_Requete(methode, url))
+                h(route)
+                self.routes.append(route)
 
     def lire(self, nom):
         valeur = self.champs[nom]
@@ -112,7 +128,7 @@ _filtre_facture = _groupes(7, "/")
 
 # ── LE garde-fou principal ────────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("methode", ["POST", "PUT", "PATCH"])
+@pytest.mark.parametrize("methode", ["POST", "PUT", "PATCH", "DELETE"])
 def test_GARDE_une_requete_d_ecriture_pendant_la_sonde_l_interrompt(methode):
     jetable = _PageJetable({"brouillon": "", "numero_facture1": ""},
                            ecritures={"brouillon": (methode, "https://app.test/draft/save")})
@@ -123,6 +139,9 @@ def test_GARDE_une_requete_d_ecriture_pendant_la_sonde_l_interrompt(methode):
     assert resultat["statut"] == "interrompue"
     assert "sauvegarde automatique détectée, pas de sonde" in resultat["raison"]
     assert methode in resultat["raison"]
+    # INTERCEPTION : la requête est ABANDONNÉE avant de partir (jamais seulement observée).
+    assert [r.abandonnee for r in jetable.routes] == [True]
+    assert not any(r.continuee for r in jetable.routes)
     # La sonde s'arrête SUR ce formulaire : le champ suivant n'a jamais été touché.
     assert all(nom == "brouillon" for nom, _ in jetable.remplissages)
     assert len(jetable.remplissages) == 1, "aucune saisie après la requête d'écriture"
@@ -137,6 +156,7 @@ def test_une_requete_de_lecture_ou_du_bruit_de_fond_n_interrompt_pas():
                            ecritures={"numero_facture1": ("POST", "https://app.test/longpolling/poll")},
                            retention={"numero_facture1": _filtre_facture})
     assert sonde.sonder_formulaire(_PagePersistante(jetable), "https://app.test/f")["statut"] == "ok"
+    assert jetable.routes and all(r.continuee and not r.abandonnee for r in jetable.routes)
 
     jetable = _PageJetable({"numero_facture1": ""},
                            ecritures={"numero_facture1": ("GET", "https://app.test/x")})
@@ -292,7 +312,14 @@ def test_le_resume_cite_le_texte_de_l_application_comme_donnee_et_le_tronque():
 
 class _Appli(BaseHTTPRequestHandler):
     ecritures: list = []
-    avec_brouillon = False
+    brouillon = ""
+
+    # Trois façons d'enregistrer un brouillon en tapant : fetch, sendBeacon, XHR PUT.
+    _JS = {
+        "fetch": "fetch('/draft',{method:'POST',body:this.value});",
+        "beacon": "navigator.sendBeacon('/draft', this.value);",
+        "xhr": "var x=new XMLHttpRequest();x.open('PUT','/draft');x.send(this.value);",
+    }
 
     def log_message(self, *_a):
         pass
@@ -303,9 +330,8 @@ class _Appli(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/form" and self._authentifie():
             corps = ("<html><body><form><input name='numero_facture1' type='text' oninput=\""
-                     "this.value=this.value.replace(/\\D/g,'').replace(/(\\d{7})(?=\\d)/g,'$1/');"
-                     + ("fetch('/draft',{method:'POST',body:this.value});" if self.avec_brouillon
-                        else "") + "\"></form></body></html>")
+                     r"this.value=this.value.replace(/\D/g,'').replace(/(\d{7})(?=\d)/g,'$1/');"
+                     + self._JS.get(self.brouillon, "") + "\"></form></body></html>")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
@@ -314,27 +340,29 @@ class _Appli(BaseHTTPRequestHandler):
             self.send_response(403)
             self.end_headers()
 
-    def do_POST(self):
-        type(self).ecritures.append(self.path)
+    def _ecriture(self):
+        type(self).ecritures.append(f"{self.command} {self.path}")
         self.send_response(204)
         self.end_headers()
 
+    do_POST = do_PUT = do_PATCH = do_DELETE = _ecriture
 
-def _serveur(avec_brouillon):
+
+def _serveur(brouillon):
     _Appli.ecritures = []
-    _Appli.avec_brouillon = avec_brouillon
+    _Appli.brouillon = brouillon
     srv = HTTPServer(("127.0.0.1", 0), _Appli)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv
 
 
 @pytest.mark.conformance
-@pytest.mark.parametrize("avec_brouillon", [False, True])
-def test_reel_la_sonde_tourne_dans_le_contexte_authentifie_et_s_arrete_sur_un_brouillon(
-        avec_brouillon):
+@pytest.mark.parametrize("brouillon", ["", "fetch", "beacon", "xhr"])
+def test_reel_la_sonde_tourne_dans_le_contexte_authentifie_et_le_serveur_ne_recoit_aucune_ecriture(
+        brouillon):
     from playwright.sync_api import sync_playwright
 
-    srv = _serveur(avec_brouillon)
+    srv = _serveur(brouillon)
     url = f"http://127.0.0.1:{srv.server_port}/form"
     try:
         with sync_playwright() as p:
@@ -350,9 +378,10 @@ def test_reel_la_sonde_tourne_dans_le_contexte_authentifie_et_s_arrete_sur_un_br
 
     # La page jetable a vu le formulaire (403 sans cookie) : le contexte authentifié est bien utilisé.
     assert resultat["statut"] != "erreur", resultat
-    if avec_brouillon:
+    if brouillon:
         assert resultat["statut"] == "interrompue"
-        assert len(_Appli.ecritures) == 1, "la sonde s'arrête à la PREMIÈRE requête d'écriture"
+        assert "sauvegarde automatique détectée" in resultat["raison"]
+        assert _Appli.ecritures == [], "ZÉRO écriture reçue par le serveur : interceptée avant d'y partir"
     else:
         assert resultat["statut"] == "ok" and not _Appli.ecritures
         champ = resultat["champs"]["numero_facture1"]

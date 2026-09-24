@@ -15,8 +15,12 @@ tapant). D'où les garde-fous, TOUS obligatoires :
 - une page JETABLE, ouverte pour la sonde seule, jamais la page persistante de l'exploration ;
   fermée avec `run_before_unload=False` (jamais de `beforeunload`) ;
 - ni clic ni navigation après une saisie ;
-- surveillance réseau pendant la sonde : toute requête POST/PUT/PATCH interrompt la sonde sur ce
-  formulaire, marqué « sauvegarde automatique détectée, pas de sonde » ;
+- **INTERCEPTION réseau (`page.route`) : toute requête d'écriture (POST/PUT/PATCH/DELETE) est
+  ABANDONNÉE avant de partir — le serveur n'en reçoit AUCUNE** — et interrompt la sonde sur ce
+  formulaire, marqué « sauvegarde automatique détectée, pas de sonde ». (La première version ne
+  faisait que SURVEILLER : la requête partait, un brouillon pouvait être enregistré au nom d'un
+  utilisateur réel — mesuré en vrai navigateur : 1 POST reçu par le serveur.) Le bruit de fond
+  d'Odoo (bus de notification) est laissé passer : c'est une lecture, pas une sauvegarde ;
 - aucune sonde sur le back-office Odoo (`/web#…`, `/odoo/…`) : un enregistrement existant y est
   interdit, et sur un formulaire de création les appels `onchange` (POST) ne se distinguent pas
   d'un enregistrement — conservateur, à rouvrir avec un banc (lot 04) ;
@@ -50,13 +54,12 @@ CHAINES_SONDE = (
 )
 # Saisies AJOUTÉES au plus, pour la recherche d'un exemple valide et stable (sans soumission).
 _ESSAIS_RECHERCHE_MAX = 30
-# Après CHAQUE saisie, on laisse la boucle Playwright traiter les évènements réseau : sans ça, la
-# requête émise par la saisie n'est vue qu'au tour suivant — la saisie suivante partirait avant
-# l'interruption (mesuré en vrai navigateur : 2 brouillons au lieu d'1). Au plus UNE requête
-# d'écriture peut donc encore partir avant la détection : limite inhérente, documentée.
+# Après CHAQUE saisie, on laisse la boucle Playwright traiter les évènements réseau : la requête
+# émise par la saisie reste EN ATTENTE (jamais envoyée) tant que le gestionnaire d'interception n'a
+# pas tourné ; sans ce délai, la saisie suivante s'enchaînerait avant de savoir qu'il faut s'arrêter.
 _SETTLE_MS = 40
 
-_METHODES_ECRITURE = frozenset({"POST", "PUT", "PATCH"})
+_METHODES_ECRITURE = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 # Bruit de fond d'Odoo (bus de notification, battement de session) : pas une sauvegarde.
 _ARRIERE_PLAN = ("/longpolling", "/websocket", "/bus/", "/web/webclient/", "/web/session/")
 _TYPES_SONDABLES = ("text", "tel", "search", "email", "url", "number")
@@ -95,6 +98,18 @@ def _est_ecriture_reelle(requete) -> bool:
     return not any(chemin.startswith(p) for p in _ARRIERE_PLAN)
 
 
+def _garde_reseau(ecritures: list):
+    """Gestionnaire d'interception : abandonne toute écriture, laisse passer le reste."""
+    def garde(route):
+        requete = route.request
+        if _est_ecriture_reelle(requete):
+            ecritures.append(f"{requete.method} {requete.url}")
+            route.abort()
+        else:
+            route.continue_()
+    return garde
+
+
 def _selecteur(nom: str) -> str:
     return '[name="%s"], [id="%s"]' % (nom.replace('"', '\\"'), nom.replace('"', '\\"'))
 
@@ -116,10 +131,9 @@ def sonder_formulaire(page, url: str) -> dict:
         jetable = page.context.new_page()
         jetable.goto(url, wait_until="domcontentloaded")
         jetable.wait_for_timeout(300)  # laisse finir les scripts d'initialisation (tracking, etc.)
-        # Écoute ouverte APRÈS le chargement : seules les requêtes provoquées par NOTRE saisie
+        # Interception ouverte APRÈS le chargement : seules les requêtes provoquées par NOTRE saisie
         # comptent (un POST de suivi au chargement n'est pas une sauvegarde de brouillon).
-        jetable.on("request", lambda r: ecritures.append(f"{r.method} {r.url}")
-                   if _est_ecriture_reelle(r) else None)
+        jetable.route("**/*", _garde_reseau(ecritures))
         for nom in list(jetable.evaluate(_JS_CHAMPS))[:_CHAMPS_MAX]:
             if ecritures:
                 break
