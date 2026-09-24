@@ -290,8 +290,23 @@ def test_le_5xx_html_ne_pose_aucun_json_mais_garde_sa_trace():
     contexte.page.gestionnaire(_Reponse("http://x/website/form/helpdesk.ticket", 500))
 
     assert contexte.reponse_formulaire is None
-    assert contexte.reponses_formulaire == [
-        {"status": 500, "url": "http://x/website/form/helpdesk.ticket"}]
+    (trace,) = contexte.reponses_formulaire
+    assert (trace["status"], trace["url"]) == (500, "http://x/website/form/helpdesk.ticket")
+    assert isinstance(trace["t"], float), "horodatage monotone, pour ne juger que l'action testée"
+
+
+def test_un_5xx_html_efface_le_json_perime_d_une_soumission_precedente():
+    """Sans cela, un `error_fields` ancien l'emporterait sur un 5xx plus récent (revue du lot 02)."""
+    environment = _charger_environment()
+    contexte = type("C", (), {})()
+    contexte.page = _PageEcoute()
+    environment._capturer_reponse_formulaire(contexte)
+
+    contexte.page.gestionnaire(_Reponse("http://x/website/form/helpdesk.ticket", 200,
+                                        {"error_fields": ["code_client1"]}))
+    contexte.page.gestionnaire(_Reponse("http://x/website/form/helpdesk.ticket", 500))
+
+    assert contexte.reponse_formulaire is None
 
 
 def test_le_message_rouge_d_odoo_est_dans_les_selecteurs_surveilles():
@@ -353,3 +368,62 @@ def test_reel_un_500_html_est_capte_avec_son_code_et_le_message_rouge_est_lu():
     assert [r["status"] for r in contexte.reponses_formulaire] == [500]
     assert contexte.reponse_formulaire is None
     assert texte == MESSAGE_ODOO
+
+
+# ── Revue du lot 02 : délimiter l'action testée, ne conclure au silence que si on a PU observer ──
+
+def test_un_5xx_ancien_suivi_d_un_refus_propre_n_est_pas_l_action_testee_en_positif():
+    """La dernière soumission est celle qu'on juge : son refus JSON générique reste le constat expliqué
+    de l'arbitrage du 2026-07-23, pas un plantage serveur."""
+    ctx = _Context(reponses=[_r(500), _r(200)], json={"error": "Contrainte métier violée"})
+
+    with pytest.raises(AssertionError) as err:
+        H.check_count_increased_by_one(ctx, MODEL)
+
+    assert not isinstance(err.value, (H.ErreurServeur5xxError, H.RefusNonExpliqueError))
+    assert "LE SERVEUR A REFUSÉ" in str(err.value)
+
+
+def test_en_scenario_negatif_un_5xx_sur_n_importe_quelle_soumission_est_un_plantage():
+    """Chaque soumission d'un négatif était censée être refusée PROPREMENT : un 5xx, même ancien, est
+    un plantage serveur (ordre `[500, 200]` comme `[200, 500]`)."""
+    for reponses in ([_r(500), _r(200)], [_r(200), _r(500)]):
+        with pytest.raises(H.ErreurServeur5xxError):
+            H.check_count_not_increased(_Context(reponses=reponses), MODEL)
+
+
+def test_une_reponse_anterieure_au_releve_de_comptage_est_ignoree():
+    import time
+
+    ctx = _Context(reponses=[{"status": 500, "url": "u", "t": 100.0}])
+    ctx._tp_releve_t = time.monotonic()  # le relevé date d'APRÈS ce 5xx
+
+    with pytest.raises(H.RefusNonExpliqueError):  # plus aucun signal : silence total
+        H.check_count_increased_by_one(ctx, MODEL)
+    H.check_count_not_increased(ctx, MODEL)  # et un négatif ne le retient pas non plus
+
+
+def test_sans_page_le_silence_n_est_pas_un_refus_non_explique():
+    """Un scénario RPC seul n'a rien pu observer : on garde le constat d'avant (non_conforme), on ne
+    fabrique pas un `indetermine` par défaut de mesure."""
+    ctx = _Context()
+    ctx.page = None
+
+    with pytest.raises(AssertionError) as err:
+        H.check_count_increased_by_one(ctx, MODEL)
+
+    assert not isinstance(err.value, (H.RefusNonExpliqueError, H.ErreurServeur5xxError))
+
+
+def test_une_page_dont_la_lecture_plante_n_est_pas_un_silence_observe():
+    class _PageQuiPlante(_Page):
+        def locator(self, *a, **k):
+            raise RuntimeError("navigateur mort")
+
+    ctx = _Context(page=_PageQuiPlante())
+
+    with pytest.raises(AssertionError) as err:
+        H.check_count_increased_by_one(ctx, MODEL)
+
+    assert not isinstance(err.value, H.RefusNonExpliqueError)
+    assert "indisponible" in str(err.value)

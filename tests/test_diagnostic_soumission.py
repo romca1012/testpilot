@@ -213,20 +213,25 @@ def test_donnee_refusee_nativement_leve_le_4e_verdict_au_comptage(monkeypatch):
     assert "code_client1" in message, "le champ fautif est nommé"
 
 
-def test_un_refus_SILENCIEUX_reste_un_constat_de_comptage(monkeypatch):
-    """Sans champ invalide natif (refus serveur silencieux), on ne peut pas disculper la donnée :
-    ça reste une `AssertionError` (constat + « SILENCIEUX »). L'indécidable est levé par la
-    vérification par l'état (3a), pas ici."""
+def test_un_refus_SILENCIEUX_est_un_refus_non_explique_avec_son_constat_de_comptage(monkeypatch):
+    """⚠️ ATTENDU MODIFIÉ PAR DÉCISION (D12, 2026-09-24, F10) — pas pour faire passer un test.
+
+    Avant : sans champ invalide natif, un refus silencieux restait une `AssertionError` (constat +
+    « SILENCIEUX »), donc `non_conforme`, alors que le message disait lui-même « l'outil NE conclut PAS
+    à un défaut sans preuve ». Le porteur a tranché : un SILENCE TOTAL (page qui a pu être lue, aucune
+    réponse HTTP d'erreur, aucun JSON, aucun message) est `indetermine` (`RefusNonExpliqueError`). Le
+    constat de comptage cloisonné ET le diagnostic « SILENCIEUX » restent dans le message."""
     import _base_helpers as H
 
     monkeypatch.setattr(H, "COUNT_SETTLE_TIMEOUT", 0.01, raising=False)
     ctx = _Context(_Page(invalides=[]))  # aucun champ :invalid → refus silencieux
 
-    with pytest.raises(AssertionError) as err:
+    with pytest.raises(H.RefusNonExpliqueError) as err:
         H.check_count_increased_by_one(ctx, "helpdesk.ticket")
 
     message = str(err.value)
+    assert not isinstance(err.value, AssertionError), "un silence n'est pas un constat sur l'application"
     # §F1 (2026-09-23) : le constat cite désormais le domaine cloisonné au scénario, plus le
     # comptage global en diagnostic seul — jamais « devrait être N, obtenu M » (comptage global).
     assert "Aucune création détectée dans 'helpdesk.ticket' depuis id > 26222" in message
-    assert "SILENCIEUX" in message
+    assert "SILENCIEUX" in message and "REFUS NON EXPLIQUÉ" in message
