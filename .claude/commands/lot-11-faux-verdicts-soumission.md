@@ -1,8 +1,8 @@
 ---
-description: Lot 11 — Faux verdicts trouvés en campagne réelle : refus déclenché hors soumission (F7), assertion sur message deviné (F8)
+description: Lot 11 — Faux verdicts trouvés en campagne réelle : refus déclenché hors soumission (F7), assertion sur message deviné (F8), comptage réécrit par l'agent (F9)
 ---
 
-# Lot 11 — Faux verdicts de soumission (F7, F8)
+# Lot 11 — Faux verdicts de soumission (F7, F8, F9)
 
 Lis `CLAUDE.md` puis F7/F8 de `docs/PLAN-FIABILITE-VERDICT-2026-09.md`, et le rapport de campagne
 `docs/mesures/campagne-lot01-2026-09-23.md`. Décision requise : aucune. Branche : `lot-11-faux-verdicts-soumission`.
@@ -60,6 +60,14 @@ mais moins grave (une erreur technique, jamais un mensonge sur le verdict).
 3. Prompt système : une règle courte (un exemple, pas un paragraphe) rappelant qu'un message
    attendu doit venir d'une observation réelle, jamais d'un texte deviné — sans faire grossir le
    prompt au-delà du seuil déjà mesuré pour ce fichier.
+
+## F9 — L'agent ne recompte jamais lui-même (ajouté le 2026-09-24)
+
+`write_steps_file` refuse (régime bloquant, comme le transport interdit) tout step généré qui
+appelle `search_count`, ou `len()` d'un `search`/`read`/`search_read`, sur `context.odoo.env` —
+détection par AST (`_forbidden_recount`). Le message de refus renvoie aux steps du catalogue du
+lot 01. Le prompt (Règle 3) et l'ancien message de refus, qui recommandaient `search_count([])`,
+sont corrigés. Parcours en lecture seule des versions en base : lister, ne pas modifier.
 
 ## Tests exigés
 

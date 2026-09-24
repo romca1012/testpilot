@@ -28,6 +28,7 @@ verdict métier exploitable. L'audit du 2026-09-23 a identifié les causes suiva
 | F6 | `environment.py` l.118 et l.397-409 | Teardown limité à `helpdesk.ticket` ; restauration de `employee_front_role_ids` (champ Sapian) dans le harnais générique | Pollution, collisions d'unicité au rejeu, code client dans le socle |
 | F7 | `_base_helpers.py` : `verifier_soumission_non_bloquee`, `_refus_par_le_navigateur`, `click_first_actionable` | Le contrôle de refus se déclenche sur N'IMPORTE QUEL clic (y compris une navigation intermédiaire — onglet, lien, changement d'étape d'un formulaire multi-écrans), pas seulement sur une vraie soumission | Faux `donnee_invalide` : accuse le jeu de données à tort alors qu'aucune soumission n'a eu lieu (mesuré en campagne réelle le 2026-09-23, cas 95, projet 1) — trouvé en cherchant à valider le lot 01 |
 | F8 | `_base_helpers.py` : chaîne de diagnostic de refus (`diagnostic_soumission`, assertions générées sur le texte d'un message attendu) | Une assertion générée fige un texte de message DEVINÉ par l'agent plutôt qu'observé pendant la génération | Faux `non_conforme`/`failed` : l'application refuse correctement, c'est le texte attendu par le test qui est faux (mesuré le 2026-09-23, cas 97, projet 1) |
+| F9 | `generation/tools/write.py` : `write_steps_file` | Un step GÉNÉRÉ recompte lui-même (`search_count([])`, `len(search(...))`, `len(read(...))`) hors des helpers cloisonnés du lot 01 — le prompt et le message de refus recommandaient même ce motif | Réintroduit le faux PASSED/FAILED de F1 dans le code généré, là où aucun test du dépôt ne le voit (mesuré le 2026-09-23, cas 95 régénéré : comptage global décalé de 1 → faux `non_conforme`, ticket créé mais non nettoyé faute de `register_created`). **Corrigé par le lot 11** : refus bloquant par AST |
 
 ### 2.2 Manques de couverture
 
@@ -101,7 +102,7 @@ statuts : ils passent en premier. Le lot 04 construit le banc qui sert à prouve
 | 08 | `/lot-08-odoo-erp` | Détection de version, sélecteurs par version, vocabulaire ERP, effets en chaîne (C6, C7) | D8, D9 | 04 | L |
 | 09 | `/lot-09-agents` | Outils de perception, prompts, garde de réparation des assertions (C9) | D4 | 07, 08 | M |
 | 10 | `/lot-10-mesure-cloture` | Campagne de mesure complète, mise à jour de la documentation | — | tous | S |
-| 11 | `/lot-11-faux-verdicts-soumission` | Faux `donnee_invalide`/`non_conforme` trouvés en campagne réelle : refus déclenché hors soumission (F7), assertion sur message deviné (F8) | — | 01 | S |
+| 11 | `/lot-11-faux-verdicts-soumission` | Faux verdicts trouvés en campagne réelle : refus déclenché hors soumission (F7), assertion sur message deviné (F8), comptage réécrit par l'agent (F9) | — | 01 | S |
 | 12 | `/lot-12-valeurs-observees` | Valeurs de champ écrites sans avoir été observées : masque de saisie, référence relationnelle inexistante (C10) | — | 01, 11 | M |
 
 Les lots 11 et 12 sont issus de la campagne de validation du lot 01 (2026-09-23,
@@ -123,7 +124,7 @@ répétée (12), au même titre que les lots 01-03.
 | 08 | à faire | | |
 | 09 | à faire | | |
 | 10 | à faire | | |
-| 11 | à faire | | |
+| 11 | terminé | 2026-09-24 | `docs/RAPPORT-LOT-11-2026-09-24.md` |
 | 12 | à faire | | |
 
 ## 6. Ce que chaque lot garantit (résumé)
