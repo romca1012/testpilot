@@ -73,6 +73,13 @@ _ORIGIN_BY_CAUSE = {
     # défaut du portail. Confirmation humaine, jamais réparation auto.
     dt.RESOLVEUR_INCOMPLET: INDETERMINE,
 
+    # Lot 02 (D1) : un PRÉREQUIS d'environnement non rempli n'est pas le test — réécrire le Gherkin
+    # n'y changerait rien et brûlerait le budget de réparation. INDETERMINE ⇒ `evaluate` rend
+    # NEEDS_CONFIRMATION et la boucle ne continue JAMAIS (`should_continue` faux). Explicite, pas
+    # laissé au repli par défaut de `classify_defect_origin` : un futur changement de ce repli ne
+    # doit pas ouvrir la réparation automatique d'un `blocked`.
+    dt.PRECONDITION_NON_REMPLIE: INDETERMINE,
+
     dt.UNKNOWN: INDETERMINE,
 }
 
