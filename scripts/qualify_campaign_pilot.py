@@ -100,6 +100,22 @@ def _isoler_donnees(out_name: str, source: Path | None = None, racine: Path = RO
     return cible
 
 
+def _controle_prealable(data_dir: Path | None, api_key: str) -> list:
+    """Les PROBLEMES qui empecheraient la campagne de mesurer quoi que ce soit — verifies AVANT le
+    premier essai (2026-09-24 : 12 essais avortes a cout nul, `ANTHROPIC_API_KEY` absente d'un
+    worktree, avaient ete pris pour des essais). Liste vide = on peut lancer."""
+    problemes = []
+    if not (api_key or '').strip():
+        problemes.append("ANTHROPIC_API_KEY absente (ni .env ni environnement) : aucune generation "
+                         "possible")
+    if data_dir is None or not Path(data_dir).is_dir():
+        problemes.append("dossier de donnees isole absent")
+    elif not (Path(data_dir) / 'testpilot.db').is_file():
+        problemes.append(f"base absente de la copie isolee ({data_dir}) : TESTPILOT_CAMPAIGN_"
+                         "SOURCE_DATA pointe-t-il sur un data/ reel ?")
+    return problemes
+
+
 def _masquer_secrets(texte: str, project: dict) -> str:
     """Retire d'un texte destine a un artefact TOUT secret connu : mot de passe du projet, cle API,
     cle de chiffrement (jamais ecrite dans un `result.json`, un rapport ou une trace)."""
@@ -300,6 +316,9 @@ def main():
     if DATA_DIR_ISOLE.resolve() not in Path(config.DB_PATH).resolve().parents:
         raise SystemExit(f"config.DB_PATH ({config.DB_PATH}) est hors de la copie isolee : "
                          "campagne refusee (TESTPILOT_DB_PATH reinjecte par .env ?)")
+    problemes = _controle_prealable(DATA_DIR_ISOLE, config.ANTHROPIC_API_KEY)
+    if problemes:
+        raise SystemExit('controle prealable en echec, aucun essai lance : ' + ' ; '.join(problemes))
     project_id = args.project_id
     case_ids = tuple(int(c) for c in args.cases.split(',')) if args.cases else DEFAULT_CASE_IDS
     iterations = (tuple(int(i) for i in args.iterations.split(','))
@@ -320,7 +339,7 @@ def main():
             f'projet {project_id} : base_url {project["base_url"]!r} differe du perimetre '
             f'approuve {expected_base_url!r} -- passe --expected-base-url pour confirmer '
             f'explicitement un changement de cible.')
-    connexion = verifier_connexion(project)
+    connexion = verifier_connexion(project)  # connexion du projet incomplete -> leve avant tout essai
 
     budget = QualificationBudget(out_dir / 'budget.db')
     resultats = []

@@ -17,6 +17,7 @@ import pytest
 from scripts import qualify_campaign_pilot as script
 
 CLE = "CLE-SECRETE-UNIQUE-0123456789-abcdef"
+CLE_API = "sk-ant-api03-FAUSSE-CLE-API-0123456789"
 MOT_DE_PASSE = "mot-de-passe-projet-987654"
 
 
@@ -37,6 +38,7 @@ def _env_restaure(monkeypatch):
     monkeypatch.setenv("TESTPILOT_SECRET_KEY", "")
     monkeypatch.setenv("TESTPILOT_DATA_DIR", "")
     monkeypatch.setenv("TESTPILOT_DB_PATH", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", CLE_API)
 
 
 def test_GARDE_la_cle_est_lue_a_sa_source_et_jamais_ecrite_dans_un_artefact(tmp_path, source):
@@ -51,7 +53,7 @@ def test_GARDE_la_cle_est_lue_a_sa_source_et_jamais_ecrite_dans_un_artefact(tmp_
 
     # Artefacts d'un run simulé : rapport d'erreur, result.json, stderr brut, trace.
     projet = {"password": MOT_DE_PASSE}
-    erreur = script._masquer_secrets(f"boom {CLE} et {MOT_DE_PASSE}", projet)
+    erreur = script._masquer_secrets(f"boom {CLE} et {MOT_DE_PASSE} et {CLE_API}", projet)
     trial = racine / ".local-preview" / "qualification" / "essai" / "trial-1"
     trial.mkdir(parents=True)
     (trial / "result.json").write_text('{"generation_error": "%s"}' % erreur, encoding="utf-8")
@@ -64,6 +66,7 @@ def test_GARDE_la_cle_est_lue_a_sa_source_et_jamais_ecrite_dans_un_artefact(tmp_
             contenu = fichier.read_bytes()
             assert CLE.encode() not in contenu, f"la clé de chiffrement fuit dans {fichier}"
             assert MOT_DE_PASSE.encode() not in contenu, f"le mot de passe fuit dans {fichier}"
+            assert CLE_API.encode() not in contenu, f"ANTHROPIC_API_KEY fuit dans {fichier}"
 
 
 def test_une_cle_deja_fournie_par_l_environnement_n_est_pas_ecrasee(monkeypatch, tmp_path, source):
@@ -120,4 +123,31 @@ def test_une_abreviation_d_option_n_est_plus_acceptee(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["qualify", "--ou", "x"])
 
     with pytest.raises(SystemExit):
+        script.main()
+
+
+def test_controle_prealable_echoue_avant_le_premier_essai(tmp_path):
+    copie = tmp_path / "copie"
+    copie.mkdir()
+
+    assert script._controle_prealable(copie, "cle") == ["base absente de la copie isolee (%s) : "
+        "TESTPILOT_CAMPAIGN_SOURCE_DATA pointe-t-il sur un data/ reel ?" % copie]
+    assert any("ANTHROPIC_API_KEY" in p for p in script._controle_prealable(copie, ""))
+    assert any("dossier de donnees isole absent" in p
+               for p in script._controle_prealable(tmp_path / "nulle-part", "cle"))
+    (copie / "testpilot.db").write_bytes(b"x")
+    assert script._controle_prealable(copie, "cle") == []
+
+
+def test_main_refuse_de_lancer_un_essai_sans_cle_api(monkeypatch, tmp_path):
+    copie = tmp_path / "copie"
+    copie.mkdir()
+    (copie / "testpilot.db").write_bytes(b"x")
+    monkeypatch.setattr(sys, "argv", ["qualify", "--out", "x"])
+    monkeypatch.setattr(script, "DATA_DIR_ISOLE", copie)
+    monkeypatch.setattr(script.config, "DATA_DIR", copie)
+    monkeypatch.setattr(script.config, "DB_PATH", copie / "testpilot.db")
+    monkeypatch.setattr(script.config, "ANTHROPIC_API_KEY", "")
+
+    with pytest.raises(SystemExit, match="controle prealable"):
         script.main()
