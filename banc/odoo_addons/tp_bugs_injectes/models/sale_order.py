@@ -30,6 +30,8 @@ class SaleOrder(models.Model):
     # Les adresses de facturation/livraison, calculées depuis le client, sont NOT NULL elles aussi.
     partner_invoice_id = fields.Many2one(required=False)
     partner_shipping_id = fields.Many2one(required=False)
+    # 16.0 : la liste de prix (calculée depuis le client) est NOT NULL aussi ; sans effet sur 17.0 / 18.0.
+    pricelist_id = fields.Many2one(required=False)
 
     # Sans le défaut actif, l'obligation d'origine est rendue en Python.
     @api.constrains("partner_id")
