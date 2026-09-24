@@ -61,6 +61,13 @@ de l'agent pour décider est refusée (décision 0015).
    plan (numéro de ligne décalé, fonction renommée, comportement différent), dis-le.
 7. **Ne fais pas plus que le lot.** Une amélioration hors périmètre va dans « Suggestions » du
    rapport, pas dans le diff.
+8. **`master` est protégé : aucun push direct.** Toute fusion passe par une pull request dont les
+   4 checks requis sont verts (`Backend — Python 3.10`, `Backend — runtime PostgreSQL réel`,
+   `Frontend — Node 22`, `browser-evidence`), en « rebase and merge » (historique linéaire, aucune
+   exemption). Tu **demandes au porteur avant de fusionner**, même CI verte. Les branches de lot
+   sont conservées après fusion ; les rapports citent le numéro de PR en plus des hash d'origine.
+   Un changement de code après une CI verte relance la CI : rien ne se mesure ni ne se fusionne
+   tant qu'elle n'est pas verte sur le dernier commit.
 
 ## 6. Conventions de code
 
