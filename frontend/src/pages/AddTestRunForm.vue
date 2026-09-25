@@ -338,7 +338,8 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
           <p class="text-xs text-muted-foreground mt-0.5">
             Sans <strong class="text-foreground">résolution automatique</strong> d'un élément renommé et sans
             <strong class="text-foreground">second essai</strong> : un champ ou un menu qui a changé donne « Retest »
-            au lieu d'un vert retrouvé par repli. Aucun appel à l'IA pour retrouver un élément pendant l'exécution.
+            au lieu d'un vert retrouvé par repli. Aucune <strong class="text-foreground">réparation automatique</strong> du test non plus :
+            il est mesuré tel qu'il a été écrit.
           </p>
         </div>
       </label>
