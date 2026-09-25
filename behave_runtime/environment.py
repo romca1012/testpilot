@@ -265,6 +265,9 @@ def _capturer_reponse_formulaire(context):
     # texte de l'agent. Le cas 99 recevait un `HTTP 500` (corps HTML, donc pas de JSON) que cette
     # capture ignorait : l'outil concluait à un « refus silencieux » alors que le serveur avait planté.
     context.reponses_formulaire = []
+    # Lot 07d : toutes les réponses réseau du scénario (tous onglets), pour « la requête … répond <code> » — il faut observer AVANT l'action.
+    from _base_helpers import enregistrer_les_reponses_reseau
+    enregistrer_les_reponses_reseau(context)
 
     def _on_response(response):
         try:

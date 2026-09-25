@@ -34,6 +34,18 @@ _DELEGUENT_OU_ATTENDENT = {
     "step_count_not_inc",          # → check_count_not_increased() : assert current <= initial
     "step_count_increased_by_one", # → check_count_increased_by_one() : assert current == initial+1
     "step_no_error",               # → no_error_with_keywords() : assert kw not in error_text
+    # Lot 07d (vocabulaire universel) : chaque `Alors` délègue à un helper `@constat` qui LÈVE une `AssertionError` (vérifié plus bas par
+    # `test_les_delegations_declarees_assertissent_vraiment`) et consigne le constat. Prouvés aussi de bout en bout, avec un scénario en
+    # échec par vérification : `tests/test_vocabulaire_universel.py`.
+    "step_page_affiche_texte",         # → page_affiche_texte()
+    "step_page_n_affiche_pas_texte",   # → page_n_affiche_pas_texte()
+    "step_url_contient",               # → url_contient()
+    "step_tableau_contient_ligne",     # → tableau_contient_ligne()
+    "step_tableau_compte_lignes",      # → tableau_compte_lignes()
+    "step_fichier_se_nomme",           # → fichier_telecharge_se_nomme()
+    "step_fichier_contient",           # → fichier_telecharge_contient()
+    "step_nouvel_onglet",              # → nouvel_onglet_sur()
+    "step_requete_repond",             # → requete_repond()
 }
 
 
@@ -114,6 +126,16 @@ def test_chaque_then_partage_assertit_ou_delegue_explicitement():
 @pytest.mark.parametrize("nom_helper, doit_assertir", [
     ("no_duplicate", True),
     ("validation_error_inline", True),
+    # Lot 07d : les helpers du vocabulaire universel assertissent RÉELLEMENT (ils lèvent une `AssertionError` sur l'écart constaté).
+    ("page_affiche_texte", True),
+    ("page_n_affiche_pas_texte", True),
+    ("url_contient", True),
+    ("tableau_contient_ligne", True),
+    ("tableau_compte_lignes", True),
+    ("fichier_telecharge_se_nomme", True),
+    ("fichier_telecharge_contient", True),
+    ("nouvel_onglet_sur", True),
+    ("requete_repond", True),
 ])
 def test_les_delegations_declarees_assertissent_vraiment(nom_helper, doit_assertir):
     """La liste de délégations ci-dessus n'est une excuse que si les helpers assertissent

@@ -2712,3 +2712,368 @@ def check_count_increased_by_one(context, model):
         f"Comptage global (diagnostic, inclut l'activité concurrente) : {global_actuel}."
         + (f"\nHTTP {statut_http} reçu sur la soumission." if statut_http else "")
         + (f"\n{pourquoi}" if pourquoi else ""))
+
+
+# ══ Vocabulaire universel (lot 07d, C4) ══════════════════════════════════════════════════════════════════
+#
+# Des steps VRAIMENT génériques : ils ne connaissent que Playwright et ce qu'un navigateur expose (rôles ARIA, texte visible, URL,
+# réponses réseau) — aucune application, aucun `context.odoo`. Chaque vérification consigne un constat (`@constat`, lot 03) ; une
+# ACTION (ouvrir, cliquer, télécharger) n'en consigne aucun. Deux règles tenues partout :
+#
+#   1. **Jamais « le premier » en silence** quand plusieurs éléments répondent (leçon de `_cible_segment_menu`, lot F17) : une
+#      ambiguïté est une ERREUR technique (`ElementIntrouvableError`), pas un clic au hasard qui ouvrirait une autre page.
+#   2. **Une absence ne se constate que sur une page qui a pu se rendre** : « n'affiche pas le texte » sur une page vide passerait à
+#      coup sûr ; elle échoue en erreur technique (`NavigationImpossibleError`) au lieu de valoir `conforme`.
+
+_ATTENDRE_UNIVERSELLE_MS = 8000
+_TELECHARGEMENT_MS = 15000
+_CELLULES = "td, th[scope=row], [role=cell], [role=gridcell]"
+_MODALES_ARIA = "[role=dialog], [role=alertdialog], dialog[open]"
+_BOUTON_ACCEPTER = re.compile(r"^\s*(ok|oui|confirmer|valider|accepter|supprimer|continuer|d'accord)\s*$", re.I)
+_BOUTON_REFUSER = re.compile(r"^\s*(annuler|non|fermer|refuser|cancel)\s*$", re.I)
+_PLAFOND_REPONSES = 2000
+_METHODES_HTTP = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
+
+
+def _attendre_le_nombre(candidats, quoi: str):
+    """Le premier `Locator` de `candidats` qui répond (au moins un élément). Sonde toutes les 250 ms jusqu'au délai — un élément rendu
+    avec un léger retard n'est pas un élément absent ; passé le délai, `ElementIntrouvableError(quoi)`."""
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    while True:
+        for candidat in candidats:
+            try:
+                if candidat.count() > 0:
+                    return candidat
+            except Exception:
+                continue
+        if time.monotonic() >= fin:
+            raise ElementIntrouvableError(quoi)
+        time.sleep(0.25)
+
+
+def _un_seul(locator, quoi: str):
+    """Le `Locator` réduit à UN élément, ou une erreur : plusieurs éléments = ambiguïté, jamais « le premier »."""
+    n = locator.count()
+    if n > 1:
+        raise ElementIntrouvableError(f"{quoi} est ambigu : {n} éléments répondent — cliquer le premier pourrait agir ailleurs "
+                                      "sans erreur. Précisez la cible.")
+    return locator.first
+
+
+def _base_de_l_application(context) -> str:
+    base = (getattr(context, "web_url", "") or "").rstrip("/")
+    if not base:
+        raise NavigationImpossibleError(
+            "URL de l'application introuvable (WEB_URL absent) — vérifiez la connexion du projet (adresse renseignée dans ses réglages).")
+    return base
+
+
+def ouvrir_page(context, chemin: str) -> None:
+    """Ouvre `chemin` RELATIF à l'URL du projet. Une URL absolue n'est acceptée que sur la MÊME origine : ce step ne sort pas de
+    l'application testée. Sur une page vide, connecte d'abord le navigateur (F21 : sinon on ouvrirait la page de connexion)."""
+    base = _base_de_l_application(context)
+    chemin = (chemin or "").strip()
+    if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", chemin):
+        if urlparse(chemin).netloc != urlparse(base).netloc:
+            raise NavigationImpossibleError(
+                f"« {chemin} » n'est pas relatif à l'application ({base}) : ce step n'ouvre que des pages du projet.")
+        cible = chemin
+    else:
+        cible = f"{base}/{chemin.lstrip('/')}"
+    page = context.page
+    if page.url in ("about:blank", ""):
+        page.goto(base, wait_until="domcontentloaded")
+        connexion_web_utilisateur(context)
+    page.goto(cible, wait_until="domcontentloaded")
+
+
+def _texte_visible(page, texte: str):
+    return page.get_by_text(texte).filter(visible=True)
+
+
+def _page_lisible(page) -> None:
+    """Refuse de constater une ABSENCE sur une page qui n'a rien rendu (`about:blank`, corps vide)."""
+    if page.url in ("about:blank", ""):
+        raise NavigationImpossibleError("Aucune page n'est ouverte : rien ne peut être constaté (ouvrez une page d'abord).")
+    try:
+        page.wait_for_load_state("load", timeout=_ATTENDRE_UNIVERSELLE_MS)
+        page.wait_for_load_state("networkidle", timeout=2000)
+    except PlaywrightTimeout:
+        pass  # une application qui ne se tait jamais (polling) : on juge ce qui est rendu
+    if not (page.locator("body").inner_text() or "").strip():
+        raise NavigationImpossibleError(
+            f"La page {page.url} est vide : une absence de texte n'y prouve rien (la page n'a peut-être pas fini de se rendre).")
+
+
+@constat
+def page_affiche_texte(page, texte: str) -> None:
+    try:
+        expect(_texte_visible(page, texte).first).to_be_visible(timeout=_ATTENDRE_UNIVERSELLE_MS)
+    except AssertionError as exc:
+        raise AssertionError(f"Le texte « {texte} » n'est pas affiché sur {page.url}.") from exc
+
+
+@constat
+def page_n_affiche_pas_texte(page, texte: str) -> None:
+    _page_lisible(page)
+    try:
+        expect(_texte_visible(page, texte)).to_have_count(0, timeout=_ATTENDRE_UNIVERSELLE_MS)
+    except AssertionError as exc:
+        raise AssertionError(f"Le texte « {texte} » est affiché sur {page.url}, alors qu'il ne devrait pas l'être.") from exc
+
+
+@constat
+def url_contient(page, fragment: str) -> None:
+    try:
+        expect(page).to_have_url(re.compile(re.escape(fragment)), timeout=_ATTENDRE_UNIVERSELLE_MS)
+    except AssertionError as exc:
+        raise AssertionError(f"L'URL courante ({page.url}) ne contient pas « {fragment} ».") from exc
+
+
+def _tableau(page, nom: str):
+    """Le tableau nommé : rôle ARIA (nom accessible : légende, `aria-label`, `aria-labelledby`), puis structure HTML — le premier
+    `<table>` qui SUIT un titre ou une légende portant ce texte. Aucun sélecteur propre à une application."""
+    candidats = [
+        page.get_by_role("table", name=nom),
+        page.get_by_role("grid", name=nom),
+        page.get_by_text(nom, exact=True).filter(visible=True).first.locator("xpath=following::table[1]"),
+    ]
+    trouve = _attendre_le_nombre(candidats, f"Aucun tableau « {nom} » sur {page.url} (ni par son nom accessible, ni sous un titre "
+                                            "portant ce texte).")
+    return _un_seul(trouve, f"Le tableau « {nom} »")
+
+
+def _lignes_de_donnees(page, tableau):
+    """Les lignes qui portent des CELLULES — l'en-tête (cellules `columnheader`) n'est pas une ligne de données."""
+    return tableau.get_by_role("row").filter(has=page.locator(_CELLULES))
+
+
+@constat
+def tableau_contient_ligne(page, nom: str, a: str, b: str) -> None:
+    lignes = _lignes_de_donnees(page, _tableau(page, nom)).filter(has_text=a).filter(has_text=b)
+    try:
+        expect(lignes.first).to_be_visible(timeout=_ATTENDRE_UNIVERSELLE_MS)
+    except AssertionError as exc:
+        raise AssertionError(f"Le tableau « {nom} » ne contient aucune ligne avec « {a} » et « {b} ».") from exc
+
+
+@constat
+def tableau_compte_lignes(page, nom: str, attendu) -> None:
+    lignes = _lignes_de_donnees(page, _tableau(page, nom))
+    try:
+        expect(lignes).to_have_count(int(attendu), timeout=_ATTENDRE_UNIVERSELLE_MS)
+    except AssertionError as exc:
+        raise AssertionError(f"Le tableau « {nom} » compte {lignes.count()} ligne(s) de données, pas {attendu}.") from exc
+
+
+def _cible_cliquable(zone, libelle: str, quoi: str):
+    """Dans `zone` : un bouton, sinon un lien, sinon un texte exact de ce libellé — jamais « le premier » si plusieurs répondent."""
+    for candidat in (zone.get_by_role("button", name=libelle, exact=True), zone.get_by_role("link", name=libelle, exact=True),
+                     zone.get_by_text(libelle, exact=True)):
+        if candidat.count() > 0:
+            return _un_seul(candidat, f"« {libelle} » dans {quoi}")
+    raise ElementIntrouvableError(f"« {libelle} » (bouton, lien ou texte) est introuvable dans {quoi}.")
+
+
+def cliquer_dans_ligne(page, libelle: str, texte: str) -> None:
+    lignes = page.get_by_role("row").filter(has_text=texte).filter(visible=True)
+    trouve = _attendre_le_nombre([lignes], f"Aucune ligne ne contient « {texte} » sur {page.url}.")
+    ligne = _un_seul(trouve, f"La ligne contenant « {texte} »")
+    _cible_cliquable(ligne, libelle, f"la ligne contenant « {texte} »").click(timeout=_ATTENDRE_UNIVERSELLE_MS)
+
+
+# ── Boîtes de dialogue ──────────────────────────────────────────────────────────────────────────────────────
+
+
+def _politique_dialogue(context) -> dict:
+    etat = getattr(context, "_tp_politique_dialogue", None)
+    if etat is None:
+        etat = context._tp_politique_dialogue = {"action": "refuser", "installe": False}
+        context.dialogues = []
+    return etat
+
+
+def _installer_le_gestionnaire_de_dialogue(context, etat: dict) -> None:
+    if etat["installe"]:
+        return
+
+    def gerer(dialogue):
+        action = etat["action"]
+        context.dialogues.append({"type": dialogue.type, "message": dialogue.message, "action": action})
+        etat["action"] = "refuser"   # une décision vaut pour UNE boîte ; ensuite, le défaut de Playwright (refuser)
+        try:
+            dialogue.accept() if action == "accepter" else dialogue.dismiss()
+        except Exception:
+            pass
+
+    context._browser_context.on("dialog", gerer)
+    etat["installe"] = True
+
+
+def decider_dialogue(context, accepter: bool) -> None:
+    """Accepte ou refuse une boîte de dialogue.
+
+    - une MODALE ARIA (`role=dialog|alertdialog`, `<dialog open>`) déjà affichée : on clique son bouton de confirmation ou d'annulation ;
+    - sinon la boîte NATIVE (`alert`/`confirm`/`prompt`) : Playwright la REFUSE d'office dès qu'elle s'ouvre, donc la décision doit être
+      prise AVANT l'action qui l'ouvre. Ce step la prépare pour la PROCHAINE boîte native ; placé après le clic, il serait sans effet.
+    """
+    page = context.page
+    modales = page.locator(_MODALES_ARIA).filter(visible=True)
+    if modales.count() > 0:
+        modale = modales.last
+        bouton = modale.get_by_role("button", name=_BOUTON_ACCEPTER if accepter else _BOUTON_REFUSER)
+        if bouton.count() == 0:
+            raise ElementIntrouvableError(
+                f"La boîte de dialogue affichée sur {page.url} n'a pas de bouton "
+                f"« {'confirmer' if accepter else 'annuler'} » reconnaissable (ok, oui, confirmer, valider… / annuler, non, fermer…).")
+        _un_seul(bouton, "Le bouton de la boîte de dialogue").click(timeout=_ATTENDRE_UNIVERSELLE_MS)
+        return
+    etat = _politique_dialogue(context)
+    _installer_le_gestionnaire_de_dialogue(context, etat)
+    etat["action"] = "accepter" if accepter else "refuser"
+
+
+# ── Téléchargements ─────────────────────────────────────────────────────────────────────────────────────────
+
+
+def telecharger_via(context, libelle: str) -> None:
+    import tempfile
+    from pathlib import Path
+
+    page = context.page
+    cible = _cible_cliquable(page, libelle, f"la page {page.url}")
+    with page.expect_download(timeout=_TELECHARGEMENT_MS) as info:
+        cible.click(timeout=_ATTENDRE_UNIVERSELLE_MS)
+    telechargement = info.value
+    chemin = Path(tempfile.mkdtemp(prefix="tp_dl_")) / telechargement.suggested_filename
+    telechargement.save_as(str(chemin))
+    context.dernier_telechargement = {"nom": telechargement.suggested_filename, "chemin": str(chemin)}
+
+
+def _dernier_telechargement(context) -> dict:
+    telechargement = getattr(context, "dernier_telechargement", None)
+    if not telechargement:
+        raise ElementIntrouvableError(
+            "Aucun fichier téléchargé dans ce scénario : ajoutez d'abord l'étape « je télécharge le fichier via … ».")
+    return telechargement
+
+
+def _texte_du_fichier(chemin: str) -> str:
+    from pathlib import Path
+
+    fichier = Path(chemin)
+    if fichier.suffix.lower() == ".pdf":
+        try:
+            import pdfplumber
+        except ImportError as exc:  # pragma: no cover - dépendance déclarée du projet
+            raise ElementIntrouvableError("Lire un PDF exige `pdfplumber`, absent de cet environnement.") from exc
+        with pdfplumber.open(str(fichier)) as pdf:
+            texte = "\n".join((p.extract_text() or "") for p in pdf.pages)
+        if not texte.strip():
+            raise ElementIntrouvableError(f"Aucun texte extractible du PDF « {fichier.name} » (image scannée ?) : rien ne peut être constaté.")
+        return texte
+    if fichier.suffix.lower() not in (".csv", ".txt", ".tsv", ".json", ".xml", ".html", ".md", ".log"):
+        raise ElementIntrouvableError(f"Le format « {fichier.suffix or 'sans extension'} » de « {fichier.name} » n'est pas lisible "
+                                      "(CSV, TXT, PDF et formats texte seulement).")
+    return fichier.read_bytes().decode("utf-8-sig", errors="replace")
+
+
+@constat
+def fichier_telecharge_se_nomme(context, motif: str) -> None:
+    import fnmatch
+
+    nom = _dernier_telechargement(context)["nom"]
+    if not fnmatch.fnmatchcase(nom.lower(), motif.strip().lower()):
+        raise AssertionError(f"Le fichier téléchargé se nomme « {nom} », pas « {motif} ».")
+
+
+@constat
+def fichier_telecharge_contient(context, texte: str) -> None:
+    telechargement = _dernier_telechargement(context)
+    contenu = " ".join(_texte_du_fichier(telechargement["chemin"]).split())
+    if " ".join(texte.split()) not in contenu:
+        raise AssertionError(f"Le fichier téléchargé « {telechargement['nom']} » ne contient pas « {texte} ».")
+
+
+# ── Cadres (iframes) ────────────────────────────────────────────────────────────────────────────────────────
+
+
+def cadre(page, nom: str):
+    """Le cadre (`Frame` Playwright) nommé par son `name`, son `title` ou son `id` — les helpers de saisie et de clic s'y appliquent
+    tels quels (un `Frame` expose les mêmes `locator`, `get_by_*`, `evaluate`). Plusieurs cadres du même nom : ambiguïté, erreur."""
+    q = json.dumps(nom)
+    candidats = [page.locator(f"iframe[name={q}]"), page.locator(f"iframe[title={q}]"), page.locator(f"iframe[id={q}]")]
+    trouve = _attendre_le_nombre(candidats, f"Aucun cadre « {nom} » (attribut name, title ou id) sur {page.url}.")
+    balise = _un_seul(trouve, f"Le cadre « {nom} »")
+    frame = balise.element_handle(timeout=_ATTENDRE_UNIVERSELLE_MS).content_frame()
+    if frame is None:
+        raise ElementIntrouvableError(f"Le cadre « {nom} » n'a pas encore de contenu sur {page.url}.")
+    return frame
+
+
+# ── Onglets et réseau ───────────────────────────────────────────────────────────────────────────────────────
+
+
+@constat
+def nouvel_onglet_sur(context, fragment: str) -> None:
+    """Un onglet AUTRE que l'onglet courant a l'URL cherchée ; il devient l'onglet courant (les steps suivants s'y appliquent)."""
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    courant = context.page
+    while True:
+        for onglet in context._browser_context.pages:
+            if onglet is not courant and fragment in onglet.url:
+                onglet.wait_for_load_state("domcontentloaded")
+                context.onglet_precedent = courant
+                context.page = onglet
+                return
+        if time.monotonic() >= fin:
+            urls = [p.url for p in context._browser_context.pages if p is not courant]
+            raise AssertionError(f"Aucun nouvel onglet ne s'est ouvert sur « {fragment} » (autres onglets : {urls or 'aucun'}).")
+        courant.wait_for_timeout(200)
+
+
+def enregistrer_les_reponses_reseau(context) -> None:
+    """Consigne `{methode, url, statut}` de chaque réponse de TOUS les onglets du scénario (`context.reponses_reseau`, plafonné).
+    Posé par `environment.before_scenario` : il faut observer AVANT l'action, une réponse passée ne se rejoue pas."""
+    context.reponses_reseau = []
+
+    def _on_response(reponse):
+        try:
+            liste = context.reponses_reseau
+            liste.append({"methode": reponse.request.method, "url": reponse.url, "statut": int(reponse.status)})
+            if len(liste) > _PLAFOND_REPONSES:
+                del liste[: len(liste) - _PLAFOND_REPONSES]
+        except Exception:
+            pass  # jamais fatal : l'absence d'enregistrement se voit au constat (« aucune requête observée »)
+
+    try:
+        context._browser_context.on("response", _on_response)
+    except Exception:
+        pass
+
+
+def _url_correspond(motif: str, url: str) -> bool:
+    import fnmatch
+
+    return fnmatch.fnmatchcase(url, motif) if "*" in motif else motif in url
+
+
+@constat
+def requete_repond(context, requete: str, code) -> None:
+    """La DERNIÈRE réponse à `<MÉTHODE> <motif d'URL>` porte le code attendu. Le motif est un fragment d'URL ou un motif avec `*`."""
+    methode, _, motif = (requete or "").strip().partition(" ")
+    methode, motif = methode.upper(), motif.strip()
+    if methode not in _METHODES_HTTP or not motif:
+        raise ElementIntrouvableError(
+            f"Requête « {requete} » mal écrite : attendu « <méthode> <motif d'URL> » (ex. « POST /api/tickets »).")
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    while True:
+        vues = [r for r in getattr(context, "reponses_reseau", []) if r["methode"] == methode and _url_correspond(motif, r["url"])]
+        if vues or time.monotonic() >= fin:
+            break
+        context.page.wait_for_timeout(200)
+    if not vues:
+        raise AssertionError(f"Aucune requête « {methode} {motif} » n'a été observée pendant ce scénario.")
+    dernier = vues[-1]
+    if dernier["statut"] != int(code):
+        raise AssertionError(f"La requête « {methode} {motif} » a répondu {dernier['statut']}, pas {code} ({dernier['url']}).")
