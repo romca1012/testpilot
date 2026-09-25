@@ -265,9 +265,6 @@ def _capturer_reponse_formulaire(context):
     # texte de l'agent. Le cas 99 recevait un `HTTP 500` (corps HTML, donc pas de JSON) que cette
     # capture ignorait : l'outil concluait à un « refus silencieux » alors que le serveur avait planté.
     context.reponses_formulaire = []
-    # Lot 07d : réponses réseau, boîtes de dialogue et onglets du scénario (tous onglets), numérotés — il faut observer AVANT l'action.
-    from _base_helpers import installer_les_observateurs
-    installer_les_observateurs(context)
 
     def _on_response(response):
         try:
@@ -373,6 +370,9 @@ def before_scenario(context, scenario):
         use_fixture(odoo_session, context)
     use_fixture(playwright_browser, context)
     _capturer_reponse_formulaire(context)
+    # Lot 07d : réponses réseau, boîtes de dialogue et onglets du scénario (tous onglets), numérotés — il faut observer AVANT l'action.
+    from _base_helpers import installer_les_observateurs
+    installer_les_observateurs(context)
     _marquer_si_scenario_negatif(context, scenario)
 
 

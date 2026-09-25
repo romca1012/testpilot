@@ -50,7 +50,7 @@ de steps réelle) :
 Aucun appel LLM dans ce lot. Les deux exécutions Behave du test de bout en bout durent ~4 min 40 s au total en local.
 
 **Taille des prompts** (caractères, fins de ligne normalisées, `origin/master` → ce lot ; Règle 8 « boîte de dialogue native décidée AVANT l'action », demandée par le porteur) :
-`system_prompt.md` 25 261 → 26 409 (+1 148, +4,5 %) ; `correction_prompt.md` 5 548 → 6 304 (+756, +13,6 %) ; `repair_prompt.md` 6 018 → 6 733 (+715, +11,9 %). Ordre de grandeur : +290 tokens
+`system_prompt,md` 25 261 → 26 414 (+1 153  +4,6 %) ; `correction_prompt.md` 5 548 → 6 304 (+756, +13,6 %) ; `repair_prompt.md` 6 018 → 6 733 (+715, +11,9 %). Ordre de grandeur : +290 tokens
 sur le prompt système de chaque génération (mis en cache par le fournisseur) et ~+190 tokens sur chaque appel de correction ou de réparation — une fraction de centime par cas, très en deçà du plafond de 1 € du §9.
 Le coût de génération complet (`scripts/mesure_cout_cas.py`) n'a PAS été remesuré : il exige des appels LLM réels ; l'effet attendu sur le coût est négligeable, la mesure reste à faire au prochain lot qui lance une campagne.
 
