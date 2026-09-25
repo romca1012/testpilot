@@ -502,7 +502,7 @@ async function resultatAjoute() {
           <p v-if="detail?.run.verts_a_confirmer" class="mt-2 text-xs font-semibold text-warning" data-testid="verts-a-confirmer">
             dont {{ detail.run.verts_a_confirmer }} à confirmer
           </p>
-          <p v-if="detail?.run.strict" class="mt-1 text-xs text-muted-foreground">Campagne stricte : sans repli ni second essai.</p>
+          <p v-if="detail?.run.strict" class="mt-1 text-xs text-muted-foreground">Campagne stricte : sans repli, second essai ni réparation.</p>
           <p class="mt-3 text-xs text-muted-foreground">
             {{ dist.untested }} / {{ total }} non testés ({{ pctNonTestes }} %).
           </p>

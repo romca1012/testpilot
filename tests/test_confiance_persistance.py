@@ -268,3 +268,49 @@ def test_les_executions_du_cas_portent_la_reserve(conn, client):
     lignes = client.get(f"/api/executions?limit=10").json()
 
     assert lignes and lignes[0]["a_confirmer"] is True and lignes[0]["confiance"] == "auto_resolue"
+
+
+# ── D5 (complément) : une campagne stricte ne répare JAMAIS ──────────────────────────────────────────────────────
+
+
+def _lancer_run_execution(conn, monkeypatch, cas, **options):
+    """Un `run_execution` dont le run réel échoue ; espionne la boucle de réparation (`repair_service.run_repair_loop`)."""
+    from testpilot.api.services import repair_service
+    from testpilot.execution.executor import ExecutionOutcome
+
+    cid, vid = cas[0]
+    echec = ExecutionOutcome(module_name="cas0", dry_run_passed=True,
+                             real_run=BehaveResult(success=False, returncode=1, failed=1,
+                                                   failures=[BehaveFailure("S", "Quand", "unknown", "TypeError")],
+                                                   scenarios=[BehaveScenario("S", "failed")]))
+    reparations = []
+
+    class _Session:
+        attempts, outcome, reason = 0, "aucune", "espion"
+
+    monkeypatch.setattr(run_service, "_assurer_script_sur_disque", lambda *a, **k: None)
+    monkeypatch.setattr(run_service, "BehaveRunner", lambda **k: object())
+    monkeypatch.setattr(run_service, "resolve_connection", lambda *a: {})
+    monkeypatch.setattr(run_service, "resolve_project_id", lambda *a: None)
+    monkeypatch.setattr(run_service, "resolve_connector_type", lambda *a: "odoo")
+    monkeypatch.setattr(run_service, "_execute_and_persist", lambda *a, **k: echec)
+    monkeypatch.setattr(run_service, "_connector_for", lambda *a, **k: None)
+    monkeypatch.setattr(repair_service, "run_repair_loop",
+                        lambda *a, **k: reparations.append(k) or _Session())
+    eid = ExecutionRepo(conn).create(test_case_id=cid, version_id=vid)
+
+    run_service.run_execution(eid, "cas0", cid, vid, **options)
+
+    return reparations
+
+
+def test_falsifiable_un_echec_en_campagne_stricte_ne_declenche_jamais_de_reparation(conn, monkeypatch):
+    """Le budget de réparation par défaut est POSITIF : hors strict l'échec est réparé (précondition prouvée), en strict jamais."""
+    assert config.REPAIR_BUDGET_DEFAULT > 0, "précondition : sans budget positif ce test ne prouverait rien"
+
+    _, cas, _ = _decor(conn, 1)
+    hors_strict = _lancer_run_execution(conn, monkeypatch, cas)
+    assert len(hors_strict) == 1, "précondition : hors strict, l'échec déclenche la boucle de réparation"
+
+    en_strict = _lancer_run_execution(conn, monkeypatch, cas, strict=True)
+    assert en_strict == [], "aucune réécriture par LLM après un échec en campagne stricte"

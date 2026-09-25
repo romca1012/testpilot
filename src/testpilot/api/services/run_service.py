@@ -231,9 +231,12 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
         # détecté) par « erreur technique » — la réparation est un bonus après coup, jamais une
         # condition de validité du verdict original.
         try:
-            if not qualification:
+            # Ni qualification ni campagne STRICTE ne réparent (D5, complément du 2026-09-25) : le mode strict mesure le
+            # test TEL QU'ÉCRIT — aucune intervention, humaine ou par modèle, entre la génération et le verdict. Une
+            # réparation réécrit le test avec un LLM : un vert obtenu après elle n'aurait plus rien de strict.
+            if not qualification and not strict:
                 _maybe_repair(conn, case_id=case_id, version_id=version_id, module_name=module_name,
-                              outcome=outcome, runner=runner, triggered_by=triggered_by, strict=strict)
+                              outcome=outcome, runner=runner, triggered_by=triggered_by)
         except Exception:
             logger.exception("[run] réparation de l'exécution %s en échec — le verdict "
                              "d'origine reste acquis, non touché", execution_id)
@@ -315,7 +318,7 @@ def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str
 
 
 def _maybe_repair(conn, *, case_id: int, version_id: int, module_name: str, outcome, runner,
-                  triggered_by: str = "", strict: bool = False):
+                  triggered_by: str = ""):
     """Répare si le gate l'a autorisé. Chaque tentative rejouée = une nouvelle EXÉCUTION (B).
 
     `triggered_by` (migration 32) : l'acteur du run d'origine, reporté sur chaque tentative — une
@@ -328,9 +331,7 @@ def _maybe_repair(conn, *, case_id: int, version_id: int, module_name: str, outc
         eid = ExecutionRepo(conn).create(test_case_id=case_id, version_id=new_version_id,
                                          trigger="rerun", cible=cible, triggered_by=triggered_by)
         try:
-            # La campagne stricte reste stricte pendant la réparation : ni retry ni repli LLM sur le rejeu.
-            return _execute_and_persist(conn, eid, case_id, module_name, runner,
-                                        **({'strict': True} if strict else {}))
+            return _execute_and_persist(conn, eid, case_id, module_name, runner)
         except Exception:
             # Cette ligne d'exécution existe déjà en base (créée juste au-dessus) : sans ceci,
             # un plantage avant sa finalisation la laisserait « not_executed » pour toujours — un
