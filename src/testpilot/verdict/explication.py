@@ -21,7 +21,10 @@ from testpilot import config
 from testpilot.guardrails.cost_tracker import CostTracker
 from testpilot.llm.adapter import LLMAdapter
 from testpilot.verdict import defect_taxonomy as dt
-from testpilot.verdict.status import EXEC_BLOCKED, GROUND_TRUTH_UI_ONLY, CaseVerdict
+from testpilot.verdict.status import (
+    CONFIANCE_APRES_RETRY, CONFIANCE_AUTO_RESOLUE, EXEC_BLOCKED, EXEC_SUCCESS, FUNC_CONFORME,
+    GROUND_TRUTH_UI_ONLY, CaseVerdict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,41 @@ _NOTE_BLOQUE = (
 _NOTE_AUCUN_CONSTAT = (
     "Ce test est allé au bout, mais aucune vérification ne s'est exécutée : rien n'a été constaté sur "
     "l'application. Ce n'est pas une preuve qu'elle est conforme — le test est à revoir, puis à relancer.")
+
+# Notes DÉTERMINISTES (lot 05, D5), jamais confiées au LLM et ajoutées même quand il est indisponible : un « Réussi — à
+# confirmer » doit toujours dire POURQUOI il est à confirmer (quel élément a été retrouvé par repli, ou le second essai).
+_NOTE_AUTO_RESOLUE = (
+    "Réussi, mais à confirmer : {elements} n'a pas été trouvé tel quel sur l'écran et a été retrouvé automatiquement "
+    "parmi les éléments de la page — l'interface a peut-être changé.")
+_NOTE_AUTO_RESOLUE_SANS_NOM = (
+    "Réussi, mais à confirmer : un élément de l'écran n'a pas été trouvé tel quel et a été retrouvé automatiquement "
+    "parmi les éléments de la page — l'interface a peut-être changé.")
+_NOTE_APRES_RETRY = (
+    "Réussi au second essai, après un dépassement de délai de l'interface : à confirmer, une instabilité est possible.")
+
+
+def note_confiance(verdict: CaseVerdict) -> str:
+    """La note qui explique un « Réussi — à confirmer » — vide pour un vert nominal et pour tout résultat non réussi.
+
+    Construite depuis les signaux du runtime portés par le verdict (`confiance`, `resolutions_adaptatives`), jamais depuis
+    le texte de l'agent. Les noms d'éléments viennent du sidecar des paliers.
+    """
+    if verdict.execution_status != EXEC_SUCCESS or verdict.functional_status != FUNC_CONFORME:
+        return ""
+    if verdict.confiance == CONFIANCE_APRES_RETRY:
+        return _NOTE_APRES_RETRY
+    if verdict.confiance != CONFIANCE_AUTO_RESOLUE:
+        return ""
+    idents = []
+    for scenario in verdict.scenarios:
+        for ident in getattr(scenario, "resolutions_adaptatives", []) or []:
+            if ident not in idents:
+                idents.append(ident)
+    if not idents:
+        return _NOTE_AUTO_RESOLUE_SANS_NOM
+    elements = ", ".join(f"« {i} »" for i in idents[:5]) + (" et d'autres" if len(idents) > 5 else "")
+    return _NOTE_AUTO_RESOLUE.format(elements=("l'élément " if len(idents) == 1 else "les éléments ") + elements)
+
 
 _SYSTEM = ("Tu expliques le résultat d'un test automatique à un lecteur qui ne code pas. "
            "Tu écris en français clair, jamais en langage technique : aucun nom de classe "
@@ -185,7 +223,8 @@ def propose_explication(verdict: CaseVerdict, *, module_name: str = "",
         data = _data_explication(llm, verdict, module_name, model, tracker)
     except Exception:
         logger.warning("[explication] appel IA impossible — commentaire vide", exc_info=True)
-        return "", 0.0
+        # La note de confiance est déterministe : elle survit à l'indisponibilité du modèle.
+        return note_confiance(verdict), 0.0
     texte = str(data.get("explication", "") or "").strip()
 
     # ⚠️ Citer ou replier (backlog 1.3) : technique Anthropic (guide « reduce hallucinations »),
@@ -208,4 +247,7 @@ def propose_explication(verdict: CaseVerdict, *, module_name: str = "",
         texte = f"{texte} {_NOTE_BLOQUE}"
     if texte and any(getattr(v, "cause_category", "") == "aucun_constat" for v in verdict.scenarios):
         texte = f"{texte} {_NOTE_AUCUN_CONSTAT}"
+    note = note_confiance(verdict)
+    if note:
+        texte = f"{texte} {note}".strip()
     return texte, round(tracker.total_cost, 6)

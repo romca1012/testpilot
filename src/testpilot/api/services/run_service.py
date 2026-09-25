@@ -17,6 +17,7 @@ from pathlib import Path
 from testpilot import config
 from testpilot.api.services import attachment_service, repair_service
 from testpilot.connectors.runtime_env import ConnexionIncomplete, cible_de, verifier_connexion
+from testpilot.execution.behave_result import MODE_STRICT_ENV
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.execution.executor import Executor
 from testpilot.store.db import get_initialized_db
@@ -199,7 +200,7 @@ def _assurer_script_sur_disque(conn, version_id: int, module_name: str) -> None:
 
 
 def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int, *,
-                  triggered_by: str = "", qualification: bool = False) -> None:
+                  triggered_by: str = "", qualification: bool = False, strict: bool = False) -> None:
     """Tâche de fond : lance Behave réel, calcule + persiste le verdict à deux axes.
 
     Puis tente une RÉPARATION si le gate l'a autorisée (décision 0014) : la boucle vit dans
@@ -220,7 +221,8 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
                               project_id=resolve_project_id(conn, case_id),
                               connector_type=resolve_connector_type(conn, case_id))
         outcome = _execute_and_persist(conn, execution_id, case_id, module_name, runner,
-                                       **({'qualification': True} if qualification else {}))
+                                       **({'qualification': True} if qualification else {}),
+                                       **({'strict': True} if strict else {}))
         # ⚠️ Isolé du verdict déjà persisté ci-dessus (audit 2026-08-07, défaut bloquant) : un
         # plantage PENDANT la réparation ne doit JAMAIS écraser un verdict RÉEL déjà écrit —
         # `ExecutionRepo.finalize` n'a aucune garde contre un second appel, donc laisser cette
@@ -231,7 +233,7 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
         try:
             if not qualification:
                 _maybe_repair(conn, case_id=case_id, version_id=version_id, module_name=module_name,
-                              outcome=outcome, runner=runner, triggered_by=triggered_by)
+                              outcome=outcome, runner=runner, triggered_by=triggered_by, strict=strict)
         except Exception:
             logger.exception("[run] réparation de l'exécution %s en échec — le verdict "
                              "d'origine reste acquis, non touché", execution_id)
@@ -250,7 +252,7 @@ def dossier_artefacts(execution_id: int) -> Path:
 
 
 def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str, runner,
-                         *, qualification: bool = False):
+                         *, qualification: bool = False, strict: bool = False):
     """Un run réel + son verdict persisté. `outcome.execution_id` porte la ligne concernée."""
     started = time.perf_counter()
     # ⚠️ Redésigné AVANT chaque run, pas une fois à la construction : le même runner sert les
@@ -294,6 +296,12 @@ def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str
         executor.max_retries = 0
         if hasattr(runner, 'connection'):
             runner.connection = {**runner.connection, 'TESTPILOT_QUALIFICATION': '1'}
+    if strict:
+        # Lot 05 (D5) : campagne STRICTE — ni retry ni résolution adaptative (le sous-processus lit `TP_MODE_STRICT`).
+        # Ce que la campagne mesure alors est la cascade déterministe seule : un champ renommé donne un `retest`.
+        executor.max_retries = 0
+        if hasattr(runner, 'connection'):
+            runner.connection = {**runner.connection, MODE_STRICT_ENV: '1'}
     outcome = executor.execute(module_name)
     duration = time.perf_counter() - started
     # Confiance du verdict selon le connecteur (étape 2.2) — déjà résolu plus haut pour scoper la
@@ -307,7 +315,7 @@ def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str
 
 
 def _maybe_repair(conn, *, case_id: int, version_id: int, module_name: str, outcome, runner,
-                  triggered_by: str = ""):
+                  triggered_by: str = "", strict: bool = False):
     """Répare si le gate l'a autorisé. Chaque tentative rejouée = une nouvelle EXÉCUTION (B).
 
     `triggered_by` (migration 32) : l'acteur du run d'origine, reporté sur chaque tentative — une
@@ -320,7 +328,9 @@ def _maybe_repair(conn, *, case_id: int, version_id: int, module_name: str, outc
         eid = ExecutionRepo(conn).create(test_case_id=case_id, version_id=new_version_id,
                                          trigger="rerun", cible=cible, triggered_by=triggered_by)
         try:
-            return _execute_and_persist(conn, eid, case_id, module_name, runner)
+            # La campagne stricte reste stricte pendant la réparation : ni retry ni repli LLM sur le rejeu.
+            return _execute_and_persist(conn, eid, case_id, module_name, runner,
+                                        **({'strict': True} if strict else {}))
         except Exception:
             # Cette ligne d'exécution existe déjà en base (créée juste au-dessus) : sans ceci,
             # un plantage avant sa finalisation la laisserait « not_executed » pour toujours — un
@@ -473,7 +483,7 @@ def _persist(conn, execution_id, case_id, verdict, outcome, duration, module_nam
         scenarios_passed=verdict.scenarios_passed, scenarios_failed=verdict.scenarios_failed,
         cost_usd=0.0, iterations=0, duration_seconds=duration,
         field_fallbacks=json.dumps(fallbacks, ensure_ascii=False) if fallbacks else "",
-        comment=commentaire)
+        comment=commentaire, confiance=verdict.confiance)
     # Les captures, elles, peuvent s'attacher APRÈS coup sans rompre l'invariant : elles vivent
     # dans `result_attachment`, une table à part (même exception déjà documentée pour
     # `attachments_path`, cf. `ResultRepo.ajouter_piece_jointe`).

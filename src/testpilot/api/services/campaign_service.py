@@ -81,10 +81,13 @@ def start_campaign(conn, run_id: int, *, triggered_by: str = "") -> dict:
         raise CampaignError("no_connection", err.message()) from err
 
     repo.set_status(run_id, "running", launched=True)
-    return {"run_id": run_id, "case_ids": case_ids, "triggered_by": triggered_by}
+    # `strict` (lot 05, D5) : transmis à la tâche de fond comme le reste — un job durable relancé après un redémarrage
+    # relit ces mêmes paramètres, et un job ancien (sans cette clé) retombe sur « non strict ».
+    return {"run_id": run_id, "case_ids": case_ids, "triggered_by": triggered_by,
+            "strict": bool(run.get("strict"))}
 
 
-def run_campaign(run_id: int, case_ids: list[int], *, triggered_by: str = "") -> None:
+def run_campaign(run_id: int, case_ids: list[int], *, triggered_by: str = "", strict: bool = False) -> None:
     """Tâche de fond : exécute les cas du run EN SÉQUENCE, puis clôt la campagne.
 
     Chaque cas est joué par le circuit existant (`run_service`), qui persiste le verdict à deux
@@ -116,7 +119,8 @@ def run_campaign(run_id: int, case_ids: list[int], *, triggered_by: str = "") ->
             conn.execute("UPDATE execution SET run_id=? WHERE id=?", (run_id, eid))
             conn.commit()
             try:
-                run_service.run_execution(eid, slug, cid, vid, triggered_by=triggered_by)
+                run_service.run_execution(eid, slug, cid, vid, triggered_by=triggered_by,
+                                          **({"strict": True} if strict else {}))
             except Exception:
                 # `run_execution` a son propre filet (statut technical_error) ; on protège quand
                 # même la boucle pour que les cas suivants soient joués.

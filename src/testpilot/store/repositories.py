@@ -1714,7 +1714,7 @@ class ExecutionRepo:
                  scenarios_total: int, scenarios_passed: int, scenarios_failed: int,
                  cost_usd: float, iterations: int, duration_seconds: float,
                  field_fallbacks: str = "", error_message: str = "",
-                 comment: str = "") -> int | None:
+                 comment: str = "", confiance: str = "nominale") -> int | None:
         """Clôt une exécution avec son verdict. Rend l'id de la ligne du registre (§A du plan
         « fiabiliser le verdict automatique », 2026-08-06) — `None` si l'exécution n'a pas sa
         place au registre (hors campagne).
@@ -1738,14 +1738,16 @@ class ExecutionRepo:
         appelants aurait demandé de n'en oublier aucun — et le jour où un troisième apparaît, le
         résultat manquerait au registre sans que rien ne le signale.
         """
+        # `confiance` (lot 05, D5) : comment le verdict a été obtenu — `nominale` pour le chemin d'échec (aucun scénario
+        # n'a tourné, donc aucun repli à signaler).
         self.conn.execute(
             "UPDATE execution SET execution_status=?, functional_status=?, scenarios_total=?,"
             " scenarios_passed=?, scenarios_failed=?, cost_usd=?, iterations=?,"
-            " duration_seconds=?, field_fallbacks=?, error_message=?"
+            " duration_seconds=?, field_fallbacks=?, error_message=?, confiance=?"
             " WHERE id=?",
             (execution_status, functional_status, scenarios_total, scenarios_passed,
              scenarios_failed, cost_usd, iterations, duration_seconds,
-             field_fallbacks, error_message, execution_id),
+             field_fallbacks, error_message, confiance, execution_id),
         )
         self.conn.commit()
         # Le déclencheur RÉEL (migration 32) prime : c'est lui qui a cliqué « Lancer », pas le
@@ -1843,7 +1845,7 @@ class RunRepo:
 
     def create(self, *, project_id: int, name: str, description: str = "", refs: str = "",
                selection_mode: str = "frozen", mode: str = MODE_AUTOMATIQUE,
-               case_ids: list[int] | None = None) -> int:
+               case_ids: list[int] | None = None, strict: bool = False) -> int:
         """Crée un run en BROUILLON (jamais lancé à la création — `0022` 8.c.1).
 
         `case_ids` n'est matérialisé que pour `frozen` : en mode `all`, la sélection est vivante,
@@ -1859,8 +1861,8 @@ class RunRepo:
         ts = now_iso()
         cur = self.conn.execute(
             "INSERT INTO test_run (project_id, name, description, refs, selection_mode, mode,"
-            " status, created_at) VALUES (?,?,?,?,?,?,'draft',?)",
-            (project_id, name, description, refs, selection_mode, mode, ts))
+            " status, created_at, strict) VALUES (?,?,?,?,?,?,'draft',?,?)",
+            (project_id, name, description, refs, selection_mode, mode, ts, 1 if strict else 0))
         run_id = int(cur.lastrowid)
         if selection_mode == "frozen":
             for cid in dict.fromkeys(case_ids or []):  # dédup en gardant l'ordre
@@ -1872,7 +1874,23 @@ class RunRepo:
 
     def get(self, run_id: int) -> dict | None:
         row = self.conn.execute("SELECT * FROM test_run WHERE id=?", (run_id,)).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        run = dict(row)
+        run["verts_a_confirmer"] = self.verts_a_confirmer(run_id)
+        return run
+
+    def verts_a_confirmer(self, run_id: int) -> int:
+        """Lot 05 (D5) : cas dont le DERNIER résultat de la campagne est un vert (réussi) obtenu par repli adaptatif ou
+        au second essai — c'est-à-dire un `passed` non nominal, à confirmer. Un vert nominal, un échec ou un résultat
+        manuel n'y comptent jamais."""
+        return int(self.conn.execute(
+            "SELECT COUNT(*) FROM test_result tr"
+            " JOIN (SELECT case_id, MAX(id) AS dernier FROM test_result WHERE run_id=?"
+            "       GROUP BY case_id) d ON d.dernier = tr.id"
+            " JOIN execution e ON e.id = tr.execution_id"
+            " WHERE e.execution_status='success' AND e.functional_status='conforme'"
+            "   AND e.confiance <> 'nominale'", (run_id,)).fetchone()[0])
 
     def list_for_project(self, project_id: int) -> list[dict]:
         # `tested_count` = cas DISTINCTS ayant un RÉSULTAT dans ce run — la base du « % de
@@ -1895,7 +1913,13 @@ class RunRepo:
             " (SELECT COUNT(*) FROM test_result tr"
             "    JOIN (SELECT case_id, MAX(id) AS dernier FROM test_result WHERE run_id=r.id"
             "          GROUP BY case_id) d ON d.dernier = tr.id"
-            "    WHERE tr.mode=?) AS manuel_count"
+            "    WHERE tr.mode=?) AS manuel_count,"
+            " (SELECT COUNT(*) FROM test_result tr"
+            "    JOIN (SELECT case_id, MAX(id) AS dernier FROM test_result WHERE run_id=r.id"
+            "          GROUP BY case_id) d ON d.dernier = tr.id"
+            "    JOIN execution e ON e.id = tr.execution_id"
+            "    WHERE e.execution_status='success' AND e.functional_status='conforme'"
+            "      AND e.confiance <> 'nominale') AS verts_a_confirmer"
             " FROM test_run r WHERE r.project_id=? ORDER BY r.id DESC",
             (MODE_MANUELLE, project_id)))
 
@@ -1910,7 +1934,13 @@ class RunRepo:
             " (SELECT COUNT(*) FROM test_result tr"
             "    JOIN (SELECT case_id, MAX(id) AS dernier FROM test_result WHERE run_id=r.id"
             "          GROUP BY case_id) d ON d.dernier = tr.id"
-            "    WHERE tr.mode=?) AS manuel_count"
+            "    WHERE tr.mode=?) AS manuel_count,"
+            " (SELECT COUNT(*) FROM test_result tr"
+            "    JOIN (SELECT case_id, MAX(id) AS dernier FROM test_result WHERE run_id=r.id"
+            "          GROUP BY case_id) d ON d.dernier = tr.id"
+            "    JOIN execution e ON e.id = tr.execution_id"
+            "    WHERE e.execution_status='success' AND e.functional_status='conforme'"
+            "      AND e.confiance <> 'nominale') AS verts_a_confirmer"
             " FROM test_run r WHERE r.plan_id=? ORDER BY r.id DESC",
             (MODE_MANUELLE, plan_id)))
 
@@ -2493,7 +2523,8 @@ class ResultRepo:
     # un axe recopié sur une ligne MANUELLE serait une mesure inventée. Sur un résultat manuel,
     # la jointure ne rend rien, et c'est exactement ce qu'on veut afficher : rien.
     _SELECT_RESULTAT = (
-        "SELECT tr.*, e.execution_status, e.functional_status, e.started_at AS execution_started_at"
+        "SELECT tr.*, e.execution_status, e.functional_status, e.confiance,"
+        " e.started_at AS execution_started_at"
         " FROM test_result tr LEFT JOIN execution e ON e.id = tr.execution_id")
 
     def dernier(self, run_id: int, case_id: int) -> dict | None:

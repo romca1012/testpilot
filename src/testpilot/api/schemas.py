@@ -566,6 +566,9 @@ class RunIn(BaseModel):
     selection_mode: str = "frozen"  # all | frozen
     mode: str = MODE_AUTOMATIQUE    # manuelle | automatique
     case_ids: list[int] = []
+    # Lot 05 (D5) : campagne STRICTE — jouée sans résolution adaptative ni retry (le vert ne peut venir que de la cascade
+    # déterministe). Faux par défaut : le comportement d'une campagne créée sans ce champ ne change pas.
+    strict: bool = False
 
 
 class RunCaseResult(BaseModel):
@@ -588,6 +591,10 @@ class RunCaseResult(BaseModel):
     result_at: str = ""
     # Voir `statut` de CaseSummary : calculé par le serveur, jamais redérivé à l'écran.
     statut: str = "untested"
+    # Lot 05 (D5) : comment le verdict a été obtenu, et « Réussi — à confirmer » (un `passed` non nominal), calculés par
+    # le serveur. `nominale` sur un résultat manuel ou ancien : rien n'a été mesuré, aucune réserve n'est inventée.
+    confiance: str = "nominale"
+    a_confirmer: bool = False
     # Qui SUPERVISE ce cas dans CETTE campagne (2026-09-14, traçabilité — inspiré de TestRail).
     # `""` = personne assigné, jamais un nom deviné. Vaut pour un cas manuel comme automatique.
     assigned_to: str = ""
@@ -650,6 +657,9 @@ class ResultOut(BaseModel):
     execution_id: int | None = None
     execution_status: str | None = None
     functional_status: str | None = None
+    # Lot 05 (D5) : voir `RunCaseResult.confiance`.
+    confiance: str = "nominale"
+    a_confirmer: bool = False
     # La preuve visuelle qui accompagne un constat humain (2026-08-05). Liste VIDE par défaut :
     # la pièce jointe est optionnelle, et un résultat sans fichier reste un résultat entier.
     attachments: list[AttachmentOut] = []
@@ -675,6 +685,9 @@ class RunSummary(BaseModel):
     # Parmi eux, ceux dont le dernier résultat a été joué À LA MAIN. Exposé dès maintenant pour
     # qu'un « 100 % » ne puisse jamais laisser croire que tout a été prouvé par la machine.
     manuel_count: int = 0
+    # Lot 05 (D5) : campagne stricte, et compteur « verts à confirmer » (réussis dont la confiance n'est pas nominale).
+    strict: bool = False
+    verts_a_confirmer: int = 0
     # Archivé = LECTURE SEULE (on ne relance plus). Distinct du statut : `completed` dit où en
     # est l'exécution, `is_archived` dit si on a le droit d'y toucher.
     is_archived: bool = False

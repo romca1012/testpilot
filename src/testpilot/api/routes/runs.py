@@ -33,7 +33,9 @@ def _summary(run: dict, case_count: int) -> schemas.RunSummary:
         manuel_count=run.get("manuel_count", 0),
         is_archived=bool(run.get("is_archived")),
         created_at=run.get("created_at", ""),
-        plan_id=run.get("plan_id"))
+        plan_id=run.get("plan_id"),
+        strict=bool(run.get("strict")),
+        verts_a_confirmer=run.get("verts_a_confirmer", 0))
 
 
 @router.post("/api/projects/{project_id}/runs", response_model=schemas.RunSummary, status_code=201,
@@ -64,7 +66,7 @@ def create_run(project_id: int, body: schemas.RunIn, conn=Depends(get_conn)):
     run_id = repo.create(project_id=project_id, name=body.name.strip(),
                          description=body.description, refs=body.refs,
                          selection_mode=body.selection_mode, mode=body.mode,
-                         case_ids=body.case_ids)
+                         case_ids=body.case_ids, strict=body.strict)
     return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
 
 
@@ -130,7 +132,7 @@ def get_run(run_id: int, conn=Depends(get_conn)):
     run = repo.get(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail=f"exécution {run_id} introuvable")
-    from testpilot.verdict.status import statut_de_test
+    from testpilot.verdict.status import a_confirmer, statut_de_test
 
     cases = []
     for c in repo.cases_with_results(run_id):
@@ -149,6 +151,8 @@ def get_run(run_id: int, conn=Depends(get_conn)):
             # ailleurs, calculée au même endroit. Un statut saisi À LA MAIN court-circuite la
             # dérivation : c'est le seul moyen d'intégrer un constat humain sans inventer de mesure.
             statut=statut_de_test(ex, fo, manuel),
+            confiance=res.get("confiance") or "nominale",
+            a_confirmer=a_confirmer(statut_de_test(ex, fo, manuel), res.get("confiance")),
             assigned_to=c.get("assigned_to", "") or ""))
     cibles = repo.cibles_du_run(run_id)
     return schemas.RunDetailOut(
@@ -189,15 +193,16 @@ def _cas_de_campagne(conn, run_id: int, case_id: int) -> dict:
 
 
 def _result_out(ligne: dict, pieces: list[dict] | None = None) -> schemas.ResultOut:
-    from testpilot.verdict.status import statut_de_test
+    from testpilot.verdict.status import a_confirmer, statut_de_test
 
+    statut = statut_de_test(ligne.get("execution_status"), ligne.get("functional_status"),
+                            ligne.get("statut_manuel") or "")
     return schemas.ResultOut(
+        confiance=ligne.get("confiance") or "nominale", a_confirmer=a_confirmer(statut, ligne.get("confiance")),
         attachments=[schemas.AttachmentOut(**{c: p[c] for c in
                                               ("id", "filename", "content_type", "size_bytes")})
                      for p in (pieces or [])],
-        id=ligne["id"], mode=ligne["mode"],
-        statut=statut_de_test(ligne.get("execution_status"), ligne.get("functional_status"),
-                              ligne.get("statut_manuel") or ""),
+        id=ligne["id"], mode=ligne["mode"], statut=statut,
         statut_manuel=ligne.get("statut_manuel", "") or "",
         comment=ligne.get("comment", "") or "",
         created_by=ligne.get("created_by", "") or "",
