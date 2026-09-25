@@ -25,6 +25,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"))
 
+import _base_helpers  # noqa: E402
 from _base_helpers import (  # noqa: E402
     ElementIntrouvableError, SELECTOR_TIER_FILE_ENV, locate_field, select_field_value,
 )
@@ -113,42 +114,50 @@ def test_locate_field_trouve_par_chaque_attribut_technique(
     quoi se comparer."""
     sidecar = tmp_path / "tiers.jsonl"
     monkeypatch.setenv(SELECTOR_TIER_FILE_ENV, str(sidecar))
+    # Lot 05 : la ligne du sidecar porte aussi le SCÉNARIO courant — posé ici explicitement, et attendu tel quel.
+    monkeypatch.setitem(_base_helpers._ETAT_CONSTAT, "scenario", "Scénario X")
     page = _FaussePage(selecteur_existant=selecteur)
 
     loc = locate_field(page, "product_sort_container")
 
     assert loc.count() > 0, f"non trouvé via {attribut}"
     lignes = [json.loads(l) for l in sidecar.read_text(encoding="utf-8").splitlines()]
-    assert lignes == [{"ident": "product_sort_container", "tier": tier_attendu}]
+    assert lignes == [{"ident": "product_sort_container", "tier": tier_attendu, "scenario": "Scénario X"}]
 
 
 def test_repli_sur_le_libelle_si_aucun_attribut_technique(tmp_path, monkeypatch):
     sidecar = tmp_path / "tiers.jsonl"
     monkeypatch.setenv(SELECTOR_TIER_FILE_ENV, str(sidecar))
+    # Lot 05 : la ligne du sidecar porte aussi le SCÉNARIO courant — posé ici explicitement, et attendu tel quel.
+    monkeypatch.setitem(_base_helpers._ETAT_CONSTAT, "scenario", "Scénario X")
     page = _FaussePage(via_libelle=True)
 
     loc = locate_field(page, "Trier par")
 
     assert loc.count() > 0
     lignes = [json.loads(l) for l in sidecar.read_text(encoding="utf-8").splitlines()]
-    assert lignes == [{"ident": "Trier par", "tier": "label"}]
+    assert lignes == [{"ident": "Trier par", "tier": "label", "scenario": "Scénario X"}]
 
 
 def test_repli_sur_le_placeholder_en_dernier_recours(tmp_path, monkeypatch):
     sidecar = tmp_path / "tiers.jsonl"
     monkeypatch.setenv(SELECTOR_TIER_FILE_ENV, str(sidecar))
+    # Lot 05 : la ligne du sidecar porte aussi le SCÉNARIO courant — posé ici explicitement, et attendu tel quel.
+    monkeypatch.setitem(_base_helpers._ETAT_CONSTAT, "scenario", "Scénario X")
     page = _FaussePage(via_placeholder=True)
 
     loc = locate_field(page, "Rechercher")
 
     assert loc.count() > 0
     lignes = [json.loads(l) for l in sidecar.read_text(encoding="utf-8").splitlines()]
-    assert lignes == [{"ident": "Rechercher", "tier": "placeholder"}]
+    assert lignes == [{"ident": "Rechercher", "tier": "placeholder", "scenario": "Scénario X"}]
 
 
 def test_locate_field_ne_consigne_rien_quand_rien_n_est_trouve(tmp_path, monkeypatch):
     sidecar = tmp_path / "tiers.jsonl"
     monkeypatch.setenv(SELECTOR_TIER_FILE_ENV, str(sidecar))
+    # Lot 05 : la ligne du sidecar porte aussi le SCÉNARIO courant — posé ici explicitement, et attendu tel quel.
+    monkeypatch.setitem(_base_helpers._ETAT_CONSTAT, "scenario", "Scénario X")
     page = _FaussePage()
 
     locate_field(page, "champ_fantome")
