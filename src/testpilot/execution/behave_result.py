@@ -271,12 +271,20 @@ def read_selector_tiers(path, limit: int = _MAX_SELECTOR_TIERS) -> list[dict]:
 
     Tolérant : une ligne illisible est sautée, pas propagée. Fichier absent = aucune résolution
     consignée (hors d'un run réel), jamais une erreur.
+
+    ⚠️ **Le plafond `limit` ne coupe JAMAIS une résolution ADAPTATIVE** (revue du lot 05, 2026-09-25). Il protège la
+    mémoire de dérive d'un run qui résoudrait des milliers de champs ; mais le sidecar reçoit une ligne par champ résolu,
+    nominal compris, et une feature de dix scénarios en écrit vite plus de 200. Couper au plafond faisait disparaître un repli
+    tardif : `verdict/status.py::qualifier_confiance` ne le voyait plus et présentait un vert obtenu par un LLM comme
+    NOMINAL — le faux vert que la confiance existe pour empêcher. Les lignes adaptatives au-delà du plafond sont donc
+    conservées (elles sont rares : ce sont des exceptions, pas la règle).
     """
     try:
         content = Path(path).read_text(encoding="utf-8")
     except (OSError, ValueError):
         return []
     resolutions: list[dict] = []
+    adaptatives_au_dela: list[dict] = []
     for line in content.splitlines():
         line = line.strip()
         if not line:
@@ -285,11 +293,13 @@ def read_selector_tiers(path, limit: int = _MAX_SELECTOR_TIERS) -> list[dict]:
             objet = json.loads(line)
         except ValueError:
             continue
-        if isinstance(objet, dict):
+        if not isinstance(objet, dict):
+            continue
+        if len(resolutions) < limit:
             resolutions.append(objet)
-            if len(resolutions) >= limit:
-                break
-    return resolutions
+        elif objet.get("tier") == PALIER_ADAPTATIF:
+            adaptatives_au_dela.append(objet)
+    return resolutions + adaptatives_au_dela
 
 
 # Sidecar des CONSTATS (lot 03, D3) — chaque `constater*` de la bibliothèque, réussi ou échoué. Mêmes

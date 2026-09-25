@@ -70,15 +70,22 @@ def note_confiance(verdict: CaseVerdict) -> str:
     """
     if verdict.execution_status != EXEC_SUCCESS or verdict.functional_status != FUNC_CONFORME:
         return ""
-    if verdict.confiance == CONFIANCE_APRES_RETRY:
-        return _NOTE_APRES_RETRY
-    if verdict.confiance != CONFIANCE_AUTO_RESOLUE:
+    if verdict.confiance not in (CONFIANCE_AUTO_RESOLUE, CONFIANCE_APRES_RETRY):
         return ""
     idents = []
+    adaptative = False
     for scenario in verdict.scenarios:
         for ident in getattr(scenario, "resolutions_adaptatives", []) or []:
             if ident not in idents:
                 idents.append(ident)
+        adaptative = adaptative or getattr(scenario, "confiance", "") == CONFIANCE_AUTO_RESOLUE
+    if verdict.confiance == CONFIANCE_APRES_RETRY:
+        # Le second essai prime dans l'étiquette, mais une résolution adaptative survenue pendant le rejeu reste dite (revue lot 05).
+        return _NOTE_APRES_RETRY + (" " + _note_resolutions(idents) if idents else "")
+    return _note_resolutions(idents)
+
+
+def _note_resolutions(idents: list[str]) -> str:
     if not idents:
         return _NOTE_AUTO_RESOLUE_SANS_NOM
     elements = ", ".join(f"« {i} »" for i in idents[:5]) + (" et d'autres" if len(idents) > 5 else "")

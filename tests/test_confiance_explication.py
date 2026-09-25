@@ -58,3 +58,15 @@ def test_sans_note_l_indisponibilite_du_modele_laisse_le_commentaire_vide(monkey
     monkeypatch.setattr(explication, "_data_explication", en_panne)
 
     assert explication.propose_explication(_verdict(st.CONFIANCE_NOMINALE), llm=object()) == ("", 0.0)
+
+
+def test_un_second_essai_n_efface_pas_une_resolution_adaptative_survenue_pendant_le_rejeu():
+    """Revue lot 05 : `apres_retry` prime dans l'étiquette, mais la note dit AUSSI quel élément a été retrouvé par repli."""
+    scenario = st.ScenarioVerdict("S1", st.EXEC_SUCCESS, st.FUNC_CONFORME, confiance=st.CONFIANCE_APRES_RETRY,
+                                  resolutions_adaptatives=["sujet_renomme"])
+    verdict = st.CaseVerdict(st.EXEC_SUCCESS, st.FUNC_CONFORME, scenarios=[scenario],
+                             confiance=st.CONFIANCE_APRES_RETRY)
+
+    note = explication.note_confiance(verdict)
+
+    assert "second essai" in note and "sujet_renomme" in note
