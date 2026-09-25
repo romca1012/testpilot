@@ -169,7 +169,7 @@ répétée (12), au même titre que les lots 01-03.
 | 03 | terminé (fusionné le 2026-09-24, revue faite) | 2026-09-24 | `docs/RAPPORT-LOT-03-2026-09-24.md` ; PR n° 9 (https://github.com/romca1012/testpilot/pull/9) ; mesures : `docs/mesures/lot03-constats-2026-09-24.md` |
 | 04 | terminé (fusionné le 2026-09-24, revue faite ; attendus à relire par le porteur) | 2026-09-24 | `docs/RAPPORT-LOT-04-2026-09-24.md` ; PR n° 10 (https://github.com/romca1012/testpilot/pull/10) ; mesures : `docs/mesures/banc-*-2026-09-24*.md` |
 | F17/F21 (mini-lot navigation, avant 07b-e) | terminé côté Community (fusionné le 2026-09-25, revue faite ; **F17 reste « en attente de validation Enterprise sur Sapian »** — pas « terminé » tant que le comportement Enterprise, dont le rôle `menuitem` des tuiles du home menu, n'est pas vérifié sur une vraie instance ; F21 corrigé) | 2026-09-25 | `docs/RAPPORT-F17-2026-09-25.md` ; PR n° 12 (https://github.com/romca1012/testpilot/pull/12) ; mesures : `docs/mesures/banc-17.0-2026-09-25-generation-apres-F17-F21.md` ; constat lié : F25 |
-| 05 | à faire | | |
+| 05 | terminé, en attente de fusion (revue faite, 1 bloquant corrigé ; **point à trancher : réparation automatique en mode strict**) | 2026-09-25 | `docs/RAPPORT-LOT-05-2026-09-25.md` |
 | 06 | à faire | | |
 | 07a | terminé (fusionné le 2026-09-24, revue faite) | 2026-09-24 | `docs/RAPPORT-LOT-07A-2026-09-24.md` ; PR n° 8 (https://github.com/romca1012/testpilot/pull/8) ; mesures : `docs/mesures/lot07a-connexion-execution-2026-09-24.md` |
 | 07b-e | à faire | | |
