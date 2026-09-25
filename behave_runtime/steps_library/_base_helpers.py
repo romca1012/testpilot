@@ -12,7 +12,7 @@ import sys
 import time
 import warnings
 import re
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, urlparse
 from dataclasses import asdict, dataclass
 from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect
 
@@ -547,10 +547,22 @@ def connexion_web_utilisateur(context, *, explicite: bool = False) -> None:
     context._tp_connecte = True
 
 
-def navigate(context, url):
-    full_url = url if url.startswith("http") else f"{context.odoo_url.rstrip('/')}{url}"
+def connecter_le_navigateur_si_page_vide(context) -> None:
+    """Connecte le NAVIGATEUR (UI) quand aucune page n'est encore ouverte (`about:blank`).
+
+    ⚠️ **F21 (génération réelle du banc, 2026-09-25).** Le step de Contexte « je suis authentifié en tant que… » ne connecte que
+    la session RPC, jamais le navigateur : un cas qui n'écrit pas « je me connecte avec mes identifiants utilisateur » arrive sur
+    une page vide. `navigate` gardait déjà ce cas ; `navigate_menu`, qui fait lui aussi un `goto`, ne le faisait pas — il ouvrait
+    donc la page de CONNEXION, où ni grille ni commutateur n'existe, et expirait après 23 s (4 cas sur 15 en génération 17.0,
+    après correction de F17). Une seule fonction pour tous les steps qui OUVRENT une page.
+    """
     if context.page.url in ("about:blank", ""):
         playwright_login(context)
+
+
+def navigate(context, url):
+    full_url = url if url.startswith("http") else f"{context.odoo_url.rstrip('/')}{url}"
+    connecter_le_navigateur_si_page_vide(context)
     # domcontentloaded (fiable) au lieu de networkidle : l'interaction suivante auto-attendra sa cible.
     context.page.goto(full_url, wait_until="domcontentloaded")
 
@@ -1859,14 +1871,72 @@ def no_error_with_keywords(page, keyword1, keyword2):
 _MAX_TENTATIVES_ADAPTATIVES_MENU = 3
 
 
+def _ouvrir_grille_applications(page, delai_ms: int = 15000) -> None:
+    """Rend visible la grille des applications (`.o_app`) après `goto(/web#action=menu)` — sur Enterprise ET Community.
+
+    ⚠️ **F17 (banc du lot 04, 2026-09-24).** `/web#action=menu` n'est « présent sur toute instance » qu'en apparence : c'est
+    la page du *home menu* d'**Enterprise**. Sur **Community** (16.0, 17.0 et 18.0, sondé), cette URL ne rend AUCUNE grille
+    (`.o_app` = 0) : 16.0 ouvre une boîte « Erreur Odoo », 17.0 et 18.0 « L'action 'menu' n'existe pas ». Le step attendait
+    15 s puis 8 s sur le nom de l'application, qui n'existe pas dans cette page : `TimeoutError` classé `wrong_navigation`.
+    Mesuré en génération réelle sur 17.0 : 8 cas sur 10 en erreur technique (I3 = 20 %).
+
+    Sur Community la grille vit dans un menu déroulant : `.o_navbar_apps_menu button`. Ce sélecteur n'existe PAS sur
+    Enterprise (le home menu y est une page) : il ne peut donc déclencher le repli que là où l'ancienne route ne marche pas.
+
+    Une SEULE attente sur « la grille OU le commutateur » (marge historique de 15 s, démarrage à froid compris — un premier
+    correctif qui sondait le commutateur après 2,5 s échouait en session froide, où le client web met plus longtemps à
+    démarrer) :
+    1. la grille apparaît : Enterprise, aucun clic, comportement d'origine ;
+    2. le commutateur apparaît : Community — on repart de `/web` (la boîte d'erreur modale de l'ancienne route recouvre le
+       commutateur : le clic expire), on le clique jusqu'à 4 fois (un clic donné avant que le client web ait attaché ses
+       gestionnaires n'ouvre rien) et on attend la grille ;
+    3. ni l'un ni l'autre : la recherche du texte de l'application échoue ensuite comme avant, avec son diagnostic habituel.
+    Best-effort : ne lève jamais.
+    """
+    def grille(timeout_ms: int) -> bool:
+        try:
+            page.wait_for_selector(".o_app", timeout=timeout_ms)
+            return True
+        except PlaywrightTimeout:
+            return False
+
+    try:
+        page.wait_for_selector(".o_app, .o_navbar_apps_menu button", timeout=delai_ms)
+    except PlaywrightTimeout:
+        return
+    try:
+        if page.locator(".o_app").count() > 0:  # Enterprise (ou page qui n'expose pas `locator`) : rien à faire
+            return
+    except Exception:
+        return
+    try:
+        origine = urlparse(page.url)
+        page.goto(f"{origine.scheme}://{origine.netloc}/web", wait_until="domcontentloaded")
+        commutateur = page.locator(".o_navbar_apps_menu button").first
+        commutateur.wait_for(state="visible", timeout=10000)
+    except Exception:
+        return
+    for _ in range(_ESSAIS_COMMUTATEUR):
+        try:
+            commutateur.click(timeout=3000)
+        except Exception:
+            return
+        if grille(2500):
+            return
+
+
+_ESSAIS_COMMUTATEUR = 4
+
+
 def navigate_menu(context, menu_path):
     """Un menu Odoo (ex. « Parc IT / Générer des équipements ») vit dans le BACK-OFFICE — jamais
     sur la racine `context.odoo_url`, qui rend le portail applicatif custom quand l'instance en a
     un (mesuré en RUN RÉEL, staging Sapian, 2026-09-18 : la page d'accueil est le « Portail des
     services SAPIAN », sans aucune trace de « Parc IT » — le clic expirait après 8 s à chercher un
-    texte absent de cet écran). `/web#action=menu` est le sélecteur d'applications STANDARD
-    d'Odoo — présent sur toute instance, jamais spécifique à Sapian — qui affiche réellement les
-    icônes d'applications (Discuss, Parc IT, Ventes…) dont ce step a besoin pour cliquer dessus.
+    texte absent de cet écran). `/web#action=menu` affiche le home menu d'**Enterprise** (icônes
+    d'applications : Discuss, Parc IT, Ventes…) ; sur **Community** cette route est vide et la grille
+    est dans le commutateur d'applications de la barre de navigation — voir
+    `_ouvrir_grille_applications` (F17, banc du lot 04) pour les deux cas.
 
     ⚠️ **Le séparateur de niveaux n'est jamais imposé nulle part** (aucune convention documentée
     dans le prompt de génération) — mesuré en RUN RÉEL (résultat #3, staging Sapian, 2026-09-18) :
@@ -1906,25 +1976,10 @@ def navigate_menu(context, menu_path):
     `resoudre_champ_adaptatif`) et on retente sur CE MÊME segment si c'est le cas — plafonné pour
     ne jamais boucler indéfiniment.
     """
+    connecter_le_navigateur_si_page_vide(context)  # F21 : sans session navigateur, /web#action=menu rend la page de connexion
     back_office_url = f"{context.odoo_url.rstrip('/')}/web#action=menu"
     context.page.goto(back_office_url, wait_until="domcontentloaded")
-    # ⚠️ **Même trou que celui corrigé sur les formulaires** (`_inspect_sync`, Sapian,
-    # 2026-09-23) : la grille d'applications (`.o_app`) n'existe PAS ENCORE à `domcontentloaded`.
-    # `networkidle` a été écartée ailleurs pour la même raison qu'ici (bus de longpolling Odoo) ;
-    # `wait_for_selector`, best-effort, ne bloque jamais une grille qui ne se chargerait jamais.
-    #
-    # ⚠️ **Marge relevée à 15 s après un premier correctif insuffisant** (Sapian, 2026-09-23) :
-    # une marge de 5 s avait d'abord semblé confirmée (mesuré : 0 tuile à `domcontentloaded`,
-    # 25 après ~2 s dans un test isolé) — mais le clic sur « Assistance » a continué à timeout de
-    # façon intermittente EN CAMPAGNE RÉELLE (plusieurs essais consécutifs sur la même cible).
-    # Remesuré ensuite, à froid, juste après une campagne : 5,23 s pour que le premier chargement
-    # de session rende « Assistance » attaché, contre <0,1 s sur les chargements suivants de LA
-    # MÊME session — un cold-start peut donc dépasser une marge de 5 s. Chargements suivants du
-    # même segment inchangés (retour quasi immédiat dès que la grille est déjà rendue une fois).
-    try:
-        context.page.wait_for_selector(".o_app", timeout=15000)
-    except PlaywrightTimeout:
-        pass
+    _ouvrir_grille_applications(context.page)
     for part in [p.strip() for p in re.split(r"[/>]", menu_path)]:
         if not part:
             continue

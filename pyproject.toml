@@ -83,9 +83,10 @@ testpaths = ["tests"]
 # réseau sortant) que le job `pytest -q` de la CI n'a pas (voir ci.yml, aucun `playwright install`).
 # Lancer explicitement `pytest -m conformance` (en local, ou depuis conformance.yml) les inclut —
 # la valeur passée en ligne de commande remplace celle-ci, elle ne s'y ajoute pas.
-addopts = "-m \"not conformance\""
+addopts = "-m \"not conformance and not banc\""
 markers = [
     "donnees_reelles: échappatoire explicite au garde-fou conftest.py qui interdit à un test de toucher le vrai data/ du poste — aucun test actuel n'en a besoin, à documenter s'il en naît un.",
     "sans_bouchon_auth: échappatoire explicite au bouchon d'authentification par défaut (conftest.py) — pour le seul test qui vérifie le 401 SANS AUCUNE session (test_comptes_utilisateurs.py).",
+    "banc: tests contre l'instance Odoo du banc de mesure (lot 04, `scripts/banc_init.sh`, port 18069) — ignorés si le banc ne répond pas ; exclus de `pytest -q` par défaut ; lancés par banc.yml.",
     "conformance: suite de conformité multi-application (2026-09-14) — vrai navigateur contre de VRAIES applications publiques, pour prouver que la bibliothèque de steps GÉNÉRIQUE marche au-delà d'une seule appli déjà corrigée. Exclue de `pytest -q` par défaut (voir addopts) ; lancée par conformance.yml.",
 ]

@@ -118,7 +118,10 @@ class _Clickable:
 class _FakePageMenu:
     def __init__(self):
         self.urls_visitees = []
-        self.url = "about:blank"
+        # Session navigateur DÉJÀ ouverte : ces tests portent sur le découpage du chemin de menu. Depuis F21,
+        # `navigate_menu` connecte d'abord une page vide (`about:blank`) — cas testé à part, dans
+        # `test_navigate_menu_communaute.py` ; les assertions ci-dessous sont inchangées.
+        self.url = "https://sapian.example.com/web#cids=1"
 
     def goto(self, url, **_k):
         self.urls_visitees.append(url)

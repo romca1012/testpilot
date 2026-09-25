@@ -256,3 +256,30 @@ def test_explorer_ecrit_ce_que_la_sonde_a_observe_et_marque_les_sauvegardes_auto
     ecrit = __import__("json").loads((tmp_path / "exploration.json").read_text(encoding="utf-8"))
     assert ecrit[0]["sonde"]["champs"]["numero_facture1"]["exemple_stable"] == "1"
     assert ecrit[0]["champs_de_la_page"] == ["numero_facture1"]
+
+
+# ── Crédits API épuisés (2026-09-25) : arrêt immédiat, essai non retenu ─────────────────────────────
+
+def test_un_manque_de_credits_arrete_la_campagne_et_n_est_pas_compte_comme_un_echec_de_l_agent():
+    appels = []
+
+    def lancer(case_id, iteration):
+        appels.append(case_id)
+        if case_id == 3:
+            return {"generation_error": "Error code: 400 - Your credit balance is too low to access the Anthropic API."}
+        return {"generation": {"cost_usd": 0.1}}
+
+    resultats, arret = script._boucle_essais((1, 2, 3, 4, 5), (1,), lancer, plafond=5.0)
+
+    assert appels == [1, 2, 3], "aucun appel supplémentaire une fois les crédits épuisés"
+    assert [r.get("generation", {}).get("cost_usd") for r in resultats] == [0.1, 0.1], "l'essai sans crédits n'est PAS retenu"
+    assert "crédits" in arret["raison"] and arret["prochain"]["case_id"] == 3
+
+
+def test_une_autre_erreur_de_generation_ne_coupe_pas_la_campagne():
+    def lancer(case_id, iteration):
+        return {"generation_error": "ValueError: réponse illisible"} if case_id == 2 else {"generation": {"cost_usd": 0.1}}
+
+    resultats, arret = script._boucle_essais((1, 2, 3), (1,), lancer, plafond=5.0)
+
+    assert arret is None and len(resultats) == 3

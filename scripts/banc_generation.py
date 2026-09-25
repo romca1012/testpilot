@@ -58,7 +58,7 @@ def metier_depuis_spec(texte: str) -> dict:
 
 # ── Réduction de campagne.json aux indicateurs de génération ─────────────────────────────────
 
-def statistiques_depuis_campagne(rapports: list[dict]) -> dict:
+def statistiques_depuis_campagne(rapports: list[dict], arret: dict | None = None) -> dict:
     """Réduit les essais d'une campagne à ce dont I3, I4 et I6 ont besoin.
 
     - `generes` : essais LANCÉS (un cas dont la génération échoue compte contre l'agent, pas hors échantillon) ;
@@ -78,7 +78,10 @@ def statistiques_depuis_campagne(rapports: list[dict]) -> dict:
         if exe and exe.get("functional_status") in ("conforme", "non_conforme"):
             exploitable += 1
     return {"generes": generes, "sans_erreur_technique": sans_erreur, "verdict_exploitable": exploitable,
-            "cout_total": round(cout, 6), "nouveaux_cas": generes}
+            "cout_total": round(cout, 6), "nouveaux_cas": generes,
+            # Campagne INCOMPLÈTE (plafond de coût, crédits épuisés) : les indicateurs portent sur les essais lancés
+            # seulement et ne sont jamais présentés comme ceux du corpus entier.
+            "interrompue": (arret or {}).get("raison", "")}
 
 
 def observations_depuis_campagne(rapports: list[dict], slug_de_cas: dict[int, str]) -> list[dict]:
@@ -150,6 +153,11 @@ def mesurer_generation(instance, attendus: dict, version: str, plafond_cout: flo
     proc = subprocess.run(commande, cwd=RACINE, env=env)
     fichier = RACINE / ".local-preview" / "qualification" / sortie / "campagne.json"
     rapports = json.loads(fichier.read_text(encoding="utf-8")) if fichier.exists() else []
+    arret_fichier = fichier.parent / "arret_plafond.json"
+    arret = json.loads(arret_fichier.read_text(encoding="utf-8")) if arret_fichier.exists() else None
     if proc.returncode not in (0, 3):
         raise RuntimeError(f"la campagne de génération a échoué (code {proc.returncode})")
-    return observations_depuis_campagne(rapports, slug_de_cas), statistiques_depuis_campagne(rapports)
+    stats = statistiques_depuis_campagne(rapports, arret)
+    if plafond_cout and stats["cout_total"] > plafond_cout:  # dépassement d'UN essai au plus : dit, jamais tu
+        stats["plafond_depasse_de"] = round(stats["cout_total"] - plafond_cout, 6)
+    return observations_depuis_campagne(rapports, slug_de_cas), stats
