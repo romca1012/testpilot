@@ -30,9 +30,13 @@ class _Commutateur:
     def wait_for(self, state=None, timeout=None):
         self._page.journal.append("attend_commutateur")
 
+    def get_attribute(self, nom):
+        return "true" if self._page.menu_ouvert else "false"
+
     def click(self, timeout=None):
         self._page.journal.append("clic_commutateur")
         self._page.clics += 1
+        self._page.menu_ouvert = not self._page.menu_ouvert  # BASCULE : un 2e clic referme
 
 
 class _Page:
@@ -40,11 +44,12 @@ class _Page:
 
     def __init__(self, *, enterprise=False, community=False, clics_necessaires=1):
         self.journal, self.clics, self.urls = [], 0, []
+        self.menu_ouvert = False
         self._enterprise, self._community, self._necessaires = enterprise, community, clics_necessaires
         self.url = "http://instance.example:8069/web#action=menu"
 
     def _grille(self):
-        return self._enterprise or (self._community and self.clics >= self._necessaires)
+        return self._enterprise or (self._community and self.menu_ouvert and self.clics >= self._necessaires)
 
     def wait_for_selector(self, selecteur, timeout=None):
         self.journal.append(f"attend[{selecteur}]_{timeout}")
@@ -78,26 +83,71 @@ def test_community_repart_de_la_racine_puis_clique_le_commutateur_jusqu_a_l_ouve
 
     H._ouvrir_grille_applications(page)
 
-    assert page.journal == [f"attend[{UNION}]_15000", "goto_racine", "attend_commutateur", "clic_commutateur",
-                            "attend[.o_app]_2500"]
+    assert page.journal == [f"attend[{UNION}]_15000", "attend[.o_app]_2000", "goto_racine", "attend_commutateur",
+                            "clic_commutateur", "attend[.o_app]_3000"]
     assert page.urls == ["http://instance.example:8069/web"], "la boîte d'erreur de l'ancienne route recouvre le commutateur"
 
 
 def test_community_un_clic_donne_trop_tot_n_ouvre_rien_on_reessaie():
-    """Mesuré sur 17.0 : le commutateur est visible avant que le client web ait attaché ses gestionnaires."""
-    page = _Page(community=True, clics_necessaires=3)
+    """Mesuré sur 17.0 : le commutateur est visible avant que le client web ait attaché ses gestionnaires.
 
-    H._ouvrir_grille_applications(page)
+    Modélisé : les clics 1 et 2 sont sans effet (`ignorer_clics`), le 3e ouvre le menu."""
+    class _Tardive(_Page):
+        def __init__(self):
+            super().__init__(community=True)
+            self.ignores = 2
+
+    page = _Tardive()
+    original = _Commutateur.click
+
+    def click(self, timeout=None):
+        if self._page.ignores > 0:
+            self._page.ignores -= 1
+            self._page.journal.append("clic_commutateur")
+            self._page.clics += 1
+            return
+        original(self, timeout)
+
+    _Commutateur.click = click
+    try:
+        H._ouvrir_grille_applications(page)
+    finally:
+        _Commutateur.click = original
 
     assert page.journal.count("clic_commutateur") == 3 and page._grille()
 
 
-def test_un_commutateur_qui_n_ouvre_rien_est_borne_et_ne_leve_jamais():
-    page = _Page(community=True, clics_necessaires=99)
+def test_un_menu_deja_ouvert_n_est_pas_referme_par_un_second_clic():
+    """Revue F17 : le commutateur est une bascule — si la grille tarde, on ATTEND au lieu de recliquer."""
+    page = _Page(community=True, clics_necessaires=1)
+    page.menu_ouvert = False
+    original = page.wait_for_selector
+    appels = {"n": 0}
+
+    def wait(selecteur, timeout=None):
+        if selecteur == ".o_app":
+            appels["n"] += 1
+            if appels["n"] < 3:  # 1er appel : grâce de 2 s ; 2e : après le clic — la grille tarde ; 3e : elle est là
+                raise PlaywrightTimeout("pas encore")
+            page.journal.append("attend[.o_app]_ok")
+            return
+        return original(selecteur, timeout)
+
+    page.wait_for_selector = wait
+    page.locator = lambda s: (types.SimpleNamespace(count=lambda: 0) if s == ".o_app" else _Commutateur(page))
 
     H._ouvrir_grille_applications(page)
 
-    assert page.journal.count("clic_commutateur") == H._ESSAIS_COMMUTATEUR
+    assert page.journal.count("clic_commutateur") == 1, "un menu déjà ouvert ne se reclique pas"
+
+
+def test_un_commutateur_qui_n_ouvre_rien_est_borne_et_ne_leve_jamais():
+    page = _Page(community=True, clics_necessaires=99)
+    page.menu_ouvert = True  # la bascule serait sinon refermée : on ne teste ici que le plafond de tentatives
+
+    H._ouvrir_grille_applications(page)
+
+    assert page.journal.count("clic_commutateur") <= H._ESSAIS_COMMUTATEUR
 
 
 def test_ni_grille_ni_commutateur_la_marge_historique_de_15_s_puis_on_rend_la_main():

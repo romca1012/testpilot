@@ -150,8 +150,12 @@ def mesurer_generation(instance, attendus: dict, version: str, plafond_cout: flo
                 "--expected-base-url", instance.url, "--max-cost-usd", str(plafond_cout)]
     env = {**os.environ, "TESTPILOT_CAMPAIGN_SOURCE_DATA": str(data_dir), "TESTPILOT_SECRET_KEY": cle}
     env.pop("TESTPILOT_DATA_DIR", None)
-    proc = subprocess.run(commande, cwd=RACINE, env=env)
     fichier = RACINE / ".local-preview" / "qualification" / sortie / "campagne.json"
+    # Un run précédent laisse ses résultats dans ce dossier (réutilisé) : un `arret_plafond.json` périmé ferait afficher
+    # « INCOMPLÈTE » à tort, un `campagne.json` périmé ferait passer un plantage pour un run complet.
+    for reste in (fichier, fichier.parent / "arret_plafond.json"):
+        reste.unlink(missing_ok=True)
+    proc = subprocess.run(commande, cwd=RACINE, env=env)
     rapports = json.loads(fichier.read_text(encoding="utf-8")) if fichier.exists() else []
     arret_fichier = fichier.parent / "arret_plafond.json"
     arret = json.loads(arret_fichier.read_text(encoding="utf-8")) if arret_fichier.exists() else None
