@@ -1885,12 +1885,12 @@ class RunRepo:
         au second essai — c'est-à-dire un `passed` non nominal, à confirmer. Un vert nominal, un échec ou un résultat
         manuel n'y comptent jamais."""
         return int(self.conn.execute(
-            "SELECT COUNT(*) FROM test_result tr"
+            "SELECT COUNT(*) AS n FROM test_result tr"
             " JOIN (SELECT case_id, MAX(id) AS dernier FROM test_result WHERE run_id=?"
             "       GROUP BY case_id) d ON d.dernier = tr.id"
             " JOIN execution e ON e.id = tr.execution_id"
             " WHERE e.execution_status='success' AND e.functional_status='conforme'"
-            "   AND e.confiance <> 'nominale'", (run_id,)).fetchone()[0])
+            "   AND e.confiance <> 'nominale'", (run_id,)).fetchone()["n"])
 
     def list_for_project(self, project_id: int) -> list[dict]:
         # `tested_count` = cas DISTINCTS ayant un RÉSULTAT dans ce run — la base du « % de

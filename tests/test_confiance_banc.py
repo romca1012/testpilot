@@ -37,7 +37,9 @@ from testpilot.verdict import status as st  # noqa: E402
 pytestmark = pytest.mark.banc
 
 BANC = os.environ.get("BANC_URL", "http://127.0.0.1:18069")
-BASE, CHAMP, NOUVEAU_LIBELLE = "banc", "validity_date", "Échéance du devis"
+# Le nouveau libellé est volontairement ARTIFICIEL : sur 16.0 le libellé français natif du champ est « Échéance du devis » —
+# un « renommage » vers cette même chaîne ne renommait rien et la cascade retrouvait le champ (CI du 2026-09-25).
+BASE, CHAMP, NOUVEAU_LIBELLE = "banc", "validity_date", "Limite TP de validité"
 SCENARIO = "Créer un devis"
 
 
@@ -81,6 +83,10 @@ def renommage():
         "arch": (f'<data><xpath expr="//field[@name=\'{CHAMP}\']" position="attributes">'
                  f'<attribute name="string">{NOUVEAU_LIBELLE}</attribute></xpath></data>')})
     yield
+    # ⚠️ Odoo 16.0 n'invalide PAS le cache de la vue combinée à la suppression d'une vue héritée : le libellé renommé restait
+    # affiché aux tests suivants (mesuré le 2026-09-25 : la CI 16.0 lisait l'« ancien » libellé déjà renommé). Une ÉCRITURE
+    # l'invalide — on neutralise donc l'héritage AVANT de le supprimer.
+    appeler("ir.ui.view", "write", [cree], {"arch": "<data/>"})
     appeler("ir.ui.view", "unlink", [cree])
 
 
@@ -99,12 +105,14 @@ def formulaire(_navigateur, monkeypatch, tmp_path):
     monkeypatch.delenv("TESTPILOT_QUALIFICATION", raising=False)
     monkeypatch.setitem(H._ETAT_CONSTAT, "scenario", SCENARIO)
     H.navigate_menu(pilote, "Ventes / Commandes / Devis")
-    page.locator(".o_list_button_add").first.click(timeout=15000)
+    # `:visible` : sur 17.0 le premier `.o_list_button_add` du DOM est celui d'une vue détachée (CI du 2026-09-25).
+    page.locator(".o_list_button_add:visible").first.click(timeout=15000)
     page.locator(".o_form_view").first.wait_for(state="visible", timeout=20000)
     # Le libellé d'ORIGINE se lit sur la page (il varie d'une version et d'une langue à l'autre) : c'est l'identifiant que
     # cherche le step, et celui que le renommage rendra introuvable.
     ancien = page.locator(f"label[for^='{CHAMP}']").first.inner_text().strip()
     assert ancien, f"le champ {CHAMP} n'a pas de libellé sur le formulaire de devis de cette version"
+    assert ancien != NOUVEAU_LIBELLE, "le libellé natif égale le libellé de renommage : le test ne renommerait rien"
     page._tp_intention_step = f'je saisis "2026-12-31" dans le champ "{ancien}"'
     yield page, sidecar, ancien
     contexte.close()
