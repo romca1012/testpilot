@@ -73,6 +73,13 @@ class _Application(BaseHTTPRequestHandler):
         chemin = self.path.split("?")[0]
         if chemin == "/api/ping":
             return self._envoyer(200, b'{"ok": true}', "application/json")
+        if chemin == "/api/ping/extra":   # un chemin qui COMMENCE comme `/api/ping` sans être `/api/ping`
+            return self._envoyer(200, b'{"ok": true}', "application/json")
+        if chemin == "/a":   # une redirection vers une page qui répond en erreur (page d'erreur NON vide)
+            return self._envoyer(301, b"", "text/plain", {"Location": "/a/"})
+        if chemin == "/a/":
+            return self._envoyer(500, "<html><body><h1>Erreur interne</h1><p>Le service est indisponible.</p></body></html>".encode(),
+                                 "text/html; charset=utf-8")
         if chemin == "/api/instable":   # le premier essai échoue en 500, le second réussit : un retry qui MASQUE l'erreur serveur
             return self._envoyer(500 if "essai=1" in self.path else 200, b'{"ok": false}', "application/json")
         if chemin == "/api/refuse":
@@ -178,6 +185,11 @@ VERTS = {
         'Et j\'accepte la boîte de dialogue',
         'Et je clique sur le bouton "Supprimer"',
         'Alors la page affiche le texte "Dossier supprimé"'],
+    "un motif de requête avec joker": [
+        'Quand j\'ouvre la page "/reseau.html"',
+        'Et je clique sur le bouton "Extra"',
+        'Alors la requête "GET /api/ping/*" répond 200',
+        'Et la requête "GET /api/ping/extra" répond 200'],
     "réponses réseau": [
         'Quand j\'ouvre la page "/reseau.html"',
         'Et je clique sur le bouton "Ping"',
@@ -261,6 +273,11 @@ ROUGES = {
         ['Quand j\'ouvre la page "/onglet.html"', 'Et je clique sur le bouton "Ouvrir le guide"',
          'Alors un nouvel onglet s\'ouvre sur "/destination.html"', 'Et un nouvel onglet s\'ouvre sur "/destination.html"'],
         "non_conforme"),
+    "une page en erreur atteinte par redirection": (
+        ['Quand j\'ouvre la page "/a"', 'Alors la page n\'affiche pas le texte "Bienvenue"'], "technique"),
+    "un autre chemin qui commence pareil n'est pas la requête attendue": (
+        ['Quand j\'ouvre la page "/reseau.html"', 'Et je clique sur le bouton "Extra"',
+         'Alors la requête "GET /api/ping" répond 200'], "non_conforme"),
     "un bouton et un lien de même nom": (
         ['Quand j\'ouvre la page "/telechargements-doublon.html"', 'Et je télécharge le fichier via "Exporter"'], "technique"),
 }
@@ -321,6 +338,23 @@ def test_un_parametre_de_recherche_vide_est_refuse_en_erreur_technique():
         with pytest.raises(H.ElementIntrouvableError, match="vide"):
             H._renseigne(vide, "Le texte")
     assert H._renseigne("Acme", "Le texte") == "Acme"
+
+
+def test_le_motif_d_une_requete_vise_le_chemin_pas_l_url_entiere():
+    import sys
+
+    sys.path.insert(0, str(RACINE / "behave_runtime" / "steps_library"))
+    import _base_helpers as H
+
+    assert H._url_correspond("/api/tickets", "https://a.example/api/tickets") is True
+    assert H._url_correspond("/api/tickets", "https://a.example/api/tickets/") is True
+    assert H._url_correspond("/api/tickets", "https://a.example/api/tickets/42/audit") is False
+    assert H._url_correspond("/api/tickets", "https://tiers.example/?cb=/api/tickets") is False
+    assert H._url_correspond("/api/tickets/*", "https://a.example/api/tickets/42") is True
+    assert H._url_correspond("/api/tickets", "https://a.example/api/tickets?page=2") is True
+    assert H._url_correspond("/api/tickets?page=2", "https://a.example/api/tickets?page=2") is True
+    assert H._url_correspond("https://a.example/api/tickets", "https://a.example/api/tickets") is True
+    assert H._url_correspond("https://a.example/api/tickets", "https://tiers.example/api/tickets") is False
 
 
 def test_le_chemin_de_l_url_et_non_l_hote_ni_la_query():

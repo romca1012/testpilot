@@ -2807,6 +2807,7 @@ def installer_les_observateurs(context) -> None:
     numéroté. Posé par `environment.before_scenario` : il faut observer AVANT l'action, un événement passé ne se rejoue pas.
     Rien n'est fatal : l'absence d'observation se voit au constat (« aucune requête observée »), jamais comme un vert."""
     context.reponses_reseau, context.dialogues, context.onglets_ouverts = [], [], []
+    context.navigations = {}   # onglet -> dernier document PRINCIPAL reçu (URL finale et statut, redirections suivies)
     etat = context._tp_politique_dialogue = {"action": "refuser", "armee": False}
     navigateur = context._browser_context
 
@@ -2816,6 +2817,10 @@ def installer_les_observateurs(context) -> None:
 
     def _sur_reponse(reponse):
         try:
+            if reponse.request.resource_type == "document" and reponse.frame.parent_frame is None:
+                # Le statut de la page QUI S'AFFICHE, pas de celle qu'on a demandée : `/a` redirigé vers `/a/` qui répond 500 est une
+                # page en erreur (revue 2, 2026-09-25). Vaut aussi pour une navigation provoquée par un clic.
+                context.navigations[reponse.frame.page] = {"url": reponse.url, "statut": int(reponse.status)}
             # Les ressources statiques (images, css, js) noient la réponse utile sous le plafond : on ne retient que les appels
             # de l'application (`fetch`, `xhr`) et les documents.
             if reponse.request.resource_type not in _TYPES_DE_REQUETE:
@@ -2864,7 +2869,7 @@ def _base_de_l_application(context) -> str:
 def ouvrir_page(context, chemin: str) -> None:
     """Ouvre `chemin` RELATIF à l'URL du projet. Une URL absolue n'est acceptée que sur la MÊME origine (schéma et hôte) : ce step ne sort
     pas de l'application testée. Sur une page vide, connecte d'abord le navigateur (F21 : sinon on ouvrirait la page de connexion).
-    Le code HTTP est conservé : une absence ne se constatera pas sur une page en erreur (`_page_lisible`)."""
+    Le code HTTP du document affiché est observé (`installer_les_observateurs`) : une absence ne se constatera pas sur une page en erreur."""
     base = _base_de_l_application(context)
     chemin = _renseigne(chemin, "Le chemin de la page")
     chemin = chemin.strip()
@@ -2880,8 +2885,7 @@ def ouvrir_page(context, chemin: str) -> None:
     if page.url in ("about:blank", ""):
         page.goto(base, wait_until="domcontentloaded")
         connexion_web_utilisateur(context)
-    reponse = page.goto(cible, wait_until="domcontentloaded")
-    context.derniere_navigation = {"url": cible, "statut": int(reponse.status) if reponse is not None else 0}
+    page.goto(cible, wait_until="domcontentloaded")
 
 
 def _page_lisible(context) -> None:
@@ -2889,10 +2893,10 @@ def _page_lisible(context) -> None:
     page = context.page
     if page.url in ("about:blank", ""):
         raise NavigationImpossibleError("Aucune page n'est ouverte : rien ne peut être constaté (ouvrez une page d'abord).")
-    navigation = getattr(context, "derniere_navigation", None) or {}
-    if navigation.get("statut", 0) >= 400 and navigation.get("url") == page.url:
+    navigation = (getattr(context, "navigations", None) or {}).get(page) or {}
+    if navigation.get("statut", 0) >= 400:
         raise NavigationImpossibleError(
-            f"La page {page.url} a répondu {navigation['statut']} : une absence de texte sur une page en erreur ne prouve rien "
+            f"La page {navigation['url']} a répondu {navigation['statut']} : une absence de texte sur une page en erreur ne prouve rien "
             "(constatez plutôt la présence du message d'erreur attendu).")
     try:
         page.wait_for_load_state("load", timeout=_ATTENDRE_UNIVERSELLE_MS)
@@ -3206,15 +3210,27 @@ def nouvel_onglet_sur(context, fragment: str) -> None:
 
 
 def _url_correspond(motif: str, url: str) -> bool:
+    """Le motif d'une requête vise le CHEMIN, pas l'URL entière (ni l'hôte, ni un sous-chemin : `POST /api/tickets` ne correspond pas à
+    `POST /api/tickets/42/audit`, ni à `https://tiers.example/?cb=/api/tickets`). Sans `*` : le chemin est ÉGAL au motif (une barre finale est
+    tolérée) ; avec `*` : le chemin correspond au motif (`/api/tickets/*`). Un motif qui porte `?` compare aussi la query ; un motif qui commence par
+    un schéma (`https://…`) compare l'URL entière."""
     import fnmatch
 
-    return fnmatch.fnmatchcase(url, motif) if "*" in motif else motif in url
+    u = urlparse(url)
+    if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", motif):
+        cible, motif = url, motif
+    else:
+        cible = u.path + (f"?{u.query}" if "?" in motif and u.query else "")
+    if "*" in motif:
+        return fnmatch.fnmatchcase(cible, motif)
+    return cible.rstrip("/") == motif.rstrip("/")
 
 
 @constat
 def requete_repond(context, requete: str, code) -> None:
-    """Les réponses à `<MÉTHODE> <motif d'URL>` ÉMISES DEPUIS LA DERNIÈRE ACTION portent le code attendu : la dernière a ce code, et aucune n'a
-    été une erreur serveur (5xx) — un retry qui réussit ne masque pas le défaut. Le motif est un fragment d'URL ou un motif avec `*`."""
+    """Les réponses à `<MÉTHODE> <chemin>` ÉMISES DEPUIS LA DERNIÈRE ACTION portent le code attendu : la dernière a ce code, et aucune n'a
+    été une erreur serveur (5xx) — un retry qui réussit ne masque pas le défaut. Le chemin est EXACT (`/api/tickets`), ou un motif avec `*`
+    (`/api/tickets/*`) : voir `_url_correspond`."""
     methode, _, motif = (requete or "").strip().partition(" ")
     methode, motif = methode.upper(), motif.strip()
     if methode not in _METHODES_HTTP or not motif:
