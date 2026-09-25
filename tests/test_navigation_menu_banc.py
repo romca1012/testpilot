@@ -32,6 +32,9 @@ def _banc_repond() -> bool:
         urllib.request.urlopen(BANC + "/web/login", timeout=5)
         return True
     except Exception:
+        # En CI (`BANC_REQUIS=1`), un banc absent est un ÉCHEC : un skip passerait pour une preuve qu'on n'a pas faite.
+        if os.environ.get("BANC_REQUIS") == "1":
+            pytest.fail(f"BANC_REQUIS=1 mais le banc ne répond pas sur {BANC}")
         return False
 
 

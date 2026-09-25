@@ -58,6 +58,8 @@ jobs:
           # Odoo termine par « 0 failed, 0 error(s) of N tests » : toute autre ligne de bilan est un échec.
           grep -q " 0 failed, 0 error(s) of " test_module.log
       - name: Navigation par menu (F17) sur l'instance Community du banc
+        env:
+          BANC_REQUIS: "1"   # un banc absent fait ÉCHOUER l'étape au lieu de la skipper
         run: python -m pytest -m banc tests/test_navigation_menu_banc.py -v
       - name: Mesure (mode figé — I1, I2, I5)
         run: python scripts/banc_mesure.py --version "${{ matrix.version }}"

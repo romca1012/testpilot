@@ -1909,6 +1909,10 @@ def _ouvrir_grille_applications(page, delai_ms: int = 15000) -> None:
             return
     except Exception:
         return
+    # Revue F17 : sur Enterprise, un bouton pourrait se rendre AVANT les tuiles du home menu — on laisse à la grille un
+    # court délai avant de conclure « Community » (le repli navigue et clique : il ne doit jamais partir d'une course).
+    if grille(2000):
+        return
     try:
         origine = urlparse(page.url)
         page.goto(f"{origine.scheme}://{origine.netloc}/web", wait_until="domcontentloaded")
@@ -1918,10 +1922,12 @@ def _ouvrir_grille_applications(page, delai_ms: int = 15000) -> None:
         return
     for _ in range(_ESSAIS_COMMUTATEUR):
         try:
-            commutateur.click(timeout=3000)
+            # Le commutateur est une BASCULE : reclicker un menu déjà ouvert le refermerait (session froide où la grille tarde).
+            if commutateur.get_attribute("aria-expanded") != "true":
+                commutateur.click(timeout=3000)
         except Exception:
             return
-        if grille(2500):
+        if grille(3000):
             return
 
 
