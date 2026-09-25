@@ -223,3 +223,48 @@ def test_un_run_ordinaire_ne_pose_pas_le_mode_strict(conn, monkeypatch):
     _executer(conn, monkeypatch, runner)
 
     assert MODE_STRICT_ENV not in runner.connection
+
+
+# ── Les autres écrans qui montrent un vert : activité, test dans sa campagne, exécutions du cas ─────────────────
+
+
+def test_falsifiable_le_fil_d_activite_et_la_fiche_du_test_qualifient_le_vert_et_pas_le_reste(conn, client):
+    """Un `Passed` nominal, un `Passed` par repli et un échec par repli : seul le deuxième est « à confirmer »."""
+    _, cas, run = _decor(conn, 3)
+    _resultat(conn, run, cas[0], confiance="auto_resolue")
+    _resultat(conn, run, cas[1])
+    _resultat(conn, run, cas[2], fonctionnel="non_conforme", confiance="auto_resolue")
+
+    evenements = {e["case_title"]: e for e in client.get(f"/api/runs/{run}/activite").json()["events"]}
+    assert evenements["Cas 0"]["a_confirmer"] is True
+    assert evenements["Cas 1"]["a_confirmer"] is False
+    assert evenements["Cas 2"]["a_confirmer"] is False, "un échec obtenu par repli reste un échec"
+
+    fiche = client.get(f"/api/runs/{run}/tests/{cas[0][0]}").json()
+    assert (fiche["statut"], fiche["confiance"], fiche["a_confirmer"]) == ("passed", "auto_resolue", True)
+    assert fiche["results"][-1]["a_confirmer"] is True
+    autre = client.get(f"/api/runs/{run}/tests/{cas[1][0]}").json()
+    assert autre["a_confirmer"] is False
+
+
+def test_le_meme_cas_dans_une_autre_campagne_garde_sa_reserve(conn, client):
+    """« Le même cas ailleurs » ne doit pas montrer `Passed` nu pour un vert obtenu par repli dans l'autre campagne."""
+    pid, cas, run = _decor(conn, 1)
+    autre_run = RunRepo(conn).create(project_id=pid, name="Autre campagne", case_ids=[cas[0][0]])
+    _resultat(conn, autre_run, cas[0], confiance="apres_retry")
+    _resultat(conn, run, cas[0])
+
+    fiche = client.get(f"/api/runs/{run}/tests/{cas[0][0]}").json()
+
+    ailleurs = [h for h in fiche["historique_du_cas"] if h["run_id"] == autre_run]
+    assert ailleurs and ailleurs[0]["a_confirmer"] is True
+    assert fiche["a_confirmer"] is False
+
+
+def test_les_executions_du_cas_portent_la_reserve(conn, client):
+    _, cas, run = _decor(conn, 1)
+    _resultat(conn, run, cas[0], confiance="auto_resolue")
+
+    lignes = client.get(f"/api/executions?limit=10").json()
+
+    assert lignes and lignes[0]["a_confirmer"] is True and lignes[0]["confiance"] == "auto_resolue"

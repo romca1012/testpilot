@@ -221,6 +221,9 @@ class ExecutionSummary(BaseModel):
     target_username: str = ""
     # Statut de LECTURE calculé par le serveur — même règle que pour un cas (une seule source).
     statut: str = "untested"
+    # Lot 05 (D5) : comment CETTE exécution a abouti, et la réserve « Réussi — à confirmer » calculée par le serveur.
+    confiance: str = "nominale"
+    a_confirmer: bool = False
 
 
 class CaseDetail(BaseModel):
@@ -800,6 +803,8 @@ class ResultAilleurs(BaseModel):
     mode: str
     created_by: str = ""
     created_at: str = ""
+    # Lot 05 (D5) : « Réussi — à confirmer » dans CETTE campagne, calculé par le serveur.
+    a_confirmer: bool = False
 
 
 class TestDansRunOut(BaseModel):
@@ -830,6 +835,9 @@ class TestDansRunOut(BaseModel):
     refs: str = ""
     # Le statut du DERNIER résultat dans cette campagne — calculé par le serveur, comme partout.
     statut: str = "untested"
+    # Lot 05 (D5) : la réserve du DERNIER résultat (`a_confirmer` = un `passed` non nominal), calculée par le serveur.
+    confiance: str = "nominale"
+    a_confirmer: bool = False
     results: list[ResultOut] = []
     # Les voisins DANS LA CAMPAGNE (jamais dans le module) : les flèches précédent/suivant servent
     # à enchaîner les tests d'une session de recette, pas à parcourir le référentiel.
@@ -847,6 +855,8 @@ class ActiviteOut(BaseModel):
     mode: str
     created_by: str = ""
     created_at: str = ""
+    # Lot 05 (D5) : « Réussi — à confirmer », calculé par le serveur.
+    a_confirmer: bool = False
 
 
 class RunActiviteOut(BaseModel):
@@ -1227,7 +1237,7 @@ def _field_fallbacks(raw) -> list[str]:
 
 
 def execution_summary(row: dict, *, running: bool = False) -> ExecutionSummary:
-    from testpilot.verdict.status import statut_de_test
+    from testpilot.verdict.status import a_confirmer, statut_de_test
 
     return ExecutionSummary(
         id=row["id"], test_case_id=row["test_case_id"], version_id=row["version_id"],
@@ -1246,6 +1256,9 @@ def execution_summary(row: dict, *, running: bool = False) -> ExecutionSummary:
         target_database=row.get("target_database", "") or "",
         target_username=row.get("target_username", "") or "",
         statut=statut_de_test(row.get("execution_status"), row.get("functional_status")),
+        confiance=row.get("confiance") or "nominale",
+        a_confirmer=a_confirmer(statut_de_test(row.get("execution_status"), row.get("functional_status")),
+                                row.get("confiance")),
     )
 
 

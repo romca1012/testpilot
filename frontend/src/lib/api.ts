@@ -214,6 +214,8 @@ export const api = {
     // ⚠️ Le MODE D'EXÉCUTION se choisit ICI, à la création, et jamais résultat par résultat :
     // c'est lui qui décide si la campagne se LANCE ou se SAISIT.
     mode?: 'automatique' | 'manuelle'
+    // Lot 05 (D5) : campagne STRICTE — aucune résolution adaptative, aucun retry.
+    strict?: boolean
   }) => request<RunSummary>(`/api/projects/${projectId}/runs`, {
     method: 'POST', body: JSON.stringify(body),
   }),
@@ -618,6 +620,10 @@ export interface RunSummary {
   /** Parmi les cas testés, ceux dont le DERNIER résultat a été joué à la main. Un « 100 % » ne
    *  doit jamais laisser croire que tout a été prouvé par la machine. */
   manuel_count: number
+  /** Lot 05 (D5) : campagne STRICTE (aucune résolution adaptative, aucun retry) et nombre de cas dont le dernier
+   *  résultat est un vert « à confirmer » (obtenu par repli ou au second essai). */
+  strict?: boolean
+  verts_a_confirmer?: number
   is_archived: boolean; created_at: string
   /** Le Plan de test (migration 43) qui regroupe cette campagne, s'il y en a un — `null`/absent =
    *  hors de tout plan. Référence souple, jamais une FK dure côté serveur. Optionnel côté type :
@@ -638,6 +644,10 @@ export interface RunCaseResult {
   result_at: string
   /** Statut de lecture calculé par le SERVEUR (un statut manuel court-circuite la dérivation). */
   statut: string
+  /** Lot 05 (D5) : comment le verdict a été obtenu, et « Réussi — à confirmer » (un `passed` non nominal), calculés par
+   *  le SERVEUR — l'écran ne redérive jamais cette règle. Optionnels : une réponse ancienne n'en porte pas. */
+  confiance?: string
+  a_confirmer?: boolean
   /** Qui SUPERVISE ce cas DANS cette campagne (2026-09-14, traçabilité — inspiré de TestRail).
    *  '' = personne assigné, jamais un nom deviné. Vaut pour un cas manuel comme automatique. */
   assigned_to: string
@@ -684,6 +694,7 @@ export interface ScheduledRun {
  *  « pourquoi » : ni commentaire ni axes, l'écran qui les veut ouvre le test concerné. */
 export interface ResultAilleurs {
   run_id: number; run_name: string; statut: string; mode: string
+  a_confirmer?: boolean
   created_by: string; created_at: string
 }
 /** **UN CAS DANS UNE CAMPAGNE** — le « test » de TestRail, distinct du cas du référentiel.
@@ -693,6 +704,8 @@ export interface TestDansRun {
   case_id: number; title: string
   type: string; etat: string; priority: string; estimate: string; refs: string
   statut: string
+  confiance?: string
+  a_confirmer?: boolean
   results: ResultOut[]
   /** Voisins DANS LA CAMPAGNE — jamais dans le module : les flèches enchaînent une session de
    *  recette, elles ne parcourent pas le référentiel. */
@@ -702,6 +715,7 @@ export interface TestDansRun {
 /** Un résultat posé dans une campagne, vu depuis son fil d'activité. */
 export interface ActiviteEvent {
   case_id: number; case_title: string; statut: string; mode: string
+  a_confirmer?: boolean
   created_by: string; created_at: string
 }
 export interface RunActivite {
@@ -840,6 +854,9 @@ export interface ExecutionSummary {
   cost_usd: number; iterations: number; duration_seconds: number; started_at: string; running: boolean
   // Replis « libellé → nom technique » tracés pendant le run (décision 0007 B+) — non-bloquant.
   field_fallbacks?: string[]
+  /** Lot 05 (D5) : comment l'exécution a abouti, et « Réussi — à confirmer » calculé par le SERVEUR. */
+  confiance?: string
+  a_confirmer?: boolean
   case_title: string | null; module_name: string | null; suite_name: string | null
   // Raison d'un plantage AVANT tout scénario (migration 11) — vide sur un run normal.
   error_message?: string
@@ -898,6 +915,8 @@ export interface ResultOut {
   execution_id: number | null
   execution_status: string | null
   functional_status: string | null
+  confiance?: string
+  a_confirmer?: boolean
   // VIDE par défaut : la grande majorité des résultats n'en portent aucune, et le serveur ne
   // fait pas payer une jointure supplémentaire pour un tableau vide.
   attachments: AttachmentOut[]

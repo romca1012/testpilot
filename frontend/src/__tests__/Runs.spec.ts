@@ -124,6 +124,30 @@ describe('AddTestRunForm — création d\'une campagne', () => {
     expect(createRun).toHaveBeenCalledWith('1', expect.objectContaining({ mode: 'manuelle' }))
   })
 
+  it('lot 05 (D5) : la campagne STRICTE est décochée par défaut, se coche, et n\'existe qu\'en mode automatique', async () => {
+    const w = monter(AddTestRunForm)
+    await flushPromises()
+
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(createRun).toHaveBeenCalledWith('1', expect.objectContaining({ strict: false }))
+
+    createRun.mockClear()
+    await w.find('[data-testid="campagne-stricte"]').setValue(true)
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(createRun).toHaveBeenCalledWith('1', expect.objectContaining({ strict: true }))
+
+    // Falsifiable : cochée puis mode manuel → l'option disparaît ET rien de strict ne part (un humain ne « rejoue » rien).
+    createRun.mockClear()
+    await w.findAll('input[type="radio"]')[1].setValue()   // « Manuelle »
+    await flushPromises()
+    expect(w.find('[data-testid="campagne-stricte"]').exists()).toBe(false)
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(createRun).toHaveBeenCalledWith('1', expect.objectContaining({ mode: 'manuelle', strict: false }))
+  })
+
   it('sélection figée : exige au moins un cas coché', async () => {
     const w = monter(AddTestRunForm)
     await flushPromises()
