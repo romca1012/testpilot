@@ -37,7 +37,15 @@ def _aire_de_run(tmp_path, *, tier: str):
     runtime.mkdir(parents=True)
     (runtime / "environment.py").write_text(
         "# Sa PRÉSENCE suffit à activer la capture de Behave.\n"
-        "def before_all(context):\n    pass\n", encoding="utf-8")
+        "def before_all(context):\n    pass\n"
+        # Lot 05 : comme l'`environment.py` de production, `before_scenario` pose le scénario courant — c'est lui que
+        # le sidecar des paliers consigne à côté du palier.
+        "\n"
+        "def before_scenario(context, scenario):\n"
+        "    import sys\n"
+        f"    sys.path.insert(0, r'{RACINE}')\n"
+        "    from behave_runtime.steps_library._base_helpers import definir_etat_constat\n"
+        "    definir_etat_constat(scenario=scenario.name)\n", encoding="utf-8")
 
     lib = tmp_path / "lib"
     lib.mkdir(parents=True)
@@ -72,7 +80,10 @@ def test_GARDE_une_resolution_dans_un_run_VERT_remonte_jusqu_au_resultat(tmp_pat
     result = runner.real_run("garde")
 
     assert result.passed == 1, f"le scénario de garde doit être VERT : {result.raw_stdout}"
-    assert result.selector_tiers == [{"ident": "rib", "tier": "name"}]
+    # Lot 05 : la ligne porte aussi le SCÉNARIO courant (posé par `before_scenario`) — c'est ce qui permet de qualifier
+    # le vert du bon scénario quand la résolution était adaptative. Ici le vrai nom du scénario Behave traverse le transport.
+    assert result.selector_tiers == [
+        {"ident": "rib", "tier": "name", "scenario": "un scenario VERT qui resout un champ"}]
 
 
 def test_GARDE_un_changement_de_palier_devient_une_DERIVE_du_projet(tmp_path, monkeypatch):
