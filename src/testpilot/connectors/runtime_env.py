@@ -29,6 +29,8 @@ from __future__ import annotations
 
 import logging
 
+from testpilot.connectors.contexte_navigateur import depuis_projet
+
 logger = logging.getLogger(__name__)
 
 # connector_type → {variable d'environnement: colonne du projet} — colonnes REQUISES : sans
@@ -137,4 +139,7 @@ def project_env(project: dict | None) -> dict[str, str]:
         value = project.get(column)
         if value:  # vide → on laisse la config globale s'appliquer
             env[var] = str(value)
+    # Lot 07c (C3) : le contexte navigateur est TOUJOURS transmis, défauts compris — un navigateur qui retomberait sur la langue
+    # et le fuseau de la machine changerait de comportement d'un poste à l'autre. Jamais « vide → config globale » ici.
+    env.update(depuis_projet(project).env())
     return env

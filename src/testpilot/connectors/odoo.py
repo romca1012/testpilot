@@ -112,7 +112,11 @@ def _extract_odoo_form_fields(page) -> dict:
 class OdooConnector(Connector):
 
     def __init__(self, url: str, database: str, user: str, password: str, *,
-                 headless: bool = True, timeout_ms: int = 15_000) -> None:
+                 headless: bool = True, timeout_ms: int = 15_000, contexte=None) -> None:
+        from testpilot.connectors.contexte_navigateur import ContexteNavigateur
+
+        # Lot 07c : le MÊME contexte (langue, fuseau, fenêtre) que l'exécution — l'agent voit ce que le test verra.
+        self._contexte = contexte if contexte is not None else ContexteNavigateur()
         self._url = url.rstrip("/")
         self._database = database
         self._user = user
@@ -133,6 +137,7 @@ class OdooConnector(Connector):
             user=overrides.get("user", config.ODOO_USER),
             password=overrides.get("password", config.ODOO_PASSWORD),
             headless=overrides.get("headless", True),
+            contexte=overrides.get("contexte"),
         )
 
     @classmethod
@@ -142,7 +147,10 @@ class OdooConnector(Connector):
         L'exploration doit observer l'application du projet, pas une instance globale.
         Chaque valeur vide retombe sur la config (projet sans connexion saisie).
         """
+        from testpilot.connectors.contexte_navigateur import depuis_projet
+
         project = project or {}
+        overrides.setdefault("contexte", depuis_projet(project))
         return cls.from_config(
             url=project.get("base_url") or config.ODOO_URL,
             database=project.get("database") or config.ODOO_DB,
@@ -285,7 +293,7 @@ class OdooConnector(Connector):
         jamais laisser la session principale de l'exploration dans un état inconnu."""
         page_principale = self._ensure_page()
         etat = page_principale.context.storage_state()
-        contexte = self._browser.new_context(storage_state=etat)
+        contexte = self._browser.new_context(storage_state=etat, **self._contexte.kwargs())
         try:
             page = contexte.new_page()
             page.set_default_timeout(self._timeout_ms)
@@ -303,7 +311,7 @@ class OdooConnector(Connector):
         projet, et y retenter une connexion avec des identifiants de SCÉNARIO ne reproduirait
         pas l'état « pas encore connecté » que le scénario veut observer."""
         self._ensure_page()  # s'assure que self._browser existe (démarrage paresseux)
-        contexte = self._browser.new_context()
+        contexte = self._browser.new_context(**self._contexte.kwargs())
         try:
             page = contexte.new_page()
             page.set_default_timeout(self._timeout_ms)
@@ -476,7 +484,7 @@ class OdooConnector(Connector):
         from playwright.sync_api import sync_playwright
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=self._headless)
-        page = self._browser.new_context().new_page()
+        page = self._browser.new_context(**self._contexte.kwargs()).new_page()
         page.set_default_timeout(self._timeout_ms)
         from types import SimpleNamespace
         from testpilot.connectors.odoo_login import playwright_login

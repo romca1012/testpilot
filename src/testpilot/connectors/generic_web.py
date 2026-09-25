@@ -46,7 +46,11 @@ class GenericWebConnector(Connector):
     """Connecteur pour une application web quelconque, identifiée par sa seule URL."""
 
     def __init__(self, url: str, user: str = "", password: str = "", *,
-                 headless: bool = True, timeout_ms: int = 15_000) -> None:
+                 headless: bool = True, timeout_ms: int = 15_000, contexte=None) -> None:
+        from testpilot.connectors.contexte_navigateur import ContexteNavigateur
+
+        # Lot 07c : le MÊME contexte (langue, fuseau, fenêtre) que l'exécution — l'agent voit ce que le test verra.
+        self._contexte = contexte if contexte is not None else ContexteNavigateur()
         self._url = url.rstrip("/")
         self._user = user
         self._password = password
@@ -63,10 +67,13 @@ class GenericWebConnector(Connector):
         """Connecteur branché sur la connexion du PROJET (décision 0005) — mêmes colonnes
         génériques que les autres connecteurs (``base_url``/``username``/``password``)."""
         project = project or {}
+        from testpilot.connectors.contexte_navigateur import depuis_projet
+
         return cls(
             url=overrides.get("url", project.get("base_url") or ""),
             user=overrides.get("user", project.get("username") or ""),
             password=overrides.get("password", project.get("password") or ""),
+            contexte=overrides.pop("contexte", None) or depuis_projet(project),
             **{k: v for k, v in overrides.items() if k not in ("url", "user", "password")},
         )
 
@@ -151,7 +158,7 @@ class GenericWebConnector(Connector):
         verrouillé, mot de passe erroné...) ne reproduirait pas l'état « pas encore connecté »
         que le scénario veut observer."""
         self._ensure_page()  # s'assure que self._browser existe (démarrage paresseux)
-        contexte = self._browser.new_context()
+        contexte = self._browser.new_context(**self._contexte.kwargs())
         try:
             page = contexte.new_page()
             page.set_default_timeout(self._timeout_ms)
@@ -214,7 +221,7 @@ class GenericWebConnector(Connector):
         from playwright.sync_api import sync_playwright
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=self._headless)
-        page = self._browser.new_context().new_page()
+        page = self._browser.new_context(**self._contexte.kwargs()).new_page()
         page.set_default_timeout(self._timeout_ms)
         page.goto(self._url)
         page.wait_for_load_state("networkidle")
