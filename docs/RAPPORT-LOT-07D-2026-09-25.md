@@ -34,8 +34,8 @@ verts. Le lot ajoute **14 steps génériques** à la bibliothèque partagée (do
 `tests/test_vocabulaire_universel.py` (marqueur `conformance`, **vrai Chromium**, serveur HTTP local, aucun réseau) rejoue de VRAIS scénarios Behave dans le sous-processus complet (`BehaveRunner`, bibliothèque
 de steps réelle) :
 
-- **15 scénarios qui DOIVENT être `conforme`** (dont un tableau rempli en asynchrone, un tableau piégé, une bannière de cookies non bloquante, une boîte native acceptée AVANT l'action) ;
-- **31 scénarios qui NE DOIVENT PAS l'être** : `non_conforme` quand l'application se comporte mal, `technical_error` quand le test est mal posé (ambiguïté, page vide ou en erreur, fichier jamais téléchargé, cible inconnue…) ;
+- **16 scénarios qui DOIVENT être `conforme`** (dont un tableau rempli en asynchrone, un tableau piégé, une bannière de cookies non bloquante, une boîte native acceptée AVANT l'action) ;
+- **33 scénarios qui NE DOIVENT PAS l'être** : `non_conforme` quand l'application se comporte mal, `technical_error` quand le test est mal posé (ambiguïté, page vide ou en erreur, fichier jamais téléchargé, cible inconnue…) ;
   le test échoue si l'un d'eux est `conforme` (« FAUX VERT »).
 - **Vérifié par mutation** (le test rouge mord vraiment) : retirer le contrôle de page vide et d'ambiguïté fait apparaître deux faux verts ; retirer le repère d'action et le chemin d'URL en fait apparaître deux autres.
 - garde : aucun step de `generic/` ne référence `context.odoo` / `ODOO_*` (lu par AST) ; tests unitaires du chemin d'URL et du refus d'un paramètre vide.
@@ -65,6 +65,17 @@ Points « à corriger » traités : chaînes vides (déjà refusées par Behave 
 nom de tableau **exact** (`« Command »` ne trouve plus « Commandes »), repli sur un titre `h1`–`h6` exact, deux titres identiques = ambiguïté ; `compte N lignes` exclut l'en-tête `thead`, les tableaux imbriqués et les lignes masquées, et le zéro doit **tenir** 1,2 s ;
 `contient une ligne avec a et b` compare par **cellule et par mot** (« 12 » n'est pas dans « 120 ») ; boîte de dialogue : une bannière non bloquante (`role=dialog` sans `aria-modal`) ne capte plus « j'accepte », plusieurs boutons = erreur, et **une décision prise APRÈS le clic est refusée en erreur technique** (la boîte s'est déjà ouverte et a été refusée d'office) au lieu d'être un « accepté » sans effet ;
 nouvel onglet : seul un onglet **ouvert par l'action qui vient de s'exécuter** compte (le même onglet ne se constate pas deux fois) ; téléchargement : nom assaini, fichier temporaire supprimé avec le scénario, un bouton ET un lien de même nom = ambiguïté ; le journal réseau ne garde que `fetch`/`xhr`/`document` (les images et scripts noyaient la réponse utile).
+
+### Seconde revue `verdict-reviewer` (sur `2d6ae53`) — aucun bloquant, 2 trous de faux vert corrigés
+
+Le mécanisme de repères a été relu et validé (repère posé pour toute action `Soit`/`Quand`, y compris générée ; cohérence action courante / précédente ; compteur et plafond sans risque). Deux défenses de la première revue n'étaient pas complètes :
+1. **Une page en erreur atteinte par redirection échappait au contrôle du code HTTP** (`/a` redirigé vers `/a/` qui répond 500 avec une page d'erreur non vide : `n'affiche pas "Bienvenue"` passait). Le statut du dernier **document principal de chaque onglet** est maintenant observé (URL finale, redirections
+   suivies, navigation provoquée par un clic comprise) — plus de comparaison avec l'URL demandée.
+2. **Le motif de `la requête … répond` était cherché dans l'URL entière** (`POST /api/tickets` correspondait à `/api/tickets/42/audit` ou à `?cb=/api/tickets`). Le motif vise le **chemin** : égal au motif sans `*` (barre finale tolérée), ou motif avec `*` (`/api/tickets/*`) ; un motif à schéma compare l'URL entière.
+Vérifié par mutation : sans ces deux corrections, les deux nouveaux scénarios rouges (et celui de la page en erreur HTTP) deviennent « FAUX VERT ».
+
+Remarques du relecteur consignées, non traitées : aucun step ne constate qu'une boîte de dialogue s'est ouverte ni son message (un « Alors une boîte affiche … » serait le complément) ; une modale `aria-modal` préexistante avec un bouton « Accepter » est cliquée à la place d'armer la boîte native (échec attribué `non_conforme`, pas un faux vert) ;
+une décision armée pour rien reste armée jusqu'à la prochaine boîte ; une réponse réseau très lente d'une action A peut être comptée pour l'action B.
 
 ### Écarts constatés avec le plan
 

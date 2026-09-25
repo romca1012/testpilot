@@ -342,5 +342,6 @@ def step_nouvel_onglet(context, fragment):
 
 @then('la requête "{requete}" répond {code:d}')
 def step_requete_repond(context, requete, code):
-    """`requete` : « <méthode> <fragment ou motif d'URL> » (ex. « POST /api/tickets ») ; c'est la DERNIÈRE réponse correspondante qui est jugée."""
+    """`requete` : « <méthode> <chemin> » (ex. « POST /api/tickets » : chemin EXACT ; « PUT /api/tickets/* » : motif). Ne juge que les réponses émises
+    depuis la dernière action ; une erreur serveur suivie d'un succès n'est pas masquée."""
     requete_repond(context, requete, code)
