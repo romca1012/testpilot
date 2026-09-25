@@ -206,8 +206,16 @@ SESSION_SECRET = os.getenv("TESTPILOT_SESSION_SECRET", "")
 # profil production exige une valeur longue afin que /metrics ne divulgue pas la volumétrie.
 METRICS_TOKEN = os.getenv("TESTPILOT_METRICS_TOKEN", "")
 
-# Durée d'une session ouverte.
-SESSION_DAYS = int(os.getenv("TESTPILOT_SESSION_DAYS", "30"))
+# Durée d'une session ouverte — DEUX bornes, jamais une seule (2026-09-25).
+#
+# ⚠️ Avant : un jeton valait 30 jours FIXES dès la connexion, sans inactivité ni renouvellement. Un poste rouvert des
+# semaines plus tard s'ouvrait directement, sans aucun mot de passe — anormal pour un outil qui pilote de vraies
+# applications et manipule des identifiants de projet.
+#   - INACTIVITÉ : la session se ferme après ce délai sans requête authentifiée (glissante, renouvelée à chaque requête) ;
+#   - DURÉE MAXIMALE ABSOLUE : jamais dépassée, même en activité continue (un onglet qui interroge le serveur en boucle
+#     ne prolonge donc pas une session au-delà de cette borne).
+SESSION_IDLE_MINUTES = int(os.getenv("TESTPILOT_SESSION_IDLE_MINUTES", "120"))
+SESSION_MAX_HOURS = int(os.getenv("TESTPILOT_SESSION_MAX_HOURS", "12"))
 
 # Le cookie ne doit voyager que sous HTTPS en production. `False` reste le défaut pour que le
 # développement local sur http://localhost continue de fonctionner ; le profil de déploiement

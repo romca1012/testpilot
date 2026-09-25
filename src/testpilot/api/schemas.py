@@ -988,7 +988,8 @@ class TimezoneOption(BaseModel):
 class SecurityStatusOut(BaseModel):
     password_min_length: int
     password_hash: str
-    session_days: int
+    session_idle_minutes: int
+    session_max_hours: int
     cookie_http_only: bool
     cookie_same_site: str
     cookie_secure: bool

@@ -49,7 +49,7 @@ En cas de succès, la réponse pose un cookie `testpilot_session` :
 - `HttpOnly` — inaccessible en JavaScript côté client ;
 - `SameSite=Lax` — jamais envoyé sur une requête cross-site ;
 - `Secure` si `TESTPILOT_COOKIE_SECURE=true` (obligatoire derrière HTTPS en production) ;
-- durée de vie `TESTPILOT_SESSION_DAYS` jours (30 par défaut).
+- deux bornes : déconnexion après `TESTPILOT_SESSION_IDLE_MINUTES` minutes d'inactivité (120 par défaut, glissante — renouvelée à chaque requête authentifiée) et durée maximale absolue `TESTPILOT_SESSION_MAX_HOURS` heures (12 par défaut, jamais repoussée).
 
 Un client HTTP doit conserver et renvoyer ce cookie sur chaque appel suivant — pas construire de
 jeton lui-même. Il n'existe **pas** de mode d'authentification par en-tête pour un usage normal :

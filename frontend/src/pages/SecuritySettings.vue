@@ -4,6 +4,14 @@ import { api, type SecurityStatus } from '../lib/api'
 import Button from '../components/ui/Button.vue'
 
 const etat = ref<SecurityStatus | null>(null)
+
+// 120 → « 2 h », 90 → « 1 h 30 », 45 → « 45 min » : un délai d'inactivité se lit en heures dès qu'il en vaut une.
+function dureeLisible(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`
+}
 const loading = ref(true)
 const erreur = ref('')
 
@@ -65,7 +73,8 @@ onMounted(charger)
         <section class="rounded-xl border border-border bg-surface-raised p-5">
           <h2 class="font-semibold">Sessions</h2>
           <dl class="mt-4 space-y-3 text-sm">
-            <div class="flex justify-between gap-4"><dt class="text-muted-foreground">Durée maximale</dt><dd class="font-medium">{{ etat.session_days }} jours</dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-muted-foreground">Déconnexion après inactivité</dt><dd class="font-medium">{{ dureeLisible(etat.session_idle_minutes) }}</dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-muted-foreground">Durée maximale d'une session</dt><dd class="font-medium">{{ etat.session_max_hours }} h</dd></div>
             <div class="flex justify-between gap-4"><dt class="text-muted-foreground">Cookie HttpOnly</dt><dd class="font-medium text-success">Actif</dd></div>
             <div class="flex justify-between gap-4"><dt class="text-muted-foreground">SameSite</dt><dd class="font-medium">{{ etat.cookie_same_site }}</dd></div>
           </dl>

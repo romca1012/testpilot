@@ -146,7 +146,7 @@ def create_app() -> FastAPI:
 
         Le rôle et l'état actif sont relus EN BASE ici, PAS depuis le jeton (voir
         `access.utilisateur_actuel`) : une désactivation ou un changement de rôle par un Admin
-        doit mordre tout de suite, pas attendre l'expiration de la session (30 jours par défaut).
+        doit mordre tout de suite, pas attendre l'expiration de la session.
         `request.state.user` est posé pour le reste de la requête (routes, `require_role`) —
         évite une seconde lecture base pour qui en a besoin.
 
@@ -178,7 +178,14 @@ def create_app() -> FastAPI:
             return JSONResponse(status_code=403, content={"detail": "droits insuffisants"})
 
         request.state.user = utilisateur
-        return await call_next(request)
+        reponse = await call_next(request)
+        # Session GLISSANTE (2026-09-25) : toute requête authentifiée repousse l'échéance d'INACTIVITÉ, jamais la borne
+        # absolue. Absent si la route a elle-même posé/effacé le cookie (changement de mot de passe : session neuve).
+        if "set-cookie" not in reponse.headers:
+            renouvele = access.renouveler_jeton(request.cookies.get(access.COOKIE))
+            if renouvele is not None:
+                access.poser_cookie(reponse, renouvele)
+        return reponse
 
     # Enregistré APRÈS le verrou afin de l'envelopper aussi lorsque celui-ci retourne directement
     # un 401/403 sans appeler la route.

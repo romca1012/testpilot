@@ -931,7 +931,7 @@ export interface SettingOut {
 }
 export interface TimezoneOption { value: string; label: string }
 export interface SecurityStatus {
-  password_min_length: number; password_hash: string; session_days: number
+  password_min_length: number; password_hash: string; session_idle_minutes: number; session_max_hours: number
   cookie_http_only: boolean; cookie_same_site: string; cookie_secure: boolean
   session_secret_external: boolean; data_secret_external: boolean
   login_max_failures: number; login_window_minutes: number; production_ready: boolean

@@ -140,7 +140,7 @@ def test_un_jeton_falsifie_est_refuse(tmp_path, monkeypatch):
 
 def test_un_jeton_expire_est_refuse(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)  # même isolation que ci-dessus
-    monkeypatch.setattr(config, "SESSION_DAYS", 0)
+    monkeypatch.setattr(config, "SESSION_MAX_HOURS", 0)  # la borne ABSOLUE remplace l'ancien `SESSION_DAYS`
     jeton = access.creer_jeton(1, "Awa")
     time.sleep(0.01)
     assert access.lire_jeton(jeton) is None
