@@ -73,6 +73,8 @@ class _Application(BaseHTTPRequestHandler):
         chemin = self.path.split("?")[0]
         if chemin == "/api/ping":
             return self._envoyer(200, b'{"ok": true}', "application/json")
+        if chemin == "/api/instable":   # le premier essai échoue en 500, le second réussit : un retry qui MASQUE l'erreur serveur
+            return self._envoyer(500 if "essai=1" in self.path else 200, b'{"ok": false}', "application/json")
         if chemin == "/api/refuse":
             return self._envoyer(403, json.dumps({"erreur": "interdit"}).encode(), "application/json")
         if chemin == "/export.csv":
@@ -160,6 +162,22 @@ VERTS = {
         'Et je clique sur le bouton "Ouvrir le guide"',
         'Alors un nouvel onglet s\'ouvre sur "/destination.html"',
         'Et la page affiche le texte "Guide utilisateur"'],
+    "tableaux piégés : en-tête en td et tableau imbriqué ne comptent pas": [
+        'Quand j\'ouvre la page "/tableau-piege.html"',
+        'Alors le tableau "Stock" compte 3 lignes',
+        'Et le tableau "Codes" contient une ligne avec "120" et "Sept"'],
+    "un tableau rempli en asynchrone est compté une fois stable": [
+        'Quand j\'ouvre la page "/tableau-async.html"',
+        'Alors le tableau "Livraisons" compte 2 lignes'],
+    "le chemin de l'URL, ou la query quand le fragment la porte": [
+        'Quand j\'ouvre la page "/connexion.html?next=/tableau.html"',
+        'Alors l\'URL courante contient "/connexion.html"',
+        'Et l\'URL courante contient "?next=/tableau.html"'],
+    "une bannière non bloquante ne capte pas la boîte native": [
+        'Quand j\'ouvre la page "/dialogue-banniere.html"',
+        'Et j\'accepte la boîte de dialogue',
+        'Et je clique sur le bouton "Supprimer"',
+        'Alors la page affiche le texte "Dossier supprimé"'],
     "réponses réseau": [
         'Quand j\'ouvre la page "/reseau.html"',
         'Et je clique sur le bouton "Ping"',
@@ -209,6 +227,42 @@ ROUGES = {
         ['Quand j\'ouvre la page "/cadre.html"',
          'Et dans le cadre "inexistant", je clique sur le bouton "Envoyer"'], "technique"),
     "page d'une autre origine": (['Quand j\'ouvre la page "https://autre.example/x"'], "technique"),
+    # ── Revue `verdict-reviewer` du lot : chaque cas ci-dessous était un FAUX VERT ou une erreur silencieuse ──
+    "redirection de connexion : la cible n'est que dans la query": (
+        ['Quand j\'ouvre la page "/connexion.html?next=/tableau.html"', 'Alors l\'URL courante contient "/tableau.html"'],
+        "non_conforme"),
+    "la requête vient d'une étape précédente, pas de l'action": (
+        ['Quand j\'ouvre la page "/reseau.html"', 'Et je clique sur le bouton "Ping"', 'Et j\'ouvre la page "/reseau.html"',
+         'Alors la requête "GET /api/ping" répond 200'], "non_conforme"),
+    "un nouvel essai réussi masque une erreur serveur": (
+        ['Quand j\'ouvre la page "/reseau.html"', 'Et je clique sur le bouton "Instable"',
+         'Alors la requête "GET /api/instable" répond 200'], "non_conforme"),
+    "absence d'une valeur de champ pré-remplie": (
+        ['Quand j\'ouvre la page "/prerempli.html"', 'Alors la page n\'affiche pas le texte "jean@example.com"'], "non_conforme"),
+    "absence d'un texte affiché dans un cadre": (
+        ['Quand j\'ouvre la page "/cadre.html"', 'Alors la page n\'affiche pas le texte "Nom du contact"'], "non_conforme"),
+    "absence constatée sur une page en erreur HTTP": (
+        ['Quand j\'ouvre la page "/inexistante.html"', 'Alors la page n\'affiche pas le texte "Bienvenue"'], "technique"),
+    "nom de tableau partiel": (
+        ['Quand j\'ouvre la page "/tableau.html"', 'Alors le tableau "Command" compte 3 lignes'], "technique"),
+    "deux titres identiques": (
+        ['Quand j\'ouvre la page "/doublons.html"', 'Alors le tableau "Clients" compte 1 ligne'], "technique"),
+    "zéro constaté trop tôt sur un tableau asynchrone": (
+        ['Quand j\'ouvre la page "/tableau-async.html"', 'Alors le tableau "Livraisons" compte 0 lignes'], "non_conforme"),
+    "un mot partiel n'est pas une cellule": (
+        ['Quand j\'ouvre la page "/tableau-piege.html"', 'Alors le tableau "Codes" contient une ligne avec "12" et "Sept"'],
+        "non_conforme"),
+    "l'en-tête et le tableau imbriqué sont comptés à tort": (
+        ['Quand j\'ouvre la page "/tableau-piege.html"', 'Alors le tableau "Stock" compte 6 lignes'], "non_conforme"),
+    "boîte native décidée APRÈS le clic": (
+        ['Quand j\'ouvre la page "/tableau.html"', 'Et je clique sur "Supprimer" dans la ligne contenant "CMD-1"',
+         'Et j\'accepte la boîte de dialogue'], "technique"),
+    "le même onglet constaté deux fois": (
+        ['Quand j\'ouvre la page "/onglet.html"', 'Et je clique sur le bouton "Ouvrir le guide"',
+         'Alors un nouvel onglet s\'ouvre sur "/destination.html"', 'Et un nouvel onglet s\'ouvre sur "/destination.html"'],
+        "non_conforme"),
+    "un bouton et un lien de même nom": (
+        ['Quand j\'ouvre la page "/telechargements-doublon.html"', 'Et je télécharge le fichier via "Exporter"'], "technique"),
 }
 
 
@@ -253,3 +307,29 @@ def test_aucun_step_generique_ne_reference_context_odoo():
                 fautes.append(f"{fichier.name}:{noeud.lineno} {noeud.value}")
 
     assert not fautes, fautes
+
+
+def test_un_parametre_de_recherche_vide_est_refuse_en_erreur_technique():
+    """Behave refuse DÉJÀ une chaîne vide au dry-run (`{x}` exige au moins un caractère : le step est « non défini »), et `_renseigne` le
+    refuse encore en défense en profondeur — une recherche vide est vraie partout (`"" in texte`) et ne prouve rien."""
+    import sys
+
+    sys.path.insert(0, str(RACINE / "behave_runtime" / "steps_library"))
+    import _base_helpers as H
+
+    for vide in ("", "   ", None):
+        with pytest.raises(H.ElementIntrouvableError, match="vide"):
+            H._renseigne(vide, "Le texte")
+    assert H._renseigne("Acme", "Le texte") == "Acme"
+
+
+def test_le_chemin_de_l_url_et_non_l_hote_ni_la_query():
+    import sys
+
+    sys.path.insert(0, str(RACINE / "behave_runtime" / "steps_library"))
+    import _base_helpers as H
+
+    assert H._url_contient_fragment("https://a.example/login?next=/dashboard", "/dashboard") is False
+    assert H._url_contient_fragment("https://a.example/login?next=/dashboard", "?next=/dashboard") is True
+    assert H._url_contient_fragment("https://dashboard.example/accueil", "dashboard") is False
+    assert H._url_contient_fragment("https://a.example/app/dashboard/1", "/dashboard") is True

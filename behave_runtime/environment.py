@@ -265,9 +265,9 @@ def _capturer_reponse_formulaire(context):
     # texte de l'agent. Le cas 99 recevait un `HTTP 500` (corps HTML, donc pas de JSON) que cette
     # capture ignorait : l'outil concluait à un « refus silencieux » alors que le serveur avait planté.
     context.reponses_formulaire = []
-    # Lot 07d : toutes les réponses réseau du scénario (tous onglets), pour « la requête … répond <code> » — il faut observer AVANT l'action.
-    from _base_helpers import enregistrer_les_reponses_reseau
-    enregistrer_les_reponses_reseau(context)
+    # Lot 07d : réponses réseau, boîtes de dialogue et onglets du scénario (tous onglets), numérotés — il faut observer AVANT l'action.
+    from _base_helpers import installer_les_observateurs
+    installer_les_observateurs(context)
 
     def _on_response(response):
         try:
@@ -356,8 +356,11 @@ def before_step(context, step):
     if page is not None:
         page._tp_intention_step = step.name
     # Lot 03 : le type EFFECTIF du step (`Et`/`Mais` héritent) accompagne chaque constat consigné.
-    from _base_helpers import definir_etat_constat
+    from _base_helpers import definir_etat_constat, poser_repere_action
     definir_etat_constat(step_type=getattr(step, "step_type", "") or "")
+    # Lot 07d : chaque ACTION pose un repère — « la requête … répond », « un nouvel onglet s'ouvre » ne jugent que ce qui l'a suivi.
+    if (getattr(step, "step_type", "") or "") in ("given", "when"):
+        poser_repere_action(context)
 
 
 def before_scenario(context, scenario):

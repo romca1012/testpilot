@@ -262,8 +262,9 @@ def step_page_affiche_texte(context, texte):
 
 @then('la page n\'affiche pas le texte "{texte}"')
 def step_page_n_affiche_pas_texte(context, texte):
-    """Une ABSENCE ne se constate que sur une page qui a pu se rendre : sur une page vide, erreur technique — jamais un vert."""
-    page_n_affiche_pas_texte(context.page, texte)
+    """Une ABSENCE ne se constate que sur une page qui a pu se rendre (ni vide, ni en erreur HTTP) : sinon erreur technique — jamais un vert.
+    Cherche le texte dans le document, ses cadres et les valeurs de champs."""
+    page_n_affiche_pas_texte(context, texte)
 
 
 @then('l\'URL courante contient "{fragment}"')

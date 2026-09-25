@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Bannière</title></head>
+<body>
+<!-- Une bannière de cookies : role=dialog mais NON bloquante (pas d'aria-modal). Elle ne doit pas capter « j'accepte la boîte de dialogue ». -->
+<div role="dialog" aria-label="Cookies"><p>Ce site utilise des cookies.</p><button type="button" onclick="this.parentNode.style.display='none'">Accepter</button></div>
+<h1>Dossier</h1>
+<button type="button" onclick="if (confirm('Supprimer le dossier ?')) document.getElementById('r').textContent='Dossier supprimé'">Supprimer</button>
+<p id="r"></p>
+</body></html>
