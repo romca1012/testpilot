@@ -199,13 +199,13 @@ def test_attempt_login_utilise_un_contexte_jetable_jamais_self_page():
     class _FakeContext:
         def __init__(self):
             self.ferme = False
-        def new_page(self):
+        def new_page(self, **_contexte):
             return page
         def close(self):
             self.ferme = True
 
     class _FakeBrowser:
-        def new_context(self):
+        def new_context(self, **_contexte):
             ctx = _FakeContext()
             contextes_ouverts.append(ctx)
             return ctx
@@ -259,13 +259,13 @@ def test_odoo_attempt_login_utilise_aussi_un_contexte_jetable():
     contextes_ouverts = []
 
     class _FakeContext:
-        def new_page(self):
+        def new_page(self, **_contexte):
             return _PageOdoo()
         def close(self):
             contextes_ouverts.append(True)
 
     class _FakeBrowser:
-        def new_context(self):
+        def new_context(self, **_contexte):
             return _FakeContext()
 
     conn._ensure_page = lambda: None
