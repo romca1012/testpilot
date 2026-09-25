@@ -183,6 +183,38 @@ describe('ProjectsList — version déclarée du connecteur', () => {
   })
 })
 
+describe('ProjectsList — navigateur de test (lot 07c)', () => {
+  const AVEC_EFFECTIF = { ...PROJET, browser_locale: '', browser_timezone: '', browser_viewport: '',
+    browser_effectif: { locale: 'fr-FR', timezone: 'Europe/Paris', viewport: '1440x900' } }
+
+  it('montre les valeurs EFFECTIVES par défaut, calculées par le serveur, et envoie du vide (= le défaut)', async () => {
+    listProjects.mockResolvedValue([AVEC_EFFECTIF])
+    const w = await ouvrirEdition()
+
+    expect(w.find('[data-testid="navigateur-de-test"]').text()).toContain('Navigateur de test')
+    expect((w.find('[data-testid="browser-locale"]').element as HTMLInputElement).placeholder).toBe('fr-FR')
+    expect((w.find('[data-testid="browser-viewport"]').element as HTMLInputElement).placeholder).toBe('1440x900')
+    await enregistrer(w)
+
+    const patch = updateProject.mock.calls[0][1]
+    expect([patch.browser_locale, patch.browser_timezone, patch.browser_viewport]).toEqual(['', '', ''])
+  })
+
+  it('envoie les réglages saisis, et pré-remplit ceux déjà enregistrés', async () => {
+    listProjects.mockResolvedValue([{ ...AVEC_EFFECTIF, browser_locale: 'en-GB', browser_timezone: 'Europe/London',
+      browser_viewport: '1920x1080', browser_effectif: { locale: 'en-GB', timezone: 'Europe/London', viewport: '1920x1080' } }])
+    const w = await ouvrirEdition()
+
+    expect((w.find('[data-testid="browser-locale"]').element as HTMLInputElement).value).toBe('en-GB')
+    await w.find('[data-testid="browser-viewport"]').setValue('1280x720')
+    await enregistrer(w)
+
+    const patch = updateProject.mock.calls[0][1]
+    expect([patch.browser_locale, patch.browser_timezone, patch.browser_viewport]).toEqual(
+      ['en-GB', 'Europe/London', '1280x720'])
+  })
+})
+
 describe("ProjectsList — exploration de l'application (étape 2 du flux)", () => {
   it("dit clairement qu'une application n'est PAS explorée", async () => {
     // Laisser la carte muette ferait croire que la génération sait où elle va.

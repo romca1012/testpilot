@@ -589,6 +589,10 @@ export interface ProjectSummary {
   // seulement pour un connecteur qui sait aussi supprimer ce qu'il crée (Odoo) — sans effet pour
   // le connecteur générique, qui refuse toujours.
   calibration_writes_enabled: boolean
+  // Lot 07c : contexte navigateur FIGÉ (langue, fuseau, taille de fenêtre). '' = le défaut ; `browser_effectif` dit ce qui sera
+  // réellement utilisé (calculé par le SERVEUR, jamais recalculé ici). Optionnels : une réponse ancienne n'en porte pas.
+  browser_locale?: string; browser_timezone?: string; browser_viewport?: string
+  browser_effectif?: { locale: string; timezone: string; viewport: string }
   module_count: number; case_count: number
   effective_role: string
 }
@@ -740,6 +744,7 @@ export interface ProjectInput {
   connector_type: string; connector_version: string
   base_url: string; database: string; username: string; password: string
   calibration_writes_enabled?: boolean
+  browser_locale?: string; browser_timezone?: string; browser_viewport?: string
 }
 export interface ModuleSummary {
   id: number; project_id: number; name: string; description: string; case_count: number
