@@ -236,24 +236,74 @@ def test_le_seul_selecteur_de_repli_est_celui_de_community():
 # ── Odoo 18.0 : le fil d'Ariane « Devis » est recouvert par le menu déroulant, l'ITEM de menu est la bonne cible ──
 
 
+class _Items:
+    """`get_by_role("menuitem")` : `nombre` items ; le premier devient visible après `rendu_apres` appels de `wait_for`."""
+
+    def __init__(self, nombre, rendu_apres=1, journal=None):
+        self._nombre, self._rendu_apres, self._journal = nombre, rendu_apres, journal if journal is not None else []
+        self._attentes = 0
+        self.first = types.SimpleNamespace(wait_for=self._attendre, marque="ITEM_DE_MENU")
+
+    def _attendre(self, state=None, timeout=None):
+        self._attentes += 1
+        self._journal.append(f"attend_item_{timeout}")
+
+    def count(self):
+        # Le menu se rend avec un léger délai : tant que l'attente n'a pas eu lieu, rien n'est encore dans le DOM.
+        return self._nombre if self._attentes >= self._rendu_apres else 0
+
+
+def _page_menu(items):
+    return types.SimpleNamespace(
+        url="http://x/odoo/sales", get_by_role=lambda role, name, exact: items,
+        get_by_text=lambda t, exact: types.SimpleNamespace(first="PREMIER_TEXTE"))
+
+
 def test_l_item_de_menu_est_prefere_au_premier_texte_egal():
     """Mesuré sur le banc 18.0 : `get_by_text(...).first` désignait le fil d'Ariane, clic intercepté par le menu déroulant."""
-    class _Item:
-        first = "ITEM_DE_MENU"
-        count = lambda self: 1  # noqa: E731
-
-    page = types.SimpleNamespace(get_by_role=lambda role, name, exact: _Item(),
-                                 get_by_text=lambda t, exact: types.SimpleNamespace(first="PREMIER_TEXTE"))
-
-    assert H._cible_segment_menu(page, "Devis") == "ITEM_DE_MENU"
+    assert H._cible_segment_menu(_page_menu(_Items(1)), "Devis").marque == "ITEM_DE_MENU"
 
 
 def test_sans_item_de_menu_on_retombe_sur_le_premier_texte_egal():
     """Enterprise (tuiles du home menu, sans rôle `menuitem`) : comportement historique inchangé."""
+    def introuvable(state=None, timeout=None):
+        raise PlaywrightTimeout("aucun")
+
     class _Aucun:
+        first = types.SimpleNamespace(wait_for=introuvable)
         count = lambda self: 0  # noqa: E731
 
-    page = types.SimpleNamespace(get_by_role=lambda role, name, exact: _Aucun(),
-                                 get_by_text=lambda t, exact: types.SimpleNamespace(first="PREMIER_TEXTE"))
+    assert H._cible_segment_menu(_page_menu(_Aucun()), "Devis") == "PREMIER_TEXTE"
+
+
+def test_des_items_homonymes_levent_une_erreur_au_lieu_de_cliquer_le_premier():
+    """Falsifiabilité : `.first` cliquerait la bascule de la barre de navigation — menu refermé, step vert, mauvaise page."""
+    import pytest
+
+    with pytest.raises(H.ElementIntrouvableError, match="ambigu"):
+        H._cible_segment_menu(_page_menu(_Items(2)), "Produits")
+
+
+def test_un_menu_qui_se_rend_avec_un_leger_delai_est_attendu_avant_de_conclure_qu_il_n_y_a_pas_d_item():
+    """Falsifiabilité : sans l'attente, `count()` vaut 0 au premier appel et on retomberait sur le texte (fil d'Ariane)."""
+    journal = []
+    items = _Items(1, rendu_apres=1, journal=journal)
+    assert items.count() == 0, "précondition : un count() immédiat ne voit pas encore l'item"
+
+    cible = H._cible_segment_menu(_page_menu(items), "Devis")
+
+    assert cible.marque == "ITEM_DE_MENU"
+    assert journal == [f"attend_item_{H._ATTENTE_ITEM_MENU_MS}"]
+
+
+def test_l_attente_de_l_item_est_courte_pour_ne_pas_ralentir_enterprise():
+    assert H._ATTENTE_ITEM_MENU_MS <= 3000
+
+
+def test_une_erreur_de_get_by_role_retombe_sur_l_ancien_ciblage():
+    def casse(role, name, exact):
+        raise RuntimeError("page en cours de navigation")
+
+    page = types.SimpleNamespace(get_by_role=casse, get_by_text=lambda t, exact: types.SimpleNamespace(first="PREMIER_TEXTE"))
 
     assert H._cible_segment_menu(page, "Devis") == "PREMIER_TEXTE"

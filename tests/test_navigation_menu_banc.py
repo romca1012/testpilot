@@ -120,3 +120,22 @@ def test_avec_l_ancien_comportement_la_meme_navigation_echoue(contexte, monkeypa
 
     with pytest.raises(PlaywrightTimeout):
         H.navigate_menu(contexte, "Ventes / Commandes / Devis")
+
+
+def test_les_items_de_menu_portent_le_role_menuitem(navigateur_neuf):
+    """`_cible_segment_menu` s'appuie sur ce rôle : le prouver sur la VERSION du job (16.0, 17.0, 18.0), pas seulement en local.
+
+    Un item unique : ni absent (repli silencieux sur le fil d'Ariane, 18.0) ni homonyme (erreur d'ambiguïté).
+    """
+    contexte = types.SimpleNamespace(page=navigateur_neuf, odoo_url=BANC, odoo_db="banc",
+                                     odoo_user="admin", odoo_password="admin")
+    H.connecter_le_navigateur_si_page_vide(contexte)
+    navigateur_neuf.goto(BANC + "/web#action=menu", wait_until="domcontentloaded")
+    H._ouvrir_grille_applications(navigateur_neuf)
+    H._cible_segment_menu(navigateur_neuf, "Ventes").click(timeout=8000)
+    H._cible_segment_menu(navigateur_neuf, "Commandes").click(timeout=8000)
+
+    items = navigateur_neuf.get_by_role("menuitem", name="Devis", exact=True)
+    items.first.wait_for(state="visible", timeout=8000)
+
+    assert items.count() == 1, "le rôle menuitem doit désigner UN item « Devis » sur cette version"
