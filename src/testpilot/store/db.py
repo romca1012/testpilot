@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 48
+_SCHEMA_VERSION = 49
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -238,8 +238,28 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_47_execution_attempt(conn)
     if version < 48:
         _migrate_48_execution_blocked(conn)
+    if version < 49:
+        _migrate_49_confiance_et_strict(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
+
+
+def _migrate_49_confiance_et_strict(conn: sqlite3.Connection) -> None:
+    """Lot 05 (D5) : `execution.confiance` (comment le verdict a été obtenu) et `test_run.strict` (campagne stricte).
+
+    Deux colonnes ajoutées seulement si absentes (idempotent ; une base neuve passe aussi par ici). `ALTER TABLE … ADD
+    COLUMN` accepte un CHECK quand un DEFAULT le satisfait : pas de reconstruction de table.
+
+    ⚠️ L'HISTORIQUE reçoit `nominale` / `0` PAR DÉFAUT — ce n'est PAS une mesure : avant ce lot, la confiance n'était pas
+    calculée. Une exécution ancienne obtenue par repli ou par retry s'affiche donc comme nominale ; « on ne sait pas » n'a
+    pas de valeur dédiée (décision D5 : trois valeurs seulement), on le documente ici et dans le rapport du lot.
+    """
+    if "confiance" not in _column_names(conn, "execution"):
+        conn.execute("ALTER TABLE execution ADD COLUMN confiance TEXT NOT NULL DEFAULT 'nominale'"
+                     " CHECK (confiance IN ('nominale', 'auto_resolue', 'apres_retry'))")
+    if "strict" not in _column_names(conn, "test_run"):
+        conn.execute("ALTER TABLE test_run ADD COLUMN strict INTEGER NOT NULL DEFAULT 0"
+                     " CHECK (strict IN (0, 1))")
 
 
 def _migrate_48_execution_blocked(conn: sqlite3.Connection) -> None:

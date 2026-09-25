@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 48
+ALIGNED_WITH_SCHEMA_VERSION = 49
 
 metadata = MetaData()
 
@@ -270,6 +270,9 @@ execution = Table(
     Column("artifacts_path", Text, nullable=False, server_default=""),
     Column("triggered_by", Text, nullable=False, server_default=""),
     Column("started_at", Text, nullable=False),
+    # Lot 05 (D5, migration 49) : comment le verdict a été obtenu. `nominale` PAR DÉFAUT pour l'historique — ce n'est pas
+    # une mesure (la confiance n'était pas calculée avant ce lot).
+    Column("confiance", Text, nullable=False, server_default="nominale"),
     # `run_id` (migration 15) : PAS de FK dure dans `db.py` (`ALTER TABLE … ADD COLUMN run_id
     # INTEGER` sans REFERENCES) — repris à l'identique, NULL = exécutions mono-cas héritées.
     Column("run_id", Integer, nullable=True),
@@ -283,6 +286,7 @@ execution = Table(
         name="ck_execution_functional_status",
     ),
     CheckConstraint("trigger IN ('first_run', 'rerun')", name="ck_execution_trigger"),
+    CheckConstraint("confiance IN ('nominale', 'auto_resolue', 'apres_retry')", name="ck_execution_confiance"),
     Index("idx_execution_case", "test_case_id"),
     Index("idx_execution_run", "run_id"),
     sqlite_autoincrement=True,
@@ -393,6 +397,9 @@ test_run = Table(
     Column("completed_at", Text, nullable=True),
     Column("is_archived", Integer, nullable=False, server_default="0"),
     Column("mode", Text, nullable=False, server_default="automatique"),
+    # Lot 05 (D5, migration 49) : campagne STRICTE — ni résolution adaptative ni retry pendant l'exécution.
+    Column("strict", Integer, nullable=False, server_default="0"),
+    CheckConstraint("strict IN (0, 1)", name="ck_test_run_strict"),
     CheckConstraint("selection_mode IN ('all', 'frozen')", name="ck_test_run_selection_mode"),
     CheckConstraint("status IN ('draft', 'running', 'completed')", name="ck_test_run_status"),
     CheckConstraint("mode IN ('manuelle', 'automatique')", name="ck_test_run_mode"),
