@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Suivi des commandes</title>
+</head>
+<body>
+<h1>Suivi des commandes</h1>
+<!-- Vocabulaire universel (lot 07d) : un tableau nommé par sa LÉGENDE, un second nommé seulement par le titre qui le précède,
+     des lignes portant des boutons, des doublons (deux lignes « Acme ») pour prouver qu'une ambiguïté n'est jamais résolue au hasard. -->
+<table>
+  <caption>Commandes</caption>
+  <thead>
+    <tr><th scope="col">Référence</th><th scope="col">Client</th><th scope="col">Statut</th><th scope="col">Actions</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>CMD-1</td><td>Acme</td><td>Payée</td>
+      <td>
+        <button type="button" onclick="document.getElementById('resultat').textContent='CMD-1 consultée'">Voir</button>
+        <button type="button" onclick="if (confirm('Supprimer CMD-1 ?')) document.getElementById('resultat').textContent='CMD-1 supprimée'">Supprimer</button>
+      </td>
+    </tr>
+    <tr>
+      <td>CMD-2</td><td>Globex</td><td>En attente</td>
+      <td>
+        <button type="button" onclick="document.getElementById('resultat').textContent='CMD-2 consultée'">Voir</button>
+        <button type="button" onclick="if (confirm('Supprimer CMD-2 ?')) document.getElementById('resultat').textContent='CMD-2 supprimée'">Supprimer</button>
+      </td>
+    </tr>
+    <tr>
+      <td>CMD-3</td><td>Acme</td><td>Annulée</td>
+      <td><button type="button" onclick="document.getElementById('resultat').textContent='CMD-3 consultée'">Voir</button></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Clients</h2>
+<table id="clients">
+  <tr><th>Nom</th><th>Ville</th></tr>
+  <tr><td>Acme</td><td>Lyon</td></tr>
+  <tr><td>Globex</td><td>Nice</td></tr>
+</table>
+
+<button type="button" onclick="document.getElementById('modale').style.display='block'">Supprimer avec confirmation</button>
+<div id="modale" role="dialog" aria-modal="true" aria-label="Confirmation" style="display:none">
+  <p>Supprimer définitivement ?</p>
+  <button type="button" onclick="document.getElementById('resultat').textContent='Supprimé après confirmation'; document.getElementById('modale').style.display='none'">Confirmer</button>
+  <button type="button" onclick="document.getElementById('modale').style.display='none'">Annuler</button>
+</div>
+
+<p id="resultat"></p>
+</body>
+</html>

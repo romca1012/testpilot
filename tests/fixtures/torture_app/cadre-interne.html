@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Contact</title></head>
+<body>
+<label for="n">Nom du contact</label>
+<input id="n" name="nom">
+<button type="button" onclick="fetch('/api/contact', {method: 'POST', body: document.getElementById('n').value}).then(function () { document.getElementById('r').textContent = 'Envoyé'; })">Envoyer</button>
+<p id="r"></p>
+</body></html>

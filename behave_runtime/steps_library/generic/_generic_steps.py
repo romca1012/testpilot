@@ -18,6 +18,10 @@ from _base_helpers import (
     wait_form_submission, force_name_field, remplir_formulaire_valide,
     select_product_in_list, select_product_partial, NavigationImpossibleError,
     connexion_web_utilisateur,
+    # Vocabulaire universel (lot 07d) — imports au NIVEAU MODULE, jamais différés (`steps/` sort du sys.path après le chargement).
+    ouvrir_page, page_affiche_texte, page_n_affiche_pas_texte, url_contient, tableau_contient_ligne,
+    tableau_compte_lignes, cliquer_dans_ligne, decider_dialogue, telecharger_via, fichier_telecharge_se_nomme,
+    fichier_telecharge_contient, cadre, nouvel_onglet_sur, requete_repond,
 )
 
 # ⚠️ Chaque step d'ACTION ci-dessous est déclaré sous `@given` ET `@when` (bug SauceDemo,
@@ -237,3 +241,105 @@ def step_access_portal_section(context, section_name):
        'après exécution via leurs identifiants enregistrés')
 def step_declare_teardown(context):
     pass
+
+
+# ══ Vocabulaire universel (lot 07d, C4) ══════════════════════════════════════════════════════════════════
+# Aucun sélecteur propre à une application, aucun `context.odoo`. Les ACTIONS sont déclarées sous `@given` ET `@when` (comme plus haut :
+# `Et` hérite du type du step précédent) ; les VÉRIFICATIONS sous `@then` seul, et chacune consigne un constat (lot 03).
+
+
+@given('j\'ouvre la page "{chemin}"')
+@when('j\'ouvre la page "{chemin}"')
+def step_ouvrir_page(context, chemin):
+    """Ouvre une page RELATIVE à l'URL du projet (jamais une autre origine) ; connecte d'abord un navigateur encore vide."""
+    ouvrir_page(context, chemin)
+
+
+@then('la page affiche le texte "{texte}"')
+def step_page_affiche_texte(context, texte):
+    page_affiche_texte(context.page, texte)
+
+
+@then('la page n\'affiche pas le texte "{texte}"')
+def step_page_n_affiche_pas_texte(context, texte):
+    """Une ABSENCE ne se constate que sur une page qui a pu se rendre : sur une page vide, erreur technique — jamais un vert."""
+    page_n_affiche_pas_texte(context.page, texte)
+
+
+@then('l\'URL courante contient "{fragment}"')
+def step_url_contient(context, fragment):
+    url_contient(context.page, fragment)
+
+
+@then('le tableau "{nom}" contient une ligne avec "{a}" et "{b}"')
+def step_tableau_contient_ligne(context, nom, a, b):
+    tableau_contient_ligne(context.page, nom, a, b)
+
+
+@then('le tableau "{nom}" compte {n:d} lignes')
+@then('le tableau "{nom}" compte {n:d} ligne')
+def step_tableau_compte_lignes(context, nom, n):
+    """Compte les lignes de DONNÉES (l'en-tête n'en est pas une)."""
+    tableau_compte_lignes(context.page, nom, n)
+
+
+@given('je clique sur "{libelle}" dans la ligne contenant "{texte}"')
+@when('je clique sur "{libelle}" dans la ligne contenant "{texte}"')
+def step_cliquer_dans_ligne(context, libelle, texte):
+    """Clique un bouton, un lien ou un texte DANS la ligne qui contient `texte` — plusieurs lignes ou plusieurs cibles : erreur, jamais la première."""
+    cliquer_dans_ligne(context.page, libelle, texte)
+
+
+@given("j'accepte la boîte de dialogue")
+@when("j'accepte la boîte de dialogue")
+def step_accepter_dialogue(context):
+    """Modale ARIA déjà ouverte : clique sa confirmation. Boîte NATIVE (alert/confirm) : à placer AVANT l'action qui l'ouvre — Playwright la refuse d'office."""
+    decider_dialogue(context, accepter=True)
+
+
+@given("je refuse la boîte de dialogue")
+@when("je refuse la boîte de dialogue")
+def step_refuser_dialogue(context):
+    decider_dialogue(context, accepter=False)
+
+
+@given('je télécharge le fichier via "{libelle}"')
+@when('je télécharge le fichier via "{libelle}"')
+def step_telecharger(context, libelle):
+    telecharger_via(context, libelle)
+
+
+@then('le fichier téléchargé se nomme "{motif}"')
+def step_fichier_se_nomme(context, motif):
+    """`motif` : un nom exact ou un motif avec `*` (ex. export_*.csv), sans tenir compte de la casse."""
+    fichier_telecharge_se_nomme(context, motif)
+
+
+@then('le fichier téléchargé contient "{texte}"')
+def step_fichier_contient(context, texte):
+    """CSV, TXT et formats texte, ou PDF (extraction du texte) ; un format illisible est une erreur technique, jamais un vert."""
+    fichier_telecharge_contient(context, texte)
+
+
+@given('dans le cadre "{nom_du_cadre}", je renseigne le champ "{field}" avec la valeur "{value}"')
+@when('dans le cadre "{nom_du_cadre}", je renseigne le champ "{field}" avec la valeur "{value}"')
+def step_cadre_renseigner(context, nom_du_cadre, field, value):
+    fill_field(cadre(context.page, nom_du_cadre), field, value)
+
+
+@given('dans le cadre "{nom_du_cadre}", je clique sur le bouton "{label}"')
+@when('dans le cadre "{nom_du_cadre}", je clique sur le bouton "{label}"')
+def step_cadre_cliquer(context, nom_du_cadre, label):
+    click_button(cadre(context.page, nom_du_cadre), label)
+
+
+@then('un nouvel onglet s\'ouvre sur "{fragment}"')
+def step_nouvel_onglet(context, fragment):
+    """Constate l'onglet ET s'y place : les steps suivants s'appliquent à ce nouvel onglet."""
+    nouvel_onglet_sur(context, fragment)
+
+
+@then('la requête "{requete}" répond {code:d}')
+def step_requete_repond(context, requete, code):
+    """`requete` : « <méthode> <fragment ou motif d'URL> » (ex. « POST /api/tickets ») ; c'est la DERNIÈRE réponse correspondante qui est jugée."""
+    requete_repond(context, requete, code)
