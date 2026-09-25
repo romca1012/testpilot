@@ -421,12 +421,13 @@ def _test_de_campagne(conn, run_id: int, case_id: int) -> tuple[dict, list[int]]
 
 
 def _ailleurs(ligne: dict) -> schemas.ResultAilleurs:
-    from testpilot.verdict.status import statut_de_test
+    from testpilot.verdict.status import a_confirmer, statut_de_test
 
+    statut = statut_de_test(ligne.get("execution_status"), ligne.get("functional_status"),
+                            ligne.get("statut_manuel") or "")
     return schemas.ResultAilleurs(
         run_id=ligne["run_id"], run_name=ligne.get("run_name", "") or "",
-        statut=statut_de_test(ligne.get("execution_status"), ligne.get("functional_status"),
-                              ligne.get("statut_manuel") or ""),
+        statut=statut, a_confirmer=a_confirmer(statut, ligne.get("confiance")),
         mode=ligne["mode"], created_by=ligne.get("created_by", "") or "",
         created_at=ligne.get("created_at", "") or "")
 
@@ -459,6 +460,8 @@ def get_test(run_id: int, case_id: int, conn=Depends(get_conn)):
         refs=cas.get("refs", "") or "",
         # Le dernier inscrit FAIT FOI — même règle que partout, et déjà calculée par `_result_out`.
         statut=resultats[-1].statut if resultats else STATUT_UNTESTED,
+        confiance=resultats[-1].confiance if resultats else "nominale",
+        a_confirmer=resultats[-1].a_confirmer if resultats else False,
         results=resultats,
         prev_case_id=ids[i - 1] if i > 0 else None,
         next_case_id=ids[i + 1] if i < len(ids) - 1 else None,
@@ -474,7 +477,7 @@ def get_activite(run_id: int, conn=Depends(get_conn)):
     Les deux écrans (Activité, Progression) lisent CETTE réponse : la progression n'est que
     l'activité comptée autrement. Deux routes recompteraient la même chose de deux façons.
     """
-    from testpilot.verdict.status import statut_de_test
+    from testpilot.verdict.status import a_confirmer, statut_de_test
 
     repo = RunRepo(conn)
     run = repo.get(run_id)
@@ -485,6 +488,8 @@ def get_activite(run_id: int, conn=Depends(get_conn)):
             case_id=l["case_id"], case_title=l.get("case_title", "") or "",
             statut=statut_de_test(l.get("execution_status"), l.get("functional_status"),
                                   l.get("statut_manuel") or ""),
+            a_confirmer=a_confirmer(statut_de_test(l.get("execution_status"), l.get("functional_status"),
+                                                   l.get("statut_manuel") or ""), l.get("confiance")),
             mode=l["mode"], created_by=l.get("created_by", "") or "",
             created_at=l.get("created_at", "") or "")
         for l in ResultRepo(conn).activite_du_run(run_id)]

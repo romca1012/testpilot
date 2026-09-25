@@ -2647,7 +2647,7 @@ class ResultRepo:
         l'écran, et son résultat ne doit pas ressusciter dans l'historique d'un cas vivant.
         """
         return _rows(self.conn.execute(
-            "SELECT tr.*, e.execution_status, e.functional_status, r.name AS run_name"
+            "SELECT tr.*, e.execution_status, e.functional_status, e.confiance, r.name AS run_name"
             " FROM test_result tr LEFT JOIN execution e ON e.id = tr.execution_id"
             " JOIN test_run r ON r.id = tr.run_id"
             " JOIN project p ON p.id = r.project_id"
@@ -2663,7 +2663,7 @@ class ResultRepo:
         seule vue de l'application où un cas supprimé continuerait de vivre.
         """
         return _rows(self.conn.execute(
-            "SELECT tr.*, e.execution_status, e.functional_status, tc.title AS case_title"
+            "SELECT tr.*, e.execution_status, e.functional_status, e.confiance, tc.title AS case_title"
             " FROM test_result tr LEFT JOIN execution e ON e.id = tr.execution_id"
             " JOIN test_case tc ON tc.id = tr.case_id"
             " WHERE tr.run_id=? AND tc.deleted_at='' ORDER BY tr.id DESC LIMIT ?",

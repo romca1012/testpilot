@@ -11,7 +11,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, type RunActivite } from '../lib/api'
-import { libelleActeur, testStatusMeta } from '../lib/status'
+import { libelleActeur, statutAffiche } from '../lib/status'
 import { cleJour, jourLong } from '../lib/format'
 import CourbeResultats from '../components/CourbeResultats.vue'
 import ResultMode from '../components/ResultMode.vue'
@@ -84,7 +84,7 @@ function heure(iso: string): string { return (iso || '').slice(11, 16) }
         <li v-for="(e, i) in jour.lignes" :key="i"
             class="flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm">
           <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold shrink-0"
-                :class="testStatusMeta(e.statut).badge">{{ testStatusMeta(e.statut).label }}</span>
+                :class="statutAffiche(e.statut, e.a_confirmer).badge">{{ statutAffiche(e.statut, e.a_confirmer).label }}</span>
           <!-- Le titre mène au TEST dans CETTE campagne (pas au cas du référentiel) : c'est de
                ce résultat-ci qu'on vient de lire la ligne. -->
           <RouterLink :to="{ name: 'run-test', params: { pid, id: String(runId), caseId: String(e.case_id) } }"

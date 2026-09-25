@@ -4,7 +4,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ExecutionSummary, ScenarioResultOut } from '../../lib/api'
-import { causeLabel, executionView, testStatusMeta } from '../../lib/status'
+import { causeLabel, executionView, statutAffiche, testStatusMeta } from '../../lib/status'
 import TestActivityChart from './TestActivityChart.vue'
 
 const props = defineProps<{
@@ -70,8 +70,8 @@ function openPlan(e: ExecutionSummary) {
           <button v-for="e in g.rows" :key="e.id"
                   class="w-full text-left flex items-center gap-4 py-3 border-b border-border/40 hover:bg-accent/30 transition-colors rounded-md px-2 -mx-2"
                   @click="openExec(e.id)">
-            <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold shrink-0" :class="testStatusMeta(e.statut).badge">
-              {{ testStatusMeta(e.statut).label }}
+            <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold shrink-0" :class="statutAffiche(e.statut, e.a_confirmer).badge">
+              {{ statutAffiche(e.statut, e.a_confirmer).label }}
             </span>
             <div class="min-w-0 flex-1">
               <div class="text-sm">

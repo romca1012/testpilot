@@ -16,7 +16,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api, roleSuffisant, type TestDansRun } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useSession } from '../lib/useSession'
-import { etatView, libelleActeur, priorityView, testStatusMeta, typeView } from '../lib/status'
+import { etatView, libelleActeur, priorityView, statutAffiche, testStatusMeta, typeView } from '../lib/status'
 import { cleMois, formatDate, moisLong } from '../lib/format'
 import ResultHistory from '../components/ResultHistory.vue'
 import ResultMode from '../components/ResultMode.vue'
@@ -66,7 +66,7 @@ load()
 // verrait le test précédent avec le titre du suivant.
 watch(caseId, load)
 
-const statut = computed(() => testStatusMeta(test.value?.statut || 'untested'))
+const statut = computed(() => statutAffiche(test.value?.statut || 'untested', test.value?.a_confirmer))
 
 // ── Navigation DANS LA CAMPAGNE ───────────────────────────────────────────────
 // ⚠️ Les voisins viennent du SERVEUR, bornés à la campagne. Enchaîner les tests d'une session de
@@ -252,7 +252,7 @@ const parMois = computed(() => {
           <ul class="mt-2 divide-y divide-border/40 rounded-lg border border-border">
             <li v-for="(r, i) in mois.lignes" :key="i" class="flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm">
               <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold shrink-0"
-                    :class="testStatusMeta(r.statut).badge">{{ testStatusMeta(r.statut).label }}</span>
+                    :class="statutAffiche(r.statut, r.a_confirmer).badge">{{ statutAffiche(r.statut, r.a_confirmer).label }}</span>
               <!-- ⚠️ Le MODE reste visible ici aussi : un « Passed » manuel dans une autre
                    campagne ne vaut pas un « Passed » automatique, et l'écran ne doit jamais
                    laisser croire le contraire. -->

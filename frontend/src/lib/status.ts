@@ -185,6 +185,34 @@ export function testStatusView(statut: string) {
   return TEST_STATUS[(statut as TestStatusCode)] || TEST_STATUS.untested
 }
 
+// ── CONFIANCE du verdict (lot 05, D5) ─────────────────────────────────────────────────────────────────────────
+// Un vert n'a pas toujours la même valeur : obtenu par la cascade déterministe (nominale), par un repli adaptatif
+// (un LLM a retrouvé un élément renommé) ou au second essai après un timeout. Ce n'est NI un statut NI un axe : le
+// statut de lecture reste `passed`, le serveur calcule `a_confirmer` et l'écran l'affiche — il ne redérive rien.
+// Les libellés sont DUPLIQUÉS dans `verdict/status.py::LIBELLES_CONFIANCE` (test d'accord).
+export const A_CONFIRMER_LABEL = 'Réussi — à confirmer'
+
+const CONFIANCE_LABEL: Record<string, string> = {
+  nominale: 'Nominale',
+  auto_resolue: 'Résolue automatiquement',
+  apres_retry: 'Obtenue au second essai',
+}
+
+/** Libellé français d'une confiance ; une valeur inconnue retombe sur « Nominale », jamais sur la valeur brute. */
+export function confianceLabel(code: string | undefined): string {
+  return CONFIANCE_LABEL[code || 'nominale'] || CONFIANCE_LABEL.nominale
+}
+
+/** Le libellé et le badge d'un statut, avec la réserve « à confirmer » d'un vert non nominal. Seul un `passed` la porte :
+ *  un échec obtenu par repli reste un échec. */
+export function statutAffiche(statut: string, aConfirmer = false) {
+  const meta = testStatusMeta(statut)
+  if (statut === 'passed' && aConfirmer) {
+    return { ...meta, label: A_CONFIRMER_LABEL, badge: 'bg-warning/15 text-warning' }
+  }
+  return meta
+}
+
 // ── MODE D'EXÉCUTION : la machine a joué le test, ou un humain l'a joué à la main ─────────────
 // ⚠️ **C'est l'étiquette qui empêche le statut de mentir.** Dans la plupart des outils de test
 // management, « Passed » est une case qu'un humain coche : rien ne dit si quoi que ce soit a

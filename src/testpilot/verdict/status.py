@@ -64,6 +64,14 @@ CONFIANCE_NOMINALE = "nominale"
 CONFIANCE_AUTO_RESOLUE = "auto_resolue"
 CONFIANCE_APRES_RETRY = "apres_retry"
 CONFIANCES = (CONFIANCE_NOMINALE, CONFIANCE_AUTO_RESOLUE, CONFIANCE_APRES_RETRY)
+# Libellés français (CONTINUITE §4.7 : aucune valeur d'enum brute à l'écran). DUPLIQUÉS dans `frontend/src/lib/status.ts`
+# (`CONFIANCE_LABEL`), même test d'accord que les causes (`tests/test_confiance_libelles.py`).
+LIBELLES_CONFIANCE = {
+    CONFIANCE_NOMINALE: "Nominale",
+    CONFIANCE_AUTO_RESOLUE: "Résolue automatiquement",
+    CONFIANCE_APRES_RETRY: "Obtenue au second essai",
+}
+LIBELLE_A_CONFIRMER = "Réussi — à confirmer"
 # Du moins au plus préoccupant : le cas prend la confiance du scénario le moins sûr.
 _RANG_CONFIANCE = {CONFIANCE_NOMINALE: 0, CONFIANCE_AUTO_RESOLUE: 1, CONFIANCE_APRES_RETRY: 2}
 

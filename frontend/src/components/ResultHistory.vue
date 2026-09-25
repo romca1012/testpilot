@@ -12,7 +12,7 @@
 // pas de la même façon.
 import { computed, ref } from 'vue'
 import { API_BASE, api, type ResultOut } from '../lib/api'
-import { testStatusMeta } from '../lib/status'
+import { statutAffiche } from '../lib/status'
 import ResultMode from './ResultMode.vue'
 
 const props = defineProps<{ results: ResultOut[]; loading?: boolean; canDeleteAttachments?: boolean }>()
@@ -81,8 +81,8 @@ async function retirerPiece(resultId: number, attachmentId: number, filename: st
         <div class="flex flex-wrap items-center gap-2">
           <ResultMode :mode="r.mode" />
           <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-semibold"
-                :class="testStatusMeta(r.statut).badge">
-            {{ testStatusMeta(r.statut).label }}
+                :class="statutAffiche(r.statut, r.a_confirmer).badge">
+            {{ statutAffiche(r.statut, r.a_confirmer).label }}
           </span>
           <span class="ml-auto text-[11px] text-muted-foreground">
             <!-- Le nom est une SIGNATURE déclarée, pas une identité vérifiée (§8 du brief) :

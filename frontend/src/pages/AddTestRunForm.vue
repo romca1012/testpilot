@@ -30,6 +30,8 @@ const form = ref({
   // Automatique par défaut : c'est ce que TestPilot sait faire de plus et ce qui distingue le
   // produit. Le manuel est un choix délibéré, jamais une valeur dans laquelle on tombe.
   mode: 'automatique' as 'automatique' | 'manuelle',
+  // Lot 05 (D5) : campagne stricte — décochée par défaut (le comportement d'une campagne ordinaire ne change pas).
+  strict: false,
 })
 
 const cases = ref<CaseSummary[]>([])
@@ -142,6 +144,7 @@ async function submit() {
       refs: form.value.refs,
       selection_mode: form.value.selection,
       mode: form.value.mode,
+      strict: form.value.mode === 'automatique' && form.value.strict,
       case_ids: form.value.selection === 'frozen' ? selected.value : [],
     })
     router.push({ name: 'run-detail', params: { pid, id: String(run.id) } })
@@ -323,6 +326,22 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
       </div>
 
       <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+
+      <!-- Lot 05 (D5) : la campagne STRICTE n'a de sens qu'automatique — un humain ne « rejoue » ni ne « répare » rien.
+           Placée APRÈS la sélection des cas : c'est une option d'exécution, pas un choix de mode, et elle ne doit pas
+           s'intercaler dans la liste des cases à cocher des cas. -->
+      <label v-if="form.mode === 'automatique'" class="flex gap-3 rounded-md border border-border p-3 cursor-pointer">
+        <input type="checkbox" v-model="form.strict" data-testid="campagne-stricte"
+               class="mt-1 accent-[hsl(var(--primary))]" />
+        <div>
+          <div class="text-sm font-medium">Campagne stricte</div>
+          <p class="text-xs text-muted-foreground mt-0.5">
+            Sans <strong class="text-foreground">résolution automatique</strong> d'un élément renommé et sans
+            <strong class="text-foreground">second essai</strong> : un champ ou un menu qui a changé donne « Retest »
+            au lieu d'un vert retrouvé par repli. Aucun appel à l'IA pour retrouver un élément pendant l'exécution.
+          </p>
+        </div>
+      </label>
 
       <div class="flex items-center gap-3 pt-2">
         <Button type="submit" variant="success" :disabled="saving || !canSubmit" :loading="saving">

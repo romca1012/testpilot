@@ -34,7 +34,7 @@ import {
 } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useSession } from '../lib/useSession'
-import { libelleActeur, testStatusMeta, TEST_STATUS_ORDER, type TestStatusCode } from '../lib/status'
+import { libelleActeur, statutAffiche, testStatusMeta, TEST_STATUS_ORDER, type TestStatusCode } from '../lib/status'
 import ResultMode from '../components/ResultMode.vue'
 import AddResultDialog from '../components/AddResultDialog.vue'
 import RefsList from '../components/RefsList.vue'
@@ -498,6 +498,11 @@ async function resultatAjoute() {
         <div>
           <div class="text-5xl font-bold tabular-nums">{{ pctReussi }} %</div>
           <div class="text-sm text-muted-foreground mt-1">réussi</div>
+          <!-- Lot 05 (D5) : parmi les « réussis », ceux qui ne sont pas des verts nominaux. Compté par le serveur. -->
+          <p v-if="detail?.run.verts_a_confirmer" class="mt-2 text-xs font-semibold text-warning" data-testid="verts-a-confirmer">
+            dont {{ detail.run.verts_a_confirmer }} à confirmer
+          </p>
+          <p v-if="detail?.run.strict" class="mt-1 text-xs text-muted-foreground">Campagne stricte : sans repli ni second essai.</p>
           <p class="mt-3 text-xs text-muted-foreground">
             {{ dist.untested }} / {{ total }} non testés ({{ pctNonTestes }} %).
           </p>
@@ -606,8 +611,9 @@ async function resultatAjoute() {
               <td v-if="colonneVisible('soumis')" class="py-3 px-2.5 truncate text-muted-foreground">{{ libelleActeur(c.created_by) }}</td>
               <td class="py-3 px-2.5 text-right">
                 <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
-                      :class="testStatusMeta(statusOf(c)).badge">
-                  {{ testStatusMeta(statusOf(c)).label }}
+                      :class="statutAffiche(statusOf(c), c.a_confirmer).badge"
+                      :title="c.a_confirmer ? 'Réussi, mais obtenu par un repli ou au second essai : à confirmer.' : undefined">
+                  {{ statutAffiche(statusOf(c), c.a_confirmer).label }}
                 </span>
               </td>
               <td class="py-3 pl-2.5" @click.stop>
