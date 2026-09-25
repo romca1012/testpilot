@@ -224,6 +224,7 @@ const editError = ref('')
 const edit = ref({
   name: '', connector_type: 'odoo', connector_version: '', base_url: '', database: '', username: '', password: '',
   calibration_writes_enabled: false,
+  browser_locale: '', browser_timezone: '', browser_viewport: '',
 })
 
 function startEdit(p: ProjectSummary) {
@@ -237,6 +238,8 @@ function startEdit(p: ProjectSummary) {
     // signifie « inchangé », jamais « efface-le » — d'où le filtrage à l'enregistrement.
     password: '',
     calibration_writes_enabled: p.calibration_writes_enabled,
+    browser_locale: p.browser_locale || '', browser_timezone: p.browser_timezone || '',
+    browser_viewport: p.browser_viewport || '',
   }
 }
 
@@ -300,6 +303,10 @@ async function saveEdit() {
       database: edit.value.database,
       username: edit.value.username,
       calibration_writes_enabled: edit.value.calibration_writes_enabled,
+      // Lot 07c : '' = revenir au défaut (fr-FR, Europe/Paris, 1440x900) ; le serveur refuse une valeur mal formée (422).
+      browser_locale: edit.value.browser_locale,
+      browser_timezone: edit.value.browser_timezone,
+      browser_viewport: edit.value.browser_viewport,
     }
     // Le mot de passe n'est envoyé QUE s'il a été saisi. L'omettre laisse le secret intact ;
     // envoyer "" l'effacerait — et toutes les exécutions du projet échoueraient ensuite.
@@ -596,6 +603,23 @@ onMounted(async () => { await load(); await loadExplorations() })
             <label class="block"><span class="text-sm font-medium">Mot de passe{{ edit.connector_type === 'odoo' ? '' : ' (facultatif)' }}</span><input v-model="edit.password" type="password" placeholder="Inchangé" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
           </div>
           <p class="mt-2 text-xs text-muted-foreground">Le mot de passe n'est jamais réaffiché. Laissez ce champ vide pour le conserver tel quel.</p>
+        </fieldset>
+        <!-- Lot 07c : le navigateur de test est FIGÉ par le projet, pas par la machine qui le lance — la même campagne affiche
+             alors les mêmes libellés, les mêmes dates et la même mise en page partout. Vide = le défaut. -->
+        <fieldset class="rounded-lg border border-border p-3" data-testid="navigateur-de-test">
+          <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Navigateur de test</legend>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <label class="block"><span class="text-sm font-medium">Langue</span>
+              <input v-model="edit.browser_locale" :placeholder="editing?.browser_effectif?.locale || 'fr-FR'" data-testid="browser-locale" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <label class="block"><span class="text-sm font-medium">Fuseau horaire</span>
+              <input v-model="edit.browser_timezone" :placeholder="editing?.browser_effectif?.timezone || 'Europe/Paris'" data-testid="browser-timezone" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <label class="block"><span class="text-sm font-medium">Taille de fenêtre</span>
+              <input v-model="edit.browser_viewport" :placeholder="editing?.browser_effectif?.viewport || '1440x900'" data-testid="browser-viewport" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+          </div>
+          <p class="mt-2 text-xs text-muted-foreground">
+            Laissez vide pour le défaut ({{ editing?.browser_effectif?.locale || 'fr-FR' }}, {{ editing?.browser_effectif?.timezone || 'Europe/Paris' }},
+            {{ editing?.browser_effectif?.viewport || '1440x900' }}). L'exploration et l'exécution utilisent ce même contexte.
+          </p>
         </fieldset>
         <fieldset v-if="edit.connector_type === 'odoo'" class="rounded-lg border border-border p-3">
           <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Génération — calibration en écriture</legend>
