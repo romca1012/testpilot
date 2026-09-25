@@ -2718,21 +2718,44 @@ def check_count_increased_by_one(context, model):
 #
 # Des steps VRAIMENT génériques : ils ne connaissent que Playwright et ce qu'un navigateur expose (rôles ARIA, texte visible, URL,
 # réponses réseau) — aucune application, aucun `context.odoo`. Chaque vérification consigne un constat (`@constat`, lot 03) ; une
-# ACTION (ouvrir, cliquer, télécharger) n'en consigne aucun. Deux règles tenues partout :
+# ACTION (ouvrir, cliquer, télécharger) n'en consigne aucun. Quatre règles tenues partout (revue `verdict-reviewer` du lot, 2026-09-25) :
 #
 #   1. **Jamais « le premier » en silence** quand plusieurs éléments répondent (leçon de `_cible_segment_menu`, lot F17) : une
 #      ambiguïté est une ERREUR technique (`ElementIntrouvableError`), pas un clic au hasard qui ouvrirait une autre page.
-#   2. **Une absence ne se constate que sur une page qui a pu se rendre** : « n'affiche pas le texte » sur une page vide passerait à
-#      coup sûr ; elle échoue en erreur technique (`NavigationImpossibleError`) au lieu de valoir `conforme`.
+#   2. **Une absence ne se constate que sur une page qui a pu se rendre** (ni vide, ni en erreur HTTP) : sinon erreur technique.
+#   3. **Un événement (réponse réseau, boîte de dialogue, onglet) ne prouve que l'action qui le PRODUIT** : chaque action pose un
+#      repère (`poser_repere_action`, appelé par `environment.before_step`) et une vérification ne juge que ce qui l'a suivi. Sans lui,
+#      la réponse d'une étape antérieure — ou d'un `Soit` — validait une action qui n'avait rien envoyé (faux vert).
+#   4. **Un paramètre de recherche vide ne prouve rien** (`"" in texte` est toujours vrai) : erreur technique.
 
 _ATTENDRE_UNIVERSELLE_MS = 8000
 _TELECHARGEMENT_MS = 15000
-_CELLULES = "td, th[scope=row], [role=cell], [role=gridcell]"
-_MODALES_ARIA = "[role=dialog], [role=alertdialog], dialog[open]"
+_STABILITE_ZERO_MS = 1200      # « compte 0 lignes » : le zéro doit TENIR (un tableau rempli en asynchrone passe par zéro)
+_STABILITE_MS = 400
+_CELLULES = "td, th[scope=row], [role=cell], [role=gridcell], [role=rowheader]"
+_MODALES_BLOQUANTES = "[aria-modal=true], dialog[open], [role=alertdialog]"
 _BOUTON_ACCEPTER = re.compile(r"^\s*(ok|oui|confirmer|valider|accepter|supprimer|continuer|d'accord)\s*$", re.I)
 _BOUTON_REFUSER = re.compile(r"^\s*(annuler|non|fermer|refuser|cancel)\s*$", re.I)
-_PLAFOND_REPONSES = 2000
+_PLAFOND_EVENEMENTS = 2000
+_TYPES_DE_REQUETE = {"fetch", "xhr", "document"}
 _METHODES_HTTP = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
+
+# Les lignes de DONNÉES d'un tableau (HTML ou ARIA) : ni l'en-tête (`thead`), ni les lignes d'un tableau IMBRIQUÉ, ni une ligne sans cellule
+# (en-tête de colonnes en `th`), ni une ligne masquée — chacune rendue sous la forme de la liste du texte de ses cellules.
+_JS_LIGNES = """t => Array.from(t.querySelectorAll('tr, [role=row]'))
+  .filter(r => r.closest('table, [role=table], [role=grid]') === t && !r.closest('thead') && r.getClientRects().length > 0)
+  .map(r => Array.from(r.querySelectorAll('td, th[scope=row], [role=cell], [role=gridcell], [role=rowheader]'))
+        .filter(c => c.closest('tr, [role=row]') === r).map(c => (c.innerText || '').trim()))
+  .filter(cellules => cellules.length > 0)"""
+_JS_VALEURS_DE_CHAMPS = """t => Array.from(document.querySelectorAll('input:not([type=hidden]):not([type=password]), textarea'))
+  .filter(e => (e.value || '').includes(t) && e.getClientRects().length > 0).length"""
+
+
+def _renseigne(valeur, quoi: str) -> str:
+    """Un paramètre de recherche NON vide : `""` est accepté par Behave et serait trouvé PARTOUT — un test mal posé, pas un vert."""
+    if not (valeur or "").strip():
+        raise ElementIntrouvableError(f"{quoi} est vide : une recherche vide est vraie partout et ne prouve rien.")
+    return valeur
 
 
 def _attendre_le_nombre(candidats, quoi: str):
@@ -2755,9 +2778,79 @@ def _un_seul(locator, quoi: str):
     """Le `Locator` réduit à UN élément, ou une erreur : plusieurs éléments = ambiguïté, jamais « le premier »."""
     n = locator.count()
     if n > 1:
-        raise ElementIntrouvableError(f"{quoi} est ambigu : {n} éléments répondent — cliquer le premier pourrait agir ailleurs "
+        raise ElementIntrouvableError(f"{quoi} est ambigu : {n} éléments répondent — agir sur le premier pourrait viser autre chose "
                                       "sans erreur. Précisez la cible.")
     return locator.first
+
+
+# ── Repères d'action et observateurs du scénario ────────────────────────────────────────────────────────────
+
+
+def _suivant(context) -> int:
+    context._tp_sequence = getattr(context, "_tp_sequence", 0) + 1
+    return context._tp_sequence
+
+
+def poser_repere_action(context) -> None:
+    """Appelé par `environment.before_step` au début de chaque step d'ACTION (`Soit`/`Quand`) : mémorise où en sont les événements
+    (réponses, boîtes de dialogue, onglets). `(repère de l'action précédente, repère de l'action courante)`."""
+    _, courant = getattr(context, "_tp_reperes", (0, 0))
+    context._tp_reperes = (courant, getattr(context, "_tp_sequence", 0))
+
+
+def _reperes(context) -> tuple[int, int]:
+    return getattr(context, "_tp_reperes", (0, 0))
+
+
+def installer_les_observateurs(context) -> None:
+    """Consigne, pour TOUT le scénario et tous ses onglets, les réponses réseau, les boîtes de dialogue et les onglets ouverts, chacun
+    numéroté. Posé par `environment.before_scenario` : il faut observer AVANT l'action, un événement passé ne se rejoue pas.
+    Rien n'est fatal : l'absence d'observation se voit au constat (« aucune requête observée »), jamais comme un vert."""
+    context.reponses_reseau, context.dialogues, context.onglets_ouverts = [], [], []
+    etat = context._tp_politique_dialogue = {"action": "refuser", "armee": False}
+    navigateur = context._browser_context
+
+    def _plafonner(liste):
+        if len(liste) > _PLAFOND_EVENEMENTS:
+            del liste[: len(liste) - _PLAFOND_EVENEMENTS]
+
+    def _sur_reponse(reponse):
+        try:
+            # Les ressources statiques (images, css, js) noient la réponse utile sous le plafond : on ne retient que les appels
+            # de l'application (`fetch`, `xhr`) et les documents.
+            if reponse.request.resource_type not in _TYPES_DE_REQUETE:
+                return
+            context.reponses_reseau.append({"n": _suivant(context), "methode": reponse.request.method, "url": reponse.url,
+                                            "statut": int(reponse.status)})
+            _plafonner(context.reponses_reseau)
+        except Exception:
+            pass
+
+    def _sur_dialogue(dialogue):
+        armee, action = etat["armee"], etat["action"]
+        try:
+            context.dialogues.append({"n": _suivant(context), "type": dialogue.type, "message": dialogue.message,
+                                      "action": action, "armee": armee})
+            etat["armee"], etat["action"] = False, "refuser"   # une décision vaut pour UNE boîte
+            dialogue.accept() if action == "accepter" else dialogue.dismiss()
+        except Exception:
+            pass
+
+    def _sur_onglet(onglet):
+        try:
+            context.onglets_ouverts.append({"n": _suivant(context), "page": onglet})
+            _plafonner(context.onglets_ouverts)
+        except Exception:
+            pass
+
+    for evenement, gestionnaire in (("response", _sur_reponse), ("dialog", _sur_dialogue), ("page", _sur_onglet)):
+        try:
+            navigateur.on(evenement, gestionnaire)
+        except Exception:
+            pass
+
+
+# ── Ouvrir, lire le texte et l'URL ──────────────────────────────────────────────────────────────────────────
 
 
 def _base_de_l_application(context) -> str:
@@ -2769,12 +2862,15 @@ def _base_de_l_application(context) -> str:
 
 
 def ouvrir_page(context, chemin: str) -> None:
-    """Ouvre `chemin` RELATIF à l'URL du projet. Une URL absolue n'est acceptée que sur la MÊME origine : ce step ne sort pas de
-    l'application testée. Sur une page vide, connecte d'abord le navigateur (F21 : sinon on ouvrirait la page de connexion)."""
+    """Ouvre `chemin` RELATIF à l'URL du projet. Une URL absolue n'est acceptée que sur la MÊME origine (schéma et hôte) : ce step ne sort
+    pas de l'application testée. Sur une page vide, connecte d'abord le navigateur (F21 : sinon on ouvrirait la page de connexion).
+    Le code HTTP est conservé : une absence ne se constatera pas sur une page en erreur (`_page_lisible`)."""
     base = _base_de_l_application(context)
-    chemin = (chemin or "").strip()
+    chemin = _renseigne(chemin, "Le chemin de la page")
+    chemin = chemin.strip()
     if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", chemin):
-        if urlparse(chemin).netloc != urlparse(base).netloc:
+        attendu, voulu = urlparse(base), urlparse(chemin)
+        if (voulu.scheme, voulu.netloc) != (attendu.scheme, attendu.netloc):
             raise NavigationImpossibleError(
                 f"« {chemin} » n'est pas relatif à l'application ({base}) : ce step n'ouvre que des pages du projet.")
         cible = chemin
@@ -2784,17 +2880,20 @@ def ouvrir_page(context, chemin: str) -> None:
     if page.url in ("about:blank", ""):
         page.goto(base, wait_until="domcontentloaded")
         connexion_web_utilisateur(context)
-    page.goto(cible, wait_until="domcontentloaded")
+    reponse = page.goto(cible, wait_until="domcontentloaded")
+    context.derniere_navigation = {"url": cible, "statut": int(reponse.status) if reponse is not None else 0}
 
 
-def _texte_visible(page, texte: str):
-    return page.get_by_text(texte).filter(visible=True)
-
-
-def _page_lisible(page) -> None:
-    """Refuse de constater une ABSENCE sur une page qui n'a rien rendu (`about:blank`, corps vide)."""
+def _page_lisible(context) -> None:
+    """Refuse de constater une ABSENCE sur une page qui n'a rien rendu (`about:blank`, corps vide) ou qui répond en erreur HTTP."""
+    page = context.page
     if page.url in ("about:blank", ""):
         raise NavigationImpossibleError("Aucune page n'est ouverte : rien ne peut être constaté (ouvrez une page d'abord).")
+    navigation = getattr(context, "derniere_navigation", None) or {}
+    if navigation.get("statut", 0) >= 400 and navigation.get("url") == page.url:
+        raise NavigationImpossibleError(
+            f"La page {page.url} a répondu {navigation['statut']} : une absence de texte sur une page en erreur ne prouve rien "
+            "(constatez plutôt la présence du message d'erreur attendu).")
     try:
         page.wait_for_load_state("load", timeout=_ATTENDRE_UNIVERSELLE_MS)
         page.wait_for_load_state("networkidle", timeout=2000)
@@ -2805,77 +2904,152 @@ def _page_lisible(page) -> None:
             f"La page {page.url} est vide : une absence de texte n'y prouve rien (la page n'a peut-être pas fini de se rendre).")
 
 
+def _occurrences_visibles(page, texte: str, *, champs: bool = False) -> int:
+    """Le texte VISIBLE, dans le document ET dans ses cadres ; `champs=True` compte aussi les VALEURS de champs de saisie (hors mots de
+    passe) — pour une ABSENCE, plus large est plus sûr : une adresse pré-remplie dans un `<input>` est bien affichée."""
+    total = 0
+    for frame in page.frames:
+        try:
+            total += frame.get_by_text(texte).filter(visible=True).count()
+            if champs:
+                total += frame.evaluate(_JS_VALEURS_DE_CHAMPS, texte)
+        except Exception:
+            continue  # un cadre détaché pendant la lecture
+    return total
+
+
 @constat
 def page_affiche_texte(page, texte: str) -> None:
-    try:
-        expect(_texte_visible(page, texte).first).to_be_visible(timeout=_ATTENDRE_UNIVERSELLE_MS)
-    except AssertionError as exc:
-        raise AssertionError(f"Le texte « {texte} » n'est pas affiché sur {page.url}.") from exc
+    """Le texte est visible dans le document ou l'un de ses cadres (le texte rendu — pas un attribut ni une valeur de champ)."""
+    _renseigne(texte, "Le texte à afficher")
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    while _occurrences_visibles(page, texte) == 0:
+        if time.monotonic() >= fin:
+            raise AssertionError(f"Le texte « {texte} » n'est pas affiché sur {page.url}.")
+        time.sleep(0.25)
 
 
 @constat
-def page_n_affiche_pas_texte(page, texte: str) -> None:
-    _page_lisible(page)
-    try:
-        expect(_texte_visible(page, texte)).to_have_count(0, timeout=_ATTENDRE_UNIVERSELLE_MS)
-    except AssertionError as exc:
-        raise AssertionError(f"Le texte « {texte} » est affiché sur {page.url}, alors qu'il ne devrait pas l'être.") from exc
+def page_n_affiche_pas_texte(context, texte: str) -> None:
+    """Le texte est ABSENT (document, cadres, valeurs de champs), sur une page qui a pu se rendre. S'il est présent, on lui laisse le délai
+    de disparaître (un « Chargement… » qui s'efface) ; un spinner encore à l'écran n'est pas jugé : décrivez l'état ATTENDU, pas seulement
+    l'absence d'un défaut."""
+    _renseigne(texte, "Le texte à ne pas afficher")
+    _page_lisible(context)
+    page = context.page
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    while _occurrences_visibles(page, texte, champs=True) > 0:
+        if time.monotonic() >= fin:
+            raise AssertionError(f"Le texte « {texte} » est affiché sur {page.url}, alors qu'il ne devrait pas l'être.")
+        time.sleep(0.25)
+
+
+def _url_contient_fragment(url: str, fragment: str) -> bool:
+    """Le fragment est cherché dans le CHEMIN de l'URL — ni l'hôte ni la query : `/login?next=/dashboard` ne « contient » pas
+    `/dashboard` (l'utilisateur n'y est pas). Un fragment qui porte lui-même `?` ou `#` est cherché dans le chemin + la query + le hash."""
+    u = urlparse(url)
+    cible = u.path
+    if "?" in fragment or "#" in fragment:
+        cible += (f"?{u.query}" if u.query else "") + (f"#{u.fragment}" if u.fragment else "")
+    return fragment in cible
 
 
 @constat
 def url_contient(page, fragment: str) -> None:
-    try:
-        expect(page).to_have_url(re.compile(re.escape(fragment)), timeout=_ATTENDRE_UNIVERSELLE_MS)
-    except AssertionError as exc:
-        raise AssertionError(f"L'URL courante ({page.url}) ne contient pas « {fragment} ».") from exc
+    _renseigne(fragment, "Le fragment d'URL")
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    while not _url_contient_fragment(page.url, fragment):
+        if time.monotonic() >= fin:
+            raise AssertionError(f"Le chemin de l'URL courante ({page.url}) ne contient pas « {fragment} ».")
+        time.sleep(0.1)
+
+
+# ── Tableaux et lignes ──────────────────────────────────────────────────────────────────────────────────────
 
 
 def _tableau(page, nom: str):
-    """Le tableau nommé : rôle ARIA (nom accessible : légende, `aria-label`, `aria-labelledby`), puis structure HTML — le premier
-    `<table>` qui SUIT un titre ou une légende portant ce texte. Aucun sélecteur propre à une application."""
-    candidats = [
-        page.get_by_role("table", name=nom),
-        page.get_by_role("grid", name=nom),
-        page.get_by_text(nom, exact=True).filter(visible=True).first.locator("xpath=following::table[1]"),
-    ]
-    trouve = _attendre_le_nombre(candidats, f"Aucun tableau « {nom} » sur {page.url} (ni par son nom accessible, ni sous un titre "
-                                            "portant ce texte).")
+    """Le tableau nommé : rôle ARIA (nom accessible EXACT : légende, `aria-label`, `aria-labelledby`), puis structure HTML — le premier
+    `<table>` qui SUIT un titre (h1-h6) ou une légende dont le texte est exactement ce nom. Plusieurs candidats : ambiguïté, erreur."""
+    _renseigne(nom, "Le nom du tableau")
+    par_role = [page.get_by_role("table", name=nom, exact=True), page.get_by_role("grid", name=nom, exact=True)]
+    entetes = page.locator("h1, h2, h3, h4, h5, h6, legend").filter(
+        has_text=re.compile(r"^\s*" + re.escape(nom) + r"\s*$")).filter(visible=True)
+    trouve = _attendre_le_nombre(
+        [*par_role, entetes], f"Aucun tableau « {nom} » sur {page.url} (ni par son nom accessible exact, ni sous un titre portant ce texte).")
+    if trouve is entetes:
+        suivant = _un_seul(entetes, f"Le titre « {nom} »").locator("xpath=following::table[1]")
+        if suivant.count() == 0:
+            raise ElementIntrouvableError(f"Aucun tableau ne suit le titre « {nom} » sur {page.url}.")
+        return suivant.first
     return _un_seul(trouve, f"Le tableau « {nom} »")
 
 
-def _lignes_de_donnees(page, tableau):
-    """Les lignes qui portent des CELLULES — l'en-tête (cellules `columnheader`) n'est pas une ligne de données."""
-    return tableau.get_by_role("row").filter(has=page.locator(_CELLULES))
+def _lignes(tableau) -> list[list[str]]:
+    return tableau.evaluate(_JS_LIGNES)
+
+
+def _dans_une_cellule(cellules: list[str], recherche: str) -> bool:
+    """`recherche` est un MOT de la cellule (sensible à la casse, bornes de mot) : « 12 » n'est pas dans « 120 »."""
+    motif = re.compile(r"(?<!\w)" + re.escape(recherche.strip()) + r"(?!\w)")
+    return any(motif.search(cellule) for cellule in cellules)
 
 
 @constat
 def tableau_contient_ligne(page, nom: str, a: str, b: str) -> None:
-    lignes = _lignes_de_donnees(page, _tableau(page, nom)).filter(has_text=a).filter(has_text=b)
-    try:
-        expect(lignes.first).to_be_visible(timeout=_ATTENDRE_UNIVERSELLE_MS)
-    except AssertionError as exc:
-        raise AssertionError(f"Le tableau « {nom} » ne contient aucune ligne avec « {a} » et « {b} ».") from exc
+    _renseigne(a, "Le premier texte de la ligne")
+    _renseigne(b, "Le second texte de la ligne")
+    tableau = _tableau(page, nom)
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    while True:
+        lignes = _lignes(tableau)
+        if any(_dans_une_cellule(cellules, a) and _dans_une_cellule(cellules, b) for cellules in lignes):
+            return
+        if time.monotonic() >= fin:
+            raise AssertionError(f"Le tableau « {nom} » ne contient aucune ligne avec « {a} » et « {b} » "
+                                 f"({len(lignes)} ligne(s) de données lues).")
+        time.sleep(0.25)
 
 
 @constat
 def tableau_compte_lignes(page, nom: str, attendu) -> None:
-    lignes = _lignes_de_donnees(page, _tableau(page, nom))
-    try:
-        expect(lignes).to_have_count(int(attendu), timeout=_ATTENDRE_UNIVERSELLE_MS)
-    except AssertionError as exc:
-        raise AssertionError(f"Le tableau « {nom} » compte {lignes.count()} ligne(s) de données, pas {attendu}.") from exc
+    """Compte les lignes de DONNÉES du DOM rendu (pas l'en-tête, pas un tableau imbriqué ; une pagination n'est pas dépliée). Le compte doit
+    TENIR un court instant : un tableau rempli en asynchrone passe par zéro, et « compte 0 lignes » n'y doit pas passer."""
+    attendu = int(attendu)
+    tableau = _tableau(page, nom)
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    stable_depuis = None
+    while True:
+        compte = len(_lignes(tableau))
+        if compte == attendu:
+            stable_depuis = stable_depuis or time.monotonic()
+            if (time.monotonic() - stable_depuis) * 1000 >= (_STABILITE_ZERO_MS if attendu == 0 else _STABILITE_MS):
+                return
+        else:
+            stable_depuis = None
+        if time.monotonic() >= fin:
+            raise AssertionError(f"Le tableau « {nom} » compte {compte} ligne(s) de données, pas {attendu}.")
+        time.sleep(0.1)
 
 
 def _cible_cliquable(zone, libelle: str, quoi: str):
-    """Dans `zone` : un bouton, sinon un lien, sinon un texte exact de ce libellé — jamais « le premier » si plusieurs répondent."""
-    for candidat in (zone.get_by_role("button", name=libelle, exact=True), zone.get_by_role("link", name=libelle, exact=True),
-                     zone.get_by_text(libelle, exact=True)):
-        if candidat.count() > 0:
-            return _un_seul(candidat, f"« {libelle} » dans {quoi}")
+    """Dans `zone` : un bouton OU un lien de ce libellé (jamais les deux à la fois : ce serait deux cibles), sinon un texte exact.
+    Plusieurs cibles : erreur, jamais « la première »."""
+    _renseigne(libelle, "Le libellé à cliquer")
+    boutons = zone.get_by_role("button", name=libelle, exact=True)
+    liens = zone.get_by_role("link", name=libelle, exact=True)
+    n = boutons.count() + liens.count()
+    if n > 1:
+        raise ElementIntrouvableError(f"« {libelle} » dans {quoi} est ambigu : {n} boutons ou liens répondent.")
+    if n == 1:
+        return (boutons if boutons.count() else liens).first
+    texte = zone.get_by_text(libelle, exact=True)
+    if texte.count() > 0:
+        return _un_seul(texte, f"« {libelle} » dans {quoi}")
     raise ElementIntrouvableError(f"« {libelle} » (bouton, lien ou texte) est introuvable dans {quoi}.")
 
 
 def cliquer_dans_ligne(page, libelle: str, texte: str) -> None:
+    _renseigne(texte, "Le texte de la ligne")
     lignes = page.get_by_role("row").filter(has_text=texte).filter(visible=True)
     trouve = _attendre_le_nombre([lignes], f"Aucune ligne ne contient « {texte} » sur {page.url}.")
     ligne = _un_seul(trouve, f"La ligne contenant « {texte} »")
@@ -2885,58 +3059,44 @@ def cliquer_dans_ligne(page, libelle: str, texte: str) -> None:
 # ── Boîtes de dialogue ──────────────────────────────────────────────────────────────────────────────────────
 
 
-def _politique_dialogue(context) -> dict:
-    etat = getattr(context, "_tp_politique_dialogue", None)
-    if etat is None:
-        etat = context._tp_politique_dialogue = {"action": "refuser", "installe": False}
-        context.dialogues = []
-    return etat
-
-
-def _installer_le_gestionnaire_de_dialogue(context, etat: dict) -> None:
-    if etat["installe"]:
-        return
-
-    def gerer(dialogue):
-        action = etat["action"]
-        context.dialogues.append({"type": dialogue.type, "message": dialogue.message, "action": action})
-        etat["action"] = "refuser"   # une décision vaut pour UNE boîte ; ensuite, le défaut de Playwright (refuser)
-        try:
-            dialogue.accept() if action == "accepter" else dialogue.dismiss()
-        except Exception:
-            pass
-
-    context._browser_context.on("dialog", gerer)
-    etat["installe"] = True
-
-
 def decider_dialogue(context, accepter: bool) -> None:
     """Accepte ou refuse une boîte de dialogue.
 
-    - une MODALE ARIA (`role=dialog|alertdialog`, `<dialog open>`) déjà affichée : on clique son bouton de confirmation ou d'annulation ;
+    - une MODALE BLOQUANTE déjà affichée (`aria-modal`, `<dialog open>`, `alertdialog` — pas une bannière `role=dialog` non bloquante,
+      comme un bandeau de cookies) qui porte un bouton reconnaissable : on clique ce bouton ;
     - sinon la boîte NATIVE (`alert`/`confirm`/`prompt`) : Playwright la REFUSE d'office dès qu'elle s'ouvre, donc la décision doit être
-      prise AVANT l'action qui l'ouvre. Ce step la prépare pour la PROCHAINE boîte native ; placé après le clic, il serait sans effet.
+      prise AVANT l'action qui l'ouvre. Ce step la prépare pour la PROCHAINE boîte native. Placé APRÈS le clic, il est refusé avec une
+      erreur technique (la boîte s'est déjà ouverte et a été refusée) — jamais un « accepté » sans effet qui passerait.
     """
     page = context.page
-    modales = page.locator(_MODALES_ARIA).filter(visible=True)
-    if modales.count() > 0:
-        modale = modales.last
-        bouton = modale.get_by_role("button", name=_BOUTON_ACCEPTER if accepter else _BOUTON_REFUSER)
-        if bouton.count() == 0:
-            raise ElementIntrouvableError(
-                f"La boîte de dialogue affichée sur {page.url} n'a pas de bouton "
-                f"« {'confirmer' if accepter else 'annuler'} » reconnaissable (ok, oui, confirmer, valider… / annuler, non, fermer…).")
-        _un_seul(bouton, "Le bouton de la boîte de dialogue").click(timeout=_ATTENDRE_UNIVERSELLE_MS)
+    modales = page.locator(_MODALES_BLOQUANTES).filter(visible=True)
+    boutons = []
+    for i in range(modales.count()):
+        bouton = modales.nth(i).get_by_role("button", name=_BOUTON_ACCEPTER if accepter else _BOUTON_REFUSER)
+        if bouton.count() > 0:
+            boutons.append(bouton)
+    if len(boutons) > 1 or (boutons and boutons[0].count() > 1):
+        raise ElementIntrouvableError(
+            f"Plusieurs boutons de boîte de dialogue répondent sur {page.url} : impossible de savoir lequel "
+            f"{'confirmer' if accepter else 'annuler'}.")
+    if boutons:
+        boutons[0].click(timeout=_ATTENDRE_UNIVERSELLE_MS)
         return
-    etat = _politique_dialogue(context)
-    _installer_le_gestionnaire_de_dialogue(context, etat)
-    etat["action"] = "accepter" if accepter else "refuser"
+    precedent, _ = _reperes(context)
+    tardives = [d for d in getattr(context, "dialogues", []) if d["n"] > precedent and not d["armee"]]
+    if tardives:
+        raise ElementIntrouvableError(
+            f"La boîte de dialogue « {tardives[-1]['message']} » s'est déjà ouverte et a été REFUSÉE d'office : ce step doit venir "
+            "AVANT l'action qui l'ouvre, pas après.")
+    etat = context._tp_politique_dialogue
+    etat["action"], etat["armee"] = ("accepter" if accepter else "refuser"), True
 
 
 # ── Téléchargements ─────────────────────────────────────────────────────────────────────────────────────────
 
 
 def telecharger_via(context, libelle: str) -> None:
+    import shutil
     import tempfile
     from pathlib import Path
 
@@ -2945,9 +3105,13 @@ def telecharger_via(context, libelle: str) -> None:
     with page.expect_download(timeout=_TELECHARGEMENT_MS) as info:
         cible.click(timeout=_ATTENDRE_UNIVERSELLE_MS)
     telechargement = info.value
-    chemin = Path(tempfile.mkdtemp(prefix="tp_dl_")) / telechargement.suggested_filename
+    dossier = tempfile.mkdtemp(prefix="tp_dl_")
+    if hasattr(context, "add_cleanup"):
+        context.add_cleanup(shutil.rmtree, dossier, True)   # le fichier téléchargé disparaît avec le scénario
+    nom = Path(telechargement.suggested_filename).name or "telechargement"   # jamais un chemin proposé par le serveur
+    chemin = Path(dossier) / nom
     telechargement.save_as(str(chemin))
-    context.dernier_telechargement = {"nom": telechargement.suggested_filename, "chemin": str(chemin)}
+    context.dernier_telechargement = {"nom": nom, "chemin": str(chemin)}
 
 
 def _dernier_telechargement(context) -> dict:
@@ -2982,6 +3146,7 @@ def _texte_du_fichier(chemin: str) -> str:
 def fichier_telecharge_se_nomme(context, motif: str) -> None:
     import fnmatch
 
+    _renseigne(motif, "Le motif du nom de fichier")
     nom = _dernier_telechargement(context)["nom"]
     if not fnmatch.fnmatchcase(nom.lower(), motif.strip().lower()):
         raise AssertionError(f"Le fichier téléchargé se nomme « {nom} », pas « {motif} ».")
@@ -2989,6 +3154,7 @@ def fichier_telecharge_se_nomme(context, motif: str) -> None:
 
 @constat
 def fichier_telecharge_contient(context, texte: str) -> None:
+    _renseigne(texte, "Le texte à trouver dans le fichier")
     telechargement = _dernier_telechargement(context)
     contenu = " ".join(_texte_du_fichier(telechargement["chemin"]).split())
     if " ".join(texte.split()) not in contenu:
@@ -3001,6 +3167,7 @@ def fichier_telecharge_contient(context, texte: str) -> None:
 def cadre(page, nom: str):
     """Le cadre (`Frame` Playwright) nommé par son `name`, son `title` ou son `id` — les helpers de saisie et de clic s'y appliquent
     tels quels (un `Frame` expose les mêmes `locator`, `get_by_*`, `evaluate`). Plusieurs cadres du même nom : ambiguïté, erreur."""
+    _renseigne(nom, "Le nom du cadre")
     q = json.dumps(nom)
     candidats = [page.locator(f"iframe[name={q}]"), page.locator(f"iframe[title={q}]"), page.locator(f"iframe[id={q}]")]
     trouve = _attendre_le_nombre(candidats, f"Aucun cadre « {nom} » (attribut name, title ou id) sur {page.url}.")
@@ -3016,40 +3183,26 @@ def cadre(page, nom: str):
 
 @constat
 def nouvel_onglet_sur(context, fragment: str) -> None:
-    """Un onglet AUTRE que l'onglet courant a l'URL cherchée ; il devient l'onglet courant (les steps suivants s'y appliquent)."""
+    """Un onglet OUVERT PAR L'ACTION QUI VIENT DE S'EXÉCUTER a le chemin cherché ; il devient l'onglet courant (les steps suivants s'y
+    appliquent). Un onglet déjà ouvert avant cette action — ou déjà constaté par un step précédent — n'est pas « nouveau »."""
+    _renseigne(fragment, "Le fragment d'URL de l'onglet")
+    depuis = _reperes(context)[1]
     fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
     courant = context.page
     while True:
-        for onglet in context._browser_context.pages:
-            if onglet is not courant and fragment in onglet.url:
-                onglet.wait_for_load_state("domcontentloaded")
-                context.onglet_precedent = courant
-                context.page = onglet
-                return
+        nouveaux = [e["page"] for e in getattr(context, "onglets_ouverts", [])
+                    if e["n"] > depuis and e["page"] is not courant and _url_contient_fragment(e["page"].url, fragment)]
+        if nouveaux:
+            onglet = nouveaux[-1]
+            onglet.wait_for_load_state("domcontentloaded")
+            context.onglet_precedent = courant
+            context.page = onglet
+            return
         if time.monotonic() >= fin:
-            urls = [p.url for p in context._browser_context.pages if p is not courant]
-            raise AssertionError(f"Aucun nouvel onglet ne s'est ouvert sur « {fragment} » (autres onglets : {urls or 'aucun'}).")
+            urls = [e["page"].url for e in getattr(context, "onglets_ouverts", []) if e["n"] > depuis]
+            raise AssertionError(f"Aucun nouvel onglet ne s'est ouvert sur « {fragment} » depuis la dernière action "
+                                 f"(onglets ouverts depuis : {urls or 'aucun'}).")
         courant.wait_for_timeout(200)
-
-
-def enregistrer_les_reponses_reseau(context) -> None:
-    """Consigne `{methode, url, statut}` de chaque réponse de TOUS les onglets du scénario (`context.reponses_reseau`, plafonné).
-    Posé par `environment.before_scenario` : il faut observer AVANT l'action, une réponse passée ne se rejoue pas."""
-    context.reponses_reseau = []
-
-    def _on_response(reponse):
-        try:
-            liste = context.reponses_reseau
-            liste.append({"methode": reponse.request.method, "url": reponse.url, "statut": int(reponse.status)})
-            if len(liste) > _PLAFOND_REPONSES:
-                del liste[: len(liste) - _PLAFOND_REPONSES]
-        except Exception:
-            pass  # jamais fatal : l'absence d'enregistrement se voit au constat (« aucune requête observée »)
-
-    try:
-        context._browser_context.on("response", _on_response)
-    except Exception:
-        pass
 
 
 def _url_correspond(motif: str, url: str) -> bool:
@@ -3060,20 +3213,29 @@ def _url_correspond(motif: str, url: str) -> bool:
 
 @constat
 def requete_repond(context, requete: str, code) -> None:
-    """La DERNIÈRE réponse à `<MÉTHODE> <motif d'URL>` porte le code attendu. Le motif est un fragment d'URL ou un motif avec `*`."""
+    """Les réponses à `<MÉTHODE> <motif d'URL>` ÉMISES DEPUIS LA DERNIÈRE ACTION portent le code attendu : la dernière a ce code, et aucune n'a
+    été une erreur serveur (5xx) — un retry qui réussit ne masque pas le défaut. Le motif est un fragment d'URL ou un motif avec `*`."""
     methode, _, motif = (requete or "").strip().partition(" ")
     methode, motif = methode.upper(), motif.strip()
     if methode not in _METHODES_HTTP or not motif:
         raise ElementIntrouvableError(
             f"Requête « {requete} » mal écrite : attendu « <méthode> <motif d'URL> » (ex. « POST /api/tickets »).")
+    depuis = _reperes(context)[1]
     fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
     while True:
-        vues = [r for r in getattr(context, "reponses_reseau", []) if r["methode"] == methode and _url_correspond(motif, r["url"])]
+        vues = [r for r in getattr(context, "reponses_reseau", []) if r["n"] > depuis and r["methode"] == methode
+                and _url_correspond(motif, r["url"])]
         if vues or time.monotonic() >= fin:
             break
         context.page.wait_for_timeout(200)
     if not vues:
-        raise AssertionError(f"Aucune requête « {methode} {motif} » n'a été observée pendant ce scénario.")
+        raise AssertionError(f"Aucune requête « {methode} {motif} » n'a été émise depuis la dernière action "
+                             "(une réponse d'une étape précédente ne prouve pas cette action).")
+    if int(code) < 500:
+        pannes = [r for r in vues if r["statut"] >= 500]
+        if pannes:
+            raise AssertionError(f"La requête « {methode} {motif} » a répondu {pannes[0]['statut']} avant de répondre "
+                                 f"{vues[-1]['statut']} ({pannes[0]['url']}) : un nouvel essai réussi ne masque pas cette erreur serveur.")
     dernier = vues[-1]
     if dernier["statut"] != int(code):
         raise AssertionError(f"La requête « {methode} {motif} » a répondu {dernier['statut']}, pas {code} ({dernier['url']}).")
