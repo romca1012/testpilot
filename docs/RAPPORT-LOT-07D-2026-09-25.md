@@ -47,7 +47,12 @@ de steps réelle) :
 
 ### Mesures
 
-Aucune mesure chiffrée à comparer (aucun prompt modifié, aucun appel LLM, coût nul). Les deux exécutions Behave du test de bout en bout durent ~4 min 40 s au total en local.
+Aucun appel LLM dans ce lot. Les deux exécutions Behave du test de bout en bout durent ~4 min 40 s au total en local.
+
+**Taille des prompts** (caractères, fins de ligne normalisées, `origin/master` → ce lot ; Règle 8 « boîte de dialogue native décidée AVANT l'action », demandée par le porteur) :
+`system_prompt.md` 25 261 → 26 409 (+1 148, +4,5 %) ; `correction_prompt.md` 5 548 → 6 304 (+756, +13,6 %) ; `repair_prompt.md` 6 018 → 6 733 (+715, +11,9 %). Ordre de grandeur : +290 tokens
+sur le prompt système de chaque génération (mis en cache par le fournisseur) et ~+190 tokens sur chaque appel de correction ou de réparation — une fraction de centime par cas, très en deçà du plafond de 1 € du §9.
+Le coût de génération complet (`scripts/mesure_cout_cas.py`) n'a PAS été remesuré : il exige des appels LLM réels ; l'effet attendu sur le coût est négligeable, la mesure reste à faire au prochain lot qui lance une campagne.
 
 ### Revue `verdict-reviewer` — 2 bloquants et 9 points, tous traités
 
@@ -69,15 +74,14 @@ nouvel onglet : seul un onglet **ouvert par l'action qui vient de s'exécuter** 
 
 ### Risques / points à surveiller
 
-- **Boîte de dialogue native** : Playwright la refuse d'office à son ouverture ; le step doit donc être placé **avant** l'action qui l'ouvre (« Et j'accepte la boîte de dialogue » puis « Et je clique sur … »). Placé après, il est refusé en erreur technique — le prompt de génération ne l'explique pas encore
-  (aucun prompt modifié dans ce lot, §8/§9) : suggestion ci-dessous.
+- **Boîte de dialogue native** : Playwright la refuse d'office à son ouverture ; le step doit donc être placé **avant** l'action qui l'ouvre (« Et j'accepte la boîte de dialogue » puis « Et je clique sur … »). Placé après, il est refusé en erreur technique — le prompt de génération l'enseigne désormais (Règle 8).
 - Le comptage des lignes porte sur le **DOM rendu** ; une pagination n'est pas dépliée.
 - `la page n'affiche pas le texte` ne juge pas un spinner encore à l'écran : il faut aussi constater l'état attendu (présence), pas seulement l'absence d'un défaut.
 - Import différé de `installer_les_observateurs` / `poser_repere_action` dans `environment.py` : suit le motif déjà présent dans ce fichier (hooks), mais contredit la règle générale « imports au niveau module » de `CLAUDE.md` §6 — signalé.
+- **Prompts** : la Règle 8 (décision de dialogue AVANT l'action, un exemple correct et un exemple refusé) est ajoutée aux trois prompts ; `tests/test_prompt_dialogue_native.py` la garde, vérifie que les steps cités existent au catalogue et que l'exemple « refusé » est celui que le test de bout en bout rejoue et refuse.
 - Le test de bout en bout dure ~4 min 40 s : il tourne dans le job `browser-evidence` de chaque PR (délai porté à 15 min).
 
 ### Suggestions hors périmètre
 
-- Expliquer dans le prompt de génération l'ordre « décision de dialogue AVANT l'action » (mesurer le coût avant/après, `scripts/mesure_cout_cas.py`).
 - Un step « le tableau "…" est vide » explicite plutôt que « compte 0 lignes ».
 - Déplier la pagination (« page suivante ») pour les tableaux paginés.

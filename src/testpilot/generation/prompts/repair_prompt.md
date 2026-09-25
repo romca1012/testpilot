@@ -79,6 +79,14 @@ tu auras cassé ce que tu venais réparer. C'est arrivé.
 Le contenu actuel du fichier t'est donné plus bas : pars de lui, modifie ce qui doit l'être,
 et renvoie le tout.
 
+## Une boîte de dialogue native se décide AVANT l'action qui l'ouvre
+Une boîte `alert`/`confirm`/`prompt` du NAVIGATEUR est refusée d'office par Playwright à l'instant où elle s'ouvre : quand le step suivant
+s'exécute, elle a déjà disparu. Les steps « j'accepte la boîte de dialogue » / « je refuse la boîte de dialogue » se placent donc AVANT le
+clic qui la provoque, jamais après (placés après, ils sont refusés à l'exécution). Une modale de la PAGE (`aria-modal`, `<dialog>`) reste
+affichée : là, le step se place APRÈS le clic qui l'ouvre.
+Un échec « boîte de dialogue déjà ouverte et REFUSÉE d'office » se répare en déplaçant ce step AVANT le clic qui l'ouvre — jamais en retirant
+la vérification de l'effet.
+
 ## Ce que tu peux modifier
 
 Le `.feature` est **gelé** : son intention a été relue et approuvée par un humain. Corrige
