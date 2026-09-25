@@ -1934,6 +1934,24 @@ def _ouvrir_grille_applications(page, delai_ms: int = 15000) -> None:
 _ESSAIS_COMMUTATEUR = 4
 
 
+def _cible_segment_menu(page, libelle):
+    """L'élément à cliquer pour un segment de menu : l'ITEM de menu d'abord, le premier texte égal sinon.
+
+    ⚠️ Mesuré sur le banc Odoo 18.0 (2026-09-25, CI du mini-lot F17) : après « Ventes », la vue par défaut affiche le fil
+    d'Ariane « Devis » — et le menu déroulant « Commandes », rendu dans un conteneur à part, le recouvre. `get_by_text("Devis").first`
+    désignait ce fil d'Ariane, dont le clic était intercepté par l'item du menu (timeout 8 s, puis repli sur le LLM). Un item
+    de menu porte le rôle `menuitem` sur 16/17/18 ; sur Enterprise (tuiles du home menu, sans ce rôle) on retombe sur l'ancien
+    comportement, inchangé.
+    """
+    try:
+        item = page.get_by_role("menuitem", name=libelle, exact=True)
+        if item.count() > 0:
+            return item.first
+    except Exception:  # page sans `get_by_role` (doublure) ou en cours de navigation : ancien comportement
+        pass
+    return page.get_by_text(libelle, exact=True).first
+
+
 def navigate_menu(context, menu_path):
     """Un menu Odoo (ex. « Parc IT / Générer des équipements ») vit dans le BACK-OFFICE — jamais
     sur la racine `context.odoo_url`, qui rend le portail applicatif custom quand l'instance en a
@@ -1991,7 +2009,7 @@ def navigate_menu(context, menu_path):
             continue
         for tentative in range(_MAX_TENTATIVES_ADAPTATIVES_MENU):
             try:
-                context.page.get_by_text(part, exact=True).first.click(timeout=8000)
+                _cible_segment_menu(context.page, part).click(timeout=8000)
                 break
             except PlaywrightTimeout:
                 resolu = _repli_adaptatif(context.page, part, menu_path)

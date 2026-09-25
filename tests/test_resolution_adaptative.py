@@ -410,7 +410,9 @@ class _FakePageMenuAdaptatif:
     libellés recherchés timeout au premier essai — pour isoler le repli adaptatif."""
 
     def __init__(self, echoue_sur):
-        self.url = "about:blank"
+        # Session navigateur DÉJÀ ouverte : ces tests portent sur le repli adaptatif. Depuis F21, `navigate_menu` connecte
+        # d'abord une page vide (`about:blank`) — cas testé à part (`test_navigate_menu_communaute.py`) ; assertions inchangées.
+        self.url = "https://sapian.example.com/web#cids=1"
         self.urls_visitees = []
         self.clics = []
         self.attentes = []
@@ -456,7 +458,9 @@ def test_navigate_menu_attend_le_rendu_de_la_grille_dapplications():
 
     navigate_menu(ctx, "Assistance")
 
-    assert page.attentes == [".o_app"]
+    # ⚠️ Attendu ADAPTÉ PAR DÉCISION (F17, 2026-09-25) : l'intention du test — attendre le rendu de la grille AVANT le premier clic —
+    # est inchangée ; l'attente porte maintenant sur « la grille OU le commutateur Community » (une seule attente, 15 s).
+    assert page.attentes == [".o_app, .o_navbar_apps_menu button"]
 
 
 def test_navigate_menu_repli_adaptatif_sur_un_libelle_dans_une_autre_langue(monkeypatch):

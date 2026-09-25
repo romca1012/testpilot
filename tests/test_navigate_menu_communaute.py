@@ -231,3 +231,29 @@ def test_le_seul_selecteur_de_repli_est_celui_de_community():
 
     assert bloc.count("page.locator(") == bloc.count('page.locator(".o_navbar_apps_menu button")') + 1
     assert bloc.count('page.locator(".o_app")') == 1
+
+
+# ── Odoo 18.0 : le fil d'Ariane « Devis » est recouvert par le menu déroulant, l'ITEM de menu est la bonne cible ──
+
+
+def test_l_item_de_menu_est_prefere_au_premier_texte_egal():
+    """Mesuré sur le banc 18.0 : `get_by_text(...).first` désignait le fil d'Ariane, clic intercepté par le menu déroulant."""
+    class _Item:
+        first = "ITEM_DE_MENU"
+        count = lambda self: 1  # noqa: E731
+
+    page = types.SimpleNamespace(get_by_role=lambda role, name, exact: _Item(),
+                                 get_by_text=lambda t, exact: types.SimpleNamespace(first="PREMIER_TEXTE"))
+
+    assert H._cible_segment_menu(page, "Devis") == "ITEM_DE_MENU"
+
+
+def test_sans_item_de_menu_on_retombe_sur_le_premier_texte_egal():
+    """Enterprise (tuiles du home menu, sans rôle `menuitem`) : comportement historique inchangé."""
+    class _Aucun:
+        count = lambda self: 0  # noqa: E731
+
+    page = types.SimpleNamespace(get_by_role=lambda role, name, exact: _Aucun(),
+                                 get_by_text=lambda t, exact: types.SimpleNamespace(first="PREMIER_TEXTE"))
+
+    assert H._cible_segment_menu(page, "Devis") == "PREMIER_TEXTE"
