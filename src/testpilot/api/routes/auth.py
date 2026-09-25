@@ -67,15 +67,7 @@ def _session_out(user: dict) -> SessionOut:
 def _poser_cookie_session(response: Response, utilisateur: dict, session_version: int | None = None):
     version = int(session_version if session_version is not None
                   else utilisateur.get("session_version", 1))
-    response.set_cookie(
-        access.COOKIE,
-        access.creer_jeton(utilisateur["id"], utilisateur["username"], version),
-        max_age=config.SESSION_DAYS * 86400,
-        httponly=True,
-        samesite="lax",
-        secure=config.COOKIE_SECURE,
-        path=config.COOKIE_PATH,
-    )
+    access.poser_cookie(response, access.creer_jeton(utilisateur["id"], utilisateur["username"], version))
 
 
 @router.get("/session", response_model=SessionOut)

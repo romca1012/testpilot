@@ -20,7 +20,7 @@ verrou ».
 
 **Un jeton de session porte `user_id` + `username`, signés** — mais PAS le rôle : le rôle et
 l'état actif (`is_active`) sont vérifiés EN BASE à chaque requête (voir `utilisateur_actuel`), pas
-dans le jeton. C'est délibéré : un jeton dure `SESSION_DAYS` (30 par défaut) — y figer le rôle
+dans le jeton. C'est délibéré : un jeton dure au plus `SESSION_MAX_HOURS` (12 h par défaut) et se ferme après `SESSION_IDLE_MINUTES` d'inactivité — y figer le rôle
 ferait qu'une désactivation ou une rétrogradation par un Admin resterait sans effet jusqu'à
 l'expiration naturelle de la session, exactement le risque qu'on cherche à couvrir en ajoutant des
 rôles.
@@ -206,31 +206,70 @@ def _signer(charge: str) -> str:
     return hmac.new(_cle(), charge.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def creer_jeton(user_id: int, username: str, session_version: int = 1) -> str:
-    """Jeton : `expiration.user_id.session_version.username.signature`. `username` y figure pour que
+def _echeance_inactivite(maintenant: float, absolue: int) -> int:
+    """La prochaine échéance d'INACTIVITÉ : `maintenant` + le délai, jamais au-delà de la borne absolue."""
+    return int(min(maintenant + config.SESSION_IDLE_MINUTES * 60, absolue))
+
+
+def creer_jeton(user_id: int, username: str, session_version: int = 1, *, absolue: int | None = None) -> str:
+    """Jeton : `absolue.inactivite.user_id.session_version.username.signature`. `username` y figure pour que
     `utilisateur_de` reste `request`-seul (aucune lecture base) — c'est le rôle, lui, qui se
-    vérifie en base à chaque requête (voir le module docstring)."""
-    expire = int(time.time()) + config.SESSION_DAYS * 86400
+    vérifie en base à chaque requête (voir le module docstring).
+
+    Deux échéances (2026-09-25) : `absolue` (fixée à la connexion, jamais repoussée) et `inactivite` (glissante, repoussée
+    à chaque requête authentifiée par `renouveler_jeton`, sans jamais dépasser `absolue`). L'ancien format à UNE échéance
+    de 30 jours n'est plus lisible : toutes les sessions d'avant sont fermées, voulu."""
+    maintenant = time.time()
+    borne = int(absolue) if absolue is not None else int(maintenant) + config.SESSION_MAX_HOURS * 3600
     nom_propre = (username or "").replace(".", " ").strip()[:60]
-    charge = f"{expire}.{user_id}.{int(session_version)}.{nom_propre}"
+    charge = f"{borne}.{_echeance_inactivite(maintenant, borne)}.{user_id}.{int(session_version)}.{nom_propre}"
     return f"{charge}.{_signer(charge)}"
 
 
-def lire_jeton(jeton: str | None) -> tuple[int, int, str] | None:
-    """`(user_id, session_version, username)` d'un jeton valide, ou `None`. Jamais d'exception : une
-    entrée douteuse est une session absente, pas une panne."""
+def _decoder_jeton(jeton: str | None) -> dict | None:
+    """Le contenu d'un jeton dont la signature est bonne ET dont AUCUNE des deux échéances n'est passée, sinon `None`.
+    Jamais d'exception : une entrée douteuse est une session absente, pas une panne."""
     if not jeton:
         return None
     try:
-        expire_txt, uid_txt, version_txt, nom, signature = jeton.split(".", 4)
-        charge = f"{expire_txt}.{uid_txt}.{version_txt}.{nom}"
+        absolue_txt, inactivite_txt, uid_txt, version_txt, nom, signature = jeton.split(".", 5)
+        charge = f"{absolue_txt}.{inactivite_txt}.{uid_txt}.{version_txt}.{nom}"
         if not hmac.compare_digest(signature, _signer(charge)):
             return None
-        if int(expire_txt) < time.time():
+        maintenant = time.time()
+        if int(absolue_txt) < maintenant or int(inactivite_txt) < maintenant:
             return None
-        return int(uid_txt), int(version_txt), nom
+        return {"absolue": int(absolue_txt), "user_id": int(uid_txt), "version": int(version_txt), "nom": nom}
     except (ValueError, AttributeError):
         return None
+
+
+def lire_jeton(jeton: str | None) -> tuple[int, int, str] | None:
+    """`(user_id, session_version, username)` d'un jeton valide, ou `None`."""
+    contenu = _decoder_jeton(jeton)
+    return (contenu["user_id"], contenu["version"], contenu["nom"]) if contenu else None
+
+
+def renouveler_jeton(jeton: str | None) -> str | None:
+    """Le même jeton avec l'échéance d'INACTIVITÉ repoussée — jamais l'échéance absolue. `None` si le jeton n'est plus valide
+    (on ne renouvelle jamais une session expirée)."""
+    contenu = _decoder_jeton(jeton)
+    if contenu is None:
+        return None
+    return creer_jeton(contenu["user_id"], contenu["nom"], contenu["version"], absolue=contenu["absolue"])
+
+
+def poser_cookie(response, jeton: str) -> None:
+    """Pose le cookie de session — UN seul endroit pour les attributs (le `path` doit être identique à celui que
+    `/logout` efface). `max_age` = le délai d'inactivité : le navigateur oublie de lui-même un cookie resté inutilisé."""
+    response.set_cookie(
+        COOKIE, jeton,
+        max_age=config.SESSION_IDLE_MINUTES * 60,
+        httponly=True,
+        samesite="lax",
+        secure=config.COOKIE_SECURE,
+        path=config.COOKIE_PATH,
+    )
 
 
 def utilisateur_de(request: Request) -> str:

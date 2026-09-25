@@ -7,7 +7,7 @@ import SecuritySettings from '../pages/SecuritySettings.vue'
 
 const etat = {
   password_min_length: 8, password_hash: 'PBKDF2-HMAC-SHA256 (200 000 itérations)',
-  session_days: 7, cookie_http_only: true, cookie_same_site: 'Lax', cookie_secure: false,
+  session_idle_minutes: 120, session_max_hours: 12, cookie_http_only: true, cookie_same_site: 'Lax', cookie_secure: false,
   session_secret_external: false, data_secret_external: false,
   login_max_failures: 5, login_window_minutes: 15, production_ready: false,
 }
@@ -21,6 +21,11 @@ describe('Sécurité de l’instance', () => {
     expect(w.text()).toContain('8 caractères')
     expect(w.text()).toContain('5 échecs')
     expect(w.text()).toContain('15 minutes')
+    // Déconnexion adaptée : inactivité ET durée maximale, jamais un nombre de jours.
+    expect(w.text()).toContain('Déconnexion après inactivité')
+    expect(w.text()).toContain('2 h')
+    expect(w.text()).toContain('12 h')
+    expect(w.text()).not.toContain('jours')
     expect(w.text()).not.toContain('PBKDF2')
     expect(w.text()).not.toContain('Cookie HTTPS uniquement')
     expect(w.text()).not.toContain('Secret de session externe')

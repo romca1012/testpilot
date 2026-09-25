@@ -56,7 +56,8 @@ def security_status():
     return schemas.SecurityStatusOut(
         password_min_length=access.MOT_DE_PASSE_LONGUEUR_MIN,
         password_hash="PBKDF2-HMAC-SHA256 (200 000 itérations)",
-        session_days=config.SESSION_DAYS,
+        session_idle_minutes=config.SESSION_IDLE_MINUTES,
+        session_max_hours=config.SESSION_MAX_HOURS,
         cookie_http_only=True,
         cookie_same_site="Lax",
         cookie_secure=config.COOKIE_SECURE,
