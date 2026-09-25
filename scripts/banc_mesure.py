@@ -205,6 +205,9 @@ def rendre_markdown(indicateurs: dict, contexte: dict, observations: list[dict])
         "", "« non mesuré » signifie qu'aucune observation n'a été faite (mode figé : I3, I4, I6 ne s'appliquent pas) ; "
         "ce n'est PAS zéro.", "",
     ]
+    if contexte.get("interruption"):
+        lignes += [f"## ⚠️ Campagne INCOMPLÈTE : {contexte['interruption']}", "",
+                   "Les indicateurs de génération portent sur les essais lancés seulement, pas sur le corpus entier.", ""]
     if i["I1"]["defauts_manques"]:
         lignes += ["## ⚠️ Défauts injectés NON détectés (faux PASSED)", ""]
         lignes += [f"- `{d}`" for d in i["I1"]["defauts_manques"]] + [""]
@@ -509,6 +512,7 @@ def main(argv=None) -> int:
     indicateurs = calculer_indicateurs(observations, attendus, generation)
     contexte = {"version": args.version, "mode": mode, "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                 "commit": _commit(), "image": _image(args.version), "data_dir": str(data_dir), "etiquette": args.etiquette,
+                "interruption": (generation or {}).get("interrompue", ""),
                 "echantillon": {"cas_figes": len(list(CAS_FIGES.glob("*.feature"))),
                                 "observations": len(observations)}}
     md, js = ecrire_sortie(args.version, mode, indicateurs, observations, contexte, args.sortie)

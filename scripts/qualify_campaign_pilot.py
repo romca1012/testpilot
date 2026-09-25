@@ -135,6 +135,13 @@ def _raison_d_arret(cumul: float, cout_max_essai: float, plafond: float | None) 
     return ''
 
 
+def _credits_epuises(rapport: dict) -> bool:
+    """Le fournisseur a refusé l'appel faute de crédits : l'essai n'a RIEN mesuré de l'agent (2026-09-25 : deux essais
+    d'une campagne avaient été comptés comme des « générations échouées »)."""
+    erreur = (rapport or {}).get('generation_error') or ''
+    return 'credit balance is too low' in erreur or 'insufficient_quota' in erreur
+
+
 def _boucle_essais(case_ids, iterations, lancer, plafond: float | None = None):
     """Lance `lancer(case_id, iteration)` pour chaque essai, en s'ARRETANT AVANT le premier essai
     qui pourrait depasser `plafond` (2026-09-24 : le plafond etait une simple intention, pas un
@@ -148,6 +155,12 @@ def _boucle_essais(case_ids, iterations, lancer, plafond: float | None = None):
                                    'essais_lances': len(resultats),
                                    'prochain': {'case_id': case_id, 'iteration': iteration}}
             rapport = lancer(case_id, iteration)
+            if _credits_epuises(rapport):
+                # Arrêt IMMÉDIAT et essai NON retenu : continuer brûlerait des appels voués au refus, et le compter
+                # fausserait I3/I4 (un manque de crédits n'est pas un échec de l'agent).
+                return resultats, {'raison': 'crédits API insuffisants (erreur fournisseur) — essai non retenu',
+                                   'cumul_usd': round(cumul, 6), 'essais_lances': len(resultats),
+                                   'prochain': {'case_id': case_id, 'iteration': iteration}}
             resultats.append(rapport)
             cout = _cout_de(rapport)
             cumul += cout

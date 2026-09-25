@@ -155,3 +155,18 @@ def test_le_mot_de_passe_du_projet_est_chiffre_en_base(conn):
     brut = conn.execute("SELECT password FROM project WHERE id=?", (pid,)).fetchone()["password"]
 
     assert brut and brut != "admin"
+
+
+def test_une_campagne_interrompue_le_dit_dans_les_statistiques_et_dans_le_rapport():
+    s = gen.statistiques_depuis_campagne([_essai(1, "success", "conforme")],
+                                         {"raison": "crédits API insuffisants (erreur fournisseur) — essai non retenu"})
+
+    assert "crédits" in s["interrompue"]
+    banc = _charger("banc_mesure")
+    i = banc.calculer_indicateurs([], {"sain": {}}, s)
+    md = banc.rendre_markdown(i, {"version": "17.0", "date": "d", "mode": "génération", "interruption": s["interrompue"]}, [])
+    assert "INCOMPLÈTE" in md and "essais lancés seulement" in md
+
+
+def test_une_campagne_complete_ne_porte_aucune_interruption():
+    assert gen.statistiques_depuis_campagne([_essai(1, "success", "conforme")])["interrompue"] == ""
