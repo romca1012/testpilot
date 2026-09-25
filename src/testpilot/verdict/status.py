@@ -68,6 +68,13 @@ CONFIANCES = (CONFIANCE_NOMINALE, CONFIANCE_AUTO_RESOLUE, CONFIANCE_APRES_RETRY)
 _RANG_CONFIANCE = {CONFIANCE_NOMINALE: 0, CONFIANCE_AUTO_RESOLUE: 1, CONFIANCE_APRES_RETRY: 2}
 
 
+def a_confirmer(statut: str | None, confiance: str | None) -> bool:
+    """« Réussi — à confirmer » : un `passed` dont la confiance n'est pas nominale. PUR, calculé par le SERVEUR (comme
+    `statut_de_test`) : l'écran lit ce booléen, il ne redérive jamais la règle. Une confiance absente (résultat manuel,
+    exécution ancienne) ou inconnue n'ajoute aucune réserve — elle n'a pas été mesurée."""
+    return statut == "passed" and confiance in (CONFIANCE_AUTO_RESOLUE, CONFIANCE_APRES_RETRY)
+
+
 def _ground_truth_pour(connector_type: str | None) -> str:
     """`None` (appelant qui ne résout pas encore le connecteur, ex. `cli.py`, `repair_service.py`)
     retombe sur `odoo` — comportement HISTORIQUE inchangé pour tout appelant qui ne fournit pas
@@ -218,7 +225,10 @@ def derive_verdict(outcome: ExecutionOutcome, *, connector_type: str | None = No
 
     grouped = _failures_by_scenario(real.failures)
     verdicts = [scenario_verdict(s, grouped.get(s.name, [])) for s in real.scenarios]
-    qualifier_confiance(verdicts, rejoue=outcome.retried, paliers=real.selector_tiers)
+    # `getattr` : même tolérance que `constats_reussis` ci-dessus pour un résultat construit à la main (doublures de
+    # test) — `ExecutionOutcome` et `BehaveResult` portent toujours ces deux champs en production.
+    qualifier_confiance(verdicts, rejoue=bool(getattr(outcome, "retried", False)),
+                        paliers=getattr(real, "selector_tiers", None))
     return aggregate(verdicts, connector_type=connector_type)
 
 
