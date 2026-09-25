@@ -242,3 +242,106 @@ def test_garde_aucun_new_context_nu_dans_les_connecteurs_ni_le_harnais():
                 nus.append(f"{fichier.name}:{numero}")
 
     assert not nus, f"new_context() sans contexte figé : {nus}"
+
+
+# ── Revue du lot : le CRAWL d'exploration, le harnais et l'écran ────────────────────────────────────────────────
+
+
+def _crawl_espion(monkeypatch, connexion):
+    """Lance le VRAI `_crawl` avec un Playwright simulé ; rend le navigateur simulé pour lire les arguments de `new_page`."""
+    from unittest.mock import MagicMock
+
+    from testpilot.api.services import exploration_service
+
+    for chemin in (RACINE / "scripts", RACINE / "behave_runtime" / "steps_library"):
+        if str(chemin) not in sys.path:
+            sys.path.insert(0, str(chemin))
+    import crawl_domaine as cd
+
+    monkeypatch.setattr(cd, "crawler", lambda ctx, nav, base_url, max_pages, **kw: ({}, {}, {}))
+    faux_nav = MagicMock()
+    faux_nav.new_page.return_value = MagicMock(url="http://intranet/")
+    faux_p = MagicMock()
+    faux_p.chromium.launch.return_value = faux_nav
+    faux_sync = MagicMock()
+    faux_sync.return_value.__enter__.return_value = faux_p
+    monkeypatch.setattr("playwright.sync_api.sync_playwright", faux_sync)
+
+    exploration_service._crawl({"connector_type": "web", "base_url": "http://intranet", **connexion}, max_pages=5)
+    return faux_nav
+
+
+def test_le_crawl_d_exploration_ouvre_sa_page_dans_le_contexte_du_projet(monkeypatch):
+    """Revue : `nav.new_page()` nu prenait la langue de la machine — un projet fr-FR pouvait être crawlé en en-US."""
+    nav = _crawl_espion(monkeypatch, REGLAGES)
+
+    assert nav.new_page.call_args_list[0].kwargs == ATTENDU
+
+
+def test_falsifiable_le_crawl_sans_reglage_prend_les_defauts_figes_et_pas_ceux_de_la_machine(monkeypatch):
+    nav = _crawl_espion(monkeypatch, {})
+
+    assert nav.new_page.call_args_list[0].kwargs == cn.ContexteNavigateur().kwargs()
+
+
+def test_start_exploration_transmet_le_contexte_du_projet_au_crawl(tmp_path, monkeypatch):
+    from testpilot.api.services import exploration_service
+    from testpilot.connectors import runtime_env
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import ProjectRepo
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    conn = get_initialized_db(tmp_path / "e.db")
+    pid = ProjectRepo(conn).create(name="P", connector_type="web", base_url="https://a.example",
+                                   browser_locale="en-GB", browser_timezone="Europe/London",
+                                   browser_viewport="1920x1080")
+    monkeypatch.setattr(runtime_env, "verifier_connexion", lambda projet: {})
+
+    _, params = exploration_service.start_exploration(conn, pid)
+
+    assert cn.depuis_projet(params["connexion"]).kwargs() == ATTENDU
+    conn.close()
+
+
+def test_le_harnais_borne_le_viewport_et_avertit_quand_une_variable_est_rejetee(monkeypatch, capsys):
+    """Revue : une variable corrompue faisait tourner le run dans un AUTRE contexte que celui du projet, sans trace."""
+    for illisible in ("grand", "0x0", "99999x99999"):
+        monkeypatch.setenv(cn.ENV_VIEWPORT, illisible)
+
+        kwargs = _harnais().contexte_navigateur_fige()
+
+        assert kwargs["viewport"] == {"width": 1440, "height": 900}
+        assert "[contexte navigateur]" in capsys.readouterr().err, illisible
+
+
+def test_le_harnais_ne_dit_rien_quand_la_variable_est_valide_ou_absente(monkeypatch, capsys):
+    monkeypatch.setenv(cn.ENV_VIEWPORT, "1280x720")
+    assert _harnais().contexte_navigateur_fige()["viewport"] == {"width": 1280, "height": 720}
+    monkeypatch.delenv(cn.ENV_VIEWPORT)
+    _harnais().contexte_navigateur_fige()
+
+    assert capsys.readouterr().err == ""
+
+
+def test_les_bornes_du_harnais_sont_celles_du_module():
+    harnais = _harnais()
+
+    assert harnais._BORNES_VIEWPORT == ((cn.LARGEUR_MIN, cn.LARGEUR_MAX), (cn.HAUTEUR_MIN, cn.HAUTEUR_MAX))
+
+
+def test_l_api_dit_qu_une_valeur_enregistree_est_ecartee(client):
+    """Une base éditée à la main : la valeur illisible est écartée au profit du défaut ET l'écran le sait (jamais en silence)."""
+    from testpilot.store.db import get_initialized_db
+
+    projet = _creer(client).json()
+    assert projet["browser_avertissements"] == []
+    conn = get_initialized_db()
+    conn.execute("UPDATE project SET browser_locale='fr_FR', browser_viewport='grand' WHERE id=?", (projet["id"],))
+    conn.commit()
+    conn.close()
+
+    ecrit = client.patch(f"/api/projects/{projet['id']}", json={"name": "Portail bis"}).json()
+
+    assert ecrit["browser_effectif"]["locale"] == "fr-FR", "le défaut est utilisé"
+    assert len(ecrit["browser_avertissements"]) == 2
+    assert any("langue" in a for a in ecrit["browser_avertissements"])

@@ -593,6 +593,7 @@ export interface ProjectSummary {
   // réellement utilisé (calculé par le SERVEUR, jamais recalculé ici). Optionnels : une réponse ancienne n'en porte pas.
   browser_locale?: string; browser_timezone?: string; browser_viewport?: string
   browser_effectif?: { locale: string; timezone: string; viewport: string }
+  browser_avertissements?: string[]
   module_count: number; case_count: number
   effective_role: string
 }

@@ -35,6 +35,8 @@ dependencies = [
     # en transitif ; déclaré explicitement parce qu'on en dépend désormais directement — une
     # dépendance qu'on utilise sans la déclarer disparaît le jour où son porteur disparaît.
     "cryptography>=42.0",
+    # Base des fuseaux horaires pour `zoneinfo` sous Windows, qui n'en embarque pas (lot 07c : validation du fuseau du navigateur de test).
+    "tzdata>=2024.1; sys_platform == 'win32'",
     # Fondation portable PostgreSQL (2026-08-28, phase 1/3 — voir docs/ARCHITECTURE.md §4).
     # `sqlalchemy` porte le modèle de schéma indépendant du moteur (`store/schema_sa.py`) ;
     # `alembic` porte les migrations générées depuis ce modèle. Les deux sont dans les

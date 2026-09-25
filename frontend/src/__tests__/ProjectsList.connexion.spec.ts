@@ -213,6 +213,24 @@ describe('ProjectsList — navigateur de test (lot 07c)', () => {
     expect([patch.browser_locale, patch.browser_timezone, patch.browser_viewport]).toEqual(
       ['en-GB', 'Europe/London', '1280x720'])
   })
+
+  it("DIT qu'une valeur enregistrée est écartée au profit du défaut, jamais en silence", async () => {
+    listProjects.mockResolvedValue([{ ...AVEC_EFFECTIF, browser_locale: 'fr_FR',
+      browser_avertissements: ['langue « fr_FR » invalide (attendu : fr-FR, en-US…)'] }])
+    const w = await ouvrirEdition()
+
+    const avertissements = w.find('[data-testid="browser-avertissements"]')
+    expect(avertissements.exists()).toBe(true)
+    expect(avertissements.text()).toContain('fr_FR')
+    expect(avertissements.text()).toContain('le défaut est utilisé')
+  })
+
+  it("n'affiche aucun avertissement quand tout est valide", async () => {
+    listProjects.mockResolvedValue([{ ...AVEC_EFFECTIF, browser_avertissements: [] }])
+    const w = await ouvrirEdition()
+
+    expect(w.find('[data-testid="browser-avertissements"]').exists()).toBe(false)
+  })
 })
 
 describe("ProjectsList — exploration de l'application (étape 2 du flux)", () => {

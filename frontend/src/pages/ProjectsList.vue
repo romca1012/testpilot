@@ -620,6 +620,10 @@ onMounted(async () => { await load(); await loadExplorations() })
             Laissez vide pour le défaut ({{ editing?.browser_effectif?.locale || 'fr-FR' }}, {{ editing?.browser_effectif?.timezone || 'Europe/Paris' }},
             {{ editing?.browser_effectif?.viewport || '1440x900' }}). L'exploration et l'exécution utilisent ce même contexte.
           </p>
+          <!-- Une valeur enregistrée mais mal formée est ÉCARTÉE au profit du défaut : l'écran le dit, jamais en silence. -->
+          <ul v-if="editing?.browser_avertissements?.length" class="mt-2 text-xs text-warning" data-testid="browser-avertissements">
+            <li v-for="a in editing.browser_avertissements" :key="a">{{ a }} — le défaut est utilisé à la place.</li>
+          </ul>
         </fieldset>
         <fieldset v-if="edit.connector_type === 'odoo'" class="rounded-lg border border-border p-3">
           <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Génération — calibration en écriture</legend>

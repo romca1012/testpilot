@@ -119,6 +119,10 @@ def start_exploration(conn, project_id: int) -> tuple[str, dict]:
         "username": projet.get("username") or "", "password": projet.get("password") or "",
         "connector_type": projet.get("connector_type") or "odoo",
         "nom": projet.get("name") or "",
+        # Lot 07c : le contexte navigateur FIGÉ du projet — le crawl doit voir ce que le test verra.
+        "browser_locale": projet.get("browser_locale") or "",
+        "browser_timezone": projet.get("browser_timezone") or "",
+        "browser_viewport": projet.get("browser_viewport") or "",
     }}
 
 
@@ -145,13 +149,17 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
     from playwright.sync_api import sync_playwright
 
     import crawl_domaine as cd
+    from testpilot.connectors.contexte_navigateur import depuis_projet
     from testpilot.connectors.factory import build_connector
 
     connector = build_connector(connexion)
+    # Lot 07c (revue) : `nav.new_page()` nu prenait la langue et le fuseau de la MACHINE et une fenêtre de 1280x720 — un projet
+    # réglé en fr-FR pouvait être crawlé en en-US. Le contexte est aussi posé sur `ctx` : le crawl recrée sa page après un crash.
+    contexte_navigateur = depuis_projet(connexion).kwargs()
 
     with sync_playwright() as p:
         nav = p.chromium.launch()
-        ctx = types.SimpleNamespace(page=nav.new_page())
+        ctx = types.SimpleNamespace(page=nav.new_page(**contexte_navigateur), contexte_navigateur=contexte_navigateur)
         relogin = connector.crawl_relogin_hook()
         relogin(ctx)  # première connexion — la même fonction sert de repli après un crash
         pages, transitions, onglets = cd.crawler(
