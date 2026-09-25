@@ -53,6 +53,8 @@ class ProjectSummary(BaseModel):
     browser_timezone: str = ""
     browser_viewport: str = ""
     browser_effectif: dict[str, str] = {}
+    # Une valeur ENREGISTRÉE mais mal formée (base éditée à la main) est écartée au profit du défaut : on le DIT, jamais en silence.
+    browser_avertissements: list[str] = []
     module_count: int = 0
     case_count: int = 0
     effective_role: str = ""
@@ -1174,6 +1176,12 @@ def _contexte_effectif(row: dict) -> dict[str, str]:
     return {"locale": contexte.locale, "timezone": contexte.timezone_id, "viewport": contexte.viewport}
 
 
+def _contexte_avertissements(row: dict) -> list[str]:
+    from testpilot.connectors.contexte_navigateur import erreurs
+
+    return erreurs(row.get("browser_locale") or "", row.get("browser_timezone") or "", row.get("browser_viewport") or "")
+
+
 def project_summary(row: dict) -> ProjectSummary:
     return ProjectSummary(
         id=row["id"], name=row["name"], description=row.get("description", ""),
@@ -1185,6 +1193,7 @@ def project_summary(row: dict) -> ProjectSummary:
         browser_timezone=row.get("browser_timezone", "") or "",
         browser_viewport=row.get("browser_viewport", "") or "",
         browser_effectif=_contexte_effectif(row),
+        browser_avertissements=_contexte_avertissements(row),
         module_count=row.get("module_count", 0), case_count=row.get("case_count", 0),
         effective_role=row.get("effective_role", ""))
 

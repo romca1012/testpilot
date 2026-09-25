@@ -328,7 +328,8 @@ def crawler(ctx, nav, base_url, max_pages, *, racines=None, hors_perimetre=None,
                 crashes += 1
                 print(f"    [~] navigateur relancé ({crashes}) et ré-authentifié")
                 try:
-                    ctx.page = nav.new_page()
+                    # Le MÊME contexte figé que la première page (lot 07c) — une page recréée ne retombe pas sur l'hôte.
+                    ctx.page = nav.new_page(**getattr(ctx, "contexte_navigateur", {}))
                     relogin(ctx)
                 except Exception:
                     print("    [!!] relance impossible — mesure INCOMPLÈTE, à ne pas publier")
@@ -437,8 +438,11 @@ def main() -> None:
 
     with sync_playwright() as p:
         nav = p.chromium.launch()
+        from testpilot.connectors.contexte_navigateur import ContexteNavigateur
+        contexte_navigateur = ContexteNavigateur().kwargs()   # outil de diagnostic : les défauts figés, pas ceux de la machine
         ctx = types.SimpleNamespace(
-            page=nav.new_page(), odoo_url=config.ODOO_URL, odoo_db=config.ODOO_DB,
+            page=nav.new_page(**contexte_navigateur), contexte_navigateur=contexte_navigateur,
+            odoo_url=config.ODOO_URL, odoo_db=config.ODOO_DB,
             odoo_user=config.ODOO_USER, odoo_password=config.ODOO_PASSWORD)
         H.playwright_login(ctx)
         print(f"  dépôt après authentification : {normalise(ctx.page.url)}\n")

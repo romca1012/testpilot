@@ -172,6 +172,11 @@ _ENV_LOCALE = "TESTPILOT_BROWSER_LOCALE"
 _ENV_TIMEZONE = "TESTPILOT_BROWSER_TIMEZONE"
 _ENV_VIEWPORT = "TESTPILOT_BROWSER_VIEWPORT"
 _DEFAUT_LOCALE, _DEFAUT_TIMEZONE, _DEFAUT_VIEWPORT = "fr-FR", "Europe/Paris", (1440, 900)
+_BORNES_VIEWPORT = ((320, 3840), (320, 2160))   # dupliquées de `contexte_navigateur.py` (test d'accord)
+
+
+def _avertir_contexte(message: str) -> None:
+    print(f"[contexte navigateur] {message} — le défaut ({_DEFAUT_VIEWPORT[0]}x{_DEFAUT_VIEWPORT[1]}) est utilisé", file=sys.stderr)
 
 
 def contexte_navigateur_fige() -> dict:
@@ -181,9 +186,17 @@ def contexte_navigateur_fige() -> dict:
     à l'autre. Une valeur absente ou illisible retombe sur le défaut (l'API refuse déjà une valeur mal formée à la saisie).
     """
     largeur, hauteur = _DEFAUT_VIEWPORT
-    brut = (os.environ.get(_ENV_VIEWPORT) or "").lower().replace("×", "x").split("x")
+    texte = os.environ.get(_ENV_VIEWPORT) or ""
+    brut = texte.lower().replace("×", "x").split("x")
     if len(brut) == 2 and all(p.strip().isdigit() for p in brut):
-        largeur, hauteur = int(brut[0]), int(brut[1])
+        (l_min, l_max), (h_min, h_max) = _BORNES_VIEWPORT
+        if l_min <= int(brut[0]) <= l_max and h_min <= int(brut[1]) <= h_max:
+            largeur, hauteur = int(brut[0]), int(brut[1])
+        else:
+            _avertir_contexte(f"{_ENV_VIEWPORT}={texte!r} hors bornes")
+    elif texte.strip():
+        # Présente mais illisible : le run tourne dans un AUTRE contexte que celui du projet — jamais sans le dire.
+        _avertir_contexte(f"{_ENV_VIEWPORT}={texte!r} illisible")
     return {"locale": (os.environ.get(_ENV_LOCALE) or "").strip() or _DEFAUT_LOCALE,
             "timezone_id": (os.environ.get(_ENV_TIMEZONE) or "").strip() or _DEFAUT_TIMEZONE,
             "viewport": {"width": largeur, "height": hauteur}}
