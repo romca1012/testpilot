@@ -176,6 +176,12 @@ def constat(fonction):
 # même test d'accord que `FIELD_FALLBACK_FILE_ENV`/`REGLES_REFUS_FILE_ENV` ci-dessus.
 SELECTOR_TIER_FILE_ENV = "TP_SELECTOR_TIER_FILE"
 
+# Lot 05 (D5) : campagne STRICTE — ni résolution adaptative (LLM) ni retry. Posée dans l'environnement du
+# sous-processus par le runner. Nom DUPLIQUÉ côté `execution/behave_result.py::MODE_STRICT_ENV`, même raison et
+# même test d'accord que les sidecars ci-dessus. Le palier consigné par une résolution adaptative réussie.
+MODE_STRICT_ENV = "TP_MODE_STRICT"
+PALIER_ADAPTATIF = "adaptive"
+
 
 def _record_selector_tier(ident: str, tier: str) -> None:
     """Consigne QUEL palier de `locate_field` a résolu ce champ, pour détecter une DÉRIVE d'un run
@@ -195,7 +201,10 @@ def _record_selector_tier(ident: str, tier: str) -> None:
         return
     try:
         with open(path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps({"ident": ident, "tier": tier}, ensure_ascii=False) + "\n")
+            # Lot 05 : le SCÉNARIO courant est consigné avec le palier — sans lui, un repli adaptatif ne peut pas
+            # qualifier le vert du bon scénario (une clé de plus, les lecteurs existants ignorent ce qu'ils ne connaissent pas).
+            handle.write(json.dumps({"ident": ident, "tier": tier, "scenario": _ETAT_CONSTAT["scenario"]},
+                                    ensure_ascii=False) + "\n")
     except OSError:
         pass
 
@@ -1006,6 +1015,10 @@ def _repli_adaptatif(page, ident: str, intention: str, *, valeur: str = ""):
     """
     if os.environ.get('TESTPILOT_QUALIFICATION') == '1':
         return None
+    # Lot 05 (D5) : en campagne STRICTE, l'échec de la cascade déterministe reste un échec — jamais un LLM pour le
+    # rattraper (un vert obtenu par repli n'est pas un vert nominal, et le mode strict ne veut aucun repli).
+    if os.environ.get(MODE_STRICT_ENV) == '1':
+        return None
     if not intention or _adaptive_resolution is None:
         return None
     resolu = _adaptive_resolution.resoudre_champ_adaptatif(page, ident, intention, valeur=valeur)
@@ -1018,7 +1031,7 @@ def _repli_adaptatif(page, ident: str, intention: str, *, valeur: str = ""):
         if diagnostic:
             _record_field_fallback(f"résolution adaptative de '{ident}' sans succès : {diagnostic}")
         return None
-    _record_selector_tier(ident, "adaptive")
+    _record_selector_tier(ident, PALIER_ADAPTATIF)
     message = (f"'{ident}' introuvable par tout palier déterministe ; résolu par résolution "
               f"ADAPTATIVE (intention : « {intention} » — {diagnostic}).")
     logger.warning("%s %s", FIELD_FALLBACK_MARKER, message)

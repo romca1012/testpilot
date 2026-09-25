@@ -225,11 +225,14 @@ def test_locate_field_trace_la_resolution_adaptative(monkeypatch, tmp_path):
     monkeypatch.setenv(SELECTOR_TIER_FILE_ENV, str(tier_file))
     monkeypatch.setenv(FIELD_FALLBACK_FILE_ENV, str(fallback_file))
 
+    import _base_helpers
+    monkeypatch.setitem(_base_helpers._ETAT_CONSTAT, "scenario", "Scénario X")  # Lot 05 : le palier porte son scénario
+
     page = _FakePageToutEchoue(intention="je clique sur « Ajouter »")
     assert locate_field(page, "champ_x", timeout=50) is _SENTINEL
 
     trace = json.loads(tier_file.read_text(encoding="utf-8").strip())
-    assert trace == {"ident": "champ_x", "tier": "adaptive"}
+    assert trace == {"ident": "champ_x", "tier": "adaptive", "scenario": "Scénario X"}
     assert "ADAPTATIVE" in fallback_file.read_text(encoding="utf-8")
 
 

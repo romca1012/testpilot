@@ -298,6 +298,11 @@ def read_selector_tiers(path, limit: int = _MAX_SELECTOR_TIERS) -> list[dict]:
 # du côté PRUDENT (constats non comptés → `indetermine`), jamais du côté `conforme`.
 CONSTATS_FILE_ENV = "TP_CONSTATS_FILE"
 CONSTATS_FILENAME = "constats.jsonl"
+
+# Lot 05 (D5) : campagne STRICTE (aucune résolution adaptative). Nom dupliqué côté `_base_helpers`, même test d'accord.
+# `PALIER_ADAPTATIF` : la valeur de `tier` qu'y écrit une résolution adaptative RÉUSSIE (lue par `verdict/status.py`).
+MODE_STRICT_ENV = "TP_MODE_STRICT"
+PALIER_ADAPTATIF = "adaptive"
 _MAX_CONSTATS = 20000
 
 
