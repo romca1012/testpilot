@@ -100,16 +100,28 @@ def create_project(body: schemas.ProjectIn, request: Request = None, conn=Depend
     # tronquer en `None` ici a déjà produit, une fois, un projet fermé sans AUCUN Admin explicite,
     # y compris pour son propre créateur (mesuré 2026-09-07 : ~90 tests en échec en cascade).
     utilisateur = getattr(request, "state", None) and getattr(request.state, "user", None)
+    _refuser_contexte_invalide(body.browser_locale, body.browser_timezone, body.browser_viewport)
     try:
         project_id = ProjectRepo(conn).create(
             name=body.name.strip(), description=body.description,
             connector_type=body.connector_type, connector_version=body.connector_version,
             base_url=body.base_url, database=body.database,
             username=body.username, password=body.password, private=True,
-            owner_id=utilisateur["id"] if utilisateur is not None else None)
+            owner_id=utilisateur["id"] if utilisateur is not None else None,
+            browser_locale=body.browser_locale.strip(), browser_timezone=body.browser_timezone.strip(),
+            browser_viewport=body.browser_viewport.strip())
     except DuplicateName as exc:
         raise _conflict(exc) from exc
     return schemas.project_summary(_summary_row(conn, project_id))
+
+
+def _refuser_contexte_invalide(locale: str, timezone_id: str, viewport: str) -> None:
+    """422 en français clair si la langue, le fuseau ou la taille de fenêtre est mal formé (une chaîne vide = le défaut, valide)."""
+    from testpilot.connectors.contexte_navigateur import erreurs
+
+    problemes = erreurs(locale.strip(), timezone_id.strip(), viewport.strip())
+    if problemes:
+        raise HTTPException(status_code=422, detail="; ".join(problemes))
 
 
 @router.patch("/{project_id}", response_model=schemas.ProjectSummary,
@@ -128,6 +140,7 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
     if body.name is not None and not body.name.strip():
         raise HTTPException(status_code=422, detail="le nom du projet est requis")
+    _refuser_contexte_invalide(body.browser_locale or "", body.browser_timezone or "", body.browser_viewport or "")
     repo = ProjectRepo(conn)
     try:
         if body.name is not None:
@@ -140,7 +153,10 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
     repo.update_connection(
         project_id, connector_type=body.connector_type, connector_version=body.connector_version,
         base_url=body.base_url, database=body.database, username=body.username,
-        password=body.password)
+        password=body.password,
+        browser_locale=None if body.browser_locale is None else body.browser_locale.strip(),
+        browser_timezone=None if body.browser_timezone is None else body.browser_timezone.strip(),
+        browser_viewport=None if body.browser_viewport is None else body.browser_viewport.strip())
     if body.calibration_writes_enabled is not None:
         repo.set_calibration_writes_enabled(project_id, body.calibration_writes_enabled)
     return schemas.project_summary(_summary_row(conn, project_id))

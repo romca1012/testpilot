@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 49
+_SCHEMA_VERSION = 50
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -240,8 +240,22 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_48_execution_blocked(conn)
     if version < 49:
         _migrate_49_confiance_et_strict(conn)
+    if version < 50:
+        _migrate_50_contexte_navigateur(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
+
+
+def _migrate_50_contexte_navigateur(conn: sqlite3.Connection) -> None:
+    """Lot 07c (C3) : le contexte navigateur FIGÉ d'un projet — langue, fuseau horaire, taille de fenêtre.
+
+    Trois colonnes texte, ajoutées seulement si absentes (idempotent). **Vide = le défaut** (`fr-FR`, `Europe/Paris`, 1440x900,
+    `connectors/contexte_navigateur.py`) : les projets existants n'ont rien à renseigner, mais leur navigateur cesse de dépendre
+    de la machine qui le lance.
+    """
+    for colonne in ("browser_locale", "browser_timezone", "browser_viewport"):
+        if colonne not in _column_names(conn, "project"):
+            conn.execute(f"ALTER TABLE project ADD COLUMN {colonne} TEXT NOT NULL DEFAULT ''")
 
 
 def _migrate_49_confiance_et_strict(conn: sqlite3.Connection) -> None:

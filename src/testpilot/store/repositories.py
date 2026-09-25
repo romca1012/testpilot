@@ -114,13 +114,15 @@ class ProjectRepo:
     def create(self, *, name: str, description: str = "", connector_type: str = "odoo",
                connector_version: str = "", base_url: str = "", database: str = "",
                username: str = "", password: str = "", private: bool = False,
-               owner_id: int | None = None) -> int:
+               owner_id: int | None = None, browser_locale: str = "", browser_timezone: str = "",
+               browser_viewport: str = "") -> int:
         self.ensure_name_free(name)
         cur = self.conn.execute(
             "INSERT INTO project (name, description, connector_type, connector_version,"
-            " base_url, database, username, password, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            " base_url, database, username, password, created_at, browser_locale, browser_timezone,"
+            " browser_viewport) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (name, description, connector_type, connector_version, base_url, database, username,
-             secrets_mod.chiffrer(password), now_iso()))
+             secrets_mod.chiffrer(password), now_iso(), browser_locale, browser_timezone, browser_viewport))
         self.conn.commit()
         project_id = int(cur.lastrowid)
         if private:
@@ -188,7 +190,10 @@ class ProjectRepo:
     # ses modules, ses cas et son historique. On préfère l'autoriser et le tracer.
     # `connector_version` (migration 38) suit la même logique : une application peut monter de
     # version sans changer de projet — l'interdire forcerait, là encore, à tout recréer.
-    _CONNEXION = ("connector_type", "connector_version", "base_url", "database", "username")
+    # Le contexte navigateur (lot 07c) s'édite au même endroit : c'est un réglage de CONNEXION à l'application (langue, fuseau,
+    # taille de fenêtre du navigateur qui la pilote) — `None` = n'y touche pas, `""` = revenir au défaut.
+    _CONNEXION = ("connector_type", "connector_version", "base_url", "database", "username",
+                  "browser_locale", "browser_timezone", "browser_viewport")
 
     def update_connection(self, project_id: int, **champs) -> None:
         """Édite la connexion d'un projet (décision `0005` : elle vit sur le PROJET).
