@@ -47,6 +47,12 @@ class ProjectSummary(BaseModel):
     # par le porteur du projet (jamais activée implicitement, cf. `ProjectRepo.
     # set_calibration_writes_enabled`).
     calibration_writes_enabled: bool = False
+    # Lot 07c : contexte navigateur FIGÉ. Vide = le défaut (`connectors/contexte_navigateur.py`) ; les valeurs EFFECTIVES sont
+    # exposées à côté pour que l'écran dise ce qui sera réellement utilisé, sans le recalculer.
+    browser_locale: str = ""
+    browser_timezone: str = ""
+    browser_viewport: str = ""
+    browser_effectif: dict[str, str] = {}
     module_count: int = 0
     case_count: int = 0
     effective_role: str = ""
@@ -459,6 +465,9 @@ class ProjectIn(BaseModel):
     database: str = ""
     username: str = ""
     password: str = ""  # secret : accepté en entrée, jamais relu en sortie
+    browser_locale: str = ""
+    browser_timezone: str = ""
+    browser_viewport: str = ""
 
 
 class ProjectPatch(BaseModel):
@@ -481,6 +490,10 @@ class ProjectPatch(BaseModel):
     # `None` = n'y touche pas, comme les autres champs de ce PATCH — pas de `""` ambigu possible
     # pour un booléen, mais la même discipline (silence = inchangé) s'applique.
     calibration_writes_enabled: bool | None = None
+    # Lot 07c : `None` = n'y touche pas ; `""` = revenir au défaut.
+    browser_locale: str | None = None
+    browser_timezone: str | None = None
+    browser_viewport: str | None = None
 
 
 class ExplorationOut(BaseModel):
@@ -1154,6 +1167,13 @@ class UserGroupOut(BaseModel):
 
 
 # ── Mappers dict → DTO ─────────────────────────────────────────────────────────
+def _contexte_effectif(row: dict) -> dict[str, str]:
+    from testpilot.connectors.contexte_navigateur import depuis_projet
+
+    contexte = depuis_projet(row)
+    return {"locale": contexte.locale, "timezone": contexte.timezone_id, "viewport": contexte.viewport}
+
+
 def project_summary(row: dict) -> ProjectSummary:
     return ProjectSummary(
         id=row["id"], name=row["name"], description=row.get("description", ""),
@@ -1161,6 +1181,10 @@ def project_summary(row: dict) -> ProjectSummary:
         connector_version=row.get("connector_version", ""), base_url=row.get("base_url", ""),
         database=row.get("database", ""), username=row.get("username", ""),
         calibration_writes_enabled=bool(row.get("calibration_writes_enabled", 0)),
+        browser_locale=row.get("browser_locale", "") or "",
+        browser_timezone=row.get("browser_timezone", "") or "",
+        browser_viewport=row.get("browser_viewport", "") or "",
+        browser_effectif=_contexte_effectif(row),
         module_count=row.get("module_count", 0), case_count=row.get("case_count", 0),
         effective_role=row.get("effective_role", ""))
 
