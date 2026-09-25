@@ -58,6 +58,14 @@ fiabilité 2026-09-17). Remplace `assert x.is_visible()` par `constater_visible(
 state="visible", timeout=8000)`. Ce n'est pas changer l'intention du scénario — le contenu attendu
 reste identique, on lui laisse seulement le temps d'apparaître.
 
+## Une boîte de dialogue native se décide AVANT l'action qui l'ouvre
+Une boîte `alert`/`confirm`/`prompt` du NAVIGATEUR est refusée d'office par Playwright à l'instant où elle s'ouvre : quand le step suivant
+s'exécute, elle a déjà disparu. Les steps « j'accepte la boîte de dialogue » / « je refuse la boîte de dialogue » se placent donc AVANT le
+clic qui la provoque, jamais après (placés après, ils sont refusés à l'exécution). Une modale de la PAGE (`aria-modal`, `<dialog>`) reste
+affichée : là, le step se place APRÈS le clic qui l'ouvre.
+Si l'échec dit qu'une boîte s'est « déjà ouverte et a été REFUSÉE d'office », déplace « j'accepte/je refuse la boîte de dialogue » AVANT le clic
+qui l'ouvre — sans toucher à ce que le scénario constate ensuite.
+
 ## Ce que tu peux modifier
 
 Contrairement à une réparation post-exécution, **rien n'est gelé ici** : cette version n'a jamais
