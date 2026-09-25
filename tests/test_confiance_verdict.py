@@ -87,3 +87,36 @@ def test_sans_scenario_le_cas_reste_nominal_et_un_dry_run_aussi():
     assert st.aggregate([]).confiance == st.CONFIANCE_NOMINALE
     sans_dry = ExecutionOutcome(module_name="m", dry_run_passed=False)
     assert st.derive_verdict(sans_dry).confiance == st.CONFIANCE_NOMINALE
+
+
+def test_falsifiable_une_resolution_adaptative_tardive_n_est_jamais_coupee_par_le_plafond_du_sidecar(tmp_path):
+    """Revue lot 05 : 250 résolutions nominales PUIS une adaptative — sous l'ancien plafond de 200 lignes elle disparaissait
+    et le vert passait « nominal ». Le lecteur ne coupe jamais une ligne adaptative."""
+    import json
+
+    from testpilot.execution.behave_result import read_selector_tiers
+
+    sidecar = tmp_path / "selector_tiers.jsonl"
+    lignes = [{"ident": f"champ{i}", "tier": "name", "scenario": "S9"} for i in range(250)]
+    lignes.append({"ident": "sujet_renomme", "tier": "adaptive", "scenario": "S9"})
+    sidecar.write_text("\n".join(json.dumps(ligne) for ligne in lignes) + "\n", encoding="utf-8")
+
+    paliers = read_selector_tiers(sidecar)
+    verdict = st.derive_verdict(_outcome(["S9"], paliers))
+
+    assert any(p["tier"] == "adaptive" for p in paliers)
+    assert verdict.confiance == st.CONFIANCE_AUTO_RESOLUE
+    assert verdict.scenarios[0].resolutions_adaptatives == ["sujet_renomme"]
+
+
+def test_le_plafond_du_sidecar_reste_applique_aux_paliers_ordinaires(tmp_path):
+    """Le plafond protège toujours la mémoire de dérive : seuls les repli adaptatifs (rares) le dépassent."""
+    import json
+
+    from testpilot.execution.behave_result import read_selector_tiers
+
+    sidecar = tmp_path / "selector_tiers.jsonl"
+    sidecar.write_text("\n".join(json.dumps({"ident": f"c{i}", "tier": "name", "scenario": "S"})
+                                 for i in range(500)) + "\n", encoding="utf-8")
+
+    assert len(read_selector_tiers(sidecar)) == 200
