@@ -166,6 +166,29 @@ def odoo_session(context):
     yield context.odoo
 
 
+# Lot 07c (C3) : contexte navigateur FIGÉ. Noms et défauts DUPLIQUÉS de `testpilot/connectors/contexte_navigateur.py` (ce harnais ne
+# dépend pas du paquet applicatif) — même test d'accord que les sidecars (`tests/test_contexte_navigateur.py`).
+_ENV_LOCALE = "TESTPILOT_BROWSER_LOCALE"
+_ENV_TIMEZONE = "TESTPILOT_BROWSER_TIMEZONE"
+_ENV_VIEWPORT = "TESTPILOT_BROWSER_VIEWPORT"
+_DEFAUT_LOCALE, _DEFAUT_TIMEZONE, _DEFAUT_VIEWPORT = "fr-FR", "Europe/Paris", (1440, 900)
+
+
+def contexte_navigateur_fige() -> dict:
+    """Les arguments de `browser.new_context(...)` : langue, fuseau et fenêtre décidés par le PROJET, jamais par la machine.
+
+    Sans ces réglages Chromium prend la langue et le fuseau de l'hôte : la même campagne changeait de libellés et de dates d'un poste
+    à l'autre. Une valeur absente ou illisible retombe sur le défaut (l'API refuse déjà une valeur mal formée à la saisie).
+    """
+    largeur, hauteur = _DEFAUT_VIEWPORT
+    brut = (os.environ.get(_ENV_VIEWPORT) or "").lower().replace("×", "x").split("x")
+    if len(brut) == 2 and all(p.strip().isdigit() for p in brut):
+        largeur, hauteur = int(brut[0]), int(brut[1])
+    return {"locale": (os.environ.get(_ENV_LOCALE) or "").strip() or _DEFAUT_LOCALE,
+            "timezone_id": (os.environ.get(_ENV_TIMEZONE) or "").strip() or _DEFAUT_TIMEZONE,
+            "viewport": {"width": largeur, "height": hauteur}}
+
+
 @fixture
 def playwright_browser(context):
     """Lance un navigateur Playwright pour le scénario (PLAYWRIGHT_HEADED=1 pour le voir).
@@ -179,7 +202,7 @@ def playwright_browser(context):
     headed = os.environ.get("PLAYWRIGHT_HEADED", "0") == "1"
     context._playwright = sync_playwright().start()
     context.browser = context._playwright.chromium.launch(headless=not headed)
-    context._browser_context = context.browser.new_context()
+    context._browser_context = context.browser.new_context(**contexte_navigateur_fige())
     _demarrer_trace(context)
     context.page = context._browser_context.new_page()
     yield context.page
