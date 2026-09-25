@@ -173,7 +173,7 @@ répétée (12), au même titre que les lots 01-03.
 | 05 | terminé (fusionné le 2026-09-25, revue faite, 1 bloquant corrigé ; **complément D5 : le mode strict ne répare jamais**) | 2026-09-25 | `docs/RAPPORT-LOT-05-2026-09-25.md` ; PR n° 14 (https://github.com/romca1012/testpilot/pull/14) |
 | 06 | à faire | | |
 | 07a | terminé (fusionné le 2026-09-24, revue faite) | 2026-09-24 | `docs/RAPPORT-LOT-07A-2026-09-24.md` ; PR n° 8 (https://github.com/romca1012/testpilot/pull/8) ; mesures : `docs/mesures/lot07a-connexion-execution-2026-09-24.md` |
-| 07b-e | à faire | | |
+| 07b-e | en cours — **07c terminé** (fusionné le 2026-09-25, revue faite, banc 16.0/17.0/18.0 vert) ; à faire dans l'ordre : 07d, 07b (D8), 07e HTTP (D7 ; l'oracle SQL est un sous-lot séparé plus tard) | 2026-09-25 | 07c : `docs/RAPPORT-LOT-07C-2026-09-25.md` ; PR n° 17 (https://github.com/romca1012/testpilot/pull/17) ; filtre du banc : PR n° 18 |
 | 08 | à faire | | |
 | 09 | à faire | | |
 | 10 | à faire | | |
