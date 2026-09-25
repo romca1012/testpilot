@@ -1934,21 +1934,41 @@ def _ouvrir_grille_applications(page, delai_ms: int = 15000) -> None:
 _ESSAIS_COMMUTATEUR = 4
 
 
+_ATTENTE_ITEM_MENU_MS = 2000
+
+
 def _cible_segment_menu(page, libelle):
     """L'élément à cliquer pour un segment de menu : l'ITEM de menu d'abord, le premier texte égal sinon.
 
     ⚠️ Mesuré sur le banc Odoo 18.0 (2026-09-25, CI du mini-lot F17) : après « Ventes », la vue par défaut affiche le fil
     d'Ariane « Devis » — et le menu déroulant « Commandes », rendu dans un conteneur à part, le recouvre. `get_by_text("Devis").first`
     désignait ce fil d'Ariane, dont le clic était intercepté par l'item du menu (timeout 8 s, puis repli sur le LLM). Un item
-    de menu porte le rôle `menuitem` sur 16/17/18 ; sur Enterprise (tuiles du home menu, sans ce rôle) on retombe sur l'ancien
-    comportement, inchangé.
+    de menu porte le rôle `menuitem` : **mesuré sur 18.0 en local** ; sur 16.0 et 17.0 c'est vérifié à chaque exécution du banc
+    par `test_les_items_de_menu_portent_le_role_menuitem` (le job CI de chaque version). Sur Enterprise (tuiles du home menu)
+    le rôle n'est PAS mesuré : sans item de ce rôle, on retombe sur l'ancien comportement, mais si les tuiles le portent,
+    le ciblage change — c'est un point de la validation Sapian (F17).
+
+    Revue `verdict-reviewer` (2026-09-25) : (1) plusieurs items de même nom → on ne clique JAMAIS « le premier » en silence
+    (le clic sur la bascule de la barre de navigation refermerait le menu sans erreur, step vert sur une mauvaise page) :
+    erreur explicite ; (2) `count()` n'attend rien — le menu déroulant n'est pas rendu juste après le clic du segment
+    précédent : on attend brièvement l'item avant de conclure « pas d'item » et de retomber sur l'ancien ciblage.
     """
+    items, nombre = None, 0
     try:
-        item = page.get_by_role("menuitem", name=libelle, exact=True)
-        if item.count() > 0:
-            return item.first
+        items = page.get_by_role("menuitem", name=libelle, exact=True)
+        try:
+            items.first.wait_for(state="visible", timeout=_ATTENTE_ITEM_MENU_MS)
+        except PlaywrightTimeout:
+            pass  # pas (encore) d'item de menu : l'ancien ciblage tranchera
+        nombre = items.count()
     except Exception:  # page sans `get_by_role` (doublure) ou en cours de navigation : ancien comportement
-        pass
+        nombre = 0
+    if nombre > 1:
+        raise ElementIntrouvableError(
+            f"Menu '{libelle}' ambigu : {nombre} items de menu portent ce libellé sur {getattr(page, 'url', '?')} — "
+            f"cliquer le premier pourrait ouvrir une autre page sans erreur.")
+    if nombre == 1:
+        return items.first
     return page.get_by_text(libelle, exact=True).first
 
 
