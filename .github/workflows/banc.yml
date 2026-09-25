@@ -21,6 +21,9 @@ on:
       - "compose.banc.yml"
       - "scripts/banc_*"
       - "tests/test_navigation_menu_banc.py"
+      - "tests/test_confiance_banc.py"
+      - "behave_runtime/steps_library/_adaptive_resolution.py"
+      - "src/testpilot/verdict/status.py"
       - "behave_runtime/steps_library/_base_helpers.py"
       - ".github/workflows/banc.yml"
 
@@ -61,6 +64,10 @@ jobs:
         env:
           BANC_REQUIS: "1"   # un banc absent fait ÉCHOUER l'étape au lieu de la skipper
         run: python -m pytest -m banc tests/test_navigation_menu_banc.py -v
+      - name: Confiance du verdict (lot 05) — champ renommé, mode normal et mode strict
+        env:
+          BANC_REQUIS: "1"
+        run: python -m pytest -m banc tests/test_confiance_banc.py -v
       - name: Mesure (mode figé — I1, I2, I5)
         run: python scripts/banc_mesure.py --version "${{ matrix.version }}"
       - name: Publier la mesure
