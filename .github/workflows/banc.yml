@@ -22,9 +22,15 @@ on:
       - "scripts/banc_*"
       - "tests/test_navigation_menu_banc.py"
       - "tests/test_confiance_banc.py"
-      - "behave_runtime/steps_library/_adaptive_resolution.py"
-      - "src/testpilot/verdict/status.py"
-      - "behave_runtime/steps_library/_base_helpers.py"
+      # Les RÉPERTOIRES que le banc exerce, et non une liste de fichiers (2026-09-25) : la mesure lance un vrai Behave contre
+      # Odoo, donc tout ce qui change le harnais (`environment.py`), les connecteurs (`odoo.py`, `runtime_env.py`), l'exécution
+      # ou le calcul du verdict change ce que le banc mesure. L'ancienne liste de fichiers a laissé passer le lot 07c (contexte
+      # navigateur : `environment.py`, `odoo.py`, `runtime_env.py`) sans banc — rattrapé à la main, pas par le filtre.
+      - "behave_runtime/**"
+      - "!behave_runtime/generated/**"      # artefacts d'exécution, jamais du code
+      - "src/testpilot/connectors/**"
+      - "src/testpilot/execution/**"
+      - "src/testpilot/verdict/**"
       - ".github/workflows/banc.yml"
 
 permissions:
