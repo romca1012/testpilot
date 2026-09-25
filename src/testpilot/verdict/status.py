@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from testpilot.execution.behave_result import PALIER_ADAPTATIF
 from testpilot.execution.executor import ExecutionOutcome
 from testpilot.verdict import defect_taxonomy as dt
 
@@ -50,6 +51,23 @@ GROUND_TRUTH_BACKEND_VERIFIED = "backend_verified"
 GROUND_TRUTH_UI_ONLY = "ui_only"
 
 
+# ── Confiance du verdict (lot 05, D5) ───────────────────────────────────────────────────────────────────
+#
+# Un vert n'a pas toujours la même valeur : obtenu par la cascade déterministe c'est une preuve NOMINALE ; obtenu parce
+# qu'un LLM a retrouvé un élément renommé (`auto_resolue`) ou au second essai après un timeout (`apres_retry`), c'est
+# exactement une régression d'interface ou une instabilité qu'une campagne doit signaler. Ce n'est PAS un troisième axe
+# ni un nouveau statut : `statut_de_test` reste `passed`, la confiance le QUALIFIE (« Réussi — à confirmer »).
+# Distincte de `ground_truth` (ci-dessus), qui dit ce que le CONNECTEUR permet de recouper, pas comment CE run a abouti.
+# Calcul PUR depuis deux signaux du runtime — le sidecar des paliers et le fait d'avoir rejoué — jamais depuis le texte
+# de l'agent (décision 0015).
+CONFIANCE_NOMINALE = "nominale"
+CONFIANCE_AUTO_RESOLUE = "auto_resolue"
+CONFIANCE_APRES_RETRY = "apres_retry"
+CONFIANCES = (CONFIANCE_NOMINALE, CONFIANCE_AUTO_RESOLUE, CONFIANCE_APRES_RETRY)
+# Du moins au plus préoccupant : le cas prend la confiance du scénario le moins sûr.
+_RANG_CONFIANCE = {CONFIANCE_NOMINALE: 0, CONFIANCE_AUTO_RESOLUE: 1, CONFIANCE_APRES_RETRY: 2}
+
+
 def _ground_truth_pour(connector_type: str | None) -> str:
     """`None` (appelant qui ne résout pas encore le connecteur, ex. `cli.py`, `repair_service.py`)
     retombe sur `odoo` — comportement HISTORIQUE inchangé pour tout appelant qui ne fournit pas
@@ -71,6 +89,11 @@ class ScenarioVerdict:
     # transporté puis persisté pour qu'on puisse AUDITER `cause_category` a posteriori — sans
     # lui, aucune classification passée n'est vérifiable.
     step_text: str = ""
+    # Lot 05 (D5) : comment CE scénario a abouti. `nominale` par défaut = tout appelant qui ne calcule pas la confiance
+    # (rapports relus depuis la base, historique) garde le comportement d'avant.
+    confiance: str = CONFIANCE_NOMINALE
+    # Les éléments (champ, menu) qu'un repli adaptatif a dû retrouver dans CE scénario — de quoi expliquer « à confirmer ».
+    resolutions_adaptatives: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -84,6 +107,36 @@ class CaseVerdict:
     # le comportement de tout appelant qui ne connaît pas encore le connecteur (ex. code existant
     # qui construit un `CaseVerdict` directement, `report_service._verdict_from_db`).
     ground_truth: str = GROUND_TRUTH_BACKEND_VERIFIED
+    # Lot 05 (D5) : la moins sûre des confiances de ses scénarios (voir `_RANG_CONFIANCE`).
+    confiance: str = CONFIANCE_NOMINALE
+
+
+def qualifier_confiance(verdicts: list[ScenarioVerdict], *, rejoue: bool,
+                        paliers: list[dict] | None) -> None:
+    """Pose `confiance` (et `resolutions_adaptatives`) sur chaque scénario — calcul PUR, modifie en place.
+
+    Règle (D5) : `apres_retry` si l'outcome a été rejoué ; sinon `auto_resolue` si au moins une résolution ADAPTATIVE
+    a eu lieu dans le scénario ; sinon `nominale`. Une résolution dont le scénario n'est pas identifié (hook absent,
+    ligne ancienne) qualifie TOUS les scénarios : sans nom on ne peut pas prouver qu'un scénario n'est pas concerné, et se
+    tromper vers « nominale » serait le faux vert que ce champ existe pour éviter. Même limite assumée que les constats :
+    deux scénarios de même nom (« Plan du scénario ») partagent leurs résolutions.
+    """
+    adaptatives = [p for p in (paliers or []) if isinstance(p, dict) and p.get("tier") == PALIER_ADAPTATIF]
+    for v in verdicts:
+        concernees = [p for p in adaptatives if p.get("scenario") in ("", None, v.name)]
+        idents: list[str] = []
+        for p in concernees:
+            ident = str(p.get("ident") or "").strip()
+            if ident and ident not in idents:
+                idents.append(ident)
+        v.resolutions_adaptatives = idents
+        adaptative = bool(concernees)
+        if rejoue:
+            v.confiance = CONFIANCE_APRES_RETRY
+        elif adaptative:
+            v.confiance = CONFIANCE_AUTO_RESOLUE
+        else:
+            v.confiance = CONFIANCE_NOMINALE
 
 
 def _failures_by_scenario(failures) -> dict[str, list]:
@@ -165,6 +218,7 @@ def derive_verdict(outcome: ExecutionOutcome, *, connector_type: str | None = No
 
     grouped = _failures_by_scenario(real.failures)
     verdicts = [scenario_verdict(s, grouped.get(s.name, [])) for s in real.scenarios]
+    qualifier_confiance(verdicts, rejoue=outcome.retried, paliers=real.selector_tiers)
     return aggregate(verdicts, connector_type=connector_type)
 
 
@@ -205,6 +259,8 @@ def aggregate(verdicts: list[ScenarioVerdict], *, connector_type: str | None = N
         scenarios_passed=passed,
         scenarios_failed=len(verdicts) - passed,
         ground_truth=_ground_truth_pour(connector_type),
+        confiance=max((v.confiance for v in verdicts), key=lambda c: _RANG_CONFIANCE.get(c, 0),
+                      default=CONFIANCE_NOMINALE),
     )
 
 
