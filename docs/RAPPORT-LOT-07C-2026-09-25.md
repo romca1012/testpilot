@@ -52,6 +52,19 @@ Aucune mesure chiffrée à comparer (pas de changement de prompt, aucun appel LL
 - Le plan cite `generic_web.py` et `odoo.py` pour l'exploration : elles créaient **cinq** contextes, tous couverts ; `_sonde_saisie.py` reçoit un contexte déjà créé et n'a rien à changer.
 - La création d'un projet accepte les trois réglages côté API, mais l'écran ne les propose qu'à l'**édition** (les défauts s'appliquent dès la création).
 
+### Revue `verdict-reviewer`
+
+Aucun bloquant, aucun faux PASSED ; verdict « à corriger », trois points, **tous corrigés** :
+1. **Le crawl d'exploration ignorait le contexte figé** (`exploration_service._crawl` ouvrait `nav.new_page()` nu, page recréée après un crash comprise) : un projet fr-FR pouvait être crawlé en en-US,
+   avec une fenêtre de 1280×720 — la divergence que le lot dit supprimer. Le contexte du projet est maintenant transmis (`start_exploration`), appliqué à la première page ET aux pages recréées
+   (`crawl_domaine.py`), et l'outil de diagnostic `crawl_domaine.py` prend les défauts figés. Tests : contexte du projet, **défauts figés sans réglage (falsifiable)**, transmission par `start_exploration`.
+2. **Repli silencieux du harnais** : une variable de viewport illisible ou hors bornes retombait sur 1440×900 sans un mot, et `0x0` passait tel quel. Bornes ajoutées (dupliquées, test d'accord) et
+   avertissement sur stderr quand une variable présente est rejetée ; rien n'est dit quand elle est valide ou absente.
+3. **Valeur enregistrée écartée sans que l'écran le sache** (base éditée à la main) : l'API expose `browser_avertissements`, l'écran l'affiche à l'édition (« … — le défaut est utilisé à la place »).
+
+Remarques du relecteur, consignées : (a) les `.feature` déjà générés en anglais peuvent changer de comportement sous `fr-FR` (voir Risques) — pas un faux vert ; (b) `zoneinfo` peut accepter un nom de
+fuseau que Chromium refuse : l'erreur apparaît alors au run (échec technique, jamais un vert) ; (c) les scripts de diagnostic `probe_*.py` / `shot_*.py` ne sont pas concernés.
+
 ### Risques / points à surveiller
 
 - Les projets existants passent de « la langue de la machine » à `fr-FR` / `Europe/Paris` / 1440×900. Un test écrit en anglais pour un site anglophone doit maintenant déclarer `en-US` dans le projet ;
