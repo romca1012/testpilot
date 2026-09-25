@@ -19,6 +19,11 @@ from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo
 
+# Lot 07c : `project_env` transmet TOUJOURS le contexte navigateur figé (défauts compris) en plus de la connexion — l'égalité
+# reste EXACTE, elle attend simplement ces trois variables en plus.
+from testpilot.connectors.contexte_navigateur import ContexteNavigateur  # noqa: E402
+_CONTEXTE_DEFAUT = ContexteNavigateur().env()
+
 
 @pytest.fixture
 def conn(tmp_path, monkeypatch):
@@ -34,7 +39,7 @@ def test_project_env_mappe_la_connexion_odoo():
         "connector_type": "odoo", "base_url": "http://autre:8069",
         "database": "db_client", "username": "u", "password": "p",
     })
-    assert env == {"ODOO_URL": "http://autre:8069", "ODOO_DB": "db_client",
+    assert env == {**_CONTEXTE_DEFAUT, "ODOO_URL": "http://autre:8069", "ODOO_DB": "db_client",
                    "ODOO_USER": "u", "ODOO_PASSWORD": "p"}
 
 
@@ -43,7 +48,7 @@ def test_project_env_ignore_les_valeurs_vides_pour_repli_config():
     # sur la config globale du harnais.
     env = project_env({"connector_type": "odoo", "base_url": "http://x", "database": "",
                        "username": "", "password": ""})
-    assert env == {"ODOO_URL": "http://x"}
+    assert env == {**_CONTEXTE_DEFAUT, "ODOO_URL": "http://x"}
 
 
 def test_project_env_connecteur_inconnu_ou_absent():
@@ -57,13 +62,13 @@ def test_project_env_connecteur_inconnu_ou_absent():
 def test_project_env_mappe_la_connexion_web_generique():
     env = project_env({"connector_type": "web", "base_url": "http://intranet:8080",
                        "username": "bob", "password": "pwd"})
-    assert env == {"WEB_URL": "http://intranet:8080", "WEB_USER": "bob", "WEB_PASSWORD": "pwd"}
+    assert env == {**_CONTEXTE_DEFAUT, "WEB_URL": "http://intranet:8080", "WEB_USER": "bob", "WEB_PASSWORD": "pwd"}
 
 
 def test_project_env_web_generique_sans_identifiant_ni_mot_de_passe():
     """Rien à écarter : une application accessible sans connexion reste testable telle quelle."""
     env = project_env({"connector_type": "web", "base_url": "http://intranet:8080"})
-    assert env == {"WEB_URL": "http://intranet:8080"}
+    assert env == {**_CONTEXTE_DEFAUT, "WEB_URL": "http://intranet:8080"}
 
 
 def test_verifier_connexion_web_generique_exige_seulement_l_url():
@@ -73,7 +78,7 @@ def test_verifier_connexion_web_generique_exige_seulement_l_url():
     from testpilot.connectors.runtime_env import verifier_connexion
 
     env = verifier_connexion({"connector_type": "web", "base_url": "http://intranet:8080"})
-    assert env == {"WEB_URL": "http://intranet:8080"}
+    assert env == {**_CONTEXTE_DEFAUT, "WEB_URL": "http://intranet:8080"}
 
 
 def test_verifier_connexion_web_generique_refuse_sans_url():

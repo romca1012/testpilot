@@ -116,7 +116,7 @@ def test_echec_authentification_ne_fuit_pas_de_navigateur(monkeypatch):
     import playwright.sync_api
     closed = []
     page = SimpleNamespace(set_default_timeout=lambda _: None)
-    browser = SimpleNamespace(new_context=lambda: SimpleNamespace(new_page=lambda: page),
+    browser = SimpleNamespace(new_context=lambda **_contexte: SimpleNamespace(new_page=lambda: page),
                               close=lambda: closed.append('browser'))
     runtime = SimpleNamespace(chromium=SimpleNamespace(launch=lambda **_: browser),
                               stop=lambda: closed.append('runtime'))

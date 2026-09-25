@@ -210,7 +210,7 @@ def test_odoo_attempt_form_submission_nettoie_via_rpc():
     contextes = []
 
     class _FakeBrowser:
-        def new_context(self, storage_state=None):
+        def new_context(self, storage_state=None, **_contexte):
             assert storage_state == {"cookies": [], "origins": []}, (
                 "la session AUTHENTIFIÉE doit être copiée, contrairement à attempt_login")
             ctx = _FakeContexteNavigateur(page)
@@ -236,7 +236,7 @@ def test_odoo_attempt_form_submission_sans_modele_ne_nettoie_pas():
     conn = OdooConnector("http://localhost:9999", "db", "admin", "admin")
     page = _PageFormulaire(message_apres="Créé.", url_apres="http://localhost:9999/x/1")
     conn._ensure_page = lambda: _FakePagePrincipale()
-    conn._browser = type("B", (), {"new_context": lambda self, storage_state=None:
+    conn._browser = type("B", (), {"new_context": lambda self, storage_state=None, **_contexte:
                                    _FakeContexteNavigateur(page)})()
     conn._run_in_browser = lambda fn, *a: fn(*a)
     conn.delete = lambda *a, **kw: (_ for _ in ()).throw(AssertionError("ne doit jamais être appelé"))
@@ -250,7 +250,7 @@ def test_odoo_attempt_form_submission_id_non_reconnu_ne_nettoie_pas():
     conn = OdooConnector("http://localhost:9999", "db", "admin", "admin")
     page = _PageFormulaire(message_apres="Créé.", url_apres="http://localhost:9999/my/home")
     conn._ensure_page = lambda: _FakePagePrincipale()
-    conn._browser = type("B", (), {"new_context": lambda self, storage_state=None:
+    conn._browser = type("B", (), {"new_context": lambda self, storage_state=None, **_contexte:
                                    _FakeContexteNavigateur(page)})()
     conn._run_in_browser = lambda fn, *a: fn(*a)
     conn.delete = lambda *a, **kw: (_ for _ in ()).throw(AssertionError("ne doit jamais être appelé"))
@@ -264,7 +264,7 @@ def test_odoo_attempt_form_submission_signale_un_echec_de_nettoyage_sans_lever()
     conn = OdooConnector("http://localhost:9999", "db", "admin", "admin")
     page = _PageFormulaire(message_apres="Créé.", url_apres="http://localhost:9999/odoo/x/4521")
     conn._ensure_page = lambda: _FakePagePrincipale()
-    conn._browser = type("B", (), {"new_context": lambda self, storage_state=None:
+    conn._browser = type("B", (), {"new_context": lambda self, storage_state=None, **_contexte:
                                    _FakeContexteNavigateur(page)})()
     conn._run_in_browser = lambda fn, *a: fn(*a)
     def _echoue(*_a, **_kw):

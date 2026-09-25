@@ -213,7 +213,7 @@ class _FakeBrowser:
     def __init__(self, page):
         self._page = page
 
-    def new_page(self):
+    def new_page(self, **_contexte):
         return self._page
 
     def close(self):

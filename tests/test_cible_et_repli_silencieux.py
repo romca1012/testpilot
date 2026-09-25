@@ -28,6 +28,11 @@ from testpilot.connectors.runtime_env import (
     verifier_connexion,
 )
 from testpilot.store.db import get_initialized_db
+
+# Lot 07c : `project_env` transmet TOUJOURS le contexte navigateur figé (défauts compris) en plus de la connexion — l'égalité
+# reste EXACTE, elle attend simplement ces trois variables en plus.
+from testpilot.connectors.contexte_navigateur import ContexteNavigateur  # noqa: E402
+_CONTEXTE_DEFAUT = ContexteNavigateur().env()
 from testpilot.store.repositories import (
     CaseRepo,
     ExecutionRepo,
@@ -80,7 +85,7 @@ def _cas_pret(conn, project_id: int) -> int:
 # ── 1. Le refus, au lieu du repli silencieux ──────────────────────────────────
 
 def test_une_connexion_complete_donne_ses_variables():
-    assert verifier_connexion(_COMPLETE) == {
+    assert verifier_connexion(_COMPLETE) == {**_CONTEXTE_DEFAUT, 
         "ODOO_URL": "http://recette:8069", "ODOO_DB": "recette_db",
         "ODOO_USER": "qa", "ODOO_PASSWORD": "secret"}
 
@@ -116,7 +121,7 @@ def test_project_env_reste_un_traducteur_SANS_jugement():
     """La CLI s'en sert délibérément avec un `.env` de machine : elle ne doit pas se mettre à
     lever. Seule `verifier_connexion` juge — c'est la séparation qui rend la garde applicable
     à l'API sans casser la ligne de commande."""
-    assert project_env(dict(_COMPLETE, password="")) == {
+    assert project_env(dict(_COMPLETE, password="")) == {**_CONTEXTE_DEFAUT, 
         "ODOO_URL": "http://recette:8069", "ODOO_DB": "recette_db", "ODOO_USER": "qa"}
 
 
