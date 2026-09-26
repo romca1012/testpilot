@@ -27,7 +27,9 @@ from testpilot.store.repositories import (
     CaseGroupRepo,
     DuplicateName,
     ModuleRepo,
+    CompteInvalide,
     ProjectAccessRepo,
+    ProjectAccountRepo,
     ProjectGroupAccessRepo,
     ProjectMemberRepo,
     ProjectRepo,
@@ -160,6 +162,64 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
     if body.calibration_writes_enabled is not None:
         repo.set_calibration_writes_enabled(project_id, body.calibration_writes_enabled)
     return schemas.project_summary(_summary_row(conn, project_id))
+
+
+# ── Comptes secondaires du projet (lot 07b-1, D8) ────────────────────────────────────────────────────────────────────────────
+# Lecture : tout membre du projet (libellés et identifiants, JAMAIS un secret). Création, modification, suppression : `dev` et `admin`
+# seulement (précision 3 de D8). Aucune route ne renvoie un mot de passe, même à un admin (précision 4) : `account_out` ne copie que
+# des champs nommés.
+
+@router.get("/{project_id}/accounts", response_model=list[schemas.AccountOut],
+           dependencies=[Depends(access.require_project_access)])
+def list_accounts(project_id: int, conn=Depends(get_conn)):
+    """Le compte « principal » (celui de la connexion du projet), puis les comptes secondaires."""
+    projet = ProjectRepo(conn).get(project_id)
+    if projet is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    principal = {"label": ProjectAccountRepo.LIBELLE_PRINCIPAL, "username": projet.get("username", ""),
+                 "has_secret": bool(projet.get("password"))}
+    return [schemas.account_out(principal, principal=True),
+            *(schemas.account_out(r) for r in ProjectAccountRepo(conn).liste(project_id))]
+
+
+@router.post("/{project_id}/accounts", response_model=schemas.AccountOut, status_code=201,
+            dependencies=[Depends(access.require_project_role(access.ROLE_DEV))])
+def create_account(project_id: int, body: schemas.AccountIn, conn=Depends(get_conn)):
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    repo = ProjectAccountRepo(conn)
+    try:
+        account_id = repo.create(project_id, label=body.label, username=body.username, password=body.password,
+                                 business_role=body.business_role)
+    except CompteInvalide as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DuplicateName as exc:
+        raise _conflict(exc) from exc
+    return schemas.account_out(repo.lire(project_id, account_id))
+
+
+@router.patch("/{project_id}/accounts/{account_id}", response_model=schemas.AccountOut,
+             dependencies=[Depends(access.require_project_role(access.ROLE_DEV))])
+def update_account(project_id: int, account_id: int, body: schemas.AccountPatch, conn=Depends(get_conn)):
+    repo = ProjectAccountRepo(conn)
+    try:
+        trouve = repo.modifier(project_id, account_id, label=body.label, username=body.username,
+                               password=body.password, business_role=body.business_role)
+    except CompteInvalide as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DuplicateName as exc:
+        raise _conflict(exc) from exc
+    if not trouve:
+        raise HTTPException(status_code=404, detail=f"compte {account_id} introuvable")
+    return schemas.account_out(repo.lire(project_id, account_id))
+
+
+@router.delete("/{project_id}/accounts/{account_id}", status_code=204,
+              dependencies=[Depends(access.require_project_role(access.ROLE_DEV))])
+def delete_account(project_id: int, account_id: int, conn=Depends(get_conn)):
+    if not ProjectAccountRepo(conn).supprimer(project_id, account_id):
+        raise HTTPException(status_code=404, detail=f"compte {account_id} introuvable")
+    return Response(status_code=204)
 
 
 @router.delete("/{project_id}", status_code=204,

@@ -705,7 +705,7 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
                    regeneration: bool = False) -> None:
     from testpilot.analysis.spec_analyzer import SpecAnalyzer
     from testpilot.connectors.factory import build_connector
-    from testpilot.connectors.runtime_env import project_env
+    from testpilot.connectors.runtime_env import env_du_projet
     from testpilot.execution.behave_runner import BehaveRunner
     from testpilot.generation.agent import GenerationAgent
     from testpilot.guardrails.cost_tracker import CostTracker
@@ -721,7 +721,7 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
         # connecteur DOIT suivre `project["connector_type"]`, comme le fait déjà l'exploration.
         connector = build_connector(project)
         connector.connect()
-        runner = BehaveRunner(connection=project_env(project),
+        runner = BehaveRunner(connection=env_du_projet(conn, project),
                               project_id=(project or {}).get("id"),
                               connector_type=(project or {}).get("connector_type"))
 
@@ -790,7 +790,7 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
 
     from testpilot.analysis.spec_analyzer import SpecAnalyzer
     from testpilot.connectors.factory import build_connector
-    from testpilot.connectors.runtime_env import project_env
+    from testpilot.connectors.runtime_env import env_du_projet
     from testpilot.execution.behave_runner import BehaveRunner
     from testpilot.generation.agent import GenerationAgent
     from testpilot.guardrails.cost_tracker import CostTracker
@@ -849,7 +849,7 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
             try:
                 connecteur_tache = build_connector(project)
                 connecteur_tache.connect()
-                runner_tache = BehaveRunner(connection=project_env(project),
+                runner_tache = BehaveRunner(connection=env_du_projet(conn_tache, project),
                                             project_id=(project or {}).get("id"),
                                             connector_type=(project or {}).get("connector_type"))
                 agent_tache = GenerationAgent(dry_runner=runner_tache, connector=connecteur_tache,

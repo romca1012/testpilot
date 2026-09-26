@@ -14,7 +14,7 @@ from behave import given, then, when
 from _base_helpers import (
     PreconditionNonRemplieError,
     memorize_record_count, check_count_not_increased, check_count_increased_by_one, no_duplicate,
-    validation_error_notification, playwright_login, navigate_menu, constater,
+    validation_error_notification, playwright_login, navigate_menu, constater, se_connecter_en_tant_que,
 )
 
 
@@ -247,6 +247,13 @@ def step_login_portal(context):
     d'exécution — deux implémentations séparées du même geste, une seule corrigée."""
     playwright_login(context)
     context.page.goto(context.odoo_url, wait_until="domcontentloaded")
+
+
+@given('je me connecte en tant que "{libelle}"')
+@when('je me connecte en tant que "{libelle}"')
+def step_connect_as(context, libelle):
+    """Change d'utilisateur : NOUVEAU contexte navigateur, connexion UI puis session RPC rouverte avec le compte `libelle`, déclaré sur le projet (« principal » = le compte de la connexion du projet). Les vérifications suivantes voient ce que voit ce compte. Compte inconnu ou connexion refusée → prérequis manquant (« bloqué »), jamais un défaut de l'application. N'écris JAMAIS un identifiant ni un mot de passe dans un scénario : seuls les libellés déclarés existent."""
+    se_connecter_en_tant_que(context, libelle, connecteur="odoo")
 
 
 @then('une notification d\'erreur de validation est affichée dans l\'interface Odoo')
