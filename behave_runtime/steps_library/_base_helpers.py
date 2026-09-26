@@ -3255,3 +3255,109 @@ def requete_repond(context, requete: str, code) -> None:
     dernier = vues[-1]
     if dernier["statut"] != int(code):
         raise AssertionError(f"La requête « {methode} {motif} » a répondu {dernier['statut']}, pas {code} ({dernier['url']}).")
+
+
+# ── Comptes multiples (lot 07b-1, D8) ────────────────────────────────────────────────────────────────────────────────────────
+# « je me connecte en tant que "<libellé>" » : le libellé désigne un compte DÉCLARÉ sur le projet, jamais un identifiant écrit par
+# l'agent. Le compte « principal » est celui de la connexion du projet ; les autres arrivent par `TESTPILOT_COMPTES`. L'agent de
+# génération ne connaît que les libellés (règle structurelle de D8) : un mot de passe qu'il écrirait lui-même serait inventé (F22).
+
+_ENV_COMPTES = "TESTPILOT_COMPTES"   # dupliqué de `connectors/runtime_env.ENV_COMPTES` (ce harnais ne dépend pas du paquet applicatif)
+_LIBELLE_PRINCIPAL = "principal"
+
+
+def _cle_de_libelle(libelle: str) -> str:
+    """Même clé que le dépôt (`store.repositories._key`) : insensible à la casse et aux espaces multiples."""
+    return " ".join((libelle or "").split()).casefold()
+
+
+def construire_comptes(connector_type: str, environ) -> tuple[dict, str]:
+    """`(comptes par clé de libellé, erreur)` — l'erreur n'est jamais avalée : le step de connexion la lève en prérequis manquant.
+
+    Le principal vient de `ODOO_USER`/`ODOO_PASSWORD` (Odoo) ou `WEB_USER`/`WEB_PASSWORD` (web) ; les secondaires de `TESTPILOT_COMPTES`
+    (JSON `[{"label", "username", "password"}]`). Un libellé secondaire qui répète le principal ou un autre est une erreur, pas un écrasement."""
+    odoo = (connector_type or "odoo").lower() == "odoo"
+    principal = {"label": _LIBELLE_PRINCIPAL,
+                 "user": environ.get("ODOO_USER" if odoo else "WEB_USER", "") or "",
+                 "password": environ.get("ODOO_PASSWORD" if odoo else "WEB_PASSWORD", "") or ""}
+    comptes = {_LIBELLE_PRINCIPAL: principal}
+    brut = (environ.get(_ENV_COMPTES) or "").strip()
+    if not brut:
+        return comptes, ""
+    try:
+        liste = json.loads(brut)
+        if not isinstance(liste, list):
+            raise ValueError("liste attendue")
+        for item in liste:
+            libelle = str(item["label"])
+            cle = _cle_de_libelle(libelle)
+            if not cle or cle in comptes:
+                return comptes, f"les comptes du projet sont incohérents : le libellé « {libelle} » est vide ou en double"
+            comptes[cle] = {"label": libelle, "user": str(item["username"]), "password": str(item.get("password") or "")}
+    except (ValueError, TypeError, KeyError):
+        # Jamais le contenu : il porte des secrets.
+        return {_LIBELLE_PRINCIPAL: principal}, "la liste des comptes du projet est illisible"
+    return comptes, ""
+
+
+def _resoudre_compte(context, libelle: str) -> dict:
+    """Le compte désigné par `libelle`, ou un PRÉREQUIS MANQUANT (→ `blocked`) : un compte inconnu n'est jamais un défaut de l'application."""
+    erreur = getattr(context, "comptes_erreur", "") or ""
+    if erreur:
+        raise PreconditionNonRemplieError(f"PRÉREQUIS MANQUANT : {erreur} — corrigez-les dans les réglages du projet.")
+    comptes = getattr(context, "comptes", None) or {}
+    compte = comptes.get(_cle_de_libelle(libelle))
+    if compte is None:
+        connus = ", ".join(c["label"] for c in comptes.values()) or "aucun"
+        raise PreconditionNonRemplieError(
+            f"PRÉREQUIS MANQUANT : le compte « {libelle} » n'existe pas sur ce projet (comptes connus : {connus}). "
+            "Déclarez-le dans les réglages du projet — un identifiant ne s'écrit jamais dans un scénario.")
+    if not compte["user"] or not compte["password"]:
+        raise PreconditionNonRemplieError(
+            f"PRÉREQUIS MANQUANT : le compte « {compte['label']} » n'a pas d'identifiant ou de mot de passe renseigné.")
+    return compte
+
+
+def se_connecter_en_tant_que(context, libelle: str, *, connecteur: str) -> None:
+    """Ouvre un NOUVEAU contexte navigateur (cookies, stockage et session repartent de zéro) et s'y connecte avec le compte `libelle`.
+
+    Odoo : connexion UI puis session RPC rouverte — les vérifications suivantes voient ce que voit CE compte. Web : page d'accueil du
+    projet puis connexion. Tout échec (compte inconnu, mot de passe refusé, formulaire introuvable) est un `PreconditionNonRemplieError` :
+    le test n'a pas pu entrer, l'application n'a rien « mal fait ». Le compte courant n'est mémorisé qu'une fois la connexion RÉUSSIE."""
+    compte = _resoudre_compte(context, libelle)
+    context._reouvrir_contexte()
+    if connecteur == "odoo":
+        context.odoo_user, context.odoo_password = compte["user"], compte["password"]
+        try:
+            playwright_login(context)
+            context.odoo.login(context.odoo_db, compte["user"], compte["password"])
+            context.page.goto(context.odoo_url, wait_until="domcontentloaded")
+        except Exception as exc:
+            raise PreconditionNonRemplieError(
+                f"PRÉREQUIS MANQUANT : connexion impossible avec le compte « {compte['label']} » ({type(exc).__name__}) — "
+                "vérifiez son identifiant et son mot de passe dans les réglages du projet.") from exc
+    else:
+        context.web_user, context.web_password = compte["user"], compte["password"]
+        context._tp_connecte = False
+        if not context.web_url:
+            raise PreconditionNonRemplieError("PRÉREQUIS MANQUANT : URL de l'application introuvable (WEB_URL absent).")
+        context.page.goto(context.web_url, wait_until="domcontentloaded")
+        connexion_web_utilisateur(context, explicite=True)
+    context.compte_courant = compte["label"]
+
+
+def retablir_le_compte_principal(context) -> None:
+    """Fin de scénario : la session RPC redevient celle du compte principal, qui a créé les données à nettoyer. Best-effort absolu, comme
+    tout le teardown — jamais un motif de masquer le verdict."""
+    if getattr(context, "compte_courant", _LIBELLE_PRINCIPAL) == _LIBELLE_PRINCIPAL:
+        return
+    principal = (getattr(context, "comptes", None) or {}).get(_LIBELLE_PRINCIPAL)
+    odoo = getattr(context, "odoo", None)
+    if not principal or odoo is None:
+        return
+    try:
+        odoo.login(context.odoo_db, principal["user"], principal["password"])
+        context.odoo_user, context.odoo_password = principal["user"], principal["password"]
+        context.compte_courant = _LIBELLE_PRINCIPAL
+    except Exception as exc:
+        print(f"[teardown] session du compte principal non rétablie : {type(exc).__name__}")

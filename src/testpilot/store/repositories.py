@@ -148,10 +148,20 @@ class ProjectRepo:
             projet["password"] = secrets_mod.dechiffrer(projet["password"])
         return projet
 
+    def _avec_libelles_de_comptes(self, projet: dict | None) -> dict | None:
+        """Ajoute `comptes_libelles` (libellé + rôle d'affichage des comptes SECONDAIRES) — c'est ce que l'agent de génération reçoit du
+        projet, et RIEN d'autre sur les comptes (D8, précision 2). Jamais un secret : `ProjectAccountRepo.libelles` n'en lit aucun."""
+        if projet is not None:
+            try:
+                projet["comptes_libelles"] = ProjectAccountRepo(self.conn).libelles(projet["id"])
+            except sqlite3.OperationalError:   # base d'avant la migration 51 (tests à schéma minimal)
+                projet["comptes_libelles"] = []
+        return projet
+
     def get(self, project_id: int) -> dict | None:
         row = self.conn.execute(f"SELECT * FROM project WHERE id=? AND {_VIVANT}",
                                 (project_id,)).fetchone()
-        return self._en_clair(row) if row else None
+        return self._avec_libelles_de_comptes(self._en_clair(row)) if row else None
 
     def list_all(self) -> list[dict]:
         """Projets + compteurs de modules et de cas (pour l'accueil / le sélecteur)."""
@@ -167,14 +177,14 @@ class ProjectRepo:
     def find_by_name(self, name: str) -> dict | None:
         row = self.conn.execute(f"SELECT * FROM project WHERE name=? AND {_VIVANT}",
                                 (name,)).fetchone()
-        return self._en_clair(row) if row else None
+        return self._avec_libelles_de_comptes(self._en_clair(row)) if row else None
 
     def first(self) -> dict | None:
         """Projet par défaut (le plus ancien). Source unique de la règle « projet courant »
         hors interface : rattachement automatique ET connexion du runtime en CLI."""
         row = self.conn.execute(
             f"SELECT * FROM project WHERE {_VIVANT} ORDER BY id LIMIT 1").fetchone()
-        return self._en_clair(row) if row else None
+        return self._avec_libelles_de_comptes(self._en_clair(row)) if row else None
 
     def rename(self, project_id: int, *, name: str, description: str | None = None) -> None:
         self.ensure_name_free(name, excluding=project_id)
@@ -3316,6 +3326,126 @@ class ProjectGroupAccessRepo:
             "DELETE FROM project_group_access WHERE project_id=? AND group_id=?",
             (project_id, group_id))
         self.conn.commit()
+
+
+LIBELLE_PRINCIPAL = "principal"
+_LIBELLE_MAX = 80
+
+
+class CompteInvalide(ValueError):
+    """Un compte de projet mal formé (libellé vide, réservé, trop long, ou contenant un guillemet)."""
+
+
+class ProjectAccountRepo:
+    """Les comptes SECONDAIRES d'un projet (lot 07b-1, D8, migration 51).
+
+    Le compte déjà configuré sur le projet (`project.username` / `project.password`) est le compte « principal » : il reste là,
+    inchangé — ce dépôt ne porte que les autres, et le libellé `principal` leur est réservé.
+
+    ⚠️ **Le secret ne sort de ce dépôt que par UNE méthode : `pour_runtime`**, qui alimente le sous-processus Behave. Toutes les
+    autres (`liste`, `lire`, `libelles`) ne rendent JAMAIS le mot de passe — ni en clair, ni chiffré : seulement `has_secret`. C'est
+    la règle STRUCTURELLE de D8 : ni l'API ni le contexte de génération n'ont de chemin vers un secret. `libelles` est la seule
+    méthode que la génération appelle.
+    """
+
+    LIBELLE_PRINCIPAL = LIBELLE_PRINCIPAL
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    @staticmethod
+    def valider_libelle(libelle: str | None) -> str:
+        """Le libellé tel qu'il sera écrit dans un step Gherkin `je me connecte en tant que "<libellé>"` : jamais de guillemet (il
+        fermerait le paramètre), ni de retour à la ligne, ni le mot réservé du compte principal."""
+        texte = " ".join((libelle or "").split())
+        if not texte:
+            raise CompteInvalide("le libellé du compte est requis")
+        if len(texte) > _LIBELLE_MAX:
+            raise CompteInvalide(f"le libellé du compte ne doit pas dépasser {_LIBELLE_MAX} caractères")
+        if any(c in texte for c in '"\\\u201c\u201d') or any(ord(c) < 32 for c in texte):
+            raise CompteInvalide("le libellé du compte ne peut contenir ni guillemet ni caractère de contrôle")
+        if _key(texte) == LIBELLE_PRINCIPAL:
+            raise CompteInvalide(f"le libellé « {LIBELLE_PRINCIPAL} » est réservé au compte configuré sur le projet")
+        return texte
+
+    def _refuser_doublon(self, project_id: int, libelle: str, *, excluding: int | None = None) -> None:
+        for ligne in self.conn.execute("SELECT id, label FROM project_account WHERE project_id=?", (project_id,)):
+            if ligne["id"] != excluding and _key(ligne["label"]) == _key(libelle):
+                raise DuplicateName(f"un compte « {ligne['label']} » existe déjà sur ce projet")
+
+    def create(self, project_id: int, *, label: str, username: str, password: str = "",
+               business_role: str = "") -> int:
+        libelle = self.valider_libelle(label)
+        identifiant = (username or "").strip()
+        if not identifiant:
+            raise CompteInvalide("l'identifiant du compte est requis")
+        self._refuser_doublon(project_id, libelle)
+        cur = self.conn.execute(
+            "INSERT INTO project_account (project_id, label, username, password, business_role, created_at)"
+            " VALUES (?,?,?,?,?,?)",
+            (project_id, libelle, identifiant, secrets_mod.chiffrer(password), " ".join((business_role or "").split())[:_LIBELLE_MAX],
+             now_iso()))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    _PUBLIC = ("id, project_id, label, username, business_role, created_at,"
+               " CASE WHEN password = '' THEN 0 ELSE 1 END AS has_secret")
+
+    def liste(self, project_id: int) -> list[dict]:
+        """Les comptes secondaires, SANS secret (`has_secret` seulement)."""
+        return _rows(self.conn.execute(
+            f"SELECT {self._PUBLIC} FROM project_account WHERE project_id=? ORDER BY id", (project_id,)))
+
+    def lire(self, project_id: int, account_id: int) -> dict | None:
+        ligne = self.conn.execute(
+            f"SELECT {self._PUBLIC} FROM project_account WHERE project_id=? AND id=?", (project_id, account_id)).fetchone()
+        return dict(ligne) if ligne else None
+
+    def libelles(self, project_id: int) -> list[dict]:
+        """Ce que l'agent de génération a le droit de connaître : le libellé et le rôle métier d'affichage. Rien d'autre."""
+        return _rows(self.conn.execute(
+            "SELECT label, business_role FROM project_account WHERE project_id=? ORDER BY id", (project_id,)))
+
+    def modifier(self, project_id: int, account_id: int, *, label: str | None = None, username: str | None = None,
+                 password: str | None = None, business_role: str | None = None) -> bool:
+        """`None` = n'y touche pas. Le mot de passe suit la règle du projet : l'API ne le renvoie jamais, donc un écran d'édition
+        l'affiche vide — le réenvoyer vide ne doit pas effacer le secret (une chaîne vide EXPLICITE le vide)."""
+        if self.lire(project_id, account_id) is None:
+            return False
+        sets, params = [], []
+        if label is not None:
+            libelle = self.valider_libelle(label)
+            self._refuser_doublon(project_id, libelle, excluding=account_id)
+            sets.append("label=?")
+            params.append(libelle)
+        if username is not None:
+            if not username.strip():
+                raise CompteInvalide("l'identifiant du compte est requis")
+            sets.append("username=?")
+            params.append(username.strip())
+        if password is not None:
+            sets.append("password=?")
+            params.append(secrets_mod.chiffrer(password))
+        if business_role is not None:
+            sets.append("business_role=?")
+            params.append(" ".join(business_role.split())[:_LIBELLE_MAX])
+        if sets:
+            self.conn.execute(f"UPDATE project_account SET {', '.join(sets)} WHERE project_id=? AND id=?",
+                              (*params, project_id, account_id))
+            self.conn.commit()
+        return True
+
+    def supprimer(self, project_id: int, account_id: int) -> bool:
+        cur = self.conn.execute("DELETE FROM project_account WHERE project_id=? AND id=?", (project_id, account_id))
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def pour_runtime(self, project_id: int) -> list[dict]:
+        """LA SEULE méthode qui rend un secret (déchiffré) — pour le sous-processus Behave, qui doit se connecter. Jamais appelée par
+        l'API ni par la génération (test de structure : `tests/test_comptes_projet.py`)."""
+        return [{"label": r["label"], "username": r["username"], "password": secrets_mod.dechiffrer(r["password"])}
+                for r in self.conn.execute(
+                    "SELECT label, username, password FROM project_account WHERE project_id=? ORDER BY id", (project_id,))]
 
 
 class ProjectAccessRepo:

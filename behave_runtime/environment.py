@@ -215,13 +215,52 @@ def playwright_browser(context):
     headed = os.environ.get("PLAYWRIGHT_HEADED", "0") == "1"
     context._playwright = sync_playwright().start()
     context.browser = context._playwright.chromium.launch(headless=not headed)
-    context._browser_context = context.browser.new_context(**contexte_navigateur_fige())
-    _demarrer_trace(context)
-    context.page = context._browser_context.new_page()
+    _ouvrir_contexte_navigateur(context)
+    # Lot 07b-1 (D8) : « je me connecte en tant que … » repart d'un contexte NEUF (cookies et stockage vides) via ce crochet.
+    context._reouvrir_contexte = lambda: reouvrir_contexte_navigateur(context)
     yield context.page
     context._browser_context.close()
     context.browser.close()
     context._playwright.stop()
+
+
+def _ouvrir_contexte_navigateur(context) -> None:
+    """Un `BrowserContext` (langue, fuseau et fenêtre du projet), sa trace, sa page — une seule fonction pour le premier et pour ceux qu'un
+    changement de compte rouvre."""
+    context._browser_context = context.browser.new_context(**contexte_navigateur_fige())
+    _demarrer_trace(context)
+    context.page = context._browser_context.new_page()
+
+
+def reouvrir_contexte_navigateur(context) -> None:
+    """Remplace le contexte navigateur par un contexte NEUF (lot 07b-1, D8) : aucune session, aucun cookie, aucun stockage du compte
+    précédent ne survit — un changement d'utilisateur qui garderait la session de l'ancien ne prouverait rien sur les droits du nouveau.
+
+    La trace de l'ancien contexte est exportée avant sa fermeture (`traces/NN-compte-K.zip`) ; les marqueurs `_tp_*` posés sur la page
+    (scénario négatif attendu…) passent à la nouvelle ; les observateurs sont réinstallés AVANT toute navigation (les événements
+    antérieurs à ce step ne pouvaient de toute façon pas prouver ce que le nouveau compte fait)."""
+    from _base_helpers import installer_les_observateurs
+
+    ancien, ancienne_page = context._browser_context, context.page
+    if getattr(context, "_tracing_started", False):
+        try:
+            k = getattr(context, "_indice_compte", 0) + 1
+            context._indice_compte = k
+            dossier = Path("traces")
+            dossier.mkdir(exist_ok=True)
+            ancien.tracing.stop(path=str(dossier / f"{getattr(context, '_indice_scenario', 0) + 1:02d}-compte-{k}.zip"))
+        except Exception as exc:
+            print(f"[trace] trace du compte précédent non exportée : {exc}")
+    try:
+        ancien.close()
+    except Exception:
+        pass
+    _ouvrir_contexte_navigateur(context)
+    for cle, valeur in list(vars(ancienne_page).items()):
+        if cle.startswith("_tp_"):
+            setattr(context.page, cle, valeur)
+    _capturer_reponse_formulaire(context)
+    installer_les_observateurs(context)
 
 
 # ── Hooks Behave ──────────────────────────────────────────────────────────────
@@ -245,6 +284,11 @@ def before_all(context):
     # application ne collisionne jamais avec une tentative précédente. `"tentative-locale"` hors
     # run piloté (CLI, tests) : jamais vide, pour qu'un appel direct du step ne lève pas.
     context.tentative_token = os.environ.get("TESTPILOT_ATTEMPT_TOKEN", "tentative-locale")
+    # Lot 07b-1 (D8) : les comptes du projet (le principal + les secondaires), résolus par libellé au step « je me connecte en tant que ».
+    from _base_helpers import construire_comptes
+
+    context.comptes, context.comptes_erreur = construire_comptes(_CONNECTOR_TYPE, os.environ)
+    context.compte_courant = "principal"
 
 
 def _capturer_reponse_formulaire(context):
@@ -453,6 +497,10 @@ def after_scenario(context, scenario):
     context._indice_scenario = n
     _capturer_ecran(context, scenario, n)
     _capturer_trace(context, scenario, n)
+
+    # Lot 07b-1 (D8) : le nettoyage supprime ce qu'a créé le compte principal — sa session RPC revient avant.
+    from _base_helpers import retablir_le_compte_principal
+    retablir_le_compte_principal(context)
 
     odoo = getattr(context, "odoo", None)
     if odoo is None:
