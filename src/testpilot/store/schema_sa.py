@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 50
+ALIGNED_WITH_SCHEMA_VERSION = 51
 
 metadata = MetaData()
 
@@ -94,6 +94,22 @@ project = Table(
     Index("uq_project_name", "name", unique=True,
           sqlite_where=Column("deleted_at") == "",
           postgresql_where=Column("deleted_at") == ""),
+    sqlite_autoincrement=True,
+)
+
+
+# Migration 51 (lot 07b-1, D8) : les comptes SECONDAIRES d'un projet. Le compte principal reste sur `project`.
+project_account = Table(
+    "project_account",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("project_id", Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False),
+    Column("label", Text, nullable=False),
+    Column("username", Text, nullable=False),
+    Column("password", Text, nullable=False, server_default=""),   # chiffré (`store/secrets.py`)
+    Column("business_role", Text, nullable=False, server_default=""),   # affichage seulement
+    Column("created_at", Text, nullable=False),
+    UniqueConstraint("project_id", "label", name="uq_project_account_label"),
     sqlite_autoincrement=True,
 )
 
