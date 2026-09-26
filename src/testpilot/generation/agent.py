@@ -66,7 +66,8 @@ class GenerationAgent:
         # Odoo distincts n'ont ni les mêmes routes ni les mêmes champs.
         modele = domain_model.charger_modele(projet)
         state.messages.append({"role": "user",
-                               "content": prompt_mod.build_initial_message(plan, modele, metier)})
+                               "content": prompt_mod.build_initial_message(
+                                   plan, modele, metier, comptes=(projet or {}).get("comptes_libelles"))})
         if failure_context:
             state.messages[0]["content"] = [
                 {"type": "text", "text": state.messages[0]["content"]}, *failure_context]
