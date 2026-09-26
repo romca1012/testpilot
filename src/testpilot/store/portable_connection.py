@@ -24,6 +24,8 @@ _TABLES_AVEC_ID = {
     # Plans de test et planifications récurrentes (migration 43, 2026-09-10) : `PlanRepo.create`
     # et `ScheduledRunRepo.create` utilisent `.lastrowid` comme toutes les tables ci-dessus.
     "test_plan", "scheduled_run",
+    # Comptes secondaires d'un projet (migration 51, lot 07b-1, D8) : `ProjectAccountRepo.create` utilise `.lastrowid`.
+    "project_account",
 }
 # Vérifié contre le VRAI schéma (`schema_sa.metadata`), pas retapé à l'œil (2026-09-03) :
 # `generation_attempt`/`test_scenario_result` ne correspondaient à AUCUNE table réelle (noms
