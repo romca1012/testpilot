@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 50
+_SCHEMA_VERSION = 51
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -242,8 +242,29 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_49_confiance_et_strict(conn)
     if version < 50:
         _migrate_50_contexte_navigateur(conn)
+    if version < 51:
+        _migrate_51_project_account(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
+
+
+def _migrate_51_project_account(conn: sqlite3.Connection) -> None:
+    """Lot 07b-1 (D8) : les comptes SECONDAIRES d'un projet (droits, changement d'utilisateur).
+
+    Le compte déjà configuré sur le projet (`project.username` / `project.password`) reste le compte « principal » : rien n'est
+    copié ni déplacé, les projets existants se comportent exactement comme avant. Cette table ne porte que les AUTRES comptes.
+    `password` est chiffré (`store/secrets.py`) ; `business_role` est un libellé d'AFFICHAGE, jamais lu par un verdict.
+    L'unicité du libellé est en outre gardée par le dépôt, insensible à la casse et aux accents composés (`_key`).
+    """
+    conn.execute('''CREATE TABLE IF NOT EXISTS project_account (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+        label TEXT NOT NULL,
+        username TEXT NOT NULL,
+        password TEXT NOT NULL DEFAULT '',
+        business_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        UNIQUE(project_id, label))''')
 
 
 def _migrate_50_contexte_navigateur(conn: sqlite3.Connection) -> None:
