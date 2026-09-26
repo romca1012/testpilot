@@ -498,6 +498,32 @@ class ProjectPatch(BaseModel):
     browser_viewport: str | None = None
 
 
+class AccountIn(BaseModel):
+    """Un compte SECONDAIRE du projet (lot 07b-1, D8). `password` : accepté en entrée, jamais relu en sortie."""
+    label: str
+    username: str
+    password: str = ""
+    business_role: str = ""   # libellé d'affichage (« Commercial », « Responsable »…) — jamais lu par un verdict
+
+
+class AccountPatch(BaseModel):
+    """`None` = n'y touche pas (le mot de passe n'étant jamais renvoyé, un écran d'édition l'affiche vide : `""` le vide EXPLICITEMENT)."""
+    label: str | None = None
+    username: str | None = None
+    password: str | None = None
+    business_role: str | None = None
+
+
+class AccountOut(BaseModel):
+    """Un compte tel que l'API le montre : JAMAIS un secret, ni en clair ni chiffré — seulement `has_secret` (D8)."""
+    id: int | None = None   # `None` pour le compte principal, qui vit sur le projet
+    label: str
+    username: str = ""
+    business_role: str = ""
+    has_secret: bool = False
+    principal: bool = False
+
+
 class ExplorationOut(BaseModel):
     """L'état de la cartographie d'un projet — ce que l'écran montre avant/après exploration.
 
@@ -1180,6 +1206,13 @@ def _contexte_avertissements(row: dict) -> list[str]:
     from testpilot.connectors.contexte_navigateur import erreurs
 
     return erreurs(row.get("browser_locale") or "", row.get("browser_timezone") or "", row.get("browser_viewport") or "")
+
+
+def account_out(row: dict, *, principal: bool = False) -> AccountOut:
+    """Champ par champ, jamais `**row` : un `password` égaré dans la ligne ne doit pas pouvoir sortir par cette porte."""
+    return AccountOut(id=None if principal else row.get("id"), label=row["label"], username=row.get("username", "") or "",
+                      business_role=row.get("business_role", "") or "", has_secret=bool(row.get("has_secret")),
+                      principal=principal)
 
 
 def project_summary(row: dict) -> ProjectSummary:

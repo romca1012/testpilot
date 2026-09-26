@@ -27,11 +27,16 @@ D'où la séparation :
 
 from __future__ import annotations
 
+import json
 import logging
 
 from testpilot.connectors.contexte_navigateur import depuis_projet
 
 logger = logging.getLogger(__name__)
+
+# Lot 07b-1 (D8) : les comptes SECONDAIRES du projet, `[{"label", "username", "password"}]` en JSON, pour le sous-processus Behave SEUL
+# (le step « je me connecte en tant que "<libellé>" » s'y résout). Le compte principal reste `ODOO_USER` / `WEB_USER`.
+ENV_COMPTES = "TESTPILOT_COMPTES"
 
 # connector_type → {variable d'environnement: colonne du projet} — colonnes REQUISES : sans
 # elles, `verifier_connexion` refuse de lancer quoi que ce soit contre cette connexion.
@@ -89,7 +94,7 @@ class ConnexionIncomplete(Exception):
                 f"l'outil ne sait pas contre quelle application il travaille.")
 
 
-def verifier_connexion(project: dict | None) -> dict[str, str]:
+def verifier_connexion(project: dict | None, comptes: list[dict] | None = None) -> dict[str, str]:
     """Rend les variables d'environnement du projet, ou **lève** si elles ne suffisent pas.
 
     Jamais de repli silencieux : mieux vaut un refus explicite qu'un résultat obtenu contre une
@@ -109,7 +114,7 @@ def verifier_connexion(project: dict | None) -> dict[str, str]:
     if manquants:
         raise ConnexionIncomplete(project, manquants)
 
-    return project_env(project)
+    return project_env(project, comptes)
 
 
 def cible_de(project: dict | None) -> dict[str, str]:
@@ -123,8 +128,11 @@ def cible_de(project: dict | None) -> dict[str, str]:
     }
 
 
-def project_env(project: dict | None) -> dict[str, str]:
-    """Variables d'environnement de connexion déduites d'un projet. Vide si non applicable."""
+def project_env(project: dict | None, comptes: list[dict] | None = None) -> dict[str, str]:
+    """Variables d'environnement de connexion déduites d'un projet. Vide si non applicable.
+
+    `comptes` : les comptes secondaires (`ProjectAccountRepo.pour_runtime`), secrets déchiffrés — transmis tels quels au sous-processus,
+    qui en a besoin pour se connecter. Jamais passés à la génération (elle ne reçoit que les libellés)."""
     if not project:
         return {}
     connector = (project.get("connector_type") or "").lower()
@@ -142,4 +150,16 @@ def project_env(project: dict | None) -> dict[str, str]:
     # Lot 07c (C3) : le contexte navigateur est TOUJOURS transmis, défauts compris — un navigateur qui retomberait sur la langue
     # et le fuseau de la machine changerait de comportement d'un poste à l'autre. Jamais « vide → config globale » ici.
     env.update(depuis_projet(project).env())
+    if comptes:
+        env[ENV_COMPTES] = json.dumps(
+            [{"label": c["label"], "username": c["username"], "password": c["password"]} for c in comptes],
+            ensure_ascii=False)
     return env
+
+
+def env_du_projet(conn, project: dict | None) -> dict[str, str]:
+    """`project_env` AVEC les comptes secondaires du projet — le point d'entrée des appelants qui lancent un run Behave."""
+    from testpilot.store.repositories import ProjectAccountRepo
+
+    comptes = ProjectAccountRepo(conn).pour_runtime(project["id"]) if project and project.get("id") else []
+    return project_env(project, comptes)

@@ -6,7 +6,7 @@ AUSSI côté `odoo/` avec un autre geste (connexion Odoo) : les deux dossiers ne
 ensemble (`BehaveRunner._steps_library_files` : `generic/` + UN connecteur).
 """
 from behave import given, when
-from _base_helpers import connexion_web_utilisateur
+from _base_helpers import connexion_web_utilisateur, se_connecter_en_tant_que
 
 
 @given('je me connecte avec mes identifiants utilisateur')
@@ -19,3 +19,10 @@ def step_login_web(context):
     Échec de connexion → prérequis non rempli (« bloqué »), jamais un défaut de l'application.
     """
     connexion_web_utilisateur(context, explicite=True)
+
+
+@given('je me connecte en tant que "{libelle}"')
+@when('je me connecte en tant que "{libelle}"')
+def step_connect_as(context, libelle):
+    """Change d'utilisateur : NOUVEAU contexte navigateur, page d'accueil du projet, puis connexion avec le compte `libelle`, déclaré sur le projet (« principal » = le compte de la connexion du projet). Compte inconnu ou connexion refusée → prérequis manquant (« bloqué »), jamais un défaut de l'application. N'écris JAMAIS un identifiant ni un mot de passe dans un scénario : seuls les libellés déclarés existent."""
+    se_connecter_en_tant_que(context, libelle, connecteur="web")

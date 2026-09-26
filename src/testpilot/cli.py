@@ -212,7 +212,7 @@ def build_default_deps(conn) -> PipelineDeps:
     """
     from testpilot.analysis.spec_analyzer import SpecAnalyzer
     from testpilot.connectors.odoo import OdooConnector
-    from testpilot.connectors.runtime_env import project_env
+    from testpilot.connectors.runtime_env import env_du_projet
     from testpilot.execution.behave_runner import BehaveRunner
     from testpilot.execution.executor import Executor
     from testpilot.generation.agent import GenerationAgent
@@ -225,7 +225,7 @@ def build_default_deps(conn) -> PipelineDeps:
     project = _Project(conn).first()  # None → config globale (le projet sera créé depuis elle)
     connector = OdooConnector.from_project(project)
     connector.connect()
-    runner = BehaveRunner(connection=project_env(project),
+    runner = BehaveRunner(connection=env_du_projet(conn, project),
                           project_id=(project or {}).get("id"),
                           connector_type=(project or {}).get("connector_type"))
     agent = GenerationAgent(dry_runner=runner, connector=connector,
