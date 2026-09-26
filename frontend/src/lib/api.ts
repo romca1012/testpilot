@@ -169,6 +169,15 @@ export const api = {
     request<ProjectSummary>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteProject: (id: number | string) =>
     request<void>(`/api/projects/${id}`, { method: 'DELETE' }),
+  // ── Comptes de test du projet (lot 07b-1, D8) — JAMAIS un secret en lecture : `has_secret` seulement ──
+  listProjectAccounts: (id: number | string) =>
+    request<ProjectAccount[]>(`/api/projects/${id}/accounts`),
+  createProjectAccount: (id: number | string, payload: ProjectAccountInput) =>
+    request<ProjectAccount>(`/api/projects/${id}/accounts`, { method: 'POST', body: JSON.stringify(payload) }),
+  updateProjectAccount: (id: number | string, accountId: number, patch: Partial<ProjectAccountInput>) =>
+    request<ProjectAccount>(`/api/projects/${id}/accounts/${accountId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  deleteProjectAccount: (id: number | string, accountId: number) =>
+    request<void>(`/api/projects/${id}/accounts/${accountId}`, { method: 'DELETE' }),
   // ── Accès par projet — Admin seulement (migration 31, 2026-08-10) ──
   // Surcharge du rôle global : accès par défaut du projet (vide = rôle global) + exceptions
   // par compte. `no_access` rend le projet invisible/404 pour qui le porte.
@@ -575,6 +584,14 @@ export interface ElementCorbeille {
 }
 export interface Artifact { name: string; size: number; label: string }
 export interface Artifacts { available: boolean; reason: string; files: Artifact[] }
+
+/** Un compte de test du projet. `principal` = le compte de la connexion du projet (id `null`, modifiable dans « Application cible »).
+ *  Le mot de passe n'est JAMAIS renvoyé : `has_secret` dit seulement qu'il est enregistré. */
+export interface ProjectAccount {
+  id: number | null; label: string; username: string; business_role: string
+  has_secret: boolean; principal: boolean
+}
+export interface ProjectAccountInput { label: string; username: string; password: string; business_role: string }
 
 export interface ProjectSummary {
   id: number; name: string; description: string

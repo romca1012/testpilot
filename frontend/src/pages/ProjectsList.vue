@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ACCES_PROJET_REFUSE, api, LIBELLE_ROLE, ROLES,
-  type Exploration, type ProjectGroupAccess, type ProjectMember, type ProjectSummary,
+  type Exploration, type ProjectAccount, type ProjectGroupAccess, type ProjectMember, type ProjectSummary,
   type UserAccount, type UserGroup,
 } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
@@ -227,9 +227,74 @@ const edit = ref({
   browser_locale: '', browser_timezone: '', browser_viewport: '',
 })
 
+// ── Comptes de test du projet (lot 07b-1, D8) ─────────────────────────────────────────────────────────────────────
+// « je me connecte en tant que "<libellé>" » : l'agent ne connaît que ces LIBELLÉS. Le mot de passe est en écriture seule — jamais relu.
+const comptesDeTest = ref<ProjectAccount[]>([])
+const compteErreur = ref('')
+const compteEnCours = ref<number | null | 'nouveau'>(null)
+const compteForm = ref({ label: '', username: '', password: '', business_role: '' })
+// Seuls `admin` et `dev` créent ou modifient un compte (le serveur tranche ; l'écran ne montre pas ce qu'il refuserait).
+const peutGererComptes = computed(() => ['admin', 'dev'].includes(editing.value?.effective_role || session.value?.role || ''))
+
+async function chargerComptes() {
+  compteErreur.value = ''
+  if (!editing.value) { comptesDeTest.value = []; return }
+  try {
+    comptesDeTest.value = await api.listProjectAccounts(editing.value.id)
+  } catch (e: any) {
+    comptesDeTest.value = []
+    compteErreur.value = e?.message || 'Comptes illisibles'
+  }
+}
+
+function nouveauCompte() {
+  compteEnCours.value = 'nouveau'
+  compteForm.value = { label: '', username: '', password: '', business_role: '' }
+}
+
+function modifierCompte(c: ProjectAccount) {
+  compteEnCours.value = c.id
+  // ⚠️ mot de passe TOUJOURS vide : vide = « inchangé » (l'API ne le renvoie jamais).
+  compteForm.value = { label: c.label, username: c.username, password: '', business_role: c.business_role }
+}
+
+async function enregistrerCompte() {
+  if (!editing.value || compteEnCours.value === null) return
+  compteErreur.value = ''
+  try {
+    if (compteEnCours.value === 'nouveau') {
+      await api.createProjectAccount(editing.value.id, { ...compteForm.value })
+    } else {
+      const patch: Record<string, string> = {
+        label: compteForm.value.label, username: compteForm.value.username, business_role: compteForm.value.business_role,
+      }
+      if (compteForm.value.password) patch.password = compteForm.value.password
+      await api.updateProjectAccount(editing.value.id, compteEnCours.value, patch)
+    }
+    compteEnCours.value = null
+    compteForm.value = { label: '', username: '', password: '', business_role: '' }
+    await chargerComptes()
+  } catch (e: any) {
+    compteErreur.value = e?.message || 'Enregistrement du compte impossible'
+  }
+}
+
+async function supprimerCompte(c: ProjectAccount) {
+  if (!editing.value || c.id === null) return
+  compteErreur.value = ''
+  try {
+    await api.deleteProjectAccount(editing.value.id, c.id)
+    await chargerComptes()
+  } catch (e: any) {
+    compteErreur.value = e?.message || 'Suppression du compte impossible'
+  }
+}
+
 function startEdit(p: ProjectSummary) {
   editing.value = p
   editError.value = ''
+  compteEnCours.value = null
+  void chargerComptes()
   edit.value = {
     name: p.name, connector_type: p.connector_type || 'odoo',
     connector_version: p.connector_version || '', base_url: p.base_url || '',
@@ -624,6 +689,38 @@ onMounted(async () => { await load(); await loadExplorations() })
           <ul v-if="editing?.browser_avertissements?.length" class="mt-2 text-xs text-warning" data-testid="browser-avertissements">
             <li v-for="a in editing.browser_avertissements" :key="a">{{ a }} — le défaut est utilisé à la place.</li>
           </ul>
+        </fieldset>
+        <!-- Lot 07b-1 (D8) : les comptes de test. L'IA n'en voit que les libellés ; un mot de passe enregistré n'est jamais réaffiché. -->
+        <fieldset class="rounded-lg border border-border p-3" data-testid="comptes-du-projet">
+          <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Comptes de test</legend>
+          <ul class="space-y-1.5">
+            <li v-for="c in comptesDeTest" :key="c.id ?? 'principal'" class="flex flex-wrap items-center gap-2 text-sm" data-testid="compte-ligne">
+              <strong>{{ c.label }}</strong>
+              <span class="text-muted-foreground">{{ c.username || 'aucun identifiant' }}</span>
+              <span v-if="c.business_role" class="text-xs text-subtle-foreground">— {{ c.business_role }}</span>
+              <span v-if="c.principal" class="rounded bg-surface-raised px-1.5 py-0.5 text-xs">compte de la connexion du projet</span>
+              <span v-else class="text-xs text-subtle-foreground">{{ c.has_secret ? 'mot de passe enregistré' : 'sans mot de passe' }}</span>
+              <span v-if="peutGererComptes && !c.principal" class="ml-auto flex gap-1.5">
+                <Button type="button" variant="ghost" size="sm" @click="modifierCompte(c)">Modifier</Button>
+                <Button type="button" variant="ghost" size="sm" class="text-destructive" @click="supprimerCompte(c)">Supprimer</Button>
+              </span>
+            </li>
+          </ul>
+          <p class="mt-2 text-xs text-muted-foreground">
+            Dans un cas, « je me connecte en tant que "&lt;libellé&gt;" » change d'utilisateur. Le compte « principal » est celui de « Application cible ».
+          </p>
+          <div v-if="peutGererComptes && compteEnCours !== null" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2" data-testid="compte-formulaire">
+            <label class="block"><span class="text-sm font-medium">Libellé</span><input v-model="compteForm.label" data-testid="compte-libelle" placeholder="ex. Commercial" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <label class="block"><span class="text-sm font-medium">Rôle (affichage)</span><input v-model="compteForm.business_role" placeholder="ex. Vendeur" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <label class="block"><span class="text-sm font-medium">Identifiant</span><input v-model="compteForm.username" data-testid="compte-identifiant" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <label class="block"><span class="text-sm font-medium">Mot de passe</span><input v-model="compteForm.password" type="password" data-testid="compte-mot-de-passe" :placeholder="compteEnCours === 'nouveau' ? '' : 'Inchangé'" autocomplete="new-password" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <div class="flex gap-2 sm:col-span-2">
+              <Button type="button" variant="primary" size="sm" data-testid="compte-enregistrer" :disabled="!compteForm.label.trim() || !compteForm.username.trim()" @click="enregistrerCompte">Enregistrer le compte</Button>
+              <Button type="button" variant="secondary" size="sm" @click="compteEnCours = null">Annuler</Button>
+            </div>
+          </div>
+          <Button v-else-if="peutGererComptes" type="button" variant="secondary" size="sm" class="mt-3" data-testid="compte-ajouter" @click="nouveauCompte">Ajouter un compte</Button>
+          <p v-if="compteErreur" role="alert" class="mt-2 text-sm text-destructive" data-testid="compte-erreur">{{ compteErreur }}</p>
         </fieldset>
         <fieldset v-if="edit.connector_type === 'odoo'" class="rounded-lg border border-border p-3">
           <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Génération — calibration en écriture</legend>
