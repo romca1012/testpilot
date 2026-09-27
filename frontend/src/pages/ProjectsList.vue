@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ACCES_PROJET_REFUSE, api, LIBELLE_ROLE, ROLES,
+  ACCES_PROJET_REFUSE, api, AUTH_STRATEGIES, LIBELLE_AUTH_STRATEGIE, LIBELLE_ROLE, ROLES,
   type Exploration, type ProjectAccount, type ProjectGroupAccess, type ProjectMember, type ProjectSummary,
   type UserAccount, type UserGroup,
 } from '../lib/api'
@@ -225,6 +225,7 @@ const edit = ref({
   name: '', connector_type: 'odoo', connector_version: '', base_url: '', database: '', username: '', password: '',
   calibration_writes_enabled: false,
   browser_locale: '', browser_timezone: '', browser_viewport: '',
+  auth_strategie: 'formulaire', totp_secret: '', injected_session: '',
 })
 
 // ── Comptes de test du projet (lot 07b-1, D8) ─────────────────────────────────────────────────────────────────────
@@ -305,6 +306,8 @@ function startEdit(p: ProjectSummary) {
     calibration_writes_enabled: p.calibration_writes_enabled,
     browser_locale: p.browser_locale || '', browser_timezone: p.browser_timezone || '',
     browser_viewport: p.browser_viewport || '',
+    // Lot 07b-2 : `totp_secret`/`injected_session` TOUJOURS vides — même règle que `password` (write-only).
+    auth_strategie: p.auth_strategie || 'formulaire', totp_secret: '', injected_session: '',
   }
 }
 
@@ -372,10 +375,15 @@ async function saveEdit() {
       browser_locale: edit.value.browser_locale,
       browser_timezone: edit.value.browser_timezone,
       browser_viewport: edit.value.browser_viewport,
+      // Lot 07b-2 : `auth_strategie` n'est jamais un secret, il part toujours ; `totp_secret`/`injected_session` suivent la
+      // règle du mot de passe (ci-dessous).
+      auth_strategie: edit.value.auth_strategie,
     }
     // Le mot de passe n'est envoyé QUE s'il a été saisi. L'omettre laisse le secret intact ;
     // envoyer "" l'effacerait — et toutes les exécutions du projet échoueraient ensuite.
     if (edit.value.password) patch.password = edit.value.password
+    if (edit.value.totp_secret) patch.totp_secret = edit.value.totp_secret
+    if (edit.value.injected_session) patch.injected_session = edit.value.injected_session
     await api.updateProject(editing.value.id, patch)
     editing.value = null
     await ensureLoaded(true)
@@ -689,6 +697,31 @@ onMounted(async () => { await load(); await loadExplorations() })
           <ul v-if="editing?.browser_avertissements?.length" class="mt-2 text-xs text-warning" data-testid="browser-avertissements">
             <li v-for="a in editing.browser_avertissements" :key="a">{{ a }} — le défaut est utilisé à la place.</li>
           </ul>
+        </fieldset>
+        <!-- Lot 07b-2 (C2) : la connexion du compte principal se réutilise une fois par run (`storage_state`) au lieu d'être
+             refaite à chaque scénario. Réservé au connecteur générique : Odoo se connecte par sa propre session RPC. -->
+        <fieldset v-if="edit.connector_type === 'web'" class="rounded-lg border border-border p-3" data-testid="strategie-connexion">
+          <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Stratégie de connexion</legend>
+          <label class="block">
+            <span class="text-sm font-medium">Comment se connecter</span>
+            <select v-model="edit.auth_strategie" data-testid="auth-strategie" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2">
+              <option v-for="s in AUTH_STRATEGIES" :key="s" :value="s">{{ LIBELLE_AUTH_STRATEGIE[s] }}</option>
+            </select>
+          </label>
+          <label v-if="edit.auth_strategie === 'totp'" class="mt-3 block">
+            <span class="text-sm font-medium">Secret TOTP</span>
+            <input v-model="edit.totp_secret" data-testid="totp-secret" :placeholder="editing?.has_totp_secret ? 'Inchangé' : ''"
+                   class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" />
+            <span class="mt-1 block text-xs text-muted-foreground">Le secret partagé (base32) donné par l'application au moment d'activer le code à usage unique.</span>
+          </label>
+          <label v-if="edit.auth_strategie === 'session_injectee'" class="mt-3 block">
+            <span class="text-sm font-medium">Session déjà ouverte</span>
+            <textarea v-model="edit.injected_session" data-testid="injected-session" rows="3"
+                      :placeholder="editing?.has_injected_session ? 'Inchangée' : ''"
+                      class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 font-mono text-xs focus:border-primary outline-none"></textarea>
+            <span class="mt-1 block text-xs text-muted-foreground">L'export `storage_state` d'un navigateur DÉJÀ connecté (SSO d'entreprise) — jamais généré par TestPilot ; à renouveler quand il expire.</span>
+          </label>
+          <p class="mt-2 text-xs text-muted-foreground">Les comptes secondaires (ci-dessous) restent toujours en formulaire simple.</p>
         </fieldset>
         <!-- Lot 07b-1 (D8) : les comptes de test. L'IA n'en voit que les libellés ; un mot de passe enregistré n'est jamais réaffiché. -->
         <fieldset class="rounded-lg border border-border p-3" data-testid="comptes-du-projet">

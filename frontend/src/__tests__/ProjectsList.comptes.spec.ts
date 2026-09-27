@@ -32,6 +32,10 @@ vi.mock('../lib/api', () => ({
     updateProjectAccount: (...a: any[]) => updateProjectAccount(...a),
     deleteProjectAccount: (...a: any[]) => deleteProjectAccount(...a),
   },
+  // Lot 07b-2 : ce fichier ne teste pas la stratégie de connexion, mais le composant l'importe.
+  AUTH_STRATEGIES: ['formulaire', 'totp', 'session_injectee', 'aucune'],
+  LIBELLE_AUTH_STRATEGIE: { formulaire: 'Formulaire de connexion', totp: 'Code à usage unique (TOTP)',
+                           session_injectee: 'Session déjà ouverte (jeton fourni)', aucune: 'Aucune connexion' },
 }))
 vi.mock('../lib/useProjects', () => ({ useProjects: () => ({ ensureLoaded: vi.fn() }) }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }), useRoute: () => ({ name: 'admin-projects' }) }))

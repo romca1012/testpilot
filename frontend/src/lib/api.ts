@@ -611,8 +611,19 @@ export interface ProjectSummary {
   browser_locale?: string; browser_timezone?: string; browser_viewport?: string
   browser_effectif?: { locale: string; timezone: string; viewport: string }
   browser_avertissements?: string[]
+  // Lot 07b-2 : stratégie de connexion du compte PRINCIPAL. `totp_secret`/`injected_session` ne sont JAMAIS exposés
+  // (write-only, même règle que `password`) : `has_totp_secret`/`has_injected_session` disent seulement s'ils sont enregistrés.
+  auth_strategie?: string
+  has_totp_secret?: boolean
+  has_injected_session?: boolean
   module_count: number; case_count: number
   effective_role: string
+}
+// Aucune valeur d'enum brute à l'écran (CONTINUITE §4.7) — même convention que `LIBELLE_ROLE`.
+export const AUTH_STRATEGIES = ['formulaire', 'totp', 'session_injectee', 'aucune'] as const
+export const LIBELLE_AUTH_STRATEGIE: Record<string, string> = {
+  formulaire: 'Formulaire de connexion', totp: 'Code à usage unique (TOTP)',
+  session_injectee: 'Session déjà ouverte (jeton fourni)', aucune: 'Aucune connexion',
 }
 /** Santé technique de la génération (axe EXÉCUTION, premier jet). `ran_rate` = null quand aucune
  *  mesure : « rien mesuré » n'est pas « 0 % de réussite ». */
@@ -763,6 +774,8 @@ export interface ProjectInput {
   base_url: string; database: string; username: string; password: string
   calibration_writes_enabled?: boolean
   browser_locale?: string; browser_timezone?: string; browser_viewport?: string
+  // Lot 07b-2 : `totp_secret`/`injected_session` en écriture seule, comme `password`.
+  auth_strategie?: string; totp_secret?: string; injected_session?: string
 }
 export interface ModuleSummary {
   id: number; project_id: number; name: string; description: string; case_count: number
