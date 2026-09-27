@@ -22,6 +22,8 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect
 from testpilot.connectors._web_helpers import (
     ConnexionGeneriqueImpossibleError, lire_message_erreur_visible, tenter_connexion_generique,
 )
+from testpilot.connectors import auth_strategie as _auth
+import pyotp
 
 logger = logging.getLogger(__name__)
 
@@ -2886,6 +2888,7 @@ def ouvrir_page(context, chemin: str) -> None:
         page.goto(base, wait_until="domcontentloaded")
         connexion_web_utilisateur(context)
     page.goto(cible, wait_until="domcontentloaded")
+    _verifier_ou_reconnecter_session(context, cible)
 
 
 def _page_lisible(context) -> None:
@@ -3361,3 +3364,110 @@ def retablir_le_compte_principal(context) -> None:
         context.compte_courant = _LIBELLE_PRINCIPAL
     except Exception as exc:
         print(f"[teardown] session du compte principal non rétablie : {type(exc).__name__}")
+
+
+# ── Stratégie de connexion du compte principal (lot 07b-2, C2) ─────────────────────────────────────────────────────────────────
+# Le compte principal se connecte UNE FOIS par run (`environment.before_all`), son `storage_state` est réutilisé par chaque
+# scénario (voir `playwright_browser`) : plus de formulaire refait à chaque scénario. Si la session se révèle invalidée
+# (redirection vers la connexion) sur une page d'ENTRÉE (page d'accueil, `j'ouvre la page`), une reconnexion selon la MÊME
+# stratégie est tentée UNE fois — jamais plus — avant de bloquer (`PreconditionNonRemplieError`), jamais un défaut applicatif
+# présumé. Les comptes SECONDAIRES (lot 07b-1) restent en formulaire simple, quelle que soit cette stratégie.
+
+_CHEMIN_STORAGE_STATE = "storage_state.json"   # relatif au run_dir (cwd du sous-processus) — dupliqué dans `environment.py`
+_CANDIDATS_CODE_TOTP = ("input[autocomplete='one-time-code']", "input[name*='otp' i]", "input[name*='code' i]",
+                        "input[id*='otp' i]", "input[id*='code' i]")
+
+
+def _remplir_code_totp(page, secret: str) -> bool:
+    """Remplit le premier champ qui RESSEMBLE à un code à usage unique et le soumet. `False` si aucun n'est visible — le test
+    de connexion final (`connexion_reussie`) tranchera si son absence était réellement un problème."""
+    candidat = page.locator(", ".join(_CANDIDATS_CODE_TOTP)).first
+    try:
+        if not candidat.is_visible():
+            return False
+    except Exception:
+        return False
+    candidat.fill(pyotp.TOTP(secret).now(), force=True)
+    candidat.press("Enter")
+    page.wait_for_load_state("networkidle")
+    return True
+
+
+def _champ_totp_encore_visible(page) -> bool:
+    """`True` si un champ de code est ENCORE visible après une soumission — le code n'a pas été accepté, l'écran ne s'est pas
+    fermé. `connexion_reussie` seul ne verrait pas ce cas : l'URL a déjà changé (formulaire → écran de code) AVANT même de
+    savoir si le CODE, lui, est bon — vérifié en conditions réelles (lot 07b-2)."""
+    try:
+        return page.locator(", ".join(_CANDIDATS_CODE_TOTP)).first.is_visible()
+    except Exception:
+        return False
+
+
+def authentifier_selon_la_strategie(page, *, strategie: str, web_url: str, user: str, password: str,
+                                    totp_secret: str) -> None:
+    """Une SEULE tentative de connexion du compte PRINCIPAL, selon la stratégie déclarée sur le projet. Lève
+    `PreconditionNonRemplieError` (→ `blocked`) si elle échoue : le test n'a pas pu ENTRER, ce n'est jamais un défaut de
+    l'application. Utilisée par `environment.before_all` (connexion initiale du run) et par `_verifier_ou_reconnecter_session`
+    (reconnexion après invalidation)."""
+    if strategie == _auth.AUCUNE:
+        return
+    page.goto(web_url, wait_until="domcontentloaded")
+    # Capturé APRÈS la navigation, jamais `web_url` littéral : une application non connectée redirige déjà vers sa page de
+    # connexion à cet instant (même convention que `connexion_web_utilisateur`) — sinon un aller-retour qui revient
+    # exactement sur `web_url` (le cas le plus courant) serait pris pour « aucune navigation », un FAUX négatif mesuré en
+    # conditions réelles (lot 07b-2).
+    url_avant = page.url
+    if strategie == _auth.SESSION_INJECTEE:
+        # Le storage_state fourni a déjà été appliqué à la CRÉATION du contexte : on vérifie seulement qu'il ouvre la page.
+        if _mot_de_passe_visible(page) is not False:
+            raise PreconditionNonRemplieError(
+                f"PRÉREQUIS MANQUANT : la session fournie (« session déjà ouverte ») n'ouvre pas {web_url} — le jeton a "
+                "probablement expiré. Renouvelez-le dans les réglages du projet.")
+        return
+    if not user or not password:
+        raise PreconditionNonRemplieError(
+            f"PRÉREQUIS MANQUANT : {web_url} demande une connexion mais le projet n'a ni identifiant ni mot de passe renseigné.")
+    try:
+        soumis = tenter_connexion_generique(page, user, password)
+    except ConnexionGeneriqueImpossibleError as exc:
+        raise PreconditionNonRemplieError(f"PRÉREQUIS MANQUANT : connexion impossible sur {web_url} — {exc}") from exc
+    if soumis and strategie == _auth.TOTP:
+        if not totp_secret:
+            raise PreconditionNonRemplieError(
+                "PRÉREQUIS MANQUANT : la stratégie « TOTP » est choisie mais aucun secret n'est enregistré sur le projet.")
+        _remplir_code_totp(page, totp_secret)
+        if _champ_totp_encore_visible(page):
+            raise PreconditionNonRemplieError(
+                f"PRÉREQUIS MANQUANT : le code TOTP n'a pas été accepté sur {page.url} — vérifiez le secret TOTP enregistré "
+                "sur le projet.")
+    if not connexion_reussie(url_avant, page.url, _mot_de_passe_visible(page)):
+        message = lire_message_erreur_visible(page)
+        raise PreconditionNonRemplieError(
+            f"PRÉREQUIS MANQUANT : la connexion n'a pas abouti sur {web_url} — URL après tentative : {page.url}"
+            + (f" ; message affiché : « {message} »" if message else "")
+            + ". Vérifiez l'identifiant, le mot de passe"
+            + (" et le secret TOTP" if strategie == _auth.TOTP else "") + " du projet.")
+
+
+def _verifier_ou_reconnecter_session(context, url_visee: str) -> None:
+    """Sur une page d'ENTRÉE (page d'accueil, `j'ouvre la page`) : une session invalidée pendant le run (redirection vers la
+    connexion, `storage_state` périmé) est reconnectée UNE fois — jamais plus, épuisée elle bloque (lot 07b-2). No-op si la
+    stratégie est `aucune` ou si rien ne signale une invalidation."""
+    strategie = getattr(context, "auth_strategie", "") or _auth.FORMULAIRE
+    if strategie == _auth.AUCUNE or _mot_de_passe_visible(context.page) is not True:
+        return
+    if getattr(context, "_reconnexion_tentee", False):
+        raise PreconditionNonRemplieError(
+            f"PRÉREQUIS MANQUANT : la session s'est invalidée sur {url_visee} et une reconnexion, déjà tentée dans ce "
+            "scénario, a aussi échoué.")
+    context._reconnexion_tentee = True
+    authentifier_selon_la_strategie(
+        context.page, strategie=strategie, web_url=getattr(context, "web_url", "") or "",
+        user=getattr(context, "web_user", "") or "", password=getattr(context, "web_password", "") or "",
+        totp_secret=getattr(context, "totp_secret", "") or "")
+    try:
+        # Les scénarios SUIVANTS profitent aussi de la session renouvelée — best-effort, jamais fatal ici.
+        context._browser_context.storage_state(path=_CHEMIN_STORAGE_STATE)
+    except Exception:
+        pass
+    context.page.goto(url_visee, wait_until="domcontentloaded")

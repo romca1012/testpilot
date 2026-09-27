@@ -33,6 +33,7 @@ Comme Behave charge ``environment.py`` AVANT les modules de steps, l'alias est e
 à temps. Les imports INTERNES de la bibliothèque, eux, ont été mis au plat directement.
 """
 
+import json
 import os
 import time
 import sys
@@ -141,6 +142,14 @@ _WEB_URL      = os.environ.get("WEB_URL", "")
 _WEB_USER     = os.environ.get("WEB_USER", "")
 _WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
 
+# ⚠️ Stratégie de connexion du compte principal (lot 07b-2, C2) — noms et défaut DUPLIQUÉS de
+# `connectors/auth_strategie.py` (ce harnais ne dépend pas du paquet applicatif), même motif que le contexte navigateur
+# (lot 07c) et les comptes secondaires (lot 07b-1) ci-dessus.
+_AUTH_STRATEGIE     = os.environ.get("TESTPILOT_AUTH_STRATEGIE", "formulaire")
+_TOTP_SECRET        = os.environ.get("TESTPILOT_TOTP_SECRET", "")
+_INJECTED_SESSION   = os.environ.get("TESTPILOT_INJECTED_SESSION", "")
+_CHEMIN_STORAGE_STATE = "storage_state.json"   # dupliqué de `_base_helpers._CHEMIN_STORAGE_STATE" (même valeur, même run_dir)
+
 
 def _doit_ouvrir_session_odoo(connector_type: str) -> bool:
     """Un projet sans backend Odoo (ex. connecteur `web` générique) ferait échouer TOUT
@@ -215,7 +224,9 @@ def playwright_browser(context):
     headed = os.environ.get("PLAYWRIGHT_HEADED", "0") == "1"
     context._playwright = sync_playwright().start()
     context.browser = context._playwright.chromium.launch(headless=not headed)
-    _ouvrir_contexte_navigateur(context)
+    # Lot 07b-2 : la session du compte principal, obtenue UNE fois dans `before_all`, équipe le PREMIER contexte du scénario
+    # (jamais les réouvertures du lot 07b-1 : un changement de compte reste un contexte neuf).
+    _ouvrir_contexte_navigateur(context, avec_storage_state=True)
     # Lot 07b-1 (D8) : « je me connecte en tant que … » repart d'un contexte NEUF (cookies et stockage vides) via ce crochet.
     context._reouvrir_contexte = lambda: reouvrir_contexte_navigateur(context)
     yield context.page
@@ -224,10 +235,17 @@ def playwright_browser(context):
     context._playwright.stop()
 
 
-def _ouvrir_contexte_navigateur(context) -> None:
-    """Un `BrowserContext` (langue, fuseau et fenêtre du projet), sa trace, sa page — une seule fonction pour le premier et pour ceux qu'un
-    changement de compte rouvre."""
-    context._browser_context = context.browser.new_context(**contexte_navigateur_fige())
+def _ouvrir_contexte_navigateur(context, *, avec_storage_state: bool = False) -> None:
+    """Un `BrowserContext` (langue, fuseau et fenêtre du projet), sa trace, sa page — une seule fonction pour le premier et pour ceux
+    qu'un changement de compte rouvre (`avec_storage_state=False` dans ce cas : lot 07b-1, jamais la session du principal).
+
+    `avec_storage_state=True` (lot 07b-2) : charge la session du compte principal obtenue par `before_all`, si le fichier existe
+    (absent quand la stratégie est `aucune`, ou quand la connexion initiale a échoué — `before_scenario` bloque alors avant
+    d'ouvrir quoi que ce soit)."""
+    kwargs = contexte_navigateur_fige()
+    if avec_storage_state and os.path.isfile(_CHEMIN_STORAGE_STATE):
+        kwargs["storage_state"] = _CHEMIN_STORAGE_STATE
+    context._browser_context = context.browser.new_context(**kwargs)
     _demarrer_trace(context)
     context.page = context._browser_context.new_page()
 
@@ -289,6 +307,45 @@ def before_all(context):
 
     context.comptes, context.comptes_erreur = construire_comptes(_CONNECTOR_TYPE, os.environ)
     context.compte_courant = "principal"
+    # Lot 07b-2 (C2) : la stratégie de connexion du compte principal, et sa connexion initiale (une fois pour tout le run).
+    context.auth_strategie = _AUTH_STRATEGIE
+    context.totp_secret = _TOTP_SECRET
+    context.injected_session = _INJECTED_SESSION
+    context._erreur_connexion_initiale = ""
+    if _CONNECTOR_TYPE == "web" and _AUTH_STRATEGIE != "aucune" and _WEB_URL:
+        _tenter_connexion_initiale(context)
+
+
+def _tenter_connexion_initiale(context) -> None:
+    """Une SEULE connexion, avant le premier scénario du run (lot 07b-2) : écrit `storage_state.json`, réutilisé ensuite par
+    chaque scénario (`playwright_browser`). Best-effort dans SA PROPRE tentative — une erreur est mémorisée sur `context`,
+    jamais levée ici (`before_all` ne doit jamais faire planter tout le run Behave) ; `before_scenario` la relève et bloque
+    chaque scénario proprement (jamais un vert, jamais un défaut applicatif présumé)."""
+    from playwright.sync_api import sync_playwright
+
+    from _base_helpers import PreconditionNonRemplieError, authentifier_selon_la_strategie
+
+    injection = None
+    if _AUTH_STRATEGIE == "session_injectee" and _INJECTED_SESSION:
+        try:
+            injection = json.loads(_INJECTED_SESSION)
+        except (ValueError, TypeError):
+            context._erreur_connexion_initiale = "la session fournie (« session déjà ouverte ») n'est pas un JSON valide."
+            return
+    with sync_playwright() as p:
+        navigateur = p.chromium.launch(headless=os.environ.get("PLAYWRIGHT_HEADED", "0") != "1")
+        try:
+            contexte = navigateur.new_context(storage_state=injection, **contexte_navigateur_fige())
+            page = contexte.new_page()
+            try:
+                authentifier_selon_la_strategie(page, strategie=_AUTH_STRATEGIE, web_url=_WEB_URL,
+                                                user=_WEB_USER, password=_WEB_PASSWORD, totp_secret=_TOTP_SECRET)
+            except PreconditionNonRemplieError as exc:
+                context._erreur_connexion_initiale = str(exc)
+                return
+            contexte.storage_state(path=_CHEMIN_STORAGE_STATE)
+        finally:
+            navigateur.close()
 
 
 def _capturer_reponse_formulaire(context):
@@ -410,6 +467,15 @@ def before_scenario(context, scenario):
     # Lot 03 : le scénario courant, pour rattacher chaque constat consigné à SON scénario.
     from _base_helpers import definir_etat_constat
     definir_etat_constat(scenario=scenario.name, step_type="")
+    # Lot 07b-2 (C2) : la connexion initiale du run a échoué (avant tout scénario) — bloqué, jamais un vert ni un défaut
+    # applicatif présumé. AVANT d'ouvrir quoi que ce soit (navigateur, session RPC).
+    if getattr(context, "_erreur_connexion_initiale", ""):
+        from _base_helpers import PreconditionNonRemplieError
+
+        raise PreconditionNonRemplieError(
+            f"PRÉREQUIS MANQUANT : la connexion initiale du run a échoué ({context._erreur_connexion_initiale}) — vérifiez "
+            "la stratégie de connexion et ses secrets dans les réglages du projet.")
+    context._reconnexion_tentee = False
     if _doit_ouvrir_session_odoo(_CONNECTOR_TYPE):
         use_fixture(odoo_session, context)
     use_fixture(playwright_browser, context)

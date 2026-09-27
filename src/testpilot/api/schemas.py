@@ -55,6 +55,11 @@ class ProjectSummary(BaseModel):
     browser_effectif: dict[str, str] = {}
     # Une valeur ENREGISTRÉE mais mal formée (base éditée à la main) est écartée au profit du défaut : on le DIT, jamais en silence.
     browser_avertissements: list[str] = []
+    # Lot 07b-2 (C2) : stratégie de connexion du compte PRINCIPAL — `totp_secret`/`injected_session` ne sont JAMAIS exposés
+    # (write-only, même règle que `password`) : `has_totp_secret`/`has_injected_session` disent seulement s'ils sont enregistrés.
+    auth_strategie: str = "formulaire"
+    has_totp_secret: bool = False
+    has_injected_session: bool = False
     module_count: int = 0
     case_count: int = 0
     effective_role: str = ""
@@ -470,6 +475,11 @@ class ProjectIn(BaseModel):
     browser_locale: str = ""
     browser_timezone: str = ""
     browser_viewport: str = ""
+    # Lot 07b-2 : stratégie de connexion du compte principal. `totp_secret`/`injected_session` : secrets, accepté en entrée
+    # seulement (même règle que `password`).
+    auth_strategie: str = "formulaire"
+    totp_secret: str = ""
+    injected_session: str = ""
 
 
 class ProjectPatch(BaseModel):
@@ -489,6 +499,10 @@ class ProjectPatch(BaseModel):
     database: str | None = None
     username: str | None = None
     password: str | None = None  # secret : accepté en entrée, jamais relu en sortie
+    # Lot 07b-2 : `None` = n'y touche pas ; pour les secrets, `""` explicite les vide (même règle que `password`).
+    auth_strategie: str | None = None
+    totp_secret: str | None = None
+    injected_session: str | None = None
     # `None` = n'y touche pas, comme les autres champs de ce PATCH — pas de `""` ambigu possible
     # pour un booléen, mais la même discipline (silence = inchangé) s'applique.
     calibration_writes_enabled: bool | None = None
@@ -1227,6 +1241,8 @@ def project_summary(row: dict) -> ProjectSummary:
         browser_viewport=row.get("browser_viewport", "") or "",
         browser_effectif=_contexte_effectif(row),
         browser_avertissements=_contexte_avertissements(row),
+        auth_strategie=row.get("auth_strategie", "") or "formulaire",
+        has_totp_secret=bool(row.get("totp_secret")), has_injected_session=bool(row.get("injected_session")),
         module_count=row.get("module_count", 0), case_count=row.get("case_count", 0),
         effective_role=row.get("effective_role", ""))
 
