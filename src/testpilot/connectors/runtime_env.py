@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import logging
 
+from testpilot.connectors import auth_strategie as _auth
 from testpilot.connectors.contexte_navigateur import depuis_projet
 
 logger = logging.getLogger(__name__)
@@ -154,6 +155,14 @@ def project_env(project: dict | None, comptes: list[dict] | None = None) -> dict
         env[ENV_COMPTES] = json.dumps(
             [{"label": c["label"], "username": c["username"], "password": c["password"]} for c in comptes],
             ensure_ascii=False)
+    # Lot 07b-2 (C2) : la stratégie de connexion du compte PRINCIPAL — SEUL le connecteur `web` la consomme (avant_all du
+    # harnais). `formulaire` (défaut) ne change rien au comportement d'avant ce lot une fois traduit.
+    if connector == "web":
+        env[_auth.ENV_STRATEGIE] = str(project.get("auth_strategie") or _auth.FORMULAIRE)
+        if project.get("totp_secret"):
+            env[_auth.ENV_TOTP_SECRET] = str(project["totp_secret"])
+        if project.get("injected_session"):
+            env[_auth.ENV_INJECTED_SESSION] = str(project["injected_session"])
     return env
 
 

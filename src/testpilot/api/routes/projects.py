@@ -103,6 +103,7 @@ def create_project(body: schemas.ProjectIn, request: Request = None, conn=Depend
     # y compris pour son propre créateur (mesuré 2026-09-07 : ~90 tests en échec en cascade).
     utilisateur = getattr(request, "state", None) and getattr(request.state, "user", None)
     _refuser_contexte_invalide(body.browser_locale, body.browser_timezone, body.browser_viewport)
+    _refuser_strategie_invalide(body.auth_strategie, body.totp_secret, body.injected_session)
     try:
         project_id = ProjectRepo(conn).create(
             name=body.name.strip(), description=body.description,
@@ -111,7 +112,8 @@ def create_project(body: schemas.ProjectIn, request: Request = None, conn=Depend
             username=body.username, password=body.password, private=True,
             owner_id=utilisateur["id"] if utilisateur is not None else None,
             browser_locale=body.browser_locale.strip(), browser_timezone=body.browser_timezone.strip(),
-            browser_viewport=body.browser_viewport.strip())
+            browser_viewport=body.browser_viewport.strip(),
+            auth_strategie=body.auth_strategie, totp_secret=body.totp_secret, injected_session=body.injected_session)
     except DuplicateName as exc:
         raise _conflict(exc) from exc
     return schemas.project_summary(_summary_row(conn, project_id))
@@ -122,6 +124,15 @@ def _refuser_contexte_invalide(locale: str, timezone_id: str, viewport: str) -> 
     from testpilot.connectors.contexte_navigateur import erreurs
 
     problemes = erreurs(locale.strip(), timezone_id.strip(), viewport.strip())
+    if problemes:
+        raise HTTPException(status_code=422, detail="; ".join(problemes))
+
+
+def _refuser_strategie_invalide(auth_strategie: str, totp_secret: str, injected_session: str) -> None:
+    """422 en français clair si la stratégie de connexion ou l'un de ses secrets est mal formé (lot 07b-2)."""
+    from testpilot.connectors.auth_strategie import erreurs as erreurs_strategie
+
+    problemes = erreurs_strategie(auth_strategie, totp_secret, injected_session)
     if problemes:
         raise HTTPException(status_code=422, detail="; ".join(problemes))
 
@@ -143,6 +154,8 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
     if body.name is not None and not body.name.strip():
         raise HTTPException(status_code=422, detail="le nom du projet est requis")
     _refuser_contexte_invalide(body.browser_locale or "", body.browser_timezone or "", body.browser_viewport or "")
+    if body.auth_strategie is not None:
+        _refuser_strategie_invalide(body.auth_strategie, body.totp_secret or "", body.injected_session or "")
     repo = ProjectRepo(conn)
     try:
         if body.name is not None:
@@ -158,7 +171,8 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
         password=body.password,
         browser_locale=None if body.browser_locale is None else body.browser_locale.strip(),
         browser_timezone=None if body.browser_timezone is None else body.browser_timezone.strip(),
-        browser_viewport=None if body.browser_viewport is None else body.browser_viewport.strip())
+        browser_viewport=None if body.browser_viewport is None else body.browser_viewport.strip(),
+        auth_strategie=body.auth_strategie, totp_secret=body.totp_secret, injected_session=body.injected_session)
     if body.calibration_writes_enabled is not None:
         repo.set_calibration_writes_enabled(project_id, body.calibration_writes_enabled)
     return schemas.project_summary(_summary_row(conn, project_id))

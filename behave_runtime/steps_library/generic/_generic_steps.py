@@ -22,6 +22,8 @@ from _base_helpers import (
     ouvrir_page, page_affiche_texte, page_n_affiche_pas_texte, url_contient, tableau_contient_ligne,
     tableau_compte_lignes, cliquer_dans_ligne, decider_dialogue, telecharger_via, fichier_telecharge_se_nomme,
     fichier_telecharge_contient, cadre, nouvel_onglet_sur, requete_repond,
+    # Stratégie de connexion (lot 07b-2) — même discipline d'import.
+    _verifier_ou_reconnecter_session,
 )
 
 # ⚠️ Chaque step d'ACTION ci-dessous est déclaré sous `@given` ET `@when` (bug SauceDemo,
@@ -151,6 +153,9 @@ def step_access_home_page(context):
     # test tourne connecté comme le fait l'exploration. Un cas qui teste la connexion ELLE-MÊME
     # (échec, compte verrouillé…) utilise « j'accède à la page de connexion sans me connecter ».
     connexion_web_utilisateur(context)
+    # Lot 07b-2 (C2) : la session initiale du run (`storage_state`) couvre déjà la connexion la plupart du temps — ce
+    # second appel ne fait quelque chose que si elle s'est invalidée entre-temps.
+    _verifier_ou_reconnecter_session(context, context.web_url)
 
 
 def _ouvrir_application(context):
