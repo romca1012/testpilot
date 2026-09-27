@@ -59,16 +59,23 @@ def test_project_env_connecteur_inconnu_ou_absent():
 # ── Connecteur web générique (2026-09-08, multi-connecteurs) ──────────────────
 # Seule différence structurelle avec Odoo : identifiant/mot de passe sont FACULTATIFS (voir
 # `connectors/generic_web.py` — l'application ciblée peut n'exiger aucune connexion).
+# Lot 07b-2 : `project_env` transmet TOUJOURS la stratégie de connexion pour un projet `web` (défaut `formulaire`, comme
+# le contexte navigateur du lot 07c) — l'égalité reste EXACTE, elle attend simplement cette variable en plus.
+from testpilot.connectors import auth_strategie as _auth  # noqa: E402
+_STRATEGIE_DEFAUT = {_auth.ENV_STRATEGIE: _auth.FORMULAIRE}
+
+
 def test_project_env_mappe_la_connexion_web_generique():
     env = project_env({"connector_type": "web", "base_url": "http://intranet:8080",
                        "username": "bob", "password": "pwd"})
-    assert env == {**_CONTEXTE_DEFAUT, "WEB_URL": "http://intranet:8080", "WEB_USER": "bob", "WEB_PASSWORD": "pwd"}
+    assert env == {**_CONTEXTE_DEFAUT, **_STRATEGIE_DEFAUT, "WEB_URL": "http://intranet:8080", "WEB_USER": "bob",
+                   "WEB_PASSWORD": "pwd"}
 
 
 def test_project_env_web_generique_sans_identifiant_ni_mot_de_passe():
     """Rien à écarter : une application accessible sans connexion reste testable telle quelle."""
     env = project_env({"connector_type": "web", "base_url": "http://intranet:8080"})
-    assert env == {**_CONTEXTE_DEFAUT, "WEB_URL": "http://intranet:8080"}
+    assert env == {**_CONTEXTE_DEFAUT, **_STRATEGIE_DEFAUT, "WEB_URL": "http://intranet:8080"}
 
 
 def test_verifier_connexion_web_generique_exige_seulement_l_url():
@@ -78,7 +85,7 @@ def test_verifier_connexion_web_generique_exige_seulement_l_url():
     from testpilot.connectors.runtime_env import verifier_connexion
 
     env = verifier_connexion({"connector_type": "web", "base_url": "http://intranet:8080"})
-    assert env == {**_CONTEXTE_DEFAUT, "WEB_URL": "http://intranet:8080"}
+    assert env == {**_CONTEXTE_DEFAUT, **_STRATEGIE_DEFAUT, "WEB_URL": "http://intranet:8080"}
 
 
 def test_verifier_connexion_web_generique_refuse_sans_url():

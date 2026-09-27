@@ -3425,6 +3425,8 @@ def authentifier_selon_la_strategie(page, *, strategie: str, web_url: str, user:
                 "probablement expiré. Renouvelez-le dans les réglages du projet.")
         return
     if not user or not password:
+        if _mot_de_passe_visible(page) is not True:
+            return   # rien à écarter : l'application est accessible sans connexion (comportement historique, lot 07a)
         raise PreconditionNonRemplieError(
             f"PRÉREQUIS MANQUANT : {web_url} demande une connexion mais le projet n'a ni identifiant ni mot de passe renseigné.")
     try:
