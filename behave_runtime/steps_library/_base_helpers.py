@@ -3425,7 +3425,16 @@ def authentifier_selon_la_strategie(page, *, strategie: str, web_url: str, user:
                 "probablement expiré. Renouvelez-le dans les réglages du projet.")
         return
     if not user or not password:
-        if _mot_de_passe_visible(page) is not True:
+        # Les TROIS valeurs de `_mot_de_passe_visible`, jamais regroupées (revue a posteriori, 2026-09-28) : un `None` (page
+        # illisible — frame détachée, navigation en cours) traité comme « pas de formulaire » masquerait silencieusement une
+        # session non authentifiée derrière un run qui continue sans blocage — le « seul défaut qui rend un résultat faux
+        # SANS laisser de trace » (`runtime_env.py`). Seul `False` (constaté, pas supposé) autorise à continuer.
+        visible = _mot_de_passe_visible(page)
+        if visible is None:
+            raise PreconditionNonRemplieError(
+                f"PRÉREQUIS MANQUANT : {web_url} n'a pas pu être lue pour savoir si elle demande une connexion (aucun "
+                "identifiant renseigné sur le projet).")
+        if visible is False:
             return   # rien à écarter : l'application est accessible sans connexion (comportement historique, lot 07a)
         raise PreconditionNonRemplieError(
             f"PRÉREQUIS MANQUANT : {web_url} demande une connexion mais le projet n'a ni identifiant ni mot de passe renseigné.")
@@ -3454,9 +3463,14 @@ def authentifier_selon_la_strategie(page, *, strategie: str, web_url: str, user:
 def _verifier_ou_reconnecter_session(context, url_visee: str) -> None:
     """Sur une page d'ENTRÉE (page d'accueil, `j'ouvre la page`) : une session invalidée pendant le run (redirection vers la
     connexion, `storage_state` périmé) est reconnectée UNE fois — jamais plus, épuisée elle bloque (lot 07b-2). No-op si la
-    stratégie est `aucune` ou si rien ne signale une invalidation."""
+    stratégie est `aucune` ou si rien ne signale une invalidation.
+
+    ⚠️ Le signal exige les DEUX à la fois : un champ mot de passe visible ET une URL qui a RÉELLEMENT changé par rapport à
+    `url_visee` (revue a posteriori, 2026-09-28) — sinon une page métier légitime qui affiche un mot de passe (ex. « changer
+    mon mot de passe »), atteinte SANS redirection, consommerait à tort l'unique reconnexion du scénario."""
     strategie = getattr(context, "auth_strategie", "") or _auth.FORMULAIRE
-    if strategie == _auth.AUCUNE or _mot_de_passe_visible(context.page) is not True:
+    if (strategie == _auth.AUCUNE or _mot_de_passe_visible(context.page) is not True
+            or _sans_fragment(context.page.url) == _sans_fragment(url_visee)):
         return
     if getattr(context, "_reconnexion_tentee", False):
         raise PreconditionNonRemplieError(

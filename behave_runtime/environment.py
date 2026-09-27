@@ -343,6 +343,13 @@ def _tenter_connexion_initiale(context) -> None:
             except PreconditionNonRemplieError as exc:
                 context._erreur_connexion_initiale = str(exc)
                 return
+            except Exception as exc:
+                # N'importe quel incident réseau (DNS, connexion refusée, minuterie) lève ici une exception Playwright
+                # BRUTE, jamais `PreconditionNonRemplieError` — non capturé, il ferait planter TOUT le run behave dans
+                # `before_all` (un `technical_error` opaque sur tous les scénarios) au lieu d'un `blocked` précis, par
+                # scénario, comme avant ce lot (revue a posteriori, 2026-09-28).
+                context._erreur_connexion_initiale = f"{type(exc).__name__}: {exc}"
+                return
             contexte.storage_state(path=_CHEMIN_STORAGE_STATE)
         finally:
             navigateur.close()

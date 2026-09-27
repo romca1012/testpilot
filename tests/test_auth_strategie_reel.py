@@ -88,10 +88,15 @@ def _fabriquer_application(mode: str, totp_secret: str = ""):
                 return self._envoyer(200, "<html><body>Session invalidée</body></html>")
             if chemin == "/debug/compteur-connexions":
                 return self._envoyer(200, json.dumps({"n": etat["connexions_reussies"]}), type_="application/json")
+            if chemin == "/compte/mot-de-passe":
+                # Une page METIER légitime, atteinte SANS redirection (jamais via /login) : affiche un champ mot de passe
+                # sans que ce soit une invalidation de session (revue a posteriori, 2026-09-28).
+                return self._envoyer(200, "<html><body><h1>Changer mon mot de passe</h1>"
+                                          "<input type='password' name='ancien'></body></html>")
             if chemin == "/":
-                if not self._authentifie():
-                    return self._envoyer(303, "", {"Location": "/login"})
-                return self._envoyer(200, "<html><body><h1>Bienvenue</h1></body></html>")
+                if mode == "public" or self._authentifie():
+                    return self._envoyer(200, "<html><body><h1>Bienvenue</h1></body></html>")
+                return self._envoyer(303, "", {"Location": "/login"})
             self._envoyer(404, "absent")
 
         def do_POST(self):
@@ -134,13 +139,14 @@ def _compteur(base_url: str) -> int:
 
 
 def _rejouer(base_url: str, scenarios: dict[str, list[str]], *, auth_strategie="formulaire", totp_secret="",
-            injected_session="") -> dict:
+            injected_session="", identifiants=True) -> dict:
     lignes = ["Fonctionnalité: Stratégie de connexion", ""]
     for titre, etapes in scenarios.items():
         lignes += [f"  Scénario: {titre}", *[f"    {e}" for e in etapes], ""]
     dossier = Path(tempfile.mkdtemp(prefix="l07b2_"))
     (dossier / "vu.feature").write_text("\n".join(lignes), encoding="utf-8")
-    connexion = {"WEB_URL": base_url, "WEB_USER": UTILISATEUR, "WEB_PASSWORD": MOT_DE_PASSE,
+    connexion = {"WEB_URL": base_url,
+                "WEB_USER": UTILISATEUR if identifiants else "", "WEB_PASSWORD": MOT_DE_PASSE if identifiants else "",
                 ENV_STRATEGIE: auth_strategie}
     if totp_secret:
         connexion[ENV_TOTP_SECRET] = totp_secret
@@ -167,6 +173,40 @@ def test_la_session_du_compte_principal_est_reutilisee_entre_scenarios():
         for titre, v in verdicts.items():
             assert (v.execution_status, v.functional_status) == (st.EXEC_SUCCESS, st.FUNC_CONFORME), (titre, v.error[:300])
         assert _compteur(base_url) == 1, "une SEULE connexion (before_all) pour les deux scénarios : pas de formulaire refait"
+    finally:
+        serveur.shutdown()
+
+
+def test_une_application_sans_aucun_formulaire_est_accessible_sans_identifiants():
+    """Régression du commit qui a corrigé le lot 07b-2 initial (une application PUBLIQUE, sans aucun champ mot de passe,
+    bloquait tout le run faute d'identifiants) — sans test de non-régression jusqu'ici (revue a posteriori, 2026-09-28)."""
+    serveur, base_url, etat = _demarrer("public")
+    try:
+        v = _rejouer(base_url, {"application publique": [
+            'Soit j\'accède à la page d\'accueil de l\'application',
+            'Alors la page affiche le texte "Bienvenue"']}, identifiants=False)["application publique"]
+
+        assert (v.execution_status, v.functional_status) == (st.EXEC_SUCCESS, st.FUNC_CONFORME), v.error[:400]
+        assert _compteur(base_url) == 0, "aucun formulaire n'existe : aucune connexion n'a pu être comptée"
+    finally:
+        serveur.shutdown()
+
+
+def test_falsifiable_un_champ_mot_de_passe_atteint_sans_redirection_ne_consomme_pas_la_reconnexion():
+    """Une page métier légitime (« changer mon mot de passe »), atteinte SANS redirection vers /login, ne doit jamais
+    être prise pour une session invalidée — sinon elle consommerait à tort l'unique reconnexion du scénario, et une VRAIE
+    invalidation plus tard resterait sans recours (revue a posteriori, 2026-09-28)."""
+    serveur, base_url, etat = _demarrer("formulaire")
+    try:
+        v = _rejouer(base_url, {"page mdp puis vraie invalidation": [
+            'Soit j\'accède à la page d\'accueil de l\'application',
+            'Quand j\'ouvre la page "/compte/mot-de-passe"',
+            'Et j\'ouvre la page "/invalider-session"',
+            'Et j\'ouvre la page "/"',
+            'Alors la page affiche le texte "Bienvenue"']})["page mdp puis vraie invalidation"]
+
+        assert (v.execution_status, v.functional_status) == (st.EXEC_SUCCESS, st.FUNC_CONFORME), v.error[:400]
+        assert _compteur(base_url) == 2, "before_all (1) + UNE reconnexion réparatrice pour la VRAIE invalidation (2)"
     finally:
         serveur.shutdown()
 
