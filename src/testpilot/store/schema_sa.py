@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 51
+ALIGNED_WITH_SCHEMA_VERSION = 52
 
 metadata = MetaData()
 
@@ -83,12 +83,19 @@ project = Table(
     Column("browser_locale", Text, nullable=False, server_default=""),
     Column("browser_timezone", Text, nullable=False, server_default=""),
     Column("browser_viewport", Text, nullable=False, server_default=""),
+    # Migration 52 (lot 07b-2) : stratégie de connexion du compte PRINCIPAL (le harnais Behave réutilise sa session via
+    # `storage_state`, une fois par run, plutôt que de refaire le formulaire à chaque scénario).
+    Column("auth_strategie", Text, nullable=False, server_default="formulaire"),
+    Column("totp_secret", Text, nullable=False, server_default=""),
+    Column("injected_session", Text, nullable=False, server_default=""),
     Column("deleted_at", Text, nullable=False, server_default=""),
     Column("deleted_by", Text, nullable=False, server_default=""),
     Column("created_at", Text, nullable=False),
     # Migration 31 : '' = rôle global (comportement d'avant), sinon `no_access` ou un rôle forcé.
     Column("default_access", Text, nullable=False, server_default=""),
     CheckConstraint("connector_type IN ('odoo', 'web')", name="ck_project_connector_type"),
+    CheckConstraint("auth_strategie IN ('formulaire', 'totp', 'session_injectee', 'aucune')",
+                    name="ck_project_auth_strategie"),
     # Partiel (vivants seulement) + NOCASE sur SQLite — voir la limite documentée en tête de
     # fichier : la collation n'est PAS reproduite ici, seule la clause `WHERE` l'est.
     Index("uq_project_name", "name", unique=True,
