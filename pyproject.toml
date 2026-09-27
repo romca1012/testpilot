@@ -49,6 +49,8 @@ dependencies = [
     "psycopg[binary]>=3.1",
     # Métriques HTTP et file de tâches au format Prometheus (`GET /metrics`).
     "prometheus-client>=0.21",
+    # Génération de code TOTP (lot 07b-2, stratégie de connexion `totp`) — RFC 6238, aucune dépendance réseau.
+    "pyotp>=2.9",
 ]
 
 [project.optional-dependencies]

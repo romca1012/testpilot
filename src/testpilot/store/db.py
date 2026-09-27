@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 51
+_SCHEMA_VERSION = 52
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -244,8 +244,30 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_50_contexte_navigateur(conn)
     if version < 51:
         _migrate_51_project_account(conn)
+    if version < 52:
+        _migrate_52_auth_strategie(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
+
+
+def _migrate_52_auth_strategie(conn: sqlite3.Connection) -> None:
+    """Lot 07b-2 (C2) : la STRATÉGIE de connexion du compte principal d'un projet web générique — comment `before_all` (harnais Behave)
+    obtient une session avant le premier scénario du run, réutilisée ensuite via `storage_state` (jamais recalculée scénario par
+    scénario). Trois colonnes, ajoutées seulement si absentes (idempotent) :
+    - `auth_strategie` : `formulaire` (défaut, comportement actuel) / `totp` / `session_injectee` / `aucune` — CHECK, jamais de valeur
+      brute à l'écran (libellés français `LIBELLES_AUTH_STRATEGIE`, CONTINUITE §4.7) ;
+    - `totp_secret` : chiffré (`store/secrets.py`), le secret TOTP du compte principal (stratégie `totp` seulement) ;
+    - `injected_session` : chiffré, un `storage_state` Playwright DÉJÀ authentifié, fourni par le porteur du projet (stratégie
+      `session_injectee` — SSO d'entreprise) — jamais généré ni deviné par TestPilot.
+    Les comptes SECONDAIRES (`project_account`, lot 07b-1) restent en formulaire simple : cette stratégie ne s'applique qu'au
+    compte PRINCIPAL.
+    """
+    if "auth_strategie" not in _column_names(conn, "project"):
+        conn.execute("ALTER TABLE project ADD COLUMN auth_strategie TEXT NOT NULL DEFAULT 'formulaire'"
+                     " CHECK (auth_strategie IN ('formulaire', 'totp', 'session_injectee', 'aucune'))")
+    for colonne in ("totp_secret", "injected_session"):
+        if colonne not in _column_names(conn, "project"):
+            conn.execute(f"ALTER TABLE project ADD COLUMN {colonne} TEXT NOT NULL DEFAULT ''")
 
 
 def _migrate_51_project_account(conn: sqlite3.Connection) -> None:
