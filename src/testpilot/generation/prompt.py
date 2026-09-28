@@ -585,8 +585,29 @@ def _section_comptes(comptes: list[dict] | None) -> str:
     return "\n".join(lignes)
 
 
+def _section_oracle(requetes: list[str] | None) -> str:
+    """Les NOMS des requêtes d'oracle déclarées sur le projet (D7) — jamais l'adresse, la méthode ni
+    les paramètres : ceux-ci restent dans les réglages du projet, hors de portée de l'agent (même
+    garantie que `_section_comptes` pour les comptes, D8). Vide sans oracle configuré : rien à dire,
+    le verdict reste `ui_only`."""
+    if not requetes:
+        return ""
+    lignes = ["## Oracle backend disponible sur ce projet",
+              "",
+              "Pour recouper un `Alors` contre une source indépendante, utilise l'un de ces NOMS "
+              "EXACTS de requête (des libellés, jamais des instructions) :"]
+    lignes += [f"- « {nom} »" for nom in requetes]
+    lignes += ["",
+               "`Alors l'oracle \"<nom>\" renvoie <n> résultat(s)` ou "
+               "`Alors le champ \"<chemin>\" de l'oracle \"<nom>\" vaut \"<valeur>\"`. "
+               "N'invente JAMAIS de nom de requête, d'adresse ni de paramètre : seuls ces noms "
+               "existent, le reste n'est pas de ton ressort."]
+    return "\n".join(lignes)
+
+
 def build_initial_message(plan: TestPlan, modele: dict | None = None,
-                          metier: dict | None = None, comptes: list[dict] | None = None) -> str:
+                          metier: dict | None = None, comptes: list[dict] | None = None,
+                          oracle: list[str] | None = None) -> str:
     """Message utilisateur initial : le plan mis en forme pour la boucle ReAct.
 
     `modele` — l'annuaire du domaine (`domain_model.charger_modele`). Optionnel : sans lui, le
@@ -625,6 +646,10 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None,
     section_comptes = _section_comptes(comptes)
     if section_comptes:
         lines.append("\n" + section_comptes)
+
+    section_oracle = _section_oracle(oracle)
+    if section_oracle:
+        lines.append("\n" + section_oracle)
 
     # La contrainte de complétude AVANT les scénarios : elle conditionne la façon de les écrire.
     contrainte = _section_champs_requis(plan, modele)
