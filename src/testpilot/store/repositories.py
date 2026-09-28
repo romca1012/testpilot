@@ -116,17 +116,19 @@ class ProjectRepo:
                username: str = "", password: str = "", private: bool = False,
                owner_id: int | None = None, browser_locale: str = "", browser_timezone: str = "",
                browser_viewport: str = "", auth_strategie: str = "formulaire", totp_secret: str = "",
-               injected_session: str = "", profil_instance: str = "") -> int:
+               injected_session: str = "", profil_instance: str = "", oracle_type: str = "",
+               oracle_base_url: str = "", oracle_auth: str = "", oracle_queries: str = "[]") -> int:
         self.ensure_name_free(name)
         cur = self.conn.execute(
             "INSERT INTO project (name, description, connector_type, connector_version,"
             " base_url, database, username, password, created_at, browser_locale, browser_timezone,"
-            " browser_viewport, auth_strategie, totp_secret, injected_session, profil_instance)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " browser_viewport, auth_strategie, totp_secret, injected_session, profil_instance,"
+            " oracle_type, oracle_base_url, oracle_auth, oracle_queries) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (name, description, connector_type, connector_version, base_url, database, username,
              secrets_mod.chiffrer(password), now_iso(), browser_locale, browser_timezone, browser_viewport,
              auth_strategie, secrets_mod.chiffrer(totp_secret), secrets_mod.chiffrer(injected_session),
-             profil_instance))
+             profil_instance, oracle_type, oracle_base_url, secrets_mod.chiffrer(oracle_auth),
+             oracle_queries or "[]"))
         self.conn.commit()
         project_id = int(cur.lastrowid)
         if private:
@@ -148,19 +150,25 @@ class ProjectRepo:
         façon jamais ce champ (write-only depuis `0005`).
         """
         projet = dict(row)
-        for champ in ("password", "totp_secret", "injected_session"):
+        for champ in ("password", "totp_secret", "injected_session", "oracle_auth"):
             if champ in projet:
                 projet[champ] = secrets_mod.dechiffrer(projet[champ])
         return projet
 
     def _avec_libelles_de_comptes(self, projet: dict | None) -> dict | None:
-        """Ajoute `comptes_libelles` (libellé + rôle d'affichage des comptes SECONDAIRES) — c'est ce que l'agent de génération reçoit du
-        projet, et RIEN d'autre sur les comptes (D8, précision 2). Jamais un secret : `ProjectAccountRepo.libelles` n'en lit aucun."""
+        """Ajoute `comptes_libelles` (libellé + rôle d'affichage des comptes SECONDAIRES) et
+        `oracle_requetes_disponibles` (NOMS des requêtes d'oracle déclarées) — c'est ce que l'agent
+        de génération reçoit du projet, et RIEN d'autre sur les comptes ni sur l'oracle (D8,
+        précision 2 ; même garantie pour D7). Jamais un secret : ni `ProjectAccountRepo.libelles`
+        ni `oracle_config.noms_declares` n'en lisent."""
         if projet is not None:
             try:
                 projet["comptes_libelles"] = ProjectAccountRepo(self.conn).libelles(projet["id"])
             except sqlite3.OperationalError:   # base d'avant la migration 51 (tests à schéma minimal)
                 projet["comptes_libelles"] = []
+            from testpilot.connectors import oracle_config as _oracle_config
+            projet["oracle_requetes_disponibles"] = _oracle_config.noms_declares(
+                projet.get("oracle_queries") or "[]")
         return projet
 
     def get(self, project_id: int) -> dict | None:
@@ -210,7 +218,10 @@ class ProjectRepo:
     _CONNEXION = ("connector_type", "connector_version", "base_url", "database", "username",
                   "browser_locale", "browser_timezone", "browser_viewport", "auth_strategie",
                   # Lot 06 (D6) : le profil d'instance n'est pas un secret (comme `connector_version`).
-                  "profil_instance")
+                  "profil_instance",
+                  # Lot 07e (D7) : `oracle_type`/`oracle_base_url`/`oracle_queries` ne sont PAS des
+                  # secrets (comme `base_url`) — `oracle_auth`, lui, suit la règle des secrets ci-dessous.
+                  "oracle_type", "oracle_base_url", "oracle_queries")
 
     def update_connection(self, project_id: int, **champs) -> None:
         """Édite la connexion d'un projet (décision `0005` : elle vit sur le PROJET).
@@ -230,7 +241,7 @@ class ProjectRepo:
         if champs.get("password") is not None:
             sets.append("password=?")
             params.append(secrets_mod.chiffrer(champs["password"]))
-        for champ in ("totp_secret", "injected_session"):
+        for champ in ("totp_secret", "injected_session", "oracle_auth"):
             if champs.get(champ) is not None:
                 sets.append(f"{champ}=?")
                 params.append(secrets_mod.chiffrer(champs[champ]))
