@@ -65,6 +65,16 @@ def _maybe_dry_run(state: AgentState, dry_runner, stall_limit: int) -> str:
 
     if state.stall_count >= stall_limit:
         state.stalled = True
+        # ⚠️ Seule ligne de log de tout ce chemin (2026-09-28) : jusqu'ici, `dry_run_stalled`
+        # perdait le diagnostic (steps `undefined`/`ambiguous`, sortie Behave) sans laisser aucune
+        # trace nulle part — ni ici, ni dans la ligne persistée (`GenerationJobRepo.maj` ne garde
+        # que le mot `dry_run_stalled`). Mesuré en staging : un job resté indiagnosticable faute
+        # de cette ligne.
+        logger.warning(
+            "[react] dry-run stalled pour '%s' après %d tentative(s) identiques — "
+            "undefined=%s ambiguous=%s. Diagnostic Behave : %s",
+            state.module_name, state.stall_count, result.undefined_steps,
+            result.ambiguous_steps, _dryrun_diagnostic(result) or "aucun diagnostic disponible")
         return "stalled"
 
     _append_user_text(
