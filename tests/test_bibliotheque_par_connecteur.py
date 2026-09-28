@@ -94,6 +94,74 @@ def test_catalogue_odoo_scope_egale_le_catalogue_sans_scope(tmp_path):
     assert labels_scopes == labels_sans_scope
 
 
+# ── Lot 06 (D6) : profils d'instance — jamais inclus par défaut, opt-in seulement ──────────────
+
+def test_falsifiable_aucun_profil_n_est_inclus_sans_choix_explicite():
+    """Un `profil_instance` non fourni (ou vide) ne doit JAMAIS faire fuiter un step de profil —
+    ni dans le catalogue, ni dans la copie du runner."""
+    labels = {s.label for s in steps_library.catalogue(connector_type="odoo")}
+    assert 'je force le nom du ticket à "{value}"' not in labels
+    assert 'je clique sur le bouton "{label}" avec accessoires' not in labels
+
+    fichiers = {f.name for f in BehaveRunner(connector_type="odoo")._steps_library_files()}
+    assert "sapian.py" not in fichiers and "demo_saucedemo.py" not in fichiers
+
+
+def test_catalogue_avec_profil_sapian_expose_ses_steps():
+    labels = {s.label for s in steps_library.catalogue(connector_type="odoo", profil_instance="sapian")}
+    assert 'je force le nom du ticket à "{value}"' in labels
+    assert 'je clique sur le bouton "{label}" avec accessoires' not in labels  # profil DIFFÉRENT
+
+
+def test_catalogue_avec_profil_demo_saucedemo_expose_ses_steps():
+    labels = {s.label for s in steps_library.catalogue(connector_type="odoo", profil_instance="demo_saucedemo")}
+    assert 'je clique sur le bouton "{label}" avec accessoires' in labels
+    assert 'je force le nom du ticket à "{value}"' not in labels
+
+
+def test_catalogue_un_profil_inconnu_n_ajoute_rien_ni_ne_leve():
+    labels_sans = {s.label for s in steps_library.catalogue(connector_type="odoo")}
+    labels_inconnu = {s.label for s in steps_library.catalogue(connector_type="odoo",
+                                                               profil_instance="n_existe_pas")}
+    assert labels_sans == labels_inconnu
+
+
+def test_assemble_copie_les_deux_volets_du_profil_sapian_sous_un_nom_canonique(tmp_path):
+    runner = BehaveRunner(connector_type="odoo", profil_instance="sapian")
+    fichiers = runner._profil_files()
+    noms = set(fichiers.values())
+    assert noms == {"_profil_generic.py", "_profil_connecteur.py"}
+    sources = {str(src) for src in fichiers}
+    assert any("generic/profils/sapian.py" in s for s in sources)
+    assert any("odoo/profils/sapian.py" in s for s in sources)
+
+
+def test_assemble_profil_demo_saucedemo_n_a_qu_un_volet_generique(tmp_path):
+    """`demo_saucedemo` n'a un fichier QUE côté `generic/profils/` — aucun fichier
+    `odoo/profils/demo_saucedemo.py` n'existe : `_profil_files` ne doit pas en inventer un."""
+    runner = BehaveRunner(connector_type="odoo", profil_instance="demo_saucedemo")
+    fichiers = runner._profil_files()
+    assert set(fichiers.values()) == {"_profil_generic.py"}
+
+
+def test_assemble_sans_profil_ne_copie_aucun_fichier_canonique(tmp_path):
+    assert BehaveRunner(connector_type="odoo")._profil_files() == {}
+    assert BehaveRunner(connector_type="odoo", profil_instance=None)._profil_files() == {}
+
+
+def test_profils_disponibles_liste_les_profils_reels():
+    from testpilot.generation.steps_library import profils_disponibles
+
+    assert "sapian" in profils_disponibles("odoo")
+    assert "demo_saucedemo" in profils_disponibles("odoo")
+
+
+def test_falsifiable_profils_disponibles_ne_liste_pas_un_nom_invente():
+    from testpilot.generation.steps_library import profils_disponibles
+
+    assert "profil_qui_n_existe_pas" not in profils_disponibles("odoo")
+
+
 def test_sans_connecteur_ne_copie_pas_les_steps_d_un_autre_connecteur_que_le_defaut():
     """Lot 07a : `web/` et `odoo/` déclarent le même libellé « je me connecte avec mes identifiants
     utilisateur » — les copier ensemble ferait lever `AmbiguousStep` à un run sans connecteur résolu

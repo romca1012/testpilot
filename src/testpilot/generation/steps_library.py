@@ -85,8 +85,42 @@ def extract_steps(source_code: str, source: str = "") -> list[SharedStep]:
     return steps
 
 
-def catalogue(directory: Path | None = None, connector_type: str | None = None) -> list[SharedStep]:
-    """Tous les steps de la bibliothèque partagée, éventuellement scopés à un connecteur.
+def _sans_profils(dossier: Path, racine: Path):
+    """Fichiers `.py` de `dossier`, récursivement, en EXCLUANT tout `profils/` (lot 06, D6) — un
+    profil n'est jamais inclus par défaut, seulement sur choix explicite (`_fichiers_profil`)."""
+    if not dossier.exists():
+        return []
+    return [p for p in dossier.rglob("*.py") if "profils" not in p.relative_to(racine).parts]
+
+
+def profils_disponibles(connector_type: str | None, directory: Path | None = None) -> list[str]:
+    """Les noms de profil valides pour `connector_type` (lot 06, D6) — un profil n'existe que s'il
+    a AU MOINS un fichier (`generic/profils/<nom>.py` et/ou `<connector_type>/profils/<nom>.py`).
+    Sert la validation API (`routes/projects.py`) : un `profil_instance` qui n'a NULLE PART de
+    fichier est refusé à la saisie, jamais silencieusement ignoré."""
+    directory = directory or config.STEPS_LIBRARY_DIR
+    noms: set[str] = set()
+    for dossier in (directory / "generic" / "profils",
+                    directory / connector_type / "profils" if connector_type else None):
+        if dossier is not None and dossier.is_dir():
+            noms.update(p.stem for p in dossier.glob("*.py") if not p.stem.startswith("_"))
+    return sorted(noms)
+
+
+def _fichiers_profil(directory: Path, connector_type: str, profil_instance: str | None) -> list[Path]:
+    """Les fichiers `profils/<profil_instance>.py` (volet `generic/` ET `<connector_type>/`) du
+    profil DEMANDÉ — vide si aucun profil choisi, ou si le fichier n'existe pas pour ce volet."""
+    if not profil_instance:
+        return []
+    candidats = [directory / "generic" / "profils" / f"{profil_instance}.py",
+                directory / connector_type / "profils" / f"{profil_instance}.py"]
+    return [c for c in candidats if c.exists()]
+
+
+def catalogue(directory: Path | None = None, connector_type: str | None = None,
+              profil_instance: str | None = None) -> list[SharedStep]:
+    """Tous les steps de la bibliothèque partagée, éventuellement scopés à un connecteur et à un
+    profil d'instance.
 
     Depuis l'audit DA du 2026-08-13, la bibliothèque est rangée en `generic/` (portable, tout
     connecteur) + un sous-dossier par connecteur (`odoo/`, futurs `sap/`, `web/`...) — avant,
@@ -98,17 +132,19 @@ def catalogue(directory: Path | None = None, connector_type: str | None = None) 
     connecteur résolu, jamais plus restrictif que l'historique).
     `connector_type="odoo"` (etc.) : seulement `generic/` + `<connector_type>/` — jamais les steps
     d'un AUTRE connecteur.
+
+    ⚠️ **`profils/` est TOUJOURS exclu de ces deux parcours** (lot 06, D6) : un profil n'est jamais
+    inclus par défaut, seulement sur choix EXPLICITE du projet (`profil_instance`).
     """
     directory = directory or config.STEPS_LIBRARY_DIR
     if not directory.exists():
         return []
     if connector_type is None:
-        paths = directory.rglob("*.py")
+        paths = _sans_profils(directory, directory)
     else:
-        paths = [
-            *((directory / "generic").rglob("*.py") if (directory / "generic").exists() else []),
-            *((directory / connector_type).rglob("*.py") if (directory / connector_type).exists() else []),
-        ]
+        paths = (_sans_profils(directory / "generic", directory)
+                 + _sans_profils(directory / connector_type, directory)
+                 + _fichiers_profil(directory, connector_type, profil_instance))
     steps: list[SharedStep] = []
     for path in sorted(paths):
         try:

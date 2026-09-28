@@ -49,7 +49,8 @@ class RepairProposal:
 
 def build_repair_prompt(connector: Connector | None = None,
                         connector_type: str | None = None,
-                        connector_version: str = "") -> str:
+                        connector_version: str = "",
+                        profil_instance: str | None = None) -> str:
     """Prompt de réparation + catalogue des steps + règles du connecteur.
 
     Même catalogue que la génération : un correctif qui réinvente un step partagé serait rejeté
@@ -70,7 +71,8 @@ def build_repair_prompt(connector: Connector | None = None,
     base = _REPAIR_PROMPT_PATH.read_text(encoding="utf-8")
 
     prefix = ""
-    catalogue = steps_library.as_prompt_section(steps_library.catalogue(connector_type=connector_type))
+    catalogue = steps_library.as_prompt_section(
+        steps_library.catalogue(connector_type=connector_type, profil_instance=profil_instance))
     if catalogue:
         bloc = "## Steps partagés disponibles (à réutiliser)\n\n" + catalogue
         prefix = f"<bibliotheque_de_steps>\n\n{bloc}\n\n</bibliotheque_de_steps>\n\n---\n\n"
@@ -152,6 +154,7 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
                 memoire: str = "",
                 llm: LLMAdapter | None = None, connector: Connector | None = None,
                 connector_type: str | None = None, connector_version: str = "",
+                profil_instance: str | None = None,
                 dry_runner: DryRunner | None = None,
                 cost_tracker: CostTracker | None = None,
                 max_iterations: int | None = None,
@@ -187,7 +190,7 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
                            "content": _failure_report(scenarios, failures, steps_content,
                                                       memoire)})
 
-    shared_steps = steps_library.catalogue(connector_type=connector_type)
+    shared_steps = steps_library.catalogue(connector_type=connector_type, profil_instance=profil_instance)
     ctx = ToolContext(
         module_name=module_name,
         generated_dir=config.GENERATED_DIR,
@@ -197,7 +200,7 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
     run_loop(
         llm=llm,
         model=config.MODEL_REPAIR,
-        system_prompt=build_repair_prompt(connector, connector_type, connector_version),
+        system_prompt=build_repair_prompt(connector, connector_type, connector_version, profil_instance),
         state=state,
         ctx=ctx,
         dry_runner=dry_runner,

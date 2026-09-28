@@ -46,7 +46,8 @@ class CorrectionProposal:
 
 def build_correction_prompt(connector: Connector | None = None,
                             connector_type: str | None = None,
-                            connector_version: str = "") -> str:
+                            connector_version: str = "",
+                            profil_instance: str | None = None) -> str:
     """Prompt de correction + catalogue des steps + règles du connecteur — même patron que
     `repair_agent.build_repair_prompt`."""
     from testpilot.generation.prompt import _nom_connecteur
@@ -54,7 +55,8 @@ def build_correction_prompt(connector: Connector | None = None,
     base = _CORRECTION_PROMPT_PATH.read_text(encoding="utf-8")
 
     prefix = ""
-    catalogue = steps_library.as_prompt_section(steps_library.catalogue(connector_type=connector_type))
+    catalogue = steps_library.as_prompt_section(
+        steps_library.catalogue(connector_type=connector_type, profil_instance=profil_instance))
     if catalogue:
         bloc = "## Steps partagés disponibles (à réutiliser)\n\n" + catalogue
         prefix = f"<bibliotheque_de_steps>\n\n{bloc}\n\n</bibliotheque_de_steps>\n\n---\n\n"
@@ -102,6 +104,7 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
                        feature_content: str, steps_content: str,
                        llm: LLMAdapter | None = None, connector: Connector | None = None,
                        connector_type: str | None = None, connector_version: str = "",
+                       profil_instance: str | None = None,
                        dry_runner: DryRunner | None = None,
                        cost_tracker: CostTracker | None = None,
                        max_iterations: int | None = None,
@@ -120,7 +123,7 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
     state.messages.append({"role": "user",
                            "content": _signal_report(lint_warnings, feature_content, steps_content)})
 
-    shared_steps = steps_library.catalogue(connector_type=connector_type)
+    shared_steps = steps_library.catalogue(connector_type=connector_type, profil_instance=profil_instance)
     ctx = ToolContext(
         module_name=module_name,
         generated_dir=config.GENERATED_DIR,
@@ -131,7 +134,7 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
     run_loop(
         llm=llm,
         model=config.MODEL_REPAIR,
-        system_prompt=build_correction_prompt(connector, connector_type, connector_version),
+        system_prompt=build_correction_prompt(connector, connector_type, connector_version, profil_instance),
         state=state,
         ctx=ctx,
         dry_runner=dry_runner,

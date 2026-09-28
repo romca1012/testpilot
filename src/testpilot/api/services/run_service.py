@@ -177,6 +177,12 @@ def resolve_connector_type(conn, case_id: int) -> str | None:
     return (project_du_cas(conn, case_id) or {}).get("connector_type")
 
 
+def resolve_profil_instance(conn, case_id: int) -> str | None:
+    """Le `profil_instance` du PROJET du cas (lot 06, D6) — que le runner copie en plus de
+    `generic/`/`<connecteur>/`. Vide/absent → `None`, aucun profil (comportement inchangé)."""
+    return (project_du_cas(conn, case_id) or {}).get("profil_instance") or None
+
+
 def _assurer_script_sur_disque(conn, version_id: int, module_name: str) -> None:
     """Réécrit le `.feature`/`_steps.py` de CETTE version sur disque avant de l'exécuter.
 
@@ -223,7 +229,8 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
         # Le runtime tape l'application DU PROJET du cas (décision 0005).
         runner = BehaveRunner(connection=resolve_connection(conn, case_id),
                               project_id=resolve_project_id(conn, case_id),
-                              connector_type=resolve_connector_type(conn, case_id))
+                              connector_type=resolve_connector_type(conn, case_id),
+                              profil_instance=resolve_profil_instance(conn, case_id))
         outcome = _execute_and_persist(conn, execution_id, case_id, module_name, runner,
                                        **({'qualification': True} if qualification else {}),
                                        **({'strict': True} if strict else {}))
@@ -475,6 +482,9 @@ def _persist(conn, execution_id, case_id, verdict, outcome, duration, module_nam
     # application passerait inaperçu (verdict 0007 n°2). Aucun run réel (erreur technique
     # avant l'exécution) → liste vide.
     fallbacks = outcome.real_run.field_fallbacks if outcome.real_run is not None else []
+    # Résidus de teardown (lot 06, F6) — même motif que les replis ci-dessus : informatif, attaché
+    # à l'exécution pour rester lisible a posteriori.
+    residus = outcome.real_run.residus if outcome.real_run is not None else []
 
     # ⚠️ Le commentaire (§A) est généré ICI, AVANT `finalize` : le registre écrit ses lignes une
     # fois pour toutes (§7, `ResultRepo`), donc le texte doit être prêt AU MOMENT de l'INSERT — une
@@ -488,6 +498,7 @@ def _persist(conn, execution_id, case_id, verdict, outcome, duration, module_nam
         scenarios_passed=verdict.scenarios_passed, scenarios_failed=verdict.scenarios_failed,
         cost_usd=0.0, iterations=0, duration_seconds=duration,
         field_fallbacks=json.dumps(fallbacks, ensure_ascii=False) if fallbacks else "",
+        residus=json.dumps(residus, ensure_ascii=False) if residus else "",
         comment=commentaire, confiance=verdict.confiance)
     # Les captures, elles, peuvent s'attacher APRÈS coup sans rompre l'invariant : elles vivent
     # dans `result_attachment`, une table à part (même exception déjà documentée pour
