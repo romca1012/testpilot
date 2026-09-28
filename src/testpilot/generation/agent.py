@@ -79,7 +79,8 @@ class GenerationAgent:
         # Version DÉCLARÉE de l'instance (migration 38) — simple contexte informatif transmis au
         # prompt, jamais une contrainte : vide (indéterminée) ⇒ aucune mention.
         connector_version = (projet or {}).get("connector_version", "")
-        shared_steps = steps_library.catalogue(connector_type=connector_type)
+        shared_steps = steps_library.catalogue(
+            connector_type=connector_type, profil_instance=(projet or {}).get("profil_instance"))
         ctx = ToolContext(
             module_name=plan.module_name,
             generated_dir=config.GENERATED_DIR,
@@ -218,8 +219,3 @@ class GenerationAgent:
         result.case_id = case_id
         result.version_id = version_id
         result.awaiting_review = True
-
-    @staticmethod
-    def _reserved_steps() -> frozenset[str]:
-        """Libellés de steps de la bibliothèque partagée (best-effort ; vide si absente)."""
-        return steps_library.reserved_labels()

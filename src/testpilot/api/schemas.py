@@ -60,6 +60,9 @@ class ProjectSummary(BaseModel):
     auth_strategie: str = "formulaire"
     has_totp_secret: bool = False
     has_injected_session: bool = False
+    # Lot 06 (D6) : le profil d'instance inclus pour ce projet — vide = aucun (comportement
+    # inchangé). Pas un secret : juste un nom de fichier sur disque, validé à la saisie.
+    profil_instance: str = ""
     module_count: int = 0
     case_count: int = 0
     effective_role: str = ""
@@ -218,6 +221,9 @@ class ExecutionSummary(BaseModel):
     # mal paramétré, soit un champ réellement renommé côté application. Présent même sur un run
     # vert — c'est là que le repli serait autrement invisible.
     field_fallbacks: list[str] = []
+    # Résidus de teardown (lot 06, F6) : enregistrements ni supprimés ni archivés, et ids relevés
+    # au-dessus d'un `max_id` mais jamais enregistrés — jamais bloquant, même motif que ci-dessus.
+    residus: list[str] = []
     # Raison d'un plantage AVANT tout scénario (migration 11). Vide sur un run normal : un
     # échec de scénario s'explique par ses `scenario_results`, pas par ce champ.
     error_message: str = ""
@@ -480,6 +486,8 @@ class ProjectIn(BaseModel):
     auth_strategie: str = "formulaire"
     totp_secret: str = ""
     injected_session: str = ""
+    # Lot 06 (D6) : le profil d'instance — pas un secret, validé à la saisie (nom de fichier réel).
+    profil_instance: str = ""
 
 
 class ProjectPatch(BaseModel):
@@ -503,6 +511,8 @@ class ProjectPatch(BaseModel):
     auth_strategie: str | None = None
     totp_secret: str | None = None
     injected_session: str | None = None
+    # Lot 06 : `None` = n'y touche pas ; `""` = revenir à « aucun profil ».
+    profil_instance: str | None = None
     # `None` = n'y touche pas, comme les autres champs de ce PATCH — pas de `""` ambigu possible
     # pour un booléen, mais la même discipline (silence = inchangé) s'applique.
     calibration_writes_enabled: bool | None = None
@@ -1243,6 +1253,7 @@ def project_summary(row: dict) -> ProjectSummary:
         browser_avertissements=_contexte_avertissements(row),
         auth_strategie=row.get("auth_strategie", "") or "formulaire",
         has_totp_secret=bool(row.get("totp_secret")), has_injected_session=bool(row.get("injected_session")),
+        profil_instance=row.get("profil_instance", "") or "",
         module_count=row.get("module_count", 0), case_count=row.get("case_count", 0),
         effective_role=row.get("effective_role", ""))
 
@@ -1332,6 +1343,7 @@ def execution_summary(row: dict, *, running: bool = False) -> ExecutionSummary:
         duration_seconds=row.get("duration_seconds", 0.0),
         started_at=row.get("started_at", ""), running=running,
         field_fallbacks=_field_fallbacks(row.get("field_fallbacks")),
+        residus=_field_fallbacks(row.get("residus")),
         error_message=row.get("error_message", "") or "",
         case_title=row.get("case_title"), module_name=row.get("module_name"),
         suite_name=row.get("suite_name"),

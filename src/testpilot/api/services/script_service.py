@@ -47,10 +47,12 @@ def resoudre_script_effectif(conn, *, case_id: int, version_id: int) -> dict:
 
     case = CaseRepo(conn).get(case_id)
     project_id = (case or {}).get("project_id")
-    connector_type = (ProjectRepo(conn).get(project_id) or {}).get("connector_type") \
-        if project_id else None
+    projet = ProjectRepo(conn).get(project_id) if project_id else None
+    connector_type = (projet or {}).get("connector_type")
+    profil_instance = (projet or {}).get("profil_instance")
 
-    catalogue = steps_library.catalogue(connector_type=connector_type)
+    catalogue = steps_library.catalogue(connector_type=connector_type,
+                                        profil_instance=profil_instance)
     referenced = steps_library.match_referenced(feature_content, catalogue)
     code_par_label = steps_library.load_step_source(referenced)
 
