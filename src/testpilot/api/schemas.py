@@ -64,6 +64,13 @@ class ProjectSummary(BaseModel):
     # Lot 06 (D6) : le profil d'instance inclus pour ce projet — vide = aucun (comportement
     # inchangé). Pas un secret : juste un nom de fichier sur disque, validé à la saisie.
     profil_instance: str = ""
+    # Lot 07e (C5, D7) : oracle backend HTTP optionnel — `oracle_auth` (secret) n'est JAMAIS exposé
+    # (write-only, même règle que `password`) : `has_oracle_auth` dit seulement s'il est enregistré.
+    # `oracle_queries` : les requêtes NOMMÉES déclarées (pas un secret), éditables dans les réglages.
+    oracle_type: str = ""
+    oracle_base_url: str = ""
+    oracle_queries: list[dict] = []
+    has_oracle_auth: bool = False
     module_count: int = 0
     case_count: int = 0
     effective_role: str = ""
@@ -489,6 +496,12 @@ class ProjectIn(BaseModel):
     injected_session: str = ""
     # Lot 06 (D6) : le profil d'instance — pas un secret, validé à la saisie (nom de fichier réel).
     profil_instance: str = ""
+    # Lot 07e (C5, D7) : oracle backend HTTP optionnel. `oracle_auth` : secret, JSON
+    # `{"type": "bearer"|"basic"|"en-tete"|"aucune", ...}`, accepté en entrée seulement.
+    oracle_type: str = ""
+    oracle_base_url: str = ""
+    oracle_auth: str = ""
+    oracle_queries: str = "[]"
 
 
 class ProjectPatch(BaseModel):
@@ -514,6 +527,11 @@ class ProjectPatch(BaseModel):
     injected_session: str | None = None
     # Lot 06 : `None` = n'y touche pas ; `""` = revenir à « aucun profil ».
     profil_instance: str | None = None
+    # Lot 07e : `None` = n'y touche pas ; `oracle_auth` suit la règle des secrets (`""` = vide explicitement).
+    oracle_type: str | None = None
+    oracle_base_url: str | None = None
+    oracle_auth: str | None = None
+    oracle_queries: str | None = None
     # `None` = n'y touche pas, comme les autres champs de ce PATCH — pas de `""` ambigu possible
     # pour un booléen, mais la même discipline (silence = inchangé) s'applique.
     calibration_writes_enabled: bool | None = None
@@ -1265,6 +1283,17 @@ def account_out(row: dict, *, principal: bool = False) -> AccountOut:
                       principal=principal)
 
 
+def _oracle_queries_out(row: dict) -> list[dict]:
+    """Les requêtes NOMMÉES de l'oracle (pas un secret) — `oracle_auth`, lui, n'est jamais lu ici."""
+    import json as _json
+
+    try:
+        requetes = _json.loads(row.get("oracle_queries") or "[]")
+    except (ValueError, TypeError):
+        return []
+    return requetes if isinstance(requetes, list) else []
+
+
 def project_summary(row: dict) -> ProjectSummary:
     return ProjectSummary(
         id=row["id"], name=row["name"], description=row.get("description", ""),
@@ -1280,6 +1309,8 @@ def project_summary(row: dict) -> ProjectSummary:
         auth_strategie=row.get("auth_strategie", "") or "formulaire",
         has_totp_secret=bool(row.get("totp_secret")), has_injected_session=bool(row.get("injected_session")),
         profil_instance=row.get("profil_instance", "") or "",
+        oracle_type=row.get("oracle_type", "") or "", oracle_base_url=row.get("oracle_base_url", "") or "",
+        oracle_queries=_oracle_queries_out(row), has_oracle_auth=bool(row.get("oracle_auth")),
         module_count=row.get("module_count", 0), case_count=row.get("case_count", 0),
         effective_role=row.get("effective_role", ""))
 
