@@ -120,17 +120,20 @@ def odoo_attendre_inactif(page, timeout: int = 8000) -> None:
 
 
 def odoo_url_action(context, *, action: int | str | None = None, menu_id: int | str | None = None,
-                    model: str | None = None, view_type: str | None = None) -> str:
+                    model: str | None = None, view_type: str | None = None,
+                    record_id: int | str | None = None) -> str:
     """URL vers une action Odoo — forme dépendant de la version détectée (`context.odoo_version`,
     posée par `environment.odoo_session`) :
 
-    - `>= (17, 2)` (web client récent) : `/odoo/action-<action>` — la seule forme du client récent
-      qui ne dépend pas de connaître le slug lisible d'un modèle (non disponible ici).
+    - `>= (17, 2)` (web client récent) : `/odoo/action-<action>` (+ `/<record_id>` si fourni) —
+      la seule forme du client récent qui ne dépend pas de connaître le slug lisible d'un modèle
+      (non disponible ici).
     - sinon (D9 : 16.0, 17.0 — web client historique) : `/web#action=<action>&menu_id=<menu_id>
-      &model=<model>&view_type=<view_type>`, même motif que `environment.navigate_menu`.
+      &model=<model>&view_type=<view_type>` (+ `&id=<record_id>` si fourni), même motif que
+      `environment.navigate_menu`.
 
-    Au moins `action` est requis dans les deux formes ; `menu_id`/`model`/`view_type` sont ajoutés
-    à la forme historique s'ils sont fournis, jamais inventés.
+    Au moins `action` est requis dans les deux formes ; `menu_id`/`model`/`view_type`/`record_id`
+    sont ajoutés à la forme historique s'ils sont fournis, jamais inventés.
     """
     base = context.odoo_url.rstrip("/")
     version = getattr(context, "odoo_version", None)
@@ -138,7 +141,10 @@ def odoo_url_action(context, *, action: int | str | None = None, menu_id: int | 
     if recent:
         if action is None:
             raise ValueError("odoo_url_action : 'action' est requis pour la forme /odoo/… (>= 17.2)")
-        return f"{base}/odoo/action-{action}"
+        url = f"{base}/odoo/action-{action}"
+        if record_id is not None:
+            url += f"/{record_id}"
+        return url
     parties = []
     if action is not None:
         parties.append(f"action={action}")
@@ -148,4 +154,22 @@ def odoo_url_action(context, *, action: int | str | None = None, menu_id: int | 
         parties.append(f"model={model}")
     if view_type is not None:
         parties.append(f"view_type={view_type}")
+    if record_id is not None:
+        parties.append(f"id={record_id}")
     return f"{base}/web#" + "&".join(parties)
+
+
+# Identifiant Odoo dans l'URL après une action (création/sauvegarde) — deux conventions selon la
+# version, même motif que `connectors/odoo.py::_ID_DEPUIS_URL_ODOO` (dupliqué ici : ce fichier vit
+# hors du paquet `testpilot`, dans la bibliothèque de steps à plat — même raison que les sidecars
+# dupliqués entre `environment.py` et `execution/behave_result.py`).
+_ID_DEPUIS_URL = re.compile(r"[?&#]id=(\d+)\b|/(\d+)(?:[/?#]|$)")
+
+
+def id_depuis_url(url: str) -> int | None:
+    """L'id Odoo porté par `url` (légale ou récente), `None` si absent — jamais deviné."""
+    m = _ID_DEPUIS_URL.search(url)
+    if not m:
+        return None
+    brut = m.group(1) or m.group(2)
+    return int(brut) if brut else None
