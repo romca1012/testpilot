@@ -7,7 +7,7 @@ rien » — invariant boîte noire).
 
 import json
 
-from testpilot.analysis.spec_analyzer import SpecAnalyzer, spec_hash
+from testpilot.analysis.spec_analyzer import SpecAnalyzer, _aplatir_espaces, spec_hash
 
 
 class FakeLLM:
@@ -155,6 +155,53 @@ def test_une_citation_reformulee_ne_suffit_pas():
     })
     plan = SpecAnalyzer(llm=FakeLLM([plan_json])).analyze_spec_content(
         "m", "Le bouton Confirmer crée un equipment.order dans Parc IT.")
+
+    assert plan.models == []
+
+
+# ── Habillage de ligne (bug mesuré en staging, 2026-09-28) ───────────────────
+#
+# La spec source est écrite en paragraphes habillés (retours à la ligne au milieu d'une
+# phrase) — le modèle recopie naturellement la phrase SANS ce `\n` de présentation. Une
+# comparaison caractère pour caractère rejetait alors une citation pourtant réelle,
+# systématiquement, dès qu'elle traversait un tel retour à la ligne.
+
+def test_aplatir_espaces_replie_un_retour_a_la_ligne_en_simple_espace():
+    assert _aplatir_espaces("unique,\ncompléter tous") == "unique, compléter tous"
+    assert _aplatir_espaces("  a   b\t\nc  ") == "a b c"
+    assert _aplatir_espaces("") == ""
+
+
+def test_une_citation_qui_traverse_un_retour_a_la_ligne_de_la_spec_est_retenue():
+    spec = ("Le module Parc IT du back-office Odoo permet à la DSI et à l'équipe IT "
+           "d'enregistrer\nchaque équipement informatique de l'entreprise avant qu'il ne soit "
+           "affecté.")
+    plan_json = json.dumps({
+        "models": [{"name": "it.equipment",
+                   "citation": ("Le module Parc IT du back-office Odoo permet à la DSI et à "
+                                "l'équipe IT d'enregistrer chaque équipement informatique de "
+                                "l'entreprise")}],
+        "scenarios": [{"name": "[Nominal]", "type": "nominal", "action": "créer",
+                      "persona": "u", "preconditions": [], "expected_outcome": "ok",
+                      "models_involved": []}],
+    })
+    plan = SpecAnalyzer(llm=FakeLLM([plan_json])).analyze_spec_content("m", spec)
+
+    assert plan.models == ["it.equipment"]
+
+
+def test_falsifiable_une_citation_reellement_absente_reste_ecartee_habillage_ou_pas():
+    """Preuve que l'aplatissement ne fait pas disparaître le garde-fou : un modèle dont AUCUNE
+    citation n'existe réellement dans la spec — habillage ou pas — reste écarté."""
+    spec = "Le module Parc IT permet d'enregistrer chaque équipement informatique."
+    plan_json = json.dumps({
+        "models": [{"name": "helpdesk.ticket",
+                   "citation": "crée un helpdesk.ticket rattaché au demandeur"}],
+        "scenarios": [{"name": "[Nominal]", "type": "nominal", "action": "créer",
+                      "persona": "u", "preconditions": [], "expected_outcome": "ok",
+                      "models_involved": []}],
+    })
+    plan = SpecAnalyzer(llm=FakeLLM([plan_json])).analyze_spec_content("m", spec)
 
     assert plan.models == []
 
