@@ -174,7 +174,7 @@ répétée (12), au même titre que les lots 01-03.
 | 06 | terminé (poussé sur `lot-06-nettoyage-profils`, revue verdict-reviewer faite — 1 passe « à corriger » puis confirmée après correction, non fusionné) | 2026-09-28 | `docs/RAPPORT-LOT-06-2026-09-28.md` |
 | 07a | terminé (fusionné le 2026-09-24, revue faite) | 2026-09-24 | `docs/RAPPORT-LOT-07A-2026-09-24.md` ; PR n° 8 (https://github.com/romca1012/testpilot/pull/8) ; mesures : `docs/mesures/lot07a-connexion-execution-2026-09-24.md` |
 | 07b-e | en cours — **07c terminé** (fusionné le 2026-09-25, revue faite, banc 16.0/17.0/18.0 vert) ; **07d terminé** (fusionné le 2026-09-26, 2 revues faites, 2 bloquants et 11 points corrigés, banc 16.0/17.0/18.0 vert) ; à faire dans l'ordre : 07b (D8), 07e HTTP (D7 ; l'oracle SQL est un sous-lot séparé plus tard) | 2026-09-26 | 07c : `docs/RAPPORT-LOT-07C-2026-09-25.md` ; PR n° 17 (https://github.com/romca1012/testpilot/pull/17) ; filtre du banc : PR n° 18 ; 07d : `docs/RAPPORT-LOT-07D-2026-09-25.md` ; PR n° 21 (https://github.com/romca1012/testpilot/pull/21) |
-| 08 | à faire | | |
+| 08 | partiel — **08a/08b/08c/08d implémentés et testés** (poussé sur `lot-08a-detection-version`, non fusionné) ; **table de sélecteurs, rapport PDF et société de travail non vérifiés sur banc réel** (pas de démon Docker dans ce cloud) ; **critères d'acceptation (flux bout en bout, I1=0) et test `conformance_odoo` non faits**, à reprendre sur banc | 2026-09-28 | `docs/RAPPORT-LOT-08-2026-09-28.md` |
 | 09 | à faire | | |
 | 10 | à faire | | |
 | 11 | terminé | 2026-09-24 | `docs/RAPPORT-LOT-11-2026-09-24.md` |
