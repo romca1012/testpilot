@@ -67,7 +67,8 @@ class GenerationAgent:
         modele = domain_model.charger_modele(projet)
         state.messages.append({"role": "user",
                                "content": prompt_mod.build_initial_message(
-                                   plan, modele, metier, comptes=(projet or {}).get("comptes_libelles"))})
+                                   plan, modele, metier, comptes=(projet or {}).get("comptes_libelles"),
+                                   oracle=(projet or {}).get("oracle_requetes_disponibles"))})
         if failure_context:
             state.messages[0]["content"] = [
                 {"type": "text", "text": state.messages[0]["content"]}, *failure_context]

@@ -218,6 +218,84 @@ def test_write_steps_file_refuse_le_transport_et_guide(tmp_path):
     assert not (tmp_path / "m_steps.py").exists()      # rien n'est écrit
 
 
+def test_write_steps_file_refuse_un_import_direct_du_client_oracle(tmp_path):
+    """Lot 07e (D7) : l'oracle backend n'est interrogé QUE via les requêtes NOMMÉES du catalogue
+    (`l'oracle "<nom>" renvoie …`) — un import direct du client contournerait le catalogue."""
+    ctx = ToolContext(module_name="m", generated_dir=tmp_path, reserved_steps=frozenset())
+    code = (
+        "from behave import then\n"
+        "from testpilot.connectors.oracle_http import OracleHttp\n"
+        "@then(u'verification maison')\n"
+        "def s(context):\n"
+        "    OracleHttp('http://interne').executer('x')\n"
+    )
+    outcome = write_steps_file(ctx, code)
+
+    assert outcome.ok is False
+    assert "TRANSPORT_INTERDIT" in outcome.observation
+    assert not (tmp_path / "m_steps.py").exists()
+
+
+def test_falsifiable_write_steps_file_refuse_l_import_du_sous_module_depuis_le_paquet_parent(tmp_path):
+    """Revue du lot 07e (2026-09-28, 1re passe) : `from testpilot.connectors.oracle_http import …`
+    était détecté, mais PAS `from testpilot.connectors import oracle_http` — une forme tout aussi
+    naturelle, qui contournait entièrement le garde."""
+    ctx = ToolContext(module_name="m", generated_dir=tmp_path, reserved_steps=frozenset())
+    code = (
+        "from behave import then\n"
+        "from testpilot.connectors import oracle_http\n"
+        "@then(u'verification maison')\n"
+        "def s(context):\n"
+        "    oracle_http.OracleHttp('http://interne').executer('x')\n"
+    )
+    outcome = write_steps_file(ctx, code)
+
+    assert outcome.ok is False
+    assert "TRANSPORT_INTERDIT" in outcome.observation
+    assert not (tmp_path / "m_steps.py").exists()
+
+
+def test_falsifiable_write_steps_file_refuse_l_import_du_paquet_puis_l_acces_par_attribut(tmp_path):
+    """Revue du lot 07e (2026-09-28, 2e passe) : `import testpilot.connectors` puis
+    `testpilot.connectors.oracle_http.OracleHttp(...)` par ATTRIBUT ne nomme « oracle » nulle part
+    dans la clause d'import — un garde limité aux sous-modules de l'oracle ne le voit jamais
+    (`_base_helpers.py` a déjà importé `oracle_http` au niveau module, ce qui le rend accessible
+    comme attribut du paquet `testpilot.connectors` en mémoire). Le garde bannit désormais TOUTE
+    la racine `testpilot` dans un step généré, pas seulement ses sous-modules d'oracle."""
+    ctx = ToolContext(module_name="m", generated_dir=tmp_path, reserved_steps=frozenset())
+    code = (
+        "from behave import then\n"
+        "import testpilot.connectors\n"
+        "@then(u'verification maison')\n"
+        "def s(context):\n"
+        "    testpilot.connectors.oracle_http.OracleHttp('http://interne').executer('x')\n"
+    )
+    outcome = write_steps_file(ctx, code)
+
+    assert outcome.ok is False
+    assert "TRANSPORT_INTERDIT" in outcome.observation
+    assert not (tmp_path / "m_steps.py").exists()
+
+
+def test_falsifiable_write_steps_file_refuse_une_source_forgee_sur_constater(tmp_path):
+    """Revue du lot 07e (2026-09-28, 2e passe) : `source=` distingue un constat RECOUPÉ contre
+    l'oracle backend (ground_truth = backend_verified) d'un constat ordinaire — un step généré ne
+    doit jamais pouvoir le forger lui-même pour revendiquer un recoupement qui n'a jamais eu lieu."""
+    ctx = ToolContext(module_name="m", generated_dir=tmp_path, reserved_steps=frozenset())
+    code = (
+        "from behave import then\n"
+        "from _base_helpers import constater\n"
+        "@then(u'verification maison')\n"
+        "def s(context):\n"
+        "    constater(True, 'ok', source='oracle')\n"
+    )
+    outcome = write_steps_file(ctx, code)
+
+    assert outcome.ok is False
+    assert "SOURCE_FORGEE" in outcome.observation
+    assert not (tmp_path / "m_steps.py").exists()
+
+
 def test_write_steps_file_detecte_la_collision_sur_libelle_entier(tmp_path):
     """Avec l'extraction AST, un libellé multi-ligne est enfin comparable (la regex le
     tronquait → la collision passait inaperçue)."""

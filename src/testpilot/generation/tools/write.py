@@ -46,11 +46,17 @@ def _forbidden_transport(tree: ast.AST, content: str) -> str:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 root = alias.name.split(".")[0]
-                if root in _FORBIDDEN_IMPORTS:
+                if root in _FORBIDDEN_IMPORTS or root == "testpilot":
                     return f"import de `{alias.name}`"
         elif isinstance(node, ast.ImportFrom) and node.module:
             root = node.module.split(".")[0]
-            if root in _FORBIDDEN_IMPORTS:
+            # Lot 07e (D7, revue du 2026-09-28) : le paquet applicatif `testpilot` n'est JAMAIS
+            # importé par un step généré (le prompt système n'enseigne que `_base_helpers`,
+            # `features.environment`, `behave`) — bannir la RACINE entière, pas seulement un
+            # sous-module précis, ferme aussi un contournement PAR ATTRIBUT (importer un paquet
+            # PARENT puis nommer un sous-module sensible en pointillé dans le code, jamais dans une
+            # clause `import`/`from` — donc invisible à une détection limitée à un sous-module précis).
+            if root in _FORBIDDEN_IMPORTS or root == "testpilot":
                 return f"import depuis `{node.module}`"
 
     for endpoint in _FORBIDDEN_ENDPOINTS:
@@ -130,6 +136,27 @@ def _nom_appele(noeud: ast.Call) -> str:
         return cible.id
     if isinstance(cible, ast.Attribute):
         return cible.attr
+    return ""
+
+
+def _forbidden_source_kwarg(tree: ast.AST) -> str:
+    """Décrit un appel `constater(..., source=...)` LITTÉRAL (lot 07e, D7), sinon chaîne vide.
+
+    ⚠️ **Message précoce, pas la garantie elle-même** (revue du 2026-09-28, 3e passe). La 2e revue a
+    montré qu'une garde par AST limitée à cette forme se contourne par un 3e argument POSITIONNEL,
+    un déballage `**{...}` ou un alias d'import (`from _base_helpers import constater as c`) — trois
+    formes qu'aucune détection AST ne ferme EXHAUSTIVEMENT (un agent peut toujours renommer,
+    déballer ou compter les positions). La VRAIE garantie tient désormais à la SIGNATURE de
+    `constater(condition, message)` elle-même (`_base_helpers.py`, plus de paramètre `source`
+    du tout) : un 3e argument, sous QUELQUE forme que ce soit, lève un `TypeError` au lieu de forger
+    un signal. Ce garde-ci ne fait que transformer le cas le plus probable (le mot-clé littéral,
+    celui qu'un agent écrirait naturellement après avoir vu `source` dans un message d'erreur ou une
+    trace) en un refus déterministe AVANT le run, plutôt qu'en un crash runtime moins lisible.
+    """
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and _nom_appele(node) == "constater"
+                and any(kw.arg == "source" for kw in node.keywords)):
+            return "argument `source=` d'un appel à `constater`"
     return ""
 
 
@@ -318,6 +345,18 @@ def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
             "\"<modèle>\" est enregistré pour comparaison », puis « … augmente de 1 » ou "
             "« … n'a pas augmenté ». Si le besoin n'est pas couvert, dis-le dans ta réponse "
             "plutôt que de compter toi-même.",
+            ok=False,
+        )
+
+    # 3ter. Aucun `source=` forgé sur `constater(...)` (lot 07e, D7) : régime BLOQUANT, comme le
+    # transport et le comptage — seuls les helpers internes de la bibliothèque le renseignent.
+    source_forgee = _forbidden_source_kwarg(tree)
+    if source_forgee:
+        return _outcome(
+            f"[write_steps_file] SOURCE_FORGEE : {source_forgee}. Un step ne revendique pas lui-même "
+            "un recoupement contre l'oracle backend — utilise les steps du catalogue "
+            "(« l'oracle \"<nom>\" renvoie <n> résultat(s) », « le champ \"<chemin>\" de l'oracle "
+            "\"<nom>\" vaut \"<valeur>\" ») ; `constater(...)` s'appelle sans `source=`.",
             ok=False,
         )
 
