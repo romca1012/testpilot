@@ -99,13 +99,22 @@ def step_ajouter_ligne_x2many(context, champ):
 
 @when("j'enregistre le document")
 def step_enregistrer_document(context):
+    """Échec bruyant si l'id créé n'est pas lisible dans l'URL post-sauvegarde — mesuré en run
+    réel (staging Parc IT, 2026-09-28) : le silence laissait `context.last_record_ids` vide, et
+    le vrai problème ne se voyait que deux steps plus loin, en `IndexError` sur
+    `_record_courant` (`_odoo_effets_steps.py`) — un step sans rapport avec la cause réelle.
+    L'URL est dans le message : la prochaine mesure dira si `id_depuis_url` doit apprendre un
+    nouveau motif, plutôt que de deviner un motif non observé."""
     page = context.page
     click_first_actionable(page, selecteurs("enregistrer", context.odoo_version),
                            quoi="bouton Enregistrer")
     odoo_attendre_inactif(page)
     id_cree = id_depuis_url(page.url)
-    if id_cree is not None:
-        context.last_record_ids = [id_cree]
+    if id_cree is None:
+        raise RuntimeError(
+            "j'enregistre le document : aucun id d'enregistrement lisible dans l'URL après "
+            f"l'enregistrement ({page.url!r}) — la sauvegarde a-t-elle réellement eu lieu ?")
+    context.last_record_ids = [id_cree]
 
 
 @when("j'annule les modifications")

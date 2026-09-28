@@ -216,14 +216,20 @@ def test_enregistrer_document_clique_puis_capture_l_id_depuis_l_url(monkeypatch)
     assert ctx.last_record_ids == [42]
 
 
-def test_enregistrer_document_sans_id_dans_l_url_ne_pose_rien(monkeypatch):
+def test_enregistrer_document_sans_id_dans_l_url_echoue_bruyamment(monkeypatch):
+    """Bug mesuré en run réel (staging Parc IT, 2026-09-28, cas « Créer et confirmer un
+    équipement ») : le silence d'avant laissait `last_record_ids` vide, et le vrai problème ne se
+    voyait que deux steps plus loin, en `IndexError` sur un step sans rapport (`_record_courant`).
+    Un échec ICI, avec l'URL dans le message, est falsifiable : il prouve que l'absence d'id est
+    désormais détectée au bon endroit, pas ignorée."""
     steps = _charger_gestion_steps()
     page = types.SimpleNamespace(url="https://x.example.com/web#action=808")
     monkeypatch.setattr(steps, "click_first_actionable", lambda p, c, quoi: None)
     monkeypatch.setattr(steps, "odoo_attendre_inactif", lambda p: None)
     ctx = types.SimpleNamespace(page=page, odoo_version=(17, 0))
 
-    steps.step_enregistrer_document(ctx)
+    with pytest.raises(RuntimeError, match="aucun id d'enregistrement lisible"):
+        steps.step_enregistrer_document(ctx)
 
     assert not hasattr(ctx, "last_record_ids")
 
