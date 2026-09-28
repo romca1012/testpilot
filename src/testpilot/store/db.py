@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 52
+_SCHEMA_VERSION = 53
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -246,8 +246,28 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_51_project_account(conn)
     if version < 52:
         _migrate_52_auth_strategie(conn)
+    if version < 53:
+        _migrate_53_profils_et_teardown(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
+
+
+def _migrate_53_profils_et_teardown(conn: sqlite3.Connection) -> None:
+    """Lot 06 (D6, F6) : profils d'instance + résidus de teardown. Deux colonnes, ajoutées
+    seulement si absentes (idempotent) :
+    - `project.profil_instance` : le profil `behave_runtime/steps_library/<connecteur>/profils/`
+      (et/ou `generic/profils/`) à inclure pour ce projet — vide par défaut (comportement inchangé,
+      aucun profil). Pas de CHECK : un profil est un fichier sur disque, pas une valeur d'enum figée
+      en base — un nom inconnu est refusé à la SAISIE (API), jamais silencieusement ignoré.
+    - `execution.residus` : JSON (liste de messages), les enregistrements que le teardown n'a pas pu
+      supprimer/archiver, et les ids trouvés au-dessus du max_id relevé mais JAMAIS enregistrés par
+      ce scénario (résidu possible : tiers ou effet de bord, jamais supprimé automatiquement) — même
+      motif que `field_fallbacks` (informatif, jamais bloquant).
+    """
+    if "profil_instance" not in _column_names(conn, "project"):
+        conn.execute("ALTER TABLE project ADD COLUMN profil_instance TEXT NOT NULL DEFAULT ''")
+    if "residus" not in _column_names(conn, "execution"):
+        conn.execute("ALTER TABLE execution ADD COLUMN residus TEXT NOT NULL DEFAULT ''")
 
 
 def _migrate_52_auth_strategie(conn: sqlite3.Connection) -> None:
