@@ -273,20 +273,55 @@ def test_confirmer_dialogue_clique_le_bouton_principal(monkeypatch):
 
 # ── barre d'état / liste filtrée ────────────────────────────────────────────────
 
+class _ExpectTexte:
+    """Double de `playwright.sync_api.expect`, même patron que
+    `tests/test_constater_helpers.py::_Expect` — réussit ou lève selon le texte RÉELLEMENT
+    comparé à `attendu`, pour que le test prouve un VRAI échec, pas un espion qui ne lève jamais."""
+
+    def __init__(self, texte_reel, journal):
+        self._texte_reel = texte_reel
+        self._journal = journal
+
+    def __call__(self, locator):
+        self._journal.append(locator)
+        return self
+
+    def to_contain_text(self, attendu, **_options):
+        if attendu not in self._texte_reel:
+            raise AssertionError(
+                f"Locator expected to contain text {attendu!r}, got {self._texte_reel!r}")
+
+
 def test_etape_affichee_constate_le_texte_de_la_barre_de_statut(monkeypatch):
     steps = _charger_gestion_steps()
-    appels = []
-    monkeypatch.setattr(steps, "constater_texte",
-                        lambda loc, attendu, message="": appels.append((loc, attendu)))
+    import _base_helpers as H
+    monkeypatch.setattr(H, "expect", _ExpectTexte("Confirmé", []))
 
     class _P:
         def locator(self, sel):
-            return f"LOC({sel})"
+            return sel
 
     ctx = types.SimpleNamespace(page=_P(), odoo_version=(17, 0))
-    steps.step_etape_affichee(ctx, "Confirmé")
 
-    assert appels == [('LOC(.o_statusbar_status [aria-checked="true"])', "Confirmé")]
+    steps.step_etape_affichee(ctx, "Confirmé")  # ne lève pas : le texte réel contient l'attendu
+
+
+def test_falsifiable_etape_affichee_echoue_si_le_libelle_reel_differe(monkeypatch):
+    """Preuve négative : la barre de statut affiche RÉELLEMENT « Brouillon », le step attend
+    « Confirmé » — sans cette preuve, un espion qui ne lève jamais laisserait croire que le step
+    constate quelque chose alors qu'il ne prouverait jamais un désaccord réel (revue du lot 08)."""
+    steps = _charger_gestion_steps()
+    import _base_helpers as H
+    monkeypatch.setattr(H, "expect", _ExpectTexte("Brouillon", []))
+
+    class _P:
+        def locator(self, sel):
+            return sel
+
+    ctx = types.SimpleNamespace(page=_P(), odoo_version=(17, 0))
+
+    with pytest.raises(AssertionError):
+        steps.step_etape_affichee(ctx, "Confirmé")
 
 
 def test_liste_n_enregistrements_constate_le_compte():
