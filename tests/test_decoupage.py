@@ -157,6 +157,44 @@ def test_une_citation_reformulee_ne_suffit_pas():
     assert stories == []
 
 
+# ── Habillage de ligne (bug mesuré en staging, 2026-09-28) ───────────────────
+#
+# La spec source est écrite en paragraphes habillés (retours à la ligne au milieu d'une
+# phrase, pour la lisibilité) — le modèle recopie naturellement la phrase SANS ce `\n` de
+# présentation. Une comparaison caractère pour caractère rejetait alors une citation pourtant
+# réelle, systématiquement, dès qu'elle traversait un tel retour à la ligne.
+
+def test_une_citation_qui_traverse_un_retour_a_la_ligne_de_la_spec_est_acceptee():
+    spec = ("Parcours : créer un équipement avec une combinaison de données de recette valide "
+           "et unique,\ncompléter tous les champs obligatoires observés, puis cliquer sur "
+           "Confirmer.")
+    payload = json.dumps({"stories": [
+        {"user_story": "Création d'un équipement",
+         "citation": ("créer un équipement avec une combinaison de données de recette valide et "
+                      "unique, compléter tous les champs obligatoires observés"),
+         "cases": [{"title": "Créer et confirmer", "brief": "b"}]},
+    ]})
+
+    stories = propose_decoupage(_plan(spec), llm=FakeLLM(payload))
+
+    assert [s.user_story for s in stories] == ["Création d'un équipement"]
+
+
+def test_falsifiable_une_citation_reellement_absente_reste_ecartee_habillage_ou_pas():
+    """Preuve que l'aplatissement ne fait pas disparaître le garde-fou : une citation qui n'est
+    RÉELLEMENT nulle part dans la spec — habillage ou pas — reste rejetée."""
+    spec = "Parcours : créer un équipement avec une combinaison de données de recette valide."
+    payload = json.dumps({"stories": [
+        {"user_story": "Suppression du compte",
+         "citation": "la suppression du compte est instantanée et irréversible",
+         "cases": [{"title": "Suppression", "brief": "b"}]},
+    ]})
+
+    stories = propose_decoupage(_plan(spec), llm=FakeLLM(payload))
+
+    assert stories == []
+
+
 def test_story_plan_as_dict_porte_le_meme_patron_que_metier_writer():
     from testpilot.generation.decoupage import CaseBrief
 
