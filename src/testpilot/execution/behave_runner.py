@@ -31,6 +31,8 @@ from testpilot.execution.behave_result import (
     SELECTOR_TIER_FILENAME,
     CONSTATS_FILE_ENV,
     CONSTATS_FILENAME,
+    RESIDUS_FILE_ENV,
+    RESIDUS_FILENAME,
     BehaveResult,
     parse_behave_json,
     rattacher_constats,
@@ -38,6 +40,7 @@ from testpilot.execution.behave_result import (
     read_field_fallbacks,
     read_menus_appris,
     read_refus_mesures,
+    read_residus,
     read_selector_tiers,
 )
 
@@ -52,7 +55,8 @@ class BehaveRunner:
     def __init__(self, *, runtime_dir: Path | None = None, generated_dir: Path | None = None,
                  steps_library_dir: Path | None = None, dry_timeout: int | None = None,
                  real_timeout: int | None = None, connection: dict[str, str] | None = None,
-                 project_id: int | None = None, connector_type: str | None = None):
+                 project_id: int | None = None, connector_type: str | None = None,
+                 profil_instance: str | None = None):
         self.runtime_dir = runtime_dir or config.BEHAVE_RUNTIME_DIR
         self.generated_dir = generated_dir or config.GENERATED_DIR
         self.steps_library_dir = steps_library_dir or config.STEPS_LIBRARY_DIR
@@ -62,6 +66,10 @@ class BehaveRunner:
         # run_dir — `generic/` + `<connector_type>/` seulement. None (défaut) = tout copier, comme
         # avant la séparation par connecteur (repli sûr, jamais moins de steps qu'aujourd'hui).
         self.connector_type = connector_type
+        # Profil d'instance du projet (lot 06, D6) : vide/None = aucun profil, comportement
+        # inchangé. Voir `_profil_files` — jamais inclus dans le scope `generic/`/`<connecteur>/`
+        # par défaut (les dossiers `profils/` en sont exclus, opt-in seulement).
+        self.profil_instance = profil_instance or None
         # Connexion du PROJET (variables d'env) injectée dans le sous-processus behave.
         # Vide → le harnais retombe sur la config globale (.env). Cf. connectors/runtime_env.
         self.connection = connection or {}
@@ -115,7 +123,8 @@ class BehaveRunner:
                REGLES_REFUS_FILE_ENV: str(run_dir / REGLES_REFUS_FILENAME),
                SELECTOR_TIER_FILE_ENV: str(run_dir / SELECTOR_TIER_FILENAME),
                MENU_LEARNED_FILE_ENV: str(run_dir / MENU_LEARNED_FILENAME),
-               CONSTATS_FILE_ENV: str(run_dir / CONSTATS_FILENAME)}
+               CONSTATS_FILE_ENV: str(run_dir / CONSTATS_FILENAME),
+               RESIDUS_FILE_ENV: str(run_dir / RESIDUS_FILENAME)}
         # `src` importable dans le sous-processus : le résolveur déterministe (§2bis) importe
         # `testpilot.generation.{valeur_conforme,domain_model}`. Sans ça, `python -m behave`
         # (cwd = run_dir jetable) ne voit pas le paquet `testpilot`. On PRÉPEND pour primer sur
@@ -208,6 +217,10 @@ class BehaveRunner:
             # « aucun constat » n'y voudrait rien dire. Même moment de lecture (avant le rmtree).
             if not dry_run:
                 rattacher_constats(result, read_constats(run_dir / CONSTATS_FILENAME))
+            # Résidus de teardown (lot 06, F6) — run RÉEL seulement, même raison que les constats :
+            # un dry-run n'exécute aucun `after_scenario`, rien à lire. Même moment de lecture.
+            if not dry_run:
+                result.residus = read_residus(run_dir / RESIDUS_FILENAME)
             return result
         finally:
             shutil.rmtree(run_dir, ignore_errors=True)
@@ -342,6 +355,7 @@ class BehaveRunner:
                 (run_dir / REGLES_REFUS_FILENAME, f"{prefixe}.refus-mesures.jsonl"),
                 (run_dir / SELECTOR_TIER_FILENAME, f"{prefixe}.paliers-de-selecteur.jsonl"),
                 (run_dir / MENU_LEARNED_FILENAME, f"{prefixe}.menus-appris.jsonl"),
+                (run_dir / RESIDUS_FILENAME, f"{prefixe}.residus-teardown.txt"),
             ):
                 if source.exists():
                     shutil.copy2(source, self.artifacts_dir / cible)
@@ -376,6 +390,10 @@ class BehaveRunner:
         SANS décorateur à la racine (`_base_helpers.py`, `_accent_matcher.py`) sont TOUJOURS
         copiés, scope ou pas, car les steps de `generic/`/`<connector>/` les importent au
         runtime (`from _base_helpers import ...`) — les exclure casserait tout run.
+
+        ⚠️ **`profils/` en est TOUJOURS exclu** (lot 06, D6) : un profil n'est inclus que sur choix
+        EXPLICITE du projet (`profil_instance`), jamais par défaut — voir `_profil_files`, seul
+        point d'entrée qui copie un fichier de `profils/`, et seulement CELUI choisi.
         """
         if self.connector_type is None:
             # « Tout copier » = ce que la bibliothèque contenait AVANT la séparation par connecteur, donc
@@ -384,13 +402,37 @@ class BehaveRunner:
             # sont jamais chargés ensemble, et « je me connecte avec mes identifiants utilisateur »
             # existe dans les deux (`AmbiguousStep`).
             return [f for f in self.steps_library_dir.rglob("*.py")
-                    if f.relative_to(self.steps_library_dir).parts[0] != "web"]
+                    if f.relative_to(self.steps_library_dir).parts[0] != "web"
+                    and "profils" not in f.relative_to(self.steps_library_dir).parts]
         fichiers = list(self.steps_library_dir.glob("*.py"))  # helpers à la racine, toujours
         for sous_dossier in ("generic", self.connector_type):
             chemin = self.steps_library_dir / sous_dossier
             if chemin.exists():
-                fichiers.extend(chemin.rglob("*.py"))
+                fichiers.extend(f for f in chemin.rglob("*.py")
+                                if "profils" not in f.relative_to(chemin).parts)
         return fichiers
+
+    def _profil_files(self) -> dict[Path, str]:
+        """Le(s) fichier(s) du profil `self.profil_instance` à copier, sous un nom CANONIQUE — jamais
+        le nom original (deux profils différents porteraient sinon des noms différents, imprévisibles
+        pour `environment.py`, qui doit pouvoir importer `apres_scenario` sans connaître le nom du
+        profil). Rend `{chemin_source: nom_dans_steps_dir}` ; vide si aucun profil choisi.
+
+        `_profil_generic.py` (volet `generic/profils/<profil>.py`, s'il existe) : SES steps sont
+        auto-enregistrés par Behave (tout fichier de `steps/`), aucun import n'est nécessaire.
+        `_profil_connecteur.py` (volet `<connecteur>/profils/<profil>.py`, s'il existe) : PEUT
+        aussi exposer `apres_scenario(context)`, importé par `environment.py` sous ce nom canonique.
+        """
+        if not self.profil_instance:
+            return {}
+        sources = {
+            self.steps_library_dir / "generic" / "profils" / f"{self.profil_instance}.py":
+                "_profil_generic.py",
+        }
+        if self.connector_type:
+            sources[self.steps_library_dir / self.connector_type / "profils"
+                    / f"{self.profil_instance}.py"] = "_profil_connecteur.py"
+        return {src: nom for src, nom in sources.items() if src.exists()}
 
     def _assemble(self, run_dir: Path, module_name: str, feature_src: Path) -> None:
         """Recopie environment.py, le formatter, la bibliothèque de steps + les steps générés,
@@ -411,6 +453,8 @@ class BehaveRunner:
         if self.steps_library_dir.exists():
             for lib in self._steps_library_files():
                 shutil.copy2(lib, steps_dir / lib.name)
+            for src, nom_canonique in self._profil_files().items():
+                shutil.copy2(src, steps_dir / nom_canonique)
         gen_steps = self.generated_dir / f"{module_name}_steps.py"
         if gen_steps.exists():
             shutil.copy2(gen_steps, steps_dir / gen_steps.name)

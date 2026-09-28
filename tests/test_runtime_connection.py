@@ -14,6 +14,8 @@ from testpilot.connectors.runtime_env import project_env
 from testpilot.execution.behave_result import (
     FIELD_FALLBACK_FILE_ENV,
     FIELD_FALLBACK_FILENAME,
+    RESIDUS_FILE_ENV,
+    RESIDUS_FILENAME,
 )
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.store.db import get_initialized_db
@@ -129,6 +131,14 @@ def test_runner_designe_toujours_le_sidecar_des_replis(tmp_path):
     # Sans cette variable, le helper ne consigne rien et B+ redevient aveugle (0007 B+).
     env = BehaveRunner()._subprocess_env(tmp_path)
     assert env[FIELD_FALLBACK_FILE_ENV] == str(tmp_path / FIELD_FALLBACK_FILENAME)
+
+
+def test_runner_designe_toujours_le_sidecar_des_residus(tmp_path):
+    # Même accord que ci-dessus, pour les résidus de teardown (lot 06, F6) : sans cette variable,
+    # `environment.py` n'a nulle part où consigner un résidu, et `_signaler_residus_possibles`
+    # redevient silencieux.
+    env = BehaveRunner()._subprocess_env(tmp_path)
+    assert env[RESIDUS_FILE_ENV] == str(tmp_path / RESIDUS_FILENAME)
 
 
 def test_deux_appels_successifs_produisent_des_jetons_de_tentative_differents(tmp_path):

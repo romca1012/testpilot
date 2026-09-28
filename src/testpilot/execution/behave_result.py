@@ -64,6 +64,10 @@ class BehaveResult:
     # Niveau RUN : on ne les rattache pas au scénario (corréler l'ordre des logs aux scénarios
     # serait fragile pour un bénéfice marginal).
     field_fallbacks: list[str] = field(default_factory=list)
+    # Résidus de teardown (lot 06, F6) : enregistrements ni supprimés ni archivés, et ids relevés
+    # au-dessus d'un `max_id` mais jamais enregistrés par le scénario (résidu possible : tiers ou
+    # effet de bord). Niveau RUN, même raison que `field_fallbacks`.
+    residus: list[str] = field(default_factory=list)
     # Refus MESURÉS sur l'application pendant le run (§5bis n°1). Niveau RUN, même raison.
     # Ce sont des FAITS, pas un verdict : ils n'influencent aucun statut, ils alimentent
     # l'apprentissage pour que le résolveur ne reproduise plus la valeur refusée.
@@ -171,6 +175,14 @@ FIELD_FALLBACK_FILENAME = "field_fallbacks.txt"
 
 _MAX_FIELD_FALLBACKS = 20
 
+# Sidecar des RÉSIDUS de teardown (lot 06, F6). Mêmes noms DUPLIQUÉS côté `behave_runtime/
+# environment.py` (le harnais ne dépend pas du paquet applicatif), même motif que les autres
+# sidecars ci-dessus — accord tenu par test.
+RESIDUS_FILE_ENV = "TP_RESIDUS_FILE"
+RESIDUS_FILENAME = "residus.txt"
+
+_MAX_RESIDUS = 50
+
 # Sidecar des refus MESURÉS pendant le run (§5bis n°1 — « la règle apprise à chaque refus »).
 # Mêmes noms dupliqués côté ``_base_helpers``, pour la même raison, et le même test d'accord.
 REGLES_REFUS_FILE_ENV = "TP_REGLES_REFUS_FILE"
@@ -223,6 +235,26 @@ def read_field_fallbacks(path, limit: int = _MAX_FIELD_FALLBACKS) -> list[str]:
             if len(found) >= limit:
                 break
     return found
+
+
+def read_residus(path, limit: int = _MAX_RESIDUS) -> list[str]:
+    """Résidus de teardown consignés pendant le run (lot 06, F6) — même format et même raison
+    qu'un fichier plutôt que la sortie de Behave que `read_field_fallbacks` (un scénario vert ne
+    recrache rien). PAS dédupliqué (contrairement aux replis) : deux résidus de scénarios
+    différents peuvent porter le même modèle/id sans être le même fait. Fichier absent = aucun
+    résidu (cas nominal), jamais une erreur."""
+    try:
+        content = Path(path).read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return []
+    messages: list[str] = []
+    for line in content.splitlines():
+        message = line.strip()
+        if message:
+            messages.append(message)
+            if len(messages) >= limit:
+                break
+    return messages
 
 
 def read_refus_mesures(path, limit: int = _MAX_REFUS) -> list[dict]:
