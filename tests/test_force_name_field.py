@@ -12,9 +12,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"))
+_STEPS_LIB = Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"
+sys.path.insert(0, str(_STEPS_LIB))
+sys.path.insert(0, str(_STEPS_LIB / "generic" / "profils"))
 
-from _base_helpers import force_name_field  # noqa: E402
+from sapian import force_name_field  # noqa: E402
 
 
 class _LocatorConteneur:

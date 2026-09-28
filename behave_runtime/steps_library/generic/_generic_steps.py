@@ -15,7 +15,7 @@ from _base_helpers import (
     fill_field, select_field_value, click_button,
     attach_file, leave_field_empty, click_first_actionable,
     no_error_with_keywords, validation_error_inline,
-    wait_form_submission, force_name_field, remplir_formulaire_valide,
+    wait_form_submission, remplir_formulaire_valide,
     select_product_in_list, select_product_partial, NavigationImpossibleError,
     connexion_web_utilisateur,
     # Vocabulaire universel (lot 07d) — imports au NIVEAU MODULE, jamais différés (`steps/` sort du sys.path après le chargement).
@@ -110,12 +110,6 @@ def step_leave_empty(context, field):
     leave_field_empty(context.page, field)
 
 
-@given('je force le nom du ticket à "{value}"')
-@when('je force le nom du ticket à "{value}"')
-def step_force_name(context, value):
-    force_name_field(context.page, value)
-
-
 @when("j'attends la soumission du formulaire")
 @then("j'attends la soumission du formulaire")
 def step_wait_form(context):
@@ -207,14 +201,6 @@ def step_select_product_in_list(context, name):
 @when('je sélectionne le produit dans la liste contenant "{partial}"')
 def step_select_product_partial(context, partial):
     select_product_partial(context.page, partial)
-
-
-@given('je clique sur le bouton "{label}" avec accessoires')
-@when('je clique sur le bouton "{label}" avec accessoires')
-def step_click_button_with_accessoires(context, label):
-    click_first_actionable(context.page,
-        [f".btn-{label}", f":is(button, a):has-text('{label}')"],
-        quoi=f"Bouton '{label}' (accessoires)")
 
 
 @when('j\'accède à la section "{section_name}" du portail')
