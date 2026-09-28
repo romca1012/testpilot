@@ -28,6 +28,24 @@ def spec_hash(content: str) -> str:
     return hashlib.sha1((content or "").encode("utf-8")).hexdigest()[:12]
 
 
+_ESPACES = re.compile(r"\s+")
+
+
+def _aplatir_espaces(texte: str) -> str:
+    """Réplie tout run d'espaces (espace, tabulation, retour à la ligne) en un seul espace.
+
+    ⚠️ **Bug mesuré en staging (2026-09-28)** : une citation vérifiée par simple sous-chaîne
+    (`citation.lower() in contenu_lower`) rejetait systématiquement des extraits pourtant
+    RÉELS de la spec dès qu'ils traversaient un retour à la ligne d'habillage — la spec source
+    contient `"...unique,\\ncompléter..."` (habillage de ligne à ~90 caractères), le modèle cite
+    naturellement `"...unique, compléter..."` (un `\\n` de mise en forme n'est pas un caractère
+    qu'un modèle reproduit fidèlement, il n'a pas de valeur sémantique). Comparer les DEUX côtés
+    après ce repli laisse le garde-fou anti-hallucination intact (la citation doit toujours être
+    un extrait réel du texte source) sans le faire dépendre d'un artefact de présentation.
+    """
+    return _ESPACES.sub(" ", texte or "").strip()
+
+
 def _parse_nav_steps(raw: list | None) -> list[NavStep]:
     out: list[NavStep] = []
     for n in raw or []:
@@ -74,13 +92,16 @@ def _citer_ou_retirer(entries: list, content: str, module_name: str) -> list[str
     apparaît tel quel dans la spec, jamais accepté à l'aveugle.
     """
     retenues: list[str] = []
-    contenu_lower = content.lower()
+    # Aplati (jamais le contenu affiché/stocké ailleurs, seulement CETTE comparaison) : un
+    # retour à la ligne d'habillage dans la spec source ne doit pas faire échouer une citation
+    # par ailleurs réelle (voir `_aplatir_espaces`).
+    contenu_lower = _aplatir_espaces(content).lower()
     for entree in entries or []:
         if isinstance(entree, str):
             nom = entree.strip()
             if not nom:
                 continue
-            if nom.lower() in contenu_lower:
+            if _aplatir_espaces(nom).lower() in contenu_lower:
                 retenues.append(nom)
             else:
                 logger.warning(
@@ -93,7 +114,7 @@ def _citer_ou_retirer(entries: list, content: str, module_name: str) -> list[str
         citation = str(entree.get("citation", "")).strip()
         if not nom:
             continue
-        if citation and citation.lower() in contenu_lower:
+        if citation and _aplatir_espaces(citation).lower() in contenu_lower:
             retenues.append(nom)
         else:
             logger.warning(
