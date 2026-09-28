@@ -107,6 +107,7 @@ def create_project(body: schemas.ProjectIn, request: Request = None, conn=Depend
     _refuser_contexte_invalide(body.browser_locale, body.browser_timezone, body.browser_viewport)
     _refuser_strategie_invalide(body.auth_strategie, body.totp_secret, body.injected_session)
     _refuser_profil_invalide(body.connector_type, body.profil_instance)
+    _refuser_oracle_invalide(body.oracle_type, body.oracle_base_url, body.oracle_auth, body.oracle_queries)
     try:
         project_id = ProjectRepo(conn).create(
             name=body.name.strip(), description=body.description,
@@ -117,7 +118,9 @@ def create_project(body: schemas.ProjectIn, request: Request = None, conn=Depend
             browser_locale=body.browser_locale.strip(), browser_timezone=body.browser_timezone.strip(),
             browser_viewport=body.browser_viewport.strip(),
             auth_strategie=body.auth_strategie, totp_secret=body.totp_secret, injected_session=body.injected_session,
-            profil_instance=body.profil_instance)
+            profil_instance=body.profil_instance,
+            oracle_type=body.oracle_type, oracle_base_url=body.oracle_base_url,
+            oracle_auth=body.oracle_auth, oracle_queries=body.oracle_queries)
     except DuplicateName as exc:
         raise _conflict(exc) from exc
     return schemas.project_summary(_summary_row(conn, project_id))
@@ -156,6 +159,15 @@ def _refuser_profil_invalide(connector_type: str, profil_instance: str) -> None:
                    f"« {connector_type} » (disponibles : {', '.join(disponibles) or 'aucun'})")
 
 
+def _refuser_oracle_invalide(oracle_type: str, base_url: str, auth: str, queries: str) -> None:
+    """422 en français clair si la configuration de l'oracle backend est mal formée (lot 07e, D7)."""
+    from testpilot.connectors.oracle_config import erreurs as erreurs_oracle
+
+    problemes = erreurs_oracle(oracle_type, base_url, auth, queries)
+    if problemes:
+        raise HTTPException(status_code=422, detail="; ".join(problemes))
+
+
 @router.patch("/{project_id}", response_model=schemas.ProjectSummary,
              dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
 def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get_conn)):
@@ -180,6 +192,14 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
         _refuser_profil_invalide(
             body.connector_type if body.connector_type is not None else actuel.get("connector_type", "odoo"),
             body.profil_instance)
+    if (body.oracle_type is not None or body.oracle_base_url is not None
+            or body.oracle_auth is not None or body.oracle_queries is not None):
+        actuel = ProjectRepo(conn).get(project_id) or {}
+        _refuser_oracle_invalide(
+            body.oracle_type if body.oracle_type is not None else actuel.get("oracle_type", ""),
+            body.oracle_base_url if body.oracle_base_url is not None else actuel.get("oracle_base_url", ""),
+            body.oracle_auth if body.oracle_auth is not None else "",
+            body.oracle_queries if body.oracle_queries is not None else actuel.get("oracle_queries", "[]"))
     repo = ProjectRepo(conn)
     try:
         if body.name is not None:
@@ -197,7 +217,9 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
         browser_timezone=None if body.browser_timezone is None else body.browser_timezone.strip(),
         browser_viewport=None if body.browser_viewport is None else body.browser_viewport.strip(),
         auth_strategie=body.auth_strategie, totp_secret=body.totp_secret, injected_session=body.injected_session,
-        profil_instance=body.profil_instance)
+        profil_instance=body.profil_instance,
+        oracle_type=body.oracle_type, oracle_base_url=body.oracle_base_url,
+        oracle_auth=body.oracle_auth, oracle_queries=body.oracle_queries)
     if body.calibration_writes_enabled is not None:
         repo.set_calibration_writes_enabled(project_id, body.calibration_writes_enabled)
     return schemas.project_summary(_summary_row(conn, project_id))
