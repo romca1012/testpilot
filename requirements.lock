@@ -99,6 +99,8 @@ pydantic-core==2.46.5
     # via pydantic
 pyee==13.0.1
     # via playwright
+pyotp==2.10.0
+    # via testpilot (pyproject.toml)
 pypdfium2==5.13.0
     # via pdfplumber
 python-docx==1.2.0
