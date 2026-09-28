@@ -38,7 +38,7 @@ def test_un_alors_qui_constate_deux_fois_ecrit_deux_lignes(sidecar):
     H.constater(1 == 1, "a")
     H.constater("x" in "xyz", "b")
 
-    assert sidecar() == [{"scenario": "[Nominal] test", "step_type": "then", "ok": True}] * 2
+    assert sidecar() == [{"scenario": "[Nominal] test", "step_type": "then", "ok": True, "source": ""}] * 2
 
 
 def test_un_constat_echoue_leve_avec_son_message_et_ecrit_ok_false(sidecar):
@@ -46,6 +46,50 @@ def test_un_constat_echoue_leve_avec_son_message_et_ecrit_ok_false(sidecar):
         H.constater(2 == 3, "attendu 3, obtenu 2")
 
     assert [l["ok"] for l in sidecar()] == [False]
+
+
+# ── `source` n'est PAS un paramètre de `constater` (lot 07e, revue du 2026-09-28, 3e passe) ─────
+#
+# Une 1re version portait `source` comme paramètre nommé de `constater(condition, message, source)`,
+# fermée par une garde AST dans `generation/tools/write.py` — contournable par un 3e argument
+# POSITIONNEL, un déballage `**{...}` ou un alias d'import, trois formes qu'aucune détection AST
+# n'aurait pu fermer EXHAUSTIVEMENT. La signature publique de `constater` ne reçoit plus que
+# `(condition, message)` : ces trois contournements lèvent maintenant un `TypeError` — un signal
+# `source="oracle"` ne peut plus être forgé par AUCUNE forme d'appel d'un step généré.
+
+def test_falsifiable_un_troisieme_argument_positionnel_leve_typeerror():
+    with pytest.raises(TypeError):
+        H.constater(True, "ok", "oracle")
+
+
+def test_falsifiable_un_argument_source_par_mot_cle_leve_typeerror():
+    with pytest.raises(TypeError):
+        H.constater(True, "ok", source="oracle")
+
+
+def test_falsifiable_un_deballage_kwargs_leve_typeerror():
+    with pytest.raises(TypeError):
+        H.constater(True, **{"message": "ok", "source": "oracle"})
+
+
+def test_falsifiable_un_alias_d_import_ne_contourne_rien_le_meme_objet_refuse_source(sidecar):
+    """`from _base_helpers import constater as c` (motif enseigné par le prompt système pour
+    `constater_visible`) reste le MÊME objet fonction — la restriction de signature s'applique
+    quel que soit le nom local utilisé pour l'appeler."""
+    c = H.constater
+    with pytest.raises(TypeError):
+        c(True, "ok", source="oracle")
+    assert sidecar() == []  # rien n'a été consigné : l'appel a échoué avant `_consigner_constat`
+
+
+def test_source_du_constat_est_reservee_aux_helpers_internes_de_l_oracle(sidecar):
+    """Seuls `oracle_renvoie_n_resultats`/`oracle_champ_vaut` posent la source, via la variable de
+    contexte `_source_du_constat` — jamais un paramètre qu'un step généré pourrait renseigner."""
+    with H._source_du_constat("oracle"):
+        H.constater(True, "recoupe")
+    H.constater(True, "ordinaire")
+
+    assert [l["source"] for l in sidecar()] == ["oracle", ""]
 
 
 def test_le_type_de_step_courant_accompagne_le_constat(sidecar):
