@@ -26,6 +26,15 @@ _STEP_GENERIC = (
     "    pass\n"
 )
 
+_STEP_GIVEN_ET_WHEN = (
+    "from behave import given, when\n\n"
+    '@given(\'je clique sur le bouton "{label}"\')\n'
+    '@when(\'je clique sur le bouton "{label}"\')\n'
+    "def step_click(context, label):\n"
+    '    """Clique un bouton."""\n'
+    "    pass\n"
+)
+
 
 @pytest.fixture
 def conn(tmp_path, monkeypatch):
@@ -86,6 +95,25 @@ def test_steps_content_vide_mais_steps_partages_trouves_rend_un_effectif_non_vid
     assert resultat["steps_content"] == ""
     assert resultat["steps_effectif"].strip() != ""
     assert "def step_fill" in resultat["steps_effectif"]
+
+
+def test_step_given_et_when_sur_le_meme_libelle_napparait_quune_fois(conn, tmp_path):
+    """Bug mesuré en staging (2026-09-28, cas Parc IT) : un step partagé enregistré à la fois en
+    @given et @when (même libellé) apparaissait DEUX FOIS dans l'onglet Script — `match_referenced`
+    en fait deux entrées catalogue distinctes (clé (keyword, label)), et l'assemblage ne
+    dédoublonnait pas avant d'ajouter le code résolu à la liste affichée."""
+    generic = tmp_path / "steps_lib" / "generic"
+    (generic / "_boutons_steps.py").write_text(_STEP_GIVEN_ET_WHEN, encoding="utf-8")
+
+    feature = (
+        "# language: fr\nFonctionnalité: X\n  Scénario: Y\n"
+        '    Quand je clique sur le bouton "Valider"\n'
+    )
+    cid, vid = _cas_avec_version(conn, feature_content=feature, steps_content="")
+    resultat = script_service.resoudre_script_effectif(conn, case_id=cid, version_id=vid)
+
+    assert len(resultat["shared_steps"]) == 1
+    assert resultat["steps_effectif"].count("def step_click(context, label):") == 1
 
 
 def test_aucun_step_du_feature_ne_matche_le_catalogue_rend_effectif_egal_au_propre(conn):
