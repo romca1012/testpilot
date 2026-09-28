@@ -161,9 +161,19 @@ def _doit_ouvrir_session_odoo(connector_type: str) -> bool:
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 @fixture
 def odoo_session(context):
-    """Ouvre une session OdooRPC pour le scénario."""
+    """Ouvre une session OdooRPC pour le scénario.
+
+    ⚠️ **Écart au texte du lot 08a** : la version détectée (`context.odoo_version`) est posée ICI,
+    pas dans `before_all`. `odoorpc.ODOO(...)` détecte déjà la version automatiquement à la
+    CONSTRUCTION (appel `/web/webclient/version_info`, avant même `.login()`) — la lire depuis
+    `before_all` aurait exigé une connexion RPC jetable, rien qu'à cette fin, alors que chaque
+    scénario en ouvre déjà une ici. Même résultat (disponible pour tout scénario), sans aller-retour
+    RPC superflu.
+    """
     import odoorpc
     from urllib.parse import urlparse
+
+    from _selecteurs import parser_version
 
     parsed = urlparse(_ODOO_URL)
     host = parsed.hostname or "localhost"
@@ -171,6 +181,7 @@ def odoo_session(context):
     protocol = "jsonrpc+ssl" if parsed.scheme == "https" else "jsonrpc"
 
     context.odoo = odoorpc.ODOO(host, protocol=protocol, port=port)
+    context.odoo_version = parser_version(context.odoo.version)
     context.odoo.login(_ODOO_DB, _ODOO_USER, _ODOO_PASSWORD)
     yield context.odoo
 
