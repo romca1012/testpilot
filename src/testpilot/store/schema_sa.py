@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 56
+ALIGNED_WITH_SCHEMA_VERSION = 57
 
 metadata = MetaData()
 
@@ -92,6 +92,14 @@ project = Table(
     # <connecteur>/profils/` et/ou `generic/profils/`) — vide = aucun profil (comportement inchangé).
     # Pas un enum : un profil est un fichier sur disque, validé à la saisie (API), pas par un CHECK.
     Column("profil_instance", Text, nullable=False, server_default=""),
+    # Migration 57 (lot 07e) : l'oracle backend HTTP optionnel — un accès en LECTURE indépendant qui
+    # recoupe le verdict d'un cas sur le connecteur web générique (`ground_truth`). Vide = aucun oracle
+    # (comportement inchangé). `oracle_queries` : requêtes NOMMÉES déclarées par le projet, jamais
+    # écrites par l'agent (D7 ; même garantie que D8 pour les comptes).
+    Column("oracle_type", Text, nullable=False, server_default=""),
+    Column("oracle_base_url", Text, nullable=False, server_default=""),
+    Column("oracle_auth", Text, nullable=False, server_default=""),
+    Column("oracle_queries", Text, nullable=False, server_default="[]"),
     Column("deleted_at", Text, nullable=False, server_default=""),
     Column("deleted_by", Text, nullable=False, server_default=""),
     Column("created_at", Text, nullable=False),
@@ -100,6 +108,7 @@ project = Table(
     CheckConstraint("connector_type IN ('odoo', 'web')", name="ck_project_connector_type"),
     CheckConstraint("auth_strategie IN ('formulaire', 'totp', 'session_injectee', 'aucune')",
                     name="ck_project_auth_strategie"),
+    CheckConstraint("oracle_type IN ('', 'http')", name="ck_project_oracle_type"),
     # Partiel (vivants seulement) + NOCASE sur SQLite — voir la limite documentée en tête de
     # fichier : la collation n'est PAS reproduite ici, seule la clause `WHERE` l'est.
     Index("uq_project_name", "name", unique=True,

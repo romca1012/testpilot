@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 56
+_SCHEMA_VERSION = 57
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -254,6 +254,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_55_project_login_recording(conn)
     if version < 56:
         _migrate_56_login_form_capture(conn)
+    if version < 57:
+        _migrate_57_oracle(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -340,6 +342,27 @@ def _migrate_53_profils_et_teardown(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE project ADD COLUMN profil_instance TEXT NOT NULL DEFAULT ''")
     if "residus" not in _column_names(conn, "execution"):
         conn.execute("ALTER TABLE execution ADD COLUMN residus TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_57_oracle(conn: sqlite3.Connection) -> None:
+    """Lot 07e (C5, D7) : l'oracle backend HTTP optionnel d'un projet — un accès en LECTURE
+    indépendant qui recoupe le verdict d'un cas sur le connecteur web générique (`ground_truth`,
+    voir `verdict/status.py`), là où l'UI seule ne peut jamais prouver un état côté serveur.
+
+    Quatre colonnes, ajoutées seulement si absentes (idempotent) :
+    - `oracle_type` : `''` (aucun oracle, défaut — comportement inchangé) / `'http'` — CHECK ;
+    - `oracle_base_url` : l'adresse de l'API (pas un secret) ;
+    - `oracle_auth` : chiffré (`store/secrets.py`), le JSON `{"type": ..., ...}` d'authentification ;
+    - `oracle_queries` : le JSON des requêtes NOMMÉES déclarées par le porteur du projet — jamais
+      écrites par l'agent de génération, qui n'en voit que les noms (`oracle_config.noms_declares`,
+      même garantie que D8 pour les comptes).
+    """
+    if "oracle_type" not in _column_names(conn, "project"):
+        conn.execute("ALTER TABLE project ADD COLUMN oracle_type TEXT NOT NULL DEFAULT ''"
+                     " CHECK (oracle_type IN ('', 'http'))")
+    for colonne, defaut in (("oracle_base_url", "''"), ("oracle_auth", "''"), ("oracle_queries", "'[]'")):
+        if colonne not in _column_names(conn, "project"):
+            conn.execute(f"ALTER TABLE project ADD COLUMN {colonne} TEXT NOT NULL DEFAULT {defaut}")
 
 
 def _migrate_52_auth_strategie(conn: sqlite3.Connection) -> None:
