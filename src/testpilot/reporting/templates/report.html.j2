@@ -137,6 +137,24 @@
   </div>
   {% endif %}
 
+  {# --- Résidus de teardown (lot 06, F6) : jamais bloquant, jamais supprimé automatiquement --- #}
+  {% if r.residus %}
+  <div class="card">
+    <h2>Résidus possibles</h2>
+    <div class="sub">Enregistrements ni supprimés ni archivés par le nettoyage automatique — effet de bord possible du test, ou création d'un tiers (indiscernables) : à vérifier avant suppression manuelle.</div>
+    <table>
+      <thead>
+        <tr><th>Résidu</th></tr>
+      </thead>
+      <tbody>
+        {% for res in r.residus %}
+        <tr><td class="err">{{ res }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
   <div class="foot">TestPilot · rapport à deux axes (§5)</div>
 </div>
 </body>

@@ -96,6 +96,10 @@ class TestReport:
     target_url: str = ""
     target_database: str = ""
     target_username: str = ""
+    # Résidus de teardown (lot 06, F6) : enregistrements ni supprimés ni archivés, et ids relevés
+    # au-dessus d'un `max_id` mais jamais enregistrés — jamais bloquant, affichés pour permettre
+    # à l'humain de statuer (effet de bord du test, ou création d'un tiers indiscernable).
+    residus: list[str] = field(default_factory=list)
 
     @property
     def needs_human_confirmation(self) -> bool:
@@ -124,7 +128,7 @@ def build_report(verdict: CaseVerdict, *, module_name: str, title: str = "",
                  monthly_cost_usd: float | None = None,
                  generated_at: str | None = None,
                  target_url: str = "", target_database: str = "",
-                 target_username: str = "") -> TestReport:
+                 target_username: str = "", residus: list[str] | None = None) -> TestReport:
     """Construit un ``TestReport`` depuis un ``CaseVerdict`` et les métadonnées du run.
 
     ``repairs`` : tentatives dont on veut tracer l'origine et l'éventuelle confirmation en
@@ -163,6 +167,7 @@ def build_report(verdict: CaseVerdict, *, module_name: str, title: str = "",
         generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
         monthly_cost_usd=(round(monthly_cost_usd, 6) if monthly_cost_usd is not None else None),
         target_url=target_url, target_database=target_database, target_username=target_username,
+        residus=list(residus or []),
     )
 
 
