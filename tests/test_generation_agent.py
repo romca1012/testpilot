@@ -152,6 +152,54 @@ def test_dry_run_stall_guardrail():
     assert result.stopped_reason == "dry_run_stalled"
 
 
+def test_dry_run_stall_consigne_le_diagnostic_au_log(caplog):
+    """Bug mesuré en staging (2026-09-28) : `dry_run_stalled` ne laissait AUCUNE trace nulle
+    part — ni log, ni champ persisté — au-delà du seul mot « dry_run_stalled ». Sans cette ligne,
+    un job resté bloqué est indiagnosticable ; le porteur n'a que le libellé du cas et le mot
+    d'arrêt, jamais le step `undefined`/`ambiguous` qui l'a réellement fait échouer."""
+    import logging
+
+    agent = GenerationAgent(
+        llm=FakeLLM([_write_both(), _end_turn()]),
+        dry_runner=FakeDryRunner([DR(False, undefined=["je fais l'action"], ambiguous=["je clique"])]),
+        cost_tracker=CostTracker(limit_usd=100.0),
+        max_iterations=10, stall_limit=3,
+    )
+    with caplog.at_level(logging.WARNING, logger="testpilot.generation.react_loop"):
+        agent.generate(_plan(), title="Cas de recette")
+
+    messages = [r.message for r in caplog.records if "[react] dry-run stalled" in r.message]
+    assert len(messages) == 1, f"attendu exactement 1 ligne de log, obtenu : {caplog.text}"
+    assert "je fais l'action" in messages[0]
+    assert "je clique" in messages[0]
+
+
+def test_falsifiable_dry_run_reussi_ne_consigne_aucun_log_de_stall():
+    """Preuve négative : un dry-run qui finit par PASSER (jamais stalled) n'écrit jamais la ligne
+    `[react] dry-run stalled` — sinon le signal ne distinguerait plus un run bloqué d'un run
+    normal."""
+    import logging
+
+    agent = GenerationAgent(
+        llm=FakeLLM([_write_both()]),
+        dry_runner=FakeDryRunner([DR(True)]),
+        cost_tracker=CostTracker(limit_usd=100.0),
+        max_iterations=10, stall_limit=3,
+    )
+    logger = logging.getLogger("testpilot.generation.react_loop")
+    records = []
+    handler = logging.Handler()
+    handler.emit = lambda record: records.append(record)
+    logger.addHandler(handler)
+    try:
+        result = agent.generate(_plan())
+    finally:
+        logger.removeHandler(handler)
+
+    assert result.stopped_reason == "done"
+    assert not [r for r in records if "dry-run stalled" in r.getMessage()]
+
+
 def test_write_steps_rejects_shared_step_redefinition(tmp_path):
     ctx = ToolContext(module_name="demo", generated_dir=tmp_path / "gen",
                       reserved_steps=frozenset({"je me connecte"}))
