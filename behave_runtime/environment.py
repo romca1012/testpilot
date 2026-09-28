@@ -425,6 +425,11 @@ def before_all(context):
 
     context.comptes, context.comptes_erreur = construire_comptes(_CONNECTOR_TYPE, os.environ)
     context.compte_courant = "principal"
+    # Lot 07e (D7) : l'oracle backend du projet, résolu une fois pour tout le run (les requêtes
+    # nommées et l'authentification ne changent jamais en cours de run).
+    from _base_helpers import construire_oracle
+
+    context.oracle, context.oracle_erreur = construire_oracle(os.environ)
     # Lot 07b-2 (C2) : la stratégie de connexion du compte principal, et sa connexion initiale (une fois pour tout le run).
     context.auth_strategie = _AUTH_STRATEGIE
     context.totp_secret = _TOTP_SECRET

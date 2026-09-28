@@ -24,6 +24,8 @@ from _base_helpers import (
     fichier_telecharge_contient, cadre, nouvel_onglet_sur, requete_repond,
     # Stratégie de connexion (lot 07b-2) — même discipline d'import.
     _verifier_ou_reconnecter_session,
+    # Oracle backend HTTP optionnel (lot 07e, C5) — même discipline d'import.
+    oracle_renvoie_n_resultats, oracle_champ_vaut,
 )
 
 # ⚠️ Chaque step d'ACTION ci-dessous est déclaré sous `@given` ET `@when` (bug SauceDemo,
@@ -336,3 +338,18 @@ def step_requete_repond(context, requete, code):
     """`requete` : « <méthode> <chemin> » (ex. « POST /api/tickets » : chemin EXACT ; « PUT /api/tickets/* » : motif). Ne juge que les réponses émises
     depuis la dernière action ; une erreur serveur suivie d'un succès n'est pas masquée."""
     requete_repond(context, requete, code)
+
+
+# ══ Oracle backend HTTP optionnel (lot 07e, C5, D7) ══════════════════════════════════════════════════════
+# Requêtes NOMMÉES déclarées dans les réglages du projet — jamais construites par l'agent (`oracle_config`,
+# `_FORBIDDEN_IMPORTS` de `generation/tools/write.py`). Aucun `context.odoo` : disponible quel que soit le connecteur.
+
+@then('l\'oracle "{requete}" renvoie {n:d} résultats')
+@then('l\'oracle "{requete}" renvoie {n:d} résultat')
+def step_oracle_compte(context, requete, n):
+    oracle_renvoie_n_resultats(context, requete, n)
+
+
+@then('le champ "{chemin}" de l\'oracle "{requete}" vaut "{valeur}"')
+def step_oracle_champ_vaut(context, chemin, requete, valeur):
+    oracle_champ_vaut(context, chemin, requete, valeur)

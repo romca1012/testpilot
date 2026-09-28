@@ -47,6 +47,11 @@ class BehaveScenario:
     # à la main, exécution antérieure au lot) : la règle « aucun constat » ne s'applique alors PAS.
     # `0` = il a tourné et rien n'a été constaté avec succès.
     constats_reussis: int | None = None
+    # Lot 07e (D7) : au moins un constat sous un `Alors` a interrogé l'oracle backend du projet
+    # (réussi OU échoué — un écart TROUVÉ par l'oracle est aussi une preuve qu'il a tourné).
+    # `verdict/status.py` s'en sert pour faire passer `ground_truth` à `backend_verified` sur un
+    # connecteur qui, sinon, ne peut recouper que l'UI (`ui_only`).
+    oracle_verifie: bool = False
 
 
 @dataclass
@@ -389,6 +394,9 @@ def rattacher_constats(result: BehaveResult, constats: list[dict]) -> None:
             1 for c in constats
             if c.get("scenario") == scenario.name and c.get("ok") is True
             and c.get("step_type") == "then")
+        scenario.oracle_verifie = any(
+            c.get("scenario") == scenario.name and c.get("step_type") == "then"
+            and c.get("source") == "oracle" for c in constats)
 
 
 def read_menus_appris(path, limit: int = _MAX_MENUS_APPRIS) -> list[dict]:

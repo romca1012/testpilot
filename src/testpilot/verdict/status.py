@@ -83,12 +83,27 @@ def a_confirmer(statut: str | None, confiance: str | None) -> bool:
     return statut == "passed" and confiance in (CONFIANCE_AUTO_RESOLUE, CONFIANCE_APRES_RETRY)
 
 
-def _ground_truth_pour(connector_type: str | None) -> str:
+def _ground_truth_pour(connector_type: str | None, oracle_utilise: bool = False) -> str:
     """`None` (appelant qui ne résout pas encore le connecteur, ex. `cli.py`, `repair_service.py`)
     retombe sur `odoo` — comportement HISTORIQUE inchangé pour tout appelant qui ne fournit pas
-    ce paramètre, exactement le même repli que `connectors/factory.py::build_connector`."""
-    return (GROUND_TRUTH_BACKEND_VERIFIED if (connector_type or "odoo").lower() == "odoo"
-            else GROUND_TRUTH_UI_ONLY)
+    ce paramètre, exactement le même repli que `connectors/factory.py::build_connector`.
+
+    `oracle_utilise` (lot 07e, D7) : TOUS les scénarios du cas ont interrogé l'oracle backend du
+    projet sous un `Alors` — un connecteur qui ne peut sinon recouper que l'UI (`ui_only`) obtient
+    alors la même garantie qu'Odoo. N'AJOUTE rien pour Odoo, déjà `backend_verified` par son RPC.
+
+    ⚠️ **Unanimité, pas majorité** (revue du 2026-09-28) : un SEUL scénario recoupé ne peut pas
+    prêter `backend_verified` à tout le cas — un cas à plusieurs scénarios dont un seul interroge
+    l'oracle laisserait croire que les AUTRES l'ont été aussi, alors qu'ils ne prouvent que l'UI.
+    Même convention que `functional_status = conforme` (`aggregate`, ci-dessous), qui exige que
+    TOUS les scénarios soient conformes — jamais qu'un seul le soit. `confiance`, à l'inverse, prend
+    le scénario le MOINS sûr : les deux vont dans le même sens prudent, seul le sens de comparaison
+    change selon que la valeur qualifiée est « bonne » (ground_truth, conforme) ou « mauvaise »
+    (confiance, functional_status non_conforme).
+    """
+    if (connector_type or "odoo").lower() == "odoo":
+        return GROUND_TRUTH_BACKEND_VERIFIED
+    return GROUND_TRUTH_BACKEND_VERIFIED if oracle_utilise else GROUND_TRUTH_UI_ONLY
 
 
 @dataclass
@@ -109,6 +124,8 @@ class ScenarioVerdict:
     confiance: str = CONFIANCE_NOMINALE
     # Les éléments (champ, menu) qu'un repli adaptatif a dû retrouver dans CE scénario — de quoi expliquer « à confirmer ».
     resolutions_adaptatives: list[str] = field(default_factory=list)
+    # Lot 07e (D7) : ce scénario a interrogé l'oracle backend sous un `Alors` (réussi ou échoué).
+    oracle_verifie: bool = False
 
 
 @dataclass
@@ -163,6 +180,12 @@ def _failures_by_scenario(failures) -> dict[str, list]:
 
 def scenario_verdict(scenario, failures: list) -> ScenarioVerdict:
     """Projette un scénario behave + ses échecs sur les deux axes."""
+    verdict = _scenario_verdict_axes(scenario, failures)
+    verdict.oracle_verifie = bool(getattr(scenario, "oracle_verifie", False))
+    return verdict
+
+
+def _scenario_verdict_axes(scenario, failures: list) -> ScenarioVerdict:
     if scenario.status == "passed":
         if getattr(scenario, "constats_reussis", None) == 0:
             # Lot 03 (D3) : le scénario est allé au bout, mais AUCUN constat réussi n'a été consigné
@@ -276,7 +299,8 @@ def aggregate(verdicts: list[ScenarioVerdict], *, connector_type: str | None = N
         scenarios=verdicts,
         scenarios_passed=passed,
         scenarios_failed=len(verdicts) - passed,
-        ground_truth=_ground_truth_pour(connector_type),
+        ground_truth=_ground_truth_pour(
+            connector_type, bool(verdicts) and all(v.oracle_verifie for v in verdicts)),
         confiance=max((v.confiance for v in verdicts), key=lambda c: _RANG_CONFIANCE.get(c, 0),
                       default=CONFIANCE_NOMINALE),
     )

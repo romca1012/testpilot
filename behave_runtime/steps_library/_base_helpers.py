@@ -12,6 +12,8 @@ import sys
 import time
 import warnings
 import re
+import urllib.error
+from contextlib import contextmanager
 from urllib.parse import parse_qsl, urlparse
 from dataclasses import asdict, dataclass
 from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect
@@ -25,6 +27,13 @@ from testpilot.connectors._web_helpers import (
     remplir_et_soumettre_formulaire_connexion, tenter_connexion_generique,
 )
 from testpilot.connectors import auth_strategie as _auth
+# Oracle backend HTTP optionnel (lot 07e, D7) — import PLAT, même motif que `_web_helpers` ci-dessus
+# (bug de cycle de vie Behave mesuré le 2026-09-22, cf. avertissement en tête de fichier).
+from testpilot.connectors import oracle_config as _oracle_config
+from testpilot.connectors.oracle_http import (
+    OracleHttp, OracleIndisponible, RequeteOracleInconnue, champ as _champ_oracle,
+    compte_resultats as _compte_resultats_oracle,
+)
 import pyotp
 
 logger = logging.getLogger(__name__)
@@ -101,6 +110,32 @@ def definir_etat_constat(scenario=None, step_type=None) -> None:
         _ETAT_CONSTAT["step_type"] = step_type
 
 
+# Lot 07e (D7) : la SOURCE d'un constat (`"oracle"` pour un constat qui a interrogé l'oracle
+# backend du projet, `""` pour un constat ordinaire) — c'est ce que `verdict/status.py` lit pour
+# savoir si `ground_truth` doit passer à `backend_verified`. ⚠️ **Jamais un paramètre de
+# `constater(...)`** (revue du 2026-09-28, 3e passe) : un paramètre nommé, même documenté comme
+# « réservé au socle », reste un paramètre — falsifiable par un step généré via un 3e argument
+# POSITIONNEL, un déballage `**{...}` ou un alias d'import (`from _base_helpers import constater
+# as c`), trois formes qu'aucun garde par AST (`generation/tools/write.py`) ne peut fermer
+# EXHAUSTIVEMENT (un agent peut toujours renommer, déballer ou ajouter un argument SANS mot-clé). Porter la
+# source par une variable de contexte, posée UNIQUEMENT par les deux helpers internes de l'oracle
+# (`oracle_renvoie_n_resultats`/`oracle_champ_vaut`, ci-dessous) le temps de LEUR appel à
+# `constater`, ferme la classe entière : la signature PUBLIQUE de `constater` ne reçoit toujours
+# que `(condition, message)` — un 3e argument, quelle que soit sa forme, lève un `TypeError` au
+# lieu de forger un signal.
+_SOURCE_CONSTAT = {"valeur": ""}
+
+
+@contextmanager
+def _source_du_constat(source: str):
+    precedente = _SOURCE_CONSTAT["valeur"]
+    _SOURCE_CONSTAT["valeur"] = source
+    try:
+        yield
+    finally:
+        _SOURCE_CONSTAT["valeur"] = precedente
+
+
 def _consigner_constat(ok: bool) -> None:
     """Écrit une ligne dans le sidecar, s'il y en a un de désigné (jamais hors d'un run behave).
 
@@ -111,7 +146,7 @@ def _consigner_constat(ok: bool) -> None:
     if not chemin:
         return
     ligne = json.dumps({"scenario": _ETAT_CONSTAT["scenario"], "step_type": _ETAT_CONSTAT["step_type"],
-                        "ok": bool(ok)}, ensure_ascii=False)
+                        "ok": bool(ok), "source": _SOURCE_CONSTAT["valeur"]}, ensure_ascii=False)
     try:
         with open(chemin, "a", encoding="utf-8") as handle:
             handle.write(ligne + "\n")
@@ -121,7 +156,11 @@ def _consigner_constat(ok: bool) -> None:
 
 def constater(condition, message: str = "") -> None:
     """Le SEUL moyen d'écrire une assertion sous un `Alors` : consigne le constat puis lève
-    `AssertionError(message)` si la condition est fausse. Réussi ou échoué, il laisse une trace."""
+    `AssertionError(message)` si la condition est fausse. Réussi ou échoué, il laisse une trace.
+
+    Signature volontairement LIMITÉE à `(condition, message)` — voir `_SOURCE_CONSTAT` ci-dessus :
+    aucun step généré ne peut renseigner la source d'un constat, quelle que soit la forme d'appel.
+    """
     ok = bool(condition)
     _consigner_constat(ok)
     if not ok:
@@ -3243,6 +3282,85 @@ def construire_comptes(connector_type: str, environ) -> tuple[dict, str]:
         # Jamais le contenu : il porte des secrets.
         return {_LIBELLE_PRINCIPAL: principal}, "la liste des comptes du projet est illisible"
     return comptes, ""
+
+
+def construire_oracle(environ) -> tuple[object | None, str]:
+    """`(oracle, erreur)` — l'oracle backend HTTP du projet (lot 07e, D7), ou `(None, "")` si aucun
+    n'est configuré (comportement historique, `ground_truth` reste `ui_only`).
+
+    `environ.get(oracle_config.ENV_ORACLE)` porte le JSON `{"base_url", "auth", "queries"}` posé
+    par `connectors/runtime_env.py::project_env` — jamais construit ici : ce module ne fait que le
+    décoder. Une erreur n'est jamais avalée : le step d'oracle la lève en prérequis manquant."""
+    brut = (environ.get(_oracle_config.ENV_ORACLE) or "").strip()
+    if not brut:
+        return None, ""
+    try:
+        config = json.loads(brut)
+        if not isinstance(config, dict):
+            raise ValueError("objet attendu")
+        oracle = OracleHttp(config.get("base_url") or "", config.get("auth") or {}, config.get("queries") or [])
+    except (ValueError, TypeError, KeyError):
+        # Jamais le contenu : il peut porter une authentification.
+        return None, "la configuration de l'oracle du projet est illisible"
+    return oracle, ""
+
+
+def _resoudre_oracle(context) -> OracleHttp:
+    """L'oracle du projet, ou un PRÉREQUIS MANQUANT (→ `blocked`) : absent ou mal configuré n'est
+    jamais un défaut de l'application testée."""
+    erreur = getattr(context, "oracle_erreur", "") or ""
+    if erreur:
+        raise PreconditionNonRemplieError(f"PRÉREQUIS MANQUANT : {erreur} — corrigez la configuration "
+                                          "de l'oracle dans les réglages du projet.")
+    oracle = getattr(context, "oracle", None)
+    if oracle is None:
+        raise PreconditionNonRemplieError(
+            "PRÉREQUIS MANQUANT : aucun oracle n'est configuré sur ce projet — déclarez-le dans ses "
+            "réglages avant d'utiliser un step d'oracle.")
+    return oracle
+
+
+def _executer_oracle(context, requete: str):
+    """`verifier_connexion` a déjà prouvé l'oracle joignable AVANT le run (`runtime_env.py`) — mais
+    rien n'empêche une panne réseau EN COURS de run. Sans ce filet, elle remonterait comme une
+    exception brute, classée `technical_error` (script cassé) au lieu de `blocked` (environnement) —
+    exactement la confusion F5 que le lot 02 a fermée ailleurs. Une réponse HTTP D'ERREUR
+    (`HTTPError` : 4xx/5xx) est un signal potentiellement significatif de l'oracle lui-même, PAS
+    une panne d'environnement : elle n'est jamais convertie ici, elle remonte telle quelle."""
+    oracle = _resoudre_oracle(context)
+    try:
+        return oracle.executer(requete)
+    except (RequeteOracleInconnue, OracleIndisponible) as exc:
+        raise PreconditionNonRemplieError(f"PRÉREQUIS MANQUANT : {exc}") from exc
+    except urllib.error.HTTPError:
+        raise
+    except (urllib.error.URLError, OSError) as exc:
+        raise PreconditionNonRemplieError(
+            f"PRÉREQUIS MANQUANT : l'oracle est devenu injoignable en cours de run ({exc}).") from exc
+
+
+def oracle_renvoie_n_resultats(context, requete: str, n: int) -> None:
+    """`Alors l'oracle "<requête>" renvoie <n> résultat(s)` — l'oracle est la vérité de RÉFÉRENCE :
+    un écart consigne un constat ÉCHOUÉ (défaut applicatif, ou test à revoir), jamais une panne."""
+    reponse = _executer_oracle(context, requete)
+    obtenu = _compte_resultats_oracle(reponse)
+    with _source_du_constat("oracle"):
+        constater(obtenu == n,
+                 f"l'oracle « {requete} » renvoie {obtenu} résultat(s), {n} attendu(s)")
+
+
+def oracle_champ_vaut(context, chemin: str, requete: str, valeur: str) -> None:
+    """`Alors le champ "<chemin>" de l'oracle "<requête>" vaut "<valeur>"` — comparaison textuelle,
+    la même discipline que le reste du vocabulaire universel (lot 07d)."""
+    reponse = _executer_oracle(context, requete)
+    with _source_du_constat("oracle"):
+        try:
+            obtenu = _champ_oracle(reponse, chemin)
+        except (KeyError, IndexError, TypeError) as exc:
+            constater(False, f"le champ « {chemin} » de l'oracle « {requete} » est introuvable : {exc}")
+            return
+        constater(str(obtenu) == valeur,
+                 f"le champ « {chemin} » de l'oracle « {requete} » vaut « {obtenu} », « {valeur} » attendu")
 
 
 def _resoudre_compte(context, libelle: str) -> dict:
