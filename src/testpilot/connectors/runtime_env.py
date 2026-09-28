@@ -31,6 +31,7 @@ import json
 import logging
 
 from testpilot.connectors import auth_strategie as _auth
+from testpilot.connectors import oracle_config as _oracle
 from testpilot.connectors.contexte_navigateur import depuis_projet
 
 logger = logging.getLogger(__name__)
@@ -127,7 +128,39 @@ def verifier_connexion(project: dict | None, comptes: list[dict] | None = None,
     if manquants:
         raise ConnexionIncomplete(project, manquants)
 
+    _verifier_oracle_joignable(project)
     return project_env(project, comptes, sequence_connexion, login_form)
+
+
+def _config_oracle(project: dict) -> dict | None:
+    """La configuration DÉCODÉE de l'oracle du projet, ou `None` (aucun oracle / type non géré ici :
+    seul `http` est traité, D7 — l'oracle SQL en lecture seule est un sous-lot séparé)."""
+    if (project.get("oracle_type") or "").lower() != _oracle.TYPE_HTTP or not project.get("oracle_base_url"):
+        return None
+    try:
+        auth = json.loads(project.get("oracle_auth") or "{}") or {}
+    except (ValueError, TypeError):
+        auth = {}
+    try:
+        queries = json.loads(project.get("oracle_queries") or "[]") or []
+    except (ValueError, TypeError):
+        queries = []
+    return {"base_url": project["oracle_base_url"], "auth": auth, "queries": queries}
+
+
+def _verifier_oracle_joignable(project: dict | None) -> None:
+    """Refuse (`ConnexionIncomplete`) si l'oracle du projet est configuré mais INJOIGNABLE (D7) —
+    mieux vaut un refus explicite maintenant qu'un cas qui tournerait sans jamais pouvoir prouver
+    `ground_truth = backend_verified` (verdict/status.py)."""
+    config = _config_oracle(project or {})
+    if config is None:
+        return
+    from testpilot.connectors.oracle_http import OracleHttp, OracleIndisponible
+
+    try:
+        OracleHttp(config["base_url"], config["auth"]).verifier_joignable()
+    except OracleIndisponible as exc:
+        raise ConnexionIncomplete(project, [f"l'oracle backend est injoignable ({exc})"]) from exc
 
 
 def cible_de(project: dict | None) -> dict[str, str]:
@@ -192,6 +225,12 @@ def project_env(project: dict | None, comptes: list[dict] | None = None,
             env[ENV_LOGIN_RECORDING] = json.dumps(sequence_connexion, ensure_ascii=False)
         if login_form:
             env[ENV_LOGIN_FORM] = json.dumps(login_form, ensure_ascii=False)
+    # Lot 07e (D7) : l'oracle backend n'est pas propre au connecteur `web` (un projet Odoo peut lui
+    # aussi vouloir recouper contre une API tierce) — transmis dès qu'il est configuré, quel que
+    # soit le connecteur, contrairement à la stratégie d'auth ci-dessus (propre au navigateur).
+    config = _config_oracle(project)
+    if config is not None:
+        env[_oracle.ENV_ORACLE] = json.dumps(config, ensure_ascii=False)
     return env
 
 
