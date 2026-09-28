@@ -227,7 +227,8 @@ def build_default_deps(conn) -> PipelineDeps:
     connector.connect()
     runner = BehaveRunner(connection=env_du_projet(conn, project),
                           project_id=(project or {}).get("id"),
-                          connector_type=(project or {}).get("connector_type"))
+                          connector_type=(project or {}).get("connector_type"),
+                          profil_instance=(project or {}).get("profil_instance"))
     agent = GenerationAgent(dry_runner=runner, connector=connector,
                             case_repo=_Case(conn), version_repo=_Version(conn))
     # ⚠️ `SpecAnalyzer()` SANS tracker laisse `plan.cost_usd` à 0.0 : l'appel LLM de l'analyse

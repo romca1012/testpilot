@@ -116,15 +116,17 @@ class ProjectRepo:
                username: str = "", password: str = "", private: bool = False,
                owner_id: int | None = None, browser_locale: str = "", browser_timezone: str = "",
                browser_viewport: str = "", auth_strategie: str = "formulaire", totp_secret: str = "",
-               injected_session: str = "") -> int:
+               injected_session: str = "", profil_instance: str = "") -> int:
         self.ensure_name_free(name)
         cur = self.conn.execute(
             "INSERT INTO project (name, description, connector_type, connector_version,"
             " base_url, database, username, password, created_at, browser_locale, browser_timezone,"
-            " browser_viewport, auth_strategie, totp_secret, injected_session) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " browser_viewport, auth_strategie, totp_secret, injected_session, profil_instance)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (name, description, connector_type, connector_version, base_url, database, username,
              secrets_mod.chiffrer(password), now_iso(), browser_locale, browser_timezone, browser_viewport,
-             auth_strategie, secrets_mod.chiffrer(totp_secret), secrets_mod.chiffrer(injected_session)))
+             auth_strategie, secrets_mod.chiffrer(totp_secret), secrets_mod.chiffrer(injected_session),
+             profil_instance))
         self.conn.commit()
         project_id = int(cur.lastrowid)
         if private:
@@ -206,7 +208,9 @@ class ProjectRepo:
     # Le contexte navigateur (lot 07c) s'édite au même endroit : c'est un réglage de CONNEXION à l'application (langue, fuseau,
     # taille de fenêtre du navigateur qui la pilote) — `None` = n'y touche pas, `""` = revenir au défaut.
     _CONNEXION = ("connector_type", "connector_version", "base_url", "database", "username",
-                  "browser_locale", "browser_timezone", "browser_viewport", "auth_strategie")
+                  "browser_locale", "browser_timezone", "browser_viewport", "auth_strategie",
+                  # Lot 06 (D6) : le profil d'instance n'est pas un secret (comme `connector_version`).
+                  "profil_instance")
 
     def update_connection(self, project_id: int, **champs) -> None:
         """Édite la connexion d'un projet (décision `0005` : elle vit sur le PROJET).
@@ -1735,7 +1739,7 @@ class ExecutionRepo:
     def finalize(self, execution_id: int, *, execution_status: str, functional_status: str,
                  scenarios_total: int, scenarios_passed: int, scenarios_failed: int,
                  cost_usd: float, iterations: int, duration_seconds: float,
-                 field_fallbacks: str = "", error_message: str = "",
+                 field_fallbacks: str = "", residus: str = "", error_message: str = "",
                  comment: str = "", confiance: str = "nominale") -> int | None:
         """Clôt une exécution avec son verdict. Rend l'id de la ligne du registre (§A du plan
         « fiabiliser le verdict automatique », 2026-08-06) — `None` si l'exécution n'a pas sa
@@ -1765,11 +1769,11 @@ class ExecutionRepo:
         self.conn.execute(
             "UPDATE execution SET execution_status=?, functional_status=?, scenarios_total=?,"
             " scenarios_passed=?, scenarios_failed=?, cost_usd=?, iterations=?,"
-            " duration_seconds=?, field_fallbacks=?, error_message=?, confiance=?"
+            " duration_seconds=?, field_fallbacks=?, residus=?, error_message=?, confiance=?"
             " WHERE id=?",
             (execution_status, functional_status, scenarios_total, scenarios_passed,
              scenarios_failed, cost_usd, iterations, duration_seconds,
-             field_fallbacks, error_message, confiance, execution_id),
+             field_fallbacks, residus, error_message, confiance, execution_id),
         )
         self.conn.commit()
         # Le déclencheur RÉEL (migration 32) prime : c'est lui qui a cliqué « Lancer », pas le

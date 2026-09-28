@@ -984,4 +984,6 @@ export interface TestReport {
   // CONTRE QUOI ce verdict a été rendu (migration 20) — vide sur les exécutions antérieures à
   // elle : « on ne sait pas » est la vérité, jamais une cible reconstituée. Jamais le mot de passe.
   target_url?: string; target_database?: string; target_username?: string
+  // Résidus de teardown (lot 06, F6) — enregistrements ni supprimés ni archivés, jamais bloquant.
+  residus?: string[]
 }

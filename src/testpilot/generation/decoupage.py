@@ -23,6 +23,7 @@ import re
 
 from testpilot import config
 from testpilot.analysis.plan import TestPlan
+from testpilot.analysis.spec_analyzer import _aplatir_espaces
 from testpilot.llm.adapter import LLMAdapter
 
 logger = logging.getLogger(__name__)
@@ -163,11 +164,16 @@ def propose_decoupage(plan: TestPlan, *, llm: LLMAdapter | None = None,
     mot pour mot, l'extrait de la spec dont elle vient — une story dont la citation ne se
     retrouve pas telle quelle dans `plan.raw_spec` est écartée, jamais acceptée sur la foi de son
     propre libellé (technique documentée par Anthropic, guide « reduce hallucinations »).
+
+    ⚠️ **Comparaison insensible à l'habillage de ligne** (bug mesuré en staging, 2026-09-28) : la
+    citation et `plan.raw_spec` sont aplaties (`_aplatir_espaces`) avant comparaison — un retour à
+    la ligne de présentation dans la spec source ne doit jamais faire échouer une citation par
+    ailleurs réelle. Voir sa docstring pour le détail du défaut que ça ferme.
     """
     llm = llm or LLMAdapter()
     data = _data_decoupage(llm, plan, model, cost_tracker)
     stories_raw = data.get("stories") or []
-    spec_lower = (plan.raw_spec or "").lower()
+    spec_lower = _aplatir_espaces(plan.raw_spec or "").lower()
     stories: list[StoryPlan] = []
     for s in stories_raw:
         user_story = str((s or {}).get("user_story", "")).strip()
@@ -179,7 +185,7 @@ def propose_decoupage(plan: TestPlan, *, llm: LLMAdapter | None = None,
         ]
         if not (user_story and cases):
             continue
-        if not citation or citation.lower() not in spec_lower:
+        if not citation or _aplatir_espaces(citation).lower() not in spec_lower:
             logger.warning(
                 "[decoupage] user story '%s' écartée — citation absente ou introuvable dans la "
                 "spec (%r)", user_story, citation[:80])

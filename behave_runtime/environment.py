@@ -35,15 +35,28 @@ Comme Behave charge ``environment.py`` AVANT les modules de steps, l'alias est e
 
 import json
 import os
+import re
 import time
 import sys
 import types
 from pathlib import Path
+from urllib.parse import unquote
 
 from behave import fixture, use_fixture
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Lot 06 (D6, F6) : le profil d'instance choisi par le projet (s'il en expose un côté connecteur)
+# — copié par le runner sous ce nom CANONIQUE (`BehaveRunner._profil_files`), jamais le nom
+# original du fichier (deux profils différents porteraient sinon des noms différents, imprévisibles
+# ici). Import PLAT, au NIVEAU MODULE (CLAUDE.md §6) : absent si aucun profil, ou si le profil
+# choisi n'a rien à ajouter côté connecteur (son volet `generic/profils/` est chargé par Behave lui-
+# même, comme tout fichier de `steps/` — aucun import n'est nécessaire pour ses steps).
+try:
+    from _profil_connecteur import apres_scenario as _profil_apres_scenario
+except ImportError:
+    _profil_apres_scenario = None
 
 
 # ── Appariement des steps TOLÉRANT AUX ACCENTS (voir steps/_accent_matcher.py) ─
@@ -112,12 +125,22 @@ if os.environ.get("ODOO_ENV") == "prod":
         "SAFETY: refus d'exécution contre une instance Odoo de production."
     )
 
-# Seuls ces modèles sont supprimés en teardown : ce sont les enregistrements PRODUITS
-# par les actions UI du test. Le portail « Demande de matériel » crée un helpdesk.ticket
-# (soumission vers /website/form/helpdesk.ticket). Les données prérequises (produits,
-# accessoires, catégories) ne sont JAMAIS supprimées. Ajouter ici le modèle de sortie
-# d'un nouveau module au besoin.
-_TEST_OUTPUT_MODELS = {"helpdesk.ticket"}
+# Lot 06 (D6, F6) : le teardown ne supprime plus par LISTE BLANCHE de modèle (une commande, un
+# partenaire ou une facture créés par un test restaient auparavant, provoquant des collisions
+# d'unicité au rejeu) — il supprime EXACTEMENT ce que `register_created` a enregistré, quel que soit
+# le modèle, jamais par domaine ni par comparaison à un `max_id` (voir `_teardown_odoo_generique`).
+#
+# Sidecar des RÉSIDUS de teardown (F6, ticket 30298 : un scénario qui crée SANS aucun step de
+# comptage ne laissait rien à nettoyer — `register_created` n'était jamais appelé). Noms DUPLIQUÉS
+# de `execution/behave_result.py` (le harnais ne dépend pas du paquet applicatif), même motif que
+# les autres sidecars (`FIELD_FALLBACK_FILE_ENV`…) — accord tenu par test.
+RESIDUS_FILE_ENV = "TP_RESIDUS_FILE"
+
+# Un nom de modèle Odoo technique : `module.nom` (ex. `helpdesk.ticket`, `res.partner`) — jamais
+# autre chose. Sert à REFUSER un segment de route qui ne ressemble pas à un modèle (voir
+# `_modele_depuis_route_formulaire`) : un id sans modèle SÛR n'est jamais enregistré pour nettoyage
+# automatique, seulement consigné en résidu (F6, précision du porteur, 2026-09-28).
+_MODELE_ODOO_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 _ODOO_URL      = os.environ.get("ODOO_URL", "http://localhost:10017")
 _ODOO_DB       = os.environ.get("ODOO_DB", "odoo_test")
@@ -183,7 +206,52 @@ def odoo_session(context):
     context.odoo = odoorpc.ODOO(host, protocol=protocol, port=port)
     context.odoo_version = parser_version(context.odoo.version)
     context.odoo.login(_ODOO_DB, _ODOO_USER, _ODOO_PASSWORD)
+    _instrumenter_creations_rpc(context)
     yield context.odoo
+
+
+def _instrumenter_creations_rpc(context) -> None:
+    """Enregistre AUTOMATIQUEMENT tout enregistrement créé par RPC pendant le scénario — sans
+    dépendre d'un step de comptage (F6, ticket 30298 : un scénario qui crée SANS aucun step de
+    comptage ne laissait rien à nettoyer, ses steps personnalisés n'appelant jamais
+    `register_created`). Intercepte `execute_kw`, le SEUL point de passage de TOUT appel RPC —
+    `odoorpc.models.Model.__getattr__` y délègue CHAQUE méthode (`create`, `write`, `search`…),
+    quel que soit le modèle : jamais un comportement construit ou deviné, seulement observé.
+
+    ⚠️ **Transparent** : la valeur de retour et les exceptions de l'appel RÉEL ne sont JAMAIS
+    modifiées — seul un `create` qui RÉUSSIT déclenche un enregistrement, et seulement APRÈS que
+    l'appel réel a rendu la main (jamais avant, jamais si l'appel a levé).
+    """
+    reel = context.odoo.execute_kw
+    touches = context._touched_models
+
+    def _relever_baseline(model: str) -> None:
+        """Relève le max_id ACTUEL de `model`, la PREMIÈRE fois qu'il est touché dans ce scénario —
+        JAMAIS pour supprimer (le teardown ne supprime que par id exact enregistré, jamais par
+        domaine), seulement pour LISTER après coup les ids trouvés au-dessus, jamais enregistrés
+        par ce scénario (résidu possible : tiers ou effet de bord — `_signaler_residus_possibles`).
+        Appelle `reel` DIRECTEMENT (jamais `context.odoo.execute_kw`, déjà remplacé ci-dessous : un
+        appel à la version instrumentée re-déclencherait cette même fonction, sans fin)."""
+        if model in touches:
+            return
+        try:
+            ids = reel(model, "search", [[]],
+                      {"order": "id desc", "limit": 1, "context": {"active_test": False}})
+            touches[model] = ids[0] if ids else 0
+        except Exception:
+            pass  # relevé impossible (droits, modèle inexistant…) : pas de détection de résidu ICI
+
+    def _execute_kw_instrumente(model, method, args=None, kwargs=None):
+        _relever_baseline(model)
+        resultat = reel(model, method, args, kwargs)
+        if method == "create":
+            valeurs = [resultat] if isinstance(resultat, int) else (resultat or [])
+            for record_id in valeurs:
+                if isinstance(record_id, int):
+                    register_created(context, model, record_id)
+        return resultat
+
+    context.odoo.execute_kw = _execute_kw_instrumente
 
 
 # Lot 07c (C3) : contexte navigateur FIGÉ. Noms et défauts DUPLIQUÉS de `testpilot/connectors/contexte_navigateur.py` (ce harnais ne
@@ -390,7 +458,13 @@ def _capturer_reponse_formulaire(context):
             # récente (un `error_fields` périmé l'emporterait sur un 5xx actuel).
             context.reponse_formulaire = None
             # Corps JSON attendu ; si ce n'en est pas (erreur 5xx HTML, redirect…), on garde la trace.
-            context.reponse_formulaire = response.json()
+            corps = response.json()
+            context.reponse_formulaire = corps
+            # Lot 06 (F6) : enregistrement AUTOMATIQUE de l'id créé — sans dépendre d'un step de
+            # comptage (ticket 30298 : c'est exactement ce chemin, une soumission portail, qui
+            # laissait un résidu quand les steps de comptage personnalisés du scénario n'appelaient
+            # jamais `register_created`).
+            _enregistrer_creation_formulaire(context, response.url, corps)
         except Exception:
             pass  # jamais fatal — l'absence de capture retombe sur le comportement muet d'avant
 
@@ -398,6 +472,48 @@ def _capturer_reponse_formulaire(context):
         context.page.on("response", _on_response)
     except Exception:
         pass
+
+
+def _modele_depuis_route_formulaire(url: str) -> str:
+    """Le modèle technique d'une soumission `/website/form/<modele>` — DÉDUIT de la route
+    elle-même (convention du website builder Odoo : le formulaire poste vers `/website/form/`
+    suivi du nom TECHNIQUE du modèle, ex. `/website/form/helpdesk.ticket`), jamais deviné ni
+    construit. Rend `""` si le segment ne ressemble pas à un modèle Odoo (`module.nom`) — un id
+    dont le modèle n'est pas SÛR n'est jamais enregistré pour nettoyage automatique (voir
+    `_enregistrer_creation_formulaire`)."""
+    marqueur = "/website/form/"
+    i = url.find(marqueur)
+    if i < 0:
+        return ""
+    segment = unquote(url[i + len(marqueur):].split("?", 1)[0].split("/", 1)[0])
+    return segment if _MODELE_ODOO_RE.match(segment) else ""
+
+
+def _enregistrer_creation_formulaire(context, url: str, corps) -> None:
+    """Enregistre AUTOMATIQUEMENT l'id créé par une soumission de formulaire réussie (F6) — jamais
+    sur un refus (`error`/`error_fields` dans le corps, cf. `_capturer_reponse_formulaire`) ni sans
+    modèle SÛR (consigné en résidu plutôt que deviné)."""
+    if not isinstance(corps, dict) or "error" in corps or "error_fields" in corps:
+        return
+    record_id = corps.get("id")
+    if not isinstance(record_id, int):
+        return
+    modele = _modele_depuis_route_formulaire(url)
+    if modele:
+        register_created(context, modele, record_id)
+    else:
+        _consigner_residu(
+            context, f"soumission de formulaire ({url}) : id {record_id} créé mais le modèle n'a "
+                     "pas pu être déduit de la route — non enregistré pour nettoyage automatique, "
+                     "à vérifier manuellement")
+
+
+def _consigner_residu(context, message: str) -> None:
+    """Consigne un message de diagnostic de teardown (F6) — best-effort, jamais fatal : un contexte
+    sans `_residus` (test minimal, appel hors run) ignore silencieusement."""
+    residus = getattr(context, "_residus", None)
+    if residus is not None:
+        residus.append(message)
 
 
 def _marquer_si_scenario_negatif(context, scenario) -> None:
@@ -475,6 +591,16 @@ def before_step(context, step):
 def before_scenario(context, scenario):
     """Initialise le registre de teardown et ouvre les connexions du scénario."""
     context.created = {}
+    # Lot 06 (F6) : `created_ordre` (liste PLATE, ordre de création TOUS MODÈLES confondus) sert au
+    # teardown générique à supprimer dans l'ordre INVERSE de création — `created` (dict par modèle)
+    # reste pour la compatibilité des appelants existants (comptage du lot 01, etc.).
+    context.created_ordre = []
+    # Modèles touchés par RPC pendant ce scénario → max_id relevé à leur PREMIER contact (détection
+    # de résidu SEULEMENT, jamais une suppression — voir `_instrumenter_creations_rpc`).
+    context._touched_models = {}
+    # Messages de diagnostic de teardown (échecs de suppression/archivage, résidus possibles) — un
+    # sidecar, jamais le log (Behave l'avale sur un scénario vert).
+    context._residus = []
     # Lot 03 : le scénario courant, pour rattacher chaque constat consigné à SON scénario.
     from _base_helpers import definir_etat_constat
     definir_etat_constat(scenario=scenario.name, step_type="")
@@ -567,9 +693,104 @@ def _capturer_trace(context, scenario, n: int) -> None:
         print(f"[trace] trace non exportée pour le scénario « {scenario.name} » : {exc}")
 
 
+def _tenter_annulation(odoo, model: str, record_id: int) -> bool:
+    """Tente `action_cancel` puis `button_cancel` si le modèle les expose — `True` si l'un des deux
+    a réussi (le `unlink` qui suit a alors une chance d'aboutir sur un document confirmé, ex. une
+    commande de vente validée). Jamais fatal : un modèle sans l'un ou l'autre lève, on continue."""
+    for methode in ("action_cancel", "button_cancel"):
+        try:
+            getattr(odoo.env[model].browse([record_id]), methode)()
+            return True
+        except Exception:
+            continue
+    return False
+
+
+def _tenter_archivage(odoo, model: str, record_id: int) -> bool:
+    """`write({"active": False})` SI le modèle expose un champ `active` — jamais deviné : relu via
+    `fields_get`, qui rend un dict vide (pas une exception) pour un champ absent."""
+    try:
+        champs = odoo.env[model].fields_get(["active"])
+    except Exception:
+        return False
+    if "active" not in champs:
+        return False
+    try:
+        odoo.env[model].browse([record_id]).write({"active": False})
+        return True
+    except Exception:
+        return False
+
+
+def _teardown_odoo_generique(context, odoo) -> None:
+    """Supprime, dans l'ORDRE INVERSE de création, tout et SEULEMENT ce que `register_created` a
+    enregistré (F6, lot 06) — **jamais** par domaine, **jamais** par comparaison à un `max_id` : un
+    id qui n'a pas été explicitement enregistré n'est jamais touché ici (voir
+    `_signaler_residus_possibles` pour les ids relevés au-dessus d'un `max_id`, jamais supprimés).
+
+    Par enregistrement : `unlink` direct ; refusé → tente une annulation (`action_cancel`/
+    `button_cancel`) puis `unlink` ; refusé → archive (`active=False`) si le champ existe ; sinon,
+    consigne un résidu. Jamais d'exception qui remonte — le verdict est déjà rendu.
+    """
+    for model, record_id in reversed(context.created_ordre):
+        try:
+            odoo.env[model].browse([record_id]).unlink()
+            continue
+        except Exception:
+            pass
+        if _tenter_annulation(odoo, model, record_id):
+            try:
+                odoo.env[model].browse([record_id]).unlink()
+                continue
+            except Exception:
+                pass
+        if _tenter_archivage(odoo, model, record_id):
+            continue
+        _consigner_residu(
+            context, f"{model} id={record_id} : ni supprimé ni archivé (suppression, annulation "
+                     "puis suppression, et champ actif tous refusés ou absents) — à traiter "
+                     "manuellement")
+
+
+def _signaler_residus_possibles(context, odoo) -> None:
+    """Après le teardown : pour chaque modèle TOUCHÉ par RPC pendant le scénario, liste les ids
+    au-dessus du `max_id` relevé à son PREMIER contact qui n'ont JAMAIS été enregistrés par ce
+    scénario — un tiers actif sur l'instance est indiscernable d'un effet de bord de l'action
+    testée : jamais supprimé automatiquement, seulement signalé (F6, précision du porteur,
+    2026-09-28). `active_test=False` : un résidu archivé par CE teardown reste visible pour ne pas
+    le compter deux fois (exclu ci-dessous via `connus`, qui contient tout ce qu'on a enregistré,
+    supprimé ou archivé)."""
+    for model, max_id in getattr(context, "_touched_models", {}).items():
+        connus = set(context.created.get(model, []))
+        try:
+            surplus = odoo.env[model].search([("id", ">", max_id)], context={"active_test": False})
+        except Exception:
+            continue
+        inconnus = [i for i in surplus if i not in connus]
+        if inconnus:
+            _consigner_residu(
+                context, f"{model} id(s) {inconnus} : au-dessus de l'id {max_id} relevé en début de "
+                         "scénario mais jamais enregistrés par lui — résidu possible (tiers actif "
+                         "sur l'instance ou effet de bord de l'action testée), non supprimé")
+
+
+def _ecrire_sidecar_residus(context, scenario) -> None:
+    chemin = os.environ.get(RESIDUS_FILE_ENV)
+    residus = getattr(context, "_residus", None) or []
+    if not chemin or not residus:
+        return
+    try:
+        with open(chemin, "a", encoding="utf-8") as handle:
+            for message in residus:
+                handle.write(f"[{scenario.name}] {message}".replace("\n", " ") + "\n")
+    except OSError:
+        pass
+
+
 def after_scenario(context, scenario):
     """Capture une preuve visuelle et une trace, PUIS supprime UNIQUEMENT les enregistrements
-    produits par le test (jamais les prérequis)."""
+    produits par le test (jamais les prérequis), par leur id EXACT enregistré — jamais par domaine
+    ni par `max_id` (F6, lot 06)."""
     n = getattr(context, "_indice_scenario", 0) + 1
     context._indice_scenario = n
     _capturer_ecran(context, scenario, n)
@@ -580,25 +801,19 @@ def after_scenario(context, scenario):
     retablir_le_compte_principal(context)
 
     odoo = getattr(context, "odoo", None)
-    if odoo is None:
-        return
+    if odoo is not None:
+        _teardown_odoo_generique(context, odoo)
+        _signaler_residus_possibles(context, odoo)
 
-    # Restauration des rôles temporairement ajoutés par des steps (si applicable).
-    for user_id, role_id in getattr(context, "_roles_to_restore", []):
+    # Lot 06 (D6) : un profil d'instance peut ajouter SON PROPRE nettoyage (ex. restauration d'un
+    # rôle propre à un client) — jamais dans le socle commun. Absent si aucun profil n'en expose un.
+    if _profil_apres_scenario is not None:
         try:
-            odoo.env["res.users"].browse(user_id).write(
-                {"employee_front_role_ids": [(3, role_id)]}
-            )
-        except Exception as exc:  # teardown best-effort : ne jamais masquer le verdict
-            print(f"[teardown] rôle {role_id} non retiré de l'user {user_id} : {exc}")
-
-    for model, ids in getattr(context, "created", {}).items():
-        if model not in _TEST_OUTPUT_MODELS or not ids:
-            continue  # hors whitelist ou vide → on ne touche à rien
-        try:
-            odoo.env[model].browse(ids).unlink()
+            _profil_apres_scenario(context)
         except Exception as exc:
-            print(f"[teardown] {model} ids={ids} non supprimés : {exc}")
+            print(f"[profil] apres_scenario a échoué : {exc}")
+
+    _ecrire_sidecar_residus(context, scenario)
 
 
 def after_all(context):
@@ -607,8 +822,20 @@ def after_all(context):
 
 # ── Helper exposé aux steps ────────────────────────────────────────────────────
 def register_created(context, model: str, record_id: int) -> None:
-    """Enregistre un ID créé par le test pour suppression automatique en teardown."""
-    context.created.setdefault(model, []).append(record_id)
+    """Enregistre un ID créé par le test pour suppression automatique en teardown.
+
+    Idempotent : le même (modèle, id) peut être enregistré par PLUSIEURS chemins (le comptage du
+    lot 01, ET la capture automatique RPC/formulaire du lot 06) — une seule entrée compte, dans
+    l'ordre de sa PREMIÈRE apparition. `created_ordre` (liste plate, tous modèles confondus) sert au
+    teardown générique à supprimer dans l'ordre INVERSE de création ; absent sur un contexte de test
+    minimal, il est alors simplement ignoré (comportement historique inchangé pour `context.created`
+    seul)."""
+    ids = context.created.setdefault(model, [])
+    if record_id not in ids:
+        ids.append(record_id)
+    ordre = getattr(context, "created_ordre", None)
+    if ordre is not None and (model, record_id) not in ordre:
+        ordre.append((model, record_id))
 
 
 # Installé EN DERNIER : la photo globals() doit inclure register_created (voir docstring).

@@ -10,6 +10,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
+from testpilot.api.schemas import _field_fallbacks
 from testpilot.reporting import report as report_mod
 from testpilot.store.repositories import (
     CaseRepo,
@@ -96,4 +97,5 @@ def build_report_for_execution(conn: sqlite3.Connection, execution_id: int):
         target_url=execution.get("target_url", "") or "",
         target_database=execution.get("target_database", "") or "",
         target_username=execution.get("target_username", "") or "",
+        residus=_field_fallbacks(execution.get("residus")),
     )

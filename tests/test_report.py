@@ -110,3 +110,64 @@ def test_le_rapport_libelle_blocked_en_francais_et_le_distingue_d_une_erreur_tec
     assert "Prérequis non rempli (environnement)" in html, "libellé de la cause, pas la valeur brute"
     assert ">blocked<" not in html and "precondition_non_remplie" not in html
     assert 'class="pill warn"' in html, "ton d'avertissement, pas le rouge d'une panne"
+
+
+# ── Lot 06 (F6) : les résidus de teardown remontent jusqu'au rapport lu par l'humain ────────────
+
+def test_build_report_porte_les_residus_de_bout_en_bout():
+    """Sans `residus=` explicite, ce champ resterait invisible dans le rapport que l'humain lit
+    (le point relevé par la revue du lot 06 : `field_fallbacks` avait ce même trou avant lui)."""
+    report = rp.build_report(_verdict_mixte(), module_name="m",
+                             residus=["res.partner#4821 (max_id dépassé, non enregistré)"])
+    assert report.residus == ["res.partner#4821 (max_id dépassé, non enregistré)"]
+    assert json.loads(rp.render_json(report))["residus"] == [
+        "res.partner#4821 (max_id dépassé, non enregistré)"]
+    html = rp.render_html(report)
+    assert "Résidus possibles" in html
+    assert "res.partner#4821 (max_id dépassé, non enregistré)" in html
+
+
+def test_falsifiable_sans_residu_le_bloc_html_n_apparait_pas():
+    """Preuve NÉGATIVE : un rapport sans résidu n'affiche PAS le bloc — sinon un bloc vide
+    laisserait croire qu'un teardown a été vérifié et n'a rien trouvé, alors qu'il n'a simplement
+    rien à signaler (distinction déjà appliquée ailleurs au champ cible, cf. tête de fichier)."""
+    report = rp.build_report(_verdict_mixte(), module_name="m")
+    assert report.residus == []
+    assert "Résidus possibles" not in rp.render_html(report)
+
+
+def test_residus_remontent_de_la_base_jusqu_au_rapport(tmp_path, monkeypatch):
+    """Bout en bout DB → `report_service.build_report_for_execution` → rapport : sans ce
+    câblage, `ExecutionRepo.finalize(residus=...)` écrirait la donnée en base sans qu'aucun
+    écran ne la lise — le trou constaté sur `field_fallbacks`, jamais comblé, que ce lot ne
+    reproduit pas pour `residus`."""
+    from testpilot import config
+    from testpilot.api.services import report_service
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import (
+        CaseRepo, ExecutionRepo, ModuleRepo, ProjectRepo, VersionRepo,
+    )
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    conn = get_initialized_db(tmp_path / "residus.db")
+    try:
+        pid = ProjectRepo(conn).create(name="P", connector_type="odoo",
+                                       base_url="http://x:8069", database="db",
+                                       username="qa", password="secret")
+        mid = ModuleRepo(conn).create(project_id=pid, name="M")
+        cid = CaseRepo(conn).create(title="Cas", module_id=mid, feature_slug="cas")
+        vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="",
+                                       feature_content="Scenario: x", steps_content="")
+        CaseRepo(conn).set_current_version(cid, vid)
+        eid = ExecutionRepo(conn).create(test_case_id=cid, version_id=vid)
+        ExecutionRepo(conn).finalize(
+            eid, execution_status="success", functional_status="conforme",
+            scenarios_total=1, scenarios_passed=1, scenarios_failed=0,
+            cost_usd=0.0, iterations=1, duration_seconds=0.1,
+            residus=json.dumps(["res.partner#4821 (max_id dépassé, non enregistré)"]))
+
+        rapport = report_service.build_report_for_execution(conn, eid)
+        assert rapport.residus == ["res.partner#4821 (max_id dépassé, non enregistré)"]
+        assert "Résidus possibles" in report_service.report_mod.render_html(rapport)
+    finally:
+        conn.close()

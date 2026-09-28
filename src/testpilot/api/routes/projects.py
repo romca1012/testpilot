@@ -104,6 +104,7 @@ def create_project(body: schemas.ProjectIn, request: Request = None, conn=Depend
     utilisateur = getattr(request, "state", None) and getattr(request.state, "user", None)
     _refuser_contexte_invalide(body.browser_locale, body.browser_timezone, body.browser_viewport)
     _refuser_strategie_invalide(body.auth_strategie, body.totp_secret, body.injected_session)
+    _refuser_profil_invalide(body.connector_type, body.profil_instance)
     try:
         project_id = ProjectRepo(conn).create(
             name=body.name.strip(), description=body.description,
@@ -113,7 +114,8 @@ def create_project(body: schemas.ProjectIn, request: Request = None, conn=Depend
             owner_id=utilisateur["id"] if utilisateur is not None else None,
             browser_locale=body.browser_locale.strip(), browser_timezone=body.browser_timezone.strip(),
             browser_viewport=body.browser_viewport.strip(),
-            auth_strategie=body.auth_strategie, totp_secret=body.totp_secret, injected_session=body.injected_session)
+            auth_strategie=body.auth_strategie, totp_secret=body.totp_secret, injected_session=body.injected_session,
+            profil_instance=body.profil_instance)
     except DuplicateName as exc:
         raise _conflict(exc) from exc
     return schemas.project_summary(_summary_row(conn, project_id))
@@ -137,6 +139,21 @@ def _refuser_strategie_invalide(auth_strategie: str, totp_secret: str, injected_
         raise HTTPException(status_code=422, detail="; ".join(problemes))
 
 
+def _refuser_profil_invalide(connector_type: str, profil_instance: str) -> None:
+    """422 en français clair si `profil_instance` ne correspond à AUCUN fichier de profil réel
+    (lot 06, D6) — un nom qui ne mène nulle part serait accepté puis silencieusement sans effet."""
+    if not profil_instance:
+        return
+    from testpilot.generation.steps_library import profils_disponibles
+
+    disponibles = profils_disponibles(connector_type)
+    if profil_instance not in disponibles:
+        raise HTTPException(
+            status_code=422,
+            detail=f"le profil d'instance « {profil_instance} » n'existe pas pour le connecteur "
+                   f"« {connector_type} » (disponibles : {', '.join(disponibles) or 'aucun'})")
+
+
 @router.patch("/{project_id}", response_model=schemas.ProjectSummary,
              dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
 def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get_conn)):
@@ -156,6 +173,11 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
     _refuser_contexte_invalide(body.browser_locale or "", body.browser_timezone or "", body.browser_viewport or "")
     if body.auth_strategie is not None:
         _refuser_strategie_invalide(body.auth_strategie, body.totp_secret or "", body.injected_session or "")
+    if body.profil_instance:
+        actuel = ProjectRepo(conn).get(project_id) or {}
+        _refuser_profil_invalide(
+            body.connector_type if body.connector_type is not None else actuel.get("connector_type", "odoo"),
+            body.profil_instance)
     repo = ProjectRepo(conn)
     try:
         if body.name is not None:
@@ -172,7 +194,8 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
         browser_locale=None if body.browser_locale is None else body.browser_locale.strip(),
         browser_timezone=None if body.browser_timezone is None else body.browser_timezone.strip(),
         browser_viewport=None if body.browser_viewport is None else body.browser_viewport.strip(),
-        auth_strategie=body.auth_strategie, totp_secret=body.totp_secret, injected_session=body.injected_session)
+        auth_strategie=body.auth_strategie, totp_secret=body.totp_secret, injected_session=body.injected_session,
+        profil_instance=body.profil_instance)
     if body.calibration_writes_enabled is not None:
         repo.set_calibration_writes_enabled(project_id, body.calibration_writes_enabled)
     return schemas.project_summary(_summary_row(conn, project_id))

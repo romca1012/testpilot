@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 52
+ALIGNED_WITH_SCHEMA_VERSION = 53
 
 metadata = MetaData()
 
@@ -88,6 +88,10 @@ project = Table(
     Column("auth_strategie", Text, nullable=False, server_default="formulaire"),
     Column("totp_secret", Text, nullable=False, server_default=""),
     Column("injected_session", Text, nullable=False, server_default=""),
+    # Migration 53 (lot 06, D6) : le profil d'instance à inclure (`behave_runtime/steps_library/
+    # <connecteur>/profils/` et/ou `generic/profils/`) — vide = aucun profil (comportement inchangé).
+    # Pas un enum : un profil est un fichier sur disque, validé à la saisie (API), pas par un CHECK.
+    Column("profil_instance", Text, nullable=False, server_default=""),
     Column("deleted_at", Text, nullable=False, server_default=""),
     Column("deleted_by", Text, nullable=False, server_default=""),
     Column("created_at", Text, nullable=False),
@@ -300,6 +304,10 @@ execution = Table(
     # Lot 05 (D5, migration 49) : comment le verdict a été obtenu. `nominale` PAR DÉFAUT pour l'historique — ce n'est pas
     # une mesure (la confiance n'était pas calculée avant ce lot).
     Column("confiance", Text, nullable=False, server_default="nominale"),
+    # Lot 06 (migration 53) : résidus de teardown (échecs de suppression/archivage, et ids trouvés
+    # au-dessus du max_id relevé mais jamais enregistrés par ce scénario) — JSON, même motif que
+    # `field_fallbacks` (informatif, jamais bloquant).
+    Column("residus", Text, nullable=False, server_default=""),
     # `run_id` (migration 15) : PAS de FK dure dans `db.py` (`ALTER TABLE … ADD COLUMN run_id
     # INTEGER` sans REFERENCES) — repris à l'identique, NULL = exécutions mono-cas héritées.
     Column("run_id", Integer, nullable=True),

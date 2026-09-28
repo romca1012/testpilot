@@ -52,16 +52,35 @@ _REPLIS_ODOO_JUSTIFIES = {
 }
 
 
+def _plier_concat(node: ast.AST) -> str | None:
+    """Replie une concaténation `"a" + "b" + ...` en une seule chaîne si TOUS les opérandes sont
+    des constantes chaîne (récursif) — ferme l'angle mort où un marqueur fractionné par un `+`
+    échappait à la détection littérale (`"sapi" + "an"` : ni l'une ni l'autre des deux moitiés ne
+    contient `sapian`), signalé par la revue du lot 06."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        gauche = _plier_concat(node.left)
+        droite = _plier_concat(node.right)
+        if gauche is not None and droite is not None:
+            return gauche + droite
+    return None
+
+
 def _appels_selecteurs(node: ast.AST) -> list[str]:
     """Chaînes passées à un appel `.xxx(...)` dans CE nœud — locator/get_by_role/get_by_text/…
     Les SEULS endroits où un marqueur Odoo change réellement le comportement d'un test ; jamais
-    un docstring, un commentaire (invisible à l'AST) ou un message de log."""
+    un docstring, un commentaire (invisible à l'AST) ou un message de log.
+
+    Une chaîne d'arguments concaténée par `+` est repliée avant d'être retenue (même angle mort
+    que `_constantes_hors_docstring`)."""
     chaines = []
     for n in ast.walk(node):
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
             for arg in n.args:
-                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                    chaines.append(arg.value)
+                repliee = _plier_concat(arg)
+                if repliee is not None:
+                    chaines.append(repliee)
     return chaines
 
 
@@ -131,6 +150,75 @@ def test_aucun_helper_appele_par_un_step_generique_ne_cache_un_odoo_non_justifie
         f"légitime) : {fautifs}")
 
 
+# ── Lot 06 (D6, F6) : plus aucune référence à une INSTANCE CLIENT dans le socle ────────────────
+#
+# Même discipline que ci-dessus (AST, jamais un docstring/commentaire qui EXPLIQUE la règle) —
+# mais sur un axe DIFFÉRENT : pas générique-vs-Odoo, générique/socle-vs-INSTANCE PRÉCISE (Sapian,
+# une démo…). Cible des identifiants PRÉCIS, jamais le mot nu « ticket » (trop général : apparaît
+# légitimement dans des docstrings/commentaires qui ne sont pas du texte scanné ici de toute façon,
+# mais aussi dans un futur step générique légitime portant ce mot dans un AUTRE sens).
+_MARQUEURS_INSTANCE = ("employee_front", "sapian", "helpdesk.ticket")
+
+# Libellés EXACTS des steps déplacés vers un profil (lot 06) — un remaniement futur qui les
+# réintroduirait dans le socle doit être détecté même s'il change la forme du sélecteur qu'ils
+# utilisent (les marqueurs ci-dessus ne verraient rien s'ils étaient réécrits sans mot Odoo).
+_LIBELLES_DEPLACES = (
+    'je force le nom du ticket à "{value}"',
+    'je clique sur le bouton "{label}" avec accessoires',
+)
+
+_SOCLE_INSTANCE = (_GENERIC, _BASE_HELPERS,
+                  Path(__file__).resolve().parent.parent / "behave_runtime" / "environment.py")
+
+
+def _constantes_hors_docstring(tree: ast.Module) -> list[str]:
+    """Toutes les chaînes CONSTANTES du module, EN EXCLUANT les docstrings (module, classe,
+    fonction) — un commentaire `#` est déjà invisible à l'AST ; une docstring qui EXPLIQUERAIT la
+    règle (comme celui du dépôt, cf. tête de fichier) ne doit jamais compter comme une violation.
+
+    Inclut aussi les concaténations `"a" + "b"` repliées (`_plier_concat`) : un marqueur fractionné
+    par un `+` ne doit pas échapper à la garde (angle mort fermé, revue du lot 06)."""
+    docstrings = set()
+    porteurs = [tree] + [n for n in ast.walk(tree)
+                         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+    for porteur in porteurs:
+        corps = getattr(porteur, "body", [])
+        if (corps and isinstance(corps[0], ast.Expr) and isinstance(corps[0].value, ast.Constant)
+                and isinstance(corps[0].value.value, str)):
+            docstrings.add(id(corps[0].value))
+    chaines = [n.value for n in ast.walk(tree)
+               if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docstrings]
+    chaines += [repliee for n in ast.walk(tree) if isinstance(n, ast.BinOp)
+                for repliee in [_plier_concat(n)] if repliee is not None]
+    return chaines
+
+
+def test_aucun_marqueur_d_instance_client_hors_docstring_dans_le_socle():
+    """`employee_front`, `sapian`, `helpdesk.ticket` (littéral) : plus aucune trace en CODE (hors
+    prose explicative) dans `generic/_generic_steps.py`, `_base_helpers.py` ou `environment.py`
+    depuis leur déplacement vers un profil d'instance (lot 06)."""
+    fautifs = []
+    for fichier in _SOCLE_INSTANCE:
+        tree = ast.parse(fichier.read_text(encoding="utf-8"))
+        for chaine in _constantes_hors_docstring(tree):
+            trouve = [m for m in _MARQUEURS_INSTANCE if m.lower() in chaine.lower()]
+            if trouve:
+                fautifs.append((fichier.name, chaine, trouve))
+    assert not fautifs, (
+        f"marqueur(s) d'instance client trouvé(s) en dehors d'un docstring dans le socle commun — "
+        f"devrait vivre dans un profil (`<connecteur>/profils/` ou `generic/profils/`) : {fautifs}")
+
+
+def test_aucun_libelle_de_step_deplace_ne_reapparait_dans_le_socle():
+    """Les DEUX libellés exacts déplacés vers un profil (lot 06) ne doivent plus jamais être
+    déclarés par un `@given`/`@when`/`@then` du socle — une réintroduction future y serait sinon
+    invisible dès qu'elle change ne serait-ce qu'un espace du sélecteur qu'elle utilise."""
+    tree = ast.parse(_GENERIC.read_text(encoding="utf-8"))
+    declares = {label for chaine in _constantes_hors_docstring(tree) for label in _LIBELLES_DEPLACES
+                if chaine == label}
+    assert not declares, f"libellé(s) déplacé(s) vers un profil, réapparu(s) dans le socle : {declares}"
+
+
 def test_les_repos_justifies_existent_vraiment_et_restent_a_jour():
     """`_REPLIS_ODOO_JUSTIFIES` ne doit jamais devenir une liste de vœux : chaque entrée doit
     encore correspondre à un vrai helper, encore appelé par un step générique, qui contient
@@ -150,3 +238,39 @@ def test_les_repos_justifies_existent_vraiment_et_restent_a_jour():
         assert fn is not None, f"{nom} n'existe plus dans _base_helpers.py — retire l'entrée"
         marqueurs = {m for s in _appels_selecteurs(fn) for m in _MARQUEURS_ODOO if m in s}
         assert marqueurs, f"{nom} ne contient plus aucun marqueur Odoo — retire l'entrée"
+
+
+# ── Falsifiabilité du pliage de concaténation (revue du lot 06) ────────────────────────────────
+#
+# Preuve que `_plier_concat`/`_constantes_hors_docstring` détectent RÉELLEMENT un marqueur
+# fractionné par un `+` — pas seulement en théorie. Sur un module SYNTHÉTIQUE (pas les fichiers
+# réels du socle) : le point précis qu'on prouve est le mécanisme, pas l'état actuel du socle.
+
+def test_le_pliage_de_concatenation_detecte_un_marqueur_fractionne_par_un_plus():
+    """`"sapi" + "an"` doit être vu comme `sapian` par `_constantes_hors_docstring` — sans le
+    pliage, aucune des deux moitiés ne contient le marqueur (angle mort fermé ici)."""
+    tree = ast.parse('x = "sapi" + "an"\n')
+    chaines = _constantes_hors_docstring(tree)
+    assert any("sapian" in c for c in chaines), (
+        f"le marqueur fractionné par '+' n'a pas été replié : {chaines}")
+
+
+def test_falsifiable_sans_pliage_le_marqueur_fractionne_aurait_echappe():
+    """Preuve NÉGATIVE, pour écarter un succès accidentel du test ci-dessus : les deux moitiés
+    CONSTANTES prises séparément (ce que voyait la garde AVANT le pliage) ne contiennent
+    individuellement jamais `sapian` — la détection ci-dessus vient bien du pliage, de rien
+    d'autre."""
+    tree = ast.parse('x = "sapi" + "an"\n')
+    chaines_brutes = [n.value for n in ast.walk(tree)
+                      if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+    assert not any("sapian" in c for c in chaines_brutes)
+
+
+def test_le_pliage_de_concatenation_ferme_le_meme_angle_mort_cote_selecteurs():
+    """Même preuve, côté `_appels_selecteurs` (les tests Odoo, pas seulement l'instance) : un
+    sélecteur passé en argument d'appel, fractionné par un `+`, est vu replié."""
+    tree = ast.parse('page.locator("o_has_" + "error")\n')
+    call = next(n for n in ast.walk(tree) if isinstance(n, ast.Call))
+    chaines = _appels_selecteurs(call)
+    assert any("o_has_error" in c for c in chaines), (
+        f"le sélecteur fractionné par '+' n'a pas été replié : {chaines}")

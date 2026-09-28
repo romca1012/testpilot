@@ -494,6 +494,7 @@ _AUTEUR_CORRECTION = "correction-agent"
 def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
                                module_name: str | None = None, connector=None,
                                connector_type: str | None = None, connector_version: str = "",
+                               profil_instance: str | None = None,
                                dry_runner=None, calibration_writes_enabled: bool = False,
                                require_review: bool = False) -> None:
     """Décide du sort d'une version fraîchement générée — amendement §4.3-bis (2026-09-15),
@@ -547,7 +548,8 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
         feature_content=version.get("feature_content") or "",
         steps_content=version.get("steps_content") or "",
         connector=connector, connector_type=connector_type,
-        connector_version=connector_version, dry_runner=dry_runner,
+        connector_version=connector_version, profil_instance=profil_instance,
+        dry_runner=dry_runner,
         calibration_writes_enabled=calibration_writes_enabled,
         verified_fields=json.loads(version.get("verified_fields") or "{}"))
     _record_generation_cost(conn, case_id=case_id, correction_usd=proposal.cost_usd)
@@ -723,7 +725,8 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
         connector.connect()
         runner = BehaveRunner(connection=env_du_projet(conn, project),
                               project_id=(project or {}).get("id"),
-                              connector_type=(project or {}).get("connector_type"))
+                              connector_type=(project or {}).get("connector_type"),
+                              profil_instance=(project or {}).get("profil_instance"))
 
         analysis_tracker = CostTracker()
         plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(slug, spec_content)
@@ -744,6 +747,7 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
                 conn, case_id, result.version_id, module_name=plan.module_name,
                 connector=connector, connector_type=(project or {}).get("connector_type"),
                 connector_version=(project or {}).get("connector_version", ""),
+                profil_instance=(project or {}).get("profil_instance"),
                 dry_runner=runner,
                 require_review=regeneration,
                 calibration_writes_enabled=bool((project or {}).get("calibration_writes_enabled")))
@@ -851,7 +855,8 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                 connecteur_tache.connect()
                 runner_tache = BehaveRunner(connection=env_du_projet(conn_tache, project),
                                             project_id=(project or {}).get("id"),
-                                            connector_type=(project or {}).get("connector_type"))
+                                            connector_type=(project or {}).get("connector_type"),
+                                            profil_instance=(project or {}).get("profil_instance"))
                 agent_tache = GenerationAgent(dry_runner=runner_tache, connector=connecteur_tache,
                                               case_repo=CaseRepo(conn_tache),
                                               version_repo=VersionRepo(conn_tache),
@@ -893,6 +898,7 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                         connector=connecteur_tache,
                         connector_type=(project or {}).get("connector_type"),
                         connector_version=(project or {}).get("connector_version", ""),
+                        profil_instance=(project or {}).get("profil_instance"),
                         dry_runner=runner_tache,
                         calibration_writes_enabled=bool(
                             (project or {}).get("calibration_writes_enabled")))

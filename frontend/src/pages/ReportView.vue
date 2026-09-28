@@ -140,6 +140,18 @@ onMounted(async () => {
         <p v-else class="text-sm text-muted-foreground">{{ artefacts.reason }}</p>
       </Card>
 
+      <!-- Résidus de teardown (lot 06, F6) : jamais bloquant, jamais supprimé automatiquement —
+           effet de bord possible du test, ou création d'un tiers (indiscernables). -->
+      <Card v-if="report.residus?.length" title="Résidus possibles">
+        <p class="text-xs text-muted-foreground">
+          Enregistrements ni supprimés ni archivés par le nettoyage automatique : à vérifier avant
+          toute suppression manuelle.
+        </p>
+        <ul class="mt-2 divide-y divide-border text-sm font-mono">
+          <li v-for="(res, i) in report.residus" :key="i" class="py-1.5 break-all">{{ res }}</li>
+        </ul>
+      </Card>
+
       <!-- Origine des défauts (vocabulaire utilisateur — jamais de valeur d'enum brute) -->
       <Card v-if="report.repairs.length" title="Origine des défauts">
         <ul class="divide-y divide-border text-sm">
