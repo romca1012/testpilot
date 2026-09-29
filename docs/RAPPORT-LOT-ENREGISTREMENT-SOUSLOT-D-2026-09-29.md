@@ -1,4 +1,4 @@
-## Lot « Enregistrement assisté du chemin de connexion » — sous-lot D — rejeu automatique + garde-fou — terminé (en attente de revue verdict-reviewer, de CI, et de fusion)
+## Lot « Enregistrement assisté du chemin de connexion » — sous-lot D — rejeu automatique + garde-fou — terminé (en attente de CI et de fusion)
 
 Décisions utilisées : aucune décision `D#` du registre du chantier `docs/PLAN-FIABILITE-VERDICT-2026-09.md` — ce lot est
 hors de ce chantier (voir rapports des sous-lots A/B/C). Aucune décision structurante nouvelle nécessaire ici : la
@@ -23,6 +23,24 @@ connexion ainsi révélé. Si une étape enregistrée ne se retrouve plus (appli
 avec un message clair demandant de refaire l'enregistrement — jamais un repli silencieux sur une autre hypothèse.
 Sans séquence enregistrée, rien ne change (comportement historique intact).
 
+### Relu par le sous-agent verdict-reviewer
+
+Un bloquant réel trouvé et corrigé, vérifié avec un vrai Chromium des deux côtés (avant/après) :
+`page.get_by_role(role, name=name)` fait par défaut un matching PAR SOUS-CHAÎNE et INSENSIBLE À LA CASSE — sans
+`exact=True`, un bouton renommé « France métropolitaine » ou « FRANCE » aurait matché le `name` enregistré « France »
+et reçu un clic SANS LEVER, alors que ce n'est manifestement plus le bon élément. Corrigé (`exact=True` ajouté), avec
+deux nouveaux tests `conformance` qui reproduisent exactement ces deux cas (sous-chaîne, casse). Ce bloquant invalide
+l'affirmation qui figurait ici avant correction (« un changement cosmétique de casse serait déjà traité comme une
+séquence obsolète ») — c'était FAUX, jamais vérifié sur un run réel avant la revue.
+
+Deux points « à corriger », traités :
+- `crawl_relogin_hook` mesurait la page de connexion AVANT le rejeu — si franchir l'écran intercalé implique une
+  vraie navigation, la mesure portait sur l'écran intercalé, pas le vrai formulaire, recréant le faux positif que le
+  correctif du 2026-09-15 visait à éliminer. Corrigé (rejeu déplacé avant la mesure), avec un test qui simule une
+  navigation et vérifie que la route mesurée est bien celle d'après.
+- `session_injectee` : la justification de l'exclusion du rejeu était présentée comme une garantie plutôt qu'une
+  hypothèse — reformulée honnêtement dans le code et les tests (voir « Risques » ci-dessous).
+
 ### Changements
 
 - `src/testpilot/connectors/_web_helpers.py` — `SequenceConnexionObsoleteError` (nouvelle exception dédiée, jamais une
@@ -41,10 +59,10 @@ Sans séquence enregistrée, rien ne change (comportement historique intact).
   réservée au connecteur `web` (Odoo n'a pas ce problème d'écran intercalé).
 - `src/testpilot/api/services/run_service.py` — `resolve_connection` lit la séquence et la transmet.
 - `behave_runtime/steps_library/_base_helpers.py` — `authentifier_selon_la_strategie` gagne un paramètre
-  `sequence_connexion` optionnel, rejouée AVANT toute stratégie, **sauf `session_injectee`** (le storage_state fourni
-  a déjà authentifié le contexte, l'écran de connexion n'apparaît jamais — y rejouer la séquence risquerait de
-  cliquer sur une page complètement différente). `_verifier_ou_reconnecter_session` (reconnexion mid-scénario) ne la
-  transmet délibérément PAS : cette fonction ne s'exécute que si le mot de passe est DÉJÀ visible (`_mot_de_passe_visible
+  `sequence_connexion` optionnel, rejouée AVANT toute stratégie, **sauf `session_injectee`**, sous l'HYPOTHÈSE non
+  vérifiée sur une application réelle que le storage_state fourni fait disparaître l'écran intercalé (documentée
+  honnêtement dans le code depuis la revue, voir ci-dessous — pas présentée comme une garantie). `_verifier_ou_reconnecter_session`
+  (reconnexion mid-scénario) ne la transmet délibérément PAS : cette fonction ne s'exécute que si le mot de passe est DÉJÀ visible (`_mot_de_passe_visible
   is True`), donc l'écran intercalé, par construction, n'y réapparaît jamais.
 - `behave_runtime/environment.py` — lit `TESTPILOT_LOGIN_RECORDING`, la parse en JSON (best-effort : une valeur
   invalide ne peut venir que d'un bug de ce dépôt, jamais d'une saisie humaine — continue sans rejeu plutôt que de
@@ -56,9 +74,10 @@ Sans séquence enregistrée, rien ne change (comportement historique intact).
 - `tests/test_rejouer_sequence_connexion.py` (5, pages factices) — séquence vide sans effet, rejeu dans l'ordre,
   **falsifiable** : étape introuvable lève avec message clair (rôle+nom), étape ambiguë lève aussi, arrêt NET (l'étape
   suivante n'est jamais tentée après un échec).
-- `tests/test_login_recording_generic_web.py` (5) — `from_project` lit/défaut la séquence ; rejeu AVANT détection sur
+- `tests/test_login_recording_generic_web.py` (6) — `from_project` lit/défaut la séquence ; rejeu AVANT détection sur
   les deux points d'appel (`crawl_relogin_hook`, `_tenter_connexion_generique`), preuve par ordre d'appels observé ;
-  **falsifiable** : une séquence obsolète arrête net, la détection générique n'est jamais tentée après.
+  **falsifiable** : une séquence obsolète arrête net, la détection générique n'est jamais tentée après ; **falsifiable**
+  (ajouté en revue) : la mesure de la page de connexion porte bien sur la route APRÈS le rejeu, pas l'écran intercalé.
 - `tests/test_login_recording_exploration.py` (2) — `start_exploration` transmet `[]` sans séquence, la séquence
   exacte si confirmée.
 - `tests/test_runtime_connection.py` (+5) — `project_env`/`env_du_projet`/`resolve_connection` transmettent bien
@@ -66,12 +85,17 @@ Sans séquence enregistrée, rien ne change (comportement historique intact).
 - `tests/test_login_recording_authentification.py` (4) — rejeu avant stratégie ; `session_injectee` ne rejoue
   JAMAIS ; **falsifiable** : une séquence obsolète lève `PreconditionNonRemplieError` (→ `blocked`) sans jamais
   tenter la détection générique ; non-régression explicite sans séquence.
-- `tests/test_login_recording_rejeu_reel.py` (2, marqueur `conformance`, **vrai Chromium**) : reproduit le scénario
+- `tests/test_login_recording_rejeu_reel.py` (4, marqueur `conformance`, **vrai Chromium**) : reproduit le scénario
   même qui motive ce chantier (écran de sélection de pays avant un formulaire de connexion) — la séquence enregistrée
   franchit l'écran, puis la connexion générique aboutit réellement (page finale atteinte) ; **falsifiable** : une
-  séquence périmée (bouton renommé) lève sans jamais tenter la connexion.
+  séquence périmée (bouton renommé) lève sans jamais tenter la connexion ; **falsifiable** (ajoutés en revue,
+  bloquant `exact=True`) : un libellé qui CONTIENT le nom enregistré comme sous-chaîne est rejeté, un libellé de
+  CASSE différente est rejeté.
 
-23 tests au total, tous vérifiés falsifiables là où la consigne l'exige (étape 8 : jamais un repli silencieux).
+26 tests au total, tous vérifiés falsifiables là où la consigne l'exige (étape 8 : jamais un repli silencieux). Les
+trois nouveaux tests issus de la revue (`exact=True` ×2, ordre mesure/rejeu ×1) ont chacun été observés rouges en
+revenant temporairement au code d'avant correctif — avec EXACTEMENT le mauvais résultat décrit par la revue — puis
+verts avec le correctif restauré.
 
 ### Critères d'acceptation
 
@@ -85,9 +109,10 @@ Sans séquence enregistrée, rien ne change (comportement historique intact).
 
 ### Mesures
 
-- `pytest -q -m conformance tests/test_login_recording_rejeu_reel.py` : 2 passed (~8 s, vrai Chromium).
-- `pytest -q` (suite complète) : en cours de vérification finale au moment de ce rapport — voir le message de suivi
-  de session pour le résultat.
+- `pytest -q -m conformance tests/test_login_recording_rejeu_reel.py` : 4 passed (~18 s, vrai Chromium), après
+  correctif `exact=True`.
+- `pytest -q` (suite complète) : 2914 passed, 16 skipped, 135 deselected — aucune régression, mesuré avant ET après
+  les correctifs de revue (les trois correctifs ne touchent que des chemins déjà exercés par les nouveaux tests).
 - `ruff check --select E9,F63,F7,F82 src behave_runtime tests scripts` : vert.
 - Aucun appel LLM dans ce sous-lot — coût nul.
 
@@ -108,9 +133,16 @@ Sans séquence enregistrée, rien ne change (comportement historique intact).
 - Aucun écran n'affiche encore qu'une séquence a été rejouée avec succès ou a échoué, en dehors du message
   `blocked`/du log d'exploration — une personne qui ne consulte pas le détail d'un échec pourrait ne pas comprendre
   que le problème vient d'un écran intercalé changé, plutôt que de l'application elle-même.
-- `page.get_by_role(role, name=name)` est sensible à la casse et à l'espace exact du nom accessible — un changement
-  cosmétique du LIBELLÉ (ex. « France » → « FRANCE ») serait déjà traité comme une séquence obsolète, ce qui est le
-  comportement voulu (jamais une correspondance approximative) mais peut surprendre si le changement semble mineur.
+- `page.get_by_role(role, name=name, exact=True)` — avec `exact=True`, la comparaison est stricte : un changement
+  cosmétique du libellé (casse, espace, texte enrichi) est bien traité comme une séquence obsolète. C'est le
+  comportement voulu (jamais une correspondance approximative), mais qui peut surprendre si le changement semble
+  mineur à l'œil humain (ex. « France » → « FRANCE »).
+- `session_injectee` repose sur une HYPOTHÈSE non vérifiée sur une application réelle (l'écran intercalé disparaît
+  une fois authentifié par le storage_state fourni) — documentée comme telle dans le code depuis la revue, pas
+  présentée comme une garantie. Si elle est fausse pour une application donnée (écran affiché à chaque visite, ou
+  storage_state expiré/partiellement invalide), le diagnostic « session valide » pourrait être posé à tort sur
+  l'écran intercalé lui-même — pas identifié comme un chemin vers un faux `conforme` (les étapes suivantes du
+  scénario échoueront très probablement), mais un diagnostic erroné reste possible.
 
 ### Suggestions hors périmètre
 

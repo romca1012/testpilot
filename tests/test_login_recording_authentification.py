@@ -1,6 +1,7 @@
 """`authentifier_selon_la_strategie` rejoue la séquence de connexion confirmée (sous-lot D) AVANT
-toute stratégie — sauf `session_injectee`, où l'écran de connexion n'apparaît jamais (le
-storage_state fourni a déjà authentifié le contexte).
+toute stratégie — sauf `session_injectee`, sous l'HYPOTHÈSE (non vérifiée sur une application
+réelle, voir la docstring de `authentifier_selon_la_strategie`) que l'écran intercalé n'apparaît
+plus une fois authentifié par le storage_state fourni.
 
 Comportement Playwright réel de `rejouer_sequence_connexion` elle-même :
 `test_rejouer_sequence_connexion.py`. Ici : l'ORDRE et le CÂBLAGE dans `_base_helpers.py`.
@@ -57,9 +58,12 @@ def test_la_sequence_est_rejouee_avant_la_detection_pour_la_strategie_formulaire
 
 
 def test_session_injectee_ne_rejoue_jamais_la_sequence(monkeypatch):
-    """L'écran de connexion n'apparaît jamais avec un storage_state déjà authentifié — rejouer la
-    séquence contre une page complètement différente (déjà connectée) risquerait de cliquer sur
-    n'importe quoi."""
+    """Sous l'hypothèse qu'un storage_state déjà authentifié fait disparaître l'écran intercalé
+    (hypothèse non vérifiée sur une application réelle — voir la docstring de
+    `authentifier_selon_la_strategie`), rejouer la séquence contre une page potentiellement
+    complètement différente risquerait de cliquer sur n'importe quoi : ce test verrouille
+    seulement que le CODE respecte bien ce choix, pas que l'hypothèse elle-même est toujours
+    vraie."""
     H = _charger_base_helpers()
     appels = []
     monkeypatch.setattr(H, "rejouer_sequence_connexion", lambda page, etapes: appels.append("rejeu"))
