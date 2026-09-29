@@ -246,3 +246,16 @@ def resume(modele: dict | None) -> str:
                   if c.get("tag") == "select" and c.get("options"))
     return (f"{len(pages)} routes, {champs} champs, {selects} select — "
             f"mesuré le {modele.get('mesure_le', '?')}")
+
+
+def pages_detaillees(projet: dict | None) -> list[dict]:
+    """Le détail ORDONNÉ des pages capturées par la dernière exploration — pour un écran
+    d'investigation qui se relit sans rouvrir `data/domain/…json` à la main ni se connecter au
+    serveur. Pure lecture, comme le reste de ce module : ne mesure rien, ne recrawle rien.
+
+    Trié par route pour un affichage stable — l'ordre du JSON (insertion pendant le BFS) n'a
+    aucune valeur de lecture pour un humain qui cherche une route précise.
+    """
+    modele = charger_modele(projet)
+    pages = (modele or {}).get("pages") or {}
+    return [{"route": route, **infos} for route, infos in sorted(pages.items())]

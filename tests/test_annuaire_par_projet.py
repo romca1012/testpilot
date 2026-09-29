@@ -115,6 +115,33 @@ def test_sans_projet_aucun_modele(domaine_isole):
     assert domain_model.charger_modele(None) is None
 
 
+# ── Le détail des pages (écran d'investigation) ───────────────────────────────
+
+def test_pages_detaillees_triees_par_route_avec_les_infos_completes(domaine_isole):
+    domain_model.chemin_du_modele(9).write_text(json.dumps({
+        "base_url": "http://a", "mesure_le": "2026-07-17", "connector_type": "web",
+        "pages": {
+            "/z": {"titre": "Z", "champs": [], "actions": [], "liens": [], "formulaires": []},
+            "/a": {"titre": "A", "champs": [{"name": "x"}], "actions": [], "liens": [],
+                  "formulaires": []},
+        },
+        "transitions": {},
+    }, ensure_ascii=False), encoding="utf-8")
+    projet = {"id": 9, "base_url": "http://a"}
+
+    pages = domain_model.pages_detaillees(projet)
+
+    assert [p["route"] for p in pages] == ["/a", "/z"], (
+        "ordre stable pour la lecture (par route), pas l'ordre d'insertion du BFS")
+    assert pages[0]["titre"] == "A"
+    assert pages[0]["champs"] == [{"name": "x"}]
+
+
+def test_pages_detaillees_vide_sans_modele(domaine_isole):
+    assert domain_model.pages_detaillees(None) == []
+    assert domain_model.pages_detaillees({"id": 999, "base_url": "http://jamais-explore"}) == []
+
+
 # ── L'API d'exploration ───────────────────────────────────────────────────────
 
 def _projet(client, **kw):
@@ -171,6 +198,35 @@ def test_deux_explorations_simultanees_sont_refusees(client, monkeypatch):
 def test_projet_inconnu_404(client):
     assert client.post("/api/projects/999/exploration").status_code == 404
     assert client.get("/api/projects/999/exploration").status_code == 404
+
+
+# ── L'API de détail des pages (écran d'investigation) ─────────────────────────
+
+def test_endpoint_pages_rend_le_detail_de_l_exploration(client, domaine_isole):
+    pid = _projet(client)
+    domain_model.chemin_du_modele(pid).write_text(json.dumps({
+        "base_url": "http://localhost:10017", "mesure_le": "2026-07-17", "connector_type": "odoo",
+        "pages": {"/a": {"titre": "A", "champs": [{"name": "x"}], "actions": [], "liens": [],
+                        "formulaires": []}},
+        "transitions": {},
+    }, ensure_ascii=False), encoding="utf-8")
+
+    r = client.get(f"/api/projects/{pid}/exploration/pages")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 1
+    assert body[0]["route"] == "/a"
+    assert body[0]["champs"] == [{"name": "x"}]
+
+
+def test_endpoint_pages_vide_si_jamais_explore(client):
+    pid = _projet(client)
+    assert client.get(f"/api/projects/{pid}/exploration/pages").json() == []
+
+
+def test_endpoint_pages_projet_inconnu_404(client):
+    assert client.get("/api/projects/999/exploration/pages").status_code == 404
 
 
 # ── La tâche de fond ──────────────────────────────────────────────────────────

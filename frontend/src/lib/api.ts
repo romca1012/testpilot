@@ -216,6 +216,10 @@ export const api = {
     request<Quality>(`/api/executions/quality/summary?project_id=${projectId}`),
   getExploration: (id: number | string) =>
     request<Exploration>(`/api/projects/${id}/exploration`),
+  // Détail des pages capturées — écran d'investigation (voir les routes/champs/actions/liens
+  // mesurés sans se connecter au serveur ni ouvrir `data/domain/…json` à la main).
+  getExplorationPages: (id: number | string) =>
+    request<ExplorationPage[]>(`/api/projects/${id}/exploration/pages`),
   // ── Runs (campagnes) — décision 0022 n°8 ──
   createRun: (projectId: number | string, body: {
     name: string; description?: string; refs?: string
@@ -767,6 +771,19 @@ export interface Exploration {
   // seul signe visible que ce complément a bien tourné sur CETTE mesure, sans lire le fichier
   // `data/domain/…json` à la main.
   modeles_backoffice: number
+}
+// Une page telle que le crawl l'a vue — forme volontairement souple (`Record<string, any>`) :
+// elle varie selon le connecteur (un <select> porte des `options`, un champ contraint porte
+// `contraintes`…) et selon l'évolution du crawl ; cet écran est un DIAGNOSTIC, pas une entrée
+// qui doit valider une forme précise (cf. `schemas.ExplorationPageOut`, même choix côté API).
+export interface ExplorationPage {
+  route: string
+  titre: string
+  url_exemple: string
+  champs: Record<string, any>[]
+  actions: Record<string, any>[]
+  liens: Record<string, any>[]
+  formulaires: Record<string, any>[]
 }
 export interface ProjectInput {
   name: string; description?: string

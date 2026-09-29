@@ -546,6 +546,15 @@ onMounted(async () => { await load(); await loadExplorations() })
               <span class="text-subtle-foreground">Application non explorée</span>
             </template>
           </div>
+          <!-- Détail des routes/champs capturés : consulter ou investiguer, sans se connecter au
+               serveur. Seulement quand une mesure existe — sinon il n'y a rien à y voir. -->
+          <RouterLink v-if="explorations[p.id]?.explored"
+            :to="`/projects/${p.id}/exploration`" @click.stop
+            class="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-transparent
+                   px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          >
+            Voir le détail
+          </RouterLink>
           <Button
             variant="secondary" size="sm"
             :disabled="!p.base_url || explorations[p.id]?.running || exploring === p.id"
