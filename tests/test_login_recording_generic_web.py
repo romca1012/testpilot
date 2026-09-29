@@ -99,3 +99,46 @@ def test_falsifiable_une_sequence_obsolete_arrete_net_sans_tenter_la_detection(m
         conn._tenter_connexion_generique(page=object())
 
     assert appels == [], "la détection générique n'aurait jamais dû être tentée après un rejeu en échec"
+
+
+def test_crawl_relogin_hook_mesure_la_page_APRES_avoir_franchi_l_ecran_intercale(monkeypatch):
+    """Correctif trouvé en revue verdict-reviewer (2026-09-29) : si franchir l'écran intercalé
+    implique une VRAIE navigation (schéma courant pour un sélecteur de pays, ex.
+    `/choisir-pays` → `/fr/connexion`), la mesure de la page de connexion (correctif du
+    2026-09-15, `test_crawl_polymorphisme.py`) doit porter sur la page APRÈS ce franchissement,
+    jamais sur l'écran intercalé lui-même — sinon on recrée exactement le faux positif « Points
+    de vigilance » que ce correctif visait à éliminer, pour le cas d'usage même qui motive ce
+    chantier (yros-portail)."""
+    sys.path.insert(0, str(RACINE / "scripts"))
+    mesure_apres = {"champs": [{"name": "identifiant", "tag": "input"}], "actions": [],
+                    "liens": [], "formulaires": [], "titre": "Connexion"}
+
+    class _PageAvecNavigation:
+        def __init__(self):
+            self.url = "http://app.local/choisir-pays"
+
+        def goto(self, _url, **_k):
+            pass
+
+        def wait_for_load_state(self, *_a, **_k):
+            pass
+
+        def evaluate(self, _script):
+            return mesure_apres
+
+    def _rejeu_qui_navigue(page, etapes):
+        page.url = "http://app.local/connexion-reelle"  # simule le VRAI franchissement de l'écran
+        return True
+
+    monkeypatch.setattr(gw, "rejouer_sequence_connexion", _rejeu_qui_navigue)
+    monkeypatch.setattr(gw, "tenter_connexion_generique", lambda page, user, password: True)
+
+    conn = GenericWebConnector(url="http://app.local", user="bob", password="secret",
+                               sequence_connexion=[{"role": "button", "name": "Continuer"}])
+    ctx = types.SimpleNamespace(page=_PageAvecNavigation())
+
+    conn.crawl_relogin_hook()(ctx)
+
+    route, infos = ctx.page_connexion
+    assert route == "/connexion-reelle", "la mesure a porté sur l'écran intercalé, pas la vraie page de connexion"
+    assert infos == mesure_apres

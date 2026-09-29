@@ -145,13 +145,23 @@ class SequenceConnexionObsoleteError(Exception):
 def rejouer_sequence_connexion(page, etapes: list[dict], *, timeout_ms: int = 5000) -> bool:
     """Rejoue, DANS L'ORDRE, une séquence enregistrée (sous-lot C : liste de `{"role", "name"}`
     calculés par l'algorithme AccName déterministe — jamais un texte deviné) via
-    ``page.get_by_role(role, name=name).click()``. Rend ``False`` sans rien faire si `etapes` est
-    vide (rien n'a jamais été enregistré pour ce projet — comportement historique inchangé).
+    ``page.get_by_role(role, name=name, exact=True).click()``. Rend ``False`` sans rien faire si
+    `etapes` est vide (rien n'a jamais été enregistré pour ce projet — comportement historique
+    inchangé).
 
     Précède `tenter_connexion_generique`, ne le remplace pas : fait seulement franchir un éventuel
     écran intercalé AVANT le formulaire de connexion (sélection de pays, bannière…) — le
     remplissage identifiant/mot de passe reste la responsabilité de `tenter_connexion_generique`,
     appelée juste après par l'appelant.
+
+    ⚠️ **`exact=True` est OBLIGATOIRE ici** — bloquant trouvé et vérifié avec un vrai Chromium en
+    revue verdict-reviewer (2026-09-29) : sans lui, `get_by_role` fait par défaut un matching PAR
+    SOUS-CHAÎNE et insensible à la casse (« FRANCE » matche un `name` enregistré « France », un
+    bouton renommé « Continuer votre progression… » matche toujours un `name` enregistré
+    « Continuer »). Un clic aurait alors réussi SANS LEVER, sur un élément qui n'est plus le bon —
+    exactement le « repli silencieux sur une autre hypothèse » que l'étape 8 de la consigne
+    interdit. `exact=True` retombe sur l'égalité stricte du nom accessible calculé par AccName
+    (sous-lot A), seule comparaison cohérente avec ce que `accname.calculer` a réellement mesuré.
 
     Un élément introuvable OU ambigu (`get_by_role` retrouve plusieurs correspondances — Playwright
     lève déjà en mode strict par défaut) arrête net avec `SequenceConnexionObsoleteError` : jamais
@@ -164,7 +174,7 @@ def rejouer_sequence_connexion(page, etapes: list[dict], *, timeout_ms: int = 50
     for etape in etapes:
         role, name = etape.get("role", ""), etape.get("name", "")
         try:
-            page.get_by_role(role, name=name).click(timeout=timeout_ms)
+            page.get_by_role(role, name=name, exact=True).click(timeout=timeout_ms)
         except Exception as exc:
             raise SequenceConnexionObsoleteError(
                 f"étape enregistrée « rôle={role!r}, nom={name!r} » introuvable ou ambiguë sur "
