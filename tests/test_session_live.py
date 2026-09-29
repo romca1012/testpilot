@@ -140,11 +140,19 @@ def test_un_admin_obtient_un_jeton(client, equipe):
     assert corps["token"] and corps["expires_at"]
 
 
-@pytest.mark.parametrize("nom,attendu", [("Dev", 403), ("Testeuse", 403), ("Lecteur", 403)])
-def test_falsifiable_un_role_sous_admin_est_refuse(client, equipe, nom, attendu):
+def test_un_dev_obtient_aussi_un_jeton(client, equipe):
+    """La consigne du lot réserve explicitement l'accès à `admin`/`dev` — plus permissif que
+    `start_exploration`, qui exige `admin` seul dans le code actuel (écart assumé, pas un oubli)."""
+    _se_connecter(client, "Dev")
+
+    assert client.post(f"/api/projects/{equipe}/live-session").status_code == 201
+
+
+@pytest.mark.parametrize("nom,attendu", [("Testeuse", 403), ("Lecteur", 403)])
+def test_falsifiable_un_role_sous_dev_est_refuse(client, equipe, nom, attendu):
     """Preuve que la garde mord réellement, pas seulement qu'elle est déclarée dans la route :
-    dev, testeur et lecture_seule sont chacun refusés, malgré des droits croissants ailleurs
-    (dev peut modifier un script généré — jamais ouvrir un navigateur réel sur le projet)."""
+    testeur et lecture_seule sont chacun refusés — jamais accès à un navigateur réel sur le
+    projet, contrairement à admin et dev."""
     _se_connecter(client, nom)
 
     assert client.post(f"/api/projects/{equipe}/live-session").status_code == attendu

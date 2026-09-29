@@ -318,16 +318,20 @@ def start_exploration(project_id: int, background: BackgroundTasks, conn=Depends
 
 
 @router.post("/{project_id}/live-session", response_model=schemas.LiveSessionOut, status_code=201,
-            dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
+            dependencies=[Depends(access.require_project_role(access.ROLE_DEV))])
 def create_live_session(project_id: int, request: Request, conn=Depends(get_conn)):
     """Émet un jeton d'accès à usage unique pour démarrer une session en direct (sous-lot B du
     lot « Enregistrement assisté du chemin de connexion ») : la personne qui va montrer le chemin
     de connexion sur un vrai navigateur distant s'en sert immédiatement pour ouvrir la connexion
     WebSocket qui porte cette session (sous-lot C, pas encore construite).
 
-    Réservé à `admin` — même plancher que l'exploration : ouvrir un navigateur réel sur
-    l'application du projet et regarder ce qui s'y passe est une opération sensible, jamais
-    accessible à un simple Testeur.
+    Réservé à `admin`/`dev` (consigne du lot) — jamais un Testeur ou une Lecture seule : ouvrir un
+    navigateur réel sur l'application du projet et regarder ce qui s'y passe est une opération
+    sensible.
+
+    ⚠️ Plus permissif que `start_exploration`, qui exige `admin` seul dans le code actuel — écart
+    explicite et validé, pas un oubli : la consigne du lot demande `admin`/`dev` telle quelle,
+    indépendamment de ce que l'exploration applique aujourd'hui.
     """
     if ProjectRepo(conn).get(project_id) is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
