@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 54
+_SCHEMA_VERSION = 55
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -250,6 +250,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_53_profils_et_teardown(conn)
     if version < 54:
         _migrate_54_live_session_token(conn)
+    if version < 55:
+        _migrate_55_project_login_recording(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -277,6 +279,28 @@ def _migrate_54_live_session_token(conn: sqlite3.Connection) -> None:
         created_at TEXT NOT NULL,
         expires_at TEXT NOT NULL,
         used_at TEXT NOT NULL DEFAULT '')''')
+
+
+def _migrate_55_project_login_recording(conn: sqlite3.Connection) -> None:
+    """Lot « Enregistrement assisté du chemin de connexion », sous-lot C : la séquence de clics
+    confirmée qui passe l'écran de pré-connexion, une fois par projet.
+
+    `project_id UNIQUE` — une seule séquence ACTIVE par projet, jamais un historique de versions :
+    une nouvelle confirmation remplace la précédente (`INSERT ... ON CONFLICT(project_id) DO
+    UPDATE`, voir `project_login_recordings.enregistrer`). Rien ne lit jamais une ancienne
+    version, donc rien ne justifie de la garder.
+
+    `steps_json` — un seul bloc JSON (liste ordonnée de `{role, name}`), pas une table à part par
+    étape : le rejeu (sous-lot D) lit toujours la séquence ENTIÈRE dans l'ordre, jamais une étape
+    isolée par une requête SQL — même motif que `domain_model` pour une structure qui n'a besoin
+    d'être manipulée qu'en bloc.
+    """
+    conn.execute('''CREATE TABLE IF NOT EXISTS project_login_recording (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL UNIQUE REFERENCES project(id) ON DELETE CASCADE,
+        steps_json TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        recorded_by_user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE)''')
 
 
 def _migrate_53_profils_et_teardown(conn: sqlite3.Connection) -> None:
