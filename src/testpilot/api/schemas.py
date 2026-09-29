@@ -573,6 +573,14 @@ class ExplorationOut(BaseModel):
     error: str = ""
 
 
+class LiveSessionOut(BaseModel):
+    """Le jeton d'une session en direct, en clair — la SEULE fois qu'il l'est (sous-lot B du lot
+    « Enregistrement assisté du chemin de connexion »). Le client l'utilise immédiatement pour
+    ouvrir la connexion WebSocket ; il n'est ensuite plus jamais relisible depuis l'API."""
+    token: str
+    expires_at: str
+
+
 class ExplorationPageOut(BaseModel):
     """Une page telle que le crawl l'a vue — écran d'investigation (§ »routes explorées«).
 
