@@ -29,14 +29,25 @@ class _FakeLocator:
 
 
 class _FakePage:
-    """`get_by_role(role, name)` rend le locator préparé pour ce couple, ou un locator absent."""
+    """`get_by_role(role, name, exact=True)` rend le locator préparé pour ce couple, ou un locator
+    absent. Exige `exact=True` (comme le code réel) — un appel sans, ou avec `exact=False`, est
+    une erreur de PROGRAMMATION à faire échouer bruyamment ici, pas une divergence silencieuse.
+
+    ⚠️ Un lookup par tuple exact, comme ici, ne reproduit PAS la sémantique réelle de Playwright
+    (qui, même avec `exact=True`, ne matche l'ACCESSIBLE NAME complet qu'au caractère près, mais
+    reste par ailleurs un moteur DOM réel) — c'est un choix délibéré pour tester l'ORDRE et le
+    GARDE-FOU de cette fonction, pas le comportement de matching lui-même : la preuve que
+    `exact=True` rejette bien un nom approchant-mais-différent est apportée par un vrai Chromium,
+    voir `test_login_recording_rejeu_reel.py` (revue verdict-reviewer, 2026-09-29 : un test sur ce
+    doublon exact n'aurait jamais pu détecter le bug corrigé ce jour-là)."""
 
     def __init__(self, resultats: dict[tuple[str, str], _FakeLocator]):
         self._resultats = resultats
         self.url = "https://exemple.test/pre-connexion"
         self.attente_reseau_appelee = False
 
-    def get_by_role(self, role, name=None):
+    def get_by_role(self, role, name=None, exact=False):
+        assert exact is True, "rejouer_sequence_connexion doit toujours appeler exact=True"
         return self._resultats.get((role, name), _FakeLocator(existe=False))
 
     def wait_for_load_state(self, state):

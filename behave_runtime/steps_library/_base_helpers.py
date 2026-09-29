@@ -3342,11 +3342,22 @@ def authentifier_selon_la_strategie(page, *, strategie: str, web_url: str, user:
 
     `sequence_connexion` (sous-lot D, « Enregistrement assisté du chemin de connexion ») : franchit
     un écran intercalé AVANT le formulaire (sélection de pays…), rejouée AVANT toute mesure/stratégie
-    — sauf `session_injectee`, où l'écran de connexion n'apparaît jamais (le storage_state fourni a
-    déjà authentifié le contexte, rien à franchir). Obsolète (application changée) → arrêt net,
-    jamais un repli silencieux ; « une seule tentative » (garde-fou étape 9) tient déjà de cette
-    fonction elle-même n'étant appelée qu'une fois par `before_all`/`_verifier_ou_reconnecter_session`,
-    jamais en boucle."""
+    — sauf `session_injectee`. Obsolète (application changée) → arrêt net, jamais un repli
+    silencieux ; « une seule tentative » (garde-fou étape 9) tient déjà de cette fonction elle-même
+    n'étant appelée qu'une fois par `before_all`/`_verifier_ou_reconnecter_session`, jamais en boucle.
+
+    ⚠️ **`session_injectee` : HYPOTHÈSE non vérifiée sur l'application réelle, pas une garantie.**
+    Le rejeu y est sciemment omis en supposant que l'écran intercalé, comme l'écran de connexion,
+    n'apparaît plus une fois authentifié par le `storage_state` fourni. Si cette hypothèse est
+    fausse pour une application donnée (écran intercalé affiché à CHAQUE visite, ou `storage_state`
+    expiré/partiellement invalide), `_mot_de_passe_visible(page)` rendra `False` sur l'écran
+    intercalé lui-même (aucun champ mot de passe à voir) — le code ci-dessous conclura alors à tort
+    « session valide » (ligne `SESSION_INJECTEE` ci-dessous), sans lever, alors que le navigateur
+    reste bloqué sur l'écran intercalé. Signalé en revue verdict-reviewer (2026-09-29) : pas
+    corrigé ici (les étapes suivantes du scénario échoueront très probablement faute de trouver
+    les éléments attendus de l'application, donc pas un chemin identifié vers un faux `conforme`),
+    mais un diagnostic « connexion ok » erroné reste possible — à garder en tête si ce cas se
+    présente en conditions réelles."""
     if strategie == _auth.AUCUNE:
         return
     page.goto(web_url, wait_until="domcontentloaded")

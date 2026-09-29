@@ -206,6 +206,20 @@ class GenericWebConnector(Connector):
         def _connexion(ctx) -> None:
             ctx.page.goto(self._url)
             ctx.page.wait_for_load_state("networkidle")
+            # Sous-lot D : franchit un écran intercalé avant le formulaire, s'il y en a un
+            # d'enregistré pour ce projet — AVANT la mesure ET avant la détection générique,
+            # jamais à leur place (étape 8 de la consigne). Lève SequenceConnexionObsoleteError
+            # sans filet si l'application a changé : jamais de repli silencieux sur une autre
+            # hypothèse.
+            #
+            # ⚠️ **AVANT la mesure de la page de connexion ci-dessous, pas après** — correctif
+            # trouvé en revue verdict-reviewer (2026-09-29) : si franchir l'écran intercalé
+            # implique une VRAIE navigation (schéma courant pour un sélecteur de pays, ex.
+            # `/choisir-pays` → `/fr/connexion`), mesurer AVANT le rejeu capturerait l'écran
+            # intercalé lui-même, jamais le vrai formulaire — recréant exactement le faux positif
+            # « Points de vigilance » que le correctif du 2026-09-15 (commentaire ci-dessus)
+            # visait à éliminer, pour le cas d'usage même qui motive ce chantier.
+            rejouer_sequence_connexion(ctx.page, self._sequence_connexion)
             try:
                 import crawl_domaine as cd
                 from testpilot.generation import domain_model
@@ -215,11 +229,6 @@ class GenericWebConnector(Connector):
                 logger.warning("[web-générique] mesure de la page de connexion impossible — "
                                "ses champs resteront invisibles pour « Points de vigilance »",
                                exc_info=True)
-            # Sous-lot D : franchit un écran intercalé avant le formulaire, s'il y en a un
-            # d'enregistré pour ce projet — AVANT la détection générique, jamais à sa place
-            # (étape 8 de la consigne). Lève SequenceConnexionObsoleteError sans filet si
-            # l'application a changé : jamais de repli silencieux sur une autre hypothèse.
-            rejouer_sequence_connexion(ctx.page, self._sequence_connexion)
             tenter_connexion_generique(ctx.page, self._user, self._password)
         return _connexion
 
