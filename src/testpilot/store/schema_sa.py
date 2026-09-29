@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 53
+ALIGNED_WITH_SCHEMA_VERSION = 54
 
 metadata = MetaData()
 
@@ -776,5 +776,18 @@ execution_attempt = Table(
     Column('result_json', Text, nullable=False, server_default='{}'),
     CheckConstraint('attempt_number > 0', name='ck_execution_attempt_number'),
     UniqueConstraint('execution_id', 'attempt_number', name='uq_execution_attempt_number'),
+    sqlite_autoincrement=True,
+)
+
+# Jeton d'accès à usage unique d'une session live (enregistrement assisté du chemin de connexion).
+live_session_token = Table(
+    'live_session_token', metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('project_id', Integer, ForeignKey('project.id', ondelete='CASCADE'), nullable=False),
+    Column('created_by_user_id', Integer, ForeignKey('user.id', ondelete='CASCADE'), nullable=False),
+    Column('token_hash', Text, nullable=False, unique=True),
+    Column('created_at', Text, nullable=False),
+    Column('expires_at', Text, nullable=False),
+    Column('used_at', Text, nullable=False, server_default=''),
     sqlite_autoincrement=True,
 )
