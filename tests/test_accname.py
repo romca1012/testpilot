@@ -253,3 +253,61 @@ def test_clic_sur_un_conteneur_purement_visuel_remonte_jusqu_a_un_ancetre_intera
     boite = page.locator("svg").bounding_box()
     x, y = boite["x"] + boite["width"] / 2, boite["y"] + boite["height"] / 2
     assert accname.calculer(page, x, y) == {"role": "button", "name": "Envoyer"}
+
+
+# ══ 4. Bugs mesurés en revue verdict-reviewer (2026-09-29, vrai Chromium) ═══════════════════════
+
+def test_label_masque_ne_contribue_rien_au_nom(page):
+    """Un `<label for>` masqué fuyait son texte dans le nom calculé — l'exception 2A n'exempte QUE
+    le nœud directement référencé par aria-labelledby, jamais un `<label for>`."""
+    html = ('<label for="cb" style="display:none">Ancien libellé caché</label>'
+            '<input id="cb" type="checkbox">')
+    assert _nom_via_clic(page, html, "#cb") == {"role": "checkbox", "name": ""}
+
+
+def _point_shadow(page) -> tuple[float, float]:
+    boite = page.evaluate("""() => {
+        const b = document.getElementById('host').shadowRoot.querySelector('button');
+        const r = b.getBoundingClientRect();
+        return {x: r.x + r.width / 2, y: r.y + r.height / 2};
+    }""")
+    return boite["x"], boite["y"]
+
+
+def test_clic_sur_un_bouton_a_l_interieur_d_un_shadow_dom_ouvert_est_resolu(page):
+    """Sans perçage du shadow DOM, `document.elementFromPoint` rend seulement l'hôte (`<div
+    id="host">`), jamais le bouton interne — le clic était traité comme un clic égaré (`None`)
+    alors qu'une vraie cible interactive, nommée, avait été cliquée."""
+    html = ("<div id=\"host\"></div>"
+            "<script>document.getElementById('host').attachShadow({mode:'open'})"
+            ".innerHTML = '<button aria-label=\"Valider\">x</button>';</script>")
+    page.set_content(html)
+    x, y = _point_shadow(page)
+    assert accname.calculer(page, x, y) == {"role": "button", "name": "Valider"}
+
+
+def test_clic_a_l_interieur_d_un_shadow_dom_ne_remonte_pas_sur_un_ancetre_hors_shadow(page):
+    """Sans perçage, ce clic remontait silencieusement sur le bouton EXTÉRIEUR (« Annuler ») — un
+    résultat plausible mais FAUX : le clic réel touche le bouton INTÉRIEUR (« Valider »), la
+    remontée d'arbre sautait par-dessus la frontière du shadow DOM sans jamais s'en apercevoir."""
+    html = ("<button aria-label=\"Annuler\"><div id=\"host\"></div></button>"
+            "<script>document.getElementById('host').attachShadow({mode:'open'})"
+            ".innerHTML = '<button aria-label=\"Valider\">x</button>';</script>")
+    page.set_content(html)
+    x, y = _point_shadow(page)
+    assert accname.calculer(page, x, y) == {"role": "button", "name": "Valider"}
+
+
+def test_falsifiable_ambiguite_detectee_a_travers_un_shadow_dom(page):
+    """Le décompte d'homonymes doit percer le shadow DOM lui aussi — sinon un doublon caché dans un
+    composant serait invisible à `querySelectorAll('*')` et l'ambiguïté passerait inaperçue (faux
+    négatif — le pire cas ici : une capture silencieusement retrouvée sur la mauvaise cible)."""
+    html = ("<button id=\"leger\">Valider</button><div id=\"host\"></div>"
+            "<script>document.getElementById('host').attachShadow({mode:'open'})"
+            ".innerHTML = '<button>Valider</button>';</script>")
+    page.set_content(html)
+    # `page.locator` perce lui-même le shadow DOM ouvert (comportement Playwright standard) — un
+    # sélecteur `#leger` cible sans ambiguïté le bouton du DOM léger, celui réellement cliqué ici.
+    x, y = _centre(page, "#leger")
+    with pytest.raises(accname.ElementIntrouvableError, match="ambigu"):
+        accname.calculer(page, x, y)

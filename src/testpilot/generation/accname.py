@@ -80,22 +80,59 @@ function roleImplicite(el) {
 """
 
 # ── Remontée d'arbre : point cliqué → élément interactif exploitable, ou rien ────────────────────
+# ⚠️ **Shadow DOM (ouvert) traversé explicitement** — bug mesuré en revue verdict-reviewer
+# (2026-09-29, vrai Chromium) : `document.elementFromPoint` ne rend que l'hôte d'une racine shadow
+# ouverte, jamais l'élément interne réellement sous le point cliqué. Sans ce perçage, un clic sur
+# un bouton À L'INTÉRIEUR d'un composant (design system, widget d'authentification tiers — motif
+# courant sur un écran de connexion) donnait soit une absence (`None`) pour un clic qui touchait
+# pourtant une vraie cible, soit — pire — remontait sur un ANCÊTRE hors du shadow DOM avec un
+# rôle+nom qui ne correspondait pas à ce qui avait été cliqué (un résultat FAUX, plausible,
+# indiscernable d'une capture correcte). Une racine FERMÉE reste invisible par construction du web
+# (`el.shadowRoot` rend `null`) — limite du navigateur, pas de ce code, non contournable.
 _RESOUDRE_CIBLE_JS = _ROLE_IMPLICITE_JS + r"""
 function roleDe(el) {
   const explicite = el.getAttribute && el.getAttribute('role');
   return explicite || roleImplicite(el);
 }
 
-function resoudreCible(x, y) {
+function elementSousLePoint(x, y) {
   let el = document.elementFromPoint(x, y);
+  while (el && el.shadowRoot) {
+    const interne = el.shadowRoot.elementFromPoint(x, y);
+    if (!interne || interne === el) break;
+    el = interne;
+  }
+  return el;
+}
+
+function parentOuHote(el) {
+  const parent = el.parentElement;
+  if (parent) return parent;
+  const racine = el.getRootNode();
+  return (racine instanceof ShadowRoot) ? racine.host : null;
+}
+
+function resoudreCible(x, y) {
+  let el = elementSousLePoint(x, y);
   while (el && el !== document.documentElement) {
     const role = roleDe(el);
     if (role && ROLES_INTERACTIFS.includes(role)) {
       return { element: el, role };
     }
-    el = el.parentElement;
+    el = parentOuHote(el);
   }
   return null;
+}
+
+// Tous les éléments du document, en perçant récursivement chaque racine shadow OUVERTE — pour le
+// décompte d'homonymes (une racine fermée reste invisible, même limite que ci-dessus).
+function tousLesElements(racine) {
+  const resultat = [];
+  for (const el of racine.querySelectorAll('*')) {
+    resultat.push(el);
+    if (el.shadowRoot) resultat.push(...tousLesElements(el.shadowRoot));
+  }
+  return resultat;
 }
 """
 
@@ -153,15 +190,19 @@ function etiquetteLangageHote(el) {
   if (tag === 'img' || tag === 'area') return el.getAttribute('alt') || '';
   if (tag === 'input' && (el.type === 'image')) return el.getAttribute('alt') || '';
   // <label for="id"> — TOUS ceux qui référencent cet id, concaténés dans l'ordre du document
-  // (comp_host_language_label.html : « textfield label 1 textfield label 2 »).
+  // (comp_host_language_label.html : « textfield label 1 textfield label 2 »). Un `<label>` MASQUÉ
+  // ne contribue rien (bug mesuré en revue verdict-reviewer, 2026-09-29, avec un vrai Chromium :
+  // un `<label for>` caché fuyait son texte dans le nom — 2A ne l'exempte pas, contrairement au
+  // nœud directement référencé par aria-labelledby).
   if (el.id) {
     const refs = Array.from(document.querySelectorAll(`label[for="${el.id}"]`))
+      .filter(l => !estMasque(l))
       .map(l => normaliser(l.textContent)).filter(Boolean);
     if (refs.length) return refs.join(' ');
   }
-  // <label> englobant (élément wrappé directement dans un <label>).
+  // <label> englobant (élément wrappé directement dans un <label>) — même garde.
   const englobant = el.closest('label');
-  if (englobant) return normaliser(englobant.textContent);
+  if (englobant && !estMasque(englobant)) return normaliser(englobant.textContent);
   return '';
 }
 
@@ -262,7 +303,7 @@ _SCRIPT_COMPLET = r"""
   const cible = resoudreCible(x, y);
   if (!cible) return null;
   const nom = calculerNom(cible.element, new Set(), {});
-  const homonymes = Array.from(document.querySelectorAll('*'))
+  const homonymes = tousLesElements(document)
     .filter(el => roleDe(el) === cible.role)
     .map(el => calculerNom(el, new Set(), {}))
     .filter(n => n === nom).length;
