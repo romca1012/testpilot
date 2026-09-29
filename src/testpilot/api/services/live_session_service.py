@@ -19,6 +19,7 @@ import base64
 import logging
 import queue
 import threading
+import time
 
 from playwright.sync_api import sync_playwright
 
@@ -72,6 +73,17 @@ class SessionLive:
         self._capture_active = True
         self._cdp = None
         self._thread = threading.Thread(target=self._boucle, name="session-live", daemon=True)
+        # Synchronisation clics envoyés / clics traités — trouvé en revue verdict-reviewer
+        # (2026-09-29, reproduit avec un vrai Chromium) : sans ça, `confirmer` ou `recommencer`
+        # pouvaient s'exécuter AVANT qu'un clic déjà mis en file n'ait été traité par le thread
+        # navigateur — une séquence « confirmée » silencieusement incomplète (clic perdu) ou une
+        # étape qui ressuscite après un « recommencer » (clic traité APRÈS la remise à zéro).
+        # `_clics_recus` est incrémenté au moment même où le clic est mis en file (même verrou que
+        # la mise en file elle-même, jamais deux écritures séparées qui rouvriraient la fenêtre) ;
+        # `_clics_traites`, par le thread navigateur, une fois le clic réellement appliqué.
+        self._verrou_compteurs = threading.Lock()
+        self._clics_recus = 0
+        self._clics_traites = 0
 
     def demarrer(self) -> None:
         self._thread.start()
@@ -82,8 +94,33 @@ class SessionLive:
     def attendre_fermeture(self, timeout: float | None = None) -> None:
         self._thread.join(timeout=timeout)
 
+    def soumettre_clic(self, commande: dict) -> None:
+        """Point d'entrée UNIQUE pour un clic entrant — incrémente `_clics_recus` et met en file
+        sous le MÊME verrou, pour qu'`attendre_clics_traites` ne puisse jamais lire un compteur en
+        retard sur la file elle-même."""
+        with self._verrou_compteurs:
+            self._clics_recus += 1
+            self.entrantes.put(commande)
+
+    def attendre_clics_traites(self, timeout: float) -> bool:
+        """Bloque (appelé via `asyncio.to_thread`, jamais depuis la boucle asyncio elle-même)
+        jusqu'à ce que tous les clics déjà soumis aient été traités par le thread navigateur, ou
+        jusqu'à `timeout`. Rend `False` sur timeout — l'appelant (la route WebSocket) doit alors
+        REFUSER de confirmer/recommencer plutôt que d'agir sur un état potentiellement encore en
+        mouvement."""
+        fin = time.monotonic() + timeout
+        while time.monotonic() < fin:
+            with self._verrou_compteurs:
+                if self._clics_traites >= self._clics_recus:
+                    return True
+            time.sleep(0.02)
+        with self._verrou_compteurs:
+            return self._clics_traites >= self._clics_recus
+
     def reinitialiser_etapes(self) -> None:
-        """« Recommencer » (étape 6) : vide la liste en mémoire, rien n'a jamais été écrit."""
+        """« Recommencer » (étape 6) : vide la liste en mémoire, rien n'a jamais été écrit.
+        N'appeler qu'après `attendre_clics_traites` — sinon un clic encore en file pourrait
+        s'ajouter APRÈS ce vidage."""
         with self._verrou_etapes:
             self._etapes = []
 
@@ -150,6 +187,13 @@ class SessionLive:
                 except Exception:
                     logger.exception("session live (projet %s) : commande en échec",
                                      self._project.get("id"))
+                finally:
+                    # Compté même en échec : un clic qui plante ne doit jamais bloquer
+                    # `attendre_clics_traites` pour le reste de la session (sinon un seul clic en
+                    # erreur empêcherait à jamais toute confirmation/réinitialisation ultérieure).
+                    if commande.get("type") == "clic":
+                        with self._verrou_compteurs:
+                            self._clics_traites += 1
         finally:
             try:
                 self._cdp and self._cdp.send("Page.stopScreencast")

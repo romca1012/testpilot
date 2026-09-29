@@ -226,6 +226,50 @@ def test_recommencer_vide_la_liste_en_memoire_avant_confirmation(client, applica
         conn.close()
 
 
+def test_falsifiable_un_clic_juste_avant_confirmer_n_est_pas_perdu(client, application):
+    """Reproduit exactement le bloquant trouvé en revue verdict-reviewer (2026-09-29) : sans
+    l'attente sur `attendre_clics_traites`, envoyer `confirmer` juste après `clic`, SANS attendre
+    l'accusé `etape_capturee` intermédiaire, perdait le clic en silence (`{"etapes": 0}` persisté
+    alors qu'un clic réel venait d'être envoyé) — reproduit à 100% avant le correctif."""
+    project_id = _admin_et_projet(client, application)
+    jeton = _jeton(client, project_id)
+
+    with client.websocket_connect(f"/api/projects/{project_id}/live-session/ws?token={jeton}") as ws:
+        _recevoir_jusqua(ws, lambda m: m.get("type") == "image")
+        ws.send_json({"type": "clic", "x": 30, "y": 12})
+        ws.send_json({"type": "confirmer"})  # AUCUNE attente de l'accusé entre les deux
+        confirme = _recevoir_jusqua(ws, lambda m: m.get("type") == "confirme")
+        assert confirme["etapes"] == 1, "le clic envoyé juste avant confirmer a été perdu"
+
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        assert project_login_recordings.lire(conn, project_id) == [{"role": "button", "name": "France"}]
+    finally:
+        conn.close()
+
+
+def test_falsifiable_un_clic_juste_avant_recommencer_ne_ressuscite_pas(client, application):
+    """Même bloquant, sens inverse : un clic envoyé juste avant `recommencer` (sans attendre son
+    accusé) ne doit PAS réapparaître dans la séquence après le vidage — avant le correctif, le
+    clic pouvait être traité APRÈS `reinitialiser_etapes()` et survivre à la réinitialisation."""
+    project_id = _admin_et_projet(client, application)
+    jeton = _jeton(client, project_id)
+
+    with client.websocket_connect(f"/api/projects/{project_id}/live-session/ws?token={jeton}") as ws:
+        _recevoir_jusqua(ws, lambda m: m.get("type") == "image")
+        ws.send_json({"type": "clic", "x": 30, "y": 12})
+        ws.send_json({"type": "recommencer"})  # AUCUNE attente de l'accusé entre les deux
+        ws.send_json({"type": "confirmer"})
+        confirme = _recevoir_jusqua(ws, lambda m: m.get("type") == "confirme")
+        assert confirme["etapes"] == 0, "le clic envoyé juste avant recommencer a ressuscité"
+
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        assert project_login_recordings.lire(conn, project_id) == []
+    finally:
+        conn.close()
+
+
 # ── Fermeture garantie (étape 7) — falsifiable, coupure brutale ──────────────────────────────
 
 def test_falsifiable_une_coupure_brutale_libere_le_navigateur_et_la_place_de_la_file(client, application):
