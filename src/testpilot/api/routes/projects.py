@@ -22,6 +22,7 @@ from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import events_bus, exploration_service
 from testpilot.api.services.project_membership_service import ProjectMembershipService
+from testpilot.generation import domain_model
 from testpilot.guardrails import durable_jobs
 from testpilot.store.repositories import (
     CaseGroupRepo,
@@ -278,6 +279,18 @@ def get_exploration(project_id: int, conn=Depends(get_conn)):
     etat = exploration_service.etat(project_id, projet)
     job = exploration_service.get_job(etat["job_id"]) if etat["job_id"] else None
     return schemas.ExplorationOut(**etat, error=(job or {}).get("error", ""))
+
+
+@router.get("/{project_id}/exploration/pages", response_model=list[schemas.ExplorationPageOut],
+           dependencies=[Depends(access.require_project_access)])
+def get_exploration_pages(project_id: int, conn=Depends(get_conn)):
+    """Le détail des pages capturées par la dernière exploration — écran d'investigation, sans
+    devoir ouvrir `data/domain/…json` sur le serveur. Pure lecture (`domain_model.pages_detaillees`),
+    aucun recrawl : `[]` si le projet n'a jamais été exploré, jamais une erreur."""
+    projet = ProjectRepo(conn).get(project_id)
+    if projet is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    return domain_model.pages_detaillees(projet)
 
 
 @router.post("/{project_id}/exploration", response_model=schemas.ExplorationOut, status_code=202,

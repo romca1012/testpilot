@@ -70,6 +70,11 @@ export const routes = [
   { path: '/projects/:pid/runs/:id/tests/:caseId', name: 'run-test', component: () => import('./pages/RunTestDetail.vue') },
   { path: '/projects/:pid/executions/:id', name: 'report', component: () => import('./pages/ReportView.vue') },
 
+  // Écran de consultation de la cartographie explorée (routes/champs/actions/liens mesurés par le
+  // crawl) — parcourir ou investiguer ce qu'une exploration a capturé, sans se connecter au serveur.
+  { path: '/projects/:pid/exploration', name: 'exploration-detail',
+   component: () => import('./pages/ExplorationDetail.vue') },
+
   // Qualité de génération : l'évolution de l'outil (taux de réussite technique au premier jet),
   // dérivée des vraies exécutions. Onglet de suivi, jamais un chiffre fabriqué.
   { path: '/projects/:pid/quality', name: 'quality', component: () => import('./pages/QualityDashboard.vue') },

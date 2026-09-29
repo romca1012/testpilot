@@ -7,6 +7,7 @@ réponses stables. La séparation exécution/fonctionnel du §5 est préservée 
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -570,6 +571,23 @@ class ExplorationOut(BaseModel):
     modeles_backoffice: int = 0
     resume: str = ""
     error: str = ""
+
+
+class ExplorationPageOut(BaseModel):
+    """Une page telle que le crawl l'a vue — écran d'investigation (§ »routes explorées«).
+
+    Les champs/actions/liens/formulaires viennent tels quels du JSON mesuré (`domain_model`) : leur
+    forme varie selon le connecteur (un `<select>` porte des `options`, un champ contraint porte
+    `contraintes`…) — les typer un par un figerait un vocabulaire qui évolue avec le crawl. Cet
+    écran est un DIAGNOSTIC en lecture seule, jamais une entrée qui doit valider une forme précise.
+    """
+    route: str
+    titre: str = ""
+    url_exemple: str = ""
+    champs: list[dict[str, Any]] = []
+    actions: list[dict[str, Any]] = []
+    liens: list[dict[str, Any]] = []
+    formulaires: list[dict[str, Any]] = []
 
 
 class QualityDayOut(BaseModel):
