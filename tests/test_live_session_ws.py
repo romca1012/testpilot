@@ -251,7 +251,15 @@ def test_falsifiable_un_clic_juste_avant_confirmer_n_est_pas_perdu(client, appli
 def test_falsifiable_un_clic_juste_avant_recommencer_ne_ressuscite_pas(client, application):
     """Même bloquant, sens inverse : un clic envoyé juste avant `recommencer` (sans attendre son
     accusé) ne doit PAS réapparaître dans la séquence après le vidage — avant le correctif, le
-    clic pouvait être traité APRÈS `reinitialiser_etapes()` et survivre à la réinitialisation."""
+    clic pouvait être traité APRÈS `reinitialiser_etapes()` et survivre à la réinitialisation.
+
+    Le court délai avant `confirmer` est nécessaire pour que ce test morde réellement : envoyé
+    immédiatement, `confirmer` lit `service.etapes` quasiment aussi vite que `recommencer` l'a
+    vidée, sans laisser au clic (CDP + calcul AccName, quelques dizaines de ms) le temps d'être
+    traité — le test « réussirait » alors pour la mauvaise raison (le clic n'a simplement pas eu
+    le temps d'atterrir), avec ou sans le correctif. Vérifié en revue verdict-reviewer
+    (2026-09-29) : SANS ce délai le test passe même sur le code d'AVANT correctif (faux positif) ;
+    AVEC ce délai il échoue de façon fiable (3/3) sur l'ancien code et passe sur le code corrigé."""
     project_id = _admin_et_projet(client, application)
     jeton = _jeton(client, project_id)
 
@@ -259,6 +267,7 @@ def test_falsifiable_un_clic_juste_avant_recommencer_ne_ressuscite_pas(client, a
         _recevoir_jusqua(ws, lambda m: m.get("type") == "image")
         ws.send_json({"type": "clic", "x": 30, "y": 12})
         ws.send_json({"type": "recommencer"})  # AUCUNE attente de l'accusé entre les deux
+        time.sleep(0.15)  # laisse une vraie chance au clic de finir son traitement en premier
         ws.send_json({"type": "confirmer"})
         confirme = _recevoir_jusqua(ws, lambda m: m.get("type") == "confirme")
         assert confirme["etapes"] == 0, "le clic envoyé juste avant recommencer a ressuscité"
