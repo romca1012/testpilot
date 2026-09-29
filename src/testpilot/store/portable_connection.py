@@ -34,7 +34,7 @@ _TABLES_AVEC_ID = {
 # vrai run. `generation_job` reste absente à raison : sa clé primaire est un TEXT (UUID) fourni
 # par l'appelant, jamais un entier généré par la base — `.lastrowid` n'y a jamais de sens.
 _INSERT = re.compile(r"^\s*INSERT\s+INTO\s+[\"']?([a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE)
-ALEMBIC_HEAD = "b3f7d4a291ec"
+ALEMBIC_HEAD = "d8a3f5c1e947"
 _urls_verifiees: set[str] = set()
 _verrou_verification = threading.Lock()
 

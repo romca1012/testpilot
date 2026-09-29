@@ -24,6 +24,7 @@ from testpilot.api.services import events_bus, exploration_service
 from testpilot.api.services.project_membership_service import ProjectMembershipService
 from testpilot.generation import domain_model
 from testpilot.guardrails import durable_jobs
+from testpilot.store import live_session_tokens
 from testpilot.store.repositories import (
     CaseGroupRepo,
     DuplicateName,
@@ -314,6 +315,29 @@ def start_exploration(project_id: int, background: BackgroundTasks, conn=Depends
     durable_jobs.submit(conn, background, kind="exploration", args=[job_id], kwargs=params,
                         queue_label=f"exploration:{job_id}")
     return schemas.ExplorationOut(running=True, job_id=job_id)
+
+
+@router.post("/{project_id}/live-session", response_model=schemas.LiveSessionOut, status_code=201,
+            dependencies=[Depends(access.require_project_role(access.ROLE_DEV))])
+def create_live_session(project_id: int, request: Request, conn=Depends(get_conn)):
+    """Émet un jeton d'accès à usage unique pour démarrer une session en direct (sous-lot B du
+    lot « Enregistrement assisté du chemin de connexion ») : la personne qui va montrer le chemin
+    de connexion sur un vrai navigateur distant s'en sert immédiatement pour ouvrir la connexion
+    WebSocket qui porte cette session (sous-lot C, pas encore construite).
+
+    Réservé à `admin`/`dev` (consigne du lot) — jamais un Testeur ou une Lecture seule : ouvrir un
+    navigateur réel sur l'application du projet et regarder ce qui s'y passe est une opération
+    sensible.
+
+    ⚠️ Plus permissif que `start_exploration`, qui exige `admin` seul dans le code actuel — écart
+    explicite et validé, pas un oubli : la consigne du lot demande `admin`/`dev` telle quelle,
+    indépendamment de ce que l'exploration applique aujourd'hui.
+    """
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    jeton, expires_at = live_session_tokens.creer(
+        conn, project_id=project_id, created_by_user_id=request.state.user["id"])
+    return schemas.LiveSessionOut(token=jeton, expires_at=expires_at)
 
 
 @router.get("/{project_id}/modules", response_model=list[schemas.ModuleSummary],
