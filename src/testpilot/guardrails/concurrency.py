@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from testpilot import config
@@ -105,6 +106,23 @@ class JobQueue:
         self._acquire(label)
         try:
             return fn(*args, **kwargs)
+        finally:
+            self._release()
+
+    @contextmanager
+    def held(self, label: str):
+        """Variante bloc `with` de `run()` : la place attendue en FIFO reste tenue pour toute la
+        durée du bloc, pas le temps d'un seul appel bloquant.
+
+        Pensé pour la session en direct (lot « Enregistrement assisté du chemin de connexion ») :
+        le navigateur qu'elle ouvre reste vivant tout le temps de la connexion WebSocket, pas le
+        temps d'une tâche de fond ponctuelle — `run()` ne conviendrait pas, il rendrait la place
+        dès le retour de `fn`, jamais avant. Mêmes garanties FIFO, et la place est TOUJOURS
+        rendue à la sortie du bloc, y compris par exception.
+        """
+        self._acquire(label)
+        try:
+            yield
         finally:
             self._release()
 
