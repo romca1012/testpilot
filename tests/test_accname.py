@@ -25,6 +25,11 @@ from playwright.sync_api import sync_playwright
 
 from testpilot.generation import accname
 
+# Vrai Chromium, aucune application distante — même motif que `test_contexte_navigateur_reel.py`
+# (`pytestmark` au niveau du module) : exclu de `pytest -q` par défaut (aucun navigateur installé
+# sur ce job), exécuté par le job « browser-evidence » qui en installe un.
+pytestmark = pytest.mark.conformance
+
 
 @pytest.fixture(scope="module")
 def page():
