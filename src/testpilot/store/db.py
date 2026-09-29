@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 53
+_SCHEMA_VERSION = 54
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -248,8 +248,33 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_52_auth_strategie(conn)
     if version < 53:
         _migrate_53_profils_et_teardown(conn)
+    if version < 54:
+        _migrate_54_live_session_token(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
+
+
+def _migrate_54_live_session_token(conn: sqlite3.Connection) -> None:
+    """Lot « Enregistrement assisté du chemin de connexion », sous-lot B : le jeton d'accès à
+    usage unique et courte durée d'une session live (D« une seule séquence active, la dernière
+    confirmée remplace la précédente » — voir `project_login_recording`, sous-lot D, pas encore
+    créée ici).
+
+    `token_hash` — jamais le jeton en clair : un `secrets.token_urlsafe` a déjà une entropie
+    suffisante (contrairement à un mot de passe choisi par un humain), un hash rapide (SHA-256)
+    suffit, comparé en temps constant à la vérification (`hmac.compare_digest`).
+    `used_at` vide = jeton encore valide ; posé (non vide) = consommé, jamais réutilisable — la
+    consommation est une écriture conditionnelle atomique (voir `LiveSessionTokenRepo.consommer`),
+    pas une lecture puis une écriture séparées (fenêtre de course entre deux tentatives).
+    """
+    conn.execute('''CREATE TABLE IF NOT EXISTS live_session_token (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+        created_by_user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT NOT NULL DEFAULT '')''')
 
 
 def _migrate_53_profils_et_teardown(conn: sqlite3.Connection) -> None:
