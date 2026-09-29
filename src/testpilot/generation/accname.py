@@ -158,9 +158,14 @@ def _js_avec_roles(gabarit: str) -> str:
 # pour la même raison : aucun rôle interactif de la table ci-dessus ne résout jamais vers ces
 # éléments — du code jamais atteignable par `calculer()`, donc jamais testé, donc retiré plutôt
 # que laissé en silence.
+# Uniquement l'intersection avec `_ROLES_INTERACTIFS` : c'est TOUJOURS le rôle de la cible
+# résolue par `resoudreCible` qui est testé contre cet ensemble au premier appel (`calculer()`),
+# jamais un rôle non interactif. `heading`/`cell`/`gridcell`/`columnheader`/`rowheader`/`term`
+# (retirés en revue verdict-reviewer, 2026-09-29) étaient du code mort pour la même raison que
+# `legend`/`caption` ci-dessus — jamais atteignables, donc jamais testés, donc retirés plutôt que
+# laissés en silence.
 _ROLES_NOM_DEPUIS_CONTENU = frozenset({
-    "button", "link", "heading", "cell", "gridcell", "columnheader", "rowheader",
-    "tab", "menuitem", "option", "switch", "checkbox", "radio", "term",
+    "button", "link", "tab", "menuitem", "option", "switch", "checkbox", "radio",
 })
 
 _ACCNAME_JS = r"""
@@ -175,9 +180,14 @@ function normaliser(texte) {
   return (texte || '').replace(/\s+/g, ' ').trim();
 }
 
-function nomDepuisRefs(ids, dejaVus) {
+function nomDepuisRefs(ids, dejaVus, racine) {
+  // `racine` (ShadowRoot ou Document, jamais un Element) : `getElementById` est scopé, un id à
+  // l'intérieur d'un shadow root est INTROUVABLE depuis `document` (isolation de scope d'id
+  // propre à la plateforme, pas une supposition) — bug mesuré en revue verdict-reviewer,
+  // 2026-09-29, avec un vrai Chromium : un aria-labelledby valide à l'intérieur d'un shadow DOM
+  // échouait silencieusement, le calcul retombant sur le contenu (nom plausible mais FAUX).
   return ids.split(/\s+/).filter(Boolean).map(id => {
-    const cible = document.getElementById(id);
+    const cible = racine.getElementById(id);
     if (!cible) return '';
     // `viaReference=true` : un nœud RÉFÉRENCÉ par aria-labelledby garde son texte même masqué
     // (exception explicite de l'étape 2A) — jamais le cas d'une simple récursion de contenu.
@@ -194,8 +204,14 @@ function etiquetteLangageHote(el) {
   // ne contribue rien (bug mesuré en revue verdict-reviewer, 2026-09-29, avec un vrai Chromium :
   // un `<label for>` caché fuyait son texte dans le nom — 2A ne l'exempte pas, contrairement au
   // nœud directement référencé par aria-labelledby).
+  // Recherche scopée à `el.getRootNode()` (ShadowRoot ou Document), jamais à `document` : même
+  // bug de fond que `nomDepuisRefs` ci-dessus, un <label for> à l'intérieur d'un shadow DOM était
+  // introuvable depuis `document` et le nom retombait silencieusement à vide (même revue).
+  // `CSS.escape` : un id contenant un guillemet casserait le sélecteur autrement (levée bruyante,
+  // pas un faux positif, mais fragile sans raison — signalé par la même revue).
   if (el.id) {
-    const refs = Array.from(document.querySelectorAll(`label[for="${el.id}"]`))
+    const racine = el.getRootNode();
+    const refs = Array.from(racine.querySelectorAll(`label[for="${CSS.escape(el.id)}"]`))
       .filter(l => !estMasque(l))
       .map(l => normaliser(l.textContent)).filter(Boolean);
     if (refs.length) return refs.join(' ');
@@ -241,7 +257,7 @@ function calculerNom(el, dejaVus, options) {
   // 2B — aria-labelledby.
   const labelledby = el.getAttribute('aria-labelledby');
   if (labelledby) {
-    const nom = nomDepuisRefs(labelledby, dejaVus);
+    const nom = nomDepuisRefs(labelledby, dejaVus, el.getRootNode());
     if (nom) return nom;
   }
 

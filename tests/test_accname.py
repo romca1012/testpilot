@@ -265,12 +265,13 @@ def test_label_masque_ne_contribue_rien_au_nom(page):
     assert _nom_via_clic(page, html, "#cb") == {"role": "checkbox", "name": ""}
 
 
-def _point_shadow(page) -> tuple[float, float]:
-    boite = page.evaluate("""() => {
-        const b = document.getElementById('host').shadowRoot.querySelector('button');
-        const r = b.getBoundingClientRect();
-        return {x: r.x + r.width / 2, y: r.y + r.height / 2};
-    }""")
+def _point_shadow(page, selecteur: str = "button") -> tuple[float, float]:
+    boite = page.evaluate(
+        """(selecteur) => {
+            const b = document.getElementById('host').shadowRoot.querySelector(selecteur);
+            const r = b.getBoundingClientRect();
+            return {x: r.x + r.width / 2, y: r.y + r.height / 2};
+        }""", selecteur)
     return boite["x"], boite["y"]
 
 
@@ -296,6 +297,34 @@ def test_clic_a_l_interieur_d_un_shadow_dom_ne_remonte_pas_sur_un_ancetre_hors_s
     page.set_content(html)
     x, y = _point_shadow(page)
     assert accname.calculer(page, x, y) == {"role": "button", "name": "Valider"}
+
+
+def test_falsifiable_aria_labelledby_resout_un_id_a_l_interieur_du_meme_shadow_dom(page):
+    """`document.getElementById` ne traverse jamais un shadow root (scope d'id isolé, propre à la
+    plateforme) : un `aria-labelledby` valide À L'INTÉRIEUR d'un shadow DOM échouait silencieusement
+    et le calcul retombait sur l'étape suivante (ici le contenu du bouton, « x ») — un nom plausible
+    mais FAUX, pas une absence détectable. Bug mesuré en revue verdict-reviewer, 2026-09-29, avec un
+    vrai Chromium."""
+    html = ("<div id=\"host\"></div>"
+            "<script>document.getElementById('host').attachShadow({mode:'open'})"
+            ".innerHTML = '<button aria-labelledby=\"lbl\">x</button>"
+            "<span id=\"lbl\">Valider commande</span>';</script>")
+    page.set_content(html)
+    x, y = _point_shadow(page)
+    assert accname.calculer(page, x, y) == {"role": "button", "name": "Valider commande"}
+
+
+def test_falsifiable_label_for_resout_un_id_a_l_interieur_du_meme_shadow_dom(page):
+    """Même défaut de scope que ci-dessus pour `<label for>` : `document.querySelectorAll` ne
+    trouve jamais un id interne à un shadow DOM — le nom retombait silencieusement VIDE plutôt que
+    de trouver le `<label>` associé, pourtant bel et bien présent dans le même shadow root."""
+    html = ("<div id=\"host\"></div>"
+            "<script>document.getElementById('host').attachShadow({mode:'open'})"
+            ".innerHTML = '<label for=\"cb\">Se souvenir de moi</label>"
+            "<input id=\"cb\" type=\"checkbox\">';</script>")
+    page.set_content(html)
+    x, y = _point_shadow(page, "#cb")
+    assert accname.calculer(page, x, y) == {"role": "checkbox", "name": "Se souvenir de moi"}
 
 
 def test_falsifiable_ambiguite_detectee_a_travers_un_shadow_dom(page):
