@@ -44,6 +44,14 @@ DUREE_ABSOLUE_SECONDES = 1200
 
 _TIMEOUT_ATTENTE_FERMETURE_SECONDES = 30
 
+# Délai laissé au thread navigateur pour finir de traiter tout clic déjà soumis avant qu'un
+# `confirmer`/`recommencer` ne lise ou ne vide `service.etapes` — trouvé en revue verdict-reviewer
+# (2026-09-29, reproduit avec un vrai Chromium) : sans cette attente, un clic tout juste envoyé
+# pouvait être perdu d'une séquence confirmée (traité APRÈS la lecture) ou ressusciter après un
+# « recommencer » (traité APRÈS le vidage). 10 s est largement au-dessus du temps réel de
+# traitement d'un clic (CDP + calcul AccName, de l'ordre de quelques dizaines de ms).
+_TIMEOUT_ATTENTE_CLICS_SECONDES = 10
+
 
 @router.websocket("/{project_id}/live-session/ws")
 async def live_session_ws(websocket: WebSocket, project_id: int, token: str = Query(...)):
@@ -140,10 +148,14 @@ async def _piloter(websocket: WebSocket, service: SessionLive, project_id: int,
                 # reste un filet de sécurité indépendant de l'activité (étape 6, addendum timeout).
                 dernier_clic_a = boucle.time()
                 avertissement_envoye = False
-                service.entrantes.put(message)
+                service.soumettre_clic(message)
             elif type_ == "recommencer":
+                if not await _attendre_clics_ou_signaler(websocket, service):
+                    continue
                 service.reinitialiser_etapes()
             elif type_ == "confirmer":
+                if not await _attendre_clics_ou_signaler(websocket, service):
+                    continue
                 await _confirmer(websocket, service, project_id, jeton_info)
                 return
             elif type_ == "annuler":
@@ -152,6 +164,18 @@ async def _piloter(websocket: WebSocket, service: SessionLive, project_id: int,
         tache_envoi.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await tache_envoi
+
+
+async def _attendre_clics_ou_signaler(websocket: WebSocket, service: SessionLive) -> bool:
+    """Avant `confirmer`/`recommencer` : attend que tout clic déjà soumis ait été traité par le
+    thread navigateur — jamais lire ni vider `service.etapes` pendant qu'un clic est encore en
+    vol. Rend `False` (et signale l'échec au client, sans rien confirmer ni réinitialiser) si le
+    délai est dépassé — un thread bloqué ne doit jamais faire agir la route sur un état encore en
+    mouvement."""
+    traite = await asyncio.to_thread(service.attendre_clics_traites, _TIMEOUT_ATTENTE_CLICS_SECONDES)
+    if not traite:
+        await websocket.send_json({"type": "erreur", "detail": "clics_en_attente"})
+    return traite
 
 
 async def _confirmer(websocket: WebSocket, service: SessionLive, project_id: int,
