@@ -256,15 +256,17 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
 
 def _migrate_54_live_session_token(conn: sqlite3.Connection) -> None:
     """Lot « Enregistrement assisté du chemin de connexion », sous-lot B : le jeton d'accès à
-    usage unique et courte durée d'une session live (D« une seule séquence active, la dernière
-    confirmée remplace la précédente » — voir `project_login_recording`, sous-lot D, pas encore
-    créée ici).
+    usage unique et courte durée d'une session live.
 
     `token_hash` — jamais le jeton en clair : un `secrets.token_urlsafe` a déjà une entropie
     suffisante (contrairement à un mot de passe choisi par un humain), un hash rapide (SHA-256)
-    suffit, comparé en temps constant à la vérification (`hmac.compare_digest`).
+    suffit. Pas de comparaison Python en temps constant nécessaire ici (contrairement à
+    `access._verifier`/`lire_jeton`, qui comparent un secret CLAIR par égalité Python) : la
+    correspondance passe par un `WHERE token_hash=?` SQL sur une colonne indexée, jamais par une
+    comparaison octet à octet d'un secret devinable — deviner un hash SHA-256 valide par
+    tâtonnement reste infaisable, timing ou pas.
     `used_at` vide = jeton encore valide ; posé (non vide) = consommé, jamais réutilisable — la
-    consommation est une écriture conditionnelle atomique (voir `LiveSessionTokenRepo.consommer`),
+    consommation est une écriture conditionnelle atomique (voir `live_session_tokens.consommer`),
     pas une lecture puis une écriture séparées (fenêtre de course entre deux tentatives).
     """
     conn.execute('''CREATE TABLE IF NOT EXISTS live_session_token (
