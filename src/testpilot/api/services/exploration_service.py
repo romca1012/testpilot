@@ -112,6 +112,8 @@ def start_exploration(conn, project_id: int) -> tuple[str, dict]:
         # rendue serait un mélange de deux passages.
         raise ExplorationError("already_running", "une exploration est déjà en cours sur ce projet")
 
+    from testpilot.store import project_login_recordings
+
     job_id = uuid.uuid4().hex
     _JOBS[job_id] = {"status": "running", "project_id": project_id, "error": "", "resume": ""}
     return job_id, {"project_id": project_id, "connexion": {
@@ -123,6 +125,11 @@ def start_exploration(conn, project_id: int) -> tuple[str, dict]:
         "browser_locale": projet.get("browser_locale") or "",
         "browser_timezone": projet.get("browser_timezone") or "",
         "browser_viewport": projet.get("browser_viewport") or "",
+        # Sous-lot D (« Enregistrement assisté du chemin de connexion ») : la séquence confirmée
+        # qui franchit un écran intercalé avant le formulaire de connexion, ou `[]` si aucune n'a
+        # jamais été enregistrée pour ce projet — lue UNE fois ici (conn disponible), jamais par
+        # le connecteur lui-même (voir `GenericWebConnector.from_project`).
+        "sequence_connexion": project_login_recordings.lire(conn, project_id) or [],
     }}
 
 
