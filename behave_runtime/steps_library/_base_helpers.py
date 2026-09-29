@@ -20,7 +20,8 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect
 # (`GenericWebConnector`), jamais une seconde implémentation. Import au niveau module (CLAUDE.md §6) :
 # `testpilot` est sur le PYTHONPATH du sous-processus (`BehaveRunner._subprocess_env`).
 from testpilot.connectors._web_helpers import (
-    ConnexionGeneriqueImpossibleError, lire_message_erreur_visible, tenter_connexion_generique,
+    ConnexionGeneriqueImpossibleError, SequenceConnexionObsoleteError,
+    lire_message_erreur_visible, rejouer_sequence_connexion, tenter_connexion_generique,
 )
 from testpilot.connectors import auth_strategie as _auth
 import pyotp
@@ -3333,15 +3334,29 @@ def _champ_totp_encore_visible(page) -> bool:
 
 
 def authentifier_selon_la_strategie(page, *, strategie: str, web_url: str, user: str, password: str,
-                                    totp_secret: str) -> None:
+                                    totp_secret: str, sequence_connexion: list | None = None) -> None:
     """Une SEULE tentative de connexion du compte PRINCIPAL, selon la stratégie déclarée sur le projet. Lève
     `PreconditionNonRemplieError` (→ `blocked`) si elle échoue : le test n'a pas pu ENTRER, ce n'est jamais un défaut de
     l'application. Utilisée par `environment.before_all` (connexion initiale du run) et par `_verifier_ou_reconnecter_session`
-    (reconnexion après invalidation)."""
+    (reconnexion après invalidation).
+
+    `sequence_connexion` (sous-lot D, « Enregistrement assisté du chemin de connexion ») : franchit
+    un écran intercalé AVANT le formulaire (sélection de pays…), rejouée AVANT toute mesure/stratégie
+    — sauf `session_injectee`, où l'écran de connexion n'apparaît jamais (le storage_state fourni a
+    déjà authentifié le contexte, rien à franchir). Obsolète (application changée) → arrêt net,
+    jamais un repli silencieux ; « une seule tentative » (garde-fou étape 9) tient déjà de cette
+    fonction elle-même n'étant appelée qu'une fois par `before_all`/`_verifier_ou_reconnecter_session`,
+    jamais en boucle."""
     if strategie == _auth.AUCUNE:
         return
     page.goto(web_url, wait_until="domcontentloaded")
-    # Capturé APRÈS la navigation, jamais `web_url` littéral : une application non connectée redirige déjà vers sa page de
+    if strategie != _auth.SESSION_INJECTEE:
+        try:
+            rejouer_sequence_connexion(page, sequence_connexion or [])
+        except SequenceConnexionObsoleteError as exc:
+            raise PreconditionNonRemplieError(f"PRÉREQUIS MANQUANT : {exc}") from exc
+    # Capturé APRÈS la navigation (et le franchissement de l'écran intercalé, s'il y en a un),
+    # jamais `web_url` littéral : une application non connectée redirige déjà vers sa page de
     # connexion à cet instant (même convention que `connexion_web_utilisateur`) — sinon un aller-retour qui revient
     # exactement sur `web_url` (le cas le plus courant) serait pris pour « aucune navigation », un FAUX négatif mesuré en
     # conditions réelles (lot 07b-2).
