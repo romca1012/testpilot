@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 54
+ALIGNED_WITH_SCHEMA_VERSION = 55
 
 metadata = MetaData()
 
@@ -789,5 +789,18 @@ live_session_token = Table(
     Column('created_at', Text, nullable=False),
     Column('expires_at', Text, nullable=False),
     Column('used_at', Text, nullable=False, server_default=''),
+    sqlite_autoincrement=True,
+)
+
+# La séquence de connexion confirmée d'un projet (sous-lot C) — une seule active, jamais un
+# historique : `project_id` UNIQUE, une nouvelle confirmation remplace la précédente.
+project_login_recording = Table(
+    'project_login_recording', metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('project_id', Integer, ForeignKey('project.id', ondelete='CASCADE'), nullable=False,
+           unique=True),
+    Column('steps_json', Text, nullable=False),
+    Column('recorded_at', Text, nullable=False),
+    Column('recorded_by_user_id', Integer, ForeignKey('user.id', ondelete='CASCADE'), nullable=False),
     sqlite_autoincrement=True,
 )
