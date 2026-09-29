@@ -155,11 +155,14 @@ def resolve_connection(conn, case_id: int) -> dict[str, str]:
     déclenchement ; celui-ci est le second verrou, sur le chemin de fond — mieux vaut une erreur
     technique explicite qu'un verdict obtenu contre la mauvaise application.
     """
+    from testpilot.store import project_login_recordings
     from testpilot.store.repositories import ProjectAccountRepo
 
     project = project_du_cas(conn, case_id)
-    comptes = ProjectAccountRepo(conn).pour_runtime(project["id"]) if project and project.get("id") else []
-    return verifier_connexion(project, comptes)
+    a_un_projet = bool(project and project.get("id"))
+    comptes = ProjectAccountRepo(conn).pour_runtime(project["id"]) if a_un_projet else []
+    sequence = project_login_recordings.lire(conn, project["id"]) if a_un_projet else None
+    return verifier_connexion(project, comptes, sequence)
 
 
 def resolve_project_id(conn, case_id: int) -> int | None:

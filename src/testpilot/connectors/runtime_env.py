@@ -39,6 +39,11 @@ logger = logging.getLogger(__name__)
 # (le step « je me connecte en tant que "<libellé>" » s'y résout). Le compte principal reste `ODOO_USER` / `WEB_USER`.
 ENV_COMPTES = "TESTPILOT_COMPTES"
 
+# Sous-lot D (« Enregistrement assisté du chemin de connexion ») : la séquence confirmée qui
+# franchit un écran intercalé avant le formulaire de connexion, `[{"role", "name"}]` en JSON —
+# SEUL le connecteur `web` la consomme (voir `_web_helpers.rejouer_sequence_connexion`).
+ENV_LOGIN_RECORDING = "TESTPILOT_LOGIN_RECORDING"
+
 # connector_type → {variable d'environnement: colonne du projet} — colonnes REQUISES : sans
 # elles, `verifier_connexion` refuse de lancer quoi que ce soit contre cette connexion.
 _MAPPINGS: dict[str, dict[str, str]] = {
@@ -95,7 +100,8 @@ class ConnexionIncomplete(Exception):
                 f"l'outil ne sait pas contre quelle application il travaille.")
 
 
-def verifier_connexion(project: dict | None, comptes: list[dict] | None = None) -> dict[str, str]:
+def verifier_connexion(project: dict | None, comptes: list[dict] | None = None,
+                       sequence_connexion: list[dict] | None = None) -> dict[str, str]:
     """Rend les variables d'environnement du projet, ou **lève** si elles ne suffisent pas.
 
     Jamais de repli silencieux : mieux vaut un refus explicite qu'un résultat obtenu contre une
@@ -115,7 +121,7 @@ def verifier_connexion(project: dict | None, comptes: list[dict] | None = None) 
     if manquants:
         raise ConnexionIncomplete(project, manquants)
 
-    return project_env(project, comptes)
+    return project_env(project, comptes, sequence_connexion)
 
 
 def cible_de(project: dict | None) -> dict[str, str]:
@@ -129,11 +135,14 @@ def cible_de(project: dict | None) -> dict[str, str]:
     }
 
 
-def project_env(project: dict | None, comptes: list[dict] | None = None) -> dict[str, str]:
+def project_env(project: dict | None, comptes: list[dict] | None = None,
+                sequence_connexion: list[dict] | None = None) -> dict[str, str]:
     """Variables d'environnement de connexion déduites d'un projet. Vide si non applicable.
 
     `comptes` : les comptes secondaires (`ProjectAccountRepo.pour_runtime`), secrets déchiffrés — transmis tels quels au sous-processus,
-    qui en a besoin pour se connecter. Jamais passés à la génération (elle ne reçoit que les libellés)."""
+    qui en a besoin pour se connecter. Jamais passés à la génération (elle ne reçoit que les libellés).
+    `sequence_connexion` (sous-lot D) : la séquence confirmée qui franchit un écran intercalé avant
+    le formulaire de connexion — voir `ENV_LOGIN_RECORDING`."""
     if not project:
         return {}
     connector = (project.get("connector_type") or "").lower()
@@ -163,12 +172,19 @@ def project_env(project: dict | None, comptes: list[dict] | None = None) -> dict
             env[_auth.ENV_TOTP_SECRET] = str(project["totp_secret"])
         if project.get("injected_session"):
             env[_auth.ENV_INJECTED_SESSION] = str(project["injected_session"])
+        if sequence_connexion:
+            env[ENV_LOGIN_RECORDING] = json.dumps(sequence_connexion, ensure_ascii=False)
     return env
 
 
 def env_du_projet(conn, project: dict | None) -> dict[str, str]:
-    """`project_env` AVEC les comptes secondaires du projet — le point d'entrée des appelants qui lancent un run Behave."""
+    """`project_env` AVEC les comptes secondaires ET la séquence de connexion (sous-lot D) du
+    projet — le point d'entrée des appelants qui lancent un run Behave."""
+    from testpilot.store import project_login_recordings
     from testpilot.store.repositories import ProjectAccountRepo
 
-    comptes = ProjectAccountRepo(conn).pour_runtime(project["id"]) if project and project.get("id") else []
-    return project_env(project, comptes)
+    if not project or not project.get("id"):
+        return project_env(project)
+    comptes = ProjectAccountRepo(conn).pour_runtime(project["id"])
+    sequence = project_login_recordings.lire(conn, project["id"])
+    return project_env(project, comptes, sequence)

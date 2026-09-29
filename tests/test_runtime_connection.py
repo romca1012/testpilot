@@ -5,9 +5,12 @@ l'application de CE projet. Sans ça, l'outil afficherait un projet et en tester
 exactement le décalage « affiché ≠ réel » qu'il est censé supprimer.
 """
 
+import json
+
 import pytest
 
 from testpilot import config
+from testpilot.api import access
 from testpilot.api.services import run_service
 from testpilot.connectors.odoo import OdooConnector
 from testpilot.connectors.runtime_env import project_env
@@ -19,7 +22,7 @@ from testpilot.execution.behave_result import (
 )
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.store.db import get_initialized_db
-from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo
+from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo, UserRepo
 
 # Lot 07c : `project_env` transmet TOUJOURS le contexte navigateur figé (défauts compris) en plus de la connexion — l'égalité
 # reste EXACTE, elle attend simplement ces trois variables en plus.
@@ -102,6 +105,56 @@ def test_project_env_ne_produit_jamais_odoo_env():
     env = project_env({"connector_type": "odoo", "base_url": "http://x", "database": "d",
                        "username": "u", "password": "p"})
     assert "ODOO_ENV" not in env
+
+
+# ── Sous-lot D (« Enregistrement assisté du chemin de connexion ») : séquence de connexion ────
+
+def test_project_env_transmet_la_sequence_de_connexion_pour_le_connecteur_web():
+    from testpilot.connectors.runtime_env import ENV_LOGIN_RECORDING
+
+    etapes = [{"role": "combobox", "name": "Pays"}]
+    env = project_env({"connector_type": "web", "base_url": "http://intranet:8080"},
+                      sequence_connexion=etapes)
+    assert json.loads(env[ENV_LOGIN_RECORDING]) == etapes
+
+
+def test_project_env_sans_sequence_ne_produit_pas_la_variable():
+    from testpilot.connectors.runtime_env import ENV_LOGIN_RECORDING
+
+    env = project_env({"connector_type": "web", "base_url": "http://intranet:8080"})
+    assert ENV_LOGIN_RECORDING not in env
+
+
+def test_project_env_ignore_la_sequence_pour_odoo():
+    """Réservé au connecteur `web` — Odoo n'a pas ce problème d'écran intercalé (URL de connexion
+    connue à l'avance, § docstring du module)."""
+    from testpilot.connectors.runtime_env import ENV_LOGIN_RECORDING
+
+    env = project_env({"connector_type": "odoo", "base_url": "http://x", "database": "d",
+                       "username": "u", "password": "p"},
+                      sequence_connexion=[{"role": "button", "name": "Continuer"}])
+    assert ENV_LOGIN_RECORDING not in env
+
+
+def test_env_du_projet_lit_et_transmet_la_sequence_confirmee(tmp_path, monkeypatch):
+    from testpilot.connectors.runtime_env import ENV_LOGIN_RECORDING, env_du_projet
+    from testpilot.store import project_login_recordings
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    conn = get_initialized_db(tmp_path / "env-sequence.db")
+    try:
+        project_id = ProjectRepo(conn).create(name="Portail", connector_type="web", base_url="https://app.example")
+        projet = ProjectRepo(conn).get(project_id)
+        user_id = UserRepo(conn).create(username="Admin", password_hash=access.hacher_mot_de_passe("mdp"),
+                                        role=access.ROLE_ADMIN)
+        etapes = [{"role": "combobox", "name": "Pays"}, {"role": "button", "name": "Continuer"}]
+        project_login_recordings.enregistrer(conn, project_id=project_id, etapes=etapes, recorded_by_user_id=user_id)
+
+        env = env_du_projet(conn, projet)
+
+        assert json.loads(env[ENV_LOGIN_RECORDING]) == etapes
+    finally:
+        conn.close()
 
 
 # ── Injection dans le sous-processus behave ───────────────────────────────────
@@ -224,6 +277,26 @@ def test_resolve_connection_projet_sans_connexion_REFUSE(conn):
     cid = CaseRepo(conn).create(title="C", module_id=mid, feature_slug="c")
     with pytest.raises(ConnexionIncomplete):
         run_service.resolve_connection(conn, cid)
+
+
+def test_resolve_connection_transmet_la_sequence_de_connexion_confirmee(conn):
+    """Sous-lot D : le lancement d'un run réel (chemin `run_service`, pas seulement l'exploration
+    ou la génération) bénéficie lui aussi de la séquence confirmée — un test qui doit franchir le
+    même écran intercalé qu'une exploration."""
+    from testpilot.connectors.runtime_env import ENV_LOGIN_RECORDING
+    from testpilot.store import project_login_recordings
+
+    pid = ProjectRepo(conn).create(name="Portail web", connector_type="web", base_url="https://app.example")
+    user_id = UserRepo(conn).create(username="Admin", password_hash=access.hacher_mot_de_passe("mdp"),
+                                    role=access.ROLE_ADMIN)
+    mid = ModuleRepo(conn).create(project_id=pid, name="M")
+    cid = CaseRepo(conn).create(title="C", module_id=mid, feature_slug="c")
+    etapes = [{"role": "combobox", "name": "Pays"}]
+    project_login_recordings.enregistrer(conn, project_id=pid, etapes=etapes, recorded_by_user_id=user_id)
+
+    env = run_service.resolve_connection(conn, cid)
+
+    assert json.loads(env[ENV_LOGIN_RECORDING]) == etapes
 
 
 # ── Connecteur d'exploration (génération) ─────────────────────────────────────
