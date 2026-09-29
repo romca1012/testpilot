@@ -27,6 +27,7 @@ from testpilot.connectors._web_helpers import (
     build_probe_url,
     extract_form,
     http_probe,
+    rejouer_sequence_connexion,
     tenter_connexion_et_lire_resultat,
     tenter_connexion_generique,
 )
@@ -46,7 +47,8 @@ class GenericWebConnector(Connector):
     """Connecteur pour une application web quelconque, identifiée par sa seule URL."""
 
     def __init__(self, url: str, user: str = "", password: str = "", *,
-                 headless: bool = True, timeout_ms: int = 15_000, contexte=None) -> None:
+                 headless: bool = True, timeout_ms: int = 15_000, contexte=None,
+                 sequence_connexion: list[dict] | None = None) -> None:
         from testpilot.connectors.contexte_navigateur import ContexteNavigateur
 
         # Lot 07c : le MÊME contexte (langue, fuseau, fenêtre) que l'exécution — l'agent voit ce que le test verra.
@@ -61,11 +63,20 @@ class GenericWebConnector(Connector):
         self._page = None       # démarré paresseusement à la 1re inspection UI
         self._executor = None   # thread dédié Playwright (voir _run_in_browser)
         self._tentative_connexion_faite = False
+        # Sous-lot D (« Enregistrement assisté du chemin de connexion ») : la séquence confirmée
+        # qui franchit un écran intercalé avant le formulaire de connexion — `[]`/`None` si aucune
+        # n'a jamais été enregistrée pour ce projet, comportement historique inchangé.
+        self._sequence_connexion = sequence_connexion or []
 
     @classmethod
     def from_project(cls, project: dict | None, **overrides) -> GenericWebConnector:
         """Connecteur branché sur la connexion du PROJET (décision 0005) — mêmes colonnes
-        génériques que les autres connecteurs (``base_url``/``username``/``password``)."""
+        génériques que les autres connecteurs (``base_url``/``username``/``password``).
+
+        `sequence_connexion` (sous-lot D) : lue depuis `project["sequence_connexion"]` si
+        l'appelant l'y a déposée (voir `exploration_service.start_exploration`), jamais lue
+        directement en base ici — ce connecteur ne dépend d'aucune connexion DB, seulement du
+        dict `project` qu'on lui donne, comme le reste de ses champs."""
         project = project or {}
         from testpilot.connectors.contexte_navigateur import depuis_projet
 
@@ -74,6 +85,7 @@ class GenericWebConnector(Connector):
             user=overrides.get("user", project.get("username") or ""),
             password=overrides.get("password", project.get("password") or ""),
             contexte=overrides.pop("contexte", None) or depuis_projet(project),
+            sequence_connexion=overrides.pop("sequence_connexion", None) or project.get("sequence_connexion"),
             **{k: v for k, v in overrides.items() if k not in ("url", "user", "password")},
         )
 
@@ -203,6 +215,11 @@ class GenericWebConnector(Connector):
                 logger.warning("[web-générique] mesure de la page de connexion impossible — "
                                "ses champs resteront invisibles pour « Points de vigilance »",
                                exc_info=True)
+            # Sous-lot D : franchit un écran intercalé avant le formulaire, s'il y en a un
+            # d'enregistré pour ce projet — AVANT la détection générique, jamais à sa place
+            # (étape 8 de la consigne). Lève SequenceConnexionObsoleteError sans filet si
+            # l'application a changé : jamais de repli silencieux sur une autre hypothèse.
+            rejouer_sequence_connexion(ctx.page, self._sequence_connexion)
             tenter_connexion_generique(ctx.page, self._user, self._password)
         return _connexion
 
@@ -231,7 +248,11 @@ class GenericWebConnector(Connector):
 
     def _tenter_connexion_generique(self, page) -> None:
         """Délègue à la détection PARTAGÉE (``_web_helpers.tenter_connexion_generique``) — le
-        crawl générique d'exploration affronte le même problème et réutilise la même fonction."""
+        crawl générique d'exploration affronte le même problème et réutilise la même fonction.
+
+        Sous-lot D : même séquence de franchissement AVANT la détection que `crawl_relogin_hook`,
+        même garde-fou (arrêt net si obsolète, jamais un repli silencieux)."""
+        rejouer_sequence_connexion(page, self._sequence_connexion)
         self._tentative_connexion_faite = tenter_connexion_generique(page, self._user, self._password)
 
     def _http_probe(self, url: str) -> dict:

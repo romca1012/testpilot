@@ -133,6 +133,48 @@ class ConnexionGeneriqueImpossibleError(Exception):
     """
 
 
+class SequenceConnexionObsoleteError(Exception):
+    """Une étape de la séquence de connexion enregistrée (lot « Enregistrement assisté du chemin
+    de connexion », sous-lot D) ne se retrouve plus, ou n'identifie plus un élément UNIQUE, sur la
+    page rejouée — l'application a changé depuis l'enregistrement. Jamais une tentative silencieuse
+    de deviner autre chose à sa place (étape 8 de la consigne) : la personne doit refaire
+    l'enregistrement.
+    """
+
+
+def rejouer_sequence_connexion(page, etapes: list[dict], *, timeout_ms: int = 5000) -> bool:
+    """Rejoue, DANS L'ORDRE, une séquence enregistrée (sous-lot C : liste de `{"role", "name"}`
+    calculés par l'algorithme AccName déterministe — jamais un texte deviné) via
+    ``page.get_by_role(role, name=name).click()``. Rend ``False`` sans rien faire si `etapes` est
+    vide (rien n'a jamais été enregistré pour ce projet — comportement historique inchangé).
+
+    Précède `tenter_connexion_generique`, ne le remplace pas : fait seulement franchir un éventuel
+    écran intercalé AVANT le formulaire de connexion (sélection de pays, bannière…) — le
+    remplissage identifiant/mot de passe reste la responsabilité de `tenter_connexion_generique`,
+    appelée juste après par l'appelant.
+
+    Un élément introuvable OU ambigu (`get_by_role` retrouve plusieurs correspondances — Playwright
+    lève déjà en mode strict par défaut) arrête net avec `SequenceConnexionObsoleteError` : jamais
+    de repli sur une hypothèse, jamais de nouvelle tentative en boucle (garde-fou étape 9, un seul
+    essai par session — c'est l'APPELANT qui décide de ne jamais réessayer, cette fonction ne
+    boucle déjà pas elle-même).
+    """
+    if not etapes:
+        return False
+    for etape in etapes:
+        role, name = etape.get("role", ""), etape.get("name", "")
+        try:
+            page.get_by_role(role, name=name).click(timeout=timeout_ms)
+        except Exception as exc:
+            raise SequenceConnexionObsoleteError(
+                f"étape enregistrée « rôle={role!r}, nom={name!r} » introuvable ou ambiguë sur "
+                f"{getattr(page, 'url', '?')} — l'application a changé depuis l'enregistrement du "
+                "chemin de connexion. Refaites l'enregistrement (session en direct) avant de "
+                "relancer.") from exc
+    page.wait_for_load_state("networkidle")
+    return True
+
+
 def _ressemble_a_un_premier_ecran_de_connexion(page) -> bool:
     """Un écran minimal — EXACTEMENT un champ texte/email, plus un contrôle de soumission — pas
     n'importe quelle page qui porte un champ texte quelconque (recherche, newsletter…).
