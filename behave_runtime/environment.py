@@ -34,6 +34,7 @@ Comme Behave charge ``environment.py`` AVANT les modules de steps, l'alias est e
 """
 
 import json
+import logging
 import os
 import re
 import time
@@ -43,6 +44,8 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from behave import fixture, use_fixture
+
+logger = logging.getLogger(__name__)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -171,6 +174,9 @@ _WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
 _AUTH_STRATEGIE     = os.environ.get("TESTPILOT_AUTH_STRATEGIE", "formulaire")
 _TOTP_SECRET        = os.environ.get("TESTPILOT_TOTP_SECRET", "")
 _INJECTED_SESSION   = os.environ.get("TESTPILOT_INJECTED_SESSION", "")
+# Sous-lot D (« Enregistrement assisté du chemin de connexion ») : DUPLIQUÉ de
+# `connectors/runtime_env.py::ENV_LOGIN_RECORDING`, même motif que les constantes ci-dessus.
+_LOGIN_RECORDING_JSON = os.environ.get("TESTPILOT_LOGIN_RECORDING", "")
 _CHEMIN_STORAGE_STATE = "storage_state.json"   # dupliqué de `_base_helpers._CHEMIN_STORAGE_STATE" (même valeur, même run_dir)
 
 
@@ -411,6 +417,17 @@ def _tenter_connexion_initiale(context) -> None:
         except (ValueError, TypeError):
             context._erreur_connexion_initiale = "la session fournie (« session déjà ouverte ») n'est pas un JSON valide."
             return
+    sequence_connexion = []
+    if _LOGIN_RECORDING_JSON:
+        try:
+            sequence_connexion = json.loads(_LOGIN_RECORDING_JSON)
+        except (ValueError, TypeError):
+            # Best-effort : JAMAIS produit par une saisie humaine (toujours sérialisé par
+            # `runtime_env.project_env`), une valeur invalide ici trahirait un bug de ce dépôt,
+            # pas une donnée de projet incorrecte — on continue sans rejeu plutôt que de bloquer
+            # tout le run pour un signal qui n'est pas le mécanisme d'authentification principal.
+            logger.warning("[connexion] TESTPILOT_LOGIN_RECORDING n'est pas un JSON valide — "
+                           "aucune séquence de connexion rejouée pour ce run.")
     with sync_playwright() as p:
         navigateur = p.chromium.launch(headless=os.environ.get("PLAYWRIGHT_HEADED", "0") != "1")
         try:
@@ -418,7 +435,8 @@ def _tenter_connexion_initiale(context) -> None:
             page = contexte.new_page()
             try:
                 authentifier_selon_la_strategie(page, strategie=_AUTH_STRATEGIE, web_url=_WEB_URL,
-                                                user=_WEB_USER, password=_WEB_PASSWORD, totp_secret=_TOTP_SECRET)
+                                                user=_WEB_USER, password=_WEB_PASSWORD, totp_secret=_TOTP_SECRET,
+                                                sequence_connexion=sequence_connexion)
             except PreconditionNonRemplieError as exc:
                 context._erreur_connexion_initiale = str(exc)
                 return
