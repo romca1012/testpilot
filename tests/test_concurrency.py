@@ -177,3 +177,49 @@ def test_une_tache_qui_leve_libere_quand_meme_sa_place():
     assert q.status() == concurrency.QueueStatus(max_concurrent=1, running=0, waiting=0)
     # La place est bien redevenue disponible pour la tâche suivante.
     assert q.run(lambda: "ok", queue_label="suivante") == "ok"
+
+
+# --- held() : la place tient tout le bloc `with`, pas un seul appel bloquant ---------------
+
+def test_held_tient_la_place_jusqu_a_la_sortie_du_bloc():
+    """Contrairement à `run()`, la place reste prise tant que le bloc `with` n'est pas sorti —
+    pensé pour une session en direct dont le navigateur reste ouvert plusieurs minutes."""
+    q = concurrency.JobQueue(max_concurrent=1)
+
+    with q.held("session-live"):
+        assert q.status() == concurrency.QueueStatus(max_concurrent=1, running=1, waiting=0)
+    assert q.status() == concurrency.QueueStatus(max_concurrent=1, running=0, waiting=0)
+
+
+def test_held_refuse_une_deuxieme_place_tant_que_la_premiere_n_est_pas_rendue():
+    """Preuve FIFO/plafond, pas seulement que `held()` s'appelle sans erreur : une deuxième
+    tentative doit attendre — jamais admise en même temps que la première tant que le plafond
+    est à 1."""
+    q = concurrency.JobQueue(max_concurrent=1)
+    admise_2 = threading.Event()
+
+    def tente_la_deuxieme() -> None:
+        with q.held("second"):
+            admise_2.set()
+
+    with q.held("premier"):
+        t = threading.Thread(target=tente_la_deuxieme)
+        t.start()
+        assert _attendre(lambda: q.position("second") == 1), "la deuxième aurait dû attendre en file"
+        assert not admise_2.is_set(), "la deuxième a été admise alors que la première tient encore la place"
+
+    t.join(timeout=5)
+    assert admise_2.is_set(), "la deuxième aurait dû finir par être admise une fois la première sortie"
+    assert q.status() == concurrency.QueueStatus(max_concurrent=1, running=0, waiting=0)
+
+
+def test_held_rend_la_place_meme_si_une_exception_traverse_le_bloc():
+    """Une session live qui plante (navigateur perdu, WebSocket coupé) ne doit jamais garder la
+    place pour toujours — même garantie que `run()` pour une exception dans `fn`."""
+    q = concurrency.JobQueue(max_concurrent=1)
+
+    with pytest.raises(RuntimeError, match="session perdue"):
+        with q.held("casse"):
+            raise RuntimeError("session perdue")
+
+    assert q.status() == concurrency.QueueStatus(max_concurrent=1, running=0, waiting=0)
