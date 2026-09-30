@@ -86,6 +86,22 @@ TOOLS_DEFINITIONS: list[dict] = [
         },
     },
     {
+        "name": "inspect_odoo_view",
+        "description": (
+            "Observe une VRAIE vue Odoo par RPC : boutons (nom technique, libellé, visibilité), "
+            "barre d'état (workflow), champs x2many et leurs sous-champs éditables, champs "
+            "requis. Appelle-le AVANT de cliquer un bouton de workflow ou de citer une ligne de "
+            "commande — jamais deviner un nom de bouton ou un état."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string"},
+                "view_type": {"type": "string"},
+            },
+            "required": ["model"],
+        },
+    },
+    {
         "name": "discover_route",
         "description": "Sonde une route pour découvrir son URL/statut/méthode réels.",
         "input_schema": {
@@ -209,6 +225,9 @@ def dispatch(name: str, tool_input: dict, ctx: ToolContext) -> ToolOutcome:
             )
         if name == "inspect_page_form":
             return inspect_tools.inspect_page_form(ctx, tool_input.get("page_url", ""))
+        if name == "inspect_odoo_view":
+            return inspect_tools.inspect_odoo_view(
+                ctx, tool_input.get("model", ""), tool_input.get("view_type", "form"))
         if name == "discover_route":
             return inspect_tools.discover_route(
                 ctx, tool_input.get("path_pattern", ""), tool_input.get("sample_id"),

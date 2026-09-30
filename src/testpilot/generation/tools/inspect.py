@@ -143,6 +143,76 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
     return outcome
 
 
+def _rendre_invisible(brut) -> str:
+    """Traduit la valeur brute d'`invisible` (voir `connectors/odoo_view.py`) en français lisible
+    par l'agent — jamais un simple « visible »/« caché », le domaine conditionnel EST
+    l'information utile (à quel état de workflow ce bouton apparaît)."""
+    if brut is True:
+        return "toujours caché"
+    if brut is False or not brut:
+        return "toujours visible"
+    return f"visible seulement si {brut}"
+
+
+def inspect_odoo_view(ctx: "ToolContext", model: str, view_type: str = "form") -> "ToolOutcome":
+    """Observe une VRAIE vue Odoo par RPC (lot 09, C9) — boutons, barre d'état, champs x2many et
+    leurs sous-champs éditables, champs requis. Jamais deviné : avant d'écrire un clic sur un
+    bouton de workflow (« Confirmer », « Valider »...) ou de citer un champ d'une ligne de
+    commande, appelle ce tool avec le modèle technique concerné.
+    """
+    if ctx.connector is None:
+        return _outcome(_NO_CONNECTOR, ok=False)
+    if not model:
+        return _outcome("[inspect_odoo_view] modèle manquant", ok=False)
+    try:
+        info = ctx.connector.inspect_odoo_view(model, view_type or "form")
+    except NotImplementedError:
+        return _outcome(
+            "[inspect_odoo_view] ce connecteur n'expose pas de vues Odoo (connecteur non-Odoo ?)",
+            ok=False)
+    if info.get("erreur"):
+        return _outcome(f"[inspect_odoo_view] {info['erreur']}", ok=False)
+
+    lignes = [f"Vue « {view_type} » de `{model}` :"]
+    boutons = info.get("boutons") or []
+    if boutons:
+        lignes.append(f"Boutons ({len(boutons)}) :")
+        for b in boutons:
+            lignes.append(f"- « {b['libelle'] or b['name']} » (name={b['name']!r}, "
+                          f"type={b['type']!r}) — {_rendre_invisible(b['invisible'])}")
+    else:
+        lignes.append("Aucun bouton.")
+
+    barre_etat = info.get("barre_etat")
+    if barre_etat:
+        lignes.append(
+            f"Barre d'état sur le champ `{barre_etat['champ']}` — étapes affichées : "
+            f"{barre_etat['valeurs_visibles']} (toutes les valeurs possibles : "
+            f"{barre_etat['valeurs_toutes']}).")
+
+    champs_requis = info.get("champs_requis") or []
+    if champs_requis:
+        lignes.append(f"Champs requis : {champs_requis}.")
+
+    champs_x2many = info.get("champs_x2many") or []
+    noms_champs_observes = list(champs_requis)
+    for x2m in champs_x2many:
+        lignes.append(
+            f"Champ x2many `{x2m['name']}` (relation `{x2m['relation']}`) — sous-champs "
+            f"éditables dans la ligne : {x2m['sous_champs']}.")
+        noms_champs_observes.append(x2m["name"])
+        noms_champs_observes.extend(x2m["sous_champs"])
+
+    outcome = _outcome("\n".join(lignes))
+    # Boutons EXCLUS de `verified_fields` : ce ne sont pas des champs (le smoke-check y cherche
+    # des noms de CHAMP référencés par « je renseigne le champ … »), seulement des noms de champ
+    # réels observés dans cette vue — requis + x2many + leurs sous-champs.
+    if noms_champs_observes:
+        outcome.verified_fields = {
+            f"inspect_odoo_view:{model}:{view_type}": sorted(set(noms_champs_observes))}
+    return outcome
+
+
 def discover_route(ctx: "ToolContext", path_pattern: str, sample_id: int | None = None) -> "ToolOutcome":
     if ctx.connector is None:
         return _outcome(_NO_CONNECTOR, ok=False)

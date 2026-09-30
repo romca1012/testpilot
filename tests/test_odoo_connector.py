@@ -376,3 +376,82 @@ def test_discover_menus_conserve_les_chemins_et_les_feuilles_homonymes():
     assert 'chemin mesuré « Assistance / Tickets »' in prompt
     assert smoke_check('Quand je navigue vers le menu Odoo "Assistance / Tickets"',
                        modele=modele) == []
+
+
+# ── `inspect_odoo_view` (lot 09, C9) — RPC seule, jamais de navigateur ───────────────────────────
+# La preuve avec un vrai Odoo (round-trip `get_views` réel) vit dans `test_odoo_view_banc.py`
+# (marqueur `banc`) ; ici, seul le CHOIX entre `get_views`/repli/double-échec et le cache.
+
+class _FakeModelVues:
+    def __init__(self, get_views=None, fields_view_get=None):
+        self._get_views = get_views
+        self._fields_view_get = fields_view_get
+
+    def get_views(self, *_a, **_k):
+        if isinstance(self._get_views, Exception):
+            raise self._get_views
+        if self._get_views is None:
+            raise RuntimeError("get_views non implémenté par ce faux client")
+        return self._get_views
+
+    def fields_view_get(self, *_a, **_k):
+        if isinstance(self._fields_view_get, Exception):
+            raise self._fields_view_get
+        if self._fields_view_get is None:
+            raise RuntimeError("fields_view_get non implémenté par ce faux client")
+        return self._fields_view_get
+
+
+class _FakeClientVues:
+    def __init__(self, modele_vers_proxy: dict):
+        self.env = modele_vers_proxy
+
+
+def test_inspect_odoo_view_utilise_get_views_quand_disponible():
+    conn = OdooConnector("http://x.local", "db", "u", "p")
+    conn._client = _FakeClientVues({"sale.order": _FakeModelVues(
+        get_views={"views": {"form": {"arch": "<form/>"}}, "models": {}})})
+
+    resultat = conn.inspect_odoo_view("sale.order", "form")
+
+    assert resultat["erreur"] == ""
+
+
+def test_inspect_odoo_view_replie_sur_fields_view_get_si_get_views_echoue():
+    conn = OdooConnector("http://x.local", "db", "u", "p")
+    conn._client = _FakeClientVues({"sale.order": _FakeModelVues(
+        get_views=RuntimeError("indisponible avant 16"),
+        fields_view_get={"arch": "<form/>", "fields": {}})})
+
+    resultat = conn.inspect_odoo_view("sale.order", "form")
+
+    assert resultat["erreur"] == ""
+
+
+def test_falsifiable_inspect_odoo_view_rend_une_erreur_jamais_une_exception_si_les_deux_echouent():
+    conn = OdooConnector("http://x.local", "db", "u", "p")
+    conn._client = _FakeClientVues({"sale.order": _FakeModelVues(
+        get_views=RuntimeError("panne A"), fields_view_get=RuntimeError("panne B"))})
+
+    resultat = conn.inspect_odoo_view("sale.order", "form")
+
+    assert resultat["boutons"] == []
+    assert "panne A" in resultat["erreur"] and "panne B" in resultat["erreur"]
+
+
+def test_inspect_odoo_view_met_en_cache_par_modele_et_type_de_vue():
+    compteur = {"appels": 0}
+
+    class _ModeleCompte(_FakeModelVues):
+        def get_views(self, *a, **k):
+            compteur["appels"] += 1
+            return super().get_views(*a, **k)
+
+    conn = OdooConnector("http://x.local", "db", "u", "p")
+    conn._client = _FakeClientVues({"sale.order": _ModeleCompte(
+        get_views={"views": {"form": {"arch": "<form/>"}}, "models": {}})})
+
+    conn.inspect_odoo_view("sale.order", "form")
+    conn.inspect_odoo_view("sale.order", "form")
+
+    assert compteur["appels"] == 1

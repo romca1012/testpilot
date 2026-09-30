@@ -23,6 +23,7 @@ import uuid
 from urllib.parse import urljoin, urlparse
 
 from testpilot import config
+from testpilot.connectors import odoo_view
 from testpilot.connectors._sonde_saisie import sonder_formulaire
 from testpilot.connectors.base import Connector
 # Perception UI pure (formulaire, sonde HTTP) : PARTAGÉE avec les autres connecteurs
@@ -137,6 +138,9 @@ class OdooConnector(Connector):
         # deux champs explicitement renseignés). Voir `odoo_login.py::playwright_login`.
         self._sequence_connexion = sequence_connexion or []
         self._login_form = login_form or None
+        # Lot 09 (C9) : cache de `inspect_odoo_view` par (modèle, type de vue) — une vue Odoo ne
+        # change pas pendant la durée de vie d'une session de génération.
+        self._cache_vues: dict[tuple[str, str], dict] = {}
 
     @classmethod
     def from_config(cls, **overrides) -> "OdooConnector":
@@ -218,6 +222,34 @@ class OdooConnector(Connector):
         """`name_search` RPC natif d'Odoo (`ilike`) : le serveur EST la source de vérité (D11)."""
         trouves = self._client.env[model].name_search(name=name, operator="ilike", limit=limit)
         return [(int(i), str(nom)) for i, nom in trouves]
+
+    def inspect_odoo_view(self, model: str, view_type: str = "form") -> dict:
+        """Boutons, barre d'état, x2many + sous-champs, champs requis — RPC seule, aucun
+        navigateur (lot 09, C9). `get_views` (vérifié sur un vrai Odoo 16.0, cf. `odoo_view.py`),
+        repli `fields_view_get` s'il échoue (version antérieure, ou serveur qui ne l'expose pas).
+
+        Mis en cache par `(model, view_type)` sur CETTE instance de connecteur — un connecteur
+        est déjà scopé à un projet et une connexion fixes pour toute sa durée de vie, donc à une
+        version Odoo fixe ; nul besoin de les porter dans la clé."""
+        cle = (model, view_type)
+        if cle in self._cache_vues:
+            return self._cache_vues[cle]
+        try:
+            brut = self._client.env[model].get_views([[False, view_type]], {})
+        except Exception as exc_get_views:
+            try:
+                brut = self._client.env[model].fields_view_get(view_type=view_type)
+            except Exception as exc_repli:
+                resultat = {
+                    "boutons": [], "barre_etat": None, "champs_x2many": [], "champs_requis": [],
+                    "erreur": (f"get_views a échoué ({exc_get_views}) et fields_view_get aussi "
+                              f"({exc_repli})")[:300],
+                }
+                self._cache_vues[cle] = resultat
+                return resultat
+        resultat = odoo_view.analyser_vue(brut, model, view_type)
+        self._cache_vues[cle] = resultat
+        return resultat
 
     # ── Perception UI (Playwright) ─────────────────────────────────────────────
     def inspect_form(self, page_url: str) -> dict:
