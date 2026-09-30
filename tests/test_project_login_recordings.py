@@ -80,3 +80,49 @@ def test_supprimer_retire_la_sequence_et_rend_false_si_rien_n_existait(conn, pro
                      recorded_by_user_id=user_id)
     assert repo.supprimer(conn, project_id) is True
     assert repo.lire(conn, project_id) is None
+
+
+def test_lire_formulaire_rend_none_quand_jamais_capture(conn, projet_et_admin):
+    project_id, user_id = projet_et_admin
+    # Une séquence peut exister SANS descripteur de formulaire (projet enregistré avant cette
+    # extension, ou personne n'ayant pas fait les 3 clics guidés) — `lire_formulaire` doit le
+    # distinguer d'un formulaire réellement vide.
+    repo.enregistrer(conn, project_id=project_id, etapes=[{"role": "button", "name": "A"}],
+                     recorded_by_user_id=user_id)
+
+    assert repo.lire_formulaire(conn, project_id) is None
+
+
+def test_enregistrer_puis_lire_formulaire_rend_le_meme_descripteur(conn, projet_et_admin):
+    project_id, user_id = projet_et_admin
+    login_form = {
+        "champ_identifiant": {"role": "textbox", "name": "E-mail"},
+        "champ_mdp": {"role": "textbox", "name": "Mot de passe"},
+        "bouton_soumission": {"role": "button", "name": "Se connecter"},
+    }
+
+    repo.enregistrer(conn, project_id=project_id, etapes=[], recorded_by_user_id=user_id,
+                     login_form=login_form)
+
+    assert repo.lire_formulaire(conn, project_id) == login_form
+
+
+def test_falsifiable_une_reconfirmation_sans_formulaire_efface_l_ancien_jamais_un_melange(
+        conn, projet_et_admin):
+    """Une confirmation est un tout : si la nouvelle session n'a pas refait les 3 clics guidés,
+    le descripteur précédent ne doit PAS survivre en silence — sinon un rejeu utiliserait un
+    formulaire d'une session antérieure jamais revalidée par celle-ci."""
+    project_id, user_id = projet_et_admin
+    login_form = {
+        "champ_identifiant": {"role": "textbox", "name": "E-mail"},
+        "champ_mdp": {"role": "textbox", "name": "Mot de passe"},
+        "bouton_soumission": {"role": "button", "name": "Se connecter"},
+    }
+    repo.enregistrer(conn, project_id=project_id, etapes=[{"role": "button", "name": "A"}],
+                     recorded_by_user_id=user_id, login_form=login_form)
+    assert repo.lire_formulaire(conn, project_id) == login_form
+
+    repo.enregistrer(conn, project_id=project_id, etapes=[{"role": "button", "name": "A"}],
+                     recorded_by_user_id=user_id)
+
+    assert repo.lire_formulaire(conn, project_id) is None

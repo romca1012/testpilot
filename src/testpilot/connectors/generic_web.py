@@ -28,6 +28,7 @@ from testpilot.connectors._web_helpers import (
     extract_form,
     http_probe,
     rejouer_sequence_connexion,
+    remplir_et_soumettre_formulaire_connexion,
     tenter_connexion_et_lire_resultat,
     tenter_connexion_generique,
 )
@@ -48,7 +49,8 @@ class GenericWebConnector(Connector):
 
     def __init__(self, url: str, user: str = "", password: str = "", *,
                  headless: bool = True, timeout_ms: int = 15_000, contexte=None,
-                 sequence_connexion: list[dict] | None = None) -> None:
+                 sequence_connexion: list[dict] | None = None,
+                 login_form: dict | None = None) -> None:
         from testpilot.connectors.contexte_navigateur import ContexteNavigateur
 
         # Lot 07c : le MÊME contexte (langue, fuseau, fenêtre) que l'exécution — l'agent voit ce que le test verra.
@@ -67,6 +69,10 @@ class GenericWebConnector(Connector):
         # qui franchit un écran intercalé avant le formulaire de connexion — `[]`/`None` si aucune
         # n'a jamais été enregistrée pour ce projet, comportement historique inchangé.
         self._sequence_connexion = sequence_connexion or []
+        # Extension (2026-09-30) : le descripteur du formulaire de connexion lui-même (3 clics
+        # guidés), TOUJOURS préféré à `tenter_connexion_generique` quand il existe — `None` si
+        # jamais capturé pour ce projet, comportement historique inchangé (détection générique).
+        self._login_form = login_form or None
 
     @classmethod
     def from_project(cls, project: dict | None, **overrides) -> GenericWebConnector:
@@ -86,6 +92,7 @@ class GenericWebConnector(Connector):
             password=overrides.get("password", project.get("password") or ""),
             contexte=overrides.pop("contexte", None) or depuis_projet(project),
             sequence_connexion=overrides.pop("sequence_connexion", None) or project.get("sequence_connexion"),
+            login_form=overrides.pop("login_form", None) or project.get("login_form"),
             **{k: v for k, v in overrides.items() if k not in ("url", "user", "password")},
         )
 
@@ -176,7 +183,8 @@ class GenericWebConnector(Connector):
             page.set_default_timeout(self._timeout_ms)
             page.goto(self._url)
             page.wait_for_load_state("networkidle")
-            return tenter_connexion_et_lire_resultat(page, username, password)
+            return tenter_connexion_et_lire_resultat(
+                page, username, password, login_form=self._login_form)
         finally:
             contexte.close()
 
@@ -229,7 +237,16 @@ class GenericWebConnector(Connector):
                 logger.warning("[web-générique] mesure de la page de connexion impossible — "
                                "ses champs resteront invisibles pour « Points de vigilance »",
                                exc_info=True)
-            tenter_connexion_generique(ctx.page, self._user, self._password)
+            # Extension (2026-09-30) : le formulaire ENREGISTRÉ (3 clics guidés) est TOUJOURS
+            # préféré à la détection générique quand il existe — même garde que
+            # `rejouer_sequence_connexion` ci-dessus, `FormulaireConnexionObsoleteError` remonte
+            # sans filet si l'application a changé, jamais un repli silencieux sur l'autre
+            # détection (voir `_web_helpers.remplir_et_soumettre_formulaire_connexion`).
+            if self._login_form:
+                remplir_et_soumettre_formulaire_connexion(
+                    ctx.page, self._login_form, self._user, self._password)
+            else:
+                tenter_connexion_generique(ctx.page, self._user, self._password)
         return _connexion
 
     # ── Interne (réseau isolé, surchargeable en test) ──────────────────────────
@@ -256,12 +273,18 @@ class GenericWebConnector(Connector):
         return page
 
     def _tenter_connexion_generique(self, page) -> None:
-        """Délègue à la détection PARTAGÉE (``_web_helpers.tenter_connexion_generique``) — le
-        crawl générique d'exploration affronte le même problème et réutilise la même fonction.
+        """Délègue à la détection PARTAGÉE (``_web_helpers.tenter_connexion_generique``), ou au
+        formulaire ENREGISTRÉ (extension 2026-09-30) quand il existe — le crawl générique
+        d'exploration affronte le même problème et réutilise les mêmes fonctions.
 
         Sous-lot D : même séquence de franchissement AVANT la détection que `crawl_relogin_hook`,
         même garde-fou (arrêt net si obsolète, jamais un repli silencieux)."""
         rejouer_sequence_connexion(page, self._sequence_connexion)
+        if self._login_form:
+            remplir_et_soumettre_formulaire_connexion(
+                page, self._login_form, self._user, self._password)
+            self._tentative_connexion_faite = True
+            return
         self._tentative_connexion_faite = tenter_connexion_generique(page, self._user, self._password)
 
     def _http_probe(self, url: str) -> dict:

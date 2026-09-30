@@ -181,17 +181,25 @@ async def _attendre_clics_ou_signaler(websocket: WebSocket, service: SessionLive
 async def _confirmer(websocket: WebSocket, service: SessionLive, project_id: int,
                      jeton_info: dict) -> None:
     """Étape 6 : rien n'est sauvegardé avant cet appel explicite — jamais déclenché par un simple
-    clic, une déconnexion ou un timeout."""
+    clic, une déconnexion ou un timeout.
+
+    `login_form` (extension 2026-09-30) : `None` si les 3 clics guidés n'ont pas tous abouti
+    (personne arrêtée avant la fin, ou application sans écran de pré-connexion du tout) — stocké
+    tel quel, jamais une valeur partielle. `enregistrer` REMPLACE alors un descripteur antérieur
+    éventuel par « aucun », jamais un mélange (voir `project_login_recordings.py`)."""
     etapes = service.etapes
+    login_form = service.login_form
 
     def _ecrire() -> None:
         conn = get_initialized_db()
         try:
             project_login_recordings.enregistrer(
                 conn, project_id=project_id, etapes=etapes,
-                recorded_by_user_id=jeton_info["created_by_user_id"])
+                recorded_by_user_id=jeton_info["created_by_user_id"], login_form=login_form)
         finally:
             conn.close()
 
     await asyncio.to_thread(_ecrire)
-    await websocket.send_json({"type": "confirme", "etapes": len(etapes)})
+    await websocket.send_json({
+        "type": "confirme", "etapes": len(etapes), "formulaire_connexion": login_form is not None,
+    })

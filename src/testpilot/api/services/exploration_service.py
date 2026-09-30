@@ -130,6 +130,9 @@ def start_exploration(conn, project_id: int) -> tuple[str, dict]:
         # jamais été enregistrée pour ce projet — lue UNE fois ici (conn disponible), jamais par
         # le connecteur lui-même (voir `GenericWebConnector.from_project`).
         "sequence_connexion": project_login_recordings.lire(conn, project_id) or [],
+        # Extension (2026-09-30) : le descripteur du formulaire de connexion lui-même (3 clics
+        # guidés), ou `None` si jamais capturé — même motif que `sequence_connexion` ci-dessus.
+        "login_form": project_login_recordings.lire_formulaire(conn, project_id),
     }}
 
 
