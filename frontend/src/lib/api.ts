@@ -315,6 +315,12 @@ export const api = {
     request<void>(`/api/schedules/${scheduledId}`, { method: 'DELETE' }),
   startExploration: (id: number | string) =>
     request<Exploration>(`/api/projects/${id}/exploration`, { method: 'POST' }),
+  // Lot « Enregistrement assisté du chemin de connexion » (sous-lots B/C) : émet un jeton d'accès
+  // à usage unique pour démarrer une session en direct — la WebSocket elle-même (authentifiée par
+  // ce jeton dans l'URL, jamais par cookie) est ouverte directement par `useLiveSession.ts`, pas
+  // par ce client `request()` générique (fait pour du JSON sur HTTP, pas pour un flux WS).
+  createLiveSession: (id: number | string) =>
+    request<LiveSessionToken>(`/api/projects/${id}/live-session`, { method: 'POST' }),
   listModules: (projectId: number | string) => request<ModuleSummary[]>(`/api/projects/${projectId}/modules`),
   // ⚠️ Manquait entièrement côté client : le backend savait créer un module, aucun écran ne le
   // demandait. Conséquence — un projet NEUF n'avait aucun module, donc la liste déroulante de
@@ -757,6 +763,22 @@ export interface ActiviteEvent {
 }
 export interface RunActivite {
   run_id: number; run_name: string; case_count: number; events: ActiviteEvent[]
+}
+
+/** Jeton d'accès à usage unique pour ouvrir une session en direct (`POST .../live-session`) —
+ *  `token` ne sert qu'à construire l'URL WebSocket, jamais rejoué ni stocké au-delà de l'écran. */
+export interface LiveSessionToken {
+  token: string
+  expires_at: string
+}
+
+/** URL WebSocket d'une session en direct — même origine que `API_BASE`, `http(s)` converti en
+ *  `ws(s)` (le jeton dans l'URL est la SEULE authentification de cette route, le cookie de
+ *  session HTTP ne s'applique jamais à une connexion WebSocket, voir `live_session.py`). */
+export function liveSessionWsUrl(projectId: number | string, token: string): string {
+  const base = API_BASE || window.location.origin
+  const ws = base.replace(/^http/, 'ws')
+  return `${ws}/api/projects/${projectId}/live-session/ws?token=${encodeURIComponent(token)}`
 }
 
 /** État de la cartographie d'un projet. `mesure_le` est affiché systématiquement : c'est une
