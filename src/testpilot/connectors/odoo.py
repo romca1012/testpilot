@@ -32,6 +32,7 @@ from testpilot.connectors.base import Connector
 # (`from testpilot.connectors.odoo import build_probe_url, extract_form`).
 from testpilot.connectors._web_helpers import (  # noqa: F401
     build_probe_url,
+    elements_interactifs_visibles,
     extract_form,
     http_probe,
     lire_message_erreur_visible,
@@ -290,6 +291,29 @@ class OdooConnector(Connector):
             result["sonde"] = sonder_formulaire(page, page.url or target)
         result["error"] = ""
         return result
+
+    def inspect_page_snapshot(self, page_url: str) -> dict:
+        """Instantané des éléments interactifs visibles (lot 09, C9) — même garde `/web#` que
+        `inspect_form` : le bus de longpolling d'Odoo garde une connexion ouverte en continu, donc
+        `networkidle` n'y devient jamais idle sur le back-office."""
+        try:
+            return self._run_in_browser(self._snapshot_sync, page_url)
+        except Exception as exc:  # perception best-effort : jamais fatal pour l'agent
+            logger.warning("[odoo] inspect_page_snapshot a échoué sur %s : %s", page_url, exc)
+            return {"url": "", "elements": [], "error": str(exc)[:200]}
+
+    def _snapshot_sync(self, page_url: str) -> dict:
+        page = self._ensure_page()
+        target = page_url if page_url.startswith("http") else urljoin(self._url + "/", page_url.lstrip("/"))
+        page.goto(target, wait_until="domcontentloaded")
+        if "/web#" in target:
+            try:
+                page.wait_for_selector(".o_field_widget", timeout=5000)
+            except Exception:
+                pass  # best-effort, même garde que `_inspect_sync`
+        else:
+            page.wait_for_load_state("networkidle")
+        return {"url": page.url, "elements": elements_interactifs_visibles(page), "error": ""}
 
     def discover_route(self, path_pattern: str, sample_id: int | None = None) -> dict:
         """Sonde une route en HTTP léger (HEAD puis repli GET) : statut + méthode."""

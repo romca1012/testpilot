@@ -25,6 +25,7 @@ from urllib.parse import urljoin
 
 from testpilot.connectors._web_helpers import (
     build_probe_url,
+    elements_interactifs_visibles,
     extract_form,
     http_probe,
     rejouer_sequence_connexion,
@@ -151,6 +152,24 @@ class GenericWebConnector(Connector):
         result["sonde"] = sonder_formulaire(page, page.url or target)  # lot 12 : ne lève jamais
         result["error"] = ""
         return result
+
+    def inspect_page_snapshot(self, page_url: str) -> dict:
+        """Instantané des éléments interactifs visibles (lot 09, C9) — même session persistante
+        que `inspect_form`, jamais un contexte jetable : l'agent doit voir la page telle que
+        l'exploration/l'exécution la verront (déjà connectée si le projet a une connexion)."""
+        try:
+            return self._run_in_browser(self._snapshot_sync, page_url)
+        except Exception as exc:  # perception best-effort : jamais fatal pour l'agent
+            logger.warning("[web-générique] inspect_page_snapshot a échoué sur %s : %s",
+                           page_url, exc)
+            return {"url": "", "elements": [], "error": str(exc)[:200]}
+
+    def _snapshot_sync(self, page_url: str) -> dict:
+        page = self._ensure_page()
+        target = page_url if page_url.startswith("http") else urljoin(self._url + "/", page_url.lstrip("/"))
+        page.goto(target)
+        page.wait_for_load_state("networkidle")
+        return {"url": page.url, "elements": elements_interactifs_visibles(page), "error": ""}
 
     def discover_route(self, path_pattern: str, sample_id: int | None = None) -> dict:
         url = build_probe_url(self._url, path_pattern, sample_id)

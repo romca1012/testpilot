@@ -102,6 +102,18 @@ TOOLS_DEFINITIONS: list[dict] = [
         },
     },
     {
+        "name": "inspect_page_snapshot",
+        "description": (
+            "Instantané des éléments interactifs RÉELLEMENT visibles d'une page (rôle, nom "
+            "accessible, type) — pour une page web quelconque, appelle-le avant de citer un "
+            "bouton, un lien ou un menu, plutôt que de deviner son texte."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"page_url": {"type": "string"}},
+            "required": ["page_url"],
+        },
+    },
+    {
         "name": "discover_route",
         "description": "Sonde une route pour découvrir son URL/statut/méthode réels.",
         "input_schema": {
@@ -228,6 +240,8 @@ def dispatch(name: str, tool_input: dict, ctx: ToolContext) -> ToolOutcome:
         if name == "inspect_odoo_view":
             return inspect_tools.inspect_odoo_view(
                 ctx, tool_input.get("model", ""), tool_input.get("view_type", "form"))
+        if name == "inspect_page_snapshot":
+            return inspect_tools.inspect_page_snapshot(ctx, tool_input.get("page_url", ""))
         if name == "discover_route":
             return inspect_tools.discover_route(
                 ctx, tool_input.get("path_pattern", ""), tool_input.get("sample_id"),

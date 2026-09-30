@@ -213,6 +213,30 @@ def inspect_odoo_view(ctx: "ToolContext", model: str, view_type: str = "form") -
     return outcome
 
 
+def inspect_page_snapshot(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
+    """Instantané des éléments interactifs RÉELLEMENT visibles d'une page (lot 09, C9) — rôle,
+    nom accessible, type. Pour une page web quelconque (pas de modèle de données interrogeable) :
+    appelle ce tool avant de citer un bouton, un lien ou un menu, plutôt que de deviner son texte.
+    """
+    if ctx.connector is None:
+        return _outcome(_NO_CONNECTOR, ok=False)
+    if not page_url:
+        return _outcome("[inspect_page_snapshot] URL manquante", ok=False)
+    info = ctx.connector.inspect_page_snapshot(page_url)
+    if info.get("error"):
+        return _outcome(f"[inspect_page_snapshot] {info['error']}", ok=False)
+    elements = info.get("elements") or []
+    if not elements:
+        return _outcome(
+            f"[inspect_page_snapshot] {page_url} : aucun élément interactif visible détecté.")
+    lignes = [f"{len(elements)} élément(s) interactif(s) visible(s) sur "
+             f"{info.get('url') or page_url} :"]
+    for el in elements:
+        type_ = f" (type={el['type']!r})" if el.get("type") else ""
+        lignes.append(f"- {el.get('role', '?')} « {el.get('nom', '')} »{type_}")
+    return _outcome("\n".join(lignes))
+
+
 def discover_route(ctx: "ToolContext", path_pattern: str, sample_id: int | None = None) -> "ToolOutcome":
     if ctx.connector is None:
         return _outcome(_NO_CONNECTOR, ok=False)

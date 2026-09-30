@@ -79,3 +79,16 @@ def test_inspect_odoo_view_gere_un_modele_sans_vue_form_reelle(connecteur):
     resultat = connecteur.inspect_odoo_view("ir.model.fields", "form")
     assert isinstance(resultat, dict)
     assert "boutons" in resultat
+
+
+# ── `inspect_page_snapshot` (lot 09, C9) — même connecteur, vraie page de connexion Odoo ────────
+
+def test_inspect_page_snapshot_recense_les_champs_de_la_page_de_connexion(connecteur):
+    resultat = connecteur.inspect_page_snapshot("/web/login")
+
+    assert resultat["error"] == ""
+    roles = [el["role"] for el in resultat["elements"]]
+    assert "textbox" in roles or "input" in roles
+    noms = " ".join(el["nom"] for el in resultat["elements"])
+    assert "login" in resultat["url"]
+    assert noms  # au moins un nom accessible non vide sur la page de connexion
