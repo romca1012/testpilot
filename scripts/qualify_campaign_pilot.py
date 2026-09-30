@@ -294,7 +294,13 @@ def _verification_independante(connector, model: str, since_epoch: float) -> dic
 
 def _un_essai(case_id: int, iteration: int, out_dir: Path, project: dict, connexion: dict,
              budget: QualificationBudget, project_id: int) -> dict:
-    trial = f'pilote-p{project_id}-c{case_id}-i{iteration}-20260923'
+    # ⚠️ Bug mesuré le 2026-09-30 : la date était codée en dur ("20260923", celle de l'écriture
+    # initiale du script) — `out_dir` étant fixe par version (`banc_generation.py::sortie`),
+    # DEUX campagnes sur la même version entraient TOUJOURS en collision (`FileExistsError` sur
+    # le premier essai), quel que soit le jour où elles tournaient. Horodatage réel à la seconde
+    # près : deux essais du même cas au sein de la MÊME campagne restent distincts par `iteration`.
+    horodatage = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    trial = f'pilote-p{project_id}-c{case_id}-i{iteration}-{horodatage}'
     trial_dir = out_dir / trial
     trial_dir.mkdir(parents=True)
 
