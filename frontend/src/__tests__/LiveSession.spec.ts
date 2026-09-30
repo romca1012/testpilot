@@ -28,6 +28,10 @@ const etat = {
   raisonFermeture: ref(''),
   dernierClicAmbigu: ref(''),
   captureArretee: ref(''),
+  formulaireInvite: ref(''),
+  formulaireCapture: ref<Record<string, { role: string; name: string }>>({}),
+  formulaireComplet: ref(false),
+  formulaireConnexionEnregistre: ref<boolean | null>(null),
 }
 
 vi.mock('../lib/api', async (importOriginal) => {
@@ -70,6 +74,10 @@ describe('écran de la session en direct', () => {
     etat.raisonFermeture.value = ''
     etat.dernierClicAmbigu.value = ''
     etat.captureArretee.value = ''
+    etat.formulaireInvite.value = ''
+    etat.formulaireCapture.value = {}
+    etat.formulaireComplet.value = false
+    etat.formulaireConnexionEnregistre.value = null
   })
 
   it('démarre la session au montage, sans action de la personne', async () => {
@@ -149,5 +157,43 @@ describe('écran de la session en direct', () => {
     const wrapper = await monterEcran()
 
     expect(wrapper.text()).toContain('2 étapes')
+  })
+
+  it('l\'état confirmé mentionne le formulaire identifié quand il l\'a été', async () => {
+    etat.statut.value = 'confirmee'
+    etat.formulaireConnexionEnregistre.value = true
+    const wrapper = await monterEcran()
+
+    expect(wrapper.text()).toContain('formulaire de connexion a aussi été identifié')
+  })
+
+  it('n\'affiche pas le pas-à-pas du formulaire tant que capture_arretee n\'a pas eu lieu', async () => {
+    etat.statut.value = 'en_direct'
+    const wrapper = await monterEcran()
+
+    expect(wrapper.text()).not.toContain('Formulaire de connexion')
+  })
+
+  it('affiche le pas-à-pas du formulaire une fois capture_arretee reçu, et marque les champs '
+     + 'déjà capturés', async () => {
+    etat.statut.value = 'en_direct'
+    etat.captureArretee.value = 'mot_de_passe_visible'
+    etat.formulaireInvite.value = 'champ_mdp'
+    etat.formulaireCapture.value = { champ_identifiant: { role: 'textbox', name: 'E-mail' } }
+    const wrapper = await monterEcran()
+
+    expect(wrapper.text()).toContain('Formulaire de connexion')
+    expect(wrapper.text()).toContain('Champ identifiant')
+    expect(wrapper.text()).toContain('E-mail')
+    expect(wrapper.text()).toContain('Champ mot de passe')
+  })
+
+  it('annonce le formulaire identifié une fois les 3 champs capturés', async () => {
+    etat.statut.value = 'en_direct'
+    etat.captureArretee.value = 'mot_de_passe_visible'
+    etat.formulaireComplet.value = true
+    const wrapper = await monterEcran()
+
+    expect(wrapper.text()).toContain('Formulaire identifié')
   })
 })

@@ -136,9 +136,10 @@ describe('useLiveSession', () => {
     expect(JSON.parse(FakeWebSocket.instances[0].sent[0])).toEqual({ type: 'confirmer' })
     expect(session.statut.value).toBe('en_direct')
 
-    FakeWebSocket.instances[0].recevoir({ type: 'confirme', etapes: 0 })
+    FakeWebSocket.instances[0].recevoir({ type: 'confirme', etapes: 0, formulaire_connexion: false })
 
     expect(session.statut.value).toBe('confirmee')
+    expect(session.formulaireConnexionEnregistre.value).toBe(false)
   })
 
   it('falsifiable — un refus serveur après confirmer() reste visible, jamais masqué par un '
@@ -222,6 +223,76 @@ describe('useLiveSession', () => {
 
     expect(session.etapes.value).toEqual([])
     expect(session.dernierClicAmbigu.value).toBe('ambigu : 2 éléments')
+  })
+
+  // ── Extension (2026-09-30) : les 3 clics guidés du formulaire de connexion ────────────────
+
+  it('formulaire_connexion_invite porte le prochain champ attendu', async () => {
+    createLiveSession.mockResolvedValue({ token: 't', expires_at: '' })
+    const { session } = monterComposable(7)
+    await session.demarrer()
+
+    FakeWebSocket.instances[0].recevoir({ type: 'capture_arretee', raison: 'mot_de_passe_visible' })
+    FakeWebSocket.instances[0].recevoir({ type: 'formulaire_connexion_invite', champ: 'champ_identifiant' })
+
+    expect(session.formulaireInvite.value).toBe('champ_identifiant')
+  })
+
+  it('formulaire_connexion_champ_capture accumule les champs résolus, jamais une valeur/texte', async () => {
+    createLiveSession.mockResolvedValue({ token: 't', expires_at: '' })
+    const { session } = monterComposable(7)
+    await session.demarrer()
+
+    FakeWebSocket.instances[0].recevoir({
+      type: 'formulaire_connexion_champ_capture', champ: 'champ_identifiant',
+      role: 'textbox', name: 'E-mail',
+    })
+
+    expect(session.formulaireCapture.value).toEqual({
+      champ_identifiant: { role: 'textbox', name: 'E-mail' },
+    })
+  })
+
+  it('formulaire_connexion_complet porte le statut complet et vide l\'invite', async () => {
+    createLiveSession.mockResolvedValue({ token: 't', expires_at: '' })
+    const { session } = monterComposable(7)
+    await session.demarrer()
+    FakeWebSocket.instances[0].recevoir({ type: 'formulaire_connexion_invite', champ: 'bouton_soumission' })
+
+    FakeWebSocket.instances[0].recevoir({ type: 'formulaire_connexion_complet' })
+
+    expect(session.formulaireComplet.value).toBe(true)
+    expect(session.formulaireInvite.value).toBe('')
+  })
+
+  it('falsifiable — recommencer() après capture_arretee relance l\'invite au premier champ, '
+     + 'jamais un état formulaire résiduel', async () => {
+    createLiveSession.mockResolvedValue({ token: 't', expires_at: '' })
+    const { session } = monterComposable(7)
+    await session.demarrer()
+    FakeWebSocket.instances[0].recevoir({ type: 'capture_arretee', raison: 'mot_de_passe_visible' })
+    FakeWebSocket.instances[0].recevoir({
+      type: 'formulaire_connexion_champ_capture', champ: 'champ_identifiant',
+      role: 'textbox', name: 'E-mail',
+    })
+    FakeWebSocket.instances[0].recevoir({ type: 'formulaire_connexion_invite', champ: 'champ_mdp' })
+
+    session.recommencer()
+
+    expect(session.formulaireCapture.value).toEqual({})
+    expect(session.formulaireComplet.value).toBe(false)
+    expect(session.formulaireInvite.value).toBe('champ_identifiant')
+  })
+
+  it('falsifiable — recommencer() AVANT tout capture_arretee ne force pas une invite '
+     + 'inexistante côté serveur', async () => {
+    createLiveSession.mockResolvedValue({ token: 't', expires_at: '' })
+    const { session } = monterComposable(7)
+    await session.demarrer()
+
+    session.recommencer()
+
+    expect(session.formulaireInvite.value).toBe('')
   })
 
   it('un jeton refusé par le serveur porte le statut erreur, jamais une WebSocket ouverte', async () => {
