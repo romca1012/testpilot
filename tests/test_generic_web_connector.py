@@ -37,6 +37,7 @@ class _FakePage:
         self._mdp = mdp
         self._identifiant = identifiant
         self.attente_reseau_appelee = False
+        self.url = "https://exemple.test/login"
 
     def query_selector(self, selector):
         if "password" in selector:
@@ -52,6 +53,9 @@ class _FakePage:
 
     def wait_for_load_state(self, *_args, **_kwargs):
         self.attente_reseau_appelee = True
+
+    def wait_for_timeout(self, _ms):
+        pass  # attente post-connexion bornée (voir `_attendre_confirmation_post_connexion`)
 
 
 def test_generic_web_connector_satisfait_l_interface():

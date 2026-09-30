@@ -240,8 +240,24 @@ class SessionLive:
         if commande.get("type") == "clic":
             self._traiter_clic(page, commande)
 
+    def _basculer_en_mode_formulaire(self) -> None:
+        self._capture_active = False
+        self._mode_formulaire = True
+        self.sortantes.put({"type": "capture_arretee", "raison": "mot_de_passe_visible"})
+        self.sortantes.put({"type": "formulaire_connexion_invite",
+                            "champ": _CHAMPS_FORMULAIRE_CONNEXION[0]})
+
     def _traiter_clic(self, page, commande: dict) -> None:
         x, y = float(commande["x"]), float(commande["y"])
+        # Formulaire à UN SEUL écran (identifiant et mot de passe déjà visibles ensemble, ex.
+        # SauceDemo) : le mot de passe est visible AVANT même ce premier clic — bascule en mode
+        # formulaire guidé AVANT de le traiter, sinon il partirait à tort dans `_etapes` (écran
+        # intercalé) au lieu de `champ_identifiant`, décalant toute la séquence des 3 clics
+        # suivants (bug mesuré le 2026-09-30, capture sur SauceDemo : `champ_identifiant` et
+        # `champ_mdp` identiques, `bouton_soumission` vide).
+        if self._capture_active and _mot_de_passe_visible(page):
+            self._basculer_en_mode_formulaire()
+
         resolu = None
         if self._capture_active or self._mode_formulaire:
             try:
@@ -260,12 +276,11 @@ class SessionLive:
             with self._verrou_etapes:
                 self._etapes.append(resolu)
             self.sortantes.put({"type": "etape_capturee", **resolu})
+        # Formulaire à DEUX écrans : CE clic vient de franchir l'écran intercalé et a révélé le
+        # mot de passe — bascule après coup, pour que le clic SUIVANT soit le premier du
+        # formulaire guidé (comportement historique, inchangé).
         if self._capture_active and _mot_de_passe_visible(page):
-            self._capture_active = False
-            self._mode_formulaire = True
-            self.sortantes.put({"type": "capture_arretee", "raison": "mot_de_passe_visible"})
-            self.sortantes.put({"type": "formulaire_connexion_invite",
-                                "champ": _CHAMPS_FORMULAIRE_CONNEXION[0]})
+            self._basculer_en_mode_formulaire()
 
     def _traiter_clic_formulaire(self, resolu: dict) -> None:
         """3 clics guidés (identifiant, mot de passe, bouton) APRÈS l'écran de pré-connexion —

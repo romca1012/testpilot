@@ -169,6 +169,43 @@ def test_un_clic_en_mode_sequence_normal_ne_declenche_pas_le_mode_formulaire(mon
     assert not any(m["type"] == "capture_arretee" for m in messages)
 
 
+def test_falsifiable_formulaire_a_un_seul_ecran_ne_decale_pas_la_sequence_des_3_clics(monkeypatch):
+    """Reproduction mesurée sur SauceDemo (2026-09-30, projet 11) : un formulaire à un SEUL écran
+    a son mot de passe visible DÈS AVANT le premier clic — sans ce correctif, ce premier clic
+    partait à tort dans `_etapes` (écran intercalé), décalant toute la séquence : `champ_identifiant`
+    et `champ_mdp` capturaient tous les deux le même élément (le vrai champ mot de passe), et
+    `bouton_soumission` restait mal capturé. Ce test échoue si le clic « identifiant » est à
+    nouveau routé vers `_etapes` au lieu du formulaire guidé."""
+    session = _session()
+
+    class _PageMdpDejaVisible(_PageFactice):
+        def locator(self, _selecteur):
+            return _LocatorAvecUnChampVisible()
+
+    class _LocatorAvecUnChampVisible:
+        def count(self):
+            return 1
+
+        def nth(self, _i):
+            return self
+
+        def is_visible(self):
+            return True
+
+    page = _PageMdpDejaVisible()
+
+    _cliquer(session, page, 10, 10, monkeypatch, resolu={"role": "textbox", "name": "Username"})
+    _cliquer(session, page, 20, 20, monkeypatch, resolu={"role": "textbox", "name": "Password"})
+    _cliquer(session, page, 30, 30, monkeypatch, resolu={"role": "button", "name": "Login"})
+
+    assert session.etapes == []  # aucun clic ne doit partir dans l'écran intercalé
+    assert session.login_form == {
+        "champ_identifiant": {"role": "textbox", "name": "Username"},
+        "champ_mdp": {"role": "textbox", "name": "Password"},
+        "bouton_soumission": {"role": "button", "name": "Login"},
+    }
+
+
 def test_le_mot_de_passe_visible_bascule_en_mode_formulaire_avec_l_invite_initiale(monkeypatch):
     session = _session()
 

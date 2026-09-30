@@ -211,6 +211,16 @@ function etiquetteLangageHote(el) {
   const tag = el.tagName.toLowerCase();
   if (tag === 'img' || tag === 'area') return el.getAttribute('alt') || '';
   if (tag === 'input' && (el.type === 'image')) return el.getAttribute('alt') || '';
+  // `input[type=submit|button|reset]` (HTML-AAM) : le nom accessible vient de l'attribut
+  // `value` — élément VIDE (jamais de nœud enfant/texte), donc « 2F/2G/2H nom depuis le
+  // contenu » ne trouve jamais rien pour lui, quel que soit son rôle (bug mesuré le
+  // 2026-09-30, SauceDemo : `<input type="submit" value="Login">` capturé avec un nom vide,
+  // introuvable au rejeu). Pas de repli sur un texte par défaut UA (« Submit »/« Envoyer »…)
+  // si `value` est absent — dépendrait du user-agent/de sa langue, jamais un signal mesuré de
+  // façon déterministe (même contrainte que le reste de ce module, voir docstring de tête).
+  if (tag === 'input' && ['submit', 'button', 'reset'].includes(el.type)) {
+    return el.getAttribute('value') || '';
+  }
   // <label for="id"> — TOUS ceux qui référencent cet id, concaténés dans l'ordre du document
   // (comp_host_language_label.html : « textfield label 1 textfield label 2 »).
   // ⚠️ **Un `<label for>` MASQUÉ contribue quand même son texte** — revu en revue verdict-reviewer

@@ -142,6 +142,42 @@ class SequenceConnexionObsoleteError(Exception):
     """
 
 
+# ── Confirmation post-connexion : `networkidle` seul ne suffit pas (cause réelle du crawl
+# bloqué à 3 routes sur `yros`, mesuré et diagnostiqué le 2026-09-30) ────────────────────────────
+#
+# ⚠️ **Pourquoi ceci existe.** `page.wait_for_load_state("networkidle")`, appelé juste après le
+# clic sur le bouton de connexion, ne détecte AUCUNE navigation à attendre quand l'authentification
+# répond par un `fetch`/XHR suivi d'une redirection côté client (History API) — cas courant d'une
+# SPA moderne. Mesuré sur une reproduction locale : juste après `networkidle`, `page.url` pointe
+# encore sur la page de connexion ; la vraie redirection arrive ~0.6s plus tard. L'appelant
+# (`crawl_roots`, `connexion_reussie`) lisait alors l'URL/le DOM de la page de connexion — le crawl
+# repartait du même endroit qu'avant la connexion, sans lever la moindre erreur.
+_PAS_ATTENTE_POST_CONNEXION_MS = 100
+_ITERATIONS_ATTENTE_POST_CONNEXION = 20  # 20 × 100 ms = 2 s bornées, jamais un blocage indéfini
+
+
+def _confirmation_post_connexion_obtenue(page, url_avant: str) -> bool:
+    """Un signe RUNTIME que la tentative de connexion a progressé — jamais un texte affiché.
+
+    L'URL a changé OU le champ mot de passe a disparu du DOM : une SPA peut faire l'un sans
+    l'autre (redirection sans changement visible de formulaire, ou inverse), donc `OR`, jamais
+    les deux à la fois.
+    """
+    return page.url != url_avant or page.query_selector("input[type='password']") is None
+
+
+def _attendre_confirmation_post_connexion(page, url_avant: str) -> None:
+    """Complète `networkidle` par un signe RUNTIME borné (2 s) — ne lève jamais : au pire, rend
+    la main après le délai sans certitude, exactement comme avant ce correctif. C'est à
+    l'appelant (`connexion_reussie`, `crawl_roots`) de juger l'état obtenu, jamais à cette
+    fonction de décider si la connexion a réussi.
+    """
+    for _ in range(_ITERATIONS_ATTENTE_POST_CONNEXION):
+        if _confirmation_post_connexion_obtenue(page, url_avant):
+            return
+        page.wait_for_timeout(_PAS_ATTENTE_POST_CONNEXION_MS)
+
+
 def rejouer_sequence_connexion(page, etapes: list[dict], *, timeout_ms: int = 5000,
                                attendre_reseau: bool = True) -> bool:
     """Rejoue, DANS L'ORDRE, une séquence enregistrée (sous-lot C : liste de `{"role", "name"}`
@@ -236,10 +272,17 @@ def tenter_connexion_generique(page, user: str, password: str) -> bool:
 
     Retourne ``True`` si une tentative a réellement été soumise (jamais si la page ou les
     identifiants ne s'y prêtaient pas).
+
+    Après la soumission FINALE (mot de passe rempli), `networkidle` est complété par une attente
+    bornée d'un signe RUNTIME que la connexion a progressé (URL changée ou champ mot de passe
+    disparu) — voir `_attendre_confirmation_post_connexion` : `networkidle` seul ne détecte rien
+    quand l'authentification répond par `fetch`/XHR puis redirige côté client (SPA), cause mesurée
+    du crawl qui repart de la page de connexion (`yros`, 2026-09-30).
     """
     if not user or not password:
         return False
 
+    url_avant = getattr(page, "url", "")
     champ_mdp = page.query_selector("input[type='password']")
     if champ_mdp is not None:
         champ_identifiant = page.query_selector("input[type='email'], input[type='text']")
@@ -251,6 +294,7 @@ def tenter_connexion_generique(page, user: str, password: str) -> bool:
         champ_mdp.fill(password, force=True)
         champ_mdp.press("Enter")
         page.wait_for_load_state("networkidle")
+        _attendre_confirmation_post_connexion(page, url_avant)
         return True
 
     if not _ressemble_a_un_premier_ecran_de_connexion(page):
@@ -267,9 +311,11 @@ def tenter_connexion_generique(page, user: str, password: str) -> bool:
             "aucun champ mot de passe trouvé après soumission de l'identifiant sur "
             f"{getattr(page, 'url', '?')} — probablement un SSO/second facteur (2FA), hors du "
             "périmètre de cette détection générique.")
+    url_avant_ecran_2 = getattr(page, "url", "")
     champ_mdp_ecran_suivant.fill(password, force=True)
     champ_mdp_ecran_suivant.press("Enter")
     page.wait_for_load_state("networkidle")
+    _attendre_confirmation_post_connexion(page, url_avant_ecran_2)
     return True
 
 
@@ -360,7 +406,14 @@ def remplir_et_soumettre_formulaire_connexion(
 
     `attendre_reseau=False` — même paramètre, même raison que `rejouer_sequence_connexion` :
     certaines applications (Odoo, bus de long-polling) ne stabilisent jamais `networkidle`.
+
+    Après le clic, `networkidle` est complété par une attente bornée (2 s) d'un signe RUNTIME que
+    la connexion a progressé (URL changée ou champ mot de passe disparu) — voir
+    `_attendre_confirmation_post_connexion` : `networkidle` seul ne détecte rien quand
+    l'authentification répond par `fetch`/XHR puis redirige côté client (SPA), cause mesurée du
+    crawl qui repart de la page de connexion (`yros`, 2026-09-30).
     """
+    url_avant = getattr(page, "url", "")
     for cle, valeur in (("champ_identifiant", user), ("champ_mdp", password)):
         champ = login_form[cle]
         try:
@@ -384,6 +437,7 @@ def remplir_et_soumettre_formulaire_connexion(
             "direct) avant de relancer.") from exc
     if attendre_reseau:
         page.wait_for_load_state("networkidle")
+        _attendre_confirmation_post_connexion(page, url_avant)
 
 
 def tenter_connexion_et_lire_resultat(page, user: str, password: str, *,
