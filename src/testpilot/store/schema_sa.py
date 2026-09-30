@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 55
+ALIGNED_WITH_SCHEMA_VERSION = 56
 
 metadata = MetaData()
 
@@ -802,5 +802,9 @@ project_login_recording = Table(
     Column('steps_json', Text, nullable=False),
     Column('recorded_at', Text, nullable=False),
     Column('recorded_by_user_id', Integer, ForeignKey('user.id', ondelete='CASCADE'), nullable=False),
+    # Extension (2026-09-30) : descripteur {champ_identifiant, champ_mdp, bouton_soumission} du
+    # formulaire de connexion lui-même, chacun {role, name} — vide si jamais capturé (fallback sur
+    # `tenter_connexion_generique`). Jamais de secret : voir migration 56 (`db.py`).
+    Column('login_form_json', Text, nullable=False, server_default=''),
     sqlite_autoincrement=True,
 )

@@ -142,7 +142,8 @@ class SequenceConnexionObsoleteError(Exception):
     """
 
 
-def rejouer_sequence_connexion(page, etapes: list[dict], *, timeout_ms: int = 5000) -> bool:
+def rejouer_sequence_connexion(page, etapes: list[dict], *, timeout_ms: int = 5000,
+                               attendre_reseau: bool = True) -> bool:
     """Rejoue, DANS L'ORDRE, une séquence enregistrée (sous-lot C : liste de `{"role", "name"}`
     calculés par l'algorithme AccName déterministe — jamais un texte deviné) via
     ``page.get_by_role(role, name=name, exact=True).click()``. Rend ``False`` sans rien faire si
@@ -168,6 +169,12 @@ def rejouer_sequence_connexion(page, etapes: list[dict], *, timeout_ms: int = 50
     de repli sur une hypothèse, jamais de nouvelle tentative en boucle (garde-fou étape 9, un seul
     essai par session — c'est l'APPELANT qui décide de ne jamais réessayer, cette fonction ne
     boucle déjà pas elle-même).
+
+    `attendre_reseau=False` (extension 2026-09-30, essai connecteur Odoo) : certaines applications
+    (Odoo, bus de long-polling) ne stabilisent JAMAIS `networkidle` — l'attendre quand même y
+    coûterait le timeout complet à chaque appel, pour rien. L'appelant qui sait déjà comment
+    reconnaître SA propre fin de navigation (ex. `page.wait_for_url(...)`, comme
+    `odoo_login.py::playwright_login`) désactive cette attente et fait la sienne juste après.
     """
     if not etapes:
         return False
@@ -181,7 +188,8 @@ def rejouer_sequence_connexion(page, etapes: list[dict], *, timeout_ms: int = 50
                 f"{getattr(page, 'url', '?')} — l'application a changé depuis l'enregistrement du "
                 "chemin de connexion. Refaites l'enregistrement (session en direct) avant de "
                 "relancer.") from exc
-    page.wait_for_load_state("networkidle")
+    if attendre_reseau:
+        page.wait_for_load_state("networkidle")
     return True
 
 
@@ -317,15 +325,90 @@ def lire_message_erreur_visible(page) -> str:
     return ""
 
 
-def tenter_connexion_et_lire_resultat(page, user: str, password: str) -> dict:
+class FormulaireConnexionObsoleteError(Exception):
+    """Un des 3 rôles/noms enregistrés (champ identifiant, champ mot de passe, bouton de
+    soumission — capturés par 3 clics guidés, `live_session_service.py`) ne se retrouve plus, ou
+    n'identifie plus un élément UNIQUE, sur la page rejouée — l'application a changé depuis
+    l'enregistrement. Même esprit que `SequenceConnexionObsoleteError` (sous-lot D) : jamais une
+    tentative silencieuse de deviner autre chose à la place, jamais un repli à MI-CHEMIN sur
+    `tenter_connexion_generique` (un identifiant rempli via le bon champ enregistré, puis un mot de
+    passe rempli au hasard par une détection différente, serait pire que ne rien tenter).
+    """
+
+
+def remplir_et_soumettre_formulaire_connexion(
+        page, login_form: dict, user: str, password: str, *, timeout_ms: int = 5000,
+        attendre_reseau: bool = True) -> None:
+    """Remplit et soumet le formulaire de connexion via les rôles/noms ENREGISTRÉS (extension du
+    lot « Enregistrement assisté du chemin de connexion », 2026-09-30) — jamais la détection
+    générique par balayage du DOM (`tenter_connexion_generique`), qui devine le champ identifiant
+    par premier match DOM et soumet à l'aveugle via la touche Entrée : deux paris qui ont raté sur
+    une application réelle en production, malgré des identifiants valides (staging, 2026-09-30 —
+    voir `docs/RAPPORT-CORRECTIF-WEBSOCKETS-DEPENDANCE-MANQUANTE-2026-09-30.md` pour le contexte
+    de la même campagne de diagnostic, bug distinct).
+
+    ``get_by_role(role, name=name, exact=True)`` — même garde que `rejouer_sequence_connexion`
+    (sous-lot D) : `exact=True` retombe sur l'égalité stricte du nom accessible calculé par
+    AccName, seule comparaison cohérente avec ce que la capture a réellement mesuré (sans lui,
+    un `name` enregistré « Se connecter » matcherait aussi un bouton renommé « Se connecter à
+    votre espace », par sous-chaîne — un clic réussirait alors SANS LEVER sur un élément qui n'est
+    peut-être plus le bon).
+
+    Un rôle/nom introuvable ou ambigu arrête net avec `FormulaireConnexionObsoleteError` — c'est à
+    l'APPELANT de décider s'il retente autre chose (ex. `tenter_connexion_generique`), cette
+    fonction ne boucle jamais elle-même et ne retente jamais une autre hypothèse en silence.
+
+    `attendre_reseau=False` — même paramètre, même raison que `rejouer_sequence_connexion` :
+    certaines applications (Odoo, bus de long-polling) ne stabilisent jamais `networkidle`.
+    """
+    for cle, valeur in (("champ_identifiant", user), ("champ_mdp", password)):
+        champ = login_form[cle]
+        try:
+            page.get_by_role(champ["role"], name=champ["name"], exact=True).fill(
+                valeur, timeout=timeout_ms)
+        except Exception as exc:
+            raise FormulaireConnexionObsoleteError(
+                f"champ « {cle} » (rôle={champ['role']!r}, nom={champ['name']!r}) introuvable ou "
+                f"ambigu sur {getattr(page, 'url', '?')} — l'application a changé depuis "
+                "l'enregistrement du formulaire de connexion. Refaites l'enregistrement (session "
+                "en direct) avant de relancer.") from exc
+
+    bouton = login_form["bouton_soumission"]
+    try:
+        page.get_by_role(bouton["role"], name=bouton["name"], exact=True).click(timeout=timeout_ms)
+    except Exception as exc:
+        raise FormulaireConnexionObsoleteError(
+            f"bouton de soumission (rôle={bouton['role']!r}, nom={bouton['name']!r}) introuvable "
+            f"ou ambigu sur {getattr(page, 'url', '?')} — l'application a changé depuis "
+            "l'enregistrement du formulaire de connexion. Refaites l'enregistrement (session en "
+            "direct) avant de relancer.") from exc
+    if attendre_reseau:
+        page.wait_for_load_state("networkidle")
+
+
+def tenter_connexion_et_lire_resultat(page, user: str, password: str, *,
+                                       login_form: dict | None = None) -> dict:
     """Remplit et soumet le formulaire de connexion avec CES identifiants précis (utile/erroné/
     verrouillé...), puis rend ce qui s'affiche VRAIMENT — pour que l'agent de génération vérifie
     un message avant de l'écrire dans une assertion, au lieu de le deviner.
 
+    `login_form` (extension 2026-09-30) : si un descripteur a été enregistré pour ce projet, il
+    est TOUJOURS préféré à la détection générique — même règle que `_tenter_connexion_generique`
+    (`generic_web.py`). Une `FormulaireConnexionObsoleteError` est rendue comme n'importe quelle
+    autre erreur d'identification (`error` porté, jamais une exception qui remonte) : ce chemin
+    reste un best-effort d'OBSERVATION, jamais un chemin qui doit réussir pour continuer.
+
     Rend toujours un dict, jamais une exception : `error` porte la raison si l'identification a
-    échoué (SSO/2FA détecté, aucun formulaire trouvé, identifiants vides) — l'appelant reste alors
-    sans donnée observée, exactement comme avant l'ajout de cette fonction.
+    échoué (SSO/2FA détecté, aucun formulaire trouvé, identifiants vides, formulaire enregistré
+    obsolète) — l'appelant reste alors sans donnée observée, exactement comme avant l'ajout de
+    cette fonction.
     """
+    if login_form:
+        try:
+            remplir_et_soumettre_formulaire_connexion(page, login_form, user, password)
+        except FormulaireConnexionObsoleteError as exc:
+            return {"submitted": False, "url": getattr(page, "url", ""), "message": "", "error": str(exc)}
+        return {"submitted": True, "url": page.url, "message": lire_message_erreur_visible(page), "error": ""}
     try:
         soumis = tenter_connexion_generique(page, user, password)
     except ConnexionGeneriqueImpossibleError as exc:

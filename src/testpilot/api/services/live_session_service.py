@@ -36,6 +36,14 @@ logger = logging.getLogger(__name__)
 # et retraduire ses clics — hors périmètre de ce sous-lot (aucun écran n'existe encore).
 _QUALITE_JPEG = 60
 
+# Extension (2026-09-30) : après l'écran de pré-connexion, 3 clics guidés supplémentaires
+# identifient le champ identifiant, le champ mot de passe et le bouton de soumission — motivée par
+# un échec réel en production (`tenter_connexion_generique` devine le champ identifiant par
+# premier match DOM et soumet à l'aveugle via la touche Entrée, deux paris qui ont raté sur une
+# application réelle malgré des identifiants valides). Jamais de valeur/texte capturé ici non
+# plus : seulement le rôle/nom résolu par AccName, même garde que le reste de la capture.
+_CHAMPS_FORMULAIRE_CONNEXION = ("champ_identifiant", "champ_mdp", "bouton_soumission")
+
 
 def _mot_de_passe_visible(page) -> bool | None:
     """Dupliqué de `behave_runtime/steps_library/_base_helpers.py::_mot_de_passe_visible` — même
@@ -71,6 +79,11 @@ class SessionLive:
         self._verrou_etapes = threading.Lock()
         self._etapes: list[dict] = []
         self._capture_active = True
+        # Bascule à `True` dès que le mot de passe devient visible (voir `_traiter_clic`) — reste
+        # `True` pour le reste de la session, jamais retraversé en sens inverse (le navigateur réel
+        # n'est jamais renavigué en arrière par un simple `recommencer`, voir `reinitialiser_etapes`).
+        self._mode_formulaire = False
+        self._login_form: dict[str, dict] = {}
         self._cdp = None
         self._thread = threading.Thread(target=self._boucle, name="session-live", daemon=True)
         # Synchronisation clics envoyés / clics traités — trouvé en revue verdict-reviewer
@@ -120,14 +133,29 @@ class SessionLive:
     def reinitialiser_etapes(self) -> None:
         """« Recommencer » (étape 6) : vide la liste en mémoire, rien n'a jamais été écrit.
         N'appeler qu'après `attendre_clics_traites` — sinon un clic encore en file pourrait
-        s'ajouter APRÈS ce vidage."""
+        s'ajouter APRÈS ce vidage.
+
+        Ne touche PAS `_mode_formulaire` : le navigateur réel n'est jamais renavigué en arrière
+        par un recommencer — si le mot de passe est déjà visible sur la page à cet instant, il le
+        restera après, donc le mode formulaire (guidage des 3 clics) doit rester actif plutôt que
+        de re-proposer une capture de pré-connexion qui a déjà eu lieu pour de vrai."""
         with self._verrou_etapes:
             self._etapes = []
+            self._login_form = {}
 
     @property
     def etapes(self) -> list[dict]:
         with self._verrou_etapes:
             return list(self._etapes)
+
+    @property
+    def login_form(self) -> dict[str, dict] | None:
+        """Le descripteur complet (3 champs), ou `None` si les 3 clics guidés n'ont pas tous
+        abouti — jamais un descripteur partiel, injouable et jamais stocké comme tel."""
+        with self._verrou_etapes:
+            if len(self._login_form) != len(_CHAMPS_FORMULAIRE_CONNEXION):
+                return None
+            return dict(self._login_form)
 
     # ── Le thread dédié ──────────────────────────────────────────────────────────────────────
 
@@ -215,20 +243,48 @@ class SessionLive:
     def _traiter_clic(self, page, commande: dict) -> None:
         x, y = float(commande["x"]), float(commande["y"])
         resolu = None
-        if self._capture_active:
+        if self._capture_active or self._mode_formulaire:
             try:
                 resolu = accname.calculer(page, x, y)
             except accname.ElementIntrouvableError as exc:
                 # Ambigu : jamais capturé en silence sur le premier trouvé — signalé, pas retenu.
                 self.sortantes.put({"type": "clic_ambigu", "detail": str(exc)})
         self._cliquer_reellement(x, y)
+
+        if self._mode_formulaire:
+            if resolu is not None:
+                self._traiter_clic_formulaire(resolu)
+            return
+
         if resolu is not None:
             with self._verrou_etapes:
                 self._etapes.append(resolu)
             self.sortantes.put({"type": "etape_capturee", **resolu})
         if self._capture_active and _mot_de_passe_visible(page):
             self._capture_active = False
+            self._mode_formulaire = True
             self.sortantes.put({"type": "capture_arretee", "raison": "mot_de_passe_visible"})
+            self.sortantes.put({"type": "formulaire_connexion_invite",
+                                "champ": _CHAMPS_FORMULAIRE_CONNEXION[0]})
+
+    def _traiter_clic_formulaire(self, resolu: dict) -> None:
+        """3 clics guidés (identifiant, mot de passe, bouton) APRÈS l'écran de pré-connexion —
+        jamais de valeur/texte, seulement le rôle/nom résolu par AccName (même mécanisme que
+        `_traiter_clic`). Un clic surnuméraire (le formulaire est déjà complet) est ignoré plutôt
+        que d'écraser une clé déjà capturée."""
+        with self._verrou_etapes:
+            index = len(self._login_form)
+            if index >= len(_CHAMPS_FORMULAIRE_CONNEXION):
+                return
+            cle = _CHAMPS_FORMULAIRE_CONNEXION[index]
+            self._login_form[cle] = resolu
+            complet = len(self._login_form) == len(_CHAMPS_FORMULAIRE_CONNEXION)
+        self.sortantes.put({"type": "formulaire_connexion_champ_capture", "champ": cle, **resolu})
+        if complet:
+            self.sortantes.put({"type": "formulaire_connexion_complet"})
+        else:
+            self.sortantes.put({"type": "formulaire_connexion_invite",
+                                "champ": _CHAMPS_FORMULAIRE_CONNEXION[index + 1]})
 
     def _cliquer_reellement(self, x: float, y: float) -> None:
         for type_evenement in ("mousePressed", "mouseReleased"):

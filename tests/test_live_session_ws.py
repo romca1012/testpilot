@@ -28,8 +28,11 @@ pytestmark = pytest.mark.conformance
 _PAGE = b"""<!doctype html><html><body>
 <button id="pays" aria-label="France">France</button>
 <div id="apres" style="display:none">
+  <label for="id">Identifiant</label>
+  <input type="text" id="id">
   <label for="pwd">Mot de passe</label>
   <input type="password" id="pwd">
+  <button id="soumettre" aria-label="Se connecter">Se connecter</button>
 </div>
 <script>
 document.getElementById('pays').onclick = function () {
@@ -171,6 +174,89 @@ def test_le_champ_mot_de_passe_visible_arrete_la_capture(client, application):
             arret = _recevoir_jusqua(ws, lambda m: m.get("type") == "capture_arretee")
         assert arret["raison"] == "mot_de_passe_visible"
         ws.send_json({"type": "annuler"})
+
+
+_X_IDENTIFIANT, _X_MDP, _X_BOUTON, _Y_FORMULAIRE = 170, 448, 590, 39
+
+
+def test_apres_l_arret_les_3_clics_guides_capturent_le_formulaire_de_connexion(client, application):
+    """Extension (2026-09-30) : après `capture_arretee`, la session invite 3 clics guidés
+    (identifiant, mot de passe, bouton) et les résout par le MÊME mécanisme AccName que le reste
+    de la capture — jamais de valeur/texte, seulement rôle/nom."""
+    project_id = _admin_et_projet(client, application)
+    jeton = _jeton(client, project_id)
+
+    with client.websocket_connect(f"/api/projects/{project_id}/live-session/ws?token={jeton}") as ws:
+        _recevoir_jusqua(ws, lambda m: m.get("type") == "image")
+        ws.send_json({"type": "clic", "x": 30, "y": 12})  # révèle le formulaire
+        invite = _recevoir_jusqua(ws, lambda m: m.get("type") == "formulaire_connexion_invite")
+        assert invite["champ"] == "champ_identifiant"
+
+        ws.send_json({"type": "clic", "x": _X_IDENTIFIANT, "y": _Y_FORMULAIRE})
+        capture = _recevoir_jusqua(
+            ws, lambda m: m.get("type") == "formulaire_connexion_champ_capture")
+        assert capture["champ"] == "champ_identifiant"
+        assert capture["role"] == "textbox" and capture["name"] == "Identifiant"
+        invite = _recevoir_jusqua(ws, lambda m: m.get("type") == "formulaire_connexion_invite")
+        assert invite["champ"] == "champ_mdp"
+
+        ws.send_json({"type": "clic", "x": _X_MDP, "y": _Y_FORMULAIRE})
+        capture = _recevoir_jusqua(
+            ws, lambda m: m.get("type") == "formulaire_connexion_champ_capture")
+        assert capture["champ"] == "champ_mdp"
+        assert capture["role"] == "textbox" and capture["name"] == "Mot de passe"
+        invite = _recevoir_jusqua(ws, lambda m: m.get("type") == "formulaire_connexion_invite")
+        assert invite["champ"] == "bouton_soumission"
+
+        ws.send_json({"type": "clic", "x": _X_BOUTON, "y": _Y_FORMULAIRE})
+        capture = _recevoir_jusqua(
+            ws, lambda m: m.get("type") == "formulaire_connexion_champ_capture")
+        assert capture["champ"] == "bouton_soumission"
+        assert capture["role"] == "button" and capture["name"] == "Se connecter"
+        complet = _recevoir_jusqua(ws, lambda m: m.get("type") == "formulaire_connexion_complet")
+        assert complet == {"type": "formulaire_connexion_complet"}  # jamais de valeur/secret
+
+        ws.send_json({"type": "confirmer"})
+        confirme = _recevoir_jusqua(ws, lambda m: m.get("type") == "confirme")
+        assert confirme["formulaire_connexion"] is True
+
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        formulaire = project_login_recordings.lire_formulaire(conn, project_id)
+    finally:
+        conn.close()
+    assert formulaire == {
+        "champ_identifiant": {"role": "textbox", "name": "Identifiant"},
+        "champ_mdp": {"role": "textbox", "name": "Mot de passe"},
+        "bouton_soumission": {"role": "button", "name": "Se connecter"},
+    }
+
+
+def test_falsifiable_confirmer_sans_avoir_fait_les_3_clics_guides_n_enregistre_aucun_formulaire(
+        client, application):
+    """Le chemin historique (sous-lot C) doit rester intact : s'arrêter juste après
+    `capture_arretee`, sans faire les 3 clics guidés, ne doit écrire AUCUN `login_form` —
+    l'appelant du rejeu doit alors retomber sur `tenter_connexion_generique`, jamais sur un
+    descripteur partiel injouable."""
+    project_id = _admin_et_projet(client, application)
+    jeton = _jeton(client, project_id)
+
+    with client.websocket_connect(f"/api/projects/{project_id}/live-session/ws?token={jeton}") as ws:
+        _recevoir_jusqua(ws, lambda m: m.get("type") == "image")
+        ws.send_json({"type": "clic", "x": 30, "y": 12})
+        _recevoir_jusqua(ws, lambda m: m.get("type") == "formulaire_connexion_invite")
+        ws.send_json({"type": "clic", "x": _X_IDENTIFIANT, "y": _Y_FORMULAIRE})
+        _recevoir_jusqua(ws, lambda m: m.get("type") == "formulaire_connexion_champ_capture")
+
+        ws.send_json({"type": "confirmer"})
+        confirme = _recevoir_jusqua(ws, lambda m: m.get("type") == "confirme")
+        assert confirme["formulaire_connexion"] is False
+
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        assert project_login_recordings.lire_formulaire(conn, project_id) is None
+    finally:
+        conn.close()
 
 
 def test_confirmer_ecrit_la_sequence_et_annuler_n_ecrit_rien(client, application):

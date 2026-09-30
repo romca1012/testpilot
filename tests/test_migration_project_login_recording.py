@@ -33,7 +33,11 @@ def test_base_neuve_porte_la_table_de_la_sequence(tmp_path, monkeypatch):
 
     colonnes = {r["name"] for r in conn.execute("PRAGMA table_info(project_login_recording)")}
 
-    assert colonnes == {"id", "project_id", "steps_json", "recorded_at", "recorded_by_user_id"}
+    # `login_form_json` (migration 56) s'ajoute forcément ici : `get_initialized_db` applique
+    # TOUTES les migrations jusqu'à `_SCHEMA_VERSION` courante, jamais seulement la 55.
+    assert colonnes == {
+        "id", "project_id", "steps_json", "recorded_at", "recorded_by_user_id", "login_form_json",
+    }
     conn.close()
 
 

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 55
+_SCHEMA_VERSION = 56
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -252,6 +252,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_54_live_session_token(conn)
     if version < 55:
         _migrate_55_project_login_recording(conn)
+    if version < 56:
+        _migrate_56_login_form_capture(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -301,6 +303,25 @@ def _migrate_55_project_login_recording(conn: sqlite3.Connection) -> None:
         steps_json TEXT NOT NULL,
         recorded_at TEXT NOT NULL,
         recorded_by_user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE)''')
+
+
+def _migrate_56_login_form_capture(conn: sqlite3.Connection) -> None:
+    """Lot « Enregistrement assisté du chemin de connexion » — extension (2026-09-30) : le
+    descripteur du formulaire de connexion lui-même (rôle/nom du champ identifiant, du champ mot
+    de passe et du bouton de soumission), capturé par 3 clics guidés APRÈS l'écran de
+    pré-connexion — motivé par un échec réel en production (`tenter_connexion_generique` devine le
+    champ identifiant par premier match DOM et soumet à l'aveugle via la touche Entrée, deux paris
+    qui viennent de rater sur une application réelle).
+
+    `login_form_json TEXT NOT NULL DEFAULT ''` — même convention que `steps_json` mais optionnel :
+    chaîne vide = aucun formulaire enregistré (projet jamais passé par les 3 clics guidés, ou
+    enregistré avant cette extension) ; l'appelant retombe alors sur `tenter_connexion_generique`,
+    comportement inchangé. JAMAIS de valeur/secret dans ce JSON — seulement `{role, name}` par
+    champ, même garde que `steps_json` (voir `project_login_recordings.Etape`).
+    """
+    if "login_form_json" not in _column_names(conn, "project_login_recording"):
+        conn.execute(
+            "ALTER TABLE project_login_recording ADD COLUMN login_form_json TEXT NOT NULL DEFAULT ''")
 
 
 def _migrate_53_profils_et_teardown(conn: sqlite3.Connection) -> None:
