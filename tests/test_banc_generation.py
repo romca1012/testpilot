@@ -125,8 +125,8 @@ def conn(tmp_path, monkeypatch):
 
 
 def test_le_projet_du_banc_est_cree_une_seule_fois(conn):
-    a = projet.assurer_le_projet(conn, "17.0", "http://127.0.0.1:18069")
-    b = projet.assurer_le_projet(conn, "17.0", "http://127.0.0.1:18070")  # même projet, nouveau port
+    a = projet.assurer_le_projet(conn, "17.0", "http://127.0.0.1:18069", synchroniser_comptes=False)
+    b = projet.assurer_le_projet(conn, "17.0", "http://127.0.0.1:18070", synchroniser_comptes=False)  # même projet, nouveau port
 
     assert a == b
     ligne = conn.execute("SELECT name, base_url, connector_type, database FROM project WHERE id=?", (a,)).fetchone()
@@ -136,8 +136,8 @@ def test_le_projet_du_banc_est_cree_une_seule_fois(conn):
 
 
 def test_un_projet_par_version(conn):
-    a = projet.assurer_le_projet(conn, "16.0", "http://127.0.0.1:18069")
-    b = projet.assurer_le_projet(conn, "17.0", "http://127.0.0.1:18069")
+    a = projet.assurer_le_projet(conn, "16.0", "http://127.0.0.1:18069", synchroniser_comptes=False)
+    b = projet.assurer_le_projet(conn, "17.0", "http://127.0.0.1:18069", synchroniser_comptes=False)
 
     assert a != b
 
@@ -150,11 +150,99 @@ def test_le_projet_du_banc_refuse_une_instance_non_locale(conn, url):
 
 
 def test_le_mot_de_passe_du_projet_est_chiffre_en_base(conn):
-    pid = projet.assurer_le_projet(conn, "17.0", "http://127.0.0.1:18069", mot_de_passe="admin")
+    pid = projet.assurer_le_projet(conn, "17.0", "http://127.0.0.1:18069", mot_de_passe="admin",
+                                   synchroniser_comptes=False)
 
     brut = conn.execute("SELECT password FROM project WHERE id=?", (pid,)).fetchone()["password"]
 
     assert brut and brut != "admin"
+
+
+# ── Comptes secondaires du banc (trouvé le 2026-09-30, mesure de clôture du lot 09) ─────────────
+#
+# `PreconditionNonRemplieError: le compte « banc_manager »/« banc_commercial » n'existe pas` a
+# bloqué 9 des 15 cas du corpus aux DEUX mesures (avant/après le lot 09) — les utilisateurs Odoo
+# existaient déjà sur l'instance, seul l'enregistrement côté `project_account` (D8) manquait.
+
+class _FakeUsers:
+    """Doublure de `client.env['res.users']` — `existants` : labels réellement présents sur
+    l'instance (simule que seul `banc_commercial` existe, pas `banc_manager`, par ex.)."""
+
+    def __init__(self, existants: set[str]):
+        self._existants = existants
+        self.mots_de_passe_ecrits: dict[int, str] = {}
+        self._ids = {label: i for i, label in enumerate(sorted(existants), start=1)}
+
+    def search(self, domaine, limit=None):
+        login = domaine[0][2]
+        return [self._ids[login]] if login in self._existants else []
+
+    def browse(self, uid):
+        return _FakeUserRecord(self, uid)
+
+
+class _FakeUserRecord:
+    def __init__(self, users: _FakeUsers, uid: int):
+        self._users, self._uid = users, uid
+
+    def write(self, vals):
+        self._users.mots_de_passe_ecrits[self._uid] = vals["password"]
+
+
+class _FakeClient:
+    def __init__(self, existants: set[str]):
+        self.env = {"res.users": _FakeUsers(existants)}
+
+
+def test_assurer_comptes_secondaires_enregistre_les_comptes_existants(conn):
+    pid = projet.assurer_le_projet(conn, "17.0", "http://127.0.0.1:18069", synchroniser_comptes=False)
+    client = _FakeClient({"banc_commercial", "banc_manager"})
+
+    projet._assurer_comptes_secondaires(conn, pid, client)
+
+    from testpilot.store.repositories import ProjectAccountRepo
+    labels = {c["label"] for c in ProjectAccountRepo(conn).liste(pid)}
+    assert labels == {"banc_commercial", "banc_manager"}
+    assert len(client.env["res.users"].mots_de_passe_ecrits) == 2
+
+
+def test_falsifiable_un_compte_odoo_absent_n_est_pas_invente(conn):
+    """Si `banc_manager` n'existe PAS sur cette instance, aucun compte fantôme ne doit être créé —
+    inventer un identifiant qui ne correspond à aucun vrai utilisateur Odoo casserait la connexion
+    au prochain run, pire que le trou d'origine."""
+    pid = projet.assurer_le_projet(conn, "17.0", "http://127.0.0.1:18069", synchroniser_comptes=False)
+    client = _FakeClient({"banc_commercial"})  # banc_manager absent
+
+    projet._assurer_comptes_secondaires(conn, pid, client)
+
+    from testpilot.store.repositories import ProjectAccountRepo
+    labels = {c["label"] for c in ProjectAccountRepo(conn).liste(pid)}
+    assert labels == {"banc_commercial"}
+
+
+def test_assurer_comptes_secondaires_est_idempotent(conn):
+    pid = projet.assurer_le_projet(conn, "17.0", "http://127.0.0.1:18069", synchroniser_comptes=False)
+    client = _FakeClient({"banc_commercial", "banc_manager"})
+
+    projet._assurer_comptes_secondaires(conn, pid, client)
+    projet._assurer_comptes_secondaires(conn, pid, client)
+
+    from testpilot.store.repositories import ProjectAccountRepo
+    assert len(ProjectAccountRepo(conn).liste(pid)) == 2
+
+
+def test_falsifiable_synchroniser_comptes_false_ne_touche_aucun_reseau(conn, monkeypatch):
+    """Preuve que le paramètre coupe bien l'appel RPC — pas seulement en théorie. Un `odoorpc.ODOO`
+    qui serait quand même instancié lèverait ici (remplacé par une fonction qui explose)."""
+    import types
+    faux_module = types.ModuleType("odoorpc")
+
+    def _explose(*a, **k):
+        raise AssertionError("odoorpc.ODOO() appelé alors que synchroniser_comptes=False")
+    faux_module.ODOO = _explose
+    monkeypatch.setitem(sys.modules, "odoorpc", faux_module)
+
+    projet.assurer_le_projet(conn, "17.0", "http://127.0.0.1:18069", synchroniser_comptes=False)
 
 
 def test_une_campagne_interrompue_le_dit_dans_les_statistiques_et_dans_le_rapport():
