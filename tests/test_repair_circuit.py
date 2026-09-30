@@ -22,6 +22,11 @@ def _unknown_fail():     # cause unknown → indetermine
     return [BehaveFailure("cas A", "étape", "mystere", "rien d'exploitable")]
 
 
+def _blocked_fail():     # step_type=hook → precondition_non_remplie → indetermine (lot 09, C9)
+    return [BehaveFailure("cas A", "before_scenario", "erreur",
+                          "PreconditionNonRemplieError: environnement absent", step_type="hook")]
+
+
 # --- Signature d'échec ----------------------------------------------------------
 
 def test_signature_stable_pour_meme_echec_et_vide_sans_echec():
@@ -54,6 +59,18 @@ def test_indetermine_arrete_pour_confirmation_humaine():
     d = rc.evaluate(rc.CircuitState(), _unknown_fail())
     assert d.should_continue is False
     assert d.outcome == rc.NEEDS_CONFIRMATION
+    assert d.defect_verdict.requires_human_confirmation is True
+
+
+def test_falsifiable_un_prerequis_manquant_n_ouvre_jamais_la_boucle_de_reparation():
+    """Lot 09 (C9) — VÉRIFIÉ, pas supposé sur lecture seule : un `blocked` (précondition
+    manquante, environnement) ne doit JAMAIS déclencher de tentative de réparation automatique.
+    Si ce test échoue, `_ORIGIN_BY_CAUSE` a régressé et la boucle 0014 s'ouvrirait sur une panne
+    d'environnement — exactement ce que le brief du lot demandait de garantir."""
+    d = rc.evaluate(rc.CircuitState(), _blocked_fail())
+    assert d.should_continue is False
+    assert d.outcome == rc.NEEDS_CONFIRMATION
+    assert d.defect_verdict.defect_origin == "indetermine"
     assert d.defect_verdict.requires_human_confirmation is True
 
 

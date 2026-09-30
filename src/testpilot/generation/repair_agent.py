@@ -89,16 +89,26 @@ def build_repair_prompt(connector: Connector | None = None,
     return prefix + base + suffix
 
 
-def _failure_report(scenarios, failures, steps_content: str = "", memoire: str = "") -> str:
+def _failure_report(scenarios, failures, steps_content: str = "", memoire: str = "",
+                    field_fallbacks: list[str] | None = None) -> str:
     """L'échec observé, tel qu'on le donne à l'agent. Factuel : ce qui s'est passé, rien de plus.
 
     On ne lui souffle PAS de diagnostic : la taxonomie classe par mots-clés du message (`0012`),
     et lui transmettre sa propre conclusion l'enfermerait dans une piste qui peut être fausse —
     le cas 6 l'a montré (« rôle manquant » alors que la session navigateur était anonyme).
+    **Décision reconfirmée en écrivant le lot 09** : la cause classifiée (`defect_taxonomy`) n'a
+    PAS été ajoutée ici pour cette raison précise — `repair_circuit` (qui, lui, DOIT décider s'il
+    ouvre la boucle) la consomme déjà correctement ; c'est un usage différent d'un même signal.
 
     ⚠️ **`memoire` n'est pas une exception à cette règle** : elle ne porte que des faits RUNTIME
     (valeurs que l'application a refusées, signatures d'échec des tentatives passées), jamais ce
     que l'agent a *dit* avoir tenté. Voir `memoire_reparation`.
+
+    `field_fallbacks` (lot 09, C9) — même famille de fait RUNTIME, pas un diagnostic : le PALIER
+    (`locate_field`, plan de consolidation §1.2) qui a fini par résoudre un champ quand la
+    cascade déterministe (name → data-test → classe → libellé → placeholder) a tout épuisé.
+    Aucune interprétation — juste le fait qu'un repli a eu lieu, utile pour repérer un champ
+    fragile SANS présumer que c'est la cause de l'échec.
     """
     lignes = ["# Échec observé lors de l'exécution réelle", ""]
     for s in scenarios or []:
@@ -112,6 +122,10 @@ def _failure_report(scenarios, failures, steps_content: str = "", memoire: str =
         lignes.append("```")
         lignes.append((f.raw or f.traceback_summary or "(aucun détail)")[:1500])
         lignes.append("```")
+        lignes.append("")
+    if field_fallbacks:
+        lignes.append("## Champs résolus par repli (FAIT runtime, pas une cause)")
+        lignes.extend(f"- {fb}" for fb in field_fallbacks[:20])
         lignes.append("")
     if memoire:
         # Placée AVANT le fichier courant, pour que l'impératif final (« renvoie-le ENTIER »)
@@ -151,7 +165,7 @@ def _last_assistant_text(state: AgentState) -> str:
 
 
 def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "",
-                memoire: str = "",
+                memoire: str = "", field_fallbacks: list[str] | None = None,
                 llm: LLMAdapter | None = None, connector: Connector | None = None,
                 connector_type: str | None = None, connector_version: str = "",
                 profil_instance: str | None = None,
@@ -188,7 +202,7 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
     # cas coûterait bien plus que la mémoire ne fait gagner.
     state.messages.append({"role": "user",
                            "content": _failure_report(scenarios, failures, steps_content,
-                                                      memoire)})
+                                                      memoire, field_fallbacks)})
 
     shared_steps = steps_library.catalogue(connector_type=connector_type, profil_instance=profil_instance)
     ctx = ToolContext(
