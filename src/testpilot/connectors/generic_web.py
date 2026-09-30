@@ -247,6 +247,12 @@ class GenericWebConnector(Connector):
                     ctx.page, self._login_form, self._user, self._password)
             else:
                 tenter_connexion_generique(ctx.page, self._user, self._password)
+            # Diagnostic temporaire (2026-09-30, cas réel « yros » : le remplissage/clic réussit
+            # sans lever, mais le crawl qui suit ne trouve pas plus de routes qu'avant — jamais
+            # mesuré jusqu'ici si la connexion aboutit VRAIMENT à ce stade). À retirer une fois la
+            # cause trouvée.
+            logger.info("[web-générique] après tentative de connexion : url=%s",
+                       getattr(ctx.page, "url", "?"))
         return _connexion
 
     # ── Interne (réseau isolé, surchargeable en test) ──────────────────────────
