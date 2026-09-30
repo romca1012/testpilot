@@ -28,6 +28,15 @@ dependencies = [
     "python-docx>=1.1",
     "fastapi>=0.115",
     "uvicorn>=0.32",
+    # Requis pour qu'Uvicorn serve RÉELLEMENT une connexion WebSocket (route de session en direct,
+    # lot « Enregistrement assisté du chemin de connexion », sous-lot C) — sans lui, Uvicorn démarre
+    # sans erreur (avertissement seulement dans son propre log, jamais remonté à l'appelant) mais
+    # traite toute tentative d'upgrade WebSocket comme une requête HTTP normale, qui retombe en 404
+    # faute de route HTTP à cette adresse. Jamais détecté par les tests (`test_live_session_ws.py`)
+    # : ils passent par `TestClient.websocket_connect`, qui parle à l'app ASGI directement, sans
+    # jamais passer par un vrai Uvicorn ni un vrai protocole WebSocket réseau — bug mesuré en
+    # conditions réelles sur staging (2026-09-30), pas en CI.
+    "websockets>=13",
     # Requis par les routes FastAPI qui acceptent UploadFile/Form (import de spécification et
     # pièces jointes). Sans lui, Uvicorn ouvre le port mais l'application plante à l'import.
     "python-multipart>=0.0.9",
