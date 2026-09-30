@@ -107,6 +107,15 @@ class Connector(ABC):
         """Règles spécifiques au connecteur, injectées dans le prompt. Vide par défaut."""
         return ""
 
+    def inspect_page_snapshot(self, page_url: str) -> dict:
+        """Instantané des éléments interactifs RÉELLEMENT visibles d'une page — rôle, nom
+        accessible, type, plafonné (lot 09, C9) — {url, elements, error}. Défaut best-effort :
+        {url: "", elements: [], error: "..."} pour un connecteur sans navigateur (jamais
+        `NotImplementedError`, contrairement à `inspect_odoo_view` — sans perception web du
+        tout, un tool qui échoue proprement reste plus utile qu'une exception à gérer)."""
+        return {"url": "", "elements": [],
+                "error": "ce connecteur n'expose aucun instantané de page"}
+
     def inspect_odoo_view(self, model: str, view_type: str = "form") -> dict:
         """Boutons, barre d'état, champs x2many (+ sous-champs éditables) et champs requis
         d'une vue Odoo réelle — {boutons, barre_etat, champs_x2many, champs_requis, erreur}

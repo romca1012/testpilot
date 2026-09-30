@@ -572,3 +572,49 @@ def http_probe(url: str) -> dict:
                         "note": f"injoignable : {dernier_motif}"}
             continue
     return {"url": url, "status": dernier_statut, "method": methodes[-1], "note": dernier_motif}
+
+
+# ── Instantané des éléments interactifs d'une page (lot 09, C9) ─────────────────────────────────
+#
+# ⚠️ **Dupliqué depuis `behave_runtime/steps_library/_adaptive_resolution.py::_JS_CANDIDATS`**,
+# jamais importé : `src/testpilot` n'importe jamais `behave_runtime` (API et sous-processus
+# Behave restent deux paquets séparés — même convention déjà en place pour
+# `_mot_de_passe_visible`/`ElementIntrouvableError`, vérifié : aucune occurrence contraire dans
+# tout le dépôt). Plafond ramené à 120 (le brief du lot) contre 200 côté résolution adaptative :
+# usage différent — ici, montrer une page ENTIÈRE à l'agent de génération avant qu'il écrive un
+# test, pas choisir UN candidat de clic après un échec de sélecteur.
+
+_MAX_ELEMENTS_SNAPSHOT = 120
+
+_JS_ELEMENTS_INTERACTIFS = """(max) => {
+    const selecteur = 'input, select, textarea, button, a, [role], [tabindex]';
+    const elements = Array.from(document.querySelectorAll(selecteur))
+        .filter(el => el.offsetParent !== null || el.getClientRects().length > 0)
+        .slice(0, max);
+    return elements.map(el => {
+        const label = el.labels && el.labels.length ? el.labels[0].innerText : '';
+        return {
+            role: el.getAttribute('role') || el.tagName.toLowerCase(),
+            nom: (el.getAttribute('aria-label') || label || el.placeholder ||
+                  el.innerText || el.value || el.name || '').trim().slice(0, 80),
+            type: el.getAttribute('type') || '',
+        };
+    });
+}"""
+
+
+def elements_interactifs_visibles(page, *, max_elements: int = _MAX_ELEMENTS_SNAPSHOT) -> list[dict]:
+    """Rôle + nom accessible + type de chaque élément interactif RÉELLEMENT visible sur `page` —
+    jamais une image, jamais un texte deviné. Tronqué proprement à `max_elements` (défaut 120,
+    lot 09) : une page normale en a bien moins, un plafond dépassé est un signe d'écran
+    anormalement chargé, pas une raison de faire exploser la taille du prompt.
+
+    Ne lève jamais : une page fermée ou un contexte détruit pendant l'évaluation rend une liste
+    vide plutôt qu'une exception — perception best-effort, comme le reste de ce module.
+    """
+    try:
+        return page.evaluate(_JS_ELEMENTS_INTERACTIFS, max_elements) or []
+    except Exception as exc:
+        logger.warning("[perception] instantané d'accessibilité impossible (%s)",
+                       type(exc).__name__)
+        return []
