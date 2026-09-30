@@ -33,10 +33,13 @@ const peutVoirQualite = computed(() => roleSuffisant(roleProjet.value, 'dev'))
 // Lot « Enregistrement assisté du chemin de connexion » : même plancher que la route API
 // (`require_project_role(ROLE_DEV)`) — PAR PROJET (`roleProjet`, pas le rôle global du compte,
 // contrairement à l'admin-only `/admin/projects` d'où cette action était jusqu'ici absente pour
-// un compte dev sans être aussi admin GLOBAL). Réservé au connecteur web générique : Odoo n'a pas
-// d'écran de pré-connexion à ce mécanisme (voir `ENV_LOGIN_RECORDING` côté serveur).
+// un compte dev sans être aussi admin GLOBAL). Ouvert aux DEUX connecteurs UI (`web` et, essai
+// 2026-09-30, `odoo` — un déploiement Odoo personnalisé peut mettre en défaut sa détection codée
+// en dur, voir `odoo_login.py::playwright_login`) ; jamais au connecteur RPC pur (aucun autre type
+// n'existe pour l'instant).
 const peutEnregistrerConnexion = computed(() =>
-  roleSuffisant(roleProjet.value, 'dev') && currentProject.value?.connector_type === 'web')
+  roleSuffisant(roleProjet.value, 'dev')
+  && ['web', 'odoo'].includes(currentProject.value?.connector_type || ''))
 // Une planification s'exécute SANS présence humaine : coûts LLM/navigateur non supervisés en
 // cas d'erreur — réservée à Dev+, contrairement à la création d'une campagne à la main
 // (Testeur+, `peutModifier`). Les Plans, eux, n'exécutent rien : même plancher que les campagnes.
