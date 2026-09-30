@@ -62,3 +62,37 @@ def test_diagnose_assertion_run_is_direct_bug():
 
 def test_diagnose_no_failures_returns_none():
     assert do.diagnose([]) is None
+
+
+# ── Lot 09 (C9) — vérifié, pas supposé : `blocked`/`aucun_constat` n'ouvrent jamais la boucle ────
+#
+# Le brief du lot demandait de VÉRIFIER que ces deux causes n'entrent jamais dans la réparation
+# automatique — c'était déjà vrai dans le code (`defect_origin._ORIGIN_BY_CAUSE`), mais AUCUN test
+# ne le prouvait avant ce lot. Ajoutés ici plutôt que supposés sur lecture seule du code.
+
+def test_precondition_non_remplie_exige_une_confirmation_jamais_une_reparation():
+    """`blocked` (lot 02, D1) — un prérequis manquant est un problème d'ENVIRONNEMENT, jamais un
+    test à réparer : la boucle 0014 ne doit jamais s'ouvrir dessus."""
+    origin = do.classify_defect_origin(dt.PRECONDITION_NON_REMPLIE)
+    assert origin == do.INDETERMINE
+    assert do.confirmation_for(origin) == do.PENDING_HUMAN
+
+
+def test_aucun_constat_exige_une_confirmation_jamais_une_reparation():
+    """Lot 03 (D3) — un scénario vert qui n'a rien prouvé n'est pas un « échec technique » que
+    réécrire corrigerait : réparer un `.feature` qui ne vérifie rien n'a pas de sens."""
+    origin = do.classify_defect_origin(dt.AUCUN_CONSTAT)
+    assert origin == do.INDETERMINE
+    assert do.confirmation_for(origin) == do.PENDING_HUMAN
+
+
+def test_diagnose_une_precondition_manquante_via_un_hook_est_indetermine():
+    """Round-trip réaliste : un `PreconditionNonRemplieError` levé dans un hook (`step_type` du
+    JSON Behave, jamais le texte de l'agent — décision 0015) doit produire ce même résultat via
+    `classify_failure` → `diagnose`, pas seulement via la constante testée isolément ci-dessus."""
+    failures = [BehaveFailure("cas A", "before_scenario", "erreur",
+                              "PreconditionNonRemplieError: la page n'a pas pu être lue",
+                              step_type="hook")]
+    verdict = do.diagnose(failures)
+    assert verdict.defect_origin == do.INDETERMINE
+    assert verdict.requires_human_confirmation is True

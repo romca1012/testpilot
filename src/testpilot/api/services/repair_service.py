@@ -431,6 +431,8 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             scenarios=_scenarios_of(outcome),
             failures=failures,
             memoire=memoire_reparation.as_prompt_section(regles, faits),
+            # Lot 09 (C9) : fait RUNTIME, pas un diagnostic — voir `repair_agent._failure_report`.
+            field_fallbacks=list(getattr(outcome.real_run, "field_fallbacks", None) or []),
             # Le fichier ACTUEL : `write_steps_file` le REMPLACE, l'agent doit donc partir de
             # son contenu et le rendre entier — sans lui, il réécrit de mémoire et tronque.
             steps_content=version["steps_content"] or "",
