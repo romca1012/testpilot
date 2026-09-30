@@ -60,7 +60,12 @@ _ROLES_INTERACTIFS = frozenset({
 _ROLE_IMPLICITE_JS = r"""
 function roleImplicite(el) {
   const tag = el.tagName.toLowerCase();
-  if (tag === 'button' || tag === 'summary') return 'button';
+  // `summary` retiré (revue verdict-reviewer chantier-entier, 2026-09-30) : vérifié avec un vrai
+  // Chromium (`page.locator(...).aria_snapshot()`), Playwright expose `<summary>` avec le rôle
+  // `group`, jamais `button` — un `<summary>` classé `button` ici aurait été capturé « avec
+  // succès » mais introuvable par `page.get_by_role('button', ...)` au rejeu (sous-lot D), levant
+  // à tort `SequenceConnexionObsoleteError` sur une application qui n'a pourtant pas changé.
+  if (tag === 'button') return 'button';
   if (tag === 'a' && el.hasAttribute('href')) return 'link';
   if (tag === 'textarea') return 'textbox';
   if (tag === 'select') return el.multiple ? 'listbox' : 'combobox';
@@ -148,10 +153,17 @@ def _js_avec_roles(gabarit: str) -> str:
 # Ordre EXACT vérifié sur la source du groupe de travail W3C (étapes 2B/2D/2E/2F/2I de l'algorithme
 # « Text Alternative Computation » — la numérotation et l'ordre relatif sont ceux de la spec, pas
 # une reconstruction de mémoire) :
-#   2B aria-labelledby  >  2D aria-label  >  2E étiquette du langage hôte (label/alt,
-#   `placeholder` en repli restreint aux champs de saisie sans autre étiquette — HTML-AAM,
-#   pas l'AccName pur, voir rapport de fin de sous-lot)  >  2F/2G/2H nom depuis le contenu (texte
-#   visible, récursif)  >  2I `title` en tout dernier recours.
+#   2B aria-labelledby  >  2D aria-label  >  2E étiquette du langage hôte (label/alt)  >
+#   2F/2G/2H nom depuis le contenu (texte visible, récursif)  >  2I `title`  >  `placeholder` en
+#   tout dernier recours, restreint aux champs de saisie sans autre étiquette (HTML-AAM, pas
+#   l'AccName pur).
+# ⚠️ **`placeholder` déplacé APRÈS `title`** (revue verdict-reviewer chantier-entier, 2026-09-30) —
+# vérifié avec un vrai Chromium : pour un champ portant À LA FOIS `title` ET `placeholder`,
+# Playwright résout le nom accessible au `title` (son propre algorithme, utilisé au rejeu par
+# `page.get_by_role`, sous-lot D), jamais au `placeholder`. L'ordre précédent (placeholder avant
+# title) faisait calculer À LA CAPTURE un nom que le REJEU ne retrouvait jamais — une séquence
+# confirmée avec succès devenait définitivement injouable, avec un message trompeur (« l'application
+# a changé ») alors que c'est ce module qui se contredisait lui-même entre capture et rejeu.
 # Étape 2C (« embedded control ») délibérément ÉCARTÉE : cas étroit (un `<label>` habillant un
 # curseur de plage dont on inclurait la valeur courante), sans usage pour un chemin de connexion,
 # documenté comme écart plutôt que traité en silence. `legend`/`caption` (fieldset/table) écartés
@@ -200,19 +212,25 @@ function etiquetteLangageHote(el) {
   if (tag === 'img' || tag === 'area') return el.getAttribute('alt') || '';
   if (tag === 'input' && (el.type === 'image')) return el.getAttribute('alt') || '';
   // <label for="id"> — TOUS ceux qui référencent cet id, concaténés dans l'ordre du document
-  // (comp_host_language_label.html : « textfield label 1 textfield label 2 »). Un `<label>` MASQUÉ
-  // ne contribue rien (bug mesuré en revue verdict-reviewer, 2026-09-29, avec un vrai Chromium :
-  // un `<label for>` caché fuyait son texte dans le nom — 2A ne l'exempte pas, contrairement au
-  // nœud directement référencé par aria-labelledby).
-  // Recherche scopée à `el.getRootNode()` (ShadowRoot ou Document), jamais à `document` : même
-  // bug de fond que `nomDepuisRefs` ci-dessus, un <label for> à l'intérieur d'un shadow DOM était
+  // (comp_host_language_label.html : « textfield label 1 textfield label 2 »).
+  // ⚠️ **Un `<label for>` MASQUÉ contribue quand même son texte** — revu en revue verdict-reviewer
+  // chantier-entier (2026-09-30) : le correctif du 2026-09-29 (exclure un `<label>` masqué,
+  // conforme à l'algorithme AccName pur, étape 2A) faisait diverger la capture de ce que Playwright
+  // résout RÉELLEMENT au rejeu — vérifié avec un vrai Chromium (`aria_snapshot`/`get_by_role`) :
+  // pour `<label for="x" style="display:none">Texte</label><input id="x">`, Playwright inclut
+  // « Texte » dans le nom accessible, exactement comme pour un nœud référencé par aria-labelledby
+  // (2A ne l'exempte pas explicitement pour `<label for>`, mais c'est le comportement mesuré, pas
+  // supposé). La capture doit prédire ce que le REJEU trouvera, jamais l'algorithme de spec pur
+  // seul — but de ce module (voir docstring de tête). Un `<label>` ENGLOBANT masqué reste hors de
+  // cause : son enfant masqué avec lui n'a alors plus de `bounding_box`, donc jamais cliquable.
+  // Recherche scopée à `el.getRootNode()` (ShadowRoot ou Document), jamais à `document` : bug de
+  // fond mesuré en revue du 2026-09-29, un <label for> à l'intérieur d'un shadow DOM était
   // introuvable depuis `document` et le nom retombait silencieusement à vide (même revue).
   // `CSS.escape` : un id contenant un guillemet casserait le sélecteur autrement (levée bruyante,
   // pas un faux positif, mais fragile sans raison — signalé par la même revue).
   if (el.id) {
     const racine = el.getRootNode();
     const refs = Array.from(racine.querySelectorAll(`label[for="${CSS.escape(el.id)}"]`))
-      .filter(l => !estMasque(l))
       .map(l => normaliser(l.textContent)).filter(Boolean);
     if (refs.length) return refs.join(' ');
   }
@@ -269,14 +287,6 @@ function calculerNom(el, dejaVus, options) {
   const hote = etiquetteLangageHote(el);
   if (hote) return hote;
 
-  // 2E (repli HTML-AAM, pas l'AccName pur) — `placeholder`, uniquement si rien d'autre au-dessus
-  // n'a répondu, et seulement pour un champ de saisie.
-  const tag = el.tagName.toLowerCase();
-  if ((tag === 'input' || tag === 'textarea')) {
-    const placeholder = el.getAttribute('placeholder');
-    if (placeholder && normaliser(placeholder)) return normaliser(placeholder);
-  }
-
   // 2F/2G/2H — nom depuis le contenu (rôles qui l'autorisent, ou traversée déjà en mode contenu).
   const role = el.getAttribute('role') || ROLE_IMPLICITE_POUR_CONTENU(el);
   if (dansContenu || (role && ROLES_NOM_DEPUIS_CONTENU.includes(role))) {
@@ -284,9 +294,17 @@ function calculerNom(el, dejaVus, options) {
     if (nom) return nom;
   }
 
-  // 2I — `title`, tout dernier recours.
+  // 2I — `title`.
   const title = el.getAttribute('title');
   if (title && normaliser(title)) return normaliser(title);
+
+  // Repli HTML-AAM (pas l'AccName pur) — `placeholder`, en tout dernier recours, seulement pour un
+  // champ de saisie sans aucune autre étiquette (ni title inclus, voir plus haut).
+  const tag = el.tagName.toLowerCase();
+  if ((tag === 'input' || tag === 'textarea')) {
+    const placeholder = el.getAttribute('placeholder');
+    if (placeholder && normaliser(placeholder)) return normaliser(placeholder);
+  }
 
   return '';
 }

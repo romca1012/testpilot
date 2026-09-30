@@ -51,10 +51,30 @@ def _centre(page, selecteur: str) -> tuple[float, float]:
 def _nom_via_clic(page, html: str, selecteur: str):
     """Point central de `selecteur` — c'est le passage obligé de CHAQUE cas ci-dessous : jamais un
     `ElementHandle` passé directement, toujours des coordonnées obtenues sur un élément réellement
-    rendu, exactement comme un vrai clic humain relayé par le futur mécanisme CDP."""
+    rendu, exactement comme un vrai clic humain relayé par le futur mécanisme CDP.
+
+    ⚠️ **Garde-fou chantier-entier (revue verdict-reviewer, 2026-09-30)** : `accname.calculer()`
+    (capture, sous-lots A/C) et `page.get_by_role()` (rejeu, sous-lot D) sont DEUX implémentations
+    indépendantes du calcul du nom accessible — rien ne garantissait qu'elles s'accordent. Deux
+    divergences réelles ont été trouvées ainsi (`title`/`placeholder` inversés, `<summary>` classé
+    `button` alors que Playwright l'expose en `group`), corrigées séparément. Pour que ce test de
+    régression profite à TOUS les cas de ce fichier sans en dupliquer 34, il vit ici, dans le seul
+    passage obligé de chacun : si `calculer()` rend un rôle+nom, `get_by_role` doit retrouver AU
+    MOINS un élément avec ce même (rôle, nom) exact — sinon la séquence serait capturée « avec
+    succès » mais deviendrait injouable au rejeu, exactement le résultat trompeur cherché par
+    cette revue. Seuil `>= 1`, pas `== 1` : certains cas ci-dessous testent délibérément des
+    homonymes (couverts par leurs propres tests d'ambiguïté), ce n'est pas ce que ce garde-fou
+    vérifie."""
     page.set_content(html)
     x, y = _centre(page, selecteur)
-    return accname.calculer(page, x, y)
+    resultat = accname.calculer(page, x, y)
+    if resultat is not None:
+        trouves = page.get_by_role(resultat["role"], name=resultat["name"], exact=True).count()
+        assert trouves >= 1, (
+            f"accname.calculer() a rendu rôle={resultat['role']!r} nom={resultat['name']!r}, "
+            "introuvable par page.get_by_role au rejeu — cette séquence serait capturée avec "
+            "succès mais deviendrait injouable")
+    return resultat
 
 
 # ══ 1. AccName — cas officiels WPT (web-platform-tests/wpt, accname/name/) ══════════════════════
@@ -257,12 +277,17 @@ def test_clic_sur_un_conteneur_purement_visuel_remonte_jusqu_a_un_ancetre_intera
 
 # ══ 4. Bugs mesurés en revue verdict-reviewer (2026-09-29, vrai Chromium) ═══════════════════════
 
-def test_label_masque_ne_contribue_rien_au_nom(page):
-    """Un `<label for>` masqué fuyait son texte dans le nom calculé — l'exception 2A n'exempte QUE
-    le nœud directement référencé par aria-labelledby, jamais un `<label for>`."""
+def test_label_for_masque_contribue_quand_meme_son_texte(page):
+    """Assertion INVERSÉE le 2026-09-30 (revue verdict-reviewer chantier-entier) par rapport à sa
+    version du 2026-09-29 : celle-ci excluait un `<label for>` masqué, conforme à l'algorithme
+    AccName pur (étape 2A) — mais vérifié depuis avec un vrai Chromium que Playwright, LUI, inclut
+    ce texte au rejeu (`get_by_role`). L'ancienne assertion faisait donc calculer à la capture un
+    nom que le rejeu ne retrouvait JAMAIS (garde-fou ajouté dans `_nom_via_clic`, qui aurait fait
+    échouer ce test avec l'ancien comportement). But de ce module : prédire ce que le rejeu
+    trouvera, pas suivre la spec au prix de diverger de Playwright."""
     html = ('<label for="cb" style="display:none">Ancien libellé caché</label>'
             '<input id="cb" type="checkbox">')
-    assert _nom_via_clic(page, html, "#cb") == {"role": "checkbox", "name": ""}
+    assert _nom_via_clic(page, html, "#cb") == {"role": "checkbox", "name": "Ancien libellé caché"}
 
 
 def _point_shadow(page, selecteur: str = "button") -> tuple[float, float]:
@@ -340,3 +365,27 @@ def test_falsifiable_ambiguite_detectee_a_travers_un_shadow_dom(page):
     x, y = _centre(page, "#leger")
     with pytest.raises(accname.ElementIntrouvableError, match="ambigu"):
         accname.calculer(page, x, y)
+
+
+# ── Alignement capture/rejeu — divergences trouvées en revue chantier-entier (2026-09-30) ───────
+
+def test_title_prime_sur_placeholder_quand_les_deux_existent(page):
+    """Bloquant trouvé en revue verdict-reviewer chantier-entier : Playwright (rejeu, sous-lot D)
+    résout le nom accessible au `title` quand `title` ET `placeholder` sont tous deux présents —
+    vérifié avec un vrai Chromium. L'ancien ordre d'`accname.py` (placeholder avant title)
+    calculait un nom que le rejeu ne retrouvait jamais : une capture « réussie » devenait
+    définitivement injouable, avec un message trompeur (« l'application a changé »)."""
+    html = '<input type="text" placeholder="Nom d\'utilisateur" title="Zone de saisie">'
+    assert _nom_via_clic(page, html, "input")["name"] == "Zone de saisie"
+
+
+def test_summary_n_est_plus_classe_button(page):
+    """Bloquant trouvé en revue verdict-reviewer chantier-entier : Playwright expose `<summary>`
+    avec le rôle `group`, jamais `button` — vérifié avec un vrai Chromium
+    (`aria_snapshot()` -> `- group: …`). Un `<summary>` classé `button` par `accname.py` était
+    capturé « avec succès » mais introuvable par `page.get_by_role('button', ...)` au rejeu.
+    `calculer()` doit donc remonter au-delà du `<summary>` (rôle non interactif pour ce module,
+    comme pour Playwright) jusqu'au prochain ancêtre réellement interactif — ici, aucun : absence
+    propre, jamais un rôle inventé."""
+    html = '<details><summary>Voir plus</summary><p>Détails</p></details>'
+    assert _nom_via_clic(page, html, "summary") is None
