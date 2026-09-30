@@ -9,7 +9,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type ProjectSummary } from '../lib/api'
-import { useLiveSession } from '../lib/useLiveSession'
+import { useLiveSession, type ChampFormulaireConnexion } from '../lib/useLiveSession'
 import Button from '../components/ui/Button.vue'
 import Card from '../components/ui/Card.vue'
 import Spinner from '../components/ui/Spinner.vue'
@@ -25,8 +25,18 @@ const chargement = ref(true)
 
 const {
   statut, image, etapes, erreur, avertissementInactivite, raisonFermeture,
-  dernierClicAmbigu, captureArretee, demarrer, clic, confirmer, recommencer, annuler,
+  dernierClicAmbigu, captureArretee,
+  formulaireInvite, formulaireCapture, formulaireComplet, formulaireConnexionEnregistre,
+  demarrer, clic, confirmer, recommencer, annuler,
 } = useLiveSession(pid)
+
+// Extension (2026-09-30) : les 3 clics guidés du formulaire de connexion, dans l'ORDRE — même
+// liste que `live_session_service.py::_CHAMPS_FORMULAIRE_CONNEXION`.
+const CHAMPS_FORMULAIRE: { cle: ChampFormulaireConnexion; label: string }[] = [
+  { cle: 'champ_identifiant', label: 'Champ identifiant' },
+  { cle: 'champ_mdp', label: 'Champ mot de passe' },
+  { cle: 'bouton_soumission', label: 'Bouton de connexion' },
+]
 
 const ecran = ref<HTMLImageElement | null>(null)
 
@@ -87,7 +97,10 @@ onMounted(async () => {
         Montrez, une seule fois, comment franchir un écran de pré-connexion (sélection de pays,
         bandeau de consentement…) — cliquez ci-dessous exactement comme vous le feriez, puis
         confirmez. Ce chemin sera rejoué automatiquement à chaque exploration ou exécution
-        ultérieure sur ce projet, jusqu'à ce que l'application change.
+        ultérieure sur ce projet, jusqu'à ce que l'application change. Une fois le formulaire de
+        connexion atteint, 3 clics supplémentaires (identifiant, mot de passe, bouton) permettent
+        de l'identifier avec certitude — optionnel, mais recommandé si la détection automatique
+        échoue sur cette application.
       </p>
     </div>
 
@@ -143,6 +156,10 @@ onMounted(async () => {
               Chemin de connexion enregistré ({{ etapes.length }}
               étape{{ etapes.length > 1 ? 's' : '' }}) — il sera rejoué automatiquement désormais.
             </p>
+            <p v-if="formulaireConnexionEnregistre" class="text-xs text-subtle-foreground">
+              Le formulaire de connexion a aussi été identifié — il remplacera la détection
+              automatique pour ce projet.
+            </p>
             <Button size="sm" @click="retourAuProjet">Revenir au projet</Button>
           </div>
 
@@ -169,6 +186,31 @@ onMounted(async () => {
                     cls="border-border bg-surface-raised text-foreground" />
             </li>
           </ol>
+
+          <div v-if="captureArretee" class="mt-4 rounded-lg border border-border bg-surface-raised p-3">
+            <p class="text-xs font-medium text-foreground">Formulaire de connexion</p>
+            <p class="mt-0.5 text-xs text-subtle-foreground">
+              Cliquez sur chaque champ ci-contre, dans l'ordre.
+            </p>
+            <ol class="mt-2 space-y-1.5">
+              <li v-for="champ in CHAMPS_FORMULAIRE" :key="champ.cle"
+                  class="flex items-center gap-2 text-xs">
+                <Icon :name="formulaireCapture[champ.cle] ? 'check' : 'circle'"
+                      class="h-3.5 w-3.5 shrink-0"
+                      :class="formulaireCapture[champ.cle] ? 'text-success'
+                        : formulaireInvite === champ.cle ? 'text-primary' : 'text-muted-foreground/40'" />
+                <span :class="formulaireInvite === champ.cle ? 'font-medium text-foreground' : 'text-subtle-foreground'">
+                  {{ champ.label }}
+                  <template v-if="formulaireCapture[champ.cle]">
+                    — {{ formulaireCapture[champ.cle]!.name || formulaireCapture[champ.cle]!.role }}
+                  </template>
+                </span>
+              </li>
+            </ol>
+            <p v-if="formulaireComplet" class="mt-2 text-xs text-success">
+              Formulaire identifié — confirmez pour l'enregistrer.
+            </p>
+          </div>
 
           <p v-if="dernierClicAmbigu" class="mt-3 text-xs text-warning">
             Ce clic touche plusieurs éléments identiques — il n'a pas été ajouté. Cliquez sur un

@@ -20,6 +20,10 @@ export type StatutSessionLive =
   | 'fermee'          // fermeture (normale, timeout, ou coupure) — voir `raisonFermeture`
   | 'erreur'          // n'a jamais pu s'ouvrir (jeton refusé, réseau…)
 
+// Les 3 clés du formulaire de connexion, dans l'ORDRE guidé — miroir exact de
+// `live_session_service.py::_CHAMPS_FORMULAIRE_CONNEXION` (extension 2026-09-30).
+export type ChampFormulaireConnexion = 'champ_identifiant' | 'champ_mdp' | 'bouton_soumission'
+
 // Messages reçus du serveur — miroir exact de `live_session.py`/`live_session_service.py`
 // (jamais une reconstruction : un champ qui diverge serait une régression silencieuse ici).
 type MessageServeur =
@@ -27,10 +31,13 @@ type MessageServeur =
   | { type: 'etape_capturee'; role: string; name: string }
   | { type: 'clic_ambigu'; detail: string }
   | { type: 'capture_arretee'; raison: string }
+  | { type: 'formulaire_connexion_invite'; champ: ChampFormulaireConnexion }
+  | { type: 'formulaire_connexion_champ_capture'; champ: ChampFormulaireConnexion; role: string; name: string }
+  | { type: 'formulaire_connexion_complet' }
   | { type: 'erreur'; detail: string }
   | { type: 'avertissement_inactivite'; secondes_restantes: number }
   | { type: 'fermeture'; raison: 'inactivite' | 'plafond_absolu' }
-  | { type: 'confirme'; etapes: number }
+  | { type: 'confirme'; etapes: number; formulaire_connexion: boolean }
 
 export function useLiveSession(projectId: number | string) {
   const statut = ref<StatutSessionLive>('connexion')
@@ -44,6 +51,17 @@ export function useLiveSession(projectId: number | string) {
   // laisser une personne confirmer une séquence silencieusement incomplète (risque déjà noté au
   // rapport de fin de sous-lot C).
   const dernierClicAmbigu = ref('')
+  // Extension (2026-09-30) : 3 clics guidés APRÈS l'écran de pré-connexion, pour identifier le
+  // champ identifiant, le champ mot de passe et le bouton de soumission — jamais une valeur/texte,
+  // seulement rôle/nom (miroir exact de `live_session_service.py`). `formulaireInvite` porte le
+  // prochain champ attendu, ou `''` hors de ce mode ; `formulaireCapture` accumule ce qui a déjà
+  // été résolu ; `formulaireComplet` devient vrai à la réception de l'accusé serveur.
+  const formulaireInvite = ref<ChampFormulaireConnexion | ''>('')
+  const formulaireCapture = ref<Partial<Record<ChampFormulaireConnexion, EtapeCapturee>>>({})
+  const formulaireComplet = ref(false)
+  // `null` tant qu'aucune confirmation n'a eu lieu — distingue « pas encore confirmé » de
+  // « confirmé sans formulaire » (`false`), qui sont deux états différents pour l'écran.
+  const formulaireConnexionEnregistre = ref<boolean | null>(null)
 
   let socket: WebSocket | null = null
 
@@ -82,6 +100,18 @@ export function useLiveSession(projectId: number | string) {
         // `captureArretee` pour l'afficher.
         captureArretee.value = message.raison
         break
+      case 'formulaire_connexion_invite':
+        formulaireInvite.value = message.champ
+        break
+      case 'formulaire_connexion_champ_capture':
+        formulaireCapture.value = { ...formulaireCapture.value,
+          [message.champ]: { role: message.role, name: message.name } }
+        dernierClicAmbigu.value = ''
+        break
+      case 'formulaire_connexion_complet':
+        formulaireComplet.value = true
+        formulaireInvite.value = ''
+        break
       case 'avertissement_inactivite':
         avertissementInactivite.value = message.secondes_restantes
         break
@@ -104,6 +134,7 @@ export function useLiveSession(projectId: number | string) {
         // déjà « confirmée »), et rien ne distinguait une confirmation VRAIMENT actée d'un simple
         // souhait côté client. Cette transition est désormais la SEULE source de vérité.
         statut.value = 'confirmee'
+        formulaireConnexionEnregistre.value = message.formulaire_connexion
         break
     }
   }
@@ -133,6 +164,10 @@ export function useLiveSession(projectId: number | string) {
     dernierClicAmbigu.value = ''
     raisonFermeture.value = ''
     avertissementInactivite.value = null
+    formulaireInvite.value = ''
+    formulaireCapture.value = {}
+    formulaireComplet.value = false
+    formulaireConnexionEnregistre.value = null
     try {
       const jeton = await api.createLiveSession(projectId)
       socket = new WebSocket(liveSessionWsUrl(projectId, jeton.token))
@@ -161,6 +196,13 @@ export function useLiveSession(projectId: number | string) {
   function recommencer() {
     etapes.value = []
     dernierClicAmbigu.value = ''
+    formulaireCapture.value = {}
+    formulaireComplet.value = false
+    // Le navigateur réel n'est pas renavigué en arrière par un recommencer (voir
+    // `live_session_service.py::reinitialiser_etapes`) : si l'écran de pré-connexion était déjà
+    // franchi (`captureArretee` posé), on reste en mode formulaire et on redémarre son invite au
+    // premier champ — jamais une ré-invite au serveur pour un état qu'il n'annoncera plus.
+    if (captureArretee.value) formulaireInvite.value = 'champ_identifiant'
     socket?.send(JSON.stringify({ type: 'recommencer' }))
   }
 
@@ -176,6 +218,7 @@ export function useLiveSession(projectId: number | string) {
   return {
     statut, image, etapes, erreur, avertissementInactivite, raisonFermeture,
     dernierClicAmbigu, captureArretee,
+    formulaireInvite, formulaireCapture, formulaireComplet, formulaireConnexionEnregistre,
     demarrer, clic, confirmer, recommencer, annuler,
   }
 }
