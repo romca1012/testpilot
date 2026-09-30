@@ -75,6 +75,13 @@ export const routes = [
   { path: '/projects/:pid/exploration', name: 'exploration-detail',
    component: () => import('./pages/ExplorationDetail.vue') },
 
+  // Session en direct (lot « Enregistrement assisté du chemin de connexion ») : montrer une fois,
+  // sur un vrai navigateur distant, le chemin qui franchit un écran de pré-connexion — rejoué
+  // automatiquement ensuite. Réservé admin/dev (même plancher que la route API), non gardé ici
+  // (le serveur fait foi, voir CONTINUITE.md) : un compte insuffisant obtient un 403 explicite.
+  { path: '/projects/:pid/live-session', name: 'live-session',
+   component: () => import('./pages/LiveSession.vue') },
+
   // Qualité de génération : l'évolution de l'outil (taux de réussite technique au premier jet),
   // dérivée des vraies exécutions. Onglet de suivi, jamais un chiffre fabriqué.
   { path: '/projects/:pid/quality', name: 'quality', component: () => import('./pages/QualityDashboard.vue') },

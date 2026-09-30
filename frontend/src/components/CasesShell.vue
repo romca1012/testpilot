@@ -30,6 +30,13 @@ const roleProjet = computed(() => currentProject.value?.effective_role || sessio
 const peutModifier = computed(() => roleSuffisant(roleProjet.value, 'testeur'))
 const peutGenerer = computed(() => roleSuffisant(roleProjet.value, 'dev'))
 const peutVoirQualite = computed(() => roleSuffisant(roleProjet.value, 'dev'))
+// Lot « Enregistrement assisté du chemin de connexion » : même plancher que la route API
+// (`require_project_role(ROLE_DEV)`) — PAR PROJET (`roleProjet`, pas le rôle global du compte,
+// contrairement à l'admin-only `/admin/projects` d'où cette action était jusqu'ici absente pour
+// un compte dev sans être aussi admin GLOBAL). Réservé au connecteur web générique : Odoo n'a pas
+// d'écran de pré-connexion à ce mécanisme (voir `ENV_LOGIN_RECORDING` côté serveur).
+const peutEnregistrerConnexion = computed(() =>
+  roleSuffisant(roleProjet.value, 'dev') && currentProject.value?.connector_type === 'web')
 // Une planification s'exécute SANS présence humaine : coûts LLM/navigateur non supervisés en
 // cas d'erreur — réservée à Dev+, contrairement à la création d'une campagne à la main
 // (Testeur+, `peutModifier`). Les Plans, eux, n'exécutent rien : même plancher que les campagnes.
@@ -267,6 +274,10 @@ const nav = computed(() => [
   ...(peutVoirQualite.value ? [{ key: 'qualite', label: 'Qualité de génération', to: { name: 'quality', params: { pid: pid.value } },
     icon: 'M3 3v18h18M7 15l3-4 3 3 4-6' },
   ] : []),
+  ...(peutEnregistrerConnexion.value ? [{ key: 'connexion-live', label: 'Enregistrer la connexion',
+    to: { name: 'live-session', params: { pid: pid.value } },
+    icon: 'M15 10l4.55-2.275A1 1 0 0121 8.618v6.764a1 1 0 01-1.45.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z' },
+  ] : []),
 ])
 function isActive(key: string) {
   const n = String(route.name)
@@ -276,6 +287,7 @@ function isActive(key: string) {
   if (key === 'exec') return ['executions', 'report', 'run-new', 'plan-new', 'plans', 'plan-detail',
                               'schedules', ...ROUTES_RUN].includes(n)
   if (key === 'qualite') return n === 'quality'
+  if (key === 'connexion-live') return n === 'live-session'
   return false
 }
 function comingSoon(what: string) {
