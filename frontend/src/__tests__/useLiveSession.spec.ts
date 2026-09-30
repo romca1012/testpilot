@@ -121,15 +121,60 @@ describe('useLiveSession', () => {
     expect(envoye).toEqual({ type: 'clic', x: 123.4, y: 56.7 })
   })
 
-  it('confirmer() envoie le message et passe le statut à confirmee', async () => {
+  it('confirmer() envoie le message, mais le statut ne bascule qu\'à l\'accusé du serveur', async () => {
+    // Bloquant trouvé en revue verdict-reviewer (2026-09-30) : `confirmer()` faisait basculer le
+    // statut À L'ENVOI, avant même de savoir si le serveur acceptait — un refus (`erreur`,
+    // clic encore en cours de traitement) restait alors invisible, masqué par un état déjà
+    // « confirmée ». Ce test verrouille l'ordre correct : la transition attend l'accusé.
     createLiveSession.mockResolvedValue({ token: 't', expires_at: '' })
     const { session } = monterComposable(7)
     await session.demarrer()
+    FakeWebSocket.instances[0].recevoir({ type: 'image', data: 'BASE64==' })
 
     session.confirmer()
 
     expect(JSON.parse(FakeWebSocket.instances[0].sent[0])).toEqual({ type: 'confirmer' })
+    expect(session.statut.value).toBe('en_direct')
+
+    FakeWebSocket.instances[0].recevoir({ type: 'confirme', etapes: 0 })
+
     expect(session.statut.value).toBe('confirmee')
+  })
+
+  it('falsifiable — un refus serveur après confirmer() reste visible, jamais masqué par un '
+     + 'statut déjà passé à confirmee', async () => {
+    createLiveSession.mockResolvedValue({ token: 't', expires_at: '' })
+    const { session } = monterComposable(7)
+    await session.demarrer()
+    FakeWebSocket.instances[0].recevoir({ type: 'image', data: 'BASE64==' })
+
+    session.confirmer()
+    FakeWebSocket.instances[0].recevoir({ type: 'erreur', detail: 'clics_en_attente' })
+
+    expect(session.statut.value).toBe('en_direct')
+    expect(session.erreur.value).toBe('clics_en_attente')
+  })
+
+  it('falsifiable — recommencer une session (demarrer) remet tout l\'état à zéro, jamais '
+     + 'seulement statut/erreur', async () => {
+    // Bloquant trouvé en revue verdict-reviewer (2026-09-30) : une remise à zéro partielle
+    // laissait `etapes` d'une session PRÉCÉDENTE affiché pendant toute une session NEUVE — une
+    // personne pouvait croire une étape déjà acquise alors que le serveur, lui, repart de zéro.
+    createLiveSession.mockResolvedValue({ token: 't', expires_at: '' })
+    const { session } = monterComposable(7)
+    await session.demarrer()
+    const ws1 = FakeWebSocket.instances[0]
+    ws1.recevoir({ type: 'etape_capturee', role: 'combobox', name: 'Pays' })
+    ws1.recevoir({ type: 'capture_arretee', raison: 'mot_de_passe_visible' })
+    ws1.recevoir({ type: 'fermeture', raison: 'inactivite' })
+    expect(session.etapes.value).toHaveLength(1)
+    expect(session.captureArretee.value).toBe('mot_de_passe_visible')
+
+    await session.demarrer()
+
+    expect(session.etapes.value).toEqual([])
+    expect(session.captureArretee.value).toBe('')
+    expect(session.raisonFermeture.value).toBe('')
   })
 
   it('recommencer() vide les étapes localement ET envoie le message', async () => {

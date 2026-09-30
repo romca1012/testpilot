@@ -86,6 +86,27 @@ chantier, étape 11, limite n°4).
   un accès de projet (le cas même que le plancher `ROLE_DEV`, délibérément plus permissif que
   l'exploration, sert à couvrir — sous-lot B) n'aurait donc jamais pu atteindre le bouton. Retiré
   de `ProjectsList.vue`, un seul point d'entrée correct désormais.
+- `frontend/src/lib/useLiveSession.ts` — **deux bloquants trouvés par le sous-agent
+  `verdict-reviewer`, corrigés** :
+  1. `demarrer()` ne remettait à zéro que `statut`/`erreur` — `etapes`, `captureArretee`,
+     `dernierClicAmbigu`, `raisonFermeture`, `avertissementInactivite` et `image` d'une session
+     PRÉCÉDENTE restaient affichés pendant toute une session NEUVE. Le bouton « Recommencer une
+     session » (après une fermeture) appelle ce `demarrer()`, pas `recommencer()` (qui, lui, vide
+     `etapes` correctement) : une personne pouvait voir « Confirmer (1) » et confirmer une séquence
+     qui, côté serveur, repartait de zéro — un enregistrement VIDE silencieusement persisté, affiché
+     comme un succès à 1 étape. Corrigé : remise à zéro complète en tête de `demarrer()`.
+  2. `confirmer()` faisait basculer `statut` à `confirmee` À L'ENVOI du message, jamais à la
+     RÉCEPTION de l'accusé serveur (`{type: 'confirme', etapes: N}`, qui n'avait d'ailleurs aucun
+     `case` dans `surMessage`) — un refus serveur (`clics_en_attente`, clic encore en file) restait
+     invisible, masqué par un état déjà « confirmée ». Corrigé : la transition n'a lieu que sur
+     réception de l'accusé, `confirmer()` se contente d'envoyer.
+  Falsifiabilité vérifiée moi-même pour les deux (retirés temporairement, rouge reproduit
+  exactement, restaurés, vert reconfirmé) — 2 tests de régression ajoutés
+  (`useLiveSession.spec.ts`), 1 test existant réécrit avec justification (il encodait l'ancien
+  comportement optimiste).
+- `frontend/src/lib/roles.ts` — libellé corrigé (remarque du reviewer) : « délibérément plus
+  permissive que le démarrage d'une exploration », pas « réservée comme » (qui laissait croire au
+  même plancher admin-only).
 - `frontend/src/lib/api.ts` — `createLiveSession`, `liveSessionWsUrl`, type `LiveSessionToken`.
 - `frontend/src/lib/roles.ts` — ligne de permission documentée (même motif que les entrées
   existantes : « Générer et modifier les scripts », plancher `dev`).
@@ -93,8 +114,11 @@ chantier, étape 11, limite n°4).
 
 ### Tests ajoutés
 
-- `useLiveSession.spec.ts` (10) : jeton → WebSocket avec CE jeton (jamais un autre), chaque type de
-  message serveur produit l'effet attendu, confirmer/recommencer/annuler envoient le bon message.
+- `useLiveSession.spec.ts` (12) : jeton → WebSocket avec CE jeton (jamais un autre), chaque type de
+  message serveur produit l'effet attendu, confirmer/recommencer/annuler envoient le bon message,
+  et deux tests **falsifiables** ajoutés après la revue verdict-reviewer — un refus serveur après
+  `confirmer()` reste visible (statut jamais basculé avant l'accusé), et `demarrer()` remet bien
+  tout l'état à zéro (pas seulement `statut`/`erreur`) avant une nouvelle session.
 - `LiveSession.spec.ts` (8) : actions désactivées hors du statut `en_direct`, chaque état terminal
   affiche le bon message, et surtout — **falsifiable** — un clic sur l'écran affiché plus petit que
   le viewport réel traduit les coordonnées à l'échelle (vérifié rouge sans le correctif, vert
@@ -123,9 +147,29 @@ révélé le problème d'accès de `CasesShell.vue` ci-dessus — jamais visible
 
 ### Mesures
 
-`npm test -- --run` : 357 passed (339 existants + 18 nouveaux).
+`npm test -- --run` : 359 passed (339 existants + 20 nouveaux, après les 2 correctifs de revue).
 `npm run type-check` : vert.
 `npm run build` : vert.
+
+## Relu par le sous-agent verdict-reviewer
+
+Vérification indépendante avec un vrai Chromium (rejoue les mesures, pas seulement relit le code).
+Verdict initial : à corriger.
+
+- **Partie 1 (correctifs chantier-entier) : saine**, les trois divergences accname.py/Playwright
+  et le câblage `sequence_connexion` confirmés par mesure indépendante, falsifiabilité revérifiée
+  (ancien code contre les 36 cas → exactement les 3 échecs attendus). Spot-check complémentaire
+  (select/option/input variantes) : aucune autre divergence trouvée.
+- **Partie 2 (frontend) : gate d'accès et mise à l'échelle du clic confirmées saines** — tracées
+  dans le code réel (`roleProjet`, `App.vue`, `repositories.py`, `routes/projects.py`), pas
+  supposées.
+- **Deux bloquants trouvés dans `useLiveSession.ts`** (`demarrer()` ne réinitialisait pas tout
+  l'état ; `confirmer()` anticipait la confirmation avant l'accusé serveur) — décrits en détail
+  ci-dessus, tous deux corrigés, falsifiés moi-même, tests de régression ajoutés/réécrits.
+- **Remarque mineure** sur le libellé de `roles.ts` — corrigée.
+- **Absence de test dédié pour `CasesShell.vue`** : le reviewer confirme l'arbitrage du rapport
+  (aucune régression introduite, les entrées de navigation existantes au même plancher n'en ont
+  pas non plus) — reste une suggestion hors périmètre, pas un bloquant.
 
 ## Critères d'acceptation
 
@@ -135,6 +179,8 @@ révélé le problème d'accès de `CasesShell.vue` ci-dessus — jamais visible
   existant (jetons sémantiques, composants `ui/*` réutilisés, aucune couleur brute).
 - [x] Accès réellement au même plancher que l'API (admin/dev PAR PROJET), pas seulement admin
   global — corrigé après vérification visuelle, pas supposé correct.
+- [x] Les deux bloquants trouvés par la revue verdict-reviewer sur le frontend corrigés, falsifiés,
+  re-vérifiés verts.
 - [x] Aucune régression : suites backend et frontend complètes vertes.
 
 ## Suggestions hors périmètre
