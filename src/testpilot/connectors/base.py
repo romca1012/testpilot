@@ -107,6 +107,14 @@ class Connector(ABC):
         """Règles spécifiques au connecteur, injectées dans le prompt. Vide par défaut."""
         return ""
 
+    def inspect_odoo_view(self, model: str, view_type: str = "form") -> dict:
+        """Boutons, barre d'état, champs x2many (+ sous-champs éditables) et champs requis
+        d'une vue Odoo réelle — {boutons, barre_etat, champs_x2many, champs_requis, erreur}
+        (lot 09, C9). Propre au connecteur Odoo (RPC `get_views`/`fields_view_get`) : un
+        connecteur sans modèle de vues lève `NotImplementedError`, même garde que
+        `name_search`."""
+        raise NotImplementedError("ce connecteur n'expose pas de vues Odoo")
+
     # ── Crawl de l'annuaire (étape 1.1 du plan de consolidation, 2026-09-15) ────
     #
     # ⚠️ **Ce que ces 4 méthodes remplacent.** `exploration_service.py::_crawl` choisissait ses

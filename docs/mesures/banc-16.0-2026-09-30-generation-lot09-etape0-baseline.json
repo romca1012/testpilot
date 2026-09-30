@@ -1,0 +1,168 @@
+{
+  "contexte": {
+    "version": "16.0",
+    "mode": "génération",
+    "date": "2026-09-30",
+    "commit": "6e250d9",
+    "image": "odoo@sha256:0f36a5002a200bb1649771c2cb9403ca5392d7ac4bb23f9ad500b339df3f5a3a",
+    "data_dir": "C:\\Users\\ROMARI~1\\AppData\\Local\\Temp\\banc_data_z68voj6s",
+    "etiquette": "lot09-etape0-baseline",
+    "interruption": "",
+    "echantillon": {
+      "cas_figes": 15,
+      "observations": 15
+    }
+  },
+  "indicateurs": {
+    "I1": {
+      "valeur": null,
+      "faux_passed": 0,
+      "paires_mesurees": 0,
+      "par_defaut": {},
+      "defauts_manques": [],
+      "non_exerces": []
+    },
+    "I2": {
+      "valeur": null,
+      "faux_failed": 0,
+      "cas_mesures": 0
+    },
+    "I3": {
+      "valeur": 0.7333333333333333,
+      "echantillon": 15
+    },
+    "I4": {
+      "valeur": 0.06666666666666667,
+      "echantillon": 15
+    },
+    "I5": {
+      "valeur": null,
+      "bloques": 0,
+      "paires_mesurees": 0,
+      "mal_attribuees": []
+    },
+    "I6": {
+      "valeur": 0.11176226666666667,
+      "unite": "$",
+      "echantillon": 15
+    },
+    "ecarts_aux_attendus": [],
+    "non_mesurees": [
+      {
+        "config": "generation",
+        "cas": "ui_onglet_formulaire",
+        "raison": "cas non généré ou dry-run non passé"
+      },
+      {
+        "config": "generation",
+        "cas": "ui_refus_sauvegarde",
+        "raison": "cas non généré ou dry-run non passé"
+      }
+    ]
+  },
+  "observations": [
+    {
+      "config": "generation",
+      "cas": "achat_confirmation",
+      "statut": "blocked",
+      "execution": "blocked",
+      "fonctionnel": "indetermine"
+    },
+    {
+      "config": "generation",
+      "cas": "crm_opportunite",
+      "statut": "blocked",
+      "execution": "blocked",
+      "fonctionnel": "indetermine"
+    },
+    {
+      "config": "generation",
+      "cas": "droit_suppression",
+      "statut": "blocked",
+      "execution": "blocked",
+      "fonctionnel": "indetermine"
+    },
+    {
+      "config": "generation",
+      "cas": "facture_validation",
+      "statut": "blocked",
+      "execution": "blocked",
+      "fonctionnel": "indetermine"
+    },
+    {
+      "config": "generation",
+      "cas": "portail_acces",
+      "statut": "retest",
+      "execution": "technical_error",
+      "fonctionnel": "indetermine"
+    },
+    {
+      "config": "generation",
+      "cas": "projet_tache",
+      "statut": "retest",
+      "execution": "technical_error",
+      "fonctionnel": "indetermine"
+    },
+    {
+      "config": "generation",
+      "cas": "stock_reception",
+      "statut": "blocked",
+      "execution": "blocked",
+      "fonctionnel": "indetermine"
+    },
+    {
+      "config": "generation",
+      "cas": "ui_champ_requis",
+      "statut": "blocked",
+      "execution": "blocked",
+      "fonctionnel": "indetermine"
+    },
+    {
+      "config": "generation",
+      "cas": "ui_onglet_formulaire",
+      "statut": null,
+      "raison": "cas non généré ou dry-run non passé"
+    },
+    {
+      "config": "generation",
+      "cas": "ui_refus_sauvegarde",
+      "statut": null,
+      "raison": "cas non généré ou dry-run non passé"
+    },
+    {
+      "config": "generation",
+      "cas": "vente_client_obligatoire",
+      "statut": "blocked",
+      "execution": "blocked",
+      "fonctionnel": "indetermine"
+    },
+    {
+      "config": "generation",
+      "cas": "vente_comptage",
+      "statut": "blocked",
+      "execution": "blocked",
+      "fonctionnel": "indetermine"
+    },
+    {
+      "config": "generation",
+      "cas": "vente_etat_confirme",
+      "statut": "blocked",
+      "execution": "blocked",
+      "fonctionnel": "indetermine"
+    },
+    {
+      "config": "generation",
+      "cas": "vente_livraison",
+      "statut": "blocked",
+      "execution": "blocked",
+      "fonctionnel": "indetermine"
+    },
+    {
+      "config": "generation",
+      "cas": "vente_total",
+      "statut": "passed",
+      "execution": "success",
+      "fonctionnel": "conforme"
+    }
+  ]
+}
