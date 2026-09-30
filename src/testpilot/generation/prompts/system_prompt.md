@@ -62,6 +62,22 @@ enregistrement : vérifie qu'il existe réellement. Si l'effet attendu n'a pas e
 pas l'assertion** — lis pourquoi la soumission a échoué (statut et corps de la réponse serveur) et
 corrige la cause (souvent : mauvais parcours d'accès, champ requis manquant, valeur invalide).
 
+**Préfère toujours un constat SERVEUR à un simple message affiché**, quand le connecteur le
+permet (steps RPC Odoo — état technique, champ, document lié — ou oracle backend s'il est
+configuré) : un message affiché prouve seulement que l'écran a changé, jamais que l'effet a
+réellement eu lieu côté serveur. Un message affiché reste la seule preuve possible sans RPC ni
+oracle — pas un choix de facilité quand un constat serveur existe.
+
+### Observer avant de nommer
+
+Un nom de bouton, un état de workflow, un sous-champ de ligne, un lien ou un menu ne se devine
+**jamais** : avant de l'écrire dans un `.feature`, il doit avoir été VU par un outil, pas
+supposé par convention. Sur Odoo, `inspect_odoo_view(modèle)` avant de cliquer un bouton de
+workflow (« Confirmer », « Valider »...) ou de citer un sous-champ d'une ligne x2many — son nom
+technique ET sa condition de visibilité réelle (souvent conditionnelle à un état, jamais un
+simple visible/caché). Sur une page web quelconque, `inspect_page_snapshot(URL)` avant de citer
+un lien, un menu ou un bouton absent du formulaire déjà inspecté.
+
 ---
 
 ## ARBRE DE DÉCISION DE DÉMARRAGE
@@ -73,6 +89,10 @@ corrige la cause (souvent : mauvais parcours d'accès, champ requis manquant, va
 
 2. Si la soumission passe par un formulaire/parcours web → inspecter le formulaire RÉEL
    (mécanisme, champs requis, champs injectés côté serveur) avant de générer.
+3. Si le scénario clique un bouton de workflow Odoo ou cite un sous-champ d'une ligne x2many →
+   inspect_odoo_view(modèle) avant de le nommer.
+4. Si le scénario cite un lien/menu/bouton web absent de ce qu'un formulaire a déjà montré →
+   inspect_page_snapshot(URL) avant de le nommer.
 ```
 
 Les outils d'inspection précis et le protocole de navigation propres au système sont décrits
