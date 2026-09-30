@@ -1,9 +1,22 @@
 """Connexion UI Odoo partagée par génération et exécution."""
 import re
 
+from testpilot.connectors._web_helpers import (
+    rejouer_sequence_connexion,
+    remplir_et_soumettre_formulaire_connexion,
+)
+
 
 def playwright_login(context):
     """Connexion Odoo — `/web/login`, robuste face à un formulaire replié derrière un SSO.
+
+    `context.sequence_connexion`/`context.login_form` (essai, 2026-09-30) : le même mécanisme
+    d'enregistrement assisté que le connecteur `web` générique, réutilisé ici À LA DEMANDE — un
+    déploiement Odoo personnalisé peut, en théorie, intercaler un écran avant `/web/login` ou
+    modifier son formulaire au point de mettre en défaut la détection ci-dessous (noms de champs
+    fixes `input[name='login']`/`input[name='password']`, robuste au SSO Sapian connu, mais pas à
+    tout). `getattr(..., None)` : absent pour tout projet qui n'a jamais rien enregistré —
+    comportement historique 100% inchangé, la détection codée en dur ci-dessous reste le défaut.
 
     ⚠️ **Bug réel mesuré (instance Sapian, 2026-09-17).** Le template `web.login` STANDARD
     d'Odoo (`addons/web/views/webclient_templates.xml`) rend `.field-login` visible par défaut,
@@ -28,6 +41,25 @@ def playwright_login(context):
     """
     login_url = f"{context.odoo_url.rstrip('/')}/web/login?db={context.odoo_db}"
     context.page.goto(login_url, wait_until="domcontentloaded")
+
+    # Essai (2026-09-30) : franchit un écran intercalé enregistré, s'il y en a un — AVANT toute
+    # détection, même position que pour le connecteur `web` générique. `attendre_reseau=False` :
+    # voir la note sur le bus de long-polling en fin de fonction, même raison.
+    sequence_connexion = getattr(context, "sequence_connexion", None) or []
+    if sequence_connexion:
+        rejouer_sequence_connexion(context.page, sequence_connexion, attendre_reseau=False)
+        context.page.wait_for_load_state("domcontentloaded")
+
+    # Essai (2026-09-30) : le formulaire ENREGISTRÉ (3 clics guidés) remplace alors ENTIÈREMENT la
+    # détection codée en dur ci-dessous — jamais un mélange des deux (même garde que le connecteur
+    # `web` générique, `generic_web.py::_tenter_connexion_generique`).
+    login_form = getattr(context, "login_form", None) or None
+    if login_form:
+        remplir_et_soumettre_formulaire_connexion(
+            context.page, login_form, context.odoo_user, context.odoo_password,
+            attendre_reseau=False)
+        context.page.wait_for_url(lambda url: "/web/login" not in url, timeout=25000)
+        return
 
     login_field = context.page.locator("input[name='login']")
     # Texte volontairement large (FR/EN, plusieurs formulations) — jamais le texte EXACT d'une

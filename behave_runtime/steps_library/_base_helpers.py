@@ -20,8 +20,9 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect
 # (`GenericWebConnector`), jamais une seconde implémentation. Import au niveau module (CLAUDE.md §6) :
 # `testpilot` est sur le PYTHONPATH du sous-processus (`BehaveRunner._subprocess_env`).
 from testpilot.connectors._web_helpers import (
-    ConnexionGeneriqueImpossibleError, SequenceConnexionObsoleteError,
-    lire_message_erreur_visible, rejouer_sequence_connexion, tenter_connexion_generique,
+    ConnexionGeneriqueImpossibleError, FormulaireConnexionObsoleteError,
+    SequenceConnexionObsoleteError, lire_message_erreur_visible, rejouer_sequence_connexion,
+    remplir_et_soumettre_formulaire_connexion, tenter_connexion_generique,
 )
 from testpilot.connectors import auth_strategie as _auth
 import pyotp
@@ -511,6 +512,7 @@ def connexion_web_utilisateur(context, *, explicite: bool = False) -> None:
     page = context.page
     utilisateur = getattr(context, "web_user", "") or ""
     mot_de_passe = getattr(context, "web_password", "") or ""
+    login_form = getattr(context, "login_form", None) or None
     url_avant = page.url
     schema = _schema_de_connexion(page)
 
@@ -527,12 +529,22 @@ def connexion_web_utilisateur(context, *, explicite: bool = False) -> None:
                 "complétez la connexion du projet.")
         return
 
-    try:
-        soumis = tenter_connexion_generique(page, utilisateur, mot_de_passe)
-    except ConnexionGeneriqueImpossibleError as exc:
-        raise PreconditionNonRemplieError(
-            f"PRÉREQUIS MANQUANT : connexion impossible sur {url_avant} (schéma tenté : {schema}) — "
-            f"{exc}") from exc
+    # Extension (2026-09-30) : le formulaire ENREGISTRÉ (3 clics guidés) est TOUJOURS préféré à
+    # la détection générique quand il existe — même règle que `authentifier_selon_la_strategie`.
+    if login_form:
+        try:
+            remplir_et_soumettre_formulaire_connexion(page, login_form, utilisateur, mot_de_passe)
+        except FormulaireConnexionObsoleteError as exc:
+            raise PreconditionNonRemplieError(
+                f"PRÉREQUIS MANQUANT : connexion impossible sur {url_avant} — {exc}") from exc
+        soumis = True
+    else:
+        try:
+            soumis = tenter_connexion_generique(page, utilisateur, mot_de_passe)
+        except ConnexionGeneriqueImpossibleError as exc:
+            raise PreconditionNonRemplieError(
+                f"PRÉREQUIS MANQUANT : connexion impossible sur {url_avant} (schéma tenté : {schema}) — "
+                f"{exc}") from exc
 
     if not soumis:
         # Un champ mot de passe EST là mais la détection n'a rien pu saisir (aucun champ identifiant
@@ -3334,7 +3346,8 @@ def _champ_totp_encore_visible(page) -> bool:
 
 
 def authentifier_selon_la_strategie(page, *, strategie: str, web_url: str, user: str, password: str,
-                                    totp_secret: str, sequence_connexion: list | None = None) -> None:
+                                    totp_secret: str, sequence_connexion: list | None = None,
+                                    login_form: dict | None = None) -> None:
     """Une SEULE tentative de connexion du compte PRINCIPAL, selon la stratégie déclarée sur le projet. Lève
     `PreconditionNonRemplieError` (→ `blocked`) si elle échoue : le test n'a pas pu ENTRER, ce n'est jamais un défaut de
     l'application. Utilisée par `environment.before_all` (connexion initiale du run) et par `_verifier_ou_reconnecter_session`
@@ -3345,6 +3358,12 @@ def authentifier_selon_la_strategie(page, *, strategie: str, web_url: str, user:
     — sauf `session_injectee`. Obsolète (application changée) → arrêt net, jamais un repli
     silencieux ; « une seule tentative » (garde-fou étape 9) tient déjà de cette fonction elle-même
     n'étant appelée qu'une fois par `before_all`/`_verifier_ou_reconnecter_session`, jamais en boucle.
+
+    `login_form` (extension 2026-09-30) : le descripteur du formulaire de connexion ENREGISTRÉ (3
+    clics guidés), TOUJOURS préféré à `tenter_connexion_generique` quand il existe — motivé par un
+    échec réel en production de la détection générique (premier champ texte trouvé, soumission à
+    l'aveugle via la touche Entrée) malgré des identifiants valides. `None` : comportement
+    historique inchangé (détection générique).
 
     ⚠️ **`session_injectee` : HYPOTHÈSE non vérifiée sur l'application réelle, pas une garantie.**
     Le rejeu y est sciemment omis en supposant que l'écran intercalé, comme l'écran de connexion,
@@ -3384,10 +3403,17 @@ def authentifier_selon_la_strategie(page, *, strategie: str, web_url: str, user:
             return   # rien à écarter : l'application est accessible sans connexion (comportement historique, lot 07a)
         raise PreconditionNonRemplieError(
             f"PRÉREQUIS MANQUANT : {web_url} demande une connexion mais le projet n'a ni identifiant ni mot de passe renseigné.")
-    try:
-        soumis = tenter_connexion_generique(page, user, password)
-    except ConnexionGeneriqueImpossibleError as exc:
-        raise PreconditionNonRemplieError(f"PRÉREQUIS MANQUANT : connexion impossible sur {web_url} — {exc}") from exc
+    if login_form:
+        try:
+            remplir_et_soumettre_formulaire_connexion(page, login_form, user, password)
+        except FormulaireConnexionObsoleteError as exc:
+            raise PreconditionNonRemplieError(f"PRÉREQUIS MANQUANT : {exc}") from exc
+        soumis = True
+    else:
+        try:
+            soumis = tenter_connexion_generique(page, user, password)
+        except ConnexionGeneriqueImpossibleError as exc:
+            raise PreconditionNonRemplieError(f"PRÉREQUIS MANQUANT : connexion impossible sur {web_url} — {exc}") from exc
     if soumis and strategie == _auth.TOTP:
         if not totp_secret:
             raise PreconditionNonRemplieError(
@@ -3427,7 +3453,12 @@ def _verifier_ou_reconnecter_session(context, url_visee: str) -> None:
         # échouait avec « Vérifiez l'identifiant, le mot de passe » — alors que la vraie cause
         # était cet appel, jamais mis à jour par le sous-lot D (qui n'avait câblé que la connexion
         # initiale de `before_all`, voir `environment.py::_tenter_connexion_initiale`).
-        sequence_connexion=getattr(context, "sequence_connexion", None) or [])
+        sequence_connexion=getattr(context, "sequence_connexion", None) or [],
+        # Extension (2026-09-30) : même câblage que `sequence_connexion` ci-dessus, pour le
+        # descripteur du formulaire de connexion — une reconnexion en cours de scénario doit
+        # bénéficier du MÊME formulaire enregistré que la connexion initiale du run, jamais
+        # retomber sur la détection générique par accident.
+        login_form=getattr(context, "login_form", None) or None)
     try:
         # Les scénarios SUIVANTS profitent aussi de la session renouvelée — best-effort, jamais fatal ici.
         context._browser_context.storage_state(path=_CHEMIN_STORAGE_STATE)
