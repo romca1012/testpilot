@@ -165,8 +165,64 @@ def _origine(step: SharedStep) -> str:
     return step.source.split("/", 1)[0] if "/" in step.source else "generic"
 
 
+# ── Intention (lot 09, C9) — sous-classement à l'INTÉRIEUR de chaque section Soit/Quand/Alors ────
+#
+# ⚠️ **Un classement par MOTS-CLÉS du libellé, pas une table tenue à jour à la main** — même
+# motif que `defect_taxonomy.classify_failure` (référencé par `repair_agent.py`) : le libellé
+# FRANÇAIS d'un step suit déjà une convention de verbe assez régulière dans ce dépôt (« je
+# renseigne… », « je clique… », « j'accède… ») pour s'y appuyer, plutôt que d'ajouter un champ
+# qu'il faudrait poser à la main sur chaque nouveau step et qui divergerait tôt ou tard du code
+# réel. Purement COSMÉTIQUE (aide l'agent à scanner un long catalogue) : une mauvaise
+# classification range un step dans le mauvais sous-titre, jamais ne le cache ni ne le refuse —
+# contrairement aux gardes de `tools/write.py`, ceci ne bloque jamais rien.
+_ORDRE_INTENTIONS = ("connexion", "navigation", "saisie", "action", "constat_ui",
+                    "constat_serveur", "autre")
+_LIBELLE_INTENTION = {
+    "connexion": "Connexion", "navigation": "Navigation", "saisie": "Saisie", "action": "Action",
+    "constat_ui": "Constat (interface)", "constat_serveur": "Constat (serveur)", "autre": "Autre",
+}
+_MOTS_CONNEXION = ("je me connecte", "je suis authentifié", "mot de passe", "connexion",
+                   "déconnecte")
+_MOTS_NAVIGATION = ("j'accède", "je navigue", "j'ouvre la page", "l'url courante",
+                    "onglet", "section", "revient à la page précédente")
+_MOTS_SAISIE = ("je renseigne", "je sélectionne", "je laisse le champ", "je joins", "je coche",
+                "je décoche", "je remplis le formulaire")
+_MOTS_CONSTAT_SERVEUR = ("du modèle", "dans le modèle", "état technique", "vaut {nombre",
+                        "document lié", "lié(s) par", "comptabilisée", "rapport pdf",
+                        "société de travail", "enregistrement(s) existe", "id }")
+_MOTS_CONSTAT_UI = ("affiche", "affichée", "affiché", "visible", "la page", "le tableau",
+                   "erreur de validation", "fichier téléchargé", "étape affichée",
+                   "barre d'état", "n'affiche pas")
+
+
+def deviner_intention(label: str, keyword: str) -> str:
+    """Intention devinée d'un step depuis son libellé (mots-clés français) — jamais une preuve,
+    juste un classement de confort pour la lecture du catalogue. `keyword` restreint déjà le
+    champ des possibles : un `@then` ne peut être qu'un constat (UI ou serveur), un `@given`/
+    `@when` jamais un constat."""
+    bas = label.lower()
+    if keyword == "then":
+        if any(mot in bas for mot in _MOTS_CONSTAT_SERVEUR):
+            return "constat_serveur"
+        if any(mot in bas for mot in _MOTS_CONSTAT_UI):
+            return "constat_ui"
+        return "constat_ui"  # défaut : la plupart des `@then` du catalogue portent sur l'écran
+    if any(mot in bas for mot in _MOTS_CONNEXION):
+        return "connexion"
+    if any(mot in bas for mot in _MOTS_NAVIGATION):
+        return "navigation"
+    if any(mot in bas for mot in _MOTS_SAISIE):
+        return "saisie"
+    if bas.startswith(("je clique", "j'attends", "je télécharge", "j'accepte", "je refuse",
+                       "j'ajoute", "j'enregistre", "j'annule", "je valide", "je déclare")):
+        return "action"
+    return "autre"
+
+
 def _section_par_mot_cle(steps: list[SharedStep]) -> str:
-    """Un groupe de steps rendu par mot-clé Gherkin (`### Soit (`@given`)`, etc.)."""
+    """Un groupe de steps rendu par mot-clé Gherkin (`### Soit (`@given`)`, etc.), sous-classé par
+    intention (`#### Saisie`, etc.) dès que le groupe en mélange plusieurs — jamais pour un
+    groupe homogène, où le sous-titre n'ajouterait rien à scanner."""
     # (libellé, note) — dédupliqué : une fonction à double décorateur (@when ET @then) apparaît
     # une fois par mot-clé, mais jamais deux fois dans la même section.
     by_keyword: dict[str, dict[str, str]] = {}
@@ -179,10 +235,20 @@ def _section_par_mot_cle(steps: list[SharedStep]) -> str:
         if not entrees:
             continue
         lines.append(f"### {GHERKIN_KEYWORD[keyword]} (`@{keyword}`)")
+        par_intention: dict[str, list[tuple[str, str]]] = {}
         for label, note in entrees:
-            lines.append(f"- {label}")
-            if note:
-                lines.append(f"  → {note}")
+            par_intention.setdefault(deviner_intention(label, keyword), []).append((label, note))
+        sous_titres = len({i for i in par_intention if par_intention[i]}) > 1
+        for intention in _ORDRE_INTENTIONS:
+            groupe = par_intention.get(intention)
+            if not groupe:
+                continue
+            if sous_titres:
+                lines.append(f"#### {_LIBELLE_INTENTION[intention]}")
+            for label, note in groupe:
+                lines.append(f"- {label}")
+                if note:
+                    lines.append(f"  → {note}")
         lines.append("")
     return "\n".join(lines).rstrip()
 

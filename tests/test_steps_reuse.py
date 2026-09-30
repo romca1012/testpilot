@@ -325,3 +325,72 @@ def test_write_steps_file_accepte_un_fichier_valide(tmp_path):
     outcome = write_steps_file(ctx, code)
     assert outcome.ok is True
     assert (tmp_path / "m_steps.py").exists()
+
+
+# ── C : catalogue groupé par intention (lot 09, C9) ──────────────────────────────────────────────
+
+@pytest.mark.parametrize("label,keyword,attendu", [
+    ('je me connecte avec mes identifiants utilisateur', "given", "connexion"),
+    ("j'accède à la page d'accueil de l'application", "given", "navigation"),
+    ('je renseigne le champ "{field}" avec la valeur "{value}"', "when", "saisie"),
+    ('je clique sur le bouton "{label}"', "when", "action"),
+    ('la page affiche le texte "{texte}"', "then", "constat_ui"),
+    ('le champ "{champ}" de ce document vaut {nombre:g}', "then", "constat_serveur"),
+    ('un enregistrement avec le champ "{field}" égal à "{value}" existe dans le modèle "{model}"',
+     "then", "constat_serveur"),
+    ('un step totalement inclassable', "when", "autre"),
+])
+def test_deviner_intention_classe_les_cas_types(label, keyword, attendu):
+    assert steps_library.deviner_intention(label, keyword) == attendu
+
+
+def test_deviner_intention_ne_rend_jamais_un_constat_pour_given_ou_when():
+    """Un `@given`/`@when` ne peut structurellement pas être un « constat » — cohérent avec la
+    règle D4 déjà appliquée par `tools/write.py` (une assertion n'a sa place qu'en `@then`)."""
+    for label in ("je me connecte", "j'accède à la page", "je renseigne le champ",
+                  "je clique sur le bouton", "un truc quelconque non reconnu"):
+        for keyword in ("given", "when"):
+            assert steps_library.deviner_intention(label, keyword) not in (
+                "constat_ui", "constat_serveur")
+
+
+def test_as_prompt_section_ajoute_des_sous_titres_d_intention_si_le_groupe_est_mixte():
+    """Les deux steps sont `@given` (MÊME groupe Gherkin) mais d'intentions différentes — c'est
+    LÀ que le sous-titre apporte quelque chose, contrairement à deux `@given`/`@when` séparés."""
+    lib = (
+        "from behave import given\n\n"
+        "@given('je me connecte avec mes identifiants utilisateur')\n"
+        "def s1(context):\n    pass\n\n"
+        "@given('je renseigne le champ \"{field}\" avec la valeur \"{value}\"')\n"
+        "def s2(context, field, value):\n    pass\n"
+    )
+    steps = steps_library.extract_steps(lib, source="_generic_steps.py")
+
+    section = steps_library.as_prompt_section(steps)
+
+    assert "#### Connexion" in section
+    assert "#### Saisie" in section
+
+
+def test_as_prompt_section_omet_le_sous_titre_si_le_groupe_est_homogene():
+    """Un groupe entièrement d'une seule intention n'a rien à gagner à un sous-titre — ne
+    l'affiche pas, pour ne pas ajouter du bruit sans information."""
+    lib = (
+        "from behave import when\n\n"
+        "@when('je clique sur le bouton \"{label}\"')\n"
+        "def s1(context, label):\n    pass\n"
+    )
+    steps = steps_library.extract_steps(lib, source="_generic_steps.py")
+
+    section = steps_library.as_prompt_section(steps)
+
+    assert "####" not in section
+
+
+def test_falsifiable_aucun_step_n_est_perdu_par_le_sous_classement_par_intention():
+    """Le sous-classement est purement cosmétique : chaque step du catalogue réel doit rester
+    présent dans le prompt, quelle que soit son intention devinée (correcte ou non)."""
+    catalogue = steps_library.catalogue()
+    section = steps_library.as_prompt_section(catalogue)
+    manquants = [s.label for s in catalogue if s.label not in section]
+    assert not manquants, f"steps perdus par le regroupement par intention : {manquants[:5]}"
