@@ -43,6 +43,15 @@ from testpilot.generation import steps_library
 # Types de warnings (miroir de `assertion_lint` : même contrat de sortie pour le même bandeau).
 BODY_CHANGED = "step_modifie"
 STEP_REMOVED = "step_supprime"
+# Lot 09 (C9) — ce que `blast_radius` (steps.py) ne voit PAS : un changement du `.feature`
+# lui-même (jamais gelé pour l'agent de CORRECTION, contrairement à l'agent de RÉPARATION dont le
+# `.feature` est « gelé, sauf deux exceptions » par son propre prompt — voir `repair_prompt.md`).
+SCENARIO_SUPPRIME = "scenario_supprime"
+ASSERTION_MODIFIEE = "assertion_modifiee"
+EXEMPLE_MODIFIE = "exemple_modifie"
+# `@then` spécifiquement (sous-ensemble de BODY_CHANGED, plus grave) : le CODE d'une assertion a
+# changé, pas seulement un step technique — voir `blast_radius_then`.
+THEN_BODY_CHANGED = "assertion_code_modifiee"
 
 
 def _corps_par_label(source: str) -> dict[str, str]:
@@ -51,20 +60,28 @@ def _corps_par_label(source: str) -> dict[str, str]:
     On compare le CODE, pas le texte : `ast.dump` neutralise les commentaires, l'indentation et
     les blancs. Renommer une variable reste un changement — c'en est un.
     """
+    return {label: corps for label, (_kw, corps) in _corps_et_mot_cle_par_label(source).items()}
+
+
+def _corps_et_mot_cle_par_label(source: str) -> dict[str, tuple[str, str]]:
+    """`{libellé: (mot-clé Gherkin, corps normalisé)}` — le mot-clé permet à `blast_radius` de
+    distinguer un `@then` réécrit (une ASSERTION a changé, plus grave) d'un `@given`/`@when`
+    réécrit (une étape technique)."""
     try:
         tree = ast.parse(source or "")
     except SyntaxError:
         return {}
 
-    corps: dict[str, str] = {}
+    resultat: dict[str, tuple[str, str]] = {}
     for step in steps_library.extract_steps(source or ""):
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             if step.label not in {_label_de(deco) for deco in node.decorator_list}:
                 continue
-            corps[step.label] = ast.dump(ast.Module(body=node.body, type_ignores=[]))
-    return corps
+            resultat[step.label] = (
+                step.keyword, ast.dump(ast.Module(body=node.body, type_ignores=[])))
+    return resultat
 
 
 def _label_de(deco) -> str:
@@ -81,14 +98,22 @@ def blast_radius(avant: str, apres: str) -> list[dict]:
 
     Rend une liste de warnings au même format que `assertion_lint.lint_steps` — c'est le même
     bandeau, non bloquant, qui les affiche. Vide s'il n'y a rien à signaler.
+
+    ⚠️ **Un `@then` réécrit porte un `kind` DISTINCT** (`THEN_BODY_CHANGED`, pas `BODY_CHANGED`) —
+    lot 09 (C9) : le corps d'un `@then` EST l'assertion elle-même (`constater(...)`), pas une
+    étape technique. Le rayon d'explosion du cas 1 (2026-07-17, docstring du module) touchait un
+    `@given` ; un `@then` réécrit est la faute que `repair_prompt.md` interdit explicitement
+    (« RÈGLE ABSOLUE — ne jamais maquiller ») — ce module la rend VÉRIFIABLE après coup, pas
+    seulement demandée au texte de l'agent (décision 0015 : le texte de l'agent n'est jamais une
+    source de vérité).
     """
-    corps_avant = _corps_par_label(avant)
+    avec_mot_cle_avant = _corps_et_mot_cle_par_label(avant)
     corps_apres = _corps_par_label(apres)
-    if not corps_avant:
+    if not avec_mot_cle_avant:
         return []   # rien à comparer : première version, ou code d'avant illisible
 
     warnings: list[dict] = []
-    for label, corps in corps_avant.items():
+    for label, (mot_cle, corps) in avec_mot_cle_avant.items():
         if label not in corps_apres:
             warnings.append({
                 "step": label, "line": 0, "kind": STEP_REMOVED,
@@ -97,11 +122,96 @@ def blast_radius(avant: str, apres: str) -> list[dict]:
                             "sans que rien n'échoue."),
             })
         elif corps_apres[label] != corps:
+            if mot_cle == "then":
+                warnings.append({
+                    "step": label, "line": 0, "kind": THEN_BODY_CHANGED,
+                    "message": (f"Le CODE de l'assertion « {label} » (un `@then`) a été réécrit. "
+                                "Une assertion modifiée peut changer ce qu'elle prouve, pas "
+                                "seulement comment — vérifiez qu'elle affirme toujours la même "
+                                "chose avant d'approuver."),
+                })
+            else:
+                warnings.append({
+                    "step": label, "line": 0, "kind": BODY_CHANGED,
+                    "message": (f"Le code du step « {label} » a été réécrit par la réparation. "
+                                "Vérifiez qu'il devait l'être : l'agent réécrit le fichier entier, "
+                                "donc il peut abîmer un step qui marchait."),
+                })
+    return warnings
+
+
+# ── Ce que `blast_radius` ne voit JAMAIS : le `.feature` lui-même (lot 09, C9) ──────────────────
+#
+# `blast_radius` compare `_steps.py` (le CODE) ; il ne dit rien d'un scénario supprimé, d'une
+# ligne `Alors`/`Et` réécrite ou d'une valeur de table `Examples` changée — trois façons de
+# « maquiller » un test SANS toucher un seul `@then` Python (ex. retirer le scénario qui échoue,
+# ou changer la valeur attendue dans le `.feature` plutôt que dans le step). `repair_prompt.md`
+# l'interdit déjà en texte (« RÈGLE ABSOLUE ») ; ceci le rend VÉRIFIABLE, pas seulement demandé.
+
+def _scenarios_et_exemples(feature_content: str) -> dict[str, dict]:
+    """`{nom du scénario/plan: {alors, exemples}}` — jamais les scénarios EXPANSÉS par ligne
+    d'Examples (behave les suffixe `-- @N.M`, pas des déclarations distinctes du texte). Vide si
+    le contenu ne parse pas (jamais une exception : un `.feature` cassé est déjà rattrapé par
+    `write_feature_file`, cette fonction ne fait qu'observer)."""
+    from behave.parser import ParserError, parse_feature
+    try:
+        feature = parse_feature(feature_content or "", language="fr")
+    except ParserError:
+        return {}
+    if not feature:
+        return {}
+
+    resultat: dict[str, dict] = {}
+    for scenario in feature.walk_scenarios(with_outlines=True):
+        if " -- @" in scenario.name:
+            continue
+        alors: list[str] = []
+        vu_alors = False
+        for step in scenario.steps:
+            if step.keyword.strip() in ("Alors", "Donc"):
+                vu_alors = True
+            if vu_alors:
+                alors.append(f"{step.keyword.strip()} {step.name}")
+        exemples = [
+            (tuple(ex.table.headings), tuple(tuple(row) for row in ex.table.rows))
+            for ex in (getattr(scenario, "examples", None) or [])
+        ]
+        resultat[scenario.name] = {"alors": alors, "exemples": exemples}
+    return resultat
+
+
+def diff_feature(avant: str, apres: str) -> list[dict]:
+    """Ce qu'une réparation/correction a changé dans le `.feature` — scénario supprimé, constats
+    (`Alors`/`Et`) réécrits, valeurs de la table `Examples` changées. Même contrat de sortie que
+    `blast_radius` (même bandeau) ; vide si rien à signaler ou si `avant` ne parse pas."""
+    avant_map = _scenarios_et_exemples(avant)
+    if not avant_map:
+        return []
+    apres_map = _scenarios_et_exemples(apres)
+
+    warnings: list[dict] = []
+    for nom, info in avant_map.items():
+        if nom not in apres_map:
             warnings.append({
-                "step": label, "line": 0, "kind": BODY_CHANGED,
-                "message": (f"Le code du step « {label} » a été réécrit par la réparation. "
-                            "Vérifiez qu'il devait l'être : l'agent réécrit le fichier entier, "
-                            "donc il peut abîmer un step qui marchait."),
+                "step": nom, "line": 0, "kind": SCENARIO_SUPPRIME,
+                "message": (f"Le scénario « {nom} » existait avant et a DISPARU du `.feature`. "
+                            "Une réparation/correction ne doit jamais retirer un scénario (§5 du "
+                            "brief : jamais de masquage d'échec par perte de couverture)."),
+            })
+            continue
+        if info["alors"] != apres_map[nom]["alors"]:
+            warnings.append({
+                "step": nom, "line": 0, "kind": ASSERTION_MODIFIEE,
+                "message": (f"Les constats (Alors/Et) du scénario « {nom} » ont changé. Ça ne "
+                            "doit jamais arriver en réparant COMMENT le test agit — vérifiez que "
+                            "l'intention d'origine (ce que le scénario prouve) est intacte."),
+            })
+        if info["exemples"] != apres_map[nom]["exemples"]:
+            warnings.append({
+                "step": nom, "line": 0, "kind": EXEMPLE_MODIFIE,
+                "message": (f"La table Examples du scénario « {nom} » a changé de valeurs. Une "
+                            "valeur d'exemple modifiée peut déguiser un cas qui échouait en cas "
+                            "qui passe — vérifiez qu'elle teste toujours ce qui était prévu."),
             })
     return warnings
 
@@ -111,7 +221,7 @@ def resume(avant: str, apres: str) -> str:
     warnings = blast_radius(avant, apres)
     if not warnings:
         return ""
-    modifies = sum(1 for w in warnings if w["kind"] == BODY_CHANGED)
+    modifies = sum(1 for w in warnings if w["kind"] in (BODY_CHANGED, THEN_BODY_CHANGED))
     supprimes = sum(1 for w in warnings if w["kind"] == STEP_REMOVED)
     total = len(_corps_par_label(avant))
     morceaux = []

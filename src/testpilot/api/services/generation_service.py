@@ -446,12 +446,23 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
             current.get('feature_content') or '', json.loads(current['observation_evidence']),
             target_sha256=target_fingerprint(project), base_url=(project or {}).get('base_url', ''))
 
+    # Lot 09 (C9) : `diff_feature` complète `blast_radius` (steps.py) par le `.feature` lui-même
+    # — un scénario supprimé, une ligne Alors/Et réécrite, une valeur d'Examples changée. Volontai-
+    # rement PAS étendu à `_AUTEUR_CORRECTION` (agent de correction, `correction_agent.py`) : son
+    # rôle EST de réécrire une assertion infalsifiable (0008) ou une valeur inventée (0021) — un
+    # `@then` réécrit y est le succès attendu, pas une faute. Confirmé en écrivant ce lot : le
+    # test `test_finaliser_version_generee_approuve_apres_une_correction_reussie` échouait dès que
+    # cette garde s'appliquait aussi à la correction (elle réécrit `assert True` en un vrai
+    # contrôle — exactement `THEN_BODY_CHANGED`). Le garde-fou « ne jamais maquiller » vise la
+    # RÉPARATION (`repair_prompt.md`), jamais la correction, dont c'est le métier.
     if current and current.get("created_by") == _AUTEUR_REPARATION:
         precedentes = [v for v in version_rows if v["id"] < current["id"]]
         if precedentes:
             avant = max(precedentes, key=lambda v: v["id"])
             warnings += repair_diff.blast_radius(avant.get("steps_content") or "",
                                                  current.get("steps_content") or "")
+            warnings += repair_diff.diff_feature(avant.get("feature_content") or "",
+                                                 current.get("feature_content") or "")
 
     if current and case.get("project_id"):
         projet = ProjectRepo(conn).get(case["project_id"])

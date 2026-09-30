@@ -170,6 +170,184 @@ def test_le_gate_signale_le_rayon_d_explosion_sans_jamais_bloquer(tmp_path, monk
     assert v1  # la version d'avant sert de référence
 
 
+# ── `@then` réécrit : un kind DISTINCT, plus grave (lot 09, C9) ─────────────────────────────────
+
+ASSERTION = '''from behave import then
+
+
+@then("truc")
+def s(context):
+    assert True
+'''
+
+ASSERTION_MAQUILLEE = ASSERTION.replace("    assert True", "    assert False or True")
+
+
+def test_falsifiable_un_then_reecrit_porte_le_kind_then_body_changed():
+    """Le vrai défaut visé par ce lot : réécrire le CODE d'une assertion (pas seulement la
+    soumettre) — jamais confondu avec un `@given`/`@when` réécrit (`BODY_CHANGED`, cas déjà testé
+    ci-dessus sur `step_auth`)."""
+    warnings = repair_diff.blast_radius(ASSERTION, ASSERTION_MAQUILLEE)
+
+    assert [w["kind"] for w in warnings] == [repair_diff.THEN_BODY_CHANGED]
+    assert "assertion" in warnings[0]["message"].lower()
+
+
+def test_un_given_reecrit_reste_body_changed_pas_then():
+    """Non-régression : le cas déjà couvert (auth réécrite) ne doit PAS changer de `kind`."""
+    warnings = repair_diff.blast_radius(AUTH, LARGE)
+    assert all(w["kind"] == repair_diff.BODY_CHANGED for w in warnings)
+
+
+# ── `diff_feature` : ce que `blast_radius` ne voit jamais (lot 09, C9) ──────────────────────────
+
+_FEATURE_AVANT = '''# language: fr
+Fonctionnalité: Demo
+  Scénario: Un cas
+    Soit je suis sur la page
+    Alors la page affiche le texte "Fait"
+
+  Plan du scénario: Avec exemples
+    Soit je suis sur la page
+    Alors le champ "{f}" vaut "{v}"
+
+    Exemples:
+      | f | v |
+      | a | 1 |
+      | b | 2 |
+'''
+
+_FEATURE_SCENARIO_SUPPRIME = '''# language: fr
+Fonctionnalité: Demo
+  Plan du scénario: Avec exemples
+    Soit je suis sur la page
+    Alors le champ "{f}" vaut "{v}"
+
+    Exemples:
+      | f | v |
+      | a | 1 |
+      | b | 2 |
+'''
+
+_FEATURE_ASSERTION_MODIFIEE = _FEATURE_AVANT.replace(
+    'la page affiche le texte "Fait"', 'la page affiche le texte "Autre chose"')
+
+_FEATURE_EXEMPLE_MODIFIE = _FEATURE_AVANT.replace("| a | 1 |", "| a | 999 |")
+
+
+def test_falsifiable_un_scenario_supprime_est_signale():
+    warnings = repair_diff.diff_feature(_FEATURE_AVANT, _FEATURE_SCENARIO_SUPPRIME)
+    assert [w["kind"] for w in warnings] == [repair_diff.SCENARIO_SUPPRIME]
+    assert warnings[0]["step"] == "Un cas"
+
+
+def test_falsifiable_une_ligne_alors_reecrite_est_signalee():
+    """LE cas que `repair_prompt.md` interdit en texte (« RÈGLE ABSOLUE ») — ici rendu
+    vérifiable : la valeur attendue a changé SANS toucher un seul `@then` Python."""
+    warnings = repair_diff.diff_feature(_FEATURE_AVANT, _FEATURE_ASSERTION_MODIFIEE)
+    assert {w["kind"] for w in warnings} == {repair_diff.ASSERTION_MODIFIEE}
+    assert warnings[0]["step"] == "Un cas"
+
+
+def test_falsifiable_une_valeur_d_exemple_modifiee_est_signalee():
+    warnings = repair_diff.diff_feature(_FEATURE_AVANT, _FEATURE_EXEMPLE_MODIFIE)
+    assert {w["kind"] for w in warnings} == {repair_diff.EXEMPLE_MODIFIE}
+    assert warnings[0]["step"] == "Avec exemples"
+
+
+def test_diff_feature_ne_signale_rien_sur_un_feature_identique():
+    assert repair_diff.diff_feature(_FEATURE_AVANT, _FEATURE_AVANT) == []
+
+
+def test_diff_feature_se_tait_si_avant_ne_parse_pas():
+    assert repair_diff.diff_feature("# f", _FEATURE_AVANT) == []
+    assert repair_diff.diff_feature("", _FEATURE_AVANT) == []
+
+
+def test_diff_feature_ne_leve_jamais_si_apres_ne_parse_pas():
+    warnings = repair_diff.diff_feature(_FEATURE_AVANT, "ceci n'est pas du gherkin valide (")
+    assert {w["kind"] for w in warnings} == {repair_diff.SCENARIO_SUPPRIME}
+
+
+def test_diff_feature_ajouter_un_scenario_n_est_pas_signale():
+    ajoute = _FEATURE_AVANT.replace(
+        "  Plan du scénario",
+        '  Scénario: Nouveau\n    Alors la page affiche le texte "Nouveau"\n\n  Plan du scénario')
+    assert repair_diff.diff_feature(_FEATURE_AVANT, ajoute) == []
+
+
+def test_le_gate_signale_un_scenario_supprime_par_une_reparation(tmp_path, monkeypatch):
+    """Preuve API, même motif que `test_le_gate_signale_le_rayon_d_explosion_sans_jamais_bloquer`
+    — mais pour le `.feature`, que `blast_radius` (steps.py seul) ne voit jamais."""
+    from fastapi.testclient import TestClient
+
+    from testpilot import config as cfg
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo, ReviewRepo, VersionRepo
+
+    db = tmp_path / "i.db"
+    monkeypatch.setattr(cfg, "DB_PATH", db)
+    conn = get_initialized_db(db)
+    pid = ProjectRepo(conn).create(name="Projet réparation feature")
+    mid = ModuleRepo(conn).create(project_id=pid, name="Module")
+    cid = CaseRepo(conn).create(module_id=mid, title="Cas", feature_slug="cas3")
+    VersionRepo(conn).create(test_case_id=cid, spec_content="s", spec_hash="h",
+                             feature_content=_FEATURE_AVANT, steps_content=AUTH, created_by="ia")
+    v2 = VersionRepo(conn).create(test_case_id=cid, spec_content="s", spec_hash="h",
+                                  feature_content=_FEATURE_SCENARIO_SUPPRIME, steps_content=AUTH,
+                                  created_by="repair-agent")
+    CaseRepo(conn).set_current_version(cid, v2)
+    ReviewRepo(conn).create(test_case_id=cid, version_id=v2, decision="approved", reviewer="qa")
+    conn.close()
+
+    from testpilot.api.app import app
+    gate = TestClient(app).get(f"/api/cases/{cid}").json()["gate"]
+
+    assert gate["allowed"] is True, "détective : ne touche jamais allowed"
+    kinds = {w["kind"] for w in gate["lint_warnings"]}
+    assert repair_diff.SCENARIO_SUPPRIME in kinds
+
+
+# ── La garde `.feature`/`@then` ne s'applique JAMAIS à l'agent de CORRECTION (lot 09, C9) ───────
+#
+# Confirmé en écrivant ce lot (voir `generation_service.py::lint_warnings_for_version`) : la
+# correction a pour métier de réécrire une assertion infalsifiable (0008) — un `@then` réécrit y
+# est le succès attendu, jamais une faute à signaler.
+
+def test_une_correction_qui_reecrit_une_assertion_n_est_jamais_signalee_par_cette_garde(
+        tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from testpilot import config as cfg
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo, ReviewRepo, VersionRepo
+
+    db = tmp_path / "j.db"
+    monkeypatch.setattr(cfg, "DB_PATH", db)
+    conn = get_initialized_db(db)
+    pid = ProjectRepo(conn).create(name="Projet correction feature")
+    mid = ModuleRepo(conn).create(project_id=pid, name="Module")
+    cid = CaseRepo(conn).create(module_id=mid, title="Cas", feature_slug="cas4")
+    VersionRepo(conn).create(test_case_id=cid, spec_content="s", spec_hash="h",
+                             feature_content=_FEATURE_AVANT, steps_content=ASSERTION,
+                             created_by="ia")
+    v2 = VersionRepo(conn).create(
+        test_case_id=cid, spec_content="s", spec_hash="h",
+        feature_content=_FEATURE_ASSERTION_MODIFIEE, steps_content=ASSERTION_MAQUILLEE,
+        created_by="correction-agent")
+    CaseRepo(conn).set_current_version(cid, v2)
+    ReviewRepo(conn).create(test_case_id=cid, version_id=v2, decision="approved", reviewer="qa")
+    conn.close()
+
+    from testpilot.api.app import app
+    gate = TestClient(app).get(f"/api/cases/{cid}").json()["gate"]
+
+    kinds = {w["kind"] for w in gate["lint_warnings"]}
+    assert repair_diff.THEN_BODY_CHANGED not in kinds
+    assert repair_diff.ASSERTION_MODIFIEE not in kinds
+    assert repair_diff.SCENARIO_SUPPRIME not in kinds
+
+
 def test_une_version_NON_reparee_ne_declenche_aucun_signalement(tmp_path, monkeypatch):
     """Anti-faux-positif : une version écrite par la génération n'a pas de « avant » à comparer.
 
