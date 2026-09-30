@@ -44,6 +44,22 @@ describe('ReviewGate — le gate autorise le budget de réparation (0014, option
     expect(api.reviewCase).toHaveBeenCalledWith(1, true, '', 3)
   })
 
+  it.each([
+    'assertion_code_modifiee', 'scenario_supprime', 'assertion_modifiee', 'exemple_modifie',
+  ])('étiquette le kind lot 09 « %s » comme réparation, jamais l\'enum brute', (kind) => {
+    // Revue verdict-reviewer (lot 09) : ces 4 kinds de repair_diff.py n'avaient pas d'entrée dans
+    // FAMILLES — repli « à vérifier » plutôt que l'enum brute (pas une violation de §4.7), mais
+    // perdait le lien avec les avertissements 0017 déjà connus (step_modifie/step_supprime).
+    const w = mount(ReviewGate, {
+      props: {
+        caseId: 1,
+        gate: { ...A_RELIRE, lint_warnings: [{ step: 's', line: 1, kind, message: 'm' }] },
+      },
+    })
+    expect(w.text()).toContain('réparation')
+    expect(w.text()).not.toContain(kind)
+  })
+
   it('ne transmet aucun budget sur un REJET', async () => {
     // Un rejet n'exécute rien, donc ne répare rien : le budget n'a pas de sens.
     vi.mocked(api.reviewCase).mockClear()

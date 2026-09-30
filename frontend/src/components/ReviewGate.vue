@@ -26,6 +26,12 @@ const FAMILLES: Record<string, string> = {
   // 0017 — la réparation a touché du code qui marchait.
   step_modifie: 'réparation',
   step_supprime: 'réparation',
+  // Lot 09 (C9) — même famille (rayon d'explosion d'une réparation), côté `.feature` cette fois :
+  // un `@then` dont le CODE a changé, un scénario supprimé, un constat ou un exemple réécrit.
+  assertion_code_modifiee: 'réparation',
+  scenario_supprime: 'réparation',
+  assertion_modifiee: 'réparation',
+  exemple_modifie: 'réparation',
   // 0021 — le test référence quelque chose qui n'existe pas dans l'application.
   valeur_option_inexistante: 'donnée',
   champ_inconnu: 'donnée',
