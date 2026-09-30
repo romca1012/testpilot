@@ -56,14 +56,27 @@ def resoudre_script_effectif(conn, *, case_id: int, version_id: int) -> dict:
     referenced = steps_library.match_referenced(feature_content, catalogue)
     code_par_label = steps_library.load_step_source(referenced)
 
+    # `match_referenced` déduplique par (keyword, label) : un step enregistré à la fois en
+    # @given et @when (même libellé, deux mots-clés) donne DEUX entrées catalogue distinctes.
+    # Son code — chargé une seule fois par `load_step_source`, décorateurs des deux inclus — ne
+    # doit apparaître qu'une fois ici. Bug mesuré en staging le 2026-09-28 (cas Parc IT) : chaque
+    # step partagé porteur des deux mots-clés s'affichait deux fois dans l'onglet Script.
+    referenced_uniques: list = []
+    labels_vus: set[str] = set()
+    for s in referenced:
+        if s.label in labels_vus:
+            continue
+        labels_vus.add(s.label)
+        referenced_uniques.append(s)
+
     shared_steps = [
         {"keyword": s.keyword, "label": s.label, "source": s.source, "note": s.note,
          "code": code_par_label.get(s.label, "")}
-        for s in referenced
+        for s in referenced_uniques
     ]
 
     par_source: dict[str, list[str]] = {}
-    for s in referenced:
+    for s in referenced_uniques:
         code = code_par_label.get(s.label)
         if code:
             par_source.setdefault(s.source, []).append(code)
