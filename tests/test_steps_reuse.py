@@ -394,3 +394,32 @@ def test_falsifiable_aucun_step_n_est_perdu_par_le_sous_classement_par_intention
     section = steps_library.as_prompt_section(catalogue)
     manquants = [s.label for s in catalogue if s.label not in section]
     assert not manquants, f"steps perdus par le regroupement par intention : {manquants[:5]}"
+
+
+# ── D : non-régression de taille du prompt système (lot 09, C9) ─────────────────────────────────
+#
+# Seuil EXPLICITE demandé par le lot. Mesuré le 2026-09-30 : `system_prompt.md` seul fait ~27,8 Ko
+# (~490 lignes) ; le catalogue Odoo complet en ajoute ~13 Ko (109 steps). Le plafond ci-dessous
+# laisse une marge réelle (nouvelles règles, nouveaux steps) sans laisser le prompt doubler sans
+# qu'un test ne le remarque — coût direct sur I6 (§9 du brief).
+
+_PLAFOND_SYSTEM_PROMPT_MD = 35_000  # caractères, fichier seul (hors catalogue/règles connecteur)
+
+
+def test_system_prompt_md_reste_sous_un_seuil_explicite():
+    from testpilot import config
+
+    contenu = (config.PROMPTS_DIR / "system_prompt.md").read_text(encoding="utf-8")
+    assert len(contenu) < _PLAFOND_SYSTEM_PROMPT_MD, (
+        f"system_prompt.md fait {len(contenu)} caractères — au-delà du plafond "
+        f"{_PLAFOND_SYSTEM_PROMPT_MD}, un audit de coût (I6) est dû avant d'ajouter davantage")
+
+
+def test_system_prompt_mentionne_les_nouveaux_outils_de_perception():
+    """Preuve que les règles du lot 09 (« observer avant de nommer ») sont bien arrivées dans le
+    texte livré à l'agent — pas seulement écrites dans ce dépôt."""
+    from testpilot import config
+
+    contenu = (config.PROMPTS_DIR / "system_prompt.md").read_text(encoding="utf-8")
+    assert "inspect_odoo_view" in contenu
+    assert "inspect_page_snapshot" in contenu
