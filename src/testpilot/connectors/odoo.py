@@ -112,7 +112,9 @@ def _extract_odoo_form_fields(page) -> dict:
 class OdooConnector(Connector):
 
     def __init__(self, url: str, database: str, user: str, password: str, *,
-                 headless: bool = True, timeout_ms: int = 15_000, contexte=None) -> None:
+                 headless: bool = True, timeout_ms: int = 15_000, contexte=None,
+                 sequence_connexion: list[dict] | None = None,
+                 login_form: dict | None = None) -> None:
         from testpilot.connectors.contexte_navigateur import ContexteNavigateur
 
         # Lot 07c : le MÊME contexte (langue, fuseau, fenêtre) que l'exécution — l'agent voit ce que le test verra.
@@ -128,6 +130,13 @@ class OdooConnector(Connector):
         self._browser = None
         self._page = None         # démarré paresseusement à la 1re inspection UI
         self._executor = None     # thread dédié Playwright (voir _run_in_browser)
+        # Essai (2026-09-30) : même mécanisme d'enregistrement assisté que le connecteur `web`
+        # générique (`GenericWebConnector`), réutilisé ICI À LA DEMANDE — `None`/`[]` pour tout
+        # projet qui n'a jamais rien enregistré, comportement historique 100% inchangé
+        # (`odoo_login.playwright_login` reste la détection par défaut, jamais remplacée sans ces
+        # deux champs explicitement renseignés). Voir `odoo_login.py::playwright_login`.
+        self._sequence_connexion = sequence_connexion or []
+        self._login_form = login_form or None
 
     @classmethod
     def from_config(cls, **overrides) -> "OdooConnector":
@@ -138,6 +147,8 @@ class OdooConnector(Connector):
             password=overrides.get("password", config.ODOO_PASSWORD),
             headless=overrides.get("headless", True),
             contexte=overrides.get("contexte"),
+            sequence_connexion=overrides.get("sequence_connexion"),
+            login_form=overrides.get("login_form"),
         )
 
     @classmethod
@@ -151,6 +162,10 @@ class OdooConnector(Connector):
 
         project = project or {}
         overrides.setdefault("contexte", depuis_projet(project))
+        # Essai (2026-09-30) : lus depuis le projet SI l'appelant les y a déposés (même motif que
+        # `GenericWebConnector.from_project`) — jamais lus directement en base ici.
+        overrides.setdefault("sequence_connexion", project.get("sequence_connexion"))
+        overrides.setdefault("login_form", project.get("login_form"))
         return cls.from_config(
             url=project.get("base_url") or config.ODOO_URL,
             database=project.get("database") or config.ODOO_DB,
@@ -363,6 +378,8 @@ class OdooConnector(Connector):
             ctx.odoo_db = self._database
             ctx.odoo_user = self._user
             ctx.odoo_password = self._password
+            ctx.sequence_connexion = self._sequence_connexion
+            ctx.login_form = self._login_form
             H.playwright_login(ctx)
         return _login
 
@@ -491,7 +508,9 @@ class OdooConnector(Connector):
         try:
             playwright_login(SimpleNamespace(page=page, odoo_url=self._url,
                              odoo_db=self._database, odoo_user=self._user,
-                             odoo_password=self._password))
+                             odoo_password=self._password,
+                             sequence_connexion=self._sequence_connexion,
+                             login_form=self._login_form))
         except Exception:
             self._browser.close()
             self._playwright.stop()

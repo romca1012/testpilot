@@ -177,6 +177,8 @@ _INJECTED_SESSION   = os.environ.get("TESTPILOT_INJECTED_SESSION", "")
 # Sous-lot D (« Enregistrement assisté du chemin de connexion ») : DUPLIQUÉ de
 # `connectors/runtime_env.py::ENV_LOGIN_RECORDING`, même motif que les constantes ci-dessus.
 _LOGIN_RECORDING_JSON = os.environ.get("TESTPILOT_LOGIN_RECORDING", "")
+# Extension (2026-09-30) : DUPLIQUÉ de `connectors/runtime_env.py::ENV_LOGIN_FORM`, même motif.
+_LOGIN_FORM_JSON = os.environ.get("TESTPILOT_LOGIN_FORM", "")
 _CHEMIN_STORAGE_STATE = "storage_state.json"   # dupliqué de `_base_helpers._CHEMIN_STORAGE_STATE" (même valeur, même run_dir)
 
 
@@ -367,11 +369,42 @@ def reouvrir_contexte_navigateur(context) -> None:
 
 
 # ── Hooks Behave ──────────────────────────────────────────────────────────────
+def _lire_sequence_et_formulaire_connexion() -> tuple[list, dict | None]:
+    """Décode `TESTPILOT_LOGIN_RECORDING`/`TESTPILOT_LOGIN_FORM` — commun aux DEUX connecteurs
+    UI (`web` depuis le sous-lot D/son extension ; `odoo`, essai 2026-09-30, voir
+    `odoo_login.py::playwright_login`). Best-effort : jamais produit par une saisie humaine
+    (toujours sérialisé par `runtime_env.project_env`), une valeur invalide trahirait un bug de
+    ce dépôt — on continue sans rejeu/formulaire enregistré plutôt que de bloquer tout le run."""
+    sequence_connexion: list = []
+    if _LOGIN_RECORDING_JSON:
+        try:
+            sequence_connexion = json.loads(_LOGIN_RECORDING_JSON)
+        except (ValueError, TypeError):
+            logger.warning("[connexion] TESTPILOT_LOGIN_RECORDING n'est pas un JSON valide — "
+                           "aucune séquence de connexion rejouée pour ce run.")
+    login_form = None
+    if _LOGIN_FORM_JSON:
+        try:
+            login_form = json.loads(_LOGIN_FORM_JSON)
+        except (ValueError, TypeError):
+            logger.warning("[connexion] TESTPILOT_LOGIN_FORM n'est pas un JSON valide — "
+                           "détection par défaut utilisée pour ce run.")
+    return sequence_connexion, login_form
+
+
 def before_all(context):
     context.odoo_url      = _ODOO_URL
     context.odoo_db       = _ODOO_DB
     context.odoo_user     = _ODOO_USER
     context.odoo_password = _ODOO_PASSWORD
+    # Posés AVANT tout, pour les DEUX connecteurs (essai 2026-09-30) — bloquant trouvé en revue
+    # verdict-reviewer chantier-entier (2026-09-30) pour le connecteur `web` : sans ceci sur
+    # `context`, `_verifier_ou_reconnecter_session` (reconnexion EN COURS de scénario) n'avait
+    # aucun moyen de lire cette séquence, qui ne vivait que dans `_tenter_connexion_initiale`. Les
+    # steps Odoo qui appellent `playwright_login(context)` (« je me connecte avec mes identifiants
+    # utilisateur », navigation sur page vide…) profitent maintenant du MÊME câblage, sans jamais
+    # rien recalculer localement — voir `odoo_login.py::playwright_login`.
+    context.sequence_connexion, context.login_form = _lire_sequence_et_formulaire_connexion()
     # Connecteur `web` générique (bug SauceDemo, 2026-09-13) — voir le commentaire sur
     # `_WEB_URL` ci-dessus. Vide par défaut : un run Odoo (ou hors API) n'en a jamais besoin.
     context.web_url      = _WEB_URL
@@ -417,26 +450,11 @@ def _tenter_connexion_initiale(context) -> None:
         except (ValueError, TypeError):
             context._erreur_connexion_initiale = "la session fournie (« session déjà ouverte ») n'est pas un JSON valide."
             return
-    sequence_connexion = []
-    if _LOGIN_RECORDING_JSON:
-        try:
-            sequence_connexion = json.loads(_LOGIN_RECORDING_JSON)
-        except (ValueError, TypeError):
-            # Best-effort : JAMAIS produit par une saisie humaine (toujours sérialisé par
-            # `runtime_env.project_env`), une valeur invalide ici trahirait un bug de ce dépôt,
-            # pas une donnée de projet incorrecte — on continue sans rejeu plutôt que de bloquer
-            # tout le run pour un signal qui n'est pas le mécanisme d'authentification principal.
-            logger.warning("[connexion] TESTPILOT_LOGIN_RECORDING n'est pas un JSON valide — "
-                           "aucune séquence de connexion rejouée pour ce run.")
-    # Posée sur `context` (même motif que `context.auth_strategie`/`context.totp_secret` ci-dessus,
-    # `before_all`) : bloquant trouvé en revue verdict-reviewer chantier-entier (2026-09-30) —
-    # `_verifier_ou_reconnecter_session` (lot 07b-2, reconnexion EN COURS de scénario après
-    # invalidation de session) appelle la même `authentifier_selon_la_strategie` mais n'avait AUCUN
-    # moyen de lire cette séquence, qui restait une variable strictement locale à cette fonction.
-    # Une reconnexion mi-scénario qui retombe sur l'écran intercalé échouait donc avec « Vérifiez
-    # l'identifiant, le mot de passe » — un diagnostic trompeur, la vraie cause étant cet oubli de
-    # câblage, pas les identifiants du projet.
-    context.sequence_connexion = sequence_connexion
+    # `context.sequence_connexion`/`context.login_form` : déjà posés par `before_all`
+    # (`_lire_sequence_et_formulaire_connexion`, commune aux deux connecteurs UI) — jamais
+    # recalculés ici, pour qu'une seule lecture des variables d'environnement fasse foi.
+    sequence_connexion = context.sequence_connexion
+    login_form = context.login_form
     with sync_playwright() as p:
         navigateur = p.chromium.launch(headless=os.environ.get("PLAYWRIGHT_HEADED", "0") != "1")
         try:
@@ -445,7 +463,8 @@ def _tenter_connexion_initiale(context) -> None:
             try:
                 authentifier_selon_la_strategie(page, strategie=_AUTH_STRATEGIE, web_url=_WEB_URL,
                                                 user=_WEB_USER, password=_WEB_PASSWORD, totp_secret=_TOTP_SECRET,
-                                                sequence_connexion=sequence_connexion)
+                                                sequence_connexion=sequence_connexion,
+                                                login_form=login_form)
             except PreconditionNonRemplieError as exc:
                 context._erreur_connexion_initiale = str(exc)
                 return

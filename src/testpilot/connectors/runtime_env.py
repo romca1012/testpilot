@@ -44,6 +44,11 @@ ENV_COMPTES = "TESTPILOT_COMPTES"
 # SEUL le connecteur `web` la consomme (voir `_web_helpers.rejouer_sequence_connexion`).
 ENV_LOGIN_RECORDING = "TESTPILOT_LOGIN_RECORDING"
 
+# Extension (2026-09-30) : le descripteur du formulaire de connexion lui-même (3 clics guidés),
+# `{"champ_identifiant", "champ_mdp", "bouton_soumission"}` en JSON — SEUL le connecteur `web` la
+# consomme (voir `_web_helpers.remplir_et_soumettre_formulaire_connexion`).
+ENV_LOGIN_FORM = "TESTPILOT_LOGIN_FORM"
+
 # connector_type → {variable d'environnement: colonne du projet} — colonnes REQUISES : sans
 # elles, `verifier_connexion` refuse de lancer quoi que ce soit contre cette connexion.
 _MAPPINGS: dict[str, dict[str, str]] = {
@@ -101,7 +106,8 @@ class ConnexionIncomplete(Exception):
 
 
 def verifier_connexion(project: dict | None, comptes: list[dict] | None = None,
-                       sequence_connexion: list[dict] | None = None) -> dict[str, str]:
+                       sequence_connexion: list[dict] | None = None,
+                       login_form: dict | None = None) -> dict[str, str]:
     """Rend les variables d'environnement du projet, ou **lève** si elles ne suffisent pas.
 
     Jamais de repli silencieux : mieux vaut un refus explicite qu'un résultat obtenu contre une
@@ -121,7 +127,7 @@ def verifier_connexion(project: dict | None, comptes: list[dict] | None = None,
     if manquants:
         raise ConnexionIncomplete(project, manquants)
 
-    return project_env(project, comptes, sequence_connexion)
+    return project_env(project, comptes, sequence_connexion, login_form)
 
 
 def cible_de(project: dict | None) -> dict[str, str]:
@@ -136,13 +142,16 @@ def cible_de(project: dict | None) -> dict[str, str]:
 
 
 def project_env(project: dict | None, comptes: list[dict] | None = None,
-                sequence_connexion: list[dict] | None = None) -> dict[str, str]:
+                sequence_connexion: list[dict] | None = None,
+                login_form: dict | None = None) -> dict[str, str]:
     """Variables d'environnement de connexion déduites d'un projet. Vide si non applicable.
 
     `comptes` : les comptes secondaires (`ProjectAccountRepo.pour_runtime`), secrets déchiffrés — transmis tels quels au sous-processus,
     qui en a besoin pour se connecter. Jamais passés à la génération (elle ne reçoit que les libellés).
     `sequence_connexion` (sous-lot D) : la séquence confirmée qui franchit un écran intercalé avant
-    le formulaire de connexion — voir `ENV_LOGIN_RECORDING`."""
+    le formulaire de connexion — voir `ENV_LOGIN_RECORDING`.
+    `login_form` (extension 2026-09-30) : le descripteur du formulaire de connexion lui-même (3
+    clics guidés) — voir `ENV_LOGIN_FORM`."""
     if not project:
         return {}
     connector = (project.get("connector_type") or "").lower()
@@ -172,14 +181,24 @@ def project_env(project: dict | None, comptes: list[dict] | None = None,
             env[_auth.ENV_TOTP_SECRET] = str(project["totp_secret"])
         if project.get("injected_session"):
             env[_auth.ENV_INJECTED_SESSION] = str(project["injected_session"])
+    # Essai (2026-09-30) : contrairement aux 3 variables ci-dessus (des concepts propres à la
+    # stratégie du connecteur `web`), le chemin de connexion enregistré est un mécanisme UI
+    # générique (franchir un écran, remplir un formulaire) qui ne présuppose rien de spécifique au
+    # connecteur — ouvert à `odoo` ICI pour permettre l'essai demandé, consommé UNIQUEMENT par
+    # `odoo_login.py::playwright_login` si le projet a effectivement enregistré quelque chose
+    # (sinon `None`/`[]`, comportement historique inchangé pour Odoo).
+    if connector in ("web", "odoo"):
         if sequence_connexion:
             env[ENV_LOGIN_RECORDING] = json.dumps(sequence_connexion, ensure_ascii=False)
+        if login_form:
+            env[ENV_LOGIN_FORM] = json.dumps(login_form, ensure_ascii=False)
     return env
 
 
 def env_du_projet(conn, project: dict | None) -> dict[str, str]:
-    """`project_env` AVEC les comptes secondaires ET la séquence de connexion (sous-lot D) du
-    projet — le point d'entrée des appelants qui lancent un run Behave."""
+    """`project_env` AVEC les comptes secondaires, la séquence de connexion (sous-lot D) ET le
+    formulaire de connexion (extension 2026-09-30) du projet — le point d'entrée des appelants
+    qui lancent un run Behave."""
     from testpilot.store import project_login_recordings
     from testpilot.store.repositories import ProjectAccountRepo
 
@@ -187,4 +206,5 @@ def env_du_projet(conn, project: dict | None) -> dict[str, str]:
         return project_env(project)
     comptes = ProjectAccountRepo(conn).pour_runtime(project["id"])
     sequence = project_login_recordings.lire(conn, project["id"])
-    return project_env(project, comptes, sequence)
+    login_form = project_login_recordings.lire_formulaire(conn, project["id"])
+    return project_env(project, comptes, sequence, login_form)

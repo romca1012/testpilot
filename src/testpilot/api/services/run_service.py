@@ -162,7 +162,8 @@ def resolve_connection(conn, case_id: int) -> dict[str, str]:
     a_un_projet = bool(project and project.get("id"))
     comptes = ProjectAccountRepo(conn).pour_runtime(project["id"]) if a_un_projet else []
     sequence = project_login_recordings.lire(conn, project["id"]) if a_un_projet else None
-    return verifier_connexion(project, comptes, sequence)
+    login_form = project_login_recordings.lire_formulaire(conn, project["id"]) if a_un_projet else None
+    return verifier_connexion(project, comptes, sequence, login_form)
 
 
 def resolve_project_id(conn, case_id: int) -> int | None:

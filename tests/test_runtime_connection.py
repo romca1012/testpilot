@@ -125,15 +125,32 @@ def test_project_env_sans_sequence_ne_produit_pas_la_variable():
     assert ENV_LOGIN_RECORDING not in env
 
 
-def test_project_env_ignore_la_sequence_pour_odoo():
-    """Réservé au connecteur `web` — Odoo n'a pas ce problème d'écran intercalé (URL de connexion
-    connue à l'avance, § docstring du module)."""
+def test_project_env_transmet_aussi_la_sequence_pour_odoo():
+    """Essai (2026-09-30, demandé explicitement) : Odoo n'a HISTORIQUEMENT pas ce problème d'écran
+    intercalé (URL de connexion connue à l'avance) — mais un déploiement personnalisé pourrait un
+    jour en ajouter un, ou modifier son formulaire au point de mettre en défaut la détection codée
+    en dur (`odoo_login.py`). Le mécanisme est donc ouvert aux DEUX connecteurs UI, jamais utilisé
+    tant que rien n'a été enregistré pour ce projet (voir `test_project_env_sans_sequence_ne_produit_pas_la_variable`
+    ci-dessus, valable pour les deux connecteurs)."""
     from testpilot.connectors.runtime_env import ENV_LOGIN_RECORDING
 
     env = project_env({"connector_type": "odoo", "base_url": "http://x", "database": "d",
                        "username": "u", "password": "p"},
                       sequence_connexion=[{"role": "button", "name": "Continuer"}])
-    assert ENV_LOGIN_RECORDING not in env
+    assert json.loads(env[ENV_LOGIN_RECORDING]) == [{"role": "button", "name": "Continuer"}]
+
+
+def test_project_env_reserve_bien_la_strategie_d_auth_au_connecteur_web():
+    """Ce qui reste PROPRE à `web` : la stratégie de connexion du compte principal (TOTP, session
+    injectée…) est un concept de CE connecteur (lot 07b-2) — jamais transmis pour Odoo, à la
+    différence du chemin de connexion enregistré (générique aux deux, voir le test ci-dessus)."""
+    from testpilot.connectors import auth_strategie as _auth
+
+    env = project_env({"connector_type": "odoo", "base_url": "http://x", "database": "d",
+                       "username": "u", "password": "p", "auth_strategie": "totp",
+                       "totp_secret": "ABC"})
+    assert _auth.ENV_STRATEGIE not in env
+    assert _auth.ENV_TOTP_SECRET not in env
 
 
 def test_env_du_projet_lit_et_transmet_la_sequence_confirmee(tmp_path, monkeypatch):
