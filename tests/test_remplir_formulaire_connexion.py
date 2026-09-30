@@ -60,6 +60,12 @@ class _FakePage:
     def wait_for_load_state(self, state):
         self.attente_reseau_appelee = True
 
+    def wait_for_timeout(self, _ms):
+        pass  # attente post-connexion bornée (voir `_attendre_confirmation_post_connexion`)
+
+    def query_selector(self, _selecteur):
+        return None  # comportement par défaut : formulaire disparu, connexion « confirmée »
+
     def locator(self, _selecteur):
         # `tenter_connexion_et_lire_resultat` lit un message d'erreur affiché après soumission
         # (`lire_message_erreur_visible`) — aucun ici, page factice sans bannière d'erreur.
@@ -92,6 +98,45 @@ def test_remplit_les_2_champs_puis_clique_le_bouton_et_attend_le_reseau():
     assert mdp.rempli == "s3cret"
     assert bouton.clique is True
     assert page.attente_reseau_appelee is True
+
+
+class _FakePageSPA(_FakePage):
+    """Reproduit la mesure faite sur `yros` (2026-09-30) : la connexion répond par `fetch`/XHR
+    puis redirige côté client (History API) — `wait_for_load_state("networkidle")` se résout
+    SANS AUCUNE navigation à attendre, la vraie redirection n'arrive que quelques instants plus
+    tard. `query_selector("input[type='password']")` reste non-`None` (champ encore visible) et
+    `url` reste celui de la page de connexion tant que `_polls_avant_redirection` n'est pas
+    atteint — exactement le décalage mesuré (0.6 s, 3 paliers de 100 ms dans ce test)."""
+
+    def __init__(self, resultats, *, polls_avant_redirection: int):
+        super().__init__(resultats)
+        self._polls_avant_redirection = polls_avant_redirection
+        self._polls = 0
+
+    def query_selector(self, _selecteur):
+        return object() if self._polls < self._polls_avant_redirection else None
+
+    def wait_for_timeout(self, _ms):
+        self._polls += 1
+        if self._polls >= self._polls_avant_redirection:
+            self.url = "https://exemple.test/dashboard"
+
+
+def test_falsifiable_attend_la_vraie_redirection_spa_au_dela_du_networkidle_premature():
+    """Sans `_attendre_confirmation_post_connexion`, cette fonction rendrait la main juste après
+    `networkidle` — l'appelant (`crawl_roots`) lirait encore `page.url` = la page de connexion,
+    exactement le symptôme mesuré sur `yros` (crawl bloqué à 3 routes, jamais d'erreur levée).
+    Ce test échoue si l'attente bornée post-connexion est retirée ou court-circuitée."""
+    identifiant, mdp, bouton = _FakeLocator(), _FakeLocator(), _FakeLocator()
+    page = _FakePageSPA({
+        ("textbox", "E-mail"): identifiant,
+        ("textbox", "Mot de passe"): mdp,
+        ("button", "Se connecter"): bouton,
+    }, polls_avant_redirection=3)
+
+    remplir_et_soumettre_formulaire_connexion(page, _LOGIN_FORM, "sidi@exemple.test", "s3cret")
+
+    assert page.url == "https://exemple.test/dashboard"
 
 
 def test_falsifiable_jamais_de_secret_dans_le_message_d_erreur():

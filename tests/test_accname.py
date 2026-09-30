@@ -133,6 +133,20 @@ def test_wpt_host_input_image_alt(page):
     assert _nom_via_clic(page, html, "input")["name"] == "valider le paiement"
 
 
+def test_falsifiable_input_submit_value_est_le_nom_accessible(page):
+    """HTML-AAM — `input[type=submit]` : le nom accessible vient de l'attribut `value`, jamais de
+    son contenu (élément vide, sans nœud enfant/texte) — bug mesuré le 2026-09-30 (SauceDemo,
+    capture d'un bouton de connexion avec un nom vide, introuvable au rejeu). Ce test échoue si
+    `etiquetteLangageHote` ne lit plus `value` pour ce type de champ."""
+    html = '<input type="submit" value="Login">'
+    assert _nom_via_clic(page, html, "input")["name"] == "Login"
+
+
+def test_falsifiable_input_button_value_est_le_nom_accessible(page):
+    html = '<input type="button" value="Continuer">'
+    assert _nom_via_clic(page, html, "input")["name"] == "Continuer"
+
+
 def test_wpt_name_from_content_bouton(page):
     # comp_name_from_content.html — « Simple Native Elements ».
     assert _nom_via_clic(page, "<button>label</button>", "button")["name"] == "label"

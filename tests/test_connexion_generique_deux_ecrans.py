@@ -69,6 +69,9 @@ class _PageDeuxEcrans:
             self._sur_ecran_2 = True
             self.url = "https://exemple.test/connexion/mot-de-passe"
 
+    def wait_for_timeout(self, _ms):
+        pass  # attente post-connexion bornée (voir `_attendre_confirmation_post_connexion`)
+
 
 class _PageUnEcran:
     """Schéma HISTORIQUE (mot de passe et identifiant ensemble, sur la même page) — inchangé."""
@@ -77,6 +80,7 @@ class _PageUnEcran:
         self.identifiant = _FakeChamp()
         self.mdp = _FakeChamp()
         self.attentes_reseau = 0
+        self.url = "https://exemple.test/connexion"
 
     def query_selector(self, selector):
         if "password" in selector:
@@ -91,6 +95,9 @@ class _PageUnEcran:
     def wait_for_load_state(self, *_a, **_kw):
         self.attentes_reseau += 1
 
+    def wait_for_timeout(self, _ms):
+        pass  # attente post-connexion bornée (voir `_attendre_confirmation_post_connexion`)
+
 
 # ── Le schéma à UN écran reste exactement celui d'avant cette étape ────────────
 
@@ -102,6 +109,42 @@ def test_le_schema_a_un_ecran_reste_inchange():
     assert page.identifiant.rempli == "alice"
     assert page.mdp.rempli == "s3cret"
     assert page.attentes_reseau == 1  # une seule page, un seul palier réseau
+
+
+class _PageUnEcranSPA(_PageUnEcran):
+    """Reproduit la mesure faite sur `yros` (2026-09-30) : la connexion répond par `fetch`/XHR
+    puis redirige côté client — `wait_for_load_state("networkidle")` (défini par la classe mère)
+    ne change PAS l'URL, la vraie redirection n'arrive qu'après quelques instants (simulés par
+    `wait_for_timeout`)."""
+
+    def __init__(self, *, polls_avant_redirection: int):
+        super().__init__()
+        self.url = "https://exemple.test/connexion"
+        self._polls_avant_redirection = polls_avant_redirection
+        self._polls = 0
+
+    def query_selector(self, selector):
+        if "password" in selector and self._polls >= self._polls_avant_redirection:
+            return None
+        return super().query_selector(selector)
+
+    def wait_for_timeout(self, _ms):
+        self._polls += 1
+        if self._polls >= self._polls_avant_redirection:
+            self.url = "https://exemple.test/dashboard"
+
+
+def test_falsifiable_le_schema_a_un_ecran_attend_la_vraie_redirection_spa():
+    """Sans `_attendre_confirmation_post_connexion`, cette fonction rendrait la main juste après
+    `networkidle` — l'appelant (`crawl_roots`) lirait encore l'URL de la page de connexion,
+    exactement le symptôme mesuré sur `yros`. Échoue si l'attente bornée post-connexion est
+    retirée ou court-circuitée."""
+    page = _PageUnEcranSPA(polls_avant_redirection=3)
+
+    resultat = tenter_connexion_generique(page, "alice", "s3cret")
+
+    assert resultat is True
+    assert page.url == "https://exemple.test/dashboard"
 
 
 # ── Le garde anti-faux-positif ───────────────────────────────────────────────
