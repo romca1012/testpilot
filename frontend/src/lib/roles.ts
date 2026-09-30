@@ -18,7 +18,7 @@ export const PERMISSIONS_ROLES: PermissionLigne[] = [
   { groupe: 'Exécutions', action: 'Clôturer et rouvrir une campagne', minimum: 'testeur', description: 'Figer temporairement une campagne sans supprimer son historique.' },
   { groupe: 'Résultats', action: 'Retirer une pièce jointe', minimum: 'admin', description: 'Retirer un fichier justificatif sans modifier le résultat signé auquel il appartenait.' },
   { groupe: 'Automatisation', action: 'Générer et modifier les scripts', minimum: 'dev', description: 'Automatiser un cas, modifier le Gherkin/Python et accéder aux outils de qualité.' },
-  { groupe: 'Automatisation', action: 'Enregistrer un chemin de connexion', minimum: 'dev', description: 'Ouvrir un vrai navigateur distant pour montrer comment franchir un écran de pré-connexion — action sensible, réservée comme le démarrage d’une exploration.' },
+  { groupe: 'Automatisation', action: 'Enregistrer un chemin de connexion', minimum: 'dev', description: 'Ouvrir un vrai navigateur distant pour montrer comment franchir un écran de pré-connexion — action sensible, mais délibérément plus permissive que le démarrage d’une exploration (admin seul).' },
   { groupe: 'Administration', action: 'Gérer les projets et leurs accès', minimum: 'admin', description: 'Créer les projets et administrer leurs membres.' },
   { groupe: 'Administration', action: 'Gérer les utilisateurs et les réglages', minimum: 'admin', description: 'Créer, désactiver et administrer les comptes et les paramètres de l’instance.' },
 ]

@@ -92,8 +92,18 @@ export function useLiveSession(projectId: number | string) {
         break
       case 'erreur':
         // Le serveur a refusé un `confirmer`/`recommencer` (clic encore en cours de traitement,
-        // sous-lot C) — jamais fatal, l'écran invite juste à réessayer dans un instant.
+        // sous-lot C) — jamais fatal, l'écran invite juste à réessayer dans un instant. `statut`
+        // reste `en_direct` (voir `confirmer()` : il n'anticipe plus la confirmation) — sinon ce
+        // message n'aurait jamais pu s'afficher, masqué par un état déjà passé à « confirmée ».
         erreur.value = message.detail
+        break
+      case 'confirme':
+        // Bloquant trouvé en revue verdict-reviewer (2026-09-30) : `confirmer()` faisait passer
+        // `statut` à « confirmée » à l'ENVOI du message, jamais à la RÉCEPTION de cet accusé —
+        // un refus serveur (`erreur: clics_en_attente`) restait alors invisible (l'écran affichait
+        // déjà « confirmée »), et rien ne distinguait une confirmation VRAIMENT actée d'un simple
+        // souhait côté client. Cette transition est désormais la SEULE source de vérité.
+        statut.value = 'confirmee'
         break
     }
   }
@@ -108,8 +118,21 @@ export function useLiveSession(projectId: number | string) {
   }
 
   async function demarrer() {
+    // Bloquant trouvé en revue verdict-reviewer (2026-09-30) : une remise à zéro PARTIELLE
+    // (seulement `statut`/`erreur`) laissait l'état d'une session PRÉCÉDENTE visible pendant toute
+    // une nouvelle session — `etapes` en particulier, ce qui pouvait faire confirmer un chemin qui
+    // semblait déjà contenir des étapes alors que la nouvelle session, côté serveur, en base 0.
+    // Reproduit et prouvé par le reviewer (test vitest ad hoc) : fermeture puis « Recommencer une
+    // session » (qui appelle CE `demarrer()`, jamais `recommencer()`) laissait `etapes` peuplé
+    // d'une capture qui n'existait plus côté serveur.
     statut.value = 'connexion'
     erreur.value = ''
+    etapes.value = []
+    image.value = ''
+    captureArretee.value = ''
+    dernierClicAmbigu.value = ''
+    raisonFermeture.value = ''
+    avertissementInactivite.value = null
     try {
       const jeton = await api.createLiveSession(projectId)
       socket = new WebSocket(liveSessionWsUrl(projectId, jeton.token))
@@ -129,8 +152,10 @@ export function useLiveSession(projectId: number | string) {
   }
 
   function confirmer() {
+    // N'anticipe plus `statut`: la transition n'a lieu qu'à la réception de l'accusé serveur
+    // (`case 'confirme'` dans `surMessage`) — voir le commentaire là-bas pour le bloquant que ça
+    // corrige.
     socket?.send(JSON.stringify({ type: 'confirmer' }))
-    statut.value = 'confirmee'
   }
 
   function recommencer() {
