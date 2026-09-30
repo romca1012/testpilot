@@ -1,25 +1,33 @@
-# Rapport de continuité — connexion automatique qui n'aboutit pas sur `yros`
+# Rapport de continuité — la connexion automatique via formulaire enregistré n'aboutit pas
 
 Pour reprendre le débogage dans une nouvelle session, en local, sans repasser par le cycle
 push → PR → CI → déploiement à chaque essai (trop lent, cause de ce rapport).
 
+⚠️ **Ce n'est pas un problème propre à un seul projet.** Le mécanisme en cause
+(`remplir_et_soumettre_formulaire_connexion` / le crawl du connecteur `web` générique) est
+générique, partagé par tous les projets qui l'utilisent. `yros` est simplement le cas où on l'a
+observé et mesuré en premier — ne pas restreindre l'investigation à ses spécificités (son URL,
+son wording) tant que la cause réelle n'est pas isolée. Le même test devrait être refait sur au
+moins un second projet une fois une hypothèse confirmée sur `yros`, pour vérifier qu'elle
+généralise.
+
 ## Le problème, en une phrase
 
-Sur le projet `yros` (connecteur `web`), le formulaire de connexion enregistré (3 clics guidés :
-champ identifiant, champ mot de passe, bouton) se remplit et se soumet **sans lever d'erreur**,
-mais l'exploration qui suit ne trouve toujours que **3 routes** (`/`, `/login`,
-`/mot-de-passe-oublie`) — exactement comme AVANT que la connexion n'existe. La connexion
-**manuelle**, elle, fonctionne (confirmé par le porteur avec les vrais identifiants du projet).
+Sur un projet `web` où le formulaire de connexion a été enregistré (3 clics guidés : champ
+identifiant, champ mot de passe, bouton), le formulaire se remplit et se soumet **sans lever
+d'erreur**, mais l'exploration qui suit ne débloque aucun contenu authentifié — sur le cas mesuré
+(`yros`), elle ne trouve toujours que **3 routes** (`/`, `/login`, `/mot-de-passe-oublie`),
+exactement comme AVANT que la connexion n'existe. La connexion **manuelle**, elle, fonctionne
+(confirmé par le porteur avec les vrais identifiants du projet `yros`).
 
 ## Ce qui est CONFIRMÉ (par mesure, pas par supposition)
 
 1. **La capture a réussi** : les 3 champs (identifiant = « Adresse email », mot de passe = « Mot
    de passe », bouton = « Se connecter ») ont été identifiés et confirmés — visible dans l'écran
    « Enregistrer la connexion », capture d'écran à l'appui.
-2. **Le rejeu ne lève AUCUNE exception** : aucun `FormulaireConnexionObsoleteError` dans les logs
-   serveur pour l'exploration de `yros` — donc `page.get_by_role(role, name=..., exact=True)`
-   retrouve bien les 3 éléments de façon unique, les remplit, et clique le bouton, sans timeout ni
-   ambiguïté.
+2. **Le rejeu ne lève AUCUNE exception** (mesuré sur `yros`) : aucun `FormulaireConnexionObsoleteError`
+   dans les logs serveur — donc `page.get_by_role(role, name=..., exact=True)` retrouve bien les 3
+   éléments de façon unique, les remplit, et clique le bouton, sans timeout ni ambiguïté.
 3. **La connexion manuelle marche** (testée par le porteur avec les vrais identifiants sur
    `https://yros-portail.agilicis.com/login`) — donc ce ne sont ni de mauvais identifiants, ni un
    refus de l'application.
@@ -37,13 +45,15 @@ mais l'exploration qui suit ne trouve toujours que **3 routes** (`/`, `/login`,
 
 ## Ce qui reste à découvrir (hypothèses NON vérifiées, dans l'ordre le plus probable)
 
-1. **SPA sans navigation détectable** : le crawl (`scripts/crawl_domaine.py`, appelé depuis
-   `exploration_service._crawl`) découvre les pages via `document.querySelectorAll('a[href]')`
-   (fonction `_liens_visibles` dans `_web_helpers.py`). Si `yros` est une application React/Vue qui
-   change de route côté client SANS vrais `<a href>` (navigation par bouton + JS), le crawl ne
-   verrait RIEN de nouveau même en étant réellement connecté. **Test décisif** : après connexion
-   manuelle, ouvrir l'inspecteur du navigateur sur la page qui suit et vérifier si les éléments de
-   navigation sont des `<a href="...">` ou des `<button>`/`<div onClick>`.
+1. **SPA sans navigation détectable** (hypothèse générique, pas spécifique à `yros`) : le crawl
+   (`scripts/crawl_domaine.py`, appelé depuis `exploration_service._crawl`) découvre les pages via
+   `document.querySelectorAll('a[href]')` (fonction `_liens_visibles` dans `_web_helpers.py`). Toute
+   application React/Vue qui change de route côté client SANS vrais `<a href>` (navigation par
+   bouton + JS) échapperait de la même façon au crawl, connectée ou non — ce n'est pas un trait de
+   `yros` en particulier, plutôt une limite structurelle du crawler qui toucherait n'importe quel
+   projet construit ainsi. **Test décisif** : après connexion manuelle (sur `yros`, ou un autre
+   projet touché), ouvrir l'inspecteur du navigateur sur la page qui suit et vérifier si les
+   éléments de navigation sont des `<a href="...">` ou des `<button>`/`<div onClick>`.
 2. **Timing / connexion asynchrone** : `remplir_et_soumettre_formulaire_connexion` (dans
    `src/testpilot/connectors/_web_helpers.py`) clique le bouton puis appelle
    `page.wait_for_load_state("networkidle")` et rend la main. Si l'authentification réelle se fait
@@ -81,7 +91,9 @@ error`, dans `test_live_session_ws.py`, un test de session live, alors que le di
    `frontend/src/lib/api.ts:5-8`) et le frontend (`npm run dev` dans `frontend/`).
 3. Créer/retrouver le projet `yros` en local (même URL réelle `https://yros-portail.agilicis.com`,
    mêmes identifiants réels) — l'app cible est un vrai site externe, accessible depuis n'importe
-   quelle machine avec accès réseau sortant, pas seulement depuis le serveur de staging.
+   quelle machine avec accès réseau sortant, pas seulement depuis le serveur de staging. Une fois
+   une piste confirmée sur `yros`, la reproduire sur un second projet `web` avec formulaire
+   enregistré pour vérifier qu'elle généralise (voir l'avertissement en tête de rapport).
 4. Relancer une exploration et regarder directement les logs de `uvicorn` dans le terminal (plus
    besoin de SSH/`docker logs` : c'est un simple `print`/log en local) — chercher la ligne
    `[web-générique] après tentative de connexion : url=...`.
