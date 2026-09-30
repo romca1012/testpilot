@@ -148,3 +148,5 @@ tzdata==2026.3
     # via psycopg
 uvicorn==0.52.4
     # via testpilot (pyproject.toml)
+websockets==17.1
+    # via testpilot (pyproject.toml)
