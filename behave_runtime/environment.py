@@ -428,6 +428,15 @@ def _tenter_connexion_initiale(context) -> None:
             # tout le run pour un signal qui n'est pas le mécanisme d'authentification principal.
             logger.warning("[connexion] TESTPILOT_LOGIN_RECORDING n'est pas un JSON valide — "
                            "aucune séquence de connexion rejouée pour ce run.")
+    # Posée sur `context` (même motif que `context.auth_strategie`/`context.totp_secret` ci-dessus,
+    # `before_all`) : bloquant trouvé en revue verdict-reviewer chantier-entier (2026-09-30) —
+    # `_verifier_ou_reconnecter_session` (lot 07b-2, reconnexion EN COURS de scénario après
+    # invalidation de session) appelle la même `authentifier_selon_la_strategie` mais n'avait AUCUN
+    # moyen de lire cette séquence, qui restait une variable strictement locale à cette fonction.
+    # Une reconnexion mi-scénario qui retombe sur l'écran intercalé échouait donc avec « Vérifiez
+    # l'identifiant, le mot de passe » — un diagnostic trompeur, la vraie cause étant cet oubli de
+    # câblage, pas les identifiants du projet.
+    context.sequence_connexion = sequence_connexion
     with sync_playwright() as p:
         navigateur = p.chromium.launch(headless=os.environ.get("PLAYWRIGHT_HEADED", "0") != "1")
         try:

@@ -3421,7 +3421,13 @@ def _verifier_ou_reconnecter_session(context, url_visee: str) -> None:
     authentifier_selon_la_strategie(
         context.page, strategie=strategie, web_url=getattr(context, "web_url", "") or "",
         user=getattr(context, "web_user", "") or "", password=getattr(context, "web_password", "") or "",
-        totp_secret=getattr(context, "totp_secret", "") or "")
+        totp_secret=getattr(context, "totp_secret", "") or "",
+        # Bloquant trouvé en revue verdict-reviewer chantier-entier (2026-09-30) : sans ce
+        # paramètre, une reconnexion en cours de scénario qui retombe sur un écran intercalé
+        # échouait avec « Vérifiez l'identifiant, le mot de passe » — alors que la vraie cause
+        # était cet appel, jamais mis à jour par le sous-lot D (qui n'avait câblé que la connexion
+        # initiale de `before_all`, voir `environment.py::_tenter_connexion_initiale`).
+        sequence_connexion=getattr(context, "sequence_connexion", None) or [])
     try:
         # Les scénarios SUIVANTS profitent aussi de la session renouvelée — best-effort, jamais fatal ici.
         context._browser_context.storage_state(path=_CHEMIN_STORAGE_STATE)

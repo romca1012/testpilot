@@ -120,3 +120,34 @@ def test_sans_sequence_le_comportement_est_inchange(monkeypatch):
                                       user="bob", password="s3cret", totp_secret="")
 
     assert appels == [[]], "sans sequence_connexion, rejouer_sequence_connexion reçoit une liste vide"
+
+
+def test_falsifiable_la_reconnexion_en_cours_de_scenario_transmet_la_sequence(monkeypatch):
+    """Bloquant trouvé en revue verdict-reviewer chantier-entier (2026-09-30) : le sous-lot D
+    n'avait câblé `sequence_connexion` que sur la connexion INITIALE du run
+    (`environment.py::_tenter_connexion_initiale`), jamais sur `_verifier_ou_reconnecter_session`
+    (lot 07b-2, préexistant, reconnexion EN COURS de scénario après invalidation de session) —
+    cette dernière retombait donc systématiquement sur une liste vide, quelle que soit la séquence
+    réellement enregistrée pour le projet. Une reconnexion qui retombe sur un écran intercalé
+    échouait avec « Vérifiez l'identifiant, le mot de passe » — un diagnostic trompeur, la vraie
+    cause étant cet oubli de câblage."""
+    H = _charger_base_helpers()
+    from types import SimpleNamespace
+
+    appels = []
+    monkeypatch.setattr(H, "_mot_de_passe_visible", lambda page: True)
+    monkeypatch.setattr(H, "authentifier_selon_la_strategie",
+                        lambda page, **kw: appels.append(kw))
+
+    etapes = [{"role": "combobox", "name": "Pays"}]
+    context = SimpleNamespace(
+        page=_FakePage(mot_de_passe_visible=True), auth_strategie=H._auth.FORMULAIRE,
+        web_url="https://app.example", web_user="bob", web_password="s3cret", totp_secret="",
+        sequence_connexion=etapes,
+        _browser_context=SimpleNamespace(storage_state=lambda path: None))
+
+    H._verifier_ou_reconnecter_session(context, "https://app.example/espace")
+
+    assert appels[0]["sequence_connexion"] == etapes, (
+        "la séquence enregistrée pour le projet n'a pas été transmise à la reconnexion en cours "
+        "de scénario — elle retomberait sur une liste vide, quelle que soit la séquence réelle")
