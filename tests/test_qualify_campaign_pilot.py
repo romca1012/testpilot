@@ -10,9 +10,13 @@ pilote du 23/09/2026, sur les 6 essais réels (projet 12, staging Sapian) :
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from scripts.qualify_campaign_pilot import _verification_independante
+
+_RACINE = Path(__file__).resolve().parent.parent
 
 
 class _ConnecteurEspion:
@@ -73,3 +77,68 @@ def test_une_erreur_reseau_est_rapportee_jamais_levee():
 
     assert resultat["ok"] is False
     assert "TimeoutError" in resultat["erreur"]
+
+
+# ── Comptes secondaires transmis au run Behave (trouvé le 2026-09-30, mesure de clôture du lot 09) ─
+#
+# `verifier_connexion(project)` était appelée SANS comptes dans `main()` : les comptes secondaires
+# enregistrés en base (D8, `project_account`) n'atteignaient jamais `TESTPILOT_COMPTES`, donc jamais
+# le sous-processus Behave — le step « je me connecte en tant que » échouait en PRÉREQUIS MANQUANT
+# même quand le compte existait réellement (9 des 15 cas du banc, aux DEUX mesures de clôture, avant
+# et après avoir corrigé l'enregistrement en base). `main()` appelle désormais
+# `verifier_connexion_du_projet(conn, project)` (runtime_env.py) : seul endroit autorisé à lire
+# `pour_runtime` en dehors de `run_service.py` (règle structurelle D8,
+# `tests/test_comptes_projet.py::test_structure_pour_runtime_n_est_appele_que_par_le_transport_vers_le_runtime`).
+
+def test_falsifiable_les_comptes_secondaires_atteignent_testpilot_comptes(tmp_path, monkeypatch):
+    import sys
+    from cryptography.fernet import Fernet
+
+    sys.path.insert(0, str(_RACINE / "src"))
+    from testpilot import config
+    from testpilot.connectors.runtime_env import verifier_connexion_du_projet
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import ProjectAccountRepo, ProjectRepo
+
+    monkeypatch.setattr(config, "SECRET_KEY", Fernet.generate_key().decode())
+    conn = get_initialized_db(tmp_path / "t.db")
+    project_id = ProjectRepo(conn).create(
+        name="Banc test", description="", connector_type="odoo", connector_version="16.0",
+        base_url="http://127.0.0.1:18069", database="banc", username="admin", password="admin")
+    ProjectAccountRepo(conn).create(project_id, label="banc_manager", username="banc_manager",
+                                    password="banc_manager_test_2026", business_role="Stock")
+    project = ProjectRepo(conn).get(project_id)
+
+    env = verifier_connexion_du_projet(conn, project)  # l'appel que `main()` fait désormais
+
+    assert "TESTPILOT_COMPTES" in env, "le compte secondaire enregistré doit atteindre l'environnement Behave"
+    transmis = json.loads(env["TESTPILOT_COMPTES"])
+    assert {c["label"] for c in transmis} == {"banc_manager"}
+    assert next(c for c in transmis if c["label"] == "banc_manager")["password"] == "banc_manager_test_2026"
+
+
+def test_falsifiable_omettre_comptes_reproduit_le_bug_d_origine(tmp_path, monkeypatch):
+    """Le contre-essai : c'est exactement l'appel `verifier_connexion(project)` (sans comptes) que
+    `main()` faisait avant ce correctif — la précondition manquante est silencieuse, pas une
+    exception, d'où le bug passé inaperçu jusqu'à la mesure du 2026-09-30."""
+    import sys
+    from cryptography.fernet import Fernet
+
+    sys.path.insert(0, str(_RACINE / "src"))
+    from testpilot import config
+    from testpilot.connectors.runtime_env import verifier_connexion
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import ProjectAccountRepo, ProjectRepo
+
+    monkeypatch.setattr(config, "SECRET_KEY", Fernet.generate_key().decode())
+    conn = get_initialized_db(tmp_path / "t.db")
+    project_id = ProjectRepo(conn).create(
+        name="Banc test", description="", connector_type="odoo", connector_version="16.0",
+        base_url="http://127.0.0.1:18069", database="banc", username="admin", password="admin")
+    ProjectAccountRepo(conn).create(project_id, label="banc_manager", username="banc_manager",
+                                    password="banc_manager_test_2026", business_role="Stock")
+    project = ProjectRepo(conn).get(project_id)
+
+    env = verifier_connexion(project)  # bug d'origine : comptes jamais lus ni transmis
+
+    assert "TESTPILOT_COMPTES" not in env

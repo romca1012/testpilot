@@ -216,7 +216,7 @@ DATA_DIR_ISOLE = _isoler_donnees(_nom_de_sortie_demande()) if _nom_de_sortie_dem
 from testpilot import config
 from testpilot.analysis.plan import ScenarioIntent, TestPlan
 from testpilot.connectors.factory import build_connector
-from testpilot.connectors.runtime_env import verifier_connexion
+from testpilot.connectors.runtime_env import verifier_connexion_du_projet
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.execution.executor import Executor
 from testpilot.generation import menu_appris
@@ -420,14 +420,20 @@ def main():
     with sqlite3.connect(config.DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         project = ProjectRepo(conn).get(project_id)
-    if project is None:
-        raise ValueError(f'projet {project_id} introuvable')
-    if expected_base_url is not None and project['base_url'] != expected_base_url:
-        raise ValueError(
-            f'projet {project_id} : base_url {project["base_url"]!r} differe du perimetre '
-            f'approuve {expected_base_url!r} -- passe --expected-base-url pour confirmer '
-            f'explicitement un changement de cible.')
-    connexion = verifier_connexion(project)  # connexion du projet incomplete -> leve avant tout essai
+        if project is None:
+            raise ValueError(f'projet {project_id} introuvable')
+        if expected_base_url is not None and project['base_url'] != expected_base_url:
+            raise ValueError(
+                f'projet {project_id} : base_url {project["base_url"]!r} differe du perimetre '
+                f'approuve {expected_base_url!r} -- passe --expected-base-url pour confirmer '
+                f'explicitement un changement de cible.')
+        # Trouve le 2026-09-30 (mesure de cloture du lot 09) : les comptes secondaires etaient bien
+        # enregistres en base (D8, `project_account`) mais jamais lus ici -- `verifier_connexion`
+        # sans comptes produit un `TESTPILOT_COMPTES` vide, et le step « je me connecte en tant que »
+        # echoue en PRECONDITION MANQUANTE meme quand le compte existe. La lecture du secret
+        # (`pour_runtime`) reste confinee a `runtime_env.py` (regle structurelle D8,
+        # `tests/test_comptes_projet.py`) -- jamais appelee directement depuis ce script.
+        connexion = verifier_connexion_du_projet(conn, project)  # connexion incomplete -> leve avant tout essai
 
     if args.explorer_urls:
         urls = [u.strip() for u in args.explorer_urls.split(',') if u.strip()]

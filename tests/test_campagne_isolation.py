@@ -208,7 +208,10 @@ def test_main_sort_avec_le_code_3_quand_le_plafond_interrompt_la_campagne(monkey
     monkeypatch.setattr(script.config, "DATA_DIR", copie)
     monkeypatch.setattr(script.config, "DB_PATH", copie / "testpilot.db")
     monkeypatch.setattr(script.config, "ANTHROPIC_API_KEY", "cle")
-    monkeypatch.setattr(script, "verifier_connexion", lambda p: {})
+    # Comptes secondaires (lot 09, trouvé 2026-09-30) : `main()` appelle désormais
+    # `verifier_connexion_du_projet(conn, project)` (runtime_env.py — seul endroit autorisé à lire
+    # `pour_runtime`, règle D8) au lieu de `verifier_connexion(project)`.
+    monkeypatch.setattr(script, "verifier_connexion_du_projet", lambda conn, p: {})
     monkeypatch.setattr(script.ProjectRepo, "get", lambda self, pid: {"base_url": "u"})
     fausse_conn = type("Conn", (), {"close": lambda self: None})()
     monkeypatch.setattr(script, "QualificationBudget",
@@ -219,7 +222,7 @@ def test_main_sort_avec_le_code_3_quand_le_plafond_interrompt_la_campagne(monkey
     monkeypatch.setattr(script, "_un_essai", lambda *a, **k: lances.append(a[:2]) or {
         "generation": {"cost_usd": 0.2}, "budget": {}})
     monkeypatch.setattr(script.sqlite3, "connect", lambda *a, **k: contextlib.nullcontext(
-        type("K", (), {"row_factory": None})()))
+        type("K", (), {"row_factory": None, "execute": lambda self, *a, **k: []})()))
 
     with pytest.raises(SystemExit) as sortie:
         script.main()
