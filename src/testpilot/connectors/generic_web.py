@@ -268,6 +268,19 @@ class GenericWebConnector(Connector):
                 reponses_connexion.append(
                     f"{reponse.request.method} {reponse.url} -> {reponse.status} {corps!r}")
 
+            # Cas réel « yros » (2026-10-01) : la vraie requête de connexion part en XHR vers un
+            # domaine TIERS (`yros-proxy.*`, pas celui de la page) — reproduite manuellement avec
+            # succès (401 propre), mais jamais vue par `page.on("response")` lors d'une tentative
+            # automatisée. Ce dernier ne capture que les réponses COMPLÈTES : une requête qui
+            # échoue avant d'en recevoir une (CORS, DNS, connexion refusée) ne déclenche jamais
+            # "response", seulement "requestfailed" — jamais branché jusqu'ici.
+            requetes_echouees: list[str] = []
+
+            def _capturer_requete_echouee(requete) -> None:
+                echec = requete.failure
+                raison = echec.get("errorText") if isinstance(echec, dict) else str(echec)
+                requetes_echouees.append(f"{requete.method} {requete.url} -> {raison}")
+
             def _capturer_erreur_console(message) -> None:
                 if message.type == "error":
                     erreurs_console.append(message.text[:300])
@@ -285,6 +298,7 @@ class GenericWebConnector(Connector):
 
             try:
                 ctx.page.on("response", _capturer_reponse_connexion)
+                ctx.page.on("requestfailed", _capturer_requete_echouee)
                 ctx.page.on("console", _capturer_erreur_console)
                 ctx.page.on("pageerror", _capturer_erreur_js)
             except Exception:
@@ -325,6 +339,7 @@ class GenericWebConnector(Connector):
                 message_erreur = "<illisible>"
             try:
                 ctx.page.remove_listener("response", _capturer_reponse_connexion)
+                ctx.page.remove_listener("requestfailed", _capturer_requete_echouee)
                 ctx.page.remove_listener("console", _capturer_erreur_console)
                 ctx.page.remove_listener("pageerror", _capturer_erreur_js)
             except Exception:
@@ -338,9 +353,10 @@ class GenericWebConnector(Connector):
                 texte_page = "<illisible>"
             logger.info(
                 "[web-générique] après tentative de connexion : url=%s message_erreur=%r "
-                "reponses_post=%s erreurs_console=%s erreurs_js=%s texte_page=%r",
+                "reponses_post=%s requetes_echouees=%s erreurs_console=%s erreurs_js=%s "
+                "texte_page=%r",
                 getattr(ctx.page, "url", "?"), message_erreur, reponses_connexion,
-                erreurs_console, erreurs_js, texte_page)
+                requetes_echouees, erreurs_console, erreurs_js, texte_page)
         return _connexion
 
     # ── Interne (réseau isolé, surchargeable en test) ──────────────────────────
