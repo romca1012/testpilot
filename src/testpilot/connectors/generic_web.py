@@ -273,8 +273,17 @@ class GenericWebConnector(Connector):
             # message d'erreur RÉELLEMENT affiché (jamais lu jusqu'ici à cet endroit précis), pour
             # distinguer un rejet serveur explicite d'un blocage silencieux. À retirer une fois la
             # cause trouvée.
+            #
+            # ⚠️ Un diagnostic ne doit jamais faire échouer la connexion elle-même — `try/except`
+            # explicite (pas seulement le best-effort interne de `lire_message_erreur_visible`,
+            # qui suppose déjà un `page.locator()` fonctionnel : un faux `Page` de test qui ne
+            # l'implémente pas lèverait sinon une `AttributeError` non rattrapée ici).
+            try:
+                message_erreur = lire_message_erreur_visible(ctx.page)
+            except Exception:
+                message_erreur = "<illisible>"
             logger.info("[web-générique] après tentative de connexion : url=%s message_erreur=%r",
-                       getattr(ctx.page, "url", "?"), lire_message_erreur_visible(ctx.page))
+                       getattr(ctx.page, "url", "?"), message_erreur)
         return _connexion
 
     # ── Interne (réseau isolé, surchargeable en test) ──────────────────────────
