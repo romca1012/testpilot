@@ -248,6 +248,35 @@ class GenericWebConnector(Connector):
             # « Points de vigilance » que le correctif du 2026-09-15 (commentaire ci-dessus)
             # visait à éliminer, pour le cas d'usage même qui motive ce chantier.
             rejouer_sequence_connexion(ctx.page, self._sequence_connexion)
+            # Diagnostic temporaire (2026-10-01, cas réel « yros » : ni l'URL ni un message
+            # d'erreur visible ne bougent après la tentative — signal DOM insuffisant). Capture la
+            # réponse RÉSEAU réelle de la requête de connexion (code HTTP, corps tronqué) : un
+            # signal serveur, jamais dépendant d'un timing ou d'un style d'affichage. Best-effort,
+            # jamais fatal — voir même garde plus bas. À retirer une fois la cause trouvée.
+            # Même diagnostic, même raison : une erreur JS qui empêche le clic d'émettre la
+            # moindre requête (bug front-end jamais vu côté réseau) le trahirait ici.
+            reponses_connexion: list[str] = []
+            erreurs_console: list[str] = []
+
+            def _capturer_reponse_connexion(reponse) -> None:
+                try:
+                    if reponse.request.method != "POST":
+                        return
+                    corps = reponse.text()[:300]
+                except Exception:
+                    corps = "<corps illisible>"
+                reponses_connexion.append(
+                    f"{reponse.request.method} {reponse.url} -> {reponse.status} {corps!r}")
+
+            def _capturer_erreur_console(message) -> None:
+                if message.type == "error":
+                    erreurs_console.append(message.text[:300])
+
+            try:
+                ctx.page.on("response", _capturer_reponse_connexion)
+                ctx.page.on("console", _capturer_erreur_console)
+            except Exception:
+                pass
             try:
                 import crawl_domaine as cd
                 from testpilot.generation import domain_model
@@ -282,8 +311,16 @@ class GenericWebConnector(Connector):
                 message_erreur = lire_message_erreur_visible(ctx.page)
             except Exception:
                 message_erreur = "<illisible>"
-            logger.info("[web-générique] après tentative de connexion : url=%s message_erreur=%r",
-                       getattr(ctx.page, "url", "?"), message_erreur)
+            try:
+                ctx.page.remove_listener("response", _capturer_reponse_connexion)
+                ctx.page.remove_listener("console", _capturer_erreur_console)
+            except Exception:
+                pass
+            logger.info(
+                "[web-générique] après tentative de connexion : url=%s message_erreur=%r "
+                "reponses_post=%s erreurs_console=%s",
+                getattr(ctx.page, "url", "?"), message_erreur, reponses_connexion,
+                erreurs_console)
         return _connexion
 
     # ── Interne (réseau isolé, surchargeable en test) ──────────────────────────
