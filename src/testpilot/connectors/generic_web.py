@@ -316,11 +316,18 @@ class GenericWebConnector(Connector):
                 ctx.page.remove_listener("console", _capturer_erreur_console)
             except Exception:
                 pass
+            # Dernier recours (2026-10-01) : ni le DOM (sélecteurs d'erreur), ni le réseau, ni la
+            # console ne révèlent rien sur yros — vérité brute, sans hypothèse sur QUEL élément
+            # regarder : le texte visible intégral de l'écran actuel.
+            try:
+                texte_page = ctx.page.inner_text("body")[:500]
+            except Exception:
+                texte_page = "<illisible>"
             logger.info(
                 "[web-générique] après tentative de connexion : url=%s message_erreur=%r "
-                "reponses_post=%s erreurs_console=%s",
+                "reponses_post=%s erreurs_console=%s texte_page=%r",
                 getattr(ctx.page, "url", "?"), message_erreur, reponses_connexion,
-                erreurs_console)
+                erreurs_console, texte_page)
         return _connexion
 
     # ── Interne (réseau isolé, surchargeable en test) ──────────────────────────
