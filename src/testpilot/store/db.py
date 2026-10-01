@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 57
+_SCHEMA_VERSION = 58
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -256,6 +256,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_56_login_form_capture(conn)
     if version < 57:
         _migrate_57_oracle(conn)
+    if version < 58:
+        _migrate_58_dependance_inter_cas(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -2187,6 +2189,31 @@ def _migrate_41_background_job(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_background_job_status_created"
         " ON background_job(status, created_at)")
+
+
+def _migrate_58_dependance_inter_cas(conn: sqlite3.Connection) -> None:
+    """F26(b) (2026-10-01) : le document métier d'un cas peut déclarer qu'il dépend d'un autre cas
+    du même groupe (`depend_dun_autre_cas_du_groupe`) et décrire l'état que CE cas doit créer lui-
+    même avant de le réutiliser (`etat_a_creer_par_ce_cas`) — `metier_writer.MetierDraft`.
+
+    Jusqu'ici ces deux champs vivaient et mouraient en mémoire (calcul → contrôle déterministe
+    `verifier_dependance_inter_cas` → jetés) : la version approuvée en base n'en gardait rien, donc
+    rien ne survivait entre la relecture du métier et la génération du Gherkin — l'agent de
+    génération (étape séparée, parfois différée) ne pouvait pas savoir qu'il devait créer l'entité
+    avant de la référencer. Les persister ici permet à `tools/write.py` de refuser, AU MOMENT DE
+    L'ÉCRITURE du `.feature`, une référence à une entité que ce cas devait créer et n'a pas créée.
+
+    `depend_dun_autre_cas_du_groupe` suit la convention 0/1 déjà en place (`test_run.strict`,
+    migration 49) plutôt qu'un type booléen natif (absent de SQLite, évité dans `schema_sa.py` —
+    voir son en-tête). Idempotente ; une base neuve passe aussi par ici (comme les migrations 46/47
+    sur la même table).
+    """
+    if "depend_dun_autre_cas_du_groupe" not in _column_names(conn, "test_case_version"):
+        conn.execute("ALTER TABLE test_case_version ADD COLUMN depend_dun_autre_cas_du_groupe "
+                     "INTEGER NOT NULL DEFAULT 0 CHECK (depend_dun_autre_cas_du_groupe IN (0, 1))")
+    if "etat_a_creer_par_ce_cas" not in _column_names(conn, "test_case_version"):
+        conn.execute("ALTER TABLE test_case_version ADD COLUMN etat_a_creer_par_ce_cas "
+                     "TEXT NOT NULL DEFAULT ''")
 
 
 def _migrate_46_verified_fields(conn: sqlite3.Connection) -> None:
