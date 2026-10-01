@@ -40,6 +40,14 @@ from testpilot.api.routes import (
 )
 from testpilot.store.db import get_initialized_db
 
+# Cause mesurée (2026-10-01, diagnostic « yros ») : sans ceci, la racine du logging Python retombe
+# sur son handler de dernier recours (stderr, niveau WARNING) — tous les `logger.info(...)` du
+# dépôt restent invisibles, en local comme en production, quel que soit le niveau configuré par
+# uvicorn pour ses propres loggers (`uvicorn.access`/`uvicorn.error`, un espace de noms distinct).
+logging.basicConfig(
+    level=getattr(logging, config.LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
 _REQUETES = Counter(
     "testpilot_http_requests_total", "Requêtes HTTP", ["method", "route", "status"])
 _LATENCE = Histogram(
