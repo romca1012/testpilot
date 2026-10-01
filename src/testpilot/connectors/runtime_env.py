@@ -247,3 +247,24 @@ def env_du_projet(conn, project: dict | None) -> dict[str, str]:
     sequence = project_login_recordings.lire(conn, project["id"])
     login_form = project_login_recordings.lire_formulaire(conn, project["id"])
     return project_env(project, comptes, sequence, login_form)
+
+
+def verifier_connexion_du_projet(conn, project: dict | None) -> dict[str, str]:
+    """`verifier_connexion` (lève si la connexion est incomplète) AVEC les comptes secondaires du
+    projet (D8) — pour un appelant qui a déjà `project` en main, hors du chemin `case_id` de
+    `run_service.resolve_connection` (ex. une campagne de mesure ciblée sur un `--project-id`).
+
+    Trouvé le 2026-09-30 (mesure de clôture du lot 09) : sans cette fonction, un appelant qui ne
+    peut pas passer par `run_service` était tenté d'appeler `ProjectAccountRepo.pour_runtime`
+    lui-même — ce que la règle structurelle D8 interdit (`tests/test_comptes_projet.py`) — et le
+    correctif le plus simple sans elle (appeler `verifier_connexion(project)` sans comptes) laisse
+    `TESTPILOT_COMPTES` vide en silence : le step « je me connecte en tant que » échoue en
+    PRÉREQUIS MANQUANT même quand le compte existe réellement."""
+    from testpilot.store import project_login_recordings
+    from testpilot.store.repositories import ProjectAccountRepo
+
+    a_un_projet = bool(project and project.get("id"))
+    comptes = ProjectAccountRepo(conn).pour_runtime(project["id"]) if a_un_projet else []
+    sequence = project_login_recordings.lire(conn, project["id"]) if a_un_projet else None
+    login_form = project_login_recordings.lire_formulaire(conn, project["id"]) if a_un_projet else None
+    return verifier_connexion(project, comptes, sequence, login_form)
