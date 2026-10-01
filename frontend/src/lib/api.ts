@@ -893,6 +893,12 @@ export interface MetierDraft {
   title: string; preconditions: string; steps: string[]
   expected_result: string
   user_story?: string
+  // F26(b), migration 58 : jamais affichés ni édités ici — transportés tels quels (le composant
+  // les reçoit dans `cas.value` et les repasse via `{...c, steps: ...}`) jusqu'à la génération du
+  // Gherkin, où `write_feature_file` s'en sert pour refuser une référence à une entité que ce cas
+  // devait créer lui-même (cf. `metier_writer.MetierDraft.as_dict`).
+  depend_dun_autre_cas_du_groupe?: boolean
+  etat_a_creer_par_ce_cas?: string
 }
 export interface GenerationJob {
   // running | awaiting_metier | done | failed

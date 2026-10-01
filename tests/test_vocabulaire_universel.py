@@ -145,6 +145,12 @@ VERTS = {
         'Et je refuse la boîte de dialogue',
         'Et je clique sur "Supprimer" dans la ligne contenant "CMD-2"',
         'Alors la page n\'affiche pas le texte "CMD-2 supprimée"'],
+    # Repli structurel de « dans la ligne contenant » hors tableau (trouvé le 2026-09-30, SauceDemo) :
+    # une grille de <div> (motif répandu sur bien des applications), sans role="row".
+    "clic dans une carte d'une grille de div (hors tableau)": [
+        'Quand j\'ouvre la page "/grille.html"',
+        'Et je clique sur "Ajouter au panier" dans la ligne contenant "Lampe vélo"',
+        'Alors la page affiche le texte "Lampe vélo ajoutée"'],
     "modale ARIA confirmée": [
         'Quand j\'ouvre la page "/tableau.html"',
         'Et je clique sur le bouton "Supprimer avec confirmation"',
@@ -214,6 +220,9 @@ ROUGES = {
     "ligne ambiguë": (
         ['Quand j\'ouvre la page "/tableau.html"', 'Et je clique sur "Voir" dans la ligne contenant "Acme"',
          'Alors la page affiche le texte "consultée"'], "technique"),
+    "carte ambiguë dans une grille de div (hors tableau)": (
+        ['Quand j\'ouvre la page "/grille.html"', 'Et je clique sur "Voir" dans la ligne contenant "Sac à dos"',
+         'Alors la page affiche le texte "Voir Sac à dos"'], "technique"),
     "boîte native acceptée alors qu'on la refuse": (
         ['Quand j\'ouvre la page "/tableau.html"', 'Et j\'accepte la boîte de dialogue',
          'Et je clique sur "Supprimer" dans la ligne contenant "CMD-1"',

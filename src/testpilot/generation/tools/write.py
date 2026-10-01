@@ -15,7 +15,7 @@ import functools
 from typing import TYPE_CHECKING
 
 from testpilot import config
-from testpilot.generation import steps_library
+from testpilot.generation import enregistrement_lint, steps_library
 from testpilot.generation.references import message_refus, verifier_references
 
 if TYPE_CHECKING:
@@ -299,6 +299,16 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     refus = verifier_references(content, ctx.options_select, ctx.champs_relationnels, recherche)
     if refus:
         return _outcome(message_refus(refus), ok=False)
+    # F26(b), migration 58 : question DIFFÉRENTE de `verifier_references` ci-dessus — pas « cette
+    # entité existe-t-elle » (lot 12, D11) mais « CE scénario a-t-il lui-même créé l'entité que le
+    # métier a désignée avant de la référencer ». Les deux contrôles coexistent, aucun ne remplace
+    # l'autre. Gated : appelé seulement quand le métier a déclaré la dépendance (`ToolContext`,
+    # jamais une heuristique générale sur la nature de la référence — cf. le faux positif
+    # SauceDemo mesuré en diagnostic, qui a écarté une portée non gated).
+    if ctx.depend_dun_autre_cas_du_groupe and ctx.etat_a_creer_par_ce_cas:
+        refus_entite = enregistrement_lint.verifier_entite_a_creer(content)
+        if refus_entite:
+            return _outcome(refus_entite, ok=False)
     path = ctx.generated_dir / f"{ctx.module_name}.feature"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")

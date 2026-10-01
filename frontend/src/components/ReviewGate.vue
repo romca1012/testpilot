@@ -41,12 +41,25 @@ const FAMILLES: Record<string, string> = {
   produit_non_observe: 'donnée',
   // Lot 07a — un cas déclaré « test de connexion » s'ouvrirait déjà connecté (connexion automatique).
   connexion_non_testee: 'connexion',
+  // F26, point 1 (2026-10-01) — le cas agit sur un enregistrement qu'il n'a pas créé lui-même :
+  // signal distinct des autres familles (pas une assertion fragile, pas un risque de réparation,
+  // pas une valeur absente du domaine) — un risque d'agir sur une donnée réelle de l'application.
+  enregistrement_non_cree_par_le_scenario: 'donnée réelle',
 }
 
 // Repli explicite : un `kind` inconnu s'affiche quand même. Le taire ferait disparaître un
 // avertissement réel parce que le front ignore son étiquette — l'inverse du but.
 function familleAvis(kind: string): string {
   return FAMILLES[kind] ?? 'à vérifier'
+}
+
+// F26, point 1 (2026-10-01) : « impossible à manquer, différent du générique » (demande du
+// porteur) — ce seul kind sort de la couleur ambre partagée par tous les autres avis pour un
+// rouge distinct. Reste dans le même bandeau détectif : jamais bloquant, juste plus visible.
+function classeFamille(kind: string): string {
+  return kind === 'enregistrement_non_cree_par_le_scenario'
+    ? 'bg-destructive/20 text-destructive'
+    : 'bg-warning/20 text-warning'
 }
 
 // Budget de réparation autorisé par CETTE approbation (décision 0014, option C). Réparer exige
@@ -102,7 +115,7 @@ async function decide(approved: boolean) {
       </p>
       <ul class="space-y-1">
         <li v-for="(w, i) in gate.lint_warnings" :key="i" class="text-xs text-muted-foreground">
-          <span class="mr-1 rounded bg-warning/20 px-1 py-0.5 text-[10px] font-medium text-warning">
+          <span :class="['mr-1 rounded px-1 py-0.5 text-[10px] font-medium', classeFamille(w.kind)]">
             {{ familleAvis(w.kind) }}
           </span>
           <span class="font-mono text-foreground/80">« {{ w.step }} »</span>

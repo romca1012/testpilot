@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Catalogue</title>
+</head>
+<body>
+<h1>Catalogue</h1>
+<!-- Vocabulaire universel : une grille de <div> (motif très répandu -- catalogue produit, liste
+     de cartes -- pas propre à une application précise), SANS role="row" : le step "dans la ligne
+     contenant" doit aussi couvrir ce motif, pas seulement les <table>. Deux cartes "Sac à dos"
+     pour prouver que l'ambiguïté reste refusée même hors tableau.
+
+     Chaque carte porte aussi un lien "Voir détails" (role="button", trouvé sur SauceDemo) plus
+     proche du texte du produit que le vrai bouton d'action : un repli qui remonterait jusqu'au
+     premier ancêtre contenant N'IMPORTE QUEL élément cliquable s'arrêterait à tort sur ce lien,
+     avant d'atteindre le bouton réellement demandé. -->
+<div class="grille">
+  <div class="carte">
+    <a href="#" role="button" aria-label="Voir détails">
+      <h2>Sac à dos</h2>
+    </a>
+    <p>29,99 €</p>
+    <button type="button" onclick="document.getElementById('resultat').textContent='Voir Sac à dos'">Voir</button>
+    <button type="button" onclick="document.getElementById('resultat').textContent='Sac à dos ajouté'">Ajouter au panier</button>
+  </div>
+  <div class="carte">
+    <a href="#" role="button" aria-label="Voir détails">
+      <h2>Lampe vélo</h2>
+    </a>
+    <p>9,99 €</p>
+    <button type="button" onclick="document.getElementById('resultat').textContent='Voir Lampe vélo'">Voir</button>
+    <button type="button" onclick="document.getElementById('resultat').textContent='Lampe vélo ajoutée'">Ajouter au panier</button>
+  </div>
+  <div class="carte">
+    <a href="#" role="button" aria-label="Voir détails">
+      <h2>Sac à dos</h2>
+    </a>
+    <p>32,99 €</p>
+    <button type="button" onclick="document.getElementById('resultat').textContent='Voir Sac à dos (variante)'">Voir</button>
+  </div>
+</div>
+<p id="resultat"></p>
+</body>
+</html>

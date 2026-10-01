@@ -47,7 +47,7 @@ class GenerationAgent:
                  metier: dict | None = None, group_id: int | None = None,
                  projet: dict | None = None, refs: str = "",
                  failure_context: list[dict] | None = None,
-                 qualification: bool = False) -> GenerationResult:
+                 qualification: bool = False, regeneration: bool = False) -> GenerationResult:
         """`metier` — le document métier VALIDÉ (passe 4b de `0022`). Présent, il fixe le périmètre
         du Gherkin et se fige DANS la version, avec lui (décision n°10 : une version = le cas
         entier). Absent, le comportement est celui d'avant (chemin CLI et cas legacy).
@@ -56,7 +56,11 @@ class GenerationAgent:
         n'est chargé : l'agent explore comme avant, sans contrainte inventée.
 
         `refs` — nom de la user story dont ce cas est issu (§9, génération multi-cas). Écrit tel
-        quel sur le CAS (champ `refs`, texte libre comme TestRail), jamais versionné."""
+        quel sur le CAS (champ `refs`, texte libre comme TestRail), jamais versionné.
+
+        `regeneration` — voir `prompt.build_initial_message` (F26) : coupe le rappel de la
+        spécification brute d'origine quand le métier transmis peut porter une correction propre
+        à ce cas."""
         state = AgentState(module_name=plan.module_name)
         # L'annuaire du domaine alimente la CONTRAINTE de complétude (champs requis + obligation
         # de soumettre). Jusqu'ici seul le GATE le lisait : la génération devait deviner les
@@ -68,7 +72,8 @@ class GenerationAgent:
         state.messages.append({"role": "user",
                                "content": prompt_mod.build_initial_message(
                                    plan, modele, metier, comptes=(projet or {}).get("comptes_libelles"),
-                                   oracle=(projet or {}).get("oracle_requetes_disponibles"))})
+                                   oracle=(projet or {}).get("oracle_requetes_disponibles"),
+                                   regeneration=regeneration)})
         if failure_context:
             state.messages[0]["content"] = [
                 {"type": "text", "text": state.messages[0]["content"]}, *failure_context]
@@ -91,6 +96,11 @@ class GenerationAgent:
             calibration_writes_enabled=bool((projet or {}).get("calibration_writes_enabled")),
             qualification=qualification,
             project_id=(projet or {}).get("id"),
+            # F26(b), migration 58 : signal déterministe pour `write_feature_file` — JAMAIS montré
+            # à l'agent dans le prompt (une consigne textuelle a déjà échoué trois fois, cf.
+            # registre F26). Vérifié au moment de l'écriture, pas espéré par instruction.
+            depend_dun_autre_cas_du_groupe=bool((metier or {}).get("depend_dun_autre_cas_du_groupe")),
+            etat_a_creer_par_ce_cas=str((metier or {}).get("etat_a_creer_par_ce_cas") or ""),
         )
         from testpilot.generation.provenance import fingerprint, target_fingerprint
         ctx.target_sha256 = target_fingerprint(projet)
@@ -215,6 +225,8 @@ class GenerationAgent:
             test_steps=(_json.dumps(metier["steps"], ensure_ascii=False)
                         if metier.get("steps") else ""),
             expected_result=metier.get("expected_result", ""),
+            depend_dun_autre_cas_du_groupe=bool(metier.get("depend_dun_autre_cas_du_groupe", False)),
+            etat_a_creer_par_ce_cas=metier.get("etat_a_creer_par_ce_cas", ""),
         )
         self.case_repo.set_current_version(case_id, version_id)
         result.case_id = case_id
