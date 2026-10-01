@@ -153,7 +153,14 @@ class SequenceConnexionObsoleteError(Exception):
 # (`crawl_roots`, `connexion_reussie`) lisait alors l'URL/le DOM de la page de connexion — le crawl
 # repartait du même endroit qu'avant la connexion, sans lever la moindre erreur.
 _PAS_ATTENTE_POST_CONNEXION_MS = 100
-_ITERATIONS_ATTENTE_POST_CONNEXION = 20  # 20 × 100 ms = 2 s bornées, jamais un blocage indéfini
+# 100 × 100 ms = 10 s bornées, jamais un blocage indéfini. Était 2 s (20 itérations) jusqu'au
+# 2026-10-01 : cas réel « yros » — le backend d'authentification (un proxy tiers, pas l'origine de
+# la page) met jusqu'à ~8 s à répondre, largement au-delà des 2 s initiales. Mesuré via une attente
+# diagnostique de 8 s qui, une fois ajoutée, a laissé l'exploration aboutir (10 routes mesurées,
+# contre 1 seule — la page de connexion elle-même — auparavant). Sans conséquence sur les
+# applications rapides (SauceDemo, OrangeHRM…) : la boucle sort dès que la confirmation est
+# obtenue, elle n'attend la borne maximale que si l'application la justifie réellement.
+_ITERATIONS_ATTENTE_POST_CONNEXION = 100
 
 # Cas réel « yros » (2026-10-01) : un bouton à deux états (« Sélectionner » → « Choisi ») dont le
 # LIBELLÉ change immédiatement, mais dont la confirmation RÉELLE (acceptée par l'application, pas
