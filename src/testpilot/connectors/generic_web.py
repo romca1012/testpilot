@@ -248,13 +248,14 @@ class GenericWebConnector(Connector):
             # « Points de vigilance » que le correctif du 2026-09-15 (commentaire ci-dessus)
             # visait à éliminer, pour le cas d'usage même qui motive ce chantier.
             rejouer_sequence_connexion(ctx.page, self._sequence_connexion)
-            # Diagnostic temporaire (2026-10-01, cas réel « yros » : ni l'URL ni un message
-            # d'erreur visible ne bougent après la tentative — signal DOM insuffisant). Capture la
-            # réponse RÉSEAU réelle de la requête de connexion (code HTTP, corps tronqué) : un
-            # signal serveur, jamais dépendant d'un timing ou d'un style d'affichage. Best-effort,
-            # jamais fatal — voir même garde plus bas. À retirer une fois la cause trouvée.
-            # Même diagnostic, même raison : une erreur JS qui empêche le clic d'émettre la
-            # moindre requête (bug front-end jamais vu côté réseau) le trahirait ici.
+            # Diagnostic de connexion — journalise ce qui s'est VRAIMENT passé pendant la
+            # tentative (réponse réseau, requête échouée, erreur console, exception JS, texte
+            # affiché), au-delà du simple succès/échec rendu par les fonctions ci-dessous. Gardé en
+            # continu (pas seulement pour yros, 2026-10-01) : c'est ce jeu de signaux — jamais le
+            # texte d'un agent — qui a permis de retrouver la cause réelle d'un blocage silencieux
+            # (latence d'un backend d'authentification tiers au-delà de l'ancienne fenêtre de
+            # confirmation de 2 s, voir `_web_helpers._ITERATIONS_ATTENTE_POST_CONNEXION`) ; il
+            # resservira sur la prochaine application qui échoue sans lever d'exception.
             reponses_connexion: list[str] = []
             erreurs_console: list[str] = []
 
@@ -268,12 +269,9 @@ class GenericWebConnector(Connector):
                 reponses_connexion.append(
                     f"{reponse.request.method} {reponse.url} -> {reponse.status} {corps!r}")
 
-            # Cas réel « yros » (2026-10-01) : la vraie requête de connexion part en XHR vers un
-            # domaine TIERS (`yros-proxy.*`, pas celui de la page) — reproduite manuellement avec
-            # succès (401 propre), mais jamais vue par `page.on("response")` lors d'une tentative
-            # automatisée. Ce dernier ne capture que les réponses COMPLÈTES : une requête qui
-            # échoue avant d'en recevoir une (CORS, DNS, connexion refusée) ne déclenche jamais
-            # "response", seulement "requestfailed" — jamais branché jusqu'ici.
+            # `page.on("response")` ne capture que les réponses COMPLÈTES : une requête qui échoue
+            # avant d'en recevoir une (CORS, DNS, connexion refusée) ne déclenche jamais
+            # "response", seulement "requestfailed" — un second signal, pas un repli du premier.
             requetes_echouees: list[str] = []
 
             def _capturer_requete_echouee(requete) -> None:
@@ -285,12 +283,10 @@ class GenericWebConnector(Connector):
                 if message.type == "error":
                     erreurs_console.append(message.text[:300])
 
-            # Cas réel « yros » (2026-10-01, PR #58) : le texte brut capturé après la tentative
-            # montre le formulaire (email/mot de passe/bouton) entièrement ABSENT du DOM, sans
-            # navigation, sans réseau, sans `console.error`. `page.on("console")` ne capture QUE
-            # les appels `console.error()` explicites — jamais une exception JS non rattrapée
-            # (promesse rejetée, erreur de rendu React) : c'est `page.on("pageerror")`, un
-            # événement SÉPARÉ, qui les expose.
+            # `page.on("console")` ne capture que les appels `console.error()` explicites — jamais
+            # une exception JS non rattrapée (promesse rejetée, erreur de rendu React, qui peut
+            # démonter le formulaire sans rien journaliser) : c'est `page.on("pageerror")`, un
+            # événement séparé, qui les expose.
             erreurs_js: list[str] = []
 
             def _capturer_erreur_js(exc) -> None:
@@ -322,13 +318,6 @@ class GenericWebConnector(Connector):
                     ctx.page, self._login_form, self._user, self._password)
             else:
                 tenter_connexion_generique(ctx.page, self._user, self._password)
-            # Diagnostic temporaire (2026-09-30, cas réel « yros » : le remplissage/clic réussit
-            # sans lever, mais le crawl qui suit ne trouve pas plus de routes qu'avant — confirmé
-            # le 2026-10-01 que l'URL reste sur /login). Étendu le 2026-10-01 : capture aussi le
-            # message d'erreur RÉELLEMENT affiché (jamais lu jusqu'ici à cet endroit précis), pour
-            # distinguer un rejet serveur explicite d'un blocage silencieux. À retirer une fois la
-            # cause trouvée.
-            #
             # ⚠️ Un diagnostic ne doit jamais faire échouer la connexion elle-même — `try/except`
             # explicite (pas seulement le best-effort interne de `lire_message_erreur_visible`,
             # qui suppose déjà un `page.locator()` fonctionnel : un faux `Page` de test qui ne
@@ -337,16 +326,6 @@ class GenericWebConnector(Connector):
                 message_erreur = lire_message_erreur_visible(ctx.page)
             except Exception:
                 message_erreur = "<illisible>"
-            # Diagnostic temporaire (2026-10-01) : tous les signaux restent vides malgré une
-            # requête reproduite manuellement avec succès (curl depuis staging ET navigateur réel
-            # OK) — hypothèse restante : une latence réseau dépassant la fenêtre de confirmation
-            # normale (2 s). N'affecte QUE ce diagnostic, pas `_attendre_confirmation_post_connexion`
-            # (comportement de connexion réel inchangé pour tous les projets) — écouteurs laissés
-            # actifs pendant cette attente supplémentaire pour capter une réponse tardive.
-            try:
-                ctx.page.wait_for_timeout(8000)
-            except Exception:
-                pass
             try:
                 ctx.page.remove_listener("response", _capturer_reponse_connexion)
                 ctx.page.remove_listener("requestfailed", _capturer_requete_echouee)
@@ -354,9 +333,8 @@ class GenericWebConnector(Connector):
                 ctx.page.remove_listener("pageerror", _capturer_erreur_js)
             except Exception:
                 pass
-            # Dernier recours (2026-10-01) : ni le DOM (sélecteurs d'erreur), ni le réseau, ni la
-            # console ne révèlent rien sur yros — vérité brute, sans hypothèse sur QUEL élément
-            # regarder : le texte visible intégral de l'écran actuel.
+            # Vérité brute, sans hypothèse sur QUEL élément regarder : le texte visible intégral
+            # de l'écran actuel, en complément des sélecteurs d'erreur ciblés ci-dessus.
             try:
                 texte_page = ctx.page.inner_text("body")[:500]
             except Exception:
