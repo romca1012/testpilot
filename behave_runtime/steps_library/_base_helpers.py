@@ -1820,7 +1820,12 @@ def validation_error_inline(page):
     dupliqué.
     """
     def _un_candidat_visible() -> bool:
-        candidats = page.locator('[role="alert"], .error, .alert-danger, .is-invalid')
+        # [class*='bg-red-'/'text-red-'/'border-red-'] ajoutés (2026-10-01, diagnostic « yros ») :
+        # convention Tailwind très répandue pour un état d'erreur, sans AUCUN role/classe nommée —
+        # voir _web_helpers.py::_SELECTEURS_MESSAGE_ERREUR, même cause mesurée.
+        candidats = page.locator(
+            '[role="alert"], .error, .alert-danger, .is-invalid, '
+            "[class*='bg-red-'], [class*='text-red-'], [class*='border-red-']")
         for i in range(min(candidats.count(), 8)):
             try:
                 if candidats.nth(i).is_visible():

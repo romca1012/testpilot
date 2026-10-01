@@ -353,8 +353,15 @@ def tenter_connexion_generique(page, user: str, password: str) -> bool:
 
 _SELECTEURS_MESSAGE_ERREUR = (
     '[role="alert"], .error, .alert-danger, .is-invalid, '
-    ".o_notification.border-danger, [class*='s_website_form_field'].o_has_error"
+    ".o_notification.border-danger, [class*='s_website_form_field'].o_has_error, "
+    "[class*='bg-red-'], [class*='text-red-'], [class*='border-red-']"
 )
+# ⚠️ Les 3 derniers motifs couvrent la convention Tailwind CSS très répandue pour un état
+# d'erreur/danger (`bg-red-50`, `text-red-700`, `border-red-500`…) — cas réel mesuré (2026-10-01,
+# diagnostic « yros ») : un bandeau d'erreur réel (`<div class="... bg-red-50 border-l-4
+# border-red-500 text-red-700 ...">Informations de connexion incorrectes</div>`) sans AUCUN
+# `role="alert"` ni classe Bootstrap/Odoo, invisible à la liste précédente. Générique à toute
+# application Tailwind, pas spécifique à une instance cliente (§6 CLAUDE.md).
 # ⚠️ MÊME liste, au caractère près, que `behave_runtime/steps_library/_base_helpers.py::
 # validation_error_inline` — validée contre DEUX applications réelles distinctes (SauceDemo :
 # `[role="alert"]` ; the-internet.herokuapp.com : `.error`), durcie le 2026-09-14 après un faux
