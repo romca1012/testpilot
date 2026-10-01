@@ -1513,12 +1513,18 @@ class VersionRepo:
                title: str = "", preconditions: str = "", test_steps: str = "",
                expected_result: str = "", verified_fields: str = "",
                observation_evidence: str = "", generation_provenance: str = "",
-               technical_plan: str = "") -> int:
+               technical_plan: str = "", depend_dun_autre_cas_du_groupe: bool = False,
+               etat_a_creer_par_ce_cas: str = "") -> int:
         """Crée une version — **le CAS ENTIER**, métier ET technique (décision `0022` n°10).
 
         Les champs métier (`title`, `preconditions`, `test_steps`, `expected_result`)
         sont figés ici avec le Gherkin : c'est ce qui rend l'historique diffable et ce que le gate
         approuve d'un seul geste. `test_steps` est une **liste JSON**, pas du texte multi-lignes.
+
+        `depend_dun_autre_cas_du_groupe` / `etat_a_creer_par_ce_cas` (migration 58, F26(b)) :
+        ce que `metier_writer.MetierDraft` a calculé pour ce cas — survit ainsi au round-trip par
+        la base jusqu'à `tools/write.py`, seul capable de refuser une référence à une entité que
+        ce cas devait créer lui-même, au moment où l'agent écrit le Gherkin.
         """
         number = self.conn.execute(
             "SELECT COALESCE(MAX(version_number), 0) + 1 AS n"
@@ -1530,12 +1536,14 @@ class VersionRepo:
             " spec_hash, feature_content, steps_content, feature_path, steps_path,"
             " change_summary, created_at, created_by,"
             " title, preconditions, test_steps, expected_result, verified_fields,"
-            " observation_evidence, generation_provenance, technical_plan)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " observation_evidence, generation_provenance, technical_plan,"
+            " depend_dun_autre_cas_du_groupe, etat_a_creer_par_ce_cas)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (test_case_id, number, spec_content, spec_hash, feature_content, steps_content,
              feature_path, steps_path, change_summary, now_iso(), created_by,
              title, preconditions, test_steps, expected_result, verified_fields,
-             observation_evidence, generation_provenance, technical_plan),
+             observation_evidence, generation_provenance, technical_plan,
+             int(bool(depend_dun_autre_cas_du_groupe)), etat_a_creer_par_ce_cas),
         )
         self.conn.commit()
         return int(cur.lastrowid)

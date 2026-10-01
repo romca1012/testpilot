@@ -126,7 +126,18 @@ RÈGLES IMPÉRATIVES :
 3. Le BRIEF dit à qui rédigera ce cas ce qui le distingue des autres — pas un résumé de la
    spécification entière, juste l'angle propre à ce cas.
 4. N'omets aucune user story de la spécification, mais ne dépasse jamais le nécessaire pour la
-   couvrir."""
+   couvrir.
+5. Chaque scénario Behave est autonome et ne partage jamais d'état avec un autre scénario. Si la
+   spécification décrit un parcours en plusieurs étapes humaines où une étape suppose le résultat
+   d'une étape précédente, le BRIEF du cas qui en dépend doit dire qu'il doit créer cet état
+   lui-même plutôt que de le supposer préexistant — jamais renvoyer à « un cas précédent » ou
+   « le run » comme s'ils partageaient une mémoire commune.
+   Bon (brief) : « Affecter un équipement à une agence — ce cas crée lui-même son équipement avant
+   de l'affecter, il ne réutilise aucun équipement d'un autre cas. »
+   À éviter (brief) : « Affecter l'équipement créé par le cas précédent à une agence. » — aucun
+   équipement n'existe quand ce cas tourne seul ; c'est exactement l'ambiguïté qui a produit F26
+   (2026-10-01, Portail Sapian - Integration) : le même énoncé source, rédigé différemment pour
+   deux cas frères, a donné un cas autonome et un cas qui devinait un enregistrement existant."""
 
 
 def _data_decoupage(llm, plan: TestPlan, model: str, cost_tracker) -> dict:

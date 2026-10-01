@@ -41,6 +41,12 @@ class ToolContext:
     technical_plan: dict = field(default_factory=dict)
     requirements: dict[str, str] = field(default_factory=dict)
     shared_steps: list = field(default_factory=list)
+    # F26(b), migration 58 : le métier a déclaré que ce cas dépend d'un autre cas du groupe, et ce
+    # qu'il doit créer lui-même. Jamais injecté dans le prompt (ctx n'est lu que par le code des
+    # tools, pas par le LLM) — `write_feature_file` (`verifier_entite_a_creer`) refuse l'écriture
+    # tant que l'entité désignée n'a pas été créée par CE scénario avant d'être référencée.
+    depend_dun_autre_cas_du_groupe: bool = False
+    etat_a_creer_par_ce_cas: str = ""
 
 
 @dataclass

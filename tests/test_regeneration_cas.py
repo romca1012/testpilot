@@ -52,8 +52,40 @@ def test_c19_technique_existant_reutilise_section_complete_au_dela_3000_caracter
     assert params["regeneration"] is True
     assert params["slug"] == "equipement"
     assert params["spec_content"] == CaseGroupRepo(conn).get(gid)["spec_content"]
-    assert "FIN : back-office uniquement" in build_initial_message(plan(params["slug"], params["spec_content"]), metier=params["metier"])
     assert VersionRepo(conn).get(vid)["feature_content"] == "ancien Gherkin"
+
+
+# F26 (2026-10-01, Portail Sapian - Integration, cas C131) : une précondition corrigée À LA MAIN
+# dans le métier (« un équipement créé lors du test précédent » → « créer un équipement... ») a
+# été régénérée avec le texte corrigé transmis, mais le test technique produit est resté
+# IDENTIQUE — toujours une recherche par préfixe sur un enregistrement existant, jamais la
+# création demandée. Cause : `build_initial_message` rappelait la spec brute du GROUPE (partagée
+# par tous les cas frères, jamais corrigée pour CE cas) juste après le métier édité, recréant les
+# « deux périmètres concurrents » que son propre commentaire dit vouloir éviter.
+
+def test_falsifiable_la_regeneration_ne_rappelle_pas_la_spec_brute_du_groupe(conn):
+    """Contre-essai direct de F26 : sans `regeneration=True`, le texte de fin de la spec brute du
+    groupe (jamais corrigée pour CE cas) se glisserait dans le message malgré un métier édité."""
+    cid, vid, gid = existing_case(conn)
+    _, params = service.start_automation(conn, cid)
+    assert params["regeneration"] is True
+
+    message = build_initial_message(plan(params["slug"], params["spec_content"]),
+                                    metier=params["metier"], regeneration=params["regeneration"])
+    assert "FIN : back-office uniquement" not in message
+    assert "Créer équipement" in message  # le métier (corrigé ou non) reste bien transmis
+
+
+def test_une_premiere_generation_garde_la_spec_brute_complete_sans_troncature(conn):
+    """Pas de régression sur le chemin NON régénéré (`regeneration=False`) : une génération
+    inédite n'a pas encore de version propre à corriger, la spec brute du groupe reste le seul
+    contexte disponible — et ne doit pas être tronquée, même au-delà de 3000 caractères."""
+    message = build_initial_message(
+        plan("equipement", "Contexte " * 500 + "FIN : back-office uniquement"),
+        metier={"title": "Créer équipement", "preconditions": "DSI",
+               "steps": ["Confirmer"], "expected_result": "Équipement créé"},
+        regeneration=False)
+    assert "FIN : back-office uniquement" in message
 
 
 def test_regeneration_nouvelle_version_pipeline_lint_et_gate_humain(conn, monkeypatch, tmp_path):

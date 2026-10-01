@@ -3036,10 +3036,37 @@ def _cible_cliquable(zone, libelle: str, quoi: str):
     raise ElementIntrouvableError(f"« {libelle} » (bouton, lien ou texte) est introuvable dans {quoi}.")
 
 
+def _xpath_litteral(valeur: str) -> str:
+    """Un littéral XPath 1.0 sûr même si `valeur` porte des guillemets simples ET doubles (XPath n'a pas
+    d'échappement : `concat()` est le seul moyen portable)."""
+    if "'" not in valeur:
+        return f"'{valeur}'"
+    if '"' not in valeur:
+        return f'"{valeur}"'
+    return "concat(" + ", \"'\", ".join(f"'{partie}'" for partie in valeur.split("'")) + ")"
+
+
 def cliquer_dans_ligne(page, libelle: str, texte: str) -> None:
+    """« La ligne contenant X » : d'abord un vrai `role="row"` (table). Repli (trouvé le 2026-09-30,
+    SauceDemo -- motif répandu sur bien des applications, pas propre à celle-ci) : le plus proche
+    ANCÊTRE STRUCTUREL du texte qui contient AUSSI une cible cliquable PORTANT CE LIBELLÉ --
+    `<div>`, `<li>`, `<article>`... jamais une balise ou une classe nommée, pour rester valable sur
+    n'importe quelle application. ⚠️ Exiger le libellé (pas « n'importe quel clic ») est
+    nécessaire : une carte produit porte souvent un second lien cliquable (ex. « Voir » vers la
+    fiche détaillée) qui satisferait un simple « contient un clic » et ferait remonter trop tôt à
+    un ancêtre qui n'a jamais la cible demandée."""
     _renseigne(texte, "Le texte de la ligne")
-    lignes = page.get_by_role("row").filter(has_text=texte).filter(visible=True)
-    trouve = _attendre_le_nombre([lignes], f"Aucune ligne ne contient « {texte} » sur {page.url}.")
+    _renseigne(libelle, "Le libellé à cliquer")
+    lit = _xpath_litteral(libelle)
+    lignes_tableau = page.get_by_role("row").filter(has_text=texte).filter(visible=True)
+    lignes_structurelles = (
+        page.get_by_text(texte, exact=True)
+        .locator(f"xpath=ancestor::*[.//button[normalize-space(string(.))={lit}] or "
+                 f".//a[normalize-space(string(.))={lit}] or "
+                 f".//*[@role='button'][normalize-space(string(.))={lit}]][1]")
+        .filter(visible=True))
+    trouve = _attendre_le_nombre(
+        [lignes_tableau, lignes_structurelles], f"Aucune ligne ne contient « {texte} » sur {page.url}.")
     ligne = _un_seul(trouve, f"La ligne contenant « {texte} »")
     _cible_cliquable(ligne, libelle, f"la ligne contenant « {texte} »").click(timeout=_ATTENDRE_UNIVERSELLE_MS)
 

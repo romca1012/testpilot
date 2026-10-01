@@ -60,6 +60,26 @@ describe('ReviewGate — le gate autorise le budget de réparation (0014, option
     expect(w.text()).not.toContain(kind)
   })
 
+  it('étiquette F26 « enregistrement_non_cree_par_le_scenario » comme « donnée réelle », visuellement distinct', () => {
+    // F26, point 1 (2026-10-01) : signal « impossible à manquer, différent du générique » —
+    // famille dédiée (ni « réparation », ni « donnée » générique) ET couleur distincte (rouge,
+    // pas l'ambre partagé par tous les autres avis).
+    const w = mount(ReviewGate, {
+      props: {
+        caseId: 1,
+        gate: {
+          ...A_RELIRE,
+          lint_warnings: [{ step: 'j\'ouvre l\'enregistrement "X"', line: 1,
+                           kind: 'enregistrement_non_cree_par_le_scenario', message: 'm' }],
+        },
+      },
+    })
+    expect(w.text()).toContain('donnée réelle')
+    const badge = w.findAll('span').find((s) => s.text() === 'donnée réelle')
+    expect(badge?.classes()).toContain('text-destructive')
+    expect(badge?.classes()).not.toContain('text-warning')
+  })
+
   it('ne transmet aucun budget sur un REJET', async () => {
     // Un rejet n'exécute rien, donc ne répare rien : le budget n'a pas de sens.
     vi.mocked(api.reviewCase).mockClear()

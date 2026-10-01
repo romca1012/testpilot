@@ -277,7 +277,7 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
     """
     from testpilot.analysis.spec_analyzer import SpecAnalyzer
     from testpilot.generation.decoupage import propose_decoupage
-    from testpilot.generation.metier_writer import propose_metier
+    from testpilot.generation.metier_writer import propose_metier, verifier_dependance_inter_cas
     from testpilot.guardrails.cost_tracker import CostTracker
 
     conn = get_initialized_db()
@@ -336,6 +336,29 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
                         job_id, status="failed",
                         error=f"le document métier de « {brief.title} » (user story « "
                               f"{story.user_story} ») est incomplet — relancez la génération",
+                        cost_usd=cout)
+                    return
+                # F26(b), 2026-10-01 : une précondition qui suppose l'état laissé par un AUTRE cas
+                # du groupe (jamais garanti — scénarios Behave indépendants) doit être corrigée à
+                # la rédaction, jamais découverte à l'exécution (ou pire, jamais découverte du
+                # tout — C133/C134, Portail Sapian - Integration, ont agi sur un enregistrement
+                # réel plutôt que de créer le leur). Même traitement que `draft.complete` ci-dessus
+                # : le lot entier échoue, avec un message explicite, jamais une approbation
+                # silencieuse d'un cas qui devinera un enregistrement existant à la génération
+                # technique.
+                erreur_dependance = verifier_dependance_inter_cas(draft)
+                if erreur_dependance:
+                    cout = (analysis_tracker.total_cost + decoupage_tracker.total_cost
+                           + metier_cost_total)
+                    _record_generation_cost(conn, case_id=None,
+                                            analysis_usd=analysis_tracker.total_cost,
+                                            decoupage_usd=decoupage_tracker.total_cost,
+                                            metier_usd=metier_cost_total)
+                    GenerationJobRepo(conn).maj(
+                        job_id, status="failed",
+                        error=f"le document métier de « {brief.title} » (user story « "
+                              f"{story.user_story} ») {erreur_dependance} — relancez la "
+                              "génération",
                         cost_usd=cout)
                     return
                 cases.append({**draft.as_dict(), "user_story": story.user_story})
@@ -403,6 +426,11 @@ def validate_metier(conn, job_id: str, cases: list[dict]) -> dict:
             "steps": steps,
             "expected_result": str(c["expected_result"]).strip(),
             "user_story": str(c.get("user_story", "") or "").strip(),
+            # F26(b), migration 58 : transportés tels quels jusqu'à `resume_generation` — c'est le
+            # signal qui permettra à `write_feature_file` de refuser une référence à une entité que
+            # CE cas devait créer lui-même (cf. docstring de `MetierDraft.as_dict`).
+            "depend_dun_autre_cas_du_groupe": bool(c.get("depend_dun_autre_cas_du_groupe", False)),
+            "etat_a_creer_par_ce_cas": str(c.get("etat_a_creer_par_ce_cas", "") or "").strip(),
         })
 
     if not validated:
@@ -433,11 +461,16 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
     d'explosion d'une réparation (0017), champs/valeurs absents du domaine mesuré (0021). Extrait
     ici (2026-09-15) pour servir aussi de critère à l'approbation automatique — un seul point de
     calcul, jamais deux qui pourraient diverger sur ce qu'est « un cas propre »."""
-    from testpilot.generation import assertion_lint, domain_model, repair_diff, smoke_check
+    from testpilot.generation import assertion_lint, domain_model, enregistrement_lint, repair_diff, smoke_check
     from testpilot.store.repositories import ProjectRepo
 
     current = next((v for v in version_rows if v["id"] == version_id), None)
     warnings = assertion_lint.lint_steps(current.get("steps_content", "") if current else "")
+    # F26, point 1 (2026-10-01) : filet de sécurité structurel, complémentaire au contrôle amont
+    # `metier_writer.verifier_dependance_inter_cas` — opère sur le Gherkin produit, pas sur ce que
+    # le modèle a DÉCLARÉ avoir fait. Toujours actif (pas conditionné à une preuve d'observation).
+    if current and current.get("feature_content"):
+        warnings += enregistrement_lint.lint_enregistrements_non_crees(current["feature_content"])
     if current and current.get('observation_evidence'):
         from testpilot.generation.evidence import contextual_warnings
         from testpilot.generation.provenance import target_fingerprint
@@ -581,6 +614,10 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
         preconditions=version.get("preconditions") or "",
         test_steps=version.get("test_steps") or "",
         expected_result=version.get("expected_result") or "",
+        # F26(b), migration 58 : une correction ne touche jamais le métier (§4, elle répare le
+        # Gherkin) — le signal de dépendance de la version d'origine est donc repris tel quel.
+        depend_dun_autre_cas_du_groupe=bool(version.get("depend_dun_autre_cas_du_groupe", False)),
+        etat_a_creer_par_ce_cas=version.get("etat_a_creer_par_ce_cas") or "",
         verified_fields=json.dumps(proposal.verified_fields, ensure_ascii=False),
         **revision_metadata(version))
     CaseRepo(conn).set_current_version(case_id, version_corrigee_id)
@@ -646,6 +683,10 @@ def start_automation(conn, case_id: int, *, author: str = "") -> tuple[str, dict
         "preconditions": version.get("preconditions", ""),
         "steps": steps,
         "expected_result": version.get("expected_result", ""),
+        # F26(b), migration 58 : persistés avec le reste du métier — survit au round-trip par la
+        # base entre la relecture et une automatisation/régénération différée.
+        "depend_dun_autre_cas_du_groupe": bool(version.get("depend_dun_autre_cas_du_groupe", False)),
+        "etat_a_creer_par_ce_cas": version.get("etat_a_creer_par_ce_cas", ""),
     }
     if not (metier["title"] and metier["steps"] and metier["expected_result"]):
         raise GenerationError(
@@ -746,7 +787,8 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
                                 case_repo=CaseRepo(conn), version_repo=VersionRepo(conn))
         result = agent.generate(
             plan, case_id=case_id, metier=metier, author=author, projet=project,
-            failure_context=_regeneration_failure_context(conn, case_id) if regeneration else None)
+            failure_context=_regeneration_failure_context(conn, case_id) if regeneration else None,
+            regeneration=regeneration)
 
         _record_generation_cost(conn, case_id=case_id,
                                 analysis_usd=analysis_tracker.total_cost,
@@ -878,7 +920,10 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                 slug = unique_feature_slug(conn_tache, slugify(case["title"]))
                 case_plan = dataclasses.replace(plan, module_name=slug)
                 metier = {"title": case["title"], "preconditions": case["preconditions"],
-                         "steps": case["steps"], "expected_result": case["expected_result"]}
+                         "steps": case["steps"], "expected_result": case["expected_result"],
+                         "depend_dun_autre_cas_du_groupe": bool(
+                             case.get("depend_dun_autre_cas_du_groupe", False)),
+                         "etat_a_creer_par_ce_cas": case.get("etat_a_creer_par_ce_cas", "")}
                 try:
                     result = agent_tache.generate(case_plan, group_id=group_id, metier=metier,
                                                   module_id=module_id, title=case["title"],

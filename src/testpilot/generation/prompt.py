@@ -607,14 +607,22 @@ def _section_oracle(requetes: list[str] | None) -> str:
 
 def build_initial_message(plan: TestPlan, modele: dict | None = None,
                           metier: dict | None = None, comptes: list[dict] | None = None,
-                          oracle: list[str] | None = None) -> str:
+                          oracle: list[str] | None = None, regeneration: bool = False) -> str:
     """Message utilisateur initial : le plan mis en forme pour la boucle ReAct.
 
     `modele` — l'annuaire du domaine (`domain_model.charger_modele`). Optionnel : sans lui, le
     message est celui d'avant (aucune contrainte de complétude n'est inventée).
 
     `metier` — le document métier validé (passe 4b de `0022`). Présent, il remplace la liste des
-    scénarios : le périmètre n'est plus déduit par l'agent, il est donné."""
+    scénarios : le périmètre n'est plus déduit par l'agent, il est donné.
+
+    `regeneration` — ce cas a déjà du technique (le métier transmis peut être une correction
+    posée À LA MAIN après coup, cf. F26, 2026-10-01). Dans ce cas la spécification brute
+    originale n'est PAS rappelée : elle est partagée par tous les cas issus du même groupe et ne
+    reflète jamais une correction propre à CE cas — la joindre recrée exactement le « deux
+    périmètres concurrents » que le paragraphe ci-dessous dit vouloir éviter (mesuré sur C131,
+    Portail Sapian - Integration : une précondition corrigée réécrite dans le métier était
+    ignorée, la régénération reprenant le contournement dangereux de la spec brute d'origine)."""
     lines = [
         f"# Génère les tests Behave pour le module « {plan.module_name} »",
         "",
@@ -661,7 +669,7 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None,
     # risquerait de gagner (il est plus détaillé). Un seul périmètre, celui qu'un humain a signé.
     if metier:
         lines.append("\n" + _section_metier(metier))
-        if plan.raw_spec:
+        if plan.raw_spec and not regeneration:
             lines.append("\n## Spécification originale (contexte)\n")
             lines.append(plan.raw_spec)
         return "\n".join(lines)
