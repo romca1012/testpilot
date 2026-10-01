@@ -29,7 +29,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime"
 
 from _base_helpers import validation_error_inline
 
-_SELECTEUR_GENERIQUE = '[role="alert"], .error, .alert-danger, .is-invalid'
+_SELECTEUR_GENERIQUE = (
+    '[role="alert"], .error, .alert-danger, .is-invalid, '
+    "[class*='bg-red-'], [class*='text-red-'], [class*='border-red-']"
+)
 
 
 class _FauxElement:
