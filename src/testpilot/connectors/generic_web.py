@@ -337,6 +337,16 @@ class GenericWebConnector(Connector):
                 message_erreur = lire_message_erreur_visible(ctx.page)
             except Exception:
                 message_erreur = "<illisible>"
+            # Diagnostic temporaire (2026-10-01) : tous les signaux restent vides malgré une
+            # requête reproduite manuellement avec succès (curl depuis staging ET navigateur réel
+            # OK) — hypothèse restante : une latence réseau dépassant la fenêtre de confirmation
+            # normale (2 s). N'affecte QUE ce diagnostic, pas `_attendre_confirmation_post_connexion`
+            # (comportement de connexion réel inchangé pour tous les projets) — écouteurs laissés
+            # actifs pendant cette attente supplémentaire pour capter une réponse tardive.
+            try:
+                ctx.page.wait_for_timeout(8000)
+            except Exception:
+                pass
             try:
                 ctx.page.remove_listener("response", _capturer_reponse_connexion)
                 ctx.page.remove_listener("requestfailed", _capturer_requete_echouee)
