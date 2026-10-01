@@ -272,9 +272,21 @@ class GenericWebConnector(Connector):
                 if message.type == "error":
                     erreurs_console.append(message.text[:300])
 
+            # Cas réel « yros » (2026-10-01, PR #58) : le texte brut capturé après la tentative
+            # montre le formulaire (email/mot de passe/bouton) entièrement ABSENT du DOM, sans
+            # navigation, sans réseau, sans `console.error`. `page.on("console")` ne capture QUE
+            # les appels `console.error()` explicites — jamais une exception JS non rattrapée
+            # (promesse rejetée, erreur de rendu React) : c'est `page.on("pageerror")`, un
+            # événement SÉPARÉ, qui les expose.
+            erreurs_js: list[str] = []
+
+            def _capturer_erreur_js(exc) -> None:
+                erreurs_js.append(str(exc)[:300])
+
             try:
                 ctx.page.on("response", _capturer_reponse_connexion)
                 ctx.page.on("console", _capturer_erreur_console)
+                ctx.page.on("pageerror", _capturer_erreur_js)
             except Exception:
                 pass
             try:
@@ -314,6 +326,7 @@ class GenericWebConnector(Connector):
             try:
                 ctx.page.remove_listener("response", _capturer_reponse_connexion)
                 ctx.page.remove_listener("console", _capturer_erreur_console)
+                ctx.page.remove_listener("pageerror", _capturer_erreur_js)
             except Exception:
                 pass
             # Dernier recours (2026-10-01) : ni le DOM (sélecteurs d'erreur), ni le réseau, ni la
@@ -325,9 +338,9 @@ class GenericWebConnector(Connector):
                 texte_page = "<illisible>"
             logger.info(
                 "[web-générique] après tentative de connexion : url=%s message_erreur=%r "
-                "reponses_post=%s erreurs_console=%s texte_page=%r",
+                "reponses_post=%s erreurs_console=%s erreurs_js=%s texte_page=%r",
                 getattr(ctx.page, "url", "?"), message_erreur, reponses_connexion,
-                erreurs_console, texte_page)
+                erreurs_console, erreurs_js, texte_page)
         return _connexion
 
     # ── Interne (réseau isolé, surchargeable en test) ──────────────────────────
