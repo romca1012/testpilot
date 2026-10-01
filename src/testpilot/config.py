@@ -24,6 +24,11 @@ PRODUCTION = os.getenv("TESTPILOT_PRODUCTION", "false").strip().lower() in {
     "1", "true", "yes", "on",
 }
 PUBLIC_URL = os.getenv("TESTPILOT_PUBLIC_URL", "").strip().rstrip("/")
+# Cause mesurée (2026-10-01, diagnostic « yros ») : aucun `logging.basicConfig` nulle part dans le
+# code → la racine retombe sur le handler de dernier recours de Python (stderr, niveau WARNING),
+# donc les 23 `logger.info(...)` du dépôt sont avalés partout, local comme staging — y compris un
+# log posé spécifiquement pour diagnostiquer une connexion qui n'aboutit pas.
+LOG_LEVEL = os.getenv("TESTPILOT_LOG_LEVEL", "INFO").strip().upper()
 PASSWORD_MIN_LENGTH = int(os.getenv("TESTPILOT_PASSWORD_MIN_LENGTH", "15" if PRODUCTION else "8"))
 TEMPORARY_PASSWORD_HOURS = 24
 
