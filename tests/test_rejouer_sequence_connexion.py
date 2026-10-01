@@ -45,6 +45,7 @@ class _FakePage:
         self._resultats = resultats
         self.url = "https://exemple.test/pre-connexion"
         self.attente_reseau_appelee = False
+        self.pauses_fixes: list[int] = []
 
     def get_by_role(self, role, name=None, exact=False):
         assert exact is True, "rejouer_sequence_connexion doit toujours appeler exact=True"
@@ -52,6 +53,9 @@ class _FakePage:
 
     def wait_for_load_state(self, state):
         self.attente_reseau_appelee = True
+
+    def wait_for_timeout(self, timeout_ms):
+        self.pauses_fixes.append(timeout_ms)
 
 
 def test_sequence_vide_ne_fait_rien_et_rend_false():
@@ -72,6 +76,22 @@ def test_rejoue_chaque_etape_dans_l_ordre_et_rend_true():
     assert resultat is True
     assert pays.clique is True and continuer.clique is True
     assert page.attente_reseau_appelee is True
+
+
+def test_falsifiable_une_pause_fixe_suit_chaque_clic():
+    """Cas réel « yros » (2026-10-01) : un bouton dont le libellé change tout de suite mais dont la
+    confirmation réelle suit avec un court délai — sans pause entre les clics, l'étape suivante
+    pouvait s'exécuter avant cette confirmation, sans jamais lever d'erreur. Preuve qu'une pause
+    FIXE (pas une attente réseau) suit désormais CHAQUE clic, y compris le dernier."""
+    etapes = [_FakeLocator(), _FakeLocator(), _FakeLocator()]
+    page = _FakePage({("button", "A"): etapes[0], ("button", "B"): etapes[1],
+                      ("button", "C"): etapes[2]})
+
+    rejouer_sequence_connexion(
+        page, [{"role": "button", "name": "A"}, {"role": "button", "name": "B"},
+              {"role": "button", "name": "C"}])
+
+    assert page.pauses_fixes == [300, 300, 300]
 
 
 def test_falsifiable_une_etape_introuvable_leve_avec_message_clair():

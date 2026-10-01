@@ -155,6 +155,18 @@ class SequenceConnexionObsoleteError(Exception):
 _PAS_ATTENTE_POST_CONNEXION_MS = 100
 _ITERATIONS_ATTENTE_POST_CONNEXION = 20  # 20 × 100 ms = 2 s bornées, jamais un blocage indéfini
 
+# Cas réel « yros » (2026-10-01) : un bouton à deux états (« Sélectionner » → « Choisi ») dont le
+# LIBELLÉ change immédiatement, mais dont la confirmation RÉELLE (acceptée par l'application, pas
+# seulement affichée) suit avec un court délai. Un humain laisse naturellement ce délai s'écouler
+# entre deux clics ; `rejouer_sequence_connexion` les enchaînait sans aucune pause, assez vite pour
+# cliquer l'étape suivante avant que la confirmation réelle n'ait eu lieu — l'étape suivante
+# s'exécutait alors sur un état pas encore réellement acquis, sans jamais lever d'erreur (confirmé
+# par les journaux de production : les 3 étapes enregistrées se rejouent sans exception, mais la
+# page reste sur l'écran de pré-connexion). Délai FIXE, pas une attente réseau
+# (`wait_for_load_state`) : la confirmation peut être purement côté client (JS), sans aucun appel
+# serveur à attendre.
+_DELAI_ENTRE_ETAPES_SEQUENCE_MS = 300
+
 
 def _confirmation_post_connexion_obtenue(page, url_avant: str) -> bool:
     """Un signe RUNTIME que la tentative de connexion a progressé — jamais un texte affiché.
@@ -211,6 +223,13 @@ def rejouer_sequence_connexion(page, etapes: list[dict], *, timeout_ms: int = 50
     coûterait le timeout complet à chaque appel, pour rien. L'appelant qui sait déjà comment
     reconnaître SA propre fin de navigation (ex. `page.wait_for_url(...)`, comme
     `odoo_login.py::playwright_login`) désactive cette attente et fait la sienne juste après.
+
+    ⚠️ **Une courte pause FIXE suit chaque clic** (`_DELAI_ENTRE_ETAPES_SEQUENCE_MS`, 300 ms) —
+    indépendante de `attendre_reseau` : un humain laisse naturellement ce temps s'écouler entre
+    deux clics, le rejeu automatique ne le faisait pas et pouvait enchaîner une étape avant que la
+    précédente n'ait eu le temps d'être réellement prise en compte par l'application (cas réel
+    « yros », 2026-10-01 — voir la constante). Volontairement un délai TEMPOREL, pas une attente
+    réseau : la confirmation visée peut être purement côté client, sans aucun appel serveur.
     """
     if not etapes:
         return False
@@ -224,6 +243,7 @@ def rejouer_sequence_connexion(page, etapes: list[dict], *, timeout_ms: int = 50
                 f"{getattr(page, 'url', '?')} — l'application a changé depuis l'enregistrement du "
                 "chemin de connexion. Refaites l'enregistrement (session en direct) avant de "
                 "relancer.") from exc
+        page.wait_for_timeout(_DELAI_ENTRE_ETAPES_SEQUENCE_MS)
     if attendre_reseau:
         page.wait_for_load_state("networkidle")
     return True
