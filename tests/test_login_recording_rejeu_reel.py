@@ -57,6 +57,27 @@ _ECRAN_CASSE_DIFFERENTE = b"""<!doctype html><html><body>
 <button id="france">FRANCE</button>
 </body></html>"""
 
+# Cas réel « yros » (2026-10-01) : un bouton à deux états dont le LIBELLÉ change immédiatement au
+# clic, mais dont la confirmation RÉELLE (acceptée par l'application) suit avec un court délai
+# PUREMENT CÔTÉ CLIENT (`setTimeout`, aucun appel réseau — `networkidle` ne l'aurait jamais
+# attendue). Le bouton « Continuer » ne navigue que si cette confirmation a eu lieu — exactement le
+# symptôme mesuré en production : les 3 étapes se rejouent sans lever d'exception, mais la page
+# reste sur l'écran de pré-connexion si la confirmation n'a pas eu le temps d'aboutir.
+_ECRAN_CONFIRMATION_DIFFEREE = b"""<!doctype html><html><body>
+<button id="pays">Selectionner</button>
+<button id="suivant">Continuer</button>
+<script>
+let confirme = false;
+document.getElementById('pays').onclick = function () {
+  this.textContent = 'Choisi';
+  setTimeout(function () { confirme = true; }, 250);
+};
+document.getElementById('suivant').onclick = function () {
+  if (confirme) { window.location.href = '/bienvenue'; }
+};
+</script>
+</body></html>"""
+
 
 class _Application(BaseHTTPRequestHandler):
     def log_message(self, *args):
@@ -69,6 +90,8 @@ class _Application(BaseHTTPRequestHandler):
             corps = _ECRAN_RENOMME
         elif self.path.startswith("/renomme-casse"):
             corps = _ECRAN_CASSE_DIFFERENTE
+        elif self.path.startswith("/confirmation-differee"):
+            corps = _ECRAN_CONFIRMATION_DIFFEREE
         else:
             corps = _ACCUEIL
         self.send_response(200)
@@ -140,3 +163,19 @@ def test_falsifiable_un_libelle_de_casse_differente_est_rejete(page, application
 
     with pytest.raises(SequenceConnexionObsoleteError):
         rejouer_sequence_connexion(page, [{"role": "button", "name": "France"}])
+
+
+def test_falsifiable_la_pause_entre_etapes_laisse_le_temps_a_une_confirmation_differee(page, application):
+    """Cas réel « yros » (2026-10-01) : sans la pause fixe entre chaque clic, ce test échoue — les
+    3 étapes se rejouent sans lever d'exception (chaque bouton existe bel et bien), mais « Continuer »
+    est cliqué AVANT que la confirmation (différée de 250 ms, purement côté client) n'ait eu lieu,
+    et la page ne navigue jamais vers /bienvenue. La pause fixe (300 ms, > 250 ms) laisse le temps
+    à la confirmation d'aboutir avant le clic suivant."""
+    page.goto(f"{application}/confirmation-differee")
+
+    rejoue = rejouer_sequence_connexion(
+        page, [{"role": "button", "name": "Selectionner"}, {"role": "button", "name": "Choisi"},
+              {"role": "button", "name": "Continuer"}])
+
+    assert rejoue is True
+    assert page.url.endswith("/bienvenue")
