@@ -19,6 +19,16 @@ from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
 
+# Cas réel mesuré sur OrangeHRM (demo publique, 2026-10-01) : le champ identifiant n'a AUCUN
+# attribut `type` littéral (`<input name="username">`) — HTML le traite comme texte par défaut,
+# mais `input[type='text']` ne matche que l'attribut LITTÉRAL, pas la valeur IDL par défaut du
+# navigateur (`getAttribute('type')` rend `null` ; seule la propriété `.type` calculée vaut
+# `"text"`). `input:not([type])` couvre ce cas sans élargir à tort : un champ `password`/`hidden`/
+# `checkbox`/… porte TOUJOURS son attribut `type` explicitement, donc `:not([type])` ne les
+# matche jamais. Centralisé ici : les 3 usages (schéma à un écran, schéma à deux écrans, détection
+# du premier écran minimal) partageaient le même défaut.
+_SELECTEUR_CHAMP_TEXTE_IDENTIFIANT = "input:not([type]), input[type='text'], input[type='email']"
+
 # Champs de formulaire à ignorer : jetons techniques, pas des champs métier.
 _IGNORED_FIELD_PREFIXES = ("_",)
 _IGNORED_FIELD_NAMES = {"csrf_token"}
@@ -260,7 +270,7 @@ def _ressemble_a_un_premier_ecran_de_connexion(page) -> bool:
     à deux étapes (ex. Google, Microsoft) est délibérément minimal ; ce n'est pas le cas d'une page
     de contenu ordinaire qui porte un champ texte parmi d'autres.
     """
-    champs = page.query_selector_all("input[type='email'], input[type='text']")
+    champs = page.query_selector_all(_SELECTEUR_CHAMP_TEXTE_IDENTIFIANT)
     if len(champs) != 1:
         return False
     return page.query_selector("button, input[type='submit']") is not None
@@ -305,7 +315,7 @@ def tenter_connexion_generique(page, user: str, password: str) -> bool:
     url_avant = getattr(page, "url", "")
     champ_mdp = page.query_selector("input[type='password']")
     if champ_mdp is not None:
-        champ_identifiant = page.query_selector("input[type='email'], input[type='text']")
+        champ_identifiant = page.query_selector(_SELECTEUR_CHAMP_TEXTE_IDENTIFIANT)
         if champ_identifiant is None:
             logger.warning("[connexion-générique] mot de passe détecté sans champ identifiant"
                             " — connexion non tentée")
@@ -320,7 +330,7 @@ def tenter_connexion_generique(page, user: str, password: str) -> bool:
     if not _ressemble_a_un_premier_ecran_de_connexion(page):
         return False  # pas d'indice de connexion du tout : comportement historique inchangé
 
-    champ_identifiant_seul = page.query_selector("input[type='email'], input[type='text']")
+    champ_identifiant_seul = page.query_selector(_SELECTEUR_CHAMP_TEXTE_IDENTIFIANT)
     champ_identifiant_seul.fill(user, force=True)
     champ_identifiant_seul.press("Enter")
     page.wait_for_load_state("networkidle")
