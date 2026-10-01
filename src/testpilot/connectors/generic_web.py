@@ -28,6 +28,7 @@ from testpilot.connectors._web_helpers import (
     elements_interactifs_visibles,
     extract_form,
     http_probe,
+    lire_message_erreur_visible,
     rejouer_sequence_connexion,
     remplir_et_soumettre_formulaire_connexion,
     tenter_connexion_et_lire_resultat,
@@ -267,11 +268,13 @@ class GenericWebConnector(Connector):
             else:
                 tenter_connexion_generique(ctx.page, self._user, self._password)
             # Diagnostic temporaire (2026-09-30, cas réel « yros » : le remplissage/clic réussit
-            # sans lever, mais le crawl qui suit ne trouve pas plus de routes qu'avant — jamais
-            # mesuré jusqu'ici si la connexion aboutit VRAIMENT à ce stade). À retirer une fois la
+            # sans lever, mais le crawl qui suit ne trouve pas plus de routes qu'avant — confirmé
+            # le 2026-10-01 que l'URL reste sur /login). Étendu le 2026-10-01 : capture aussi le
+            # message d'erreur RÉELLEMENT affiché (jamais lu jusqu'ici à cet endroit précis), pour
+            # distinguer un rejet serveur explicite d'un blocage silencieux. À retirer une fois la
             # cause trouvée.
-            logger.info("[web-générique] après tentative de connexion : url=%s",
-                       getattr(ctx.page, "url", "?"))
+            logger.info("[web-générique] après tentative de connexion : url=%s message_erreur=%r",
+                       getattr(ctx.page, "url", "?"), lire_message_erreur_visible(ctx.page))
         return _connexion
 
     # ── Interne (réseau isolé, surchargeable en test) ──────────────────────────
