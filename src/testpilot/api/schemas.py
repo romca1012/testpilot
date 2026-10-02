@@ -665,6 +665,61 @@ class SpecExtractOut(BaseModel):
     filename: str = ""
 
 
+class ExcelImportLigne(BaseModel):
+    """Une ligne candidate détectée dans le classeur — jamais écrite tant que l'étape `confirm`
+    n'a pas reçu la liste des lignes RETENUES par l'utilisateur (décision 0022-like : pas d'écran
+    aveugle, voir `excel_import.py`)."""
+    numero_ligne: int
+    titre: str
+    preconditions: str = ""
+    test_steps: list[str] = []
+    expected_result: str = ""
+    section: str = ""
+    priority: str = "medium"
+    statut_manuel: str | None = None
+    testeur: str = ""
+    date: str = ""
+    type_cas: str = ""
+    commentaires: str = ""
+    retenue: bool = True
+    avertissements: list[str] = []
+
+
+class ExcelImportPreviewOut(BaseModel):
+    """Aperçu d'un classeur téléversé — RIEN n'est encore en base. `fichier_hash` ré-identifie le
+    fichier conservé sur disque pour l'étape `confirm`, sans le retransmettre."""
+    fichier_hash: str
+    filename: str = ""
+    feuilles_disponibles: list[str] = []
+    feuille: str
+    ligne_entete: int
+    mapping: dict[int, str] = {}
+    entetes_brutes: dict[int, str] = {}
+    lignes: list[ExcelImportLigne] = []
+
+
+class ExcelImportConfirmIn(BaseModel):
+    """Confirmation d'import — `mapping`/`feuille`/`ligne_entete` peuvent avoir été CORRIGÉS par
+    l'utilisateur dans l'aperçu (colonne mal détectée) : ce que `preview` a deviné n'est qu'une
+    proposition, jamais imposé. `numeros_lignes_retenues` = uniquement les lignes à importer
+    réellement (les lignes ignorées dans l'aperçu restent à `[]` par défaut côté client)."""
+    fichier_hash: str
+    feuille: str
+    ligne_entete: int
+    mapping: dict[int, str]
+    numeros_lignes_retenues: list[int]
+    group_id: int | None = None
+
+
+class ExcelImportConfirmOut(BaseModel):
+    """Résumé de l'import — jamais une liste de cas « réussis » à l'aveugle : le nombre ignoré
+    doit rester aussi visible que le nombre créé."""
+    cree: int
+    ignore: int
+    run_id: int | None = None
+    case_ids: list[int] = []
+
+
 class RunIn(BaseModel):
     """Création d'un run (campagne). `case_ids` n'est utilisé qu'en mode `frozen`.
 

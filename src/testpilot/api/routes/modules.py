@@ -7,6 +7,8 @@ elle tourne en tâche de fond (202 + polling du job), comme les exécutions.
 
 from __future__ import annotations
 
+import json
+
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -22,7 +24,7 @@ from testpilot import config
 from testpilot.analysis import spec_analyzer
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
-from testpilot.api.services import events_bus, generation_service, spec_extract
+from testpilot.api.services import events_bus, excel_import, generation_service, spec_extract
 from testpilot.guardrails import concurrency, durable_jobs
 from testpilot.store.repositories import (
     CaseGroupRepo,
@@ -31,7 +33,11 @@ from testpilot.store.repositories import (
     ModuleRepo,
     ProfondeurInvalide,
     ProjectRepo,
+    ResultRepo,
+    RunRepo,
+    now_iso,
 )
+from testpilot.verdict.status import MODE_MANUELLE
 
 router = APIRouter(prefix="/api/modules", tags=["modules"])
 
@@ -148,7 +154,6 @@ def create_manual_case(module_id: int, body: schemas.ManualCaseIn, request: Requ
         if groupe["module_id"] != module_id:
             raise HTTPException(status_code=422,
                                 detail="cette section appartient à un autre module")
-    import json
     try:
         cid = CaseRepo(conn).create_manual(
             module_id=module_id, title=body.title.strip(),
@@ -190,6 +195,143 @@ async def extract_spec(module_id: int, file: UploadFile = File(...), conn=Depend
     # peut se répéter d'un téléversement à l'autre sans désigner le même document.
     spec_extract.conserver_original(spec_analyzer.spec_hash(text), file.filename or "", data)
     return schemas.SpecExtractOut(text=text, filename=file.filename or "")
+
+
+@router.post("/{module_id}/cases/import-excel/preview", response_model=schemas.ExcelImportPreviewOut,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "module_id", access.project_id_depuis_module))])
+async def preview_excel_import(module_id: int, file: UploadFile = File(...),
+                               conn=Depends(get_conn)):
+    """APERÇU SEUL — rien n'est écrit en base ici. Détecte la feuille, la ligne d'entête, le
+    mapping colonne→champ et les lignes candidates, pour que l'écran les montre et laisse
+    l'utilisateur les corriger AVANT `confirm` (le fichier peut ne pas être propre, décision du
+    porteur 2026-10-01 — voir `excel_import.py`)."""
+    if ModuleRepo(conn).get(module_id) is None:
+        raise HTTPException(status_code=404, detail=f"module {module_id} introuvable")
+    data = await spec_extract.lire_borne(file, config.SPEC_MAX_BYTES)
+    nom = (file.filename or "").lower()
+    if not nom.endswith(".xlsx"):
+        raise HTTPException(status_code=422,
+                            detail="format non géré : seul .xlsx est pris en charge pour l'instant")
+    try:
+        classeur = excel_import.lire_classeur(data)
+        entetes = excel_import.detecter_feuille_et_entete(classeur)
+        lignes = excel_import.extraire_lignes(classeur[entetes.feuille], entetes)
+    except excel_import.FichierExcelInvalide as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    fichier_hash = excel_import.hash_fichier(data)
+    excel_import.conserver_original(fichier_hash, file.filename or "", data)
+    return schemas.ExcelImportPreviewOut(
+        fichier_hash=fichier_hash, filename=file.filename or "",
+        feuilles_disponibles=classeur.sheetnames, feuille=entetes.feuille,
+        ligne_entete=entetes.index_ligne_entete, mapping=entetes.mapping,
+        entetes_brutes=entetes.entetes_brutes,
+        lignes=[schemas.ExcelImportLigne(**excel_import.ligne_vers_dict(l)) for l in lignes])
+
+
+@router.post("/{module_id}/cases/import-excel/confirm", response_model=schemas.ExcelImportConfirmOut,
+            dependencies=[Depends(access.require_project_access_depuis(
+                "module_id", access.project_id_depuis_module))])
+def confirm_excel_import(module_id: int, body: schemas.ExcelImportConfirmIn, request: Request,
+                         conn=Depends(get_conn)):
+    """Écrit RÉELLEMENT les cas retenus (décrits par `numeros_lignes_retenues`, et le
+    `mapping`/`feuille`/`ligne_entete` éventuellement CORRIGÉS par l'utilisateur dans l'aperçu —
+    jamais ce que `preview` avait deviné en premier si l'écran l'a changé).
+
+    Relit le fichier CONSERVÉ sur disque (jamais un aperçu renvoyé par le client, qui pourrait
+    avoir été trafiqué ou désynchronisé) — même garde que `spec_extract` pour la génération.
+
+    Un statut reconnu (`STATUTS_MANUELS`) devient un résultat MANUEL/déclaré (`ResultRepo.saisir`),
+    JAMAIS `last_execution_status`/`last_functional_status` — ceux-ci restent réservés à un run
+    Behave réel de TestPilot (§4 CLAUDE.md : un faux PASSED est le pire défaut possible). Les
+    lignes avec un statut sont regroupées dans UN SEUL run manuel créé pour cet import, visible
+    dans « Exécutions et résultats de test » comme n'importe quelle campagne manuelle — l'audit
+    (qui/quand) vit sur ce run, pas sur un champ épars.
+    """
+    module = ModuleRepo(conn).get(module_id)
+    if module is None:
+        raise HTTPException(status_code=404, detail=f"module {module_id} introuvable")
+    if body.group_id is not None:
+        groupe = CaseGroupRepo(conn).get(body.group_id)
+        if groupe is None:
+            raise HTTPException(status_code=404, detail=f"section {body.group_id} introuvable")
+        if groupe["module_id"] != module_id:
+            raise HTTPException(status_code=422,
+                                detail="cette section appartient à un autre module")
+
+    chemin = excel_import.chemin_original(body.fichier_hash)
+    if chemin is None:
+        raise HTTPException(
+            status_code=422,
+            detail="fichier introuvable — relancez l'aperçu, celui-ci a peut-être expiré")
+    data = chemin.read_bytes()
+    try:
+        classeur = excel_import.lire_classeur(data)
+        entetes = excel_import.EntetesDetectees(
+            feuille=body.feuille, index_ligne_entete=body.ligne_entete, mapping=body.mapping,
+            score=len(body.mapping))
+        toutes_les_lignes = excel_import.extraire_lignes(classeur[body.feuille], entetes)
+    except excel_import.FichierExcelInvalide as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=422, detail=f"feuille introuvable : {exc}") from exc
+
+    retenues_demandees = set(body.numeros_lignes_retenues)
+    lignes_a_importer = [l for l in toutes_les_lignes if l.numero_ligne in retenues_demandees]
+
+    auteur = access.utilisateur_de(request) or "ui"
+    groupes_par_titre: dict[str, int] = {}
+    case_ids: list[int] = []
+    lignes_avec_statut: list[tuple[int, excel_import.LigneCandidate, str]] = []
+    ignore = len(toutes_les_lignes) - len(lignes_a_importer)
+
+    for ligne in lignes_a_importer:
+        group_id = body.group_id
+        if ligne.section.strip():
+            cle = excel_import.normaliser(ligne.section)
+            if cle not in groupes_par_titre:
+                existant = next(
+                    (g for g in CaseGroupRepo(conn).list_for_module(module_id)
+                     if excel_import.normaliser(g["title"]) == cle), None)
+                groupes_par_titre[cle] = existant["id"] if existant else CaseGroupRepo(conn).create(
+                    module_id=module_id, title=ligne.section.strip())
+            group_id = groupes_par_titre[cle]
+        # Testeur/date/commentaires n'ont pas de colonne dédiée sur `test_case` — repliés dans la
+        # description plutôt que perdus en silence, qu'un statut soit reconnu ou non pour la ligne
+        # (relu en revue : avant ce correctif, une ligne sans statut reconnu les perdait).
+        commentaire = " — ".join(
+            p for p in (ligne.testeur, ligne.date, ligne.commentaires) if p.strip())
+        try:
+            cid = CaseRepo(conn).create_manual(
+                module_id=module_id, title=ligne.titre, preconditions=ligne.preconditions,
+                test_steps=json.dumps(ligne.etapes, ensure_ascii=False),
+                expected_result=ligne.resultat_attendu, group_id=group_id, author=auteur,
+                priority=ligne.priorite, description=commentaire)
+        except DuplicateName:
+            ignore += 1
+            continue
+        # `type` n'a pas de paramètre de création dédié (comme `priority`) : seule la métadonnée
+        # de lecture existe (`CaseRepo.set_metadonnees`, même mécanique que `PATCH /cases/{id}`).
+        CaseRepo(conn).set_metadonnees(cid, type=ligne.type_cas)
+        case_ids.append(cid)
+        if ligne.statut_manuel:
+            lignes_avec_statut.append((cid, ligne, commentaire))
+
+    run_id = None
+    if lignes_avec_statut:
+        nom_run = f"Import {chemin.name} — {now_iso()[:10]}"
+        run_id = RunRepo(conn).create(
+            project_id=module["project_id"], name=nom_run, selection_mode="frozen",
+            mode=MODE_MANUELLE, case_ids=[cid for cid, _, _ in lignes_avec_statut])
+        for cid, ligne, commentaire in lignes_avec_statut:
+            ResultRepo(conn).saisir(run_id=run_id, case_id=cid, statut=ligne.statut_manuel,
+                                    comment=commentaire, created_by=auteur)
+
+    for cid in case_ids:
+        events_bus.publier(module["project_id"], {"kind": "case_created", "case_id": cid})
+
+    return schemas.ExcelImportConfirmOut(
+        cree=len(case_ids), ignore=ignore, run_id=run_id, case_ids=case_ids)
 
 
 @router.put("/{module_id}/cases/order", response_model=list[schemas.CaseSummary],
