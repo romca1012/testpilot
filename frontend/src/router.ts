@@ -21,6 +21,8 @@ export const routes = [
   { path: '/projects/:pid/cases/new', name: 'case-new', component: () => import('./pages/AddTestCase.vue') },
   // « Ajouter un cas de test » = saisie MANUELLE (métier, sans IA).
   { path: '/projects/:pid/cases/manual', name: 'case-manual', component: () => import('./pages/AddManualCase.vue') },
+  // Import d'un cahier de test existant (.xlsx) — aperçu/correction puis écriture (2026-10-01).
+  { path: '/projects/:pid/cases/import-excel', name: 'case-import-excel', component: () => import('./pages/ImportExcelCases.vue') },
   { path: '/projects/:pid/cases/:id', name: 'case-detail', component: () => import('./pages/CaseDetailTR.vue') },
   // La SPÉCIFICATION : le document source, d'où naissent 1 à N cas (décision 0022). Son CRUD
   // existait côté serveur depuis le 2026-07-20 sans qu'aucun écran ne l'appelle — le modèle

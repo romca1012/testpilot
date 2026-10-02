@@ -378,6 +378,20 @@ export const api = {
     fd.append('file', file)
     return requestForm(`/api/modules/${moduleId}/cases/extract`, fd)
   },
+  // Import de cas depuis un classeur Excel — `preview` n'écrit rien, `confirm` écrit RÉELLEMENT
+  // (voir ExcelImportPreview/ExcelImportResume). Mêmes raisons de transport que `extractSpec`.
+  previewExcelImport: (moduleId: number | string, file: File): Promise<ExcelImportPreview> => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return requestForm(`/api/modules/${moduleId}/cases/import-excel/preview`, fd)
+  },
+  confirmExcelImport: (moduleId: number | string, body: {
+    fichier_hash: string; feuille: string; ligne_entete: number
+    mapping: Record<string, string>; numeros_lignes_retenues: number[]; group_id?: number | null
+  }): Promise<ExcelImportResume> =>
+    request(`/api/modules/${moduleId}/cases/import-excel/confirm`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
   // Spécifications (case_group) du projet — pour l'arbre latéral et les compteurs.
   listGroups: (projectId: number | string) => request<GroupSummary[]>(`/api/projects/${projectId}/groups`),
   // ── La SPÉCIFICATION : le document source, d'où naissent 1 à N cas (décision 0022) ──
@@ -835,6 +849,23 @@ export interface GroupDetail {
   parent_group_id?: number | null
   created_at: string; updated_at: string
 }
+
+// ── Import de cas de test depuis un classeur Excel ───────────────────────────────────────────
+// Deux étapes, comme l'extraction de spec par fichier : `preview` ne touche JAMAIS la base,
+// `confirm` écrit — avec le mapping éventuellement CORRIGÉ par l'écran, pas celui deviné.
+export interface ExcelImportLigne {
+  numero_ligne: number; titre: string; preconditions: string; test_steps: string[]
+  expected_result: string; section: string; priority: string
+  statut_manuel: string | null; testeur: string; date: string; type_cas: string
+  commentaires: string; retenue: boolean; avertissements: string[]
+}
+export interface ExcelImportPreview {
+  fichier_hash: string; filename: string; feuilles_disponibles: string[]
+  feuille: string; ligne_entete: number; mapping: Record<string, string>
+  entetes_brutes: Record<string, string>
+  lignes: ExcelImportLigne[]
+}
+export interface ExcelImportResume { cree: number; ignore: number; run_id: number | null; case_ids: number[] }
 
 export interface CaseMetierIn {
   title?: string; preconditions?: string; test_steps?: string
