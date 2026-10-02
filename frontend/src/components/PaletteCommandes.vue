@@ -48,6 +48,7 @@ const commandes = computed<Entree[]>(() => {
     { id: 'cases', libelle: 'Cas de test', detail: 'Aller à la liste', aller: vers('cases') },
     { id: 'case-new', libelle: 'Générer des cas de test', detail: 'Depuis une spécification', aller: vers('case-new') },
     { id: 'case-manual', libelle: 'Ajouter un cas de test', detail: 'Saisie manuelle, sans IA', aller: vers('case-manual') },
+    { id: 'case-import-excel', libelle: 'Importer depuis Excel', detail: 'Cahier de test existant (.xlsx)', aller: vers('case-import-excel') },
     { id: 'exec', libelle: 'Exécutions et résultats', aller: vers('executions') },
     { id: 'run-new', libelle: 'Créer une campagne', aller: vers('run-new') },
     { id: 'quality', libelle: 'Qualité de génération', aller: vers('quality') },

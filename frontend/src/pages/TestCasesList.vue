@@ -453,6 +453,11 @@ function exportCsv() {
 }
 function goRunNew() { router.push({ name: 'run-new', params: { pid: pid.value } }) }
 
+// Import d'un cahier de test existant (.xlsx) — aperçu/correction puis écriture (2026-10-01).
+// À côté d'« Exporter (CSV) » plutôt que dans la sidebar : les deux sont le même geste
+// d'échange de données avec un fichier, symétriques (porteur, 2026-10-02).
+function goImportExcel() { router.push({ name: 'case-import-excel', params: { pid: pid.value } }) }
+
 // ── ACTIONS EN LOT ───────────────────────────────────────────────────────────
 // Le geste que ce lot vise : 20 cas cochés, une action. Chaque action rend un COMPTE RENDU
 // (`traites` / `ignores`) — un cas peut avoir disparu entre l'affichage et le clic, et le taire
@@ -538,6 +543,9 @@ async function supprimerEnLot() {
         </IconButton>
         <IconButton v-for="ic in topIcons" :key="ic.t" :label="ic.t" @click="topAction(ic.t)">
           <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path :d="ic.d"/></svg>
+        </IconButton>
+        <IconButton v-if="peutModifier" label="Importer depuis Excel" @click="goImportExcel">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
         </IconButton>
         <button v-if="peutGenerer" title="Générer des cas de test avec l'IA" class="grid place-items-center w-7 h-7 rounded-full bg-success/15 text-success hover:bg-success/25"
                 @click="router.push({ name: 'case-new', params: { pid } })" aria-label="Générer des cas de test avec l'IA">
