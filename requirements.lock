@@ -37,6 +37,8 @@ cucumber-tag-expressions==11.0.1
     # via behave
 docstring-parser==0.18.0
     # via anthropic
+et-xmlfile==2.0.0
+    # via openpyxl
 fastapi==0.141.1
     # via testpilot (pyproject.toml)
 greenlet==3.5.5
@@ -68,6 +70,8 @@ markupsafe==3.0.3
     #   jinja2
     #   mako
 odoorpc==0.10.1
+    # via testpilot (pyproject.toml)
+openpyxl==3.1.5
     # via testpilot (pyproject.toml)
 parse==1.22.1
     # via
