@@ -170,12 +170,17 @@ def _ouvrir_application(context):
     # problème de l'application CIBLE au démarrage, pas de TestPilot (même principe que
     # `tests/test_conformite_connecteur_web.py::_goto_app`, générique à toute application lente à
     # se réveiller, pas spécifique à the-internet).
+    # ⚠️ `goto()` renvoie légitimement `None` pour une navigation locale/déjà résolue (ex. les
+    # doubles de `tests/test_connexion_execution.py`/`test_generic_navigation_step.py`, qui ne
+    # modélisent pas de réponse HTTP) — un `None` n'est PAS une preuve d'échec, seul un échec
+    # confirmé (timeout, ou une vraie réponse dont `.ok` vaut `False`) déclenche le second essai.
     try:
         reponse = context.page.goto(context.web_url, wait_until="domcontentloaded")
     except PlaywrightTimeoutError:
-        reponse = None
-    if reponse is None or not reponse.ok:
         context.page.goto(context.web_url, wait_until="domcontentloaded")
+    else:
+        if reponse is not None and not reponse.ok:
+            context.page.goto(context.web_url, wait_until="domcontentloaded")
 
 
 @given("j'accède à la page de connexion sans me connecter")
