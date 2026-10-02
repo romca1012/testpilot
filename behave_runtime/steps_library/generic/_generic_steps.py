@@ -8,6 +8,7 @@ s'il n'appelle que `context.page` (Playwright) ou ne fait rien (`pass`) — dès
 `context.odoo`/`ODOO_*`/un sélecteur du web client Odoo, il va dans `../odoo/`.
 """
 from behave import given, when, then
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 # Import mis au PLAT (layout d'exécution sans package features/ — voir environment.py) :
 # _base_helpers.py reste à la racine de steps_library/, copié à plat par _assemble() quel que
 # soit le sous-dossier d'origine de CE fichier.
@@ -162,7 +163,19 @@ def _ouvrir_application(context):
         raise NavigationImpossibleError(
             "URL de l'application introuvable (WEB_URL absent) — vérifiez la connexion du "
             "projet (adresse renseignée dans ses réglages).")
-    context.page.goto(context.web_url, wait_until="domcontentloaded")
+    # Un second essai sur timeout OU réponse d'erreur serveur — mesuré en CI le 2026-10-02 contre
+    # the-internet.herokuapp.com (éco-dyno Heroku gratuit, mis en veille après inactivité) : la
+    # toute première requête d'une session peut dépasser le délai habituel voire recevoir un 503
+    # pendant que l'application tierce démarre, puis répondre normalement l'instant d'après — un
+    # problème de l'application CIBLE au démarrage, pas de TestPilot (même principe que
+    # `tests/test_conformite_connecteur_web.py::_goto_app`, générique à toute application lente à
+    # se réveiller, pas spécifique à the-internet).
+    try:
+        reponse = context.page.goto(context.web_url, wait_until="domcontentloaded")
+    except PlaywrightTimeoutError:
+        reponse = None
+    if reponse is None or not reponse.ok:
+        context.page.goto(context.web_url, wait_until="domcontentloaded")
 
 
 @given("j'accède à la page de connexion sans me connecter")
