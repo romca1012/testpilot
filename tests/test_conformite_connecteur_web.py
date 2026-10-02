@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"))
@@ -95,6 +96,23 @@ _APPS = [
 _IDS = [app.nom for app in _APPS]
 
 
+def _goto_app(page, app: _AppConforme) -> None:
+    """Navigue vers `app.url_login`, en réessayant une fois sur timeout OU sur une réponse
+    d'erreur serveur — mesuré en CI le 2026-10-02 : the-internet.herokuapp.com (éco-dyno Heroku
+    gratuit, mis en veille après inactivité) a répondu `503` après 31s à la toute première
+    requête d'une session de test, puis instantanément (<0.5s) à toutes les suivantes une fois
+    réveillé. Un timeout plus long seul n'y change rien (le 503 vient de Heroku lui-même, pas
+    d'une page simplement lente — il peut même arriver APRÈS un timeout client plus généreux, sans
+    lever d'exception) ; un second essai, lui, retombe sur le dyno déjà chaud. Générique :
+    s'applique aux DEUX applications, aucun contournement spécifique à the-internet."""
+    try:
+        reponse = page.goto(app.url_login, wait_until="domcontentloaded")
+    except PlaywrightTimeoutError:
+        reponse = None
+    if reponse is None or not reponse.ok:
+        page.goto(app.url_login, wait_until="domcontentloaded")
+
+
 @pytest.fixture(scope="module")
 def navigateur():
     """Un seul navigateur pour toute la suite (recommandation Playwright : plusieurs pages sur UN
@@ -108,6 +126,11 @@ def navigateur():
 @pytest.fixture
 def page(navigateur):
     p = navigateur.new_page()
+    # the-internet.herokuapp.com (dyno Heroku gratuit) peut dépasser les 30s par défaut de
+    # Playwright au démarrage à froid — mesuré en CI le 2026-10-02 (3 `Page.goto` timeout sur
+    # the-internet, SauceDemo inchangé). Générique : s'applique aux DEUX applications, pas un
+    # correctif spécifique à the-internet (même principe que le reste de cette suite).
+    p.set_default_navigation_timeout(60_000)
     yield p
     p.close()
 
@@ -116,7 +139,7 @@ def page(navigateur):
 def test_navigation_initiale_atteint_bien_la_page_visee(page, app):
     """Le socle absolu, sans lequel tout le reste tourne dans le vide (bug de navigation,
     SauceDemo, 2026-09-11 : le navigateur restait sur `about:blank` toute la durée du scénario)."""
-    page.goto(app.url_login, wait_until="domcontentloaded")
+    _goto_app(page, app)
 
     assert page.url != "about:blank"
     assert page.locator("input").count() > 0, f"{app.nom} : aucun champ visible après navigation"
@@ -127,7 +150,7 @@ def test_remplir_puis_cliquer_connecte_reellement(page, app):
     """`fill_field` + `click_button` doivent réellement connecter — pas seulement écrire une
     valeur dans le DOM sans que l'application le voie (bug `fill_field`, SauceDemo, 2026-09-11 :
     `el.value = X` en JS brut, jamais vu par l'état interne React de SauceDemo)."""
-    page.goto(app.url_login, wait_until="domcontentloaded")
+    _goto_app(page, app)
 
     fill_field(page, app.champ_identifiant, app.identifiant_valide)
     fill_field(page, app.champ_mot_de_passe, app.mot_de_passe_valide)
@@ -144,7 +167,7 @@ def test_soumission_vide_affiche_une_erreur_reconnue(page, app):
     celle où le bug a été trouvé (cas C37, SauceDemo, 2026-09-14 : ne reconnaissait que la classe
     CSS `o_has_error` d'Odoo, jamais le `role="alert"` de SauceDemo NI le `.flash.error` — sans
     aucun `role` — de the-internet)."""
-    page.goto(app.url_login, wait_until="domcontentloaded")
+    _goto_app(page, app)
 
     click_button(page, "Login")   # champs vides : refus attendu
 
@@ -157,7 +180,7 @@ def test_selection_produit_par_texte_marche_sans_url_odoo(page):
     en JS pur (`href="#"`), donc AUCUN candidat n'aurait jamais pu matcher. Testé sur SauceDemo
     seul (the-internet.herokuapp.com n'a pas de catalogue produit comparable)."""
     app = next(a for a in _APPS if a.nom == "SauceDemo")
-    page.goto(app.url_login, wait_until="domcontentloaded")
+    _goto_app(page, app)
     fill_field(page, app.champ_identifiant, app.identifiant_valide)
     fill_field(page, app.champ_mot_de_passe, app.mot_de_passe_valide)
     click_button(page, "Login")
@@ -174,7 +197,7 @@ def test_selection_dans_un_select_sans_name_marche_par_sa_classe_css(page):
     un `data-test`), un filtre d'affichage, pas un champ de formulaire soumis. Testé sur SauceDemo
     seul (the-internet.herokuapp.com n'a pas de tri comparable)."""
     app = next(a for a in _APPS if a.nom == "SauceDemo")
-    page.goto(app.url_login, wait_until="domcontentloaded")
+    _goto_app(page, app)
     fill_field(page, app.champ_identifiant, app.identifiant_valide)
     fill_field(page, app.champ_mot_de_passe, app.mot_de_passe_valide)
     click_button(page, "Login")
@@ -269,7 +292,7 @@ def test_le_crawl_capture_desormais_un_champ_sans_name_via_son_data_test(page):
     """Preuve directe du défaut corrigé : AVANT ce correctif, `product-sort-container` (le
     sélecteur de tri, sans `name`) n'apparaissait dans AUCUN `champs` mesuré par le crawl."""
     app = next(a for a in _APPS if a.nom == "SauceDemo")
-    page.goto(app.url_login, wait_until="domcontentloaded")
+    _goto_app(page, app)
     fill_field(page, app.champ_identifiant, app.identifiant_valide)
     fill_field(page, app.champ_mot_de_passe, app.mot_de_passe_valide)
     click_button(page, "Login")
@@ -305,7 +328,7 @@ def test_le_crawl_ne_change_rien_pour_un_champ_deja_nomme(page):
     """Comportement HISTORIQUE inchangé : un champ avec un vrai `name` continue de le porter
     tel quel, jamais une classe ou un libellé à la place."""
     app = next(a for a in _APPS if a.nom == "SauceDemo")
-    page.goto(app.url_login, wait_until="domcontentloaded")
+    _goto_app(page, app)
 
     infos = cd._inspecter_page(page)
 
