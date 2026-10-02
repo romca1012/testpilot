@@ -26,6 +26,9 @@ dependencies = [
     # Import des spécifications Word (`spec_extract._docx`). La dépendance était utilisée sans
     # être déclarée : une installation propre réussissait, puis le premier .docx échouait.
     "python-docx>=1.1",
+    # Import de cahiers de test Excel (`excel_import.py`) — pure Python, pas d'extension C, pour
+    # rester légère comme les autres lecteurs de format de ce module.
+    "openpyxl>=3.1",
     "fastapi>=0.115",
     "uvicorn>=0.32",
     # Requis pour qu'Uvicorn serve RÉELLEMENT une connexion WebSocket (route de session en direct,
