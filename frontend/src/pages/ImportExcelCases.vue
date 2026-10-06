@@ -234,6 +234,7 @@ function terminer() {
                 <p class="font-medium truncate">{{ l.titre }}</p>
                 <p class="text-xs text-muted-foreground">
                   Ligne {{ l.numero_ligne }}
+                  <span v-if="l.identifiant"> · {{ l.identifiant }}</span>
                   <span v-if="l.section"> · {{ l.section }}</span>
                   <span v-if="l.priority"> · {{ l.priority }}</span>
                   <span v-if="l.statut_manuel"> · déclaré « {{ testStatusView(l.statut_manuel).label }} »</span>

@@ -99,6 +99,7 @@ def test_extrait_les_lignes_avec_etapes_decoupees_et_numerotation_retiree():
     assert premiere.priorite == "high"
     assert premiere.statut_manuel == "passed"
     assert premiere.type_cas == "fonctionnel"
+    assert premiere.identifiant == "TC-AUTH-001"
     assert premiere.retenue is True
     assert premiere.avertissements == []
 

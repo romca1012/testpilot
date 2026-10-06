@@ -877,7 +877,8 @@ class CaseRepo:
     def create_manual(self, *, module_id: int, title: str, preconditions: str = "",
                       test_steps: str = "", expected_result: str = "",
                       author: str = "ui", group_id: int | None = None,
-                      priority: str = "medium", description: str = "") -> int:
+                      priority: str = "medium", description: str = "",
+                      refs: str = "") -> int:
         """Crée un cas À LA MAIN — le bouton « Ajouter un cas de test », SANS IA (décision `0022`).
 
         Le cas naît avec son **document métier** (titre, préconditions, étapes, résultat attendu)
@@ -897,7 +898,7 @@ class CaseRepo:
         """
         cid = self.create(title=title, module_id=module_id, group_id=group_id, author=author,
                           origin="manual_converted", feature_slug="", priority=priority,
-                          description=description)
+                          description=description, refs=refs)
         VersionRepo(self.conn).create(
             test_case_id=cid, spec_content="", spec_hash="",
             feature_content="", steps_content="",   # pas de Gherkin : cas non exécutable en l'état
