@@ -1375,11 +1375,15 @@ class CaseRepo:
         if group_id is not None:
             clauses.append("tc.group_id = ?"); params.append(group_id)
         if recherche.strip():
-            # Sur le TITRE et le module — ce que l'utilisateur lit. L'identifiant se cherche par
-            # son nombre : l'écran affiche « C12 », on accepte donc « 12 » comme « C12 ».
+            # Sur le TITRE, le module et les RÉFÉRENCES — ce que l'utilisateur lit. L'identifiant se
+            # cherche par son nombre : l'écran affiche « C12 », on accepte donc « 12 » comme « C12 ».
+            # Les références (2026-10-02) : l'import Excel y range l'identifiant du cahier d'origine
+            # (ex. TC-AUTH-001) — sans ça, on le voit sur la fiche mais on ne peut pas le chercher.
             motif = f"%{recherche.strip().lstrip('cC')}%"
-            clauses.append("(tc.title LIKE ? OR m.name LIKE ? OR CAST(tc.id AS TEXT) LIKE ?)")
-            params += [f"%{recherche.strip()}%", f"%{recherche.strip()}%", motif]
+            clauses.append("(tc.title LIKE ? OR m.name LIKE ? OR CAST(tc.id AS TEXT) LIKE ?"
+                           " OR tc.refs LIKE ?)")
+            params += [f"%{recherche.strip()}%", f"%{recherche.strip()}%", motif,
+                       f"%{recherche.strip()}%"]
         statut_sql = sql_statut("tc.last_execution_status", "tc.last_functional_status")
         if statut:
             clauses.append(f"({statut_sql}) = ?"); params.append(statut)

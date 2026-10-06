@@ -165,6 +165,28 @@ def test_testeur_date_commentaires_et_type_ne_sont_jamais_perdus_sans_statut_rec
         conn.close()
 
 
+def test_l_identifiant_importe_se_retrouve_par_la_recherche_de_la_liste(client):
+    """L'identifiant du cahier (refs) est cherchable depuis la liste des cas, pas seulement
+    visible sur la fiche — et une recherche qui ne correspond à rien ne renvoie rien."""
+    mid = _module(client)
+    preview = client.post(
+        f"/api/modules/{mid}/cases/import-excel/preview",
+        files={"file": ("cahier.xlsx", io.BytesIO(_CLASSEUR_SIMPLE),
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+    ).json()
+    client.post(f"/api/modules/{mid}/cases/import-excel/confirm", json={
+        "fichier_hash": preview["fichier_hash"], "feuille": preview["feuille"],
+        "ligne_entete": preview["ligne_entete"], "mapping": preview["mapping"],
+        "numeros_lignes_retenues": [l["numero_ligne"] for l in preview["lignes"]],
+    })
+    pid = client.get(f"/api/modules/{mid}").json()["project"]["id"]
+
+    trouves = client.get(f"/api/cases?project_id={pid}&q=TC-2").json()["items"]
+    assert [c["title"] for c in trouves] == ["Connexion invalide"]  # ligne TC-2 du fichier
+
+    assert client.get(f"/api/cases?project_id={pid}&q=TC-999").json()["items"] == []
+
+
 def test_confirm_cree_la_section_depuis_la_colonne_user_story(client):
     mid = _module(client)
     preview = client.post(
