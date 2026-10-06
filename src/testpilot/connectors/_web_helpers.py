@@ -375,6 +375,41 @@ def _ressemble_a_un_premier_ecran_de_connexion(page) -> bool:
     return page.query_selector("button, input[type='submit']") is not None
 
 
+# Une page ouverte en `domcontentloaded` n'a, pour une application à rendu côté client (Vue, React…), souvent
+# RIEN rendu encore. Mesuré le 2026-10-06 sur OrangeHRM (démo publique) : à l'instant où le runtime tentait la
+# connexion, la page affichait 0 champ, 0 élément interactif, 0 texte ; le formulaire n'apparaissait qu'environ
+# 0,5 s plus tard. La détection concluait « pas de formulaire », ne soumettait rien, et les 4 cas du banc étaient
+# `blocked` — alors que la même connexion aboutit dès qu'on attend l'affichage du formulaire.
+_PAS_ATTENTE_RENDU_MS = 100
+# 80 × 100 ms = 8 s bornées. Une page qui n'a TOUJOURS aucun élément interactif au bout de 8 s n'a pas de
+# formulaire à remplir : la détection continue alors comme avant (au pire, 8 s de latence, jamais un blocage).
+_ITERATIONS_ATTENTE_RENDU = 80
+_SELECTEUR_ELEMENT_INTERACTIF = "input, button, select, textarea, a[href]"
+
+
+def attendre_page_rendue(page) -> bool:
+    """Attend, de façon BORNÉE, que la page ait rendu au moins un élément interactif.
+
+    Rend `True` dès qu'il y en a un (aussitôt si la page est déjà rendue : aucune latence pour SauceDemo,
+    par exemple), `False` si la borne est atteinte. Ne lève jamais : une erreur de navigation de Playwright
+    (document remplacé pendant le sondage) vaut « pas encore rendu », comme dans
+    `_confirmation_post_connexion_obtenue`. N'attend jamais sur `about:blank` (aucune page à rendre).
+
+    ⚠️ Ne décide RIEN sur la connexion : elle laisse seulement à la page le temps d'exister avant que la
+    détection ne la lise. Le critère de réussite d'une connexion (`connexion_reussie`) est inchangé — pas de
+    faux succès possible par cette voie."""
+    if not (getattr(page, "url", "") or "") or str(page.url).startswith("about:"):
+        return False
+    for _ in range(_ITERATIONS_ATTENTE_RENDU):
+        try:
+            if page.query_selector(_SELECTEUR_ELEMENT_INTERACTIF) is not None:
+                return True
+        except PlaywrightError:
+            pass  # document en cours de remplacement : on re-sonde au tour suivant
+        page.wait_for_timeout(_PAS_ATTENTE_RENDU_MS)
+    return False
+
+
 def tenter_connexion_generique(page, user: str, password: str) -> bool:
     """Détection de connexion GÉNÉRIQUE (pas de convention d'URL à connaître, à la différence
     d'Odoo) — partagée entre ``GenericWebConnector`` (exécution) et le crawl générique
@@ -411,6 +446,7 @@ def tenter_connexion_generique(page, user: str, password: str) -> bool:
     if not user or not password:
         return False
 
+    attendre_page_rendue(page)
     url_avant = getattr(page, "url", "")
     champ_mdp = page.query_selector("input[type='password']")
     if champ_mdp is not None:

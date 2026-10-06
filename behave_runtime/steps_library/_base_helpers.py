@@ -27,7 +27,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect
 from testpilot.connectors._web_helpers import (
     ConnexionGeneriqueImpossibleError, FormulaireConnexionObsoleteError,
     SequenceConnexionObsoleteError, lire_message_erreur_visible, rejouer_sequence_connexion,
-    remplir_et_soumettre_formulaire_connexion, tenter_connexion_generique,
+    attendre_page_rendue, remplir_et_soumettre_formulaire_connexion, tenter_connexion_generique,
 )
 from testpilot.connectors import auth_strategie as _auth
 # Oracle backend HTTP optionnel (lot 07e, D7) — import PLAT, même motif que `_web_helpers` ci-dessus
@@ -673,6 +673,9 @@ def connexion_web_utilisateur(context, *, explicite: bool = False) -> None:
     utilisateur = getattr(context, "web_user", "") or ""
     mot_de_passe = getattr(context, "web_password", "") or ""
     login_form = getattr(context, "login_form", None) or None
+    # Avant de LIRE la page (schéma, champ mot de passe visible ?) : une application à rendu côté
+    # client n'a, juste après `domcontentloaded`, encore rien affiché (OrangeHRM, 2026-10-06).
+    attendre_page_rendue(page)
     url_avant = page.url
     schema = _schema_de_connexion(page)
 
