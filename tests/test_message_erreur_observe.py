@@ -75,6 +75,11 @@ class _PageConnexion:
         self._url_apres = url_apres or self.url
         self._soumis = False
 
+    def wait_for_timeout(self, _ms):
+        # `attendre_page_rendue` patiente quand aucun élément interactif n'existe (cas « sans formulaire
+        # détecté ») : une vraie page Playwright a cette méthode, la double n'a rien à attendre.
+        pass
+
     def goto(self, _url):
         pass
 

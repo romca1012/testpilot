@@ -46,6 +46,10 @@ class _PageEspion:
         self.appels_goto.append((url, kwargs))
         self.url = url
 
+    def query_selector(self, _selecteur):
+        # Page DÉJÀ rendue pour `attendre_page_rendue` (voir `test_connexion_execution._Page`).
+        return object()
+
     def locator(self, _selecteur):
         # Une page lisible SANS champ mot de passe (une page illisible est désormais un prérequis manquant).
         return types.SimpleNamespace(count=lambda: 0)

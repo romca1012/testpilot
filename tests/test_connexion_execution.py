@@ -86,6 +86,11 @@ class _Page:
         self.visites.append(url)
         self.url = url
 
+    def query_selector(self, _selecteur):
+        # `attendre_page_rendue` sonde la page avant de la lire : cette double est DÉJÀ rendue (un élément
+        # interactif existe), donc aucune attente à simuler — le scénario testé reste celui de l'origine.
+        return object()
+
 
 def _contexte(page=None, *, user="tomsmith", mdp="secret", web_url="https://app.test/login"):
     return types.SimpleNamespace(page=page or _Page(), web_user=user, web_password=mdp, web_url=web_url)
