@@ -12,6 +12,7 @@ from pathlib import Path
 
 from testpilot.guardrails.cost_tracker import CostLimitExceeded
 from testpilot.llm.adapter import LLMAdapter
+from testpilot.generation.placeholders import SECRET_MASQUE
 
 
 # La réservation (6,12 $ : 1M tokens en entrée + 8000 en sortie) est calculée au tarif de Sonnet 4.6. Haiku 4.5, modèle de la
@@ -71,7 +72,7 @@ class QualificationLLM(LLMAdapter):
             value = value.model_dump(exclude_none=True)
         if isinstance(value, str):
             for secret in self.secrets:
-                value = value.replace(secret, '[secret]')
+                value = value.replace(secret, SECRET_MASQUE)
         elif isinstance(value, list):
             value = [self._redact(item) for item in value]
         elif isinstance(value, dict):
