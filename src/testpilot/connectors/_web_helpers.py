@@ -175,6 +175,77 @@ _ITERATIONS_ATTENTE_POST_CONNEXION = 100
 _DELAI_ENTRE_ETAPES_SEQUENCE_MS = 300
 
 
+# Cas réel « yros » (2026-10-06, régression de l'exploration à 3 routes) : à l'envoi, le formulaire
+# est REMPLACÉ par un état de chargement — le champ mot de passe disparaît donc tout de suite — alors
+# que la réponse du proxy d'authentification n'arrive que ~8 s plus tard. « Champ mot de passe
+# disparu » seul sortait de l'attente trop tôt et le crawl partait non authentifié. On exige donc
+# aussi que les requêtes XHR/fetch lancées par l'envoi soient terminées. Signal RUNTIME (événements
+# réseau de Playwright), jamais un texte affiché.
+_TYPES_REQUETES_SUIVIES = frozenset({"xhr", "fetch", "document"})
+# Itérations CONSÉCUTIVES sans requête en cours exigées avant de conclure (une redirection ou un
+# second appel peut démarrer juste après la fin du premier).
+_PAS_CALMES_REQUIS = 3
+# Quand SEUL le champ a disparu (URL inchangée), la requête d'authentification peut ne partir que
+# quelques centaines de ms après (état de chargement d'abord, `fetch` ensuite — chronologie yros :
+# POST émis au moment où l'ancien code rendait déjà la main) : 1 s de calme exigée.
+_PAS_CALMES_REQUIS_URL_INCHANGEE = 10
+# 150 × 100 ms = 15 s : marge au-dessus des ~8 s mesurés, toujours bornée.
+_ITERATIONS_ATTENTE_POST_CONNEXION_AVEC_SUIVI = 150
+
+
+class _SuiviRequetes:
+    """Compte les requêtes XHR/fetch/document démarrées et pas encore terminées.
+
+    Sans `page.on` (doubles de test, pages exotiques) : se dégrade en « rien en cours », donc au
+    comportement historique de `_attendre_confirmation_post_connexion`.
+    """
+
+    def __init__(self, page) -> None:
+        self._page = page
+        self._en_cours: set[int] = set()
+        self.actif = False
+        self._abonnements: list[tuple[str, object]] = []
+
+    @staticmethod
+    def _suivie(requete) -> bool:
+        return getattr(requete, "resource_type", None) in _TYPES_REQUETES_SUIVIES
+
+    def _debut(self, requete) -> None:
+        if self._suivie(requete):
+            self._en_cours.add(id(requete))
+
+    def _fin(self, requete) -> None:
+        self._en_cours.discard(id(requete))
+
+    @property
+    def en_cours(self) -> int:
+        return len(self._en_cours)
+
+    def __enter__(self) -> "_SuiviRequetes":
+        on = getattr(self._page, "on", None)
+        if not callable(on):
+            return self
+        try:
+            for evenement, rappel in (("request", self._debut), ("requestfinished", self._fin),
+                                      ("requestfailed", self._fin)):
+                on(evenement, rappel)
+                self._abonnements.append((evenement, rappel))
+            self.actif = True
+        except Exception:  # pragma: no cover — dégradation silencieuse, jamais bloquante
+            logger.debug("[connexion] suivi des requêtes indisponible", exc_info=True)
+        return self
+
+    def __exit__(self, *exc) -> None:
+        retirer = getattr(self._page, "remove_listener", None)
+        if callable(retirer):
+            for evenement, rappel in self._abonnements:
+                try:
+                    retirer(evenement, rappel)
+                except Exception:  # pragma: no cover
+                    pass
+        self._abonnements.clear()
+
+
 def _confirmation_post_connexion_obtenue(page, url_avant: str) -> bool:
     """Un signe RUNTIME que la tentative de connexion a progressé — jamais un texte affiché.
 
@@ -185,15 +256,32 @@ def _confirmation_post_connexion_obtenue(page, url_avant: str) -> bool:
     return page.url != url_avant or page.query_selector("input[type='password']") is None
 
 
-def _attendre_confirmation_post_connexion(page, url_avant: str) -> None:
-    """Complète `networkidle` par un signe RUNTIME borné (2 s) — ne lève jamais : au pire, rend
-    la main après le délai sans certitude, exactement comme avant ce correctif. C'est à
-    l'appelant (`connexion_reussie`, `crawl_roots`) de juger l'état obtenu, jamais à cette
-    fonction de décider si la connexion a réussi.
+def _attendre_confirmation_post_connexion(page, url_avant: str,
+                                          suivi: "_SuiviRequetes | None" = None) -> None:
+    """Complète `networkidle` par un signe RUNTIME borné — ne lève jamais : au pire, rend
+    la main après le délai sans certitude. C'est à l'appelant (`connexion_reussie`,
+    `crawl_roots`) de juger l'état obtenu, jamais à cette fonction de décider si la connexion
+    a réussi.
+
+    Avec `suivi` actif, la confirmation n'est acceptée que lorsque plus aucune requête
+    XHR/fetch lancée par l'envoi n'est en cours (voir `_SuiviRequetes`) : un formulaire qui
+    disparaît pendant le chargement n'est PAS une connexion obtenue.
     """
-    for _ in range(_ITERATIONS_ATTENTE_POST_CONNEXION):
+    suivi_actif = suivi is not None and suivi.actif
+    bornes = (_ITERATIONS_ATTENTE_POST_CONNEXION_AVEC_SUIVI if suivi_actif
+              else _ITERATIONS_ATTENTE_POST_CONNEXION)
+    calmes = 0
+    for _ in range(bornes):
         if _confirmation_post_connexion_obtenue(page, url_avant):
-            return
+            if not suivi_actif:
+                return
+            calmes = calmes + 1 if suivi.en_cours == 0 else 0
+            requis = (_PAS_CALMES_REQUIS if page.url != url_avant
+                      else _PAS_CALMES_REQUIS_URL_INCHANGEE)
+            if calmes >= requis:
+                return
+        else:
+            calmes = 0
         page.wait_for_timeout(_PAS_ATTENTE_POST_CONNEXION_MS)
 
 
@@ -317,11 +405,12 @@ def tenter_connexion_generique(page, user: str, password: str) -> bool:
             logger.warning("[connexion-générique] mot de passe détecté sans champ identifiant"
                             " — connexion non tentée")
             return False
-        champ_identifiant.fill(user, force=True)
-        champ_mdp.fill(password, force=True)
-        champ_mdp.press("Enter")
-        page.wait_for_load_state("networkidle")
-        _attendre_confirmation_post_connexion(page, url_avant)
+        with _SuiviRequetes(page) as suivi:
+            champ_identifiant.fill(user, force=True)
+            champ_mdp.fill(password, force=True)
+            champ_mdp.press("Enter")
+            page.wait_for_load_state("networkidle")
+            _attendre_confirmation_post_connexion(page, url_avant, suivi)
         return True
 
     if not _ressemble_a_un_premier_ecran_de_connexion(page):
@@ -339,10 +428,11 @@ def tenter_connexion_generique(page, user: str, password: str) -> bool:
             f"{getattr(page, 'url', '?')} — probablement un SSO/second facteur (2FA), hors du "
             "périmètre de cette détection générique.")
     url_avant_ecran_2 = getattr(page, "url", "")
-    champ_mdp_ecran_suivant.fill(password, force=True)
-    champ_mdp_ecran_suivant.press("Enter")
-    page.wait_for_load_state("networkidle")
-    _attendre_confirmation_post_connexion(page, url_avant_ecran_2)
+    with _SuiviRequetes(page) as suivi:
+        champ_mdp_ecran_suivant.fill(password, force=True)
+        champ_mdp_ecran_suivant.press("Enter")
+        page.wait_for_load_state("networkidle")
+        _attendre_confirmation_post_connexion(page, url_avant_ecran_2, suivi)
     return True
 
 
@@ -448,30 +538,32 @@ def remplir_et_soumettre_formulaire_connexion(
     crawl qui repart de la page de connexion (`yros`, 2026-09-30).
     """
     url_avant = getattr(page, "url", "")
-    for cle, valeur in (("champ_identifiant", user), ("champ_mdp", password)):
-        champ = login_form[cle]
+    with _SuiviRequetes(page) as suivi:
+        for cle, valeur in (("champ_identifiant", user), ("champ_mdp", password)):
+            champ = login_form[cle]
+            try:
+                page.get_by_role(champ["role"], name=champ["name"], exact=True).fill(
+                    valeur, timeout=timeout_ms)
+            except Exception as exc:
+                raise FormulaireConnexionObsoleteError(
+                    f"champ « {cle} » (rôle={champ['role']!r}, nom={champ['name']!r}) introuvable "
+                    f"ou ambigu sur {getattr(page, 'url', '?')} — l'application a changé depuis "
+                    "l'enregistrement du formulaire de connexion. Refaites l'enregistrement "
+                    "(session en direct) avant de relancer.") from exc
+
+        bouton = login_form["bouton_soumission"]
         try:
-            page.get_by_role(champ["role"], name=champ["name"], exact=True).fill(
-                valeur, timeout=timeout_ms)
+            page.get_by_role(bouton["role"], name=bouton["name"], exact=True).click(
+                timeout=timeout_ms)
         except Exception as exc:
             raise FormulaireConnexionObsoleteError(
-                f"champ « {cle} » (rôle={champ['role']!r}, nom={champ['name']!r}) introuvable ou "
-                f"ambigu sur {getattr(page, 'url', '?')} — l'application a changé depuis "
-                "l'enregistrement du formulaire de connexion. Refaites l'enregistrement (session "
-                "en direct) avant de relancer.") from exc
-
-    bouton = login_form["bouton_soumission"]
-    try:
-        page.get_by_role(bouton["role"], name=bouton["name"], exact=True).click(timeout=timeout_ms)
-    except Exception as exc:
-        raise FormulaireConnexionObsoleteError(
-            f"bouton de soumission (rôle={bouton['role']!r}, nom={bouton['name']!r}) introuvable "
-            f"ou ambigu sur {getattr(page, 'url', '?')} — l'application a changé depuis "
-            "l'enregistrement du formulaire de connexion. Refaites l'enregistrement (session en "
-            "direct) avant de relancer.") from exc
-    if attendre_reseau:
-        page.wait_for_load_state("networkidle")
-        _attendre_confirmation_post_connexion(page, url_avant)
+                f"bouton de soumission (rôle={bouton['role']!r}, nom={bouton['name']!r}) "
+                f"introuvable ou ambigu sur {getattr(page, 'url', '?')} — l'application a changé "
+                "depuis l'enregistrement du formulaire de connexion. Refaites l'enregistrement "
+                "(session en direct) avant de relancer.") from exc
+        if attendre_reseau:
+            page.wait_for_load_state("networkidle")
+            _attendre_confirmation_post_connexion(page, url_avant, suivi)
 
 
 def tenter_connexion_et_lire_resultat(page, user: str, password: str, *,
