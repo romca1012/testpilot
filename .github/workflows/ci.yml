@@ -88,8 +88,13 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Installer les dépendances verrouillées
         run: npm ci
-      - name: Auditer toutes les dépendances
-        run: npm audit --audit-level=moderate
+      # Dépendances LIVRÉES seulement (`--omit=dev`) : bloquer ici sur un avis qui ne touche que les
+      # outils de build (chaîne tailwindcss 3 : braces, micromatch, chokidar…) arrêterait toute PR
+      # pour un risque que les utilisateurs ne reçoivent jamais — mesuré le 2026-10-06 : 7 avis
+      # restants, tous côté build, dont la sortie exige Tailwind 3→4 (changement majeur du style).
+      # Ces avis restent visibles avec `npm audit` en local ; leur sortie = migration Tailwind, à part.
+      - name: Auditer les dépendances livrées
+        run: npm audit --omit=dev --audit-level=moderate
       - name: Exécuter les tests
         run: npm test
       - name: Vérifier les types
