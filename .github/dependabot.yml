@@ -1,5 +1,11 @@
 version: 2
 updates:
+  # Un changement MAJEUR (TypeScript 5→7, Tailwind 3→4, Vite 6→8…) n'est jamais groupé avec les
+  # mises à jour courantes : le lot Dependabot du 2026-10-06 en mêlait 6 et cassait le type-check
+  # (TypeScript 7 incompatible avec vue-tsc) sans qu'aucune ne soit vérifiable séparément. Les
+  # groupes ne couvrent donc que minor/patch ; les majeurs sont ignorés ici et se traitent à la
+  # main, un par un, comme un chantier (ils ne bloquent pas les mises à jour de sécurité, que
+  # Dependabot ouvre à part).
   - package-ecosystem: pip
     directory: /
     schedule:
@@ -7,6 +13,10 @@ updates:
     groups:
       python-security-and-maintenance:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /frontend
     schedule:
@@ -14,6 +24,10 @@ updates:
     groups:
       frontend-security-and-maintenance:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
