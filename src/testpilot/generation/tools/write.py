@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from testpilot.generation import enregistrement_lint, gel_verifications, litteraux_observes, steps_library
 from testpilot.generation.references import message_refus, verifier_references
 from testpilot.generation.tools import essai as essai_tools
+from testpilot.generation.placeholders import SECRET_MASQUE
 
 if TYPE_CHECKING:
     from testpilot.generation.tools import ToolContext, ToolOutcome
@@ -742,6 +743,22 @@ def _gabarit_de_releve(content: str) -> bool:
     return any(_GABARIT_DE_RELEVE.search(ligne) for ligne in plie.splitlines() if not ligne.lstrip().startswith("#"))
 
 
+def _refus_secret_masque(content: str, outil: str) -> str:
+    """Refus déterministe d'un test qui contient le MASQUE d'un secret (`[secret]`) au lieu d'une vraie valeur.
+
+    Mesuré le 2026-10-06 (banc web, essai 1) : le harnais de qualification remplace les secrets du projet par
+    `[secret]` dans ce que voit l'IA ; elle a recopié ce masque comme mot de passe, SauceDemo a refusé la
+    connexion à juste titre, et le verdict a conclu « non conforme » sur une application saine. Le refus
+    arrive à l'ÉCRITURE : l'IA peut se corriger tout de suite, au lieu d'un faux verdict après un run entier."""
+    if SECRET_MASQUE not in content:
+        return ""
+    return (f"[{outil}] SECRET_NON_RESOLU : le texte contient « {SECRET_MASQUE} », le masque d'un secret et "
+            "jamais une valeur saisissable. N'écris aucun identifiant ni mot de passe dans un test : la "
+            "connexion du projet est AUTOMATIQUE (step « j'accède à la page d'accueil de l'application »), et "
+            "pour un autre compte du projet utilise « je me connecte en tant que \"<libellé>\" ». Retire la "
+            "saisie du secret puis rappelle l'outil.")
+
+
 def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if not content.strip():
         return _outcome("[write_feature_file] contenu vide", ok=False)
@@ -757,6 +774,9 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
             "[write_feature_file] ECHAPPEMENT_LITTERAL : le fichier contient " + ", ".join(echappements[:6]) + " écrit en "
             "toutes lettres. Gherkin ne décode pas ces séquences : le test chercherait ces caractères tels quels à l'écran. "
             "Écris le caractère lui-même (« » é à, espace ordinaire), puis rappelle write_feature_file.", ok=False)
+    refus_secret = _refus_secret_masque(content, "write_feature_file")
+    if refus_secret:
+        return _outcome(refus_secret, ok=False)
     from behave.parser import ParserError, parse_feature
     try:
         feature = parse_feature(content, language="fr")
@@ -816,6 +836,10 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
 
 
 def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
+    refus_secret = _refus_secret_masque(content, "write_steps_file")
+    if refus_secret:
+        return _outcome(refus_secret, ok=False)
+
     # 1. Guillemets typographiques → ast.parse échouerait au run.
     curly = {c for c in content if c in _CURLY}
     if curly:
