@@ -17,6 +17,11 @@ import urllib.error
 import urllib.request
 from urllib.parse import urljoin
 
+try:  # module « pur » : jamais de dépendance dure à Playwright (tests sur fausses pages)
+    from playwright.sync_api import Error as PlaywrightError
+except ImportError:  # pragma: no cover — sans Playwright, aucune vraie page à lire non plus
+    PlaywrightError = Exception
+
 logger = logging.getLogger(__name__)
 
 # Champs de formulaire à ignorer : jetons techniques, pas des champs métier.
@@ -253,7 +258,16 @@ def _confirmation_post_connexion_obtenue(page, url_avant: str) -> bool:
     l'autre (redirection sans changement visible de formulaire, ou inverse), donc `OR`, jamais
     les deux à la fois.
     """
-    return page.url != url_avant or page.query_selector("input[type='password']") is None
+    try:
+        return page.url != url_avant or page.query_selector("input[type='password']") is None
+    except PlaywrightError:
+        # Cas réel mesuré sur OrangeHRM (démo publique, 2026-10-06) : juste après l'envoi du formulaire,
+        # la page REDIRIGE en changeant de document — `query_selector` lève alors « Unable to adopt
+        # element handle from a different document » en plein sondage. Ce n'est ni une réussite ni un
+        # échec de connexion : la navigation est simplement en cours. « Pas encore confirmé » (False) et on
+        # re-sonde au tour suivant ; jamais « confirmé » sur une erreur (pas de faux succès), et la
+        # promesse de `_attendre_confirmation_post_connexion` (« ne lève jamais ») est enfin tenue.
+        return False
 
 
 def _attendre_confirmation_post_connexion(page, url_avant: str,
