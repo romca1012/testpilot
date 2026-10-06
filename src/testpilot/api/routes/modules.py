@@ -306,7 +306,7 @@ def confirm_excel_import(module_id: int, body: schemas.ExcelImportConfirmIn, req
                 module_id=module_id, title=ligne.titre, preconditions=ligne.preconditions,
                 test_steps=json.dumps(ligne.etapes, ensure_ascii=False),
                 expected_result=ligne.resultat_attendu, group_id=group_id, author=auteur,
-                priority=ligne.priorite, description=commentaire)
+                priority=ligne.priorite, description=commentaire, refs=ligne.identifiant)
         except DuplicateName:
             ignore += 1
             continue

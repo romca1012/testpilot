@@ -191,6 +191,7 @@ class LigneCandidate:
     date: str
     type_cas: str
     commentaires: str
+    identifiant: str  # identifiant du cahier d'origine (ex. TC-AUTH-001) → champ « Références »
     retenue: bool  # False = ignorée par défaut (ligne incomplète), modifiable par l'utilisateur
     avertissements: list[str] = field(default_factory=list)
 
@@ -275,7 +276,7 @@ def extraire_lignes(feuille, entetes: EntetesDetectees) -> list[LigneCandidate]:
             etapes=etapes, resultat_attendu=resultat_attendu, section=cell("section"),
             priorite=priorite, statut_manuel=statut_manuel, testeur=cell("testeur"),
             date=cell("date"), type_cas=type_cas, commentaires=cell("commentaires"),
-            retenue=retenue, avertissements=avertissements))
+            identifiant=cell("identifiant"), retenue=retenue, avertissements=avertissements))
     return lignes
 
 
@@ -316,8 +317,8 @@ def ligne_vers_dict(ligne: LigneCandidate) -> dict:
         "expected_result": ligne.resultat_attendu, "section": ligne.section,
         "priority": ligne.priorite, "statut_manuel": ligne.statut_manuel,
         "testeur": ligne.testeur, "date": ligne.date, "type_cas": ligne.type_cas,
-        "commentaires": ligne.commentaires, "retenue": ligne.retenue,
-        "avertissements": ligne.avertissements,
+        "commentaires": ligne.commentaires, "identifiant": ligne.identifiant,
+        "retenue": ligne.retenue, "avertissements": ligne.avertissements,
     }
 
 

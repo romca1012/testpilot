@@ -117,6 +117,9 @@ def test_confirm_cree_les_cas_et_le_resultat_declare_sans_toucher_au_verdict_aut
         assert ligne_db["origin"] == "manual_converted"
         assert ligne_db["etat"] == "new"  # pas de Gherkin : génération normale à suivre
         assert ligne_db["priority"] == "high"  # "P1 - Critique" dans le fichier
+        # L'identifiant du cahier d'origine n'est pas perdu : il sert à rapprocher le cas
+        # TestPilot de sa ligne Excel (champ « Références », comme TestRail).
+        assert ligne_db["refs"] == "TC-1"
 
         cas_failed = next(c for c in cas if c["title"] == "Connexion invalide")
         ligne_db_failed = CaseRepo(conn).get(cas_failed["id"])

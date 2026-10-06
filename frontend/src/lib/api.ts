@@ -857,7 +857,7 @@ export interface ExcelImportLigne {
   numero_ligne: number; titre: string; preconditions: string; test_steps: string[]
   expected_result: string; section: string; priority: string
   statut_manuel: string | null; testeur: string; date: string; type_cas: string
-  commentaires: string; retenue: boolean; avertissements: string[]
+  commentaires: string; identifiant: string; retenue: boolean; avertissements: string[]
 }
 export interface ExcelImportPreview {
   fichier_hash: string; filename: string; feuilles_disponibles: string[]

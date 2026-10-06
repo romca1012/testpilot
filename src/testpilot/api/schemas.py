@@ -681,6 +681,7 @@ class ExcelImportLigne(BaseModel):
     date: str = ""
     type_cas: str = ""
     commentaires: str = ""
+    identifiant: str = ""
     retenue: bool = True
     avertissements: list[str] = []
 
