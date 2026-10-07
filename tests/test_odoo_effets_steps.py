@@ -128,6 +128,27 @@ def test_tolerance_devise_repli_si_pas_de_champ_currency_id():
     assert steps._tolerance_devise(ctx, "stock.picking", 1) == 0.01
 
 
+def test_la_source_de_la_tolerance_est_nommee_devise_repli_et_erreur():
+    """D19 : un écart accepté par un repli doit se voir — la source est rendue avec la tolérance."""
+    steps = _charger_effets_steps()
+    devise = {"sale.order": _FakeModel({1: {"currency_id": [7, "EUR"]}}, fields={"currency_id": {}}),
+              "res.currency": _FakeModel({7: {"rounding": 0.1}})}
+    sans_devise = {"stock.picking": _FakeModel({1: {}}, fields={})}
+
+    assert steps._tolerance_avec_source(_ctx(devise), "sale.order", 1) == (0.05, "arrondi de la devise du document")
+    assert steps._tolerance_avec_source(_ctx(sans_devise, last_record_model="stock.picking"), "stock.picking", 1) == (
+        0.01, "repli : le modèle n'a pas de devise")
+    assert steps._tolerance_avec_source(_ctx({}), "inconnu", 1) == (0.01, "repli : devise illisible")
+
+
+def test_le_message_du_constat_porte_la_tolerance_et_sa_source():
+    steps = _charger_effets_steps()
+    modeles = {"sale.order": _FakeModel({1: {"amount_total": 105.0}}, fields={})}
+
+    with pytest.raises(AssertionError, match=r"± 0\.01 — repli : le modèle n'a pas de devise"):
+        steps.step_champ_vaut_nombre(_ctx(modeles), "amount_total", 100.0)
+
+
 # ── documents liés ──────────────────────────────────────────────────────────────
 
 def test_n_lies_par_champ_pose_last_related():
