@@ -225,6 +225,30 @@ describe('useLiveSession', () => {
     expect(session.dernierClicAmbigu.value).toBe('ambigu : 2 éléments')
   })
 
+  it('falsifiable — un clic non enregistré est compté et ne s efface PAS quand un clic suivant est reconnu', async () => {
+    createLiveSession.mockResolvedValue({ token: 't', expires_at: '' })
+    const { session } = monterComposable(7)
+    await session.demarrer()
+
+    FakeWebSocket.instances[0].recevoir({ type: 'clic_non_enregistre', raison: 'element_non_reconnu' })
+    FakeWebSocket.instances[0].recevoir({ type: 'etape_capturee', role: 'button', name: 'Continuer' })
+    FakeWebSocket.instances[0].recevoir({ type: 'clic_non_enregistre', raison: 'element_non_reconnu' })
+
+    expect(session.clicsNonEnregistres.value).toBe(2)
+    expect(session.etapes.value).toEqual([{ role: 'button', name: 'Continuer' }])  // jamais ajouté
+  })
+
+  it('recommencer remet le compteur de clics non enregistrés à zéro', async () => {
+    createLiveSession.mockResolvedValue({ token: 't', expires_at: '' })
+    const { session } = monterComposable(7)
+    await session.demarrer()
+    FakeWebSocket.instances[0].recevoir({ type: 'clic_non_enregistre', raison: 'element_non_reconnu' })
+
+    session.recommencer()
+
+    expect(session.clicsNonEnregistres.value).toBe(0)
+  })
+
   // ── Extension (2026-09-30) : les 3 clics guidés du formulaire de connexion ────────────────
 
   it('formulaire_connexion_invite porte le prochain champ attendu', async () => {

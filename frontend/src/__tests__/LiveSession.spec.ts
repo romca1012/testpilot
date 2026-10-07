@@ -27,6 +27,7 @@ const etat = {
   avertissementInactivite: ref<number | null>(null),
   raisonFermeture: ref(''),
   dernierClicAmbigu: ref(''),
+  clicsNonEnregistres: ref(0),
   captureArretee: ref(''),
   formulaireInvite: ref(''),
   formulaireCapture: ref<Record<string, { role: string; name: string }>>({}),
@@ -73,6 +74,7 @@ describe('écran de la session en direct', () => {
     etat.avertissementInactivite.value = null
     etat.raisonFermeture.value = ''
     etat.dernierClicAmbigu.value = ''
+    etat.clicsNonEnregistres.value = 0
     etat.captureArretee.value = ''
     etat.formulaireInvite.value = ''
     etat.formulaireCapture.value = {}
@@ -195,5 +197,66 @@ describe('écran de la session en direct', () => {
     const wrapper = await monterEcran()
 
     expect(wrapper.text()).toContain('Formulaire identifié')
+  })
+
+  // ── Retour visuel et clic jamais perdu (2026-10-07) ──────────────────────────────────────────
+
+  it('falsifiable — un clic reçu pendant le décodage de la frame (naturalWidth retombé à 0) '
+     + 'n est PAS abandonné : il utilise les dernières dimensions connues', async () => {
+    etat.statut.value = 'en_direct'
+    etat.image.value = 'BASE64=='
+    const wrapper = await monterEcran()
+    const img = wrapper.find('img').element as HTMLImageElement
+    img.getBoundingClientRect = () => ({
+      left: 0, top: 0, width: 640, height: 360, right: 640, bottom: 360, x: 0, y: 0, toJSON() {},
+    })
+    // 1) une frame se charge normalement : le composant retient 1280×720.
+    let largeur = 1280
+    Object.defineProperty(img, 'naturalWidth', { get: () => largeur })
+    Object.defineProperty(img, 'naturalHeight', { get: () => (largeur ? 720 : 0) })
+    await wrapper.find('img').trigger('load')
+    // 2) la frame suivante est en cours de décodage : l'image rapporte 0×0.
+    largeur = 0
+
+    await wrapper.find('button[aria-label]').trigger('click', { clientX: 100, clientY: 50 })
+
+    expect(clic).toHaveBeenCalledWith(200, 100)  // l'ancien code rendait la main sans rien envoyer
+  })
+
+  it('un clic fait apparaître tout de suite une onde à l endroit touché', async () => {
+    etat.statut.value = 'en_direct'
+    etat.image.value = 'BASE64=='
+    const wrapper = await monterEcran()
+    const img = wrapper.find('img').element as HTMLImageElement
+    Object.defineProperty(img, 'naturalWidth', { value: 1280 })
+    Object.defineProperty(img, 'naturalHeight', { value: 720 })
+    img.getBoundingClientRect = () => ({
+      left: 0, top: 0, width: 640, height: 360, right: 640, bottom: 360, x: 0, y: 0, toJSON() {},
+    })
+    expect(wrapper.findAll('[data-testid="onde-clic"]')).toHaveLength(0)
+
+    await wrapper.find('button[aria-label]').trigger('click', { clientX: 100, clientY: 50 })
+
+    const ondes = wrapper.findAll('[data-testid="onde-clic"]')
+    expect(ondes).toHaveLength(1)
+    expect(ondes[0].attributes('style')).toContain('left: 100px')
+    expect(ondes[0].attributes('style')).toContain('top: 50px')
+  })
+
+  it('le curseur sur l ecran distant n est plus une croix', async () => {
+    etat.statut.value = 'en_direct'
+    etat.image.value = 'BASE64=='
+    const wrapper = await monterEcran()
+
+    expect(wrapper.find('button[aria-label]').classes()).not.toContain('cursor-crosshair')
+  })
+
+  it('dit qu un clic envoyé n a pas été ajouté au chemin, au lieu de se taire', async () => {
+    etat.statut.value = 'en_direct'
+    etat.image.value = 'BASE64=='
+    etat.clicsNonEnregistres.value = 2
+    const wrapper = await monterEcran()
+
+    expect(wrapper.find('[data-testid="clic-non-enregistre"]').text()).toContain('2 clics')
   })
 })

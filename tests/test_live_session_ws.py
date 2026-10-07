@@ -396,7 +396,12 @@ def test_falsifiable_l_inactivite_ferme_la_session_avec_avertissement_prealable(
     # Marges généreuses par rapport au démarrage réel du navigateur (~1-2 s, mesuré sur les tests
     # précédents) : un délai trop court ferait expirer l'inactivité PENDANT le démarrage, avant
     # même que la première image n'arrive — flaky par construction, pas un bug du code testé.
-    monkeypatch.setattr(live_session_route, "DUREE_INACTIVITE_SECONDES", 4)
+    # 8 s (et non 4) depuis le 2026-10-07 : la session attend désormais que la page se stabilise
+    # (`networkidle`, ≥ 0,5 s) avant d'envoyer sa première image. Le compteur d'inactivité court
+    # depuis la connexion : avec 4 s, l'avertissement (à 2 s) pouvait précéder la première image
+    # et être consommé par l'attente de celle-ci. Seul le BUDGET de temps change ; l'avertissement
+    # reste à 2 s de la fermeture et les assertions sont intactes.
+    monkeypatch.setattr(live_session_route, "DUREE_INACTIVITE_SECONDES", 8)
     monkeypatch.setattr(live_session_route, "DUREE_AVERTISSEMENT_AVANT_INACTIVITE_SECONDES", 2)
     monkeypatch.setattr(live_session_route, "DUREE_ABSOLUE_SECONDES", 60)
     project_id = _admin_et_projet(client, application)
@@ -419,8 +424,11 @@ def test_falsifiable_une_activite_continue_n_empeche_pas_le_plafond_absolu(
     monkeypatch.setattr(live_session_route, "DUREE_INACTIVITE_SECONDES", 15)
     monkeypatch.setattr(live_session_route, "DUREE_AVERTISSEMENT_AVANT_INACTIVITE_SECONDES", 5)
     # Marge par rapport au démarrage réel du navigateur (~1-2 s, mesuré) : un plafond absolu trop
-    # court expirerait PENDANT le démarrage, avant que la première image n'arrive.
-    monkeypatch.setattr(live_session_route, "DUREE_ABSOLUE_SECONDES", 3)
+    # court expirerait PENDANT le démarrage, avant que la première image n'arrive. 6 s (et non 3)
+    # depuis le 2026-10-07 : la session attend désormais la stabilisation de la page (`networkidle`,
+    # ≥ 0,5 s) avant sa première image. Seul le budget de temps change ; la fenêtre de 5 s ci-dessous
+    # reste plus longue que le temps restant avant la fermeture.
+    monkeypatch.setattr(live_session_route, "DUREE_ABSOLUE_SECONDES", 6)
     project_id = _admin_et_projet(client, application)
     jeton = _jeton(client, project_id)
 
