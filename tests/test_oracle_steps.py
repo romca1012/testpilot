@@ -29,6 +29,8 @@ class _Handler(BaseHTTPRequestHandler):
             corps = json.dumps([{"id": 1, "statut": "ouvert"}, {"id": 2, "statut": "ouvert"}]).encode()
         elif self.path == "/ticket":
             corps = json.dumps({"statut": "ferme"}).encode()
+        elif self.path == "/etat":
+            corps = json.dumps({"commandes": [], "panier": {"lignes": [{"nom": "a"}, {"nom": "b"}]}}).encode()
         else:
             self.send_response(404)
             self.end_headers()
@@ -163,3 +165,40 @@ def test_falsifiable_oracle_champ_vaut_echoue_sur_un_chemin_absent(serveur, side
         H.oracle_champ_vaut(context, "champ_absent", "ticket", "x")
 
     assert sidecar()[0]["ok"] is False and sidecar()[0]["source"] == "oracle"
+
+
+# ── oracle_champ_compte (banc d'agents, 2026-10-07) ────────────────────────────────────────────────
+
+
+def _etat(serveur):
+    return _contexte(serveur, [{"name": "etat", "method": "GET", "path": "/etat"}])
+
+
+def test_oracle_champ_compte_reussit_sur_une_liste_vide_et_sur_une_liste_pleine(serveur, sidecar):
+    context = _etat(serveur)
+
+    H.oracle_champ_compte(context, "commandes", "etat", 0)
+    H.oracle_champ_compte(context, "panier.lignes", "etat", 2)
+
+    assert [(l["ok"], l["source"]) for l in sidecar()] == [(True, "oracle"), (True, "oracle")]
+
+
+def test_falsifiable_oracle_champ_compte_echoue_sur_un_ecart(serveur, sidecar):
+    with pytest.raises(AssertionError, match=r"compte 2 élément\(s\), 3 attendu"):
+        H.oracle_champ_compte(_etat(serveur), "panier.lignes", "etat", 3)
+
+    assert sidecar()[0]["ok"] is False
+
+
+def test_falsifiable_oracle_champ_compte_ne_devine_pas_zero_sur_un_chemin_absent_ou_une_non_liste(serveur):
+    """Un champ absent ou qui n'est pas une liste n'est JAMAIS « 0 élément » : sinon « aucune commande » réussirait à tort."""
+    with pytest.raises(AssertionError, match="introuvable"):
+        H.oracle_champ_compte(_etat(serveur), "commande", "etat", 0)
+    with pytest.raises(AssertionError, match="n'est pas une liste"):
+        H.oracle_champ_compte(_etat(serveur), "panier", "etat", 0)
+
+
+def test_renvoie_n_resultats_sur_un_objet_oriente_vers_le_comptage_d_un_champ(serveur):
+    """Mesuré : « renvoie 0 résultat » sur un objet (compté pour 1) donnait un faux rouge ; le message dit quoi faire."""
+    with pytest.raises(AssertionError, match="objet unique.*compte <n> élément"):
+        H.oracle_renvoie_n_resultats(_etat(serveur), "etat", 0)

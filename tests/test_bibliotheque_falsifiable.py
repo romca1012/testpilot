@@ -49,6 +49,7 @@ _DELEGUENT_OU_ATTENDENT = {
     # Lot 07e (oracle backend, D7) : chaque `Alors` délègue à un helper qui appelle `constater(...)`.
     "step_oracle_compte",              # → oracle_renvoie_n_resultats()
     "step_oracle_champ_vaut",          # → oracle_champ_vaut()
+    "step_oracle_champ_compte",        # → oracle_champ_compte()
 }
 
 
@@ -142,6 +143,7 @@ def test_chaque_then_partage_assertit_ou_delegue_explicitement():
     # Lot 07e (oracle backend, D7) : idem — chacun appelle `constater(...)`.
     ("oracle_renvoie_n_resultats", True),
     ("oracle_champ_vaut", True),
+    ("oracle_champ_compte", True),
 ])
 def test_les_delegations_declarees_assertissent_vraiment(nom_helper, doit_assertir):
     """La liste de délégations ci-dessus n'est une excuse que si les helpers assertissent
