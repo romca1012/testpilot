@@ -659,6 +659,7 @@ def test_les_hotes_de_bouclage_sont_acceptes(hote):
 
 
 def test_le_budget_est_affiche_avant_de_commencer_le_reel(monkeypatch, capsys):
+    monkeypatch.setenv("BANC_AGENTS_ISOLE", "1")  # le test tient lieu de processus déjà isolé : pas de relance
     vu = {}
 
     def faux_lancement(args, configuration, cas, taux):
@@ -987,6 +988,7 @@ def test_des_empreintes_non_rapportees_ne_donnent_pas_un_vert():
 
 def test_cas_vide_ou_en_double_en_mise_au_point(monkeypatch):
     _interdire_le_reel(monkeypatch)
+    monkeypatch.setenv("BANC_AGENTS_ISOLE", "1")  # pas de relance : `_lancer_reel` est remplacé ci-dessous
     assert ba.main(["--a-sec", "--cas", " , ,"]) == 2
     vu = {}
 
@@ -1008,3 +1010,110 @@ def test_un_moteur_bloque_ne_suspend_pas_la_campagne_sans_limite(tmp_path):
                                    lancer=lancer, racine=tmp_path, delai_s=42)
     with pytest.raises(RuntimeError, match="n'a pas rendu la main"):
         generateur("a", 1)
+
+
+# ── Isolation des données (incident du 2026-10-07 : le premier essai réel a écrit dans le vrai data/) ─────────────
+
+def test_une_base_dans_le_dossier_jetable_est_acceptee(tmp_path):
+    ba.verifier_donnees_isolees(tmp_path / "testpilot.db", tmp_path)
+    ba.verifier_donnees_isolees(tmp_path / "sous" / "testpilot.db", tmp_path)
+
+
+def test_une_base_hors_du_dossier_jetable_est_refusee(tmp_path):
+    """Falsifiable : avant, rien ne comparait la base RÉELLEMENT chargée au dossier jetable."""
+    reel = tmp_path / "data" / "testpilot.db"
+    jetable = tmp_path / "jetable"
+
+    with pytest.raises(ba.ConfigurationInvalide, match="vrai data/"):
+        ba.verifier_donnees_isolees(reel, jetable)
+
+
+def test_un_dossier_au_prefixe_voisin_n_est_pas_le_dossier_jetable(tmp_path):
+    """`/x/data2/testpilot.db` commence par `/x/data` mais n'est PAS dedans : comparaison par parenté, pas par texte."""
+    with pytest.raises(ba.ConfigurationInvalide):
+        ba.verifier_donnees_isolees(tmp_path / "data2" / "testpilot.db", tmp_path / "data")
+
+
+def test_une_base_postgresql_est_refusee_meme_si_le_chemin_est_bon(tmp_path):
+    with pytest.raises(ba.ConfigurationInvalide, match="TESTPILOT_DB_URL"):
+        ba.verifier_donnees_isolees(tmp_path / "testpilot.db", tmp_path, db_url="postgresql://x/y")
+
+
+def test_le_reel_est_relance_dans_un_processus_au_dossier_jetable_pose_avant_tout_import(monkeypatch, tmp_path):
+    appels = []
+    monkeypatch.setattr(ba.subprocess, "call", lambda cmd, env: appels.append((cmd, env)) or 0)
+    monkeypatch.delenv("BANC_AGENTS_ISOLE", raising=False)
+    monkeypatch.delenv("BANC_DATA_DIR", raising=False)
+    monkeypatch.setenv("TESTPILOT_DB_PATH", "C:/vrai/data/testpilot.db")
+    monkeypatch.setenv("TESTPILOT_DB_URL", "postgresql://prod/x")
+    monkeypatch.setattr(ba, "valider_a_sec", lambda *a, **k: pytest.fail("la configuration ne doit pas être chargée "
+                                                                         "avant la relance isolée"))
+
+    code = ba.main(["--reel", "--plafond-cout", "0.5", "--essais", "1", "--cas", "connexion_valide"])
+
+    assert code == 0 and len(appels) == 1
+    commande, env = appels[0]
+    assert env["BANC_AGENTS_ISOLE"] == "1"
+    assert env["TESTPILOT_DATA_DIR"] == env["BANC_DATA_DIR"]
+    assert "banc_agents_data_" in env["TESTPILOT_DATA_DIR"]
+    assert "TESTPILOT_DB_PATH" not in env and "TESTPILOT_DB_URL" not in env, "aucune base réelle ne doit survivre"
+    assert commande[-8:-5] == ["--reel", "--plafond-cout", "0.5"] or "--reel" in commande
+    assert "--cas" in commande and "connexion_valide" in commande
+
+
+def test_la_relance_isolee_refuse_la_production(monkeypatch):
+    monkeypatch.setenv("ODOO_ENV", "prod")
+    monkeypatch.setattr(ba.subprocess, "call", lambda *a, **k: pytest.fail("jamais de relance en production"))
+
+    assert ba.relancer_isole(["--reel"]) == 2
+
+
+def test_preparer_projet_web_refuse_d_ecrire_si_la_configuration_pointe_ailleurs(monkeypatch, tmp_path):
+    """Le scénario exact de l'incident : `config.DB_PATH` figé sur un autre dossier avant la préparation du projet."""
+    import types
+
+    from testpilot import config
+
+    faux_projet = types.ModuleType("banc_projet")
+    faux_projet.explorer = lambda *a, **k: pytest.fail("aucune exploration ne doit avoir lieu")
+    monkeypatch.setitem(sys.modules, "banc_projet", faux_projet)
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "vrai_data" / "testpilot.db")
+    monkeypatch.setattr(config, "DB_URL", "")
+    monkeypatch.delenv("TESTPILOT_DATA_DIR", raising=False)
+    monkeypatch.delenv("TESTPILOT_SECRET_KEY", raising=False)
+    import testpilot.store.db as db
+    monkeypatch.setattr(db, "get_initialized_db", lambda *a, **k: pytest.fail("aucune base ne doit être ouverte"))
+
+    with pytest.raises(ba.ConfigurationInvalide, match="vrai data/"):
+        ba.preparer_projet_web("http://127.0.0.1:1", {"identifiant": "u", "mot_de_passe": "p"}, {},
+                               tmp_path / "jetable", "cle")
+
+
+# ── Aucune dépense réelle depuis un test (incident du 2026-10-07 : 5 générations payantes lancées par erreur) ─────
+
+def test_sous_pytest_la_relance_reelle_est_refusee_meme_si_main_est_appele_sans_doublure(monkeypatch, capsys):
+    """Falsifiable : c'est exactement ce qui est arrivé — `main(["--reel", ...])` sans substituer `subprocess.call`."""
+    monkeypatch.delenv("BANC_AGENTS_ISOLE", raising=False)
+
+    code = ba.main(["--reel", "--plafond-cout", "0.5", "--essais", "1", "--cas", "connexion_valide"])
+
+    assert code == 2, "la barrière refuse (configuration invalide) au lieu de lancer une campagne réelle"
+    assert "refusé sous pytest" in capsys.readouterr().err
+
+
+def test_sous_pytest_le_moteur_de_generation_reel_est_refuse(tmp_path):
+    generateur = ba.GenerateurReel(AppDouble(), {"a": 7}, 3, "http://127.0.0.1:1", tmp_path, "cle", lambda: None,
+                                   racine=tmp_path)  # `lancer` par défaut = le VRAI subprocess.run
+
+    with pytest.raises(ba.ConfigurationInvalide, match="refusé sous pytest"):
+        generateur("a", 1)
+
+
+def test_la_barriere_laisse_passer_une_doublure():
+    ba.refuser_depense_reelle_sous_pytest(lambda *a, **k: 0, ba._APPEL_REEL, "essai")  # ne lève pas
+
+
+def test_hors_pytest_la_barriere_ne_gene_pas_le_reel(monkeypatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    ba.refuser_depense_reelle_sous_pytest(ba._APPEL_REEL, ba._APPEL_REEL, "essai")  # ne lève pas
