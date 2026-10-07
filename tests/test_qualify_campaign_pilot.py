@@ -14,7 +14,11 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from scripts.qualify_campaign_pilot import _verification_independante
+from scripts.qualify_campaign_pilot import (
+    _type_de_connecteur,
+    _verification_independante,
+    _verification_independante_du_connecteur,
+)
 
 _RACINE = Path(__file__).resolve().parent.parent
 
@@ -142,3 +146,42 @@ def test_falsifiable_omettre_comptes_reproduit_le_bug_d_origine(tmp_path, monkey
     env = verifier_connexion(project)  # bug d'origine : comptes jamais lus ni transmis
 
     assert "TESTPILOT_COMPTES" not in env
+
+
+# ── Campagne généralisée au connecteur web (banc web, phase 1) ───────────────────────────────
+
+def test_le_type_de_connecteur_suit_le_projet_et_retombe_sur_odoo_si_absent():
+    """Avant : `'odoo'` codé en dur à trois endroits — une campagne sur un projet web aurait généré et
+    jugé avec la bibliothèque Odoo, donc mesuré un chemin que ce projet n'emprunte pas."""
+    assert _type_de_connecteur({"connector_type": "web"}) == "web"
+    assert _type_de_connecteur({"connector_type": "WEB"}) == "web"
+    assert _type_de_connecteur({"connector_type": "odoo"}) == "odoo"
+    assert _type_de_connecteur({}) == "odoo"  # projet antérieur au multi-connecteurs
+    assert _type_de_connecteur(None) == "odoo"
+
+
+def test_web_la_verification_independante_est_non_applicable_jamais_zero_et_sans_rpc():
+    """« Non mesuré » n'est pas « zéro » : un essai web ne doit JAMAIS afficher `nouveaux: 0` (qui
+    se lirait « rien créé ») ni tenter un appel RPC Odoo."""
+    class _ConnecteurInterdit:
+        def search(self, *a, **kw):
+            raise AssertionError("aucun appel RPC attendu pour un projet web")
+
+    resultat = _verification_independante_du_connecteur(
+        "web", _ConnecteurInterdit(), {"title": "Achat complet"}, 0.0)
+
+    assert resultat["ok"] is None
+    assert resultat["nouveaux"] is None
+    assert "non applicable" in resultat["erreur"]
+
+
+def test_odoo_la_verification_independante_reste_celle_d_avant():
+    connecteur = _ConnecteurEspion([7])
+    debut = datetime(2026, 9, 23, 12, 0, 0, tzinfo=timezone.utc).timestamp()
+
+    resultat = _verification_independante_du_connecteur(
+        "odoo", connecteur, {"title": "Créer un sondage"}, debut)
+
+    assert resultat == {"ok": True, "nouveaux": 1, "erreur": ""}
+    (model, _, _), = connecteur.appels_search
+    assert model == "survey.survey"  # le choix du modèle selon le titre est inchangé
