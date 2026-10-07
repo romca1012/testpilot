@@ -632,10 +632,10 @@ def before_step(context, step):
     if page is not None:
         page._tp_intention_step = step.name
     # Lot 03 : le type EFFECTIF du step (`Et`/`Mais` héritent) accompagne chaque constat consigné.
-    from _base_helpers import definir_etat_constat, nombre_de_constats, poser_repere_action
+    from _base_helpers import definir_etat_constat, nombre_de_constats_reussis, poser_repere_action
     definir_etat_constat(step_type=getattr(step, "step_type", "") or "")
     # Q1 (D16) : le nombre de constats AVANT ce step — `after_step` en déduit si ce `Alors` a constaté.
-    context._tp_constats_avant_step = nombre_de_constats()
+    context._tp_constats_avant_step = nombre_de_constats_reussis()
     # Lot 07d : chaque ACTION pose un repère — « la requête … répond », « un nouvel onglet s'ouvre » ne jugent que ce qui l'a suivi.
     if (getattr(step, "step_type", "") or "") in ("given", "when"):
         poser_repere_action(context)
@@ -661,28 +661,55 @@ def _fonction_du_step(context, step):
     return getattr(match, "func", None)
 
 
+def _est_exempte_non_assertive(fonction) -> bool:
+    """Vrai si `fonction` est un step du SOCLE déclaré `@non_assertif` (D17).
+
+    ⚠️ **Jamais une fonction du fichier de steps GÉNÉRÉ** (revue du 2026-10-07) : l'agent pourrait y poser lui-même
+    le marqueur pour masquer un `Alors` vide. Le runner désigne ce fichier (`TP_GENERATED_STEPS_FILE`) ; l'origine
+    de la fonction est une garantie structurelle, là où détecter une FORME de code dans ce que l'agent écrit
+    resterait contournable (renommage, alias, `setattr`…). Sans nom de fichier généré connu, on n'exempte rien
+    de douteux : seul un fichier dont on sait qu'il n'est pas le généré peut l'être."""
+    if not getattr(fonction, "_tp_non_assertif", False):
+        return False
+    genere = os.environ.get("TP_GENERATED_STEPS_FILE", "")
+    if not genere:
+        return False  # origine du fichier généré inconnue (run hors runner) : prudent, aucune exemption
+    fichier = os.path.basename(getattr(getattr(fonction, "__code__", None), "co_filename", "") or "")
+    return bool(fichier) and fichier != genere
+
+
 def after_step(context, step):
-    """Q1 (D16) : un step `Alors` ASSERTIF qui passe sans avoir consigné le moindre constat n'a rien
+    """Q1 (D16) : un step `Alors` ASSERTIF qui passe sans avoir consigné le moindre constat RÉUSSI n'a rien
     prouvé. Il est consigné (`sans_constat`) et `verdict/status.py` en fait un `indetermine`, au lieu de
     laisser un AUTRE `Alors` réussi du même scénario couvrir ce vide (ancien critère : « au moins un
     constat dans le scénario »).
 
     N'agit que sur un step PASSÉ de type `then` : un échec est déjà traité par le verdict, un `given`/`when`
-    n'a pas à constater. Un step déclaré `@non_assertif` (attente, navigation — D17) est exempté. Jamais
-    fatal : une erreur ici ne doit pas changer le résultat de Behave."""
+    n'a pas à constater. Un step du socle déclaré `@non_assertif` (attente, navigation — D17) est exempté.
+
+    Si le contrôle lui-même est IMPOSSIBLE (repère absent, erreur), on ne le laisse jamais disparaître en silence
+    (Behave avale la sortie d'un scénario vert) : une ligne `controle_impossible` est consignée dans le sidecar
+    et le verdict reste prudent (`indetermine`). Aucune exception ne remonte à Behave."""
     try:
         if (getattr(step, "step_type", "") or "") != "then":
             return
         statut = getattr(step, "status", None)
         if getattr(statut, "name", str(statut)) != "passed":
             return
-        if getattr(_fonction_du_step(context, step), "_tp_non_assertif", False):
+        if _est_exempte_non_assertive(_fonction_du_step(context, step)):
             return
-        from _base_helpers import consigner_alors_sans_constat, nombre_de_constats
+        from _base_helpers import consigner_alors_sans_constat, nombre_de_constats_reussis
         avant = getattr(context, "_tp_constats_avant_step", None)
-        if avant is not None and nombre_de_constats() == avant:
+        if avant is None:
+            consigner_alors_sans_constat(step.name, raison="controle_impossible")
+        elif nombre_de_constats_reussis() == avant:
             consigner_alors_sans_constat(step.name)
-    except Exception as exc:  # pragma: no cover — jamais fatal
+    except Exception as exc:
+        try:
+            from _base_helpers import consigner_alors_sans_constat
+            consigner_alors_sans_constat(getattr(step, "name", "") or "", raison="controle_impossible")
+        except Exception:  # pragma: no cover — le sidecar lui-même est indisponible : rien de plus à faire
+            pass
         print(f"[constats] contrôle de l'Alors impossible : {exc}")
 
 

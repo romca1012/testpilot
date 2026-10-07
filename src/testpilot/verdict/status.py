@@ -199,7 +199,7 @@ def _scenario_verdict_axes(scenario, failures: list) -> ScenarioVerdict:
             # Q1 (D16) : au moins un `Alors` ASSERTIF est passé sans rien constater. Un autre constat réussi ne le
             # couvre pas : ce qu'il annonçait n'a jamais été vérifié. `indetermine`, cause existante `aucun_constat`
             # (aucune nouvelle valeur d'enum) ; le step fautif est porté en TRACE (`step_text`), jamais en critère.
-            return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_INDETERMINE, "", dt.AUCUN_CONSTAT,
+            return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_INDETERMINE, "", dt.ALORS_SANS_CONSTAT,
                                    "Un « Alors » n'a rien vérifié", step_text=alors_vides[0])
         return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_CONFORME)
 

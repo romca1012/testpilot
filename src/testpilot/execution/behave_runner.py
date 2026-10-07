@@ -30,6 +30,7 @@ from testpilot.execution.behave_result import (
     SELECTOR_TIER_FILE_ENV,
     SELECTOR_TIER_FILENAME,
     CONSTATS_FILE_ENV,
+    GENERATED_STEPS_FILE_ENV,
     CONSTATS_FILENAME,
     RESIDUS_FILE_ENV,
     RESIDUS_FILENAME,
@@ -110,7 +111,7 @@ class BehaveRunner:
         """
         self.artifacts_dir = chemin
 
-    def _subprocess_env(self, run_dir: Path) -> dict[str, str]:
+    def _subprocess_env(self, run_dir: Path, module_name: str | None = None) -> dict[str, str]:
         """Environnement du sous-processus : celui du parent + la connexion du projet + le sidecar.
 
         ``environment.py`` appelle ``load_dotenv()`` sans ``override`` : les variables passées
@@ -125,6 +126,12 @@ class BehaveRunner:
                MENU_LEARNED_FILE_ENV: str(run_dir / MENU_LEARNED_FILENAME),
                CONSTATS_FILE_ENV: str(run_dir / CONSTATS_FILENAME),
                RESIDUS_FILE_ENV: str(run_dir / RESIDUS_FILENAME)}
+        # Q1 (revue du 2026-10-07) : le NOM du fichier de steps GÉNÉRÉ par l'agent. `environment.after_step`
+        # n'accorde l'exemption « non assertif » qu'aux fonctions du SOCLE — jamais à une fonction de ce fichier,
+        # sinon un step généré pourrait se déclarer exempté pour masquer un `Alors` vide. Garantie STRUCTURELLE
+        # (d'où vient la fonction), pas une détection de forme dans le code de l'agent.
+        if module_name:
+            env[GENERATED_STEPS_FILE_ENV] = f"{module_name}_steps.py"
         # `src` importable dans le sous-processus : le résolveur déterministe (§2bis) importe
         # `testpilot.generation.{valeur_conforme,domain_model}`. Sans ça, `python -m behave`
         # (cwd = run_dir jetable) ne voit pas le paquet `testpilot`. On PRÉPEND pour primer sur
@@ -183,7 +190,7 @@ class BehaveRunner:
             try:
                 proc = subprocess.run(cmd, cwd=str(run_dir), capture_output=True, text=True,
                                       encoding="utf-8", errors="replace", timeout=timeout,
-                                      env=self._subprocess_env(run_dir))
+                                      env=self._subprocess_env(run_dir, module_name))
             except subprocess.TimeoutExpired:
                 # ⚠️ Un timeout est le cas où la trace est la PLUS utile (« qu'a-t-il fait pendant
                 # 15 minutes ? ») — et c'est justement celui où il n'y a pas de `proc`. On archive

@@ -54,6 +54,11 @@ ERREUR_SERVEUR_5XX = "erreur_serveur_5xx"
 # Lot 03 (D3) : le scénario est allé au bout SANS qu'aucune vérification ne se soit exécutée (aucun
 # constat réussi consigné sous un `Alors`). Ce n'est pas une panne : rien n'a été prouvé.
 AUCUN_CONSTAT = "aucun_constat"
+# Q1 (D16) : le scénario est allé au bout et UN AUTRE `Alors` a constaté, mais au moins un `Alors` assertif n'a rien
+# vérifié (assertion dans une branche non prise, helper qui rend la main…). Distinct de `aucun_constat` : le libellé
+# « aucune vérification exécutée » serait FAUX ici (revue du 2026-10-07). `cause_category` est un simple texte en base :
+# aucune migration.
+ALORS_SANS_CONSTAT = "alors_sans_constat"
 MISSING_SERVER_CONTEXT = "missing_server_context"
 DONNEE_REFUSEE = "donnee_refusee"
 BROKEN_TEST_CODE = "broken_test_code"
@@ -67,7 +72,7 @@ REFUS_NON_EXPLIQUE = "refus_non_explique"
 UNKNOWN = "unknown"
 
 CATEGORIES = (
-    PRECONDITION_NON_REMPLIE, ERREUR_SERVEUR_5XX, AUCUN_CONSTAT, MISSING_SERVER_CONTEXT, DONNEE_REFUSEE, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
+    PRECONDITION_NON_REMPLIE, ERREUR_SERVEUR_5XX, AUCUN_CONSTAT, ALORS_SANS_CONSTAT, MISSING_SERVER_CONTEXT, DONNEE_REFUSEE, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
     MISSING_ROLE, ASSERTION_MISMATCH, RESOLVEUR_INCOMPLET, REFUS_NON_EXPLIQUE, UNKNOWN,
 )
 
@@ -76,6 +81,7 @@ LABELS = {
     ERREUR_SERVEUR_5XX: "Erreur interne du serveur (HTTP 5xx)",
     REFUS_NON_EXPLIQUE: "Refus non expliqué (à instruire)",
     AUCUN_CONSTAT: "Aucune vérification exécutée",
+    ALORS_SANS_CONSTAT: "Un résultat attendu n'a rien vérifié",
     MISSING_SERVER_CONTEXT: "Contexte serveur manquant",
     DONNEE_REFUSEE: "Donnée du test refusée (à corriger)",
     BROKEN_TEST_CODE: "Erreur dans le code du test",
