@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 import time
+import uuid
 import warnings
 import re
 import urllib.error
@@ -764,6 +765,10 @@ def click_button(page, label):
     proprement les trois : le lien de navigation du cas 95 change de chemin, les deux autres
     (soumission AJAX portail, sauvegarde back-office en SPA) ne changent jamais le chemin.
 
+    ⚠️ **Angle mort corrigé le 2026-10-07** : même ADRESSE avant et après, mais un NOUVEAU document (formulaire de connexion
+    refusé par le serveur, qui renvoie la page avec un message et un champ mot de passe vide) — le champ vide et obligatoire de
+    cette nouvelle page était pris pour un refus du navigateur, et un test de connexion négative sortait `donnee_refusee`
+    alors qu'il était juste. Un jeton posé dans le document avant le clic dit si la page a été remplacée.
     ⚠️ **Angle mort corrigé le 2026-09-24** : sur Odoo 16 / 17.0 la navigation du back-office ne
     change QUE le fragment (`/web#action=A` → `/web#action=B`, chemin identique) — voir
     `_est_navigation` pour la règle exacte (table transition → contrôle) et l'exception `id`.
@@ -772,6 +777,7 @@ def click_button(page, label):
     régression) et le faux `donnee_invalide` peut réapparaître par intermittence.
     """
     avant = page.url
+    jeton = _poser_marqueur_document(page)
     click_first_actionable(page, [
         page.get_by_role("button", name=label, exact=True),
         page.get_by_role("link", name=label, exact=True),
@@ -779,8 +785,36 @@ def click_button(page, label):
         page.get_by_role("link", name=label, exact=False),
         f':is(a, button, input[type="submit"]):has-text("{label}")',
     ], quoi=f"Bouton '{label}'", ident=label)
-    if not _est_navigation(avant, page.url):
+    if not _est_navigation(avant, page.url) and not _document_remplace(page, jeton):
         verifier_soumission_non_bloquee(page)
+
+
+def _poser_marqueur_document(page) -> str | None:
+    """Pose un jeton sur le DOCUMENT courant (`window`) et le rend ; `None` si la page est illisible.
+
+    Un nouveau document (soumission suivie d'un rendu serveur, rechargement) perd ce jeton : c'est le seul signal
+    qui distingue « le navigateur a refusé d'envoyer le formulaire » de « le formulaire est parti et le serveur a
+    renvoyé une page » quand l'ADRESSE ne change pas (voir `click_button`, premier essai réel du banc d'agents,
+    2026-10-07)."""
+    jeton = uuid.uuid4().hex
+    try:
+        page.evaluate("(t) => { window.__tp_marqueur_document = t; return true; }", jeton)
+    except Exception:
+        return None
+    return jeton
+
+
+def _document_remplace(page, jeton: str | None) -> bool:
+    """Vrai si le document dans lequel `jeton` a été posé n'est plus celui de la page (une NOUVELLE page s'est chargée).
+
+    Prudent : sans jeton, ou si la page ne se laisse pas lire (navigation en cours), on rend `False` — le contrôle de
+    refus s'exécute alors comme avant, jamais en moins."""
+    if jeton is None:
+        return False
+    try:
+        return page.evaluate("(t) => window.__tp_marqueur_document !== t", jeton) is True
+    except Exception:
+        return False
 
 
 def _marquer(page, attribut: str, nom: str) -> None:
