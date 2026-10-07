@@ -14,11 +14,26 @@ Module PUR : aucune I/O, aucun réseau, aucun LLM.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 logger = logging.getLogger(__name__)
+
+# Campagne du banc d'agents (2026-10-07) : un test GÉNÉRÉ par un modèle ne doit pouvoir joindre que l'application locale du
+# banc. `TP_LOOPBACK_ONLY=1` fait lancer chaque Chromium avec un proxy qui n'existe pas : Chromium contourne le proxy pour
+# `localhost`, `127.0.0.1` et `[::1]` (règle implicite de Chromium, vérifiée par un test en vrai navigateur) et refuse
+# immédiatement TOUT le reste — noms de domaine ET adresses IP littérales, ce qu'un filtre de résolution DNS laisserait passer.
+# Dupliqué côté `behave_runtime/environment.py` (même valeurs, même test d'accord).
+ENV_CONFINEMENT_BOUCLAGE = "TP_LOOPBACK_ONLY"
+PROXY_FANTOME = "--proxy-server=http://127.0.0.1:9"  # le port 9 (discard) n'écoute pas : connexion refusée aussitôt
+
+
+def arguments_de_confinement() -> list[str]:
+    """Arguments de lancement de Chromium qui n'autorisent que le bouclage ; vide hors campagne confinée (comportement inchangé)."""
+    return [PROXY_FANTOME] if os.environ.get(ENV_CONFINEMENT_BOUCLAGE) == "1" else []
+
 
 DEFAUT_LOCALE = "fr-FR"
 DEFAUT_TIMEZONE = "Europe/Paris"
