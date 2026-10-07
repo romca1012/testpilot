@@ -193,7 +193,17 @@ def step_access_login_page_without_login(context):
     À utiliser À LA PLACE de « j'accède à la page d'accueil de l'application » (qui, lui, connecte
     automatiquement avec les identifiants du projet) ; les champs de connexion se remplissent alors
     avec les steps habituels.
+
+    ⚠️ **Un contexte NEUF d'abord** (premier essai réel du banc d'agents, 2026-10-07) : depuis le lot 07b-2 le run se
+    connecte UNE fois avant le premier scénario et chaque scénario démarre avec cette session (`storage_state`). Sans cette
+    réouverture, « sans me connecter » ouvrait un navigateur DÉJÀ connecté : une application qui renvoie l'utilisateur
+    connecté hors de sa page de connexion n'affichait jamais son formulaire, et tout test de connexion négative sortait en
+    erreur technique alors que le test était juste. Même crochet que « je me connecte en tant que … » (lot 07b-1) :
+    aucun cookie, aucun stockage du compte principal ne survit.
     """
+    reouvrir = getattr(context, "_reouvrir_contexte", None)
+    if callable(reouvrir):
+        reouvrir()
     _ouvrir_application(context)
 
 
