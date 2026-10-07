@@ -18,6 +18,7 @@ Le parseur Python, lui, fusionne ces littéraux : l'AST rend le libellé entier.
 from __future__ import annotations
 
 import ast
+import functools
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,6 +48,72 @@ class SharedStep:
     # plutôt qu'une table d'annotations à part qui divergerait du comportement réel.
     # Vide pour la grande majorité des steps — on n'annote que les pièges.
     note: str = ""
+    # Q1 (D17) : `False` pour un step `@then`/`@step` dont la fonction ne peut consigner AUCUN constat
+    # (ni `constater*` ni helper qui en appelle un — point fixe, lu par AST dans `_base_helpers.py`,
+    # le code restant la source de vérité). Un tel step (ex. « j'attends la soumission du
+    # formulaire ») est une attente, pas une assertion : `write_test_plan` ne le compte pas. `True` par
+    # défaut = inconnu ou assertif (jamais plus strict que l'historique quand la bibliothèque n'est pas lisible).
+    asserte: bool = True
+
+
+# ── Quels noms de la bibliothèque CONSIGNENT un constat ? (déplacé de `tools/write.py`, Q1) ──────────
+CONSTATER = frozenset({"constater", "constater_visible", "constater_texte"})
+
+
+def _nom_appele(noeud: ast.Call) -> str:
+    cible = noeud.func
+    if isinstance(cible, ast.Name):
+        return cible.id
+    if isinstance(cible, ast.Attribute):
+        return cible.attr
+    return ""
+
+
+def _decorateurs(func) -> set[str]:
+    noms = set()
+    for deco in func.decorator_list:
+        cible = deco.func if isinstance(deco, ast.Call) else deco
+        if isinstance(cible, ast.Name):
+            noms.add(cible.id)
+        elif isinstance(cible, ast.Attribute):
+            noms.add(cible.attr)
+    return noms
+
+
+@functools.lru_cache(maxsize=4)
+def _noms_qui_constatent(chemin: str, mtime: float) -> frozenset[str]:
+    """Les noms de la bibliothèque qui CONSIGNENT un constat : `constater*`, les fonctions décorées
+    `@constat`, et — point fixe — toute fonction qui en appelle une. Lu dans `_base_helpers.py` par
+    AST : le code reste la source de vérité, aucune liste à tenir à jour. `mtime` ne sert que de
+    clé de cache (un fichier modifié est relu)."""
+    try:
+        with open(chemin, encoding="utf-8") as handle:
+            arbre = ast.parse(handle.read())
+    except (OSError, SyntaxError):
+        return CONSTATER
+    fonctions = {n.name: n for n in arbre.body if isinstance(n, ast.FunctionDef)}
+    noms = set(CONSTATER) | {nom for nom, f in fonctions.items() if "constat" in _decorateurs(f)}
+    change = True
+    while change:
+        change = False
+        for nom, f in fonctions.items():
+            if nom in noms:
+                continue
+            if any(isinstance(n, ast.Call) and _nom_appele(n) in noms for n in ast.walk(f)):
+                noms.add(nom)
+                change = True
+    return frozenset(noms)
+
+
+def helpers_qui_constatent(directory: Path | None = None) -> frozenset[str] | None:
+    """Les noms qui constatent, lus dans `<directory>/_base_helpers.py` ; `None` si ce fichier est
+    absent (bibliothèque factice : on ne présume alors rien, voir `SharedStep.asserte`)."""
+    chemin = (directory or config.STEPS_LIBRARY_DIR) / "_base_helpers.py"
+    try:
+        mtime = chemin.stat().st_mtime
+    except OSError:
+        return None
+    return _noms_qui_constatent(str(chemin), mtime)
 
 
 def _decorator_name(node: ast.expr) -> str:
@@ -57,8 +124,12 @@ def _decorator_name(node: ast.expr) -> str:
     return ""
 
 
-def extract_steps(source_code: str, source: str = "") -> list[SharedStep]:
-    """Steps déclarés dans un module Python (libellés entiers). Vide si le code est invalide."""
+def extract_steps(source_code: str, source: str = "",
+                  constatent: frozenset[str] | None = None) -> list[SharedStep]:
+    """Steps déclarés dans un module Python (libellés entiers). Vide si le code est invalide.
+
+    `constatent` (Q1, D17) : les noms qui consignent un constat. Fourni, il renseigne
+    `SharedStep.asserte` des steps `@then`/`@step` ; absent, `asserte` reste `True` (inconnu)."""
     try:
         tree = ast.parse(source_code)
     except SyntaxError:
@@ -72,6 +143,7 @@ def extract_steps(source_code: str, source: str = "") -> list[SharedStep]:
         # catalogue est un prompt, pas une documentation — le noyer le rendrait moins lu.
         doc = ast.get_docstring(node) or ""
         note = doc.strip().splitlines()[0].strip() if doc.strip() else ""
+        appels = {_nom_appele(n) for n in ast.walk(node) if isinstance(n, ast.Call)}
         for deco in node.decorator_list:
             if not isinstance(deco, ast.Call) or not deco.args:
                 continue
@@ -80,8 +152,11 @@ def extract_steps(source_code: str, source: str = "") -> list[SharedStep]:
                 continue
             arg = deco.args[0]
             if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                asserte = True
+                if constatent is not None and name in ("then", "step"):
+                    asserte = bool(appels & constatent)
                 steps.append(SharedStep(keyword=name, label=arg.value.strip(),
-                                        source=source, note=note))
+                                        source=source, note=note, asserte=asserte))
     return steps
 
 
@@ -145,11 +220,13 @@ def catalogue(directory: Path | None = None, connector_type: str | None = None,
         paths = (_sans_profils(directory / "generic", directory)
                  + _sans_profils(directory / connector_type, directory)
                  + _fichiers_profil(directory, connector_type, profil_instance))
+    constatent = helpers_qui_constatent(directory)
     steps: list[SharedStep] = []
     for path in sorted(paths):
         try:
             source = str(path.relative_to(directory)).replace("\\", "/")
-            steps.extend(extract_steps(path.read_text(encoding="utf-8"), source=source))
+            steps.extend(extract_steps(path.read_text(encoding="utf-8"), source=source,
+                                       constatent=constatent))
         except OSError:
             continue
     return steps
@@ -227,7 +304,12 @@ def _section_par_mot_cle(steps: list[SharedStep]) -> str:
     # une fois par mot-clé, mais jamais deux fois dans la même section.
     by_keyword: dict[str, dict[str, str]] = {}
     for step in steps:
-        by_keyword.setdefault(step.keyword, {}).setdefault(step.label, step.note)
+        note = step.note
+        if step.keyword in ("then", "step") and not step.asserte:
+            # Q1 (D17) : l'agent doit voir, AVANT d'écrire un plan, qu'une attente n'est pas une preuve.
+            note = ("⚠ attente ou navigation : ne vérifie rien, ne compte pas comme assertion"
+                    + (f" — {note}" if note else ""))
+        by_keyword.setdefault(step.keyword, {}).setdefault(step.label, note)
 
     lines: list[str] = []
     for keyword in ("given", "when", "then", "step"):

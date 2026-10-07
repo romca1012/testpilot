@@ -11,10 +11,8 @@ Règles verrouillées (issues des erreurs récurrentes du prototype) :
 from __future__ import annotations
 
 import ast
-import functools
 from typing import TYPE_CHECKING
 
-from testpilot import config
 from testpilot.generation import enregistrement_lint, steps_library
 from testpilot.generation.references import message_refus, verifier_references
 
@@ -171,37 +169,10 @@ def _decorateurs(func) -> set[str]:
     return noms
 
 
-@functools.lru_cache(maxsize=4)
-def _noms_qui_constatent(chemin: str, mtime: float) -> frozenset[str]:
-    """Les noms de la bibliothèque qui CONSIGNENT un constat : `constater*`, les fonctions décorées
-    `@constat`, et — point fixe — toute fonction qui en appelle une. Lu dans `_base_helpers.py` par
-    AST : le code reste la source de vérité, aucune liste à tenir à jour."""
-    try:
-        with open(chemin, encoding="utf-8") as handle:
-            arbre = ast.parse(handle.read())
-    except (OSError, SyntaxError):
-        return frozenset(_CONSTATER)
-    fonctions = {n.name: n for n in arbre.body if isinstance(n, ast.FunctionDef)}
-    noms = set(_CONSTATER) | {nom for nom, f in fonctions.items() if "constat" in _decorateurs(f)}
-    change = True
-    while change:
-        change = False
-        for nom, f in fonctions.items():
-            if nom in noms:
-                continue
-            if any(isinstance(n, ast.Call) and _nom_appele(n) in noms for n in ast.walk(f)):
-                noms.add(nom)
-                change = True
-    return frozenset(noms)
-
-
 def _helpers_qui_constatent() -> frozenset[str]:
-    chemin = config.STEPS_LIBRARY_DIR / "_base_helpers.py"
-    try:
-        mtime = chemin.stat().st_mtime
-    except OSError:
-        mtime = 0.0
-    return _noms_qui_constatent(str(chemin), mtime)
+    """Délégué à `steps_library` (Q1 : source unique, partagée avec le catalogue). Bibliothèque
+    illisible → au moins `constater*`, comme avant."""
+    return steps_library.helpers_qui_constatent() or frozenset(_CONSTATER)
 
 
 def _affirme(noeud: ast.AST) -> str:
