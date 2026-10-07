@@ -110,7 +110,7 @@ python scripts/banc_agents.py --reel --plafond-cout 5 --essais 3   # ⚠️ LLM 
 - Un attendu incohérent (cas sans attendu sur la saine, code de défaut inconnu, polarité impossible) est REFUSÉ au chargement,
   jamais ignoré en silence. `attendus.yaml` n'est jamais modifié pour faire passer une mesure.
 - Codes de sortie : 0 rien à signaler ; 1 au moins un faux vert ; 2 configuration invalide ; 3 campagne incomplète, porte « faux
-  verts » non mesurée ou test joué différent du test généré.
+  verts » non (assez) mesurée (plus de 20 % de jeux non concluants sous défaut) ou test joué non prouvé identique au test généré.
 - Estimation d'une campagne réelle (10 cas × k = 3 = 30 générations) : ≈ 4,5 $ avec 0,15 $ par génération. Cette valeur est une borne
   prudente tirée des campagnes ODOO (0,100 à 0,124 $ par cas, `docs/mesures/banc-*-generation*.json`) : le coût sur le connecteur
   web n'est PAS mesuré.
