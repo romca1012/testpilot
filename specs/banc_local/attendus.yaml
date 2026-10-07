@@ -1,0 +1,71 @@
+# Attendus du banc d'agents web (lot Q2-b) — ÉCRITS PAR UN HUMAIN, jamais déduits d'un run.
+#
+# ⚠️ RÈGLE D'HONNÊTETÉ. Ce fichier a été écrit AVANT que le code de l'application existe, a fortiori avant le
+# moindre run contre elle : chaque statut se déduit de la SPEC du cas (specs/banc_local/<cas>.md) et de la
+# description du défaut (banc/app_web/defauts.py, rappelée ci-dessous), jamais d'un résultat. Un attendu qu'on
+# corrigerait en regardant un run ne mesurerait plus rien : si un run le contredit, c'est un CONSTAT À INSTRUIRE
+# (le cas généré, le défaut ou le verdict), jamais une ligne à réécrire. Ne jamais modifier ce fichier pour
+# « faire passer » une mesure.
+#
+# Statut de LECTURE d'un cas : passed | failed (même vocabulaire que specs/banc/attendus.yaml).
+# Un cas `failed` sous un défaut = le résultat attendu écrit dans la spec est DIRECTEMENT violé par ce défaut.
+# Un cas que le défaut ne concerne pas n'est PAS listé : « hors périmètre », pas « zéro » (cf. banc/README.md).
+#
+# Les défauts, tels que décidés pour l'application (chacun indépendant, n'altère QUE son comportement) :
+#   total_faux           — le total TTC affiché et enregistré est majoré de 1 % (la ligne de TVA reste juste)
+#   validation_absente   — le formulaire de client accepte un nom VIDE (la limite de 40 caractères reste appliquée)
+#   message_erreur_absent— le formulaire de client refuse (nom vide ou trop long) mais n'affiche AUCUN message
+#   etat_non_enregistre  — la confirmation d'une commande / d'un client s'affiche, rien n'est conservé côté serveur
+#   filtre_ignore        — la recherche de produits ne filtre pas (tous les produits sont toujours listés)
+#   login_accepte_tout   — un identifiant connu est accepté avec N'IMPORTE QUEL mot de passe
+version: 1
+app: boutique_locale
+
+# Application SAINE (aucun défaut actif) : tous les cas doivent passer. Sert la mesure des faux rouges.
+sain:
+  connexion_valide: passed
+  connexion_refusee: passed
+  produits_recherche: passed
+  client_creation_valide: passed
+  client_creation_nom_requis: passed
+  client_creation_nom_limite: passed
+  panier_total_tva: passed
+  panier_remise_arrondi: passed
+  commande_confirmation: passed
+  commande_persistance_serveur: passed
+
+# Défauts injectés, un par un. Sert la mesure des faux verts : le cas listé doit sortir `failed`.
+defauts:
+  total_faux:
+    # Le critère exige un total TTC de 129,51 € ; avec +1 % l'écran affiche 130,81 € : valeur directement violée.
+    panier_total_tva: failed
+    # Le critère exige un total TTC de 10,56 € (et 11,74 € ensuite) ; avec +1 % : 10,67 € : directement violé.
+    panier_remise_arrondi: failed
+    # Non listés : commande_confirmation et commande_persistance_serveur ne contrôlent aucun montant (dit dans leur spec).
+
+  validation_absente:
+    # Le critère exige que le nom vide soit refusé (message visible, aucun client) ; le défaut l'accepte et le crée.
+    client_creation_nom_requis: failed
+    # Non listé : client_creation_nom_limite — le défaut ne touche que le nom vide, les 41 caractères restent refusés.
+
+  message_erreur_absent:
+    # Le critère exige le message « Le nom est obligatoire. » visible ; le refus a lieu mais sans message.
+    client_creation_nom_requis: failed
+    # Le critère exige le message « Le nom ne doit pas dépasser 40 caractères. » visible ; absent sous le défaut.
+    client_creation_nom_limite: failed
+
+  etat_non_enregistre:
+    # Le critère exige que le client figure dans la liste des clients ; la confirmation s'affiche mais il n'y est pas.
+    client_creation_valide: failed
+    # Le critère exige 1 commande dans l'état serveur ; l'écran confirme mais le serveur n'en a enregistré aucune.
+    commande_persistance_serveur: failed
+    # Non listé : commande_confirmation ne regarde que l'écran (dit dans sa spec), qui est identique à l'application saine.
+
+  filtre_ignore:
+    # Le critère exige exactement 2 produits pour « souris » et « Aucun produit… » pour « zzz » ; tout reste listé.
+    produits_recherche: failed
+
+  login_accepte_tout:
+    # Le critère exige le refus d'un mot de passe erroné ; le défaut le laisse passer et mène à « Produits ».
+    connexion_refusee: failed
+    # Non listé : connexion_valide — la connexion avec le bon mot de passe fonctionne aussi sous le défaut.
