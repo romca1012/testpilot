@@ -292,6 +292,33 @@ def _verification_independante(connector, model: str, since_epoch: float) -> dic
         return {'ok': False, 'nouveaux': 0, 'erreur': f'{type(exc).__name__}: {exc}'}
 
 
+def _type_de_connecteur(project: dict) -> str:
+    """Le type de connecteur du PROJET (`odoo` ou `web`) — jamais un `'odoo'` codé en dur : une
+    campagne sur un projet web doit générer, exécuter et juger avec la bibliothèque et le verdict
+    du connecteur web, sinon elle mesure un chemin que ce projet n'emprunte pas en production.
+    Absent = `odoo` (un projet créé avant le multi-connecteurs n'a pas cette colonne), comme
+    `connectors.factory.build_connector`."""
+    return ((project or {}).get('connector_type') or 'odoo').lower()
+
+
+def _verification_independante_du_connecteur(connector_type: str, connector, metier: dict,
+                                              since_epoch: float) -> dict:
+    """Vérification indépendante de l'essai, propre au connecteur.
+
+    - `odoo` : requête RPC fraîche (`_verification_independante`) — inchangé.
+    - `web` : AUCUNE vérification indépendante en phase 1 (sites publics, pas d'état interrogeable
+      hors du navigateur). Rendue explicitement « non applicable » plutôt que vide ou à zéro : un
+      « non mesuré » n'est pas un « zéro », même discipline que le banc. Les « réussi » web sont
+      donc audités à la main (lecture du test généré contre le critère de la spec) ; la mesure
+      indépendante viendra de l'application contrôlée (phase 2, point de lecture d'état)."""
+    if connector_type != 'odoo':
+        return {'ok': None, 'nouveaux': None,
+                'erreur': f'non applicable au connecteur {connector_type} (audit manuel)'}
+    modele_teste = (metier.get('title') or '').lower()
+    modele_rpc = 'survey.survey' if 'sondage' in modele_teste else 'helpdesk.ticket'
+    return _verification_independante(connector, modele_rpc, since_epoch)
+
+
 def _un_essai(case_id: int, iteration: int, out_dir: Path, project: dict, connexion: dict,
              budget: QualificationBudget, project_id: int) -> dict:
     # ⚠️ Bug mesuré le 2026-09-30 : la date était codée en dur ("20260923", celle de l'écriture
@@ -319,11 +346,12 @@ def _un_essai(case_id: int, iteration: int, out_dir: Path, project: dict, connex
     (trial_dir / 'input.json').write_text(json.dumps(metier, ensure_ascii=False, indent=2),
                                           encoding='utf-8')
 
+    connector_type = _type_de_connecteur(project)
     rapport = {'case_id': case_id, 'iteration': iteration, 'trial': trial,
               'data_dir': str(config.DATA_DIR)}
     os.environ['TESTPILOT_QUALIFICATION'] = '1'
     connector = build_connector(project)
-    dry_runner = BehaveRunner(generated_dir=config.GENERATED_DIR, connector_type='odoo',
+    dry_runner = BehaveRunner(generated_dir=config.GENERATED_DIR, connector_type=connector_type,
                               project_id=project_id, connection=connexion)
     dry_runner.cibler_artefacts(trial_dir / 'generation')
     debut = time.time()
@@ -355,20 +383,22 @@ def _un_essai(case_id: int, iteration: int, out_dir: Path, project: dict, connex
 
     # Execution physique UNIQUE : max_retries=0, meme sous TESTPILOT_QUALIFICATION=1 (deja
     # sans resolution adaptative -- verifie plus haut dans le module _base_helpers).
-    run_runner = BehaveRunner(generated_dir=config.GENERATED_DIR, connector_type='odoo',
+    run_runner = BehaveRunner(generated_dir=config.GENERATED_DIR, connector_type=connector_type,
                               project_id=project_id, connection=connexion)
     run_runner.cibler_artefacts(trial_dir / 'execution')
     outcome = Executor(run_runner, max_retries=0).execute(module_name)
-    verdict = derive_verdict(outcome, connector_type='odoo')
+    verdict = derive_verdict(outcome, connector_type=connector_type)
     rapport['execution'] = {
         'execution_status': verdict.execution_status, 'functional_status': verdict.functional_status,
         'dry_run_passed': outcome.dry_run_passed, 'retried': outcome.retried,
         'physical_attempts': len(outcome.attempts), 'error': outcome.error,
+        # Causes classées par le runtime (`cause_category`, jamais le texte de l'agent) : permet de
+        # séparer défaut de l'agent / de la bibliothèque / de l'environnement après coup.
+        'causes': sorted({s.cause_category for s in verdict.scenarios if s.cause_category}),
     }
 
-    modele_teste = (metier.get('title') or '').lower()
-    modele_rpc = 'survey.survey' if 'sondage' in modele_teste else 'helpdesk.ticket'
-    rapport['verification_independante'] = _verification_independante(connector, modele_rpc, debut)
+    rapport['verification_independante'] = _verification_independante_du_connecteur(
+        connector_type, connector, metier, debut)
 
     connector.disconnect()
     rapport['budget'] = budget.summary()
