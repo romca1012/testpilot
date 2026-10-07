@@ -25,7 +25,7 @@ const chargement = ref(true)
 
 const {
   statut, image, etapes, erreur, avertissementInactivite, raisonFermeture,
-  dernierClicAmbigu, captureArretee,
+  dernierClicAmbigu, clicsNonEnregistres, captureArretee,
   formulaireInvite, formulaireCapture, formulaireComplet, formulaireConnexionEnregistre,
   demarrer, clic, confirmer, recommencer, annuler,
 } = useLiveSession(pid)
@@ -47,14 +47,38 @@ const ecran = ref<HTMLImageElement | null>(null)
 // 800×450 pour un viewport réel de 1280×720 atterrirait à 0,625× de sa vraie position — un clic
 // qui semble réussir mais capture le MAUVAIS élément (exactement le résultat trompeur que ce
 // chantier cherche à exclure).
+// Dernières dimensions RÉELLES connues du viewport distant. Chaque frame remplace `src` de
+// l'image : pendant son décodage, `naturalWidth` retombe à 0 — l'ancien `if (!naturalWidth) return`
+// ABANDONNAIT alors le clic sans rien dire (cause probable du « il faut cliquer deux fois »,
+// 2026-10-07). On retient les dimensions du dernier chargement réussi et on s'en sert.
+let dimensions = { largeur: 0, hauteur: 0 }
+function surChargementImage() {
+  const el = ecran.value
+  if (el && el.naturalWidth) dimensions = { largeur: el.naturalWidth, hauteur: el.naturalHeight }
+}
+
+// Retour visuel IMMÉDIAT au clic (avant toute réponse du serveur) : sans lui, la personne ne sait
+// pas si son geste est parti et le renouvelle — ce qui rebascule un bouton à deux états.
+const ondes = ref<{ id: number; gauche: number; haut: number }[]>([])
+let prochaineOnde = 0
+function ajouterOnde(evt: MouseEvent, rect: DOMRect) {
+  const id = prochaineOnde++
+  ondes.value = [...ondes.value, { id, gauche: evt.clientX - rect.left, haut: evt.clientY - rect.top }]
+  setTimeout(() => { ondes.value = ondes.value.filter(o => o.id !== id) }, 650)
+}
+
 function surClic(evt: MouseEvent) {
   const el = ecran.value
-  if (!el || !el.naturalWidth) return
+  if (!el) return
   const rect = el.getBoundingClientRect()
-  const echelleX = el.naturalWidth / rect.width
-  const echelleY = el.naturalHeight / rect.height
+  const largeur = el.naturalWidth || dimensions.largeur
+  const hauteur = el.naturalHeight || dimensions.hauteur
+  if (!largeur || !hauteur || !rect.width || !rect.height) return
+  const echelleX = largeur / rect.width
+  const echelleY = hauteur / rect.height
   const x = (evt.clientX - rect.left) * echelleX
   const y = (evt.clientY - rect.top) * echelleY
+  ajouterOnde(evt, rect)
   clic(x, y)
 }
 
@@ -164,11 +188,14 @@ onMounted(async () => {
           </div>
 
           <button v-else type="button"
-                  class="block w-full cursor-crosshair overflow-hidden rounded-lg border border-border bg-overlay focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  class="relative block w-full cursor-default overflow-hidden rounded-lg border border-border bg-overlay focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-label="Écran du navigateur distant — cliquez pour reproduire votre geste"
                   @click="surClic">
             <img ref="ecran" :src="`data:image/jpeg;base64,${image}`" alt="Écran du navigateur distant"
-                 class="block w-full select-none" draggable="false" />
+                 class="block w-full select-none" draggable="false" @load="surChargementImage" />
+            <span v-for="o in ondes" :key="o.id" data-testid="onde-clic" aria-hidden="true"
+                  class="pointer-events-none absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full border-2 border-primary bg-primary/20"
+                  :style="{ left: `${o.gauche}px`, top: `${o.haut}px` }" />
           </button>
         </Card>
 
@@ -215,6 +242,12 @@ onMounted(async () => {
           <p v-if="dernierClicAmbigu" class="mt-3 text-xs text-warning">
             Ce clic touche plusieurs éléments identiques — il n'a pas été ajouté. Cliquez sur un
             élément qui se distingue seul.
+          </p>
+          <p v-if="clicsNonEnregistres > 0" data-testid="clic-non-enregistre" class="mt-3 text-xs text-warning">
+            {{ clicsNonEnregistres }} clic{{ clicsNonEnregistres > 1 ? 's' : '' }} envoyé{{ clicsNonEnregistres > 1 ? 's' : '' }}
+            à la page mais pas ajouté{{ clicsNonEnregistres > 1 ? 's' : '' }} au chemin : l'élément touché
+            n'a ni nom ni rôle que l'on puisse retrouver au rejeu (texte nu, bloc dépliant…). Le chemin
+            enregistré peut être incomplet — cliquez sur un bouton, un lien ou un champ, ou « Recommencer ».
           </p>
           <p v-if="erreur && statut === 'en_direct'" class="mt-3 text-xs text-destructive">{{ erreur }}</p>
           <p v-if="avertissementInactivite !== null" class="mt-3 text-xs text-warning">

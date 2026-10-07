@@ -30,6 +30,7 @@ type MessageServeur =
   | { type: 'image'; data: string }
   | { type: 'etape_capturee'; role: string; name: string }
   | { type: 'clic_ambigu'; detail: string }
+  | { type: 'clic_non_enregistre'; raison: string }
   | { type: 'capture_arretee'; raison: string }
   | { type: 'formulaire_connexion_invite'; champ: ChampFormulaireConnexion }
   | { type: 'formulaire_connexion_champ_capture'; champ: ChampFormulaireConnexion; role: string; name: string }
@@ -51,6 +52,12 @@ export function useLiveSession(projectId: number | string) {
   // laisser une personne confirmer une séquence silencieusement incomplète (risque déjà noté au
   // rapport de fin de sous-lot C).
   const dernierClicAmbigu = ref('')
+  // Un clic dont l'élément n'a aucun rôle/nom rejouable (bloc dépliant, texte nu…) part bien à la
+  // page mais n'est PAS ajouté au chemin — signalé pour que personne ne croie l'étape enregistrée
+  // (mesuré le 2026-10-07 : l'écran ne disait rien).
+  // Compteur PERSISTANT (revue 2026-10-07) : un indicateur éphémère s'effaçait dès le clic suivant
+  // reconnu, alors que la séquence restait incomplète — remis à zéro seulement par `recommencer`.
+  const clicsNonEnregistres = ref(0)
   // Extension (2026-09-30) : 3 clics guidés APRÈS l'écran de pré-connexion, pour identifier le
   // champ identifiant, le champ mot de passe et le bouton de soumission — jamais une valeur/texte,
   // seulement rôle/nom (miroir exact de `live_session_service.py`). `formulaireInvite` porte le
@@ -93,6 +100,9 @@ export function useLiveSession(projectId: number | string) {
         break
       case 'clic_ambigu':
         dernierClicAmbigu.value = message.detail
+        break
+      case 'clic_non_enregistre':
+        clicsNonEnregistres.value += 1
         break
       case 'capture_arretee':
         // `raison: 'mot_de_passe_visible'` — le champ mot de passe est redevenu visible, la
@@ -162,6 +172,7 @@ export function useLiveSession(projectId: number | string) {
     image.value = ''
     captureArretee.value = ''
     dernierClicAmbigu.value = ''
+    clicsNonEnregistres.value = 0
     raisonFermeture.value = ''
     avertissementInactivite.value = null
     formulaireInvite.value = ''
@@ -196,6 +207,7 @@ export function useLiveSession(projectId: number | string) {
   function recommencer() {
     etapes.value = []
     dernierClicAmbigu.value = ''
+    clicsNonEnregistres.value = 0
     formulaireCapture.value = {}
     formulaireComplet.value = false
     // Le navigateur réel n'est pas renavigué en arrière par un recommencer (voir
@@ -217,7 +229,7 @@ export function useLiveSession(projectId: number | string) {
 
   return {
     statut, image, etapes, erreur, avertissementInactivite, raisonFermeture,
-    dernierClicAmbigu, captureArretee,
+    dernierClicAmbigu, clicsNonEnregistres, captureArretee,
     formulaireInvite, formulaireCapture, formulaireComplet, formulaireConnexionEnregistre,
     demarrer, clic, confirmer, recommencer, annuler,
   }

@@ -21,6 +21,7 @@ import queue
 import threading
 import time
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from testpilot.connectors.contexte_navigateur import depuis_projet
@@ -35,6 +36,9 @@ logger = logging.getLogger(__name__)
 # de sous-lot : un écran client plus petit que le viewport devra downscaler l'affichage lui-même
 # et retraduire ses clics — hors périmètre de ce sous-lot (aucun écran n'existe encore).
 _QUALITE_JPEG = 60
+
+# Plafond de l'attente de stabilisation de la page avant d'ouvrir la session (voir `_piloter`).
+_ATTENTE_STABILISATION_MS = 4000
 
 # Extension (2026-09-30) : après l'écran de pré-connexion, 3 clics guidés supplémentaires
 # identifient le champ identifiant, le champ mot de passe et le bouton de soumission — motivée par
@@ -188,6 +192,17 @@ class SessionLive:
         try:
             page = contexte.new_page()
             page.goto(self._project.get("base_url") or "about:blank", timeout=15000)
+            # Mesuré le 2026-10-07 (portail d'intégration Odoo, SSO) : `goto` rend la main à
+            # l'événement `load`, mais le JavaScript de la page continue d'initialiser son
+            # formulaire. Un premier clic envoyé pendant cette phase ouvrait le bloc de connexion,
+            # puis la page le refermait (champ mot de passe resté invisible) : « il faut cliquer
+            # deux fois ». On laisse la page se stabiliser AVANT de déclarer la session prête.
+            # Bornée : certaines applications (long-polling) n'atteignent jamais `networkidle`.
+            try:
+                page.wait_for_load_state("networkidle", timeout=_ATTENTE_STABILISATION_MS)
+            except PlaywrightTimeoutError:
+                logger.debug("session live (projet %s) : page jamais « idle » en %s ms — on "
+                             "démarre quand même", self._project.get("id"), _ATTENTE_STABILISATION_MS)
             self._cdp = contexte.new_cdp_session(page)
             self._cdp.on("Page.screencastFrame", self._sur_image)
             self._cdp.send("Page.startScreencast", {
@@ -259,13 +274,25 @@ class SessionLive:
             self._basculer_en_mode_formulaire()
 
         resolu = None
+        ambigu = False
         if self._capture_active or self._mode_formulaire:
             try:
                 resolu = accname.calculer(page, x, y)
             except accname.ElementIntrouvableError as exc:
                 # Ambigu : jamais capturé en silence sur le premier trouvé — signalé, pas retenu.
+                ambigu = True
                 self.sortantes.put({"type": "clic_ambigu", "detail": str(exc)})
         self._cliquer_reellement(x, y)
+
+        if resolu is None and not ambigu and (self._capture_active or self._mode_formulaire):
+            # Mesuré le 2026-10-07 (page de connexion SSO du portail d'intégration Odoo) : un clic
+            # sur un bloc dépliant (`<summary>`, rôle `group` pour Playwright) ou sur du texte nu
+            # n'a aucun (rôle, nom) rejouable. Il partait à la page mais n'était PAS retenu, sans le
+            # moindre signal : la personne croyait l'étape enregistrée, le rejeu ne la reproduirait
+            # jamais. Le clic reste envoyé (la page doit réagir comme pour un humain) ; seul son
+            # défaut d'enregistrement est désormais dit. Jamais en plus d'un `clic_ambigu` : deux
+            # messages contradictoires pour un même clic (revue 2026-10-07).
+            self.sortantes.put({"type": "clic_non_enregistre", "raison": "element_non_reconnu"})
 
         if self._mode_formulaire:
             if resolu is not None:
