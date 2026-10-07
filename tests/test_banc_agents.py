@@ -1104,6 +1104,23 @@ def test_preparer_projet_web_refuse_d_ecrire_si_la_configuration_pointe_ailleurs
                                tmp_path / "jetable", "cle")
 
 
+def test_le_projet_jetable_declare_l_oracle_que_les_specs_citent():
+    """Falsifiable : la campagne `base-1` (2026-10-07) n'en déclarait aucun — 3 cas sur 10 sortaient non concluants."""
+    import json
+
+    from testpilot.connectors import oracle_config
+
+    oracle = ba.oracle_du_banc_web("http://127.0.0.1:4242")
+
+    assert oracle["oracle_type"] == "http" and oracle["oracle_base_url"] == "http://127.0.0.1:4242"
+    assert oracle_config.erreurs(oracle["oracle_type"], oracle["oracle_base_url"], "", oracle["oracle_queries"]) == []
+    assert oracle_config.noms_declares(oracle["oracle_queries"]) == ["etat"]
+    chemins = [r["path"] for r in json.loads(oracle["oracle_queries"])]
+    assert chemins == ["/__etat"], "jamais /__defauts : l'agent ne doit pas pouvoir lire les défauts actifs"
+    for spec in (ba.RACINE / "specs" / "banc_local").glob("commande_persistance_serveur.md"):
+        assert "`etat`" in spec.read_text(encoding="utf-8")
+
+
 # ── Aucune dépense réelle depuis un test (incident du 2026-10-07 : 5 générations payantes lancées par erreur) ─────
 
 def test_sous_pytest_la_relance_reelle_est_refusee_meme_si_main_est_appele_sans_doublure(monkeypatch, capsys):

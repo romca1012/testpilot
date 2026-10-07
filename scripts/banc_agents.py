@@ -1022,6 +1022,18 @@ def artefacts_depuis_rapport(cas: str, essai: int, rapport: Mapping) -> Artefact
                      genere_ok=jouable, erreur=erreur, module=module)
 
 
+def oracle_du_banc_web(url: str) -> dict:
+    """L'oracle HTTP du projet jetable : la requête nommée `etat` (`GET /__etat`), que les specs du banc citent.
+
+    Mesuré le 2026-10-07 (campagne `base-1`) : sans cette déclaration, 3 cas sur 10 (création de client x2, persistance de
+    commande) sortaient `blocked` « aucun oracle n'est configuré » ou `technical_error` — des résultats non concluants
+    dus au HARNAIS, pas à l'agent ni à l'outil. `/__defauts` n'est JAMAIS déclaré : l'agent ne doit pas pouvoir lire les
+    défauts actifs.
+    """
+    return {"oracle_type": "http", "oracle_base_url": url,
+            "oracle_queries": json.dumps([{"name": "etat", "method": "GET", "path": "/__etat"}])}
+
+
 def preparer_projet_web(url: str, compte: Mapping, specs: Mapping[str, dict], data_dir: Path,
                         cle_secrete: str) -> tuple[int, dict[str, int]]:
     """Projet `web` jetable + annuaire (exploration déterministe, navigateur réel) + un cas par spec. Mode réel seulement."""
@@ -1037,7 +1049,8 @@ def preparer_projet_web(url: str, compte: Mapping, specs: Mapping[str, dict], da
     conn = get_initialized_db(Path(config.DB_PATH))
     project_id = ProjectRepo(conn).create(
         name="Banc agents web — boutique locale", description="Banc d'agents web (Q2-d) : application locale à défauts.",
-        connector_type="web", base_url=url, username=compte["identifiant"], password=compte["mot_de_passe"])
+        connector_type="web", base_url=url, username=compte["identifiant"], password=compte["mot_de_passe"],
+        **oracle_du_banc_web(url))
     banc_projet.explorer(conn, project_id)
     module_id = ModuleRepo(conn).create(project_id=project_id, name=MODULE_DU_BANC)
     cas = CaseRepo(conn)
