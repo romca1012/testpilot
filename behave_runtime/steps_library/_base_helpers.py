@@ -108,7 +108,9 @@ _ETAT_CONSTAT = {"scenario": "", "step_type": ""}
 _COMPTEUR_CONSTATS = {"n": 0}
 
 
-def nombre_de_constats() -> int:
+def nombre_de_constats_reussis() -> int:
+    """Constats RÉUSSIS consignés depuis le début du processus. Un constat échoué n'est PAS compté : un `Alors`
+    qui avale lui-même son échec (`try/except AssertionError`) n'a rien prouvé (revue du 2026-10-07)."""
     return _COMPTEUR_CONSTATS["n"]
 
 
@@ -164,7 +166,8 @@ def _consigner_constat(ok: bool) -> None:
     Un échec d'écriture est silencieux ET va dans le sens PRUDENT : un constat non consigné ne
     compte pas, donc le scénario retombe en `indetermine`, jamais en `conforme`.
     """
-    _COMPTEUR_CONSTATS["n"] += 1
+    if ok:
+        _COMPTEUR_CONSTATS["n"] += 1
     chemin = os.environ.get(CONSTATS_FILE_ENV)
     if not chemin:
         return
@@ -177,7 +180,7 @@ def _consigner_constat(ok: bool) -> None:
         pass
 
 
-def consigner_alors_sans_constat(texte_du_step: str) -> None:
+def consigner_alors_sans_constat(texte_du_step: str, raison: str = "") -> None:
     """Q1 (D16) : un step `Alors` assertif est PASSÉ sans consigner le moindre constat — il n'a donc
     rien prouvé (assertion dans une branche non prise, helper qui rend la main sans vérifier…).
     Écrit une ligne `sans_constat` dans le sidecar ; `verdict/status.py` en fait un `indetermine`
@@ -188,7 +191,7 @@ def consigner_alors_sans_constat(texte_du_step: str) -> None:
     if not chemin:
         return
     ligne = json.dumps({"scenario": _ETAT_CONSTAT["scenario"], "step_type": "then", "ok": None,
-                        "sans_constat": True, "step": texte_du_step}, ensure_ascii=False)
+                        "sans_constat": True, "step": texte_du_step, "raison": raison}, ensure_ascii=False)
     try:
         with open(chemin, "a", encoding="utf-8") as handle:
             handle.write(ligne + "\n")

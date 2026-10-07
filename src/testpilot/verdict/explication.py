@@ -50,6 +50,12 @@ _NOTE_AUCUN_CONSTAT = (
     "Ce test est allé au bout, mais aucune vérification ne s'est exécutée : rien n'a été constaté sur "
     "l'application. Ce n'est pas une preuve qu'elle est conforme — le test est à revoir, puis à relancer.")
 
+# Q1 (D16) : un AUTRE `Alors` a constaté — la note d'`aucun_constat` (« rien n'a été constaté ») serait fausse ici.
+_NOTE_ALORS_SANS_CONSTAT = (
+    "Ce test est allé au bout et une partie des résultats attendus a bien été vérifiée, mais au moins un résultat "
+    "attendu n'a rien vérifié : il n'est pas prouvé. Ce n'est pas une preuve que l'application est conforme — le test "
+    "est à compléter, puis à relancer.")
+
 # Notes DÉTERMINISTES (lot 05, D5), jamais confiées au LLM et ajoutées même quand il est indisponible : un « Réussi — à
 # confirmer » doit toujours dire POURQUOI il est à confirmer (quel élément a été retrouvé par repli, ou le second essai).
 _NOTE_AUTO_RESOLUE = (
@@ -254,6 +260,8 @@ def propose_explication(verdict: CaseVerdict, *, module_name: str = "",
         texte = f"{texte} {_NOTE_BLOQUE}"
     if texte and any(getattr(v, "cause_category", "") == "aucun_constat" for v in verdict.scenarios):
         texte = f"{texte} {_NOTE_AUCUN_CONSTAT}"
+    if texte and any(getattr(v, "cause_category", "") == "alors_sans_constat" for v in verdict.scenarios):
+        texte = f"{texte} {_NOTE_ALORS_SANS_CONSTAT}"
     note = note_confiance(verdict)
     if note:
         texte = f"{texte} {note}".strip()
