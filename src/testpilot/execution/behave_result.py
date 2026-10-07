@@ -52,6 +52,10 @@ class BehaveScenario:
     # `verdict/status.py` s'en sert pour faire passer `ground_truth` à `backend_verified` sur un
     # connecteur qui, sinon, ne peut recouper que l'UI (`ui_only`).
     oracle_verifie: bool = False
+    # Q1 (D16) : les `Alors` ASSERTIFS passés sans consigner aucun constat pendant ce scénario (texte du step).
+    # `None` = mécanisme absent (dry-run, résultat construit à la main) : la règle ne s'applique pas ;
+    # `[]` = il a tourné et aucun `Alors` n'est vide.
+    alors_sans_constat: list[str] | None = None
 
 
 @dataclass
@@ -394,6 +398,9 @@ def rattacher_constats(result: BehaveResult, constats: list[dict]) -> None:
             1 for c in constats
             if c.get("scenario") == scenario.name and c.get("ok") is True
             and c.get("step_type") == "then")
+        scenario.alors_sans_constat = [
+            str(c.get("step", "")) for c in constats
+            if c.get("scenario") == scenario.name and c.get("sans_constat") is True]
         scenario.oracle_verifie = any(
             c.get("scenario") == scenario.name and c.get("step_type") == "then"
             and c.get("source") == "oracle" for c in constats)

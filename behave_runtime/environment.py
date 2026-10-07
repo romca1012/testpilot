@@ -632,11 +632,58 @@ def before_step(context, step):
     if page is not None:
         page._tp_intention_step = step.name
     # Lot 03 : le type EFFECTIF du step (`Et`/`Mais` héritent) accompagne chaque constat consigné.
-    from _base_helpers import definir_etat_constat, poser_repere_action
+    from _base_helpers import definir_etat_constat, nombre_de_constats, poser_repere_action
     definir_etat_constat(step_type=getattr(step, "step_type", "") or "")
+    # Q1 (D16) : le nombre de constats AVANT ce step — `after_step` en déduit si ce `Alors` a constaté.
+    context._tp_constats_avant_step = nombre_de_constats()
     # Lot 07d : chaque ACTION pose un repère — « la requête … répond », « un nouvel onglet s'ouvre » ne jugent que ce qui l'a suivi.
     if (getattr(step, "step_type", "") or "") in ("given", "when"):
         poser_repere_action(context)
+
+
+def _fonction_du_step(context, step):
+    """La fonction Python qui implémente `step`, ou `None`.
+
+    ⚠️ **Mesuré le 2026-10-07 dans Behave 1.3.3 (`model.py::Step.run`)** : `step.match` n'existe PAS — le
+    `Match` n'est qu'une variable locale passée aux formateurs. Une première version lisait
+    `step.match.func` : l'exemption `@non_assertif` ne s'appliquait jamais en vrai run, et seule la
+    preuve de bout en bout (vrai Behave) l'a révélé — une fausse étape de test portait l'attribut.
+    On retrouve donc le `Match` par le registre du runner (`context._runner`), avec `step.match` en
+    repli pour une autre version de Behave."""
+    match = getattr(step, "match", None)
+    if match is None:
+        registre = getattr(getattr(context, "_runner", None), "step_registry", None)
+        if registre is not None:
+            try:
+                match = registre.find_match(step)
+            except Exception:
+                match = None
+    return getattr(match, "func", None)
+
+
+def after_step(context, step):
+    """Q1 (D16) : un step `Alors` ASSERTIF qui passe sans avoir consigné le moindre constat n'a rien
+    prouvé. Il est consigné (`sans_constat`) et `verdict/status.py` en fait un `indetermine`, au lieu de
+    laisser un AUTRE `Alors` réussi du même scénario couvrir ce vide (ancien critère : « au moins un
+    constat dans le scénario »).
+
+    N'agit que sur un step PASSÉ de type `then` : un échec est déjà traité par le verdict, un `given`/`when`
+    n'a pas à constater. Un step déclaré `@non_assertif` (attente, navigation — D17) est exempté. Jamais
+    fatal : une erreur ici ne doit pas changer le résultat de Behave."""
+    try:
+        if (getattr(step, "step_type", "") or "") != "then":
+            return
+        statut = getattr(step, "status", None)
+        if getattr(statut, "name", str(statut)) != "passed":
+            return
+        if getattr(_fonction_du_step(context, step), "_tp_non_assertif", False):
+            return
+        from _base_helpers import consigner_alors_sans_constat, nombre_de_constats
+        avant = getattr(context, "_tp_constats_avant_step", None)
+        if avant is not None and nombre_de_constats() == avant:
+            consigner_alors_sans_constat(step.name)
+    except Exception as exc:  # pragma: no cover — jamais fatal
+        print(f"[constats] contrôle de l'Alors impossible : {exc}")
 
 
 def before_scenario(context, scenario):
