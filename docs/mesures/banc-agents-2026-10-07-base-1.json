@@ -1,0 +1,1358 @@
+{
+  "contexte": {
+    "date": "2026-10-07",
+    "etiquette": "base-1",
+    "commit": "9ede14b",
+    "versions": {
+      "python": "3.12.14",
+      "testpilot": "0.1.0",
+      "behave": "1.3.3",
+      "playwright": "1.62.0"
+    },
+    "modele_generation": "claude-sonnet-4-6",
+    "mode": "reel",
+    "plafond_usd": 5.0,
+    "app": "boutique_locale",
+    "configuration_sha256": "d433756448590a70be648e6fd24b083696114f142e98272a0463fd6d829b8529",
+    "sous_ensemble_de_cas": false,
+    "donnees_jetables": "C:\\Users\\ROMARI~1\\AppData\\Local\\Temp\\banc_agents_data_m76kt514"
+  },
+  "indicateurs": {
+    "faux_verts": {
+      "k": 0,
+      "n": 19,
+      "non_concluants": 8,
+      "taux": 0.0,
+      "ic95": [
+        0.0,
+        0.16818436536845052
+      ]
+    },
+    "faux_rouges": {
+      "k": 1,
+      "n": 16,
+      "non_concluants": 14,
+      "taux": 0.0625,
+      "ic95": [
+        0.01111905730833121,
+        0.2832926836802987
+      ]
+    },
+    "pass_execution": {
+      "pass_at_1": {
+        "k": 6,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.6,
+        "ic95": [
+          0.3126695474501864,
+          0.8318224187964902
+        ]
+      },
+      "pass_at_k": {
+        "k": 6,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.6,
+        "ic95": [
+          0.3126695474501864,
+          0.8318224187964902
+        ]
+      },
+      "pass_hat_k": {
+        "k": 4,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.4,
+        "ic95": [
+          0.16817758120350967,
+          0.6873304525498135
+        ]
+      }
+    },
+    "pass_resultat": {
+      "pass_at_1": {
+        "k": 6,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.6,
+        "ic95": [
+          0.3126695474501864,
+          0.8318224187964902
+        ]
+      },
+      "pass_at_k": {
+        "k": 6,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.6,
+        "ic95": [
+          0.3126695474501864,
+          0.8318224187964902
+        ]
+      },
+      "pass_hat_k": {
+        "k": 3,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.3,
+        "ic95": [
+          0.10778928748621183,
+          0.6032267800204347
+        ]
+      }
+    },
+    "non_concluants": {
+      "blocked": 5,
+      "technical_error": 17
+    },
+    "part_non_concluants_sous_defaut": 0.2962962962962963,
+    "par_defaut": {
+      "etat_non_enregistre": {
+        "jeux": 6,
+        "concluants": 3,
+        "detectes": 3,
+        "faux_verts": 0,
+        "non_concluants": 3,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      },
+      "filtre_ignore": {
+        "jeux": 3,
+        "concluants": 3,
+        "detectes": 3,
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      },
+      "login_accepte_tout": {
+        "jeux": 3,
+        "concluants": 3,
+        "detectes": 3,
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      },
+      "message_erreur_absent": {
+        "jeux": 6,
+        "concluants": 5,
+        "detectes": 5,
+        "faux_verts": 0,
+        "non_concluants": 1,
+        "ic95_detection": [
+          0.5655085052479191,
+          1.0
+        ]
+      },
+      "total_faux": {
+        "jeux": 6,
+        "concluants": 2,
+        "detectes": 2,
+        "faux_verts": 0,
+        "non_concluants": 4,
+        "ic95_detection": [
+          0.34237195288961925,
+          1.0
+        ]
+      },
+      "validation_absente": {
+        "jeux": 3,
+        "concluants": 3,
+        "detectes": 3,
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      }
+    },
+    "cout": {
+      "total_usd": 3.46638,
+      "total_eur": 3.209611,
+      "taux_eur_usd": 1.08,
+      "generations": 30,
+      "generations_sans_cout_consigne": 0,
+      "par_generation_usd": 0.115546,
+      "par_generation_eur": 0.106987,
+      "par_cas_usd": {
+        "client_creation_nom_limite": 0.112906,
+        "client_creation_nom_requis": 0.113126,
+        "client_creation_valide": 0.086141,
+        "commande_confirmation": 0.111451,
+        "commande_persistance_serveur": 0.232524,
+        "connexion_refusee": 0.087381,
+        "connexion_valide": 0.130081,
+        "panier_remise_arrondi": 0.095799,
+        "panier_total_tva": 0.116857,
+        "produits_recherche": 0.069193
+      }
+    },
+    "integrite": {
+      "verifiees": 55,
+      "divergentes": 0,
+      "non_rapportees": 0
+    },
+    "echantillon": {
+      "cas": 10,
+      "k": 3,
+      "essais_prevus": 30,
+      "essais_lances": 30,
+      "jeux": 57
+    },
+    "ecarts": [
+      {
+        "cas": "client_creation_nom_limite",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "blocked",
+        "cause": "precondition_non_remplie"
+      },
+      {
+        "cas": "client_creation_nom_requis",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "blocked",
+        "cause": "precondition_non_remplie"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "broken_test_code"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "etat_non_enregistre",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "broken_test_code"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "client_creation_nom_limite",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "blocked",
+        "cause": "precondition_non_remplie"
+      },
+      {
+        "cas": "client_creation_nom_requis",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "blocked",
+        "cause": "precondition_non_remplie"
+      },
+      {
+        "cas": "commande_confirmation",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "broken_test_code"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "etat_non_enregistre",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "broken_test_code"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "client_creation_nom_limite",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "client_creation_nom_limite",
+        "variante": "message_erreur_absent",
+        "essai": 3,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "client_creation_nom_requis",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "blocked",
+        "cause": "precondition_non_remplie"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "broken_test_code"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "etat_non_enregistre",
+        "essai": 3,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "broken_test_code"
+      },
+      {
+        "cas": "connexion_valide",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "non_conforme",
+        "cause": "assertion_mismatch"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "total_faux",
+        "essai": 3,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 3,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      }
+    ]
+  },
+  "interrompue": "",
+  "essais": [
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.124337,
+      "empreintes": {
+        "pilote_p1_c1_i1_20261007T181248.feature": "f250e303f214c5d5b33370c951fa864680786cab41cb71c61e95fbcc5af3f0d8",
+        "pilote_p1_c1_i1_20261007T181248_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.089145,
+      "empreintes": {
+        "pilote_p1_c2_i1_20261007T181459.feature": "92ab3c8f0d7736dcb096124f53188c2766a10ea061967c1dfa6857769887ee61",
+        "pilote_p1_c2_i1_20261007T181459_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      }
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.084507,
+      "empreintes": {
+        "pilote_p1_c3_i1_20261007T181730.feature": "5e3f1622b6284cb63d741d8a25b0cb2787d59b45a4689cc3a321ff5839fc0fc9",
+        "pilote_p1_c3_i1_20261007T181730_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.121422,
+      "empreintes": {
+        "pilote_p1_c4_i1_20261007T181933.feature": "7275de74bea266e261c3440adf42123b9c9ce31a01d7520c091881510eb30c19",
+        "pilote_p1_c4_i1_20261007T181933_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.257266,
+      "empreintes": {
+        "pilote_p1_c5_i1_20261007T182157.feature": "0473fe170a1ad26465c690a4c10d770b45944789d7675c2b32f105b85e6265c4",
+        "pilote_p1_c5_i1_20261007T182157_steps.py": "8734608d894982261601f3f82600a168ce90dc10c5cc4afdb22a46b40afe8237"
+      }
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.076958,
+      "empreintes": {
+        "pilote_p1_c6_i1_20261007T182608.feature": "92aeccb5f8005abdde7975d4981ef145487859470ed156ea8d6c8ac015c65483",
+        "pilote_p1_c6_i1_20261007T182608_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.126601,
+      "empreintes": {
+        "pilote_p1_c7_i1_20261007T182959.feature": "b3e0c4586ad6dcfb22a75fe6c7c4ad838c5f9b3b669a94cc44945c6d3fa0aaf9",
+        "pilote_p1_c7_i1_20261007T182959_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.106065,
+      "empreintes": {
+        "pilote_p1_c8_i1_20261007T183246.feature": "139cb0595f469ae41caab539f4763a214df8fe61424c6eca12fe1250e896fd55",
+        "pilote_p1_c8_i1_20261007T183246_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.11663,
+      "empreintes": {
+        "pilote_p1_c9_i1_20261007T183447.feature": "7bfe61a87f509b868533f2185223d3b44b62538f28023e14f6e3be5ace7c5fb2",
+        "pilote_p1_c9_i1_20261007T183447_steps.py": "f65106dd02d856a68edc6788877e581a870ec4d234bee8dff29baf66559a354b"
+      }
+    },
+    {
+      "cas": "produits_recherche",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.074516,
+      "empreintes": {
+        "pilote_p1_c10_i1_20261007T183853.feature": "242b8aff4a2c5baa50ae707ffc9b60c9187719cf5649baf7f02372b368d8762b",
+        "pilote_p1_c10_i1_20261007T183853_steps.py": "7074476cec16aa05a53ab568188fd2895a6f9ff4660987a797652fd56bcdf2fb"
+      }
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.119786,
+      "empreintes": {
+        "pilote_p1_c1_i2_20261007T184102.feature": "692f35df9df9ec882397542e25e45f8fa3335201701461dc2314bb5083f2c4bf",
+        "pilote_p1_c1_i2_20261007T184102_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.115518,
+      "empreintes": {
+        "pilote_p1_c2_i2_20261007T184314.feature": "2198219184cf56aa95071ab3927d5bec53ff1d5f037c02960b0a478228bda717",
+        "pilote_p1_c2_i2_20261007T184314_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.087898,
+      "empreintes": {
+        "pilote_p1_c3_i2_20261007T184557.feature": "71f0f71b5142b6c0a2072140bf28b64ea993779d44d263bcce16eb817002e025",
+        "pilote_p1_c3_i2_20261007T184557_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.101639,
+      "empreintes": {
+        "pilote_p1_c4_i2_20261007T184805.feature": "56104214f4d9ed0d761bd9105bd4208ced9e03c126b1a7e832aabc049e783089",
+        "pilote_p1_c4_i2_20261007T184805_steps.py": "64a3c539b993177eeda5bd7f78b5f36edbb8b65a818b2b1a98b144188a0c3410"
+      }
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.243124,
+      "empreintes": {
+        "pilote_p1_c5_i2_20261007T185031.feature": "e2c883afd84d179f6790ae6063c07d960c5190c646cc3e2b7ca9fee4dd0ce6ca",
+        "pilote_p1_c5_i2_20261007T185031_steps.py": "9b2a548282672c5c47413223d45cbd143345d62efa121f1441cc35c544fb36cb"
+      }
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.090806,
+      "empreintes": {
+        "pilote_p1_c6_i2_20261007T185409.feature": "6312b9626f490f918440c077809c1e4e2d0e8db4f7c27c0baf7b06b9bede9ef3",
+        "pilote_p1_c6_i2_20261007T185409_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      }
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.14856,
+      "empreintes": {
+        "pilote_p1_c7_i2_20261007T185815.feature": "c3a9c7d9dc9e9b220042697daa23dbb4c690d577508cd6c13bd054cd4c199c6e",
+        "pilote_p1_c7_i2_20261007T185815_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.091633,
+      "empreintes": {
+        "pilote_p1_c8_i2_20261007T190120.feature": "af9d91fd4f4a7f2382f8a2c5eeae4dc50a84f75bffe0bf4c27679f96170099ea",
+        "pilote_p1_c8_i2_20261007T190120_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.084682,
+      "empreintes": {
+        "pilote_p1_c9_i2_20261007T190324.feature": "a647dd05d6d01b0861e2201aace2ce36496c7275ff8feaab1063e7884d678b7d",
+        "pilote_p1_c9_i2_20261007T190324_steps.py": "4903f65705e93b2de00e64d236d19af87711abcd10e8490e7c9f9c0d53ca23f1"
+      }
+    },
+    {
+      "cas": "produits_recherche",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.078899,
+      "empreintes": {
+        "pilote_p1_c10_i2_20261007T190711.feature": "9224d47cb1f15511376c4c32d6c9531acc4c622ca4ff880d7c8086ad7c3fb87e",
+        "pilote_p1_c10_i2_20261007T190711_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      }
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.094596,
+      "empreintes": {
+        "pilote_p1_c1_i3_20261007T190924.feature": "801c373036ee39c9cc9bb1114c94eb6b14bdafaa73a98a4bee4f0de6603eeeb1",
+        "pilote_p1_c1_i3_20261007T190924_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.134714,
+      "empreintes": {
+        "pilote_p1_c2_i3_20261007T191238.feature": "14aac896d8bdfbe682b6e497a7fa15369748861f237f1c76baf1dcff7a363416",
+        "pilote_p1_c2_i3_20261007T191238_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.086019,
+      "empreintes": {
+        "pilote_p1_c3_i3_20261007T191545.feature": "a88b1c598b0fdc423b2b2ed4c4f110fe0c16e9df723d74181899e888b0f28dc3",
+        "pilote_p1_c3_i3_20261007T191545_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.111292,
+      "empreintes": {
+        "pilote_p1_c4_i3_20261007T191806.feature": "d0ec2dedf7ae15814e4950047edc5339739c658eabe8c1232c8436504f8f9dd5",
+        "pilote_p1_c4_i3_20261007T191806_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.197183,
+      "empreintes": {
+        "pilote_p1_c5_i3_20261007T192142.feature": "4db41dd541a03145a5f0d82b8289f11aa257c34890ff336a278d6a3f0259b1ba",
+        "pilote_p1_c5_i3_20261007T192142_steps.py": "966f6487264f816cbe845615f8b699236fe58e1fbfd7c03e322ba955b6938db0"
+      }
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.09438,
+      "empreintes": {
+        "pilote_p1_c6_i3_20261007T192455.feature": "92aeccb5f8005abdde7975d4981ef145487859470ed156ea8d6c8ac015c65483",
+        "pilote_p1_c6_i3_20261007T192455_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      }
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.115083,
+      "empreintes": {
+        "pilote_p1_c7_i3_20261007T192858.feature": "5b9b9e031b5341f5ce01b6e5dfa058cfdf162963b3962579f679d3856a9c264e",
+        "pilote_p1_c7_i3_20261007T192858_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      }
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 3,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.089698,
+      "empreintes": {}
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.149258,
+      "empreintes": {
+        "pilote_p1_c9_i3_20261007T193404.feature": "f22bf688f893c34c487967919aee8140d14c2e3afcb440f994e9cbe79828f260",
+        "pilote_p1_c9_i3_20261007T193404_steps.py": "5c33a1bb2030ccf38d41b7b878a66076b0033fb09b1f8ef58ed6d06c93c26fcc"
+      }
+    },
+    {
+      "cas": "produits_recherche",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.054165,
+      "empreintes": {
+        "pilote_p1_c10_i3_20261007T193722.feature": "998df64c780423f40f759d3c499809eeb9efbec5afee8b7711e84ba7dd669f67",
+        "pilote_p1_c10_i3_20261007T193722_steps.py": "30c38c4b9c5be3d1b0ce819404d6dbf1ba5e25904ed075f2800a20aaebe0927e"
+      }
+    }
+  ],
+  "observations": [
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "blocked",
+      "cause": "precondition_non_remplie",
+      "detail": "_base_helpers.PreconditionNonRemplieError: PRÉREQUIS MANQUANT : aucun oracle n'est configuré sur ce projet — déclarez-le dans ses réglages avant d'utiliser un step d'oracle.",
+      "duree": 15.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:52330/clients/nouveau.",
+      "duree": 23.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "blocked",
+      "cause": "precondition_non_remplie",
+      "detail": "_base_helpers.PreconditionNonRemplieError: PRÉREQUIS MANQUANT : aucun oracle n'est configuré sur ce projet — déclarez-le dans ses réglages avant d'utiliser un step d'oracle.",
+      "duree": 15.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:52330/clients/nouveau.",
+      "duree": 23.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:52330/clients/nouveau.",
+      "duree": 23.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 15.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Dupont SARL » n'est pas affiché sur http://127.0.0.1:52330/clients.",
+      "duree": 23.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "broken_test_code",
+      "detail": "AttributeError: 'Context' object has no attribute 'base_url'",
+      "duree": 11.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "broken_test_code",
+      "detail": "AttributeError: 'Context' object has no attribute 'base_url'",
+      "duree": 13.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 56.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Identifiant ou mot de passe incorrect. » n'est pas affiché sur http://127.0.0.1:52330/produits.",
+      "duree": 63.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 10,56 € » n'est pas affiché sur http://127.0.0.1:52330/panier.",
+      "duree": 21.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Bouton 'Ajouter Câble HDMI au panier' : aucun élément actionnable sur http://127.0.0.1:52330/panier",
+      "duree": 51.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Bouton 'Ajouter Câble HDMI au panier' : aucun élément actionnable sur http://127.0.0.1:52330/panier",
+      "duree": 51.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "filtre_ignore",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 2 produits affichés » n'est pas affiché sur http://127.0.0.1:52330/produits?q=souris.",
+      "duree": 20.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "blocked",
+      "cause": "precondition_non_remplie",
+      "detail": "_base_helpers.PreconditionNonRemplieError: PRÉREQUIS MANQUANT : aucun oracle n'est configuré sur ce projet — déclarez-le dans ses réglages avant d'utiliser un step d'oracle.",
+      "duree": 12.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:52330/clients/nouveau.",
+      "duree": 20.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "blocked",
+      "cause": "precondition_non_remplie",
+      "detail": "_base_helpers.PreconditionNonRemplieError: PRÉREQUIS MANQUANT : aucun oracle n'est configuré sur ce projet — déclarez-le dans ses réglages avant d'utiliser un step d'oracle.",
+      "duree": 12.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:52330/clients/nouveau.",
+      "duree": 20.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:52330/clients/nouveau.",
+      "duree": 20.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 14.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Dupont SARL » n'est pas affiché sur http://127.0.0.1:52330/clients.",
+      "duree": 24.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator(\"button[type=\\\"submit\\\"]:has-text(\\\"Ajouter Souris sans fil au panier\\\")\") to be visible",
+      "duree": 20.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "broken_test_code",
+      "detail": "AttributeError: 'Context' object has no attribute 'base_url'",
+      "duree": 12.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "broken_test_code",
+      "detail": "AttributeError: 'Context' object has no attribute 'base_url'",
+      "duree": 11.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 56.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Identifiant ou mot de passe incorrect. » n'est pas affiché sur http://127.0.0.1:52330/produits.",
+      "duree": 68.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 16.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 10,56 € » n'est pas affiché sur http://127.0.0.1:52330/panier.",
+      "duree": 19.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Bouton 'Ajouter Câble HDMI au panier' : aucun élément actionnable sur http://127.0.0.1:52330/panier",
+      "duree": 52.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Bouton 'Ajouter Câble HDMI au panier' : aucun élément actionnable sur http://127.0.0.1:52330/panier",
+      "duree": 52.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "filtre_ignore",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 2 produits affichés » n'est pas affiché sur http://127.0.0.1:52330/produits?q=souris.",
+      "duree": 21.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Champ 'nom' introuvable sur http://127.0.0.1:52330/clients",
+      "duree": 52.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Bouton 'Nouveau client' : aucun élément actionnable sur http://127.0.0.1:52330/produits",
+      "duree": 33.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "blocked",
+      "cause": "precondition_non_remplie",
+      "detail": "_base_helpers.PreconditionNonRemplieError: PRÉREQUIS MANQUANT : aucun oracle n'est configuré sur ce projet — déclarez-le dans ses réglages avant d'utiliser un step d'oracle.",
+      "duree": 15.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:52330/clients/nouveau.",
+      "duree": 23.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:52330/clients/nouveau.",
+      "duree": 23.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 20.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Dupont SARL » n'est pas affiché sur http://127.0.0.1:52330/clients.",
+      "duree": 28.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 46.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "broken_test_code",
+      "detail": "AttributeError: 'Context' object has no attribute 'base_url'",
+      "duree": 9.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "broken_test_code",
+      "detail": "AttributeError: 'Context' object has no attribute 'base_url'",
+      "duree": 10.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 59.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Identifiant ou mot de passe incorrect. » n'est pas affiché sur http://127.0.0.1:52330/produits.",
+      "duree": 64.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Produits » n'est pas affiché sur http://127.0.0.1:52330/connexion.",
+      "duree": 65.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator(\"input[aria-label=\\\"Quantité de Clavier mécanique\\\"]\") to be visible",
+      "duree": 20.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator(\"input[aria-label=\\\"Quantité de Clavier mécanique\\\"]\") to be visible",
+      "duree": 20.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 12.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "filtre_ignore",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Clavier mécanique » est affiché sur http://127.0.0.1:52330/produits?q=souris, alors qu'il ne devrait pas l'être.",
+      "duree": 18.8,
+      "empreinte_ok": true
+    }
+  ],
+  "anomalies": []
+}
