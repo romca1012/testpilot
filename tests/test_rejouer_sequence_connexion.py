@@ -51,7 +51,7 @@ class _FakePage:
         assert exact is True, "rejouer_sequence_connexion doit toujours appeler exact=True"
         return self._resultats.get((role, name), _FakeLocator(existe=False))
 
-    def wait_for_load_state(self, state):
+    def wait_for_load_state(self, state, timeout=None):
         self.attente_reseau_appelee = True
 
     def wait_for_timeout(self, timeout_ms):

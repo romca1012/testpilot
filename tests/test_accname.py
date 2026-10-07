@@ -23,6 +23,7 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import sync_playwright
 
+from testpilot.connectors._web_helpers import localiser_etape
 from testpilot.generation import accname
 
 # Vrai Chromium, aucune application distante — même motif que `test_contexte_navigateur_reel.py`
@@ -69,7 +70,10 @@ def _nom_via_clic(page, html: str, selecteur: str):
     x, y = _centre(page, selecteur)
     resultat = accname.calculer(page, x, y)
     if resultat is not None:
-        trouves = page.get_by_role(resultat["role"], name=resultat["name"], exact=True).count()
+        # `localiser_etape` = EXACTEMENT le localisateur du rejeu (`get_by_role(..., exact=True)` pour
+        # un rôle ARIA, localisateur dédié pour le jeton `summary`, 2026-10-07) : la garde vérifie
+        # toujours « ce qui est capturé est retrouvable par le vrai rejeu ».
+        trouves = localiser_etape(page, resultat["role"], resultat["name"]).count()
         assert trouves >= 1, (
             f"accname.calculer() a rendu rôle={resultat['role']!r} nom={resultat['name']!r}, "
             "introuvable par page.get_by_role au rejeu — cette séquence serait capturée avec "
@@ -393,13 +397,57 @@ def test_title_prime_sur_placeholder_quand_les_deux_existent(page):
     assert _nom_via_clic(page, html, "input")["name"] == "Zone de saisie"
 
 
-def test_summary_n_est_plus_classe_button(page):
-    """Bloquant trouvé en revue verdict-reviewer chantier-entier : Playwright expose `<summary>`
-    avec le rôle `group`, jamais `button` — vérifié avec un vrai Chromium
-    (`aria_snapshot()` -> `- group: …`). Un `<summary>` classé `button` par `accname.py` était
-    capturé « avec succès » mais introuvable par `page.get_by_role('button', ...)` au rejeu.
-    `calculer()` doit donc remonter au-delà du `<summary>` (rôle non interactif pour ce module,
-    comme pour Playwright) jusqu'au prochain ancêtre réellement interactif — ici, aucun : absence
-    propre, jamais un rôle inventé."""
+def test_summary_a_son_propre_jeton_jamais_button(page):
+    """Contrat modifié le 2026-10-07 (demande du porteur : le portail d'intégration Odoo cache son
+    formulaire de connexion derrière un bloc dépliant). Avant, `<summary>` rendait `None` — le clic
+    était ignoré en silence. Ce qui NE change PAS (bloquant de la revue du 2026-09-30) : il n'est
+    jamais classé `button`, que Playwright ne retrouverait pas (il expose `group`). Il porte
+    désormais le jeton `summary`, rejoué par `localiser_etape` — la garde de `_nom_via_clic`
+    prouve qu'il est bien retrouvé."""
     html = '<details><summary>Voir plus</summary><p>Détails</p></details>'
+    resultat = _nom_via_clic(page, html, "summary")
+    assert resultat == {"role": "summary", "name": "Voir plus"}
+    assert resultat["role"] != "button"
+
+
+def test_summary_deux_blocs_homonymes_sont_ambigus(page):
+    html = ('<details><summary>Options</summary>a</details>'
+            '<details><summary>Options</summary>b</details>')
+    page.set_content(html)
+    x, y = _centre(page, "details:first-of-type summary")
+    with pytest.raises(accname.ElementIntrouvableError):
+        accname.calculer(page, x, y)
+
+
+def test_un_bouton_dans_un_summary_l_emporte_sur_le_summary(page):
+    html = '<details><summary><button type="button">Ouvrir</button></summary>x</details>'
+    assert _nom_via_clic(page, html, "button") == {"role": "button", "name": "Ouvrir"}
+
+
+def test_seul_le_premier_summary_d_un_details_est_une_bascule(page):
+    html = '<details open><summary>Premier</summary><summary>Second</summary>x</details>'
+    page.set_content(html)
+    x, y = _centre(page, "summary:nth-of-type(2)")
+    assert accname.calculer(page, x, y) is None
+
+
+def test_un_summary_hors_details_n_est_pas_une_bascule(page):
+    html = '<div><summary>Orphelin</summary></div>'
     assert _nom_via_clic(page, html, "summary") is None
+
+
+def test_le_nom_d_un_summary_est_son_texte_pas_son_aria_label(page):
+    """Revue 2026-10-07 : le rejeu retrouve un `<summary>` par son TEXTE ; un nom d'AccName
+    (`aria-label`) désignerait au rejeu un bloc différent, ou aucun."""
+    html = '<details><summary aria-label="Connexion">Se connecter par SSO</summary>x</details>'
+    assert _nom_via_clic(page, html, "summary") == {"role": "summary", "name": "Se connecter par SSO"}
+
+
+def test_un_summary_cache_n_est_pas_un_homonyme(page):
+    """Un bloc dupliqué en `display:none` (variante mobile) ne doit pas rendre la capture ambiguë :
+    le rejeu ne compte que les blocs visibles."""
+    html = ('<details><summary>Options</summary>a</details>'
+            '<details style="display:none"><summary>Options</summary>b</details>')
+    page.set_content(html)
+    x, y = _centre(page, "details:first-of-type summary")
+    assert accname.calculer(page, x, y) == {"role": "summary", "name": "Options"}

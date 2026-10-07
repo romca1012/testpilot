@@ -48,10 +48,21 @@ class RoleNom(TypedDict):
 # un chemin de connexion : on exclut délibérément les rôles structurels (generic, group, region,
 # presentation, none, document...) qui ne doivent JAMAIS arrêter la remontée — un clic sur un
 # `<div>` de mise en page doit continuer à chercher un ancêtre réellement actionnable.
+#
+# ⚠️ `ROLE_DEPLIANT` n'est PAS un rôle ARIA : c'est un jeton propre à ce projet pour le bascule
+# d'un bloc dépliant natif (`<details><summary>`). Playwright expose `<summary>` en `group` (vérifié
+# avec un vrai Chromium, 2026-09-30) — `get_by_role('group', name=…)` désigne le BLOC entier, pas
+# son bouton de bascule, donc cliquer « le groupe » viserait son centre, souvent un autre endroit.
+# Le rejeu d'une étape `role == ROLE_DEPLIANT` passe par un localisateur dédié (voir
+# `_web_helpers.localiser_etape`), jamais par `get_by_role`. Ajouté le 2026-10-07 : le portail
+# d'intégration Odoo cache son formulaire derrière un tel bloc (« Connexion externe par email ») ;
+# sans cette étape, l'enregistrement ne pouvait jamais rejouer l'ouverture du formulaire.
+ROLE_DEPLIANT = "summary"
+
 _ROLES_INTERACTIFS = frozenset({
     "button", "link", "checkbox", "radio", "textbox", "combobox", "listbox", "option",
     "menuitem", "menuitemcheckbox", "menuitemradio", "tab", "switch", "slider", "spinbutton",
-    "searchbox",
+    "searchbox", ROLE_DEPLIANT,
 })
 
 # Rôle ARIA implicite des éléments HTML natifs les plus courants (table partielle, volontairement
@@ -60,11 +71,18 @@ _ROLES_INTERACTIFS = frozenset({
 _ROLE_IMPLICITE_JS = r"""
 function roleImplicite(el) {
   const tag = el.tagName.toLowerCase();
-  // `summary` retiré (revue verdict-reviewer chantier-entier, 2026-09-30) : vérifié avec un vrai
-  // Chromium (`page.locator(...).aria_snapshot()`), Playwright expose `<summary>` avec le rôle
-  // `group`, jamais `button` — un `<summary>` classé `button` ici aurait été capturé « avec
-  // succès » mais introuvable par `page.get_by_role('button', ...)` au rejeu (sous-lot D), levant
-  // à tort `SequenceConnexionObsoleteError` sur une application qui n'a pourtant pas changé.
+  // `<summary>` n'est JAMAIS classé `button` (revue verdict-reviewer chantier-entier,
+  // 2026-09-30) : vérifié avec un vrai Chromium (`aria_snapshot()`), Playwright l'expose en `group`
+  // — un `<summary>` classé `button` serait capturé « avec succès » mais introuvable par
+  // `get_by_role('button', ...)` au rejeu. Depuis le 2026-10-07 il porte son PROPRE jeton
+  // (`summary`, voir `ROLE_DEPLIANT`), rejoué par un localisateur dédié. Seule la bascule d'un
+  // bloc dépliant natif compte : le PREMIER `<summary>` enfant direct d'un `<details>`.
+  if (tag === 'summary') {
+    const bloc = el.parentElement;
+    if (bloc && bloc.tagName.toLowerCase() === 'details'
+        && bloc.querySelector(':scope > summary') === el) return 'summary';
+    return null;
+  }
   if (tag === 'button') return 'button';
   if (tag === 'a' && el.hasAttribute('href')) return 'link';
   if (tag === 'textarea') return 'textbox';
@@ -177,7 +195,7 @@ def _js_avec_roles(gabarit: str) -> str:
 # `legend`/`caption` ci-dessus — jamais atteignables, donc jamais testés, donc retirés plutôt que
 # laissés en silence.
 _ROLES_NOM_DEPUIS_CONTENU = frozenset({
-    "button", "link", "tab", "menuitem", "option", "switch", "checkbox", "radio",
+    "button", "link", "tab", "menuitem", "option", "switch", "checkbox", "radio", ROLE_DEPLIANT,
 })
 
 _ACCNAME_JS = r"""
@@ -346,10 +364,19 @@ _SCRIPT_COMPLET = r"""
 """ + _js_avec_roles(_RESOUDRE_CIBLE_JS) + _js_accname_sans_roles() + r"""
   const cible = resoudreCible(x, y);
   if (!cible) return null;
-  const nom = calculerNom(cible.element, new Set(), {});
+  // Un `<summary>` (jeton `summary`) est retrouvé au rejeu par son TEXTE VISIBLE exact
+  // (`_web_helpers.localiser_etape`), pas par le nom accessible : `aria-label`, `title`, `alt` ou
+  // descendant masqué feraient diverger capture et rejeu (revue 2026-10-07 — un nom capturé que le
+  // rejeu ne retrouve jamais, ou pire, qui désigne un AUTRE bloc). La capture se règle donc sur le
+  // texte, et les homonymes ne comptent que les blocs VISIBLES (le rejeu filtre aussi sur la
+  // visibilité).
+  const estDepliant = cible.role === 'summary';
+  const nomDe = el => estDepliant ? normaliser(el.textContent) : calculerNom(el, new Set(), {});
+  const nom = nomDe(cible.element);
   const homonymes = tousLesElements(document)
     .filter(el => roleDe(el) === cible.role)
-    .map(el => calculerNom(el, new Set(), {}))
+    .filter(el => !estDepliant || el.getClientRects().length > 0)
+    .map(nomDe)
     .filter(n => n === nom).length;
   return { role: cible.role, name: nom, homonymes };
 }
