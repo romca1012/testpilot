@@ -65,3 +65,29 @@ Port dédié : `18069` (`BANC_PORT`), lié à `127.0.0.1` seulement. Comptes : `
 Le banc a déjà trouvé des limites de la bibliothèque, consignées dans le rapport du lot 04 : `je navigue vers le menu
 Odoo` ouvre `/web#action=menu`, qui n'existe pas sur 17.0 Community ; les steps de lecture `le champ … est égal à`
 échouent sur une facture (`browse().read()` d'odoorpc et sérialisation de la réponse Odoo 17).
+
+## Application web locale à défauts injectables (banc d'agents web, lot Q2-b)
+
+Le banc Odoo ci-dessus ne sert que le connecteur `odoo`. Pour le connecteur `web` générique, `banc/app_web/` est une
+petite boutique en mémoire (connexion, produits + recherche, clients, panier avec TVA 18 % et remise, commandes) dont on
+connaît le comportement SAIN et six défauts activables un par un : `total_faux`, `validation_absente`,
+`message_erreur_absent`, `etat_non_enregistre`, `filtre_ignore`, `login_accepte_tout` (`banc/app_web/defauts.py`).
+But : mesurer si un test GÉNÉRÉ détecte un défaut (faux vert) sans accuser l'application saine (faux rouge).
+
+```bash
+python -m banc.app_web.serveur                          # application saine ; affiche l'URL (port libre, 127.0.0.1)
+python -m banc.app_web.serveur --defauts total_faux     # ou TP_DEFAUTS=total_faux,filtre_ignore
+curl -X POST http://127.0.0.1:<port>/__reset            # état remis à zéro (les défauts restent)
+curl http://127.0.0.1:<port>/__etat                     # vérification INDÉPENDANTE : commandes, panier, enregistrements
+curl -X POST http://127.0.0.1:<port>/__defauts -d '{"defauts": ["filtre_ignore"]}'   # bascule à chaud
+```
+
+- **Loopback uniquement** : tout hôte d'écoute non bouclage est refusé au démarrage ; les routes `/__*` refusent un
+  client ou un en-tête `Host` non bouclage. `/__etat` ne révèle jamais les défauts actifs.
+- Compte de test fixe et jetable, déclaré dans `specs/banc_local/apps.yaml` (jamais un secret réel).
+- Les 10 specs sont dans `specs/banc_local/`, les attendus dans `specs/banc_local/attendus.yaml`.
+- **Règle d'honnêteté des attendus** : `attendus.yaml` est écrit AVANT tout run contre l'application, chaque statut est
+  justifié par la lecture de la spec et de la description du défaut, et il n'est JAMAIS modifié après coup pour faire
+  passer une mesure. Un run qui contredit un attendu est un constat à instruire (le cas généré, le défaut ou le
+  verdict) ; si un défaut n'est détecté par aucune spec, on AJOUTE la spec qui le couvre, on ne retire pas le défaut.
+- Tests de l'application : `python -m pytest -q tests/test_app_banc_web.py` (HTTP réel sur loopback, aucun navigateur).
