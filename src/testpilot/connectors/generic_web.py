@@ -360,8 +360,10 @@ class GenericWebConnector(Connector):
         if self._page is not None:
             return self._page
         from playwright.sync_api import sync_playwright
+
+        from testpilot.connectors.contexte_navigateur import arguments_de_confinement
         self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.launch(headless=self._headless)
+        self._browser = self._playwright.chromium.launch(headless=self._headless, args=arguments_de_confinement())
         page = self._browser.new_context(**self._contexte.kwargs()).new_page()
         page.set_default_timeout(self._timeout_ms)
         page.goto(self._url)

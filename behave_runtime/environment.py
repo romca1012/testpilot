@@ -298,6 +298,12 @@ def contexte_navigateur_fige() -> dict:
             "viewport": {"width": largeur, "height": hauteur}}
 
 
+def _arguments_de_confinement() -> list:
+    """Dupliqué de `testpilot.connectors.contexte_navigateur.arguments_de_confinement` (ce fichier tourne dans le sous-processus
+    Behave, sans dépendre du paquet) : `TP_LOOPBACK_ONLY=1` → un proxy inexistant, donc rien hors du bouclage n'est joignable."""
+    return ["--proxy-server=http://127.0.0.1:9"] if os.environ.get("TP_LOOPBACK_ONLY") == "1" else []
+
+
 @fixture
 def playwright_browser(context):
     """Lance un navigateur Playwright pour le scénario (PLAYWRIGHT_HEADED=1 pour le voir).
@@ -310,7 +316,7 @@ def playwright_browser(context):
 
     headed = os.environ.get("PLAYWRIGHT_HEADED", "0") == "1"
     context._playwright = sync_playwright().start()
-    context.browser = context._playwright.chromium.launch(headless=not headed)
+    context.browser = context._playwright.chromium.launch(headless=not headed, args=_arguments_de_confinement())
     # Lot 07b-2 : la session du compte principal, obtenue UNE fois dans `before_all`, équipe le PREMIER contexte du scénario
     # (jamais les réouvertures du lot 07b-1 : un changement de compte reste un contexte neuf).
     _ouvrir_contexte_navigateur(context, avec_storage_state=True)
@@ -461,7 +467,8 @@ def _tenter_connexion_initiale(context) -> None:
     sequence_connexion = context.sequence_connexion
     login_form = context.login_form
     with sync_playwright() as p:
-        navigateur = p.chromium.launch(headless=os.environ.get("PLAYWRIGHT_HEADED", "0") != "1")
+        navigateur = p.chromium.launch(headless=os.environ.get("PLAYWRIGHT_HEADED", "0") != "1",
+                                       args=_arguments_de_confinement())
         try:
             contexte = navigateur.new_context(storage_state=injection, **contexte_navigateur_fige())
             page = contexte.new_page()

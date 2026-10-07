@@ -168,7 +168,8 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
     contexte_navigateur = depuis_projet(connexion).kwargs()
 
     with sync_playwright() as p:
-        nav = p.chromium.launch()
+        from testpilot.connectors.contexte_navigateur import arguments_de_confinement
+        nav = p.chromium.launch(args=arguments_de_confinement())
         ctx = types.SimpleNamespace(page=nav.new_page(**contexte_navigateur), contexte_navigateur=contexte_navigateur)
         relogin = connector.crawl_relogin_hook()
         relogin(ctx)  # première connexion — la même fonction sert de repli après un crash
