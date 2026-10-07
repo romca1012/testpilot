@@ -388,6 +388,26 @@ class Campagne:
 # ── Plafond de coût, en amont ────────────────────────────────────────────────────────────────────────────
 
 
+def cout_retenu_pour_le_plafond(cout: float | None, cout_max_observe: float, cout_estime: float) -> float:
+    """Ce qu'un essai ajoute au cumul du plafond : son coût, ou le PIRE connu quand il n'est pas consigné.
+
+    Revue Q2-d : un essai dont la génération plante après avoir dépensé (aucun `campagne.json` n'est écrit avant la fin du
+    moteur) n'a pas de coût consigné ; le compter pour 0 laisserait la campagne dépasser le plafond sans jamais s'arrêter.
+    Le rapport, lui, garde « non consigné » (jamais 0).
+    """
+    return max(cout_max_observe, cout_estime) if cout is None else cout
+
+
+def verifier_bornes_de_cout(plafond_usd: float | None, cout_estime_essai: float) -> None:
+    """Un plafond NaN/infini/négatif ou une estimation NaN/négative rendraient l'arrêt en amont inopérant (comparaisons fausses)."""
+    import math
+
+    if plafond_usd is not None and not (math.isfinite(plafond_usd) and plafond_usd >= 0):
+        raise ConfigurationInvalide(f"plafond de coût invalide : {plafond_usd!r} (fini et >= 0 attendu)")
+    if not (math.isfinite(cout_estime_essai) and cout_estime_essai >= 0):
+        raise ConfigurationInvalide(f"coût estimé par essai invalide : {cout_estime_essai!r} (fini et >= 0 attendu)")
+
+
 def raison_d_arret(
     cumul: float, cout_max_observe: float, plafond: float | None, cout_estime: float = 0.0
 ) -> str:
@@ -443,6 +463,7 @@ def executer_campagne(
     """
     if not isinstance(k, int) or isinstance(k, bool) or k < 1:
         raise ConfigurationInvalide(f"k doit être un entier >= 1 (reçu {k!r})")
+    verifier_bornes_de_cout(plafond_usd, cout_estime_essai)
     if reel and plafond_usd is None:
         raise ConfigurationInvalide("plafond de coût OBLIGATOIRE en mode réel : une génération coûte de l'argent")
     specs = list(specs)
@@ -473,12 +494,12 @@ def executer_campagne(
                                       erreur=f"{type(exc).__name__}: {exc}")
                 campagne.anomalies.append(f"{cas} essai {essai} : `generer` a levé {artefacts.erreur}")
             cout_essai = mesurer_cout(artefacts)
+            cumul += cout_retenu_pour_le_plafond(cout_essai, cout_max, cout_estime_essai)
             if cout_essai is not None:
-                cumul += cout_essai
                 cout_max = max(cout_max, cout_essai)
             else:
-                campagne.anomalies.append(f"{cas} essai {essai} : coût de génération non consigné (compté pour 0 dans le "
-                                          "cumul du plafond — le plafond peut être sous-estimé)")
+                campagne.anomalies.append(f"{cas} essai {essai} : coût de génération non consigné (compté au PIRE connu dans "
+                                          "le cumul du plafond, mais « non consigné » dans le rapport — jamais 0)")
             jouable = artefacts.genere_ok and bool(artefacts.fichiers)
             campagne.essais.append(EssaiConsigne(cas, essai, jouable, artefacts.erreur, cout_essai,
                                                  artefacts.empreintes if jouable else {}))
@@ -599,6 +620,9 @@ def calculer_indicateurs(campagne: Campagne, taux_eur_usd: float | None = None) 
         "pass_resultat": {"pass_at_1": stats.pass_at_1(res_par_cas), "pass_at_k": stats.pass_at_k(res_par_cas, k),
                           "pass_hat_k": stats.pass_hat_k(res_par_cas, k)},
         "non_concluants": dict(non_concluants),
+        "part_non_concluants_sous_defaut": (
+            sum(d["non_concluants"] for d in par_defaut.values()) / sum(d["jeux"] for d in par_defaut.values())
+            if par_defaut else 0.0),
         "par_defaut": par_defaut,
         "cout": cout,
         "integrite": {
@@ -619,15 +643,22 @@ def calculer_indicateurs(campagne: Campagne, taux_eur_usd: float | None = None) 
     }
 
 
+# Au-delà de cette part de jeux sous défaut qui ne tranchent pas (technical_error, blocked, indetermine), la porte « faux verts »
+# est jugée non mesurée : « 0 faux vert sur 1 jeu concluant, 29 en erreur » ne prouve rien (revue Q2-d).
+SEUIL_NON_CONCLUANTS = 0.2
+
+
 def code_de_sortie(indicateurs: dict, campagne: Campagne) -> int:
-    """1 faux vert ; 3 campagne incomplète, porte « faux verts » non mesurée ou test joué ≠ test généré ; 0 sinon.
+    """1 faux vert ; 3 campagne incomplète, porte « faux verts » non (assez) mesurée ou test joué non prouvé identique ; 0 sinon.
 
     Le faux vert PRIME : une campagne arrêtée par le plafond qui a déjà vu un faux vert reste un échec (1). Une porte non
     mesurée (aucun jeu concluant sur une variante défectueuse) est 3, jamais 0 : « non mesuré » n'est pas un vert.
     """
     if indicateurs["faux_verts"]["k"] > 0:
         return 1
-    if campagne.interrompue or indicateurs["faux_verts"]["n"] == 0 or indicateurs["integrite"]["divergentes"]:
+    if (campagne.interrompue or indicateurs["faux_verts"]["n"] == 0 or indicateurs["integrite"]["divergentes"]
+            or indicateurs["integrite"]["non_rapportees"]
+            or indicateurs["part_non_concluants_sous_defaut"] > SEUIL_NON_CONCLUANTS):
         return 3
     return 0
 
@@ -929,7 +960,8 @@ class GenerateurReel:
 
     def __init__(self, application, ids_de_cas: Mapping[str, int], project_id: int, url: str, data_dir: Path,
                  cle_secrete: str, reste_usd: Callable[[], float | None], lancer=subprocess.run,
-                 racine: Path = RACINE) -> None:
+                 racine: Path = RACINE, delai_s: int = 1800) -> None:
+        self.delai_s = delai_s
         self.application = application
         self.ids_de_cas = dict(ids_de_cas)
         self.project_id = project_id
@@ -959,7 +991,10 @@ class GenerateurReel:
         campagne_json, arret_json = dossier / "campagne.json", dossier / "arret_plafond.json"
         for reste in (campagne_json, arret_json):  # un résultat périmé ne doit jamais passer pour celui de CE run
             reste.unlink(missing_ok=True)
-        processus = self.lancer(commande, cwd=self.racine, env=env)
+        try:
+            processus = self.lancer(commande, cwd=self.racine, env=env, timeout=self.delai_s)
+        except subprocess.TimeoutExpired as exc:  # un moteur bloqué ne suspend pas la campagne sans limite
+            raise RuntimeError(f"le moteur de génération n'a pas rendu la main en {self.delai_s} s") from exc
         rapports = json.loads(campagne_json.read_text(encoding="utf-8")) if campagne_json.exists() else []
         arret = json.loads(arret_json.read_text(encoding="utf-8")) if arret_json.exists() else None
         if arret and not rapports:
@@ -1076,9 +1111,14 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         exiger_loopback(args.hote)
+        verifier_bornes_de_cout(args.plafond_cout, args.cout_estime_essai)
+        if args.reel and args.plafond_cout <= 0:
+            raise ConfigurationInvalide("plafond de coût nul : aucune génération ne pourrait être lancée")
         configuration, lignes = valider_a_sec(args.essais)
         if args.cas:
-            voulus = [c.strip() for c in args.cas.split(",") if c.strip()]
+            voulus = list(dict.fromkeys(c.strip() for c in args.cas.split(",") if c.strip()))
+            if not voulus:
+                raise ConfigurationInvalide("--cas ne désigne aucun cas")
             inconnus = [c for c in voulus if c not in configuration.specs]
             if inconnus:
                 raise ConfigurationInvalide(f"cas inconnu(s) : {', '.join(inconnus)}")
@@ -1086,7 +1126,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Configuration INVALIDE : {erreur}", file=sys.stderr)
         return 2
     taux = _lire_taux_eur_usd()
-    cas_joues = [c.strip() for c in args.cas.split(",")] if args.cas else list(configuration.specs)
+    cas_joues = voulus if args.cas else list(configuration.specs)
     budget = estimer_budget(len(cas_joues), args.essais, args.cout_estime_essai, taux)
     print("\n".join(lignes))
     if not args.reel:
@@ -1120,12 +1160,13 @@ def _lancer_reel(args, configuration: Configuration, cas_joues: list[str], taux:
     with ApplicationLocale(args.hote) as application:
         application.reinitialiser([])
         project_id, ids = preparer_projet_web(application.url, compte, specs, data_dir, cle)
-        cumul = {"usd": 0.0}
-        reste = (lambda: None if args.plafond_cout is None else args.plafond_cout - cumul["usd"])
+        suivi = {"usd": 0.0, "max": 0.0}
+        reste = (lambda: None if args.plafond_cout is None else args.plafond_cout - suivi["usd"])
 
         def cout(artefacts: Artefacts) -> float | None:
-            if artefacts.cout_usd is not None:
-                cumul["usd"] += artefacts.cout_usd
+            # Même règle que l'orchestrateur : un coût non consigné est compté au pire pour le reste transmis au moteur.
+            suivi["usd"] += cout_retenu_pour_le_plafond(artefacts.cout_usd, suivi["max"], args.cout_estime_essai)
+            suivi["max"] = max(suivi["max"], artefacts.cout_usd or 0.0)
             return artefacts.cout_usd
 
         generer = GenerateurReel(application, ids, project_id, application.url, data_dir, cle, reste)

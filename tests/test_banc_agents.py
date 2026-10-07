@@ -907,3 +907,104 @@ def test_application_locale_refuse_un_hote_non_loopback():
 def test_application_locale_non_demarree_n_a_pas_d_url():
     with pytest.raises(RuntimeError, match="non démarrée"):
         _ = ba.ApplicationLocale("127.0.0.1").url
+
+
+# ── Revue verdict-reviewer : plafond non contournable, code de sortie, bornes ────────────────────────────
+
+
+def test_falsifiable_des_generations_qui_plantent_comptent_au_pire_pour_le_plafond():
+    """Avant correction : un essai dont `generer` lève avait un coût None compté pour 0 ; avec un moteur qui plante après avoir
+    dépensé, le plafond n'arrêtait jamais la campagne (4,5 $ dépensés pour un plafond de 1 $)."""
+    appels = []
+
+    def generer(cas, essai):
+        appels.append((cas, essai))
+        raise RuntimeError("le moteur a planté après la génération")
+
+    camp = ba.executer_campagne(SPECS, ATTENDUS, 3, generer, Monde().jouer, defauts_connus=DEFAUTS,
+                                plafond_usd=0.25, cout_estime_essai=0.10)
+
+    assert len(appels) == 2  # 2 × 0,10 $ comptés au pire ; le 3e dépasserait 0,25 $
+    assert "plafond de coût" in camp.interrompue
+    assert all(e.cout_usd is None for e in camp.essais)  # le rapport garde « non consigné », jamais 0
+    assert ba.calculer_indicateurs(camp)["cout"]["par_generation_usd"] is None
+
+
+def test_cout_retenu_pour_le_plafond():
+    assert ba.cout_retenu_pour_le_plafond(0.07, 0.2, 0.1) == 0.07
+    assert ba.cout_retenu_pour_le_plafond(None, 0.2, 0.1) == 0.2
+    assert ba.cout_retenu_pour_le_plafond(None, 0.0, 0.1) == 0.1
+
+
+@pytest.mark.parametrize("plafond", [float("nan"), float("inf"), -1.0])
+def test_un_plafond_invalide_est_refuse_il_desactiverait_l_arret(plafond):
+    monde = Monde()
+    with pytest.raises(ba.ConfigurationInvalide, match="plafond de coût invalide"):
+        campagne(monde, plafond_usd=plafond)
+    assert monde.appels_generer == []
+
+
+@pytest.mark.parametrize("estime", [float("nan"), -0.1])
+def test_une_estimation_invalide_est_refusee(estime):
+    with pytest.raises(ba.ConfigurationInvalide, match="coût estimé"):
+        campagne(Monde(), plafond_usd=1.0, cout_estime_essai=estime)
+
+
+def test_la_ligne_de_commande_refuse_un_plafond_nan_nul_ou_une_estimation_negative(monkeypatch):
+    _interdire_le_reel(monkeypatch)
+    assert ba.main(["--reel", "--plafond-cout", "nan"]) == 2
+    assert ba.main(["--reel", "--plafond-cout", "0"]) == 2
+    assert ba.main(["--a-sec", "--cout-estime-essai", "-1"]) == 2
+
+
+def test_beaucoup_de_non_concluants_sous_defaut_ne_donnent_pas_un_vert():
+    """1 jeu concluant sans faux vert + un jeu en erreur sous défaut : n'est PAS « rien à signaler »."""
+    camp = campagne(Monde({("a", "total_faux", 1): "technical_error"}))  # 1 des 2 jeux sous défaut = 50 % > seuil
+    ind = ba.calculer_indicateurs(camp)
+
+    assert ind["faux_verts"]["k"] == 0 and ind["faux_verts"]["n"] == 1
+    assert ind["part_non_concluants_sous_defaut"] == 0.5
+    assert ba.code_de_sortie(ind, camp) == 3
+
+
+def test_peu_de_non_concluants_restent_sous_le_seuil():
+    camp = campagne(Monde({("a", "total_faux", 1): "technical_error"}), k=5)  # 1 jeu sur 10 sous défaut = 10 %
+    ind = ba.calculer_indicateurs(camp)
+
+    assert ind["part_non_concluants_sous_defaut"] == pytest.approx(0.1)
+    assert ind["part_non_concluants_sous_defaut"] <= ba.SEUIL_NON_CONCLUANTS
+    assert ba.code_de_sortie(ind, camp) == 0  # toujours rapporté, mais la porte est mesurée
+
+
+def test_des_empreintes_non_rapportees_ne_donnent_pas_un_vert():
+    class Muet(Monde):
+        def jouer(self, artefacts, variante):
+            return ba.Jeu(verdict="conforme" if variante == "saine" else "non_conforme")
+
+    camp = campagne(Muet())
+    assert ba.code_de_sortie(ba.calculer_indicateurs(camp), camp) == 3  # « même test partout » non prouvé
+
+
+def test_cas_vide_ou_en_double_en_mise_au_point(monkeypatch):
+    _interdire_le_reel(monkeypatch)
+    assert ba.main(["--a-sec", "--cas", " , ,"]) == 2
+    vu = {}
+
+    def lancer(args, conf, cas, taux):
+        vu["cas"] = cas
+        return 0
+
+    monkeypatch.setattr(ba, "_lancer_reel", lancer)
+    ba.main(["--reel", "--plafond-cout", "5", "--cas", "connexion_valide,,connexion_valide"])
+    assert vu["cas"] == ["connexion_valide"]
+
+
+def test_un_moteur_bloque_ne_suspend_pas_la_campagne_sans_limite(tmp_path):
+    def lancer(commande, **kw):
+        assert kw["timeout"] == 42
+        raise ba.subprocess.TimeoutExpired(commande, 42)
+
+    generateur = ba.GenerateurReel(AppDouble(), {"a": 7}, 3, "http://127.0.0.1:1", tmp_path, "cle", lambda: None,
+                                   lancer=lancer, racine=tmp_path, delai_s=42)
+    with pytest.raises(RuntimeError, match="n'a pas rendu la main"):
+        generateur("a", 1)
