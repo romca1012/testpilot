@@ -43,8 +43,8 @@ tant que Q1 n'est pas fusionné.
 
 | ID | Question | Proposition | Lot | Statut |
 |---|---|---|---|---|
-| D16 | Un scénario vert où **un `Alors` assertif ne consigne aucun constat réussi** (alors qu'un autre en a consigné) peut-il rester `conforme` ? | **Non** : `indetermine`, cause existante `aucun_constat` (aucune nouvelle valeur d'enum), message qui nomme l'`Alors`. Prolonge D3 (« un vert sans constat n'est jamais conforme ») du scénario à chaque `Alors`. Un step déclaré **non assertif** (D17) est exempté | Q1 | ☐ à confirmer par le porteur — **instruction du 2026-10-07 : « commence par l'étape 1 »** après lecture des recommandations ; confirmation explicite requise avant fusion |
-| D17 | Un step `@then` partagé qui ne peut constater (attente, navigation) compte-t-il comme assertion ? | **Non** : il est marqué `@non_assertif` ; `write_test_plan` ne le compte pas ; le runtime l'exempte de D16. Un test d'accord vérifie que l'ensemble des steps `@then` sans constat (AST) est EXACTEMENT l'ensemble des steps marqués | Q1 | ☐ à confirmer (idem D16) |
+| D16 | Un scénario vert où **un `Alors` assertif ne consigne aucun constat réussi** (alors qu'un autre en a consigné) peut-il rester `conforme` ? | **Non** : `indetermine`, cause DÉDIÉE `alors_sans_constat` (libellé « Un résultat attendu n'a rien vérifié » ; `cause_category` est un texte en base, aucune migration) — la cause `aucun_constat` (« aucune vérification exécutée ») serait fausse quand un autre `Alors` a constaté (revue du 2026-10-07). Le compteur ne compte que les constats RÉUSSIS ; si le contrôle est impossible, une ligne `controle_impossible` est consignée et le verdict reste prudent. Prolonge D3 (« un vert sans constat n'est jamais conforme ») du scénario à chaque `Alors`. Un step déclaré **non assertif** (D17) est exempté | Q1 | ☐ à confirmer par le porteur — **instruction du 2026-10-07 : « commence par l'étape 1 »** après lecture des recommandations ; confirmation explicite requise avant fusion |
+| D17 | Un step `@then` partagé qui ne peut constater (attente, navigation) compte-t-il comme assertion ? | **Non** : il est marqué `@non_assertif` ; `write_test_plan` ne le compte pas ; le runtime l'exempte de D16 **seulement s'il vient du socle** (jamais du fichier de steps généré, désigné au sous-processus par `TP_GENERATED_STEPS_FILE` : garantie structurelle) ; `write_steps_file` refuse en plus toute référence au mécanisme (`MECANISME_RESERVE`). Un test d'accord vérifie que l'ensemble des steps `@then` sans constat (AST) est EXACTEMENT l'ensemble des steps marqués | Q1 | ☐ à confirmer (idem D16) |
 | D19 | Une tolérance numérique par défaut (repli de 0,01 sans devise) peut-elle rester implicite ? | **Non** : la tolérance appliquée et sa source (explicite / devise / repli) figurent dans le message du constat | Q1 | ☐ à confirmer — **à instruire d'abord** (voir §5) |
 | D18-D22 | Banc, outils, atelier de calcul | à rédiger au démarrage de chaque lot | Q2-Q5 | ☐ |
 
@@ -76,5 +76,5 @@ Critères d'acceptation :
 
 | Lot | Statut | Date | Rapport |
 |---|---|---|---|
-| Q1 | en cours | 2026-10-07 | |
+| Q1 | code et tests terminés, revue indépendante faite et ses points corrigés ; suite complète à relancer ; **D16/D17/D19 à confirmer avant fusion** | 2026-10-07 | |
 | Q2-Q5 | à faire | | |

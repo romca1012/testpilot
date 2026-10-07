@@ -11,6 +11,7 @@ describe('status mapping — deux axes distincts + vocabulaire utilisateur', () 
     expect(causeLabel('erreur_serveur_5xx')).toBe('Erreur interne du serveur (HTTP 5xx)')
     expect(causeLabel('refus_non_explique')).toBe('Refus non expliqué (à instruire)')
     expect(causeLabel('aucun_constat')).toBe('Aucune vérification exécutée')
+    expect(causeLabel('alors_sans_constat')).toBe("Un résultat attendu n'a rien vérifié")
     // Une cause inconnue du front reste lisible : jamais un identifiant brut à l'écran.
     expect(causeLabel('une_cause_future')).toBe('Cause à instruire')
     expect(causeLabel(null)).toBe('Cause à instruire')
