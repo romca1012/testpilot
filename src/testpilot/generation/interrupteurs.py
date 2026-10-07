@@ -1,0 +1,44 @@
+"""Interrupteurs d'environnement du chantier « qualité des agents » (lot Q3-a).
+
+⚠️ **Pourquoi des interrupteurs.** Tout ce qui change ce que l'API Anthropic REÇOIT (définitions
+d'outils, prompt système) change le comportement de l'agent, donc doit pouvoir être MESURÉ avant
+d'être activé (docs/SOURCES-DE-REFERENCE-AGENTS.md §4.3, banc du lot Q2). Chaque interrupteur est :
+
+- **désactivé par défaut** : sans variable, ce que l'API reçoit est strictement identique, octet
+  pour octet, à ce qui était envoyé avant Q3-a (garde : `tests/test_tools_strict_q3a.py`) ;
+- **lu à chaque appel** (jamais figé à l'import) : un banc peut comparer deux configurations dans
+  le même processus, un test peut le basculer sans recharger de module.
+
+Module PUR : aucune I/O hors lecture de `os.environ`.
+"""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Mapping
+
+ENV_TOOLS_STRICT = "TESTPILOT_TOOLS_STRICT"
+ENV_PROMPT_HYPOTHESES = "TESTPILOT_PROMPT_HYPOTHESES"
+ENV_TOOLS_DESCRIPTIONS_V2 = "TESTPILOT_TOOLS_DESCRIPTIONS_V2"
+
+_VRAI = frozenset({"1", "true", "yes", "oui", "on"})
+
+
+def _actif(nom: str, env: Mapping[str, str] | None) -> bool:
+    source = os.environ if env is None else env
+    return str(source.get(nom, "")).strip().lower() in _VRAI
+
+
+def tools_strict_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Mode strict de l'API (`strict: true`) sur les outils critiques + `input_examples`."""
+    return _actif(ENV_TOOLS_STRICT, env)
+
+
+def prompt_hypotheses_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Phrase du PILIER 4 qui demande `hypotheses_non_verifiees` — et exposition du champ à l'API."""
+    return _actif(ENV_PROMPT_HYPOTHESES, env)
+
+
+def descriptions_v2_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Descriptions d'outils réécrites au standard Anthropic (quoi, quand, quand non, limites)."""
+    return _actif(ENV_TOOLS_DESCRIPTIONS_V2, env)
