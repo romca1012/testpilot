@@ -12,7 +12,8 @@ import logging
 
 from testpilot.execution.behave_result import meaningful_error
 from testpilot.generation.state import AgentState
-from testpilot.generation.tools import TOOLS_DEFINITIONS, ToolContext, dispatch
+from testpilot.generation.tools import ToolContext, dispatch
+from testpilot.generation.tools.api_definitions import tools_for_api
 from testpilot.guardrails.cost_tracker import CostLimitExceeded
 
 logger = logging.getLogger(__name__)
@@ -95,13 +96,17 @@ def run_loop(*, llm, system_prompt: str, state: AgentState, ctx: ToolContext,
              dry_runner, cost_tracker, max_iterations: int, stall_limit: int,
              model: str = "") -> AgentState:
     """Exécute la boucle jusqu'à un dry-run vert ou l'activation d'un garde-fou."""
+    # Q3-a : les outils sont calculés UNE fois par run (jamais par tour : un préfixe d'outils qui
+    # changerait en cours de route invaliderait le cache de prompt). Interrupteurs éteints, c'est
+    # exactement l'ancienne liste `TOOLS_DEFINITIONS`.
+    tools = tools_for_api()
     for i in range(max_iterations):
         state.iterations = i + 1
         try:
             resp, raw = llm.call_with_tools(
                 system_prompt=system_prompt,
                 messages=state.messages,
-                tools=TOOLS_DEFINITIONS,
+                tools=tools,
                 cost_tracker=cost_tracker,
                 **({"model": model} if model else {}),
             )

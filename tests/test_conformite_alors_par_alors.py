@@ -79,7 +79,7 @@ def test_deux_alors_dont_un_ne_constate_rien_ne_donnent_pas_conforme():
     assert scenario.status == "passed", "Behave le juge vert…"
     assert scenario.constats_reussis == 1, "…et un constat a bien réussi (c'est l'ancien critère)"
     assert (verdict.execution_status, verdict.functional_status) == (st.EXEC_SUCCESS, st.FUNC_INDETERMINE)
-    assert verdict.scenarios[0].cause_category == "aucun_constat"
+    assert verdict.scenarios[0].cause_category == "alors_sans_constat"
     assert "branche non prise" in verdict.scenarios[0].step_text  # l'Alors fautif est NOMMÉ (trace)
 
 

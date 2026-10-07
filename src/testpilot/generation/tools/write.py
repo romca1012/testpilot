@@ -158,6 +158,35 @@ def _forbidden_source_kwarg(tree: ast.AST) -> str:
     return ""
 
 
+# Q1 (revue du 2026-10-07) : noms du MÉCANISME de preuve, réservés au socle. Un step généré qui s'en servirait
+# pourrait se déclarer « non assertif » ou fausser le compteur pour masquer un `Alors` vide. Le refus est un message
+# PRÉCOCE ; la garantie est STRUCTURELLE (`environment._est_exempte_non_assertive` n'exempte jamais une fonction du
+# fichier généré) — même doctrine que `source=` (lot 07e) : un garde par forme de code ne ferme jamais la classe.
+_RESERVES_AU_SOCLE = frozenset({
+    "non_assertif", "_tp_non_assertif", "_COMPTEUR_CONSTATS", "nombre_de_constats_reussis",
+    "consigner_alors_sans_constat", "_consigner_constat", "_SOURCE_CONSTAT", "_source_du_constat",
+    "definir_etat_constat", "TP_GENERATED_STEPS_FILE",
+})
+
+
+def _forbidden_reserve_au_socle(tree: ast.AST) -> str:
+    """Décrit la première référence à un nom du mécanisme de preuve (`Name`, `Attribute`, import, ou chaîne
+    littérale type `setattr(f, "_tp_non_assertif", True)`), sinon chaîne vide."""
+    for node in ast.walk(tree):
+        nom = ""
+        if isinstance(node, ast.Name):
+            nom = node.id
+        elif isinstance(node, ast.Attribute):
+            nom = node.attr
+        elif isinstance(node, ast.alias):
+            nom = node.name
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            nom = node.value
+        if nom in _RESERVES_AU_SOCLE:
+            return f"« {nom} » (mécanisme de preuve réservé à la bibliothèque)"
+    return ""
+
+
 def _decorateurs(func) -> set[str]:
     noms = set()
     for deco in func.decorator_list:
@@ -338,6 +367,16 @@ def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
             "un recoupement contre l'oracle backend — utilise les steps du catalogue "
             "(« l'oracle \"<nom>\" renvoie <n> résultat(s) », « le champ \"<chemin>\" de l'oracle "
             "\"<nom>\" vaut \"<valeur>\" ») ; `constater(...)` s'appelle sans `source=`.",
+            ok=False,
+        )
+
+    # 3quater. Aucune référence au mécanisme de preuve réservé au socle (Q1) : BLOQUANT, comme `source=`.
+    reserve = _forbidden_reserve_au_socle(tree)
+    if reserve:
+        return _outcome(
+            f"[write_steps_file] MECANISME_RESERVE : {reserve}. Un step ne déclare pas lui-même qu'il est "
+            "« non assertif » et ne touche pas au compteur de constats : écris `constater(condition, "
+            "\"message\")` dans un `@then`, ou utilise un step du catalogue.",
             ok=False,
         )
 

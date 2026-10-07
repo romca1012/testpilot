@@ -349,6 +349,9 @@ def read_selector_tiers(path, limit: int = _MAX_SELECTOR_TIERS) -> list[dict]:
 # du côté PRUDENT (constats non comptés → `indetermine`), jamais du côté `conforme`.
 CONSTATS_FILE_ENV = "TP_CONSTATS_FILE"
 CONSTATS_FILENAME = "constats.jsonl"
+# Q1 : nom du fichier de steps GÉNÉRÉ, désigné au sous-processus (voir `behave_runner._subprocess_env`). Dupliqué
+# côté `environment.py`, même raison que les autres noms de sidecar, même test d'accord.
+GENERATED_STEPS_FILE_ENV = "TP_GENERATED_STEPS_FILE"
 
 # Lot 05 (D5) : campagne STRICTE (aucune résolution adaptative). Nom dupliqué côté `_base_helpers`, même test d'accord.
 # `PALIER_ADAPTATIF` : la valeur de `tier` qu'y écrit une résolution adaptative RÉUSSIE (lue par `verdict/status.py`).

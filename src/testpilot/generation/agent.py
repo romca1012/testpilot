@@ -116,7 +116,11 @@ class GenerationAgent:
         else:
             state.messages[0]['content'][0]['text'] += requirements_message
         system_prompt = prompt_mod.build_system_prompt(self.connector, shared_steps, connector_version)
-        from testpilot.generation.tools import TOOLS_DEFINITIONS
+        # Q3-a : l'empreinte porte sur ce que l'API REÇOIT (interrupteurs compris), pas sur le schéma
+        # local complet — sinon deux runs aux outils différents auraient la même provenance. Les
+        # interrupteurs éteints, c'est l'empreinte d'avant (même contenu).
+        from testpilot.generation.tools.api_definitions import tools_for_api
+        outils_envoyes = tools_for_api()
         input_sha256 = fingerprint(state.messages[0])
         run_loop(
             llm=self.llm,
@@ -133,7 +137,7 @@ class GenerationAgent:
         result.technical_plan = ctx.technical_plan
         result.generation_provenance = {
             'model': config.MODEL_GENERATION, 'system_prompt_sha256': fingerprint(system_prompt),
-            'input_sha256': input_sha256, 'tools_sha256': fingerprint(TOOLS_DEFINITIONS),
+            'input_sha256': input_sha256, 'tools_sha256': fingerprint(outils_envoyes),
             'requirements_sha256': fingerprint(ctx.requirements),
             'domain_sha256': fingerprint(modele), 'target_sha256': ctx.target_sha256,
             'calibration_attempts': ctx.calibration_attempts, 'qualification': qualification,
