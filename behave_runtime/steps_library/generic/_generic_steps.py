@@ -19,6 +19,7 @@ from _base_helpers import (
     wait_form_submission, remplir_formulaire_valide,
     select_product_in_list, select_product_partial, NavigationImpossibleError,
     connexion_web_utilisateur,
+    non_assertif,
     # Vocabulaire universel (lot 07d) — imports au NIVEAU MODULE, jamais différés (`steps/` sort du sys.path après le chargement).
     ouvrir_page, page_affiche_texte, page_n_affiche_pas_texte, url_contient, tableau_contient_ligne,
     tableau_compte_lignes, cliquer_dans_ligne, decider_dialogue, telecharger_via, fichier_telecharge_se_nomme,
@@ -115,6 +116,7 @@ def step_leave_empty(context, field):
 
 @when("j'attends la soumission du formulaire")
 @then("j'attends la soumission du formulaire")
+@non_assertif
 def step_wait_form(context):
     wait_form_submission(context.page)
 

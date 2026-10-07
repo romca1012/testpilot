@@ -101,6 +101,27 @@ def _record_field_fallback(message: str) -> None:
 CONSTATS_FILE_ENV = "TP_CONSTATS_FILE"
 _ETAT_CONSTAT = {"scenario": "", "step_type": ""}
 
+# Q1 (D16) : nombre de constats consignés depuis le début du processus (réussis OU échoués), incrémenté
+# même sans sidecar — `environment.after_step` compare sa valeur avant/après CHAQUE step `Alors` pour
+# savoir si CE step a constaté quelque chose (un `Alors` assertif passé sans constat n'a rien prouvé).
+_COMPTEUR_CONSTATS = {"n": 0}
+
+
+def nombre_de_constats() -> int:
+    return _COMPTEUR_CONSTATS["n"]
+
+
+def non_assertif(fonction):
+    """Déclare qu'un step `@then`/`@step` est une ATTENTE ou une navigation, pas une assertion
+    (Q1, D17) : il ne consigne aucun constat par construction, ne compte pas comme preuve et n'est
+    pas jugé « Alors vide ». À poser SOUS le décorateur Behave (`@then(...)` puis `@non_assertif`).
+
+    Verrouillé par `tests/test_alors_non_assertifs.py` : l'ensemble des steps `@then` qui ne
+    peuvent constater (lu par AST) doit être EXACTEMENT l'ensemble des steps marqués ici — ni un
+    `@then` sans constat non déclaré, ni une déclaration sur un step qui constate."""
+    fonction._tp_non_assertif = True
+    return fonction
+
 
 def definir_etat_constat(scenario=None, step_type=None) -> None:
     """Pose le scénario et/ou le type de step COURANTS (appelé par les hooks de `environment.py`)."""
@@ -142,11 +163,31 @@ def _consigner_constat(ok: bool) -> None:
     Un échec d'écriture est silencieux ET va dans le sens PRUDENT : un constat non consigné ne
     compte pas, donc le scénario retombe en `indetermine`, jamais en `conforme`.
     """
+    _COMPTEUR_CONSTATS["n"] += 1
     chemin = os.environ.get(CONSTATS_FILE_ENV)
     if not chemin:
         return
     ligne = json.dumps({"scenario": _ETAT_CONSTAT["scenario"], "step_type": _ETAT_CONSTAT["step_type"],
                         "ok": bool(ok), "source": _SOURCE_CONSTAT["valeur"]}, ensure_ascii=False)
+    try:
+        with open(chemin, "a", encoding="utf-8") as handle:
+            handle.write(ligne + "\n")
+    except OSError:
+        pass
+
+
+def consigner_alors_sans_constat(texte_du_step: str) -> None:
+    """Q1 (D16) : un step `Alors` assertif est PASSÉ sans consigner le moindre constat — il n'a donc
+    rien prouvé (assertion dans une branche non prise, helper qui rend la main sans vérifier…).
+    Écrit une ligne `sans_constat` dans le sidecar ; `verdict/status.py` en fait un `indetermine`
+    (cause `aucun_constat`) au lieu de laisser un AUTRE constat réussi couvrir ce vide. Même
+    prudence que `_consigner_constat` : un échec d'écriture ne peut que faire manquer un constat,
+    donc ne jamais produire un `conforme` de plus."""
+    chemin = os.environ.get(CONSTATS_FILE_ENV)
+    if not chemin:
+        return
+    ligne = json.dumps({"scenario": _ETAT_CONSTAT["scenario"], "step_type": "then", "ok": None,
+                        "sans_constat": True, "step": texte_du_step}, ensure_ascii=False)
     try:
         with open(chemin, "a", encoding="utf-8") as handle:
             handle.write(ligne + "\n")
