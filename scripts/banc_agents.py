@@ -74,7 +74,7 @@ HOTES_LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
 # observé = aucun maximum connu). Source : `docs/mesures/banc-*-generation*.json`, I6 = 0,100 à 0,124 $ par cas sur 7
 # campagnes ODOO (15 cas chacune). AUCUNE mesure sur le connecteur web : 0,15 $ est une borne prudente, pas une mesure,
 # et le rapport le dit. Le coût réel remplace cette valeur dès le premier essai (on retient le plus cher observé).
-COUT_ESTIME_ESSAI_USD = 0.15
+COUT_ESTIME_ESSAI_USD = 0.13  # mesuré 0,116 $ par génération (campagne base-1, 2026-10-07) + marge
 
 
 class ConfigurationInvalide(ValueError):
@@ -207,9 +207,24 @@ def variantes_de(cas: str, attendus: Iterable[Attendu]) -> list[str]:
 
 
 def charger_yaml(chemin: Path) -> dict:
+    """YAML sûr, SANS clé dupliquée : PyYAML garde silencieusement la dernière, ce qui changerait un attendu sans trace."""
     import yaml
 
-    return yaml.safe_load(Path(chemin).read_text(encoding="utf-8")) or {}
+    class _SansDoublon(yaml.SafeLoader):
+        pass
+
+    def _mapping(chargeur, noeud, deep=False):
+        vues: set = set()
+        for cle_noeud, _ in noeud.value:
+            cle = chargeur.construct_object(cle_noeud, deep=deep)
+            if cle in vues:
+                raise ConfigurationInvalide(
+                    f"{Path(chemin).name} : la clé « {cle} » est écrite deux fois (ligne {cle_noeud.start_mark.line + 1})")
+            vues.add(cle)
+        return yaml.SafeLoader.construct_mapping(chargeur, noeud, deep=deep)
+
+    _SansDoublon.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _mapping)
+    return yaml.load(Path(chemin).read_text(encoding="utf-8"), Loader=_SansDoublon) or {}
 
 
 def charger_specs(dossier: Path = SPECS) -> dict[str, dict]:
@@ -584,13 +599,19 @@ def calculer_indicateurs(campagne: Campagne, taux_eur_usd: float | None = None) 
     res_par_cas = _essais_par_cas(campagne, _reussi_resultat)
 
     non_concluants = Counter(o.obtenu for o in campagne.observations if o.obtenu in stats.VERDICTS_NON_CONCLUANTS)
+    saines_conformes = {(o.cas, o.essai) for o in campagne.observations
+                        if o.variante == VARIANTE_SAINE and o.obtenu == "conforme"}
     par_defaut: dict[str, dict] = {}
     for code in sorted({o.variante for o in campagne.observations if o.variante != VARIANTE_SAINE}):
         obs = [o for o in campagne.observations if o.variante == code]
         concluantes = [o for o in obs if o.obtenu in stats.VERDICTS_CONCLUANTS]
         detectes = sum(1 for o in concluantes if o.obtenu == "non_conforme")
+        # Un test cassé échoue AUSSI sous défaut : ce n'est pas une détection. Fiable = la saine du MÊME essai est conforme.
+        detectes_fiables = sum(1 for o in concluantes if o.obtenu == "non_conforme" and (o.cas, o.essai) in saines_conformes)
         par_defaut[code] = {
             "jeux": len(obs), "concluants": len(concluantes), "detectes": detectes,
+            "detectes_fiables": detectes_fiables,
+            "ic95_detection_fiable": stats.intervalle_wilson(detectes_fiables, len(concluantes)),
             "faux_verts": sum(1 for o in concluantes if o.obtenu == "conforme"),
             "non_concluants": len(obs) - len(concluantes),
             "ic95_detection": stats.intervalle_wilson(detectes, len(concluantes)),
@@ -714,13 +735,14 @@ def rendre_markdown(campagne: Campagne, indicateurs: dict, contexte: dict) -> st
         lignes += ["| Verdict | Jeux |", "|---|---|"] + [f"| {v} | {n} |" for v, n in sorted(i["non_concluants"].items())] + [""]
     else:
         lignes += ["Aucun jeu non concluant.", ""]
-    lignes += ["## Détection par défaut", "", "| Défaut | Jeux | Concluants | Détectés (non_conforme) | Faux verts | Non concluants |",
-               "|---|---|---|---|---|---|"]
+    lignes += ["## Détection par défaut", "", "| Défaut | Jeux | Concluants | Détectés (non_conforme) | dont fiables (saine du même essai conforme) | Faux verts | Non concluants |",
+               "|---|---|---|---|---|---|---|"]
     for code, d in i["par_defaut"].items():
         lignes.append(f"| `{code}` | {d['jeux']} | {d['concluants']} | "
-                      f"{stats.formater_taux(d['detectes'], d['concluants'])} | {d['faux_verts']} | {d['non_concluants']} |")
+                      f"{stats.formater_taux(d['detectes'], d['concluants'])} | "
+                      f"{stats.formater_taux(d['detectes_fiables'], d['concluants'])} | {d['faux_verts']} | {d['non_concluants']} |")
     if not i["par_defaut"]:
-        lignes.append("| (aucun jeu sur un défaut) | 0 | 0 | non mesuré | 0 | 0 |")
+        lignes.append("| (aucun jeu sur un défaut) | 0 | 0 | non mesuré | non mesuré | 0 | 0 |")
     c = i["cout"]
     lignes += ["", "## Coût", "",
                f"Total : **{c['total_usd']:.3f} $**"

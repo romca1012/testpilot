@@ -113,6 +113,28 @@ def test_un_faux_rouge_est_compte_sur_la_saine_sans_faire_sortir_en_1():
     assert any(e["variante"] == "saine" and e["obtenu"] == "non_conforme" for e in ind["ecarts"])
 
 
+def test_un_test_casse_qui_echoue_partout_n_est_pas_une_detection_fiable():
+    """Falsifiable : un test cassé (faux rouge sur la saine) échoue AUSSI sous défaut ; le compter comme détection ferait
+    croire que l'agent a trouvé le défaut. La détection fiable exige la saine du MÊME essai conforme."""
+    monde = Monde({("a", "saine", 1): "non_conforme"})  # a est cassé : non_conforme partout ; b est parfait
+    ind = ba.calculer_indicateurs(campagne(monde))
+    d_a, d_b = ind["par_defaut"]["total_faux"], ind["par_defaut"]["filtre_ignore"]
+
+    assert d_a["detectes"] == 1 and d_a["detectes_fiables"] == 0
+    assert d_b["detectes"] == 1 and d_b["detectes_fiables"] == 1
+
+
+def test_une_cle_dupliquee_dans_un_yaml_est_refusee(tmp_path):
+    """Falsifiable : PyYAML garde la DERNIÈRE valeur sans rien dire — un attendu changerait sans trace."""
+    f = tmp_path / "attendus.yaml"
+    f.write_text("\n".join(["saine:", "  a: conforme", "  a: failed", ""]), encoding="utf-8")
+
+    with pytest.raises(ba.ConfigurationInvalide, match="deux fois"):
+        ba.charger_yaml(f)
+    f.write_text("\n".join(["saine:", "  a: conforme", "  b: conforme", ""]), encoding="utf-8")
+    assert ba.charger_yaml(f) == {"saine": {"a": "conforme", "b": "conforme"}}
+
+
 def test_un_technical_error_sous_defaut_n_ameliore_pas_le_taux_de_faux_verts():
     """Falsifiable : retirer le `technical_error` du calcul sans le dire ferait passer 1/2 à 1/1 (pire) ou à 0/1 (meilleur).
     Ici le jeu non concluant reste COMPTÉ à part, le taux ne bouge pas, et il est affiché à côté du taux."""
