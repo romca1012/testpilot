@@ -991,6 +991,7 @@ class GenerateurReel:
         campagne_json, arret_json = dossier / "campagne.json", dossier / "arret_plafond.json"
         for reste in (campagne_json, arret_json):  # un résultat périmé ne doit jamais passer pour celui de CE run
             reste.unlink(missing_ok=True)
+        refuser_depense_reelle_sous_pytest(self.lancer, _LANCEMENT_REEL, "moteur de génération réel")
         try:
             processus = self.lancer(commande, cwd=self.racine, env=env, timeout=self.delai_s)
         except subprocess.TimeoutExpired as exc:  # un moteur bloqué ne suspend pas la campagne sans limite
@@ -1029,6 +1030,7 @@ def preparer_projet_web(url: str, compte: Mapping, specs: Mapping[str, dict], da
     sys.path.insert(0, str(RACINE / "src"))
     import banc_projet
     from testpilot import config
+    verifier_donnees_isolees(config.DB_PATH, data_dir, getattr(config, "DB_URL", ""))  # AVANT toute écriture
     from testpilot.store.db import get_initialized_db
     from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo
 
@@ -1084,6 +1086,63 @@ def _lire_taux_eur_usd() -> float | None:
         return None
 
 
+# ── Barrière : AUCUNE dépense réelle depuis la suite de tests ───────────────────────────────────────────────
+# Incident du 2026-10-07 : ajouter la relance isolée (`relancer_isole`) a fait que deux anciens tests, qui remplaçaient
+# seulement `_lancer_reel` par une doublure, ont lancé un VRAI sous-processus de campagne (5 générations réelles, ≈ 0,42 $,
+# sous un plafond de 5 $). Une doublure ne protège que ce qu'elle remplace : la barrière doit donc tenir au point de
+# DÉPENSE lui-même. Sous pytest (`PYTEST_CURRENT_TEST`), les deux points d'appel réels (`subprocess.call` de la relance,
+# `subprocess.run` du moteur de génération) REFUSENT de partir tant qu'un test ne leur a pas substitué une fonction
+# factice : comparaison à l'objet d'origine, mémorisé AU CHARGEMENT du module.
+_APPEL_REEL = subprocess.call
+_LANCEMENT_REEL = subprocess.run
+
+
+def refuser_depense_reelle_sous_pytest(fonction, d_origine, usage: str) -> None:
+    """Lève si l'on s'apprête, depuis un test, à appeler la VRAIE fonction qui lance un processus payant."""
+    if os.environ.get("PYTEST_CURRENT_TEST") and fonction is d_origine:
+        raise ConfigurationInvalide(
+            f"{usage} : refusé sous pytest — un test ne lance jamais de campagne réelle (LLM payant, navigateur). "
+            "Substituez une doublure à cette fonction (voir tests/test_banc_agents.py).")
+
+
+def verifier_donnees_isolees(db_path, data_dir, db_url: str = "") -> None:
+    """Refuse d'écrire si la base visée n'est pas DANS le dossier de données jetable de la campagne.
+
+    ⚠️ **Incident du 2026-10-07 (premier essai réel)** : `valider_a_sec` importait `testpilot.config` AVANT que
+    `TESTPILOT_DATA_DIR` soit posé ; la configuration avait déjà figé `DB_PATH` sur le vrai `data/`, et le projet du
+    banc (+ son annuaire) a été écrit dans la base locale du porteur, alors que le module promettait de ne JAMAIS la
+    toucher. Les doublures des tests ne pouvaient pas le voir. Ce garde est la dernière barrière : il se vérifie
+    sur la configuration RÉELLEMENT chargée, juste avant la première écriture, et ne dépend d'aucun ordre d'import.
+    Une base PostgreSQL (`db_url`) est refusée aussi : la campagne n'écrit que dans un SQLite jetable."""
+    if (db_url or "").strip():
+        raise ConfigurationInvalide(
+            "TESTPILOT_DB_URL est définie : la campagne n'écrit que dans une base SQLite jetable, jamais dans une "
+            "base partagée")
+    base = Path(db_path).resolve()
+    dossier = Path(data_dir).resolve()
+    if dossier not in base.parents:
+        raise ConfigurationInvalide(
+            f"la base visée ({base}) n'est pas dans le dossier de données jetable ({dossier}) : refus d'écrire "
+            "(une mesure ne modifie jamais le vrai data/)")
+
+
+def relancer_isole(argv: list[str]) -> int:
+    """Relance ce script dans un NOUVEAU processus dont le dossier de données jetable est posé AVANT tout import de
+    `testpilot` (la configuration fige ses chemins à l'import : le poser après ne sert à rien). Retire aussi les
+    variables qui désigneraient une base réelle (`TESTPILOT_DB_PATH`, `TESTPILOT_DB_URL`)."""
+    if os.environ.get("ODOO_ENV") == "prod":  # jamais contourné (CLAUDE.md §4)
+        print("Configuration INVALIDE : ODOO_ENV=prod : le banc ne tourne jamais dans un environnement de production",
+              file=sys.stderr)
+        return 2
+    dossier = Path(os.environ.get("BANC_DATA_DIR") or tempfile.mkdtemp(prefix="banc_agents_data_"))
+    env = {**os.environ, "TESTPILOT_DATA_DIR": str(dossier), "BANC_DATA_DIR": str(dossier), "BANC_AGENTS_ISOLE": "1"}
+    env.pop("TESTPILOT_DB_PATH", None)
+    env.pop("TESTPILOT_DB_URL", None)
+    appel = subprocess.call
+    refuser_depense_reelle_sous_pytest(appel, _APPEL_REEL, "relance isolée de la campagne réelle")
+    return appel([sys.executable, str(Path(__file__).resolve()), *argv], env=env)
+
+
 def main(argv: list[str] | None = None) -> int:
     for flux in (sys.stdout, sys.stderr):
         try:
@@ -1114,6 +1173,10 @@ def main(argv: list[str] | None = None) -> int:
         verifier_bornes_de_cout(args.plafond_cout, args.cout_estime_essai)
         if args.reel and args.plafond_cout <= 0:
             raise ConfigurationInvalide("plafond de coût nul : aucune génération ne pourrait être lancée")
+        if args.reel and os.environ.get("BANC_AGENTS_ISOLE") != "1":
+            # Les contrôles BON MARCHÉ (hôte, bornes) sont faits ; la relance doit précéder TOUT import de `testpilot`
+            # (donc `valider_a_sec`, qui charge la configuration) : voir `relancer_isole` (incident du 2026-10-07).
+            return relancer_isole(list(sys.argv[1:] if argv is None else argv))
         configuration, lignes = valider_a_sec(args.essais)
         if args.cas:
             voulus = list(dict.fromkeys(c.strip() for c in args.cas.split(",") if c.strip()))
