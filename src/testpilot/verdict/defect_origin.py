@@ -87,6 +87,8 @@ _ORIGIN_BY_CAUSE = {
     dt.REFUS_NON_EXPLIQUE: INDETERMINE,
     # Lot 03 (D3) : rien n'a été prouvé, ni pour ni contre l'application.
     dt.AUCUN_CONSTAT: INDETERMINE,
+    # Q1 (D16) : un `Alors` n'a rien vérifié — rien n'est prouvé ni pour ni contre l'application, jamais réparé.
+    dt.ALORS_SANS_CONSTAT: INDETERMINE,
 
     dt.UNKNOWN: INDETERMINE,
 }

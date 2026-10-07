@@ -51,7 +51,7 @@ def test_un_alors_assertif_vide_empeche_le_conforme_meme_si_un_autre_constate():
     v = st.derive_verdict(_outcome([scenario]))
 
     assert (v.execution_status, v.functional_status) == (st.EXEC_SUCCESS, st.FUNC_INDETERMINE)
-    assert v.scenarios[0].cause_category == dt.AUCUN_CONSTAT
+    assert v.scenarios[0].cause_category == dt.ALORS_SANS_CONSTAT
     assert v.scenarios[0].step_text == "la vérification dans une branche non prise"  # trace, jamais critère
 
 
@@ -226,26 +226,28 @@ def _lignes(chemin: Path):
 
 
 def test_after_step_consigne_un_alors_assertif_passe_sans_constat(tmp_path, monkeypatch):
+    monkeypatch.setenv("TP_GENERATED_STEPS_FILE", "cas_steps.py")
     import _base_helpers as h
     env = _charger_environment()
     sidecar = tmp_path / "constats.jsonl"
     monkeypatch.setenv(h.CONSTATS_FILE_ENV, str(sidecar))
     h.definir_etat_constat(scenario="S", step_type="then")
-    contexte = _contexte_runner(h.nombre_de_constats())
+    contexte = _contexte_runner(h.nombre_de_constats_reussis())
 
     env.after_step(contexte, _step())
 
     assert _lignes(sidecar) == [{"scenario": "S", "step_type": "then", "ok": None, "sans_constat": True,
-                                 "step": "un Alors"}]
+                                 "step": "un Alors", "raison": ""}]
 
 
 def test_after_step_ne_dit_rien_si_le_step_a_constate(tmp_path, monkeypatch):
+    monkeypatch.setenv("TP_GENERATED_STEPS_FILE", "cas_steps.py")
     import _base_helpers as h
     env = _charger_environment()
     sidecar = tmp_path / "constats.jsonl"
     monkeypatch.setenv(h.CONSTATS_FILE_ENV, str(sidecar))
     h.definir_etat_constat(scenario="S", step_type="then")
-    contexte = _contexte_runner(h.nombre_de_constats())
+    contexte = _contexte_runner(h.nombre_de_constats_reussis())
 
     h.constater(True, "ok")  # le step constate…
     env.after_step(contexte, _step())
@@ -254,12 +256,13 @@ def test_after_step_ne_dit_rien_si_le_step_a_constate(tmp_path, monkeypatch):
 
 
 def test_after_step_exempte_un_step_non_assertif_un_given_et_un_echec(tmp_path, monkeypatch):
+    monkeypatch.setenv("TP_GENERATED_STEPS_FILE", "cas_steps.py")
     import _base_helpers as h
     env = _charger_environment()
     sidecar = tmp_path / "constats.jsonl"
     monkeypatch.setenv(h.CONSTATS_FILE_ENV, str(sidecar))
     h.definir_etat_constat(scenario="S", step_type="then")
-    contexte = _contexte_runner(h.nombre_de_constats())
+    contexte = _contexte_runner(h.nombre_de_constats_reussis())
 
     env.after_step(contexte, _step(non_assertif=True))   # attente déclarée (D17)
     env.after_step(contexte, _step(type_="given"))       # un Soit n'a pas à constater
