@@ -99,6 +99,12 @@ class GenericWebConnector(Connector):
         )
 
     # ── Cycle de vie ──────────────────────────────────────────────────────────
+    def rules(self) -> str:
+        """Règles du connecteur `web` pour le prompt (lot Q3, D20) ; vides tant que l'interrupteur est éteint."""
+        from testpilot.generation.regles_connecteur import regles_web
+
+        return regles_web()
+
     def connect(self) -> None:
         """Rien à ouvrir à l'avance (pas de session RPC) — la page se lance paresseusement à
         la première perception, comme pour la moitié UI d'Odoo."""

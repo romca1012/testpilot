@@ -20,6 +20,7 @@ from collections.abc import Mapping
 ENV_TOOLS_STRICT = "TESTPILOT_TOOLS_STRICT"
 ENV_PROMPT_HYPOTHESES = "TESTPILOT_PROMPT_HYPOTHESES"
 ENV_TOOLS_DESCRIPTIONS_V2 = "TESTPILOT_TOOLS_DESCRIPTIONS_V2"
+ENV_REGLES_CONNECTEUR = "TESTPILOT_REGLES_CONNECTEUR"
 
 _VRAI = frozenset({"1", "true", "yes", "oui", "on"})
 
@@ -42,3 +43,8 @@ def prompt_hypotheses_actif(env: Mapping[str, str] | None = None) -> bool:
 def descriptions_v2_actif(env: Mapping[str, str] | None = None) -> bool:
     """Descriptions d'outils réécrites au standard Anthropic (quoi, quand, quand non, limites)."""
     return _actif(ENV_TOOLS_DESCRIPTIONS_V2, env)
+
+
+def regles_connecteur_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Règles par connecteur (`Connector.rules()`) et section « comptes » dès le compte principal (lot Q3, D20)."""
+    return _actif(ENV_REGLES_CONNECTEUR, env)
