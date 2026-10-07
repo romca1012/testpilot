@@ -14,7 +14,7 @@ from testpilot import config
 from testpilot.analysis.plan import NavStep, TestPlan
 from testpilot.connectors.base import Connector
 from testpilot.generation import domain_model, menu_appris, steps_library
-from testpilot.generation.interrupteurs import prompt_hypotheses_actif
+from testpilot.generation.interrupteurs import prompt_hypotheses_actif, regles_connecteur_actif
 from testpilot.generation.steps_library import SharedStep
 
 _SYSTEM_PROMPT_PATH = config.PROMPTS_DIR / "system_prompt.md"
@@ -596,8 +596,11 @@ def _section_comptes(comptes: list[dict] | None) -> str:
     """Les LIBELLÉS des comptes déclarés sur le projet (D8) — jamais un identifiant ni un mot de passe : l'agent ne les connaît pas, et
     un identifiant qu'il écrirait lui-même serait inventé (F22 : `Wrong login ID or password`). Vide sans compte secondaire : rien à dire,
     le compte principal est déjà celui de la connexion automatique."""
-    if not comptes:
+    if not comptes and not regles_connecteur_actif():
         return ""
+    # Lot Q3 (D20), interrupteur : sans compte secondaire l'agent ne recevait AUCUNE consigne sur les comptes et inventait un
+    # mot de passe (faux rouge mesuré le 2026-10-07, banc d'agents) ; le compte principal est maintenant toujours annoncé.
+    comptes = comptes or []
     lignes = ["## Comptes disponibles sur ce projet",
               "",
               "Pour agir sous un AUTRE utilisateur, écris `Quand je me connecte en tant que \"<libellé>\"` avec l'un de ces libellés "
