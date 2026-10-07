@@ -42,32 +42,39 @@ def step_etat_technique(context, valeur):
     constater(str(actuel) == valeur, f"État technique : attendu '{valeur}', obtenu '{actuel}'.")
 
 
-def _tolerance_devise(context, model_name: str, record_id: int) -> float:
-    """Demi-pas d'arrondi de la devise du document (`res.currency.rounding`, lu via son champ
-    `currency_id` — convention Odoo la plus répandue). Repli 0.01 (2 décimales) si le modèle n'a
-    pas de champ `currency_id`, ou en cas d'erreur RPC : une tolérance est un raffinement de
-    précision, jamais un motif d'échec technique."""
+def _tolerance_avec_source(context, model_name: str, record_id: int) -> tuple[float, str]:
+    """(tolérance, source) : demi-pas d'arrondi de la devise du document (`res.currency.rounding`, lu via son champ
+    `currency_id` — convention Odoo la plus répandue). Repli 0.01 (2 décimales) si le modèle n'a pas de champ
+    `currency_id`, ou en cas d'erreur RPC : une tolérance est un raffinement de précision, jamais un motif d'échec
+    technique.
+
+    D19 (2026-10) : la SOURCE est rendue avec la tolérance et figure dans le message du constat — un écart accepté par un repli
+    doit se voir, jamais passer pour la précision de la devise."""
     try:
         Model = context.odoo.env[model_name]
         if "currency_id" not in Model.fields_get(["currency_id"]):
-            return 0.01
+            return 0.01, "repli : le modèle n'a pas de devise"
         valeur = Model.browse(record_id).read(["currency_id"])[0].get("currency_id")
         if not valeur:
-            return 0.01
+            return 0.01, "repli : aucune devise sur ce document"
         currency_id = valeur[0] if isinstance(valeur, (list, tuple)) else valeur
         rounding = context.odoo.env["res.currency"].browse(currency_id).read(["rounding"])[0]["rounding"]
-        return float(rounding) / 2
+        return float(rounding) / 2, "arrondi de la devise du document"
     except Exception:
-        return 0.01
+        return 0.01, "repli : devise illisible"
+
+
+def _tolerance_devise(context, model_name: str, record_id: int) -> float:
+    return _tolerance_avec_source(context, model_name, record_id)[0]
 
 
 @then('le champ "{champ}" de ce document vaut {nombre:g}')
 def step_champ_vaut_nombre(context, champ, nombre):
     record = _record_courant(context)
     actuel = record.read([champ])[0][champ]
-    tolerance = _tolerance_devise(context, context.last_record_model, context.last_record_ids[0])
+    tolerance, source = _tolerance_avec_source(context, context.last_record_model, context.last_record_ids[0])
     constater(abs(float(actuel) - float(nombre)) <= tolerance,
-             f"Champ '{champ}' : attendu {nombre} (± {tolerance}), obtenu {actuel}.")
+             f"Champ '{champ}' : attendu {nombre} (± {tolerance} — {source}), obtenu {actuel}.")
 
 
 @then('ce document a {n:d} "{modele_lie}" lié(s) par "{champ}"')
