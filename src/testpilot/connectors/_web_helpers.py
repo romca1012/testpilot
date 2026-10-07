@@ -13,14 +13,19 @@ existants (``from testpilot.connectors.odoo import build_probe_url, extract_form
 from __future__ import annotations
 
 import logging
+import re
 import urllib.error
 import urllib.request
 from urllib.parse import urljoin
 
 try:  # module « pur » : jamais de dépendance dure à Playwright (tests sur fausses pages)
     from playwright.sync_api import Error as PlaywrightError
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 except ImportError:  # pragma: no cover — sans Playwright, aucune vraie page à lire non plus
     PlaywrightError = Exception
+
+    class PlaywrightTimeoutError(Exception):
+        """Sans Playwright, personne ne lève ce type : l'attente de stabilisation n'avale alors aucune autre erreur."""
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +184,16 @@ _ITERATIONS_ATTENTE_POST_CONNEXION = 100
 # serveur à attendre.
 _DELAI_ENTRE_ETAPES_SEQUENCE_MS = 300
 
+# Plafond de l'attente de stabilisation de la page AVANT LE PREMIER clic rejoué. Mesuré le
+# 2026-10-07 sur la page de connexion SSO du portail d'intégration Odoo : un clic envoyé juste après
+# `domcontentloaded` (c'est ce que fait `odoo_login.playwright_login`) tombe avant que le JavaScript
+# de la page ait fini d'initialiser son formulaire — le bloc s'ouvre puis est refermé, le champ
+# reste invisible et le rejeu échoue sur « champ introuvable ». Mesure : 4 essais sur l'instance
+# d'intégration, navigateur neuf à chaque fois — clic immédiat : champ invisible 4/4 ; clic après
+# stabilisation (≤ 4 s) : visible 4/4. Coût : ≥ 0,5 s, jusqu'à 4 s si la page n'est jamais « idle »
+# (Odoo, bus de long-polling : la borne l'empêche de bloquer).
+_STABILISATION_AVANT_PREMIER_CLIC_MS = 4000
+
 
 # Cas réel « yros » (2026-10-06, régression de l'exploration à 3 routes) : à l'envoi, le formulaire
 # est REMPLACÉ par un état de chargement — le champ mot de passe disparaît donc tout de suite — alors
@@ -299,6 +314,50 @@ def _attendre_confirmation_post_connexion(page, url_avant: str,
         page.wait_for_timeout(_PAS_ATTENTE_POST_CONNEXION_MS)
 
 
+# Même valeur que `testpilot.generation.accname.ROLE_DEPLIANT` (dupliquée, pas importée : ce module
+# tourne aussi dans le sous-processus Behave, qui ne dépend pas du paquet de génération) — l'égalité
+# des deux est verrouillée par `tests/test_etape_depliant.py`.
+ROLE_DEPLIANT = "summary"
+
+
+def localiser_etape(page, role: str, name: str):
+    """Le `Locator` d'une étape enregistrée (`{"role", "name"}`).
+
+    Un rôle ARIA passe par `get_by_role(..., exact=True)` (voir `rejouer_sequence_connexion` pour
+    le pourquoi d'`exact`). Le jeton `ROLE_DEPLIANT` (`summary`, bascule d'un bloc
+    dépliant) n'existe pas côté Playwright : on retrouve le `<summary>` dont le texte est EXACTEMENT
+    le nom enregistré — blancs normalisés des deux côtés, jamais une sous-chaîne (même garde contre
+    un clic réussi sur le mauvais élément). L'unicité est exigée au clic par le mode strict de
+    Playwright, comme pour `get_by_role`.
+
+    Limite connue : cliquer un bloc déjà ouvert le REFERME (bascule non idempotente). Si
+    l'application l'ouvre par défaut au rejeu alors qu'il était fermé à l'enregistrement, les champs
+    restent invisibles : l'échec est bruyant (`FormulaireConnexionObsoleteError`), jamais silencieux.
+    """
+    if role == ROLE_DEPLIANT:
+        motif = r"^\s*" + r"\s+".join(re.escape(mot) for mot in name.split()) + r"\s*$"
+        # `visible=True` : comme `get_by_role`, qui ignore les éléments masqués (un bloc dupliqué en
+        # `display:none` pour une variante mobile ne doit pas rendre le rejeu ambigu).
+        return page.locator("summary").filter(has_text=re.compile(motif)).filter(visible=True)
+    return page.get_by_role(role, name=name, exact=True)
+
+
+def _laisser_la_page_se_stabiliser(page) -> None:
+    """Attente BORNÉE que la page ait fini de s'initialiser avant le premier clic rejoué : un clic
+    trop tôt est annulé par le JavaScript de la page, sans la moindre erreur (voir
+    `_STABILISATION_AVANT_PREMIER_CLIC_MS`). Un dépassement n'est pas une erreur : on rejoue quand
+    même, le clic échouera bruyamment s'il le faut. Une page sans `wait_for_load_state` (doublure de
+    test) est laissée telle quelle."""
+    attendre = getattr(page, "wait_for_load_state", None)
+    if not callable(attendre):
+        return
+    try:
+        attendre("networkidle", timeout=_STABILISATION_AVANT_PREMIER_CLIC_MS)
+    except PlaywrightTimeoutError:
+        logger.debug("[connexion] page jamais « idle » en %s ms — le chemin est rejoué quand même",
+                     _STABILISATION_AVANT_PREMIER_CLIC_MS)
+
+
 def rejouer_sequence_connexion(page, etapes: list[dict], *, timeout_ms: int = 5000,
                                attendre_reseau: bool = True) -> bool:
     """Rejoue, DANS L'ORDRE, une séquence enregistrée (sous-lot C : liste de `{"role", "name"}`
@@ -342,10 +401,11 @@ def rejouer_sequence_connexion(page, etapes: list[dict], *, timeout_ms: int = 50
     """
     if not etapes:
         return False
+    _laisser_la_page_se_stabiliser(page)
     for etape in etapes:
         role, name = etape.get("role", ""), etape.get("name", "")
         try:
-            page.get_by_role(role, name=name, exact=True).click(timeout=timeout_ms)
+            localiser_etape(page, role, name).click(timeout=timeout_ms)
         except Exception as exc:
             raise SequenceConnexionObsoleteError(
                 f"étape enregistrée « rôle={role!r}, nom={name!r} » introuvable ou ambiguë sur "

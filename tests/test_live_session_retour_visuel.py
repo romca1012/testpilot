@@ -181,3 +181,28 @@ def test_un_clic_ambigu_n_emet_pas_aussi_un_clic_non_enregistre(monkeypatch):
     assert "clic_ambigu" in types
     assert "clic_non_enregistre" not in types
     assert len(session._cdp.envoyes) == 2  # le clic est parti quand même
+
+
+def test_un_bloc_depliant_n_est_jamais_range_dans_les_trois_clics_du_formulaire(monkeypatch):
+    """Revue 2026-10-07 : un jeton `summary` rangé dans `champ_identifiant`/`champ_mdp`/
+    `bouton_soumission` serait confirmé comme « formulaire complet » puis échouerait à CHAQUE rejeu
+    (ces emplacements passent par `get_by_role`). Le clic part, mais n'est pas retenu."""
+    session = _session()
+    session._capture_active = False
+    session._mode_formulaire = True
+
+    _cliquer(session, monkeypatch, resolu={"role": "summary", "name": "Options"})
+
+    assert session.login_form is None and session._login_form == {}
+    types = [m["type"] for m in _messages(session)]
+    assert "clic_non_enregistre" in types
+    assert "formulaire_connexion_champ_capture" not in types
+    assert len(session._cdp.envoyes) == 2  # le clic est bien parti
+
+
+def test_un_bloc_depliant_reste_une_etape_de_pre_connexion_valide(monkeypatch):
+    session = _session()
+
+    _cliquer(session, monkeypatch, resolu={"role": "summary", "name": "Connexion externe par email"})
+
+    assert session.etapes == [{"role": "summary", "name": "Connexion externe par email"}]

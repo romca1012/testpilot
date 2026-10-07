@@ -282,6 +282,16 @@ class SessionLive:
                 # Ambigu : jamais capturé en silence sur le premier trouvé — signalé, pas retenu.
                 ambigu = True
                 self.sortantes.put({"type": "clic_ambigu", "detail": str(exc)})
+        if self._mode_formulaire and resolu is not None and resolu.get("role") == accname.ROLE_DEPLIANT:
+            # Les 3 emplacements du formulaire (identifiant, mot de passe, bouton) sont rejoués par
+            # `get_by_role(...).fill/click` : un jeton `summary` n'y existe pas et y échouerait à
+            # CHAQUE rejeu, après avoir été confirmé comme « formulaire complet » (revue
+            # 2026-10-07). Un bloc dépliant n'a sa place que dans l'étape de pré-connexion.
+            resolu = None
+            self.sortantes.put({"type": "clic_non_enregistre", "raison": "depliant_pendant_le_formulaire"})
+            self._cliquer_reellement(x, y)
+            return
+
         self._cliquer_reellement(x, y)
 
         if resolu is None and not ambigu and (self._capture_active or self._mode_formulaire):
