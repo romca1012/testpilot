@@ -1138,6 +1138,9 @@ def relancer_isole(argv: list[str]) -> int:
     from cryptography.fernet import Fernet
 
     env = {**os.environ, "TESTPILOT_DATA_DIR": str(dossier), "BANC_DATA_DIR": str(dossier), "BANC_AGENTS_ISOLE": "1",
+           # Aucun navigateur lancé par la campagne (exploration, outils de l'agent, exécution des tests générés) ne joint autre
+           # chose que l'application locale : un test écrit par un modèle ne doit pas pouvoir sortir (voir `contexte_navigateur`).
+           "TP_LOOPBACK_ONLY": "1",
            # Clé de chiffrement JETABLE, fixée AVANT le démarrage du processus (premier essai réel, 2026-10-07) : sans
            # elle, `store/secrets.py` crée sa propre clé dans le dossier jetable au CHARGEMENT, avant que la clé de la
            # campagne soit posée ; le mot de passe du projet est alors chiffré avec l'une et déchiffré avec l'autre
