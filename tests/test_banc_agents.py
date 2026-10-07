@@ -1057,8 +1057,23 @@ def test_le_reel_est_relance_dans_un_processus_au_dossier_jetable_pose_avant_tou
     assert env["TESTPILOT_DATA_DIR"] == env["BANC_DATA_DIR"]
     assert "banc_agents_data_" in env["TESTPILOT_DATA_DIR"]
     assert "TESTPILOT_DB_PATH" not in env and "TESTPILOT_DB_URL" not in env, "aucune base réelle ne doit survivre"
+    from cryptography.fernet import Fernet
+    Fernet(env["TESTPILOT_SECRET_KEY"].encode())  # une clé Fernet VALIDE, posée avant le démarrage du processus
     assert commande[-8:-5] == ["--reel", "--plafond-cout", "0.5"] or "--reel" in commande
     assert "--cas" in commande and "connexion_valide" in commande
+
+
+def test_la_cle_de_chiffrement_est_neuve_a_chaque_relance_et_jamais_celle_du_poste(monkeypatch):
+    """Falsifiable : l'incident du premier essai (clé créée au chargement ≠ clé de la campagne → exécution `blocked`)."""
+    clefs = []
+    monkeypatch.setattr(ba.subprocess, "call", lambda cmd, env: clefs.append(env["TESTPILOT_SECRET_KEY"]) or 0)
+    monkeypatch.setenv("TESTPILOT_SECRET_KEY", "CLE-REELLE-DU-POSTE")
+
+    ba.relancer_isole(["--reel"])
+    ba.relancer_isole(["--reel"])
+
+    assert "CLE-REELLE-DU-POSTE" not in clefs
+    assert len(set(clefs)) == 2
 
 
 def test_la_relance_isolee_refuse_la_production(monkeypatch):

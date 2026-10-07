@@ -1135,7 +1135,15 @@ def relancer_isole(argv: list[str]) -> int:
               file=sys.stderr)
         return 2
     dossier = Path(os.environ.get("BANC_DATA_DIR") or tempfile.mkdtemp(prefix="banc_agents_data_"))
-    env = {**os.environ, "TESTPILOT_DATA_DIR": str(dossier), "BANC_DATA_DIR": str(dossier), "BANC_AGENTS_ISOLE": "1"}
+    from cryptography.fernet import Fernet
+
+    env = {**os.environ, "TESTPILOT_DATA_DIR": str(dossier), "BANC_DATA_DIR": str(dossier), "BANC_AGENTS_ISOLE": "1",
+           # Clé de chiffrement JETABLE, fixée AVANT le démarrage du processus (premier essai réel, 2026-10-07) : sans
+           # elle, `store/secrets.py` crée sa propre clé dans le dossier jetable au CHARGEMENT, avant que la clé de la
+           # campagne soit posée ; le mot de passe du projet est alors chiffré avec l'une et déchiffré avec l'autre
+           # (« un secret ne peut pas être déchiffré ») et toute exécution sort `blocked`. Toujours NEUVE : la vraie clé du
+           # poste n'est jamais réutilisée pour une base jetable.
+           "TESTPILOT_SECRET_KEY": Fernet.generate_key().decode()}
     env.pop("TESTPILOT_DB_PATH", None)
     env.pop("TESTPILOT_DB_URL", None)
     appel = subprocess.call
