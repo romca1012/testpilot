@@ -91,3 +91,27 @@ curl -X POST http://127.0.0.1:<port>/__defauts -d '{"defauts": ["filtre_ignore"]
   passer une mesure. Un run qui contredit un attendu est un constat à instruire (le cas généré, le défaut ou le
   verdict) ; si un défaut n'est détecté par aucune spec, on AJOUTE la spec qui le couvre, on ne retire pas le défaut.
 - Tests de l'application : `python -m pytest -q tests/test_app_banc_web.py` (HTTP réel sur loopback, aucun navigateur).
+
+## Orchestrateur du banc d'agents web (lot Q2-d)
+
+`scripts/banc_agents.py` mesure si un test GÉNÉRÉ détecte un défaut de l'application locale ci-dessus sans accuser l'application
+saine. Pour chaque spec de `specs/banc_local/` et chaque essai (k) : une génération sur l'application saine (seul poste de coût
+LLM), puis le MÊME test (empreintes sha256 consignées) joué sur la saine et sur chaque défaut listé par `attendus.yaml`,
+l'application étant réinitialisée entre deux jeux. Sortie : `docs/mesures/banc-agents-<date>.{md,json}` (pass@1, pass^k, faux
+verts, faux rouges, non concluants à part, coût en USD et EUR, intervalles de Wilson, « non mesuré » quand n = 0).
+
+```bash
+python scripts/banc_agents.py --a-sec                              # défaut : valide la configuration et affiche le budget ; aucun LLM, aucun navigateur
+python scripts/banc_agents.py --reel --plafond-cout 5 --essais 3   # ⚠️ LLM + navigateur RÉELS : accord du porteur, jamais en CI
+```
+
+- `--reel` exige `--plafond-cout` (dollars), refuse tout hôte non bouclage et `ODOO_ENV=prod`, et affiche le budget avant de commencer.
+  Le plafond est appliqué EN AMONT (arrêt avant l'essai qui le dépasserait, code de sortie 3).
+- Un attendu incohérent (cas sans attendu sur la saine, code de défaut inconnu, polarité impossible) est REFUSÉ au chargement,
+  jamais ignoré en silence. `attendus.yaml` n'est jamais modifié pour faire passer une mesure.
+- Codes de sortie : 0 rien à signaler ; 1 au moins un faux vert ; 2 configuration invalide ; 3 campagne incomplète, porte « faux
+  verts » non mesurée ou test joué différent du test généré.
+- Estimation d'une campagne réelle (10 cas × k = 3 = 30 générations) : ≈ 4,5 $ avec 0,15 $ par génération. Cette valeur est une borne
+  prudente tirée des campagnes ODOO (0,100 à 0,124 $ par cas, `docs/mesures/banc-*-generation*.json`) : le coût sur le connecteur
+  web n'est PAS mesuré.
+- Tests : `python -m pytest -q tests/test_banc_agents.py` (doublures uniquement ; HTTP sur bouclage pour l'application locale).
