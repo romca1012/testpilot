@@ -46,6 +46,7 @@ def write_test_plan(ctx, plan):
         lines.append('  Scénario: ' + scenario['name'])
         effective = None
         assertion = False
+        alors_non_assertifs = []
         for step in scenario['steps']:
             keyword, text = step['keyword'], step['text']
             values.append(text)
@@ -56,6 +57,7 @@ def write_test_plan(ctx, plan):
             if not set(step['evidence_ids']) <= known:
                 return ToolOutcome('[plan : preuve inconnue]', ok=False)
             found = False
+            matched = None
             for shared in ctx.shared_steps:
                 if shared.keyword not in (effective, 'step'):
                     continue
@@ -64,12 +66,24 @@ def write_test_plan(ctx, plan):
                 except (ValueError, KeyError, TypeError):
                     continue
                 if found:
+                    matched = shared
                     break
             if not found:
                 return ToolOutcome('[plan : étape hors catalogue ; utiliser une extension explicite]', ok=False)
-            assertion |= effective == 'then'
+            if effective == 'then':
+                # Q1 (D17) : un « Alors » n'est une assertion que si le step partagé apparié peut
+                # constater. Une attente (« j'attends la soumission du formulaire ») ne prouve rien.
+                if getattr(matched, 'asserte', True):
+                    assertion = True
+                else:
+                    alors_non_assertifs.append(text)
             lines.append(f'    {keyword} {text}')
         if not assertion:
+            if alors_non_assertifs:
+                return ToolOutcome(
+                    f"[plan : scénario « {scenario['name']} » sans assertion — "
+                    f"« {alors_non_assertifs[0]} » est une attente ou une navigation, elle ne vérifie rien ; "
+                    "ajoute un « Alors » du catalogue qui constate (présence, texte, valeur…)]", ok=False)
             return ToolOutcome('[plan : résultat attendu sans assertion]', ok=False)
     if covered != set(ctx.requirements):
         return ToolOutcome('[plan : exigences métier non couvertes]', ok=False)
