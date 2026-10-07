@@ -14,9 +14,34 @@ from testpilot import config
 from testpilot.analysis.plan import NavStep, TestPlan
 from testpilot.connectors.base import Connector
 from testpilot.generation import domain_model, menu_appris, steps_library
+from testpilot.generation.interrupteurs import prompt_hypotheses_actif
 from testpilot.generation.steps_library import SharedStep
 
 _SYSTEM_PROMPT_PATH = config.PROMPTS_DIR / "system_prompt.md"
+
+# Q3-a — PILIER 4 « clôture » : la boucle s'arrête dès que le dry-run est vert (`react_loop.py`), SANS
+# tour supplémentaire : la « clôture en deux ou trois lignes » que le prompt demande n'est donc
+# JAMAIS produite, et l'humain qui relit ne reçoit aucun doute de l'agent. La phrase ci-dessous
+# redirige cette clôture vers un champ du plan (`hypotheses_non_verifiees`), persisté avec lui.
+# ⚠️ Ajoutée seulement si `TESTPILOT_PROMPT_HYPOTHESES=1` (désactivé par défaut) : le prompt est du
+# comportement, il se mesure avant d'être activé. Désactivé, le prompt est identique octet pour octet.
+_ANCRE_CLOTURE = "Dis-lui ce que **lui** ne peut pas voir."
+_PHRASE_HYPOTHESES = (
+    "Quand tu écris le plan avec `write_test_plan`, renseigne son champ `hypotheses_non_verifiees` "
+    "(cinq phrases courtes au plus, liste vide s'il n'y a aucun doute) avec ce dont tu n'es pas "
+    "sûr : c'est ce champ, et non ta dernière réponse, que l'humain lira, puisque la boucle "
+    "s'arrête dès que le dry-run est vert."
+)
+
+
+def _avec_hypotheses(base: str) -> str:
+    """Insère `_PHRASE_HYPOTHESES` juste après la fin du PILIER 4. Lève si l'ancre a bougé : un
+    prompt « activé » sans la phrase fausserait la mesure sans rien dire."""
+    if base.count(_ANCRE_CLOTURE) != 1:
+        raise RuntimeError(
+            "PILIER 4 introuvable dans system_prompt.md : impossible d'insérer la phrase "
+            "`hypotheses_non_verifiees` (TESTPILOT_PROMPT_HYPOTHESES=1)")
+    return base.replace(_ANCRE_CLOTURE, _ANCRE_CLOTURE + "\n\n" + _PHRASE_HYPOTHESES)
 
 
 def _nom_connecteur(connector: Connector | None) -> str:
@@ -50,6 +75,8 @@ def build_system_prompt(connector: Connector | None = None,
     est transmis à l'agent.
     """
     base = _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+    if prompt_hypotheses_actif():
+        base = _avec_hypotheses(base)
     base += (
         "\n\nChaque nom de champ utilisé doit être cité à l'identique dans le crawl fourni "
         "ou dans le résultat d'un appel inspect_schema(modèle) / inspect_page_form(URL). "
