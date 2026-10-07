@@ -217,7 +217,12 @@ def charger_yaml(chemin: Path) -> dict:
         vues: set = set()
         for cle_noeud, _ in noeud.value:
             cle = chargeur.construct_object(cle_noeud, deep=deep)
-            if cle in vues:
+            try:
+                deja = cle in vues
+            except TypeError:  # clé non hachable (liste...) : refus net plutôt qu'un TypeError brut
+                raise ConfigurationInvalide(
+                    f"{Path(chemin).name} : clé non valide (ligne {cle_noeud.start_mark.line + 1})") from None
+            if deja:
                 raise ConfigurationInvalide(
                     f"{Path(chemin).name} : la clé « {cle} » est écrite deux fois (ligne {cle_noeud.start_mark.line + 1})")
             vues.add(cle)

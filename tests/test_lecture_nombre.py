@@ -61,6 +61,52 @@ def test_un_texte_non_numerique_ou_incoherent_est_refuse(texte):
         ln.lire_nombre(texte)
 
 
+@pytest.mark.parametrize("texte", [
+    "10 12", "3 4", "1 2", "1 2 3", "12 3456", "1'2", "12 5 €", "12 € 15 €", "€10 $12", "5 5%", "12 5%", "5 % 6 %",
+    "12 € EUR", "1 234 5", "1 234,5 67", "1 234.567 8",
+])
+def test_deux_nombres_colles_ne_sont_jamais_fusionnes_en_un_seul(texte):
+    """Falsifiable (revue du 2026-10-07) : « 10 12 » était lu 1012 — une pagination, ou une quantité suivie d'un prix, aurait
+    pu faire réussir un `Alors` sans que la valeur soit prouvée."""
+    with pytest.raises(ln.LectureImpossible):
+        ln.lire_nombre(texte)
+
+
+def test_les_vrais_groupes_de_milliers_restent_lus():
+    assert ln.lire_nombre("1 234 567,89").valeur == D("1234567.89")
+    assert ln.lire_nombre("12 345").valeur == D("12345")
+    assert ln.lire_nombre("1’234’567").valeur == D("1234567")
+
+
+@pytest.mark.parametrize("tolerance", ["Infinity", "NaN", "-Infinity"])
+def test_une_tolerance_non_finie_est_refusee(tolerance):
+    """Falsifiable : `Infinity` acceptait n'importe quelle valeur (5 pour un attendu 0)."""
+    with pytest.raises(ValueError):
+        ln.comparer(D(5), 0, tolerance=tolerance, source="x")
+
+
+def test_une_tolerance_enorme_est_refusee_une_tolerance_raisonnable_passe():
+    with pytest.raises(ValueError, match="excessive"):
+        ln.comparer(D(5), 100, tolerance="100", source="x")
+    with pytest.raises(ValueError, match="excessive"):
+        ln.comparer(D("0.5"), "0.5", tolerance="1", source="x")
+    assert ln.comparer(D("99.99"), 100, tolerance="0.01", source="arrondi").ok is True
+
+
+def test_une_unite_contradictoire_fait_echouer_la_comparaison():
+    """Falsifiable : 5 $ n'est pas 5 €, 5 % n'est pas 5."""
+    assert ln.comparer(ln.lire_nombre("5 $"), 5, devise_attendue="EUR").ok is False
+    assert ln.comparer(ln.lire_nombre("5 €"), 5, devise_attendue="EUR").ok is True
+    assert ln.comparer(ln.lire_nombre("5 %"), 5, pourcentage_attendu=False).ok is False
+    assert ln.comparer(ln.lire_nombre("5"), 5, pourcentage_attendu=True).ok is False
+    assert ln.comparer(ln.lire_nombre("5 %"), 5, pourcentage_attendu=True).ok is True
+
+
+def test_une_unite_non_declaree_est_dite_non_verifiee_dans_le_message():
+    assert "devise lue EUR non vérifiée" in ln.comparer(ln.lire_nombre("5 €"), 5).message
+    assert "pourcentage lu non vérifié" in ln.comparer(ln.lire_nombre("5 %"), 5).message
+
+
 def test_exacte_par_defaut_un_centime_d_ecart_echoue():
     """Falsifiable : sans tolérance déclarée, 129,50 n'est PAS 129,51."""
     assert ln.comparer(ln.lire_nombre("129,51"), "129.51").ok is True

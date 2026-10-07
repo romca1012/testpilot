@@ -52,11 +52,15 @@ def lire_nombre(texte: str, *, separateur_decimal: str | None = None) -> NombreL
     if reste.startswith("(") and reste.endswith(")"):  # convention comptable : (12,50) = -12,50
         negatif, reste = True, reste[1:-1].strip()
 
-    devise = None
+    devises_vues: list[str] = []
     for symbole in sorted(_DEVISES, key=len, reverse=True):
-        if symbole in reste:
-            devise = devise or _DEVISES[symbole]
-            reste = reste.replace(symbole, " ")
+        devises_vues += [_DEVISES[symbole]] * reste.count(symbole)
+        reste = reste.replace(symbole, " ")
+    if len(devises_vues) > 1:  # deux montants collés (« 12 € 15 € », prix barré...) ne sont pas UN nombre
+        raise LectureImpossible(f"« {brut} » contient plusieurs devises ou montants : un seul nombre est attendu")
+    devise = devises_vues[0] if devises_vues else None
+    if reste.count("%") > 1:
+        raise LectureImpossible(f"« {brut} » contient plusieurs pourcentages : un seul nombre est attendu")
     pourcentage = "%" in reste
     reste = reste.replace("%", " ")
 
@@ -67,14 +71,32 @@ def lire_nombre(texte: str, *, separateur_decimal: str | None = None) -> NombreL
         negatif, reste = True, reste[1:]
     elif reste.startswith("+"):
         reste = reste[1:]
-    for c in _ESPACES + "'’":  # séparateurs de milliers sans ambiguïté
-        reste = reste.replace(c, "")
+    reste = _sans_groupes_de_milliers(reste, brut)
 
     if not re.fullmatch(r"[\d.,]+", reste) or not re.search(r"\d", reste):
         raise LectureImpossible(f"« {brut} » n'est pas un nombre")
 
     valeur = _decimal(reste, separateur_decimal, brut)
     return NombreLu(-valeur if negatif else valeur, devise, pourcentage, brut)
+
+
+def _sans_groupes_de_milliers(reste: str, brut: str) -> str:
+    """Espaces et apostrophes ne sont admis QUE comme séparateurs de milliers (`1 234 567`, `1'234`), dans la partie entière.
+
+    Revue du 2026-10-07 : « 10 12 » ou « 1 2 3 » (pagination), « 12 5 € » (quantité puis prix) étaient fusionnés en un seul
+    nombre (1012, 123, 125) — un `Alors` aurait alors pu réussir sans que la valeur soit prouvée."""
+    marques = _ESPACES + "'’"
+    if not any(c in reste for c in marques):
+        return reste
+    coupure = min((i for i in (reste.find("."), reste.find(",")) if i >= 0), default=len(reste))
+    entier, queue = reste[:coupure], reste[coupure:]
+    admis = (re.fullmatch(r"\d{1,3}(?:[" + re.escape(_ESPACES) + r"]\d{3})+", entier)
+             or re.fullmatch(r"\d{1,3}(?:['’]\d{3})+", entier))
+    if not admis or any(c in queue for c in marques):
+        raise LectureImpossible(f"« {brut} » : espaces ou apostrophes en dehors de groupes de milliers (plusieurs nombres ?)")
+    for c in marques:
+        entier = entier.replace(c, "")
+    return entier + queue
 
 
 def _decimal(reste: str, impose: str | None, brut: str) -> Decimal:
@@ -125,21 +147,47 @@ class Comparaison:
     message: str
 
 
-def comparer(lu: Decimal | NombreLu, attendu, *, tolerance=None, source: str = "") -> Comparaison:
+def comparer(lu: Decimal | NombreLu, attendu, *, tolerance=None, source: str = "",
+             devise_attendue: str | None = None, pourcentage_attendu: bool | None = None) -> Comparaison:
     """`lu` égal à `attendu` à `tolerance` près. Sans tolérance : égalité EXACTE (le message dit « exacte »).
 
-    Une tolérance non nulle EXIGE sa source (« arrondi de la devise », « demandé par la spec »…) : un écart accepté doit
-    toujours pouvoir être justifié (D19). Un `float` est converti par sa représentation texte, jamais par sa valeur binaire."""
+    - Une tolérance non nulle EXIGE sa source (« arrondi de la devise », « demandé par la spec »…) : un écart accepté doit
+      toujours pouvoir être justifié (D19). Elle doit être FINIE et strictement inférieure à la valeur attendue (à 1 si
+      l'attendu est plus petit) : une tolérance infinie ou énorme accepterait n'importe quelle valeur.
+    - `source` est du texte de traçabilité, PAS une preuve : au câblage, la tolérance et sa source viennent de la spec ou de
+      la devise (signal structurel), jamais d'un texte écrit par l'agent (décision 0015).
+    - Unités : si `devise_attendue` / `pourcentage_attendu` sont donnés et que `lu` est un `NombreLu` qui les contredit, la
+      comparaison ÉCHOUE (5 $ n'est pas 5 €, 5 % n'est pas 5). Non donnés : unité non vérifiée, et le message le dit.
+    Un `float` est converti par sa représentation texte, jamais par sa valeur binaire."""
     valeur_lue = lu.valeur if isinstance(lu, NombreLu) else lu
     cible = _en_decimal(attendu)
     marge = Decimal(0) if tolerance is None else _en_decimal(tolerance)
+    if not (cible.is_finite() and valeur_lue.is_finite() and marge.is_finite()):
+        raise ValueError("valeur, attendu et tolérance doivent être des nombres finis")
     if marge < 0:
         raise ValueError("la tolérance ne peut pas être négative")
     if marge > 0 and not source.strip():
         raise ValueError("une tolérance non nulle doit déclarer sa source")
+    if marge > 0 and marge >= max(abs(cible), Decimal(1)):
+        raise ValueError(f"tolérance {marge} excessive pour l'attendu {cible} : elle accepterait presque toute valeur")
     ecart = abs(valeur_lue - cible)
     qualif = "exacte, aucune tolérance" if marge == 0 else f"± {marge} — {source.strip()}"
-    return Comparaison(ecart <= marge, f"attendu {cible} ({qualif}), lu {valeur_lue}")
+    unites_ok, remarques = True, []
+    if isinstance(lu, NombreLu):
+        if devise_attendue is not None:
+            if lu.devise != devise_attendue:
+                unites_ok = False
+                remarques.append(f"devise lue {lu.devise or 'aucune'}, attendue {devise_attendue}")
+        elif lu.devise:
+            remarques.append(f"devise lue {lu.devise} non vérifiée")
+        if pourcentage_attendu is not None:
+            if lu.pourcentage != pourcentage_attendu:
+                unites_ok = False
+                remarques.append("pourcentage lu" if lu.pourcentage else "pourcentage attendu mais non lu")
+        elif lu.pourcentage:
+            remarques.append("pourcentage lu non vérifié")
+    suite = f" ; {' ; '.join(remarques)}" if remarques else ""
+    return Comparaison(ecart <= marge and unites_ok, f"attendu {cible} ({qualif}), lu {valeur_lue}{suite}")
 
 
 def _en_decimal(valeur) -> Decimal:
