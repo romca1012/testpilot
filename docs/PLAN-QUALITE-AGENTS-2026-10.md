@@ -77,4 +77,5 @@ Critères d'acceptation :
 | Lot | Statut | Date | Rapport |
 |---|---|---|---|
 | Q1 | en cours | 2026-10-07 | |
-| Q2-Q5 | à faire | | |
+| Q2 (a, b, d) | statistiques (Q2-a), application locale à défauts (Q2-b) et orchestrateur `scripts/banc_agents.py` (Q2-d) livrés, **jamais lancés en réel** (coût LLM : accord du porteur requis) | 2026-10-07 | |
+| Q3-Q5 | à faire | | |
