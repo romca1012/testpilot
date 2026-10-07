@@ -1,0 +1,30 @@
+# Applications locales du banc d'agents web (lot Q2-b).
+#
+# ⚠️ Les identifiants ci-dessous sont des valeurs de TEST FIXES, propres à une application jetable qui n'écoute que
+# sur 127.0.0.1 : ils ne protègent rien et ne doivent JAMAIS être remplacés par un secret réel. Le serveur
+# (banc/app_web/serveur.py) porte les mêmes valeurs en constantes ; tests/test_app_banc_web.py vérifie l'accord.
+version: 1
+apps:
+  boutique_locale:
+    description: >-
+      Petite boutique web (connexion, produits, clients, panier, commandes) à défauts injectables, servie en local
+      pour mesurer si un test généré détecte un défaut sans accuser une application saine.
+    lancement: python -m banc.app_web.serveur --defauts total_faux
+    hote: 127.0.0.1          # loopback uniquement ; tout autre hôte est refusé à l'ouverture
+    port: dynamique          # choisi à l'ouverture et affiché sur la sortie standard (--port pour le fixer)
+    page_connexion: /connexion
+    comptes:
+      - nom: testeur
+        identifiant: testeur
+        mot_de_passe: motdepasse-test
+    remise_a_zero: POST /__reset        # loopback seulement ; ne touche pas aux défauts actifs
+    etat_serveur: GET /__etat           # vérification indépendante (commandes, panier, enregistrements)
+    defauts_actifs: GET /__defauts      # loopback seulement ; POST /__defauts {"defauts": [...]} pour les changer
+    variable_defauts: TP_DEFAUTS        # liste séparée par des virgules
+    defauts:
+      - total_faux
+      - validation_absente
+      - message_erreur_absent
+      - etat_non_enregistre
+      - filtre_ignore
+      - login_accepte_tout
