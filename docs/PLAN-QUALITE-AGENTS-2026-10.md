@@ -77,6 +77,7 @@ Critères d'acceptation :
 
 | Lot | Statut | Date | Rapport |
 |---|---|---|---|
-| Q1 | en cours | 2026-10-07 | |
-| Q2 (a, b, d) | statistiques (Q2-a), application locale à défauts (Q2-b) et orchestrateur `scripts/banc_agents.py` (Q2-d) livrés, **jamais lancés en réel** (coût LLM : accord du porteur requis) | 2026-10-07 | |
-| Q3-Q5 | à faire | | |
+| Q1 | code et tests terminés, revue indépendante faite et ses points corrigés ; suite complète verte (2026-10-07) ; D16 confirmée par le porteur le 2026-10-07 (**D17/D19 à confirmer**) | 2026-10-07 | |
+| Q2 (a, b, d) | statistiques, application locale à défauts, orchestrateur livrés ; D18 : `attendus.yaml` relu par le porteur le 2026-10-07 ; campagne `base-1` faite (22 résultats sur 57 non concluants, cause principale : oracle non déclaré par le banc, corrigé) ; campagne `base-2` en cours | 2026-10-07 | `docs/mesures/banc-agents-2026-10-07-base-1.md` |
+| Q3-a | outils existants durcis, **tout derrière des interrupteurs éteints** (strict + `input_examples`, descriptions V2, champ `hypotheses_non_verifiees` + phrase du PILIER 4) ; défaut octet pour octet identique (témoin figé) ; **rien d'activé, aucun appel réel fait** : l'API accepte-t-elle ces schémas en strict ? à confirmer par un appel réel peu coûteux (accord du porteur : oui, 2026-10-07) ; `rules()` des connecteurs : inventaire seul, décision D20 | 2026-10-07 | rapport Q3-a (conversation) |
+| Q3 (reste : boucle pilotée par transcripts, règles du connecteur), Q4, Q5 | à faire | | |
