@@ -3454,9 +3454,33 @@ def oracle_renvoie_n_resultats(context, requete: str, n: int) -> None:
     un écart consigne un constat ÉCHOUÉ (défaut applicatif, ou test à revoir), jamais une panne."""
     reponse = _executer_oracle(context, requete)
     obtenu = _compte_resultats_oracle(reponse)
+    # Mesuré le 2026-10-07 (banc d'agents, base-2) : 9 tests générés sur 30 ont écrit « renvoie 0 résultat » pour dire « aucune
+    # commande » sur une réponse qui est un OBJET (compté pour 1) et sont sortis `non_conforme` sur une application saine. La
+    # règle de comptage ne change pas ; le message dit maintenant quoi faire.
+    indice = (" — la réponse est un objet unique (compté pour 1) : pour compter une liste qu'il contient, "
+              "utiliser « le champ \"<chemin>\" de l'oracle \"<requête>\" compte <n> élément(s) »"
+              if isinstance(reponse, dict) else "")
     with _source_du_constat("oracle"):
         constater(obtenu == n,
-                 f"l'oracle « {requete} » renvoie {obtenu} résultat(s), {n} attendu(s)")
+                 f"l'oracle « {requete} » renvoie {obtenu} résultat(s), {n} attendu(s){indice}")
+
+
+def oracle_champ_compte(context, chemin: str, requete: str, n: int) -> None:
+    """`Alors le champ "<chemin>" de l'oracle "<requête>" compte <n> élément(s)` — la LISTE à ce chemin a exactement `n`
+    éléments. Un chemin absent, ou une valeur qui n'est pas une liste, consigne un constat ÉCHOUÉ (jamais 0 deviné)."""
+    reponse = _executer_oracle(context, requete)
+    with _source_du_constat("oracle"):
+        try:
+            valeur = _champ_oracle(reponse, chemin)
+        except (KeyError, IndexError, TypeError) as exc:
+            constater(False, f"le champ « {chemin} » de l'oracle « {requete} » est introuvable : {exc}")
+            return
+        if not isinstance(valeur, list):
+            constater(False, f"le champ « {chemin} » de l'oracle « {requete} » n'est pas une liste "
+                             f"({type(valeur).__name__}) : ses éléments ne peuvent pas être comptés")
+            return
+        constater(len(valeur) == n,
+                 f"le champ « {chemin} » de l'oracle « {requete} » compte {len(valeur)} élément(s), {n} attendu(s)")
 
 
 def oracle_champ_vaut(context, chemin: str, requete: str, valeur: str) -> None:

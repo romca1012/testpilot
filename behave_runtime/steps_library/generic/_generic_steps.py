@@ -27,7 +27,7 @@ from _base_helpers import (
     # Stratégie de connexion (lot 07b-2) — même discipline d'import.
     _verifier_ou_reconnecter_session,
     # Oracle backend HTTP optionnel (lot 07e, C5) — même discipline d'import.
-    oracle_renvoie_n_resultats, oracle_champ_vaut,
+    oracle_renvoie_n_resultats, oracle_champ_vaut, oracle_champ_compte,
 )
 
 # ⚠️ Chaque step d'ACTION ci-dessous est déclaré sous `@given` ET `@when` (bug SauceDemo,
@@ -383,3 +383,9 @@ def step_oracle_compte(context, requete, n):
 @then('le champ "{chemin}" de l\'oracle "{requete}" vaut "{valeur}"')
 def step_oracle_champ_vaut(context, chemin, requete, valeur):
     oracle_champ_vaut(context, chemin, requete, valeur)
+
+
+@then('le champ "{chemin}" de l\'oracle "{requete}" compte {n:d} éléments')
+@then('le champ "{chemin}" de l\'oracle "{requete}" compte {n:d} élément')
+def step_oracle_champ_compte(context, chemin, requete, n):
+    oracle_champ_compte(context, chemin, requete, n)
