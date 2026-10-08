@@ -197,7 +197,7 @@ def _reparer(entree_json: Path, project: dict, connexion: dict, out_dir: Path, b
     """UNE tentative de reparation (D23, banc d'agents) -- jamais d'execution reelle ici.
 
     `entree_json` : {module_name, feature_content, steps_content, scenarios:[{name,status}], echecs:[{scenario_name,
-    step_text, raw, traceback_summary}]} -- l'echec observe par le run reel du banc, SANS diagnostic (comme le produit :
+    step_text, raw, traceback_summary, page_url}]} -- l'echec observe par le run reel du banc, SANS diagnostic (comme le produit :
     `repair_agent._failure_report`). L'agent reecrit, le dry-run valide que le test parse encore, et l'orchestrateur du
     banc rejoue pour de vrai. Ecrit `reparation.json` : le contenu propose, son cout, la raison d'arret.
     """
@@ -214,7 +214,8 @@ def _reparer(entree_json: Path, project: dict, connexion: dict, out_dir: Path, b
     (config.GENERATED_DIR / f'{module}_steps.py').write_text(entree['steps_content'], encoding='utf-8')
     scenarios = [SimpleNamespace(name=s.get('name', ''), status=s.get('status', '')) for s in entree.get('scenarios') or []]
     echecs = [SimpleNamespace(scenario_name=f.get('scenario_name', ''), step_text=f.get('step_text', ''),
-                              raw=f.get('raw', ''), traceback_summary=f.get('traceback_summary', ''))
+                              raw=f.get('raw', ''), traceback_summary=f.get('traceback_summary', ''),
+                              page_url=f.get('page_url', ''))
               for f in entree.get('echecs') or []]
     connector_type = _type_de_connecteur(project)
     os.environ['TESTPILOT_QUALIFICATION'] = '1'
