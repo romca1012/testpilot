@@ -65,7 +65,9 @@ def test_un_len_sans_rapport_avec_le_rpc_est_accepte(tmp_path):
         "def s(context):\n"
         "    titre = context.page.inner_text('h1')\n"
         "    constater(len(titre) < 80, 'titre trop long')\n"
-        "    constater(len([1, 2, 3]) == 3, 'liste')\n")
+        # Lot VH-02 : la liste locale est tirée de la page (un constat doit lire l'application) ; elle reste LOCALE.
+        "    mots = titre.split()\n"
+        "    constater(len(mots) <= 20, 'liste')\n")
 
     assert _ecrire(tmp_path, code).ok is True
 
@@ -76,7 +78,8 @@ def test_une_mention_en_commentaire_ou_chaine_ne_declenche_pas(tmp_path):
         "def s(context):\n"
         "    # ne pas appeler context.odoo.env[m].search_count([]) ici\n"
         "    message = \"search_count([]) est interdit\"\n"
-        "    constater(message, 'vide')\n")
+        # Lot VH-02 : le constat lit la page (une chaîne constante ne vérifie rien) ; la mention reste en commentaire et en chaîne.
+        "    constater(message not in context.page.inner_text('body'), 'vide')\n")
 
     assert _ecrire(tmp_path, code).ok is True
 

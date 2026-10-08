@@ -278,6 +278,143 @@ def _forbidden_assertion_placement(tree: ast.AST) -> str:
     return ""
 
 
+# ── Lot VH-02 (V1, V9) : un constat doit LIRE l'application ; une action ne se fait pas par RPC ; Python limité ──────────────
+#
+# Audit du 2026-10-08 : `constater(statut == attendu)` où les deux côtés viennent du Gherkin, `constater(True)`,
+# `constater(page.url)` ou `constater(a == a)` passaient toutes les gardes et donnaient `conforme`. Et un `Quand je valide la
+# commande` codé `context.odoo.env[m].write({"state": "done"})` suivi d'un `Alors l'état technique … est "done"` sortait
+# `conforme` sans que l'interface ni la logique métier aient été exercées. Gardes de FORME (un filet, pas une preuve) : le
+# runtime garde le dernier mot (`constater` refuse un objet qui ne prouve rien, un constat échoué avalé → `indetermine`).
+
+# Ce que Behave pose sur `context` à partir du TEXTE du test (tableau, docstring, scénario…) : ce n'est pas l'application.
+_CONTEXTE_DU_TEST = frozenset({"table", "text", "scenario", "feature", "config", "tags", "active_outline", "step"})
+# Modules qu'un fichier de steps généré peut importer. Tout le reste est refusé : un import est le moyen le plus court de
+# sortir du cadre (nouvelle connexion, réseau, système de fichiers, harnais).
+_IMPORTS_AUTORISES = frozenset({
+    "behave", "_base_helpers", "features", "playwright", "re", "json", "datetime", "decimal", "time", "math",
+    "unicodedata", "string", "collections", "itertools", "functools", "typing", "uuid", "random",
+})
+_APPELS_INTERDITS = frozenset({"exec", "eval", "compile", "__import__", "open", "globals", "vars", "locals", "breakpoint"})
+_ATTRIBUTS_INTERDITS = frozenset({"__dict__", "__globals__", "__builtins__", "__code__", "_runner", "__class__"})
+_ECRITURES_RPC = frozenset({"create", "write", "unlink", "copy", "action_confirm", "action_post", "button_validate"})
+
+
+def _lit_le_contexte_applicatif(noeud: ast.AST) -> bool:
+    return (isinstance(noeud, ast.Attribute) and isinstance(noeud.value, ast.Name) and noeud.value.id == "context"
+            and noeud.attr not in _CONTEXTE_DU_TEST)
+
+
+def _cibles(cible: ast.AST) -> list[str]:
+    if isinstance(cible, ast.Name):
+        return [cible.id]
+    if isinstance(cible, (ast.Tuple, ast.List)):
+        return [n for c in cible.elts for n in _cibles(c)]
+    if isinstance(cible, ast.Starred):
+        return _cibles(cible.value)
+    return []
+
+
+def _noms_lus_de_l_application(func: ast.AST) -> set[str]:
+    """Les variables locales dont la valeur vient de l'application (lecture de `context.page`, `context.odoo`, de l'oracle…),
+    directement ou par d'autres variables — point fixe. Un helper NON décoré reçoit ses paramètres d'un step : ils comptent
+    comme lus de l'application (provenance inconnue ; le runtime garde le dernier mot). Les paramètres d'un step décoré
+    viennent du Gherkin : ils n'en sont pas."""
+    lus: set[str] = set()
+    if not _decorateurs(func):
+        lus |= {a.arg for a in func.args.args + func.args.kwonlyargs if a.arg != "context"}
+
+    def depend(expr: ast.AST | None) -> bool:
+        return expr is not None and any(
+            _lit_le_contexte_applicatif(n) or (isinstance(n, ast.Name) and n.id in lus) for n in ast.walk(expr))
+
+    change = True
+    while change:
+        change = False
+        for n in ast.walk(func):
+            paires: list[tuple[list[str], ast.AST | None]] = []
+            if isinstance(n, ast.Assign):
+                paires = [(_cibles(t), n.value) for t in n.targets]
+            elif isinstance(n, (ast.AugAssign, ast.AnnAssign)):
+                paires = [(_cibles(n.target), n.value)]
+            elif isinstance(n, (ast.For, ast.AsyncFor, ast.comprehension)):
+                paires = [(_cibles(n.target), n.iter)]
+            elif isinstance(n, ast.NamedExpr):
+                paires = [(_cibles(n.target), n.value)]
+            elif isinstance(n, ast.withitem) and n.optional_vars is not None:
+                paires = [(_cibles(n.optional_vars), n.context_expr)]
+            for noms, valeur in paires:
+                if depend(valeur) and not set(noms) <= lus:
+                    lus |= set(noms)
+                    change = True
+    return lus
+
+
+def _constat_sans_lecture(tree: ast.AST) -> str:
+    """Un `constater*` dont la condition ne lit rien de l'application, ou qui est une tautologie, ou un `constater` redéfini."""
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in _CONSTATER:
+            return f"redéfinition de `{n.name}` : seule la bibliothèque définit les constats"
+        if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id in _CONSTATER for t in n.targets):
+            return "réaffectation de `constater` : seule la bibliothèque définit les constats"
+        if isinstance(n, ast.alias) and n.name in _CONSTATER and n.asname and n.asname != n.name:
+            return f"`{n.name}` importé sous un autre nom (`{n.asname}`) : importe-le sous son nom"
+    for func in ast.walk(tree):
+        if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        lus = _noms_lus_de_l_application(func)
+        for appel in ast.walk(func):
+            if not (isinstance(appel, ast.Call) and _nom_appele(appel) in _CONSTATER and appel.args):
+                continue
+            condition = appel.args[0]
+            if isinstance(condition, ast.Constant):
+                return (f"`{_nom_appele(appel)}({ast.unparse(condition)}, …)` dans `{func.name}` : une condition constante "
+                        "ne vérifie rien")
+            if (isinstance(condition, ast.Compare) and len(condition.comparators) == 1
+                    and ast.dump(condition.left) == ast.dump(condition.comparators[0])):
+                return f"`{ast.unparse(condition)}` dans `{func.name}` : une comparaison d'une valeur à elle-même est toujours vraie"
+            if not any(_lit_le_contexte_applicatif(x) or (isinstance(x, ast.Name) and x.id in lus)
+                       for x in ast.walk(condition)):
+                return (f"`{_nom_appele(appel)}({ast.unparse(condition)[:60]}, …)` dans `{func.name}` ne lit rien de "
+                        "l'application : la condition ne dépend que de valeurs écrites dans le test. Lis la valeur à "
+                        "l'écran (`context.page`), par RPC (`context.odoo`) ou par l'oracle, puis compare-la")
+    return ""
+
+
+def _forbidden_ecriture_rpc(tree: ast.AST) -> str:
+    """Une écriture RPC (`create`/`write`/`unlink`…) dans un `@when`/`@then` : l'action testée ne se fait pas par RPC."""
+    for func in ast.walk(tree):
+        if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not (_decorateurs(func) & {"when", "then"}):
+            continue
+        for appel in ast.walk(func):
+            if (isinstance(appel, ast.Call) and isinstance(appel.func, ast.Attribute)
+                    and appel.func.attr in _ECRITURES_RPC and "odoo" in ast.unparse(appel.func.value)):
+                return (f"`{ast.unparse(appel.func)[:70]}(…)` dans le step `{func.name}` : une action ou une vérification ne "
+                        "s'écrit pas par RPC (elle contournerait l'interface et la logique testées). Prépare les données "
+                        "dans un `@given`, agis par l'interface (`context.page`)")
+    return ""
+
+
+def _forbidden_python(tree: ast.AST) -> str:
+    """Imports hors liste blanche, appels dynamiques (`exec`, `eval`, `open`…), introspection du harnais."""
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            for alias in n.names:
+                if alias.name.split(".")[0] not in _IMPORTS_AUTORISES:
+                    return f"`import {alias.name}` : module non autorisé dans un fichier de steps"
+        if isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] not in _IMPORTS_AUTORISES:
+            return f"`from {n.module} import …` : module non autorisé dans un fichier de steps"
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in _APPELS_INTERDITS:
+            return f"`{n.func.id}(…)` : appel interdit dans un fichier de steps"
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in {"getattr", "setattr", "delattr"}
+                and (len(n.args) < 2 or not isinstance(n.args[1], ast.Constant))):
+            return f"`{n.func.id}` avec un nom d'attribut calculé : écris l'attribut en clair"
+        if isinstance(n, ast.Attribute) and n.attr in _ATTRIBUTS_INTERDITS:
+            return f"`.{n.attr}` : introspection interdite dans un fichier de steps"
+    return ""
+
+
 def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if not content.strip():
         return _outcome("[write_feature_file] contenu vide", ok=False)
@@ -383,6 +520,15 @@ def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
             "\"message\")` dans un `@then`, ou utilise un step du catalogue.",
             ok=False,
         )
+
+    # 3quinquies. Lot VH-02 (V1, V9) : Python limité, aucune action par RPC, un constat lit l'application. BLOQUANT.
+    for code, faute, conseil in (
+            ("PYTHON_INTERDIT", _forbidden_python(tree), "Utilise les steps du catalogue et `context.page`."),
+            ("ACTION_PAR_RPC", _forbidden_ecriture_rpc(tree), ""),
+            ("CONSTAT_SANS_LECTURE", _constat_sans_lecture(tree), "")):
+        if faute:
+            return _outcome(f"[write_steps_file] {code} : {faute}. {conseil}".rstrip() + " Puis rappelle write_steps_file.",
+                            ok=False)
 
     # 4. Aucune redéfinition d'un step de la bibliothèque partagée.
     declared = {step.label for step in steps_library.extract_steps(content)}
