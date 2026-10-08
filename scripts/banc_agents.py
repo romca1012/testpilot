@@ -408,6 +408,7 @@ class ReparationConsignee:
     motif: str = ""
     cout_usd: float | None = None
     resume_agent: str = ""  # ce que l'agent DIT avoir fait : montré à un humain, JAMAIS une source de verdict (décision 0015)
+    tentative: int = 1  # rang de la tentative sur CET essai (le produit en autorise `REPAIR_BUDGET_DEFAULT`, 2 par défaut)
 
 
 @dataclass
@@ -492,6 +493,7 @@ def executer_campagne(
     reel: bool = False,
     journal: Callable[[str], None] = lambda _message: None,
     reparer: Callable[[Artefacts, Jeu], Artefacts | None] | None = None,
+    tentatives_reparation: int = 1,
 ) -> Campagne:
     """Joue la campagne : k essais par cas, UNE génération par (cas, essai), jouée sur la saine et chaque défaut listé.
 
@@ -564,53 +566,76 @@ def executer_campagne(
                 if saine is not None and saine.obtenu == "technical_error":
                     cumul, cout_max = _reparer_et_rejouer(
                         campagne, reparer, jouer, artefacts, saine, traces.get(VARIANTE_SAINE), variantes, attendu_de,
-                        cumul, cout_max, plafond_usd, cout_estime_essai, journal)
+                        cumul, cout_max, plafond_usd, cout_estime_essai, journal, tentatives_reparation)
     return campagne
 
 
 def _reparer_et_rejouer(campagne: Campagne, reparer, jouer, artefacts: Artefacts, saine: Observation, trace: dict | None,
                         variantes: Sequence[str], attendu_de: Mapping, cumul: float, cout_max: float,
-                        plafond_usd: float | None, cout_estime_essai: float, journal) -> tuple[float, float]:
-    """UNE réparation (D23), comme le ferait le produit APRÈS une première exécution en erreur technique — jamais avant.
+                        plafond_usd: float | None, cout_estime_essai: float, journal,
+                        tentatives: int = 1) -> tuple[float, float]:
+    """Jusqu'à `tentatives` réparations (D23), comme le produit APRÈS une première exécution en erreur technique — jamais avant.
+
+    Le produit autorise plusieurs tentatives (`REPAIR_BUDGET_DEFAULT`) : un test peut cumuler des défauts indépendants (accent
+    oublié dans un libellé, puis mauvais type de repère, puis page supposée inchangée) qu'une seule correction ne règle pas. Chaque
+    tentative part de l'ÉCHEC OBSERVÉ de la version précédente, rejouée sur la saine ; on s'arrête dès que la saine ne sort plus en
+    erreur technique, qu'une tentative n'apporte rien, que le budget de tentatives est épuisé ou que le plafond de coût l'interdit.
 
     Seule la saine déclenche : un test qui s'exécute proprement mais échoue (`non_conforme`) n'est pas « réparé » par le produit
-    (c'est une décision humaine : défaut de l'application ou test à revoir). Le coût compte dans le plafond. La version réparée
-    est rejouée sur TOUTES les variantes : une réparation qui « maquille » (test qui passe partout) doit apparaître comme faux vert.
+    (c'est une décision humaine : défaut de l'application ou test à revoir). Le coût compte dans le plafond. La version FINALE est
+    rejouée sur TOUTES les variantes : une réparation qui « maquille » (test qui passe partout) doit apparaître comme faux vert.
     """
     cas, essai = artefacts.cas, artefacts.essai
-    raison = raison_d_arret(cumul, cout_max, plafond_usd, cout_estime_essai)
-    if raison:
-        campagne.reparations.append(ReparationConsignee(cas, essai, False, False, f"plafond de coût : {raison}"))
-        journal(f"  RÉPARATION non tentée ({raison})")
+    courant, obs_saine, trace_courante = artefacts, saine, trace
+    version_rejouee: Artefacts | None = None
+    for rang in range(1, max(1, tentatives) + 1):
+        raison = raison_d_arret(cumul, cout_max, plafond_usd, cout_estime_essai)
+        if raison:
+            campagne.reparations.append(ReparationConsignee(cas, essai, False, False, f"plafond de coût : {raison}", tentative=rang))
+            journal(f"  RÉPARATION {rang} non tentée ({raison})")
+            break
+        try:
+            reparee = reparer(courant, Jeu(verdict=obs_saine.obtenu, cause=obs_saine.cause, detail=obs_saine.detail,
+                                           trace=trace_courante))
+        except ArretCampagne as arret:
+            campagne.reparations.append(ReparationConsignee(cas, essai, False, False, f"arrêt demandé : {arret}", tentative=rang))
+            break
+        except Exception as exc:  # une réparation qui tombe est consignée, jamais prise pour un succès
+            campagne.anomalies.append(f"{cas} essai {essai} : `reparer` a levé {type(exc).__name__}: {exc}")
+            campagne.reparations.append(ReparationConsignee(cas, essai, True, False, f"{type(exc).__name__}: {exc}"[:300],
+                                                            tentative=rang))
+            break
+        if reparee is None:
+            campagne.reparations.append(ReparationConsignee(cas, essai, False, False, "aucune réparation tentée", tentative=rang))
+            break
+        cout_rep = reparee.cout_usd
+        cumul += cout_retenu_pour_le_plafond(cout_rep, cout_max, cout_estime_essai)
+        if cout_rep is not None:
+            cout_max = max(cout_max, cout_rep)
+        rejouable = reparee.genere_ok and bool(reparee.fichiers)
+        campagne.reparations.append(ReparationConsignee(
+            cas, essai, True, rejouable, "" if rejouable else (reparee.erreur or "proposition inexploitable"),
+            cout_rep, resume_agent=reparee.resume, tentative=rang))
+        journal(f"  RÉPARATION {rang} {'rejouée' if rejouable else 'inexploitable'} "
+                f"({'coût inconnu' if cout_rep is None else f'{cout_rep:.3f} $'})")
+        if not rejouable:
+            break
+        traces: dict[str, dict | None] = {}
+        obs_saine = _jouer_une_variante(jouer, reparee, VARIANTE_SAINE, essai, attendu_de[(cas, VARIANTE_SAINE)],
+                                        campagne.anomalies, traces)
+        journal(f"  [réparé {rang}] {VARIANTE_SAINE:<22} attendu {obs_saine.attendu:<13} obtenu {obs_saine.obtenu}")
+        courant, version_rejouee, trace_courante = reparee, reparee, traces.get(VARIANTE_SAINE)
+        if obs_saine.obtenu != "technical_error":
+            break
+    if version_rejouee is None:
         return cumul, cout_max
-    try:
-        reparee = reparer(artefacts, Jeu(verdict=saine.obtenu, cause=saine.cause, detail=saine.detail, trace=trace))
-    except ArretCampagne as arret:
-        campagne.reparations.append(ReparationConsignee(cas, essai, False, False, f"arrêt demandé : {arret}"))
-        return cumul, cout_max
-    except Exception as exc:  # une réparation qui tombe est consignée, jamais prise pour un succès
-        campagne.anomalies.append(f"{cas} essai {essai} : `reparer` a levé {type(exc).__name__}: {exc}")
-        campagne.reparations.append(ReparationConsignee(cas, essai, True, False, f"{type(exc).__name__}: {exc}"[:300]))
-        return cumul, cout_max
-    if reparee is None:
-        campagne.reparations.append(ReparationConsignee(cas, essai, False, False, "aucune réparation tentée"))
-        return cumul, cout_max
-    cout_rep = reparee.cout_usd
-    cumul += cout_retenu_pour_le_plafond(cout_rep, cout_max, cout_estime_essai)
-    if cout_rep is not None:
-        cout_max = max(cout_max, cout_rep)
-    rejouable = reparee.genere_ok and bool(reparee.fichiers)
-    campagne.reparations.append(ReparationConsignee(
-        cas, essai, True, rejouable, "" if rejouable else (reparee.erreur or "proposition inexploitable"),
-        cout_rep, resume_agent=reparee.resume))
-    journal(f"  RÉPARATION {'rejouée' if rejouable else 'inexploitable'} "
-            f"({'coût inconnu' if cout_rep is None else f'{cout_rep:.3f} $'})")
-    if not rejouable:
-        return cumul, cout_max
+    campagne.observations_reparees.append(obs_saine)  # la saine de la version FINALE, déjà jouée
     for variante in variantes:
+        if variante == VARIANTE_SAINE:
+            continue
         attendu = attendu_de[(cas, variante)]
         campagne.observations_reparees.append(
-            _jouer_une_variante(jouer, reparee, variante, essai, attendu, campagne.anomalies, None))
+            _jouer_une_variante(jouer, version_rejouee, variante, essai, attendu, campagne.anomalies, None))
         derniere = campagne.observations_reparees[-1]
         journal(f"  [réparé] {variante:<24} attendu {attendu:<13} obtenu {derniere.obtenu}")
     return cumul, cout_max
@@ -773,9 +798,10 @@ def calculer_apres_reparation(campagne: Campagne) -> dict | None:
         "pass_resultat": {"pass_at_1": stats.pass_at_1(res_par_cas), "pass_hat_k": stats.pass_hat_k(res_par_cas, k)},
         "non_concluants": dict(Counter(o.obtenu for o in effectives if o.obtenu in stats.VERDICTS_NON_CONCLUANTS)),
         "reparations": {
-            "a_reparer": len(campagne.reparations),
-            "tentees": sum(1 for r in campagne.reparations if r.tentee),
-            "rejouables": sum(1 for r in campagne.reparations if r.rejouable),
+            "a_reparer": len({(r.cas, r.essai) for r in campagne.reparations}),
+            "tentees": len({(r.cas, r.essai) for r in campagne.reparations if r.tentee}),
+            "tentatives": sum(1 for r in campagne.reparations if r.tentee),
+            "rejouables": len({(r.cas, r.essai) for r in campagne.reparations if r.rejouable}),
             "saine_executable_apres": sum(1 for o in saines_reparees if o.obtenu not in ("technical_error", "blocked")),
             "saine_conforme_apres": sum(1 for o in saines_reparees if o.obtenu == "conforme"),
             "cout_usd": round(sum(couts), 6),
@@ -828,13 +854,14 @@ def _rendre_apres_reparation(i: dict, campagne: Campagne) -> list[str]:
         "", "## Après UNE réparation (D23)", "",
         "Pour chaque essai dont le jeu sur l'application saine sort en `technical_error`, l'agent de réparation reçoit l'échec "
         "observé (jamais un diagnostic) et propose UNE correction ; la version réparée est rejouée sur toutes les variantes. "
-        "Les autres essais restent tels quels. Ce n'est pas le circuit complet du produit (budget fixé à la relecture, plusieurs "
-        "tentatives) : c'est une borne basse de ce que la réparation apporte.", "",
+        "Les autres essais restent tels quels. Le nombre de tentatives par essai est celui du budget de réparation du produit "
+        "(`--tentatives-reparation`) ; le circuit complet (arrêt sur régression, couverture perdue) n'est pas rejoué ici.", "",
         "| Indicateur | Avant réparation | Après une réparation |", "|---|---|---|",
     ]
     return lignes + _lignes_comparees(i, a) + [
         "",
-        f"Réparations : {r['a_reparer']} à réparer, {r['tentees']} tentées, {r['rejouables']} rejouables ; "
+        f"Réparations : {r['a_reparer']} essai(s) à réparer, {r['tentees']} tenté(s) en {r['tentatives']} tentative(s), "
+        f"{r['rejouables']} avec une correction rejouable ; "
         f"saine exécutable après : {r['saine_executable_apres']}, conforme après : {r['saine_conforme_apres']} ; "
         f"coût des réparations : **{r['cout_usd']:.3f} $**"
         + (f" (⚠️ {r['couts_non_consignes']} coût(s) non consigné(s))" if r["couts_non_consignes"] else "") + ".",
@@ -1488,6 +1515,8 @@ def main(argv: list[str] | None = None) -> int:
                          help="coût présumé d'une génération avant d'en avoir observé une (dollars)")
     parseur.add_argument("--reparer", action="store_true",
                          help="D23 : UNE réparation par test en erreur technique sur la saine, puis rejeu (coût en plus)")
+    parseur.add_argument("--tentatives-reparation", type=int, default=None,
+                         help="tentatives de réparation par test (défaut : celui du produit, TESTPILOT_REPAIR_BUDGET_DEFAULT = 2)")
     parseur.add_argument("--generations-depuis", type=Path, default=None,
                          help="rejoue les tests DÉJÀ générés par une campagne passée (dossier .local-preview/qualification) "
                               "au lieu d'en générer de nouveaux : aucun coût de génération")
@@ -1585,7 +1614,8 @@ def _lancer_reel(args, configuration: Configuration, cas_joues: list[str], taux:
         campagne = executer_campagne(
             list(specs), attendus, args.essais, generer, jouer, defauts_connus=defauts_codes, cout=cout,
             plafond_usd=args.plafond_cout, cout_estime_essai=args.cout_estime_essai, reel=True,
-            journal=lambda m: print(m, flush=True), reparer=reparer)
+            journal=lambda m: print(m, flush=True), reparer=reparer,
+            tentatives_reparation=_tentatives_de_reparation(args.tentatives_reparation))
     indicateurs = calculer_indicateurs(campagne, taux)
     contexte = {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "etiquette": args.etiquette,
                 "commit": _commit(), "versions": _versions(), "modele_generation": _modele(),
@@ -1593,11 +1623,25 @@ def _lancer_reel(args, configuration: Configuration, cas_joues: list[str], taux:
                 "configuration_sha256": empreinte_de_la_configuration(),
                 "sous_ensemble_de_cas": bool(args.cas), "donnees_jetables": str(data_dir),
                 "generations_rejouees_depuis": str(args.generations_depuis) if args.generations_depuis else None,
-                "reparation": bool(args.reparer)}
+                "reparation": bool(args.reparer),
+                "tentatives_reparation": _tentatives_de_reparation(args.tentatives_reparation) if args.reparer else None}
     md, js = ecrire_sortie(campagne, indicateurs, contexte, args.sortie)
     code = code_de_sortie(indicateurs, campagne)
     print(f"\nRapport : {md}\nJSON    : {js}\nFaux verts {_taux(indicateurs['faux_verts'])} → code de sortie {code}")
     return code
+
+
+def _tentatives_de_reparation(demande: int | None) -> int:
+    """Le budget de tentatives du produit par défaut (`config.REPAIR_BUDGET_DEFAULT`), sauf demande explicite (>= 1)."""
+    if demande is not None:
+        return max(1, demande)
+    try:
+        sys.path.insert(0, str(RACINE / "src"))
+        from testpilot import config
+
+        return max(1, int(config.REPAIR_BUDGET_DEFAULT))
+    except Exception:
+        return 2
 
 
 def _modele() -> str:
