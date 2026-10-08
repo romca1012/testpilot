@@ -1,0 +1,383 @@
+{
+  "contexte": {
+    "date": "2026-10-08",
+    "etiquette": "nom-limite-reparation-sonnet",
+    "commit": "1dfe199",
+    "versions": {
+      "python": "3.12.14",
+      "testpilot": "0.1.0",
+      "behave": "1.3.3",
+      "playwright": "1.62.0"
+    },
+    "modele_generation": "claude-sonnet-4-6",
+    "mode": "reel",
+    "plafond_usd": 1.0,
+    "app": "boutique_locale",
+    "configuration_sha256": "1a9ac8873de83d174cedb9e4a8dcda338e684f28ca7a707857ff5e1aaf0bfd5c",
+    "sous_ensemble_de_cas": true,
+    "donnees_jetables": "C:\\Users\\ROMARI~1\\AppData\\Local\\Temp\\banc_agents_data_bmu31dqv",
+    "generations_rejouees_depuis": ".local-preview\\qualification",
+    "reparation": true,
+    "tentatives_reparation": 2
+  },
+  "indicateurs": {
+    "faux_verts": {
+      "k": 0,
+      "n": 3,
+      "non_concluants": 0,
+      "taux": 0.0,
+      "ic95": [
+        0.0,
+        0.5615060804490177
+      ]
+    },
+    "faux_rouges": {
+      "k": 0,
+      "n": 2,
+      "non_concluants": 1,
+      "taux": 0.0,
+      "ic95": [
+        0.0,
+        0.6576280471103807
+      ]
+    },
+    "pass_execution": {
+      "pass_at_1": {
+        "k": 1,
+        "n": 1,
+        "non_mesures": 0,
+        "taux": 1.0,
+        "ic95": [
+          0.20654329147389294,
+          1.0
+        ]
+      },
+      "pass_at_k": {
+        "k": 1,
+        "n": 1,
+        "non_mesures": 0,
+        "taux": 1.0,
+        "ic95": [
+          0.20654329147389294,
+          1.0
+        ]
+      },
+      "pass_hat_k": {
+        "k": 0,
+        "n": 1,
+        "non_mesures": 0,
+        "taux": 0.0,
+        "ic95": [
+          0.0,
+          0.7934567085261071
+        ]
+      }
+    },
+    "pass_resultat": {
+      "pass_at_1": {
+        "k": 1,
+        "n": 1,
+        "non_mesures": 0,
+        "taux": 1.0,
+        "ic95": [
+          0.20654329147389294,
+          1.0
+        ]
+      },
+      "pass_at_k": {
+        "k": 1,
+        "n": 1,
+        "non_mesures": 0,
+        "taux": 1.0,
+        "ic95": [
+          0.20654329147389294,
+          1.0
+        ]
+      },
+      "pass_hat_k": {
+        "k": 0,
+        "n": 1,
+        "non_mesures": 0,
+        "taux": 0.0,
+        "ic95": [
+          0.0,
+          0.7934567085261071
+        ]
+      }
+    },
+    "non_concluants": {
+      "technical_error": 1
+    },
+    "part_non_concluants_sous_defaut": 0.0,
+    "par_defaut": {
+      "message_erreur_absent": {
+        "jeux": 3,
+        "concluants": 3,
+        "detectes": 3,
+        "detectes_fiables": 2,
+        "ic95_detection_fiable": [
+          0.2076549551264879,
+          0.9385096847238394
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      }
+    },
+    "cout": {
+      "total_usd": 0.0,
+      "total_eur": 0.0,
+      "taux_eur_usd": 1.08,
+      "generations": 3,
+      "generations_sans_cout_consigne": 0,
+      "par_generation_usd": 0.0,
+      "par_generation_eur": 0.0,
+      "par_cas_usd": {
+        "client_creation_nom_limite": 0.0
+      }
+    },
+    "integrite": {
+      "verifiees": 6,
+      "divergentes": 0,
+      "non_rapportees": 0
+    },
+    "echantillon": {
+      "cas": 1,
+      "k": 3,
+      "essais_prevus": 3,
+      "essais_lances": 3,
+      "jeux": 6
+    },
+    "ecarts": [
+      {
+        "cas": "client_creation_nom_limite",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      }
+    ],
+    "apres_reparation": {
+      "faux_verts": {
+        "k": 0,
+        "n": 3,
+        "non_concluants": 0,
+        "taux": 0.0,
+        "ic95": [
+          0.0,
+          0.5615060804490177
+        ]
+      },
+      "faux_rouges": {
+        "k": 0,
+        "n": 3,
+        "non_concluants": 0,
+        "taux": 0.0,
+        "ic95": [
+          0.0,
+          0.5615060804490177
+        ]
+      },
+      "pass_execution": {
+        "pass_at_1": {
+          "k": 1,
+          "n": 1,
+          "non_mesures": 0,
+          "taux": 1.0,
+          "ic95": [
+            0.20654329147389294,
+            1.0
+          ]
+        },
+        "pass_hat_k": {
+          "k": 1,
+          "n": 1,
+          "non_mesures": 0,
+          "taux": 1.0,
+          "ic95": [
+            0.20654329147389294,
+            1.0
+          ]
+        }
+      },
+      "pass_resultat": {
+        "pass_at_1": {
+          "k": 1,
+          "n": 1,
+          "non_mesures": 0,
+          "taux": 1.0,
+          "ic95": [
+            0.20654329147389294,
+            1.0
+          ]
+        },
+        "pass_hat_k": {
+          "k": 1,
+          "n": 1,
+          "non_mesures": 0,
+          "taux": 1.0,
+          "ic95": [
+            0.20654329147389294,
+            1.0
+          ]
+        }
+      },
+      "non_concluants": {},
+      "reparations": {
+        "a_reparer": 1,
+        "tentees": 1,
+        "tentatives": 1,
+        "rejouables": 1,
+        "saine_executable_apres": 1,
+        "saine_conforme_apres": 1,
+        "cout_usd": 0.034046,
+        "couts_non_consignes": 0
+      }
+    }
+  },
+  "interrompue": "",
+  "essais": [
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c1_i1_20261008T050527.feature": "3186f915f3248b03bc65c6b7bda146b00729d58065c4240175dba238116f1428",
+        "pilote_p1_c1_i1_20261008T050527_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c1_i2_20261008T053146.feature": "70d9f463244868178a0bacad725457139df5ef3c7fbd013faecdacf759451ac4",
+        "pilote_p1_c1_i2_20261008T053146_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      }
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c1_i3_20261008T055644.feature": "7f93ee50045c94010c3bfba1f4975cb554654b4512501a85feaa748eb1c9b594",
+        "pilote_p1_c1_i3_20261008T055644_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    }
+  ],
+  "observations": [
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:54366/clients/nouveau.",
+      "duree": 13.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 7.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:54366/clients/nouveau.",
+      "duree": 16.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Bouton 'Nouveau client' : aucun élément actionnable sur http://127.0.0.1:54366/clients/nouveau",
+      "duree": 25.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:54366/clients/nouveau.",
+      "duree": 16.6,
+      "empreinte_ok": true
+    }
+  ],
+  "anomalies": [],
+  "reparations": [
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 3,
+      "tentee": true,
+      "rejouable": true,
+      "motif": "",
+      "cout_usd": 0.034046,
+      "resume_agent": "Je dispose de suffisamment d'informations. Le `.feature` doit être corrigé pour naviguer vers `/clients` avant de cliquer sur \"Nouveau client\". Voici la correction :\n\n**`.feature` — correction de navigation** (exception 2 : parcours d'accès incorrect) :",
+      "tentative": 1
+    }
+  ],
+  "observations_reparees": [
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 7.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Aucune erreur de validation visible dans le formulaire.",
+      "duree": 15.6,
+      "empreinte_ok": true
+    }
+  ]
+}
