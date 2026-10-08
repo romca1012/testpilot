@@ -26,7 +26,9 @@ RACINE = Path(__file__).resolve().parents[1]
 def _causes_du_front() -> dict:
     source = (RACINE / "frontend" / "src" / "lib" / "status.ts").read_text(encoding="utf-8")
     bloc = re.search(r"const CAUSE: Record<string, string> = \{(.*?)\n\}", source, re.S).group(1)
-    return dict(re.findall(r"^\s*(\w+):\s*'([^']*)',?\s*$", bloc, re.M))
+    # Apostrophe simple OU double : un libellé qui contient une apostrophe (« n'a rien vérifié ») s'écrit entre guillemets.
+    paires = re.findall(r"^\s*(\w+):\s*(?:'([^']*)'|\"([^\"]*)\"),?\s*$", bloc, re.M)
+    return {cle: simple or double for cle, simple, double in paires}
 
 
 def test_le_front_libelle_exactement_les_memes_causes_que_le_serveur():
