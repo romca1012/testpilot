@@ -390,3 +390,28 @@ def test_le_plafond_de_cout_borne_aussi_les_tentatives_suivantes():
                                 tentatives_reparation=2, plafond_usd=0.25, cout_estime_essai=0.10)
 
     assert len(rep.recus) == 1 and "plafond" in camp.reparations[-1].motif and camp.reparations[-1].tentative == 2
+
+
+# ── Crédits API épuisés pendant une réparation (incident du 2026-10-08) ───────────────────────────────────
+
+
+def test_un_refus_faute_de_credits_n_est_pas_un_echec_de_l_agent_de_reparation():
+    """Falsifiable : comptée comme « correctif inexploitable », cette réparation aurait fait passer le fournisseur pour un défaut
+    de l'agent (la mesure en cours a été touchée : `client_creation_nom_limite` essai 3)."""
+    rapport = {"error_type": "BadRequestError",
+               "error": "Error code: 400 - Your credit balance is too low to access the Anthropic API."}
+
+    with pytest.raises(ba.ArretCampagne, match="crédits"):
+        ba.artefacts_depuis_reparation(_origine(), rapport)
+    # une autre erreur reste un échec ordinaire de la réparation
+    assert ba.artefacts_depuis_reparation(_origine(), {"error": "boom", "error_type": "ValueError"}).genere_ok is False
+
+
+def test_credits_epuises_pendant_la_reparation_la_campagne_s_arrete_sans_compter_la_tentative():
+    def reparer(_a, _j):
+        raise ba.ArretCampagne("crédits API insuffisants (erreur fournisseur) — réparation non retenue")
+
+    camp = lancer(jouer_factory(CASSE, {}), reparer, tentatives_reparation=2)
+
+    assert "crédits" in camp.interrompue and camp.reparations == [] and camp.observations_reparees == []
+    assert ba.code_de_sortie(ba.calculer_indicateurs(camp), camp) == 3  # incomplète : jamais un résultat propre
