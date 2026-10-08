@@ -187,6 +187,11 @@ def scenario_verdict(scenario, failures: list) -> ScenarioVerdict:
 
 def _scenario_verdict_axes(scenario, failures: list) -> ScenarioVerdict:
     if scenario.status == "passed":
+        if (getattr(scenario, "constats_echoues", None) or 0) > 0:
+            # Lot VH-02 (V10) : une vérification a ÉCHOUÉ pendant ce scénario, et pourtant il est allé au bout — l'échec a été
+            # avalé (exception rattrapée dans le code du test). Un autre constat réussi ne rachète pas celui-là.
+            return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_INDETERMINE, "", dt.CONSTAT_ECHOUE_IGNORE,
+                                   "Une vérification a échoué sans faire échouer le test")
         if getattr(scenario, "constats_reussis", None) == 0:
             # Lot 03 (D3) : le scénario est allé au bout, mais AUCUN constat réussi n'a été consigné
             # sous un `Alors` (assertion dans une branche non prise, `Alors` qui ne fait qu'attendre…).

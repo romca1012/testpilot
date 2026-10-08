@@ -56,6 +56,11 @@ _NOTE_ALORS_SANS_CONSTAT = (
     "attendu n'a rien vérifié : il n'est pas prouvé. Ce n'est pas une preuve que l'application est conforme — le test "
     "est à compléter, puis à relancer.")
 
+# Lot VH-02 (V10) : une vérification a échoué mais le test l'a rattrapée et a continué.
+_NOTE_CONSTAT_ECHOUE_IGNORE = (
+    "Ce test est allé au bout, mais une de ses vérifications a échoué en route : le test a rattrapé l'échec au lieu de "
+    "s'arrêter. Ce n'est pas une preuve que l'application est conforme — le test est à corriger, puis à relancer.")
+
 # Notes DÉTERMINISTES (lot 05, D5), jamais confiées au LLM et ajoutées même quand il est indisponible : un « Réussi — à
 # confirmer » doit toujours dire POURQUOI il est à confirmer (quel élément a été retrouvé par repli, ou le second essai).
 _NOTE_AUTO_RESOLUE = (
@@ -262,6 +267,8 @@ def propose_explication(verdict: CaseVerdict, *, module_name: str = "",
         texte = f"{texte} {_NOTE_AUCUN_CONSTAT}"
     if texte and any(getattr(v, "cause_category", "") == "alors_sans_constat" for v in verdict.scenarios):
         texte = f"{texte} {_NOTE_ALORS_SANS_CONSTAT}"
+    if texte and any(getattr(v, "cause_category", "") == "constat_echoue_ignore" for v in verdict.scenarios):
+        texte = f"{texte} {_NOTE_CONSTAT_ECHOUE_IGNORE}"
     note = note_confiance(verdict)
     if note:
         texte = f"{texte} {note}".strip()

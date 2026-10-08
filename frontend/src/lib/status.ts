@@ -122,6 +122,7 @@ const CAUSE: Record<string, string> = {
   refus_non_explique: 'Refus non expliqué (à instruire)',
   aucun_constat: 'Aucune vérification exécutée',
   alors_sans_constat: "Un résultat attendu n'a rien vérifié",
+  constat_echoue_ignore: 'Une vérification a échoué sans faire échouer le test',
   unknown: 'Indéterminé',
 }
 /** Libellé français d'une cause ; une cause inconnue du front reste lisible (« à instruire »). */
