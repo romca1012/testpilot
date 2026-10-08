@@ -719,12 +719,19 @@ _JS_ELEMENTS_INTERACTIFS = """(max) => {
         .slice(0, max);
     return elements.map(el => {
         const label = el.labels && el.labels.length ? el.labels[0].innerText : '';
-        return {
+        const nom = (el.getAttribute('aria-label') || label || el.placeholder ||
+                     el.innerText || el.value || el.name || '').trim().slice(0, 80);
+        // Le TEXTE AFFICHÉ, quand il diffère du nom : `nom` fusionne aria-label, libellé et texte, et l'agent prenait alors un
+        // nom accessible pour du texte visible (`:has-text()` ne cherche que le texte affiché). Mesuré le 2026-10-08 : un
+        // bouton « Ajouter » (aria-label « Ajouter Clavier mécanique au panier ») était visé par `:has-text('Ajouter Clavier…')`.
+        const texte = (el.innerText || '').trim().slice(0, 80);
+        const resultat = {
             role: el.getAttribute('role') || el.tagName.toLowerCase(),
-            nom: (el.getAttribute('aria-label') || label || el.placeholder ||
-                  el.innerText || el.value || el.name || '').trim().slice(0, 80),
+            nom: nom,
             type: el.getAttribute('type') || '',
         };
+        if (texte && texte !== nom) resultat.texte = texte;
+        return resultat;
     });
 }"""
 
