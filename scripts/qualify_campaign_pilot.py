@@ -192,6 +192,62 @@ def _explorer(project: dict, urls, out_dir: Path) -> list:
     return rapport
 
 
+def _reparer(entree_json: Path, project: dict, connexion: dict, out_dir: Path, budget, project_id: int,
+             plafond_usd) -> dict:
+    """UNE tentative de reparation (D23, banc d'agents) -- jamais d'execution reelle ici.
+
+    `entree_json` : {module_name, feature_content, steps_content, scenarios:[{name,status}], echecs:[{scenario_name,
+    step_text, raw, traceback_summary}]} -- l'echec observe par le run reel du banc, SANS diagnostic (comme le produit :
+    `repair_agent._failure_report`). L'agent reecrit, le dry-run valide que le test parse encore, et l'orchestrateur du
+    banc rejoue pour de vrai. Ecrit `reparation.json` : le contenu propose, son cout, la raison d'arret.
+    """
+    from types import SimpleNamespace
+
+    entree = json.loads(Path(entree_json).read_text(encoding='utf-8'))
+    module = entree['module_name']
+    trial = f'reparation-p{project_id}-{module}'
+    trial_dir = out_dir / trial
+    trial_dir.mkdir(parents=True, exist_ok=True)
+    config.GENERATED_DIR = trial_dir / 'generated'
+    config.GENERATED_DIR.mkdir(exist_ok=True)
+    (config.GENERATED_DIR / f'{module}.feature').write_text(entree['feature_content'], encoding='utf-8')
+    (config.GENERATED_DIR / f'{module}_steps.py').write_text(entree['steps_content'], encoding='utf-8')
+    scenarios = [SimpleNamespace(name=s.get('name', ''), status=s.get('status', '')) for s in entree.get('scenarios') or []]
+    echecs = [SimpleNamespace(scenario_name=f.get('scenario_name', ''), step_text=f.get('step_text', ''),
+                              raw=f.get('raw', ''), traceback_summary=f.get('traceback_summary', ''))
+              for f in entree.get('echecs') or []]
+    connector_type = _type_de_connecteur(project)
+    os.environ['TESTPILOT_QUALIFICATION'] = '1'
+    connector = build_connector(project)
+    dry_runner = BehaveRunner(generated_dir=config.GENERATED_DIR, connector_type=connector_type,
+                              project_id=project_id, connection=connexion)
+    dry_runner.cibler_artefacts(trial_dir / 'generation')
+    tracker = CostTracker(limit_usd=plafond_usd if plafond_usd is not None else config.BUDGET_PER_CASE_USD)
+    rapport = {'module_name': module, 'changed': False}
+    try:
+        connector.connect()
+        proposition = propose_fix(
+            module_name=module, scenarios=scenarios, failures=echecs, steps_content=entree['steps_content'],
+            llm=QualificationLLM(budget, trial, secrets=(project['password'], config.ANTHROPIC_API_KEY,
+                                                          os.environ.get('TESTPILOT_SECRET_KEY'))),
+            connector=connector, connector_type=connector_type, dry_runner=dry_runner, cost_tracker=tracker)
+        rapport.update({
+            'changed': proposition.changed, 'stopped_reason': proposition.stopped_reason,
+            'dry_run_passed': proposition.stopped_reason == 'done',
+            'feature_content': proposition.feature_content or entree['feature_content'],
+            'steps_content': proposition.steps_content or entree['steps_content'],
+            'cost_usd': proposition.cost_usd, 'summary': _masquer_secrets(proposition.summary or '', project)[:1500]})
+    except Exception as exc:
+        rapport['error_type'] = type(exc).__name__
+        rapport['error'] = _masquer_secrets(str(exc), project)[:1500]
+    finally:
+        connector.disconnect()
+    rapport['budget'] = budget.summary()
+    (out_dir / 'reparation.json').write_text(json.dumps(rapport, ensure_ascii=False, indent=2, default=str),
+                                             encoding='utf-8')
+    return rapport
+
+
 def _masquer_secrets(texte: str, project: dict) -> str:
     """Retire d'un texte destine a un artefact TOUT secret connu : mot de passe du projet, cle API,
     cle de chiffrement (jamais ecrite dans un `result.json`, un rapport ou une trace)."""
@@ -223,6 +279,8 @@ from testpilot.generation import menu_appris
 from testpilot.generation import regles_apprises
 from testpilot.generation.agent import GenerationAgent
 from testpilot.generation.qualification_budget import QualificationBudget, QualificationLLM
+from testpilot.generation.repair_agent import propose_fix
+from testpilot.guardrails.cost_tracker import CostTracker
 from testpilot.execution import selector_memory
 from testpilot.store.repositories import CaseRepo, ProjectRepo
 from testpilot.verdict.status import derive_verdict
@@ -420,6 +478,9 @@ def main():
     parser.add_argument('--explorer-urls', type=str, default=None,
                         help='URLs de formulaires separees par des virgules : re-exploration avec '
                              'la sonde active (rien n\'est genere ni execute), exploration.json')
+    parser.add_argument('--reparer-depuis', type=str, default=None,
+                        help='fichier JSON d\'un echec observe (banc d\'agents, D23) : UNE tentative de '
+                             'reparation, rien n\'est execute ; ecrit reparation.json')
     parser.add_argument('--max-cost-usd', type=float, default=None,
                         help='plafond de cout de la campagne : aucun essai lance au-dela '
                              '(arret reel entre deux essais, code de sortie 3)')
@@ -476,6 +537,19 @@ def main():
         return
 
     budget = QualificationBudget(out_dir / 'budget.db')
+
+    if args.reparer_depuis:
+        snapshot = _snapshot_memoires(project_id)
+        try:
+            rapport = _reparer(Path(args.reparer_depuis), project, connexion, out_dir, budget, project_id,
+                               args.max_cost_usd)
+        finally:
+            _restaurer_memoires(snapshot)
+            budget.conn.close()
+        print(json.dumps({'reparation': {k: rapport.get(k) for k in
+                                         ('changed', 'dry_run_passed', 'stopped_reason', 'cost_usd', 'error_type')}},
+                         ensure_ascii=True), flush=True)
+        return
 
     def lancer(case_id, iteration):
         snapshot = _snapshot_memoires(project_id)
