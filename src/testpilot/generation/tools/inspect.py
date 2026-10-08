@@ -95,6 +95,10 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
         f"Soumission : {submission or 'inconnue'}."
     )
     outcome.verified_fields = {f"inspect_page_form:{page_url}": names}
+    # Lot VH-05 (D24) : ce que l'outil vient d'OBSERVER compte pour le contrôle des littéraux à l'écriture.
+    if getattr(ctx, "annuaire", None) is not None:
+        ctx.annuaire.observes_session.update(
+            str(f[k]).strip() for f in fields for k in ("name", "label") if str(f.get(k) or "").strip())
     # Lot 12 : formats de saisie observés (sonde + attributs + règles apprises du projet), pour les
     # champs de CETTE route seulement — texte de l'application cité comme donnée, plafond de taille.
     # Un select ne fait autorité (D11) que si la sonde a OBSERVÉ que ses options ne dépendent d'aucun
@@ -229,6 +233,10 @@ def inspect_page_snapshot(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
     if not elements:
         return _outcome(
             f"[inspect_page_snapshot] {page_url} : aucun élément interactif visible détecté.")
+    # Lot VH-05 (D24) : noms accessibles et textes affichés observés → acceptés par le contrôle des littéraux à l'écriture.
+    if getattr(ctx, "annuaire", None) is not None:
+        ctx.annuaire.observes_session.update(
+            str(el[k]).strip() for el in elements for k in ("nom", "texte") if str(el.get(k) or "").strip())
     lignes = [f"{len(elements)} élément(s) interactif(s) visible(s) sur "
              f"{info.get('url') or page_url} :"]
     for el in elements:

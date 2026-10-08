@@ -102,6 +102,12 @@ class GenerationAgent:
             depend_dun_autre_cas_du_groupe=bool((metier or {}).get("depend_dun_autre_cas_du_groupe")),
             etat_a_creer_par_ce_cas=str((metier or {}).get("etat_a_creer_par_ce_cas") or ""),
         )
+        # Lot VH-05 (D24) : contrôle BLOQUANT des littéraux à l'écriture — connecteur web seulement pour l'instant (l'annuaire
+        # d'un projet Odoo ne relève pas les vues du back-office : il refuserait à tort des champs techniques réels).
+        from testpilot.generation import litteraux_observes
+        ctx.attributs_contexte = frozenset(litteraux_observes.attributs_du_harnais(config.BEHAVE_RUNTIME_DIR))
+        if connector_type == "web" and (modele or {}).get("pages"):
+            ctx.annuaire = litteraux_observes.annuaire_depuis_modele(modele)
         from testpilot.generation.provenance import fingerprint, target_fingerprint
         ctx.target_sha256 = target_fingerprint(projet)
         ctx.shared_steps = shared_steps
