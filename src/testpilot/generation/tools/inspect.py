@@ -233,7 +233,11 @@ def inspect_page_snapshot(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
              f"{info.get('url') or page_url} :"]
     for el in elements:
         type_ = f" (type={el['type']!r})" if el.get("type") else ""
-        lignes.append(f"- {el.get('role', '?')} « {el.get('nom', '')} »{type_}")
+        affiche = f" — texte affiché : « {el['texte']} »" if el.get("texte") else ""
+        lignes.append(f"- {el.get('role', '?')} « {el.get('nom', '')} »{type_}{affiche}")
+    if any(el.get("texte") for el in elements):
+        lignes.append("Légende : « nom » = nom accessible (aria-label, libellé…), celui que cible un rôle + nom ; "
+                      "« texte affiché » = ce que l'utilisateur lit, le SEUL que cible `:has-text()` ou `text=`.")
     return _outcome("\n".join(lignes))
 
 
