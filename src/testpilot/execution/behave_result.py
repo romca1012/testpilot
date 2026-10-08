@@ -284,7 +284,7 @@ def read_pages_au_echec(path, limit: int = _MAX_PAGES_ECHEC) -> list[dict]:
 def rattacher_pages_au_echec(result: "BehaveResult", lignes: list[dict]) -> None:
     """Pose `page_url` sur chaque échec dont (scénario, step) a une ligne dans le sidecar. Sans correspondance : "" (inconnue).
 
-    Appariement par le NOM du scénario et le TEXTE du step tels que Behave les écrit dans son JSON — jamais par position :
+    Appariement par le NOM du scénario et le TEXTE du step tels que Behave les écrit dans son JSON — jamais par leur rang :
     un échec de fixture (`step_text` vide) n'a pas de page associée."""
     restantes = list(lignes)
     for echec in result.failures:
