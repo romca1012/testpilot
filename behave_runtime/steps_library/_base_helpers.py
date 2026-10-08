@@ -4,6 +4,7 @@ Chaque module *steps.py importe les helpers dont il a besoin
 et les encapsule dans ses propres @given/@when/@then.
 """
 
+import datetime
 import functools
 import json
 import logging
@@ -214,13 +215,16 @@ def _condition_toujours_vraie(condition) -> str:
     ou `__len__` (y compris `re.Match`, dont l'alternative est `None`). Refuse : une fonction ou méthode NON APPELÉE, un
     objet Playwright (Locator, ElementHandle, Page…), et tout objet de vérité par défaut."""
     if condition is None or isinstance(condition, (bool, int, float, str, bytes, list, tuple, set, frozenset, dict,
-                                                   re.Match)):
+                                                   re.Match, datetime.date, datetime.time)):
+        # `datetime.date` : un champ Date/Datetime Odoo vaut une date quand il est rempli et `False` sinon — falsifiable
+        # (revue VH-02 du 2026-10-08 : il était refusé à tort, un test juste devenait erreur technique).
         return ""
     if callable(condition):
         return f"une fonction ou méthode non appelée ({getattr(condition, '__name__', type(condition).__name__)})"
     module = type(condition).__module__ or ""
     if module.startswith("playwright"):
-        return f"un objet Playwright ({type(condition).__name__}) — utiliser `constater_visible` ou lire sa valeur"
+        return (f"un objet Playwright ({type(condition).__name__}) : sa simple existence ne vérifie rien sur l'écran — "
+                "utiliser `constater_visible` ou lire sa valeur")
     if not (hasattr(type(condition), "__bool__") or hasattr(type(condition), "__len__")):
         return f"un objet {type(condition).__name__} toujours vrai"
     return ""
@@ -233,12 +237,14 @@ def constater(condition, message: str = "") -> None:
     Signature volontairement LIMITÉE à `(condition, message)` — voir `_SOURCE_CONSTAT` ci-dessus :
     aucun step généré ne peut renseigner la source d'un constat, quelle que soit la forme d'appel.
 
-    Une condition qui ne peut pas être fausse (objet Playwright, méthode non appelée…) lève `ConstatInvalideError` SANS
-    consigner de constat : elle ne prouve rien (lot VH-02).
+    Une condition qui ne prouve rien (objet Playwright, méthode non appelée…) lève `ConstatInvalideError` APRÈS avoir
+    consigné un constat ÉCHOUÉ (lot VH-02, revue du 2026-10-08) : si le code du test avale l'exception, le scénario passé
+    garde la trace de ce constat raté et sort `indetermine` (V10) — jamais `conforme`.
     """
     raison = _condition_toujours_vraie(condition)
     if raison:
-        raise ConstatInvalideError(f"Constat invalide : la condition est {raison}, elle ne peut jamais être fausse. {message}")
+        _consigner_constat(False)
+        raise ConstatInvalideError(f"Constat invalide : la condition est {raison} ; elle ne prouve rien. {message}")
     ok = bool(condition)
     _consigner_constat(ok)
     if not ok:

@@ -55,11 +55,38 @@ class _Element:
     object(),                        # objet de vérité par défaut
     lambda: False,
 ])
-def test_falsifiable_une_condition_qui_ne_peut_pas_etre_fausse_est_refusee_sans_consigner(condition, sidecar):
-    with pytest.raises(H.ConstatInvalideError, match="ne peut jamais être fausse"):
+def test_falsifiable_une_condition_qui_ne_prouve_rien_est_refusee_et_laisse_un_constat_echoue(condition, sidecar):
+    """Le constat ÉCHOUÉ consigné est ce qui rattrape un refus avalé par le code du test (revue VH-02)."""
+    with pytest.raises(H.ConstatInvalideError, match="ne prouve rien"):
         H.constater(condition, "le message de succès est affiché")
 
-    assert sidecar() == []  # aucun constat, ni réussi ni échoué : rien n'a été prouvé
+    assert [c["ok"] for c in sidecar()] == [False]
+
+
+def test_falsifiable_un_refus_avale_par_le_test_ne_peut_pas_donner_conforme(sidecar):
+    """Revue VH-02 : un helper non décoré avale le refus (`except Exception: pass`) ; un autre constat réussit."""
+    try:
+        H.constater(_LocatorPlaywright(), "succès affiché")
+    except Exception:
+        pass
+    H.constater(True, "url")
+    scenario = br.BehaveScenario(name="S", status="passed", duration=1.0)
+    resultat = br.BehaveResult(success=True, returncode=0, dry_run=False)
+    resultat.scenarios = [scenario]
+
+    br.rattacher_constats(resultat, sidecar())
+
+    assert st.scenario_verdict(scenario, []).functional_status == st.FUNC_INDETERMINE
+
+
+def test_une_date_odoo_reste_une_condition_falsifiable(sidecar):
+    """Un champ Date Odoo vaut une date quand il est rempli, `False` sinon : il ne doit pas être refusé."""
+    import datetime
+
+    H.constater(datetime.date(2026, 10, 8), "date renseignée")
+    H.constater(datetime.datetime(2026, 10, 8, 12, 0), "date et heure renseignées")
+
+    assert [c["ok"] for c in sidecar()] == [True, True]
 
 
 def test_le_refus_est_une_erreur_du_test_pas_un_echec_de_l_application():
@@ -150,7 +177,8 @@ def test_la_cause_a_un_libelle_francais_et_une_origine_prudente():
 # ── V10 : la garde d'écriture voit les tuples ─────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("clause", ["except (AssertionError, ValueError):", "except (ValueError, Exception):"])
+@pytest.mark.parametrize("clause", ["except (AssertionError, ValueError):", "except (ValueError, Exception):",
+                                    "except TypeError:", "except ConstatInvalideError:"])
 def test_falsifiable_un_except_en_tuple_qui_avale_l_echec_est_refuse(clause):
     code = (
         "from behave import then\n"

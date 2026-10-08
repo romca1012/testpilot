@@ -166,6 +166,8 @@ _RESERVES_AU_SOCLE = frozenset({
     "non_assertif", "_tp_non_assertif", "_COMPTEUR_CONSTATS", "nombre_de_constats_reussis",
     "consigner_alors_sans_constat", "_consigner_constat", "_SOURCE_CONSTAT", "_source_du_constat",
     "definir_etat_constat", "TP_GENERATED_STEPS_FILE",
+    # Lot VH-02 (revue du 2026-10-08) : la garde des constats qui ne prouvent rien, et le fichier où les constats sont consignés.
+    "_condition_toujours_vraie", "ConstatInvalideError", "TP_CONSTATS_FILE",
 })
 
 
@@ -229,7 +231,8 @@ def _avale_l_echec(handler: ast.ExceptHandler) -> bool:
         # Lot VH-02 (V10) : `except (AssertionError, X):` contournait la garde, qui ne lisait qu'un nom seul.
         cibles = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
         noms = {c.id if isinstance(c, ast.Name) else getattr(c, "attr", "") for c in cibles}
-        large = bool(noms & {"Exception", "BaseException", "AssertionError"})
+        # `TypeError`/`ConstatInvalideError` : avaler le refus d'un constat qui ne prouve rien (revue VH-02).
+        large = bool(noms & {"Exception", "BaseException", "AssertionError", "TypeError", "ConstatInvalideError"})
     return large and not any(isinstance(n, ast.Raise) for n in ast.walk(handler))
 
 

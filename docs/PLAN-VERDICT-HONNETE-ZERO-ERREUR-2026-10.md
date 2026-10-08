@@ -254,3 +254,24 @@ manquée (`client_creation_nom_limite` essai 3 : bouton cherché sur la page d'a
 Conséquence pour les chiffres de `base-3` : le pass@1 d'exécution réel est plus bas que publié (au moins 4 tests de connexion
 comptés à tort comme exécutés).
 
+### Revue `verdict-reviewer` de la semaine 1 (2026-10-08) et suites données
+
+- **Bloquant corrigé** : un refus de `constater` avalé par le code du test (helper non décoré, `except Exception`/`TypeError`)
+  ne laissait aucune trace et le scénario pouvait sortir `conforme`. Désormais le refus consigne un constat ÉCHOUÉ avant de lever
+  (rattrapé par V10 → `indetermine`), la garde `except` couvre `TypeError`/`ConstatInvalideError`, et ces noms sont réservés au
+  socle. Test de bout en bout : `test_falsifiable_un_refus_avale_par_le_test_ne_peut_pas_donner_conforme`.
+- **Corrigé** : une date Odoo (`datetime.date`, `False` si vide) était refusée à tort ; message de refus rendu exact
+  (« ne prouve rien » au lieu de « jamais fausse », vrai aussi pour `ElementHandle | None`).
+- **Écart au plan, assumé et renvoyé au point 2 du lot 2** : `constater` accepte encore texte, liste, tuple et dictionnaire ;
+  `constater(page.url)`, `constater(True)` ou un tuple non vide restent toujours vrais. Seule la garde AST (point 2 : la condition
+  doit dépendre d'une lecture de l'application) fermera ces cas. La ligne VH-02 du suivi ne doit pas être lue comme « V1 fermé ».
+- **Nouvelle cause** `constat_echoue_ignore` (« Une vérification a échoué sans faire échouer le test ») : décision **D29**,
+  prolongement de D16 (un constat raté dans un scénario passé n'est jamais racheté). Texte en base, aucune migration.
+- **Preuve de VH-01** : le test vérifie la transmission du mode strict ; le critère « un test sauvé par le repli sort
+  `technical_error` » est prouvé par le rejeu strict de `connexion_refusee` essai 1 (§ validation ci-dessus).
+- **À traiter avant de brancher VH-05 en refus bloquant (D24)** : `get_by_text`/`get_by_role(name=…)` comparés aux seuls champs et
+  boutons (un titre « Merci » serait refusé à tort) ; paramètres de Plan du scénario (`<champ>`) ; `response.request` (observation
+  réseau légitime, utile au lot 4) signalé à tort ; échantillon de validation de 18 tests justes, à élargir.
+- **À surveiller** : tant que le lot 3 (gel des `Alors` en réparation) n'est pas livré, une erreur `ConstatInvalideError` part en
+  réparation, et l'agent pourrait la « corriger » par une tautologie.
+
