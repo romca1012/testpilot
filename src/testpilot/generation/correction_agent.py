@@ -109,7 +109,8 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
                        cost_tracker: CostTracker | None = None,
                        max_iterations: int | None = None,
                        calibration_writes_enabled: bool = False,
-                       verified_fields: dict[str, list[str]] | None = None) -> CorrectionProposal:
+                       verified_fields: dict[str, list[str]] | None = None,
+                       modele: dict | None = None) -> CorrectionProposal:
     """Une tentative de correction depuis des points de vigilance statiques. Ne lance JAMAIS le
     test réel — même contrat que `repair_agent.propose_fix`."""
     llm = llm or LLMAdapter()
@@ -131,6 +132,9 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
         reserved_steps=frozenset(s.label for s in shared_steps),
         calibration_writes_enabled=calibration_writes_enabled,
     )
+    # Lot VH-05 (revue du 2026-10-08) : une correction passe par les MÊMES contrôles des littéraux que la génération.
+    from testpilot.generation import litteraux_observes
+    litteraux_observes.brancher_controles(ctx, connector_type, modele, config.BEHAVE_RUNTIME_DIR)
     run_loop(
         llm=llm,
         model=config.MODEL_REPAIR,

@@ -38,7 +38,7 @@ import logging
 from dataclasses import dataclass, field
 
 from testpilot import config
-from testpilot.generation import memoire_reparation, repair_agent
+from testpilot.generation import domain_model, memoire_reparation, repair_agent
 from testpilot.guardrails.cost_tracker import CostTracker
 from testpilot.guardrails.repair_circuit import CircuitState, evaluate, failure_signature
 from testpilot.store.repositories import (
@@ -437,6 +437,8 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             # son contenu et le rendre entier — sans lui, il réécrit de mémoire et tronque.
             steps_content=version["steps_content"] or "",
             verified_fields=json.loads(version.get("verified_fields") or "{}"),
+            # Lot VH-05 : l'annuaire du projet, pour les MÊMES contrôles des littéraux qu'à la génération.
+            modele=domain_model.charger_modele(projet_du_cas) if projet_du_cas else None,
             connector=connector,
             connector_type=connector_type,
             connector_version=connector_version,

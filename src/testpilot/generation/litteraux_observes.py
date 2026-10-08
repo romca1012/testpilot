@@ -24,6 +24,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from difflib import get_close_matches
+from functools import lru_cache
 from pathlib import Path
 
 # Steps de la bibliothèque dont un paramètre DÉSIGNE un élément de l'application. Le reste des steps n'est pas contrôlé ici.
@@ -221,9 +222,24 @@ def attributs_de_contexte_poses(sources: list[str]) -> set[str]:
 
 def attributs_du_harnais(racine_behave_runtime: Path) -> set[str]:
     """Les attributs posés par `environment.py` et la bibliothèque partagée (lecture seule du dépôt, pas du code généré)."""
-    sources = [p.read_text(encoding="utf-8") for p in Path(racine_behave_runtime).rglob("*.py")
-               if "generated" not in p.parts]
-    return attributs_de_contexte_poses(sources) | _CONTEXTE_BEHAVE
+    return set(_attributs_du_harnais(str(Path(racine_behave_runtime).resolve())))
+
+
+@lru_cache(maxsize=4)
+def _attributs_du_harnais(racine: str) -> frozenset[str]:
+    base = Path(racine)
+    # `relative_to` : un déploiement sous un dossier nommé `generated` ne doit pas exclure tout le harnais (revue 2026-10-08).
+    sources = [p.read_text(encoding="utf-8") for p in base.rglob("*.py") if "generated" not in p.relative_to(base).parts]
+    return frozenset(attributs_de_contexte_poses(sources) | _CONTEXTE_BEHAVE)
+
+
+def brancher_controles(ctx, connector_type: str | None, modele: dict | None, racine_behave_runtime: Path) -> None:
+    """Arme les contrôles des littéraux sur un `ToolContext` — appelé par la génération, la correction ET la réparation (revue
+    du 2026-10-08 : les deux dernières écrivaient sans ces contrôles). Annuaire : connecteur web seulement (l'annuaire d'un
+    projet Odoo ne relève pas le back-office)."""
+    ctx.attributs_contexte = frozenset(attributs_du_harnais(racine_behave_runtime))
+    if connector_type == "web" and (modele or {}).get("pages"):
+        ctx.annuaire = annuaire_depuis_modele(modele)
 
 
 def controler_steps(code: str, annuaire: Annuaire, attributs_autorises: set[str]) -> list[Ecart]:
@@ -247,6 +263,15 @@ def controler_steps(code: str, annuaire: Annuaire, attributs_autorises: set[str]
                 elif noeud.attr not in attributs_autorises and noeud.attr not in poses_ici:
                     ecarts.append(Ecart("contexte", ou, f"context.{noeud.attr}", "attribut jamais posé par le harnais ni par ce test",
                                         _proche(noeud.attr, attributs_autorises)))
+        if (isinstance(noeud, ast.Call) and isinstance(noeud.func, ast.Name) and noeud.func.id == "getattr"
+                and len(noeud.args) >= 2 and getattr(noeud.args[0], "id", "") == "context"
+                and isinstance(noeud.args[1], ast.Constant)):
+            attr = str(noeud.args[1].value)
+            if attr in _CONTEXTE_INTERDIT:
+                ecarts.append(Ecart("contexte", ou, f"context.{attr}", "lecture d'un secret ou du harnais"))
+            elif attr not in attributs_autorises and attr not in poses_ici and len(noeud.args) < 3:
+                ecarts.append(Ecart("contexte", ou, f"context.{attr}", "attribut jamais posé par le harnais ni par ce test",
+                                    _proche(attr, attributs_autorises)))
         if isinstance(noeud, ast.Constant) and isinstance(noeud.value, str):
             if _SELECTEURS_TEXTE.search(noeud.value):
                 ecarts.append(Ecart("selecteur", ou, noeud.value[:80],

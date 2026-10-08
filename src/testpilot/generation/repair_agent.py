@@ -195,7 +195,8 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
                 dry_runner: DryRunner | None = None,
                 cost_tracker: CostTracker | None = None,
                 max_iterations: int | None = None,
-                verified_fields: dict[str, list[str]] | None = None) -> RepairProposal:
+                verified_fields: dict[str, list[str]] | None = None,
+                modele: dict | None = None) -> RepairProposal:
     """Une tentative de correction. Ne lance JAMAIS le test réel (design (b)).
 
     ⚠️ **`cost_tracker` doit être PARTAGÉ entre les tentatives d'un même cas.** Sans lui, on en
@@ -234,6 +235,9 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
         connector=connector,
         reserved_steps=frozenset(s.label for s in shared_steps),
     )
+    # Lot VH-05 (revue du 2026-10-08) : une réparation passe par les MÊMES contrôles des littéraux que la génération.
+    from testpilot.generation import litteraux_observes
+    litteraux_observes.brancher_controles(ctx, connector_type, modele, config.BEHAVE_RUNTIME_DIR)
     run_loop(
         llm=llm,
         model=config.MODEL_REPAIR,

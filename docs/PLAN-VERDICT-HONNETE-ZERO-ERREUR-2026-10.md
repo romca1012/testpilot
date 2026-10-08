@@ -287,8 +287,11 @@ comptés à tort comme exécutés).
   `__dict__`… refusés.
 - **Calibrage** : aucun des 29 fichiers de steps générés de `base-3` n'est refusé par ces gardes ; 3 exemples de tests existants
   contenaient eux-mêmes un constat qui ne lisait rien — corrigés pour lire la page, sans toucher à ce qu'ils affirment.
-- **VH-02 point 5 (D23)** : les contrôles étant désormais BLOQUANTS à l'écriture (génération, correction et réparation passent
-  par les mêmes outils), l'approbation automatique ne concerne plus qu'une version qui les a tous passés — condition de fin de D23.
+- **VH-02 point 5 (D23)** : les contrôles étant désormais BLOQUANTS à l'écriture et ARMÉS de la même façon pour la génération,
+  la correction et la réparation (`litteraux_observes.brancher_controles`, corrigé après la 2e revue : correction et réparation
+  écrivaient sans les contrôles des littéraux), l'approbation automatique ne concerne plus qu'une version qui les a tous passés.
+  Restent hors de ces contrôles : les éditions manuelles et les versions métier recopiées (`repositories.py`, `cases.py`) —
+  à traiter avant de considérer D23 levée.
   V1 n'est pas fermé à 100 % : la garde est de forme (le runtime garde le dernier mot) ; les lots 4 et 8 la complètent.
 - **VH-05 branché (D24)** : `write_feature_file` (donc aussi `write_test_plan`) refuse un champ ou un bouton jamais observé sur la
   page courante (connecteur web avec annuaire) en donnant le nom observé ; `write_steps_file` refuse le réseau direct et un
@@ -298,4 +301,22 @@ comptés à tort comme exécutés).
 - **Prompt** : la consigne « le reste reste en ASCII » précise que les libellés de l'application se recopient à l'identique.
 - **Non fait** : connecteur Odoo (l'annuaire ne relève pas le back-office — refus à tort probables) ; suivi de la page d'arrivée
   après une soumission (lot 7) ; textes attendus des `Alors` (l'annuaire ne relève pas les textes).
+
+### 2e revue `verdict-reviewer` (2026-10-08) et suites données
+
+- **Bloquants corrigés** : `constater(condition=True)` et les arguments déballés sont jugés ; une valeur que le test range lui-même
+  dans `context` n'est une lecture que si TOUTES ses affectations lisent l'application (point fixe sur tout le fichier) ; un
+  attribut non écrit par le test n'est une lecture que s'il est posé par le harnais.
+- **Refus à tort corrigés** : helper qui reçoit `context`, `getattr(context, "<attribut du harnais>")`, drapeau rempli sous un
+  `if`/`for` qui lit l'application, `.append`/`.update`, affectation indicée, fonction imbriquée jugée avec ses propres paramètres ;
+  `from __future__`, `calendar`, `zoneinfo`, `dateutil`, `logging`, `copy` permis.
+- **Action par RPC** : alias suivis, et dans un `@when`/`@then` un objet Odoo ne sert qu'à lire (liste blanche : search, read,
+  browse…) — `action_confirm`, `button_confirm`, `write`… refusés quel que soit le chemin.
+- **`getattr`** vers `_runner` ou un secret refusé ; la règle `contexte` des littéraux voit aussi `getattr(context, "…")`.
+- **Correction et réparation** armées comme la génération (annuaire + attributs du harnais).
+- **Limites assumées** (garde de forme) : `constater(context.page is not None and a == a.strip())` ou un helper local trivial
+  accompagné d'un vrai constat passent encore ; le runtime et les lots 4 et 8 complètent. Odoo non calibré pour les littéraux
+  (annuaire inactif hors web) ; 2 refus `CONSTAT_SANS_LECTURE` mesurés par la revue sur l'ancien corpus Odoo local portaient sur
+  un attribut `current_record_id` jamais posé par le harnais — refus justifié (le test lisait un attribut inexistant).
+- **Coût (§9)** : le prompt gagne deux lignes ; les refus peuvent ajouter des tours d'agent — à mesurer à la prochaine campagne.
 
