@@ -29,7 +29,28 @@ def test_recense_un_bouton_visible_avec_son_role_et_son_nom(page):
     elements = elements_interactifs_visibles(page)
 
     assert len(elements) == 1
-    assert elements[0] == {"role": "button", "nom": "Se connecter", "type": ""}
+    # Le NOM accessible (aria-label) ET le texte affiché, qui diffèrent ici : l'ancien format les fusionnait dans `nom`.
+    assert elements[0] == {"role": "button", "nom": "Se connecter", "type": "", "texte": "Connexion"}
+
+
+def test_falsifiable_le_texte_affiche_est_distingue_du_nom_accessible(page):
+    """Mesuré le 2026-10-08 : un bouton « Ajouter » (aria-label « Ajouter Clavier mécanique au panier ») était présenté comme
+    un bouton nommé « Ajouter Clavier… » ; l'agent l'a visé par `:has-text('Ajouter Clavier…')`, qui ne trouve rien. La page
+    réelle prouve les deux ciblages : le nom accessible trouve le bouton, le texte long non."""
+    page.set_content('<button aria-label="Ajouter Clavier mécanique au panier">Ajouter</button>')
+
+    element = elements_interactifs_visibles(page)[0]
+
+    assert element["nom"] == "Ajouter Clavier mécanique au panier" and element["texte"] == "Ajouter"
+    assert page.get_by_role("button", name=element["nom"]).count() == 1
+    assert page.locator("button", has_text=element["nom"]).count() == 0
+    assert page.locator("button", has_text=element["texte"]).count() == 1
+
+
+def test_un_element_dont_le_texte_est_le_nom_ne_porte_pas_de_champ_texte_en_double(page):
+    page.set_content('<button>Valider</button><a href="#">Aide</a>')
+
+    assert all("texte" not in el for el in elements_interactifs_visibles(page))
 
 
 def test_falsifiable_un_element_masque_est_exclu(page):
