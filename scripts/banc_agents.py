@@ -1110,14 +1110,18 @@ def executer_behave(dossier: Path, module: str, connexion: dict[str, str], proje
     Même chaîne que `banc_mesure.executer_cas`. Aucun rejeu (un rejeu masquerait un test instable) ni réparation : un
     jeu = une exécution. Les imports ont lieu ICI parce que le dossier de données jetable doit être posé avant
     (`_isoler_donnees`) ; ce module reste importable, et testable, sans `testpilot`.
+
+    MODE STRICT (D25, audit du 2026-10-08) : sans lui, la résolution adaptative appelait un LLM pendant le jeu et pouvait
+    rattraper un test cassé (`username` résolu en `identifiant`) — le banc mesurait alors le repli, pas le test généré.
     """
+    from testpilot.execution.behave_result import MODE_STRICT_ENV
     from testpilot.execution.behave_runner import BehaveRunner
     from testpilot.execution.executor import Executor
     from testpilot.verdict.status import derive_verdict
 
     debut = time.time()
-    runner = BehaveRunner(connection=connexion, connector_type=connector_type, generated_dir=dossier,
-                          project_id=project_id)
+    runner = BehaveRunner(connection={**connexion, MODE_STRICT_ENV: "1"}, connector_type=connector_type,
+                          generated_dir=dossier, project_id=project_id)
     if traces is not None:
         traces.mkdir(parents=True, exist_ok=True)
         runner.cibler_artefacts(traces)
