@@ -352,6 +352,7 @@ class Artefacts:
     genere_ok: bool = True  # génération réussie ET essai à blanc passé
     erreur: str = ""
     module: str = ""
+    resume: str = ""  # réparation : ce que l'agent DIT avoir fait (information pour un humain, jamais un signal)
 
     @property
     def empreintes(self) -> dict[str, str]:
@@ -367,6 +368,8 @@ class Jeu:
     detail: str = ""
     duree: float | None = None
     empreintes: dict[str, str] | None = None  # None = non rapportées (le rapport le dit)
+    # Ce que l'échec a montré, SANS interprétation (scénarios et étapes en échec) : l'agent de réparation le reçoit tel quel.
+    trace: dict | None = None
 
 
 @dataclass
@@ -395,6 +398,19 @@ class EssaiConsigne:
 
 
 @dataclass
+class ReparationConsignee:
+    """Une tentative de réparation d'un test dont le jeu sur l'application SAINE sort en erreur technique (D23)."""
+
+    cas: str
+    essai: int
+    tentee: bool
+    rejouable: bool  # la proposition change quelque chose ET passe l'essai à blanc : elle est rejouée
+    motif: str = ""
+    cout_usd: float | None = None
+    resume_agent: str = ""  # ce que l'agent DIT avoir fait : montré à un humain, JAMAIS une source de verdict (décision 0015)
+
+
+@dataclass
 class Campagne:
     k: int
     cas: list[str]
@@ -403,6 +419,10 @@ class Campagne:
     anomalies: list[str] = field(default_factory=list)
     interrompue: str = ""
     essais_prevus: int = 0
+    # D23 — après réparation. Vides si la réparation n'est pas demandée : le reste du rapport ne change pas d'un octet.
+    reparations: list[ReparationConsignee] = field(default_factory=list)
+    observations_reparees: list[Observation] = field(default_factory=list)
+    reparation_demandee: bool = False
 
 
 # ── Plafond de coût, en amont ────────────────────────────────────────────────────────────────────────────
@@ -471,6 +491,7 @@ def executer_campagne(
     cout_estime_essai: float = 0.0,
     reel: bool = False,
     journal: Callable[[str], None] = lambda _message: None,
+    reparer: Callable[[Artefacts, Jeu], Artefacts | None] | None = None,
 ) -> Campagne:
     """Joue la campagne : k essais par cas, UNE génération par (cas, essai), jouée sur la saine et chaque défaut listé.
 
@@ -494,7 +515,7 @@ def executer_campagne(
     mesurer_cout = cout or (lambda artefacts: artefacts.cout_usd)
     attendu_de = {(a.cas, a.variante): a.attendu for a in attendus}
 
-    campagne = Campagne(k=k, cas=specs, essais_prevus=k * len(specs))
+    campagne = Campagne(k=k, cas=specs, essais_prevus=k * len(specs), reparation_demandee=reparer is not None)
     cumul = cout_max = 0.0
     for essai in range(1, k + 1):
         for cas in specs:
@@ -525,6 +546,7 @@ def executer_campagne(
                                                  artefacts.empreintes if jouable else {}))
             journal(f"{cas} essai {essai} : {'généré' if jouable else 'GÉNÉRATION ÉCHOUÉE'} "
                     f"({'coût inconnu' if cout_essai is None else f'{cout_essai:.3f} $'})")
+            traces: dict[str, dict | None] = {}
             for variante in variantes:
                 attendu = attendu_de[(cas, variante)]
                 if not jouable:
@@ -533,14 +555,69 @@ def executer_campagne(
                         cause="generation_echouee", detail=artefacts.erreur or "aucun fichier généré"))
                     continue
                 campagne.observations.append(
-                    _jouer_une_variante(jouer, artefacts, variante, essai, attendu, campagne.anomalies))
+                    _jouer_une_variante(jouer, artefacts, variante, essai, attendu, campagne.anomalies, traces))
                 derniere = campagne.observations[-1]
                 journal(f"  {variante:<24} attendu {attendu:<13} obtenu {derniere.obtenu}")
+            if reparer is not None and jouable:
+                saine = next((o for o in campagne.observations
+                              if (o.cas, o.essai, o.variante) == (cas, essai, VARIANTE_SAINE)), None)
+                if saine is not None and saine.obtenu == "technical_error":
+                    cumul, cout_max = _reparer_et_rejouer(
+                        campagne, reparer, jouer, artefacts, saine, traces.get(VARIANTE_SAINE), variantes, attendu_de,
+                        cumul, cout_max, plafond_usd, cout_estime_essai, journal)
     return campagne
 
 
+def _reparer_et_rejouer(campagne: Campagne, reparer, jouer, artefacts: Artefacts, saine: Observation, trace: dict | None,
+                        variantes: Sequence[str], attendu_de: Mapping, cumul: float, cout_max: float,
+                        plafond_usd: float | None, cout_estime_essai: float, journal) -> tuple[float, float]:
+    """UNE réparation (D23), comme le ferait le produit APRÈS une première exécution en erreur technique — jamais avant.
+
+    Seule la saine déclenche : un test qui s'exécute proprement mais échoue (`non_conforme`) n'est pas « réparé » par le produit
+    (c'est une décision humaine : défaut de l'application ou test à revoir). Le coût compte dans le plafond. La version réparée
+    est rejouée sur TOUTES les variantes : une réparation qui « maquille » (test qui passe partout) doit apparaître comme faux vert.
+    """
+    cas, essai = artefacts.cas, artefacts.essai
+    raison = raison_d_arret(cumul, cout_max, plafond_usd, cout_estime_essai)
+    if raison:
+        campagne.reparations.append(ReparationConsignee(cas, essai, False, False, f"plafond de coût : {raison}"))
+        journal(f"  RÉPARATION non tentée ({raison})")
+        return cumul, cout_max
+    try:
+        reparee = reparer(artefacts, Jeu(verdict=saine.obtenu, cause=saine.cause, detail=saine.detail, trace=trace))
+    except ArretCampagne as arret:
+        campagne.reparations.append(ReparationConsignee(cas, essai, False, False, f"arrêt demandé : {arret}"))
+        return cumul, cout_max
+    except Exception as exc:  # une réparation qui tombe est consignée, jamais prise pour un succès
+        campagne.anomalies.append(f"{cas} essai {essai} : `reparer` a levé {type(exc).__name__}: {exc}")
+        campagne.reparations.append(ReparationConsignee(cas, essai, True, False, f"{type(exc).__name__}: {exc}"[:300]))
+        return cumul, cout_max
+    if reparee is None:
+        campagne.reparations.append(ReparationConsignee(cas, essai, False, False, "aucune réparation tentée"))
+        return cumul, cout_max
+    cout_rep = reparee.cout_usd
+    cumul += cout_retenu_pour_le_plafond(cout_rep, cout_max, cout_estime_essai)
+    if cout_rep is not None:
+        cout_max = max(cout_max, cout_rep)
+    rejouable = reparee.genere_ok and bool(reparee.fichiers)
+    campagne.reparations.append(ReparationConsignee(
+        cas, essai, True, rejouable, "" if rejouable else (reparee.erreur or "proposition inexploitable"),
+        cout_rep, resume_agent=reparee.resume))
+    journal(f"  RÉPARATION {'rejouée' if rejouable else 'inexploitable'} "
+            f"({'coût inconnu' if cout_rep is None else f'{cout_rep:.3f} $'})")
+    if not rejouable:
+        return cumul, cout_max
+    for variante in variantes:
+        attendu = attendu_de[(cas, variante)]
+        campagne.observations_reparees.append(
+            _jouer_une_variante(jouer, reparee, variante, essai, attendu, campagne.anomalies, None))
+        derniere = campagne.observations_reparees[-1]
+        journal(f"  [réparé] {variante:<24} attendu {attendu:<13} obtenu {derniere.obtenu}")
+    return cumul, cout_max
+
+
 def _jouer_une_variante(jouer, artefacts: Artefacts, variante: str, essai: int, attendu: str,
-                        anomalies: list[str]) -> Observation:
+                        anomalies: list[str], traces: dict | None = None) -> Observation:
     """UN jeu, avec toutes les protections : exception, verdict inconnu, empreinte divergente."""
     cas = artefacts.cas
     try:
@@ -548,6 +625,8 @@ def _jouer_une_variante(jouer, artefacts: Artefacts, variante: str, essai: int, 
     except Exception as exc:
         return Observation(cas, variante, essai, attendu, "technical_error", cause="jeu_en_exception",
                            detail=f"{type(exc).__name__}: {exc}"[:300])
+    if traces is not None:
+        traces[variante] = jeu.trace
     if jeu.verdict not in stats.VERDICTS:
         anomalies.append(f"{cas} essai {essai} sur {variante} : verdict inconnu {jeu.verdict!r} (rendu en technical_error)")
         return Observation(cas, variante, essai, attendu, "technical_error", cause="verdict_inconnu",
@@ -666,6 +745,42 @@ def calculer_indicateurs(campagne: Campagne, taux_eur_usd: float | None = None) 
              "cause": o.cause}
             for o in campagne.observations if o.obtenu != o.attendu
         ],
+        "apres_reparation": calculer_apres_reparation(campagne),
+    }
+
+
+def calculer_apres_reparation(campagne: Campagne) -> dict | None:
+    """Les indicateurs une fois les tests en erreur technique RÉPARÉS une fois (D23) ; `None` si la réparation n'est pas demandée.
+
+    L'ensemble « effectif » prend, pour chaque (cas, essai) réparé, les jeux de la version réparée à la place des jeux
+    d'origine ; les autres essais restent tels quels. Les faux verts sont recomptés sur cet ensemble : une réparation qui
+    « maquille » un test cassé en test qui passe partout doit apparaître ici, pas être félicitée."""
+    if not campagne.reparation_demandee:
+        return None
+    reparees_cles = {(o.cas, o.essai) for o in campagne.observations_reparees}
+    effectives = [o for o in campagne.observations if (o.cas, o.essai) not in reparees_cles] + list(campagne.observations_reparees)
+    fictive = Campagne(k=campagne.k, cas=campagne.cas, essais=campagne.essais, observations=effectives)
+    enregistrements = [{"cas": o.cas, "variante": o.variante, "attendu": o.attendu, "obtenu": o.obtenu} for o in effectives]
+    exec_par_cas = _essais_par_cas(fictive, _reussi_execution)
+    res_par_cas = _essais_par_cas(fictive, _reussi_resultat)
+    k = campagne.k
+    couts = [r.cout_usd for r in campagne.reparations if r.cout_usd is not None]
+    saines_reparees = [o for o in campagne.observations_reparees if o.variante == VARIANTE_SAINE]
+    return {
+        "faux_verts": stats.faux_verts(enregistrements),
+        "faux_rouges": stats.faux_rouges(enregistrements),
+        "pass_execution": {"pass_at_1": stats.pass_at_1(exec_par_cas), "pass_hat_k": stats.pass_hat_k(exec_par_cas, k)},
+        "pass_resultat": {"pass_at_1": stats.pass_at_1(res_par_cas), "pass_hat_k": stats.pass_hat_k(res_par_cas, k)},
+        "non_concluants": dict(Counter(o.obtenu for o in effectives if o.obtenu in stats.VERDICTS_NON_CONCLUANTS)),
+        "reparations": {
+            "a_reparer": len(campagne.reparations),
+            "tentees": sum(1 for r in campagne.reparations if r.tentee),
+            "rejouables": sum(1 for r in campagne.reparations if r.rejouable),
+            "saine_executable_apres": sum(1 for o in saines_reparees if o.obtenu not in ("technical_error", "blocked")),
+            "saine_conforme_apres": sum(1 for o in saines_reparees if o.obtenu == "conforme"),
+            "cout_usd": round(sum(couts), 6),
+            "couts_non_consignes": sum(1 for r in campagne.reparations if r.tentee and r.cout_usd is None),
+        },
     }
 
 
@@ -681,6 +796,9 @@ def code_de_sortie(indicateurs: dict, campagne: Campagne) -> int:
     mesurée (aucun jeu concluant sur une variante défectueuse) est 3, jamais 0 : « non mesuré » n'est pas un vert.
     """
     if indicateurs["faux_verts"]["k"] > 0:
+        return 1
+    apres = indicateurs.get("apres_reparation")
+    if apres and apres["faux_verts"]["k"] > 0:  # une réparation qui fabrique un faux vert est un échec de la porte, pas un bonus
         return 1
     if (campagne.interrompue or indicateurs["faux_verts"]["n"] == 0 or indicateurs["integrite"]["divergentes"]
             or indicateurs["integrite"]["non_rapportees"]
@@ -699,6 +817,39 @@ def _taux(d: dict) -> str:
 def _pass(d: dict) -> str:
     texte = stats.formater_taux(d["k"], d["n"])
     return f"{texte} ; {d['non_mesures']} cas sans assez d'essais" if d["non_mesures"] else texte
+
+
+def _rendre_apres_reparation(i: dict, campagne: Campagne) -> list[str]:
+    a = i.get("apres_reparation")
+    if a is None:
+        return []
+    r = a["reparations"]
+    lignes = [
+        "", "## Après UNE réparation (D23)", "",
+        "Pour chaque essai dont le jeu sur l'application saine sort en `technical_error`, l'agent de réparation reçoit l'échec "
+        "observé (jamais un diagnostic) et propose UNE correction ; la version réparée est rejouée sur toutes les variantes. "
+        "Les autres essais restent tels quels. Ce n'est pas le circuit complet du produit (budget fixé à la relecture, plusieurs "
+        "tentatives) : c'est une borne basse de ce que la réparation apporte.", "",
+        "| Indicateur | Avant réparation | Après une réparation |", "|---|---|---|",
+    ]
+    return lignes + _lignes_comparees(i, a) + [
+        "",
+        f"Réparations : {r['a_reparer']} à réparer, {r['tentees']} tentées, {r['rejouables']} rejouables ; "
+        f"saine exécutable après : {r['saine_executable_apres']}, conforme après : {r['saine_conforme_apres']} ; "
+        f"coût des réparations : **{r['cout_usd']:.3f} $**"
+        + (f" (⚠️ {r['couts_non_consignes']} coût(s) non consigné(s))" if r["couts_non_consignes"] else "") + ".",
+    ] + ([""] + [f"- {x.cas} essai {x.essai} : {x.motif}" for x in campagne.reparations if x.motif] if
+         any(x.motif for x in campagne.reparations) else [])
+
+
+def _lignes_comparees(i: dict, a: dict) -> list[str]:
+    return [
+        f"| Faux verts | {_taux(i['faux_verts'])} | {_taux(a['faux_verts'])} |",
+        f"| Faux rouges | {_taux(i['faux_rouges'])} | {_taux(a['faux_rouges'])} |",
+        f"| pass@1 — s'exécute sans erreur technique | {_pass(i['pass_execution']['pass_at_1'])} | {_pass(a['pass_execution']['pass_at_1'])} |",
+        f"| pass@1 — résultat juste partout | {_pass(i['pass_resultat']['pass_at_1'])} | {_pass(a['pass_resultat']['pass_at_1'])} |",
+        f"| pass^k — résultat juste partout, à chaque essai | {_pass(i['pass_resultat']['pass_hat_k'])} | {_pass(a['pass_resultat']['pass_hat_k'])} |",
+    ]
 
 
 def rendre_markdown(campagne: Campagne, indicateurs: dict, contexte: dict) -> str:
@@ -748,6 +899,7 @@ def rendre_markdown(campagne: Campagne, indicateurs: dict, contexte: dict) -> st
                       f"{stats.formater_taux(d['detectes_fiables'], d['concluants'])} | {d['faux_verts']} | {d['non_concluants']} |")
     if not i["par_defaut"]:
         lignes.append("| (aucun jeu sur un défaut) | 0 | 0 | non mesuré | non mesuré | 0 | 0 |")
+    lignes += _rendre_apres_reparation(i, campagne)
     c = i["cout"]
     lignes += ["", "## Coût", "",
                f"Total : **{c['total_usd']:.3f} $**"
@@ -816,6 +968,8 @@ def ecrire_sortie(campagne: Campagne, indicateurs: dict, contexte: dict, dossier
         "contexte": contexte, "indicateurs": indicateurs, "interrompue": campagne.interrompue,
         "essais": [vars(t) for t in campagne.essais], "observations": [vars(o) for o in campagne.observations],
         "anomalies": campagne.anomalies,
+        "reparations": [vars(r) for r in campagne.reparations],
+        "observations_reparees": [vars(o) for o in campagne.observations_reparees],
     }, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return md, js
 
@@ -942,7 +1096,25 @@ def executer_behave(dossier: Path, module: str, connexion: dict[str, str], proje
     echecs = (resultat.real_run.failures if resultat.real_run else []) or []
     detail = (echecs[0].raw or "").strip()[-300:] if echecs else (resultat.error or "")
     return {"execution": verdict.execution_status, "fonctionnel": verdict.functional_status,
-            "cause": ", ".join(causes), "detail": detail, "duree": round(time.time() - debut, 1)}
+            "cause": ", ".join(causes), "detail": detail, "duree": round(time.time() - debut, 1),
+            "trace": trace_de_l_echec(resultat)}
+
+
+def trace_de_l_echec(resultat) -> dict | None:
+    """Ce que le run a MONTRÉ, sans interprétation : scénarios (nom, statut) et étapes en échec (scénario, étape, message brut).
+
+    C'est exactement ce que le produit donne à l'agent de réparation (`repair_agent._failure_report`) : aucun diagnostic."""
+    reel = getattr(resultat, "real_run", None)
+    if reel is None:
+        return None
+    return {
+        "scenarios": [{"name": getattr(sc, "name", ""), "status": getattr(sc, "status", "")}
+                      for sc in (getattr(reel, "scenarios", None) or [])],
+        "echecs": [{"scenario_name": getattr(f, "scenario_name", ""), "step_text": getattr(f, "step_text", ""),
+                    "raw": (getattr(f, "raw", "") or "")[:1500],
+                    "traceback_summary": (getattr(f, "traceback_summary", "") or "")[:500]}
+                   for f in (getattr(reel, "failures", None) or [])],
+    }
 
 
 class JoueurReel:
@@ -969,7 +1141,7 @@ class JoueurReel:
             joues = {nom: empreinte((dossier / nom).read_bytes()) for nom in sorted(artefacts.fichiers)}
             return Jeu(verdict=verdict_du_banc(retour.get("execution"), retour.get("fonctionnel")),
                        cause=retour.get("cause", ""), detail=retour.get("detail", ""), duree=retour.get("duree"),
-                       empreintes=joues)
+                       empreintes=joues, trace=retour.get("trace"))
         finally:
             try:
                 self.application.reinitialiser([])  # jamais laisser un défaut actif derrière soi
@@ -1030,6 +1202,112 @@ class GenerateurReel:
         if processus.returncode not in (0, 3) or not rapports:
             raise RuntimeError(f"le moteur de génération a échoué (code {processus.returncode}, aucun rapport)")
         return artefacts_depuis_rapport(cas, essai, rapports[0])
+
+
+class ReparateurReel:
+    """`reparer(artefacts, jeu_saine)` réel (D23) : UNE tentative de l'agent de réparation du produit, en sous-processus.
+
+    Même moteur que la génération (`qualify_campaign_pilot.py --reparer-depuis`) : données isolées, plafond de coût, mémoires
+    apprises restaurées. L'agent reçoit l'échec observé — scénarios et étapes en échec, message brut — et rien d'autre : aucun
+    diagnostic, aucun verdict. Son essai à blanc vérifie que le test parse encore ; il n'exécute RIEN (le banc rejoue ensuite).
+    """
+
+    def __init__(self, application, project_id: int, url: str, data_dir: Path, cle_secrete: str,
+                 reste_usd: Callable[[], float | None], lancer=subprocess.run, racine: Path = RACINE,
+                 delai_s: int = 1800) -> None:
+        self.application = application
+        self.project_id = project_id
+        self.url = url
+        self.data_dir = Path(data_dir)
+        self.cle_secrete = cle_secrete
+        self.reste_usd = reste_usd
+        self.lancer = lancer
+        self.racine = Path(racine)
+        self.delai_s = delai_s
+
+    def entree(self, artefacts: Artefacts, jeu: Jeu) -> dict:
+        """Le fichier d'entrée de l'agent : les fichiers générés tels quels + l'échec observé (pur, testé)."""
+        module = artefacts.module
+        trace = jeu.trace or {}
+        return {"module_name": module, "feature_content": artefacts.fichiers.get(f"{module}.feature", ""),
+                "steps_content": artefacts.fichiers.get(f"{module}_steps.py", ""),
+                "scenarios": trace.get("scenarios") or [],
+                "echecs": trace.get("echecs") or [{"scenario_name": "", "step_text": "", "raw": jeu.detail}]}
+
+    def commande(self, sortie: str, fichier_entree: Path) -> list[str]:
+        commande = [sys.executable, str(CAMPAGNE), "--out", sortie, "--project-id", str(self.project_id),
+                    "--expected-base-url", self.url, "--reparer-depuis", str(fichier_entree)]
+        reste = self.reste_usd()
+        if reste is not None:
+            commande += ["--max-cost-usd", f"{max(reste, 0.0):.4f}"]
+        return commande
+
+    def __call__(self, artefacts: Artefacts, jeu: Jeu) -> Artefacts | None:
+        if not artefacts.module or len(artefacts.fichiers) != 2:
+            return None
+        self.application.reinitialiser([])
+        sortie = f"banc-agents-reparation-{artefacts.cas}-t{artefacts.essai}"
+        dossier = self.racine / ".local-preview" / "qualification" / sortie
+        dossier.mkdir(parents=True, exist_ok=True)
+        fichier_entree = dossier / "entree_reparation.json"
+        fichier_entree.write_text(json.dumps(self.entree(artefacts, jeu), ensure_ascii=False, indent=2), encoding="utf-8")
+        (dossier / "reparation.json").unlink(missing_ok=True)  # un résultat périmé ne passe jamais pour celui de CE run
+        env = {**os.environ, "TESTPILOT_CAMPAIGN_SOURCE_DATA": str(self.data_dir), "TESTPILOT_SECRET_KEY": self.cle_secrete}
+        env.pop("TESTPILOT_DATA_DIR", None)
+        refuser_depense_reelle_sous_pytest(self.lancer, _LANCEMENT_REEL, "agent de réparation réel")
+        try:
+            processus = self.lancer(self.commande(sortie, fichier_entree), cwd=self.racine, env=env, timeout=self.delai_s)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"l'agent de réparation n'a pas rendu la main en {self.delai_s} s") from exc
+        resultat = dossier / "reparation.json"
+        if not resultat.exists():
+            raise RuntimeError(f"réparation sans résultat (code {processus.returncode})")
+        return artefacts_depuis_reparation(artefacts, json.loads(resultat.read_text(encoding="utf-8")))
+
+
+def artefacts_depuis_reparation(origine: Artefacts, rapport: Mapping) -> Artefacts:
+    """Le rapport de l'agent de réparation → `Artefacts` à rejouer (pur). Rejouable = quelque chose a changé ET l'essai à blanc passe."""
+    module = origine.module
+    cout = float(rapport["cost_usd"]) if rapport.get("cost_usd") is not None else None
+    resume = str(rapport.get("summary") or "")
+
+    def echec(erreur: str) -> Artefacts:
+        return Artefacts(origine.cas, origine.essai, cout_usd=cout, genere_ok=False, module=module, resume=resume,
+                         erreur=erreur[:300])
+
+    if rapport.get("error"):
+        return echec(f"{rapport.get('error_type', 'Erreur')}: {rapport['error']}")
+    if not rapport.get("changed"):
+        return echec("l'agent n'a rien réécrit")
+    if not rapport.get("dry_run_passed"):
+        return echec(f"correctif sans essai à blanc passé ({rapport.get('stopped_reason', '?')})")
+    fichiers = {f"{module}.feature": rapport.get("feature_content") or "",
+                f"{module}_steps.py": rapport.get("steps_content") or ""}
+    if not all(fichiers.values()):
+        return echec("correctif incomplet (fichier vide)")
+    return Artefacts(origine.cas, origine.essai, fichiers=fichiers, cout_usd=cout, genere_ok=True, module=module, resume=resume)
+
+
+class GenerateurDepuisDisque:
+    """`generer(spec, essai)` qui RELIT les tests déjà générés par une campagne passée (aucun appel LLM, coût de génération nul).
+
+    Sert la mesure « après réparation » (D23) sur la MÊME population de tests qu'une campagne déjà faite : on compare alors
+    avant/après sans redépenser les générations ni changer de tests entre les deux. Le coût de génération d'origine n'est pas
+    rejoué (il figure dans le rapport de cette campagne) : le rapport de celle-ci le dit dans son contexte."""
+
+    def __init__(self, dossier_qualification: Path) -> None:
+        self.dossier = Path(dossier_qualification)
+
+    def __call__(self, cas: str, essai: int) -> Artefacts:
+        chemin = self.dossier / f"banc-agents-{cas}-t{essai}" / "campagne.json"
+        if not chemin.exists():
+            return Artefacts(cas, essai, cout_usd=0.0, genere_ok=False, erreur=f"aucune génération passée : {chemin.name} absent")
+        rapports = json.loads(chemin.read_text(encoding="utf-8"))
+        if not rapports:
+            return Artefacts(cas, essai, cout_usd=0.0, genere_ok=False, erreur="campagne passée vide")
+        origine = artefacts_depuis_rapport(cas, essai, rapports[0])
+        origine.cout_usd = 0.0
+        return origine
 
 
 def artefacts_depuis_rapport(cas: str, essai: int, rapport: Mapping) -> Artefacts:
@@ -1207,6 +1485,11 @@ def main(argv: list[str] | None = None) -> int:
     parseur.add_argument("--plafond-cout", type=float, default=None, help="plafond de coût en dollars (OBLIGATOIRE avec --reel)")
     parseur.add_argument("--cout-estime-essai", type=float, default=COUT_ESTIME_ESSAI_USD,
                          help="coût présumé d'une génération avant d'en avoir observé une (dollars)")
+    parseur.add_argument("--reparer", action="store_true",
+                         help="D23 : UNE réparation par test en erreur technique sur la saine, puis rejeu (coût en plus)")
+    parseur.add_argument("--generations-depuis", type=Path, default=None,
+                         help="rejoue les tests DÉJÀ générés par une campagne passée (dossier .local-preview/qualification) "
+                              "au lieu d'en générer de nouveaux : aucun coût de génération")
     parseur.add_argument("--hote", default="127.0.0.1", help="hôte de l'application locale : bouclage uniquement")
     parseur.add_argument("--cas", default=None, help="mise au point : cas séparés par des virgules (le rapport l'indique)")
     parseur.add_argument("--etiquette", default="")
@@ -1283,18 +1566,33 @@ def _lancer_reel(args, configuration: Configuration, cas_joues: list[str], taux:
             suivi["max"] = max(suivi["max"], artefacts.cout_usd or 0.0)
             return artefacts.cout_usd
 
-        generer = GenerateurReel(application, ids, project_id, application.url, data_dir, cle, reste)
+        if args.generations_depuis:
+            generer = GenerateurDepuisDisque(args.generations_depuis)
+        else:
+            generer = GenerateurReel(application, ids, project_id, application.url, data_dir, cle, reste)
         jouer = JoueurReel(application, executer_behave, traces, connexion_du_projet(project_id), project_id, "web")
+        reparer = None
+        if args.reparer:
+            reparateur = ReparateurReel(application, project_id, application.url, data_dir, cle, reste)
+
+            def reparer(artefacts, jeu):
+                reparee = reparateur(artefacts, jeu)
+                if reparee is not None:  # le coût d'une réparation réduit le « reste » transmis aux appels suivants
+                    suivi["usd"] += cout_retenu_pour_le_plafond(reparee.cout_usd, suivi["max"], args.cout_estime_essai)
+                    suivi["max"] = max(suivi["max"], reparee.cout_usd or 0.0)
+                return reparee
         campagne = executer_campagne(
             list(specs), attendus, args.essais, generer, jouer, defauts_connus=defauts_codes, cout=cout,
             plafond_usd=args.plafond_cout, cout_estime_essai=args.cout_estime_essai, reel=True,
-            journal=lambda m: print(m, flush=True))
+            journal=lambda m: print(m, flush=True), reparer=reparer)
     indicateurs = calculer_indicateurs(campagne, taux)
     contexte = {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "etiquette": args.etiquette,
                 "commit": _commit(), "versions": _versions(), "modele_generation": _modele(),
                 "mode": "reel", "plafond_usd": args.plafond_cout, "app": NOM_DE_L_APP,
                 "configuration_sha256": empreinte_de_la_configuration(),
-                "sous_ensemble_de_cas": bool(args.cas), "donnees_jetables": str(data_dir)}
+                "sous_ensemble_de_cas": bool(args.cas), "donnees_jetables": str(data_dir),
+                "generations_rejouees_depuis": str(args.generations_depuis) if args.generations_depuis else None,
+                "reparation": bool(args.reparer)}
     md, js = ecrire_sortie(campagne, indicateurs, contexte, args.sortie)
     code = code_de_sortie(indicateurs, campagne)
     print(f"\nRapport : {md}\nJSON    : {js}\nFaux verts {_taux(indicateurs['faux_verts'])} → code de sortie {code}")
