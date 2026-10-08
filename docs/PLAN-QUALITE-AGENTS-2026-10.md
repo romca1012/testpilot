@@ -103,3 +103,27 @@ boucle de réparation (`repair_service`) est faite pour cela ; le banc ne mesure
 **Conséquence** : ne pas exécuter pendant la génération (cela contournerait le gate humain et écrirait des données chez le
 client). Mesurer plutôt « réussite après réparation » (D23 à proposer), et améliorer ce que l'agent peut vérifier sans rien soumettre.
 
+## 8. Mesure « après UNE réparation » (D23, 2026-10-08)
+
+Protocole : les 30 tests générés de la campagne `base-3` sont REJOUÉS (aucune nouvelle génération). Pour chaque test dont le jeu sur la
+saine sort en `technical_error`, l'agent de réparation du produit reçoit l'échec observé (jamais un diagnostic) et propose UNE
+correction ; la version réparée est rejouée sur toutes les variantes. Interrupteur des règles du connecteur : éteint (produit actuel).
+
+| | Haiku 4.5 (défaut du produit) | Sonnet 4.6 |
+|---|---|---|
+| Tests à réparer | 5 | 5 |
+| Corrections rejouables | 4 | 5 |
+| Saine exécutable après réparation | **0** | **1** (`client_creation_nom_limite` essai 3) |
+| Faux verts après réparation | 0 sur 21 | 0 sur 22 |
+| Coût des réparations | 0,09 $ | 0,29 $ |
+
+Lecture : échantillon de 5 — aucune conclusion statistique. Constats : (1) la réparation ne produit PAS de faux vert (le risque central :
+« réparer » en supprimant ce qui vérifiait) ; (2) elle répare rarement (0/5, 1/5) ; (3) elle coûte très peu, il y a donc de la marge
+pour la rendre plus utile ; (4) `panier_total_tva` (3 essais) n'est réparé par aucun modèle : le message d'échec ne dit pas sur quelle
+page le navigateur se trouvait, l'agent accuse le sélecteur alors que la page a changé. Piste suivante, mesurable sur ces mêmes tests :
+fournir à l'agent l'adresse de la page au moment de l'échec (fait mesuré par le navigateur, pas un texte de l'agent).
+Rapports : `docs/mesures/banc-agents-2026-10-08-base-3-reparation.md` et `…-sonnet.md`.
+
+Corrections de produit trouvées en chemin : le tarif de l'alias `claude-haiku-4-5` manquait (les réparations étaient comptées au tarif
+Sonnet, environ 3,75 fois trop cher) ; la réservation de budget de qualification ne couvrait pas le modèle de réparation.
+
