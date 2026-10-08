@@ -564,9 +564,14 @@ def executer_campagne(
                 saine = next((o for o in campagne.observations
                               if (o.cas, o.essai, o.variante) == (cas, essai, VARIANTE_SAINE)), None)
                 if saine is not None and saine.obtenu == "technical_error":
-                    cumul, cout_max = _reparer_et_rejouer(
-                        campagne, reparer, jouer, artefacts, saine, traces.get(VARIANTE_SAINE), variantes, attendu_de,
-                        cumul, cout_max, plafond_usd, cout_estime_essai, journal, tentatives_reparation)
+                    try:
+                        cumul, cout_max = _reparer_et_rejouer(
+                            campagne, reparer, jouer, artefacts, saine, traces.get(VARIANTE_SAINE), variantes, attendu_de,
+                            cumul, cout_max, plafond_usd, cout_estime_essai, journal, tentatives_reparation)
+                    except ArretCampagne as arret:
+                        campagne.interrompue = f"arrêt demandé par la réparation : {arret} ({cas} essai {essai})"
+                        journal(f"ARRÊT pendant la réparation de {cas} essai {essai} : {arret}")
+                        return campagne
     return campagne
 
 
@@ -597,9 +602,8 @@ def _reparer_et_rejouer(campagne: Campagne, reparer, jouer, artefacts: Artefacts
         try:
             reparee = reparer(courant, Jeu(verdict=obs_saine.obtenu, cause=obs_saine.cause, detail=obs_saine.detail,
                                            trace=trace_courante))
-        except ArretCampagne as arret:
-            campagne.reparations.append(ReparationConsignee(cas, essai, False, False, f"arrêt demandé : {arret}", tentative=rang))
-            break
+        except ArretCampagne:
+            raise  # ex. crédits API épuisés : la tentative n'a RIEN mesuré de l'agent, elle n'est donc pas consignée
         except Exception as exc:  # une réparation qui tombe est consignée, jamais prise pour un succès
             campagne.anomalies.append(f"{cas} essai {essai} : `reparer` a levé {type(exc).__name__}: {exc}")
             campagne.reparations.append(ReparationConsignee(cas, essai, True, False, f"{type(exc).__name__}: {exc}"[:300],
@@ -1293,11 +1297,19 @@ class ReparateurReel:
         return artefacts_depuis_reparation(artefacts, json.loads(resultat.read_text(encoding="utf-8")))
 
 
+def _credits_epuises(erreur: str) -> bool:
+    return "credit balance is too low" in erreur or "insufficient_quota" in erreur
+
+
 def artefacts_depuis_reparation(origine: Artefacts, rapport: Mapping) -> Artefacts:
     """Le rapport de l'agent de réparation → `Artefacts` à rejouer (pur). Rejouable = quelque chose a changé ET l'essai à blanc passe."""
     module = origine.module
     cout = float(rapport["cost_usd"]) if rapport.get("cost_usd") is not None else None
     resume = str(rapport.get("summary") or "")
+    if _credits_epuises(str(rapport.get("error") or "")):
+        # Même règle que la génération (`qualify_campaign_pilot._credits_epuises`, 2026-09-25) : un manque de crédits n'a rien
+        # mesuré de l'agent. Le compter comme « correctif inexploitable » ferait passer le fournisseur pour un défaut de l'agent.
+        raise ArretCampagne("crédits API insuffisants (erreur fournisseur) — réparation non retenue")
 
     def echec(erreur: str) -> Artefacts:
         return Artefacts(origine.cas, origine.essai, cout_usd=cout, genere_ok=False, module=module, resume=resume,
