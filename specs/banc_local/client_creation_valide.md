@@ -17,4 +17,4 @@ Un client créé avec un nom valide doit être confirmé à l'écran ET figurer 
 
 ## Critère de réussite
 
-Le message « Le client « Dupont SARL » a été créé. » est visible, et la liste des clients contient une ligne avec « Dupont SARL » et « Lyon ».
+Juste après l'étape 3 (AVANT d'ouvrir la liste : le message n'est affiché que sur la page de confirmation), le message « Le client « Dupont SARL » a été créé. » est visible. Après l'étape 4, la liste des clients contient une ligne avec « Dupont SARL » et « Lyon ».
