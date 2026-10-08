@@ -13,7 +13,8 @@ Ce que le module NE fait PAS (dit, pas oublié) :
   retombe sur « existe quelque part dans l'application » (plus faible, mais jamais un refus à tort) ;
 - il ne juge pas un mot de passe : un test de connexion refusée a légitimement besoin d'une valeur fausse.
 
-Module PUR : aucune I/O, aucun réseau, aucun LLM. Entrées = textes et dictionnaires, sortie = liste d'écarts.
+Aucun réseau, aucun LLM. Les contrôles sont purs (textes et dictionnaires → liste d'écarts) ; seule `attributs_du_harnais`
+lit le dépôt (sources de `behave_runtime/`), jamais le code généré ni l'application.
 """
 
 from __future__ import annotations
