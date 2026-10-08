@@ -13,7 +13,7 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING
 
-from testpilot.generation import enregistrement_lint, steps_library
+from testpilot.generation import enregistrement_lint, litteraux_observes, steps_library
 from testpilot.generation.references import message_refus, verifier_references
 
 if TYPE_CHECKING:
@@ -415,6 +415,15 @@ def _forbidden_python(tree: ast.AST) -> str:
     return ""
 
 
+def _message_litteraux(outil: str, ecarts) -> str:
+    lignes = [f"[{outil}] LITTERAL_NON_OBSERVE : ce test cite ce qui n'a pas été observé sur l'application."]
+    for e in ecarts[:8]:
+        lignes.append(f"- {e.ou} : « {e.cite} » — {e.raison}" + (f" ; observé : « {e.observe} »" if e.observe else ""))
+    lignes.append("Utilise le nom observé À L'IDENTIQUE (accents et casse compris), ou inspecte la page "
+                  "(`inspect_page_snapshot` / `inspect_page_form`) pour le relever, puis réécris.")
+    return "\n".join(lignes)
+
+
 def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if not content.strip():
         return _outcome("[write_feature_file] contenu vide", ok=False)
@@ -450,11 +459,19 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
         refus_entite = enregistrement_lint.verifier_entite_a_creer(content)
         if refus_entite:
             return _outcome(refus_entite, ok=False)
+    # Lot VH-05 (D24) : tout champ, bouton ou page cité existe À L'IDENTIQUE dans ce que l'exploration a observé. BLOQUANT.
+    indications = ""
+    if ctx.annuaire is not None:
+        ecarts = litteraux_observes.controler_feature(content, ctx.annuaire)
+        refus = [e for e in ecarts if e.bloquant]
+        if refus:
+            return _outcome(_message_litteraux("write_feature_file", refus), ok=False)
+        indications = "".join(f" Attention ({e.ou}) : « {e.cite} » — {e.raison}." for e in ecarts)
     path = ctx.generated_dir / f"{ctx.module_name}.feature"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return _outcome(
-        f"[write_feature_file] OK — {path.name}, {len(scenarios)} scénario(s).",
+        f"[write_feature_file] OK — {path.name}, {len(scenarios)} scénario(s).{indications}",
         feature_content=content,
     )
 
@@ -529,6 +546,19 @@ def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
         if faute:
             return _outcome(f"[write_steps_file] {code} : {faute}. {conseil}".rstrip() + " Puis rappelle write_steps_file.",
                             ok=False)
+
+    # 3sexies. Lot VH-05 (D24) : réseau direct, `context.X` inventé ou secret (tous connecteurs) ; sélecteurs par texte libre et
+    # libellés non observés (connecteur web avec annuaire). BLOQUANT.
+    if ctx.attributs_contexte or ctx.annuaire is not None:
+        from testpilot.generation.litteraux_observes import Annuaire
+        ecarts = litteraux_observes.controler_steps(content, ctx.annuaire or Annuaire(),
+                                                    set(ctx.attributs_contexte) or set())
+        regles = {"reseau", "contexte"} | ({"selecteur", "libelle"} if ctx.annuaire is not None else set())
+        if not ctx.attributs_contexte:
+            regles.discard("contexte")
+        refus = [e for e in ecarts if e.bloquant and e.regle in regles]
+        if refus:
+            return _outcome(_message_litteraux("write_steps_file", refus), ok=False)
 
     # 4. Aucune redéfinition d'un step de la bibliothèque partagée.
     declared = {step.label for step in steps_library.extract_steps(content)}

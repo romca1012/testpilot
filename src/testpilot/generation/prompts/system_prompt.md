@@ -393,8 +393,10 @@ Fonctionnalité: [Nom clair]
 MOTS-CLÉS Gherkin (pas du texte libre) — `# language: fr` exige leur orthographe EXACTE.
 `Fonctionnalite` (sans accent) n'est reconnu par AUCUN mécanisme de tolérance : le fichier entier
 échoue à l'analyse (« No feature found »), un échec bien plus sévère et bien moins lisible qu'un
-step non défini. Cette règle ne s'applique QU'À ces mots-clés structurels — le reste du fichier
-(noms de variables Python dans `_steps.py`, identifiants) reste en ASCII comme d'habitude.
+step non défini. Cette règle ne s'applique QU'À ces mots-clés structurels — les noms de variables
+Python et identifiants de `_steps.py` restent en ASCII comme d'habitude, mais les LIBELLÉS de
+l'application (champs, boutons, textes affichés) se recopient À L'IDENTIQUE de ce qui a été observé,
+accents et casse compris : « Quantité de … », jamais « Quantite de … » (refusé à l'écriture).
 
 ### Décorateurs — correspondance absolue
 | Gherkin | Python |
