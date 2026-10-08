@@ -307,7 +307,11 @@ class InstanceBanc:
 # ── Exécution d'un cas figé (Behave + Playwright réels) ──────────────────────────────────────
 
 def executer_cas(slug: str, connexion: dict[str, str]) -> dict:
-    """Rejoue UN cas figé par le vrai chemin de production : `BehaveRunner` + `Executor` + `derive_verdict`."""
+    """Rejoue UN cas figé par le vrai chemin de production : `BehaveRunner` + `Executor` + `derive_verdict`.
+
+    MODE STRICT (D25, 2026-10-08) : la résolution adaptative (LLM à l'exécution) pourrait retrouver un champ RENOMMÉ par un
+    bug injecté et faire passer le cas — un faux vert fabriqué par le banc lui-même."""
+    from testpilot.execution.behave_result import MODE_STRICT_ENV
     from testpilot.execution.behave_runner import BehaveRunner
     from testpilot.execution.executor import Executor
     from testpilot.verdict.status import derive_verdict, statut_de_test
@@ -318,7 +322,7 @@ def executer_cas(slug: str, connexion: dict[str, str]) -> dict:
     (dossier / f"{slug}_steps.py").write_text((CAS_FIGES / f"{slug}_steps.py").read_text(encoding="utf-8"),
                                               encoding="utf-8")
     debut = time.time()
-    runner = BehaveRunner(connection=connexion, connector_type="odoo", generated_dir=dossier)
+    runner = BehaveRunner(connection={**connexion, MODE_STRICT_ENV: "1"}, connector_type="odoo", generated_dir=dossier)
     resultat = Executor(runner, max_retries=0).execute(slug)
     verdict = derive_verdict(resultat, connector_type="odoo")
     causes = sorted({s.cause_category for s in verdict.scenarios if s.cause_category})
