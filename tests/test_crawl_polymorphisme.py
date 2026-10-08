@@ -222,7 +222,7 @@ class _FakeBrowser:
 
 class _FakePlaywrightContext:
     def __init__(self, browser):
-        self.chromium = types.SimpleNamespace(launch=lambda: browser)
+        self.chromium = types.SimpleNamespace(launch=lambda **_kw: browser)  # accepte args= (confinement 2026-10-07)
 
     def __enter__(self):
         return self
