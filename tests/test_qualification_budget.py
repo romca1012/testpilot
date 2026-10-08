@@ -27,3 +27,26 @@ def test_reservation_survit_au_crash_et_borne_les_appels(tmp_path):
         restarted.reserve('too-much')
     assert restarted.summary()['charged_or_reserved_usd'] < restarted.LIMIT_USD
     restarted.conn.close()
+
+
+def test_la_reparation_haiku_est_couverte_un_modele_plus_cher_reste_refuse(tmp_path):
+    """Falsifiable : la réservation est calculée au tarif de Sonnet 4.6 -- Haiku (moins cher) passe, Opus (plus cher) non."""
+    from testpilot.generation.qualification_budget import QualificationLLM
+    budget = QualificationBudget(tmp_path / 'budget.db')
+    llm = QualificationLLM(budget, 'test')
+    for modele in ('claude-haiku-4-5', 'claude-sonnet-4-6'):
+        with pytest.raises(ValueError, match='Suivi de coût obligatoire'):  # a franchi le premier garde
+            llm.call_with_tools(model=modele)
+    for modele in ('claude-opus-4-8', 'modele-inconnu'):
+        with pytest.raises(ValueError, match='non couverte'):
+            llm.call_with_tools(model=modele, cost_tracker=object())
+    with pytest.raises(ValueError, match='non couverte'):
+        llm.call_with_tools(model='claude-haiku-4-5', max_tokens=9000, cost_tracker=object())
+    budget.conn.close()
+
+
+def test_le_tarif_de_haiku_sans_date_n_est_plus_celui_de_sonnet():
+    from testpilot.guardrails.cost_tracker import CostTracker
+    assert CostTracker.estimate('claude-haiku-4-5', 1_000_000, 0) == 0.80
+    assert CostTracker.estimate('claude-haiku-4-5', 1_000_000, 0) == CostTracker.estimate('claude-haiku-4-5-20251001', 1_000_000, 0)
+
