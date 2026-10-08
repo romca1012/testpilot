@@ -127,3 +127,33 @@ Rapports : `docs/mesures/banc-agents-2026-10-08-base-3-reparation.md` et `…-so
 Corrections de produit trouvées en chemin : le tarif de l'alias `claude-haiku-4-5` manquait (les réparations étaient comptées au tarif
 Sonnet, environ 3,75 fois trop cher) ; la réservation de budget de qualification ne couvrait pas le modèle de réparation.
 
+### Suite du §8 (2026-10-08) — causes trouvées, Sonnet par défaut, plusieurs tentatives
+
+**Causes des échecs de `panier_total_tva`** (trois défauts INDÉPENDANTS en chaîne, vérifiés sur la vraie page) : (1) le code écrit
+`"Quantite"` sans accent alors que l'application affiche « Quantité » ; (2) un champ ciblé par `aria-label` alors que l'application
+utilise un `<label for>` (le ciblage par rôle + nom le trouve) ; (3) page supposée inchangée après un ajout. Le snapshot de page
+fusionnait en plus nom accessible et texte affiché (un bouton « Ajouter » d'`aria-label` « Ajouter Clavier… » était visé par
+`:has-text('Ajouter Clavier…')`) : corrigé (`texte` ajouté quand il diffère du nom). Ajout de l'adresse de la page au moment de
+l'échec (sidecar, sans secret) : ne suffit pas seule (Haiku 0/5 avec adresse, 0/5 avec texte affiché).
+
+**Protocole corrigé** : le produit autorise `REPAIR_BUDGET_DEFAULT` = 2 tentatives ; une seule tentative ne peut pas régler des défauts
+en chaîne. Le banc rejoue maintenant 2 tentatives, chacune partant de l'échec de la version précédente.
+
+**Modèle** : `MODEL_REPAIR` passe à Sonnet 4.6 par défaut (partagé avec l'agent de correction). Mesure Sonnet + 2 tentatives sur les 5
+tests à réparer de `base-3` (rapport `…-sonnet-2tentatives`, cas `client_creation_nom_limite` essai 3 relancé après une panne de
+crédits, rapport `…-nom-limite-reparation-sonnet`) :
+
+| | Avant | Après (Sonnet, 2 tentatives) |
+|---|---|---|
+| Faux verts | 0/21 | 0/23 |
+| Faux rouges | 6/23 | 7/26 |
+| pass@1 exécution / résultat | 9/10 / 7/10 | 10/10 / 8/10 |
+| pass^3 exécution / résultat | — / 3/10 | 7/10 / 4/10 |
+| Tests réparés (saine conforme) | 0/5 | 2/5 ; exécutables 3/5 |
+| Coût des réparations | — | 0,45 $ (9 tentatives) |
+
+Constat à retenir : une réparation peut transformer une erreur technique en **faux rouge** (`commande_persistance_serveur` essai 2 : le
+test réparé compare mal une ligne qui existe bien). Le verdict accuse alors l'application ; la relecture humaine reste le filet.
+Incident : les crédits API se sont épuisés pendant une réparation ; le banc la comptait comme un échec de l'agent — corrigé (la
+campagne s'arrête, comme pour la génération).
+

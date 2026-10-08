@@ -1,0 +1,1616 @@
+{
+  "contexte": {
+    "date": "2026-10-08",
+    "etiquette": "base-3-reparation-sonnet-2tentatives",
+    "commit": "1dfe199",
+    "versions": {
+      "python": "3.12.14",
+      "testpilot": "0.1.0",
+      "behave": "1.3.3",
+      "playwright": "1.62.0"
+    },
+    "modele_generation": "claude-sonnet-4-6",
+    "mode": "reel",
+    "plafond_usd": 3.0,
+    "app": "boutique_locale",
+    "configuration_sha256": "1a9ac8873de83d174cedb9e4a8dcda338e684f28ca7a707857ff5e1aaf0bfd5c",
+    "sous_ensemble_de_cas": false,
+    "donnees_jetables": "C:\\Users\\ROMARI~1\\AppData\\Local\\Temp\\banc_agents_data_d7q4s37r",
+    "generations_rejouees_depuis": ".local-preview\\qualification",
+    "reparation": true,
+    "tentatives_reparation": 2
+  },
+  "indicateurs": {
+    "faux_verts": {
+      "k": 0,
+      "n": 21,
+      "non_concluants": 6,
+      "taux": 0.0,
+      "ic95": [
+        0.0,
+        0.15464382326420195
+      ]
+    },
+    "faux_rouges": {
+      "k": 6,
+      "n": 23,
+      "non_concluants": 7,
+      "taux": 0.2608695652173913,
+      "ic95": [
+        0.1254844588924897,
+        0.4647039054375056
+      ]
+    },
+    "pass_execution": {
+      "pass_at_1": {
+        "k": 9,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.9,
+        "ic95": [
+          0.5958436145024278,
+          0.9821242504842788
+        ]
+      },
+      "pass_at_k": {
+        "k": 9,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.9,
+        "ic95": [
+          0.5958436145024278,
+          0.9821242504842788
+        ]
+      },
+      "pass_hat_k": {
+        "k": 6,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.6,
+        "ic95": [
+          0.3126695474501864,
+          0.8318224187964902
+        ]
+      }
+    },
+    "pass_resultat": {
+      "pass_at_1": {
+        "k": 7,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.7,
+        "ic95": [
+          0.39677321997956516,
+          0.892210712513788
+        ]
+      },
+      "pass_at_k": {
+        "k": 7,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.7,
+        "ic95": [
+          0.39677321997956516,
+          0.892210712513788
+        ]
+      },
+      "pass_hat_k": {
+        "k": 3,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.3,
+        "ic95": [
+          0.10778928748621183,
+          0.6032267800204347
+        ]
+      }
+    },
+    "non_concluants": {
+      "technical_error": 13
+    },
+    "part_non_concluants_sous_defaut": 0.2222222222222222,
+    "par_defaut": {
+      "etat_non_enregistre": {
+        "jeux": 6,
+        "concluants": 4,
+        "detectes": 4,
+        "detectes_fiables": 0,
+        "ic95_detection_fiable": [
+          0.0,
+          0.48990002040399916
+        ],
+        "faux_verts": 0,
+        "non_concluants": 2,
+        "ic95_detection": [
+          0.5100999795960008,
+          1.0
+        ]
+      },
+      "filtre_ignore": {
+        "jeux": 3,
+        "concluants": 3,
+        "detectes": 3,
+        "detectes_fiables": 3,
+        "ic95_detection_fiable": [
+          0.43849391955098227,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      },
+      "login_accepte_tout": {
+        "jeux": 3,
+        "concluants": 3,
+        "detectes": 3,
+        "detectes_fiables": 3,
+        "ic95_detection_fiable": [
+          0.43849391955098227,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      },
+      "message_erreur_absent": {
+        "jeux": 6,
+        "concluants": 6,
+        "detectes": 6,
+        "detectes_fiables": 4,
+        "ic95_detection_fiable": [
+          0.29998832134152864,
+          0.9032306674407831
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.6096569663469354,
+          0.9999999999999999
+        ]
+      },
+      "total_faux": {
+        "jeux": 6,
+        "concluants": 2,
+        "detectes": 2,
+        "detectes_fiables": 2,
+        "ic95_detection_fiable": [
+          0.34237195288961925,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 4,
+        "ic95_detection": [
+          0.34237195288961925,
+          1.0
+        ]
+      },
+      "validation_absente": {
+        "jeux": 3,
+        "concluants": 3,
+        "detectes": 3,
+        "detectes_fiables": 2,
+        "ic95_detection_fiable": [
+          0.2076549551264879,
+          0.9385096847238394
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      }
+    },
+    "cout": {
+      "total_usd": 0.0,
+      "total_eur": 0.0,
+      "taux_eur_usd": 1.08,
+      "generations": 30,
+      "generations_sans_cout_consigne": 0,
+      "par_generation_usd": 0.0,
+      "par_generation_eur": 0.0,
+      "par_cas_usd": {
+        "client_creation_nom_limite": 0.0,
+        "client_creation_nom_requis": 0.0,
+        "client_creation_valide": 0.0,
+        "commande_confirmation": 0.0,
+        "commande_persistance_serveur": 0.0,
+        "connexion_refusee": 0.0,
+        "connexion_valide": 0.0,
+        "panier_remise_arrondi": 0.0,
+        "panier_total_tva": 0.0,
+        "produits_recherche": 0.0
+      }
+    },
+    "integrite": {
+      "verifiees": 53,
+      "divergentes": 0,
+      "non_rapportees": 0
+    },
+    "echantillon": {
+      "cas": 10,
+      "k": 3,
+      "essais_prevus": 30,
+      "essais_lances": 30,
+      "jeux": 57
+    },
+    "ecarts": [
+      {
+        "cas": "client_creation_valide",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "non_conforme",
+        "cause": "assertion_mismatch"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "non_conforme",
+        "cause": "assertion_mismatch"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "client_creation_nom_requis",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "non_conforme",
+        "cause": "assertion_mismatch"
+      },
+      {
+        "cas": "client_creation_valide",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "non_conforme",
+        "cause": "assertion_mismatch"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "etat_non_enregistre",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "connexion_valide",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "non_conforme",
+        "cause": "assertion_mismatch"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "total_faux",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "client_creation_nom_limite",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "client_creation_valide",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "non_conforme",
+        "cause": "assertion_mismatch"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "etat_non_enregistre",
+        "essai": 3,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 3,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      }
+    ],
+    "apres_reparation": {
+      "faux_verts": {
+        "k": 0,
+        "n": 23,
+        "non_concluants": 4,
+        "taux": 0.0,
+        "ic95": [
+          0.0,
+          0.14312112541726274
+        ]
+      },
+      "faux_rouges": {
+        "k": 7,
+        "n": 25,
+        "non_concluants": 5,
+        "taux": 0.28,
+        "ic95": [
+          0.1428367383738157,
+          0.47576971896558296
+        ]
+      },
+      "pass_execution": {
+        "pass_at_1": {
+          "k": 10,
+          "n": 10,
+          "non_mesures": 0,
+          "taux": 1.0,
+          "ic95": [
+            0.7224598312333834,
+            1.0
+          ]
+        },
+        "pass_hat_k": {
+          "k": 6,
+          "n": 10,
+          "non_mesures": 0,
+          "taux": 0.6,
+          "ic95": [
+            0.3126695474501864,
+            0.8318224187964902
+          ]
+        }
+      },
+      "pass_resultat": {
+        "pass_at_1": {
+          "k": 8,
+          "n": 10,
+          "non_mesures": 0,
+          "taux": 0.8,
+          "ic95": [
+            0.49015684672072335,
+            0.9433190520193067
+          ]
+        },
+        "pass_hat_k": {
+          "k": 3,
+          "n": 10,
+          "non_mesures": 0,
+          "taux": 0.3,
+          "ic95": [
+            0.10778928748621183,
+            0.6032267800204347
+          ]
+        }
+      },
+      "non_concluants": {
+        "technical_error": 9
+      },
+      "reparations": {
+        "a_reparer": 5,
+        "tentees": 5,
+        "tentatives": 9,
+        "rejouables": 4,
+        "saine_executable_apres": 2,
+        "saine_conforme_apres": 1,
+        "cout_usd": 0.411482,
+        "couts_non_consignes": 1
+      }
+    }
+  },
+  "interrompue": "",
+  "essais": [
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c1_i1_20261008T050527.feature": "3186f915f3248b03bc65c6b7bda146b00729d58065c4240175dba238116f1428",
+        "pilote_p1_c1_i1_20261008T050527_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c2_i1_20261008T050727.feature": "39a11c46f36338c1a8e4ec8b71fae86183508eea76b0ddeca55f64e16b1ce957",
+        "pilote_p1_c2_i1_20261008T050727_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      }
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c3_i1_20261008T051030.feature": "4bad61e2526b1604a10983d9c74bace65c368909a4b5a24fc13013bad19d8889",
+        "pilote_p1_c3_i1_20261008T051030_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c4_i1_20261008T051230.feature": "49da4752b8f25b3e23af22818d655fa2cc7fb652cfb7f89bdabe588652877f3c",
+        "pilote_p1_c4_i1_20261008T051230_steps.py": "3d961c248ae9f74ea9fb50571ac1ab92307951e3932c93e3353604b350f11c76"
+      }
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c5_i1_20261008T051408.feature": "30e44c9d7d8173564ee50a17a6d704f6983afef46fa01ca92daf4bfe0ab579e0",
+        "pilote_p1_c5_i1_20261008T051408_steps.py": "cbcdd973b6f4dfed2323aae0c73bb5ba5a57d814d8231ef59671a039185e99c2"
+      }
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c6_i1_20261008T051751.feature": "6312b9626f490f918440c077809c1e4e2d0e8db4f7c27c0baf7b06b9bede9ef3",
+        "pilote_p1_c6_i1_20261008T051751_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      }
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c7_i1_20261008T052050.feature": "e8dc65ee9cee49edd96ae14a0ec8a9cceac001784963b4a99a7e9ec1ffad58bf",
+        "pilote_p1_c7_i1_20261008T052050_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      }
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c8_i1_20261008T052334.feature": "ca1d971c5a962fe3e8850f004a3095878f3a1707ddbe0dcca28d79494d312671",
+        "pilote_p1_c8_i1_20261008T052334_steps.py": "4282d0461d79e8a1397ed157963874b84c65405325587309a981523c79e5d018"
+      }
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c9_i1_20261008T052529.feature": "a283e2f5b17deeae81b62dddbdb839011dbda152744e25a527f8225e38eed4ee",
+        "pilote_p1_c9_i1_20261008T052529_steps.py": "0d5505b82fae4cd61f34fc91cdeb8c1decdc418dbd0d571918a19c1d7533db75"
+      }
+    },
+    {
+      "cas": "produits_recherche",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c10_i1_20261008T052924.feature": "507aab862ea356efbbe2cbf0cd3c4e8876a828f6aa967298da579b61c2fd6c0f",
+        "pilote_p1_c10_i1_20261008T052924_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c1_i2_20261008T053146.feature": "70d9f463244868178a0bacad725457139df5ef3c7fbd013faecdacf759451ac4",
+        "pilote_p1_c1_i2_20261008T053146_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      }
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c2_i2_20261008T053356.feature": "6e7a6aeeb2101e1ca8d69c4965e4213026f4f859b96199d4b2d375cbb60bcc1b",
+        "pilote_p1_c2_i2_20261008T053356_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c3_i2_20261008T053609.feature": "d0701a954285a70af07cef05aaf9b0b9fe1627ddc4e94ff713bbd5e3c561d924",
+        "pilote_p1_c3_i2_20261008T053609_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c4_i2_20261008T053829.feature": "05f2f613b1307af746c111bb98e2cae7f8666e640e30d1701537bd4b5266d063",
+        "pilote_p1_c4_i2_20261008T053829_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c5_i2_20261008T054044.feature": "62aa090bb702ab10480cc15fd931e57621f00f26c3d945bb61a25a01074f1ddd",
+        "pilote_p1_c5_i2_20261008T054044_steps.py": "9412a165e11e4959b6b9da1d1c84c6cf5ae2fb54c5d7f5fe755a1867b3c92ae1"
+      }
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c6_i2_20261008T054351.feature": "92aeccb5f8005abdde7975d4981ef145487859470ed156ea8d6c8ac015c65483",
+        "pilote_p1_c6_i2_20261008T054351_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c7_i2_20261008T054741.feature": "0b13e860da2d73596f132aa7ee530219dafbd5ea45a786146e14462b4e277921",
+        "pilote_p1_c7_i2_20261008T054741_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 2,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.0,
+      "empreintes": {}
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c9_i2_20261008T055158.feature": "bd8a421673c4c06fe2118a1f39feb9539689666c6500c4fecdd12d370cdb67cd",
+        "pilote_p1_c9_i2_20261008T055158_steps.py": "5a29d2f0518285c7261b299bd6245951a9b5f3f89ac2c2cc579e4e82385b5900"
+      }
+    },
+    {
+      "cas": "produits_recherche",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c10_i2_20261008T055444.feature": "44fbbf1a3aad5be0f0ec1d75d0543137c8839ddef22d7295f36110c8940f5a89",
+        "pilote_p1_c10_i2_20261008T055444_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      }
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c1_i3_20261008T055644.feature": "7f93ee50045c94010c3bfba1f4975cb554654b4512501a85feaa748eb1c9b594",
+        "pilote_p1_c1_i3_20261008T055644_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c2_i3_20261008T055907.feature": "e2d05d7d3d82b3f860b5f4b67c9d2d100c83dde4460ae8a9a29c78138044a17a",
+        "pilote_p1_c2_i3_20261008T055907_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c3_i3_20261008T060138.feature": "42f4e114bfd35270aa7525d93e4d9bf8d3f8d5b55ff3bac66c203d1d50b0db4d",
+        "pilote_p1_c3_i3_20261008T060138_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c4_i3_20261008T060333.feature": "cf1feb99f9cf3537d51a690552fd9d2729ca1a9918e928fbc408f8ca300e79bc",
+        "pilote_p1_c4_i3_20261008T060333_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 3,
+      "genere": false,
+      "erreur": "Connection error.",
+      "cout_usd": 0.0,
+      "empreintes": {}
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c6_i3_20261008T085236.feature": "6312b9626f490f918440c077809c1e4e2d0e8db4f7c27c0baf7b06b9bede9ef3",
+        "pilote_p1_c6_i3_20261008T085236_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      }
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c7_i3_20261008T085620.feature": "3196de8820d437c20780445c17a6e1575653e89d5b705eb3ad4e376afd202619",
+        "pilote_p1_c7_i3_20261008T085620_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c8_i3_20261008T085841.feature": "d0624e692e8cd007e83cee61ec91d3c783d7fea8912325fee4956d578dff32e0",
+        "pilote_p1_c8_i3_20261008T085841_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c9_i3_20261008T090137.feature": "f4629a6d1d0795297c4d02066605bc623fc1e378a944a8fd150825dae2bd7015",
+        "pilote_p1_c9_i3_20261008T090137_steps.py": "e750582e34678764a5885151cae20c9750a4401ba007ec8a1f4625a3ee27ed06"
+      }
+    },
+    {
+      "cas": "produits_recherche",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pilote_p1_c10_i3_20261008T090404.feature": "82aedf2afbb6c8e5a170b13664b5a28edb9d3f3c2351b484935ad71cb49adc00",
+        "pilote_p1_c10_i3_20261008T090404_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      }
+    }
+  ],
+  "observations": [
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:53976/clients/nouveau.",
+      "duree": 15.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 8.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Aucune erreur de validation visible dans le formulaire.",
+      "duree": 16.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Aucune erreur de validation visible dans le formulaire.",
+      "duree": 16.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le client « Dupont SARL » a été créé. » n'est pas affiché sur http://127.0.0.1:53976/clients.",
+      "duree": 15.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le client « Dupont SARL » a été créé. » n'est pas affiché sur http://127.0.0.1:53976/clients.",
+      "duree": 15.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 7.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: La ligne doit porter sur 'Tapis de souris', valeur observee : 'P006'",
+      "duree": 7.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: L'oracle doit contenir exactement 1 commande, il en contient 0",
+      "duree": 7.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 42.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Identifiant ou mot de passe incorrect. » n'est pas affiché sur http://127.0.0.1:53976/produits.",
+      "duree": 49.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 5.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 10,56 » n'est pas affiché sur http://127.0.0.1:53976/panier.",
+      "duree": 13.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "rrors.TimeoutError: Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"form\").filter(has=locator(\"button[aria-label='Ajouter Clavier mécanique au panier'], button:has-text('Ajouter Clavier mécanique au panier')\")).first.locator(\"button:has-text('Ajouter Clavier mécanique')\")",
+      "duree": 35.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "rrors.TimeoutError: Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"form\").filter(has=locator(\"button[aria-label='Ajouter Clavier mécanique au panier'], button:has-text('Ajouter Clavier mécanique au panier')\")).first.locator(\"button:has-text('Ajouter Clavier mécanique')\")",
+      "duree": 35.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "filtre_ignore",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 2 produits affichés » n'est pas affiché sur http://127.0.0.1:53976/produits?q=souris.",
+      "duree": 13.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:53976/clients/nouveau.",
+      "duree": 15.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: l'oracle « etat » renvoie 1 résultat(s), 0 attendu(s) — la réponse est un objet unique (compté pour 1) : pour compter une liste qu'il contient, utiliser « le champ \"<chemin>\" de l'oracle \"<requête>\" compte <n> élément(s) »",
+      "duree": 6.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:53976/clients/nouveau.",
+      "duree": 14.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:53976/clients/nouveau.",
+      "duree": 14.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Dupont SARL a été créé » n'est pas affiché sur http://127.0.0.1:53976/clients.",
+      "duree": 15.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Dupont SARL a été créé » n'est pas affiché sur http://127.0.0.1:53976/clients.",
+      "duree": 15.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 7.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 8000ms exceeded.\nCall log:\n  - waiting for get_by_label(\"Quantite de Tapis de souris\") to be visible",
+      "duree": 13.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 8000ms exceeded.\nCall log:\n  - waiting for get_by_label(\"Quantite de Tapis de souris\") to be visible",
+      "duree": 13.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 44.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Identifiant ou mot de passe incorrect. » n'est pas affiché sur http://127.0.0.1:53976/produits.",
+      "duree": 49.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Produits » n'est pas affiché sur http://127.0.0.1:53976/connexion.",
+      "duree": 48.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 8000ms exceeded.\nCall log:\n  - waiting for get_by_label(\"Quantite de Clavier mécanique\") to be visible",
+      "duree": 13.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 8000ms exceeded.\nCall log:\n  - waiting for get_by_label(\"Quantite de Clavier mécanique\") to be visible",
+      "duree": 13.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "filtre_ignore",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 2 produits affichés » n'est pas affiché sur http://127.0.0.1:53976/produits?q=souris.",
+      "duree": 13.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Bouton 'Nouveau client' : aucun élément actionnable sur http://127.0.0.1:53976/clients/nouveau",
+      "duree": 21.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:53976/clients/nouveau.",
+      "duree": 16.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 8.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Aucune erreur de validation visible dans le formulaire.",
+      "duree": 15.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Aucune erreur de validation visible dans le formulaire.",
+      "duree": 14.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le client « Dupont SARL » a été créé. » n'est pas affiché sur http://127.0.0.1:53976/clients.",
+      "duree": 15.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le client « Dupont SARL » a été créé. » n'est pas affiché sur http://127.0.0.1:53976/clients.",
+      "duree": 15.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "Connection error.",
+      "duree": null,
+      "empreinte_ok": null
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "Connection error.",
+      "duree": null,
+      "empreinte_ok": null
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 42.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Identifiant ou mot de passe incorrect. » n'est pas affiché sur http://127.0.0.1:53976/produits.",
+      "duree": 54.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 8.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 10,56 € » n'est pas affiché sur http://127.0.0.1:53976/panier.",
+      "duree": 17.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 8000ms exceeded.\nCall log:\n  - waiting for get_by_label(\"Quantite de Clavier mécanique\") to be visible",
+      "duree": 17.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 8000ms exceeded.\nCall log:\n  - waiting for get_by_label(\"Quantite de Clavier mécanique\") to be visible",
+      "duree": 13.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "filtre_ignore",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 2 produits affichés » n'est pas affiché sur http://127.0.0.1:53976/produits?q=souris.",
+      "duree": 13.4,
+      "empreinte_ok": true
+    }
+  ],
+  "anomalies": [],
+  "reparations": [
+    {
+      "cas": "panier_total_tva",
+      "essai": 1,
+      "tentee": true,
+      "rejouable": true,
+      "motif": "",
+      "cout_usd": 0.062433,
+      "resume_agent": "Tout est clair maintenant :\n\n- Le champ quantité s'appelle bien `name=\"quantite\"` ✅\n- Il y a aussi un champ caché `name=\"produit\"` dans chaque formulaire\n- Le bouton a `aria-label=\"Ajouter Clavier mécanique au panier\"` mais son **texte affiché est juste `\"Ajouter\"`**\n\nLe sélecteur `button:has-text('Ajouter Clavier mécanique')` ne matche rien car `:has-text()` cherche dans le texte visible, qui est `\"Ajouter\"` seulement. Il faut cibler par `aria-label` : `button[aria-label='Ajouter Clavier mécanique au panier']`.\n\nLa stratégie correcte : localiser le formulaire via le bouton `aria-label`, puis remplir le champ `quantite` et cliquer le bouton par `aria-label`.",
+      "tentative": 1
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 1,
+      "tentee": true,
+      "rejouable": true,
+      "motif": "",
+      "cout_usd": 0.051242,
+      "resume_agent": "Tout est clair maintenant :\n\n1. **Cause** : Le step s'exécute alors que le navigateur est sur `/panier` (le scénario y navigue avant ce step), mais le bouton `Ajouter Câble HDMI au panier` n'existe que sur `/produits`. Le step doit naviguer vers `/produits` avant de chercher le bouton.\n\n2. **Structure réelle** : `input[name='quantite']` est correct, et le bouton `button[aria-label='Ajouter {name} au panier']` est bien présent sur `/produits`.\n\nLa correction : le step doit d'abord naviguer vers `/produits` si le navigateur n'y est pas déjà.",
+      "tentative": 2
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 2,
+      "tentee": true,
+      "rejouable": true,
+      "motif": "",
+      "cout_usd": 0.039367,
+      "resume_agent": "La cause est claire. Le label accessible du champ est **`Quantité de Tapis de souris`** (avec accent sur le `é` et accent sur le `è`), alors que le step utilise `get_by_label(\"Quantite de {produit}\")` — sans accent. `get_by_label` fait une correspondance exacte sur le nom accessible, donc l'élément n'est jamais trouvé.\n\nLa correction : utiliser `get_by_label(f\"Quantité de {produit}\")` avec l'accent correct sur le `é`.",
+      "tentative": 1
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 2,
+      "tentee": true,
+      "rejouable": true,
+      "motif": "",
+      "cout_usd": 0.076875,
+      "resume_agent": "Le transport `urllib.parse` est bloqué. Je dois construire l'URL de base sans importer `urllib.parse`. Je peux le faire manuellement en découpant `page.url` avec du Python pur (split sur `//` et `/`), ou utiliser le module `re` qui est déjà importé, ou simplement utiliser les méthodes de string Python standard.",
+      "tentative": 2
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 2,
+      "tentee": true,
+      "rejouable": true,
+      "motif": "",
+      "cout_usd": 0.041045,
+      "resume_agent": "La cause est claire. Le label accessible du champ est **`Quantité de Clavier mécanique`** (avec accent sur le `é` de « Quantité »), alors que le step cherche **`Quantite de Clavier mécanique`** (sans accent). `get_by_label` ne trouve rien et timeout.\n\nLe `.feature` utilise le step `je renseigne la quantite du produit \"Clavier mécanique\" avec \"2\"` — le libellé Gherkin est sans accent (c'est le nom du step), mais la valeur interpolée dans le label doit inclure l'accent : `Quantité de {produit}`.",
+      "tentative": 1
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 2,
+      "tentee": true,
+      "rejouable": true,
+      "motif": "",
+      "cout_usd": 0.061582,
+      "resume_agent": "Le diagnostic est confirmé :\n\n- `Quantité de Câble HDMI` existe sur `/produits` (page catalogue)\n- Sur `/panier`, ce champ n'existe **pas** — le panier a une structure différente (quantités modifiables différemment, ou pas du tout via ce label)\n\nLe step `je renseigne la quantite du produit` cherche le champ sur la page courante (`/panier`), mais il faut être sur `/produits`. C'est une **navigation incorrecte** : le scénario navigue vers `/panier` avant d'appeler ce step, alors que le champ n'existe que sur `/produits`.\n\nC'est l'exception n°2 : navigation incorrecte → je dois corriger le `.feature`. Mais d'abord, regardons le `.feature` actuel pour comprendre le parcours exact du scénario en échec.\n\nLe step s'appelle `je renseigne la quantite du produit \"{produit}\" avec \"{valeur}\"` — il est conçu pour `/produits`. Le step `je mets la quantite du produit \"{produit}\" a \"{valeur}\" dans le panier` est lui conçu pour `/panier`. Le scénario en échec utilise le premier step alors qu'il est sur `/panier`.\n\nLa correction est dans `_steps.py` : le step `je renseigne la quantite du produit` doit naviguer vers `/produits` s'il n'y est pas déjà, **ou** — plus proprement — le step doit chercher le champ sur la page courante quelle qu'elle soit, et le scénario doit être sur la bonne page.\n\nPuisque le `.feature` est gelé (sauf exception navigation), et que l'erreur est `Timeout` sur `/panier` pour un label qui n'existe que sur `/produits`, la correction technique est : **le step `je renseigne",
+      "tentative": 2
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 3,
+      "tentee": true,
+      "rejouable": false,
+      "motif": "BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011Cfpn18DdZsdze8YEFoMew'}",
+      "cout_usd": null,
+      "resume_agent": "",
+      "tentative": 1
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 3,
+      "tentee": true,
+      "rejouable": true,
+      "motif": "",
+      "cout_usd": 0.041588,
+      "resume_agent": "La cause est claire. Le label accessible réel est **`Quantité de Clavier mécanique`** (avec l'accent `é` sur `Quantité`), alors que le step utilise `Quantite de {name}` (sans accent). `get_by_label` ne trouve donc rien et le timeout expire.",
+      "tentative": 1
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 3,
+      "tentee": true,
+      "rejouable": true,
+      "motif": "",
+      "cout_usd": 0.03735,
+      "resume_agent": "La situation est claire. Le champ `\"Quantité de Câble HDMI\"` existe sur `/produits` mais pas sur `/panier`. Le step `je renseigne la quantite` est appelé alors que le navigateur est sur `/panier`.\n\nLe step doit naviguer vers `/produits` avant de chercher le champ, puisque c'est là que la quantité se saisit avant d'ajouter au panier. C'est une **navigation incorrecte** (exception 2 des consignes) — le step doit corriger le parcours pour aller sur la bonne page.\n\nCependant, il y a aussi un step `je mets la quantite du produit \"{name}\" a \"{qty}\" dans le panier` qui lui est destiné à la page panier (pour modifier une quantité déjà dans le panier). Ces deux steps ont des sémantiques différentes.\n\nLe step en échec est `je renseigne la quantite \"{qty}\" pour le produit \"{name}\"` — il doit naviguer vers `/produits` pour trouver le champ.",
+      "tentative": 2
+    }
+  ],
+  "observations_reparees": [
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 8.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 129,51 » n'est pas affiché sur http://127.0.0.1:53976/panier.",
+      "duree": 15.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Aucune ligne 'Tapis de souris' x3 trouvee dans la commande oracle : [{'produit': 'P006', 'nom': 'Tapis de souris', 'quantite': 3, 'prix_unitaire': '12.00', 'total_ligne': '36.00'}]",
+      "duree": 9.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: le champ « commandes » de l'oracle « etat » compte 0 élément(s), 1 attendu(s)",
+      "duree": 6.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": " at InjectedScript.querySelectorAll (<anonymous>:6947:30)\n    at callMatchedElements (eval at evaluate (:311:30), <anonymous>:2:29)\n    at UtilityScript.evaluate (<anonymous>:313:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\nCall log:\n  - waiting for locator(\"text=/Sous-total|HT/i\").first.",
+      "duree": 6.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": " at InjectedScript.querySelectorAll (<anonymous>:6947:30)\n    at callMatchedElements (eval at evaluate (:311:30), <anonymous>:2:29)\n    at UtilityScript.evaluate (<anonymous>:313:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\nCall log:\n  - waiting for locator(\"text=/Sous-total|HT/i\").first.",
+      "duree": 5.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "broken_test_code",
+      "detail": "AttributeError: 'Context' object has no attribute 'base_url'",
+      "duree": 5.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "broken_test_code",
+      "detail": "AttributeError: 'Context' object has no attribute 'base_url'",
+      "duree": 5.1,
+      "empreinte_ok": true
+    }
+  ]
+}
