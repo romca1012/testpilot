@@ -226,9 +226,10 @@ def _avale_l_echec(handler: ast.ExceptHandler) -> bool:
     if handler.type is None:
         large = True
     else:
-        cible = handler.type
-        nom = cible.id if isinstance(cible, ast.Name) else getattr(cible, "attr", "")
-        large = nom in {"Exception", "BaseException", "AssertionError"}
+        # Lot VH-02 (V10) : `except (AssertionError, X):` contournait la garde, qui ne lisait qu'un nom seul.
+        cibles = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+        noms = {c.id if isinstance(c, ast.Name) else getattr(c, "attr", "") for c in cibles}
+        large = bool(noms & {"Exception", "BaseException", "AssertionError"})
     return large and not any(isinstance(n, ast.Raise) for n in ast.walk(handler))
 
 
