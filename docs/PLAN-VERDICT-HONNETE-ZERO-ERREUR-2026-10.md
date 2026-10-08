@@ -1,6 +1,6 @@
 # Plan — Verdict qui ne ment pas, tests sans erreur technique après génération
 
-Date : 2026-10-08. Statut : **proposé, à valider par le porteur** (décisions §2).
+Date : 2026-10-08. Statut : **en cours** — D23, D24, D25, D27, D28 validées par le porteur le 2026-10-08 ; D26 en attente.
 Sources : `docs/AUDIT-VERDICT-ET-GENERATION-2026-10-08.md` (trous V1-V10, contrôles T1-T10, biais du banc) ;
 `reports/Agent de test honnête et fiable.md` (recherche, plan en 9 étapes) ; campagnes `docs/mesures/banc-agents-2026-10-0*`.
 Ce plan **remplace l'ordre** de Q3 (reste) et Q4 de `PLAN-QUALITE-AGENTS-2026-10.md` ; Q5 (atelier de calcul) vient après.
@@ -40,6 +40,8 @@ accepté ; coût mesuré < 1 € par cas ; 100 % des `conforme — preuve forte`
 | D26 | L'outil peut-il **exécuter** pendant la génération (avant la relecture), sur une instance bac à sable remise à zéro ? | **Oui sous conditions** : instance déclarée « bac à sable » dans le projet, remise à zéro avant chaque enregistrement, jamais sur une instance de production (garde `ODOO_ENV=prod` intacte) | Lot 7 |
 | D27 | Seuils de fin du plan (§1) | **Oui** tels quels | Lot 10 |
 | D28 | Nouvelles valeurs affichées : confiance `après réparation`, niveau de preuve `forte`/`faible` | **Oui** (migration SQLite + Alembic + `schema_sa` + libellés FR serveur et frontend) | Lots 3, 8 |
+
+Statut des décisions (2026-10-08) : **D23, D24, D25, D27, D28 validées** par le porteur ; **D26 en attente** (environnements de test remis à zéro).
 
 ## 3. Les lots
 
