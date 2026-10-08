@@ -89,6 +89,25 @@ def build_repair_prompt(connector: Connector | None = None,
     return prefix + base + suffix
 
 
+def _adresse_sans_secret(url: str) -> str:
+    """L'adresse de la page, SANS ce qui peut être secret : identifiants (`user:mdp@`), valeurs de paramètres, fragment.
+
+    On garde schéma, hôte et chemin (c'est ce qui dit « quelle page »), et le NOM des paramètres de requête : leurs valeurs
+    (jeton, session, identifiant) n'ont aucune raison de partir chez le fournisseur du modèle."""
+    from urllib.parse import parse_qsl, urlsplit
+
+    try:
+        morceaux = urlsplit(url)
+        hote = morceaux.hostname or ""
+        if morceaux.port:
+            hote += f":{morceaux.port}"
+        base = f"{morceaux.scheme}://{hote}{morceaux.path}" if morceaux.scheme and hote else (morceaux.path or url.split("?")[0])
+        noms = sorted({cle for cle, _ in parse_qsl(morceaux.query, keep_blank_values=True)})
+        return base + (f" (paramètres : {', '.join(noms)})" if noms else "")
+    except ValueError:
+        return ""
+
+
 def _failure_report(scenarios, failures, steps_content: str = "", memoire: str = "",
                     field_fallbacks: list[str] | None = None) -> str:
     """L'échec observé, tel qu'on le donne à l'agent. Factuel : ce qui s'est passé, rien de plus.
@@ -118,6 +137,10 @@ def _failure_report(scenarios, failures, steps_content: str = "", memoire: str =
     for f in failures or []:
         lignes.append(f"## Scénario en échec : {f.scenario_name}")
         lignes.append(f"Step : {f.step_text}")
+        adresse = _adresse_sans_secret(getattr(f, "page_url", "") or "")
+        if adresse:
+            # FAIT mesuré par le navigateur, pas un diagnostic : où il se trouvait quand le step a échoué.
+            lignes.append(f"Page du navigateur au moment de l'échec : {adresse}")
         lignes.append("Erreur :")
         lignes.append("```")
         lignes.append((f.raw or f.traceback_summary or "(aucun détail)")[:1500])

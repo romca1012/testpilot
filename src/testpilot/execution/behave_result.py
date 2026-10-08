@@ -34,6 +34,9 @@ class BehaveFailure:
     # ou `hook` pour une fixture (`before_scenario`…) en échec avant tout step. C'est un SIGNAL de
     # structure produit par Behave, jamais le libellé écrit par l'agent (décision 0015).
     step_type: str = ""
+    # Adresse de la page du navigateur AU MOMENT de l'échec (fait mesuré par le runtime, sidecar `PAGE_ECHEC_FILE_ENV`) ;
+    # "" si inconnue (connecteur sans navigateur, page fermée, run sans sidecar). Jamais un texte écrit par l'agent.
+    page_url: str = ""
 
 
 @dataclass
@@ -190,6 +193,14 @@ _MAX_FIELD_FALLBACKS = 20
 RESIDUS_FILE_ENV = "TP_RESIDUS_FILE"
 RESIDUS_FILENAME = "residus.txt"
 
+# Sidecar de l'ADRESSE de la page au moment d'un step en échec (banc d'agents, 2026-10-08 : l'agent de réparation accusait un
+# sélecteur alors que la page avait changé, faute de savoir où était le navigateur). Mêmes noms DUPLIQUÉS côté
+# `behave_runtime/environment.py`, même motif que les autres sidecars — accord tenu par test.
+PAGE_ECHEC_FILE_ENV = "TP_PAGE_ECHEC_FILE"
+PAGE_ECHEC_FILENAME = "page_au_echec.jsonl"
+
+_MAX_PAGES_ECHEC = 100
+
 _MAX_RESIDUS = 50
 
 # Sidecar des refus MESURÉS pendant le run (§5bis n°1 — « la règle apprise à chaque refus »).
@@ -244,6 +255,43 @@ def read_field_fallbacks(path, limit: int = _MAX_FIELD_FALLBACKS) -> list[str]:
             if len(found) >= limit:
                 break
     return found
+
+
+def read_pages_au_echec(path, limit: int = _MAX_PAGES_ECHEC) -> list[dict]:
+    """Les adresses de page consignées pendant le run, une ligne JSON `{scenario, step, url}` par step en échec.
+
+    Fichier absent ou ligne illisible = rien (cas nominal : run sans navigateur, ancien harnais), jamais une erreur."""
+    try:
+        content = Path(path).read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return []
+    lignes: list[dict] = []
+    for line in content.splitlines():
+        try:
+            entree = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(entree, dict) and isinstance(entree.get("url"), str):
+            lignes.append(entree)
+            if len(lignes) >= limit:
+                break
+    return lignes
+
+
+def rattacher_pages_au_echec(result: "BehaveResult", lignes: list[dict]) -> None:
+    """Pose `page_url` sur chaque échec dont (scénario, step) a une ligne dans le sidecar. Sans correspondance : "" (inconnue).
+
+    Appariement par le NOM du scénario et le TEXTE du step tels que Behave les écrit dans son JSON — jamais par position :
+    un échec de fixture (`step_text` vide) n'a pas de page associée."""
+    restantes = list(lignes)
+    for echec in result.failures:
+        if not echec.step_text:
+            continue
+        for i, entree in enumerate(restantes):
+            if entree.get("scenario") == echec.scenario_name and entree.get("step") == echec.step_text:
+                echec.page_url = entree["url"]
+                del restantes[i]  # deux échecs identiques d'un Plan de scénario consomment chacun leur ligne
+                break
 
 
 def read_residus(path, limit: int = _MAX_RESIDUS) -> list[str]:
