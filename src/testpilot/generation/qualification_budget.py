@@ -14,6 +14,12 @@ from testpilot.guardrails.cost_tracker import CostLimitExceeded
 from testpilot.llm.adapter import LLMAdapter
 
 
+# La réservation (6,12 $ : 1M tokens en entrée + 8000 en sortie) est calculée au tarif de Sonnet 4.6. Haiku 4.5, modèle de la
+# RÉPARATION par défaut (`config.MODEL_REPAIR`), coûte moins par token : la même réservation le couvre a fortiori. Tout autre
+# modèle (plus cher, ou inconnu) reste refusé -- on n'élargit jamais cette liste sans recalculer la réservation.
+MODELES_COUVERTS = frozenset({'claude-sonnet-4-6', 'claude-haiku-4-5', 'claude-haiku-4-5-20251001'})
+
+
 class QualificationBudget:
     LIMIT_USD = 50.0
     RESERVATION_USD = 6.12  # 1M entrée + 8000 sortie, aucun retry fournisseur
@@ -75,7 +81,7 @@ class QualificationLLM(LLMAdapter):
     def call_with_tools(self, **kwargs):
         from testpilot import config
         model = kwargs.get('model') or config.MODEL_GENERATION
-        if model != 'claude-sonnet-4-6' or kwargs.get('max_tokens', 8000) > 8000:
+        if model not in MODELES_COUVERTS or kwargs.get('max_tokens', 8000) > 8000:
             raise ValueError('Configuration non couverte par la réservation de qualification')
         tracker = kwargs.get('cost_tracker')
         if tracker is None:
