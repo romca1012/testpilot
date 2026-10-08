@@ -275,3 +275,27 @@ comptés à tort comme exécutés).
 - **À surveiller** : tant que le lot 3 (gel des `Alors` en réparation) n'est pas livré, une erreur `ConstatInvalideError` part en
   réparation, et l'agent pourrait la « corriger » par une tautologie.
 
+### Lot VH-02 terminé et VH-05 branché (2026-10-08)
+
+- **VH-02 point 2 (V1)** — garde BLOQUANTE `CONSTAT_SANS_LECTURE` dans `write_steps_file` : la condition d'un `constater*` doit
+  dépendre d'une lecture de l'application (`context.page`/`odoo`/oracle, ou une variable qui en vient — point fixe par AST) ;
+  refus d'une constante, d'une tautologie (`a == a`), d'une condition faite des seules valeurs du Gherkin ou de `context.table`,
+  et de toute redéfinition, réaffectation ou import renommé de `constater`.
+- **VH-02 point 4 (V9)** — `ACTION_PAR_RPC` : aucune écriture RPC (`create`/`write`/`unlink`/actions) dans un `@when`/`@then`
+  (permise dans un `@given` de préparation) ; `PYTHON_INTERDIT` : imports en liste blanche (`behave`, `_base_helpers`, `features`,
+  `playwright`, modules standard sans effet de bord), `exec`/`eval`/`open`/`__import__`…, `getattr` à nom calculé, `_runner`,
+  `__dict__`… refusés.
+- **Calibrage** : aucun des 29 fichiers de steps générés de `base-3` n'est refusé par ces gardes ; 3 exemples de tests existants
+  contenaient eux-mêmes un constat qui ne lisait rien — corrigés pour lire la page, sans toucher à ce qu'ils affirment.
+- **VH-02 point 5 (D23)** : les contrôles étant désormais BLOQUANTS à l'écriture (génération, correction et réparation passent
+  par les mêmes outils), l'approbation automatique ne concerne plus qu'une version qui les a tous passés — condition de fin de D23.
+  V1 n'est pas fermé à 100 % : la garde est de forme (le runtime garde le dernier mot) ; les lots 4 et 8 la complètent.
+- **VH-05 branché (D24)** : `write_feature_file` (donc aussi `write_test_plan`) refuse un champ ou un bouton jamais observé sur la
+  page courante (connecteur web avec annuaire) en donnant le nom observé ; `write_steps_file` refuse le réseau direct et un
+  `context.X` inventé ou secret (tous connecteurs), les sélecteurs par texte libre et les libellés non observés (web). Ce que
+  l'agent inspecte pendant la génération compte comme observé. Corrigés avant branchement (revue) : titres non jugés,
+  paramètres de Plan du scénario ignorés, `response.request` permis, page absente = indication seulement.
+- **Prompt** : la consigne « le reste reste en ASCII » précise que les libellés de l'application se recopient à l'identique.
+- **Non fait** : connecteur Odoo (l'annuaire ne relève pas le back-office — refus à tort probables) ; suivi de la page d'arrivée
+  après une soumission (lot 7) ; textes attendus des `Alors` (l'annuaire ne relève pas les textes).
+

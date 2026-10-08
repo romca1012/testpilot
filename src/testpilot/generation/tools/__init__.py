@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from testpilot.connectors.base import Connector
 from testpilot.generation.tools import inspect as inspect_tools
@@ -47,6 +48,10 @@ class ToolContext:
     # tant que l'entité désignée n'a pas été créée par CE scénario avant d'être référencée.
     depend_dun_autre_cas_du_groupe: bool = False
     etat_a_creer_par_ce_cas: str = ""
+    # Lot VH-05 (D24) : ce que l'exploration a OBSERVÉ (champs, boutons, liens par page) — `None` sans annuaire du projet ou
+    # hors connecteur web : le contrôle des littéraux se tait. `attributs_contexte` : attributs `context.X` que le harnais pose.
+    annuaire: Any = None
+    attributs_contexte: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass

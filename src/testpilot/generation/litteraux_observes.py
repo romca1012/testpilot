@@ -43,7 +43,12 @@ _CONTEXTE_INTERDIT = frozenset({"web_password", "odoo_password", "totp_secret", 
 
 _SELECTEURS_TEXTE = re.compile(r":has-text\(|(?:^|[\s>])text=|xpath=")
 _RESEAU_JS = re.compile(r"\bfetch\s*\(|XMLHttpRequest|sendBeacon")
-_APPELS_LIBELLE = {"get_by_label", "get_by_placeholder", "get_by_text"}
+# Seuls les appels qui désignent un élément INTERACTIF sont confrontés à l'annuaire (qui relève champs, boutons et liens, pas
+# les textes ni les titres) : `get_by_text` et `get_by_role("heading", …)` ne sont pas contrôlés ici (revue VH-02).
+_APPELS_LIBELLE = {"get_by_label", "get_by_placeholder"}
+_ROLES_INTERACTIFS = frozenset({"button", "link", "textbox", "searchbox", "spinbutton", "combobox", "checkbox", "radio",
+                                "listbox", "option", "switch", "menuitem", "tab"})
+_RECEPTEUR_NAVIGATEUR = re.compile(r"(^|\.)(page|context|browser|browser_context)$")
 
 
 @dataclass(frozen=True)
@@ -55,6 +60,9 @@ class Ecart:
     cite: str
     raison: str
     observe: str = ""
+    # `False` : indication seulement (ex. page absente de l'annuaire — une page dynamique, `/commande/<numéro>`, peut ne jamais
+    # avoir été explorée) ; jamais un refus d'écriture.
+    bloquant: bool = True
 
 
 @dataclass
@@ -65,6 +73,8 @@ class Annuaire:
     boutons: dict[str, set[str]] = field(default_factory=dict)
     liens: dict[str, dict[str, str]] = field(default_factory=dict)  # route -> {texte: href}
     page_connexion: str | None = None
+    # Noms et libellés vus par les outils d'inspection PENDANT la génération : plus frais que l'exploration ; acceptés partout.
+    observes_session: set[str] = field(default_factory=set)
 
     @property
     def routes(self) -> set[str]:
@@ -147,7 +157,7 @@ def controler_feature(feature: str, annuaire: Annuaire) -> list[Ecart]:
             cible = _normaliser_route(page.group("route"))
             if cible not in annuaire.routes and not any("{" in r or "<" in r for r in annuaire.routes):
                 ecarts.append(Ecart("page", ou, page.group("route"), "page absente de l'annuaire de l'application",
-                                    _proche(cible, annuaire.routes)))
+                                    _proche(cible, annuaire.routes), bloquant=False))
                 route = None
             else:
                 route = cible if cible in annuaire.routes else None
@@ -166,6 +176,10 @@ def controler_feature(feature: str, annuaire: Annuaire) -> list[Ecart]:
 
 
 def _controler(cite: str, quoi: str, route: str | None, annuaire: Annuaire, ou: str) -> list[Ecart]:
+    if "<" in cite and ">" in cite:  # paramètre d'un Plan du scénario : la valeur vient des Exemples
+        return []
+    if cite in annuaire.observes_session:
+        return []
     source = annuaire.champs if quoi == "champ" else annuaire.boutons
     if route is not None and cite in (source.get(route) or set()):
         return []
@@ -224,7 +238,8 @@ def controler_steps(code: str, annuaire: Annuaire, attributs_autorises: set[str]
     for noeud in ast.walk(arbre):
         ou = f"ligne {getattr(noeud, 'lineno', '?')}"
         if isinstance(noeud, ast.Attribute):
-            if noeud.attr == "request":
+            if noeud.attr == "request" and _RECEPTEUR_NAVIGATEUR.search(ast.unparse(noeud.value)):
+                # `page.request` / `context.request` émettent une requête ; `response.request` (observation) reste permis.
                 ecarts.append(Ecart("reseau", ou, "request", "appel HTTP direct : la vérification serveur passe par l'oracle"))
             if isinstance(noeud.value, ast.Name) and noeud.value.id == "context" and isinstance(noeud.ctx, ast.Load):
                 if noeud.attr in _CONTEXTE_INTERDIT:
@@ -245,9 +260,11 @@ def controler_steps(code: str, annuaire: Annuaire, attributs_autorises: set[str]
             nom = noeud.func.attr
             argument = noeud.args[0] if noeud.args else None
             if nom == "get_by_role":
-                argument = next((k.value for k in noeud.keywords if k.arg == "name"), None)
+                role = noeud.args[0].value if noeud.args and isinstance(noeud.args[0], ast.Constant) else None
+                argument = (next((k.value for k in noeud.keywords if k.arg == "name"), None)
+                            if role in _ROLES_INTERACTIFS else None)
             if nom in _APPELS_LIBELLE | {"get_by_role"} and argument is not None:
-                ecarts += _libelle_observe(argument, libelles, ou, nom)
+                ecarts += _libelle_observe(argument, libelles | annuaire.observes_session, ou, nom)
     return ecarts
 
 
