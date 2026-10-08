@@ -32,6 +32,8 @@ from testpilot.execution.behave_result import (
     CONSTATS_FILE_ENV,
     GENERATED_STEPS_FILE_ENV,
     CONSTATS_FILENAME,
+    PAGE_ECHEC_FILE_ENV,
+    PAGE_ECHEC_FILENAME,
     RESIDUS_FILE_ENV,
     RESIDUS_FILENAME,
     BehaveResult,
@@ -41,6 +43,8 @@ from testpilot.execution.behave_result import (
     read_field_fallbacks,
     read_menus_appris,
     read_refus_mesures,
+    read_pages_au_echec,
+    rattacher_pages_au_echec,
     read_residus,
     read_selector_tiers,
 )
@@ -125,7 +129,8 @@ class BehaveRunner:
                SELECTOR_TIER_FILE_ENV: str(run_dir / SELECTOR_TIER_FILENAME),
                MENU_LEARNED_FILE_ENV: str(run_dir / MENU_LEARNED_FILENAME),
                CONSTATS_FILE_ENV: str(run_dir / CONSTATS_FILENAME),
-               RESIDUS_FILE_ENV: str(run_dir / RESIDUS_FILENAME)}
+               RESIDUS_FILE_ENV: str(run_dir / RESIDUS_FILENAME),
+               PAGE_ECHEC_FILE_ENV: str(run_dir / PAGE_ECHEC_FILENAME)}
         # Q1 (revue du 2026-10-07) : le NOM du fichier de steps GÉNÉRÉ par l'agent. `environment.after_step`
         # n'accorde l'exemption « non assertif » qu'aux fonctions du SOCLE — jamais à une fonction de ce fichier,
         # sinon un step généré pourrait se déclarer exempté pour masquer un `Alors` vide. Garantie STRUCTURELLE
@@ -228,6 +233,9 @@ class BehaveRunner:
             # un dry-run n'exécute aucun `after_scenario`, rien à lire. Même moment de lecture.
             if not dry_run:
                 result.residus = read_residus(run_dir / RESIDUS_FILENAME)
+            # Adresse de la page au moment de chaque step en échec — run RÉEL seulement (un dry-run n'exécute rien).
+            if not dry_run:
+                rattacher_pages_au_echec(result, read_pages_au_echec(run_dir / PAGE_ECHEC_FILENAME))
             return result
         finally:
             shutil.rmtree(run_dir, ignore_errors=True)
