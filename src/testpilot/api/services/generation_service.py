@@ -535,6 +535,14 @@ def _auto_approuver(conn, case_id: int, version_id: int | None) -> None:
 _AUTEUR_CORRECTION = "correction-agent"
 
 
+def _modele_du_cas(conn, case: dict) -> dict | None:
+    """L'annuaire du projet du cas (contrôle des littéraux de la correction) ; `None` s'il n'y en a pas, jamais une erreur."""
+    from testpilot.generation import domain_model
+    from testpilot.store.repositories import ProjectRepo
+    projet = ProjectRepo(conn).get(case["project_id"]) if case.get("project_id") else None
+    return domain_model.charger_modele(projet) if projet else None
+
+
 def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
                                module_name: str | None = None, connector=None,
                                connector_type: str | None = None, connector_version: str = "",
@@ -595,7 +603,8 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
         connector_version=connector_version, profil_instance=profil_instance,
         dry_runner=dry_runner,
         calibration_writes_enabled=calibration_writes_enabled,
-        verified_fields=json.loads(version.get("verified_fields") or "{}"))
+        verified_fields=json.loads(version.get("verified_fields") or "{}"),
+        modele=_modele_du_cas(conn, case))
     _record_generation_cost(conn, case_id=case_id, correction_usd=proposal.cost_usd)
 
     if not proposal.changed:
