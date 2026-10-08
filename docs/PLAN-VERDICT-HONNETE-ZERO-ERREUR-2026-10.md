@@ -232,3 +232,25 @@ Risques et parades :
 3. Lot 2 points 1 et 3 (`constater` typé, `ok:false` → `indeterminé`) — petits, ferment le trou le plus grave.
 4. Lot 5 validé **hors ligne** sur les 30 tests de `base-3` (aucune dépense).
 5. Ensuite seulement : agrandissement du banc et première campagne `base-4`.
+
+## 6. Suivi
+
+| Lot | Statut | Date | Preuve |
+|---|---|---|---|
+| VH-01 (point 1) | les bancs (agents et Odoo) jouent en mode strict | 2026-10-08 | `tests/test_banc_mode_strict.py` (échouait avant) |
+| VH-02 (points 1 et 3) | `constater` refuse une condition toujours vraie (`ConstatInvalideError` → `broken_test_code`) ; un constat échoué dans un scénario passé → `indetermine` (`constat_echoue_ignore`, libellé FR serveur + frontend) ; la garde `except` voit les tuples. Points 2, 4, 5 à faire | 2026-10-08 | `tests/test_constats_qui_prouvent.py` (10 échecs sur 26 avant) |
+| VH-05 (validation hors ligne) | module pur `generation/litteraux_observes.py` + `scripts/valider_litteraux_hors_ligne.py` ; **pas encore branché** sur les outils d'écriture | 2026-10-08 | `tests/test_litteraux_observes.py` ; validation ci-dessous |
+
+### Validation hors ligne de VH-05 sur les 30 tests de `base-3` (aucune dépense)
+
+Résultat brut : 4 erreurs techniques signalées sur 5, 5 signalements sur des tests que le rejeu comptait « exécutés ».
+Examen des 5 : `connexion_refusee` ×3 et `connexion_valide` essai 2 citent `username`/`password` (vrais noms : `identifiant`,
+`mot_de_passe`). **Rejoués en mode strict sans clé API**, ils sortent `technical_error` (« Champ 'username' introuvable ») :
+leur « conforme » de `base-3` venait du repli LLM à l'exécution (biais confirmé, corrigé par VH-01). `commande_persistance_serveur`
+essai 1 fait un `fetch` direct vers l'oracle : pratique interdite, signalement juste.
+
+Bilan corrigé : **8 erreurs techniques réelles signalées sur 9**, **0 refus à tort** sur les 18 tests justes. La seule
+manquée (`client_creation_nom_limite` essai 3 : bouton cherché sur la page d'arrivée d'un envoi de formulaire) demande le lot 7.
+Conséquence pour les chiffres de `base-3` : le pass@1 d'exécution réel est plus bas que publié (au moins 4 tests de connexion
+comptés à tort comme exécutés).
+
