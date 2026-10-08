@@ -59,6 +59,8 @@ AUCUN_CONSTAT = "aucun_constat"
 # « aucune vérification exécutée » serait FAUX ici (revue du 2026-10-07). `cause_category` est un simple texte en base :
 # aucune migration.
 ALORS_SANS_CONSTAT = "alors_sans_constat"
+# Lot VH-02 (V10) : un constat a échoué pendant un scénario qui est pourtant allé au bout (échec avalé par le test).
+CONSTAT_ECHOUE_IGNORE = "constat_echoue_ignore"
 MISSING_SERVER_CONTEXT = "missing_server_context"
 DONNEE_REFUSEE = "donnee_refusee"
 BROKEN_TEST_CODE = "broken_test_code"
@@ -72,7 +74,7 @@ REFUS_NON_EXPLIQUE = "refus_non_explique"
 UNKNOWN = "unknown"
 
 CATEGORIES = (
-    PRECONDITION_NON_REMPLIE, ERREUR_SERVEUR_5XX, AUCUN_CONSTAT, ALORS_SANS_CONSTAT, MISSING_SERVER_CONTEXT, DONNEE_REFUSEE, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
+    PRECONDITION_NON_REMPLIE, ERREUR_SERVEUR_5XX, AUCUN_CONSTAT, ALORS_SANS_CONSTAT, CONSTAT_ECHOUE_IGNORE, MISSING_SERVER_CONTEXT, DONNEE_REFUSEE, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
     MISSING_ROLE, ASSERTION_MISMATCH, RESOLVEUR_INCOMPLET, REFUS_NON_EXPLIQUE, UNKNOWN,
 )
 
@@ -82,6 +84,7 @@ LABELS = {
     REFUS_NON_EXPLIQUE: "Refus non expliqué (à instruire)",
     AUCUN_CONSTAT: "Aucune vérification exécutée",
     ALORS_SANS_CONSTAT: "Un résultat attendu n'a rien vérifié",
+    CONSTAT_ECHOUE_IGNORE: "Une vérification a échoué sans faire échouer le test",
     MISSING_SERVER_CONTEXT: "Contexte serveur manquant",
     DONNEE_REFUSEE: "Donnée du test refusée (à corriger)",
     BROKEN_TEST_CODE: "Erreur dans le code du test",
@@ -143,6 +146,9 @@ _EXCEPTION_TO_CAUSE = {
     # Même défaut, pour un parcours (section/page absente) plutôt qu'un élément d'action —
     # `access_portal_section`. Même famille que `HTTPError`, déjà classée ici.
     "NavigationImpossibleError": WRONG_NAVIGATION,
+    # Lot VH-02 (V1) : levée UNIQUEMENT par `_base_helpers.constater` quand sa condition ne peut pas être fausse (objet
+    # Playwright, méthode non appelée) — un défaut du CODE DU TEST, jamais de l'application ni un sélecteur introuvable.
+    "ConstatInvalideError": BROKEN_TEST_CODE,
     # AJOUTÉ (lot 02, D1). Levée UNIQUEMENT par un step de Contexte de la bibliothèque quand un
     # PRÉREQUIS d'environnement n'est pas rempli. Classe dédiée, non ambiguë par construction.
     "PreconditionNonRemplieError": PRECONDITION_NON_REMPLIE,

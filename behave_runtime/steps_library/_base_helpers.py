@@ -199,13 +199,46 @@ def consigner_alors_sans_constat(texte_du_step: str, raison: str = "") -> None:
         pass
 
 
+class ConstatInvalideError(TypeError):
+    """La condition d'un constat ne PEUT PAS être fausse : ce n'est pas une vérification, c'est une erreur du test.
+
+    Lot VH-02 (V1, audit du 2026-10-08) : `constater(page.locator(".succes"))` réussissait toujours — un objet Python sans
+    `__bool__` ni `__len__` est toujours vrai — et le scénario sortait `conforme` sans avoir rien vérifié. Héritée de
+    `TypeError` : le verdict la classe en erreur du test (`technical_error`), jamais en vert ni en défaut de l'application."""
+
+
+def _condition_toujours_vraie(condition) -> str:
+    """Pourquoi `condition` est toujours vraie par construction (« » si elle peut être fausse).
+
+    Accepte tout ce qui peut valoir faux : booléen, nombre, texte, conteneur, `None`, et tout objet qui définit `__bool__`
+    ou `__len__` (y compris `re.Match`, dont l'alternative est `None`). Refuse : une fonction ou méthode NON APPELÉE, un
+    objet Playwright (Locator, ElementHandle, Page…), et tout objet de vérité par défaut."""
+    if condition is None or isinstance(condition, (bool, int, float, str, bytes, list, tuple, set, frozenset, dict,
+                                                   re.Match)):
+        return ""
+    if callable(condition):
+        return f"une fonction ou méthode non appelée ({getattr(condition, '__name__', type(condition).__name__)})"
+    module = type(condition).__module__ or ""
+    if module.startswith("playwright"):
+        return f"un objet Playwright ({type(condition).__name__}) — utiliser `constater_visible` ou lire sa valeur"
+    if not (hasattr(type(condition), "__bool__") or hasattr(type(condition), "__len__")):
+        return f"un objet {type(condition).__name__} toujours vrai"
+    return ""
+
+
 def constater(condition, message: str = "") -> None:
     """Le SEUL moyen d'écrire une assertion sous un `Alors` : consigne le constat puis lève
     `AssertionError(message)` si la condition est fausse. Réussi ou échoué, il laisse une trace.
 
     Signature volontairement LIMITÉE à `(condition, message)` — voir `_SOURCE_CONSTAT` ci-dessus :
     aucun step généré ne peut renseigner la source d'un constat, quelle que soit la forme d'appel.
+
+    Une condition qui ne peut pas être fausse (objet Playwright, méthode non appelée…) lève `ConstatInvalideError` SANS
+    consigner de constat : elle ne prouve rien (lot VH-02).
     """
+    raison = _condition_toujours_vraie(condition)
+    if raison:
+        raise ConstatInvalideError(f"Constat invalide : la condition est {raison}, elle ne peut jamais être fausse. {message}")
     ok = bool(condition)
     _consigner_constat(ok)
     if not ok:

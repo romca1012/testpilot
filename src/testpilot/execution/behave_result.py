@@ -59,6 +59,9 @@ class BehaveScenario:
     # `None` = mécanisme absent (dry-run, résultat construit à la main) : la règle ne s'applique pas ;
     # `[]` = il a tourné et aucun `Alors` n'est vide.
     alors_sans_constat: list[str] | None = None
+    # Lot VH-02 (V10) : constats ÉCHOUÉS consignés pendant ce scénario, quel que soit le step. Dans un scénario passé, c'est
+    # une vérification qui a échoué sans faire échouer le test (exception avalée) : jamais `conforme`. `None` = mécanisme absent.
+    constats_echoues: int | None = None
 
 
 @dataclass
@@ -449,6 +452,8 @@ def rattacher_constats(result: BehaveResult, constats: list[dict]) -> None:
             1 for c in constats
             if c.get("scenario") == scenario.name and c.get("ok") is True
             and c.get("step_type") == "then")
+        scenario.constats_echoues = sum(
+            1 for c in constats if c.get("scenario") == scenario.name and c.get("ok") is False)
         scenario.alors_sans_constat = [
             str(c.get("step", "")) for c in constats
             if c.get("scenario") == scenario.name and c.get("sans_constat") is True]

@@ -12,6 +12,7 @@ describe('status mapping — deux axes distincts + vocabulaire utilisateur', () 
     expect(causeLabel('refus_non_explique')).toBe('Refus non expliqué (à instruire)')
     expect(causeLabel('aucun_constat')).toBe('Aucune vérification exécutée')
     expect(causeLabel('alors_sans_constat')).toBe("Un résultat attendu n'a rien vérifié")
+    expect(causeLabel('constat_echoue_ignore')).toBe('Une vérification a échoué sans faire échouer le test')
     // Une cause inconnue du front reste lisible : jamais un identifiant brut à l'écran.
     expect(causeLabel('une_cause_future')).toBe('Cause à instruire')
     expect(causeLabel(null)).toBe('Cause à instruire')
