@@ -139,6 +139,9 @@ if os.environ.get("ODOO_ENV") == "prod":
 # les autres sidecars (`FIELD_FALLBACK_FILE_ENV`…) — accord tenu par test.
 RESIDUS_FILE_ENV = "TP_RESIDUS_FILE"
 
+# Sidecar de l'adresse de la page au moment d'un step en échec (noms DUPLIQUÉS de `execution/behave_result.py`).
+PAGE_ECHEC_FILE_ENV = "TP_PAGE_ECHEC_FILE"
+
 # Un nom de modèle Odoo technique : `module.nom` (ex. `helpdesk.ticket`, `res.partner`) — jamais
 # autre chose. Sert à REFUSER un segment de route qui ne ressemble pas à un modèle (voir
 # `_modele_depuis_route_formulaire`) : un id sans modèle SÛR n'est jamais enregistré pour nettoyage
@@ -685,6 +688,31 @@ def _est_exempte_non_assertive(fonction) -> bool:
     return bool(fichier) and fichier != genere
 
 
+def _consigner_page_au_echec(context, step) -> None:
+    """Un step en ÉCHEC : consigne l'adresse de la page du navigateur à cet instant (`{scenario, step, url}`).
+
+    Fait mesuré, pas une interprétation : il dit à l'agent de réparation OÙ était le navigateur (« Locator introuvable » sur
+    /panier alors que le formulaire est sur /produits). Best-effort absolu : sans navigateur, page fermée ou sidecar
+    inécrivable, on ne consigne rien — jamais une exception qui masquerait l'échec d'origine."""
+    try:
+        statut = getattr(step, "status", None)
+        if getattr(statut, "name", str(statut)) not in ("failed", "error"):
+            return
+        chemin = os.environ.get(PAGE_ECHEC_FILE_ENV)
+        page = getattr(context, "page", None)
+        if not chemin or page is None:
+            return
+        url = page.url
+        if not isinstance(url, str) or not url:
+            return
+        scenario = getattr(getattr(context, "scenario", None), "name", "") or ""
+        texte = f"{(getattr(step, 'keyword', '') or '').strip()} {getattr(step, 'name', '') or ''}".strip()
+        with open(chemin, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"scenario": scenario, "step": texte, "url": url}, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 def after_step(context, step):
     """Q1 (D16) : un step `Alors` ASSERTIF qui passe sans avoir consigné le moindre constat RÉUSSI n'a rien
     prouvé. Il est consigné (`sans_constat`) et `verdict/status.py` en fait un `indetermine`, au lieu de
@@ -697,6 +725,7 @@ def after_step(context, step):
     Si le contrôle lui-même est IMPOSSIBLE (repère absent, erreur), on ne le laisse jamais disparaître en silence
     (Behave avale la sortie d'un scénario vert) : une ligne `controle_impossible` est consignée dans le sidecar
     et le verdict reste prudent (`indetermine`). Aucune exception ne remonte à Behave."""
+    _consigner_page_au_echec(context, step)
     try:
         if (getattr(step, "step_type", "") or "") != "then":
             return
