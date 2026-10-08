@@ -188,7 +188,7 @@ def test_un_step_genere_ne_touche_pas_au_mecanisme_de_preuve(tmp_path, code):
 def test_un_step_genere_ordinaire_reste_accepte(tmp_path):
     """Sens inverse : le garde ne devient pas un refus systématique."""
     resultat = _ecrire(tmp_path, _ENTETE + "@then('une vérification propre')\ndef s(context):\n"
-                                           "    constater('ok' in 'ok', 'absent')\n")
+                                           "    constater('ok' in context.page.inner_text('body'), 'absent')\n")
 
     assert resultat.ok is True
 
