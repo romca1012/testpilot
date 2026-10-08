@@ -1112,7 +1112,8 @@ def trace_de_l_echec(resultat) -> dict | None:
                       for sc in (getattr(reel, "scenarios", None) or [])],
         "echecs": [{"scenario_name": getattr(f, "scenario_name", ""), "step_text": getattr(f, "step_text", ""),
                     "raw": (getattr(f, "raw", "") or "")[:1500],
-                    "traceback_summary": (getattr(f, "traceback_summary", "") or "")[:500]}
+                    "traceback_summary": (getattr(f, "traceback_summary", "") or "")[:500],
+                    "page_url": getattr(f, "page_url", "") or ""}
                    for f in (getattr(reel, "failures", None) or [])],
     }
 

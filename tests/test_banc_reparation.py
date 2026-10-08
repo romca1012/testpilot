@@ -274,3 +274,18 @@ def test_une_campagne_rejouee_puis_reparee_de_bout_en_bout(tmp_path):
                                 reparer=reparateur(), plafond_usd=1.0, cout_estime_essai=0.1)
 
     assert camp.essais[0].cout_usd == 0.0 and len(camp.observations_reparees) == 2
+
+
+def test_la_trace_de_l_echec_transmet_l_adresse_de_la_page_a_l_agent_de_reparation():
+    """Falsifiable : la première mesure avec l'adresse (2026-10-08) ne la transmettait PAS -- l'agent ne l'a jamais reçue."""
+    from types import SimpleNamespace
+
+    echec = SimpleNamespace(scenario_name="S", step_text="Quand a", raw="boom", traceback_summary="", page_url="http://h/panier")
+    resultat = SimpleNamespace(real_run=SimpleNamespace(scenarios=[SimpleNamespace(name="S", status="failed")], failures=[echec]))
+
+    trace = ba.trace_de_l_echec(resultat)
+
+    assert trace["echecs"][0]["page_url"] == "http://h/panier"
+    assert trace["echecs"][0]["raw"] == "boom"
+    sans_adresse = SimpleNamespace(scenario_name="S", step_text="Quand a", raw="boom", traceback_summary="")
+    assert ba.trace_de_l_echec(SimpleNamespace(real_run=SimpleNamespace(scenarios=[], failures=[sans_adresse])))["echecs"][0]["page_url"] == ""
