@@ -289,3 +289,104 @@ def test_la_trace_de_l_echec_transmet_l_adresse_de_la_page_a_l_agent_de_reparati
     assert trace["echecs"][0]["raw"] == "boom"
     sans_adresse = SimpleNamespace(scenario_name="S", step_text="Quand a", raw="boom", traceback_summary="")
     assert ba.trace_de_l_echec(SimpleNamespace(real_run=SimpleNamespace(scenarios=[], failures=[sans_adresse])))["echecs"][0]["page_url"] == ""
+
+
+# ── Plusieurs tentatives, comme le budget de réparation du produit ─────────────────────────────────────────
+
+
+def reparateur_numerote(cout=0.05, non_rejouable_a=()):
+    """Chaque tentative rend une version numérotée (`REPARE-1`, `REPARE-2`…) ; garde les traces reçues."""
+    recus = []
+
+    def reparer(artefacts, jeu):
+        recus.append((artefacts.fichiers[f"{artefacts.cas}.feature"], jeu.trace))
+        rang = len(recus)
+        if rang in non_rejouable_a:
+            return ba.Artefacts(artefacts.cas, artefacts.essai, cout_usd=cout, genere_ok=False, module=artefacts.module,
+                                erreur="l'agent n'a rien réécrit")
+        return ba.Artefacts(artefacts.cas, artefacts.essai, cout_usd=cout, module=artefacts.module,
+                            fichiers={f"{artefacts.cas}.feature": f"REPARE-{rang} feature",
+                                      f"{artefacts.cas}_steps.py": f"REPARE-{rang} steps"})
+
+    reparer.recus = recus
+    return reparer
+
+
+def jouer_par_version(table):
+    """`table[version][variante]` ; la version est le suffixe de `REPARE-n` (0 = original)."""
+    def jouer(artefacts, variante):
+        contenu = artefacts.fichiers[f"{artefacts.cas}.feature"]
+        version = int(contenu.split("REPARE-")[1].split()[0]) if "REPARE-" in contenu else 0
+        trace = {"scenarios": [{"name": "S", "status": "error"}],
+                 "echecs": [{"scenario_name": "S", "step_text": f"etape de la v{version}", "raw": f"echec v{version}",
+                             "traceback_summary": "", "page_url": f"http://h/v{version}"}]}
+        return ba.Jeu(verdict=table[version][variante], empreintes=artefacts.empreintes, trace=trace)
+
+    return jouer
+
+
+def test_deux_defauts_en_chaine_la_deuxieme_tentative_part_de_l_echec_de_la_premiere():
+    """Falsifiable : une seule tentative laisserait le test cassé ; la 2e doit recevoir l'échec de la version RÉPARÉE (v1), pas
+    celui de l'original, sinon elle referait la même correction."""
+    jouer = jouer_par_version({0: CASSE, 1: CASSE, 2: {"saine": "conforme", "total_faux": "non_conforme"}})
+    rep = reparateur_numerote()
+
+    camp = lancer(jouer, rep, tentatives_reparation=2)
+    apres = ba.calculer_indicateurs(camp)["apres_reparation"]
+
+    assert [r[1]["echecs"][0]["raw"] for r in rep.recus] == ["echec v0", "echec v1"]
+    assert [o.variante for o in camp.observations_reparees] == ["saine", "total_faux"]
+    assert apres["reparations"]["saine_conforme_apres"] == 1
+    assert (apres["reparations"]["tentees"], apres["reparations"]["tentatives"]) == (1, 2)
+    assert apres["pass_execution"]["pass_at_1"]["k"] == 1
+
+
+def test_la_reparation_s_arrete_des_que_la_saine_ne_sort_plus_en_erreur_technique():
+    jouer = jouer_par_version({0: CASSE, 1: {"saine": "conforme", "total_faux": "non_conforme"}})
+    rep = reparateur_numerote()
+
+    camp = lancer(jouer, rep, tentatives_reparation=3)
+
+    assert len(rep.recus) == 1 and len(camp.reparations) == 1
+
+
+def test_le_budget_de_tentatives_est_borne_et_la_version_finale_est_celle_qui_est_comptee():
+    jouer = jouer_par_version({0: CASSE, 1: CASSE, 2: CASSE})
+    rep = reparateur_numerote()
+
+    camp = lancer(jouer, rep, tentatives_reparation=2)
+    apres = ba.calculer_indicateurs(camp)["apres_reparation"]
+
+    assert len(rep.recus) == 2 and apres["reparations"]["saine_executable_apres"] == 0
+    assert [o.obtenu for o in camp.observations_reparees] == ["technical_error", "technical_error"]
+
+
+def test_une_tentative_inexploitable_arrete_la_boucle_et_garde_la_derniere_version_rejouee():
+    jouer = jouer_par_version({0: CASSE, 1: CASSE})
+    rep = reparateur_numerote(non_rejouable_a=(2,))
+
+    camp = lancer(jouer, rep, tentatives_reparation=3)
+
+    assert len(rep.recus) == 2
+    assert [r.rejouable for r in camp.reparations] == [True, False] and [r.tentative for r in camp.reparations] == [1, 2]
+    assert [o.variante for o in camp.observations_reparees] == ["saine", "total_faux"]  # la v1, jouée sur TOUTES les variantes
+
+
+def test_un_faux_vert_apparait_meme_apres_deux_tentatives():
+    jouer = jouer_par_version({0: CASSE, 1: CASSE, 2: {"saine": "conforme", "total_faux": "conforme"}})
+
+    camp = lancer(jouer, reparateur_numerote(), tentatives_reparation=2)
+
+    assert ba.calculer_indicateurs(camp)["apres_reparation"]["faux_verts"]["k"] == 1
+    assert ba.code_de_sortie(ba.calculer_indicateurs(camp), camp) == 1
+
+
+def test_le_plafond_de_cout_borne_aussi_les_tentatives_suivantes():
+    """Génération 0,10 + tentative 1 (0,10) = 0,20 ; plafond 0,25 avec estimation 0,10 → pas de tentative 2."""
+    jouer = jouer_par_version({0: CASSE, 1: CASSE, 2: CASSE})
+    rep = reparateur_numerote(cout=0.10)
+
+    camp = ba.executer_campagne(SPECS, ATTENDUS, 1, generer, jouer, defauts_connus=DEFAUTS, reparer=rep,
+                                tentatives_reparation=2, plafond_usd=0.25, cout_estime_essai=0.10)
+
+    assert len(rep.recus) == 1 and "plafond" in camp.reparations[-1].motif and camp.reparations[-1].tentative == 2

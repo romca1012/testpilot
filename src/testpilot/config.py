@@ -66,7 +66,10 @@ ANTHROPIC_ADMIN_KEY = os.getenv("ANTHROPIC_ADMIN_KEY", "")
 # variable d'env `TESTPILOT_MODEL_GENERATION=claude-sonnet-5`, sans changement de code.
 MODEL_GENERATION = os.getenv("TESTPILOT_MODEL_GENERATION", "claude-sonnet-4-6")
 MODEL_FAST = os.getenv("TESTPILOT_MODEL_FAST", "claude-haiku-4-5")
-MODEL_REPAIR = os.getenv("TESTPILOT_MODEL_REPAIR", "claude-haiku-4-5")
+# Sonnet 4.6 pour la RÉPARATION (et l'agent de correction, qui partage ce réglage) : mesuré le 2026-10-08 sur 5 tests en erreur
+# technique du banc d'agents, Haiku n'en répare AUCUN (0/5, 3 mesures) et Sonnet 1/5, pour un surcoût de ~0,05 $ par tentative —
+# très sous le plafond de 1 € par cas (brief §9). Surcharge possible : TESTPILOT_MODEL_REPAIR.
+MODEL_REPAIR = os.getenv("TESTPILOT_MODEL_REPAIR", "claude-sonnet-4-6")
 
 # ── Garde-fous agent (par run) ────────────────────────────────────────────────
 MAX_ITERATIONS = int(os.getenv("TESTPILOT_MAX_ITERATIONS", "25"))
