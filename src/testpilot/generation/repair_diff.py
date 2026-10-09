@@ -52,6 +52,9 @@ EXEMPLE_MODIFIE = "exemple_modifie"
 # `@then` spécifiquement (sous-ensemble de BODY_CHANGED, plus grave) : le CODE d'une assertion a
 # changé, pas seulement un step technique — voir `blast_radius_then`.
 THEN_BODY_CHANGED = "assertion_code_modifiee"
+# D30 (2026-10-09) — la CORRECTION automatique a touché une vérification qui lisait déjà l'application (ou un `Alors`, un
+# exemple, un scénario) : elle ne devait que renforcer. Calculé par `gel_verifications`, pas ici ; même bandeau.
+VERIFICATION_AFFAIBLIE = "verification_affaiblie_par_correction"
 
 
 def _corps_par_label(source: str) -> dict[str, str]:
