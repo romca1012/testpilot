@@ -85,6 +85,7 @@ class BehaveRunner:
         # L'exécution en cours, pour tracer QUELLE exécution a appris quoi (0023). None → une
         # règle apprise sans ce lien, comme avant ce correctif (les runners de test, `cli.py`).
         self.execution_id: int | None = None
+        self.texte_metier = ""
 
     def cibler_execution(self, execution_id: int | None) -> None:
         """Désigne l'exécution du PROCHAIN run — même motif que `cibler_artefacts` ci-dessous.
@@ -99,6 +100,12 @@ class BehaveRunner:
         d'exécution (voir `cibler_artefacts`) : la cible se redésigne donc avant chaque run.
         """
         self.execution_id = execution_id
+
+    def cibler_metier(self, texte_metier: str) -> None:
+        """D32 (2026-10-09) : le métier VALIDÉ du cas du PROCHAIN run (étapes, résultat attendu, spec —
+        texte humain). Un refus d'une valeur qu'il cite n'est pas appris d'office (`_apprendre`).
+        Jamais désigné (runners de test, `cli.py`, banc) : comportement d'avant, inchangé."""
+        self.texte_metier = texte_metier or ""
 
     def cibler_artefacts(self, chemin: Path | None) -> None:
         """Désigne le dossier où archiver la trace brute du PROCHAIN run.
@@ -261,8 +268,15 @@ class BehaveRunner:
             return
         try:
             from testpilot.generation import regles_apprises
-            apprises = regles_apprises.enregistrer(self.project_id, result.refus_mesures,
-                                                    execution_id=self.execution_id)
+            # D32 : un refus d'une valeur que le métier du cas CITE est enregistré `a_confirmer` —
+            # il ne s'appliquera qu'après la décision d'un humain (bug probable, ou métier à corriger).
+            refus = regles_apprises.marquer_les_refus_cites(result.refus_mesures, self.texte_metier)
+            for r in refus:
+                if r["a_confirmer"]:
+                    logger.warning("[règles apprises] projet %s : l'application a refusé « %s » (champ %s), "
+                                   "valeur citée par le métier du cas — bug probable, règle à confirmer",
+                                   self.project_id, r["valeur_refusee"], r["champ"])
+            apprises = regles_apprises.enregistrer(self.project_id, refus, execution_id=self.execution_id)
         except Exception:
             logger.warning("[règles apprises] apprentissage impossible — le run reste intact",
                            exc_info=True)

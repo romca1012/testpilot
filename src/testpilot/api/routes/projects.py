@@ -316,6 +316,44 @@ def get_exploration_pages(project_id: int, conn=Depends(get_conn)):
     return domain_model.pages_detaillees(projet)
 
 
+def _refus_en_attente(project_id: int) -> list[schemas.RefusAConfirmerOut]:
+    from testpilot.generation import regles_apprises
+    return [schemas.RefusAConfirmerOut(
+        route=r.route, champ=r.champ, type_contrainte=r.type_contrainte, valeur_contrainte=r.valeur_contrainte,
+        valeur_refusee=r.valeur_refusee, preuve=r.preuve, occurrences=r.occurrences, derniere_le=r.derniere_le)
+        for r in regles_apprises.charger_tout(project_id) if r.a_confirmer and not r.decision]
+
+
+@router.get("/{project_id}/refus-a-confirmer", response_model=list[schemas.RefusAConfirmerOut],
+           dependencies=[Depends(access.require_project_access)])
+def get_refus_a_confirmer(project_id: int, conn=Depends(get_conn)):
+    """D32 (2026-10-09) : les valeurs que l'application a refusées alors que le métier d'un cas les demande.
+
+    Bug probable, ou métier à corriger : ces refus ne sont PAS appris (ni le résolveur ni l'agent ne les évitent) tant qu'un
+    humain n'a pas tranché — sinon le bug disparaîtrait des résultats suivants sans avoir été vu."""
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    return _refus_en_attente(project_id)
+
+
+@router.post("/{project_id}/refus-a-confirmer", response_model=list[schemas.RefusAConfirmerOut],
+            dependencies=[Depends(access.require_project_access)])
+def decider_refus(project_id: int, body: schemas.RefusDecisionIn, request: Request, conn=Depends(get_conn)):
+    """La décision humaine sur un refus en attente (D32) : `confirmee` l'apprend, `rejetee` ne l'apprend jamais."""
+    from testpilot.generation import regles_apprises
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    cle = body.model_dump(exclude={"decision"})
+    if not any(r.a_confirmer and all(getattr(r, k) == v for k, v in cle.items())
+               for r in regles_apprises.charger_tout(project_id)):
+        raise HTTPException(status_code=404, detail="aucun refus en attente ne correspond")
+    try:
+        regles_apprises.decider(project_id, cle, body.decision, auteur=access.utilisateur_de(request) or "")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _refus_en_attente(project_id)
+
+
 @router.post("/{project_id}/exploration", response_model=schemas.ExplorationOut, status_code=202,
             dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
 def start_exploration(project_id: int, background: BackgroundTasks, conn=Depends(get_conn)):
