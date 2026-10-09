@@ -11,6 +11,9 @@ Règles verrouillées (issues des erreurs récurrentes du prototype) :
 from __future__ import annotations
 
 import ast
+import json
+import os
+import re
 from typing import TYPE_CHECKING
 
 from testpilot.generation import enregistrement_lint, gel_verifications, litteraux_observes, steps_library
@@ -31,7 +34,29 @@ _FORBIDDEN_ENDPOINTS = ("/web/dataset", "/jsonrpc", "/xmlrpc")
 
 def _outcome(observation: str, ok: bool = True, **kw):
     from testpilot.generation.tools import ToolOutcome
+    if not ok:
+        _consigner_refus_d_ecriture(observation)
     return ToolOutcome(observation=observation, ok=ok, **kw)
+
+
+# Lot VH-04 (banc base-4, 2026-10-09) : deux générations sur 30 n'ont pas abouti (l'une à 0,54 $) sans qu'on puisse dire si
+# les gardes d'écriture faisaient tourner l'agent en rond — rien ne gardait trace des REFUS. Désignée par le banc (variable
+# d'environnement), une ligne par refus : l'outil et le CODE du refus (écrits par nos gardes, jamais par l'agent).
+REFUS_ECRITURE_FILE_ENV = "TP_REFUS_ECRITURE_FILE"
+_CODE_DE_REFUS = re.compile(r"^\[(\w+)\]\s*([A-Z][A-Z_]{2,})?")
+
+
+def _consigner_refus_d_ecriture(observation: str) -> None:
+    chemin = os.environ.get(REFUS_ECRITURE_FILE_ENV)
+    if not chemin:
+        return
+    trouve = _CODE_DE_REFUS.match(observation or "")
+    ligne = {"outil": trouve.group(1) if trouve else "", "code": (trouve.group(2) if trouve else "") or "AUTRE"}
+    try:
+        with open(chemin, "a", encoding="utf-8") as flux:
+            flux.write(json.dumps(ligne, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # une mesure manquée ne fait jamais tomber une génération
 
 
 def _forbidden_transport(tree: ast.AST, content: str) -> str:
