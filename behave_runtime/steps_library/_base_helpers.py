@@ -993,6 +993,11 @@ def verifier_soumission_non_bloquee(page) -> None:
         # Ce scénario n'attend justement AUCUNE création (`… n'a pas augmenté`, jamais
         # `augmente de 1`) — peu importe PAR QUEL champ le navigateur a refusé, c'est
         # exactement ce qu'il est venu vérifier. Ses propres `Then` restent seuls juges.
+        # Lot VH-04 (V7) : ce refus du navigateur EST la soumission tentée que `check_count_not_increased` exige de voir.
+        try:
+            page._tp_refus_navigateur = True
+        except Exception:
+            pass
         return
 
     vides_voulus = _champs_vides_voulus(page)
@@ -1926,6 +1931,15 @@ def wait_form_submission(page):
         pass
 
 
+# Lot VH-04 (audit V7) : un candidat n'est un message d'erreur que s'il n'est ni un élément d'action ou de navigation, ni un
+# libellé (l'astérisque rouge d'un champ obligatoire), et qu'il porte un texte — un champ de saisie marqué invalide compte.
+_JS_EST_UN_MESSAGE_D_ERREUR = """(el) => {
+  if (el.matches('input, select, textarea')) return true;
+  if (el.closest('a, button, [role="button"], [role="link"], nav, [role="navigation"], label')) return false;
+  return /[A-Za-zÀ-ÿ0-9]{2,}/.test(el.innerText || '');
+}"""
+
+
 @constat
 def validation_error_inline(page):
     """Une erreur de validation visible dans le formulaire — plusieurs applications, plusieurs
@@ -1973,7 +1987,8 @@ def validation_error_inline(page):
             "[class*='bg-red-'], [class*='text-red-'], [class*='border-red-']")
         for i in range(min(candidats.count(), 8)):
             try:
-                if candidats.nth(i).is_visible():
+                candidat = candidats.nth(i)
+                if candidat.is_visible() and candidat.evaluate(_JS_EST_UN_MESSAGE_D_ERREUR):
                     return True
             except Exception:
                 continue  # un élément qui disparaît entre le compte et la lecture : on continue
@@ -1983,6 +1998,10 @@ def validation_error_inline(page):
         except Exception:
             return False
 
+    # Lot VH-04 (audit V7) : avant, « n'importe quel élément rouge ou `role=alert` » suffisait — un lien « Supprimer » stylé en
+    # rouge (Tailwind `text-red-…`) ou l'astérisque rouge d'un champ obligatoire faisaient passer « une erreur est affichée »
+    # sans qu'aucune validation n'ait eu lieu (`_JS_EST_UN_MESSAGE_D_ERREUR`). Écart au plan : « apparue APRÈS la soumission »
+    # n'est pas exigé — une validation rendue par le SERVEUR s'affiche au chargement de la page de réponse et serait refusée.
     trouve, _ = _poll_until(_un_candidat_visible, lambda v: v)
     if not trouve:
         raise AssertionError("Aucune erreur de validation visible dans le formulaire.")
@@ -2283,6 +2302,8 @@ def memorize_record_count(context, model):
     """
     # Borne temporelle : le comptage (et le code HTTP) ne jugent que ce qui suit CE relevé.
     context._tp_releve_t = time.monotonic()
+    # Lot VH-04 (V7) : le numéro d'événement du relevé — une soumission doit être observée APRÈS lui.
+    context._tp_releve_sequence = getattr(context, "_tp_sequence", 0)
     try:
         setattr(context, _count_attr(model), context.odoo.env[model].search_count([]))
         derniers = context.odoo.env[model].with_context(active_test=False).search(
@@ -2418,6 +2439,23 @@ def _poll_until(lire, predicat, *, timeout=None, intervalle=0.3, _clock=None, _s
         valeur = lire()
 
 
+_METHODES_D_ENVOI = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _soumission_observee(context) -> bool:
+    """Lot VH-04 (V7) : une requête d'ENVOI du navigateur après le relevé du comptage, ou un refus du navigateur lui-même.
+
+    Sans observateur réseau (contexte hors navigateur, doubles de test), rien ne peut être affirmé : on ne bloque pas (le
+    comportement d'avant) — le run réel installe toujours les observateurs (`environment.before_scenario`)."""
+    reponses = getattr(context, "reponses_reseau", None)
+    if reponses is None:
+        return True
+    if getattr(getattr(context, "page", None), "_tp_refus_navigateur", False):
+        return True
+    releve = getattr(context, "_tp_releve_sequence", 0)
+    return any(r.get("n", 0) > releve and str(r.get("methode", "")).upper() in _METHODES_D_ENVOI for r in reponses)
+
+
 @constat
 def check_count_not_increased(context, model):
     """Le négatif attend TOUTE la fenêtre : on cherche une création DE CE SCÉNARIO pendant
@@ -2440,6 +2478,14 @@ def check_count_not_increased(context, model):
             f"création : ids {ids} (domaine [('id', '>', {max_id})]). "
             f"Comptage global (diagnostic, inclut l'activité concurrente) : {global_actuel}."
         )
+    # Lot VH-04 (audit V7) : « rien n'a été créé » ne prouve un REFUS que si quelque chose a été SOUMIS. Avant, un clic
+    # sans effet (bouton introuvable par une autre voie, formulaire jamais envoyé) donnait un `conforme` qui n'avait rien
+    # éprouvé. Rien d'envoyé après le relevé, ni refusé par le navigateur : `indetermine`, jamais `conforme`.
+    if not _soumission_observee(context):
+        raise RefusNonExpliqueError(
+            f"Rien n'a été créé dans '{model}', mais aucune soumission n'a été observée après le relevé (aucune requête "
+            "d'envoi, aucun refus du navigateur) : rien ne prouve que l'application a refusé — le formulaire a-t-il été "
+            "envoyé ?")
     # Rien n'a été créé — MAIS un 5xx n'est pas la preuve d'un refus propre : le serveur a planté.
     erreur_5xx = _un_5xx_dans_le_scenario(context)
     if erreur_5xx is not None:

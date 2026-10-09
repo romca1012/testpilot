@@ -42,6 +42,12 @@ class _FauxElement:
     def is_visible(self):
         return self._visible
 
+    def evaluate(self, _js):
+        """Lot VH-04 : le contrôle « est-ce un message d'erreur ? » (ni lien, ni bouton, ni libellé, un texte). Ce double
+        représente un vrai message d'erreur ; les exclusions sont prouvées sur un vrai Chromium
+        (`tests/test_vh04_validation_et_negatif.py`)."""
+        return True
+
 
 class _FauxLocatorCandidats:
     """`page.locator('[role="alert"], .error, .alert-danger, .is-invalid')` — une liste
