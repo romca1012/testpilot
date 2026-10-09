@@ -510,6 +510,60 @@ def _constat_sans_lecture(tree: ast.AST, attributs_harnais: frozenset[str] | Non
     return ""
 
 
+def _condition_creuse(condition: ast.AST | None, lecture: _Lecture) -> bool:
+    """Une condition de constat ou d'`assert` qui ne prouve rien : absente, constante, comparée à elle-même, ou sans lecture.
+    Arguments déballés (`""`) : impossible à juger ici, donc réputée réelle (sens prudent)."""
+    if isinstance(condition, str):
+        return False
+    if condition is None:
+        return True
+    if isinstance(condition, ast.Constant):
+        return True
+    if (isinstance(condition, ast.Compare) and len(condition.comparators) == 1
+            and ast.dump(condition.left) == ast.dump(condition.comparators[0])):
+        return True
+    return not lecture.depend(condition)
+
+
+def verifications_creuses(tree: ast.Module) -> set[int]:
+    """`id` des fonctions `@then`/`@step` qui ne prouvent RIEN (décision D30, 2026-10-09).
+
+    Sert à distinguer, dans une correction automatique, ce qui RENFORCE (une vérification vide réécrite en vraie) de ce qui
+    AFFAIBLIT (une vérification réelle supprimée ou changée). Classement PRUDENT — dans le doute, la vérification est
+    réelle (donc gelée) : une vérification n'est creuse que si
+    - un `except` large y avale l'échec ; ou
+    - toutes ses affirmations sont jugeables ici (`constater*`, `assert`) et AUCUNE ne lit l'application (constante,
+      tautologie, valeur du seul test) — zéro affirmation compris.
+    Un `expect(...)`, un helper de la bibliothèque qui constate ou un appel à une fonction du fichier comptent comme une
+    vraie lecture : on ne sait pas les juger ici, on ne les déclare donc jamais creux.
+    Harnais inconnu (`None`) : un attribut de `context` non écrit par le fichier est réputé lu — toujours le sens prudent.
+    """
+    fonctions, locaux, contexte_lu = _analyse_des_lectures(tree, None)
+    locales = {f.name for f in fonctions}
+    constatent = _helpers_qui_constatent() - _CONSTATER
+    creuses: set[int] = set()
+    for func in fonctions:
+        if not (_decorateurs(func) & {"then", "step"}):
+            continue
+        if any(isinstance(n, ast.ExceptHandler) and _avale_l_echec(n) for n in ast.walk(func)):
+            creuses.add(id(func))
+            continue
+        lecture = _Lecture(locaux.get(id(func), set()), contexte_lu)
+        reelle = False
+        for n in _noeuds_sans_fonctions(func):
+            if isinstance(n, ast.Assert):
+                reelle = reelle or not _condition_creuse(n.test, lecture)
+            elif isinstance(n, ast.Call):
+                nom = _nom_appele(n)
+                if nom in _CONSTATER:
+                    reelle = reelle or not _condition_creuse(_condition_du_constat(n), lecture)
+                elif nom == "expect" or nom in constatent or nom in locales:
+                    reelle = True
+        if not reelle:
+            creuses.add(id(func))
+    return creuses
+
+
 def _forbidden_ecriture_rpc(tree: ast.AST) -> str:
     """Dans un `@when`/`@then`, un objet Odoo ne sert qu'à LIRE (liste blanche) — alias locaux suivis."""
     for func in ast.walk(tree):

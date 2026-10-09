@@ -20,6 +20,11 @@ Ce qui est gelé :
   * les affectations de niveau module des noms qu'une fonction gelée lit (constantes, `helper = lambda …`) ;
   * les écritures `context.X = …` faites ailleurs (un `@when`) quand une fonction gelée lit `context.X`.
 
+Correction automatique (D30, validée par le porteur le 2026-10-09) : même gel, sauf pour les vérifications CREUSES de la
+version d'origine (paramètre `creuses` de `steps_modifies`) — les réécrire en vraies vérifications est le métier de la
+correction. Ce qu'elle change d'autre n'est pas refusé à l'écriture : la version corrigée reste à relire (point de vigilance
+`verification_affaiblie_par_correction`, `generation_service.lint_warnings_for_version`).
+
 Module PUR : aucune I/O, aucun LLM ; parsing Gherkin par Behave (déjà la référence de `write_feature_file`).
 """
 
@@ -27,6 +32,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from collections.abc import Callable
 
 _DECORATEURS_DE_VERIFICATION = frozenset({"then", "step", "Then", "Step"})
 
@@ -101,15 +107,18 @@ def _signature(noeud: ast.AST) -> str:
 
 
 class _Module:
-    """Le fichier de steps vu par le gel : fonctions de vérification, liaisons de module, écritures de `context.X`."""
+    """Le fichier de steps vu par le gel : fonctions de vérification, liaisons de module, écritures de `context.X`.
 
-    def __init__(self, arbre: ast.Module):
+    `exclues` : `id` des fonctions de vérification à NE PAS geler (D30 — une vérification creuse que la correction a le
+    droit de réécrire) ; elles ne comptent ni comme vérifications ni comme racines des noms et attributs gelés."""
+
+    def __init__(self, arbre: ast.Module, exclues: set[int] | frozenset[int] = frozenset()):
         self.verifications: dict[tuple[str, ...], list[ast.AST]] = {}
         self.liaisons: dict[str, list[ast.AST]] = {}  # nom de module -> instructions qui le lient (def, affectation)
         for n in arbre.body:
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 self.liaisons.setdefault(n.name, []).append(n)
-                if _est_verification(n):
+                if _est_verification(n) and id(n) not in exclues:
                     self.verifications.setdefault(_cle_de_decorateurs(n), []).append(n)
             elif isinstance(n, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
                 cibles = n.targets if isinstance(n, ast.Assign) else [n.target]
@@ -159,10 +168,18 @@ class _Module:
         return empreintes
 
 
-def steps_modifies(reference: str, proposition: str) -> list[str]:
-    """Ce que `proposition` change aux vérifications de `reference` (liste vide si rien)."""
+def steps_modifies(reference: str, proposition: str, *,
+                   creuses: Callable[[ast.Module], set[int]] | None = None) -> list[str]:
+    """Ce que `proposition` change aux vérifications de `reference` (liste vide si rien).
+
+    `creuses` (D30, correction automatique) : rend les `id` des vérifications de `reference` qui ne prouvent rien ; celles-là
+    peuvent être réécrites librement — c'est le métier de la correction. Tout le reste est gelé comme en réparation,
+    y compris l'ajout d'une NOUVELLE vérification (elle pourrait l'emporter sur une vérification réelle dans Behave)."""
     try:
-        avant, apres = _Module(ast.parse(reference)), _Module(ast.parse(proposition))
+        arbre_avant = ast.parse(reference)
+        avant = _Module(arbre_avant, creuses(arbre_avant) if creuses else frozenset())
+        toutes_avant = _Module(arbre_avant).verifications if creuses else avant.verifications
+        apres = _Module(ast.parse(proposition))
     except SyntaxError:
         return []  # refusé ailleurs (`write_steps_file`)
     ecarts = []
@@ -173,7 +190,7 @@ def steps_modifies(reference: str, proposition: str) -> list[str]:
         elif [_signature(f) for f in apres.verifications[cle]] != [_signature(f) for f in fonctions]:
             ecarts.append(f"la vérification `{decorateur}` a changé")
     for cle in apres.verifications:
-        if cle not in avant.verifications:
+        if cle not in toutes_avant:
             ecarts.append(f"nouvelle vérification `{cle[0] if cle else '?'}` : une réparation n'ajoute pas de step « Alors »")
     noms, attributs = avant.gelees()
     for nom in sorted(noms):
