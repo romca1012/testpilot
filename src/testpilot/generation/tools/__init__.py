@@ -52,6 +52,10 @@ class ToolContext:
     # hors connecteur web : le contrôle des littéraux se tait. `attributs_contexte` : attributs `context.X` que le harnais pose.
     annuaire: Any = None
     attributs_contexte: frozenset[str] = field(default_factory=frozenset)
+    # Lot VH-03 (V3) : versions de RÉFÉRENCE pendant une réparation — ce qu'elles vérifient est gelé (adressage seul réparable).
+    # `None` hors réparation : aucun gel.
+    gel_feature: str | None = None
+    gel_steps: str | None = None
 
 
 @dataclass

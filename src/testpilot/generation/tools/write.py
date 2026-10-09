@@ -13,7 +13,7 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING
 
-from testpilot.generation import enregistrement_lint, litteraux_observes, steps_library
+from testpilot.generation import enregistrement_lint, gel_verifications, litteraux_observes, steps_library
 from testpilot.generation.references import message_refus, verifier_references
 
 if TYPE_CHECKING:
@@ -562,6 +562,12 @@ def _forbidden_python(tree: ast.AST) -> str:
     return ""
 
 
+def _message_gel(outil: str, touche: list[str]) -> str:
+    return (f"[{outil}] VERIFICATION_GELEE : une réparation corrige OÙ le test lit l'application (sélecteur, attente, "
+            "navigation), jamais CE QU'IL VÉRIFIE : " + " ; ".join(touche[:6]) + ". Remets ces vérifications à "
+            "l'identique ; si tu conclus que le test vérifie la mauvaise chose, ne réécris rien et dis-le.")
+
+
 def _message_litteraux(outil: str, ecarts) -> str:
     lignes = [f"[{outil}] LITTERAL_NON_OBSERVE : ce test cite ce qui n'a pas été observé sur l'application."]
     for e in ecarts[:8]:
@@ -606,6 +612,11 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
         refus_entite = enregistrement_lint.verifier_entite_a_creer(content)
         if refus_entite:
             return _outcome(refus_entite, ok=False)
+    # Lot VH-03 (V3) : en réparation, les vérifications de la version de référence sont GELÉES. BLOQUANT.
+    if ctx.gel_feature:
+        touche = gel_verifications.feature_modifiee(ctx.gel_feature, content)
+        if touche:
+            return _outcome(_message_gel("write_feature_file", touche), ok=False)
     # Lot VH-05 (D24) : tout champ, bouton ou page cité existe À L'IDENTIQUE dans ce que l'exploration a observé. BLOQUANT.
     indications = ""
     if ctx.annuaire is not None:
@@ -693,6 +704,12 @@ def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
         if faute:
             return _outcome(f"[write_steps_file] {code} : {faute}. {conseil}".rstrip() + " Puis rappelle write_steps_file.",
                             ok=False)
+
+    # 3septies. Lot VH-03 (V3) : en réparation, les fonctions qui VÉRIFIENT sont gelées, adressage mis à part. BLOQUANT.
+    if ctx.gel_steps:
+        touche = gel_verifications.steps_modifies(ctx.gel_steps, content)
+        if touche:
+            return _outcome(_message_gel("write_steps_file", touche), ok=False)
 
     # 3sexies. Lot VH-05 (D24) : réseau direct, `context.X` inventé ou secret (tous connecteurs) ; sélecteurs par texte libre et
     # libellés non observés (connecteur web avec annuaire). BLOQUANT.

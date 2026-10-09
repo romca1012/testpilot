@@ -24,6 +24,7 @@ pris pour un simple « timeout ».
 from __future__ import annotations
 
 import json
+from testpilot.generation import gel_verifications
 from testpilot.generation.provenance import revision_metadata
 import logging
 import re
@@ -613,11 +614,18 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
                    len(warnings))
         return
 
+    # Lot VH-03 : ce que la correction a changé dans la PREUVE (Alors, Exemples, fonctions de vérification) est écrit en tête
+    # du résumé de la version, visible à la relecture. L'approbation automatique d'une correction propre reste la décision du
+    # porteur du 2026-09-16 ; la bloquer quand une vérification a changé est la question D30 (plan verdict honnête).
+    verifications_touchees = (
+        gel_verifications.feature_modifiee(version.get("feature_content") or "", proposal.feature_content or "")
+        + gel_verifications.steps_modifies(version.get("steps_content") or "", proposal.steps_content or ""))
+    mention = ("[VÉRIFICATIONS MODIFIÉES : " + " ; ".join(verifications_touchees) + "] ") if verifications_touchees else ""
     version_corrigee_id = VersionRepo(conn).create(
         test_case_id=case_id, spec_content=version.get("spec_content") or "",
         spec_hash=version.get("spec_hash") or "",
         feature_content=proposal.feature_content, steps_content=proposal.steps_content,
-        change_summary=("Correction automatique (points de vigilance) — "
+        change_summary=(mention + "Correction automatique (points de vigilance) — "
                         + proposal.summary)[:500],
         created_by=_AUTEUR_CORRECTION, title=version.get("title") or "",
         preconditions=version.get("preconditions") or "",
@@ -633,6 +641,9 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
 
     version_rows_apres = VersionRepo(conn).list_for_case(case_id)
     warnings_apres = lint_warnings_for_version(conn, case, version_rows_apres, version_corrigee_id)
+    if verifications_touchees:
+        logger.info("[generation] cas %s : la correction touche aux vérifications (%s)",
+                   case_id, "; ".join(verifications_touchees))
     if not warnings_apres:
         if not require_review:
             _auto_approuver(conn, case_id, version_corrigee_id)
