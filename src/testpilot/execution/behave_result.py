@@ -55,6 +55,8 @@ class BehaveScenario:
     # `verdict/status.py` s'en sert pour faire passer `ground_truth` à `backend_verified` sur un
     # connecteur qui, sinon, ne peut recouper que l'UI (`ui_only`).
     oracle_verifie: bool = False
+    # Lot VH-04 (point 4) : un constat sous un `Alors` a recoupé le SERVEUR (oracle ou lecture RPC observée).
+    serveur_verifie: bool = False
     # Q1 (D16) : les `Alors` ASSERTIFS passés sans consigner aucun constat pendant ce scénario (texte du step).
     # `None` = mécanisme absent (dry-run, résultat construit à la main) : la règle ne s'applique pas ;
     # `[]` = il a tourné et aucun `Alors` n'est vide.
@@ -460,6 +462,9 @@ def rattacher_constats(result: BehaveResult, constats: list[dict]) -> None:
         scenario.oracle_verifie = any(
             c.get("scenario") == scenario.name and c.get("step_type") == "then"
             and c.get("source") == "oracle" for c in constats)
+        scenario.serveur_verifie = any(
+            c.get("scenario") == scenario.name and c.get("step_type") == "then"
+            and c.get("source") in ("oracle", "rpc") for c in constats)
 
 
 def read_menus_appris(path, limit: int = _MAX_MENUS_APPRIS) -> list[dict]:

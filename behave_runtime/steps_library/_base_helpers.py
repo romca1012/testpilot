@@ -150,6 +150,18 @@ def definir_etat_constat(scenario=None, step_type=None) -> None:
 # que `(condition, message)` — un 3e argument, quelle que soit sa forme, lève un `TypeError` au
 # lieu de forger un signal.
 _SOURCE_CONSTAT = {"valeur": ""}
+# Lot VH-04 (point 4) : une lecture RPC du serveur a eu lieu pendant le step COURANT (signal posé par l'instrumentation de
+# `execute_kw`, `environment._instrumenter_creations_rpc` ; remis à zéro au début de chaque step par `debut_de_step`). Un
+# constat consigné après elle porte la source `rpc` — jamais déclarée par le test, seulement observée.
+_LECTURE_RPC_DU_STEP = {"vue": False}
+
+
+def noter_lecture_rpc() -> None:
+    _LECTURE_RPC_DU_STEP["vue"] = True
+
+
+def debut_de_step() -> None:
+    _LECTURE_RPC_DU_STEP["vue"] = False
 
 
 @contextmanager
@@ -174,7 +186,9 @@ def _consigner_constat(ok: bool) -> None:
     if not chemin:
         return
     ligne = json.dumps({"scenario": _ETAT_CONSTAT["scenario"], "step_type": _ETAT_CONSTAT["step_type"],
-                        "ok": bool(ok), "source": _SOURCE_CONSTAT["valeur"]}, ensure_ascii=False)
+                        "ok": bool(ok),
+                        "source": _SOURCE_CONSTAT["valeur"] or ("rpc" if _LECTURE_RPC_DU_STEP["vue"] else "")},
+                       ensure_ascii=False)
     try:
         with open(chemin, "a", encoding="utf-8") as handle:
             handle.write(ligne + "\n")
