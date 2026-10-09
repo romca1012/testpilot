@@ -456,6 +456,29 @@ def _intention_declaree(case: dict, version: dict) -> str:
         version.get("preconditions"), version.get("test_steps"), version.get("expected_result")) if x)
 
 
+def _affaiblissements_de_correction(avant: dict, apres: dict) -> list[dict]:
+    """D30 (validée par le porteur le 2026-10-09) : ce qu'une correction automatique a changé à une vérification RÉELLE.
+
+    Avant : la correction était approuvée d'office dès qu'elle ne laissait plus de point de vigilance (décision du
+    2026-09-16) — y compris quand elle avait supprimé une vérification qui lisait l'application ou changé une valeur
+    attendue d'un `Alors`. Un faux `conforme` fabriqué sans qu'aucun humain ne le voie. Désormais : renforcer (réécrire une
+    vérification creuse) reste approuvé d'office ; tout autre changement de ce que le test vérifie est un point de
+    vigilance, donc la version reste à relire (`_finaliser_version_generee` n'approuve qu'une version sans point).
+    Signal structurel (AST et Gherkin parsé), jamais le résumé que l'agent écrit de son travail (décision 0015).
+    """
+    from testpilot.generation.repair_diff import VERIFICATION_AFFAIBLIE
+    from testpilot.generation.tools.write import verifications_creuses
+
+    ecarts = (gel_verifications.feature_modifiee(avant.get("feature_content") or "", apres.get("feature_content") or "")
+              + gel_verifications.steps_modifies(avant.get("steps_content") or "", apres.get("steps_content") or "",
+                                                 creuses=verifications_creuses))
+    return [{"step": "", "line": 0, "kind": VERIFICATION_AFFAIBLIE,
+             "message": (f"La correction automatique a modifié ce que le test vérifie : {ecart}. Une correction ne doit "
+                         "que renforcer une vérification vide ; vérifiez que le test prouve toujours ce que dit le métier "
+                         "avant d'approuver.")}
+            for ecart in ecarts]
+
+
 def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], version_id: int
                               ) -> list[dict]:
     """Les « points de vigilance » d'UNE version — MÊME calcul que celui affiché sur la fiche du
@@ -490,6 +513,13 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
     # cette garde s'appliquait aussi à la correction (elle réécrit `assert True` en un vrai
     # contrôle — exactement `THEN_BODY_CHANGED`). Le garde-fou « ne jamais maquiller » vise la
     # RÉPARATION (`repair_prompt.md`), jamais la correction, dont c'est le métier.
+    # ⚠️ D30 (validée le 2026-10-09) affine ce choix, sans le renverser : réécrire une vérification
+    # CREUSE reste le métier de la correction ; toucher une vérification qui lisait DÉJÀ
+    # l'application (ou un `Alors`, un exemple, un scénario) devient un point de vigilance, plus bas.
+    if current and current.get("created_by") == _AUTEUR_CORRECTION:
+        precedentes = [v for v in version_rows if v["id"] < current["id"]]
+        if precedentes:
+            warnings += _affaiblissements_de_correction(max(precedentes, key=lambda v: v["id"]), current)
     if current and current.get("created_by") == _AUTEUR_REPARATION:
         precedentes = [v for v in version_rows if v["id"] < current["id"]]
         if precedentes:
@@ -616,8 +646,9 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
         return
 
     # Lot VH-03 : ce que la correction a changé dans la PREUVE (Alors, Exemples, fonctions de vérification) est écrit en tête
-    # du résumé de la version, visible à la relecture. L'approbation automatique d'une correction propre reste la décision du
-    # porteur du 2026-09-16 ; la bloquer quand une vérification a changé est la question D30 (plan verdict honnête).
+    # du résumé de la version, visible dans l'historique — renforcements compris. L'approbation, elle, suit D30 (2026-10-09) :
+    # un changement d'une vérification RÉELLE est un point de vigilance (`_affaiblissements_de_correction`), la version
+    # corrigée reste alors à relire ci-dessous.
     verifications_touchees = (
         gel_verifications.feature_modifiee(version.get("feature_content") or "", proposal.feature_content or "")
         + gel_verifications.steps_modifies(version.get("steps_content") or "", proposal.steps_content or ""))

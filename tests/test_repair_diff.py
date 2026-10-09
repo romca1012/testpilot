@@ -312,7 +312,9 @@ def test_le_gate_signale_un_scenario_supprime_par_une_reparation(tmp_path, monke
 #
 # Confirmé en écrivant ce lot (voir `generation_service.py::lint_warnings_for_version`) : la
 # correction a pour métier de réécrire une assertion infalsifiable (0008) — un `@then` réécrit y
-# est le succès attendu, jamais une faute à signaler.
+# est le succès attendu, jamais une faute à signaler. D30 (2026-10-09) ajoute un signal DISTINCT
+# pour la correction (`verification_affaiblie_par_correction`, `test_correction_ne_fait_que_renforcer.py`)
+# quand elle touche une vérification RÉELLE ; les kinds de la réparation ne s'y appliquent toujours pas.
 
 def test_une_correction_qui_reecrit_une_assertion_n_est_jamais_signalee_par_cette_garde(
         tmp_path, monkeypatch):

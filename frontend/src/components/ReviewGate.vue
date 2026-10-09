@@ -32,6 +32,8 @@ const FAMILLES: Record<string, string> = {
   scenario_supprime: 'réparation',
   assertion_modifiee: 'réparation',
   exemple_modifie: 'réparation',
+  // D30 (2026-10-09) — la correction automatique a touché une vérification qui lisait déjà l'application.
+  verification_affaiblie_par_correction: 'correction',
   // 0021 — le test référence quelque chose qui n'existe pas dans l'application.
   valeur_option_inexistante: 'donnée',
   champ_inconnu: 'donnée',

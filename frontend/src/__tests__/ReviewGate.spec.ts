@@ -60,6 +60,18 @@ describe('ReviewGate — le gate autorise le budget de réparation (0014, option
     expect(w.text()).not.toContain(kind)
   })
 
+  it('étiquette D30 « verification_affaiblie_par_correction » comme correction, jamais l\'enum brute', () => {
+    const kind = 'verification_affaiblie_par_correction'
+    const w = mount(ReviewGate, {
+      props: {
+        caseId: 1,
+        gate: { ...A_RELIRE, lint_warnings: [{ step: '', line: 0, kind, message: 'm' }] },
+      },
+    })
+    expect(w.text()).toContain('correction')
+    expect(w.text()).not.toContain(kind)
+  })
+
   it('étiquette F26 « enregistrement_non_cree_par_le_scenario » comme « donnée réelle », visuellement distinct', () => {
     // F26, point 1 (2026-10-01) : signal « impossible à manquer, différent du générique » —
     // famille dédiée (ni « réparation », ni « donnée » générique) ET couleur distincte (rouge,
