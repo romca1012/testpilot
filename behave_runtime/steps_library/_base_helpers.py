@@ -331,6 +331,9 @@ SELECTOR_TIER_FILE_ENV = "TP_SELECTOR_TIER_FILE"
 # même test d'accord que les sidecars ci-dessus. Le palier consigné par une résolution adaptative réussie.
 MODE_STRICT_ENV = "TP_MODE_STRICT"
 PALIER_ADAPTATIF = "adaptive"
+# Lot VH-04 (D25) : paliers d'un clic par candidats (`click_first_actionable`) — exact, ou par sous-chaîne (`:has-text`).
+PALIER_CLIC = "clic"
+PALIER_CLIC_SOUS_CHAINE = "clic_sous_chaine"
 
 
 def _record_selector_tier(ident: str, tier: str) -> None:
@@ -766,6 +769,11 @@ def click_first_actionable(page, candidats, *, quoi, timeout=8000, ident: str = 
         loc = page.locator(c) if isinstance(c, str) else c
         try:
             loc.first.click(timeout=par_candidat)
+            # Lot VH-04 (D25) : tout palier de résolution est consigné — un clic résolu par SOUS-CHAÎNE (`:has-text(…)`, sans
+            # casse, dans n'importe quel texte de l'élément) n'est pas un clic sur le libellé exact. Signal de NOTRE sélecteur,
+            # jamais le texte du test ; sert la détection de dérive et la future « preuve forte » (lot 8).
+            _record_selector_tier(f"clic:{ident or quoi}",
+                                  PALIER_CLIC_SOUS_CHAINE if isinstance(c, str) and ":has-text(" in c else PALIER_CLIC)
             return
         except PlaywrightTimeout:
             continue
