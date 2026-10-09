@@ -9,6 +9,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseARelire } from '../lib/api'
+import RefusAConfirmer from '../components/RefusAConfirmer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -94,5 +95,8 @@ function ouvrirCas(caseId: number) {
         </tr>
       </tbody>
     </table>
+
+    <!-- D32 (2026-10-09) : les refus d'une valeur demandée par le métier attendent aussi un humain. -->
+    <RefusAConfirmer :project-id="pid" />
   </div>
 </template>

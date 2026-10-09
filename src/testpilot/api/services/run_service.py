@@ -265,6 +265,17 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
             conn.close()
 
 
+def _texte_metier(conn, execution_id: int) -> str:
+    """Le métier VALIDÉ de la version jouée (titre, préconditions, étapes, résultat attendu, spec) — texte HUMAIN, jamais
+    le Gherkin ni le code de l'agent (décision 0015). Vide si la version est introuvable : comportement d'avant D32."""
+    ligne = conn.execute("SELECT version_id FROM execution WHERE id=?", (execution_id,)).fetchone()
+    version = VersionRepo(conn).get(ligne[0]) if ligne and ligne[0] is not None else None
+    if not version:
+        return ""
+    return "\n".join(str(version.get(champ) or "") for champ in
+                     ("title", "preconditions", "test_steps", "expected_result", "spec_content"))
+
+
 def dossier_artefacts(execution_id: int) -> Path:
     """Où archiver la trace brute d'une exécution : `data/executions/<id>/`."""
     return Path(config.DATA_DIR) / "executions" / str(execution_id)
@@ -285,6 +296,9 @@ def _execute_and_persist(conn, execution_id: int, case_id: int, module_name: str
     # pas celle d'une tentative précédente réutilisant le même runner.
     if hasattr(runner, "cibler_execution"):
         runner.cibler_execution(execution_id)
+    # D32 (2026-10-09) : le métier validé du cas, pour qu'un refus d'une valeur qu'il demande ne soit pas appris d'office.
+    if hasattr(runner, "cibler_metier"):
+        runner.cibler_metier(_texte_metier(conn, execution_id))
     from testpilot.store.execution_attempts import ExecutionAttemptRepo
     from testpilot.generation.provenance import execution_provenance
 
