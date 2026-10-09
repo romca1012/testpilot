@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 58
+ALIGNED_WITH_SCHEMA_VERSION = 59
 
 metadata = MetaData()
 
@@ -337,7 +337,8 @@ execution = Table(
         name="ck_execution_functional_status",
     ),
     CheckConstraint("trigger IN ('first_run', 'rerun')", name="ck_execution_trigger"),
-    CheckConstraint("confiance IN ('nominale', 'auto_resolue', 'apres_retry')", name="ck_execution_confiance"),
+    CheckConstraint("confiance IN ('nominale', 'auto_resolue', 'apres_retry', 'apres_reparation')",
+                    name="ck_execution_confiance"),
     Index("idx_execution_case", "test_case_id"),
     Index("idx_execution_run", "run_id"),
     sqlite_autoincrement=True,
