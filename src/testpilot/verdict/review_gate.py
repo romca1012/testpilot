@@ -93,6 +93,15 @@ def attente_metier_changee(avant: dict | None, apres: dict | None) -> bool:
     return any((avant.get(champ) or "") != (apres.get(champ) or "") for champ in ("expected_result", "test_steps"))
 
 
+def test_non_relu(review_repo, version: dict | None) -> bool:
+    """Une version qui porte un test (Gherkin non vide) et n'est pas approuvée — quel que soit son auteur.
+
+    Revue D30-D32 (B1) : l'édition du métier recopie ce test ; l'approuver d'office le « blanchirait » (une correction
+    laissée à relire par D30, une attente changée par D31 en attente de décision)."""
+    return (bool(version) and bool((version.get("feature_content") or "").strip())
+            and not evaluate_gate(review_repo, version["id"]).allowed)
+
+
 def version_reparee_non_relue(review_repo, version: dict | None) -> bool:
     """Une version écrite par l'agent de réparation et pas (encore) approuvée par un humain."""
     return bool(version) and version.get("created_by") == AUTEUR_REPARATION and not evaluate_gate(

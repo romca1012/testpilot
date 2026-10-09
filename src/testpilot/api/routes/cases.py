@@ -426,8 +426,12 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
     # Lot VH-03 (revue, bloquant) : l'édition du métier recopie le Gherkin et les steps de la version COURANTE. Si ce code a
     # été réécrit par l'agent de réparation sans être relu, l'approuver d'office le « blanchirait » : la nouvelle version
     # hérite de son état de relecture (à relire), l'amendement §4.3 continue de s'appliquer à tout code déjà relu.
+    # Revue D30-D32 (B1) : même règle pour TOUT test non approuvé (correction laissée à relire par D30, édition D31 en attente,
+    # point de vigilance de la génération) — sinon une seconde édition, du titre seul, l'approuvait d'office et un test
+    # vérifiant l'ancienne attente sortait de nouveau `conforme`. Un cas manuel sans test n'a rien à relire : inchangé.
     source = VersionRepo(conn).get(cases.get(case_id).get("current_version_id") or 0)
-    source_non_relue = review_gate.version_reparee_non_relue(ReviewRepo(conn), source)
+    source_non_relue = (review_gate.version_reparee_non_relue(ReviewRepo(conn), source)
+                        or review_gate.test_non_relu(ReviewRepo(conn), source))
     try:
         version_id = cases.update_metier(
             case_id, title=body.title, preconditions=body.preconditions,

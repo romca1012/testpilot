@@ -147,12 +147,16 @@ class _Module:
                     attributs.add(n.attr)
         return noms, attributs
 
-    def ecritures_de_contexte(self, attributs: set[str]) -> Counter:
-        """Empreintes des instructions qui ÉCRIVENT `context.X` (X lu par une vérification), hors fonctions de vérification."""
-        verifs = {id(f) for fs in self.verifications.values() for f in fs}
+    def ecritures_de_contexte(self, attributs: set[str], cles_gelees) -> Counter:
+        """Empreintes des instructions qui ÉCRIVENT `context.X` (X lu par une vérification), hors fonctions de vérification
+        GELÉES (`cles_gelees` : leurs clés de décorateurs, prises sur la RÉFÉRENCE, déjà comparées en entier).
+
+        Revue D30-D32 (B2) : les clés viennent de la référence pour les DEUX côtés. Avant, la proposition excluait toutes ses
+        vérifications, creuses comprises : une écriture ajoutée dans une fonction creuse réécrite (un `@step` d'action) à un
+        attribut lu par une vérification réelle échappait au gel."""
         empreintes: Counter = Counter()
         for f in self.fonctions:
-            if id(f) in verifs:
+            if _est_verification(f) and _cle_de_decorateurs(f) in cles_gelees:
                 continue
             for n in ast.walk(f):
                 cibles = n.targets if isinstance(n, ast.Assign) else [n.target] if isinstance(
@@ -196,7 +200,8 @@ def steps_modifies(reference: str, proposition: str, *,
     for nom in sorted(noms):
         if [_signature(n) for n in apres.liaisons.get(nom, [])] != [_signature(n) for n in avant.liaisons.get(nom, [])]:
             ecarts.append(f"`{nom}`, lu par une vérification, a changé")
-    if apres.ecritures_de_contexte(attributs) != avant.ecritures_de_contexte(attributs):
+    cles_gelees = set(avant.verifications)
+    if apres.ecritures_de_contexte(attributs, cles_gelees) != avant.ecritures_de_contexte(attributs, cles_gelees):
         ecarts.append("une valeur que lit une vérification (`context." + "`, `context.".join(sorted(attributs))
                       + "`) est écrite autrement")
     return ecarts
