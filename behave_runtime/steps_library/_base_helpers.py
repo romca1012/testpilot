@@ -3059,14 +3059,61 @@ def _occurrences_visibles(page, texte: str, *, champs: bool = False) -> int:
     return total
 
 
+# Lot VH-04 (V7) : ce qui compte comme une lettre pour délimiter un mot (le `\w` des expressions du navigateur ignore les accents).
+_LETTRE = "0-9A-Za-zÀ-ÖØ-öø-ÿ_"
+# Espaces qui séparent les milliers en français (espace, insécable, fine insécable).
+_ESPACES_MILLIERS = "\\s\u00a0\u202f"
+
+
+def _motif_texte_exact(texte: str) -> str:
+    """Le texte comme MOT ENTIER, casse respectée, espaces souples (un ou plusieurs, insécables compris) ; un nombre n'est pas un
+    morceau d'un plus grand nombre (« 129,51 » n'est pas dans « 1 129,51 »). Même syntaxe en Python et dans le navigateur."""
+    corps = r"\s+".join(re.escape(m) for m in texte.split())
+    avant = rf"(?<![{_LETTRE}])"
+    apres = rf"(?![{_LETTRE}])"
+    if texte.strip()[:1].isdigit():
+        avant += rf"(?<!\d[{_ESPACES_MILLIERS}])"
+    if texte.strip()[-1:].isdigit():
+        apres += rf"(?![{_ESPACES_MILLIERS}]\d)"
+    return avant + corps + apres
+
+
+_JS_TEXTE_RENDU_CONTIENT = """(motif) => {
+  const re = new RegExp(motif);
+  return re.test((document.body && document.body.innerText || '').replace(/\\s+/g, ' '));
+}"""
+
+
+def _texte_exact_visible(page, texte: str) -> bool:
+    """Lot VH-04 (V7) : le texte est affiché, MOT ENTIER et casse respectée — dans le document ou l'un de ses cadres.
+
+    Deux lectures, l'une OU l'autre (mesuré le 2026-10-09 sur Chromium) : Playwright compare le texte SOURCE des éléments
+    visibles (« Commande validée »), l'écran montre le texte RENDU (« COMMANDE VALIDÉE » sous `text-transform`) — un test qui
+    cite ce qu'il a vu à l'écran ne doit pas devenir un faux rouge. Le texte rendu (`innerText`) exclut déjà ce qui est caché."""
+    motif = _motif_texte_exact(texte)
+    for frame in page.frames:
+        try:
+            if frame.get_by_text(re.compile(motif)).filter(visible=True).count() > 0:
+                return True
+            if frame.evaluate(_JS_TEXTE_RENDU_CONTIENT, motif):
+                return True
+        except Exception:
+            continue  # un cadre détaché pendant la lecture
+    return False
+
+
 @constat
 def page_affiche_texte(page, texte: str) -> None:
-    """Le texte est visible dans le document ou l'un de ses cadres (le texte rendu — pas un attribut ni une valeur de champ)."""
+    """Le texte est visible dans le document ou l'un de ses cadres (le texte rendu — pas un attribut ni une valeur de champ).
+
+    Lot VH-04 (audit V7) : MOT ENTIER et casse respectée (`_texte_exact_visible`). Avant : sous-chaîne sans casse de
+    Playwright — « 129,51 » était « affiché » sur une page qui affiche « 1 129,51 € » (un total faux passait pour juste),
+    « Command » dans « Commande ». L'ABSENCE (`page_n_affiche_pas_texte`) garde la lecture large : plus large y est plus sûr."""
     _renseigne(texte, "Le texte à afficher")
     fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
-    while _occurrences_visibles(page, texte) == 0:
+    while not _texte_exact_visible(page, texte):
         if time.monotonic() >= fin:
-            raise AssertionError(f"Le texte « {texte} » n'est pas affiché sur {page.url}.")
+            raise AssertionError(f"Le texte « {texte} » n'est pas affiché sur {page.url} (mot entier, casse respectée).")
         time.sleep(0.25)
 
 
