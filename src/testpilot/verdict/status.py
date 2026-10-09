@@ -442,3 +442,25 @@ def sql_statut(execution: str, functional: str, manuel: str | None = None) -> st
     manuels = ", ".join(f"'{s}'" for s in STATUTS_MANUELS)
     return (f"CASE WHEN {manuel} IN ({manuels}) THEN {manuel}"
             f" ELSE ({derive}) END")
+
+
+# ── D31 (validée par le porteur le 2026-10-09) : un « Réussi » obtenu contre une AUTRE attente métier ──────────────────
+#
+# Avant : éditer le résultat attendu ou les étapes d'un cas gardait l'ancien test, approuvé d'office (amendement §4.3), et le
+# cas continuait d'afficher « Réussi » — obtenu contre l'ancienne attente. Exemple : « remise de 10 % » devient « 15 % », le
+# test vérifie toujours 10 %, l'application applique 10 %, le cas reste vert ; le bug (pas de passage à 15 %) est invisible.
+# Désormais, tant qu'aucun run n'a eu lieu sur une version portant la NOUVELLE attente, le cas affiche « Retest ».
+# On ne recalcule PAS le résultat et on ne masque aucun run (décision 0016 (iii)) : seule l'étiquette de LECTURE du cas
+# change, et seulement de `passed` vers `retest` — un échec reste un échec, le run garde son verdict dans l'historique.
+
+def statut_du_cas(execution: str | None, functional: str | None, *, attente_changee: bool) -> str:
+    """L'étiquette de lecture d'un CAS : `statut_de_test`, sauf un `passed` obtenu contre une autre attente métier."""
+    statut = statut_de_test(execution, functional)
+    return STATUT_RETEST if attente_changee and statut == STATUT_PASSED else statut
+
+
+def sql_statut_du_cas(execution: str, functional: str, attente_changee: str) -> str:
+    """Forme SQL de `statut_du_cas` — `attente_changee` est une expression SQL booléenne (comparée en test)."""
+    derive = sql_statut(execution, functional)
+    return (f"CASE WHEN ({attente_changee}) AND ({derive}) = '{STATUT_PASSED}' THEN '{STATUT_RETEST}'"
+            f" ELSE ({derive}) END")

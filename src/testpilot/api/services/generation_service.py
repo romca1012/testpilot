@@ -479,6 +479,38 @@ def _affaiblissements_de_correction(avant: dict, apres: dict) -> list[dict]:
             for ecart in ecarts]
 
 
+ATTENTE_METIER_CHANGEE = "attente_metier_changee"
+
+
+def _attente_changee_depuis_le_test(conn, version_rows: list[dict], current: dict) -> list[dict]:
+    """D31 (validée par le porteur le 2026-10-09) : la version courante, pas encore approuvée, garde le test d'une version
+    précédente mais change le résultat attendu ou les étapes — le test vérifie peut-être encore l'ancienne attente.
+
+    Référence : la version la plus récente portant le MÊME test (Gherkin et steps identiques) qui a été approuvée, à défaut
+    celle où ce test a été écrit. Une version approuvée ne porte plus le signal (un humain a confirmé).
+    """
+    from testpilot.store.repositories import ReviewRepo
+
+    revues = ReviewRepo(conn)
+    if revues.is_version_approved(current["id"]):
+        return []
+    meme_test = []
+    for v in sorted((v for v in version_rows if v["id"] < current["id"]), key=lambda v: v["id"], reverse=True):
+        if ((v.get("feature_content") or "") != (current.get("feature_content") or "")
+                or (v.get("steps_content") or "") != (current.get("steps_content") or "")):
+            break
+        meme_test.append(v)
+    if not meme_test:
+        return []
+    reference = next((v for v in meme_test if revues.is_version_approved(v["id"])), meme_test[-1])
+    if not review_gate.attente_metier_changee(reference, current):
+        return []
+    return [{"step": "", "line": 0, "kind": ATTENTE_METIER_CHANGEE,
+             "message": ("Le résultat attendu ou les étapes ont changé depuis l'écriture de ce test : il vérifie peut-être "
+                         "encore l'ancienne attente. Régénérez le test, ou approuvez si vous avez vérifié qu'il correspond "
+                         "toujours au métier. Jusqu'au prochain run, le cas s'affiche « Retest ».")}]
+
+
 def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], version_id: int
                               ) -> list[dict]:
     """Les « points de vigilance » d'UNE version — MÊME calcul que celui affiché sur la fiche du
@@ -520,6 +552,8 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
         precedentes = [v for v in version_rows if v["id"] < current["id"]]
         if precedentes:
             warnings += _affaiblissements_de_correction(max(precedentes, key=lambda v: v["id"]), current)
+    if current:
+        warnings += _attente_changee_depuis_le_test(conn, version_rows, current)
     if current and current.get("created_by") == _AUTEUR_REPARATION:
         precedentes = [v for v in version_rows if v["id"] < current["id"]]
         if precedentes:

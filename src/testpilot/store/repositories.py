@@ -787,11 +787,22 @@ class CaseGroupRepo:
 # n'est plus la référence : on l'affiche au lieu de le corriger en silence, conformément à la
 # ligne du projet (0007 B+, 0008 lint, 0013). On ne recalcule PAS le statut depuis la version
 # courante : ce serait masquer un run réel.
+_DERNIERE_VERSION_JUGEE = (
+    "(SELECT e.version_id FROM execution e WHERE e.test_case_id = tc.id AND e.confiance != 'apres_reparation'"
+    "  ORDER BY e.id DESC LIMIT 1)")
+# D31 (2026-10-09) : le résultat attendu ou les étapes de la version COURANTE diffèrent de ceux de la version qui a produit le
+# dernier résultat — ce résultat a été obtenu contre une autre attente métier (`status.statut_du_cas`). Même expression pour
+# l'affichage (colonne `attente_changee`) et pour le filtre par statut (`CaseRepo.page`) : jamais deux règles.
+_ATTENTE_CHANGEE_SQL = (
+    "EXISTS (SELECT 1 FROM test_case_version cv, test_case_version lv"
+    " WHERE cv.id = tc.current_version_id AND lv.id = " + _DERNIERE_VERSION_JUGEE +
+    " AND (COALESCE(cv.expected_result, '') <> COALESCE(lv.expected_result, '')"
+    "  OR COALESCE(cv.test_steps, '') <> COALESCE(lv.test_steps, '')))")
 _CASE_SELECT = (
     "SELECT tc.*, m.name AS module_name, m.project_id AS project_id, p.name AS project_name,"
     " g.title AS group_title,"
-    " (SELECT e.version_id FROM execution e WHERE e.test_case_id = tc.id AND e.confiance != 'apres_reparation'"
-    "  ORDER BY e.id DESC LIMIT 1) AS last_verdict_version_id"
+    " " + _ATTENTE_CHANGEE_SQL + " AS attente_changee,"
+    " " + _DERNIERE_VERSION_JUGEE + " AS last_verdict_version_id"
     " FROM test_case tc"
     " LEFT JOIN module m ON tc.module_id = m.id"
     " LEFT JOIN project p ON m.project_id = p.id"
@@ -1365,7 +1376,7 @@ class CaseRepo:
         page 3, et l'utilisateur conclurait que le cas n'existe pas. Un filtre qui ment sur
         l'absence est pire que pas de filtre.
         """
-        from testpilot.verdict.status import sql_statut
+        from testpilot.verdict.status import sql_statut_du_cas
 
         clauses, params = [_CASE_VIVANT], []
         if project_id is not None:
@@ -1384,7 +1395,7 @@ class CaseRepo:
                            " OR tc.refs LIKE ?)")
             params += [f"%{recherche.strip()}%", f"%{recherche.strip()}%", motif,
                        f"%{recherche.strip()}%"]
-        statut_sql = sql_statut("tc.last_execution_status", "tc.last_functional_status")
+        statut_sql = sql_statut_du_cas("tc.last_execution_status", "tc.last_functional_status", _ATTENTE_CHANGEE_SQL)
         if statut:
             clauses.append(f"({statut_sql}) = ?"); params.append(statut)
 
