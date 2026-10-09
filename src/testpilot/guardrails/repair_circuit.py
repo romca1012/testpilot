@@ -113,6 +113,19 @@ def evaluate(state: CircuitState, failures) -> CircuitDecision:
         # Plus aucun échec : le test passe, la réparation a atteint son but.
         return CircuitDecision(False, RESOLVED, "plus aucun échec — réparation terminée")
 
+    # Lot VH-03 (V5, audit du 2026-10-08) : la cause DOMINANTE du run ne suffit pas. (1) Une seule vérification en échec
+    # (`assertion_mismatch`) suffit à arrêter : réparer le reste du run ne doit pas masquer qu'une assertion a dit non. (2) Un
+    # échec SOUS UN « Alors » (élément absent, délai dépassé…) peut être un vrai défaut — un message disparu, un total absent ;
+    # le « réparer » reviendrait à chercher un autre élément sur la page, c'est-à-dire fabriquer un vert : décision humaine.
+    # Signaux du RUNTIME seuls : la classe d'exception et le type de step écrit par Behave, jamais un libellé.
+    if any(dt.classify_failure(f) == dt.ASSERTION_MISMATCH for f in failures or []):
+        return CircuitDecision(False, REAL_BUG,
+                               "une vérification a échoué dans ce run — remontée du constat, aucune réparation", verdict)
+    if any((getattr(f, "step_type", "") or "").lower() == "then" for f in failures or []):
+        return CircuitDecision(False, NEEDS_CONFIRMATION,
+                               "échec sous un « Alors » — peut être un vrai défaut de l'application : confirmation humaine "
+                               "requise avant toute réparation", verdict)
+
     # Le signal métier prime : un vrai bug se remonte tel quel, un indéterminé se confirme.
     if verdict.defect_origin == do.VRAI_BUG:
         return CircuitDecision(False, REAL_BUG,
