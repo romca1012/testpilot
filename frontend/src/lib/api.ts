@@ -463,6 +463,17 @@ export const api = {
   // raison resterait invisible, exactement le bug qu'il faut ne PAS reproduire.
   casesNeedingReview: (projectId: number | string) =>
     request<CaseARelire[]>(`/api/cases/needing-review?project_id=${projectId}`),
+  // D32 : les refus d'une valeur demandée par le métier, en attente d'une décision humaine.
+  refusAConfirmer: (projectId: number | string) =>
+    request<RefusAConfirmer[]>(`/api/projects/${projectId}/refus-a-confirmer`),
+  deciderRefus: (projectId: number | string, refus: RefusAConfirmer, decision: DecisionRefus) =>
+    request<RefusAConfirmer[]>(`/api/projects/${projectId}/refus-a-confirmer`, {
+      method: 'POST',
+      body: JSON.stringify({
+        route: refus.route, champ: refus.champ, type_contrainte: refus.type_contrainte,
+        valeur_contrainte: refus.valeur_contrainte, valeur_refusee: refus.valeur_refusee, decision,
+      }),
+    }),
   // Ordre d'AFFICHAGE des cas d'un module (décision 0009). En LOT : un glissement change N
   // positions. Le serveur recalcule les positions et renvoie la liste dans son ordre.
   reorderCases: (moduleId: number | string, caseIds: number[]) =>
@@ -890,6 +901,14 @@ export interface CaseARelire {
   case_id: number; title: string; module_name: string; version_id: number
   reason: string; lint_warnings_count: number
 }
+
+// D32 (2026-10-09) — une valeur que l'application a refusée alors que le métier d'un cas la demande.
+// Les cinq premiers champs sont l'identité de la règle : renvoyés tels quels avec la décision.
+export interface RefusAConfirmer {
+  route: string; champ: string; type_contrainte: string; valeur_contrainte: string; valeur_refusee: string
+  preuve: string; occurrences: number; derniere_le: string
+}
+export type DecisionRefus = 'confirmee' | 'rejetee'
 
 export interface CaseSummary {
   id: number; title: string; module: string; module_id: number | null; project_id: number | null

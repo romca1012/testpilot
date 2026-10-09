@@ -39,12 +39,24 @@ le résolveur que si le navigateur l'a **nommée** (`pattern`, `maxlength`…). 
 exclu : « ce champ a été refusé vide » ne veut pas dire « ce champ est toujours obligatoire » —
 un choix fait plus haut dans le formulaire peut le rendre requis. Le fait est enregistré et
 remonté à l'agent ; il ne devient pas une contrainte.
+
+⚠️ **D32 (validée par le porteur le 2026-10-09) — amende « s'applique IMMÉDIATEMENT » pour UN cas.**
+Quand la valeur refusée est CITÉE par le métier validé du cas (étapes, résultat attendu, spec), le
+refus n'est plus une erreur de notre fabrication de données : l'application refuse ce que le métier
+demande — un bug probable, ou un métier à corriger. L'apprendre d'office ferait éviter cette valeur
+au résolveur et à l'agent (formats observés) : le bug disparaîtrait des résultats suivants, sans
+qu'un humain l'ait jamais vu. La direction de l'erreur n'est alors plus sûre. Une telle règle est
+enregistrée `a_confirmer` et NE S'APPLIQUE PAS (`charger`) tant qu'un humain n'a pas tranché
+(`decider` : `confirmee` = vraie règle de l'application, `rejetee` = bug, ne pas apprendre). Écran :
+« Cas à relire ». Tout autre refus suit la règle d'origine, inchangée.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
+import unicodedata
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -74,6 +86,11 @@ TYPES_CONTRAINTE = frozenset({
 
 ORIGINES = frozenset({"navigateur", "filtre_saisie", "serveur"})
 
+# D32 : les deux décisions qu'un humain peut prendre sur une règle `a_confirmer`.
+DECISION_CONFIRMEE = "confirmee"   # c'est une vraie règle de l'application : l'apprendre
+DECISION_REJETEE = "rejetee"       # c'est un bug de l'application : ne pas l'apprendre
+DECISIONS = frozenset({DECISION_CONFIRMEE, DECISION_REJETEE})
+
 # Ce qu'un type de contrainte permet de DÉDUIRE pour le résolveur. Absent de cette table =
 # liste noire seulement (on interdit la valeur, on n'affirme aucune règle).
 _CONTRAINTE_PAR_TYPE = {
@@ -102,6 +119,13 @@ class RegleApprise:
     premiere_le: str = ""
     derniere_le: str = ""
     occurrences: int = 1
+    # D32 : la valeur refusée était citée par le métier validé du cas — la règle attend une décision humaine.
+    a_confirmer: bool = False
+    decision: str = ""      # "" | "confirmee" | "rejetee" — la DERNIÈRE décision humaine, hors clé
+
+    def applicable(self) -> bool:
+        """Une règle s'applique sauf si elle attend (ou a reçu un refus de) la confirmation humaine de D32."""
+        return not self.a_confirmer or self.decision == DECISION_CONFIRMEE
 
     def cle(self) -> tuple[str, str, str, str, str]:
         """L'identité d'une règle — **dérivée du runtime seul** (principe 1).
@@ -155,6 +179,7 @@ def _depuis_json(brut: dict) -> RegleApprise | None:
         premiere_le=_texte(brut.get("mesure_le")),
         derniere_le=_texte(brut.get("mesure_le")),
         occurrences=1,
+        a_confirmer=brut.get("a_confirmer") is True,
     )
 
 
@@ -179,6 +204,8 @@ def _fusionner_doublons(regles: list[RegleApprise]) -> list[RegleApprise]:
             # celui que l'utilisateur verra aujourd'hui.
             preuve=regle.preuve or connue.preuve,
             valeur_retenue=regle.valeur_retenue or connue.valeur_retenue,
+            # D32 : une seule mesure où le métier citait la valeur suffit — sens prudent.
+            a_confirmer=connue.a_confirmer or regle.a_confirmer,
         )
     return list(par_cle.values())
 
@@ -201,27 +228,41 @@ def _lire(chemin_str: str, mtime: float, taille: int) -> tuple[RegleApprise, ...
     """
     lignes = Path(chemin_str).read_text(encoding="utf-8").splitlines()
     regles: list[RegleApprise] = []
+    decisions: dict[tuple, str] = {}
     for numero, ligne in enumerate(lignes[-_MAX_REGLES_LUES:], start=1):
         ligne = ligne.strip()
         if not ligne:
             continue
         try:
-            regle = _depuis_json(json.loads(ligne))
+            brut = json.loads(ligne)
+            regle = _depuis_json(brut)
+            if regle is not None and brut.get("decision") in DECISIONS:
+                # D32 : une décision humaine, ajoutée au même fichier (append-only) — la plus récente l'emporte.
+                decisions[regle.cle()] = brut["decision"]
+                continue
         except (ValueError, TypeError, AttributeError):
             regle = None
         if regle is None:
             logger.warning("[règles apprises] %s ligne %d illisible — sautée", chemin_str, numero)
             continue
         regles.append(regle)
-    return tuple(_fusionner_doublons(regles))
+    return tuple(replace(r, decision=decisions.get(r.cle(), "")) for r in _fusionner_doublons(regles))
 
 
 def charger(project_id: int | None) -> list[RegleApprise]:
-    """Les règles apprises d'un projet. **Ne lève jamais** — aucune règle est un état normal.
+    """Les règles apprises APPLICABLES d'un projet. **Ne lève jamais** — aucune règle est un état normal.
 
     Doctrine de `read_field_fallbacks` : l'absence de fichier est le cas nominal (un projet qui
     n'a jamais essuyé de refus), pas une erreur.
+
+    D32 : une règle `a_confirmer` non confirmée par un humain n'en fait pas partie — ni le résolveur
+    ni l'agent (formats observés) ne la voient. `charger_tout` les rend toutes, pour l'écran.
     """
+    return [r for r in charger_tout(project_id) if r.applicable()]
+
+
+def charger_tout(project_id: int | None) -> list[RegleApprise]:
+    """Toutes les règles d'un projet, en attente de décision comprises (écran « Cas à relire »)."""
     if project_id is None:
         return []
     fichier = chemin(project_id)
@@ -287,7 +328,65 @@ def _en_dict(brut) -> dict | None:
         "origine": _texte(lecture("origine")) or "navigateur",
         "preuve": _texte(lecture("preuve")),
         "valeur_retenue": _texte(lecture("valeur_retenue")),
+        "a_confirmer": lecture("a_confirmer") is True,
     }
+
+
+# ── D32 : un refus de ce que le métier demande attend une décision humaine ─────────────────────
+
+# En dessous, une valeur (« 1 », « A ») se retrouverait dans n'importe quel texte : la règle resterait en attente à tort.
+_LONGUEUR_MIN_CITATION = 3
+
+
+def _normaliser(texte: str) -> str:
+    sans_accents = unicodedata.normalize("NFKD", texte or "").encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", sans_accents.casefold()).strip()
+
+
+def valeur_citee(valeur: str, texte_metier: str) -> bool:
+    """La valeur refusée figure-t-elle, telle quelle, dans le métier validé du cas ?
+
+    Texte HUMAIN (étapes, résultat attendu, spec), jamais le Gherkin ni le code écrits par l'agent
+    (décision 0015). Comparaison sans casse ni accents, sur des frontières de mot : « 2027 » est
+    cité par « jusqu'en 2027 », pas par « 20270 ». Limite assumée : une valeur reformulée (« 15/03/2027 »
+    contre « 2027-03-15 ») n'est pas reconnue — la règle suit alors le régime d'origine.
+    """
+    cible = _normaliser(str(valeur or ""))
+    if len(cible) < _LONGUEUR_MIN_CITATION:
+        return False
+    return re.search(r"(?<![0-9a-z])" + re.escape(cible) + r"(?![0-9a-z])", _normaliser(texte_metier)) is not None
+
+
+def marquer_les_refus_cites(refus, texte_metier: str) -> list[dict]:
+    """Les refus mesurés, en dictionnaires, `a_confirmer` quand le métier cite la valeur refusée."""
+    sortie = []
+    for brut in refus or []:
+        objet = _en_dict(brut)
+        if objet is None:
+            continue
+        objet["a_confirmer"] = objet["a_confirmer"] or valeur_citee(objet["valeur_refusee"], texte_metier)
+        sortie.append(objet)
+    return sortie
+
+
+def decider(project_id: int, regle: dict, decision: str, *, auteur: str = "") -> None:
+    """Enregistre la décision HUMAINE sur une règle `a_confirmer` (ligne ajoutée, l'historique reste lisible).
+
+    Lève `ValueError` sur une décision inconnue ou une règle mal formée ; une erreur d'écriture remonte
+    (`OSError`) — contrairement à l'apprentissage pendant un run, ici un humain attend la réponse.
+    """
+    if decision not in DECISIONS:
+        raise ValueError(f"décision inconnue : {decision!r}")
+    objet = _en_dict(regle)
+    if objet is None:
+        raise ValueError("règle mal formée (route, champ ou type de contrainte invalides)")
+    objet.pop("a_confirmer", None)
+    objet.update({"v": FORMAT_VERSION, "decision": decision, "auteur": _texte(auteur, 120),
+                  "mesure_le": _maintenant()})
+    fichier = chemin(project_id)
+    fichier.parent.mkdir(parents=True, exist_ok=True)
+    with fichier.open("a", encoding="utf-8") as flux:
+        flux.write(json.dumps(objet, ensure_ascii=False, sort_keys=True) + "\n")
 
 
 def pour_champ(regles, route: str, nom: str) -> list[RegleApprise]:

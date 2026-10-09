@@ -10,7 +10,13 @@ import { mount, flushPromises } from '@vue/test-utils'
 
 const casesNeedingReview = vi.fn()
 const push = vi.fn()
-vi.mock('../lib/api', () => ({ api: { casesNeedingReview: (...a: any[]) => casesNeedingReview(...a) } }))
+vi.mock('../lib/api', () => ({
+  api: {
+    casesNeedingReview: (...a: any[]) => casesNeedingReview(...a),
+    // D32 : la section des refus à confirmer, vide ici (testée dans RefusAConfirmer.spec.ts).
+    refusAConfirmer: () => Promise.resolve([]),
+  },
+}))
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { pid: '1' } }),
   useRouter: () => ({ push }),

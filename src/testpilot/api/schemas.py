@@ -197,6 +197,30 @@ class GateOut(BaseModel):
     lint_warnings: list[LintWarning] = []
 
 
+class RefusAConfirmerOut(BaseModel):
+    """D32 (2026-10-09) — une valeur que l'application a refusée alors que le métier d'un cas la demande.
+
+    Bug probable de l'application, ou métier à corriger : la règle n'est PAS appliquée tant qu'un humain n'a pas tranché.
+    Les cinq premiers champs forment l'identité de la règle (renvoyés tels quels avec la décision)."""
+    route: str
+    champ: str
+    type_contrainte: str
+    valeur_contrainte: str = ""
+    valeur_refusee: str
+    preuve: str = ""          # message de l'APPLICATION ou du navigateur
+    occurrences: int = 1
+    derniere_le: str = ""
+
+
+class RefusDecisionIn(BaseModel):
+    route: str
+    champ: str
+    type_contrainte: str
+    valeur_contrainte: str = ""
+    valeur_refusee: str
+    decision: str             # "confirmee" (règle de l'application) | "rejetee" (bug : ne pas apprendre)
+
+
 class CaseARelireOut(BaseModel):
     """Un cas bloqué sur le gate de relecture — la LISTE que l'amendement §4.3-bis (2026-09-15)
     rend nécessaire : un cas dont l'approbation automatique a été refusée (points de vigilance)
