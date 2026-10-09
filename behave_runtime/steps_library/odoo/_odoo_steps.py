@@ -15,6 +15,7 @@ from _base_helpers import (
     PreconditionNonRemplieError,
     memorize_record_count, check_count_not_increased, check_count_increased_by_one, no_duplicate,
     validation_error_notification, playwright_login, navigate_menu, constater, se_connecter_en_tant_que,
+    _max_id_attr,
 )
 
 
@@ -68,11 +69,23 @@ def step_cleanup_test_records(context, prefix, models):
 
 # ── Assertions sur les enregistrements (OdooRPC) ─────────────────────────────
 
+
+def _apparus_apres_le_releve(context, model) -> list:
+    """Lot VH-04 (audit V7) : quand le scénario a RELEVÉ ce modèle avant l'action (`memorize_record_count`), l'existence ne se
+    cherche que parmi les enregistrements apparus après ce relevé (`id > max_id`, la même règle que les comptages, §F1).
+    Avant : recherche globale — un enregistrement DÉJÀ présent (même nom, autre essai, autre utilisateur) faisait passer « …
+    existe » alors que l'action testée n'avait rien créé. Sans relevé, la recherche reste globale (limite assumée : rien ne
+    permet alors de distinguer un enregistrement créé par ce scénario ; une valeur rendue unique par tentative le fait)."""
+    attribut = _max_id_attr(model)
+    return [("id", ">", getattr(context, attribut))] if hasattr(context, attribut) else []
+
+
 @then('un enregistrement avec le champ "{field}" égal à "{value}" existe '
       'dans le modèle "{model}"')
 def step_record_exists_field_value(context, field, value, model):
-    ids = context.odoo.env[model].search([(field, "=", value)])
-    constater(ids, f"Aucun enregistrement trouvé dans '{model}' avec {field}='{value}'.")
+    ids = context.odoo.env[model].search([(field, "=", value), *_apparus_apres_le_releve(context, model)])
+    constater(ids, f"Aucun enregistrement trouvé dans '{model}' avec {field}='{value}'"
+                   f"{' (parmi ceux apparus après le relevé du scénario)' if _apparus_apres_le_releve(context, model) else ''}.")
     context.last_record_ids = ids
     context.last_record_model = model
 
@@ -83,8 +96,9 @@ def step_record_exists_contains(context, field, value, model):
     import re
     m = re.search(r'"([^"]+)"', field)
     actual_field = m.group(1) if m else field.strip()
-    ids = context.odoo.env[model].search([(actual_field, "ilike", value)])
-    constater(ids, f"Aucun enregistrement trouvé dans '{model}' où {actual_field} contient '{value}'.")
+    ids = context.odoo.env[model].search([(actual_field, "ilike", value), *_apparus_apres_le_releve(context, model)])
+    constater(ids, f"Aucun enregistrement trouvé dans '{model}' où {actual_field} contient '{value}'"
+                   f"{' (parmi ceux apparus après le relevé du scénario)' if _apparus_apres_le_releve(context, model) else ''}.")
     context.last_record_ids = ids
     context.last_record_model = model
 
