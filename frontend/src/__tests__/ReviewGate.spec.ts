@@ -60,15 +60,17 @@ describe('ReviewGate — le gate autorise le budget de réparation (0014, option
     expect(w.text()).not.toContain(kind)
   })
 
-  it('étiquette D30 « verification_affaiblie_par_correction » comme correction, jamais l\'enum brute', () => {
-    const kind = 'verification_affaiblie_par_correction'
+  it.each([
+    ['verification_affaiblie_par_correction', 'correction'],  // D30
+    ['attente_metier_changee', 'métier'],                     // D31
+  ])('étiquette « %s » (%s), jamais l\'enum brute', (kind, famille) => {
     const w = mount(ReviewGate, {
       props: {
         caseId: 1,
         gate: { ...A_RELIRE, lint_warnings: [{ step: '', line: 0, kind, message: 'm' }] },
       },
     })
-    expect(w.text()).toContain('correction')
+    expect(w.text()).toContain(famille)
     expect(w.text()).not.toContain(kind)
   })
 
