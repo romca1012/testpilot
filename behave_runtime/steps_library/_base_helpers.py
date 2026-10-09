@@ -5,6 +5,7 @@ et les encapsule dans ses propres @given/@when/@then.
 """
 
 import datetime
+import decimal
 import functools
 import json
 import logging
@@ -1284,6 +1285,24 @@ class RefusNonExpliqueError(Exception):
     C'est un manque d'observabilité de l'outil, ni une preuve de succès ni une preuve de défaut
     applicatif : `indetermine`, jamais `non_conforme`, jamais réparé automatiquement.
     """
+
+
+class OracleEnErreurError(urllib.error.HTTPError):
+    """Lot VH-04 : l'oracle a répondu en ERREUR HTTP (4xx/5xx). Rien n'a été observé de l'application : `indetermine`,
+    jamais `non_conforme`, jamais réparé (réécrire le test ne fait pas répondre l'oracle). Reste une `HTTPError` : jamais
+    confondue avec une panne d'environnement (prérequis manquant) — seul son NOM, signal de la taxonomie, change."""
+
+    def __init__(self, origine: urllib.error.HTTPError, requete: str):
+        super().__init__(origine.url, origine.code, origine.msg, origine.hdrs, None)
+        self.requete = requete
+
+    def __str__(self) -> str:
+        return f"l'oracle a répondu {self.code} à la requête « {self.requete} » : rien n'a pu être vérifié"
+
+
+class ReponseOracleNonComptableError(TypeError):
+    """Lot VH-04 : « l'oracle … renvoie N résultat(s) » sur une réponse qui est un OBJET. Un objet ne se compte pas en
+    résultats : le test est mal posé (erreur technique, jamais une accusation contre l'application)."""
 
 
 class InvalidOptionValueError(ValueError):
@@ -3481,8 +3500,10 @@ def _executer_oracle(context, requete: str):
         return oracle.executer(requete)
     except (RequeteOracleInconnue, OracleIndisponible) as exc:
         raise PreconditionNonRemplieError(f"PRÉREQUIS MANQUANT : {exc}") from exc
-    except urllib.error.HTTPError:
-        raise
+    except urllib.error.HTTPError as exc:
+        # Lot VH-04 (audit V6, point 3) : une réponse d'ERREUR de l'oracle n'observe rien de l'application. Avant, `HTTPError`
+        # nu → `wrong_navigation`, un test « à réparer » : la réparation réécrivait un test qui n'était pas en cause.
+        raise OracleEnErreurError(exc, requete) from exc
     except (urllib.error.URLError, OSError) as exc:
         raise PreconditionNonRemplieError(
             f"PRÉREQUIS MANQUANT : l'oracle est devenu injoignable en cours de run ({exc}).") from exc
@@ -3492,16 +3513,19 @@ def oracle_renvoie_n_resultats(context, requete: str, n: int) -> None:
     """`Alors l'oracle "<requête>" renvoie <n> résultat(s)` — l'oracle est la vérité de RÉFÉRENCE :
     un écart consigne un constat ÉCHOUÉ (défaut applicatif, ou test à revoir), jamais une panne."""
     reponse = _executer_oracle(context, requete)
+    if isinstance(reponse, dict):
+        # Mesuré (banc d'agents, base-2 le 2026-10-07 : 9 essais sur 30 ; base-4 le 2026-10-09 : 1 faux rouge) : un test écrit
+        # « renvoie 0 résultat » pour dire « aucune commande » sur une réponse qui est un OBJET, compté pour 1 → `non_conforme`
+        # sur une application saine. Lot VH-04 (point 3) : un objet n'est pas « N résultats » — il ne se compte pas. Le test
+        # est mal posé (erreur technique, jamais une accusation) ; le message dit quoi écrire à la place.
+        raise ReponseOracleNonComptableError(
+            f"la réponse de l'oracle « {requete} » est un objet, pas une liste : elle ne se compte pas en résultats. Pour "
+            "compter une liste qu'il contient, utiliser « le champ \"<chemin>\" de l'oracle \"<requête>\" compte <n> "
+            "élément(s) » ; pour une valeur, « le champ \"<chemin>\" de l'oracle \"<requête>\" vaut \"<valeur>\" ».")
     obtenu = _compte_resultats_oracle(reponse)
-    # Mesuré le 2026-10-07 (banc d'agents, base-2) : 9 tests générés sur 30 ont écrit « renvoie 0 résultat » pour dire « aucune
-    # commande » sur une réponse qui est un OBJET (compté pour 1) et sont sortis `non_conforme` sur une application saine. La
-    # règle de comptage ne change pas ; le message dit maintenant quoi faire.
-    indice = (" — la réponse est un objet unique (compté pour 1) : pour compter une liste qu'il contient, "
-              "utiliser « le champ \"<chemin>\" de l'oracle \"<requête>\" compte <n> élément(s) »"
-              if isinstance(reponse, dict) else "")
     with _source_du_constat("oracle"):
         constater(obtenu == n,
-                 f"l'oracle « {requete} » renvoie {obtenu} résultat(s), {n} attendu(s){indice}")
+                 f"l'oracle « {requete} » renvoie {obtenu} résultat(s), {n} attendu(s)")
 
 
 def oracle_champ_compte(context, chemin: str, requete: str, n: int) -> None:
@@ -3532,8 +3556,31 @@ def oracle_champ_vaut(context, chemin: str, requete: str, valeur: str) -> None:
         except (KeyError, IndexError, TypeError) as exc:
             constater(False, f"le champ « {chemin} » de l'oracle « {requete} » est introuvable : {exc}")
             return
-        constater(str(obtenu) == valeur,
+        if isinstance(obtenu, (list, dict)):
+            constater(False, f"le champ « {chemin} » de l'oracle « {requete} » n'est pas une valeur simple "
+                             f"({type(obtenu).__name__}) : il ne se compare pas à « {valeur} »")
+            return
+        constater(_valeurs_egales(obtenu, valeur),
                  f"le champ « {chemin} » de l'oracle « {requete} » vaut « {obtenu} », « {valeur} » attendu")
+
+
+def _valeurs_egales(obtenu, attendu: str) -> bool:
+    """Lot VH-04 (point 3) : comparaison TYPÉE d'une valeur JSON de l'oracle avec le texte du Gherkin.
+
+    Avant : `str(obtenu) == attendu` — `12.0` contre « 12 », `True` contre « true » : des faux rouges sur une application saine.
+    Booléen ↔ `true`/`false` ; nombre ↔ nombre décimal (virgule acceptée) ; `null` ↔ `null` ; sinon texte exact. Jamais plus
+    large : « 12 » ne vaut pas « 12 € », « True » ne vaut pas « vrai »."""
+    texte = attendu.strip()
+    if isinstance(obtenu, bool):
+        return texte.lower() == ("true" if obtenu else "false")
+    if obtenu is None:
+        return texte.lower() == "null"
+    if isinstance(obtenu, (int, float)):
+        try:
+            return decimal.Decimal(str(obtenu)) == decimal.Decimal(texte.replace(",", "."))
+        except decimal.InvalidOperation:
+            return False
+    return str(obtenu) == attendu
 
 
 def _resoudre_compte(context, libelle: str) -> dict:
