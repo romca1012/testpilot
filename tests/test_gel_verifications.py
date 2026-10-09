@@ -1,8 +1,10 @@
-"""Lot VH-03 (V3) — une réparation corrige OÙ le test lit l'application, jamais CE QU'IL VÉRIFIE (audit du 2026-10-08).
+"""Lot VH-03 (V3) — une réparation ne touche JAMAIS à ce qu'un test vérifie (audit et revue du 2026-10-08).
 
 Avant : le gel du `.feature` n'existait que dans le prompt de réparation ; l'agent pouvait réécrire un `Alors`, une valeur
-attendue ou une table d'Exemples, et le test « réparé » passait. Ici : refus MÉCANIQUE à l'écriture pendant une réparation,
-et une correction automatique qui touche une vérification n'est plus approuvée d'office.
+attendue ou une table d'Exemples, et le test « réparé » passait. Ici : refus MÉCANIQUE à l'écriture pendant une réparation, y
+compris par les contournements relevés en revue (sélecteur vidé de sa valeur, nouvelle vérification qui l'emporte, constante ou
+helper réaffecté, valeur écrite par un `Quand` puis relue). Une correction automatique qui touche une vérification reste
+approuvée selon la décision du 2026-09-16 (question D30 ouverte), mais le dit en tête du résumé de sa version.
 """
 
 from __future__ import annotations
@@ -15,8 +17,11 @@ from testpilot.generation.tools import write as w
 
 FEATURE = """# language: fr
 Fonctionnalité: Panier
-  Scénario: Total TTC
+  Contexte:
     Soit j'ouvre la page "/produits"
+    Alors la page affiche le texte "Produits"
+
+  Scénario: Total TTC
     Quand je clique sur le bouton "Ajouter"
     Alors la page affiche le texte "129,51"
     Et la page affiche le texte "TVA 19,76"
@@ -29,15 +34,29 @@ Fonctionnalité: Panier
       | 2 | 99,80 |
 """
 
-STEPS = """from behave import then
+STEPS = """from behave import given, when, then
 from _base_helpers import constater
+
+ATTENDU_MIN = 1
 
 def _lire_total(page):
     return page.locator('#total').inner_text(timeout=5000)
 
+@when('je relève les options')
+def step_impl(context):
+    context.options = context.page.locator('#options').all_inner_texts()
+
+@when('je clique sur Valider')
+def step_impl(context):
+    context.page.locator('#valider').click(timeout=5000)
+
 @then('le total vaut "{montant}"')
-def step_total(context, montant):
+def step_impl(context, montant):
     constater(_lire_total(context.page) == montant, 'total')
+
+@then('il y a des options')
+def step_impl(context):
+    constater(len(context.options) >= ATTENDU_MIN, 'options')
 """
 
 
@@ -49,6 +68,7 @@ def step_total(context, montant):
     ('    Et la page affiche le texte "TVA 19,76"\n', "", "vérifications"),
     ("      | 2 | 99,80 |", "      | 2 | 100,00 |", "Exemples"),
     ("Scénario: Total TTC", "Scénario: Total", "disparu"),
+    ('    Alors la page affiche le texte "Produits"\n', "", "Contexte"),
 ])
 def test_falsifiable_toucher_a_une_verification_du_feature_est_detecte(avant, apres, attendu):
     ecarts = gel.feature_modifiee(FEATURE, FEATURE.replace(avant, apres))
@@ -56,9 +76,8 @@ def test_falsifiable_toucher_a_une_verification_du_feature_est_detecte(avant, ap
     assert any(attendu in e for e in ecarts), ecarts
 
 
-def test_reparer_la_navigation_ou_une_action_reste_permis():
-    repare = FEATURE.replace('Soit j\'ouvre la page "/produits"', 'Soit j\'ouvre la page "/produits?page=1"').replace(
-        'Quand je clique sur le bouton "Ajouter"', 'Quand je clique sur le bouton "Ajouter au panier"')
+def test_reparer_une_action_du_feature_reste_permis():
+    repare = FEATURE.replace('Quand je clique sur le bouton "Ajouter"', 'Quand je clique sur le bouton "Ajouter au panier"')
 
     assert gel.feature_modifiee(FEATURE, repare) == []
 
@@ -67,28 +86,52 @@ def test_ajouter_un_scenario_reste_permis():
     assert gel.feature_modifiee(FEATURE, FEATURE + "\n  Scénario: Nouveau\n    Alors la page affiche le texte \"x\"\n") == []
 
 
-# ── _steps.py ─────────────────────────────────────────────────────────────────────────────────────────────
+# ── _steps.py : contournements relevés en revue ──────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize("avant, apres", [
+    # la vérification elle-même
     ("constater(_lire_total(context.page) == montant, 'total')", "constater(True, 'total')"),
-    ("constater(_lire_total(context.page) == montant, 'total')", "constater(_lire_total(context.page) != '', 'total')"),
-    ("return page.locator('#total').inner_text(timeout=5000)", "return montant_attendu"),  # helper appelé par un @then
+    # même un sélecteur ou un délai d'une vérification : il change ce qu'elle prouve
+    ("page.locator('#total')", "page.locator('body')"),
+    ("inner_text(timeout=5000)", "inner_text(timeout=60000)"),
+    # helper, constante de module lue par une vérification
+    ("return page.locator('#total').inner_text(timeout=5000)", "return '129,51'"),
+    ("ATTENDU_MIN = 1", "ATTENDU_MIN = 0"),
+    # valeur écrite par un Quand puis relue par un Alors
+    ("context.options = context.page.locator('#options').all_inner_texts()", "context.options = ['x']"),
+    # libellé de la vérification
     ("@then('le total vaut \"{montant}\"')", "@then('le total vaut environ \"{montant}\"')"),
 ])
-def test_falsifiable_toucher_a_une_fonction_qui_verifie_est_detecte(avant, apres):
+def test_falsifiable_toucher_a_ce_qui_verifie_est_detecte(avant, apres):
+    assert STEPS.count(avant) == 1, avant
     assert gel.steps_modifies(STEPS, STEPS.replace(avant, apres))
 
 
-def test_reparer_un_selecteur_ou_un_delai_reste_permis():
-    repare = STEPS.replace("page.locator('#total')", "page.locator('[data-test=total]')").replace(
-        "timeout=5000", "timeout=15000")
+def test_falsifiable_une_nouvelle_verification_qui_l_emporterait_est_detectee():
+    """Revue : dans Behave, une nouvelle définition placée AVANT l'ancienne gagne — sans `AmbiguousStep`."""
+    ajout = STEPS.replace("@then('le total vaut", "@then('le total vaut \"42\"')\ndef step_impl(context):\n"
+                          "    constater(True, 'x')\n\n@then('le total vaut", 1)
+
+    assert any("nouvelle vérification" in e for e in gel.steps_modifies(STEPS, ajout))
+
+
+def test_falsifiable_un_helper_reaffecte_au_niveau_module_est_detecte():
+    assert gel.steps_modifies(STEPS, STEPS + "\n_lire_total = lambda page: '129,51'\n")
+
+
+def test_falsifiable_un_step_decore_par_step_est_gele():
+    code = "from behave import step\n@step('le total est bon')\ndef s(context):\n    constater(context.page.title() == 'A', 't')\n"
+
+    assert gel.steps_modifies(code, code.replace("== 'A'", "!= ''"))
+
+
+def test_reparer_un_step_d_action_reste_permis():
+    """Ce que la réparation est là pour faire : corriger l'action d'un `Quand`."""
+    repare = STEPS.replace("context.page.locator('#valider').click(timeout=5000)",
+                           "context.page.get_by_role('button', name='Valider').click(timeout=15000)")
 
     assert gel.steps_modifies(STEPS, repare) == []
-
-
-def test_supprimer_une_fonction_qui_verifie_est_detecte():
-    assert any("disparu" in e for e in gel.steps_modifies(STEPS, STEPS.split("@then")[0]))
 
 
 # ── Branché dans les outils d'écriture (réparation) ───────────────────────────────────────────────────────
@@ -111,8 +154,8 @@ def test_falsifiable_en_reparation_affaiblir_un_constat_est_refuse_a_l_ecriture(
     assert not sortie.ok and "VERIFICATION_GELEE" in sortie.observation
 
 
-def test_en_reparation_corriger_un_selecteur_est_ecrit(tmp_path):
-    sortie = w.write_steps_file(_ctx_reparation(tmp_path), STEPS.replace("'#total'", "'[data-test=total]'"))
+def test_en_reparation_corriger_une_action_est_ecrit(tmp_path):
+    sortie = w.write_steps_file(_ctx_reparation(tmp_path), STEPS.replace("'#valider'", "'[data-test=valider]'"))
 
     assert sortie.ok, sortie.observation
 
@@ -128,12 +171,11 @@ def test_l_agent_de_reparation_arme_le_gel_avec_la_version_de_reference(monkeypa
 
     from testpilot.generation import repair_agent
 
-    monkeypatch.setattr(repair_agent.config, "GENERATED_DIR", tmp_path)
-    (tmp_path / "m.feature").write_text(FEATURE, encoding="utf-8")
     vus = {}
     monkeypatch.setattr(repair_agent, "run_loop", lambda **k: vus.setdefault("ctx", k["ctx"]))
 
-    repair_agent.propose_fix(module_name="m", scenarios=[], failures=[], steps_content=STEPS, llm=SimpleNamespace())
+    repair_agent.propose_fix(module_name="m", scenarios=[], failures=[], steps_content=STEPS, feature_content=FEATURE,
+                             llm=SimpleNamespace())
 
     assert vus["ctx"].gel_feature == FEATURE and vus["ctx"].gel_steps == STEPS
 

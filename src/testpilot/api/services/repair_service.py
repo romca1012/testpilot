@@ -51,6 +51,7 @@ from testpilot.store.repositories import (
     ReviewRepo,
     VersionRepo,
 )
+from testpilot.verdict import review_gate
 from testpilot.verdict.status import EXEC_SUCCESS, FUNC_CONFORME, derive_verdict
 
 logger = logging.getLogger(__name__)
@@ -436,6 +437,7 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             # Le fichier ACTUEL : `write_steps_file` le REMPLACE, l'agent doit donc partir de
             # son contenu et le rendre entier — sans lui, il réécrit de mémoire et tronque.
             steps_content=version["steps_content"] or "",
+            feature_content=version.get("feature_content") or "",
             verified_fields=json.loads(version.get("verified_fields") or "{}"),
             # Lot VH-05 : l'annuaire du projet, pour les MÊMES contrôles des littéraux qu'à la génération.
             modele=domain_model.charger_modele(projet_du_cas) if projet_du_cas else None,
@@ -489,7 +491,7 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             feature_content=proposal.feature_content or version["feature_content"],
             steps_content=proposal.steps_content or version["steps_content"],
             change_summary=proposal.summary[:500] or "Réparation automatique",
-            created_by="repair-agent",
+            created_by=review_gate.AUTEUR_REPARATION,
             verified_fields=json.dumps(proposal.verified_fields, ensure_ascii=False),
             title=version.get('title') or '',
             preconditions=version.get('preconditions') or '',

@@ -196,7 +196,7 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
                 cost_tracker: CostTracker | None = None,
                 max_iterations: int | None = None,
                 verified_fields: dict[str, list[str]] | None = None,
-                modele: dict | None = None) -> RepairProposal:
+                modele: dict | None = None, feature_content: str = "") -> RepairProposal:
     """Une tentative de correction. Ne lance JAMAIS le test réel (design (b)).
 
     ⚠️ **`cost_tracker` doit être PARTAGÉ entre les tentatives d'un même cas.** Sans lui, on en
@@ -237,8 +237,14 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
     )
     # Lot VH-03 (V3) : ce que la version de référence VÉRIFIE est gelé pendant la réparation (contrôle à l'écriture).
     ctx.gel_steps = steps_content or None
-    reference_feature = config.GENERATED_DIR / f"{module_name}.feature"
-    ctx.gel_feature = reference_feature.read_text(encoding="utf-8") if reference_feature.exists() else None
+    # Référence = la version de la BASE (revue : le disque peut manquer, et le gel se serait désactivé sans bruit).
+    if feature_content:
+        ctx.gel_feature = feature_content
+    else:
+        reference_feature = config.GENERATED_DIR / f"{module_name}.feature"
+        ctx.gel_feature = reference_feature.read_text(encoding="utf-8") if reference_feature.exists() else None
+        if ctx.gel_feature is None:
+            logger.warning("[repair] %s : aucun .feature de référence — le gel du Gherkin est inactif", module_name)
     # Lot VH-05 (revue du 2026-10-08) : une réparation passe par les MÊMES contrôles des littéraux que la génération.
     from testpilot.generation import litteraux_observes
     litteraux_observes.brancher_controles(ctx, connector_type, modele, config.BEHAVE_RUNTIME_DIR)
