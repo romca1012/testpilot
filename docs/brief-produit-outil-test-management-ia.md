@@ -189,6 +189,10 @@ Les six mécanismes qui y mènent, dans l'ordre de rendement décroissant :
    **enrichir l'annuaire du projet**, pour que le résolveur ne puisse plus jamais produire cette
    valeur. **C'est le seul moyen d'atteindre les règles écrites en JavaScript**, invisibles au crawl
    (§6). Conséquence : une même cause ne se reproduit pas, et le taux décroît à chaque exécution.
+   > *Amendement du 2026-10-09 (décision D32).* **Sauf quand la valeur refusée est citée par le métier
+   > validé du cas** : l'application refuse alors ce que le métier demande — un bug probable, ou un métier à
+   > corriger. L'apprendre d'office ferait éviter la valeur aux tests suivants et cacherait le bug. Ce refus
+   > attend donc la décision d'un humain (écran « Cas à relire ») et ne s'applique pas d'ici là.
 2. **Rejeu immédiat après correction**, dans le même run, borné par le budget de réparation existant.
    L'incident reste tracé, il cesse d'être le résultat.
 3. **Préconditions montées par API/RPC, pas par l'interface.** L'interface ne pilote que le
