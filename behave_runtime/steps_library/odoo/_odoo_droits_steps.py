@@ -7,11 +7,25 @@ dupliqué ici) : refus d'accès et société de travail (multi-société).
 
 from __future__ import annotations
 
+import re
+
 from behave import given, then, when
 
 from _base_helpers import ElementIntrouvableError, constater, constater_visible
 from _odoo_steps import _exiger_enregistrement_en_contexte
 from _selecteurs import odoo_attendre_inactif, selecteurs
+
+_REFUS_D_ACCES = re.compile(r"\bAccess(Error|Denied)\b")
+
+
+def _est_un_refus_d_acces(exc: BaseException) -> bool:
+    """Le serveur a refusé PAR DROITS : classe `AccessError`/`AccessDenied`, ou nom d'exception Odoo transmis par l'erreur RPC
+    (`info["data"]["name"]`, ou son message, écrit par le serveur — jamais par l'agent)."""
+    if type(exc).__name__ in ("AccessError", "AccessDenied"):
+        return True
+    info = getattr(exc, "info", None)
+    nom = ((info or {}).get("data") or {}).get("name", "") if isinstance(info, dict) else ""
+    return bool(_REFUS_D_ACCES.search(str(nom)) or _REFUS_D_ACCES.search(str(exc)))
 
 
 @then('l\'action "{methode}" est refusée pour cet utilisateur')
@@ -34,7 +48,12 @@ def step_action_refusee(context, methode):
     refuse = False
     try:
         getattr(Model.browse(context.last_record_ids[0]), methode)()
-    except Exception:
+    except Exception as exc:
+        # Lot VH-04 (audit V7) : seul un REFUS DE DROITS du serveur prouve le refus. Avant, TOUTE exception comptait — une
+        # méthode mal orthographiée, une panne RPC, un enregistrement verrouillé passaient pour « l'action est refusée ».
+        # Toute autre erreur remonte telle quelle (le test n'a rien prouvé : erreur technique, jamais un vert).
+        if not _est_un_refus_d_acces(exc):
+            raise
         refuse = True
     constater(refuse,
              f"L'appel RPC direct de '{methode}' a RÉUSSI malgré le refus visible à l'écran — "
