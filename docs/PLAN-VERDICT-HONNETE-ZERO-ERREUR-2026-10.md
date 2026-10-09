@@ -40,6 +40,10 @@ accepté ; coût mesuré < 1 € par cas ; 100 % des `conforme — preuve forte`
 | D26 | L'outil peut-il **exécuter** pendant la génération (avant la relecture), sur une instance bac à sable remise à zéro ? | **Oui sous conditions** : instance déclarée « bac à sable » dans le projet, remise à zéro avant chaque enregistrement, jamais sur une instance de production (garde `ODOO_ENV=prod` intacte) | Lot 7 |
 | D27 | Seuils de fin du plan (§1) | **Oui** tels quels | Lot 10 |
 | D28 | Nouvelles valeurs affichées : confiance `après réparation`, niveau de preuve `forte`/`faible` | **Oui** (migration SQLite + Alembic + `schema_sa` + libellés FR serveur et frontend) | Lots 3, 8 |
+| D29 | Un constat échoué dans un scénario passé (échec avalé par le test) | **`indeterminé`**, cause `constat_echoue_ignore` (prolonge D16) | Lot 2 — appliquée le 2026-10-08, **à confirmer** |
+| D30 | La correction automatique (avant tout run) peut-elle modifier une vérification et rester approuvée d'office ? Conflit : le plan dit « même gel que la réparation » ; la décision du porteur du 2026-09-16 dit « elle corrige et s'auto-approuve » (elle sert justement à renforcer une assertion creuse) | Recommandation : **garder l'auto-approbation** quand la correction ne fait que renforcer (une vérification creuse → une vérification qui lit l'application, déjà exigé par les gardes VH-02), **la refuser** si elle supprime ou modifie une vérification déjà réelle. En attendant : comportement du 2026-09-16 conservé, la modification est écrite en tête du résumé de version | Lot 3 point 6 — **ouverte** |
+| D31 | Éditer le métier (`résultat attendu`, étapes) sans régénérer garde l'ancien Gherkin approuvé d'office (amendement §4.3 du 2026-07-21) : le cas peut sortir `conforme` contre une attente qui n'est plus testée | Recommandation : si `résultat attendu` ou les étapes changent, la nouvelle version **reste à relire** (ou propose une régénération) ; titre/préconditions seuls : approbation d'office conservée. Déjà fait (revue) : un code RÉPARÉ non relu n'est jamais approuvé d'office par une édition du métier | Lot 3 point 4 — **ouverte** |
+| D32 | Un refus serveur (valeur rejetée) est appris d'office et le résolveur l'évite ensuite (§5bis n°1) : si le refus est un bug de l'application, il est contourné au run suivant | Recommandation : apprendre, mais marquer la règle « à confirmer » et ne pas l'appliquer à une valeur conforme à la spec tant qu'un humain ne l'a pas confirmée | Lot 3 point 5 — **ouverte** |
 
 Statut des décisions (2026-10-08) : **D23, D24, D25, D27, D28 validées** par le porteur ; **D26 en attente** (environnements de test remis à zéro).
 
@@ -319,4 +323,18 @@ comptés à tort comme exécutés).
   (annuaire inactif hors web) ; 2 refus `CONSTAT_SANS_LECTURE` mesurés par la revue sur l'ancien corpus Odoo local portaient sur
   un attribut `current_record_id` jamais posé par le harnais — refus justifié (le test lisait un attribut inexistant).
 - **Coût (§9)** : le prompt gagne deux lignes ; les refus peuvent ajouter des tours d'agent — à mesurer à la prochaine campagne.
+
+### Lot VH-03 — état au 2026-10-09
+
+| Point | Statut | Preuve |
+|---|---|---|
+| 1. Gel des vérifications en réparation | **fait**, gel TOTAL (aucune exception d'adressage, revue) : `Alors`, Exemples, Contexte ; fonctions `@then`/`@step` par décorateur ; aucune nouvelle vérification ; helpers, constantes et `context.X` écrits par un `Quand` et lus par une vérification ; référence = version de la base | `tests/test_gel_verifications.py` |
+| 2. Résultat d'une version réparée non relue | **fait** : confiance `apres_reparation` (migration 59, Alembic `b7e3c1a9d405`), jamais le résultat du cas (run ET erreur), `last_verdict_version_id` corrigé | `tests/test_confiance_apres_reparation.py` |
+| 3. Échec sous un `Alors` | **fait côté circuit** : jamais de réparation (confirmation humaine) ; une assertion en échec n'importe où arrête. Le verdict reste `technical_error` (pas `indeterminé`) : choix assumé, un échec technique n'est jamais `conforme` | `tests/test_circuit_alors.py` |
+| 4. Édition du métier | **partiel** : un code réparé non relu n'est plus approuvé d'office (bloquant de la revue) ; le reste → **D31** | idem |
+| 5. Refus appris | **non fait** → **D32** | — |
+| 6. Gel pour la correction | **non fait** (conflit avec la décision du 2026-09-16) → **D30** ; la modification est écrite dans l'historique | `test_une_correction_qui_touche_une_verification_le_dit_dans_l_historique` |
+
+Limites assumées : une vérification d'un helper de la BIBLIOTHÈQUE n'est pas concernée (code du socle, hors génération) ; le gel
+compare des empreintes d'AST, un renommage de variable dans un `@then` est refusé (sévère, jamais laxiste).
 

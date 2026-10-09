@@ -790,7 +790,7 @@ class CaseGroupRepo:
 _CASE_SELECT = (
     "SELECT tc.*, m.name AS module_name, m.project_id AS project_id, p.name AS project_name,"
     " g.title AS group_title,"
-    " (SELECT e.version_id FROM execution e WHERE e.test_case_id = tc.id"
+    " (SELECT e.version_id FROM execution e WHERE e.test_case_id = tc.id AND e.confiance != 'apres_reparation'"
     "  ORDER BY e.id DESC LIMIT 1) AS last_verdict_version_id"
     " FROM test_case tc"
     " LEFT JOIN module m ON tc.module_id = m.id"

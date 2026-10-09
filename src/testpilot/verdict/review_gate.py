@@ -73,3 +73,15 @@ def auto_approve_metier(review_repo, *, case_id: int, version_id: int,
 # avec la migration 25 : il se présentait comme un cycle de vie sans en être un (aucun humain ne
 # pouvait le poser), et il faisait doublon avec ce que les exécutions disent déjà. `test_case.etat`
 # le remplace — écrit par un humain, et par personne d'autre.
+
+
+# Auteur des versions écrites par l'agent de RÉPARATION — lu par `run_service` (le run d'une telle version non relue n'est jamais
+# le résultat du cas) et par l'édition du métier (elle n'approuve pas d'office un code réparé non relu). Constante PARTAGÉE :
+# trois copies littérales existaient, un renommage en aurait désactivé une sans bruit (revue du lot VH-03).
+AUTEUR_REPARATION = "repair-agent"
+
+
+def version_reparee_non_relue(review_repo, version: dict | None) -> bool:
+    """Une version écrite par l'agent de réparation et pas (encore) approuvée par un humain."""
+    return bool(version) and version.get("created_by") == AUTEUR_REPARATION and not evaluate_gate(
+        review_repo, version["id"]).allowed

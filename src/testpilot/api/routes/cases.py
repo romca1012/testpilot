@@ -419,6 +419,11 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
     cases = CaseRepo(conn)
     if cases.get(case_id) is None:
         raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
+    # Lot VH-03 (revue, bloquant) : l'édition du métier recopie le Gherkin et les steps de la version COURANTE. Si ce code a
+    # été réécrit par l'agent de réparation sans être relu, l'approuver d'office le « blanchirait » : la nouvelle version
+    # hérite de son état de relecture (à relire), l'amendement §4.3 continue de s'appliquer à tout code déjà relu.
+    source_non_relue = review_gate.version_reparee_non_relue(
+        ReviewRepo(conn), VersionRepo(conn).get(cases.get(case_id).get("current_version_id") or 0))
     try:
         version_id = cases.update_metier(
             case_id, title=body.title, preconditions=body.preconditions,
@@ -429,7 +434,7 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
         raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
     except VersionConflict as exc:
         raise erreurs.ErreurMetier("conflit_edition", str(exc)) from exc
-    if version_id is not None:
+    if version_id is not None and not source_non_relue:
         review_gate.auto_approve_metier(ReviewRepo(conn), case_id=case_id, version_id=version_id,
                                         repair_budget=config.REPAIR_BUDGET_DEFAULT)
     cas_a_jour = cases.get(case_id)

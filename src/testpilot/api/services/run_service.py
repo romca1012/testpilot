@@ -531,9 +531,7 @@ def _version_reparee_non_relue(conn, execution_id) -> bool:
     version_id = ligne[0] if ligne else None
     if version_id is None:
         return False
-    version = VersionRepo(conn).get(version_id) or {}
-    return (version.get("created_by") == "repair-agent"
-            and not review_gate.evaluate_gate(ReviewRepo(conn), version_id).allowed)
+    return review_gate.version_reparee_non_relue(ReviewRepo(conn), VersionRepo(conn).get(version_id))
 
 
 def _ecrire_erreur(conn, execution_id: int, case_id: int, message: str) -> bool:
@@ -552,9 +550,11 @@ def _ecrire_erreur(conn, execution_id: int, case_id: int, message: str) -> bool:
             comment="Le test n'a pas pu s'exécuter techniquement avant même de commencer à "
                     "vérifier l'application — rien n'a donc pu être constaté sur son "
                     "fonctionnement.")
-        CaseRepo(conn).update_last_outcome(
-            case_id, execution_status=EXEC_TECHNICAL_ERROR,
-            functional_status=FUNC_INDETERMINE, executed_at=now_iso())
+        # Lot VH-03 (D28, revue) : une tentative de réparation qui plante ne remplace pas non plus le résultat du cas.
+        if not _version_reparee_non_relue(conn, execution_id):
+            CaseRepo(conn).update_last_outcome(
+                case_id, execution_status=EXEC_TECHNICAL_ERROR,
+                functional_status=FUNC_INDETERMINE, executed_at=now_iso())
         return True
     except Exception:
         logger.exception("[run] échec de la clôture d'erreur pour %s", execution_id)
