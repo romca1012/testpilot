@@ -348,8 +348,33 @@ def _ouvrir_contexte_navigateur(context, *, avec_storage_state: bool = False) ->
         # `contexte_navigateur_fige`, qui doit rester identique à celui de l'exploration.
         kwargs["base_url"] = _WEB_URL
     context._browser_context = context.browser.new_context(**kwargs)
+    _surveiller_saisie_de_mot_de_passe(context)
     _demarrer_trace(context)
     context.page = context._browser_context.new_page()
+
+
+# Lot VH-04 (V8) : toute saisie dans un champ mot de passe, quelle que soit la page, prévient le harnais (signal du DOM).
+_JS_SAISIE_MOT_DE_PASSE = """
+document.addEventListener('input', (e) => {
+  const cible = e.target;
+  if (cible && cible.type === 'password' && typeof window.__tp_mot_de_passe_saisi === 'function') {
+    window.__tp_mot_de_passe_saisi();
+  }
+}, true);
+"""
+
+
+def _surveiller_saisie_de_mot_de_passe(context) -> None:
+    """Lot VH-04 (V8) : la garde de session (`garde_de_session`) doit savoir si le TEST a saisi un mot de passe — un test de
+    connexion se retrouve légitimement sur la page de connexion. Signal du runtime (événement `input` du DOM), jamais le texte
+    du test ; une saisie faite par le harnais (connexion automatique) est remise à zéro par `noter_session_ouverte`.
+    Best-effort : sans ce signal, la garde suppose qu'aucun mot de passe n'a été saisi."""
+    try:
+        context._browser_context.expose_binding(
+            "__tp_mot_de_passe_saisi", lambda _source: setattr(context, "_tp_mot_de_passe_saisi", True))
+        context._browser_context.add_init_script(_JS_SAISIE_MOT_DE_PASSE)
+    except Exception as exc:
+        print(f"[session] surveillance de la saisie du mot de passe impossible : {exc}")
 
 
 def reouvrir_contexte_navigateur(context) -> None:
@@ -655,6 +680,10 @@ def before_step(context, step):
     # Lot 07d : chaque ACTION pose un repère — « la requête … répond », « un nouvel onglet s'ouvre » ne jugent que ce qui l'a suivi.
     if (getattr(step, "step_type", "") or "") in ("given", "when"):
         poser_repere_action(context)
+    # Lot VH-04 (V8, G4) : une session perdue avant un `Alors` bloque le test — jamais un vert sur la page de connexion. Évaluée
+    # ici, appliquée au premier constat du step (voir `armer_garde_de_session` : Behave ne classe pas une erreur de crochet).
+    from _base_helpers import armer_garde_de_session
+    armer_garde_de_session(context, alors=(getattr(step, "step_type", "") or "") == "then")
 
 
 def _fonction_du_step(context, step):
@@ -785,8 +814,11 @@ def before_scenario(context, scenario):
     use_fixture(playwright_browser, context)
     _capturer_reponse_formulaire(context)
     # Lot 07d : réponses réseau, boîtes de dialogue et onglets du scénario (tous onglets), numérotés — il faut observer AVANT l'action.
-    from _base_helpers import installer_les_observateurs
+    from _base_helpers import armer_garde_de_session, installer_les_observateurs, noter_session_ouverte
     installer_les_observateurs(context)
+    # Lot VH-04 (V8) : la session chargée par le harnais (`storage_state`) est la référence de la garde de session.
+    noter_session_ouverte(context)
+    armer_garde_de_session(context, alors=False)
     _marquer_si_scenario_negatif(context, scenario)
 
 
