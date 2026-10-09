@@ -280,6 +280,8 @@ def step_ouvrir_page(context, chemin):
 
 @then('la page affiche le texte "{texte}"')
 def step_page_affiche_texte(context, texte):
+    """Le texte doit être affiché TEL QUEL : mot entier, majuscules respectées ; un morceau de mot ou de nombre ne suffit pas
+    (« 129,51 » n'est pas dans « 1 129,51 € »). Recopie le texte exactement comme l'écran l'affiche."""
     page_affiche_texte(context.page, texte)
 
 
