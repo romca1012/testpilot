@@ -353,6 +353,8 @@ class Artefacts:
     erreur: str = ""
     module: str = ""
     resume: str = ""  # réparation : ce que l'agent DIT avoir fait (information pour un humain, jamais un signal)
+    # Lot VH-04 : refus des gardes d'écriture pendant cette génération, par code (`TP_REFUS_ECRITURE_FILE`, posé par le banc).
+    refus_ecriture: dict[str, int] = field(default_factory=dict)
 
     @property
     def empreintes(self) -> dict[str, str]:
@@ -395,6 +397,7 @@ class EssaiConsigne:
     erreur: str
     cout_usd: float | None
     empreintes: dict[str, str]
+    refus_ecriture: dict[str, int] = field(default_factory=dict)  # lot VH-04 : refus des gardes d'écriture, par code
 
 
 @dataclass
@@ -545,7 +548,8 @@ def executer_campagne(
                                           "le cumul du plafond, mais « non consigné » dans le rapport — jamais 0)")
             jouable = artefacts.genere_ok and bool(artefacts.fichiers)
             campagne.essais.append(EssaiConsigne(cas, essai, jouable, artefacts.erreur, cout_essai,
-                                                 artefacts.empreintes if jouable else {}))
+                                                 artefacts.empreintes if jouable else {},
+                                                 dict(getattr(artefacts, "refus_ecriture", None) or {})))
             journal(f"{cas} essai {essai} : {'généré' if jouable else 'GÉNÉRATION ÉCHOUÉE'} "
                     f"({'coût inconnu' if cout_essai is None else f'{cout_essai:.3f} $'})")
             traces: dict[str, dict | None] = {}
@@ -598,6 +602,11 @@ def _reparer_et_rejouer(campagne: Campagne, reparer, jouer, artefacts: Artefacts
         if raison:
             campagne.reparations.append(ReparationConsignee(cas, essai, False, False, f"plafond de coût : {raison}", tentative=rang))
             journal(f"  RÉPARATION {rang} non tentée ({raison})")
+            break
+        refus_du_circuit = decision_du_circuit(trace_courante)
+        if refus_du_circuit:
+            campagne.reparations.append(ReparationConsignee(cas, essai, False, False, refus_du_circuit, tentative=rang))
+            journal(f"  RÉPARATION {rang} non tentée ({refus_du_circuit[:120]})")
             break
         try:
             reparee = reparer(courant, Jeu(verdict=obs_saine.obtenu, cause=obs_saine.cause, detail=obs_saine.detail,
@@ -954,11 +963,21 @@ def rendre_markdown(campagne: Campagne, indicateurs: dict, contexte: dict) -> st
                    "| Cas | Variante | Essai | Attendu | Obtenu | Cause |", "|---|---|---|---|---|---|"]
         lignes += [f"| {x['cas']} | {x['variante']} | {x['essai']} | {x['attendu']} | {x['obtenu']} | {x['cause'] or '—'} |"
                    for x in i["ecarts"]]
-    lignes += ["", "## Génération par essai", "", "| Cas | Essai | Généré | Coût ($) | Empreinte du test (sha256) |", "|---|---|---|---|---|"]
+    total_refus: Counter = Counter()
+    for t in campagne.essais:
+        total_refus.update(t.refus_ecriture or {})
+    if total_refus:
+        lignes += ["", "## Refus des gardes d'écriture pendant la génération (lot VH-04)", "",
+                   "Chaque refus renvoie l'agent corriger dans la même génération : il coûte des tours, il ne casse rien.", "",
+                   "| Code du refus | Nombre |", "|---|---|"]
+        lignes += [f"| `{code}` | {n} |" for code, n in total_refus.most_common()]
+    lignes += ["", "## Génération par essai", "",
+               "| Cas | Essai | Généré | Coût ($) | Refus à l'écriture | Empreinte du test (sha256) |", "|---|---|---|---|---|---|"]
     for t in campagne.essais:
         empreinte_globale = empreinte("".join(f"{n}:{h}" for n, h in sorted(t.empreintes.items()))) if t.empreintes else "—"
+        refus = ", ".join(f"{c} ×{n}" for c, n in sorted((t.refus_ecriture or {}).items())) or "—"
         lignes.append(f"| {t.cas} | {t.essai} | {'oui' if t.genere else 'NON : ' + (t.erreur[:80] or '?')} | "
-                      f"{'non consigné' if t.cout_usd is None else f'{t.cout_usd:.3f}'} | `{empreinte_globale[:16]}` |")
+                      f"{'non consigné' if t.cout_usd is None else f'{t.cout_usd:.3f}'} | {refus} | `{empreinte_globale[:16]}` |")
     return "\n".join(lignes) + "\n"
 
 
@@ -1135,6 +1154,55 @@ def executer_behave(dossier: Path, module: str, connexion: dict[str, str], proje
             "trace": trace_de_l_echec(resultat)}
 
 
+# Nom DUPLIQUÉ de `testpilot.generation.tools.write.REFUS_ECRITURE_FILE_ENV` (le banc n'importe pas le paquet en mode à sec) :
+# un test d'accord les compare.
+_REFUS_ECRITURE_FILE_ENV = "TP_REFUS_ECRITURE_FILE"
+
+
+def lire_refus_d_ecriture(chemin: Path) -> dict[str, int]:
+    """Les refus relevés pendant une génération, comptés par code (`{}` si aucun ou fichier absent) — pur, testé."""
+    compte: Counter = Counter()
+    try:
+        lignes = Path(chemin).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+    for ligne in lignes:
+        try:
+            compte[str(json.loads(ligne).get("code") or "AUTRE")] += 1
+        except (ValueError, AttributeError):
+            compte["ILLISIBLE"] += 1
+    return dict(compte)
+
+
+def decision_du_circuit(trace: dict | None) -> str:
+    """`""` si le PRODUIT tenterait la réparation de cet échec, sinon sa raison — les trois règles d'arrêt du circuit
+    (`repair_circuit.evaluate`, VH-03) : une vérification en échec n'importe où, un échec sous un « Alors », un vrai bug.
+
+    Banc base-4 (2026-10-09) : 0,24 $ dépensés en réparations que le produit n'aurait jamais tentées — échec sous un « Alors »,
+    où le gel des vérifications interdit justement toute correction. Signaux du runtime consignés dans la trace seulement.
+    Écart assumé : une origine INDÉTERMINÉE (le produit demanderait une confirmation humaine) est encore tentée ici, comme
+    avant — sinon le banc ne mesurerait plus l'agent de réparation sur ces cas."""
+    from types import SimpleNamespace
+
+    from testpilot.verdict import defect_origin as do
+    from testpilot.verdict import defect_taxonomy as dt
+
+    echecs = [SimpleNamespace(scenario_name=e.get("scenario_name", ""), step_text=e.get("step_text", ""), failure_type="",
+                              raw=e.get("raw", ""), traceback_summary=e.get("traceback_summary", ""),
+                              step_type=e.get("step_type", ""), page_url=e.get("page_url", ""))
+              for e in (trace or {}).get("echecs") or []]
+    if not echecs:
+        return ""
+    if any(dt.classify_failure(e) == dt.ASSERTION_MISMATCH for e in echecs):
+        return "circuit du produit : une vérification a échoué — remontée du constat, aucune réparation"
+    if any((e.step_type or "").lower() == "then" for e in echecs):
+        return "circuit du produit : échec sous un « Alors » — décision humaine, aucune réparation automatique"
+    verdict = do.diagnose(echecs)
+    if verdict is not None and verdict.defect_origin == do.VRAI_BUG:
+        return "circuit du produit : vrai bug détecté — aucune réparation"
+    return ""
+
+
 def trace_de_l_echec(resultat) -> dict | None:
     """Ce que le run a MONTRÉ, sans interprétation : scénarios (nom, statut) et étapes en échec (scénario, étape, message brut).
 
@@ -1148,7 +1216,9 @@ def trace_de_l_echec(resultat) -> dict | None:
         "echecs": [{"scenario_name": getattr(f, "scenario_name", ""), "step_text": getattr(f, "step_text", ""),
                     "raw": (getattr(f, "raw", "") or "")[:1500],
                     "traceback_summary": (getattr(f, "traceback_summary", "") or "")[:500],
-                    "page_url": getattr(f, "page_url", "") or ""}
+                    "page_url": getattr(f, "page_url", "") or "",
+                    # Lot VH-04 : le TYPE du step en échec (signal de Behave) — le circuit du produit en dépend.
+                    "step_type": getattr(f, "step_type", "") or ""}
                    for f in (getattr(reel, "failures", None) or [])],
     }
 
@@ -1219,8 +1289,10 @@ class GenerateurReel:
     def __call__(self, cas: str, essai: int) -> Artefacts:
         self.application.reinitialiser([])  # génération et essai à blanc sur l'application SAINE, état vierge
         commande, sortie = self.commande(cas, essai)
+        # Lot VH-04 : chaque refus d'une garde d'écriture pendant CETTE génération est relevé (un fichier par essai).
+        refus = Path(tempfile.mkdtemp(prefix="banc_refus_")) / "refus.jsonl"
         env = {**os.environ, "TESTPILOT_CAMPAIGN_SOURCE_DATA": str(self.data_dir),
-               "TESTPILOT_SECRET_KEY": self.cle_secrete}
+               "TESTPILOT_SECRET_KEY": self.cle_secrete, _REFUS_ECRITURE_FILE_ENV: str(refus)}
         env.pop("TESTPILOT_DATA_DIR", None)
         dossier = self.racine / ".local-preview" / "qualification" / sortie
         campagne_json, arret_json = dossier / "campagne.json", dossier / "arret_plafond.json"
@@ -1237,7 +1309,9 @@ class GenerateurReel:
             raise ArretCampagne(arret.get("raison", "plafond du moteur de génération"))
         if processus.returncode not in (0, 3) or not rapports:
             raise RuntimeError(f"le moteur de génération a échoué (code {processus.returncode}, aucun rapport)")
-        return artefacts_depuis_rapport(cas, essai, rapports[0])
+        artefacts = artefacts_depuis_rapport(cas, essai, rapports[0])
+        artefacts.refus_ecriture = lire_refus_d_ecriture(refus)
+        return artefacts
 
 
 class ReparateurReel:
