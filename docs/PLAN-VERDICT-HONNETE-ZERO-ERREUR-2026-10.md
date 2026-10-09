@@ -1,6 +1,6 @@
 # Plan — Verdict qui ne ment pas, tests sans erreur technique après génération
 
-Date : 2026-10-08. Statut : **en cours** — D23, D24, D25, D27, D28 validées par le porteur le 2026-10-08 ; D26 en attente.
+Date : 2026-10-08. Statut : **en cours** — D23, D24, D25, D27, D28 validées par le porteur le 2026-10-08 ; D29 à D32 validées le 2026-10-09 ; D26 en attente.
 Sources : `docs/AUDIT-VERDICT-ET-GENERATION-2026-10-08.md` (trous V1-V10, contrôles T1-T10, biais du banc) ;
 `reports/Agent de test honnête et fiable.md` (recherche, plan en 9 étapes) ; campagnes `docs/mesures/banc-agents-2026-10-0*`.
 Ce plan **remplace l'ordre** de Q3 (reste) et Q4 de `PLAN-QUALITE-AGENTS-2026-10.md` ; Q5 (atelier de calcul) vient après.
@@ -40,12 +40,12 @@ accepté ; coût mesuré < 1 € par cas ; 100 % des `conforme — preuve forte`
 | D26 | L'outil peut-il **exécuter** pendant la génération (avant la relecture), sur une instance bac à sable remise à zéro ? | **Oui sous conditions** : instance déclarée « bac à sable » dans le projet, remise à zéro avant chaque enregistrement, jamais sur une instance de production (garde `ODOO_ENV=prod` intacte) | Lot 7 |
 | D27 | Seuils de fin du plan (§1) | **Oui** tels quels | Lot 10 |
 | D28 | Nouvelles valeurs affichées : confiance `après réparation`, niveau de preuve `forte`/`faible` | **Oui** (migration SQLite + Alembic + `schema_sa` + libellés FR serveur et frontend) | Lots 3, 8 |
-| D29 | Un constat échoué dans un scénario passé (échec avalé par le test) | **`indeterminé`**, cause `constat_echoue_ignore` (prolonge D16) | Lot 2 — appliquée le 2026-10-08, **à confirmer** |
-| D30 | La correction automatique (avant tout run) peut-elle modifier une vérification et rester approuvée d'office ? Conflit : le plan dit « même gel que la réparation » ; la décision du porteur du 2026-09-16 dit « elle corrige et s'auto-approuve » (elle sert justement à renforcer une assertion creuse) | Recommandation : **garder l'auto-approbation** quand la correction ne fait que renforcer (une vérification creuse → une vérification qui lit l'application, déjà exigé par les gardes VH-02), **la refuser** si elle supprime ou modifie une vérification déjà réelle. En attendant : comportement du 2026-09-16 conservé, la modification est écrite en tête du résumé de version | Lot 3 point 6 — **ouverte** |
-| D31 | Éditer le métier (`résultat attendu`, étapes) sans régénérer garde l'ancien Gherkin approuvé d'office (amendement §4.3 du 2026-07-21) : le cas peut sortir `conforme` contre une attente qui n'est plus testée | Recommandation : si `résultat attendu` ou les étapes changent, la nouvelle version **reste à relire** (ou propose une régénération) ; titre/préconditions seuls : approbation d'office conservée. Déjà fait (revue) : un code RÉPARÉ non relu n'est jamais approuvé d'office par une édition du métier | Lot 3 point 4 — **ouverte** |
-| D32 | Un refus serveur (valeur rejetée) est appris d'office et le résolveur l'évite ensuite (§5bis n°1) : si le refus est un bug de l'application, il est contourné au run suivant | Recommandation : apprendre, mais marquer la règle « à confirmer » et ne pas l'appliquer à une valeur conforme à la spec tant qu'un humain ne l'a pas confirmée | Lot 3 point 5 — **ouverte** |
+| D29 | Un constat échoué dans un scénario passé (échec avalé par le test) | **`indeterminé`**, cause `constat_echoue_ignore` (prolonge D16) | Lot 2 — appliquée le 2026-10-08, **validée le 2026-10-09** |
+| D30 | La correction automatique (avant tout run) peut-elle modifier une vérification et rester approuvée d'office ? Conflit : le plan dit « même gel que la réparation » ; la décision du porteur du 2026-09-16 dit « elle corrige et s'auto-approuve » (elle sert justement à renforcer une assertion creuse) | Recommandation : **garder l'auto-approbation** quand la correction ne fait que renforcer (une vérification creuse → une vérification qui lit l'application, déjà exigé par les gardes VH-02), **la refuser** si elle supprime ou modifie une vérification déjà réelle. En attendant : comportement du 2026-09-16 conservé, la modification est écrite en tête du résumé de version | Lot 3 point 6 — **validée le 2026-10-09**, appliquée (voir « D30 à D32 appliquées ») |
+| D31 | Éditer le métier (`résultat attendu`, étapes) sans régénérer garde l'ancien Gherkin approuvé d'office (amendement §4.3 du 2026-07-21) : le cas peut sortir `conforme` contre une attente qui n'est plus testée | Recommandation : si `résultat attendu` ou les étapes changent, la nouvelle version **reste à relire** (ou propose une régénération) ; titre/préconditions seuls : approbation d'office conservée. Déjà fait (revue) : un code RÉPARÉ non relu n'est jamais approuvé d'office par une édition du métier | Lot 3 point 4 — **validée le 2026-10-09**, appliquée |
+| D32 | Un refus serveur (valeur rejetée) est appris d'office et le résolveur l'évite ensuite (§5bis n°1) : si le refus est un bug de l'application, il est contourné au run suivant | Recommandation : apprendre, mais marquer la règle « à confirmer » et ne pas l'appliquer à une valeur conforme à la spec tant qu'un humain ne l'a pas confirmée | Lot 3 point 5 — **validée le 2026-10-09**, appliquée |
 
-Statut des décisions (2026-10-08) : **D23, D24, D25, D27, D28 validées** par le porteur ; **D26 en attente** (environnements de test remis à zéro).
+Statut des décisions (2026-10-09) : **D23, D24, D25, D27, D28 validées** par le porteur le 2026-10-08 ; **D29, D30, D31, D32 validées** le 2026-10-09 (recommandations retenues telles quelles) ; **D26 en attente** (environnements de test remis à zéro).
 
 ## 3. Les lots
 
@@ -331,10 +331,64 @@ comptés à tort comme exécutés).
 | 1. Gel des vérifications en réparation | **fait**, gel TOTAL (aucune exception d'adressage, revue) : `Alors`, Exemples, Contexte ; fonctions `@then`/`@step` par décorateur ; aucune nouvelle vérification ; helpers, constantes et `context.X` écrits par un `Quand` et lus par une vérification ; référence = version de la base | `tests/test_gel_verifications.py` |
 | 2. Résultat d'une version réparée non relue | **fait** : confiance `apres_reparation` (migration 59, Alembic `b7e3c1a9d405`), jamais le résultat du cas (run ET erreur), `last_verdict_version_id` corrigé | `tests/test_confiance_apres_reparation.py` |
 | 3. Échec sous un `Alors` | **fait côté circuit** : jamais de réparation (confirmation humaine) ; une assertion en échec n'importe où arrête. Le verdict reste `technical_error` (pas `indeterminé`) : choix assumé, un échec technique n'est jamais `conforme` | `tests/test_circuit_alors.py` |
-| 4. Édition du métier | **partiel** : un code réparé non relu n'est plus approuvé d'office (bloquant de la revue) ; le reste → **D31** | idem |
-| 5. Refus appris | **non fait** → **D32** | — |
-| 6. Gel pour la correction | **non fait** (conflit avec la décision du 2026-09-16) → **D30** ; la modification est écrite dans l'historique | `test_une_correction_qui_touche_une_verification_le_dit_dans_l_historique` |
+| 4. Édition du métier | **fait** : un code réparé non relu n'est plus approuvé d'office (revue) ; D31 : changer le résultat attendu ou les étapes laisse la version à relire et le cas se lit « Retest » jusqu'au prochain run | `tests/test_attente_metier_changee.py` |
+| 5. Refus appris | **fait** (D32) : un refus d'une valeur citée par le métier attend une décision humaine, il n'est pas appliqué d'ici là | `tests/test_refus_cites_par_le_metier.py` |
+| 6. Gel pour la correction | **fait** (D30) : approuvée d'office seulement si elle renforce ; sinon à relire | `tests/test_correction_ne_fait_que_renforcer.py` |
 
 Limites assumées : une vérification d'un helper de la BIBLIOTHÈQUE n'est pas concernée (code du socle, hors génération) ; le gel
 compare des empreintes d'AST, un renommage de variable dans un `@then` est refusé (sévère, jamais laxiste).
 
+### D30 à D32 appliquées (2026-10-09, branche `lot-vh03b-d30-d31-d32`)
+
+Décisions validées par le porteur le 2026-10-09, recommandations retenues telles quelles.
+
+- **D30 — la correction automatique ne fait que renforcer.** Une vérification de la version d'origine est « creuse » si elle
+  avale l'échec (`except` large) ou si toutes ses affirmations (`constater*`, `assert`) ne lisent rien de l'application ;
+  dans le doute (un `expect`, un helper de la bibliothèque ou du fichier, des arguments déballés), elle est réelle
+  (`write.verifications_creuses`). La correction peut réécrire une vérification creuse ; tout autre changement de ce que le
+  test vérifie (vérification réelle, `Alors`, Exemples, scénario, nouvelle vérification) est un point de vigilance
+  `verification_affaiblie_par_correction` : la version corrigée reste à relire. La décision du 2026-09-16 (la correction
+  s'auto-approuve) reste vraie pour ce qu'elle visait : renforcer une assertion creuse.
+- **D31 — changer ce qu'un cas doit prouver.** Éditer le résultat attendu ou les étapes d'un cas qui a déjà un test ne
+  l'approuve plus d'office (titre et préconditions : amendement §4.3 inchangé) ; point de vigilance `attente_metier_changee`.
+  L'étiquette de lecture du cas passe de « Réussi » à « Retest » tant que son dernier résultat vient d'une version au métier
+  différent (`status.statut_du_cas`, même règle en SQL pour le filtre, testée sur toutes les combinaisons). Le run garde son
+  verdict : seule l'étiquette du cas change, aucun run n'est masqué (décision 0016 (iii)). Approuver ne suffit pas à
+  revenir au vert : seul un run sur la nouvelle attente le peut.
+- **D32 — un refus de ce que le métier demande attend un humain.** Le runner reçoit le métier validé de la version jouée (titre,
+  préconditions, étapes, résultat attendu, spec — texte humain, jamais le Gherkin ni le code). Un refus dont la valeur y est
+  citée (sans casse ni accents, frontières de mot, 3 caractères au moins) est enregistré `a_confirmer` ; il n'est appliqué
+  ni par le résolveur ni dans les formats montrés à l'agent tant qu'un humain n'a pas tranché sur l'écran « Cas à relire »
+  (« règle de l'application » l'apprend, « bug » ne l'apprend jamais). Tout autre refus reste appris d'office : §5bis n°1
+  du brief est amendé pour ce seul cas (note datée dans le brief). Limite assumée : une valeur reformulée par le métier
+  (« 15/03/2027 » contre « 2027-03-15 ») n'est pas reconnue.
+
+
+#### Revue `verdict-reviewer` de D30-D32 (2026-10-09) et suites données
+
+Deux points bloquants, reproduits par la revue puis fermés (`tests/test_revue_d30_d32.py` : 8 tests sur 9 échouaient
+sans les correctifs ; le 9e prouve un branchement déjà commité) :
+- **B1** — une seconde édition du métier (titre seul) approuvait d'office une version restée à relire (attente changée D31,
+  correction à relire D30) : le test de l'ancienne attente ressortait `conforme`. Désormais l'édition du métier n'approuve
+  jamais d'office une version qui porte un test non approuvé, quel qu'en soit l'auteur (`review_gate.test_non_relu`), et le
+  point de vigilance D30 suit le test recopié (jugé sur la version qui a écrit le test).
+- **B2** — une écriture `context.X` ajoutée par la correction dans une fonction creuse (un `@step` d'action) échappait au gel :
+  les clés des vérifications gelées sont prises sur la référence pour les deux côtés.
+
+À corriger, fait : **C1** une exécution non clôturée (`not_executed`) ne compte plus comme « dernier résultat » (elle
+faisait repasser au vert un cas « Retest », pour toujours si le run était tué) — `last_verdict_version_id` en hérite ;
+**C2** test du branchement run → runner du métier (D32) ; **C3** classement « creuse » plus prudent (`raise`, appel
+inconnu qui reçoit `context` ou une valeur lue) ; **C4** registre et brief commités. En plus : `global`/`nonlocal` refusés
+à l'écriture (réaffecter un helper lu par une vérification sans toucher la liaison de module comparée par le gel).
+
+Remarques retenues comme limites ou suites, non traitées ici :
+- D30 alourdit la relecture : une correction d'assertion qui lisait déjà l'application (`len(x) >= 0`) est désormais à
+  relire — à mesurer au banc. Une correction peut toujours changer un `Soit`/`Quand` et rester approuvée (sémantique du
+  gel de VH-03, hors D30).
+- `steps_modifies`/`feature_modifiee` rendent « aucun écart » sur un code illisible (les gardes d'écriture le refusent en amont).
+- D32 : reconnaissance par citation textuelle — « 10 » ou « 15 » (moins de 3 caractères) ne sont jamais reconnus, des mots
+  courants de la spec peuvent mettre en attente des refus de valeurs fabriquées (sens prudent). Piste : marquer l'origine de
+  la valeur (résolveur ou Gherkin) dans le sidecar des refus. Le CLI et le banc ne transmettent pas le métier : tout y reste
+  appris d'office. Une décision `rejetee` sortie des 500 dernières lignes du fichier redemande l'humain.
+- D31 : deux sous-requêtes de plus par lecture de cas (coût à surveiller sur un gros projet) ; l'écran affiche « Retest »
+  sans en donner la raison sur la liste (le point de vigilance l'explique sur la fiche).
