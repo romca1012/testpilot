@@ -134,3 +134,73 @@ def test_une_version_ordinaire_ne_change_pas(conn, monkeypatch):
 def test_la_nouvelle_confiance_est_a_confirmer_et_libellee():
     assert st.a_confirmer("passed", st.CONFIANCE_APRES_REPARATION) is True
     assert st.LIBELLES_CONFIANCE[st.CONFIANCE_APRES_REPARATION] == "Après réparation, non relue"
+
+
+# ── Revue du lot VH-03 ────────────────────────────────────────────────────────────────────────────────────
+
+
+def _cas_avec_reparation_non_relue(conn):
+    """v1 approuvée, puis v2 réécrite par l'agent de réparation, adoptée comme version courante, jamais relue."""
+    pid = ProjectRepo(conn).create(name="P")
+    mid = ModuleRepo(conn).create(project_id=pid, name="M")
+    cid = CaseRepo(conn).create(title="C", module_id=mid, feature_slug="c")
+    v1 = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="", feature_content="# f",
+                                  steps_content="# v1")
+    ReviewRepo(conn).create(test_case_id=cid, version_id=v1, decision="approved", reviewer="humain", repair_budget=2)
+    v2 = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="", feature_content="# f",
+                                  steps_content="# v2 réparée", created_by="repair-agent")
+    CaseRepo(conn).set_current_version(cid, v2)
+    return cid, v2
+
+
+def test_falsifiable_editer_le_metier_ne_blanchit_pas_un_code_repare_non_relu(conn):
+    """Bloquant de la revue : corriger une coquille du titre recopiait le code réparé non relu ET l'approuvait d'office."""
+    from testpilot.api import schemas
+    from testpilot.api.routes import cases as route
+    from testpilot.verdict import review_gate
+
+    cid, v2 = _cas_avec_reparation_non_relue(conn)
+
+    sortie = route.update_case_metier(cid, schemas.CaseMetierIn(title="C (coquille corrigée)"), conn=conn)
+
+    v3 = sortie.version_id
+    assert v3 is not None and VersionRepo(conn).get(v3)["steps_content"] == "# v2 réparée"
+    assert review_gate.evaluate_gate(ReviewRepo(conn), v3).allowed is False
+
+
+def test_editer_le_metier_d_un_code_relu_reste_approuve_d_office(conn):
+    """Sens inverse : l'amendement §4.3 (éditer le métier vaut relecture) reste vrai pour un code déjà relu."""
+    from testpilot.api import schemas
+    from testpilot.api.routes import cases as route
+    from testpilot.verdict import review_gate
+
+    cid, _ = _cas(conn, auteur="", approuvee=True)
+
+    sortie = route.update_case_metier(cid, schemas.CaseMetierIn(title="C2"), conn=conn)
+
+    assert review_gate.evaluate_gate(ReviewRepo(conn), sortie.version_id).allowed is True
+
+
+def test_falsifiable_une_tentative_de_reparation_qui_plante_ne_remplace_pas_le_resultat(conn):
+    cid, v2 = _cas_avec_reparation_non_relue(conn)
+    eid = ExecutionRepo(conn).create(test_case_id=cid, version_id=v2)
+
+    assert run_service._ecrire_erreur(conn, eid, cid, "boom") is True
+
+    assert CaseRepo(conn).get(cid)["last_execution_status"] in (None, "", "not_executed")
+
+
+def test_reprise_d_une_vraie_base_ou_la_table_est_nommee_entre_guillemets(tmp_path):
+    """SQLite écrit `CREATE TABLE "execution"` après un renommage : la reconstruction doit le reconnaître."""
+    base = sqlite3.connect(str(tmp_path / "guillemets.db"))
+    base.row_factory = sqlite3.Row
+    base.executescript(_SCHEMA_PRE_59.replace("CREATE TABLE execution", 'CREATE TABLE "execution"'))
+    base.execute("INSERT INTO test_case (id, title) VALUES (1, 'Cas')")
+    base.execute("INSERT INTO execution (id, test_case_id) VALUES (10, 1)")
+    base.commit()
+
+    _migrate_59_confiance_apres_reparation(base)
+
+    base.execute("INSERT INTO execution (test_case_id, confiance) VALUES (1, 'apres_reparation')")
+    assert base.execute("SELECT count(*) FROM execution").fetchone()[0] == 2
+    base.close()

@@ -1,16 +1,24 @@
-"""Gel des vérifications : une réparation peut corriger OÙ un test lit l'application, jamais CE QU'IL AFFIRME (lot VH-03, V3).
+"""Gel des vérifications : une réparation ne touche JAMAIS à ce qu'un test vérifie (lot VH-03, V3).
 
 Pourquoi. Audit du 2026-10-08 : le gel du `.feature` pendant une réparation n'existait que dans le prompt ; l'agent disposait de
 `write_feature_file` et `write_steps_file`, et une réparation pouvait réécrire un `Alors`, une valeur attendue ou une table
 d'Exemples — puis le test « réparé » passait. Un test qui cesse d'accuser l'application parce qu'on a changé ce qu'il vérifie,
 c'est exactement un faux `conforme`.
 
+Gel TOTAL des vérifications, sans exception d'« adressage » (revue du 2026-10-08) : changer un sélecteur, un `nth`, un `exact`,
+un texte cherché ou une f-string de sélecteur dans une vérification change ce qu'elle prouve (vérifié : `tr:has-text('{montant}')`
+→ `tr` faisait disparaître la valeur attendue du contrôle). Et depuis que le circuit (`repair_circuit.evaluate`) n'ouvre plus
+JAMAIS la réparation sur un échec sous un `Alors`, une vérification n'a aucune raison d'être réparée automatiquement.
+
 Ce qui est gelé :
-- dans le `.feature` : pour chaque scénario existant, la suite de ses steps `Alors` (type `then`, `Et`/`Mais` compris) et ses
-  tables d'Exemples ; un scénario existant ne disparaît ni ne change de nom (ajouter un scénario reste possible) ;
-- dans le `_steps.py` : chaque fonction `@then`, et chaque fonction du fichier qu'elle appelle, à l'ADRESSAGE près — les chaînes
-  passées aux méthodes qui désignent un élément (`locator`, `get_by_role`…) et les délais (`timeout=`) peuvent changer ; tout le
-  reste (comparaisons, valeurs attendues, appels à `constater`, structure) est figé.
+- dans le `.feature` : pour chaque scénario existant et pour le `Contexte`, la suite de ses steps `Alors` (type `then`, `Et`/`Mais`
+  compris) et ses tables d'Exemples ; un scénario existant ne disparaît ni ne change de nom (en ajouter un reste possible) ;
+- dans le `_steps.py` :
+  * chaque fonction décorée `@then`/`@step` (identifiée par son décorateur, pas par son nom — plusieurs `step_impl` coexistent),
+    et chaque fonction du module qu'elle référence, transitivement (appel ou passage en valeur) ;
+  * aucune NOUVELLE fonction `@then`/`@step` : une nouvelle définition placée avant l'ancienne l'emporterait dans Behave ;
+  * les affectations de niveau module des noms qu'une fonction gelée lit (constantes, `helper = lambda …`) ;
+  * les écritures `context.X = …` faites ailleurs (un `@when`) quand une fonction gelée lit `context.X`.
 
 Module PUR : aucune I/O, aucun LLM ; parsing Gherkin par Behave (déjà la référence de `write_feature_file`).
 """
@@ -18,11 +26,12 @@ Module PUR : aucune I/O, aucun LLM ; parsing Gherkin par Behave (déjà la réf�
 from __future__ import annotations
 
 import ast
+from collections import Counter
 
-_ADRESSAGE = frozenset({"locator", "get_by_role", "get_by_label", "get_by_text", "get_by_placeholder", "get_by_test_id",
-                        "get_by_title", "get_by_alt_text", "query_selector", "query_selector_all", "wait_for_selector",
-                        "frame_locator", "filter", "nth"})
-_DELAIS = frozenset({"timeout", "delay"})
+_DECORATEURS_DE_VERIFICATION = frozenset({"then", "step", "Then", "Step"})
+
+
+# ── .feature ──────────────────────────────────────────────────────────────────────────────────────────────
 
 
 def _alors_et_exemples(feature: str) -> dict[str, tuple] | None:
@@ -35,6 +44,8 @@ def _alors_et_exemples(feature: str) -> dict[str, tuple] | None:
     if parsed is None:
         return {}
     gel: dict[str, tuple] = {}
+    if parsed.background is not None:
+        gel["__contexte__"] = (tuple(s.name for s in parsed.background.steps if s.step_type == "then"), ())
     for scenario in parsed.walk_scenarios(with_outlines=True):
         alors = tuple(step.name for step in scenario.steps if step.step_type == "then")
         exemples = tuple(tuple(tuple(ligne.cells) for ligne in (ex.table.rows if ex.table else []))
@@ -50,78 +61,125 @@ def feature_modifiee(reference: str, proposition: str) -> list[str]:
         return []  # un Gherkin illisible est refusé ailleurs (`write_feature_file`)
     ecarts = []
     for nom, (alors, exemples) in avant.items():
+        etiquette = "du Contexte" if nom == "__contexte__" else f"du scénario « {nom} »"
         if nom not in apres:
-            ecarts.append(f"le scénario « {nom} » a disparu ou changé de nom")
+            ecarts.append(f"le scénario « {nom} » a disparu ou changé de nom" if nom != "__contexte__"
+                          else "le Contexte a disparu")
             continue
         alors_apres, exemples_apres = apres[nom]
         if alors_apres != alors:
-            ecarts.append(f"les vérifications « Alors » du scénario « {nom} » ont changé")
+            ecarts.append(f"les vérifications « Alors » {etiquette} ont changé")
         if exemples_apres != exemples:
-            ecarts.append(f"les Exemples du scénario « {nom} » ont changé")
+            ecarts.append(f"les Exemples {etiquette} ont changé")
     return ecarts
 
 
-class _SansAdressage(ast.NodeTransformer):
-    """Remplace les chaînes passées aux méthodes d'adressage et les délais par un repère neutre."""
-
-    def visit_Call(self, noeud: ast.Call):
-        self.generic_visit(noeud)
-        if isinstance(noeud.func, ast.Attribute) and noeud.func.attr in _ADRESSAGE:
-            noeud.args = [ast.Constant("<ADRESSE>") if isinstance(a, (ast.Constant, ast.JoinedStr)) else a
-                          for a in noeud.args]
-            for k in noeud.keywords:
-                if isinstance(k.value, (ast.Constant, ast.JoinedStr)) and k.arg not in {None}:
-                    k.value = ast.Constant("<ADRESSE>")
-        for k in noeud.keywords:
-            if k.arg in _DELAIS:
-                k.value = ast.Constant("<DELAI>")
-        return noeud
+# ── _steps.py ─────────────────────────────────────────────────────────────────────────────────────────────
 
 
-def _signature(fonction: ast.AST) -> str:
-    copie = ast.parse(ast.unparse(fonction))
-    corps = copie.body[0]
-    if (corps.body and isinstance(corps.body[0], ast.Expr) and isinstance(corps.body[0].value, ast.Constant)
-            and isinstance(corps.body[0].value.value, str)):
-        corps.body = corps.body[1:]  # la docstring n'est pas une vérification
-    return ast.dump(_SansAdressage().visit(copie), annotate_fields=False)
+def _nom_du_decorateur(deco: ast.AST) -> str:
+    cible = deco.func if isinstance(deco, ast.Call) else deco
+    return getattr(cible, "id", getattr(cible, "attr", ""))
 
 
-def _decores_then(fonction: ast.AST) -> bool:
-    for deco in fonction.decorator_list:
-        cible = deco.func if isinstance(deco, ast.Call) else deco
-        if getattr(cible, "id", getattr(cible, "attr", "")) == "then":
-            return True
-    return False
+def _est_verification(f: ast.AST) -> bool:
+    return any(_nom_du_decorateur(d) in _DECORATEURS_DE_VERIFICATION for d in f.decorator_list)
 
 
-def _fonctions_qui_verifient(arbre: ast.AST) -> dict[str, ast.AST]:
-    """Les fonctions `@then` et, transitivement, les fonctions du fichier qu'elles appellent."""
-    toutes = {n.name: n for n in arbre.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    retenues = {nom: f for nom, f in toutes.items() if _decores_then(f)}
-    a_voir = list(retenues.values())
-    while a_voir:
-        f = a_voir.pop()
-        for n in ast.walk(f):
-            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in toutes \
-                    and n.func.id not in retenues:
-                retenues[n.func.id] = toutes[n.func.id]
-                a_voir.append(toutes[n.func.id])
-    return retenues
+def _cle_de_decorateurs(f: ast.AST) -> tuple[str, ...]:
+    return tuple(ast.unparse(d) for d in f.decorator_list)
+
+
+def _signature(noeud: ast.AST) -> str:
+    """Empreinte d'une fonction ou d'une instruction, sans la docstring (qui ne vérifie rien)."""
+    copie = ast.parse(ast.unparse(noeud)).body[0]
+    corps = getattr(copie, "body", None)
+    if (isinstance(corps, list) and corps and isinstance(corps[0], ast.Expr) and isinstance(corps[0].value, ast.Constant)
+            and isinstance(corps[0].value.value, str)):
+        copie.body = corps[1:] or [ast.Pass()]
+    return ast.dump(copie, annotate_fields=False)
+
+
+class _Module:
+    """Le fichier de steps vu par le gel : fonctions de vérification, liaisons de module, écritures de `context.X`."""
+
+    def __init__(self, arbre: ast.Module):
+        self.verifications: dict[tuple[str, ...], list[ast.AST]] = {}
+        self.liaisons: dict[str, list[ast.AST]] = {}  # nom de module -> instructions qui le lient (def, affectation)
+        for n in arbre.body:
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                self.liaisons.setdefault(n.name, []).append(n)
+                if _est_verification(n):
+                    self.verifications.setdefault(_cle_de_decorateurs(n), []).append(n)
+            elif isinstance(n, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                cibles = n.targets if isinstance(n, ast.Assign) else [n.target]
+                for c in cibles:
+                    for nom in (e.id for e in ast.walk(c) if isinstance(e, ast.Name)):
+                        self.liaisons.setdefault(nom, []).append(n)
+        self.fonctions = [n for n in ast.walk(arbre) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+
+    def gelees(self) -> tuple[set[str], set[str]]:
+        """(noms de module gelés, attributs `context.X` lus par une vérification) — fermeture transitive."""
+        a_voir = [f for fs in self.verifications.values() for f in fs]
+        noms: set[str] = set()
+        attributs: set[str] = set()
+        vus: set[int] = set()
+        while a_voir:
+            noeud = a_voir.pop()
+            if id(noeud) in vus:
+                continue
+            vus.add(id(noeud))
+            for n in ast.walk(noeud):
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id in self.liaisons and n.id not in noms:
+                    noms.add(n.id)
+                    a_voir.extend(self.liaisons[n.id])
+                if (isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "context"
+                        and isinstance(n.ctx, ast.Load)):
+                    attributs.add(n.attr)
+        return noms, attributs
+
+    def ecritures_de_contexte(self, attributs: set[str]) -> Counter:
+        """Empreintes des instructions qui ÉCRIVENT `context.X` (X lu par une vérification), hors fonctions de vérification."""
+        verifs = {id(f) for fs in self.verifications.values() for f in fs}
+        empreintes: Counter = Counter()
+        for f in self.fonctions:
+            if id(f) in verifs:
+                continue
+            for n in ast.walk(f):
+                cibles = n.targets if isinstance(n, ast.Assign) else [n.target] if isinstance(
+                    n, (ast.AugAssign, ast.AnnAssign)) else []
+                ecrit = any(isinstance(c, ast.Attribute) and getattr(c.value, "id", "") == "context" and c.attr in attributs
+                            for t in cibles for c in ast.walk(t))
+                if (isinstance(n, ast.Call) and getattr(n.func, "id", "") == "setattr" and len(n.args) >= 2
+                        and getattr(n.args[0], "id", "") == "context" and isinstance(n.args[1], ast.Constant)
+                        and n.args[1].value in attributs):
+                    ecrit = True
+                if ecrit:
+                    empreintes[_signature(n) if not isinstance(n, ast.Call) else ast.dump(n)] += 1
+        return empreintes
 
 
 def steps_modifies(reference: str, proposition: str) -> list[str]:
-    """Ce que `proposition` change aux fonctions qui VÉRIFIENT de `reference`, adressage mis à part."""
+    """Ce que `proposition` change aux vérifications de `reference` (liste vide si rien)."""
     try:
-        avant, apres = ast.parse(reference), ast.parse(proposition)
+        avant, apres = _Module(ast.parse(reference)), _Module(ast.parse(proposition))
     except SyntaxError:
         return []  # refusé ailleurs (`write_steps_file`)
-    gelees = _fonctions_qui_verifient(avant)
-    disponibles = {n.name: n for n in apres.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
     ecarts = []
-    for nom, fonction in gelees.items():
-        if nom not in disponibles:
-            ecarts.append(f"la fonction de vérification `{nom}` a disparu")
-        elif _signature(disponibles[nom]) != _signature(fonction):
-            ecarts.append(f"la fonction de vérification `{nom}` a changé au-delà de l'adressage (sélecteurs, délais)")
+    for cle, fonctions in avant.verifications.items():
+        decorateur = cle[0] if cle else "?"
+        if cle not in apres.verifications:
+            ecarts.append(f"la vérification `{decorateur}` a disparu ou changé de libellé")
+        elif [_signature(f) for f in apres.verifications[cle]] != [_signature(f) for f in fonctions]:
+            ecarts.append(f"la vérification `{decorateur}` a changé")
+    for cle in apres.verifications:
+        if cle not in avant.verifications:
+            ecarts.append(f"nouvelle vérification `{cle[0] if cle else '?'}` : une réparation n'ajoute pas de step « Alors »")
+    noms, attributs = avant.gelees()
+    for nom in sorted(noms):
+        if [_signature(n) for n in apres.liaisons.get(nom, [])] != [_signature(n) for n in avant.liaisons.get(nom, [])]:
+            ecarts.append(f"`{nom}`, lu par une vérification, a changé")
+    if apres.ecritures_de_contexte(attributs) != avant.ecritures_de_contexte(attributs):
+        ecarts.append("une valeur que lit une vérification (`context." + "`, `context.".join(sorted(attributs))
+                      + "`) est écrite autrement")
     return ecarts

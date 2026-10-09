@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 from testpilot.generation import gel_verifications
 from testpilot.generation.provenance import revision_metadata
+from testpilot.verdict import review_gate
 import logging
 import re
 import threading
@@ -444,7 +445,7 @@ def validate_metier(conn, job_id: str, cases: list[dict]) -> dict:
            "group_id": job.get("group_id"), "cases": validated}
 
 
-_AUTEUR_REPARATION = "repair-agent"
+_AUTEUR_REPARATION = review_gate.AUTEUR_REPARATION
 
 
 def _intention_declaree(case: dict, version: dict) -> str:
