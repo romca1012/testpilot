@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 58
+_SCHEMA_VERSION = 59
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -258,6 +258,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_57_oracle(conn)
     if version < 58:
         _migrate_58_dependance_inter_cas(conn)
+    if version < 59:
+        _migrate_59_confiance_apres_reparation(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -458,6 +460,17 @@ def _migrate_48_execution_blocked(conn: sqlite3.Connection) -> None:
         "scenario_result": ("execution_status IN ('success', 'technical_error')",
                             "execution_status IN ('success', 'technical_error', 'blocked')"),
     }
+    _elargir_check(conn, remplacements, "'blocked'", 48)
+
+
+def _elargir_check(conn: sqlite3.Connection, remplacements: dict[str, tuple[str, str]], marqueur: str,
+                   numero: int) -> None:
+    """Élargit la liste d'un CHECK en RECONSTRUISANT chaque table (SQLite ne modifie pas un CHECK par `ALTER TABLE`).
+
+    Procédé de la migration 48, factorisé tel quel pour la migration 59 (lot VH-03) : `CREATE TABLE` relu dans
+    `sqlite_master`, remplacement CIBLÉ de la liste, atomique et idempotent par table (`marqueur` déjà présent →
+    sautée ; liste non reconnue → sautée ET signalée, jamais cassée en silence), `foreign_key_check` après.
+    """
     conn.commit()  # aucune transaction ouverte : PRAGMA foreign_keys est un no-op en transaction
     old_iso = conn.isolation_level
     conn.isolation_level = None  # autocommit : BEGIN/COMMIT gérés ici (DDL+DML atomiques)
@@ -467,17 +480,17 @@ def _migrate_48_execution_blocked(conn: sqlite3.Connection) -> None:
             row = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (tbl,)).fetchone()
             sql = row["sql"] if row else ""
-            if not sql or "'blocked'" in sql:
+            if not sql or marqueur in sql:
                 continue  # table absente, ou déjà migrée → idempotent
             new_sql = sql.replace(ancien, nouveau)
             if new_sql == sql:
                 # Ne rien casser… mais le DIRE : la migration passera à la version 48 alors que cette
                 # table refuserait encore `blocked` (`IntegrityError` à la persistance, cas retombé en
                 # `technical_error` sans cause visible — revue du lot 02).
-                logger.warning("[migration 48] liste du CHECK de %s non reconnue : table NON migrée, "
-                               "`blocked` y sera refusé", tbl)
+                logger.warning("[migration %s] liste du CHECK de %s non reconnue : table NON migrée, "
+                               "%s y sera refusé", numero, tbl, marqueur)
                 continue
-            tmp = f"{tbl}__migr48"
+            tmp = f"{tbl}__migr{numero}"
             # ⚠️ Le nom peut être ENTRE GUILLEMETS : SQLite réécrit `CREATE TABLE "execution"` dès
             # qu'une table a été renommée (`ALTER TABLE … RENAME`, comme le fait la migration 19).
             # Un remplacement littéral de `CREATE TABLE execution` ne trouvait alors RIEN et la table
@@ -486,8 +499,8 @@ def _migrate_48_execution_blocked(conn: sqlite3.Connection) -> None:
             create_tmp = re.sub(rf'CREATE TABLE\s+"?{re.escape(tbl)}"?', f"CREATE TABLE {tmp}",
                                 new_sql, count=1)
             if tmp not in create_tmp:
-                logger.warning("[migration 48] en-tête CREATE TABLE de %s non reconnu : table NON "
-                               "migrée, `blocked` y sera refusé", tbl)
+                logger.warning("[migration %s] en-tête CREATE TABLE de %s non reconnu : table NON "
+                               "migrée, %s y sera refusé", numero, tbl, marqueur)
                 continue
             aux = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE tbl_name=? AND type IN ('index','trigger')"
@@ -517,6 +530,17 @@ def _migrate_48_execution_blocked(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA foreign_keys = ON")
     finally:
         conn.isolation_level = old_iso
+
+
+def _migrate_59_confiance_apres_reparation(conn: sqlite3.Connection) -> None:
+    """Lot VH-03 (D28, validée le 2026-10-08) : `execution.confiance` accepte `apres_reparation` — le résultat d'une
+    version RÉPARÉE par l'agent et pas encore relue. Sans cette valeur, la persistance d'un tel run planterait
+    (`IntegrityError`) ; avec elle, l'écran peut dire « Après réparation, non relue » au lieu d'un « Réussi » nu."""
+    remplacements = {
+        "execution": ("'nominale', 'auto_resolue', 'apres_retry')",
+                      "'nominale', 'auto_resolue', 'apres_retry', 'apres_reparation')"),
+    }
+    _elargir_check(conn, remplacements, "'apres_reparation'", 59)
 
 
 def _migrate_42_password_ownership(conn: sqlite3.Connection) -> None:

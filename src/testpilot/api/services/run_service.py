@@ -35,6 +35,7 @@ from testpilot.store.repositories import (
 from testpilot.verdict import defect_origin as do
 from testpilot.verdict import explication, review_gate
 from testpilot.verdict.status import (
+    CONFIANCE_APRES_REPARATION,
     CaseVerdict,
     EXEC_TECHNICAL_ERROR,
     FUNC_INDETERMINE,
@@ -495,6 +496,14 @@ def _persist(conn, execution_id, case_id, verdict, outcome, duration, module_nam
     # UPDATE après coup romprait l'invariant « rien n'est jamais modifié ».
     commentaire = _expliquer(conn, execution_id, verdict, module_name)
 
+    # Lot VH-03 (V4, D28) : une version RÉPARÉE par l'agent et pas encore relue n'a jamais l'autorité d'un résultat. Son run
+    # est tracé (honnêteté de l'historique), marqué « après réparation », et ne remplace PAS le résultat du cas — même si la
+    # réparation est ensuite refusée (couverture perdue, régression), la liste n'affiche jamais un « Réussi » qu'aucun humain
+    # n'a relu. Signal structurel : l'auteur de la version et la décision de relecture, jamais un libellé.
+    non_relue = _version_reparee_non_relue(conn, execution_id)
+    if non_relue:
+        verdict.confiance = CONFIANCE_APRES_REPARATION
+
     result_id = execs.finalize(
         execution_id, execution_status=verdict.execution_status,
         functional_status=verdict.functional_status,
@@ -509,9 +518,22 @@ def _persist(conn, execution_id, case_id, verdict, outcome, duration, module_nam
     # `attachments_path`, cf. `ResultRepo.ajouter_piece_jointe`).
     _joindre_captures(conn, execution_id, result_id)
 
+    if non_relue:
+        logger.info("[run] exécution %s : version réparée non relue — résultat du cas inchangé", execution_id)
+        return
     cases = CaseRepo(conn)
     cases.update_last_outcome(case_id, execution_status=verdict.execution_status,
                               functional_status=verdict.functional_status, executed_at=now_iso())
+
+
+def _version_reparee_non_relue(conn, execution_id) -> bool:
+    ligne = conn.execute("SELECT version_id FROM execution WHERE id=?", (execution_id,)).fetchone()
+    version_id = ligne[0] if ligne else None
+    if version_id is None:
+        return False
+    version = VersionRepo(conn).get(version_id) or {}
+    return (version.get("created_by") == "repair-agent"
+            and not review_gate.evaluate_gate(ReviewRepo(conn), version_id).allowed)
 
 
 def _ecrire_erreur(conn, execution_id: int, case_id: int, message: str) -> bool:
