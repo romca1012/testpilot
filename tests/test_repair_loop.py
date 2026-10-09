@@ -581,9 +581,21 @@ def test_la_version_d_origine_du_verdict_est_exposee(conn, monkeypatch):
 
     # Réparation qui ne rend PAS le test exécutable → v1 reste la référence, mais le dernier run
     # (celui de la tentative) a écrit les `last_*` du cas.
+    # Revue D30-D32 (C1, 2026-10-09) : une exécution non CLÔTURÉE n'est plus un « dernier résultat » ;
+    # la tentative clôt donc son exécution, comme le fait un vrai run (`run_service._persist`).
+    lancer = _runner(conn, cid, [_echec()])
+
+    def run_once(version_id):
+        out = lancer(version_id)
+        ExecutionRepo(conn).finalize(out.execution_id, execution_status="technical_error",
+                                     functional_status="not_evaluated", scenarios_total=1,
+                                     scenarios_passed=0, scenarios_failed=1, cost_usd=0.0,
+                                     iterations=1, duration_seconds=0.1)
+        return out
+
     repair_service.run_repair_loop(
         conn, case_id=cid, version_id=vid, module_name="cas",
-        outcome=depart, run_once=_runner(conn, cid, [_echec()]))
+        outcome=depart, run_once=run_once)
 
     row = CaseRepo(conn).get(cid)
     assert row["current_version_id"] == vid

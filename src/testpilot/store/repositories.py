@@ -787,9 +787,11 @@ class CaseGroupRepo:
 # n'est plus la référence : on l'affiche au lieu de le corriger en silence, conformément à la
 # ligne du projet (0007 B+, 0008 lint, 0013). On ne recalcule PAS le statut depuis la version
 # courante : ce serait masquer un run réel.
+# Revue D30-D32 (C1) : une exécution pas encore CLÔTURÉE (`not_executed`, créée par `trigger_run` avant le run) n'a produit
+# aucun résultat — la compter faisait repasser au vert, pendant le run ou pour toujours s'il était tué, un cas « Retest ».
 _DERNIERE_VERSION_JUGEE = (
     "(SELECT e.version_id FROM execution e WHERE e.test_case_id = tc.id AND e.confiance != 'apres_reparation'"
-    "  ORDER BY e.id DESC LIMIT 1)")
+    "  AND e.execution_status != 'not_executed' ORDER BY e.id DESC LIMIT 1)")
 # D31 (2026-10-09) : le résultat attendu ou les étapes de la version COURANTE diffèrent de ceux de la version qui a produit le
 # dernier résultat — ce résultat a été obtenu contre une autre attente métier (`status.statut_du_cas`). Même expression pour
 # l'affichage (colonne `attente_changee`) et pour le filtre par statut (`CaseRepo.page`) : jamais deux règles.
