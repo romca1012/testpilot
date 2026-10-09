@@ -71,17 +71,21 @@ ASSERTION_MISMATCH = "assertion_mismatch"
 RESOLVEUR_INCOMPLET = "resolveur_incomplet"
 # F10 (D12) : rien créé et RIEN ne l'explique — `indetermine`, jamais réparé automatiquement.
 REFUS_NON_EXPLIQUE = "refus_non_explique"
+# Lot VH-04 (oracle) : l'oracle a répondu en ERREUR HTTP (4xx/5xx) — rien n'a pu être vérifié, ni pour ni contre
+# l'application. Avant : `HTTPError` → `wrong_navigation`, un test « à réparer ».
+ORACLE_EN_ERREUR = "oracle_en_erreur"
 UNKNOWN = "unknown"
 
 CATEGORIES = (
     PRECONDITION_NON_REMPLIE, ERREUR_SERVEUR_5XX, AUCUN_CONSTAT, ALORS_SANS_CONSTAT, CONSTAT_ECHOUE_IGNORE, MISSING_SERVER_CONTEXT, DONNEE_REFUSEE, BROKEN_TEST_CODE, WRONG_NAVIGATION, WRONG_FIELD_NAME,
-    MISSING_ROLE, ASSERTION_MISMATCH, RESOLVEUR_INCOMPLET, REFUS_NON_EXPLIQUE, UNKNOWN,
+    MISSING_ROLE, ASSERTION_MISMATCH, RESOLVEUR_INCOMPLET, REFUS_NON_EXPLIQUE, ORACLE_EN_ERREUR, UNKNOWN,
 )
 
 LABELS = {
     PRECONDITION_NON_REMPLIE: "Prérequis non rempli (environnement)",
     ERREUR_SERVEUR_5XX: "Erreur interne du serveur (HTTP 5xx)",
     REFUS_NON_EXPLIQUE: "Refus non expliqué (à instruire)",
+    ORACLE_EN_ERREUR: "L'oracle a répondu en erreur : rien n'a pu être vérifié",
     AUCUN_CONSTAT: "Aucune vérification exécutée",
     ALORS_SANS_CONSTAT: "Un résultat attendu n'a rien vérifié",
     CONSTAT_ECHOUE_IGNORE: "Une vérification a échoué sans faire échouer le test",
@@ -156,6 +160,9 @@ _EXCEPTION_TO_CAUSE = {
     # l'absence de tout signal : classes dédiées, non ambiguës par construction.
     "ErreurServeur5xxError": ERREUR_SERVEUR_5XX,
     "RefusNonExpliqueError": REFUS_NON_EXPLIQUE,
+    # Lot VH-04 : levées UNIQUEMENT par les steps d'oracle de la bibliothèque — classes dédiées, non ambiguës.
+    "OracleEnErreurError": ORACLE_EN_ERREUR,
+    "ReponseOracleNonComptableError": BROKEN_TEST_CODE,
     # Erreurs de PROGRAMMATION dans le code du step. L'application n'y est pour rien : c'est
     # notre code qui est faux, donc réparable par construction. C'était le trou le plus absurde
     # de l'ancienne version — un `TypeError` nu tombait en `unknown` → `indetermine`, et le

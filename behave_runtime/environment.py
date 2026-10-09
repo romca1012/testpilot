@@ -341,6 +341,12 @@ def _ouvrir_contexte_navigateur(context, *, avec_storage_state: bool = False) ->
     kwargs = contexte_navigateur_fige()
     if avec_storage_state and os.path.isfile(_CHEMIN_STORAGE_STATE):
         kwargs["storage_state"] = _CHEMIN_STORAGE_STATE
+    if _WEB_URL:
+        # Lot VH-04 (banc base-4, 2026-10-09) : `page.goto("/__etat")` écrit par un test échouait (« Cannot navigate to invalid
+        # URL ») — 2 essais en erreur technique sur l'application saine. Une adresse relative se résout désormais contre
+        # l'application du projet (documenté par Playwright : `base_url` ne sert qu'aux adresses relatives). Hors de
+        # `contexte_navigateur_fige`, qui doit rester identique à celui de l'exploration.
+        kwargs["base_url"] = _WEB_URL
     context._browser_context = context.browser.new_context(**kwargs)
     _demarrer_trace(context)
     context.page = context._browser_context.new_page()
