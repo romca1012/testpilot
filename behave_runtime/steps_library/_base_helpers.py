@@ -231,6 +231,10 @@ def _condition_toujours_vraie(condition) -> str:
     return ""
 
 
+# Lot VH-04 (V8) : le message de la garde de session évaluée avant l'`Alors` courant (`armer_garde_de_session`), vide sinon.
+_GARDE_DE_SESSION = {"message": ""}
+
+
 def constater(condition, message: str = "") -> None:
     """Le SEUL moyen d'écrire une assertion sous un `Alors` : consigne le constat puis lève
     `AssertionError(message)` si la condition est fausse. Réussi ou échoué, il laisse une trace.
@@ -242,6 +246,7 @@ def constater(condition, message: str = "") -> None:
     consigné un constat ÉCHOUÉ (lot VH-02, revue du 2026-10-08) : si le code du test avale l'exception, le scénario passé
     garde la trace de ce constat raté et sort `indetermine` (V10) — jamais `conforme`.
     """
+    _appliquer_garde_de_session()  # lot VH-04 (V8) : rien ne se constate sur une session perdue
     raison = _condition_toujours_vraie(condition)
     if raison:
         _consigner_constat(False)
@@ -254,6 +259,7 @@ def constater(condition, message: str = "") -> None:
 
 def constater_visible(locator, message: str = "", timeout=None) -> None:
     """`expect(locator).to_be_visible()` (assertion web-first, elle réessaie) + constat consigné."""
+    _appliquer_garde_de_session()
     try:
         if timeout is None:
             expect(locator).to_be_visible()
@@ -267,6 +273,7 @@ def constater_visible(locator, message: str = "", timeout=None) -> None:
 
 def constater_texte(locator, attendu, message: str = "", timeout=None, exact: bool = False) -> None:
     """`expect(locator).to_have_text / to_contain_text(attendu)` + constat consigné."""
+    _appliquer_garde_de_session()
     options = {} if timeout is None else {"timeout": timeout}
     try:
         if exact:
@@ -289,6 +296,7 @@ def constat(fonction):
     """
     @functools.wraps(fonction)
     def enveloppe(*args, **kwargs):
+        _appliquer_garde_de_session()  # lot VH-04 (V8) : rien ne se constate sur une session perdue
         try:
             resultat = fonction(*args, **kwargs)
         except AssertionError:
@@ -693,6 +701,7 @@ def connexion_web_utilisateur(context, *, explicite: bool = False) -> None:
             + (f" ; message affiché : « {message} »" if message else "")
             + ". Vérifiez l'identifiant et le mot de passe du projet.")
     context._tp_connecte = True
+    noter_session_ouverte(context)  # lot VH-04 (V8) : la session de RÉFÉRENCE de la garde, ouverte par le harnais
 
 
 def connecter_le_navigateur_si_page_vide(context) -> None:
@@ -2944,7 +2953,10 @@ def installer_les_observateurs(context) -> None:
             if reponse.request.resource_type == "document" and reponse.frame.parent_frame is None:
                 # Le statut de la page QUI S'AFFICHE, pas de celle qu'on a demandée : `/a` redirigé vers `/a/` qui répond 500 est une
                 # page en erreur (revue 2, 2026-09-25). Vaut aussi pour une navigation provoquée par un clic.
-                context.navigations[reponse.frame.page] = {"url": reponse.url, "statut": int(reponse.status)}
+                # Lot VH-04 (V8) : `redirige` — le document affiché a-t-il été atteint par une REDIRECTION (et non demandé) ? Signal
+                # de la garde de session (`garde_de_session`).
+                context.navigations[reponse.frame.page] = {"url": reponse.url, "statut": int(reponse.status),
+                                                           "redirige": reponse.request.redirected_from is not None}
             # Les ressources statiques (images, css, js) noient la réponse utile sous le plafond : on ne retient que les appels
             # de l'application (`fetch`, `xhr`) et les documents.
             if reponse.request.resource_type not in _TYPES_DE_REQUETE:
@@ -3770,6 +3782,75 @@ def authentifier_selon_la_strategie(page, *, strategie: str, web_url: str, user:
             + (" et le secret TOTP" if strategie == _auth.TOTP else "") + " du projet.")
 
 
+def cookies_de_session(context) -> frozenset:
+    """Les cookies (nom, valeur) du navigateur du scénario — `frozenset()` si illisibles. Repère de la garde de session."""
+    try:
+        return frozenset((c.get("name"), c.get("value")) for c in context._browser_context.cookies())
+    except Exception:
+        return frozenset()
+
+
+def noter_session_ouverte(context) -> None:
+    """La session vient d'être ouverte PAR LE HARNAIS (début de scénario, connexion automatique, reconnexion) : on retient ses
+    cookies, et une saisie de mot de passe faite par le harnais ne compte pas comme celle du test."""
+    context._tp_cookies_session = cookies_de_session(context)
+    context._tp_mot_de_passe_saisi = False
+
+
+def garde_de_session(context) -> None:
+    """Lot VH-04 (V8, G4) : avant chaque `Alors`, une session PERDUE en cours de scénario bloque le test.
+
+    Avant (audit du 2026-10-08) : après une expiration de session, l'application redirigeait vers sa page de connexion et les
+    vérifications d'absence (« n'affiche pas », « aucune erreur »), d'URL (« contient /web » sur `/web/login`) ou de sous-chaîne
+    passaient — un `conforme` qui n'avait rien regardé ; une vérification positive, elle, sortait `non_conforme` — une
+    accusation de l'application pour un problème d'environnement. L'environnement ne décide jamais du verdict : `blocked`.
+
+    Signaux du RUNTIME seulement, tous nécessaires (sinon : pas de garde, comportement d'avant) :
+    - un champ mot de passe est visible (page de connexion) et le projet attend une session (stratégie ≠ `aucune`) ;
+    - la page affichée a été atteinte par une REDIRECTION — une page de connexion ouverte ou cliquée par le test est son choix ;
+    - le TEST n'a saisi aucun mot de passe dans ce scénario (un test de connexion se retrouve légitimement sur cette page) ;
+    - les cookies de la session ouverte par le harnais sont intacts — une application qui les a supprimés ou changés a mis fin
+      à la session elle-même (une déconnexion voulue par le test), ce n'est pas une session perdue.
+    Limite assumée : une application monopage qui affiche son formulaire de connexion sans navigation n'est pas vue."""
+    if (getattr(context, "auth_strategie", "") or _auth.FORMULAIRE) == _auth.AUCUNE:
+        return
+    page = getattr(context, "page", None)
+    if page is None or page.url in ("about:blank", "") or _mot_de_passe_visible(page) is not True:
+        return
+    if not ((getattr(context, "navigations", None) or {}).get(page) or {}).get("redirige"):
+        return
+    if getattr(context, "_tp_mot_de_passe_saisi", False):
+        return
+    depart = getattr(context, "_tp_cookies_session", None)
+    if not depart or not depart <= cookies_de_session(context):
+        return
+    raise PreconditionNonRemplieError(
+        f"PRÉREQUIS MANQUANT : la session a été perdue — l'application a redirigé vers sa page de connexion ({page.url}) "
+        "avant cette vérification. Rien n'a pu être constaté sur l'application (session expirée, ou invalidée par le serveur).")
+
+
+def armer_garde_de_session(context, *, alors: bool) -> None:
+    """Appelé par `environment.before_step` : avant un `Alors`, évalue la garde ; ailleurs, la désarme.
+
+    ⚠️ Mesuré le 2026-10-09 (Behave 1.3.3, vrai run) : une exception levée DANS `before_step` sort en erreur technique
+    sans message, jamais en `blocked`. La garde est donc évaluée ici et APPLIQUÉE au premier constat du step
+    (`constater`, `@constat`), qui lève le prérequis manquant à l'intérieur du step — là où Behave le classe."""
+    message = ""
+    if alors:
+        try:
+            garde_de_session(context)
+        except PreconditionNonRemplieError as exc:
+            message = str(exc)
+        except Exception:
+            message = ""  # la garde n'a pas pu regarder : pas de garde, comportement d'avant
+    _GARDE_DE_SESSION["message"] = message
+
+
+def _appliquer_garde_de_session() -> None:
+    if _GARDE_DE_SESSION["message"]:
+        raise PreconditionNonRemplieError(_GARDE_DE_SESSION["message"])
+
+
 def _verifier_ou_reconnecter_session(context, url_visee: str) -> None:
     """Sur une page d'ENTRÉE (page d'accueil, `j'ouvre la page`) : une session invalidée pendant le run (redirection vers la
     connexion, `storage_state` périmé) est reconnectée UNE fois — jamais plus, épuisée elle bloque (lot 07b-2). No-op si la
@@ -3797,6 +3878,7 @@ def _verifier_ou_reconnecter_session(context, url_visee: str) -> None:
         # bénéficier du MÊME formulaire enregistré que la connexion initiale du run, jamais
         # retomber sur la détection générique par accident.
         login_form=getattr(context, "login_form", None) or None)
+    noter_session_ouverte(context)  # lot VH-04 (V8) : la saisie du mot de passe était celle du harnais, pas du test
     try:
         # Les scénarios SUIVANTS profitent aussi de la session renouvelée — best-effort, jamais fatal ici.
         context._browser_context.storage_state(path=_CHEMIN_STORAGE_STATE)
