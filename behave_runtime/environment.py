@@ -221,6 +221,10 @@ def odoo_session(context):
     yield context.odoo
 
 
+_LECTURES_RPC = frozenset({"search", "read", "search_read", "search_count", "read_group", "name_get", "name_search",
+                           "fields_get", "exists"})
+
+
 def _instrumenter_creations_rpc(context) -> None:
     """Enregistre AUTOMATIQUEMENT tout enregistrement créé par RPC pendant le scénario — sans
     dépendre d'un step de comptage (F6, ticket 30298 : un scénario qui crée SANS aucun step de
@@ -255,6 +259,10 @@ def _instrumenter_creations_rpc(context) -> None:
     def _execute_kw_instrumente(model, method, args=None, kwargs=None):
         _relever_baseline(model)
         resultat = reel(model, method, args, kwargs)
+        if method in _LECTURES_RPC:
+            # Lot VH-04 (point 4) : une lecture RÉUSSIE du serveur pendant ce step — le constat qui suit l'a vraiment recoupé.
+            from _base_helpers import noter_lecture_rpc
+            noter_lecture_rpc()
         if method == "create":
             valeurs = [resultat] if isinstance(resultat, int) else (resultat or [])
             for record_id in valeurs:
@@ -682,8 +690,9 @@ def before_step(context, step):
         poser_repere_action(context)
     # Lot VH-04 (V8, G4) : une session perdue avant un `Alors` bloque le test — jamais un vert sur la page de connexion. Évaluée
     # ici, appliquée au premier constat du step (voir `armer_garde_de_session` : Behave ne classe pas une erreur de crochet).
-    from _base_helpers import armer_garde_de_session
+    from _base_helpers import armer_garde_de_session, debut_de_step
     armer_garde_de_session(context, alors=(getattr(step, "step_type", "") or "") == "then")
+    debut_de_step()
 
 
 def _fonction_du_step(context, step):

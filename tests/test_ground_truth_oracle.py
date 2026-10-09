@@ -49,11 +49,14 @@ def test_tous_les_scenarios_verifies_par_l_oracle_donnent_backend_verified():
     assert case.ground_truth == GROUND_TRUTH_BACKEND_VERIFIED
 
 
-def test_odoo_reste_backend_verified_avec_ou_sans_oracle():
-    """Le RPC d'Odoo donne déjà `backend_verified` — l'oracle n'AJOUTE rien pour ce connecteur."""
+def test_odoo_n_est_backend_verified_que_par_ses_constats():
+    """Lot VH-04 (point 4, 2026-10-09) — attendu CHANGÉ délibérément : ce test exigeait `backend_verified` pour Odoo même
+    SANS aucun constat recoupant le serveur (« le RPC d'Odoo le donne déjà »). Un cas qui n'a constaté que l'écran ne l'est
+    plus ; un constat d'oracle (ou une lecture RPC observée) le reste."""
     sans_oracle = aggregate([scenario_verdict(_scenario("cas"), [])], connector_type="odoo")
     avec_oracle = aggregate([scenario_verdict(_scenario("cas", oracle_verifie=True), [])], connector_type="odoo")
-    assert sans_oracle.ground_truth == avec_oracle.ground_truth == GROUND_TRUTH_BACKEND_VERIFIED
+    assert sans_oracle.ground_truth == GROUND_TRUTH_UI_ONLY
+    assert avec_oracle.ground_truth == GROUND_TRUTH_BACKEND_VERIFIED
 
 
 def test_falsifiable_un_constat_d_oracle_echoue_compte_aussi():

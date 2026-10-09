@@ -115,16 +115,26 @@ def test_returncode_non_nul_AVEC_au_moins_un_scenario_reste_un_echec_fonctionnel
 # un cas générique ne peut vérifier que ce que l'UI affiche, jamais une vérité côté base de données
 # comme un cas Odoo. Ce champ étiquette cette différence, il ne la crée pas.
 
-def test_sans_connector_type_le_verdict_reste_backend_verified():
-    """Comportement HISTORIQUE inchangé pour tout appelant qui ne fournit pas ce paramètre
-    (cli.py, repair_service.py) — même repli que `connectors/factory.py::build_connector`."""
+def test_sans_connector_type_rien_n_est_verifie_cote_serveur_d_office():
+    """Lot VH-04 (point 4, 2026-10-09) — attendu CHANGÉ délibérément : ce test exigeait `backend_verified` par défaut
+    (repli sur `odoo`, qui l'était d'office). Un scénario qui n'a recoupé le serveur par aucun constat n'a rien vérifié
+    côté serveur : `ui_only`, quel que soit le connecteur."""
     v = st.derive_verdict(_outcome([BehaveScenario("[Nominal] ok", "passed")], []))
-    assert v.ground_truth == st.GROUND_TRUTH_BACKEND_VERIFIED
+    assert v.ground_truth == st.GROUND_TRUTH_UI_ONLY
 
 
-def test_connector_type_odoo_est_backend_verified():
+def test_connector_type_odoo_n_est_plus_backend_verified_d_office():
+    """Lot VH-04 (point 4) — attendu CHANGÉ délibérément : un cas Odoo qui n'a constaté QUE l'écran était annoncé
+    « vérifié côté serveur ». Il ne l'est que si ses constats ont lu le serveur (`serveur_verifie`)."""
     v = st.derive_verdict(
         _outcome([BehaveScenario("[Nominal] ok", "passed")], []), connector_type="odoo")
+    assert v.ground_truth == st.GROUND_TRUTH_UI_ONLY
+
+
+def test_un_cas_odoo_dont_les_constats_ont_lu_le_serveur_est_backend_verified():
+    scenario = BehaveScenario("[Nominal] ok", "passed")
+    scenario.serveur_verifie = True
+    v = st.derive_verdict(_outcome([scenario], []), connector_type="odoo")
     assert v.ground_truth == st.GROUND_TRUTH_BACKEND_VERIFIED
 
 

@@ -105,8 +105,9 @@ def _ground_truth_pour(connector_type: str | None, oracle_utilise: bool = False)
     change selon que la valeur qualifiée est « bonne » (ground_truth, conforme) ou « mauvaise »
     (confiance, functional_status non_conforme).
     """
-    if (connector_type or "odoo").lower() == "odoo":
-        return GROUND_TRUTH_BACKEND_VERIFIED
+    # Lot VH-04 (point 4, audit V6) : plus de « vérifié côté serveur » d'office pour Odoo. Avant, tout cas Odoo l'était —
+    # même un cas qui n'avait constaté QUE l'écran. Désormais, quel que soit le connecteur : chaque scénario a recoupé le
+    # serveur sous un `Alors` (oracle, ou lecture RPC observée pendant le step du constat), sinon `ui_only`.
     return GROUND_TRUTH_BACKEND_VERIFIED if oracle_utilise else GROUND_TRUTH_UI_ONLY
 
 
@@ -130,6 +131,7 @@ class ScenarioVerdict:
     resolutions_adaptatives: list[str] = field(default_factory=list)
     # Lot 07e (D7) : ce scénario a interrogé l'oracle backend sous un `Alors` (réussi ou échoué).
     oracle_verifie: bool = False
+    serveur_verifie: bool = False  # lot VH-04 (point 4) : oracle OU lecture RPC observée sous un `Alors`
 
 
 @dataclass
@@ -186,6 +188,7 @@ def scenario_verdict(scenario, failures: list) -> ScenarioVerdict:
     """Projette un scénario behave + ses échecs sur les deux axes."""
     verdict = _scenario_verdict_axes(scenario, failures)
     verdict.oracle_verifie = bool(getattr(scenario, "oracle_verifie", False))
+    verdict.serveur_verifie = verdict.oracle_verifie or bool(getattr(scenario, "serveur_verifie", False))
     return verdict
 
 
@@ -317,7 +320,7 @@ def aggregate(verdicts: list[ScenarioVerdict], *, connector_type: str | None = N
         scenarios_passed=passed,
         scenarios_failed=len(verdicts) - passed,
         ground_truth=_ground_truth_pour(
-            connector_type, bool(verdicts) and all(v.oracle_verifie for v in verdicts)),
+            connector_type, bool(verdicts) and all(v.serveur_verifie or v.oracle_verifie for v in verdicts)),
         confiance=max((v.confiance for v in verdicts), key=lambda c: _RANG_CONFIANCE.get(c, 0),
                       default=CONFIANCE_NOMINALE),
     )
