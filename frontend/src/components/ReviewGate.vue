@@ -34,6 +34,8 @@ const FAMILLES: Record<string, string> = {
   exemple_modifie: 'réparation',
   // D30 (2026-10-09) — la correction automatique a touché une vérification qui lisait déjà l'application.
   verification_affaiblie_par_correction: 'correction',
+  // D31 (2026-10-09) — le résultat attendu ou les étapes ont changé depuis l'écriture du test.
+  attente_metier_changee: 'métier',
   // 0021 — le test référence quelque chose qui n'existe pas dans l'application.
   valeur_option_inexistante: 'donnée',
   champ_inconnu: 'donnée',

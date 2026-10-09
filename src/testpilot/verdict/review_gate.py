@@ -81,6 +81,18 @@ def auto_approve_metier(review_repo, *, case_id: int, version_id: int,
 AUTEUR_REPARATION = "repair-agent"
 
 
+def attente_metier_changee(avant: dict | None, apres: dict | None) -> bool:
+    """D31 (validée par le porteur le 2026-10-09) : `apres` garde le TEST de `avant` mais change ce qu'il doit vérifier.
+
+    Vrai si `avant` porte un test (Gherkin non vide) et que le résultat attendu ou les étapes métier diffèrent. Le titre et
+    les préconditions ne comptent pas : ils ne changent pas ce que le test doit prouver (l'amendement §4.3 s'y applique
+    toujours). Comparaison de textes HUMAINS (le métier validé), jamais du texte de l'agent.
+    """
+    if not avant or not apres or not (avant.get("feature_content") or "").strip():
+        return False
+    return any((avant.get(champ) or "") != (apres.get(champ) or "") for champ in ("expected_result", "test_steps"))
+
+
 def version_reparee_non_relue(review_repo, version: dict | None) -> bool:
     """Une version écrite par l'agent de réparation et pas (encore) approuvée par un humain."""
     return bool(version) and version.get("created_by") == AUTEUR_REPARATION and not evaluate_gate(

@@ -1377,7 +1377,7 @@ def module_summary(row: dict) -> ModuleSummary:
 
 
 def case_summary(row: dict) -> CaseSummary:
-    from testpilot.verdict.status import statut_de_test
+    from testpilot.verdict.status import statut_du_cas
 
     return CaseSummary(
         id=row["id"], title=row["title"],
@@ -1400,8 +1400,10 @@ def case_summary(row: dict) -> CaseSummary:
             and row["last_verdict_version_id"] != row["current_version_id"]),
         # Calculé ICI, une fois, pour tous les appelants : c'est ce qui garantit que l'étiquette
         # affichée et celle qui sert à filtrer sont la même.
-        statut=statut_de_test(row.get("last_execution_status"),
-                              row.get("last_functional_status")),
+        # D31 (2026-10-09) : un « Réussi » obtenu contre une autre attente métier se lit « Retest » (même règle que le filtre,
+        # `CaseRepo.page`) ; le run, lui, garde son verdict.
+        statut=statut_du_cas(row.get("last_execution_status"), row.get("last_functional_status"),
+                             attente_changee=bool(row.get("attente_changee"))),
     )
 
 

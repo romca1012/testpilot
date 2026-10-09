@@ -415,6 +415,10 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
     (décision `0022` n°6). ⚠️ **Amendement §4.3 (2026-07-21)** : éditer et enregistrer le métier
     VAUT relecture — la nouvelle version est donc approuvée automatiquement (tracé), et non plus
     laissée « à relire ». Plus de gate humain séparé sur le Gherkin.
+
+    ⚠️ **D31 (validée le 2026-10-09)** : sauf si le RÉSULTAT ATTENDU ou les ÉTAPES changent alors que le cas a déjà un test.
+    Le test recopié vérifie alors l'ancienne attente : la nouvelle version reste à relire (régénérer, ou approuver si le test
+    convient encore), et le cas affiche « Retest » jusqu'au prochain run (`status.statut_du_cas`).
     """
     cases = CaseRepo(conn)
     if cases.get(case_id) is None:
@@ -422,8 +426,8 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
     # Lot VH-03 (revue, bloquant) : l'édition du métier recopie le Gherkin et les steps de la version COURANTE. Si ce code a
     # été réécrit par l'agent de réparation sans être relu, l'approuver d'office le « blanchirait » : la nouvelle version
     # hérite de son état de relecture (à relire), l'amendement §4.3 continue de s'appliquer à tout code déjà relu.
-    source_non_relue = review_gate.version_reparee_non_relue(
-        ReviewRepo(conn), VersionRepo(conn).get(cases.get(case_id).get("current_version_id") or 0))
+    source = VersionRepo(conn).get(cases.get(case_id).get("current_version_id") or 0)
+    source_non_relue = review_gate.version_reparee_non_relue(ReviewRepo(conn), source)
     try:
         version_id = cases.update_metier(
             case_id, title=body.title, preconditions=body.preconditions,
@@ -434,7 +438,8 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
         raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
     except VersionConflict as exc:
         raise erreurs.ErreurMetier("conflit_edition", str(exc)) from exc
-    if version_id is not None and not source_non_relue:
+    if (version_id is not None and not source_non_relue
+            and not review_gate.attente_metier_changee(source, VersionRepo(conn).get(version_id))):
         review_gate.auto_approve_metier(ReviewRepo(conn), case_id=case_id, version_id=version_id,
                                         repair_budget=config.REPAIR_BUDGET_DEFAULT)
     cas_a_jour = cases.get(case_id)
