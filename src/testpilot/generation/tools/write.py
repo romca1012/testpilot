@@ -534,8 +534,9 @@ def verifications_creuses(tree: ast.Module) -> set[int]:
     - un `except` large y avale l'échec ; ou
     - toutes ses affirmations sont jugeables ici (`constater*`, `assert`) et AUCUNE ne lit l'application (constante,
       tautologie, valeur du seul test) — zéro affirmation compris.
-    Un `expect(...)`, un helper de la bibliothèque qui constate ou un appel à une fonction du fichier comptent comme une
-    vraie lecture : on ne sait pas les juger ici, on ne les déclare donc jamais creux.
+    Un `expect(...)`, un helper de la bibliothèque qui constate, un appel à une fonction du fichier, un `raise`, ou tout
+    appel qui reçoit `context` ou une valeur lue de l'application comptent comme une vraie lecture : on ne sait pas les
+    juger ici, on ne les déclare donc jamais creux (revue D30-D32, C3).
     Harnais inconnu (`None`) : un attribut de `context` non écrit par le fichier est réputé lu — toujours le sens prudent.
     """
     fonctions, locaux, contexte_lu = _analyse_des_lectures(tree, None)
@@ -553,11 +554,18 @@ def verifications_creuses(tree: ast.Module) -> set[int]:
         for n in _noeuds_sans_fonctions(func):
             if isinstance(n, ast.Assert):
                 reelle = reelle or not _condition_creuse(n.test, lecture)
+            elif isinstance(n, ast.Raise):
+                reelle = True  # revue D30-D32 (C3) : `if lu != attendu: raise AssertionError(…)` prouve quelque chose
             elif isinstance(n, ast.Call):
                 nom = _nom_appele(n)
                 if nom in _CONSTATER:
                     reelle = reelle or not _condition_creuse(_condition_du_constat(n), lecture)
                 elif nom == "expect" or nom in constatent or nom in locales:
+                    reelle = True
+                elif any((isinstance(a, ast.Name) and a.id == "context") or lecture.depend(a)
+                         for a in (*n.args, *(k.value for k in n.keywords))):
+                    # Revue D30-D32 (C3) : un appel qu'on ne sait pas juger (helper par alias…) qui reçoit `context` ou
+                    # une valeur lue de l'application peut vérifier — réputé réel (sens prudent).
                     reelle = True
         if not reelle:
             creuses.add(id(func))
@@ -613,6 +621,11 @@ def _forbidden_python(tree: ast.AST) -> str:
                 return f"`{n.func.id}(…, {n.args[1].value!r})` : attribut réservé au harnais ou secret"
         if isinstance(n, ast.Attribute) and n.attr in _ATTRIBUTS_INTERDITS:
             return f"`.{n.attr}` : attribut réservé au harnais ou secret, interdit dans un fichier de steps"
+        # Revue D30-D32 : `global helper; helper = lambda …` dans une fonction réécrivait un helper lu par une vérification
+        # sans toucher la liaison de module que le gel compare (réparation comme correction).
+        if isinstance(n, (ast.Global, ast.Nonlocal)):
+            return (f"`{'global' if isinstance(n, ast.Global) else 'nonlocal'} {', '.join(n.names)}` : un step ne réaffecte "
+                    "pas un nom du module ; range la valeur dans `context`")
     return ""
 
 

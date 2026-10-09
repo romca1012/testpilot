@@ -479,6 +479,24 @@ def _affaiblissements_de_correction(avant: dict, apres: dict) -> list[dict]:
             for ecart in ecarts]
 
 
+def _versions_du_meme_test(version_rows: list[dict], current: dict) -> list[dict]:
+    """Les versions PRÉCÉDENTES consécutives qui portent exactement le même test (Gherkin et steps), de la plus récente à
+    celle où ce test a été écrit — une édition du métier recopie le test tel quel."""
+    meme_test = []
+    for v in sorted((v for v in version_rows if v["id"] < current["id"]), key=lambda v: v["id"], reverse=True):
+        if ((v.get("feature_content") or "") != (current.get("feature_content") or "")
+                or (v.get("steps_content") or "") != (current.get("steps_content") or "")):
+            break
+        meme_test.append(v)
+    return meme_test
+
+
+def _ecriture_du_test(version_rows: list[dict], current: dict) -> dict:
+    """La version où le test de `current` a été ÉCRIT (elle-même si elle l'a écrit)."""
+    meme_test = _versions_du_meme_test(version_rows, current)
+    return meme_test[-1] if meme_test else current
+
+
 ATTENTE_METIER_CHANGEE = "attente_metier_changee"
 
 
@@ -491,16 +509,11 @@ def _attente_changee_depuis_le_test(conn, version_rows: list[dict], current: dic
     """
     from testpilot.store.repositories import ReviewRepo
 
+    meme_test = _versions_du_meme_test(version_rows, current)
+    if not meme_test:
+        return []  # le test vient d'être écrit : rien à comparer (et aucune lecture de la base)
     revues = ReviewRepo(conn)
     if revues.is_version_approved(current["id"]):
-        return []
-    meme_test = []
-    for v in sorted((v for v in version_rows if v["id"] < current["id"]), key=lambda v: v["id"], reverse=True):
-        if ((v.get("feature_content") or "") != (current.get("feature_content") or "")
-                or (v.get("steps_content") or "") != (current.get("steps_content") or "")):
-            break
-        meme_test.append(v)
-    if not meme_test:
         return []
     reference = next((v for v in meme_test if revues.is_version_approved(v["id"])), meme_test[-1])
     if not review_gate.attente_metier_changee(reference, current):
@@ -548,8 +561,11 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
     # ⚠️ D30 (validée le 2026-10-09) affine ce choix, sans le renverser : réécrire une vérification
     # CREUSE reste le métier de la correction ; toucher une vérification qui lisait DÉJÀ
     # l'application (ou un `Alors`, un exemple, un scénario) devient un point de vigilance, plus bas.
-    if current and current.get("created_by") == _AUTEUR_CORRECTION:
-        precedentes = [v for v in version_rows if v["id"] < current["id"]]
+    # Revue D30-D32 (B1) : jugé sur la version qui a ÉCRIT le test, pas sur la courante — une édition du métier recopie le
+    # test d'une correction ; le signal doit la suivre, sinon il disparaissait avec le titre corrigé.
+    ecriture = _ecriture_du_test(version_rows, current) if current else None
+    if ecriture and ecriture.get("created_by") == _AUTEUR_CORRECTION:
+        precedentes = [v for v in version_rows if v["id"] < ecriture["id"]]
         if precedentes:
             warnings += _affaiblissements_de_correction(max(precedentes, key=lambda v: v["id"]), current)
     if current:
