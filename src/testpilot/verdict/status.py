@@ -63,24 +63,28 @@ GROUND_TRUTH_UI_ONLY = "ui_only"
 CONFIANCE_NOMINALE = "nominale"
 CONFIANCE_AUTO_RESOLUE = "auto_resolue"
 CONFIANCE_APRES_RETRY = "apres_retry"
-CONFIANCES = (CONFIANCE_NOMINALE, CONFIANCE_AUTO_RESOLUE, CONFIANCE_APRES_RETRY)
+# Lot VH-03 (D28) : résultat d'une version RÉPARÉE par l'agent et pas encore relue — jamais le résultat du cas.
+CONFIANCE_APRES_REPARATION = "apres_reparation"
+CONFIANCES = (CONFIANCE_NOMINALE, CONFIANCE_AUTO_RESOLUE, CONFIANCE_APRES_RETRY, CONFIANCE_APRES_REPARATION)
 # Libellés français (CONTINUITE §4.7 : aucune valeur d'enum brute à l'écran). DUPLIQUÉS dans `frontend/src/lib/status.ts`
 # (`CONFIANCE_LABEL`), même test d'accord que les causes (`tests/test_confiance_libelles.py`).
 LIBELLES_CONFIANCE = {
     CONFIANCE_NOMINALE: "Nominale",
     CONFIANCE_AUTO_RESOLUE: "Résolue automatiquement",
     CONFIANCE_APRES_RETRY: "Obtenue au second essai",
+    CONFIANCE_APRES_REPARATION: "Après réparation, non relue",
 }
 LIBELLE_A_CONFIRMER = "Réussi — à confirmer"
 # Du moins au plus préoccupant : le cas prend la confiance du scénario le moins sûr.
-_RANG_CONFIANCE = {CONFIANCE_NOMINALE: 0, CONFIANCE_AUTO_RESOLUE: 1, CONFIANCE_APRES_RETRY: 2}
+_RANG_CONFIANCE = {CONFIANCE_NOMINALE: 0, CONFIANCE_AUTO_RESOLUE: 1, CONFIANCE_APRES_RETRY: 2,
+                   CONFIANCE_APRES_REPARATION: 3}
 
 
 def a_confirmer(statut: str | None, confiance: str | None) -> bool:
     """« Réussi — à confirmer » : un `passed` dont la confiance n'est pas nominale. PUR, calculé par le SERVEUR (comme
     `statut_de_test`) : l'écran lit ce booléen, il ne redérive jamais la règle. Une confiance absente (résultat manuel,
     exécution ancienne) ou inconnue n'ajoute aucune réserve — elle n'a pas été mesurée."""
-    return statut == "passed" and confiance in (CONFIANCE_AUTO_RESOLUE, CONFIANCE_APRES_RETRY)
+    return statut == "passed" and confiance in (CONFIANCE_AUTO_RESOLUE, CONFIANCE_APRES_RETRY, CONFIANCE_APRES_REPARATION)
 
 
 def _ground_truth_pour(connector_type: str | None, oracle_utilise: bool = False) -> str:

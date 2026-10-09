@@ -198,6 +198,7 @@ const CONFIANCE_LABEL: Record<string, string> = {
   nominale: 'Nominale',
   auto_resolue: 'Résolue automatiquement',
   apres_retry: 'Obtenue au second essai',
+  apres_reparation: 'Après réparation, non relue',
 }
 
 /** Libellé français d'une confiance ; une valeur inconnue retombe sur « Nominale », jamais sur la valeur brute. */
