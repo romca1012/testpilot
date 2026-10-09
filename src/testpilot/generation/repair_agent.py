@@ -235,6 +235,10 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
         connector=connector,
         reserved_steps=frozenset(s.label for s in shared_steps),
     )
+    # Lot VH-03 (V3) : ce que la version de référence VÉRIFIE est gelé pendant la réparation (contrôle à l'écriture).
+    ctx.gel_steps = steps_content or None
+    reference_feature = config.GENERATED_DIR / f"{module_name}.feature"
+    ctx.gel_feature = reference_feature.read_text(encoding="utf-8") if reference_feature.exists() else None
     # Lot VH-05 (revue du 2026-10-08) : une réparation passe par les MÊMES contrôles des littéraux que la génération.
     from testpilot.generation import litteraux_observes
     litteraux_observes.brancher_controles(ctx, connector_type, modele, config.BEHAVE_RUNTIME_DIR)

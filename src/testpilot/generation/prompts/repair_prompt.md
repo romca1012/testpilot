@@ -89,7 +89,9 @@ la vérification de l'effet.
 
 ## Ce que tu peux modifier
 
-Le `.feature` est **gelé** : son intention a été relue et approuvée par un humain. Corrige
+Ce que le test VÉRIFIE est **gelé, et l'outil d'écriture le refuse mécaniquement** : les steps « Alors » (et leurs « Et »),
+les tables d'Exemples, et dans `_steps.py` les fonctions `@then` et celles qu'elles appellent — seuls leurs sélecteurs et
+leurs délais peuvent changer. Le `.feature` est **gelé** : son intention a été relue et approuvée par un humain. Corrige
 **uniquement** `_steps.py`.
 
 **Deux exceptions**, et elles seules :
