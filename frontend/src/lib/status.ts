@@ -120,6 +120,7 @@ const CAUSE: Record<string, string> = {
   assertion_mismatch: 'Assertion métier en échec',
   resolveur_incomplet: 'Test non automatisable (résolveur)',
   refus_non_explique: 'Refus non expliqué (à instruire)',
+  oracle_en_erreur: "L'oracle a répondu en erreur : rien n'a pu être vérifié",
   aucun_constat: 'Aucune vérification exécutée',
   alors_sans_constat: "Un résultat attendu n'a rien vérifié",
   constat_echoue_ignore: 'Une vérification a échoué sans faire échouer le test',

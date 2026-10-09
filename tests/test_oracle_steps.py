@@ -198,7 +198,13 @@ def test_falsifiable_oracle_champ_compte_ne_devine_pas_zero_sur_un_chemin_absent
         H.oracle_champ_compte(_etat(serveur), "panier", "etat", 0)
 
 
-def test_renvoie_n_resultats_sur_un_objet_oriente_vers_le_comptage_d_un_champ(serveur):
-    """Mesuré : « renvoie 0 résultat » sur un objet (compté pour 1) donnait un faux rouge ; le message dit quoi faire."""
-    with pytest.raises(AssertionError, match="objet unique.*compte <n> élément"):
+def test_renvoie_n_resultats_sur_un_objet_oriente_vers_le_comptage_d_un_champ(serveur, sidecar):
+    """Mesuré : « renvoie 0 résultat » sur un objet (compté pour 1) donnait un faux rouge ; le message dit quoi faire.
+
+    Lot VH-04 (2026-10-09), changement DÉLIBÉRÉ de l'attendu : ce test exigeait un constat échoué (`AssertionError` →
+    `non_conforme`, une accusation de l'application) — exactement le faux rouge mesuré (base-2 : 9 essais sur 30 ; base-4 : 1).
+    Un objet ne se compte pas : le test est mal posé (`ReponseOracleNonComptableError` → erreur technique), et aucun constat
+    n'est consigné contre l'application."""
+    with pytest.raises(H.ReponseOracleNonComptableError, match="objet.*compte <n> élément"):
         H.oracle_renvoie_n_resultats(_etat(serveur), "etat", 0)
+    assert sidecar() == []

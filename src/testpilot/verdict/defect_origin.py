@@ -90,6 +90,8 @@ _ORIGIN_BY_CAUSE = {
     # Q1 (D16) : un `Alors` n'a rien vérifié — rien n'est prouvé ni pour ni contre l'application, jamais réparé.
     dt.ALORS_SANS_CONSTAT: INDETERMINE,
     dt.CONSTAT_ECHOUE_IGNORE: INDETERMINE,
+    # Lot VH-04 : l'oracle a répondu en erreur — rien n'est prouvé, réécrire le test n'y changerait rien.
+    dt.ORACLE_EN_ERREUR: INDETERMINE,
 
     dt.UNKNOWN: INDETERMINE,
 }

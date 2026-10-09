@@ -216,7 +216,8 @@ def _scenario_verdict_axes(scenario, failures: list) -> ScenarioVerdict:
         cause = dt.dominant_category(failures) or dt.UNKNOWN
         failure_type = failures[0].failure_type if failures else ""
         step_text = failures[0].step_text if failures else ""
-        if cause == dt.REFUS_NON_EXPLIQUE:
+        if cause in (dt.REFUS_NON_EXPLIQUE, dt.ORACLE_EN_ERREUR):
+            # Lot VH-04 : un oracle qui répond en ERREUR n'a rien observé non plus — même règle, jamais `non_conforme`.
             # A tourné jusqu'au bout, mais rien n'explique le refus : ni constat sur l'application ni
             # panne du test. Manque d'observabilité → `indetermine` (jamais `non_conforme`).
             return ScenarioVerdict(scenario.name, EXEC_SUCCESS, FUNC_INDETERMINE,
