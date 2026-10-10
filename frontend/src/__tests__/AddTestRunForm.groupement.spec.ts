@@ -102,7 +102,9 @@ describe('AddTestRunForm — cas groupés Module → Section → Sous-section', 
     await boutonSection.trigger('click')
 
     // Les 3 cas de la branche (2 directs + 1 en sous-section) doivent être cochés.
-    const cases = w.findAll('input[type=checkbox]')
+    // D33 (2026-10-10) : seules les cases des CAS comptent — les options de campagne (« Sans repli par l'IA », cochée par
+    // défaut ; « Campagne stricte ») portent un `data-testid` et ne sont pas des cas sélectionnés.
+    const cases = w.findAll('input[type=checkbox]:not([data-testid])')
     const cochees = cases.filter((c: any) => (c.element as HTMLInputElement).checked)
     expect(cochees.length).toBe(3)
   })
@@ -113,7 +115,9 @@ describe('AddTestRunForm — cas groupés Module → Section → Sous-section', 
     const boutonSousSection = w.findAll('button').find((b: any) => b.text().includes('Réinitialisation'))!
     await boutonSousSection.trigger('click')
 
-    const cases = w.findAll('input[type=checkbox]')
+    // D33 (2026-10-10) : seules les cases des CAS comptent — les options de campagne (« Sans repli par l'IA », cochée par
+    // défaut ; « Campagne stricte ») portent un `data-testid` et ne sont pas des cas sélectionnés.
+    const cases = w.findAll('input[type=checkbox]:not([data-testid])')
     const cochees = cases.filter((c: any) => (c.element as HTMLInputElement).checked)
     expect(cochees.length).toBe(1)   // seulement « Lien expiré »
   })

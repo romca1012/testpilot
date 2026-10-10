@@ -35,6 +35,7 @@ def _summary(run: dict, case_count: int) -> schemas.RunSummary:
         created_at=run.get("created_at", ""),
         plan_id=run.get("plan_id"),
         strict=bool(run.get("strict")),
+        sans_repli=bool(run.get("sans_repli", 1)),
         verts_a_confirmer=run.get("verts_a_confirmer", 0))
 
 
@@ -66,7 +67,7 @@ def create_run(project_id: int, body: schemas.RunIn, conn=Depends(get_conn)):
     run_id = repo.create(project_id=project_id, name=body.name.strip(),
                          description=body.description, refs=body.refs,
                          selection_mode=body.selection_mode, mode=body.mode,
-                         case_ids=body.case_ids, strict=body.strict)
+                         case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli)
     return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
 
 

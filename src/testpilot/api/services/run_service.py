@@ -17,7 +17,7 @@ from pathlib import Path
 from testpilot import config
 from testpilot.api.services import attachment_service, repair_service
 from testpilot.connectors.runtime_env import ConnexionIncomplete, cible_de, verifier_connexion
-from testpilot.execution.behave_result import MODE_STRICT_ENV
+from testpilot.execution.behave_result import MODE_STRICT_ENV, SANS_REPLI_ENV
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.execution.executor import Executor
 from testpilot.store.db import get_initialized_db
@@ -215,7 +215,8 @@ def _assurer_script_sur_disque(conn, version_id: int, module_name: str) -> None:
 
 
 def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int, *,
-                  triggered_by: str = "", qualification: bool = False, strict: bool = False) -> None:
+                  triggered_by: str = "", qualification: bool = False, strict: bool = False,
+                  sans_repli: bool = False) -> None:
     """Tâche de fond : lance Behave réel, calcule + persiste le verdict à deux axes.
 
     Puis tente une RÉPARATION si le gate l'a autorisée (décision 0014) : la boucle vit dans
@@ -236,6 +237,10 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
                               project_id=resolve_project_id(conn, case_id),
                               connector_type=resolve_connector_type(conn, case_id),
                               profil_instance=resolve_profil_instance(conn, case_id))
+        if sans_repli:
+            # D33 (2026-10-10) : campagne sans repli par le modèle de langage — posé sur le runner, donc valable pour CHAQUE
+            # run du cas, tentatives de réparation comprises ; second essai et réparation restent permis (≠ strict).
+            runner.connection = {**runner.connection, SANS_REPLI_ENV: "1"}
         outcome = _execute_and_persist(conn, execution_id, case_id, module_name, runner,
                                        **({'qualification': True} if qualification else {}),
                                        **({'strict': True} if strict else {}))

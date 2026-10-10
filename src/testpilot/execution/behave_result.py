@@ -410,6 +410,9 @@ GENERATED_STEPS_FILE_ENV = "TP_GENERATED_STEPS_FILE"
 # `PALIER_ADAPTATIF` : la valeur de `tier` qu'y écrit une résolution adaptative RÉUSSIE (lue par `verdict/status.py`).
 MODE_STRICT_ENV = "TP_MODE_STRICT"
 PALIER_ADAPTATIF = "adaptive"
+# D33 : campagne SANS REPLI par le modèle de langage (résolution adaptative coupée, retry et réparation conservés). Nom dupliqué
+# côté `_base_helpers`, même test d'accord.
+SANS_REPLI_ENV = "TP_SANS_REPLI_ADAPTATIF"
 _MAX_CONSTATS = 20000
 
 
