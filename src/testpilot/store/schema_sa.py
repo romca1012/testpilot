@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 59
+ALIGNED_WITH_SCHEMA_VERSION = 60
 
 metadata = MetaData()
 
@@ -452,6 +452,9 @@ test_run = Table(
     # Lot 05 (D5, migration 49) : campagne STRICTE — ni résolution adaptative ni retry pendant l'exécution.
     Column("strict", Integer, nullable=False, server_default="0"),
     CheckConstraint("strict IN (0, 1)", name="ck_test_run_strict"),
+    # D33 (migration 60) : sans repli par le modèle de langage à l'exécution, réparation conservée. Cochée par défaut.
+    Column("sans_repli", Integer, nullable=False, server_default="1"),
+    CheckConstraint("sans_repli IN (0, 1)", name="ck_test_run_sans_repli"),
     CheckConstraint("selection_mode IN ('all', 'frozen')", name="ck_test_run_selection_mode"),
     CheckConstraint("status IN ('draft', 'running', 'completed')", name="ck_test_run_status"),
     CheckConstraint("mode IN ('manuelle', 'automatique')", name="ck_test_run_mode"),

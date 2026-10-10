@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 59
+_SCHEMA_VERSION = 60
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -260,6 +260,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_58_dependance_inter_cas(conn)
     if version < 59:
         _migrate_59_confiance_apres_reparation(conn)
+    if version < 60:
+        _migrate_60_sans_repli_adaptatif(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -418,6 +420,18 @@ def _migrate_50_contexte_navigateur(conn: sqlite3.Connection) -> None:
     for colonne in ("browser_locale", "browser_timezone", "browser_viewport"):
         if colonne not in _column_names(conn, "project"):
             conn.execute(f"ALTER TABLE project ADD COLUMN {colonne} TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_60_sans_repli_adaptatif(conn: sqlite3.Connection) -> None:
+    """D33 (validée par le porteur le 2026-10-10, prolonge D25) : `test_run.sans_repli` — la campagne se joue SANS repli
+    par le modèle de langage à l'exécution (résolution adaptative), sans pour autant renoncer au second essai ni à la
+    réparation (ce que fait la campagne STRICTE, D5). Cochée par défaut, y compris pour les campagnes EXISTANTES : D25
+    veut le repli coupé par défaut en campagne ; une campagne relancée applique la règle d'aujourd'hui.
+
+    `ALTER TABLE … ADD COLUMN` accepte un CHECK quand le DEFAULT le satisfait : pas de reconstruction. Idempotente."""
+    if "sans_repli" not in _column_names(conn, "test_run"):
+        conn.execute("ALTER TABLE test_run ADD COLUMN sans_repli INTEGER NOT NULL DEFAULT 1"
+                     " CHECK (sans_repli IN (0, 1))")
 
 
 def _migrate_49_confiance_et_strict(conn: sqlite3.Connection) -> None:

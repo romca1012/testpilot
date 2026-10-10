@@ -761,6 +761,9 @@ class RunIn(BaseModel):
     # Lot 05 (D5) : campagne STRICTE — jouée sans résolution adaptative ni retry (le vert ne peut venir que de la cascade
     # déterministe). Faux par défaut : le comportement d'une campagne créée sans ce champ ne change pas.
     strict: bool = False
+    # D33 (2026-10-10) : sans repli par le modèle de langage à l'exécution, second essai et réparation conservés. VRAI par
+    # défaut (D25 : le repli est coupé par défaut en campagne) — à décocher explicitement pour l'autoriser.
+    sans_repli: bool = True
 
 
 class RunCaseResult(BaseModel):
@@ -879,6 +882,7 @@ class RunSummary(BaseModel):
     manuel_count: int = 0
     # Lot 05 (D5) : campagne stricte, et compteur « verts à confirmer » (réussis dont la confiance n'est pas nominale).
     strict: bool = False
+    sans_repli: bool = True  # D33
     verts_a_confirmer: int = 0
     # Archivé = LECTURE SEULE (on ne relance plus). Distinct du statut : `completed` dit où en
     # est l'exécution, `is_archived` dit si on a le droit d'y toucher.

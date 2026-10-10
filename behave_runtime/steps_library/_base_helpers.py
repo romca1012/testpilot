@@ -331,6 +331,8 @@ SELECTOR_TIER_FILE_ENV = "TP_SELECTOR_TIER_FILE"
 # même test d'accord que les sidecars ci-dessus. Le palier consigné par une résolution adaptative réussie.
 MODE_STRICT_ENV = "TP_MODE_STRICT"
 PALIER_ADAPTATIF = "adaptive"
+# D33 (2026-10-10) : campagne sans repli par le modèle de langage — dupliqué de `execution/behave_result.SANS_REPLI_ENV`.
+SANS_REPLI_ENV = "TP_SANS_REPLI_ADAPTATIF"
 # Lot VH-04 (D25) : paliers d'un clic par candidats (`click_first_actionable`) — exact, ou par sous-chaîne (`:has-text`).
 PALIER_CLIC = "clic"
 PALIER_CLIC_SOUS_CHAINE = "clic_sous_chaine"
@@ -1230,6 +1232,10 @@ def _repli_adaptatif(page, ident: str, intention: str, *, valeur: str = ""):
     # Lot 05 (D5) : en campagne STRICTE, l'échec de la cascade déterministe reste un échec — jamais un LLM pour le
     # rattraper (un vert obtenu par repli n'est pas un vert nominal, et le mode strict ne veut aucun repli).
     if os.environ.get(MODE_STRICT_ENV) == '1':
+        return None
+    # D33 : campagne SANS REPLI (cochée par défaut) — l'échec de la cascade déterministe reste un échec, sans renoncer au
+    # second essai ni à la réparation (contrairement au mode strict).
+    if os.environ.get(SANS_REPLI_ENV) == '1':
         return None
     if not intention or _adaptive_resolution is None:
         return None
