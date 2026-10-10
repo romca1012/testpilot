@@ -3181,15 +3181,16 @@ def _motif_texte_exact(texte: str) -> str:
     return avant + corps + apres
 
 
-# Sur les candidats VISIBLES (Playwright), le texte RENDU (`innerText`) doit contenir le motif exact ; sous `text-transform`, la
-# casse rendue diffère de la source : la casse n'est alors pas exigée (l'écran affiche de toute façon la même suite de lettres).
+# Sur les candidats VISIBLES (Playwright), le texte RENDU (`innerText`) doit contenir le motif exact ; sous `text-transform`, le
+# texte SOURCE exact est accepté aussi (la casse rendue diffère de la source).
 _JS_CANDIDAT_AFFICHE_EXACT = """(elements, motif) => {
-  const exact = new RegExp(motif), sansCasse = new RegExp(motif, 'i');
+  const exact = new RegExp(motif);
   return elements.some((el) => {
-    const rendu = (el.innerText || '').replace(/\\s+/g, ' ');
-    if (exact.test(rendu)) return true;
+    if (exact.test((el.innerText || '').replace(/\\s+/g, ' '))) return true;
+    // Sous `text-transform`, le texte SOURCE exact est accepté aussi — jamais une troisième casse (« commande validée »
+    // n'est ni « COMMANDE VALIDÉE » affiché, ni « Commande validée » écrit : mesuré par le test de falsifiabilité).
     const transforme = getComputedStyle(el).textTransform;
-    return !!transforme && transforme !== 'none' && sansCasse.test(rendu);
+    return !!transforme && transforme !== 'none' && exact.test((el.textContent || '').replace(/\\s+/g, ' '));
   });
 }"""
 
