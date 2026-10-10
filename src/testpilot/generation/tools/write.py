@@ -193,6 +193,13 @@ _RESERVES_AU_SOCLE = frozenset({
     "definir_etat_constat", "TP_GENERATED_STEPS_FILE",
     # Lot VH-02 (revue du 2026-10-08) : la garde des constats qui ne prouvent rien, et le fichier où les constats sont consignés.
     "_condition_toujours_vraie", "ConstatInvalideError", "TP_CONSTATS_FILE",
+    # Lot VH-04 (revue, point 9) : garde de session, source `rpc` des constats, soumission observée — un step généré ne
+    # désarme pas la garde, ne forge pas une lecture du serveur ni une soumission.
+    "armer_garde_de_session", "_GARDE_DE_SESSION", "_appliquer_garde_de_session", "garde_de_session",
+    "noter_session_ouverte", "cookies_de_session", "_tp_mot_de_passe_saisi", "_tp_cookies_session", "__tp_mot_de_passe_saisi",
+    "noter_lecture_rpc", "_LECTURE_RPC_DU_STEP", "debut_de_step",
+    "_tp_refus_navigateur", "_tp_releve_sequence", "_tp_releve_t", "_soumission_observee", "_est_un_envoi",
+    "reponses_reseau", "navigations",
 })
 
 

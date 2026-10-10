@@ -163,6 +163,8 @@ _EXCEPTION_TO_CAUSE = {
     # Lot VH-04 : levées UNIQUEMENT par les steps d'oracle de la bibliothèque — classes dédiées, non ambiguës.
     "OracleEnErreurError": ORACLE_EN_ERREUR,
     "ReponseOracleNonComptableError": BROKEN_TEST_CODE,
+    # Revue du lot VH-04 (point 6) : ce qui a été vu ne permet pas de conclure — « un résultat attendu n'a rien vérifié ».
+    "ConstatNonConcluantError": ALORS_SANS_CONSTAT,
     # Erreurs de PROGRAMMATION dans le code du step. L'application n'y est pour rien : c'est
     # notre code qui est faux, donc réparable par construction. C'était le trou le plus absurde
     # de l'ancienne version — un `TypeError` nu tombait en `unknown` → `indetermine`, et le

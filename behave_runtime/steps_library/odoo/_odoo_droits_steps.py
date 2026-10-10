@@ -16,16 +16,19 @@ from _odoo_steps import _exiger_enregistrement_en_contexte
 from _selecteurs import odoo_attendre_inactif, selecteurs
 
 _REFUS_D_ACCES = re.compile(r"\bAccess(Error|Denied)\b")
+# Revue du lot (point 5) : dans le MESSAGE, seulement en tête (« odoo.exceptions.AccessError: … ») — ailleurs, il peut contenir
+# des données du test.
+_REFUS_D_ACCES_EN_TETE = re.compile(r"^\s*(odoo\.exceptions\.)?Access(Error|Denied)\b")
 
 
 def _est_un_refus_d_acces(exc: BaseException) -> bool:
     """Le serveur a refusé PAR DROITS : classe `AccessError`/`AccessDenied`, ou nom d'exception Odoo transmis par l'erreur RPC
-    (`info["data"]["name"]`, ou son message, écrit par le serveur — jamais par l'agent)."""
+    (`info["data"]["name"]`, ou en tête de son message, écrit par le serveur — jamais par l'agent)."""
     if type(exc).__name__ in ("AccessError", "AccessDenied"):
         return True
     info = getattr(exc, "info", None)
     nom = ((info or {}).get("data") or {}).get("name", "") if isinstance(info, dict) else ""
-    return bool(_REFUS_D_ACCES.search(str(nom)) or _REFUS_D_ACCES.search(str(exc)))
+    return bool(_REFUS_D_ACCES.search(str(nom)) or _REFUS_D_ACCES_EN_TETE.match(str(exc)))
 
 
 @then('l\'action "{methode}" est refusée pour cet utilisateur')
@@ -44,6 +47,11 @@ def step_action_refusee(context, methode):
     _exiger_enregistrement_en_contexte(
         context, "Aucun enregistrement en contexte — impossible de vérifier le refus côté RPC.",
         avec_modele=True)
+    if methode.startswith("_"):
+        # Revue du lot (point 5) : Odoo refuse l'appel distant d'une méthode PRIVÉE à TOUT utilisateur (« Private methods
+        # cannot be called remotely », un `AccessError`) — le refus ne prouverait rien sur les droits de CE compte.
+        raise RuntimeError(f"« {methode} » est une méthode privée : Odoo la refuse à tout utilisateur, son refus ne prouve "
+                           "rien sur les droits. Nommez la méthode publique de l'action (ex. `action_confirm`).")
     Model = context.odoo.env[context.last_record_model]
     refuse = False
     try:

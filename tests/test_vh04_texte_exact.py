@@ -68,6 +68,7 @@ AFFICHES = [
     "Commande validée",                       # tel qu'écrit dans la page
     "COMMANDE VALIDÉE",                       # tel qu'affiché (text-transform)
     "1 129,51 €",
+    "12,50 €",
     "Le client « Dupont SARL » a été créé.",
     "Commandes en attente",
     "attente",                                # mot entier
@@ -80,6 +81,9 @@ NON_AFFICHES = [
     "attent",
     "commande validée",  # mauvaise casse
     "Texte caché",       # présent dans la page mais invisible
+    "Annulée",           # revue (B1) : option NON choisie d'une liste déroulante
+    "Paiement accepté",  # revue (B1) : conteneur de hauteur nulle
+    "12",                # revue : partie entière de « 12,50 € »
 ]
 
 

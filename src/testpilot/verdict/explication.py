@@ -34,8 +34,10 @@ logger = logging.getLogger(__name__)
 # nuance à faire deviner à un modèle de langage. Ajoutée APRÈS coup au texte de l'IA, jamais dans
 # le prompt : une IA qui « oublierait » de le mentionner laisserait croire à une vérification aussi
 # solide qu'un cas Odoo, exactement la confusion que ce champ existe pour éviter.
+# Revue du lot VH-04 (point 8) : depuis que « vérifié côté serveur » se mérite par les constats (Odoo compris), la note dit ce que
+# CE TEST a fait, plus ce que « l'application » permettrait — un cas Odoo qui n'a lu que l'écran la reçoit aussi.
 _NOTE_UI_ONLY = (
-    "Vérification limitée à ce que l'écran affiche : cette application ne permet pas de "
+    "Vérification limitée à ce que l'écran affiche : ce test n'a pas pu "
     "recouper le résultat avec une donnée de référence côté serveur.")
 
 # Note DÉTERMINISTE (lot 02, D1), jamais confiée au LLM — même principe que `_NOTE_UI_ONLY` : « bloqué »
