@@ -114,11 +114,46 @@ def test_rien_cree_apres_une_soumission_est_un_refus():
 
 
 def test_un_refus_du_navigateur_vaut_soumission_tentee():
+    import time
+
     ctx = _contexte([])
     H.memorize_record_count(ctx, "res.partner")
-    ctx.page._tp_refus_navigateur = True
+    ctx.page._tp_refus_navigateur = time.monotonic()
 
     H.check_count_not_increased(ctx, "res.partner")
+
+
+def test_falsifiable_un_refus_du_navigateur_anterieur_au_releve_ne_compte_pas():
+    """Revue du lot (point 4) : un drapeau qui traîne d'avant le relevé ne prouve pas la soumission de CETTE action."""
+    import time
+
+    ctx = _contexte([])
+    ctx.page._tp_refus_navigateur = time.monotonic()
+    time.sleep(0.05)  # horloge grossière sous Windows
+    H.memorize_record_count(ctx, "res.partner")
+
+    with pytest.raises(H.RefusNonExpliqueError):
+        H.check_count_not_increased(ctx, "res.partner")
+
+
+@pytest.mark.parametrize("url, soumission", [
+    ("/web/dataset/call_kw/res.partner/onchange", False),     # Odoo : ouvrir le formulaire est un POST, pas un envoi
+    ("/web/dataset/call_kw/res.partner/web_read", False),
+    ("/longpolling/poll", False),
+    ("/web/dataset/call_kw/res.partner/web_save", True),      # Odoo : « Enregistrer »
+    ("/web/dataset/call_button", True),
+    ("/website/form/res.partner", True),
+])
+def test_sur_odoo_seule_une_ecriture_est_une_soumission(url, soumission):
+    ctx = _contexte([])
+    H.memorize_record_count(ctx, "res.partner")
+    ctx.reponses_reseau.append({"n": 6, "methode": "POST", "url": f"http://odoo{url}", "statut": 200})
+
+    if soumission:
+        H.check_count_not_increased(ctx, "res.partner")
+    else:
+        with pytest.raises(H.RefusNonExpliqueError):
+            H.check_count_not_increased(ctx, "res.partner")
 
 
 def test_une_lecture_seule_n_est_pas_une_soumission():
@@ -128,3 +163,29 @@ def test_une_lecture_seule_n_est_pas_une_soumission():
 
     with pytest.raises(H.RefusNonExpliqueError):
         H.check_count_not_increased(ctx, "res.partner")
+
+
+# ── Revue du lot (bloquant B2) ────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.conformance
+def test_falsifiable_neuf_asterisques_ne_cachent_pas_le_vrai_message(navigateur):
+    """Avant : seuls les 8 premiers candidats étaient lus ; neuf astérisques rouges écartés cachaient le message → `non_conforme`."""
+    page = navigateur.new_page()
+    page.set_content("<form>" + "".join(f'<label>Champ {i} <span class="text-red-500">*</span></label><input>' for i in range(9))
+                     + '<p class="text-red-600">Les mots de passe ne correspondent pas</p></form>')
+    try:
+        H.validation_error_inline(page)
+    finally:
+        page.close()
+
+
+@pytest.mark.conformance
+def test_falsifiable_un_bouton_d_envoi_rouge_n_est_pas_un_champ_invalide(navigateur):
+    page = navigateur.new_page()
+    page.set_content('<form><input type="submit" class="bg-red-600 is-invalid" value="Supprimer"></form>')
+    try:
+        with pytest.raises(AssertionError, match="Aucune erreur de validation"):
+            H.validation_error_inline(page)
+    finally:
+        page.close()

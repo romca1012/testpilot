@@ -83,3 +83,14 @@ def test_la_trace_porte_le_type_du_step():
     trace = ba.trace_de_l_echec(SimpleNamespace(real_run=SimpleNamespace(scenarios=[], failures=[echec])))
 
     assert trace["echecs"][0]["step_type"] == "then"
+
+
+@pytest.mark.parametrize("nom", ["armer_garde_de_session", "_tp_mot_de_passe_saisi", "noter_lecture_rpc",
+                                 "_tp_refus_navigateur", "reponses_reseau"])
+def test_falsifiable_un_step_genere_ne_touche_pas_aux_signaux_du_lot(tmp_path, nom):
+    """Revue du lot (point 9) : désarmer la garde de session, forger une lecture RPC ou une soumission est refusé à l'écriture."""
+    code = f"from behave import when\n\n@when('a')\ndef a(context):\n    context.{nom} = True\n"
+
+    sortie = w.write_steps_file(ToolContext(module_name="m", generated_dir=tmp_path), code)
+
+    assert not sortie.ok and nom in sortie.observation

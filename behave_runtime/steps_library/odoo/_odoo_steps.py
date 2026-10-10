@@ -15,7 +15,7 @@ from _base_helpers import (
     PreconditionNonRemplieError,
     memorize_record_count, check_count_not_increased, check_count_increased_by_one, no_duplicate,
     validation_error_notification, playwright_login, navigate_menu, constater, se_connecter_en_tant_que,
-    _max_id_attr,
+    _max_id_attr, ConstatNonConcluantError,
 )
 
 
@@ -80,10 +80,24 @@ def _apparus_apres_le_releve(context, model) -> list:
     return [("id", ">", getattr(context, attribut))] if hasattr(context, attribut) else []
 
 
+def _chercher_l_existence(context, model, domaine) -> list:
+    """Les ids qui répondent à `domaine` parmi ceux apparus après le relevé ; si AUCUN n'y apparaît mais qu'un enregistrement
+    ANTÉRIEUR répond, le constat n'est pas concluant (revue du lot, point 6) : ni un vert (rien ne prouve que l'action l'a
+    créé), ni une accusation (l'action a pu le MODIFIER — renommage — plutôt que le créer)."""
+    modele = context.odoo.env[model]
+    cloison = _apparus_apres_le_releve(context, model)
+    ids = modele.search([*domaine, *cloison])
+    if not ids and cloison and modele.search(list(domaine)):
+        raise ConstatNonConcluantError(
+            f"Un enregistrement de '{model}' répond à la recherche, mais il existait AVANT le relevé du scénario : rien ne "
+            "prouve que l'action l'a créé. S'il devait être modifié plutôt que créé, vérifiez la modification elle-même.")
+    return ids
+
+
 @then('un enregistrement avec le champ "{field}" égal à "{value}" existe '
       'dans le modèle "{model}"')
 def step_record_exists_field_value(context, field, value, model):
-    ids = context.odoo.env[model].search([(field, "=", value), *_apparus_apres_le_releve(context, model)])
+    ids = _chercher_l_existence(context, model, [(field, "=", value)])
     constater(ids, f"Aucun enregistrement trouvé dans '{model}' avec {field}='{value}'"
                    f"{' (parmi ceux apparus après le relevé du scénario)' if _apparus_apres_le_releve(context, model) else ''}.")
     context.last_record_ids = ids
@@ -96,7 +110,7 @@ def step_record_exists_contains(context, field, value, model):
     import re
     m = re.search(r'"([^"]+)"', field)
     actual_field = m.group(1) if m else field.strip()
-    ids = context.odoo.env[model].search([(actual_field, "ilike", value), *_apparus_apres_le_releve(context, model)])
+    ids = _chercher_l_existence(context, model, [(actual_field, "ilike", value)])
     constater(ids, f"Aucun enregistrement trouvé dans '{model}' où {actual_field} contient '{value}'"
                    f"{' (parmi ceux apparus après le relevé du scénario)' if _apparus_apres_le_releve(context, model) else ''}.")
     context.last_record_ids = ids

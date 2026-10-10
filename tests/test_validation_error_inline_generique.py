@@ -42,12 +42,6 @@ class _FauxElement:
     def is_visible(self):
         return self._visible
 
-    def evaluate(self, _js):
-        """Lot VH-04 : le contrôle « est-ce un message d'erreur ? » (ni lien, ni bouton, ni libellé, un texte). Ce double
-        représente un vrai message d'erreur ; les exclusions sont prouvées sur un vrai Chromium
-        (`tests/test_vh04_validation_et_negatif.py`)."""
-        return True
-
 
 class _FauxLocatorCandidats:
     """`page.locator('[role="alert"], .error, .alert-danger, .is-invalid')` — une liste
@@ -62,6 +56,12 @@ class _FauxLocatorCandidats:
 
     def nth(self, i):
         return _FauxElement(self._visibilites[i])
+
+    def evaluate_all(self, _js):
+        """Lot VH-04 (revue) : tous les candidats en une lecture — visibles ET messages d'erreur. Ce double représente de
+        vrais messages : vrai si l'un d'eux est visible ; les exclusions (liens, boutons, libellés, plus de huit candidats)
+        sont prouvées sur un vrai Chromium (`tests/test_vh04_validation_et_negatif.py`)."""
+        return any(self._visibilites)
 
 
 class _FauxLocatorOdoo:
