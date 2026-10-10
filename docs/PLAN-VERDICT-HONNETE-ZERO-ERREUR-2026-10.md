@@ -44,6 +44,8 @@ accepté ; coût mesuré < 1 € par cas ; 100 % des `conforme — preuve forte`
 | D30 | La correction automatique (avant tout run) peut-elle modifier une vérification et rester approuvée d'office ? Conflit : le plan dit « même gel que la réparation » ; la décision du porteur du 2026-09-16 dit « elle corrige et s'auto-approuve » (elle sert justement à renforcer une assertion creuse) | Recommandation : **garder l'auto-approbation** quand la correction ne fait que renforcer (une vérification creuse → une vérification qui lit l'application, déjà exigé par les gardes VH-02), **la refuser** si elle supprime ou modifie une vérification déjà réelle. En attendant : comportement du 2026-09-16 conservé, la modification est écrite en tête du résumé de version | Lot 3 point 6 — **validée le 2026-10-09**, appliquée (voir « D30 à D32 appliquées ») |
 | D31 | Éditer le métier (`résultat attendu`, étapes) sans régénérer garde l'ancien Gherkin approuvé d'office (amendement §4.3 du 2026-07-21) : le cas peut sortir `conforme` contre une attente qui n'est plus testée | Recommandation : si `résultat attendu` ou les étapes changent, la nouvelle version **reste à relire** (ou propose une régénération) ; titre/préconditions seuls : approbation d'office conservée. Déjà fait (revue) : un code RÉPARÉ non relu n'est jamais approuvé d'office par une édition du métier | Lot 3 point 4 — **validée le 2026-10-09**, appliquée |
 | D32 | Un refus serveur (valeur rejetée) est appris d'office et le résolveur l'évite ensuite (§5bis n°1) : si le refus est un bug de l'application, il est contourné au run suivant | Recommandation : apprendre, mais marquer la règle « à confirmer » et ne pas l'appliquer à une valeur conforme à la spec tant qu'un humain ne l'a pas confirmée | Lot 3 point 5 — **validée le 2026-10-09**, appliquée |
+| D33 | D25 dit « repli LLM coupé par défaut en campagne ». Dans le produit, la seule option existante (campagne « stricte », D5) coupe AUSSI la réparation automatique : l'activer par défaut supprimerait la réparation de toutes les campagnes, ce que D25 ne dit pas | Recommandation : une option séparée « sans repli adaptatif » (colonne de `test_run` — migration SQLite + Alembic + `schema_sa`), cochée par défaut ; en attendant, un vert obtenu par repli reste « à confirmer » (confiance `auto_resolue`), jamais un vert ordinaire | Lot 4 point 5 — **ouverte** |
+| D34 | Garde de session (lot 4) : une application qui REDIRIGE vers sa page de connexion un utilisateur connecté mais SANS DROIT (ex. l'admin Django) donne `bloqué`, alors que c'est le comportement attendu d'un test de droits | Recommandation : garder `bloqué` par défaut (une session perdue est le cas le plus fréquent et le plus grave) ; un test de droits l'écrit avec le step dédié « l'action … est refusée » (Odoo) ou ouvre la page de connexion lui-même | Lot 4 — **ouverte** |
 
 Statut des décisions (2026-10-09) : **D23, D24, D25, D27, D28 validées** par le porteur le 2026-10-08 ; **D29, D30, D31, D32 validées** le 2026-10-09 (recommandations retenues telles quelles) ; **D26 en attente** (environnements de test remis à zéro).
 
@@ -244,6 +246,7 @@ Risques et parades :
 | VH-01 (point 1) | les bancs (agents et Odoo) jouent en mode strict | 2026-10-08 | `tests/test_banc_mode_strict.py` (échouait avant) |
 | VH-02 (points 1 et 3) | `constater` refuse une condition toujours vraie (`ConstatInvalideError` → `broken_test_code`) ; un constat échoué dans un scénario passé → `indetermine` (`constat_echoue_ignore`, libellé FR serveur + frontend) ; la garde `except` voit les tuples. Points 2, 4, 5 à faire | 2026-10-08 | `tests/test_constats_qui_prouvent.py` (10 échecs sur 26 avant) |
 | VH-05 (validation hors ligne) | module pur `generation/litteraux_observes.py` + `scripts/valider_litteraux_hors_ligne.py` ; **pas encore branché** sur les outils d'écriture | 2026-10-08 | `tests/test_litteraux_observes.py` ; validation ci-dessous |
+| VH-04 (partiel) | vérifications partagées solides : oracle (erreur HTTP → indéterminé, objet non comptable, comparaisons typées), garde de session avant chaque `Alors`, texte exact, erreur de validation ciblée, soumission prouvée, Odoo (refus de droits, existence cloisonnée), « vérifié côté serveur » par les constats, paliers de clic, banc (refus à l'écriture, règle de réparation du produit). D25 en campagne produit : **non fait** (D33) | 2026-10-10 | `tests/test_vh04_*.py` (dont 5 fichiers sur vrai Chromium, ajoutés au contrôle `browser-evidence`) |
 
 ### Validation hors ligne de VH-05 sur les 30 tests de `base-3` (aucune dépense)
 
@@ -392,3 +395,37 @@ Remarques retenues comme limites ou suites, non traitées ici :
   appris d'office. Une décision `rejetee` sortie des 500 dernières lignes du fichier redemande l'humain.
 - D31 : deux sous-requêtes de plus par lecture de cas (coût à surveiller sur un gros projet) ; l'écran affiche « Retest »
   sans en donner la raison sur la liste (le point de vigilance l'explique sur la fiche).
+
+### Lot VH-04 — vérifications partagées solides (2026-10-10, branche `lot-vh04-steps-solides`) — **partiel**
+
+| Point du plan | Fait | Preuve (falsifiable) |
+|---|---|---|
+| Oracle (3) | erreur HTTP de l'oracle → `oracle_en_erreur` (exécution réussie, fonctionnel indéterminé, jamais réparée) ; « renvoie N résultats » ou « vaut … » sur un objet/une liste → test mal posé (`ReponseOracleNonComptableError`), plus jamais un `non_conforme` (faux rouge mesuré base-2 et base-4) ; comparaisons typées (12.0 = « 12 », true = « true », sans élargir) | `test_vh04_oracle_navigateur.py`, `test_oracle_steps.py` (attendu changé délibérément) |
+| Adresse relative (mesure base-4) | `base_url` = adresse du projet sur le contexte du navigateur : `page.goto("/__etat")` vise l'application (2 erreurs techniques en base-4) | bout en bout Chromium (échoue sans : « Cannot navigate to invalid URL ») |
+| Garde de session (2, V8, G4) | page de connexion atteinte par redirection, sans mot de passe saisi par le test, session du harnais intacte → `bloqué` au premier constat de l'`Alors` (mesuré : une exception dans `before_step` n'est pas classée `bloqué` par Behave 1.3.3) ; Odoo couvert (revue, B3) ; application monopage : seulement si la page affichée est le document redirigé (revue) | `test_vh04_garde_session.py` (bout en bout : sans la garde, l'absence constatée sortait `conforme`), `test_vh04_garde_session_odoo.py` |
+| Texte exact (1, V7) | mot entier, casse respectée, un nombre n'est ni un morceau d'un plus grand nombre ni la partie entière d'un décimal ; candidats visibles selon Playwright puis texte RENDU (casse libre sous `text-transform`) ; plus jamais une option de liste ni un conteneur de hauteur nulle (revue, B1) ; l'absence garde la lecture large | `test_vh04_texte_exact.py` (bout en bout) |
+| Erreur de validation (1, V7) | un message visible (ni lien, ni bouton, ni libellé, ni menu, ni bouton d'envoi) ou un champ marqué invalide ; tous les candidats lus (revue, B2) | `test_vh04_validation_et_negatif.py` (Chromium) |
+| Scénario négatif (1, V7) | « n'a pas augmenté » exige une SOUMISSION observée après le relevé : requête d'envoi (sur Odoo, un appel d'écriture — `web_save`, `create`, bouton —, jamais un `onchange` en POST) ou refus du navigateur horodaté ; sinon `indéterminé` | idem |
+| Odoo (1, V7) | « l'action est refusée » : seul un refus de DROITS (`AccessError`/`AccessDenied`, nom transmis par le serveur ou en tête du message) ; méthode privée refusée comme erreur du test ; « … existe » cherché parmi les enregistrements apparus après le relevé, et un enregistrement antérieur → non concluant (ni vert, ni accusation) | `test_vh04_odoo.py` |
+| `ground_truth` (4) | « vérifié côté serveur » seulement si chaque scénario a un constat sous un `Alors` qui a lu le serveur (oracle, ou lecture RPC observée pendant le step) — plus d'office pour Odoo ; note d'explication reformulée | `test_vh04_verifie_serveur.py`, 3 attendus historiques changés délibérément |
+| D25 (5) | paliers de clic consignés (`clic` / `clic_sous_chaine`) | `test_vh04_palier_clic.py` |
+| Banc (mesure base-4) | chaque refus d'une garde d'écriture consigné et compté par essai ; le banc ne paie plus une réparation que le circuit du produit refuse | `test_vh04_banc.py` |
+| Signaux réservés (revue, point 9) | garde de session, source `rpc`, soumission observée : interdits aux steps générés | `test_vh04_banc.py` |
+
+**Écarts au plan, assumés et à arbitrer :**
+- **D25 en campagne produit non fait** : voir D33 (la seule option existante coupe aussi la réparation).
+- **« Ancré sur ce qui est apparu après la dernière action » non fait** (texte et erreur de validation) : une validation rendue par
+  le SERVEUR s'affiche au chargement de la page de réponse et serait refusée — faux rouges sur les formulaires les plus courants.
+  Le critère « aucune vérification n'importe où dans la page » n'est donc pas atteint : un texte identique ailleurs dans la page
+  (menu, en-tête) suffit encore.
+- **Erreur de validation non rattachée au champ visé** (même raison : beaucoup d'applications affichent un bandeau global).
+- **Requêtes d'oracle non paramétrables par scénario** : renvoyé au lot 8 (oracles tracés jusqu'à la spec).
+
+**Limites assumées (garde de session)** : un refus de droits par redirection vers la connexion donne `bloqué` (D34) ; une
+redirection encore en cours au moment de l'`Alors`, une redirection en JavaScript ou des cookies réécrits à chaque réponse
+(Laravel) désactivent la garde (comportement d'avant) ; une application monopage qui affiche son formulaire de connexion sans
+navigation n'est pas vue. **Source `rpc`** : toute lecture du serveur pendant le step compte, même sans rapport avec la condition
+— n'affecte que l'étiquette `ground_truth`, jamais le statut. **Contexte du navigateur** : `base_url` le rend différent de celui de
+l'exploration pour les seules adresses relatives. **Coût (§9)** : la docstring ajoutée au step « la page affiche le texte » entre
+dans le catalogue du prompt (~25 jetons), aucun appel LLM ajouté.
+
