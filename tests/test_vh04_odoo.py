@@ -18,8 +18,16 @@ RACINE = Path(__file__).resolve().parent.parent
 _STEPS_LIB = RACINE / "behave_runtime" / "steps_library"
 sys.path.insert(0, str(_STEPS_LIB))
 sys.path.insert(0, str(_STEPS_LIB / "odoo"))
+from behave import step_registry  # noqa: E402
+
+# Importer les steps Odoo enregistre leurs libellés dans le registre GLOBAL de Behave dès la collecte : un fichier qui charge
+# ensuite les steps web lèverait `AmbiguousStep` (mesuré : `test_connexion_execution.py`). Le registre est restauré aussitôt.
+_REGISTRE_AVANT = {mot_cle: list(liste) for mot_cle, liste in step_registry.registry.steps.items()}
 import _odoo_droits_steps as droits  # noqa: E402
 import _odoo_steps as steps  # noqa: E402
+
+for _mot_cle, _liste in _REGISTRE_AVANT.items():
+    step_registry.registry.steps[_mot_cle][:] = _liste
 
 
 class _Notification:
@@ -111,6 +119,19 @@ def test_falsifiable_un_enregistrement_anterieur_au_releve_ne_prouve_pas_la_crea
     monkeypatch.setattr(steps, "constater", _constater_strict)
     ctx = _ctx_existence({7: "Dupont SARL"}, releve=10)   # « Dupont SARL » existait AVANT l'action
 
+    # Revue du lot (point 6) : non concluant — ni le vert d'avant (rien ne prouve la création), ni une accusation.
+    with pytest.raises(steps.ConstatNonConcluantError, match="AVANT le relevé"):
+        step(ctx, champ, "Dupont SARL", "res.partner")
+
+
+@pytest.mark.parametrize("step, champ", [
+    (steps.step_record_exists_field_value, "name"),
+    (steps.step_record_exists_contains, '"name"'),
+])
+def test_falsifiable_un_enregistrement_absent_reste_un_constat_echoue(step, champ, monkeypatch):
+    monkeypatch.setattr(steps, "constater", _constater_strict)
+    ctx = _ctx_existence({7: "Autre"}, releve=10)
+
     with pytest.raises(AssertionError, match="apparus après le relevé"):
         step(ctx, champ, "Dupont SARL", "res.partner")
 
@@ -140,3 +161,41 @@ def test_sans_releve_la_recherche_reste_globale(monkeypatch):
 def _constater_strict(condition, message=""):
     if not condition:
         raise AssertionError(message)
+
+
+# ── Revue du lot (point 5) ────────────────────────────────────────────────────────────────────────────────
+
+
+def test_falsifiable_une_methode_privee_refusee_a_tous_ne_prouve_rien_sur_les_droits():
+    exc = _Erreur("odoo.exceptions.AccessError: Private methods cannot be called remotely")
+
+    with pytest.raises(RuntimeError, match="méthode privée"):
+        droits.step_action_refusee(_ctx(exc), "_action_confirm")
+
+
+def test_falsifiable_access_error_cite_au_milieu_du_message_n_est_pas_un_refus():
+    """Le message peut contenir des données du test : seul l'en-tête écrit par le serveur compte."""
+    exc = _Erreur("odoo.exceptions.UserError: le client « AccessError SARL » est bloqué")
+
+    with pytest.raises(_Erreur):
+        droits.step_action_refusee(_ctx(exc), "action_confirm")
+
+
+# ── Revue du lot (point 6) : un enregistrement antérieur au relevé n'est ni un vert ni une accusation ─────────
+
+
+def test_falsifiable_un_renommage_n_est_pas_une_accusation():
+    """Relevé, puis renommage de « A » en « B » : l'id est antérieur au relevé. Avant la revue : `non_conforme` (faux rouge)."""
+    from testpilot.verdict import defect_taxonomy as dt
+    from testpilot.verdict import status as st
+
+    ctx = _ctx_existence({7: "B"}, releve=10)
+
+    with pytest.raises(steps.ConstatNonConcluantError, match="AVANT le relevé"):
+        steps.step_record_exists_field_value(ctx, "name", "B", "res.partner")
+
+    echec = types.SimpleNamespace(raw="_base_helpers.ConstatNonConcluantError: …", traceback_summary="",
+                                  failure_type="error", step_type="then", scenario_name="s", step_text="")
+    assert dt.classify_failure(echec) == dt.ALORS_SANS_CONSTAT
+    verdict = st.scenario_verdict(types.SimpleNamespace(name="s", status="failed", error="", constats_echoues=0), [echec])
+    assert (verdict.execution_status, verdict.functional_status) == (st.EXEC_SUCCESS, st.FUNC_INDETERMINE)

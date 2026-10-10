@@ -128,9 +128,11 @@ def test_comparaison_typee_sans_elargir(obtenu, attendu, egal):
 
 
 def test_falsifiable_une_liste_ou_un_objet_ne_vaut_jamais_un_texte(serveur, tmp_path, monkeypatch):
+    """Revue du lot (point 7) : un test mal posé (erreur technique), jamais un constat échoué qui accuserait l'application."""
     monkeypatch.setenv(H.CONSTATS_FILE_ENV, str(tmp_path / "c.jsonl"))
-    with pytest.raises(AssertionError, match="pas une valeur simple"):
+    with pytest.raises(H.ReponseOracleNonComptableError, match="pas une valeur simple"):
         H.oracle_champ_vaut(_contexte(serveur), "commandes", "etat", "[]")
+    assert not (tmp_path / "c.jsonl").exists(), "aucun constat consigné contre l'application"
 
 
 # ── Bout en bout : vrai Behave, vrai Chromium ─────────────────────────────────────────────────────────────

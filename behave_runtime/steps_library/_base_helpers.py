@@ -595,7 +595,11 @@ def field_m2o_contains(env, model, record_id, field, partial):
 def playwright_login(context):
     """Même connexion UI pour l'exécution et la perception du générateur."""
     from testpilot.connectors.odoo_login import playwright_login as login
-    return login(context)
+    resultat = login(context)
+    # Lot VH-04 (revue, bloquant B3) : sans ce relevé, la garde de session restait INERTE sur Odoo — cookies de départ vides
+    # (le `storage_state` ne sert qu'au connecteur web) et mot de passe tapé par CETTE connexion compté comme celui du test.
+    noter_session_ouverte(context)
+    return resultat
 
 
 # ── Connexion du connecteur `web` générique (lot 07a, C1) ────────────────────────────────────
@@ -1017,7 +1021,7 @@ def verifier_soumission_non_bloquee(page) -> None:
         # exactement ce qu'il est venu vérifier. Ses propres `Then` restent seuls juges.
         # Lot VH-04 (V7) : ce refus du navigateur EST la soumission tentée que `check_count_not_increased` exige de voir.
         try:
-            page._tp_refus_navigateur = True
+            page._tp_refus_navigateur = time.monotonic()  # horodaté : comparé au relevé du comptage (revue, point 4)
         except Exception:
             pass
         return
@@ -1334,6 +1338,12 @@ class OracleEnErreurError(urllib.error.HTTPError):
 
     def __str__(self) -> str:
         return f"l'oracle a répondu {self.code} à la requête « {self.requete} » : rien n'a pu être vérifié"
+
+
+class ConstatNonConcluantError(Exception):
+    """Lot VH-04 (revue, point 6) : la vérification a regardé l'application, mais ce qu'elle a vu ne permet ni de conclure au
+    succès ni d'accuser l'application (ex. un enregistrement qui existe mais qui est ANTÉRIEUR au relevé). `indetermine`, cause
+    « un résultat attendu n'a rien vérifié » — jamais `conforme`, jamais `non_conforme`, jamais réparé."""
 
 
 class ReponseOracleNonComptableError(TypeError):
@@ -1955,11 +1965,18 @@ def wait_form_submission(page):
 
 # Lot VH-04 (audit V7) : un candidat n'est un message d'erreur que s'il n'est ni un élément d'action ou de navigation, ni un
 # libellé (l'astérisque rouge d'un champ obligatoire), et qu'il porte un texte — un champ de saisie marqué invalide compte.
-_JS_EST_UN_MESSAGE_D_ERREUR = """(el) => {
-  if (el.matches('input, select, textarea')) return true;
-  if (el.closest('a, button, [role="button"], [role="link"], nav, [role="navigation"], label')) return false;
+# Revue du lot (bloquant B2) : TOUS les candidats en une lecture, sans plafond — neuf astérisques rouges écartés occupaient les
+# huit places examinées et cachaient le vrai message (faux `non_conforme`) ; un `<input type="submit">` rouge passait pour un
+# champ invalide (faux `conforme`).
+_JS_UN_MESSAGE_D_ERREUR_VISIBLE = """(elements) => elements.some((el) => {
+  const boite = el.getBoundingClientRect(), style = getComputedStyle(el);
+  if (!(boite.width > 0 && boite.height > 0) || style.visibility === 'hidden' || style.display === 'none') return false;
+  if (el.matches('input:not([type=submit]):not([type=button]):not([type=reset]):not([type=image]), select, textarea')) {
+    return true;
+  }
+  if (el.closest('a, button, input, [role="button"], [role="link"], nav, [role="navigation"], label')) return false;
   return /[A-Za-zÀ-ÿ0-9]{2,}/.test(el.innerText || '');
-}"""
+})"""
 
 
 @constat
@@ -2007,13 +2024,11 @@ def validation_error_inline(page):
         candidats = page.locator(
             '[role="alert"], .error, .alert-danger, .is-invalid, '
             "[class*='bg-red-'], [class*='text-red-'], [class*='border-red-']")
-        for i in range(min(candidats.count(), 8)):
-            try:
-                candidat = candidats.nth(i)
-                if candidat.is_visible() and candidat.evaluate(_JS_EST_UN_MESSAGE_D_ERREUR):
-                    return True
-            except Exception:
-                continue  # un élément qui disparaît entre le compte et la lecture : on continue
+        try:
+            if candidats.evaluate_all(_JS_UN_MESSAGE_D_ERREUR_VISIBLE):
+                return True
+        except Exception:
+            pass  # page en cours de navigation : la relecture bornée (`_poll_until`) réessaie
         has_error = page.locator("[class*='s_website_form_field'].o_has_error").first
         try:
             return has_error.is_visible()
@@ -2022,7 +2037,7 @@ def validation_error_inline(page):
 
     # Lot VH-04 (audit V7) : avant, « n'importe quel élément rouge ou `role=alert` » suffisait — un lien « Supprimer » stylé en
     # rouge (Tailwind `text-red-…`) ou l'astérisque rouge d'un champ obligatoire faisaient passer « une erreur est affichée »
-    # sans qu'aucune validation n'ait eu lieu (`_JS_EST_UN_MESSAGE_D_ERREUR`). Écart au plan : « apparue APRÈS la soumission »
+    # sans qu'aucune validation n'ait eu lieu (`_JS_UN_MESSAGE_D_ERREUR_VISIBLE`). Écart au plan : « apparue APRÈS la soumission »
     # n'est pas exigé — une validation rendue par le SERVEUR s'affiche au chargement de la page de réponse et serait refusée.
     trouve, _ = _poll_until(_un_candidat_visible, lambda v: v)
     if not trouve:
@@ -2472,10 +2487,29 @@ def _soumission_observee(context) -> bool:
     reponses = getattr(context, "reponses_reseau", None)
     if reponses is None:
         return True
-    if getattr(getattr(context, "page", None), "_tp_refus_navigateur", False):
+    # Revue du lot (point 4) : le refus du navigateur doit être POSTÉRIEUR au relevé (horodaté, jamais un drapeau qui traîne).
+    if (getattr(getattr(context, "page", None), "_tp_refus_navigateur", 0) or 0) >= getattr(context, "_tp_releve_t", 0) > 0:
         return True
     releve = getattr(context, "_tp_releve_sequence", 0)
-    return any(r.get("n", 0) > releve and str(r.get("methode", "")).upper() in _METHODES_D_ENVOI for r in reponses)
+    return any(r.get("n", 0) > releve and _est_un_envoi(r) for r in reponses)
+
+
+# Odoo appelle TOUT par POST (`onchange`, `web_read`, `name_search`, long-polling) : seul un appel qui ÉCRIT est une soumission.
+_APPEL_ODOO_D_ECRITURE = re.compile(r"/(create|write|web_save|unlink|copy|action_\w+|button_\w+)/?$")
+_CHEMINS_SANS_ENVOI = ("/longpolling", "/bus/", "/web/webclient/", "/web/action/load", "/web/dataset/search_read")
+
+
+def _est_un_envoi(reponse: dict) -> bool:
+    """Revue du lot (point 4) : une requête qui ENVOIE des données — méthode d'envoi, et sur Odoo un appel d'écriture (création,
+    enregistrement, bouton d'action) ; jamais une lecture faite en POST. Signal du réseau, jamais le texte du test."""
+    if str(reponse.get("methode", "")).upper() not in _METHODES_D_ENVOI:
+        return False
+    chemin = urlparse(str(reponse.get("url", ""))).path
+    if "/web/dataset/call_kw" in chemin:
+        return bool(_APPEL_ODOO_D_ECRITURE.search(chemin))
+    if "/web/dataset/call_button" in chemin:
+        return True
+    return not any(segment in chemin for segment in _CHEMINS_SANS_ENVOI)
 
 
 @constat
@@ -3140,30 +3174,39 @@ def _motif_texte_exact(texte: str) -> str:
     avant = rf"(?<![{_LETTRE}])"
     apres = rf"(?![{_LETTRE}])"
     if texte.strip()[:1].isdigit():
-        avant += rf"(?<!\d[{_ESPACES_MILLIERS}])"
+        avant += rf"(?<!\d[{_ESPACES_MILLIERS}])(?<!\d[,.])"
     if texte.strip()[-1:].isdigit():
-        apres += rf"(?![{_ESPACES_MILLIERS}]\d)"
+        # Revue du lot : « 12 » n'est pas dans « 12,50 € » (ni la partie décimale, ni un groupe de milliers ne se coupent).
+        apres += rf"(?![{_ESPACES_MILLIERS}]\d)(?![,.]\d)"
     return avant + corps + apres
 
 
-_JS_TEXTE_RENDU_CONTIENT = """(motif) => {
-  const re = new RegExp(motif);
-  return re.test((document.body && document.body.innerText || '').replace(/\\s+/g, ' '));
+# Sur les candidats VISIBLES (Playwright), le texte RENDU (`innerText`) doit contenir le motif exact ; sous `text-transform`, la
+# casse rendue diffère de la source : la casse n'est alors pas exigée (l'écran affiche de toute façon la même suite de lettres).
+_JS_CANDIDAT_AFFICHE_EXACT = """(elements, motif) => {
+  const exact = new RegExp(motif), sansCasse = new RegExp(motif, 'i');
+  return elements.some((el) => {
+    const rendu = (el.innerText || '').replace(/\\s+/g, ' ');
+    if (exact.test(rendu)) return true;
+    const transforme = getComputedStyle(el).textTransform;
+    return !!transforme && transforme !== 'none' && sansCasse.test(rendu);
+  });
 }"""
 
 
 def _texte_exact_visible(page, texte: str) -> bool:
     """Lot VH-04 (V7) : le texte est affiché, MOT ENTIER et casse respectée — dans le document ou l'un de ses cadres.
 
-    Deux lectures, l'une OU l'autre (mesuré le 2026-10-09 sur Chromium) : Playwright compare le texte SOURCE des éléments
-    visibles (« Commande validée »), l'écran montre le texte RENDU (« COMMANDE VALIDÉE » sous `text-transform`) — un test qui
-    cite ce qu'il a vu à l'écran ne doit pas devenir un faux rouge. Le texte rendu (`innerText`) exclut déjà ce qui est caché."""
+    Candidats : les éléments que Playwright juge VISIBLES (boîte non vide, ni caché, ni option de liste déroulante) et dont le
+    texte contient le motif sans tenir compte de la casse ; puis le motif EXACT sur leur texte RENDU. Sous `text-transform`
+    (mesuré le 2026-10-09 : la source dit « Commande validée », l'écran « COMMANDE VALIDÉE »), les deux formes sont acceptées.
+    Revue du lot (bloquant B1) : une première version lisait `document.body.innerText` — il contient les `<option>` d'une liste
+    et le texte d'un conteneur de hauteur nulle (« Annulée » trouvé dans un filtre de statuts : faux `conforme`). Jamais plus."""
     motif = _motif_texte_exact(texte)
     for frame in page.frames:
         try:
-            if frame.get_by_text(re.compile(motif)).filter(visible=True).count() > 0:
-                return True
-            if frame.evaluate(_JS_TEXTE_RENDU_CONTIENT, motif):
+            candidats = frame.get_by_text(re.compile(motif, re.IGNORECASE)).filter(visible=True)
+            if candidats.count() and candidats.evaluate_all(_JS_CANDIDAT_AFFICHE_EXACT, motif):
                 return True
         except Exception:
             continue  # un cadre détaché pendant la lecture
@@ -3684,9 +3727,12 @@ def oracle_champ_vaut(context, chemin: str, requete: str, valeur: str) -> None:
             constater(False, f"le champ « {chemin} » de l'oracle « {requete} » est introuvable : {exc}")
             return
         if isinstance(obtenu, (list, dict)):
-            constater(False, f"le champ « {chemin} » de l'oracle « {requete} » n'est pas une valeur simple "
-                             f"({type(obtenu).__name__}) : il ne se compare pas à « {valeur} »")
-            return
+            # Revue du lot (point 7) : même famille que compter un objet — un test mal posé, jamais un constat échoué contre
+            # l'application.
+            raise ReponseOracleNonComptableError(
+                f"le champ « {chemin} » de l'oracle « {requete} » n'est pas une valeur simple ({type(obtenu).__name__}) : il "
+                f"ne se compare pas à « {valeur} ». Pour une liste, « le champ … compte <n> élément(s) » ; sinon, visez un "
+                "champ simple du chemin.")
         constater(_valeurs_egales(obtenu, valeur),
                  f"le champ « {chemin} » de l'oracle « {requete} » vaut « {obtenu} », « {valeur} » attendu")
 
@@ -3932,7 +3978,11 @@ def garde_de_session(context) -> None:
     page = getattr(context, "page", None)
     if page is None or page.url in ("about:blank", "") or _mot_de_passe_visible(page) is not True:
         return
-    if not ((getattr(context, "navigations", None) or {}).get(page) or {}).get("redirige"):
+    navigation = (getattr(context, "navigations", None) or {}).get(page) or {}
+    # Revue VH-04 (point 1) : la page AFFICHÉE doit être le document atteint par cette redirection — une application monopage
+    # qui change de vue sans charger de document garde l'indicateur du chargement initial (faux « bloqué » sur un écran
+    # « Nouvel utilisateur » qui porte un champ mot de passe).
+    if not navigation.get("redirige") or navigation.get("url") != page.url:
         return
     if getattr(context, "_tp_mot_de_passe_saisi", False):
         return
