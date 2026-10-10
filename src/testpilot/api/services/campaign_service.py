@@ -83,11 +83,13 @@ def start_campaign(conn, run_id: int, *, triggered_by: str = "") -> dict:
     repo.set_status(run_id, "running", launched=True)
     # `strict` (lot 05, D5) : transmis à la tâche de fond comme le reste — un job durable relancé après un redémarrage
     # relit ces mêmes paramètres, et un job ancien (sans cette clé) retombe sur « non strict ».
+    # D33 : `sans_repli` suit le même chemin ; un job ancien (sans cette clé) retombe sur la règle d'aujourd'hui (sans repli).
     return {"run_id": run_id, "case_ids": case_ids, "triggered_by": triggered_by,
-            "strict": bool(run.get("strict"))}
+            "strict": bool(run.get("strict")), "sans_repli": bool(run.get("sans_repli", 1))}
 
 
-def run_campaign(run_id: int, case_ids: list[int], *, triggered_by: str = "", strict: bool = False) -> None:
+def run_campaign(run_id: int, case_ids: list[int], *, triggered_by: str = "", strict: bool = False,
+                 sans_repli: bool = True) -> None:
     """Tâche de fond : exécute les cas du run EN SÉQUENCE, puis clôt la campagne.
 
     Chaque cas est joué par le circuit existant (`run_service`), qui persiste le verdict à deux
@@ -120,7 +122,8 @@ def run_campaign(run_id: int, case_ids: list[int], *, triggered_by: str = "", st
             conn.commit()
             try:
                 run_service.run_execution(eid, slug, cid, vid, triggered_by=triggered_by,
-                                          **({"strict": True} if strict else {}))
+                                          **({"strict": True} if strict else {}),
+                                          **({"sans_repli": True} if sans_repli else {}))
             except Exception:
                 # `run_execution` a son propre filet (statut technical_error) ; on protège quand
                 # même la boucle pour que les cas suivants soient joués.

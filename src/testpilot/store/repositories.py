@@ -1910,7 +1910,7 @@ class RunRepo:
 
     def create(self, *, project_id: int, name: str, description: str = "", refs: str = "",
                selection_mode: str = "frozen", mode: str = MODE_AUTOMATIQUE,
-               case_ids: list[int] | None = None, strict: bool = False) -> int:
+               case_ids: list[int] | None = None, strict: bool = False, sans_repli: bool = True) -> int:
         """Crée un run en BROUILLON (jamais lancé à la création — `0022` 8.c.1).
 
         `case_ids` n'est matérialisé que pour `frozen` : en mode `all`, la sélection est vivante,
@@ -1926,8 +1926,8 @@ class RunRepo:
         ts = now_iso()
         cur = self.conn.execute(
             "INSERT INTO test_run (project_id, name, description, refs, selection_mode, mode,"
-            " status, created_at, strict) VALUES (?,?,?,?,?,?,'draft',?,?)",
-            (project_id, name, description, refs, selection_mode, mode, ts, 1 if strict else 0))
+            " status, created_at, strict, sans_repli) VALUES (?,?,?,?,?,?,'draft',?,?,?)",
+            (project_id, name, description, refs, selection_mode, mode, ts, 1 if strict else 0, 1 if sans_repli else 0))
         run_id = int(cur.lastrowid)
         if selection_mode == "frozen":
             for cid in dict.fromkeys(case_ids or []):  # dédup en gardant l'ordre

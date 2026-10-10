@@ -32,6 +32,8 @@ const form = ref({
   mode: 'automatique' as 'automatique' | 'manuelle',
   // Lot 05 (D5) : campagne stricte — décochée par défaut (le comportement d'une campagne ordinaire ne change pas).
   strict: false,
+  // D33 (2026-10-10, prolonge D25) : sans repli par l'IA — COCHÉE par défaut. Un vert retrouvé par l'IA n'est pas une preuve.
+  sansRepli: true,
 })
 
 const cases = ref<CaseSummary[]>([])
@@ -145,6 +147,8 @@ async function submit() {
       selection_mode: form.value.selection,
       mode: form.value.mode,
       strict: form.value.mode === 'automatique' && form.value.strict,
+      // La campagne stricte coupe déjà tout repli : l'option n'a de sens que pour une campagne automatique non stricte.
+      sans_repli: form.value.mode === 'automatique' && (form.value.strict || form.value.sansRepli),
       case_ids: form.value.selection === 'frozen' ? selected.value : [],
     })
     router.push({ name: 'run-detail', params: { pid, id: String(run.id) } })
@@ -326,6 +330,22 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
       </div>
 
       <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+
+      <!-- D33 (2026-10-10) : sans repli par l'IA, cochée par défaut ; masquée si la campagne est stricte (qui l'inclut). -->
+      <label v-if="form.mode === 'automatique' && !form.strict"
+             class="flex gap-3 rounded-md border border-border p-3 cursor-pointer">
+        <input type="checkbox" v-model="form.sansRepli" data-testid="campagne-sans-repli"
+               class="mt-1 accent-[hsl(var(--primary))]" />
+        <div>
+          <div class="text-sm font-medium">Sans repli par l'IA (recommandé)</div>
+          <p class="text-xs text-muted-foreground mt-0.5">
+            Un élément renommé ou introuvable n'est <strong class="text-foreground">pas recherché par l'IA</strong> pendant
+            l'exécution : le test sort « Retest » au lieu d'un vert qu'il faudrait confirmer. Le
+            <strong class="text-foreground">second essai</strong> et la <strong class="text-foreground">réparation
+            automatique</strong> restent actifs.
+          </p>
+        </div>
+      </label>
 
       <!-- Lot 05 (D5) : la campagne STRICTE n'a de sens qu'automatique — un humain ne « rejoue » ni ne « répare » rien.
            Placée APRÈS la sélection des cas : c'est une option d'exécution, pas un choix de mode, et elle ne doit pas

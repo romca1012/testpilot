@@ -229,6 +229,8 @@ export const api = {
     mode?: 'automatique' | 'manuelle'
     // Lot 05 (D5) : campagne STRICTE — aucune résolution adaptative, aucun retry.
     strict?: boolean
+    // D33 (2026-10-10) : sans repli par l'IA à l'exécution (second essai et réparation conservés). Vrai par défaut côté serveur.
+    sans_repli?: boolean
   }) => request<RunSummary>(`/api/projects/${projectId}/runs`, {
     method: 'POST', body: JSON.stringify(body),
   }),
@@ -691,6 +693,8 @@ export interface RunSummary {
   /** Lot 05 (D5) : campagne STRICTE (aucune résolution adaptative, aucun retry) et nombre de cas dont le dernier
    *  résultat est un vert « à confirmer » (obtenu par repli ou au second essai). */
   strict?: boolean
+  /** D33 : campagne sans repli par l'IA à l'exécution (second essai et réparation conservés). */
+  sans_repli?: boolean
   verts_a_confirmer?: number
   is_archived: boolean; created_at: string
   /** Le Plan de test (migration 43) qui regroupe cette campagne, s'il y en a un — `null`/absent =
