@@ -30,7 +30,7 @@ la disparition des faux rouges depuis base-3 (6/23 → 0/23) et le passage de `p
 - **Le lot 7 (base-7) donne le gain attendu, sur le cas qui l'avait désigné.** `panier_total_tva` : 0/3 en base-5 et base-6
   (champ cherché sur la mauvaise page), 3/3 en base-7. `connexion_valide` 2/3 → 3/3, `client_creation_nom_limite` 1/3 → 3/3.
   Meilleure campagne depuis le début sur les essais justes partout (23/30) et sur les cas justes aux trois essais (6/10).
-- **Faux verts : 0/25, faux rouges : 0/23.** Sur les sept campagnes comparables (base-2 à base-7), 0 faux vert sur 131 jeux
+- **Faux verts : 0/25, faux rouges : 0/23.** Sur les six campagnes comparables (base-2 à base-7), 0 faux vert sur 131 jeux
   concluants ; versions différentes de l'outil, donc pas un seul échantillon — mais aucune n'en a produit.
 - **Coût : + 0,037 $ par génération avec le bac à sable** (0,129 → 0,166 $), soit + 29 %. Un essai n'appelle pas le modèle, mais
   chaque essai est un tour d'agent. Très loin du plafond du §9 (1 € par cas). Aucune réparation payée en base-7.
