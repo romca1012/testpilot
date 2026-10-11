@@ -14,6 +14,7 @@ import ast
 import json
 import os
 import re
+import unicodedata
 from typing import TYPE_CHECKING
 
 from testpilot.generation import enregistrement_lint, gel_verifications, litteraux_observes, steps_library
@@ -200,6 +201,8 @@ _RESERVES_AU_SOCLE = frozenset({
     "noter_lecture_rpc", "_LECTURE_RPC_DU_STEP", "debut_de_step",
     "_tp_refus_navigateur", "_tp_releve_sequence", "_tp_releve_t", "_soumission_observee", "_est_un_envoi",
     "reponses_reseau", "navigations",
+    # Lot VH-06 (revue) : les valeurs relevées et leurs gardes — un step généré ne pose pas un « relevé » qu'aucun écran n'a montré.
+    "_tp_releves", "_ETAT_RELEVES", "debut_de_step_pour_les_releves", "_appliquer_garde_des_releves",
 })
 
 
@@ -644,6 +647,13 @@ def _forbidden_python(tree: ast.AST) -> str:
                     return f"`import {alias.name}` : module non autorisé dans un fichier de steps"
         if isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] not in _IMPORTS_AUTORISES:
             return f"`from {n.module} import …` : module non autorisé dans un fichier de steps"
+        # Lot VH-06 (revue) : `from _base_helpers import _executer_oracle` contournait l'interdiction d'interroger l'oracle à
+        # la main. Les noms privés de la bibliothèque sont son mécanisme, pas son interface.
+        if isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] == "_base_helpers":
+            prives = [a.name for a in n.names if a.name.startswith("_")]
+            if prives:
+                return (f"`from _base_helpers import {prives[0]}` : nom privé de la bibliothèque — utilise les steps du "
+                        "catalogue ou les helpers publics")
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in _APPELS_INTERDITS:
             return f"`{n.func.id}(…)` : appel interdit dans un fichier de steps"
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in {"getattr", "setattr", "delattr", "hasattr"}:
@@ -676,9 +686,72 @@ def _message_litteraux(outil: str, ecarts) -> str:
     return "\n".join(lignes)
 
 
+# Lot VH-06 (banc base-4 essai 2 et base-5 essai 1, `client_creation_valide`) : l'agent a écrit dans le Gherkin la SÉQUENCE
+# d'échappement d'un caractère (barre oblique inverse, `u`, quatre chiffres hexadécimaux) au lieu du caractère. Gherkin ne
+# décode rien : le test cherchait ces six caractères à l'écran, ne les trouvait pas, et sortait `non_conforme` sur une
+# application saine (faux rouge). Signal de STRUCTURE du fichier écrit, pas une lecture du sens du texte.
+_ECHAPPEMENT_LITTERAL = re.compile(r"\\u[0-9a-fA-F]{4}")
+
+
+def _echappements_litteraux(content: str) -> list[str]:
+    """Hors commentaires, et hors du step à motif (une expression régulière peut légitimement écrire un point de code)."""
+    trouves: set[str] = set()
+    for ligne in content.splitlines():
+        if ligne.lstrip().startswith("#") or 'un texte de la forme "' in ligne:
+            continue
+        trouves.update(_ECHAPPEMENT_LITTERAL.findall(ligne))
+    return sorted(trouves)
+
+
+# Lot VH-06 (revue du 2026-10-11) : `{relevé:nom}` mal écrit (`{releve:x}`, `{Relevé : x}`) restait tel quel dans le texte du
+# step — « la page n'affiche pas "{releve:x}" » était toujours vraie. Refusé ICI (l'agent corrige dans la même génération) ET au
+# run (`_base_helpers.avec_releves`, `_appliquer_garde_des_releves`) : la garde d'écriture n'est qu'un message précoce.
+_JETON_DE_RELEVE = re.compile(r"\{relevé:([^{}]+)\}")
+_STEP_QUI_RELEVE = re.compile(r'je relève la valeur affichée pour "[^"]*" comme "([^"]+)"')
+_DEBUT_DE_SCENARIO = re.compile(r"^\s*(Scénario|Scenario|Plan du [Ss]cénario|Exemple)\b")
+_DEBUT_DE_CONTEXTE = re.compile(r"^\s*Contexte\b")
+
+
+def _releves_fautifs(content: str) -> str:
+    """Premier jeton de relevé mal écrit, ou cité avant d'avoir été relevé dans son scénario ; sinon chaîne vide."""
+    du_contexte: set[str] = set()
+    connus: set[str] = set()
+    dans_le_contexte = False
+    for numero, ligne in enumerate(content.splitlines(), start=1):
+        if ligne.lstrip().startswith("#"):
+            continue
+        if _DEBUT_DE_CONTEXTE.match(ligne):
+            dans_le_contexte, connus = True, du_contexte
+            continue
+        if _DEBUT_DE_SCENARIO.match(ligne):
+            dans_le_contexte, connus = False, set(du_contexte)
+            continue
+        bien_ecrits = _JETON_DE_RELEVE.findall(ligne)
+        plie = "".join(c for c in unicodedata.normalize("NFD", ligne) if unicodedata.category(c) != "Mn").casefold()
+        if len(re.findall(r"\{\s*releve", plie)) != len(bien_ecrits):
+            return f"ligne {numero} : jeton mal écrit — écris exactement {{relevé:nom}} (accent, minuscules, sans espace)"
+        for nom in bien_ecrits:
+            if nom.strip() not in connus:
+                return (f"ligne {numero} : « {{relevé:{nom}}} » n'est relevé par aucun step précédent du scénario — ajoute "
+                        f"« Quand je relève la valeur affichée pour \"<libellé>\" comme \"{nom.strip()}\" » avant")
+        releve = _STEP_QUI_RELEVE.search(ligne)
+        if releve:
+            connus.add(releve.group(1).strip())
+    return ""
+
+
 def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if not content.strip():
         return _outcome("[write_feature_file] contenu vide", ok=False)
+    echappements = _echappements_litteraux(content)
+    if echappements:
+        return _outcome(
+            "[write_feature_file] ECHAPPEMENT_LITTERAL : le fichier contient " + ", ".join(echappements[:6]) + " écrit en "
+            "toutes lettres. Gherkin ne décode pas ces séquences : le test chercherait ces caractères tels quels à l'écran. "
+            "Écris le caractère lui-même (« » é à, espace ordinaire), puis rappelle write_feature_file.", ok=False)
+    releves = _releves_fautifs(content)
+    if releves:
+        return _outcome(f"[write_feature_file] RELEVE_INVALIDE : {releves}. Puis rappelle write_feature_file.", ok=False)
     from behave.parser import ParserError, parse_feature
     try:
         feature = parse_feature(content, language="fr")
