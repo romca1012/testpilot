@@ -247,7 +247,7 @@ Risques et parades :
 | VH-02 (points 1 et 3) | `constater` refuse une condition toujours vraie (`ConstatInvalideError` → `broken_test_code`) ; un constat échoué dans un scénario passé → `indetermine` (`constat_echoue_ignore`, libellé FR serveur + frontend) ; la garde `except` voit les tuples. Points 2, 4, 5 à faire | 2026-10-08 | `tests/test_constats_qui_prouvent.py` (10 échecs sur 26 avant) |
 | VH-05 (validation hors ligne) | module pur `generation/litteraux_observes.py` + `scripts/valider_litteraux_hors_ligne.py` ; **pas encore branché** sur les outils d'écriture | 2026-10-08 | `tests/test_litteraux_observes.py` ; validation ci-dessous |
 | VH-04 (partiel) | vérifications partagées solides : oracle (erreur HTTP → indéterminé, objet non comptable, comparaisons typées), garde de session avant chaque `Alors`, texte exact, erreur de validation ciblée, soumission prouvée, Odoo (refus de droits, existence cloisonnée), « vérifié côté serveur » par les constats, paliers de clic, banc (refus à l'écriture, règle de réparation du produit). D25 en campagne produit : fait (D33, branche `lot-vh04b-d33`) | 2026-10-10 | `tests/test_vh04_*.py` (dont 5 fichiers sur vrai Chromium, ajoutés au contrôle `browser-evidence`) |
-| VH-06 (partiel) | steps manquants (saisie dans une ligne, valeur à côté d'un libellé, motif à partie fixe, relevé réutilisé, liste d'oracle), code libre compté par le banc, deux gardes d'écriture désignées par base-5 ; 7 faux verts et 1 faux rouge de la première version trouvés par la revue et fermés avant tout commit. Point 2 (route inconnue = refus) non fait | 2026-10-11 | `tests/test_vh06_steps_manquants.py` (bout en bout Chromium + Behave), `test_vh06_gardes_ecriture.py`, `test_vh06_code_libre.py` |
+| VH-06 (partiel) | steps manquants (saisie dans une ligne, valeur à côté d'un libellé, motif à partie fixe, liste d'oracle, valeur de l'écran retrouvée dans l'oracle), code libre compté par le banc, deux gardes d'écriture désignées par base-5 ; deux revues bloquantes (7 faux verts et 1 faux rouge, puis 4 chemins) — le relevé `{relevé:nom}` et la forme négative de l'oracle sont RETIRÉS. Point 2 (route inconnue = refus) non fait | 2026-10-11 | `tests/test_vh06_steps_manquants.py` (bout en bout Chromium + Behave), `test_vh06_gardes_ecriture.py`, `test_vh06_code_libre.py` |
 
 ### Validation hors ligne de VH-05 sur les 30 tests de `base-3` (aucune dépense)
 
@@ -438,9 +438,9 @@ Gherkin portant la séquence d'échappement d'un caractère au lieu du caractèr
 
 | Point du plan | Fait | Preuve (falsifiable) |
 |---|---|---|
-| Steps manquants (1) | « je renseigne "<champ>" avec "<valeur>" dans la ligne contenant "<texte>" » ; « la valeur affichée pour "<libellé>" est "<valeur>" » (valeur entière, relue jusqu'au délai) ; « la page affiche un texte de la forme "<motif>" » (partie fixe d'au moins 3 caractères exigée, motif validé par le navigateur) ; « je relève la valeur affichée pour "<libellé>" comme "<nom>" » puis `{relevé:nom}` ; « la liste "<chemin>" de l'oracle "<requête>" contient un élément dont "<clé>" est "<valeur>" » | `tests/test_vh06_steps_manquants.py` : chaque step réussit sur la bonne page et échoue sur la mauvaise, sur Chromium ; 12 scénarios dans le vrai Behave |
+| Steps manquants (1) | « je renseigne "<champ>" avec "<valeur>" dans la ligne contenant "<texte>" » ; « la valeur affichée pour "<libellé>" est "<valeur>" » (valeur entière, relue jusqu'au délai) ; « la page affiche un texte de la forme "<motif>" » (partie fixe d'au moins 3 caractères exigée, motif validé par le navigateur) ; « la liste "<chemin>" de l'oracle "<requête>" contient un élément dont "<clé>" est "<valeur>" », ou « … est la valeur affichée pour "<libellé>" » (l'écran et le serveur lus dans le même step) | `tests/test_vh06_steps_manquants.py` : chaque step réussit sur la bonne page et échoue sur la mauvaise, sur Chromium ; 8 scénarios dans le vrai Behave |
 | Code libre mesuré (3) | le banc compte les FONCTIONS de step écrites par le test (colonne « Steps écrits à la main », section « Code libre ») ; Règle 9 du prompt, exemples neutres | `tests/test_vh06_code_libre.py` |
-| Gardes d'écriture (mesure base-5) | `ECHAPPEMENT_LITTERAL` (séquence `\uXXXX` dans le Gherkin, hors commentaire et motif) ; `context.oracle` interrogé à la main refusé, quel que soit le récepteur, import privé de `_base_helpers` compris ; `RELEVE_INVALIDE` (jeton mal écrit ou relevé absent du scénario) | `tests/test_vh06_gardes_ecriture.py` |
+| Gardes d'écriture (mesure base-5) | `ECHAPPEMENT_LITTERAL` (séquence `\uXXXX` dans le Gherkin, hors commentaire et motif) ; `context.oracle` interrogé à la main refusé, quel que soit le récepteur, import privé et alias de `_base_helpers` compris | `tests/test_vh06_gardes_ecriture.py` |
 
 **Revue `verdict-reviewer` du 2026-10-11 — verdict BLOQUANT, traité avant tout commit.** La première version n'avait jamais été
 exécutée ; ses 55 tests passaient et ne couvraient pas ces cas. Reproduits par la revue dans le vrai Behave, puis fermés :
@@ -466,14 +466,44 @@ exécutée ; ses 55 tests passaient et ne couvraient pas ces cas. Reproduits par
   inverse, choisie pour ne jamais refuser à tort : route inconnue → le littéral doit exister quelque part dans l'application.
   La page d'arrivée après une soumission, que l'annuaire ne peut pas connaître, est l'objet du lot 7.
 - **Cible « 100 % des steps issus de la bibliothèque » non mesurée** : il faut une campagne (base-6).
-- **`{relevé:nom}`** est un mécanisme de gabarit dans le Gherkin, absent du registre des décisions : à faire acter (voir D35).
 - Le champ cité par « … dans la ligne contenant … » n'est pas confronté à l'annuaire (D24) : il est résolu par préfixe dans la
   ligne (« Quantité » pour « Quantité de X »), ce qu'un contrôle à l'identique refuserait à tort.
 
 **Limites assumées :** une valeur suivie d'une précision (`<dd>129,51 € <small>dont TVA</small></dd>`) est lue en entier ;
-un relevé peut capturer une valeur en cours de chargement (« … ») ; `{relevé:}` après une action reste une vérification de
-STABILITÉ, pas de justesse — la source de chaque valeur attendue (`spec` / `observé`) est l'objet du lot 8 ; un chemin Windows
+un tableau de DEUX colonnes dont la première ligne serait des en-têtes écrits en `td` est lu comme une fiche (libellé |
+valeur) ; deux blocs voisins sans balise ni classe commune, ou dont celui du champ n'a aucun texte, ne se distinguent pas
+d'une carte « titre au-dessus du champ » ; un motif de date (`\d{2}/\d{2}/\d{4}`) n'a pas de partie fixe et est refusé ; un chemin Windows
 du type `C:\ufaca…` dans un Gherkin serait refusé à tort par `ECHAPPEMENT_LITTERAL`.
 **Coût (§9)** : prompt système +1 217 caractères (27 996 → 29 213), catalogue générique 60 → 67 phrases — de l'ordre de 600
 jetons d'entrée par appel, en cache après le premier ; coût par cas à mesurer en base-6 (`scripts/mesure_cout_cas.py`).
+
+**Contre-relecture du 2026-10-11 (seconde passe) — verdict BLOQUANT, traité.** Les neuf scénarios de la première revue sortaient
+bien en erreur technique, mais quatre chemins restaient, reproduits dans le vrai Behave :
+
+| Défaut reproduit | Suite donnée |
+|---|---|
+| R1 — régression : `context._tp_releves` survivait d'un scénario au suivant (Behave range hors pile tout attribut commençant par `_`) ; un Gherkin enregistré par `PATCH /cases/{id}/script` ne passe pas par les gardes d'écriture | **le mécanisme `{relevé:nom}` est retiré** (step « je relève … », substitution, garde au constat, garde d'écriture) |
+| R2 — un jeton non substitué dans un step d'ACTION (`j'ouvre la page "/commande/{relevé:n}"`) : faux vert sur une absence, faux rouge sur une présence | idem |
+| R3 — une « action » sans effet (attente, clic inerte) suffisait à rendre comparable à l'écran une valeur qui en venait | idem |
+| R4 — en-tête de colonne hors `th` (ligne d'en-têtes en `td`, `role="columnheader"`) | `columnheader` ; première ligne d'un tableau d'au moins trois colonnes suivie d'une ligne de même largeur |
+| Valeur partielle (« 129,51 » pour « 129,51 `<span>€</span>` ») | ce qui suit le libellé est lu bout à bout jusqu'au prochain bloc, contrôle ou libellé |
+| Libellé introuvable sous `text-transform`, avec une espace insécable ou un retour à la ligne | pré-filtre normalisé ; libellé accepté comme l'écran ou comme la source |
+| `CMD\-[0-9]{4}` refusé à tort (validation en mode Unicode) | motif validé dans le mode exécuté ; `\A`, `\Z` et les options en tête lus dans l'arbre |
+| `item gift` face à `item` : saisie dans la carte voisine | blocs frères « semblables » = même balise OU une classe commune |
+| `import _base_helpers as H` puis `H._executer_oracle` | fonctions internes de l'oracle réservées au socle |
+
+**Pourquoi retirer plutôt que corriger.** Trois des quatre chemins — et trois des sept de la première revue — venaient du même
+mécanisme : un état gardé d'un step à l'autre et substitué dans du texte. Le besoin MESURÉ (base-5, `commande_persistance_serveur`)
+était étroit : retrouver côté serveur le numéro que l'écran affiche. Il est servi par un seul step, sans état : « la liste … de
+l'oracle … contient un élément dont "<clé>" est la valeur affichée pour "<libellé>" ». Retrouver une valeur d'une page sur une
+AUTRE page (confirmation → liste) n'est plus servi : besoin non mesuré, à reprendre avec le lot 8 (source de chaque attendu).
+Un nombre de l'oracle comparé à un texte à unité (« 129,51 € ») est désormais un test mal posé, plus un `non_conforme`.
+
+**Troisième passe (2026-10-11) — « à corriger », plus aucun bloquant ni faux vert trouvé** (13 scénarios rejoués dans le vrai
+Behave ; les steps existants touchés par le retrait sont revenus à l'identique de la base). Deux faux rouges du nouveau step,
+corrigés : l'écran n'était lu qu'une fois (relu avec l'oracle jusqu'au délai, un seul constat) ; la valeur avalait le libellé
+suivant quand rien ne les séparait (au plus un élément en ligne après le libellé). `{relevé:…}`, devenu simple texte, est
+refusé à l'écriture (`RELEVE_INCONNU`). **Restes écrits, en faux rouge possible sur un balisage pauvre :** une grille en `div`
+sans rôles et un tableau à deux colonnes à en-têtes `td` rendent encore l'en-tête voisin ; une valeur affichée sous
+`text-transform` (« DUPONT ») est comparée telle qu'affichée à l'oracle (« Dupont »).
 
