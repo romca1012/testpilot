@@ -89,7 +89,8 @@ def test_falsifiable_les_contournements_de_la_garde_d_oracle_sont_refuses(tmp_pa
     """Relecture, reproduit : un alias de `context`, une fonction d'aide, une lambda, un import privé passaient."""
     sortie = w.write_steps_file(_ctx(tmp_path), code)
 
-    assert not sortie.ok and ("context.oracle" in sortie.observation or "nom privé" in sortie.observation), sortie.observation
+    assert not sortie.ok and any(refus in sortie.observation for refus in ("context.oracle", "nom privé", "_executer_oracle")), \
+        sortie.observation
 
 
 def test_une_variable_locale_nommee_oracle_n_est_pas_visee(tmp_path):
@@ -110,52 +111,26 @@ def test_la_garde_d_echappement_ne_vise_ni_un_commentaire_ni_un_motif(tmp_path, 
     assert "ECHAPPEMENT_LITTERAL" not in sortie.observation, sortie.observation
 
 
-# ── `{relevé:nom}` : bien écrit, et relevé avant d'être cité ──────────────────────────────────────────────
-
-_AVEC_RELEVE = """# language: fr
-Fonctionnalité: Dossiers
-
-  Scénario: Le dossier créé apparaît dans la liste
-    Soit j'ouvre la page "/confirmation"
-{avant}
-    Quand je clique sur le bouton "Mes dossiers"
-    Alors la page affiche le texte "{jeton}"
-"""
-_RELEVE = '    Quand je relève la valeur affichée pour "Numéro" comme "numero"'
-
-
-@pytest.mark.parametrize("avant, jeton", [
-    (_RELEVE, "{releve:numero}"), (_RELEVE, "{Relevé:numero}"), (_RELEVE, "{relevé : numero}"),   # mal écrit
-    (_RELEVE, "{relevé:num}"),                                                                     # autre nom
-    ('    Quand je clique sur le bouton "Suite"', "{relevé:numero}"),                              # jamais relevé
-])
-def test_falsifiable_un_releve_mal_ecrit_ou_jamais_fait_est_refuse_a_l_ecriture(tmp_path, avant, jeton):
-    """Relecture, reproduit : `{releve:numero}` restait tel quel — « la page n'affiche pas "{releve:numero}" » sortait `conforme`."""
-    sortie = w.write_feature_file(ToolContext("demo", tmp_path), _AVEC_RELEVE.format(avant=avant, jeton=jeton))
-
-    assert not sortie.ok and "RELEVE_INVALIDE" in sortie.observation
-    assert not (tmp_path / "demo.feature").exists()
-
-
-def test_un_releve_bien_ecrit_et_fait_avant_passe_et_ne_vaut_pas_pour_le_scenario_suivant(tmp_path):
-    bon = _AVEC_RELEVE.format(avant=_RELEVE, jeton="{relevé:numero}")
-    assert w.write_feature_file(ToolContext("demo", tmp_path), bon).ok
-
-    suivant = bon + """
-  Scénario: Un autre
-    Soit j'ouvre la page "/liste"
-    Alors la page affiche le texte "{relevé:numero}"
-"""
-    sortie = w.write_feature_file(ToolContext("demo", tmp_path), suivant)
-    assert not sortie.ok and "RELEVE_INVALIDE" in sortie.observation and "ligne 12" in sortie.observation
-
-
-def test_falsifiable_un_step_genere_ne_pose_pas_lui_meme_un_releve(tmp_path):
-    """Relecture : `context.releves = {"total": "999,99 €"}` dans un `@given` était accepté — le relecteur voyait
-    `{relevé:total}` sans voir d'où venait la valeur."""
-    code = ("from behave import given\n\n\n@given('un total connu')\ndef poser(context):\n"
-            "    context._tp_releves = {'total': ('999,99 €', 0)}\n")
+def test_falsifiable_l_alias_du_module_ne_donne_pas_acces_a_l_oracle(tmp_path):
+    """Contre-relecture : `import _base_helpers as H` puis `H._executer_oracle(...)` passait la garde des imports privés."""
+    code = ("import _base_helpers as H\nfrom behave import then\n\n\n@then('x')\ndef v(context):\n"
+            "    H.constater(H._executer_oracle(context, 'etat') == context.page.title(), 'n')\n")
 
     sortie = w.write_steps_file(_ctx(tmp_path), code)
 
-    assert not sortie.ok and "MECANISME_RESERVE" in sortie.observation
+    assert not sortie.ok and "MECANISME_RESERVE" in sortie.observation, sortie.observation
+
+
+@pytest.mark.parametrize("jeton", ["{relevé:numero}", "{releve:numero}", "{Relevé : numero}", "{ RELEVE:n }"])
+def test_falsifiable_le_gabarit_de_releve_retire_est_refuse_a_l_ecriture(tmp_path, jeton):
+    """Le gabarit `{relevé:nom}` a été retiré après deux relectures. Écrit quand même, il ne serait plus qu'un texte : « la page
+    n'affiche pas "{relevé:numero}" » serait toujours vraie (troisième relecture)."""
+    assert not hasattr(w, "_releves_fautifs")
+    sortie = w.write_feature_file(ToolContext("demo", tmp_path), _FEATURE.format(texte=jeton))
+
+    assert not sortie.ok and "RELEVE_INCONNU" in sortie.observation and "est la valeur affichée pour" in sortie.observation
+    assert not (tmp_path / "demo.feature").exists()
+
+
+def test_des_accolades_ordinaires_ne_sont_pas_visees(tmp_path):
+    assert w.write_feature_file(ToolContext("demo", tmp_path), _FEATURE.format(texte="Bonjour {prenom}, relevé du mois")).ok
