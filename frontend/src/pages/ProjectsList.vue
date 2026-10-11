@@ -224,6 +224,7 @@ const editError = ref('')
 const edit = ref({
   name: '', connector_type: 'odoo', connector_version: '', base_url: '', database: '', username: '', password: '',
   calibration_writes_enabled: false,
+  bac_a_sable_reset: '',
   browser_locale: '', browser_timezone: '', browser_viewport: '',
   auth_strategie: 'formulaire', totp_secret: '', injected_session: '',
 })
@@ -304,6 +305,7 @@ function startEdit(p: ProjectSummary) {
     // signifie « inchangé », jamais « efface-le » — d'où le filtrage à l'enregistrement.
     password: '',
     calibration_writes_enabled: p.calibration_writes_enabled,
+    bac_a_sable_reset: p.bac_a_sable_reset || '',
     browser_locale: p.browser_locale || '', browser_timezone: p.browser_timezone || '',
     browser_viewport: p.browser_viewport || '',
     // Lot 07b-2 : `totp_secret`/`injected_session` TOUJOURS vides — même règle que `password` (write-only).
@@ -371,6 +373,8 @@ async function saveEdit() {
       database: edit.value.database,
       username: edit.value.username,
       calibration_writes_enabled: edit.value.calibration_writes_enabled,
+      // D26 : '' = retirer la déclaration de bac à sable ; le serveur refuse une adresse d'une autre application (422).
+      bac_a_sable_reset: edit.value.bac_a_sable_reset,
       // Lot 07c : '' = revenir au défaut (fr-FR, Europe/Paris, 1440x900) ; le serveur refuse une valeur mal formée (422).
       browser_locale: edit.value.browser_locale,
       browser_timezone: edit.value.browser_timezone,
@@ -392,6 +396,18 @@ async function saveEdit() {
     editError.value = e?.message || 'Enregistrement impossible'
   } finally {
     saving.value = false
+  }
+}
+
+// D26 : le porteur déclare avoir remis LUI-MÊME l'application à zéro — lève la marque qui retient ses exécutions.
+async function declarerRemisAZero() {
+  if (!editing.value) return
+  editError.value = ''
+  try {
+    const maj = await api.updateProject(editing.value.id, { bac_a_sable_remis_a_zero: true })
+    editing.value = { ...editing.value, bac_a_sable_non_remis: !!maj?.bac_a_sable_non_remis }
+  } catch (e: any) {
+    editError.value = e?.message || 'Déclaration impossible'
   }
 }
 
@@ -778,6 +794,39 @@ onMounted(async () => { await load(); await loadExplorations() })
               </span>
             </span>
           </label>
+        </fieldset>
+        <fieldset v-if="edit.connector_type === 'web'" class="rounded-lg border border-border p-3" data-testid="bac-a-sable">
+          <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Génération — bac à sable</legend>
+          <label class="flex items-start gap-2.5">
+            <input type="checkbox" v-model="edit.calibration_writes_enabled" class="mt-0.5" data-testid="bac-a-sable-autorise" />
+            <span class="text-sm">
+              Autoriser l'IA à jouer ses actions sur cette application pendant qu'elle écrit le test.
+              <span class="mt-1 block text-xs text-muted-foreground">
+                Éteint par défaut : n'active que si <strong>{{ edit.base_url || 'cette application' }}</strong> est un
+                environnement de test que l'on peut remettre à zéro. L'IA voit alors sur quelle page mène chaque action,
+                ce qui évite les tests qui plantent à leur première exécution.
+              </span>
+            </span>
+          </label>
+          <label class="mt-3 block text-sm">
+            Adresse de remise à zéro
+            <input v-model="edit.bac_a_sable_reset" type="text" placeholder="/reset" data-testid="bac-a-sable-reset"
+                   class="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+            <span class="mt-1 block text-xs text-muted-foreground">
+              Un chemin de l'application, appelé avant et après chaque essai :
+              <strong>toute l'application est alors remise dans son état de départ</strong> — à ne déclarer que sur une
+              application réservée aux tests. Sans cette adresse, l'IA ne joue aucune action. Si l'adresse du projet
+              change, cette déclaration est à refaire.
+            </span>
+          </label>
+          <div v-if="editing?.bac_a_sable_non_remis" role="alert" data-testid="bac-a-sable-non-remis"
+               class="mt-3 rounded-md border border-destructive/40 p-3 text-sm">
+            Un essai de l'IA n'a pas pu remettre cette application à zéro : ce qu'il a créé y est peut-être encore, et
+            <strong>les exécutions de ce projet sont retenues</strong> pour ne pas rendre un verdict faussé. Remettez
+            l'application dans son état de départ, puis déclarez-le.
+            <Button type="button" variant="secondary" size="sm" class="mt-2" data-testid="bac-a-sable-declarer-remis"
+                    @click="declarerRemisAZero">L'application a été remise à zéro</Button>
+          </div>
         </fieldset>
         <p v-if="editError" class="text-sm text-destructive">{{ editError }}</p>
       </form>
