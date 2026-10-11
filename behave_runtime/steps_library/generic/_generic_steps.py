@@ -29,8 +29,8 @@ from _base_helpers import (
     # Oracle backend HTTP optionnel (lot 07e, C5) — même discipline d'import.
     oracle_renvoie_n_resultats, oracle_champ_vaut, oracle_champ_compte,
     # Lot VH-06 : les steps qui manquaient (saisie dans une ligne, valeur à côté d'un libellé, motif, relevé, liste d'oracle).
-    saisir_dans_ligne, valeur_affichee_vaut, page_affiche_texte_de_la_forme, relever_valeur, avec_releves,
-    oracle_liste_contient,
+    saisir_dans_ligne, valeur_affichee_vaut, page_affiche_texte_de_la_forme,
+    oracle_liste_contient, oracle_liste_contient_valeur_affichee,
 )
 
 # ⚠️ Chaque step d'ACTION ci-dessous est déclaré sous `@given` ET `@when` (bug SauceDemo,
@@ -53,9 +53,9 @@ def step_fill(context, field, value):
     # qu'elle veut : on la sert, au lieu de saisir une valeur absurde dans le premier champ du nom.
     if '" dans la ligne contenant "' in value:
         valeur, texte = value.split('" dans la ligne contenant "', 1)
-        saisir_dans_ligne(context.page, field, avec_releves(context, valeur), avec_releves(context, texte))
+        saisir_dans_ligne(context.page, field, valeur, texte)
         return
-    fill_field(context.page, field, avec_releves(context, value))
+    fill_field(context.page, field, value)
 
 
 @given('je renseigne le champ "{field}" avec la valeur "{value}" rendue unique pour cette '
@@ -292,19 +292,19 @@ def step_ouvrir_page(context, chemin):
 def step_page_affiche_texte(context, texte):
     """Le texte doit être affiché TEL QUEL : mot entier, majuscules respectées ; un morceau de mot ou de nombre ne suffit pas
     (« 129,51 » n'est pas dans « 1 129,51 € »). Recopie le texte exactement comme l'écran l'affiche."""
-    page_affiche_texte(context.page, avec_releves(context, texte))
+    page_affiche_texte(context.page, texte)
 
 
 @then('la page n\'affiche pas le texte "{texte}"')
 def step_page_n_affiche_pas_texte(context, texte):
     """Une ABSENCE ne se constate que sur une page qui a pu se rendre (ni vide, ni en erreur HTTP) : sinon erreur technique — jamais un vert.
     Cherche le texte dans le document, ses cadres et les valeurs de champs."""
-    page_n_affiche_pas_texte(context, avec_releves(context, texte))
+    page_n_affiche_pas_texte(context, texte)
 
 
 @then('l\'URL courante contient "{fragment}"')
 def step_url_contient(context, fragment):
-    url_contient(context.page, avec_releves(context, fragment))
+    url_contient(context.page, fragment)
 
 
 # ── Lot VH-06 : les steps qui manquaient — à préférer à tout code Playwright écrit à la main ──────────────────
@@ -313,26 +313,19 @@ def step_url_contient(context, fragment):
 @when('je renseigne "{champ}" avec "{valeur}" dans la ligne contenant "{texte}"')
 def step_saisir_dans_ligne(context, champ, valeur, texte):
     """Renseigne un champ DANS la ligne (tableau, carte, élément de liste) qui contient `texte` ; plusieurs lignes ou champs : erreur, jamais le premier."""
-    saisir_dans_ligne(context.page, champ, avec_releves(context, valeur), avec_releves(context, texte))
+    saisir_dans_ligne(context.page, champ, valeur, texte)
 
 
 @then('la valeur affichée pour "{libelle}" est "{valeur}"')
 def step_valeur_affichee(context, libelle, valeur):
     """La valeur affichée À CÔTÉ d'un libellé, ENTIÈRE (jamais un morceau) — à préférer à « la page affiche le texte » si la valeur peut apparaître ailleurs."""
-    valeur_affichee_vaut(context.page, libelle, avec_releves(context, valeur))
+    valeur_affichee_vaut(context.page, libelle, valeur)
 
 
 @then('la page affiche un texte de la forme "{motif}"')
 def step_texte_de_la_forme(context, motif):
     """Un texte VISIBLE qui suit une expression régulière à PARTIE FIXE (ex. `FAC-[0-9]{4}`), pour une valeur générée ; un motif sans partie fixe est refusé."""
     page_affiche_texte_de_la_forme(context.page, motif)
-
-
-@given('je relève la valeur affichée pour "{libelle}" comme "{nom}"')
-@when('je relève la valeur affichée pour "{libelle}" comme "{nom}"')
-def step_relever(context, libelle, nom):
-    """Relève une valeur affichée à côté d'un libellé pour la réutiliser par `{relevé:nom}` : saisie, oracle, ou écran APRÈS une action (jamais pour la comparer à elle-même)."""
-    relever_valeur(context, libelle, nom)
 
 
 @then('le tableau "{nom}" contient une ligne avec "{a}" et "{b}"')
@@ -351,7 +344,7 @@ def step_tableau_compte_lignes(context, nom, n):
 @when('je clique sur "{libelle}" dans la ligne contenant "{texte}"')
 def step_cliquer_dans_ligne(context, libelle, texte):
     """Clique un bouton, un lien ou un texte DANS la ligne qui contient `texte` — plusieurs lignes ou plusieurs cibles : erreur, jamais la première."""
-    cliquer_dans_ligne(context.page, libelle, avec_releves(context, texte))
+    cliquer_dans_ligne(context.page, libelle, texte)
 
 
 @given("j'accepte la boîte de dialogue")
@@ -422,7 +415,7 @@ def step_oracle_compte(context, requete, n):
 
 @then('le champ "{chemin}" de l\'oracle "{requete}" vaut "{valeur}"')
 def step_oracle_champ_vaut(context, chemin, requete, valeur):
-    oracle_champ_vaut(context, chemin, requete, avec_releves(context, valeur, ecran=False))
+    oracle_champ_vaut(context, chemin, requete, valeur)
 
 
 @then('le champ "{chemin}" de l\'oracle "{requete}" compte {n:d} éléments')
@@ -434,4 +427,10 @@ def step_oracle_champ_compte(context, chemin, requete, n):
 @then('la liste "{chemin}" de l\'oracle "{requete}" contient un élément dont "{cle}" est "{valeur}"')
 def step_oracle_liste_contient(context, chemin, requete, cle, valeur):
     """AU MOINS un élément de la liste a cette valeur pour cette clé — à préférer au seul comptage, qui passerait avec le mauvais élément."""
-    oracle_liste_contient(context, chemin, requete, cle, avec_releves(context, valeur, ecran=False))
+    oracle_liste_contient(context, chemin, requete, cle, valeur)
+
+
+@then('la liste "{chemin}" de l\'oracle "{requete}" contient un élément dont "{cle}" est la valeur affichée pour "{libelle}"')
+def step_oracle_liste_contient_valeur_affichee(context, chemin, requete, cle, libelle):
+    """Ce que l'écran affiche à côté d'un libellé (un numéro généré, inconnu d'avance) se retrouve dans la liste de l'oracle : l'écran et le serveur concordent."""
+    oracle_liste_contient_valeur_affichee(context, chemin, requete, cle, libelle)

@@ -15,7 +15,6 @@ import time
 import uuid
 import warnings
 import re
-import unicodedata
 import urllib.error
 from contextlib import contextmanager
 from urllib.parse import parse_qsl, urlparse
@@ -267,7 +266,6 @@ def constater(condition, message: str = "") -> None:
     garde la trace de ce constat raté et sort `indetermine` (V10) — jamais `conforme`.
     """
     _appliquer_garde_de_session()  # lot VH-04 (V8) : rien ne se constate sur une session perdue
-    _appliquer_garde_des_releves()  # lot VH-06 : ni sur un « {relevé:…} » resté tel quel
     raison = _condition_toujours_vraie(condition)
     if raison:
         _consigner_constat(False)
@@ -281,7 +279,6 @@ def constater(condition, message: str = "") -> None:
 def constater_visible(locator, message: str = "", timeout=None) -> None:
     """`expect(locator).to_be_visible()` (assertion web-first, elle réessaie) + constat consigné."""
     _appliquer_garde_de_session()
-    _appliquer_garde_des_releves()
     try:
         if timeout is None:
             expect(locator).to_be_visible()
@@ -296,7 +293,6 @@ def constater_visible(locator, message: str = "", timeout=None) -> None:
 def constater_texte(locator, attendu, message: str = "", timeout=None, exact: bool = False) -> None:
     """`expect(locator).to_have_text / to_contain_text(attendu)` + constat consigné."""
     _appliquer_garde_de_session()
-    _appliquer_garde_des_releves()
     options = {} if timeout is None else {"timeout": timeout}
     try:
         if exact:
@@ -320,7 +316,6 @@ def constat(fonction):
     @functools.wraps(fonction)
     def enveloppe(*args, **kwargs):
         _appliquer_garde_de_session()  # lot VH-04 (V8) : rien ne se constate sur une session perdue
-        _appliquer_garde_des_releves()  # lot VH-06 : ni sur un « {relevé:…} » resté tel quel
         try:
             resultat = fonction(*args, **kwargs)
         except AssertionError:
@@ -3414,8 +3409,10 @@ _CHAMPS_DE_SAISIE_CSS = "input:not([type='hidden']):not([type='submit']):not([ty
 # était modifiée sans erreur. Rend la raison du refus, ou '' :
 # - un conteneur de liste (tableau, liste, corps de page) n'est pas une ligne ;
 # - une zone qui renferme une autre ligne (tr, li, article, row, listitem) portant un champ sans le texte demandé non plus ;
-# - hors balisage de ligne : le texte et le champ ne doivent pas être dans deux blocs frères semblables dont celui du champ a
-#   son propre texte (deux cartes voisines).
+# - hors balisage de ligne : le texte et le champ ne doivent pas être dans deux blocs frères SEMBLABLES (même balise, ou une
+#   classe commune — `item gift` face à `item`, `row odd` face à `row even`) dont celui du champ a son propre texte : ce sont
+#   deux cartes voisines. Limite assumée : deux blocs voisins de balises différentes et sans classe commune, ou dont celui du
+#   champ n'a aucun texte, ne se distinguent pas d'une carte « titre au-dessus du champ » — ni par le balisage, ni à l'écran.
 _JS_ZONE_EST_UNE_LIGNE = r"""(zone, texte) => {
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const CHAMPS = "input:not([type=hidden]):not([type=submit]):not([type=button]), select, textarea";
@@ -3431,13 +3428,12 @@ _JS_ZONE_EST_UNE_LIGNE = r"""(zone, texte) => {
     copie.querySelectorAll('label, select, textarea, script, style').forEach((x) => x.remove());
     return norm(copie.textContent);
   };
+  const semblables = (a, b) => a.tagName === b.tagName || [...a.classList].some((c) => b.classList.contains(c));
   const porteurs = [...zone.querySelectorAll('*')].filter((e) => norm(e.innerText) === texte);
   for (const porteur of porteurs) {
     for (const champ of zone.querySelectorAll(CHAMPS)) {
       const a = enfantDe(porteur), b = enfantDe(champ);
-      if (a && b && a !== b && a.tagName === b.tagName && a.className === b.className && texteSansChamps(b)) {
-        return 'le champ appartient à un bloc voisin';
-      }
+      if (a && b && a !== b && semblables(a, b) && texteSansChamps(b)) return 'le champ appartient à un bloc voisin';
     }
   }
   return '';
@@ -3528,10 +3524,23 @@ _JS_VALEURS_A_COTE = r"""(libelle) => {
     }
     return norm(el.innerText);
   };
-  const enTeteDeColonne = (el) => el.tagName === 'TH' && (
-    !!el.closest('thead') || (el.getAttribute('scope') || '').toLowerCase() === 'col'
-    || (el.nextElementSibling && el.nextElementSibling.tagName === 'TH')
-    || (el.previousElementSibling && el.previousElementSibling.tagName === 'TH'));
+  // Contre-relecture : la règle ne valait que pour `th`. Un en-tête de colonne, c'est aussi `role="columnheader"`, et la
+  // PREMIÈRE ligne d'un tableau d'au moins trois colonnes suivie d'une ligne de même largeur (en-têtes écrits en `td`).
+  // Un tableau à deux colonnes reste lu « libellé | valeur » : c'est la forme d'une fiche.
+  const cellulesDe = (ligne) => [...ligne.children].filter((c) => c.matches('td, th, [role="cell"], [role="gridcell"], [role="columnheader"]'));
+  const enTeteDeColonne = (el) => {
+    if ((el.getAttribute('role') || '') === 'columnheader') return true;
+    if (el.tagName === 'TH' && (!!el.closest('thead') || (el.getAttribute('scope') || '').toLowerCase() === 'col'
+        || (el.nextElementSibling && el.nextElementSibling.tagName === 'TH')
+        || (el.previousElementSibling && el.previousElementSibling.tagName === 'TH'))) return true;
+    const ligne = el.closest('tr, [role="row"]');
+    if (!ligne || !el.matches('td, th, [role="cell"], [role="gridcell"]')) return false;
+    const table = ligne.closest('table, [role="table"], [role="grid"]');
+    if (!table) return false;
+    const lignes = [...table.querySelectorAll('tr, [role="row"]')].filter((l) => l.closest('table, [role="table"], [role="grid"]') === table);
+    return lignes[0] === ligne && lignes.length > 1 && cellulesDe(ligne).length >= 3
+      && cellulesDe(lignes[1]).length === cellulesDe(ligne).length;
+  };
   const suite = (n) => {
     if (n.tagName === 'DT') return n.nextElementSibling && n.nextElementSibling.tagName === 'DD' ? {el: n.nextElementSibling} : null;
     if (n.tagName === 'TH' || n.tagName === 'TD') {
@@ -3541,11 +3550,23 @@ _JS_VALEURS_A_COTE = r"""(libelle) => {
       const controle = n.control || (n.htmlFor ? document.getElementById(n.htmlFor) : null);
       if (controle) return {el: controle};
     }
+    // Ce qui SUIT le libellé dans son parent : les textes et AU PLUS UN élément en ligne, mis bout à bout jusqu'au prochain
+    // bloc, contrôle ou libellé. Contre-relecture : seul le premier texte était rendu — « 129,51 » pour
+    // « 129,51 <span>€</span> » (`non_conforme` sur une application saine), « 1 » pour « 1 <span>129,51 €</span> ».
+    // Troisième relecture : sans la limite à un élément, « <span>Numéro</span> <span>DOS-1</span> <span>Client</span>
+    // <span>Martin</span> » rendait « DOS-1 Client Martin » — le libellé et la valeur suivants avalés.
+    const morceaux = [];
+    let elementLu = false;
     for (let s = n.nextSibling; s; s = s.nextSibling) {
-      if (s.nodeType === 3) { if (norm(s.textContent)) return {texte: norm(s.textContent)}; continue; }
-      if (s.nodeType === 1) return {el: s};
+      if (s.nodeType === 3) { if (norm(s.textContent)) morceaux.push(norm(s.textContent)); continue; }
+      if (s.nodeType !== 1) continue;
+      const enLigne = getComputedStyle(s).display.startsWith('inline') && !s.matches('a, button, input, select, textarea, label, br');
+      if (!enLigne || elementLu || /:\s*$/.test(norm(s.innerText))) {
+        return morceaux.length ? {texte: morceaux.join(' ')} : (s.matches('br') ? null : {el: s});
+      }
+      if (visible(s) && norm(s.innerText)) { morceaux.push(norm(s.innerText)); elementLu = true; }
     }
-    return null;
+    return morceaux.length ? {texte: morceaux.join(' ')} : null;
   };
   const libelleSeul = (label) => {
     const copie = label.cloneNode(true);
@@ -3554,10 +3575,17 @@ _JS_VALEURS_A_COTE = r"""(libelle) => {
   };
   const valeurDe = (v) => (v.texte !== undefined ? v.texte : (visible(v.el) ? texteDe(v.el) : null));
   const valeurs = [];
+  const repere = libelle.toLowerCase();
   for (const el of document.querySelectorAll('body *')) {
-    if (!(el.textContent || '').includes(libelle) || !visible(el)) continue;
+    // Pré-filtre sur le texte NORMALISÉ, casse pliée : la source peut porter une espace insécable, un retour à la ligne, ou
+    // une autre casse que l'écran (`text-transform`) — contre-relecture : ces libellés devenaient introuvables.
+    if (!norm(el.textContent).toLowerCase().includes(repere) || !visible(el)) continue;
     // Le texte d'un <label> qui ENVELOPPE son champ ne compte pas les options d'une liste ni le contenu d'une zone de texte.
-    const propre = el.tagName === 'LABEL' ? libelleSeul(el) : norm(el.innerText);
+    let propre = el.tagName === 'LABEL' ? libelleSeul(el) : norm(el.innerText);
+    // Sous `text-transform`, le libellé s'écrit comme l'écran OU comme la source (même règle que « la page affiche le texte »).
+    const transforme = getComputedStyle(el).textTransform;
+    if (sansDeuxPoints(propre) !== libelle && transforme && transforme !== 'none'
+        && sansDeuxPoints(norm(el.textContent)) === libelle) propre = norm(el.textContent);
     if (sansDeuxPoints(propre) === libelle) {
       // Un élément PLUS PROFOND portant le même libellé donnera la même valeur : on ne lit que le plus profond…
       if ([...el.querySelectorAll('*')].some((d) => visible(d) && sansDeuxPoints(norm(d.innerText)) === libelle)) continue;
@@ -3670,9 +3698,33 @@ def _partie_fixe(sequence) -> int:
     return meilleur
 
 
-# Mode Unicode (`u`) : sans lui, `\Z` ou `\A` (Python) se lisent « Z » et « A » — motif accepté, rien trouvé, et l'échec passait
-# pour un défaut de l'application.
-_JS_MOTIF_LISIBLE = "(motif) => { try { new RegExp(motif, 'u'); return ''; } catch (e) { return String((e && e.message) || e); } }"
+# Validé dans le mode où il sera EXÉCUTÉ (sans `u`) : en mode Unicode, `CMD\-[0-9]{4}` — écriture courante — était refusé à
+# tort (contre-relecture). Ce que ce mode accepte en changeant de SENS est lu dans l'arbre Python (`_ecarts_de_sens`).
+_JS_MOTIF_LISIBLE = "(motif) => { try { new RegExp(motif); return ''; } catch (e) { return String((e && e.message) || e); } }"
+_OPTIONS_GLOBALES = re.IGNORECASE | re.MULTILINE | re.DOTALL | re.VERBOSE | re.ASCII | re.LOCALE
+
+
+def _ecarts_de_sens(arbre) -> str:
+    """Ce que Python et le navigateur lisent DIFFÉREMMENT sans erreur : `\\A` et `\\Z` (lus « A » et « Z » par le navigateur),
+    et les options en tête (`(?i)`), que le navigateur refuse ou ignore. Rend la raison, ou ''."""
+    etat = getattr(arbre, "state", None) or getattr(arbre, "pattern", None)
+    if getattr(etat, "flags", 0) & _OPTIONS_GLOBALES:
+        return "option en tête de motif (`(?i)`, `(?s)`…)"
+
+    def ancres(sequence) -> bool:
+        for operation, argument in sequence:
+            nom = str(operation)
+            if nom == "AT" and str(argument) in ("AT_BEGINNING_STRING", "AT_END_STRING"):
+                return True
+            if nom == "SUBPATTERN" and ancres(argument[-1]):
+                return True
+            if nom in ("MAX_REPEAT", "MIN_REPEAT", "POSSESSIVE_REPEAT") and ancres(argument[2]):
+                return True
+            if nom == "BRANCH" and any(ancres(branche) for branche in argument[1]):
+                return True
+        return False
+
+    return "ancre `\\A` ou `\\Z`" if ancres(arbre) else ""
 
 
 @constat
@@ -3693,7 +3745,7 @@ def page_affiche_texte_de_la_forme(page, motif: str) -> None:
     borne = rf"(?<![{_LETTRE}])(?:{motif})(?![{_LETTRE}])"
     # Revue du lot, reproduit : un motif valide en Python mais pas dans le navigateur (`(?i)…`, `(?P<n>…)`, `\Z`) était avalé
     # par la boucle, puis le délai levait `AssertionError` — `non_conforme` sur une application saine. Vérifié AVANT de chercher.
-    illisible = page.evaluate(_JS_MOTIF_LISIBLE, borne)
+    illisible = _ecarts_de_sens(arbre) or page.evaluate(_JS_MOTIF_LISIBLE, borne)
     if illisible:
         raise ConstatInvalideError(
             f"Le motif « {motif} » n'est pas lisible par le navigateur ({illisible}) : n'utilisez que la syntaxe commune "
@@ -3710,96 +3762,6 @@ def page_affiche_texte_de_la_forme(page, motif: str) -> None:
         if time.monotonic() >= fin:
             raise AssertionError(f"Aucun texte de la forme « {motif} » n'est affiché sur {page.url}.")
         time.sleep(0.25)
-
-
-# ── Valeurs relevées à l'écran et réutilisées (« {relevé:nom} ») ─────────────────────────────────────────────
-#
-# Une valeur RELEVÉE pendant le scénario (« je relève … comme "numéro" ») se réutilise par `{relevé:numéro}` dans le texte d'un
-# step suivant — besoin mesuré (banc base-5) : le numéro de commande affiché, cherché ensuite dans la réponse de l'oracle.
-# Trois gardes, chacune née d'un faux vert reproduit à la revue du lot (2026-10-11) :
-# 1. un jeton MAL ÉCRIT (`{releve:x}`, `{Relevé : x}`) restait tel quel dans le texte : « la page n'affiche pas "{releve:x}" »
-#    était toujours vraie. Tout reste de jeton après substitution est une erreur du test ;
-# 2. un step qui ne substitue pas recevait le jeton tel quel : la garde est au CONSTAT (`_appliquer_garde_des_releves`), seul
-#    point que toute vérification traverse — un « Alors » dont le jeton n'a pas été substitué ne constate rien ;
-# 3. l'AUTO-RÉFÉRENCE : relever le total puis vérifier à l'écran qu'il vaut ce qu'on vient de relever est vrai quel que soit
-#    le total. Sous un « Alors » qui lit l'ÉCRAN, un relevé n'est utilisable qu'après une action ; contre l'oracle (autre
-#    source), il l'est toujours.
-_RELEVE = re.compile(r"\{relevé:([^{}]+)\}")
-_ETAT_RELEVES = {"jetons_a_substituer": 0, "actions": 0, "step_compte": False}
-
-
-def _jetons(texte: str) -> int:
-    """Nombre de jetons de relevé dans `texte`, BIEN OU MAL écrits (accents, casse et espaces pliés)."""
-    plie = "".join(c for c in unicodedata.normalize("NFD", texte or "") if unicodedata.category(c) != "Mn").casefold()
-    return len(re.findall(r"\{\s*releve", plie))
-
-
-def debut_de_step_pour_les_releves(texte: str, action: bool) -> None:
-    """Appelé par `environment.before_step` : le step courant porte-t-il des jetons, et une ACTION commence-t-elle ?"""
-    _ETAT_RELEVES["jetons_a_substituer"] = _jetons(texte)
-    _ETAT_RELEVES["step_compte"] = bool(action)
-    if action:
-        _ETAT_RELEVES["actions"] += 1
-
-
-def _appliquer_garde_des_releves() -> None:
-    """Au constat : un jeton que le step n'a pas substitué ferait chercher (ou constater l'absence de) « {relevé:…} » lui-même."""
-    if _ETAT_RELEVES["jetons_a_substituer"] > 0:
-        _ETAT_RELEVES["jetons_a_substituer"] = 0
-        _consigner_constat(False)
-        raise ConstatInvalideError(
-            "Ce step ne sait pas remplacer « {relevé:…} » : la valeur relevée n'a pas été substituée, le constat ne prouverait "
-            "rien. Utilisez un step qui l'accepte (saisie, « la page affiche le texte », « la valeur affichée pour », "
-            "« l'URL courante contient », steps d'oracle).")
-
-
-def relever_valeur(context, libelle: str, nom: str) -> None:
-    """`Quand je relève la valeur affichée pour "<libellé>" comme "<nom>"`. Une valeur vide n'est pas relevée (erreur)."""
-    _renseigne(nom, "Le nom du relevé")
-    if _ETAT_RELEVES["step_compte"]:
-        # Relever n'est pas AGIR : deux relevés de suite ne rendent pas le premier comparable à l'écran.
-        _ETAT_RELEVES["actions"] -= 1
-        _ETAT_RELEVES["step_compte"] = False
-    valeur = lire_valeur_affichee(context.page, libelle)
-    if not valeur:
-        raise ElementIntrouvableError(f"La valeur affichée pour « {libelle} » est vide : rien à relever.")
-    releves = getattr(context, "_tp_releves", None)
-    if releves is None:
-        releves = context._tp_releves = {}
-    releves[nom.strip()] = (valeur, _ETAT_RELEVES["actions"])
-
-
-def avec_releves(context, texte: str, *, ecran: bool = True) -> str:
-    """Remplace chaque `{relevé:nom}` de `texte` par la valeur relevée dans CE scénario. Un nom jamais relevé, un jeton mal
-    écrit, ou — sous un « Alors » qui lit l'écran (`ecran=True`) — un relevé qu'aucune action ne sépare de son usage : erreur
-    du test, jamais une chaîne laissée telle quelle ni un constat qui se compare à lui-même."""
-    texte = texte or ""
-    releves = getattr(context, "_tp_releves", None) or {}
-    sous_un_alors = _ETAT_CONSTAT.get("step_type") == "then"
-    substitues = 0
-
-    def _valeur(trouve):
-        nonlocal substitues
-        nom = trouve.group(1).strip()
-        if nom not in releves:
-            raise ElementIntrouvableError(
-                f"« {{relevé:{nom}}} » n'a pas été relevé dans ce scénario (relevés : {', '.join(sorted(releves)) or 'aucun'}). "
-                "Ajoutez d'abord « je relève la valeur affichée pour … comme … ».")
-        valeur, actions_au_releve = releves[nom]
-        if ecran and sous_un_alors and actions_au_releve == _ETAT_RELEVES["actions"]:
-            raise ConstatInvalideError(
-                f"« {{relevé:{nom}}} » vient d'être relevé à l'écran et aucune action n'a eu lieu depuis : le comparer à "
-                "l'écran serait vrai quelle que soit sa valeur. Vérifiez la valeur que la spécification annonce, ou utilisez "
-                "le relevé après une action (autre page) ou contre l'oracle.")
-        substitues += 1
-        return valeur
-
-    resultat = _RELEVE.sub(_valeur, texte)
-    if _jetons(resultat):
-        raise ElementIntrouvableError(
-            f"Jeton de relevé mal écrit dans « {texte} » : écrivez exactement {{relevé:nom}} (accent, minuscules, sans espace).")
-    _ETAT_RELEVES["jetons_a_substituer"] = max(0, _ETAT_RELEVES["jetons_a_substituer"] - substitues)
-    return resultat
 
 
 # ── Boîtes de dialogue ──────────────────────────────────────────────────────────────────────────────────────
@@ -4193,9 +4155,62 @@ def oracle_liste_contient(context, chemin: str, requete: str, cle: str, valeur: 
         raise ReponseOracleNonComptableError(
             f"aucun des {len(liste)} élément(s) du champ « {chemin} » de l'oracle « {requete} » ne porte de valeur simple à la "
             f"clé « {cle} » : la clé est mal écrite (casse comprise) ou désigne un objet.")
+    nombres = [lue for lue in lisibles if isinstance(lue, (int, float)) and not isinstance(lue, bool)]
+    if lisibles and len(nombres) == len(lisibles):
+        try:
+            decimal.Decimal(valeur.strip().replace(",", "."))
+        except decimal.InvalidOperation as exc:
+            # « 129,51 € » contre le nombre 129.51 ne sont JAMAIS égaux : conclure « absent » accuserait une application saine.
+            raise ReponseOracleNonComptableError(
+                f"la clé « {cle} » de l'oracle « {requete} » porte des nombres ; « {valeur} » n'en est pas un (unité, symbole) : "
+                "la comparaison ne dirait rien. Comparez un nombre, ou une clé textuelle.") from exc
     with _source_du_constat("oracle"):
         constater(any(_valeurs_egales(lue, valeur) for lue in lisibles),
                   f"aucun des {len(liste)} élément(s) du champ « {chemin} » de l'oracle « {requete} » n'a « {cle} » = « {valeur} »")
+
+
+def oracle_liste_contient_valeur_affichee(context, chemin: str, requete: str, cle: str, libelle: str) -> None:
+    """Lot VH-06 : `Alors la liste "<chemin>" de l'oracle "<requête>" contient un élément dont "<clé>" est la valeur affichée
+    pour "<libellé>"` — ce que l'ÉCRAN montre (un numéro que le test ne peut pas connaître d'avance) se retrouve côté SERVEUR.
+    Deux sources lues dans le même step : rien n'est gardé d'un step à l'autre.
+
+    Besoin mesuré (banc base-5, `commande_persistance_serveur`, 3 essais sur 3) : l'agent lisait le numéro à la main et le
+    cherchait à la main dans l'oracle. Une première forme — « je relève … comme "nom" » puis `{relevé:nom}` dans n'importe quel
+    step — a été RETIRÉE après deux revues (2026-10-11) : valeur comparée à l'écran d'où elle venait, jeton mal écrit ou non
+    substitué laissé tel quel, relevé survivant d'un scénario à l'autre — autant de `conforme` sans preuve, reproduits."""
+    # Relus ENSEMBLE jusqu'au délai (troisième relecture, reproduit) : un numéro rendu 700 ms après l'action valait « … » à la
+    # première lecture et le step sortait `non_conforme` sur une application saine, là où « la valeur affichée pour » relit.
+    cible = _libelle_normalise(libelle)
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    while True:
+        distinctes = _valeurs_affichees(context.page, cible)
+        if len(distinctes) == 1 and distinctes[0] and _l_oracle_porte(context, chemin, requete, cle, distinctes[0]):
+            break
+        if time.monotonic() >= fin:
+            break
+        time.sleep(0.25)
+    # Le CONSTAT, une seule fois, sur la dernière lecture : libellé absent ou ambigu, oracle en erreur et test mal posé y sont
+    # levés comme partout ailleurs (la sonde ci-dessus ne consigne rien et ne tait rien).
+    valeur = lire_valeur_affichee(context.page, libelle)
+    if not valeur:
+        raise ElementIntrouvableError(f"La valeur affichée pour « {libelle} » est vide : rien à chercher dans l'oracle.")
+    oracle_liste_contient(context, chemin, requete, cle, valeur)
+
+
+def _l_oracle_porte(context, chemin: str, requete: str, cle: str, valeur: str) -> bool:
+    """Sonde SANS constat : un élément de la liste porte-t-il déjà cette valeur ? Toute erreur vaut « pas encore »."""
+    try:
+        liste = _liste_de_l_oracle(context, chemin, requete)
+    except Exception:
+        return False
+    for element in liste:
+        try:
+            lue = _champ_oracle(element, cle)
+        except (KeyError, IndexError, TypeError):
+            continue
+        if not isinstance(lue, (dict, list)) and _valeurs_egales(lue, valeur):
+            return True
+    return False
 
 
 def _valeurs_egales(obtenu, attendu: str) -> bool:

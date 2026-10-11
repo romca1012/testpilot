@@ -54,6 +54,7 @@ _DELEGUENT_OU_ATTENDENT = {
     "step_valeur_affichee",            # → valeur_affichee_vaut()
     "step_texte_de_la_forme",          # → page_affiche_texte_de_la_forme()
     "step_oracle_liste_contient",      # → oracle_liste_contient()
+    "step_oracle_liste_contient_valeur_affichee",  # → oracle_liste_contient_valeur_affichee() → oracle_liste_contient()
 }
 
 

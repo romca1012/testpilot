@@ -48,7 +48,8 @@ _CONTEXTE_INTERDIT = frozenset({"web_password", "odoo_password", "totp_secret", 
 _CONTEXTE_ORACLE = frozenset({"oracle", "oracle_erreur"})
 _RAISON_ORACLE = ("l'oracle ne s'interroge pas à la main : utiliser « le champ \"<chemin>\" de l'oracle \"<requête>\" vaut "
                   "\"<valeur>\" », « … compte <n> élément(s) », « la liste \"<chemin>\" de l'oracle \"<requête>\" contient un "
-                  "élément dont \"<clé>\" est \"<valeur>\" » — une valeur lue à l'écran se relève puis se cite {relevé:nom}")
+                  "élément dont \"<clé>\" est \"<valeur>\" » — ou « … est la valeur affichée pour \"<libellé>\" » pour y "
+                  "retrouver ce que l'écran montre")
 
 _SELECTEURS_TEXTE = re.compile(r":has-text\(|(?:^|[\s>])text=|xpath=")
 _RESEAU_JS = re.compile(r"\bfetch\s*\(|XMLHttpRequest|sendBeacon")

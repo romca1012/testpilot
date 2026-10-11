@@ -67,7 +67,7 @@ def test_le_prompt_presente_les_steps_du_lot_et_ils_existent_dans_la_bibliothequ
     generiques = (RACINE / "behave_runtime" / "steps_library" / "generic" / "_generic_steps.py").read_text(encoding="utf-8")
 
     for debut in ('dans la ligne contenant', 'la valeur affichée pour', 'un texte de la forme',
-                  'je relève la valeur affichée pour', 'contient un élément dont'):
+                  'contient un élément dont', 'est la valeur affichée pour'):
         assert debut in regle, f"le prompt ne présente pas « {debut} »"
         assert debut in generiques, f"« {debut} » n'existe pas dans la bibliothèque"
 
@@ -90,7 +90,8 @@ def test_la_premiere_ligne_de_chaque_docstring_du_lot_se_suffit():
     import ast
 
     arbre = ast.parse((RACINE / "behave_runtime" / "steps_library" / "generic" / "_generic_steps.py").read_text(encoding="utf-8"))
-    lot = {"step_saisir_dans_ligne", "step_valeur_affichee", "step_texte_de_la_forme", "step_relever", "step_oracle_liste_contient"}
+    lot = {"step_saisir_dans_ligne", "step_valeur_affichee", "step_texte_de_la_forme", "step_oracle_liste_contient",
+           "step_oracle_liste_contient_valeur_affichee"}
     vues = {}
     for noeud in ast.walk(arbre):
         if isinstance(noeud, ast.FunctionDef) and noeud.name in lot:
