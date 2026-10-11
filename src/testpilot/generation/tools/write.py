@@ -201,8 +201,9 @@ _RESERVES_AU_SOCLE = frozenset({
     "noter_lecture_rpc", "_LECTURE_RPC_DU_STEP", "debut_de_step",
     "_tp_refus_navigateur", "_tp_releve_sequence", "_tp_releve_t", "_soumission_observee", "_est_un_envoi",
     "reponses_reseau", "navigations",
-    # Lot VH-06 (revue) : les valeurs relevées et leurs gardes — un step généré ne pose pas un « relevé » qu'aucun écran n'a montré.
-    "_tp_releves", "_ETAT_RELEVES", "debut_de_step_pour_les_releves", "_appliquer_garde_des_releves",
+    # Lot VH-06 (revues) : l'oracle ne s'interroge que par les steps du catalogue — ni par `context.oracle`
+    # (`litteraux_observes`), ni par les fonctions internes de la bibliothèque (`import _base_helpers as H; H._executer_oracle`).
+    "_executer_oracle", "_resoudre_oracle", "_liste_de_l_oracle", "_champ_oracle", "construire_oracle",
 })
 
 
@@ -703,55 +704,32 @@ def _echappements_litteraux(content: str) -> list[str]:
     return sorted(trouves)
 
 
-# Lot VH-06 (revue du 2026-10-11) : `{relevé:nom}` mal écrit (`{releve:x}`, `{Relevé : x}`) restait tel quel dans le texte du
-# step — « la page n'affiche pas "{releve:x}" » était toujours vraie. Refusé ICI (l'agent corrige dans la même génération) ET au
-# run (`_base_helpers.avec_releves`, `_appliquer_garde_des_releves`) : la garde d'écriture n'est qu'un message précoce.
-_JETON_DE_RELEVE = re.compile(r"\{relevé:([^{}]+)\}")
-_STEP_QUI_RELEVE = re.compile(r'je relève la valeur affichée pour "[^"]*" comme "([^"]+)"')
-_DEBUT_DE_SCENARIO = re.compile(r"^\s*(Scénario|Scenario|Plan du [Ss]cénario|Exemple)\b")
-_DEBUT_DE_CONTEXTE = re.compile(r"^\s*Contexte\b")
+# Lot VH-06 : le gabarit `{relevé:nom}` a existé le temps de deux relectures, puis a été RETIRÉ (il rendait `conforme` des
+# vérifications qui ne prouvaient rien). Écrit quand même, il ne serait plus qu'un texte : « la page n'affiche pas
+# "{relevé:numero}" » serait toujours vraie. Refusé, accents, casse et espaces pliés.
+_GABARIT_DE_RELEVE = re.compile(r"\{\s*releve")
 
 
-def _releves_fautifs(content: str) -> str:
-    """Premier jeton de relevé mal écrit, ou cité avant d'avoir été relevé dans son scénario ; sinon chaîne vide."""
-    du_contexte: set[str] = set()
-    connus: set[str] = set()
-    dans_le_contexte = False
-    for numero, ligne in enumerate(content.splitlines(), start=1):
-        if ligne.lstrip().startswith("#"):
-            continue
-        if _DEBUT_DE_CONTEXTE.match(ligne):
-            dans_le_contexte, connus = True, du_contexte
-            continue
-        if _DEBUT_DE_SCENARIO.match(ligne):
-            dans_le_contexte, connus = False, set(du_contexte)
-            continue
-        bien_ecrits = _JETON_DE_RELEVE.findall(ligne)
-        plie = "".join(c for c in unicodedata.normalize("NFD", ligne) if unicodedata.category(c) != "Mn").casefold()
-        if len(re.findall(r"\{\s*releve", plie)) != len(bien_ecrits):
-            return f"ligne {numero} : jeton mal écrit — écris exactement {{relevé:nom}} (accent, minuscules, sans espace)"
-        for nom in bien_ecrits:
-            if nom.strip() not in connus:
-                return (f"ligne {numero} : « {{relevé:{nom}}} » n'est relevé par aucun step précédent du scénario — ajoute "
-                        f"« Quand je relève la valeur affichée pour \"<libellé>\" comme \"{nom.strip()}\" » avant")
-        releve = _STEP_QUI_RELEVE.search(ligne)
-        if releve:
-            connus.add(releve.group(1).strip())
-    return ""
+def _gabarit_de_releve(content: str) -> bool:
+    plie = "".join(c for c in unicodedata.normalize("NFD", content) if unicodedata.category(c) != "Mn").casefold()
+    return any(_GABARIT_DE_RELEVE.search(ligne) for ligne in plie.splitlines() if not ligne.lstrip().startswith("#"))
 
 
 def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if not content.strip():
         return _outcome("[write_feature_file] contenu vide", ok=False)
+    if _gabarit_de_releve(content):
+        return _outcome(
+            "[write_feature_file] RELEVE_INCONNU : `{relevé:…}` n'existe pas — aucune valeur n'est gardée d'un step à "
+            "l'autre. Pour retrouver côté serveur ce que l'écran affiche : « la liste \"<chemin>\" de l'oracle \"<requête>\" "
+            "contient un élément dont \"<clé>\" est la valeur affichée pour \"<libellé>\" ». Puis rappelle "
+            "write_feature_file.", ok=False)
     echappements = _echappements_litteraux(content)
     if echappements:
         return _outcome(
             "[write_feature_file] ECHAPPEMENT_LITTERAL : le fichier contient " + ", ".join(echappements[:6]) + " écrit en "
             "toutes lettres. Gherkin ne décode pas ces séquences : le test chercherait ces caractères tels quels à l'écran. "
             "Écris le caractère lui-même (« » é à, espace ordinaire), puis rappelle write_feature_file.", ok=False)
-    releves = _releves_fautifs(content)
-    if releves:
-        return _outcome(f"[write_feature_file] RELEVE_INVALIDE : {releves}. Puis rappelle write_feature_file.", ok=False)
     from behave.parser import ParserError, parse_feature
     try:
         feature = parse_feature(content, language="fr")

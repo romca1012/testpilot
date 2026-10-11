@@ -690,11 +690,9 @@ def before_step(context, step):
         poser_repere_action(context)
     # Lot VH-04 (V8, G4) : une session perdue avant un `Alors` bloque le test — jamais un vert sur la page de connexion. Évaluée
     # ici, appliquée au premier constat du step (voir `armer_garde_de_session` : Behave ne classe pas une erreur de crochet).
-    from _base_helpers import armer_garde_de_session, debut_de_step, debut_de_step_pour_les_releves
+    from _base_helpers import armer_garde_de_session, debut_de_step
     armer_garde_de_session(context, alors=(getattr(step, "step_type", "") or "") == "then")
     debut_de_step()
-    # Lot VH-06 : un « {relevé:…} » que le step ne substitue pas ne constate rien ; un relevé ne se compare à l'écran qu'après une action.
-    debut_de_step_pour_les_releves(step.name or "", (getattr(step, "step_type", "") or "") in ("given", "when"))
 
 
 def _fonction_du_step(context, step):
