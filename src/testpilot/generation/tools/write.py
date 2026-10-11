@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from testpilot.generation import enregistrement_lint, gel_verifications, litteraux_observes, steps_library
 from testpilot.generation.references import message_refus, verifier_references
+from testpilot.generation.tools import essai as essai_tools
 
 if TYPE_CHECKING:
     from testpilot.generation.tools import ToolContext, ToolOutcome
@@ -204,6 +205,8 @@ _RESERVES_AU_SOCLE = frozenset({
     # Lot VH-06 (revues) : l'oracle ne s'interroge que par les steps du catalogue — ni par `context.oracle`
     # (`litteraux_observes`), ni par les fonctions internes de la bibliothèque (`import _base_helpers as H; H._executer_oracle`).
     "_executer_oracle", "_resoudre_oracle", "_liste_de_l_oracle", "_champ_oracle", "construire_oracle",
+    # Lot VH-07 : l'état consigné à la fin d'un essai (« exécuter puis écrire ») appartient au harnais.
+    "TP_ESSAI_ETAT_FILE", "_consigner_etat_d_essai", "_JS_CONTROLES_D_ESSAI",
 })
 
 
@@ -678,6 +681,30 @@ def _message_gel(outil: str, touche: list[str]) -> str:
             "l'identique ; si tu conclus que le test vérifie la mauvaise chose, ne réécris rien et dis-le.")
 
 
+def _message_essai(outil: str, tires: list[str]) -> str:
+    """Lot VH-07 (D26, condition 4) : ce que l'agent n'a vu QUE pendant un essai ne devient pas un attendu."""
+    cites = " ; ".join(list(dict.fromkeys(tires))[:6])
+    return (f"[{outil}] VALEUR_TIREE_DE_L_ESSAI : {cites} — la spécification ne le dit pas. Un « Alors » vérifie ce que la "
+            "SPÉCIFICATION annonce, jamais une donnée que l'application a montrée à l'essai (elle peut justement se tromper). "
+            "Cite la valeur de la spécification ; si elle n'en donne pas, vérifie ce qu'elle annonce autrement, ou dis dans ta "
+            "réponse que ce point n'est pas vérifiable. (Les noms de champs, de boutons et de pages vus à l'essai restent "
+            "utilisables.)")
+
+
+def _chaines_hors_actions(tree: ast.AST) -> list[str]:
+    """Les chaînes d'un fichier de steps qui peuvent servir une VÉRIFICATION : tout le fichier (constantes de module et
+    fonctions d'aide comprises — une valeur recopiée s'y cachait, contre-relecture du 2026-10-11), sauf le corps des fonctions
+    d'ACTION (`@given`/`@when` sans `@then`), où citer ce qu'un essai a montré sert à cliquer, pas à juger."""
+    actions: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            decorateurs = _decorateurs(node)
+            if decorateurs & {"given", "when"} and "then" not in decorateurs and "step" not in decorateurs:
+                actions.update(id(n) for n in ast.walk(node))
+    return [n.value for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in actions]
+
+
 def _message_litteraux(outil: str, ecarts) -> str:
     lignes = [f"[{outil}] LITTERAL_NON_OBSERVE : ce test cite ce qui n'a pas été observé sur l'application."]
     for e in ecarts[:8]:
@@ -775,6 +802,10 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
         if refus:
             return _outcome(_message_litteraux("write_feature_file", refus), ok=False)
         indications = "".join(f" Attention ({e.ou}) : « {e.cite} » — {e.raison}." for e in ecarts)
+    # Lot VH-07 (D26, condition 4) : un littéral vu seulement pendant un essai n'est pas un attendu. BLOQUANT.
+    tires = essai_tools.valeurs_tirees_de_l_essai(feature, getattr(ctx, "essai", None), ctx.requirements)
+    if tires:
+        return _outcome(_message_essai("write_feature_file", tires), ok=False)
     path = ctx.generated_dir / f"{ctx.module_name}.feature"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
@@ -873,6 +904,11 @@ def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
         refus = [e for e in ecarts if e.bloquant and e.regle in regles]
         if refus:
             return _outcome(_message_litteraux("write_steps_file", refus), ok=False)
+
+    # 3octies. Lot VH-07 (D26, condition 4) : même règle pour un « Alors » écrit à la main. BLOQUANT.
+    tires = essai_tools.chaines_tirees_de_l_essai(_chaines_hors_actions(tree), getattr(ctx, "essai", None), ctx.requirements)
+    if tires:
+        return _outcome(_message_essai("write_steps_file", tires), ok=False)
 
     # 4. Aucune redéfinition d'un step de la bibliothèque partagée.
     declared = {step.label for step in steps_library.extract_steps(content)}
