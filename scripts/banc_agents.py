@@ -33,6 +33,7 @@ n'est lancé quand le cumul plus le plus cher essai déjà observé le dépasser
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -398,6 +399,8 @@ class EssaiConsigne:
     cout_usd: float | None
     empreintes: dict[str, str]
     refus_ecriture: dict[str, int] = field(default_factory=dict)  # lot VH-04 : refus des gardes d'écriture, par code
+    # Lot VH-06 : nombre de steps que le test DÉFINIT lui-même (code libre) ; `None` si la génération n'a rien produit.
+    steps_generes: int | None = None
 
 
 @dataclass
@@ -549,7 +552,8 @@ def executer_campagne(
             jouable = artefacts.genere_ok and bool(artefacts.fichiers)
             campagne.essais.append(EssaiConsigne(cas, essai, jouable, artefacts.erreur, cout_essai,
                                                  artefacts.empreintes if jouable else {},
-                                                 dict(getattr(artefacts, "refus_ecriture", None) or {})))
+                                                 dict(getattr(artefacts, "refus_ecriture", None) or {}),
+                                                 compter_steps_generes(artefacts.fichiers) if jouable else None))
             journal(f"{cas} essai {essai} : {'généré' if jouable else 'GÉNÉRATION ÉCHOUÉE'} "
                     f"({'coût inconnu' if cout_essai is None else f'{cout_essai:.3f} $'})")
             traces: dict[str, dict | None] = {}
@@ -971,13 +975,22 @@ def rendre_markdown(campagne: Campagne, indicateurs: dict, contexte: dict) -> st
                    "Chaque refus renvoie l'agent corriger dans la même génération : il coûte des tours, il ne casse rien.", "",
                    "| Code du refus | Nombre |", "|---|---|"]
         lignes += [f"| `{code}` | {n} |" for code, n in total_refus.most_common()]
+    mesures = [t.steps_generes for t in campagne.essais if t.steps_generes is not None]
+    if mesures:
+        sans = sum(1 for n in mesures if n == 0)
+        lignes += ["", "## Code libre (lot VH-06)", "",
+                   f"Tests générés sans AUCUN step écrit à la main : **{sans}/{len(mesures)}** ; steps définis par les tests : "
+                   f"{sum(mesures)} au total (maximum {max(mesures)} dans un test). Un step écrit à la main n'a ni test de "
+                   "falsifiabilité ni résolution éprouvée : la cible est zéro."]
     lignes += ["", "## Génération par essai", "",
-               "| Cas | Essai | Généré | Coût ($) | Refus à l'écriture | Empreinte du test (sha256) |", "|---|---|---|---|---|---|"]
+               "| Cas | Essai | Généré | Coût ($) | Refus à l'écriture | Steps écrits à la main | Empreinte du test (sha256) |",
+               "|---|---|---|---|---|---|---|"]
     for t in campagne.essais:
         empreinte_globale = empreinte("".join(f"{n}:{h}" for n, h in sorted(t.empreintes.items()))) if t.empreintes else "—"
         refus = ", ".join(f"{c} ×{n}" for c, n in sorted((t.refus_ecriture or {}).items())) or "—"
         lignes.append(f"| {t.cas} | {t.essai} | {'oui' if t.genere else 'NON : ' + (t.erreur[:80] or '?')} | "
-                      f"{'non consigné' if t.cout_usd is None else f'{t.cout_usd:.3f}'} | {refus} | `{empreinte_globale[:16]}` |")
+                      f"{'non consigné' if t.cout_usd is None else f'{t.cout_usd:.3f}'} | {refus} | "
+                      f"{'—' if t.steps_generes is None else t.steps_generes} | `{empreinte_globale[:16]}` |")
     return "\n".join(lignes) + "\n"
 
 
@@ -1157,6 +1170,27 @@ def executer_behave(dossier: Path, module: str, connexion: dict[str, str], proje
 # Nom DUPLIQUÉ de `testpilot.generation.tools.write.REFUS_ECRITURE_FILE_ENV` (le banc n'importe pas le paquet en mode à sec) :
 # un test d'accord les compare.
 _REFUS_ECRITURE_FILE_ENV = "TP_REFUS_ECRITURE_FILE"
+
+
+def compter_steps_generes(fichiers: Mapping[str, str]) -> int:
+    """Lot VH-06 : le nombre de steps que le test généré DÉFINIT lui-même (décorateurs `@given`/`@when`/`@then`/`@step` de ses
+    fichiers Python) — le « code libre », première source d'erreur technique mesurée. Lu dans l'AST ; un fichier illisible
+    compte pour 0 (il sera de toute façon refusé à l'essai à blanc). Pur, testé. Une FONCTION compte une fois, même
+    déclarée `@given` et `@when` comme le prompt le demande pour une action (revue : elle comptait double)."""
+    total = 0
+    for nom, contenu in fichiers.items():
+        if not nom.endswith(".py"):
+            continue
+        try:
+            arbre = ast.parse(contenu)
+        except SyntaxError:
+            continue
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                cibles = [deco.func if isinstance(deco, ast.Call) else deco for deco in noeud.decorator_list]
+                if any(getattr(c, "id", getattr(c, "attr", "")) in ("given", "when", "then", "step") for c in cibles):
+                    total += 1
+    return total
 
 
 def lire_refus_d_ecriture(chemin: Path) -> dict[str, int]:
