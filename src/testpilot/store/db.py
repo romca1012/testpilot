@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 60
+_SCHEMA_VERSION = 61
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -262,6 +262,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_59_confiance_apres_reparation(conn)
     if version < 60:
         _migrate_60_sans_repli_adaptatif(conn)
+    if version < 61:
+        _migrate_61_bac_a_sable_reset(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -420,6 +422,17 @@ def _migrate_50_contexte_navigateur(conn: sqlite3.Connection) -> None:
     for colonne in ("browser_locale", "browser_timezone", "browser_viewport"):
         if colonne not in _column_names(conn, "project"):
             conn.execute(f"ALTER TABLE project ADD COLUMN {colonne} TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_61_bac_a_sable_reset(conn: sqlite3.Connection) -> None:
+    """D26 (retenue le 2026-10-10) : `project.bac_a_sable_reset` — l'adresse de REMISE À ZÉRO du bac à sable du projet.
+
+    Avec la calibration en écriture (migration 45), elle déclare que l'application est un bac à sable sur lequel l'agent
+    peut JOUER ses actions pendant la génération (« exécuter puis écrire », lot VH-07), remis à zéro avant et après chaque
+    essai. Vide par défaut — sans elle, aucun essai n'est possible : rien ne change pour un projet existant.
+    Simple `ADD COLUMN`, idempotent."""
+    if "bac_a_sable_reset" not in _column_names(conn, "project"):
+        conn.execute("ALTER TABLE project ADD COLUMN bac_a_sable_reset TEXT NOT NULL DEFAULT ''")
 
 
 def _migrate_60_sans_repli_adaptatif(conn: sqlite3.Connection) -> None:

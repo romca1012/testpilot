@@ -264,6 +264,13 @@ class ProjectRepo:
             (1 if enabled else 0, project_id))
         self.conn.commit()
 
+    def set_bac_a_sable_reset(self, project_id: int, adresse: str) -> None:
+        """Déclare (ou retire, avec `""`) l'adresse de remise à zéro du bac à sable (migration 61, D26). Décision de
+        POLITIQUE du porteur, comme la calibration en écriture : jamais posée implicitement. La validation (même origine que
+        l'application) appartient à la couche API, qui sait rendre un message utile."""
+        self.conn.execute("UPDATE project SET bac_a_sable_reset=? WHERE id=?", ((adresse or "").strip(), project_id))
+        self.conn.commit()
+
     def delete(self, project_id: int, par: str = "") -> None:
         """Met le projet A LA CORBEILLE — lui et toute sa descendance disparaissent des ecrans.
 
