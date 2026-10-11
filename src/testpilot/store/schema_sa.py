@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 60
+ALIGNED_WITH_SCHEMA_VERSION = 61
 
 metadata = MetaData()
 
@@ -79,6 +79,8 @@ project = Table(
     # Migration 45 : calibration en ÉCRITURE pendant la génération (RPC create+delete, Odoo
     # seulement) — ÉTEINTE par défaut, activée projet par projet par son porteur.
     Column("calibration_writes_enabled", Integer, nullable=False, server_default="0"),
+    # Migration 61 (D26) : adresse de remise à zéro du bac à sable — vide = aucun essai pendant la génération.
+    Column("bac_a_sable_reset", Text, nullable=False, server_default=""),
     # Migration 50 (lot 07c) : contexte navigateur FIGÉ — vide = le défaut (fr-FR, Europe/Paris, 1440x900).
     Column("browser_locale", Text, nullable=False, server_default=""),
     Column("browser_timezone", Text, nullable=False, server_default=""),
