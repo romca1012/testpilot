@@ -10,6 +10,7 @@ ce qui isole les runs et garde ``behave_runtime/generated`` à sa place (sortie 
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import shutil
@@ -20,6 +21,7 @@ import uuid
 from pathlib import Path
 
 from testpilot import config
+from testpilot.guardrails import bac_a_sable
 from testpilot.execution.behave_result import (
     FIELD_FALLBACK_FILE_ENV,
     FIELD_FALLBACK_FILENAME,
@@ -61,7 +63,7 @@ class BehaveRunner:
                  steps_library_dir: Path | None = None, dry_timeout: int | None = None,
                  real_timeout: int | None = None, connection: dict[str, str] | None = None,
                  project_id: int | None = None, connector_type: str | None = None,
-                 profil_instance: str | None = None):
+                 profil_instance: str | None = None, essai: bool = False):
         self.runtime_dir = runtime_dir or config.BEHAVE_RUNTIME_DIR
         self.generated_dir = generated_dir or config.GENERATED_DIR
         self.steps_library_dir = steps_library_dir or config.STEPS_LIBRARY_DIR
@@ -86,6 +88,17 @@ class BehaveRunner:
         # règle apprise sans ce lien, comme avant ce correctif (les runners de test, `cli.py`).
         self.execution_id: int | None = None
         self.texte_metier = ""
+        # Lot VH-07 (D26) : ce runner joue un ESSAI de génération sur le bac à sable, pas une exécution. Deux conséquences,
+        # tenues ici parce que le runner est le seul point que tout run traverse : (1) un essai N'APPREND RIEN au projet —
+        # ni refus (il échapperait à D32 : aucun métier validé à confronter), ni palier de sélecteur, ni menu ; ce qu'un
+        # agent tente en tâtonnant n'est pas un fait sur l'application ; (2) il ne prend pas la place d'une exécution
+        # réelle dans `bac_a_sable` — c'est l'outil d'essai qui tient l'exclusion, remises à zéro comprises.
+        self.essai = bool(essai)
+
+    def _cle_d_application(self) -> str | None:
+        """L'application que ce runner vise (origine de son adresse) — deux projets peuvent viser la même. `None` sans
+        connexion de projet (repli sur la configuration globale : tests, ligne de commande) : aucune garde, comme avant."""
+        return bac_a_sable.cle_d_application(self.connection.get("WEB_URL") or self.connection.get("ODOO_URL"))
 
     def cibler_execution(self, execution_id: int | None) -> None:
         """Désigne l'exécution du PROCHAIN run — même motif que `cibler_artefacts` ci-dessous.
@@ -199,10 +212,21 @@ class BehaveRunner:
             if dry_run:
                 cmd.append("--dry-run")
             timeout = self.dry_timeout if dry_run else self.real_timeout
+            # Lot VH-07 : un run RÉEL n'est jamais joué pendant qu'un essai remet son application à zéro, ni sur une
+            # application qu'un essai a laissée dans son état (faux vert possible — voir `guardrails/bac_a_sable.py`).
+            # Un essai à blanc ne touche pas l'application ; l'essai lui-même est déjà sous exclusion.
+            garde = (contextlib.nullcontext() if dry_run or self.essai
+                     else bac_a_sable.execution_reelle(self._cle_d_application()))
             try:
-                proc = subprocess.run(cmd, cwd=str(run_dir), capture_output=True, text=True,
-                                      encoding="utf-8", errors="replace", timeout=timeout,
-                                      env=self._subprocess_env(run_dir, module_name))
+                with garde:
+                    proc = subprocess.run(cmd, cwd=str(run_dir), capture_output=True, text=True,
+                                          encoding="utf-8", errors="replace", timeout=timeout,
+                                          env=self._subprocess_env(run_dir, module_name))
+            except bac_a_sable.BacASableNonRemisAZero as exc:
+                # Rien n'a été joué : code de retour négatif = interruption technique (`derive_verdict`), jamais un verdict.
+                logger.error("[bac à sable] run non joué : %s", exc)
+                return BehaveResult(success=False, returncode=-3, dry_run=dry_run,
+                                    raw_stderr=f"PRÉREQUIS MANQUANT : {exc}")
             except subprocess.TimeoutExpired:
                 # ⚠️ Un timeout est le cas où la trace est la PLUS utile (« qu'a-t-il fait pendant
                 # 15 minutes ? ») — et c'est justement celui où il n'y a pas de `proc`. On archive
@@ -264,7 +288,7 @@ class BehaveRunner:
         - **best-effort, jamais fatal** — un disque plein ne doit pas faire tomber une exécution
           qui a créé de vraies données dans l'application testée (même arbitrage que l'archivage).
         """
-        if dry_run or self.project_id is None or not result.refus_mesures:
+        if dry_run or self.essai or self.project_id is None or not result.refus_mesures:
             return
         try:
             from testpilot.generation import regles_apprises
@@ -296,7 +320,7 @@ class BehaveRunner:
         - **best-effort, jamais fatal** — une dérive non enregistrée est un défaut mineur de
           visibilité, jamais une raison de faire tomber une exécution réelle.
         """
-        if dry_run or self.project_id is None or not result.selector_tiers:
+        if dry_run or self.essai or self.project_id is None or not result.selector_tiers:
             return
         try:
             from testpilot.execution import selector_memory
@@ -330,7 +354,7 @@ class BehaveRunner:
         - **best-effort, jamais fatal** — un libellé non appris est un défaut mineur de qualité de
           génération, jamais une raison de faire tomber une exécution réelle.
         """
-        if dry_run or self.project_id is None or not result.menus_appris:
+        if dry_run or self.essai or self.project_id is None or not result.menus_appris:
             return
         try:
             from testpilot.generation import menu_appris
