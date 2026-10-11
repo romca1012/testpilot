@@ -41,6 +41,14 @@ _CONTEXTE_BEHAVE = frozenset({"table", "text", "scenario", "feature", "config", 
                               "log_capture", "stdout_capture", "stderr_capture"})
 # Lus par le code généré, ils exposeraient un secret ou le mécanisme du harnais : jamais autorisés.
 _CONTEXTE_INTERDIT = frozenset({"web_password", "odoo_password", "totp_secret", "injected_session", "_runner"})
+# Lot VH-06 (banc base-5, `commande_persistance_serveur`, 3 essais sur 3) : interrogé À LA MAIN, l'oracle a donné un faux rouge
+# (numéro comparé à un texte mal lu) et deux erreurs du test (objet compté, `context.oracle(...)` appelé comme une fonction).
+# Les steps du catalogue lisent l'oracle, classent ses erreurs et marquent le constat `source: oracle` ; du code libre ne fait
+# rien de tout cela. Même doctrine que le transport (décision 0003) : l'accès au serveur n'est pas réécrit par un test.
+_CONTEXTE_ORACLE = frozenset({"oracle", "oracle_erreur"})
+_RAISON_ORACLE = ("l'oracle ne s'interroge pas à la main : utiliser « le champ \"<chemin>\" de l'oracle \"<requête>\" vaut "
+                  "\"<valeur>\" », « … compte <n> élément(s) », « la liste \"<chemin>\" de l'oracle \"<requête>\" contient un "
+                  "élément dont \"<clé>\" est \"<valeur>\" » — une valeur lue à l'écran se relève puis se cite {relevé:nom}")
 
 _SELECTEURS_TEXTE = re.compile(r":has-text\(|(?:^|[\s>])text=|xpath=")
 _RESEAU_JS = re.compile(r"\bfetch\s*\(|XMLHttpRequest|sendBeacon")
@@ -257,7 +265,11 @@ def controler_steps(code: str, annuaire: Annuaire, attributs_autorises: set[str]
             if noeud.attr == "request" and _RECEPTEUR_NAVIGATEUR.search(ast.unparse(noeud.value)):
                 # `page.request` / `context.request` émettent une requête ; `response.request` (observation) reste permis.
                 ecarts.append(Ecart("reseau", ou, "request", "appel HTTP direct : la vérification serveur passe par l'oracle"))
-            if isinstance(noeud.value, ast.Name) and noeud.value.id == "context" and isinstance(noeud.ctx, ast.Load):
+            # Quel que soit le RÉCEPTEUR : `ctx = context; ctx.oracle`, `lambda c: c.oracle`, un paramètre renommé d'une
+            # fonction d'aide passaient une garde qui ne regardait que le nom `context` (revue du lot VH-06, reproduit).
+            if noeud.attr in _CONTEXTE_ORACLE:
+                ecarts.append(Ecart("reseau", ou, f"context.{noeud.attr}", _RAISON_ORACLE))
+            elif isinstance(noeud.value, ast.Name) and noeud.value.id == "context" and isinstance(noeud.ctx, ast.Load):
                 if noeud.attr in _CONTEXTE_INTERDIT:
                     ecarts.append(Ecart("contexte", ou, f"context.{noeud.attr}", "lecture d'un secret ou du harnais"))
                 elif noeud.attr not in attributs_autorises and noeud.attr not in poses_ici:
@@ -269,6 +281,8 @@ def controler_steps(code: str, annuaire: Annuaire, attributs_autorises: set[str]
             attr = str(noeud.args[1].value)
             if attr in _CONTEXTE_INTERDIT:
                 ecarts.append(Ecart("contexte", ou, f"context.{attr}", "lecture d'un secret ou du harnais"))
+            elif attr in _CONTEXTE_ORACLE:
+                ecarts.append(Ecart("reseau", ou, f"context.{attr}", _RAISON_ORACLE))
             elif attr not in attributs_autorises and attr not in poses_ici and len(noeud.args) < 3:
                 ecarts.append(Ecart("contexte", ou, f"context.{attr}", "attribut jamais posé par le harnais ni par ce test",
                                     _proche(attr, attributs_autorises)))
