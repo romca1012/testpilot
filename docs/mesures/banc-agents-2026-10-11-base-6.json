@@ -1,0 +1,1609 @@
+{
+  "contexte": {
+    "date": "2026-10-11",
+    "etiquette": "base-6",
+    "commit": "8839d98",
+    "versions": {
+      "python": "3.12.14",
+      "testpilot": "0.1.0",
+      "behave": "1.3.3",
+      "playwright": "1.62.0"
+    },
+    "modele_generation": "claude-sonnet-4-6",
+    "mode": "reel",
+    "plafond_usd": 5.5,
+    "app": "boutique_locale",
+    "configuration_sha256": "1a9ac8873de83d174cedb9e4a8dcda338e684f28ca7a707857ff5e1aaf0bfd5c",
+    "sous_ensemble_de_cas": false,
+    "donnees_jetables": "C:\\Users\\ROMARI~1\\AppData\\Local\\Temp\\banc_agents_data_azs3d_oe",
+    "generations_rejouees_depuis": null,
+    "reparation": true,
+    "tentatives_reparation": 2
+  },
+  "indicateurs": {
+    "faux_verts": {
+      "k": 0,
+      "n": 21,
+      "non_concluants": 6,
+      "taux": 0.0,
+      "ic95": [
+        0.0,
+        0.15464382326420195
+      ]
+    },
+    "faux_rouges": {
+      "k": 1,
+      "n": 19,
+      "non_concluants": 11,
+      "taux": 0.05263157894736842,
+      "ic95": [
+        0.009351752490529969,
+        0.2463921533654521
+      ]
+    },
+    "pass_execution": {
+      "pass_at_1": {
+        "k": 6,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.6,
+        "ic95": [
+          0.3126695474501864,
+          0.8318224187964902
+        ]
+      },
+      "pass_at_k": {
+        "k": 9,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.9,
+        "ic95": [
+          0.5958436145024278,
+          0.9821242504842788
+        ]
+      },
+      "pass_hat_k": {
+        "k": 4,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.4,
+        "ic95": [
+          0.16817758120350967,
+          0.6873304525498135
+        ]
+      }
+    },
+    "pass_resultat": {
+      "pass_at_1": {
+        "k": 5,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.5,
+        "ic95": [
+          0.23658959361548731,
+          0.7634104063845126
+        ]
+      },
+      "pass_at_k": {
+        "k": 9,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.9,
+        "ic95": [
+          0.5958436145024278,
+          0.9821242504842788
+        ]
+      },
+      "pass_hat_k": {
+        "k": 4,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.4,
+        "ic95": [
+          0.16817758120350967,
+          0.6873304525498135
+        ]
+      }
+    },
+    "non_concluants": {
+      "technical_error": 15,
+      "blocked": 2
+    },
+    "part_non_concluants_sous_defaut": 0.2222222222222222,
+    "par_defaut": {
+      "etat_non_enregistre": {
+        "jeux": 6,
+        "concluants": 6,
+        "detectes": 6,
+        "detectes_fiables": 4,
+        "ic95_detection_fiable": [
+          0.29998832134152864,
+          0.9032306674407831
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.6096569663469354,
+          0.9999999999999999
+        ]
+      },
+      "filtre_ignore": {
+        "jeux": 3,
+        "concluants": 3,
+        "detectes": 3,
+        "detectes_fiables": 3,
+        "ic95_detection_fiable": [
+          0.43849391955098227,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      },
+      "login_accepte_tout": {
+        "jeux": 3,
+        "concluants": 3,
+        "detectes": 3,
+        "detectes_fiables": 3,
+        "ic95_detection_fiable": [
+          0.43849391955098227,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      },
+      "message_erreur_absent": {
+        "jeux": 6,
+        "concluants": 5,
+        "detectes": 5,
+        "detectes_fiables": 4,
+        "ic95_detection_fiable": [
+          0.3755282641185388,
+          0.9637768390302125
+        ],
+        "faux_verts": 0,
+        "non_concluants": 1,
+        "ic95_detection": [
+          0.5655085052479191,
+          1.0
+        ]
+      },
+      "total_faux": {
+        "jeux": 6,
+        "concluants": 1,
+        "detectes": 1,
+        "detectes_fiables": 1,
+        "ic95_detection_fiable": [
+          0.20654329147389294,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 5,
+        "ic95_detection": [
+          0.20654329147389294,
+          1.0
+        ]
+      },
+      "validation_absente": {
+        "jeux": 3,
+        "concluants": 3,
+        "detectes": 3,
+        "detectes_fiables": 3,
+        "ic95_detection_fiable": [
+          0.43849391955098227,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      }
+    },
+    "cout": {
+      "total_usd": 3.874388,
+      "total_eur": 3.587396,
+      "taux_eur_usd": 1.08,
+      "generations": 30,
+      "generations_sans_cout_consigne": 1,
+      "par_generation_usd": 0.1336,
+      "par_generation_eur": 0.123703,
+      "par_cas_usd": {
+        "client_creation_nom_limite": 0.1062,
+        "client_creation_nom_requis": 0.100941,
+        "client_creation_valide": 0.107854,
+        "commande_confirmation": 0.098733,
+        "commande_persistance_serveur": 0.339512,
+        "connexion_refusee": 0.156109,
+        "connexion_valide": 0.131513,
+        "panier_remise_arrondi": 0.108238,
+        "panier_total_tva": 0.106897,
+        "produits_recherche": 0.079303
+      }
+    },
+    "integrite": {
+      "verifiees": 52,
+      "divergentes": 0,
+      "non_rapportees": 0
+    },
+    "echantillon": {
+      "cas": 10,
+      "k": 3,
+      "essais_prevus": 30,
+      "essais_lances": 30,
+      "jeux": 57
+    },
+    "ecarts": [
+      {
+        "cas": "commande_confirmation",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "broken_test_code"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "non_conforme",
+        "cause": "assertion_mismatch"
+      },
+      {
+        "cas": "connexion_valide",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "total_faux",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "client_creation_nom_limite",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "broken_test_code"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "total_faux",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "client_creation_nom_limite",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "blocked",
+        "cause": "precondition_non_remplie"
+      },
+      {
+        "cas": "client_creation_nom_limite",
+        "variante": "message_erreur_absent",
+        "essai": 3,
+        "attendu": "non_conforme",
+        "obtenu": "blocked",
+        "cause": "precondition_non_remplie"
+      },
+      {
+        "cas": "commande_confirmation",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 3,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      }
+    ],
+    "apres_reparation": {
+      "faux_verts": {
+        "k": 0,
+        "n": 21,
+        "non_concluants": 6,
+        "taux": 0.0,
+        "ic95": [
+          0.0,
+          0.15464382326420195
+        ]
+      },
+      "faux_rouges": {
+        "k": 1,
+        "n": 19,
+        "non_concluants": 11,
+        "taux": 0.05263157894736842,
+        "ic95": [
+          0.009351752490529969,
+          0.2463921533654521
+        ]
+      },
+      "pass_execution": {
+        "pass_at_1": {
+          "k": 6,
+          "n": 10,
+          "non_mesures": 0,
+          "taux": 0.6,
+          "ic95": [
+            0.3126695474501864,
+            0.8318224187964902
+          ]
+        },
+        "pass_hat_k": {
+          "k": 4,
+          "n": 10,
+          "non_mesures": 0,
+          "taux": 0.4,
+          "ic95": [
+            0.16817758120350967,
+            0.6873304525498135
+          ]
+        }
+      },
+      "pass_resultat": {
+        "pass_at_1": {
+          "k": 5,
+          "n": 10,
+          "non_mesures": 0,
+          "taux": 0.5,
+          "ic95": [
+            0.23658959361548731,
+            0.7634104063845126
+          ]
+        },
+        "pass_hat_k": {
+          "k": 4,
+          "n": 10,
+          "non_mesures": 0,
+          "taux": 0.4,
+          "ic95": [
+            0.16817758120350967,
+            0.6873304525498135
+          ]
+        }
+      },
+      "non_concluants": {
+        "technical_error": 15,
+        "blocked": 2
+      },
+      "reparations": {
+        "a_reparer": 7,
+        "tentees": 4,
+        "tentatives": 5,
+        "rejouables": 1,
+        "saine_executable_apres": 0,
+        "saine_conforme_apres": 0,
+        "cout_usd": 0.736395,
+        "couts_non_consignes": 0
+      }
+    }
+  },
+  "interrompue": "",
+  "essais": [
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.149778,
+      "empreintes": {
+        "pilote_p1_c1_i1_20261011T154319.feature": "2210ac0a6a0b605197aff2159db0593278f59bb2ac2629808395397bcb0ff415",
+        "pilote_p1_c1_i1_20261011T154319_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.088305,
+      "empreintes": {
+        "pilote_p1_c2_i1_20261011T154543.feature": "f26f494ecfe130cd3c81745b8472e15df32a61815703d29f404e978eeb745d31",
+        "pilote_p1_c2_i1_20261011T154543_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.105553,
+      "empreintes": {
+        "pilote_p1_c3_i1_20261011T154811.feature": "b5cf8a516f7befd65e273463d28a66613ccae5797aa218fef81f8b3b26184efa",
+        "pilote_p1_c3_i1_20261011T154811_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.111918,
+      "empreintes": {
+        "pilote_p1_c4_i1_20261011T155022.feature": "14a403ce704bc71f1d67efd1a0a435f99a9ca00898fabf7f46d7e7841b2e6e76",
+        "pilote_p1_c4_i1_20261011T155022_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.309882,
+      "empreintes": {
+        "pilote_p1_c5_i1_20261011T155238.feature": "600c47632c509bba34f87f6f1de6a5b1b0648254e2fabe1118cc636d56e0326f",
+        "pilote_p1_c5_i1_20261011T155238_steps.py": "576e453b6ed91b7a462f2b7e7dfef9fcf0b392cd568f7d1826b3f15be3911d09"
+      },
+      "refus_ecriture": {
+        "LITTERAL_NON_OBSERVE": 2
+      },
+      "steps_generes": 0
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.180376,
+      "empreintes": {
+        "pilote_p1_c6_i1_20261011T155714.feature": "e24f5f57f030c1088a13907be14d02bb278d755990ae936da4716b75b74c71fe",
+        "pilote_p1_c6_i1_20261011T155714_steps.py": "270bdbbb45242fa1d49a78bc8377c9020b601fc4b8c9f74df35a2587336b6151"
+      },
+      "refus_ecriture": {
+        "LITTERAL_NON_OBSERVE": 2
+      },
+      "steps_generes": 1
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 1,
+      "genere": false,
+      "erreur": "Connection error.",
+      "cout_usd": null,
+      "empreintes": {},
+      "refus_ecriture": {
+        "LITTERAL_NON_OBSERVE": 1
+      },
+      "steps_generes": null
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 1,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.123411,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.099756,
+      "empreintes": {
+        "pilote_p1_c9_i1_20261011T160714.feature": "b58d720b1cfc11d60e65e811154addc5fbca4553764d5f0deda235cb40fed2ab",
+        "pilote_p1_c9_i1_20261011T160714_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "produits_recherche",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.074017,
+      "empreintes": {
+        "pilote_p1_c10_i1_20261011T161253.feature": "215b721e964f0b0067840e5a4b12bff142064bc953d9bf72394ba0d857675147",
+        "pilote_p1_c10_i1_20261011T161253_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.078355,
+      "empreintes": {
+        "pilote_p1_c1_i2_20261011T161459.feature": "dcfd1c6aa137fd74c0ca3142b531647253f3168ef3fc00e6b91dff969c70a7b1",
+        "pilote_p1_c1_i2_20261011T161459_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.114815,
+      "empreintes": {
+        "pilote_p1_c2_i2_20261011T161637.feature": "93ebee405005d1365ce32e9d79914ce22f8d132f9c649c8d9cc33fc57b9522f0",
+        "pilote_p1_c2_i2_20261011T161637_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.116111,
+      "empreintes": {
+        "pilote_p1_c3_i2_20261011T161913.feature": "b5cf8a516f7befd65e273463d28a66613ccae5797aa218fef81f8b3b26184efa",
+        "pilote_p1_c3_i2_20261011T161913_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.106495,
+      "empreintes": {
+        "pilote_p1_c4_i2_20261011T162128.feature": "15dfe15954d2edef7fc4576795826d67050bea623aa1195c63661fc428c5479e",
+        "pilote_p1_c4_i2_20261011T162128_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.312289,
+      "empreintes": {
+        "pilote_p1_c5_i2_20261011T162332.feature": "757a8544b3542c5a58a19c3b2519ac1cf045d50e8e8502f6946566cea348f826",
+        "pilote_p1_c5_i2_20261011T162332_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {
+        "LITTERAL_NON_OBSERVE": 1
+      },
+      "steps_generes": 0
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.073556,
+      "empreintes": {
+        "pilote_p1_c6_i2_20261011T162751.feature": "632d12ee972905a5f12f755419e6aa925a2d426fb546c4a4b7c0135b48bad1fd",
+        "pilote_p1_c6_i2_20261011T162751_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.157974,
+      "empreintes": {
+        "pilote_p1_c7_i2_20261011T162957.feature": "7f329e09d2dd7ee31e1e62e1c605808287b65634b5b8d09d191625a64fa3b842",
+        "pilote_p1_c7_i2_20261011T162957_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {
+        "LITTERAL_NON_OBSERVE": 1
+      },
+      "steps_generes": 0
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 2,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.115348,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.122,
+      "empreintes": {
+        "pilote_p1_c9_i2_20261011T163448.feature": "67a578e422d30d1582f4cd461e97ecca1a76a49a0f3e7f64f45d177365a2ab54",
+        "pilote_p1_c9_i2_20261011T163448_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "produits_recherche",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.106475,
+      "empreintes": {
+        "pilote_p1_c10_i2_20261011T164240.feature": "6f2f9b1992baefc1d5612393e027e74fc4cd3efa3c0d41632391d2c522bcaacb",
+        "pilote_p1_c10_i2_20261011T164240_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.090468,
+      "empreintes": {
+        "pilote_p1_c1_i3_20261011T164436.feature": "881a275a5f8bf105f353a249b39e9d44e4ab435dc03e6b4e2013c2981da9d264",
+        "pilote_p1_c1_i3_20261011T164436_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.099702,
+      "empreintes": {
+        "pilote_p1_c2_i3_20261011T164625.feature": "6b90619925cabc6b5ef7fd40331b12686c035a50cab9c261f84a16972f4bb968",
+        "pilote_p1_c2_i3_20261011T164625_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.101897,
+      "empreintes": {
+        "pilote_p1_c3_i3_20261011T164846.feature": "1b3d7dc4e177387589b8045fa8414b487b1f1a1ba9f593ecf97c4fef90d96a26",
+        "pilote_p1_c3_i3_20261011T164846_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {
+        "ECHAPPEMENT_LITTERAL": 1
+      },
+      "steps_generes": 0
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.077786,
+      "empreintes": {
+        "pilote_p1_c4_i3_20261011T165055.feature": "5f380b65ae39b55cbcac3688e5381bde665b311b025b900ba7d9d3cb17e54adb",
+        "pilote_p1_c4_i3_20261011T165055_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.396366,
+      "empreintes": {
+        "pilote_p1_c5_i3_20261011T165453.feature": "6c17a650b582d0db43e3a9d27931f988e42dc57208292689aceeb344b14ff322",
+        "pilote_p1_c5_i3_20261011T165453_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {
+        "LITTERAL_NON_OBSERVE": 3
+      },
+      "steps_generes": 0
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.214396,
+      "empreintes": {
+        "pilote_p1_c6_i3_20261011T170038.feature": "f30f0ad6716cb54c129377f61e6ca56cc5990cce04dfc58aeff28be46ea219c2",
+        "pilote_p1_c6_i3_20261011T170038_steps.py": "3f5353fe078c2e041b9e6d3f6e33d45083a1e30845332792211a5436b92d8c15"
+      },
+      "refus_ecriture": {
+        "LITTERAL_NON_OBSERVE": 2
+      },
+      "steps_generes": 1
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.105051,
+      "empreintes": {
+        "pilote_p1_c7_i3_20261011T170425.feature": "c3a9c7d9dc9e9b220042697daa23dbb4c690d577508cd6c13bd054cd4c199c6e",
+        "pilote_p1_c7_i3_20261011T170425_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.085956,
+      "empreintes": {
+        "pilote_p1_c8_i3_20261011T170623.feature": "e8135ce88f94f9965b6da65e5998b0783df5fdc6d0426c65fae62a843916cf38",
+        "pilote_p1_c8_i3_20261011T170623_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.098936,
+      "empreintes": {
+        "pilote_p1_c9_i3_20261011T170853.feature": "b58d720b1cfc11d60e65e811154addc5fbca4553764d5f0deda235cb40fed2ab",
+        "pilote_p1_c9_i3_20261011T170853_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "produits_recherche",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.057416,
+      "empreintes": {
+        "pilote_p1_c10_i3_20261011T171312.feature": "2cad7f35d1fd65d20209ef2bb23710cb691f142e89e6b7ef13ede6188502447d",
+        "pilote_p1_c10_i3_20261011T171312_steps.py": "2a48ac7ac3ce86ee088cd80b6a3d84bb6a19d5f097922a31ac89d9310641947d"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    }
+  ],
+  "observations": [
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 15.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:57449/clients/nouveau (mot entier, casse respectée).",
+      "duree": 21.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 18.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:57449/clients/nouveau (mot entier, casse respectée).",
+      "duree": 24.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:57449/clients/nouveau (mot entier, casse respectée).",
+      "duree": 22.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 15.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Dupont SARL » n'est pas affiché sur http://127.0.0.1:57449/clients (mot entier, casse respectée).",
+      "duree": 22.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "broken_test_code",
+      "detail": " la réponse de l'oracle « etat » est un objet, pas une liste : elle ne se compte pas en résultats. Pour compter une liste qu'il contient, utiliser « le champ \"<chemin>\" de l'oracle \"<requête>\" compte <n> élément(s) » ; pour une valeur, « le champ \"<chemin>\" de l'oracle \"<requête>\" vaut \"<valeur>\" ».",
+      "duree": 13.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: le champ « panier » de l'oracle « etat » n'est pas une liste (dict) : ses éléments ne peuvent pas être comptés",
+      "duree": 11.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: le champ « commandes » de l'oracle « etat » compte 0 élément(s), 1 attendu(s)",
+      "duree": 11.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 11.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Identifiant ou mot de passe incorrect. » n'est pas affiché sur http://127.0.0.1:57449/produits (mot entier, casse respectée).",
+      "duree": 19.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "Connection error.",
+      "duree": null,
+      "empreinte_ok": null
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune ligne contenant « Câble HDMI » ne porte de champ de saisie sur http://127.0.0.1:57449/panier.",
+      "duree": 19.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune ligne contenant « Câble HDMI » ne porte de champ de saisie sur http://127.0.0.1:57449/panier.",
+      "duree": 19.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 12.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "filtre_ignore",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 2 produits affichés » n'est pas affiché sur http://127.0.0.1:57449/produits?q=souris (mot entier, casse respectée).",
+      "duree": 18.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "broken_test_code",
+      "detail": " la réponse de l'oracle « etat » est un objet, pas une liste : elle ne se compte pas en résultats. Pour compter une liste qu'il contient, utiliser « le champ \"<chemin>\" de l'oracle \"<requête>\" compte <n> élément(s) » ; pour une valeur, « le champ \"<chemin>\" de l'oracle \"<requête>\" vaut \"<valeur>\" ».",
+      "duree": 10.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:57449/clients/nouveau (mot entier, casse respectée).",
+      "duree": 18.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 15.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:57449/clients/nouveau (mot entier, casse respectée).",
+      "duree": 23.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:57449/clients/nouveau (mot entier, casse respectée).",
+      "duree": 23.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 15.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Dupont SARL » n'est pas affiché sur http://127.0.0.1:57449/clients (mot entier, casse respectée).",
+      "duree": 23.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: le champ « commandes » de l'oracle « etat » compte 0 élément(s), 1 attendu(s)",
+      "duree": 13.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Identifiant ou mot de passe incorrect. » n'est pas affiché sur http://127.0.0.1:57449/produits (mot entier, casse respectée).",
+      "duree": 21.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune ligne contenant « Câble HDMI » ne porte de champ de saisie sur http://127.0.0.1:57449/panier.",
+      "duree": 20.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune ligne contenant « Câble HDMI » ne porte de champ de saisie sur http://127.0.0.1:57449/panier.",
+      "duree": 25.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 11.9,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "filtre_ignore",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 2 produits affichés » n'est pas affiché sur http://127.0.0.1:57449/produits?q=souris (mot entier, casse respectée).",
+      "duree": 19.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "blocked",
+      "cause": "precondition_non_remplie",
+      "detail": "_base_helpers.PreconditionNonRemplieError: PRÉREQUIS MANQUANT : le compte « testeur » n'existe pas sur ce projet (comptes connus : principal). Déclarez-le dans les réglages du projet — un identifiant ne s'écrit jamais dans un scénario.",
+      "duree": 9.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "blocked",
+      "cause": "precondition_non_remplie",
+      "detail": "_base_helpers.PreconditionNonRemplieError: PRÉREQUIS MANQUANT : le compte « testeur » n'existe pas sur ce projet (comptes connus : principal). Déclarez-le dans les réglages du projet — un identifiant ne s'écrit jamais dans un scénario.",
+      "duree": 9.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 10.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:57449/clients/nouveau (mot entier, casse respectée).",
+      "duree": 19.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:57449/clients/nouveau (mot entier, casse respectée).",
+      "duree": 19.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 14.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Dupont SARL » n'est pas affiché sur http://127.0.0.1:57449/clients (mot entier, casse respectée).",
+      "duree": 22.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Produit 'Souris sans fil' : aucun élément actionnable sur http://127.0.0.1:57449/produits",
+      "duree": 21.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune valeur affichée à côté du libellé « Numéro » sur http://127.0.0.1:57449/commande/confirmer.",
+      "duree": 28.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: le champ « commandes » de l'oracle « etat » compte 0 élément(s), 1 attendu(s)",
+      "duree": 11.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 14.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Identifiant ou mot de passe incorrect. » n'est pas affiché sur http://127.0.0.1:57449/produits (mot entier, casse respectée).",
+      "duree": 18.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 11.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 20.4,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 10,56 € » n'est pas affiché sur http://127.0.0.1:57449/panier (mot entier, casse respectée).",
+      "duree": 27.8,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune ligne contenant « Câble HDMI » ne porte de champ de saisie sur http://127.0.0.1:57449/panier.",
+      "duree": 19.3,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune ligne contenant « Câble HDMI » ne porte de champ de saisie sur http://127.0.0.1:57449/panier.",
+      "duree": 19.0,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 15.2,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "filtre_ignore",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 2 produits affichés » n'est pas affiché sur http://127.0.0.1:57449/produits?q=souris (mot entier, casse respectée).",
+      "duree": 21.1,
+      "empreinte_ok": true
+    }
+  ],
+  "anomalies": [
+    "connexion_valide essai 1 : coût de génération non consigné (compté au PIRE connu dans le cumul du plafond, mais « non consigné » dans le rapport — jamais 0)"
+  ],
+  "reparations": [
+    {
+      "cas": "commande_confirmation",
+      "essai": 1,
+      "tentee": false,
+      "rejouable": false,
+      "motif": "circuit du produit : échec sous un « Alors » — décision humaine, aucune réparation automatique",
+      "cout_usd": null,
+      "resume_agent": "",
+      "tentative": 1
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 1,
+      "tentee": true,
+      "rejouable": false,
+      "motif": "l'agent n'a rien réécrit",
+      "cout_usd": 0.212649,
+      "resume_agent": "Le système me bloque car je modifie les assertions. Je n'ai pas le `.feature` original avec ses assertions exactes. Je dois trouver une autre approche.\n\n**Raisonnement** : Le `_steps.py` est vide. Le step en échec est un step du catalogue partagé. Je ne peux pas le redéfinir. Je ne peux pas modifier les assertions du `.feature`. \n\nLa seule correction possible sans modifier les assertions est d'**ajouter des steps de navigation avant le step en échec** dans le `.feature`. Mais je n'ai pas le `.feature` complet pour le réécrire fidèlement.\n\nJe dois signaler honnêtement ce blocage :\n\n---\n\n## Diagnostic et blocage\n\n**Cause identifiée** : Navigation incorrecte (exception n°2). Le scénario exécute `je renseigne \"quantite\" avec \"1\" dans la ligne contenant \"Câble HDMI\"` sur `/panier` alors que le panier est vide — le produit n'a jamais été ajouté depuis `/produits`.\n\n**Ce qui manque dans le `.feature`** : des steps d'ajout du produit avant d'arriver sur `/panier` :\n```gherkin\nEt je renseigne \"quantite\" avec \"1\" dans la ligne contenant \"Câble HDMI\"\nEt je clique sur \"Ajouter\" dans la ligne contenant \"Câble HDMI\"\n```\n(à placer sur la page `/produits`, avant `j'ouvre la page \"/panier\"`)\n\n**Pourquoi je ne peux pas réparer seul** : Le système de vérification gelée bloque toute réécriture du `.feature` car je n'ai pas son contenu original avec les assertions exactes (`Alors`). Sans ces assertions, je ne peux pas réécrire le fichier sans risquer de les modifier — ce qui est interdit.\n\n**Acti",
+      "tentative": 1
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 2,
+      "tentee": false,
+      "rejouable": false,
+      "motif": "circuit du produit : échec sous un « Alors » — décision humaine, aucune réparation automatique",
+      "cout_usd": null,
+      "resume_agent": "",
+      "tentative": 1
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 2,
+      "tentee": true,
+      "rejouable": true,
+      "motif": "",
+      "cout_usd": 0.1054,
+      "resume_agent": "Je dois corriger le `.feature` directement. Mais d'abord, je dois voir le `.feature` actuel pour ne pas en changer l'intention. Puisqu'il ne m'est pas fourni, je dois le reconstruire fidèlement à partir de l'erreur observée, en ne changeant que la navigation (exception 2 autorisée).\n\nL'erreur indique que le step fautif est :\n> `Et je renseigne \"quantite\" avec \"1\" dans la ligne contenant \"Câble HDMI\"`\n> exécuté sur `/panier`\n\nCela signifie que le `.feature` navigue vers `/panier` **avant** ce step. La correction consiste à naviguer vers `/produits` avant ce step, puis revenir sur `/panier` pour les assertions.\n\nJe dois aussi vérifier ce que le panier affiche (bouton \"Vider\", calculs TVA) pour ne pas inventer des assertions. Mais le `.feature` est gelé pour les assertions — je ne touche qu'à la navigation.\n\nLe `_steps.py` est vide et tous les steps sont du catalogue. Je le laisse vide (il ne doit pas être vide au sens strict — il doit juste ne pas redéfinir des steps partagés).",
+      "tentative": 1
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 2,
+      "tentee": true,
+      "rejouable": true,
+      "motif": "",
+      "cout_usd": 0.133731,
+      "resume_agent": "L'outil compare les assertions et les trouve différentes à chaque tentative. Je dois connaître les assertions **exactes** du `.feature` original. Puisque l'outil a accès au `.feature` original pour comparer, et que le `_steps.py` fourni est vide, le `.feature` original doit exister quelque part. \n\nLe seul moyen de progresser est de comprendre ce que le `.feature` original contient. Puisque l'erreur se produit sur le step `je renseigne \"quantite\" avec \"1\" dans la ligne contenant \"Câble HDMI\"` sur `/panier`, et que le `_steps.py` est vide, le `.feature` original doit contenir exactement ce step à cet endroit, précédé d'une navigation vers `/panier`.\n\nLa correction de navigation (exception 2) implique d'ajouter les étapes manquantes **avant** ce step. Les assertions `Alors` qui suivent dans le `.feature` original doivent rester identiques. Puisque je ne les connais pas, je ne peux pas écrire le `.feature` corrigé sans risquer de les modifier.\n\n**Je ne peux pas réparer ce test sans connaître le contenu exact du `.feature` original.** L'outil refuse toutes mes tentatives car il détecte des modifications des assertions `Alors`, mais il ne me montre pas le `.feature` original.\n\n---\n\n## Ce que je peux affirmer avec certitude\n\n**Cause identifiée** : Navigation incorrecte dans le `.feature`. Le step `je renseigne \"quantite\" avec \"1\" dans la ligne contenant \"Câble HDMI\"` est exécuté alors que le navigateur est sur `/panier` (panier vide, aucune ligne produit). Ce champ `quantite` existe",
+      "tentative": 2
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 3,
+      "tentee": true,
+      "rejouable": false,
+      "motif": "l'agent n'a rien réécrit",
+      "cout_usd": 0.156284,
+      "resume_agent": "Je ne peux pas modifier les assertions. Je dois connaître les assertions exactes du `.feature` original. L'erreur se produit au step `Et je sélectionne le produit \"Souris sans fil\" dans la liste` — les assertions `Alors` sont après ce step et je ne les connais pas exactement.\n\nJe ne peux pas réécrire le `.feature` sans connaître ses assertions exactes. Et je ne peux pas redéfinir le step partagé dans `_steps.py`.\n\n**Conclusion** : Le step partagé `je sélectionne le produit \"{name}\" dans la liste` est implémenté dans la bibliothèque partagée et cherche un élément \"actionnable\" portant le nom du produit. Sur cette page, le produit \"Souris sans fil\" n'est pas un élément actionnable de ce type — c'est un bouton \"Ajouter\" (texte court) avec un nom accessible long. L'implémentation partagée ne peut pas être surchargée.\n\nJe ne peux ni modifier le `.feature` (les assertions sont gelées et je ne les connais pas), ni redéfinir le step partagé. Je suis bloqué.\n\n**Ce que je peux faire** : écrire `_steps.py` vide (état actuel) et signaler le blocage honnêtement.\n\n---\n\n**Je ne peux pas réparer ce test sans information supplémentaire.**\n\nVoici ce qui bloque :\n\n1. **Le step partagé `je sélectionne le produit \"Souris sans fil\" dans la liste`** cherche un élément actionnable nommé \"Souris sans fil\" sur `/produits`. Or la page n'a pas d'élément portant ce nom — elle a un bouton `Ajouter Souris sans fil au panier` (nom accessible) avec le texte affiché court `Ajouter`. Le step partagé ne peut pa",
+      "tentative": 1
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 3,
+      "tentee": false,
+      "rejouable": false,
+      "motif": "circuit du produit : échec sous un « Alors » — décision humaine, aucune réparation automatique",
+      "cout_usd": null,
+      "resume_agent": "",
+      "tentative": 1
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 3,
+      "tentee": true,
+      "rejouable": false,
+      "motif": "l'agent n'a rien réécrit",
+      "cout_usd": 0.128331,
+      "resume_agent": "Le `.feature` original n'est pas fourni dans l'énoncé. Je connais le step en échec et son contexte. L'outil a rejeté ma réécriture parce que j'ai modifié les assertions `Alors`. Je dois reconstruire le `.feature` en conservant exactement les assertions originales et en corrigeant uniquement la navigation.\n\nLe scénario s'appelle **\"[Nominal] — TVA 18 % et arrondi au centime, puis vidage du panier\"**. D'après le nom, il doit :\n1. Calculer la TVA à 18 % et vérifier l'arrondi au centime\n2. Vider le panier\n\nLe step en échec est `Et je renseigne \"quantite\" avec \"1\" dans la ligne contenant \"Câble HDMI\"` sur la page `/panier`. La correction est de faire précéder ce step d'une navigation vers `/produits`, puis d'ajouter au panier, puis naviguer vers `/panier`.\n\nMais je ne connais pas les assertions exactes du `.feature` original. Je ne peux pas réécrire le `.feature` sans risquer de modifier les `Alors`. \n\nEn revanche, le `_steps.py` est vide — tous les steps viennent du catalogue. La cause est une **navigation incorrecte** dans le `.feature`. Je dois tenter la correction minimale : ajouter la navigation `/produits` et le clic \"Ajouter\" avant le step en échec, sans toucher aux `Alors`.\n\nPuisque l'outil vérifie les assertions, je dois connaître les assertions originales exactes. Elles ne sont pas dans l'énoncé. Je ne peux pas les deviner sans risque. \n\n**Ce que je sais avec certitude :**\n- Le step `je renseigne \"quantite\" avec \"1\" dans la ligne contenant \"Câble HDMI\"` doit se passer su",
+      "tentative": 1
+    }
+  ],
+  "observations_reparees": [
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune ligne contenant « Câble HDMI » ne porte de champ de saisie sur http://127.0.0.1:57449/panier.",
+      "duree": 18.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune ligne contenant « Câble HDMI » ne porte de champ de saisie sur http://127.0.0.1:57449/panier.",
+      "duree": 19.0,
+      "empreinte_ok": true
+    }
+  ]
+}
