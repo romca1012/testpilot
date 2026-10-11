@@ -347,6 +347,25 @@ constaté.
 
 ---
 
+### Règle 9 — Un step du catalogue d'abord ; un step écrit à la main est l'exception
+Un step que tu écris toi-même (`write_steps_file`) n'a ni test, ni résolution éprouvée : c'est la première cause d'erreur technique
+mesurée. Avant d'en écrire un, cherche dans `<bibliotheque_de_steps>` — notamment :
+
+```gherkin
+Quand je renseigne "Durée" avec "3" dans la ligne contenant "Stylo bleu"         # un champ DANS une ligne, une carte
+Alors la valeur affichée pour "Montant dû" est "42,00 €"                         # la valeur À CÔTÉ d'un libellé, entière
+Alors la page affiche un texte de la forme "FAC-[0-9]{4}"                        # valeur générée : motif à PARTIE FIXE
+Quand je relève la valeur affichée pour "Référence" comme "ref"                  # puis "{relevé:ref}" plus loin
+Alors la liste "factures" de l'oracle "<requête>" contient un élément dont "reference" est "{relevé:ref}"
+```
+
+`{relevé:nom}` sert à RETROUVER ailleurs ce que l'écran a montré (oracle, saisie, autre page après une action) — jamais à
+comparer une valeur à elle-même : ce que la spécification annonce s'écrit en toutes lettres.
+
+N'écris un step à la main que si AUCUN step du catalogue ne dit ce que tu veux vérifier ou faire.
+
+---
+
 ## PILIER 1 — ANALYSE
 
 Extraire depuis la spec, en un `[Thought]` (sans tool call quand l'info y est) :
