@@ -36,6 +36,8 @@ const FAMILLES: Record<string, string> = {
   verification_affaiblie_par_correction: 'correction',
   // D31 (2026-10-09) — le résultat attendu ou les étapes ont changé depuis l'écriture du test.
   attente_metier_changee: 'métier',
+  // Lot VH-07 (D26) — un « Alors » cite une valeur que l'IA a vue sur l'application pendant un essai avant d'écrire.
+  valeur_vue_a_l_essai: 'donnée',
   // 0021 — le test référence quelque chose qui n'existe pas dans l'application.
   valeur_option_inexistante: 'donnée',
   champ_inconnu: 'donnée',

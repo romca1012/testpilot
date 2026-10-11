@@ -63,6 +63,7 @@ describe('ReviewGate — le gate autorise le budget de réparation (0014, option
   it.each([
     ['verification_affaiblie_par_correction', 'correction'],  // D30
     ['attente_metier_changee', 'métier'],                     // D31
+    ['valeur_vue_a_l_essai', 'donnée'],                       // lot VH-07 (D26)
   ])('étiquette « %s » (%s), jamais l\'enum brute', (kind, famille) => {
     const w = mount(ReviewGate, {
       props: {
