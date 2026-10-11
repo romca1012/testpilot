@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from testpilot.connectors.base import Connector
+from testpilot.generation.tools import essai as essai_tools
 from testpilot.generation.tools import inspect as inspect_tools
 from testpilot.generation.tools import write as write_tools
 
@@ -56,6 +57,9 @@ class ToolContext:
     # `None` hors réparation : aucun gel.
     gel_feature: str | None = None
     gel_steps: str | None = None
+    # Lot VH-07 (D26) : le mode « exécuter puis écrire » de ce projet (`tools/essai.EssaiBacASable`), ou None — l'outil
+    # `essayer_les_actions` n'est alors ni proposé à l'agent ni exécutable.
+    essai: Any = None
 
 
 @dataclass
@@ -217,11 +221,21 @@ TOOLS_DEFINITIONS.append({
 })
 
 
+# Lot VH-07 : outils proposés SEULEMENT quand le contexte les rend possibles. Hors de `TOOLS_DEFINITIONS`, dont la liste envoyée
+# par défaut reste identique, octet pour octet, à son témoin figé (`tests/fixtures/tools_definitions_avant_q3a.json`).
+OUTILS_OPTIONNELS: dict[str, dict] = {essai_tools.NOM_OUTIL: essai_tools.DEFINITION}
+
+
+def outils_optionnels(ctx: ToolContext) -> tuple[str, ...]:
+    """Les outils optionnels DISPONIBLES pour ce contexte (ordre stable : le préfixe d'outils ne doit pas bouger en cours de run)."""
+    return (essai_tools.NOM_OUTIL,) if getattr(ctx, "essai", None) is not None else ()
+
+
 def dispatch(name: str, tool_input: dict, ctx: ToolContext) -> ToolOutcome:
     """Route un appel de tool vers son implémentation. Jamais d'exception vers la boucle."""
     try:
         from testpilot.generation.tool_validation import validate_tool_input
-        definition = next((t for t in TOOLS_DEFINITIONS if t['name'] == name), None)
+        definition = next((t for t in TOOLS_DEFINITIONS if t['name'] == name), None) or OUTILS_OPTIONNELS.get(name)
         if definition:
             error = validate_tool_input(tool_input, definition['input_schema'])
             if error:
@@ -230,6 +244,8 @@ def dispatch(name: str, tool_input: dict, ctx: ToolContext) -> ToolOutcome:
             if ctx.qualification:
                 return ToolOutcome(observation='[qualification : calibration métier interdite]', ok=False)
             ctx.calibration_attempts.append(name)
+        if name == essai_tools.NOM_OUTIL:
+            return essai_tools.essayer_les_actions(ctx, tool_input.get("etapes") or [])
         if name == "write_feature_file":
             outcome = write_tools.write_feature_file(ctx, tool_input.get("content", ""))
             if outcome.ok:

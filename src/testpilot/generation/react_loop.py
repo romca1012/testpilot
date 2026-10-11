@@ -99,7 +99,8 @@ def run_loop(*, llm, system_prompt: str, state: AgentState, ctx: ToolContext,
     # Q3-a : les outils sont calculés UNE fois par run (jamais par tour : un préfixe d'outils qui
     # changerait en cours de route invaliderait le cache de prompt). Interrupteurs éteints, c'est
     # exactement l'ancienne liste `TOOLS_DEFINITIONS`.
-    tools = tools_for_api()
+    from testpilot.generation.tools import outils_optionnels
+    tools = tools_for_api(avec=outils_optionnels(ctx))
     for i in range(max_iterations):
         state.iterations = i + 1
         try:

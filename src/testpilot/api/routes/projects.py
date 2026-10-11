@@ -200,6 +200,21 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
             body.oracle_base_url if body.oracle_base_url is not None else actuel.get("oracle_base_url", ""),
             body.oracle_auth if body.oracle_auth is not None else "",
             body.oracle_queries if body.oracle_queries is not None else actuel.get("oracle_queries", "[]"))
+    # D26 : une adresse de remise à zéro ne peut viser que l'application du projet (même origine) — on ne « remet pas à zéro »
+    # une autre machine que celle qu'on teste. Validée AVANT toute écriture (un 422 ne laisse pas la moitié du corps
+    # enregistrée) et contre l'adresse que CE corps pose. Enregistrée COMPLÈTE : si l'adresse du projet change ensuite sans
+    # nouvelle déclaration, le projet n'est plus un bac à sable (`essai.adresse_declaree`). Vide : déclaration retirée.
+    bac_a_sable_reset = None
+    if body.bac_a_sable_reset is not None:
+        bac_a_sable_reset = body.bac_a_sable_reset.strip()
+        if bac_a_sable_reset:
+            from testpilot.generation.tools.essai import adresse_de_remise_a_zero
+            actuel = ProjectRepo(conn).get(project_id) or {}
+            try:
+                bac_a_sable_reset = adresse_de_remise_a_zero(
+                    body.base_url if body.base_url is not None else actuel.get("base_url", ""), bac_a_sable_reset)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=f"adresse de remise à zéro refusée : {exc}") from exc
     repo = ProjectRepo(conn)
     try:
         if body.name is not None:
@@ -222,6 +237,16 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
         oracle_auth=body.oracle_auth, oracle_queries=body.oracle_queries)
     if body.calibration_writes_enabled is not None:
         repo.set_calibration_writes_enabled(project_id, body.calibration_writes_enabled)
+    if bac_a_sable_reset is not None:
+        repo.set_bac_a_sable_reset(project_id, bac_a_sable_reset)
+    if body.bac_a_sable_remis_a_zero:
+        # Le porteur (rôle admin du projet) déclare avoir remis l'application à zéro : la marque qui retenait ses exécutions
+        # tombe. Seule sortie quand la remise à zéro automatique ne peut plus aboutir — décision humaine, journalisée.
+        from testpilot.guardrails import bac_a_sable
+        try:
+            bac_a_sable.lever_la_marque(bac_a_sable.cle_d_application((repo.get(project_id) or {}).get("base_url", "")))
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"la marque n'a pas pu être retirée : {exc}") from exc
     return schemas.project_summary(_summary_row(conn, project_id))
 
 

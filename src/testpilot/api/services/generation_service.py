@@ -498,6 +498,29 @@ def _ecriture_du_test(version_rows: list[dict], current: dict) -> dict:
 
 
 ATTENTE_METIER_CHANGEE = "attente_metier_changee"
+VALEUR_VUE_A_L_ESSAI = "valeur_vue_a_l_essai"
+
+
+def _valeurs_vues_a_l_essai(version_rows: list[dict], current: dict) -> list[dict]:
+    """Lot VH-07 (D26, condition 4) : un « Alors » cite une donnée que l'IA a VUE sur l'application pendant un essai. La garde
+    d'écriture refuse déjà celles que la spécification ne dit pas ; restent celles qu'elle dit AILLEURS (le hors taxes affiché
+    à la place du TTC) — indécidable sans la source de chaque attendu (lot 8). Point de vigilance : un humain compare à la
+    spécification avant d'approuver, et la version n'est pas approuvée d'office.
+
+    Lu dans la provenance de la version qui a ÉCRIT le test (signal consigné par la génération, jamais le texte de l'agent)."""
+    from testpilot.generation.tools.essai import alors_qui_citent
+
+    ecriture = _ecriture_du_test(version_rows, current) or current
+    try:
+        provenance = json.loads(ecriture.get("generation_provenance") or "{}")
+    except ValueError:
+        return []
+    donnees = ((provenance.get("essais") or {}).get("donnees_vues") or []) if isinstance(provenance, dict) else []
+    return [{"step": phrase, "line": 0, "kind": VALEUR_VUE_A_L_ESSAI,
+             "message": (f"Cet « Alors » cite {', '.join('« ' + j + ' »' for j in jetons)}, que l'IA a vu sur l'application "
+                         "pendant un essai avant d'écrire le test. Vérifiez que c'est bien la valeur que la spécification "
+                         "annonce POUR CE POINT, et pas seulement celle que l'application affiche.")}
+            for phrase, jetons in alors_qui_citent(current.get("feature_content") or "", donnees)]
 
 
 def _attente_changee_depuis_le_test(conn, version_rows: list[dict], current: dict) -> list[dict]:
@@ -570,6 +593,7 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
             warnings += _affaiblissements_de_correction(max(precedentes, key=lambda v: v["id"]), current)
     if current:
         warnings += _attente_changee_depuis_le_test(conn, version_rows, current)
+        warnings += _valeurs_vues_a_l_essai(version_rows, current)
     if current and current.get("created_by") == _AUTEUR_REPARATION:
         precedentes = [v for v in version_rows if v["id"] < current["id"]]
         if precedentes:

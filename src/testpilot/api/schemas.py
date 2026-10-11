@@ -48,6 +48,11 @@ class ProjectSummary(BaseModel):
     # par le porteur du projet (jamais activée implicitement, cf. `ProjectRepo.
     # set_calibration_writes_enabled`).
     calibration_writes_enabled: bool = False
+    # Migration 61 (D26) : adresse de remise à zéro du bac à sable — vide = aucun essai pendant la génération.
+    bac_a_sable_reset: str = ""
+    # Un essai de génération a laissé l'application dans son état et elle ne se remet pas à zéro : ses exécutions réelles
+    # sont RETENUES (`guardrails/bac_a_sable`). Lu à chaque demande, jamais enregistré en base.
+    bac_a_sable_non_remis: bool = False
     # Lot 07c : contexte navigateur FIGÉ. Vide = le défaut (`connectors/contexte_navigateur.py`) ; les valeurs EFFECTIVES sont
     # exposées à côté pour que l'écran dise ce qui sera réellement utilisé, sans le recalculer.
     browser_locale: str = ""
@@ -559,6 +564,10 @@ class ProjectPatch(BaseModel):
     # `None` = n'y touche pas, comme les autres champs de ce PATCH — pas de `""` ambigu possible
     # pour un booléen, mais la même discipline (silence = inchangé) s'applique.
     calibration_writes_enabled: bool | None = None
+    # D26 : `None` = n'y touche pas ; `""` = retirer la déclaration (plus aucun essai pendant la génération).
+    bac_a_sable_reset: str | None = None
+    # Décision du porteur : « j'ai remis l'application à zéro moi-même » — lève la marque qui retient les exécutions.
+    bac_a_sable_remis_a_zero: bool | None = None
     # Lot 07c : `None` = n'y touche pas ; `""` = revenir au défaut.
     browser_locale: str | None = None
     browser_timezone: str | None = None
@@ -1385,6 +1394,8 @@ def project_summary(row: dict) -> ProjectSummary:
         connector_version=row.get("connector_version", ""), base_url=row.get("base_url", ""),
         database=row.get("database", ""), username=row.get("username", ""),
         calibration_writes_enabled=bool(row.get("calibration_writes_enabled", 0)),
+        bac_a_sable_reset=row.get("bac_a_sable_reset", "") or "",
+        bac_a_sable_non_remis=_bac_a_sable_non_remis(row.get("base_url", "") or ""),
         browser_locale=row.get("browser_locale", "") or "",
         browser_timezone=row.get("browser_timezone", "") or "",
         browser_viewport=row.get("browser_viewport", "") or "",
@@ -1554,3 +1565,9 @@ class PageCas(BaseModel):
     items: list[CaseSummary] = []
     next_cursor: str | None = None
     total: int = 0
+
+
+def _bac_a_sable_non_remis(base_url: str) -> bool:
+    from testpilot.guardrails import bac_a_sable
+
+    return bac_a_sable.non_remis(bac_a_sable.cle_d_application(base_url)) is not None

@@ -124,11 +124,14 @@ def exemples_pour(schema_api: dict) -> list[dict]:
             for exemple in INPUT_EXAMPLES]
 
 
-def tools_for_api(env: Mapping[str, str] | None = None) -> list[dict]:
+def tools_for_api(env: Mapping[str, str] | None = None, avec: tuple[str, ...] = ()) -> list[dict]:
     """La liste d'outils à passer à `call_with_tools`. PURE ; `env=None` lit `os.environ`.
 
     Tous les interrupteurs éteints (défaut) : égale, octet pour octet, à ce qui était envoyé avant
     Q3-a — `tests/fixtures/tools_definitions_avant_q3a.json` en est le témoin figé.
+
+    `avec` (lot VH-07) : noms d'outils OPTIONNELS à ajouter en fin de liste (`tools.OUTILS_OPTIONNELS`), quand le contexte
+    les rend possibles. Vide (défaut) : rien ne change.
     """
     strict = tools_strict_actif(env)
     v2 = descriptions_v2_actif(env)
@@ -147,4 +150,7 @@ def tools_for_api(env: Mapping[str, str] | None = None) -> list[dict]:
             if d["name"] == _OUTIL_AVEC_EXEMPLES:
                 d["input_examples"] = exemples_pour(schema_api)
         sortie.append(d)
+    if avec:
+        from testpilot.generation.tools import OUTILS_OPTIONNELS
+        sortie += [copy.deepcopy(OUTILS_OPTIONNELS[nom]) for nom in avec if nom in OUTILS_OPTIONNELS]
     return sortie
