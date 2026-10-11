@@ -1,6 +1,6 @@
 # Plan — Verdict qui ne ment pas, tests sans erreur technique après génération
 
-Date : 2026-10-08. Statut : **en cours** — D23, D24, D25, D27, D28 validées par le porteur le 2026-10-08 ; D29 à D32 validées le 2026-10-09 ; D26 en attente.
+Date : 2026-10-08. Statut : **en cours** — D23, D24, D25, D27, D28 validées par le porteur le 2026-10-08 ; D29 à D32 validées le 2026-10-09 ; D26, D33, D34 le 2026-10-10.
 Sources : `docs/AUDIT-VERDICT-ET-GENERATION-2026-10-08.md` (trous V1-V10, contrôles T1-T10, biais du banc) ;
 `reports/Agent de test honnête et fiable.md` (recherche, plan en 9 étapes) ; campagnes `docs/mesures/banc-agents-2026-10-0*`.
 Ce plan **remplace l'ordre** de Q3 (reste) et Q4 de `PLAN-QUALITE-AGENTS-2026-10.md` ; Q5 (atelier de calcul) vient après.
@@ -37,7 +37,7 @@ accepté ; coût mesuré < 1 € par cas ; 100 % des `conforme — preuve forte`
 | D23 | Rétablir la relecture humaine obligatoire des `Alors` (aujourd'hui une version sans avertissement est approuvée d'office) ? | **Oui**, jusqu'à la fin du lot 2 ; ensuite approbation automatique seulement si tous les contrôles bloquants sont passés | Lot 2 |
 | D24 | Les contrôles « littéral observé » refusent l'écriture et renvoient l'agent corriger dans la même génération ? | **Oui** (refus bloquant, message qui donne la valeur observée) | Lot 5 |
 | D25 | Le repli LLM à l'exécution (résolution adaptative) est coupé par défaut en campagne et dans le banc ; en produit, un vert obtenu par repli n'est jamais « preuve forte » ? | **Oui** | Lots 1, 4 |
-| D26 | L'outil peut-il **exécuter** pendant la génération (avant la relecture), sur une instance bac à sable remise à zéro ? | **Oui sous conditions** : instance déclarée « bac à sable » dans le projet, remise à zéro avant chaque enregistrement, jamais sur une instance de production (garde `ODOO_ENV=prod` intacte) | Lot 7 |
+| D26 | L'outil peut-il **exécuter** pendant la génération (avant la relecture), sur une instance bac à sable remise à zéro ? | **Oui sous conditions** : instance déclarée « bac à sable » dans le projet, remise à zéro avant chaque enregistrement, jamais sur une instance de production (garde `ODOO_ENV=prod` intacte) | Lot 7 — **retenue le 2026-10-10** sur recommandation, à la demande du porteur (« tu ne m'attendras pas pour l'implémenter ») : quatre conditions — instance déclarée bac à sable, remise à zéro avant chaque essai, jamais en production (`ODOO_ENV=prod` intact), ce que l'agent observe sert à ÉCRIRE, jamais au verdict |
 | D27 | Seuils de fin du plan (§1) | **Oui** tels quels | Lot 10 |
 | D28 | Nouvelles valeurs affichées : confiance `après réparation`, niveau de preuve `forte`/`faible` | **Oui** (migration SQLite + Alembic + `schema_sa` + libellés FR serveur et frontend) | Lots 3, 8 |
 | D29 | Un constat échoué dans un scénario passé (échec avalé par le test) | **`indeterminé`**, cause `constat_echoue_ignore` (prolonge D16) | Lot 2 — appliquée le 2026-10-08, **validée le 2026-10-09** |
@@ -46,8 +46,12 @@ accepté ; coût mesuré < 1 € par cas ; 100 % des `conforme — preuve forte`
 | D32 | Un refus serveur (valeur rejetée) est appris d'office et le résolveur l'évite ensuite (§5bis n°1) : si le refus est un bug de l'application, il est contourné au run suivant | Recommandation : apprendre, mais marquer la règle « à confirmer » et ne pas l'appliquer à une valeur conforme à la spec tant qu'un humain ne l'a pas confirmée | Lot 3 point 5 — **validée le 2026-10-09**, appliquée |
 | D33 | D25 dit « repli LLM coupé par défaut en campagne ». Dans le produit, la seule option existante (campagne « stricte », D5) coupe AUSSI la réparation automatique : l'activer par défaut supprimerait la réparation de toutes les campagnes, ce que D25 ne dit pas | Recommandation : une option séparée « sans repli adaptatif » (colonne de `test_run` — migration SQLite + Alembic + `schema_sa`), cochée par défaut ; en attendant, un vert obtenu par repli reste « à confirmer » (confiance `auto_resolue`), jamais un vert ordinaire | Lot 4 point 5 — **validée le 2026-10-10**, appliquée (migration 60, Alembic `c9f4a2d6e813`, option « Sans repli par l'IA » cochée par défaut, branche `lot-vh04b-d33`) |
 | D34 | Garde de session (lot 4) : une application qui REDIRIGE vers sa page de connexion un utilisateur connecté mais SANS DROIT (ex. l'admin Django) donne `bloqué`, alors que c'est le comportement attendu d'un test de droits | Recommandation : garder `bloqué` par défaut (une session perdue est le cas le plus fréquent et le plus grave) ; un test de droits l'écrit avec le step dédié « l'action … est refusée » (Odoo) ou ouvre la page de connexion lui-même | Lot 4 — **validée le 2026-10-10** (aucun changement de code : `bloqué` conservé) |
+| D35 | (sans objet) Une valeur relevée à l'écran réutilisée dans le Gherkin par `{relevé:nom}` | **Retiré** après deux revues bloquantes (2026-10-11) : remplacé par un step sans état, « … est la valeur affichée pour "<libellé>" » | Lot 6 — aucune décision à prendre |
+| D36 | Sur un projet `web`, la case « calibration en écriture » (migration 45, jusqu'ici réservée à Odoo à l'écran) sert de déclaration de bac à sable, avec l'adresse de remise à zéro | Recommandation : **oui** (une seule autorisation « l'IA peut agir sur cette application pendant la génération ») ; conséquence : elle ouvre aussi `attempt_form_submission` sur un projet web | Lot 7 — appliquée, **validée par le porteur le 2026-10-11** |
+| D37 | La remise à zéro est un `POST` sans authentification sur une adresse de l'application, déclarée par un administrateur du projet ; seule une réponse 2xx directe la prouve | Recommandation : **oui** pour une première version (le banc fonctionne ainsi) ; une remise à zéro authentifiée ou relue (état vérifié après coup) reste à concevoir | Lot 7 — appliquée, **validée par le porteur le 2026-10-11** |
+| D38 | Comportement BLOQUANT nouveau : une exécution réelle attend la fin d'un essai sur la même application ; une application qu'un essai n'a pas pu remettre à zéro voit ses exécutions RETENUES (erreur technique) jusqu'à ce que la remise à zéro aboutisse ou que le porteur déclare l'avoir faite ; la marque est celle de l'APPLICATION : l'administrateur d'un projet la lève pour tous les projets qui visent cette application | Recommandation : **oui** — l'alternative est un verdict rendu sur un état laissé par l'outil (faux vert possible) | Lot 7 — appliquée, **validée par le porteur le 2026-10-11** |
 
-Statut des décisions (2026-10-09) : **D23, D24, D25, D27, D28 validées** par le porteur le 2026-10-08 ; **D29, D30, D31, D32 validées** le 2026-10-09 (recommandations retenues telles quelles) ; **D26 en attente** (environnements de test remis à zéro).
+Statut des décisions (2026-10-09) : **D23, D24, D25, D27, D28 validées** par le porteur le 2026-10-08 ; **D29, D30, D31, D32 validées** le 2026-10-09 (recommandations retenues telles quelles) ; **D26 retenue le 2026-10-10** sur recommandation (quatre conditions, voir le registre) ; D33 et D34 validées le 2026-10-10. **D36, D37, D38 validées le 2026-10-11** (le porteur a demandé si revenir à l'adresse de départ suffirait après un essai : non — cela replace le navigateur, pas les données créées dans l'application ; la remise à zéro est conservée).
 
 ## 3. Les lots
 
@@ -248,6 +252,7 @@ Risques et parades :
 | VH-05 (validation hors ligne) | module pur `generation/litteraux_observes.py` + `scripts/valider_litteraux_hors_ligne.py` ; **pas encore branché** sur les outils d'écriture | 2026-10-08 | `tests/test_litteraux_observes.py` ; validation ci-dessous |
 | VH-04 (partiel) | vérifications partagées solides : oracle (erreur HTTP → indéterminé, objet non comptable, comparaisons typées), garde de session avant chaque `Alors`, texte exact, erreur de validation ciblée, soumission prouvée, Odoo (refus de droits, existence cloisonnée), « vérifié côté serveur » par les constats, paliers de clic, banc (refus à l'écriture, règle de réparation du produit). D25 en campagne produit : fait (D33, branche `lot-vh04b-d33`) | 2026-10-10 | `tests/test_vh04_*.py` (dont 5 fichiers sur vrai Chromium, ajoutés au contrôle `browser-evidence`) |
 | VH-06 (partiel) | steps manquants (saisie dans une ligne, valeur à côté d'un libellé, motif à partie fixe, liste d'oracle, valeur de l'écran retrouvée dans l'oracle), code libre compté par le banc, deux gardes d'écriture désignées par base-5 ; deux revues bloquantes (7 faux verts et 1 faux rouge, puis 4 chemins) — le relevé `{relevé:nom}` et la forme négative de l'oracle sont RETIRÉS. Point 2 (route inconnue = refus) non fait | 2026-10-11 | `tests/test_vh06_steps_manquants.py` (bout en bout Chromium + Behave), `test_vh06_gardes_ecriture.py`, `test_vh06_code_libre.py` |
+| VH-07 (première version, connecteur web) | outil `essayer_les_actions` proposé sur un projet déclaré bac à sable : joue des actions dans le vrai harnais, rend la page d'arrivée et ses contrôles ; quatre conditions de D26 tenues par le code ; 5 défauts bloquants de la première version puis 1 de la seconde trouvés par la revue et fermés avant tout commit. Gain NON mesuré (campagne à lancer) | 2026-10-11 | `tests/test_vh07_essai.py` (bout en bout Behave + Chromium), `test_migration_bac_a_sable_reset.py`, `ProjectsList.bacASable.spec.ts` |
 
 ### Validation hors ligne de VH-05 sur les 30 tests de `base-3` (aucune dépense)
 
@@ -506,4 +511,52 @@ suivant quand rien ne les séparait (au plus un élément en ligne après le lib
 refusé à l'écriture (`RELEVE_INCONNU`). **Restes écrits, en faux rouge possible sur un balisage pauvre :** une grille en `div`
 sans rôles et un tableau à deux colonnes à en-têtes `td` rendent encore l'en-tête voisin ; une valeur affichée sous
 `text-transform` (« DUPONT ») est comparée telle qu'affichée à l'oracle (« Dupont »).
+
+### Lot VH-07 — exécuter puis écrire (2026-10-11, branche `lot-vh07-executer-puis-ecrire`) — **première version, gain non mesuré**
+
+Mesure qui l'a désigné : `panier_total_tva`, 3 essais sur 3 en erreur technique en base-5 — la quantité cherchée sur la page
+du panier alors que le champ est sur la page des produits. La page change après une action ; l'annuaire ne peut pas le savoir.
+
+**Ce que fait le lot.** Un outil d'agent, `essayer_les_actions`, joue une suite d'ACTIONS Gherkin dans le vrai harnais Behave
+(aucun moteur d'action nouveau), sur l'application remise à zéro avant et après, et rend l'adresse de la page d'arrivée et ses
+contrôles (champs, boutons, liens). Il n'existe que si le projet `web` a autorisé la calibration en écriture ET déclaré une
+adresse de remise à zéro (réglages du projet, migration 61 — `project.bac_a_sable_reset`, Alembic `d1a7b3c5e924`). Aucun appel
+LLM par essai ; 6 essais et 12 appels au plus par génération ; la consigne d'usage voyage avec l'outil, le prompt des projets
+ordinaires est inchangé.
+
+| Condition de D26 | Tenue par | Preuve (falsifiable) |
+|---|---|---|
+| 1. bac à sable déclaré | `essai.construire` : calibration autorisée + déclaration COMPLÈTE de la même origine que l'adresse actuelle (une recette devenue production n'est plus un bac à sable) ; sinon l'outil n'est pas proposé | 7 projets refusés, API (422 avant toute écriture, déclaration qui ne suit pas un changement d'adresse) |
+| 2. remise à zéro avant et après | 2xx direct seulement (une redirection n'est pas suivie) ; sans remise avant, pas d'essai ; sans remise après : texte véridique, essais arrêtés, MARQUE (mémoire + disque) qui retient les exécutions réelles | serveur réel (302, 303 vers un autre hôte, 503), run retenu → erreur technique / indéterminé |
+| 3. jamais en production | l'essai passe par le même `environment.py` que les exécutions ; rien du lot ne touche au garde-fou `ODOO_ENV=prod` | revue (lecture) |
+| 4. observer pour écrire, jamais pour juger | fichier joué relu par l'analyseur de Behave (actions seulement) ; relevé propre à l'essai (contrôles, jamais une valeur de champ ni un texte libre) ; échec = type de l'erreur seul ; garde d'écriture `VALEUR_TIREE_DE_L_ESSAI` ; un essai n'apprend rien au projet | Chromium (page piège), 9 séparateurs de ligne, 7 valeurs recopiées, 6 formes de Gherkin, 3 formes de Python |
+
+**Exclusion** (`guardrails/bac_a_sable.py`) : par application (origine), une remise à zéro — essai ou rétablissement — et les
+exécutions réelles ne coexistent jamais. Relevé à la relecture avant toute mesure : sans elle, une remise à zéro au milieu
+d'un run effaçait ce qu'un défaut venait de créer, et un scénario négatif sortait `conforme`.
+
+**Revues `verdict-reviewer` du 2026-10-11.** Première passe, BLOQUANT : texte libre et valeurs de champs rendus à l'agent ; un
+« Alors » glissé derrière un séparateur Unicode ; message d'échec porteur de valeurs ; redirection prise pour une remise à
+zéro ; état laissé sans rien de durable. Seconde passe, BLOQUANT : la garde d'écriture, par comparaison exacte, laissait passer
+« 129,15 € » quand la page portait une espace insécable, et ignorait les paramètres de l'adresse — `conforme` reproduit de
+bout en bout sur une application fautive. Suites : comparaison normalisée par jetons à chiffres, textes de liens et valeurs de
+l'adresse ; tout le texte d'un `Alors` lu (tableau, texte joint, contexte, exemples) ; marque en mémoire, rétablissement seul,
+levée par le porteur ; faux refus de la première garde supprimés (les NOMS vus à l'essai restent utilisables). Troisième passe, BLOQUANT, **non fermable par une garde** : une valeur fausse vue à l'essai passe dès que la spécification cite ce nombre AILLEURS (le hors taxes affiché à la place du TTC, reproduit jusqu'à `conforme`). Suite : point de vigilance `valeur_vue_a_l_essai` à la relecture pour tout « Alors » qui cite une donnée vue à l'essai, que la spécification la dise ou non — la version n'est alors pas approuvée d'office ; nombres collés à un mot extraits ; comptes écrits en toutes lettres dans la spécification reconnus (un « 2 » de pagination ne bloque plus « compte 2 lignes »).
+
+**Limites assumées :**
+- **Gain non mesuré** : aucune campagne avec `--bac-a-sable` n'a encore tourné ; coût par cas à mesurer (un essai n'appelle pas
+  le LLM, mais chaque essai est un tour d'agent).
+- **La condition 4 de D26 n'est pas tenue par construction, seulement par une garde et par la relecture.** La garde d'écriture
+  arrête la recopie d'une donnée que la spécification ne dit nulle part (jeton à chiffres, valeur de l'adresse). Elle ne
+  voit PAS : une valeur que la spécification cite pour un AUTRE point (hors taxes pour TTC, prix unitaire pour total) —
+  signalée au relecteur, pas refusée ; une donnée sans chiffre portée par un bouton ou un lien (« Commande refusée ») ; une
+  valeur déguisée exprès. La relecture humaine reste obligatoire (D23). Fermer ce point demande de savoir quelle phrase
+  de la spécification fonde quel attendu : c'est le lot 8, et c'est une raison de ne pas généraliser le bac à sable avant lui.
+- La remise à zéro n'est prouvée que par le 2xx : une route qui répond 200 sans rien remettre à zéro n'est pas détectée.
+- Exclusion propre au processus ; `localhost` et `127.0.0.1` sont deux applications ; l'essai d'un agent ferme la session
+  d'observation des autres générations du même projet.
+- Connecteur `web` seulement : Odoo n'a pas de remise à zéro.
+- Un run retenu pendant une réparation est lu comme un délai dépassé (adoption arrêtée par la garde de couverture) — lu, non
+  rejoué.
+- L'écran du réglage est prouvé par ses tests (vitest), pas par une vérification dans le navigateur.
 
