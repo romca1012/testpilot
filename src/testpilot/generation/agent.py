@@ -106,6 +106,11 @@ class GenerationAgent:
         # d'un projet Odoo ne relève pas les vues du back-office : il refuserait à tort des champs techniques réels).
         from testpilot.generation import litteraux_observes
         litteraux_observes.brancher_controles(ctx, connector_type, modele, config.BEHAVE_RUNTIME_DIR)
+        # Lot VH-07 (D26) : « exécuter puis écrire » — seulement si le PROJET se déclare bac à sable (calibration en écriture
+        # autorisée + adresse de remise à zéro). Sinon `None` : l'outil n'est pas proposé, la génération est celle d'avant.
+        from testpilot.generation.tools import essai as essai_tools
+        from testpilot.generation.tools import outils_optionnels
+        ctx.essai = essai_tools.construire(projet, self.dry_runner, self.connector)
         from testpilot.generation.provenance import fingerprint, target_fingerprint
         ctx.target_sha256 = target_fingerprint(projet)
         ctx.shared_steps = shared_steps
@@ -124,7 +129,7 @@ class GenerationAgent:
         # local complet — sinon deux runs aux outils différents auraient la même provenance. Les
         # interrupteurs éteints, c'est l'empreinte d'avant (même contenu).
         from testpilot.generation.tools.api_definitions import tools_for_api
-        outils_envoyes = tools_for_api()
+        outils_envoyes = tools_for_api(avec=outils_optionnels(ctx))
         input_sha256 = fingerprint(state.messages[0])
         run_loop(
             llm=self.llm,
@@ -148,6 +153,13 @@ class GenerationAgent:
             'artifact_sha256': fingerprint([result.feature_content, result.steps_content]),
             'cost_usd': result.cost_usd, 'iterations': result.iterations,
         }
+        if ctx.essai is not None:
+            # Lot VH-07 : ce test a été écrit après des essais sur le bac à sable — fait consigné, jamais un verdict.
+            result.generation_provenance['essais'] = {
+                'joues': len(ctx.essai.journal), 'reussis': sum(1 for e in ctx.essai.journal if e.get('reussi')),
+                'non_remis_a_zero': bool(ctx.essai.etat_laisse),
+                # Les données (jetons à chiffres) que les essais ont montrées : la relecture signale tout « Alors » qui en cite.
+                'donnees_vues': sorted(ctx.essai.vus)}
         if result.success and self.case_repo is not None and self.version_repo is not None:
             self._persist(plan, result, case_id=case_id, title=title, author=author,
                           module_id=module_id, metier=metier, group_id=group_id, refs=refs)

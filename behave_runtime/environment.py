@@ -995,12 +995,64 @@ def _ecrire_sidecar_residus(context, scenario) -> None:
         pass
 
 
+# Lot VH-07 (D26) — nom DUPLIQUÉ de `testpilot.generation.tools.essai.ESSAI_ETAT_FILE_ENV` (test d'accord).
+ESSAI_ETAT_FILE_ENV = "TP_ESSAI_ETAT_FILE"
+
+
+# Relevé PROPRE à l'essai — pas celui des outils d'observation (`_web_helpers._JS_ELEMENTS_INTERACTIFS`), qui rend le texte de
+# tout élément portant un `role` ou un `tabindex` et la VALEUR d'un champ sans libellé. Relecture du 2026-10-11, reproduit sur
+# Chromium : après une action, un `role="status"` rendait « Commande CMD-0042 enregistrée, total TTC 129,15 € » et un champ
+# rendait « 3 » — de quoi écrire un « Alors » recopié de l'application. Ici : seulement les CONTRÔLES (champs, boutons, liens),
+# nommés par leur libellé ; jamais `value` d'un champ de saisie, jamais le texte d'un élément qui n'est ni bouton ni lien.
+_JS_CONTROLES_D_ESSAI = """(max) => {
+    const roles = ['button', 'link', 'textbox', 'searchbox', 'combobox', 'listbox', 'checkbox', 'radio', 'switch',
+                   'spinbutton', 'slider', 'tab', 'menuitem'];
+    const selecteur = 'input:not([type=hidden]), select, textarea, button, a[href], '
+        + roles.map(r => '[role="' + r + '"]').join(', ');
+    const visibles = Array.from(document.querySelectorAll(selecteur))
+        .filter(el => el.offsetParent !== null || el.getClientRects().length > 0).slice(0, max);
+    return visibles.map(el => {
+        const balise = el.tagName.toLowerCase();
+        const role = el.getAttribute('role') || balise;
+        const type = (el.getAttribute('type') || '').toLowerCase();
+        const boutonDeSaisie = balise === 'input' && ['submit', 'button', 'reset'].includes(type);
+        const cliquable = boutonDeSaisie || balise === 'button' || balise === 'a'
+            || ['button', 'link', 'tab', 'menuitem'].includes(role);
+        const affiche = cliquable ? ((boutonDeSaisie ? el.value : el.innerText) || '').trim().slice(0, 80) : '';
+        const libelle = (el.labels && el.labels.length && balise !== 'select') ? el.labels[0].innerText : '';
+        const nom = (el.getAttribute('aria-label') || libelle || el.getAttribute('placeholder') || affiche
+                     || el.getAttribute('name') || '').trim().slice(0, 80);
+        const resultat = {role: role, nom: nom, type: type};
+        if (affiche && affiche !== nom) resultat.texte = affiche;
+        return resultat;
+    });
+}"""
+
+
+def _consigner_etat_d_essai(context) -> None:
+    """Un ESSAI de génération (« exécuter puis écrire ») : consigne OÙ le navigateur se trouve à la fin et quels CONTRÔLES
+    il montre — rien d'autre. Aucun texte libre de la page (ni titre, ni message, ni total, ni valeur de champ) : ce que
+    l'agent observe sert à écrire les actions, jamais les valeurs attendues (D26, condition 4). Sans la variable : rien
+    (run normal). Best-effort : une lecture impossible laisse le fichier absent, l'outil le dira à l'agent."""
+    chemin = os.environ.get(ESSAI_ETAT_FILE_ENV)
+    page = getattr(context, "page", None)
+    if not chemin or page is None:
+        return
+    try:
+        etat = {"url": page.url, "elements": page.evaluate(_JS_CONTROLES_D_ESSAI, 120) or []}
+        with open(chemin, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(etat, ensure_ascii=False))
+    except Exception as exc:
+        print(f"[essai] état de la page non consigné : {exc}")
+
+
 def after_scenario(context, scenario):
     """Capture une preuve visuelle et une trace, PUIS supprime UNIQUEMENT les enregistrements
     produits par le test (jamais les prérequis), par leur id EXACT enregistré — jamais par domaine
     ni par `max_id` (F6, lot 06)."""
     n = getattr(context, "_indice_scenario", 0) + 1
     context._indice_scenario = n
+    _consigner_etat_d_essai(context)
     _capturer_ecran(context, scenario, n)
     _capturer_trace(context, scenario, n)
 
