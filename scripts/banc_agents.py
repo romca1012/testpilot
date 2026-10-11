@@ -1492,8 +1492,12 @@ def oracle_du_banc_web(url: str) -> dict:
 
 
 def preparer_projet_web(url: str, compte: Mapping, specs: Mapping[str, dict], data_dir: Path,
-                        cle_secrete: str) -> tuple[int, dict[str, int]]:
-    """Projet `web` jetable + annuaire (exploration déterministe, navigateur réel) + un cas par spec. Mode réel seulement."""
+                        cle_secrete: str, bac_a_sable: bool = False) -> tuple[int, dict[str, int]]:
+    """Projet `web` jetable + annuaire (exploration déterministe, navigateur réel) + un cas par spec. Mode réel seulement.
+
+    `bac_a_sable` (lot VH-07, D26) : le projet se déclare bac à sable (calibration en écriture + remise à zéro `POST
+    /__reset`) — l'agent peut alors jouer ses actions pendant la génération. Éteint par défaut : la campagne reste
+    comparable aux précédentes ; `--bac-a-sable` mesure le gain."""
     os.environ["TESTPILOT_DATA_DIR"] = str(data_dir)
     os.environ["TESTPILOT_SECRET_KEY"] = cle_secrete
     sys.path.insert(0, str(RACINE / "src"))
@@ -1508,6 +1512,9 @@ def preparer_projet_web(url: str, compte: Mapping, specs: Mapping[str, dict], da
         name="Banc agents web — boutique locale", description="Banc d'agents web (Q2-d) : application locale à défauts.",
         connector_type="web", base_url=url, username=compte["identifiant"], password=compte["mot_de_passe"],
         **oracle_du_banc_web(url))
+    if bac_a_sable:
+        ProjectRepo(conn).set_calibration_writes_enabled(project_id, True)
+        ProjectRepo(conn).set_bac_a_sable_reset(project_id, url.rstrip("/") + "/__reset")
     banc_projet.explorer(conn, project_id)
     module_id = ModuleRepo(conn).create(project_id=project_id, name=MODULE_DU_BANC)
     cas = CaseRepo(conn)
@@ -1644,6 +1651,8 @@ def main(argv: list[str] | None = None) -> int:
     parseur.add_argument("--generations-depuis", type=Path, default=None,
                          help="rejoue les tests DÉJÀ générés par une campagne passée (dossier .local-preview/qualification) "
                               "au lieu d'en générer de nouveaux : aucun coût de génération")
+    parseur.add_argument("--bac-a-sable", action="store_true",
+                         help="lot VH-07 (D26) : le projet se déclare bac à sable — l'agent joue ses actions pendant la génération")
     parseur.add_argument("--hote", default="127.0.0.1", help="hôte de l'application locale : bouclage uniquement")
     parseur.add_argument("--cas", default=None, help="mise au point : cas séparés par des virgules (le rapport l'indique)")
     parseur.add_argument("--etiquette", default="")
@@ -1710,7 +1719,8 @@ def _lancer_reel(args, configuration: Configuration, cas_joues: list[str], taux:
     traces = Path(tempfile.mkdtemp(prefix="banc_agents_jeux_"))
     with ApplicationLocale(args.hote) as application:
         application.reinitialiser([])
-        project_id, ids = preparer_projet_web(application.url, compte, specs, data_dir, cle)
+        project_id, ids = preparer_projet_web(application.url, compte, specs, data_dir, cle,
+                                              bac_a_sable=bool(args.bac_a_sable))
         suivi = {"usd": 0.0, "max": 0.0}
         reste = (lambda: None if args.plafond_cout is None else args.plafond_cout - suivi["usd"])
 
@@ -1748,6 +1758,7 @@ def _lancer_reel(args, configuration: Configuration, cas_joues: list[str], taux:
                 "sous_ensemble_de_cas": bool(args.cas), "donnees_jetables": str(data_dir),
                 "generations_rejouees_depuis": str(args.generations_depuis) if args.generations_depuis else None,
                 "reparation": bool(args.reparer),
+                "bac_a_sable": bool(args.bac_a_sable),
                 "tentatives_reparation": _tentatives_de_reparation(args.tentatives_reparation) if args.reparer else None}
     md, js = ecrire_sortie(campagne, indicateurs, contexte, args.sortie)
     code = code_de_sortie(indicateurs, campagne)
