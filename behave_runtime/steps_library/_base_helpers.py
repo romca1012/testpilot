@@ -15,6 +15,7 @@ import time
 import uuid
 import warnings
 import re
+import unicodedata
 import urllib.error
 from contextlib import contextmanager
 from urllib.parse import parse_qsl, urlparse
@@ -38,6 +39,11 @@ from testpilot.connectors.oracle_http import (
     compte_resultats as _compte_resultats_oracle,
 )
 import pyotp
+
+try:  # l'arbre d'une expression régulière (`page_affiche_texte_de_la_forme`) — module renommé en Python 3.11
+    from re import _parser as _analyse_regex
+except ImportError:  # Python 3.10
+    import sre_parse as _analyse_regex
 
 logger = logging.getLogger(__name__)
 
@@ -261,6 +267,7 @@ def constater(condition, message: str = "") -> None:
     garde la trace de ce constat raté et sort `indetermine` (V10) — jamais `conforme`.
     """
     _appliquer_garde_de_session()  # lot VH-04 (V8) : rien ne se constate sur une session perdue
+    _appliquer_garde_des_releves()  # lot VH-06 : ni sur un « {relevé:…} » resté tel quel
     raison = _condition_toujours_vraie(condition)
     if raison:
         _consigner_constat(False)
@@ -274,6 +281,7 @@ def constater(condition, message: str = "") -> None:
 def constater_visible(locator, message: str = "", timeout=None) -> None:
     """`expect(locator).to_be_visible()` (assertion web-first, elle réessaie) + constat consigné."""
     _appliquer_garde_de_session()
+    _appliquer_garde_des_releves()
     try:
         if timeout is None:
             expect(locator).to_be_visible()
@@ -288,6 +296,7 @@ def constater_visible(locator, message: str = "", timeout=None) -> None:
 def constater_texte(locator, attendu, message: str = "", timeout=None, exact: bool = False) -> None:
     """`expect(locator).to_have_text / to_contain_text(attendu)` + constat consigné."""
     _appliquer_garde_de_session()
+    _appliquer_garde_des_releves()
     options = {} if timeout is None else {"timeout": timeout}
     try:
         if exact:
@@ -311,6 +320,7 @@ def constat(fonction):
     @functools.wraps(fonction)
     def enveloppe(*args, **kwargs):
         _appliquer_garde_de_session()  # lot VH-04 (V8) : rien ne se constate sur une session perdue
+        _appliquer_garde_des_releves()  # lot VH-06 : ni sur un « {relevé:…} » resté tel quel
         try:
             resultat = fonction(*args, **kwargs)
         except AssertionError:
@@ -3389,6 +3399,409 @@ def cliquer_dans_ligne(page, libelle: str, texte: str) -> None:
     _cible_cliquable(ligne, libelle, f"la ligne contenant « {texte} »").click(timeout=_ATTENDRE_UNIVERSELLE_MS)
 
 
+# ── Lot VH-06 : les steps qui manquaient (le code libre écrit à leur place plantait — banc base-3 et base-4) ──────
+#
+# Mesuré : « mettre la quantité de la ligne "Câble HDMI" à 0 », « le total affiché est 129,51 € », « un numéro de commande de la
+# forme CMD-… » n'avaient aucun step partagé. L'agent écrivait alors du Playwright à la main (repère par `get_by_label`, par
+# `tr:has-text(…)`) — la première source d'erreur technique après génération. Chaque helper ci-dessous est livré avec son test
+# de falsifiabilité (`tests/test_vh06_*.py`).
+
+
+_CHAMPS_DE_SAISIE_CSS = "input:not([type='hidden']):not([type='submit']):not([type='button']), select, textarea"
+
+# La zone trouvée est-elle bien UNE ligne ? Revue du lot (2026-10-11), reproduit : quand la ligne demandée ne portait aucun
+# champ, le « plus proche ancêtre contenant un champ » était le tableau ou la liste entière — et la quantité d'un AUTRE produit
+# était modifiée sans erreur. Rend la raison du refus, ou '' :
+# - un conteneur de liste (tableau, liste, corps de page) n'est pas une ligne ;
+# - une zone qui renferme une autre ligne (tr, li, article, row, listitem) portant un champ sans le texte demandé non plus ;
+# - hors balisage de ligne : le texte et le champ ne doivent pas être dans deux blocs frères semblables dont celui du champ a
+#   son propre texte (deux cartes voisines).
+_JS_ZONE_EST_UNE_LIGNE = r"""(zone, texte) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const CHAMPS = "input:not([type=hidden]):not([type=submit]):not([type=button]), select, textarea";
+  const LIGNES = 'tr, li, article, [role="row"], [role="listitem"]';
+  if (zone.matches('html, body, main, table, thead, tbody, tfoot, ul, ol, dl')) return 'le plus proche conteneur est une liste entière';
+  for (const ligne of zone.querySelectorAll(LIGNES)) {
+    if (ligne.querySelector(CHAMPS) && !norm(ligne.innerText).includes(texte)) return 'le conteneur regroupe plusieurs lignes';
+  }
+  if (zone.matches(LIGNES)) return '';
+  const enfantDe = (n) => { while (n && n.parentElement !== zone) n = n.parentElement; return n; };
+  const texteSansChamps = (el) => {
+    const copie = el.cloneNode(true);
+    copie.querySelectorAll('label, select, textarea, script, style').forEach((x) => x.remove());
+    return norm(copie.textContent);
+  };
+  const porteurs = [...zone.querySelectorAll('*')].filter((e) => norm(e.innerText) === texte);
+  for (const porteur of porteurs) {
+    for (const champ of zone.querySelectorAll(CHAMPS)) {
+      const a = enfantDe(porteur), b = enfantDe(champ);
+      if (a && b && a !== b && a.tagName === b.tagName && a.className === b.className && texteSansChamps(b)) {
+        return 'le champ appartient à un bloc voisin';
+      }
+    }
+  }
+  return '';
+}"""
+
+
+def _ligne_avec_champ(page, texte: str):
+    """La ligne contenant `texte` qui porte au moins un champ de saisie : `role="row"` (texte en MOT ENTIER, casse respectée —
+    « Câble HDMI » n'est pas « Rallonge câble hdmi »), sinon le plus proche ancêtre du texte qui contient un champ (carte,
+    élément de liste…), à condition qu'il soit bien UNE ligne. Plusieurs lignes : erreur, jamais la première."""
+    _renseigne(texte, "Le texte de la ligne")
+    propre = re.sub(r"\s+", " ", texte).strip()
+    mot_entier = re.compile(rf"(?<![{_LETTRE}]){re.escape(propre)}(?![{_LETTRE}])")
+    lignes_tableau = (page.get_by_role("row").filter(has_text=mot_entier)
+                      .filter(has=page.locator(_CHAMPS_DE_SAISIE_CSS)).filter(visible=True))
+    lignes_structurelles = (
+        page.get_by_text(texte, exact=True)
+        .locator("xpath=ancestor::*[.//input[not(@type='hidden') and not(@type='submit') and not(@type='button')] "
+                 "or .//select or .//textarea][1]")
+        .filter(visible=True))
+    trouve = _attendre_le_nombre(
+        [lignes_tableau, lignes_structurelles],
+        f"Aucune ligne contenant « {texte} » ne porte de champ de saisie sur {page.url}.")
+    ligne = _un_seul(trouve, f"La ligne contenant « {texte} »")
+    refus = ligne.evaluate(_JS_ZONE_EST_UNE_LIGNE, propre)
+    if refus:
+        raise ElementIntrouvableError(
+            f"« {texte} » n'est dans aucune ligne portant un champ de saisie sur {page.url} ({refus}) : écrire dans le champ le "
+            "plus proche viserait une autre ligne.")
+    return ligne
+
+
+def _champ_dans_la_zone(zone, champ: str, quoi: str):
+    """Le champ nommé `champ` DANS `zone` : libellé exact, nom accessible exact, attribut `name`, texte d'aide exact — puis, en
+    dernier, un nom accessible qui COMMENCE par ce libellé (« Quantité » pour « Quantité de Câble HDMI » : la zone restreint
+    déjà la recherche à une ligne). Plusieurs champs au même palier : erreur, jamais le premier."""
+    _renseigne(champ, "Le nom du champ")
+    paliers = [
+        ("libellé", zone.get_by_label(champ, exact=True)),
+        ("nom", zone.locator(f"xpath=.//*[@name={_xpath_litteral(champ)}]")),
+        ("texte d'aide", zone.get_by_placeholder(champ, exact=True)),
+        ("libellé (début)", zone.get_by_label(re.compile(r"^\s*" + re.escape(champ) + r"(?![0-9A-Za-zÀ-ÖØ-öø-ÿ_])"))),
+    ]
+    for palier, candidats in paliers:
+        try:
+            n = candidats.count()
+        except Exception:
+            continue
+        if n > 1:
+            raise ElementIntrouvableError(f"Le champ « {champ} » dans {quoi} est ambigu : {n} champs répondent ({palier}).")
+        if n == 1:
+            _record_selector_tier(f"champ_ligne:{champ}", "champ_ligne" if palier != "libellé (début)" else "champ_ligne_debut")
+            return candidats.first
+    raise ElementIntrouvableError(f"Aucun champ « {champ} » dans {quoi}.")
+
+
+def saisir_dans_ligne(page, champ: str, valeur: str, texte: str) -> None:
+    """Renseigne le champ `champ` de la ligne qui contient `texte` (un tableau, une carte, un élément de liste)."""
+    ligne = _ligne_avec_champ(page, texte)
+    cible = _champ_dans_la_zone(ligne, champ, f"la ligne contenant « {texte} »")
+    balise = (cible.evaluate("el => el.tagName") or "").lower()
+    if balise == "select":
+        cible.select_option(label=valeur, timeout=_ATTENDRE_UNIVERSELLE_MS)
+    else:
+        cible.fill(valeur, timeout=_ATTENDRE_UNIVERSELLE_MS)
+
+
+# La valeur affichée À CÔTÉ d'un libellé : terme/définition, cellule voisine, champ ou sortie étiqueté, texte ou élément qui suit,
+# ou le reste du même texte après « : ». Seuls les libellés VISIBLES comptent ; le libellé est comparé en entier (deux-points
+# final toléré), jamais par sous-chaîne. Revue du lot (2026-10-11), chaque cas reproduit sur Chromium :
+# - un EN-TÊTE DE COLONNE n'a pas de valeur par voisinage (« Numéro » rendait l'en-tête voisin « Total TTC ») ;
+# - une case à cocher, un bouton radio, un fichier n'AFFICHENT pas leur `value` (« on », quel que soit l'état) ;
+# - le texte qui suit passe avant l'élément qui suit (« <span>Statut :</span> Validée <a>Modifier</a> » rendait « Modifier ») ;
+# - « <td><strong>Total TTC</strong></td><td>…</td> » et « <p>Numéro : <strong>CMD-1</strong></p> » n'étaient pas lus.
+_JS_VALEURS_A_COTE = r"""(libelle) => {
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const sansDeuxPoints = (s) => norm(s).replace(/\s*:\s*$/, '');
+  const visible = (el) => {
+    const b = el.getBoundingClientRect(), st = getComputedStyle(el);
+    return b.width > 0 && b.height > 0 && st.visibility !== 'hidden' && st.display !== 'none';
+  };
+  const SANS_VALEUR_AFFICHEE = ['password', 'checkbox', 'radio', 'file', 'hidden', 'submit', 'button', 'reset', 'image'];
+  const texteDe = (el) => {
+    if (!el) return null;
+    if (el.matches('input, textarea, select')) {
+      if (el.tagName === 'SELECT') return norm(el.selectedOptions[0] ? el.selectedOptions[0].textContent : '');
+      return SANS_VALEUR_AFFICHEE.includes((el.getAttribute('type') || 'text').toLowerCase()) ? null : norm(el.value);
+    }
+    return norm(el.innerText);
+  };
+  const enTeteDeColonne = (el) => el.tagName === 'TH' && (
+    !!el.closest('thead') || (el.getAttribute('scope') || '').toLowerCase() === 'col'
+    || (el.nextElementSibling && el.nextElementSibling.tagName === 'TH')
+    || (el.previousElementSibling && el.previousElementSibling.tagName === 'TH'));
+  const suite = (n) => {
+    if (n.tagName === 'DT') return n.nextElementSibling && n.nextElementSibling.tagName === 'DD' ? {el: n.nextElementSibling} : null;
+    if (n.tagName === 'TH' || n.tagName === 'TD') {
+      return enTeteDeColonne(n) || !n.nextElementSibling ? null : {el: n.nextElementSibling};
+    }
+    if (n.tagName === 'LABEL') {
+      const controle = n.control || (n.htmlFor ? document.getElementById(n.htmlFor) : null);
+      if (controle) return {el: controle};
+    }
+    for (let s = n.nextSibling; s; s = s.nextSibling) {
+      if (s.nodeType === 3) { if (norm(s.textContent)) return {texte: norm(s.textContent)}; continue; }
+      if (s.nodeType === 1) return {el: s};
+    }
+    return null;
+  };
+  const libelleSeul = (label) => {
+    const copie = label.cloneNode(true);
+    copie.querySelectorAll('select, textarea, input, button').forEach((x) => x.remove());
+    return norm(copie.textContent);
+  };
+  const valeurDe = (v) => (v.texte !== undefined ? v.texte : (visible(v.el) ? texteDe(v.el) : null));
+  const valeurs = [];
+  for (const el of document.querySelectorAll('body *')) {
+    if (!(el.textContent || '').includes(libelle) || !visible(el)) continue;
+    // Le texte d'un <label> qui ENVELOPPE son champ ne compte pas les options d'une liste ni le contenu d'une zone de texte.
+    const propre = el.tagName === 'LABEL' ? libelleSeul(el) : norm(el.innerText);
+    if (sansDeuxPoints(propre) === libelle) {
+      // Un élément PLUS PROFOND portant le même libellé donnera la même valeur : on ne lit que le plus profond…
+      if ([...el.querySelectorAll('*')].some((d) => visible(d) && sansDeuxPoints(norm(d.innerText)) === libelle)) continue;
+      // … puis on remonte tant que le parent ne dit RIEN d'autre que le libellé (« <td><strong>Total TTC</strong></td> »).
+      if (enTeteDeColonne(el) || el.closest('th') && enTeteDeColonne(el.closest('th'))) continue;
+      let n = el, v = suite(n);
+      while (!v && n.parentElement && n.parentElement !== document.body
+             && sansDeuxPoints(norm(n.parentElement.innerText)) === libelle) {
+        n = n.parentElement;
+        v = suite(n);
+      }
+      const valeur = v ? valeurDe(v) : null;
+      if (valeur !== null) valeurs.push(valeur);
+      continue;
+    }
+    if (!propre.startsWith(libelle) || !/^\s*:\s*\S/.test(propre.slice(libelle.length))) continue;
+    // « Libellé : valeur » dans un même élément : texte seul, ou libellé en texte suivi d'un enfant (« Numéro : <strong>…</strong> »).
+    if (el.children.length === 0) {
+      valeurs.push(norm(propre.slice(libelle.length).replace(/^\s*:\s*/, '')));
+      continue;
+    }
+    const premier = [...el.childNodes].find((c) => c.nodeType !== 3 || norm(c.textContent));
+    if (premier && premier.nodeType === 3 && sansDeuxPoints(premier.textContent) === libelle) {
+      const v = suite(premier);
+      const valeur = v ? valeurDe(v) : null;
+      if (valeur !== null) valeurs.push(valeur);
+    }
+  }
+  return valeurs;
+}"""
+
+
+def _valeurs_affichees(page, cible: str) -> list[str]:
+    """Les valeurs DISTINCTES affichées à côté du libellé, lues une fois (document et cadres)."""
+    valeurs: list[str] = []
+    for frame in page.frames:
+        try:
+            valeurs += frame.evaluate(_JS_VALEURS_A_COTE, cible) or []
+        except Exception:
+            continue
+    return sorted(set(valeurs))
+
+
+def _libelle_normalise(libelle: str) -> str:
+    _renseigne(libelle, "Le libellé")
+    return re.sub(r"\s+", " ", libelle).strip().rstrip(":").strip()
+
+
+def _erreur_de_lecture(page, libelle: str, distinctes: list[str]) -> ElementIntrouvableError:
+    if len(distinctes) > 1:
+        return ElementIntrouvableError(
+            f"Le libellé « {libelle} » est ambigu sur {page.url} : {len(distinctes)} valeurs différentes l'accompagnent "
+            f"({', '.join(repr(v) for v in distinctes[:4])}). Précisez la cible.")
+    return ElementIntrouvableError(f"Aucune valeur affichée à côté du libellé « {libelle} » sur {page.url}.")
+
+
+def lire_valeur_affichee(page, libelle: str) -> str:
+    """La valeur affichée à côté du libellé `libelle` (document et cadres). Aucun libellé : erreur ; plusieurs valeurs
+    DIFFÉRENTES : ambiguïté, erreur — jamais « la première »."""
+    cible = _libelle_normalise(libelle)
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    while True:
+        distinctes = _valeurs_affichees(page, cible)
+        if len(distinctes) == 1:
+            return distinctes[0]
+        if len(distinctes) > 1 or time.monotonic() >= fin:
+            raise _erreur_de_lecture(page, libelle, distinctes)
+        time.sleep(0.25)
+
+
+@constat
+def valeur_affichee_vaut(page, libelle: str, attendu: str) -> None:
+    """`Alors la valeur affichée pour "<libellé>" est "<valeur>"` — la valeur ENTIÈRE, espaces normalisés ; jamais une
+    sous-chaîne (« 129,51 € » n'est pas « 1 129,51 € »). RELUE jusqu'au délai tant qu'elle diffère : un total recalculé une
+    demi-seconde après l'action n'est pas un défaut (revue du lot : la première lecture sortait `non_conforme` sur une
+    application saine, là où « la page affiche le texte » réessaie)."""
+    cible, voulu = _libelle_normalise(libelle), re.sub(r"\s+", " ", attendu).strip()
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    while True:
+        distinctes = _valeurs_affichees(page, cible)
+        if distinctes == [voulu]:
+            return
+        if time.monotonic() >= fin:
+            break
+        time.sleep(0.25)
+    if len(distinctes) != 1:
+        raise _erreur_de_lecture(page, libelle, distinctes)
+    raise AssertionError(f"La valeur affichée pour « {libelle} » est « {distinctes[0]} », « {attendu} » attendu, sur {page.url}.")
+
+
+# Un motif doit porter une PARTIE FIXE : au moins ce nombre de caractères littéraux consécutifs (hors espaces), lus dans l'arbre
+# de l'expression, jamais dans son sens. Revue du lot, reproduit : `\d+`, `.+`, `\w+`, `[0-9]+` n'acceptent pas le texte vide et
+# sont pourtant vrais sur n'importe quelle page (une page « Erreur 500 … © 2026 » sortait `conforme`).
+_PARTIE_FIXE_MINIMALE = 3
+
+
+def _partie_fixe(sequence) -> int:
+    meilleur = courant = 0
+    for operation, argument in sequence:
+        nom = str(operation)
+        if nom == "LITERAL" and not chr(argument).isspace():
+            courant += 1
+            meilleur = max(meilleur, courant)
+            continue
+        courant = 0
+        if nom == "SUBPATTERN":
+            meilleur = max(meilleur, _partie_fixe(argument[-1]))
+        elif nom in ("MAX_REPEAT", "MIN_REPEAT", "POSSESSIVE_REPEAT") and argument[0] >= 1:
+            meilleur = max(meilleur, _partie_fixe(argument[2]))
+    return meilleur
+
+
+# Mode Unicode (`u`) : sans lui, `\Z` ou `\A` (Python) se lisent « Z » et « A » — motif accepté, rien trouvé, et l'échec passait
+# pour un défaut de l'application.
+_JS_MOTIF_LISIBLE = "(motif) => { try { new RegExp(motif, 'u'); return ''; } catch (e) { return String((e && e.message) || e); } }"
+
+
+@constat
+def page_affiche_texte_de_la_forme(page, motif: str) -> None:
+    """`Alors la page affiche un texte de la forme "<motif>"` — une expression régulière cherchée dans le texte VISIBLE (mot
+    entier). Un motif sans partie fixe, ou que le navigateur ne sait pas lire, est une ERREUR DU TEST — jamais un vert, jamais
+    un défaut de l'application."""
+    _renseigne(motif, "Le motif")
+    try:
+        arbre = _analyse_regex.parse(motif)
+        re.compile(motif)
+    except (re.error, RecursionError, OverflowError) as exc:
+        raise ConstatInvalideError(f"Le motif « {motif} » n'est pas une expression régulière valide : {exc}.") from exc
+    if _partie_fixe(arbre) < _PARTIE_FIXE_MINIMALE:
+        raise ConstatInvalideError(
+            f"Le motif « {motif} » n'a pas de partie fixe d'au moins {_PARTIE_FIXE_MINIMALE} caractères : il serait vrai sur "
+            "presque n'importe quelle page. Donnez-lui un préfixe ou un séparateur littéral (ex. « FAC-[0-9]{4} »).")
+    borne = rf"(?<![{_LETTRE}])(?:{motif})(?![{_LETTRE}])"
+    # Revue du lot, reproduit : un motif valide en Python mais pas dans le navigateur (`(?i)…`, `(?P<n>…)`, `\Z`) était avalé
+    # par la boucle, puis le délai levait `AssertionError` — `non_conforme` sur une application saine. Vérifié AVANT de chercher.
+    illisible = page.evaluate(_JS_MOTIF_LISIBLE, borne)
+    if illisible:
+        raise ConstatInvalideError(
+            f"Le motif « {motif} » n'est pas lisible par le navigateur ({illisible}) : n'utilisez que la syntaxe commune "
+            "(classes, quantificateurs, groupes simples).")
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    while True:
+        for frame in page.frames:
+            try:
+                candidats = frame.get_by_text(re.compile(borne)).filter(visible=True)
+                if candidats.count() and candidats.evaluate_all(_JS_CANDIDAT_AFFICHE_EXACT, borne):
+                    return
+            except Exception:
+                continue  # cadre détaché pendant la lecture : le motif, lui, a été validé plus haut
+        if time.monotonic() >= fin:
+            raise AssertionError(f"Aucun texte de la forme « {motif} » n'est affiché sur {page.url}.")
+        time.sleep(0.25)
+
+
+# ── Valeurs relevées à l'écran et réutilisées (« {relevé:nom} ») ─────────────────────────────────────────────
+#
+# Une valeur RELEVÉE pendant le scénario (« je relève … comme "numéro" ») se réutilise par `{relevé:numéro}` dans le texte d'un
+# step suivant — besoin mesuré (banc base-5) : le numéro de commande affiché, cherché ensuite dans la réponse de l'oracle.
+# Trois gardes, chacune née d'un faux vert reproduit à la revue du lot (2026-10-11) :
+# 1. un jeton MAL ÉCRIT (`{releve:x}`, `{Relevé : x}`) restait tel quel dans le texte : « la page n'affiche pas "{releve:x}" »
+#    était toujours vraie. Tout reste de jeton après substitution est une erreur du test ;
+# 2. un step qui ne substitue pas recevait le jeton tel quel : la garde est au CONSTAT (`_appliquer_garde_des_releves`), seul
+#    point que toute vérification traverse — un « Alors » dont le jeton n'a pas été substitué ne constate rien ;
+# 3. l'AUTO-RÉFÉRENCE : relever le total puis vérifier à l'écran qu'il vaut ce qu'on vient de relever est vrai quel que soit
+#    le total. Sous un « Alors » qui lit l'ÉCRAN, un relevé n'est utilisable qu'après une action ; contre l'oracle (autre
+#    source), il l'est toujours.
+_RELEVE = re.compile(r"\{relevé:([^{}]+)\}")
+_ETAT_RELEVES = {"jetons_a_substituer": 0, "actions": 0, "step_compte": False}
+
+
+def _jetons(texte: str) -> int:
+    """Nombre de jetons de relevé dans `texte`, BIEN OU MAL écrits (accents, casse et espaces pliés)."""
+    plie = "".join(c for c in unicodedata.normalize("NFD", texte or "") if unicodedata.category(c) != "Mn").casefold()
+    return len(re.findall(r"\{\s*releve", plie))
+
+
+def debut_de_step_pour_les_releves(texte: str, action: bool) -> None:
+    """Appelé par `environment.before_step` : le step courant porte-t-il des jetons, et une ACTION commence-t-elle ?"""
+    _ETAT_RELEVES["jetons_a_substituer"] = _jetons(texte)
+    _ETAT_RELEVES["step_compte"] = bool(action)
+    if action:
+        _ETAT_RELEVES["actions"] += 1
+
+
+def _appliquer_garde_des_releves() -> None:
+    """Au constat : un jeton que le step n'a pas substitué ferait chercher (ou constater l'absence de) « {relevé:…} » lui-même."""
+    if _ETAT_RELEVES["jetons_a_substituer"] > 0:
+        _ETAT_RELEVES["jetons_a_substituer"] = 0
+        _consigner_constat(False)
+        raise ConstatInvalideError(
+            "Ce step ne sait pas remplacer « {relevé:…} » : la valeur relevée n'a pas été substituée, le constat ne prouverait "
+            "rien. Utilisez un step qui l'accepte (saisie, « la page affiche le texte », « la valeur affichée pour », "
+            "« l'URL courante contient », steps d'oracle).")
+
+
+def relever_valeur(context, libelle: str, nom: str) -> None:
+    """`Quand je relève la valeur affichée pour "<libellé>" comme "<nom>"`. Une valeur vide n'est pas relevée (erreur)."""
+    _renseigne(nom, "Le nom du relevé")
+    if _ETAT_RELEVES["step_compte"]:
+        # Relever n'est pas AGIR : deux relevés de suite ne rendent pas le premier comparable à l'écran.
+        _ETAT_RELEVES["actions"] -= 1
+        _ETAT_RELEVES["step_compte"] = False
+    valeur = lire_valeur_affichee(context.page, libelle)
+    if not valeur:
+        raise ElementIntrouvableError(f"La valeur affichée pour « {libelle} » est vide : rien à relever.")
+    releves = getattr(context, "_tp_releves", None)
+    if releves is None:
+        releves = context._tp_releves = {}
+    releves[nom.strip()] = (valeur, _ETAT_RELEVES["actions"])
+
+
+def avec_releves(context, texte: str, *, ecran: bool = True) -> str:
+    """Remplace chaque `{relevé:nom}` de `texte` par la valeur relevée dans CE scénario. Un nom jamais relevé, un jeton mal
+    écrit, ou — sous un « Alors » qui lit l'écran (`ecran=True`) — un relevé qu'aucune action ne sépare de son usage : erreur
+    du test, jamais une chaîne laissée telle quelle ni un constat qui se compare à lui-même."""
+    texte = texte or ""
+    releves = getattr(context, "_tp_releves", None) or {}
+    sous_un_alors = _ETAT_CONSTAT.get("step_type") == "then"
+    substitues = 0
+
+    def _valeur(trouve):
+        nonlocal substitues
+        nom = trouve.group(1).strip()
+        if nom not in releves:
+            raise ElementIntrouvableError(
+                f"« {{relevé:{nom}}} » n'a pas été relevé dans ce scénario (relevés : {', '.join(sorted(releves)) or 'aucun'}). "
+                "Ajoutez d'abord « je relève la valeur affichée pour … comme … ».")
+        valeur, actions_au_releve = releves[nom]
+        if ecran and sous_un_alors and actions_au_releve == _ETAT_RELEVES["actions"]:
+            raise ConstatInvalideError(
+                f"« {{relevé:{nom}}} » vient d'être relevé à l'écran et aucune action n'a eu lieu depuis : le comparer à "
+                "l'écran serait vrai quelle que soit sa valeur. Vérifiez la valeur que la spécification annonce, ou utilisez "
+                "le relevé après une action (autre page) ou contre l'oracle.")
+        substitues += 1
+        return valeur
+
+    resultat = _RELEVE.sub(_valeur, texte)
+    if _jetons(resultat):
+        raise ElementIntrouvableError(
+            f"Jeton de relevé mal écrit dans « {texte} » : écrivez exactement {{relevé:nom}} (accent, minuscules, sans espace).")
+    _ETAT_RELEVES["jetons_a_substituer"] = max(0, _ETAT_RELEVES["jetons_a_substituer"] - substitues)
+    return resultat
+
+
 # ── Boîtes de dialogue ──────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -3742,6 +4155,47 @@ def oracle_champ_vaut(context, chemin: str, requete: str, valeur: str) -> None:
                 "champ simple du chemin.")
         constater(_valeurs_egales(obtenu, valeur),
                  f"le champ « {chemin} » de l'oracle « {requete} » vaut « {obtenu} », « {valeur} » attendu")
+
+
+def _liste_de_l_oracle(context, chemin: str, requete: str) -> list:
+    reponse = _executer_oracle(context, requete)
+    try:
+        valeur = _champ_oracle(reponse, chemin) if chemin.strip() not in ("", ".") else reponse
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ReponseOracleNonComptableError(
+            f"le champ « {chemin} » de l'oracle « {requete} » est introuvable : {exc}") from exc
+    if not isinstance(valeur, list):
+        raise ReponseOracleNonComptableError(
+            f"le champ « {chemin} » de l'oracle « {requete} » n'est pas une liste ({type(valeur).__name__}) : on n'y cherche "
+            "pas un élément.")
+    return valeur
+
+
+def oracle_liste_contient(context, chemin: str, requete: str, cle: str, valeur: str) -> None:
+    """Lot VH-06 : `Alors la liste "<chemin>" de l'oracle "<requête>" contient un élément dont "<clé>" est "<valeur>"` — AU
+    MOINS un élément de la liste porte cette valeur (comparaison typée). Avant, l'agent n'avait que le comptage : « la liste
+    compte 1 élément » passait avec le MAUVAIS élément.
+
+    Une clé qu'AUCUN élément ne porte en valeur simple (clé mal écrite, casse, objet) est un test mal posé — jamais un
+    `non_conforme` sur une application saine. La forme NÉGATIVE (« ne contient aucun élément dont… ») n'existe pas : revue du
+    lot (2026-10-11), elle était verte dès que la clé ne se lisait pas — une clé inventée « prouvait » l'absence."""
+    _renseigne(cle, "La clé")
+    liste = _liste_de_l_oracle(context, chemin, requete)
+    lisibles = []
+    for element in liste:
+        try:
+            lue = _champ_oracle(element, cle)
+        except (KeyError, IndexError, TypeError):
+            continue
+        if not isinstance(lue, (dict, list)):
+            lisibles.append(lue)
+    if liste and not lisibles:
+        raise ReponseOracleNonComptableError(
+            f"aucun des {len(liste)} élément(s) du champ « {chemin} » de l'oracle « {requete} » ne porte de valeur simple à la "
+            f"clé « {cle} » : la clé est mal écrite (casse comprise) ou désigne un objet.")
+    with _source_du_constat("oracle"):
+        constater(any(_valeurs_egales(lue, valeur) for lue in lisibles),
+                  f"aucun des {len(liste)} élément(s) du champ « {chemin} » de l'oracle « {requete} » n'a « {cle} » = « {valeur} »")
 
 
 def _valeurs_egales(obtenu, attendu: str) -> bool:

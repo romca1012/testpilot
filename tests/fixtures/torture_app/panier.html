@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Panier</title></head>
+<body>
+  <!-- Lot VH-06 : saisie dans une ligne, valeur à côté d'un libellé, texte selon un motif, relevé d'une valeur. -->
+  <h1>Panier</h1>
+  <table aria-label="Panier">
+    <tr><th>Produit</th><th>Quantité</th></tr>
+    <tr><td>Câble HDMI</td><td><input name="quantite" aria-label="Quantité de Câble HDMI" value="2"></td></tr>
+    <tr><td>Souris sans fil</td><td><input name="quantite" aria-label="Quantité de Souris sans fil" value="1"></td></tr>
+    <tr><td>Câble USB</td><td><input name="quantite" aria-label="Quantité de Câble USB" value="3"></td></tr>
+  </table>
+  <ul>
+    <li><span>Tapis de souris</span> <label>Remise <input name="remise" value="0"></label></li>
+  </ul>
+  <dl>
+    <dt>Total HT</dt><dd>107,92 €</dd>
+    <dt>Total TTC</dt><dd>129,51 €</dd>
+  </dl>
+  <p><span>Référence :</span> <span>REF-77</span></p>
+  <p>Statut : En attente</p>
+  <p>Commande n° CMD-2026-0042</p>
+  <p id="recap">Dernière saisie : aucune</p>
+  <script>
+    document.querySelectorAll('input').forEach((champ) => champ.addEventListener('input', () => {
+      document.getElementById('recap').textContent =
+        'Dernière saisie : ' + (champ.getAttribute('aria-label') || champ.name) + ' = ' + champ.value;
+    }));
+  </script>
+</body>
+</html>
