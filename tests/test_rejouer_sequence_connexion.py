@@ -45,6 +45,7 @@ class _FakePage:
         self._resultats = resultats
         self.url = "https://exemple.test/pre-connexion"
         self.attente_reseau_appelee = False
+        self.stabilisation_appelee = False
         self.pauses_fixes: list[int] = []
 
     def get_by_role(self, role, name=None, exact=False):
@@ -52,7 +53,13 @@ class _FakePage:
         return self._resultats.get((role, name), _FakeLocator(existe=False))
 
     def wait_for_load_state(self, state, timeout=None):
-        self.attente_reseau_appelee = True
+        # Deux attentes distinctes passent par la même méthode : la stabilisation BORNÉE avant le premier clic
+        # (toujours avec un `timeout`) et l'attente réseau FINALE (sans). Les confondre rendait l'assertion sur
+        # l'attente finale toujours vraie (revue du 2026-10-11).
+        if timeout is None:
+            self.attente_reseau_appelee = True
+        else:
+            self.stabilisation_appelee = True
 
     def wait_for_timeout(self, timeout_ms):
         self.pauses_fixes.append(timeout_ms)
@@ -63,6 +70,7 @@ def test_sequence_vide_ne_fait_rien_et_rend_false():
 
     assert rejouer_sequence_connexion(page, []) is False
     assert page.attente_reseau_appelee is False
+    assert page.stabilisation_appelee is False
 
 
 def test_rejoue_chaque_etape_dans_l_ordre_et_rend_true():
@@ -75,7 +83,19 @@ def test_rejoue_chaque_etape_dans_l_ordre_et_rend_true():
 
     assert resultat is True
     assert pays.clique is True and continuer.clique is True
+    assert page.stabilisation_appelee is True
     assert page.attente_reseau_appelee is True
+
+
+def test_falsifiable_sans_attente_reseau_seule_la_stabilisation_est_faite():
+    """`attendre_reseau=False` (application jamais « idle », ex. Odoo) : la stabilisation bornée avant le premier
+    clic reste faite, l'attente réseau finale ne l'est pas — sinon chaque connexion paierait un délai complet."""
+    page = _FakePage({("button", "Continuer"): _FakeLocator()})
+
+    assert rejouer_sequence_connexion(page, [{"role": "button", "name": "Continuer"}], attendre_reseau=False) is True
+
+    assert page.stabilisation_appelee is True
+    assert page.attente_reseau_appelee is False
 
 
 def test_falsifiable_une_pause_fixe_suit_chaque_clic():
