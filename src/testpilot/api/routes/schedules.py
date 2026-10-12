@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from testpilot.api import access, schemas
 from testpilot.api.deps import get_conn
-from testpilot.store.repositories import ProjectRepo, ScheduledRunRepo
+from testpilot.store.repositories import ProjectRepo, RunRepo, ScheduledRunRepo
 
 router = APIRouter(tags=["schedules"])
 
@@ -55,6 +55,16 @@ def create_schedule(project_id: int, body: schemas.ScheduledRunIn, request: Requ
                             detail="une planification hebdomadaire doit préciser le jour")
     if not (0 <= body.hour <= 23 and 0 <= body.minute <= 59):
         raise HTTPException(status_code=422, detail="heure invalide")
+    if body.selection_mode == "frozen":
+        # Une planification ne déclenche que des exécutions automatiques : mêmes cas admis (2026-10-12).
+        sans_test = RunRepo(conn).cas_non_automatises(body.case_ids)
+        if sans_test:
+            noms = ", ".join(f"C{c['id']} « {c['title']} »" for c in sans_test[:5])
+            reste = f" et {len(sans_test) - 5} autre(s)" if len(sans_test) > 5 else ""
+            raise HTTPException(
+                status_code=422,
+                detail=(f"{len(sans_test)} cas sélectionné(s) n'ont pas de test technique et ne peuvent pas être "
+                        f"planifiés : {noms}{reste}. Retirez-les de la sélection ou faites-les automatiser."))
     scheduled_id = ScheduledRunRepo(conn).create(
         project_id=project_id, name=body.name.strip(), selection_mode=body.selection_mode,
         frequency=body.frequency, hour=body.hour, minute=body.minute, weekday=body.weekday,

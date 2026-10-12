@@ -138,6 +138,9 @@ class CaseSummary(BaseModel):
     type: str = "fonctionnel"
     etat: str = "new"
     priority: str = "medium"  # étiquette de lecture — aucun ordre d'exécution promis
+    # Le cas a-t-il un test technique que la machine peut jouer (2026-10-12) ? Faux pour un cas saisi à la main ou importé
+    # tant qu'il n'a pas été automatisé : il ne peut pas entrer dans une exécution AUTOMATIQUE.
+    automatise: bool = False
     last_execution_status: str | None = None
     last_functional_status: str | None = None
     last_executed_at: str | None = None
@@ -1427,6 +1430,7 @@ def case_summary(row: dict) -> CaseSummary:
         refs=row.get("refs", "") or "", estimate=row.get("estimate", "") or "",
         type=row.get("type", "") or TYPE_DEFAUT, etat=row.get("etat", "") or ETAT_DEFAUT,
         priority=row.get("priority", "medium"),
+        automatise=bool(row.get("automatise")),
         last_execution_status=row.get("last_execution_status"),
         last_functional_status=row.get("last_functional_status"),
         last_executed_at=row.get("last_executed_at"),

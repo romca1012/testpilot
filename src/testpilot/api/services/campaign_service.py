@@ -65,7 +65,10 @@ def start_campaign(conn, run_id: int, *, triggered_by: str = "") -> dict:
     if not case_ids:
         # Lancer une campagne vide produirait un run « terminé » sans rien avoir testé — un
         # succès trompeur. On refuse et on le dit.
-        raise CampaignError("empty", "cette exécution ne contient aucun cas de test")
+        # Une campagne automatique ne contient que les cas AUTOMATISÉS (2026-10-12) : vide, elle l'est le plus souvent
+        # parce que les cas du projet ont été saisis à la main ou importés. On dit quoi faire.
+        raise CampaignError("empty", "cette exécution ne contient aucun cas doté d'un test technique — faites automatiser des "
+                                     "cas, ou créez une exécution manuelle pour jouer à la main ceux qui existent")
 
     # ⚠️ La connexion se vérifie UNE FOIS ici, et non cas par cas : un run lancé sans savoir
     # contre quelle application il tourne produirait N verdicts faux d'un coup. Vérifié AVANT de

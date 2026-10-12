@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from testpilot import config
 from testpilot.api import access, app as app_mod
+from outils_cas import doter_d_un_test_technique
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import UserRepo
 
@@ -146,6 +147,8 @@ def test_creer_une_campagne_DEPUIS_une_selection(client):
     Ce test fige le contrat dont l'interface dépend.
     """
     pid, _, ids = _projet(client, 3)
+    for cid in ids[:2]:
+        doter_d_un_test_technique(cid)   # campagne automatique (mode par défaut) : des cas que la machine peut jouer
 
     r = client.post(f"/api/projects/{pid}/runs", json={
         "name": "Campagne du jour", "selection_mode": "frozen", "case_ids": ids[:2]})

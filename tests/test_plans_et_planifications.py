@@ -13,13 +13,13 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
+from outils_cas import creer_cas_avec_test_technique
 from testpilot import config
 from testpilot.api import access
 from testpilot.api import app as app_mod
 from testpilot.api.services import scheduler_service
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import (
-    CaseRepo,
     ModuleRepo,
     PlanRepo,
     ProjectRepo,
@@ -64,7 +64,7 @@ def _projet_avec_cas(conn_ou_client) -> tuple[int, int]:
     c = get_initialized_db(config.DB_PATH)
     pid = ProjectRepo(c).create(name="Portail")
     mid = ModuleRepo(c).create(project_id=pid, name="Module")
-    cid = CaseRepo(c).create(title="Cas", module_id=mid, feature_slug="cas")
+    cid = creer_cas_avec_test_technique(c, title="Cas", module_id=mid, feature_slug="cas")
     c.close()
     return pid, cid
 
@@ -83,7 +83,7 @@ def _compte_et_connexion(client, username: str, role: str) -> None:
 def test_plan_regroupe_plusieurs_runs_chacun_avec_son_propre_mode(conn):
     pid = ProjectRepo(conn).create(name="Portail")
     mid = ModuleRepo(conn).create(project_id=pid, name="Module")
-    cid = CaseRepo(conn).create(title="Cas", module_id=mid, feature_slug="cas")
+    cid = creer_cas_avec_test_technique(conn, title="Cas", module_id=mid, feature_slug="cas")
     plan_id = PlanRepo(conn).create(project_id=pid, name="Régression 2.4")
     r_auto = RunRepo(conn).create(project_id=pid, name="Auto", mode=MODE_AUTOMATIQUE,
                                   selection_mode="frozen", case_ids=[cid])
@@ -136,7 +136,7 @@ def test_retirer_un_run_du_plan_le_laisse_intact_ailleurs(conn):
 def test_scheduled_run_case_ids_figee_vs_vivante(conn):
     pid = ProjectRepo(conn).create(name="Portail")
     mid = ModuleRepo(conn).create(project_id=pid, name="Module")
-    cid = CaseRepo(conn).create(title="Cas", module_id=mid, feature_slug="cas")
+    cid = creer_cas_avec_test_technique(conn, title="Cas", module_id=mid, feature_slug="cas")
     figee = ScheduledRunRepo(conn).create(
         project_id=pid, name="Nocturne", selection_mode="frozen",
         frequency="daily", hour=2, minute=0, case_ids=[cid])
@@ -160,7 +160,7 @@ def test_une_planification_due_se_declenche_et_produit_un_run_automatique(conn):
     pid = ProjectRepo(conn).create(
         name="Portail", base_url="http://x", database="db", username="u", password="p")
     mid = ModuleRepo(conn).create(project_id=pid, name="Module")
-    cid = CaseRepo(conn).create(title="Cas", module_id=mid, feature_slug="cas")
+    cid = creer_cas_avec_test_technique(conn, title="Cas", module_id=mid, feature_slug="cas")
     ScheduledRunRepo(conn).create(
         project_id=pid, name="Nocturne", selection_mode="frozen",
         frequency="daily", hour=2, minute=0, case_ids=[cid])
@@ -187,7 +187,7 @@ def test_ne_se_declenche_pas_deux_fois_le_meme_jour(conn):
     pid = ProjectRepo(conn).create(
         name="Portail", base_url="http://x", database="db", username="u", password="p")
     mid = ModuleRepo(conn).create(project_id=pid, name="Module")
-    CaseRepo(conn).create(title="Cas", module_id=mid, feature_slug="cas")
+    creer_cas_avec_test_technique(conn, title="Cas", module_id=mid, feature_slug="cas")
     ScheduledRunRepo(conn).create(project_id=pid, name="Nocturne", selection_mode="all",
                                   frequency="daily", hour=2, minute=0)
     premier_passage = datetime(2026, 9, 10, 2, 5, tzinfo=timezone.utc)
@@ -211,7 +211,7 @@ def test_last_triggered_at_reprend_now_jamais_l_horloge_reelle(conn, monkeypatch
     pid = ProjectRepo(conn).create(
         name="Portail", base_url="http://x", database="db", username="u", password="p")
     mid = ModuleRepo(conn).create(project_id=pid, name="Module")
-    CaseRepo(conn).create(title="Cas", module_id=mid, feature_slug="cas")
+    creer_cas_avec_test_technique(conn, title="Cas", module_id=mid, feature_slug="cas")
     sid = ScheduledRunRepo(conn).create(project_id=pid, name="Nocturne", selection_mode="all",
                                         frequency="daily", hour=2, minute=0)
     maintenant = datetime(2026, 9, 10, 2, 5, tzinfo=timezone.utc)
@@ -236,7 +236,7 @@ def test_planification_hebdomadaire_ne_se_declenche_que_le_bon_jour(conn):
     pid = ProjectRepo(conn).create(
         name="Portail", base_url="http://x", database="db", username="u", password="p")
     mid = ModuleRepo(conn).create(project_id=pid, name="Module")
-    CaseRepo(conn).create(title="Cas", module_id=mid, feature_slug="cas")
+    creer_cas_avec_test_technique(conn, title="Cas", module_id=mid, feature_slug="cas")
     ScheduledRunRepo(conn).create(project_id=pid, name="Hebdo", selection_mode="all",
                                   frequency="weekly", weekday=0, hour=2, minute=0)  # lundi
     mardi = datetime(2026, 9, 8, 2, 5, tzinfo=timezone.utc)   # mardi
@@ -252,7 +252,7 @@ def test_une_planification_en_echec_n_empeche_pas_les_autres(conn):
     pid = ProjectRepo(conn).create(
         name="Portail", base_url="http://x", database="db", username="u", password="p")
     mid = ModuleRepo(conn).create(project_id=pid, name="Module")
-    cid = CaseRepo(conn).create(title="Cas", module_id=mid, feature_slug="cas")
+    cid = creer_cas_avec_test_technique(conn, title="Cas", module_id=mid, feature_slug="cas")
     ScheduledRunRepo(conn).create(project_id=pid, name="Vide", selection_mode="frozen",
                                   frequency="daily", hour=2, minute=0, case_ids=[])  # échouera
     ScheduledRunRepo(conn).create(

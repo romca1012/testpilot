@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from testpilot import config
+from outils_cas import doter_d_un_test_technique
 from testpilot.api import app as app_mod
 from testpilot.store.db import get_initialized_db, _migrate_15_test_run
 from testpilot.store.repositories import (
@@ -38,7 +39,11 @@ def client(tmp_path, monkeypatch):
 
 
 def _cas(conn, mid, titre):
-    return CaseRepo(conn).create(title=titre, module_id=mid, feature_slug=titre.lower())
+    # Doté d'un test technique : ces campagnes sont automatiques, et une campagne automatique ne contient que les cas que
+    # la machine peut jouer (2026-10-12).
+    cid = CaseRepo(conn).create(title=titre, module_id=mid, feature_slug=titre.lower())
+    doter_d_un_test_technique(cid, conn=conn)
+    return cid
 
 
 # ── La migration ──────────────────────────────────────────────────────────────
@@ -121,6 +126,8 @@ def test_un_run_est_TRANSVERSE_multi_modules(conn):
     m2 = ModuleRepo(conn).create(project_id=pid, name="Livraison")
     c1 = CaseRepo(conn).create(title="Facture", module_id=m1, feature_slug="fact")
     c2 = CaseRepo(conn).create(title="Livraison", module_id=m2, feature_slug="livr")
+    for cid in (c1, c2):
+        doter_d_un_test_technique(cid, conn=conn)
 
     repo = RunRepo(conn)
     rid = repo.create(project_id=pid, name="Régression transverse",
@@ -156,6 +163,7 @@ def _projet_avec_cas(client, n=2):
         r = client.post(f"/api/modules/{mid}/cases/manual", json={
             "title": f"Cas {i}", "test_steps": ["a"], "expected_result": "r"})
         ids.append(r.json()["id"])
+        doter_d_un_test_technique(ids[-1])   # campagnes automatiques : des cas que la machine peut jouer
     return pid, ids
 
 

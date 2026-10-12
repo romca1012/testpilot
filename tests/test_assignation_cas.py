@@ -14,11 +14,12 @@ dans son propre commentaire. Ce que ces tests figent :
 import pytest
 from fastapi.testclient import TestClient
 
+from outils_cas import creer_cas_avec_test_technique
 from testpilot import config
 from testpilot.api.app import app
 from testpilot.api.deps import get_conn
 from testpilot.store.db import get_initialized_db
-from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo, RunRepo
+from testpilot.store.repositories import ModuleRepo, ProjectRepo, RunRepo
 from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE
 
 
@@ -45,8 +46,8 @@ def campagne(conn):
     dépend pas du mode, contrairement à la saisie manuelle d'un résultat."""
     pid = ProjectRepo(conn).create(name="Portail")
     mid = ModuleRepo(conn).create(project_id=pid, name="Demandes")
-    cid = CaseRepo(conn).create(title="Nominal", module_id=mid, feature_slug="nominal")
-    hors = CaseRepo(conn).create(title="Hors campagne", module_id=mid, feature_slug="hors")
+    cid = creer_cas_avec_test_technique(conn, title="Nominal", module_id=mid, feature_slug="nominal")
+    hors = creer_cas_avec_test_technique(conn, title="Hors campagne", module_id=mid, feature_slug="hors")
     rid = RunRepo(conn).create(project_id=pid, name="Recette", case_ids=[cid],
                                mode=MODE_AUTOMATIQUE)
     return {"run": rid, "cas": cid, "hors": hors, "projet": pid}
@@ -97,7 +98,7 @@ def test_marche_aussi_sur_une_campagne_MANUELLE(client, conn):
     automatique est le même geste humain."""
     pid = ProjectRepo(conn).create(name="P")
     mid = ModuleRepo(conn).create(project_id=pid, name="M")
-    cid = CaseRepo(conn).create(title="C", module_id=mid, feature_slug="c")
+    cid = creer_cas_avec_test_technique(conn, title="C", module_id=mid, feature_slug="c")
     rid = RunRepo(conn).create(project_id=pid, name="R", case_ids=[cid], mode=MODE_MANUELLE)
 
     r = _assigne(client, rid, cid, "alice")

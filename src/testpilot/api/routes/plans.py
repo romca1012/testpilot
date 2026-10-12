@@ -83,8 +83,10 @@ def get_plan(plan_id: int, conn=Depends(get_conn)):
         schemas.RunSummary(
             id=r["id"], project_id=r["project_id"], name=r["name"], status=r["status"],
             selection_mode=r["selection_mode"], mode=r.get("mode", "automatique"),
-            case_count=(r["frozen_count"] if r["selection_mode"] == "frozen"
-                       else len(RunRepo(conn).case_ids(r["id"]))),
+            # Même règle que la liste des exécutions : seule une campagne MANUELLE figée se compte sur la liaison brute.
+            case_count=(r["frozen_count"]
+                        if r["selection_mode"] == "frozen" and r.get("mode", "automatique") == "manuelle"
+                        else len(RunRepo(conn).case_ids(r["id"]))),
             tested_count=r.get("tested_count", 0), manuel_count=r.get("manuel_count", 0),
             is_archived=bool(r.get("is_archived")), created_at=r.get("created_at", ""),
             plan_id=r.get("plan_id"))

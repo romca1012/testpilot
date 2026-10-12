@@ -23,6 +23,7 @@ import json
 
 import pytest
 
+from outils_cas import doter_d_un_test_technique
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import (
     CaseGroupRepo,
@@ -58,6 +59,8 @@ def _monde(conn) -> dict:
     cid = CaseRepo(conn).create_manual(module_id=mid, title="Un cas",
                                        test_steps=json.dumps(["a"]), expected_result="ok")
     conn.execute("UPDATE test_case SET group_id=? WHERE id=?", (gid, cid))
+    # Le cas a été joué par la machine dans une campagne automatique : il porte donc un test technique (2026-10-12).
+    doter_d_un_test_technique(cid, conn=conn)
     vid = CaseRepo(conn).get(cid)["current_version_id"]
     eid = ExecutionRepo(conn).create(test_case_id=cid, version_id=vid)
     ExecutionRepo(conn).finalize(eid, execution_status="success", functional_status="conforme",

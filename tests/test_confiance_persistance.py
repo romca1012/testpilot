@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from outils_cas import creer_cas_avec_test_technique
 from testpilot import config
 from testpilot.api import app as app_mod
 from testpilot.api.services import campaign_service, run_service
@@ -17,7 +18,7 @@ from testpilot.execution.behave_result import (
 )
 from testpilot.store.db import get_initialized_db
 from testpilot.store.repositories import (
-    CaseRepo, ExecutionRepo, ModuleRepo, ProjectRepo, ResultRepo, RunRepo, VersionRepo,
+    ExecutionRepo, ModuleRepo, ProjectRepo, ResultRepo, RunRepo, VersionRepo,
 )
 from testpilot.verdict.status import MODE_MANUELLE
 
@@ -41,7 +42,7 @@ def _decor(conn, nombre_cas=3):
     mid = ModuleRepo(conn).create(project_id=pid, name="Demandes")
     cas = []
     for i in range(nombre_cas):
-        cid = CaseRepo(conn).create(title=f"Cas {i}", module_id=mid, feature_slug=f"cas{i}")
+        cid = creer_cas_avec_test_technique(conn, title=f"Cas {i}", module_id=mid, feature_slug=f"cas{i}")
         vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="",
                                        feature_content="# f", steps_content="# s")
         cas.append((cid, vid))

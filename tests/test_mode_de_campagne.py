@@ -25,6 +25,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from testpilot import config
+from outils_cas import doter_d_un_test_technique
 from testpilot.api import app as app_mod
 
 
@@ -41,6 +42,7 @@ def _campagne(client, mode: str):
     mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
     cid = client.post(f"/api/modules/{mid}/cases/manual", json={
         "title": "Nominal", "test_steps": ["a"], "expected_result": "r"}).json()["id"]
+    doter_d_un_test_technique(cid)   # une campagne automatique n'accepte que les cas dotés d'un test technique
     run = client.post(f"/api/projects/{pid}/runs", json={
         "name": f"Recette {mode}", "selection_mode": "frozen", "case_ids": [cid], "mode": mode})
     assert run.status_code == 201, run.text
