@@ -32,7 +32,11 @@ jobs:
   conformance:
     name: Conformité (SauceDemo + the-internet)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 30 min, plus 15 (2026-10-12) : ce job rejoue TOUS les tests marqués `conformance`. Mesuré sur les journaux : 142 tests en
+    # 13 min avant la fusion des lots VH-01 à VH-07 (2 min de marge), 254 tests et environ 17 min après — le run du 2026-10-12
+    # a été annulé à 15 min, 202 tests passés, aucun échec. Un budget de temps, pas un seuil de verdict : un job annulé ne dit
+    # rien de l'application, et la répétition nocturne de ces tests est ce qui révèle les faux verts intermittents.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
