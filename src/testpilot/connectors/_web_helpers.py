@@ -444,6 +444,12 @@ _PAS_ATTENTE_RENDU_MS = 100
 # 80 × 100 ms = 8 s bornées. Une page qui n'a TOUJOURS aucun élément interactif au bout de 8 s n'a pas de
 # formulaire à remplir : la détection continue alors comme avant (au pire, 8 s de latence, jamais un blocage).
 _ITERATIONS_ATTENTE_RENDU = 80
+# Une page qui affiche déjà du TEXTE mais aucun élément interactif est, le plus souvent, une page rendue qui n'en a pas
+# (page d'accueil statique). Mesuré le 2026-10-12 : l'attendre 8 s coûtait 8 s à CHAQUE scénario dont la page d'entrée
+# n'a ni champ, ni bouton, ni lien (contrôle navigateur de la CI : 8 min -> plus de 15, job annulé ; un test d'un seul
+# scénario : 6,6 s -> 14,7 s). La borne longue ne vaut donc que pour une page encore VIDE — le cas mesuré sur OrangeHRM
+# (0 champ, 0 élément interactif, 0 texte). Avec du texte, un court délai de grâce couvre un écran d'attente bref.
+_ITERATIONS_GRACE_AVEC_TEXTE = 10   # 1 s
 _SELECTEUR_ELEMENT_INTERACTIF = "input, button, select, textarea, a[href]"
 
 
@@ -451,7 +457,8 @@ def attendre_page_rendue(page) -> bool:
     """Attend, de façon BORNÉE, que la page ait rendu au moins un élément interactif.
 
     Rend `True` dès qu'il y en a un (aussitôt si la page est déjà rendue : aucune latence pour SauceDemo,
-    par exemple), `False` si la borne est atteinte. Ne lève jamais : une erreur de navigation de Playwright
+    par exemple), `False` si la borne est atteinte : 8 s pour une page encore VIDE, 1 s de grâce pour une page
+    qui affiche déjà du texte sans élément interactif. Ne lève jamais : une erreur de navigation de Playwright
     (document remplacé pendant le sondage) vaut « pas encore rendu », comme dans
     `_confirmation_post_connexion_obtenue`. N'attend jamais sur `about:blank` (aucune page à rendre).
 
@@ -460,14 +467,28 @@ def attendre_page_rendue(page) -> bool:
     faux succès possible par cette voie."""
     if not (getattr(page, "url", "") or "") or str(page.url).startswith("about:"):
         return False
+    sondages_avec_texte = 0
     for _ in range(_ITERATIONS_ATTENTE_RENDU):
         try:
             if page.query_selector(_SELECTEUR_ELEMENT_INTERACTIF) is not None:
                 return True
+            if _page_affiche_du_texte(page):
+                sondages_avec_texte += 1
+                if sondages_avec_texte > _ITERATIONS_GRACE_AVEC_TEXTE:
+                    return False   # rendue, sans élément interactif : rien de plus à attendre
         except PlaywrightError:
             pass  # document en cours de remplacement : on re-sonde au tour suivant
         page.wait_for_timeout(_PAS_ATTENTE_RENDU_MS)
     return False
+
+
+def _page_affiche_du_texte(page) -> bool:
+    """La page a-t-elle rendu du texte visible ? Une page sans `evaluate` (doublure de test) est tenue pour vide : la
+    borne longue s'applique, comme avant."""
+    evaluer = getattr(page, "evaluate", None)
+    if not callable(evaluer):
+        return False
+    return bool(evaluer("() => !!(document.body && document.body.innerText && document.body.innerText.trim())"))
 
 
 def tenter_connexion_generique(page, user: str, password: str) -> bool:
