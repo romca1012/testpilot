@@ -14,12 +14,12 @@ const CASES: CaseSummary[] = [
     group_id: null, group_title: null, refs: '', estimate: '',
     etat: 'ready', type: 'fonctionnel', priority: 'medium', statut: 'passed',
     last_execution_status: 'success', last_functional_status: 'conforme', last_executed_at: null,
-    last_verdict_version_id: null, verdict_from_other_version: false },
+    last_verdict_version_id: null, verdict_from_other_version: false, automatise: true },
   { id: 11, title: 'Validation champ requis', module: 'demande_materiel', module_id: 1, project_id: 1,
     group_id: null, group_title: null, refs: '', estimate: '',
     etat: 'design', type: 'fonctionnel', priority: 'high', statut: 'blocked',
     last_execution_status: 'technical_error', last_functional_status: 'indetermine', last_executed_at: null,
-    last_verdict_version_id: null, verdict_from_other_version: false },
+    last_verdict_version_id: null, verdict_from_other_version: false, automatise: true },
 ]
 
 function mountTree(props: Partial<InstanceType<typeof ModuleTree>['$props']> = {}) {

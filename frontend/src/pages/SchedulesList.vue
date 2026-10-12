@@ -85,7 +85,9 @@ const form = reactive({
 const cases = ref<CaseSummary[]>([])
 const selected = ref<number[]>([])
 onMounted(async () => {
-  try { cases.value = (await api.listCases(pid.value, { limit: 500 })).items } catch { cases.value = [] }
+  // Une planification déclenche des exécutions AUTOMATIQUES : seuls les cas dotés d'un test technique sont proposés
+  // (2026-10-12 — le serveur applique la même règle).
+  try { cases.value = (await api.listCases(pid.value, { limit: 500 })).items.filter((c) => c.automatise) } catch { cases.value = [] }
 })
 const byModule = computed(() => {
   const map = new Map<string, CaseSummary[]>()

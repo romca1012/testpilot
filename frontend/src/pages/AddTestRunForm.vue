@@ -11,7 +11,7 @@
 // ce choix qui décide des gestes qu'offrira la page de la campagne (« Lancer », ou « + Résultat »,
 // jamais les deux). Le poser après coup, résultat par résultat, était l'écran d'avant : deux
 // boutons proposés en permanence, et aucun qui s'impose.
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type CaseSummary } from '../lib/api'
 import { useGroupes } from '../lib/donnees'
@@ -51,11 +51,23 @@ const canSubmit = computed(() =>
   !!form.value.name.trim()
   && (form.value.selection === 'all' || selected.value.length > 0))
 
+// ── Une exécution AUTOMATIQUE ne joue que les cas dotés d'un test technique (2026-10-12) ─────────────────────────────
+// Un cas saisi à la main ou importé d'Excel n'a rien que la machine puisse jouer : il restait « Untested » pour toujours
+// dans la campagne et en faussait le total. Il n'est donc plus PROPOSÉ en mode automatique (le serveur le refuse aussi).
+// En mode manuel, tous les cas restent proposés : une personne peut jouer n'importe lequel.
+const casProposes = computed(() =>
+  form.value.mode === 'automatique' ? cases.value.filter((c) => c.automatise) : cases.value)
+// Repasser en automatique après avoir coché des cas à la main : ceux qui n'ont pas de test technique sortent de la sélection.
+watch(() => form.value.mode, () => {
+  const proposes = new Set(casProposes.value.map((c) => c.id))
+  selected.value = selected.value.filter((id) => proposes.has(id))
+})
+
 function toggleCase(id: number) {
   selected.value = selected.value.includes(id)
     ? selected.value.filter((x) => x !== id) : [...selected.value, id]
 }
-function selectAll() { selected.value = cases.value.map((c) => c.id) }
+function selectAll() { selected.value = casProposes.value.map((c) => c.id) }
 function selectNone() { selected.value = [] }
 
 // ── Sélection TRANSVERSE (§7) ────────────────────────────────────────────────
@@ -106,7 +118,7 @@ function groupesDuModule(moduleId: number | null, rows: CaseSummary[]): GroupeAf
 }
 const byModule = computed(() => {
   const map = new Map<string, CaseSummary[]>()
-  for (const c of cases.value) {
+  for (const c of casProposes.value) {
     const k = c.module || 'Sans module'
     if (!map.has(k)) map.set(k, [])
     map.get(k)!.push(c)
@@ -243,7 +255,7 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
               <div class="text-sm font-medium">Inclure tous les cas de test</div>
               <p class="text-xs text-muted-foreground mt-0.5">
                 Sélection <strong class="text-foreground">vivante</strong> : les cas créés après coup
-                rejoignent automatiquement cette exécution. ({{ cases.length }} cas aujourd'hui.)
+                rejoignent automatiquement cette exécution. ({{ casProposes.length }} cas aujourd'hui.)
               </p>
             </div>
           </label>
@@ -275,6 +287,10 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
                 </p>
                 <p v-if="!cases.length" class="mt-2 text-xs text-muted-foreground">
                   Aucun cas de test dans ce projet — créez-en un d'abord.
+                </p>
+                <p v-else-if="!casProposes.length" class="mt-2 text-xs text-muted-foreground">
+                  Aucun cas de ce projet n'a de test technique : une exécution automatique n'aurait rien à jouer.
+                  Faites automatiser des cas, ou choisissez le mode Manuelle.
                 </p>
                 <div v-else class="mt-2 max-h-64 overflow-y-auto rounded-md border border-border">
                   <div v-for="m in byModule" :key="m.module">
