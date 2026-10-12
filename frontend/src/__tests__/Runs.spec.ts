@@ -64,8 +64,9 @@ import RunDetail from '../pages/RunDetail.vue'
 
 // Deux modules DIFFÉRENTS : une campagne doit pouvoir être TRANSVERSE (§7).
 const CAS = [
-  { id: 1, title: 'Cas A', module_id: 1, module: 'Facturation' },
-  { id: 2, title: 'Cas B', module_id: 2, module: 'Livraison' },
+  // `automatise` : proposés à une exécution automatique, le mode par défaut du formulaire (2026-10-12).
+  { id: 1, title: 'Cas A', module_id: 1, module: 'Facturation', automatise: true },
+  { id: 2, title: 'Cas B', module_id: 2, module: 'Livraison', automatise: true },
 ]
 
 beforeEach(() => {

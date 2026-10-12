@@ -936,6 +936,9 @@ export interface CaseSummary {
    *  vivait en TypeScript, et filtrer côté serveur aurait exigé de la réécrire en SQL. */
   statut: string
   priority: string   // étiquette de lecture (low|medium|high) — aucun ordre d'exécution
+  /** Le cas a-t-il un test technique que la machine peut jouer (2026-10-12) ? Faux pour un cas saisi à la main ou importé
+   *  tant qu'il n'a pas été automatisé : il n'entre pas dans une exécution AUTOMATIQUE. Calculé par le serveur. */
+  automatise: boolean
   last_execution_status: string | null; last_functional_status: string | null
   last_executed_at: string | null
   // Version qui a produit le dernier verdict (décision 0016, option (iii)). Une tentative de

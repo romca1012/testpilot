@@ -39,6 +39,7 @@ function cas(id: number, title: string, moduleId: number, moduleName: string,
     type: 'fonctionnel', etat: 'new', statut: 'untested', priority: 'medium',
     last_execution_status: null, last_functional_status: null, last_executed_at: null,
     last_verdict_version_id: null, verdict_from_other_version: false,
+    automatise: true,   // proposé à une exécution automatique (2026-10-12)
   }
 }
 
