@@ -14,6 +14,7 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
+from outils_cas import doter_d_un_test_technique
 from testpilot import config
 from testpilot.api import access
 from testpilot.api.app import app
@@ -269,6 +270,10 @@ def test_flux_metier_complet_dune_campagne_sur_postgresql():
                                      test_steps='["agir"]', expected_result="ok")
         c3 = case_repo.create_manual(module_id=mid, title="Cas jamais joué",
                                      test_steps='["agir"]', expected_result="ok")
+        # Campagne AUTOMATIQUE : elle ne contient que les cas dotés d'un test technique (2026-10-12) — ces trois cas en
+        # reçoivent un, comme le ferait « Automatiser avec l'IA ».
+        for cas in (c1, c2, c3):
+            doter_d_un_test_technique(cas, conn=conn)
 
         # 2. La campagne REGROUPE les trois cas, figés (`frozen`) — elle NAÎT en brouillon, rien
         #    n'est encore joué (`0022` 8.c.1).
