@@ -686,7 +686,12 @@ def before_step(context, step):
     # Q1 (D16) : le nombre de constats AVANT ce step — `after_step` en déduit si ce `Alors` a constaté.
     context._tp_constats_avant_step = nombre_de_constats_reussis()
     # Lot 07d : chaque ACTION pose un repère — « la requête … répond », « un nouvel onglet s'ouvre » ne jugent que ce qui l'a suivi.
-    if (getattr(step, "step_type", "") or "") in ("given", "when"):
+    # Un step du SOCLE déclaré `@non_assertif` (pure attente : « j'attends la soumission du formulaire ») n'est pas une action :
+    # il ne déplace pas le repère, sinon la requête émise par le clic qui le précède n'appartiendrait plus à « la dernière
+    # action » (revue du 2026-10-12 : faux `non_conforme` sur une application saine). Origine de la fonction vérifiée par
+    # `_est_exempte_non_assertive` : un step du fichier GÉNÉRÉ ne peut pas s'en réclamer.
+    if ((getattr(step, "step_type", "") or "") in ("given", "when")
+            and not _est_exempte_non_assertive(_fonction_du_step(context, step))):
         poser_repere_action(context)
     # Lot VH-04 (V8, G4) : une session perdue avant un `Alors` bloque le test — jamais un vert sur la page de connexion. Évaluée
     # ici, appliquée au premier constat du step (voir `armer_garde_de_session` : Behave ne classe pas une erreur de crochet).

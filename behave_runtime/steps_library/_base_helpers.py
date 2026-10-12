@@ -3050,7 +3050,7 @@ def _reperes(context) -> tuple[int, int]:
 
 def installer_les_observateurs(context) -> None:
     """Consigne, pour TOUT le scénario et tous ses onglets, les réponses réseau, les boîtes de dialogue et les onglets ouverts, chacun
-    numéroté. Posé par `environment.before_scenario` : il faut observer AVANT l'action, un événement passé ne se rejoue pas.
+    numéroté (une réponse porte le numéro de l'ÉMISSION de sa requête). Posé par `environment.before_scenario` : il faut observer AVANT l'action, un événement passé ne se rejoue pas.
     Rien n'est fatal : l'absence d'observation se voit au constat (« aucune requête observée »), jamais comme un vert."""
     context.reponses_reseau, context.dialogues, context.onglets_ouverts = [], [], []
     context.navigations = {}   # onglet -> dernier document PRINCIPAL reçu (URL finale et statut, redirections suivies)
@@ -3060,6 +3060,19 @@ def installer_les_observateurs(context) -> None:
     def _plafonner(liste):
         if len(liste) > _PLAFOND_EVENEMENTS:
             del liste[: len(liste) - _PLAFOND_EVENEMENTS]
+
+    def _sur_requete(requete):
+        # Une réponse appartient à l'action qui a ÉMIS sa requête, pas à celle pendant laquelle elle arrive. Mesuré en CI le
+        # 2026-10-11 (PR #80, même arbre que la PR #79 verte) : « je clique "Ping" » puis « j'ouvre la page » — la réponse de
+        # Ping arrivait après le début du second step, lui était attribuée, et « la requête "GET /api/ping" répond 200 » sortait
+        # `conforme` sans que la dernière action ait rien émis. Le numéro est donc pris ICI, à l'émission, et porté par la requête.
+        # LIMITE (non fermée) : une émission DIFFÉRÉE par la page (minuteur, sondage périodique, second maillon d'une chaîne
+        # `.then(fetch)`, saut de redirection lent) reste attribuée à l'action pendant laquelle elle part.
+        try:
+            if requete.resource_type in _TYPES_DE_REQUETE:
+                requete._tp_n = _suivant(context)
+        except Exception:
+            pass
 
     def _sur_reponse(reponse):
         try:
@@ -3074,7 +3087,10 @@ def installer_les_observateurs(context) -> None:
             # de l'application (`fetch`, `xhr`) et les documents.
             if reponse.request.resource_type not in _TYPES_DE_REQUETE:
                 return
-            context.reponses_reseau.append({"n": _suivant(context), "methode": reponse.request.method, "url": reponse.url,
+            # Numéro d'ÉMISSION (voir `_sur_requete`). Une réponse dont l'émission n'a pas été observée porte 0 : elle n'est
+            # attribuable à AUCUNE action (revue du 2026-10-12 — le numéro d'arrivée, en repli, refaisait le faux vert).
+            numero = getattr(reponse.request, "_tp_n", 0)
+            context.reponses_reseau.append({"n": numero, "methode": reponse.request.method, "url": reponse.url,
                                             "statut": int(reponse.status)})
             _plafonner(context.reponses_reseau)
         except Exception:
@@ -3097,7 +3113,8 @@ def installer_les_observateurs(context) -> None:
         except Exception:
             pass
 
-    for evenement, gestionnaire in (("response", _sur_reponse), ("dialog", _sur_dialogue), ("page", _sur_onglet)):
+    for evenement, gestionnaire in (("request", _sur_requete), ("response", _sur_reponse), ("dialog", _sur_dialogue),
+                                    ("page", _sur_onglet)):
         try:
             navigateur.on(evenement, gestionnaire)
         except Exception:

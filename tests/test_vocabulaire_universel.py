@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -50,6 +51,10 @@ def _pdf(texte: str) -> bytes:
     return sortie + f"trailer\n<< /Size {len(objets) + 1} /Root 1 0 R >>\nstartxref\n{debut_xref}\n%%EOF".encode()
 
 
+# Assez long pour que la réponse arrive APRÈS le début du step suivant, assez court devant l'attente du constat (8 s).
+_RETARD_REPONSE_LENTE_S = 1.0
+
+
 class _Application(BaseHTTPRequestHandler):
     def log_message(self, *args):  # silence
         pass
@@ -74,6 +79,9 @@ class _Application(BaseHTTPRequestHandler):
         if chemin == "/api/ping":
             return self._envoyer(200, b'{"ok": true}', "application/json")
         if chemin == "/api/ping/extra":   # un chemin qui COMMENCE comme `/api/ping` sans être `/api/ping`
+            return self._envoyer(200, b'{"ok": true}', "application/json")
+        if chemin == "/api/ping-lent":   # une réponse qui TARDE : elle arrive pendant le step suivant celui qui l'a provoquée
+            time.sleep(_RETARD_REPONSE_LENTE_S)
             return self._envoyer(200, b'{"ok": true}', "application/json")
         if chemin == "/a":   # une redirection vers une page qui répond en erreur (page d'erreur NON vide)
             return self._envoyer(301, b"", "text/plain", {"Location": "/a/"})
@@ -202,6 +210,15 @@ VERTS = {
         'Alors la requête "GET /api/ping" répond 200',
         'Quand je clique sur le bouton "Refuser"',
         'Alors la requête "GET /api/refuse" répond 403'],
+    "un step de pure attente ne détache pas la requête du clic qui l'a émise": [
+        'Quand j\'ouvre la page "/reseau.html"',
+        'Et je clique sur le bouton "Créer"',
+        "Et j'attends la soumission du formulaire",
+        'Alors la requête "POST /api/creer" répond 201'],
+    "une réponse lente à la dernière action est attendue, pas manquée": [
+        'Quand j\'ouvre la page "/reseau.html"',
+        'Et je clique sur le bouton "Ping lent"',
+        'Alors la requête "GET /api/ping-lent" répond 200'],
 }
 
 # titre → (étapes, ce que le verdict DOIT être). `non_conforme` : l'application se comporte mal ; `technique` : le test est mal posé.
@@ -255,6 +272,12 @@ ROUGES = {
     "la requête vient d'une étape précédente, pas de l'action": (
         ['Quand j\'ouvre la page "/reseau.html"', 'Et je clique sur le bouton "Ping"', 'Et j\'ouvre la page "/reseau.html"',
          'Alors la requête "GET /api/ping" répond 200'], "non_conforme"),
+    # CI du 2026-10-11 (PR #80) : le cas ci-dessus est sorti `conforme` une fois sur deux runs du MÊME arbre. La réponse de « Ping »
+    # arrivait après le début du step suivant et lui était attribuée (numérotée à l'ARRIVÉE). Ce cas-ci rend la course certaine :
+    # la réponse tarde d'une seconde, l'action suivante ne quitte pas la page.
+    "la réponse tardive d'une étape précédente n'est pas attribuée à l'action suivante": (
+        ['Quand j\'ouvre la page "/reseau.html"', 'Et je clique sur le bouton "Ping lent"', 'Et je clique sur le bouton "Extra"',
+         'Alors la requête "GET /api/ping-lent" répond 200'], "non_conforme"),
     "un nouvel essai réussi masque une erreur serveur": (
         ['Quand j\'ouvre la page "/reseau.html"', 'Et je clique sur le bouton "Instable"',
          'Alors la requête "GET /api/instable" répond 200'], "non_conforme"),
