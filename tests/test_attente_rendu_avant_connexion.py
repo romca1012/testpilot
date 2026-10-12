@@ -25,12 +25,16 @@ _INTERACTIF = wh._SELECTEUR_ELEMENT_INTERACTIF
 class _Page:
     """`rendu_apres` sondages du sélecteur interactif ne trouvent rien, puis un élément apparaît."""
 
-    def __init__(self, rendu_apres: int, url="https://app.test/login", erreurs: int = 0):
+    def __init__(self, rendu_apres: int, url="https://app.test/login", erreurs: int = 0, texte_apres: int | None = None):
         self.url = url
         self._rendu_apres = rendu_apres
         self._erreurs = erreurs
+        self._texte_apres = texte_apres   # None : la page n'affiche jamais de texte ; n : du texte après n sondages
         self.requetes: list[str] = []
         self.attentes = 0
+
+    def evaluate(self, _script):
+        return self._texte_apres is not None and self.requetes.count(_INTERACTIF) > self._texte_apres
 
     def query_selector(self, selecteur):
         self.requetes.append(selecteur)
@@ -68,6 +72,41 @@ def test_falsifiable_une_page_qui_ne_rend_jamais_rien_est_attendue_de_facon_born
 
     assert wh.attendre_page_rendue(page) is False
     assert page.attentes == wh._ITERATIONS_ATTENTE_RENDU  # 8 s au plus, jamais un blocage
+
+
+def test_falsifiable_une_page_de_texte_sans_element_interactif_ne_coute_pas_la_borne_longue():
+    """Mesuré le 2026-10-12 : chaque scénario dont la page d'entrée n'a ni champ, ni bouton, ni lien attendait 8 s.
+    Une page qui affiche du texte est rendue : seul le délai de grâce est dû."""
+    page = _Page(rendu_apres=10**9, texte_apres=0)
+
+    assert wh.attendre_page_rendue(page) is False
+    assert page.attentes == wh._ITERATIONS_GRACE_AVEC_TEXTE
+    assert page.attentes < wh._ITERATIONS_ATTENTE_RENDU
+
+
+def test_falsifiable_la_grace_ne_s_applique_pas_a_une_page_encore_vide():
+    """Le cas d'origine (OrangeHRM : 0 champ, 0 élément interactif, 0 texte) : tant que la page est VIDE, on attend
+    bien au-delà du délai de grâce, et le formulaire tardif est reconnu."""
+    tardif = wh._ITERATIONS_GRACE_AVEC_TEXTE * 3
+    page = _Page(rendu_apres=tardif)
+
+    assert wh.attendre_page_rendue(page) is True
+    assert page.attentes == tardif
+
+
+def test_un_ecran_d_attente_bref_puis_le_formulaire_est_reconnu_dans_le_delai_de_grace():
+    """Un texte provisoire (« Chargement… ») puis le formulaire, moins d'une seconde après : reconnu."""
+    page = _Page(rendu_apres=wh._ITERATIONS_GRACE_AVEC_TEXTE - 2, texte_apres=0)
+
+    assert wh.attendre_page_rendue(page) is True
+
+
+def test_une_page_vide_puis_du_texte_n_a_que_la_grace_a_partir_du_texte():
+    """Vide pendant 20 sondages, puis du texte sans élément interactif : la grâce se compte à partir du texte."""
+    page = _Page(rendu_apres=10**9, texte_apres=20)
+
+    assert wh.attendre_page_rendue(page) is False
+    assert page.attentes == 20 + wh._ITERATIONS_GRACE_AVEC_TEXTE
 
 
 def test_une_erreur_de_navigation_pendant_le_sondage_vaut_pas_encore_rendu():
