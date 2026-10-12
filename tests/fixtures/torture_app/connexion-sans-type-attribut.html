@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Connexion</title>
+</head>
+<body>
+<form id="connexion">
+  <label>Identifiant <input name="username"></label>
+  <label>Mot de passe <input type="password" name="password"></label>
+  <button type="submit">Se connecter</button>
+</form>
+<script>
+  // Cas réel mesuré sur OrangeHRM (demo publique, 2026-10-01) : le champ identifiant n'a AUCUN
+  // attribut `type` littéral (HTML le traite comme "text" par défaut, mais `getAttribute('type')`
+  // rend `null`) — un sélecteur `input[type='text']` ne le trouve jamais, seulement
+  // `input:not([type])`. `tenter_connexion_generique` journalisait « mot de passe détecté sans
+  // champ identifiant » et abandonnait la connexion en silence sur une vraie instance.
+  document.getElementById('connexion').addEventListener('submit', function (e) {
+    e.preventDefault();
+    location.href = 'dashboard.html';
+  });
+</script>
+</body>
+</html>
