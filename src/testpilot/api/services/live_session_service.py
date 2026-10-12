@@ -40,6 +40,14 @@ _QUALITE_JPEG = 60
 # Plafond de l'attente de stabilisation de la page avant d'ouvrir la session (voir `_piloter`).
 _ATTENTE_STABILISATION_MS = 4000
 
+# Entre deux commandes, le fil du navigateur doit continuer de RELEVER les événements de Playwright : l'API synchrone ne
+# distribue un événement (ici `Page.screencastFrame`) que pendant un de ses propres appels. Mesuré le 2026-10-12 (/dev,
+# portail d'intégration Odoo, puis reproduit sur une page locale) : la boucle attendait la commande suivante sur une file
+# Python, les images produites par un clic restaient donc en attente et ne partaient qu'AU CLIC SUIVANT — l'écran affichait
+# toujours l'état d'avant (le formulaire ouvert par le clic n'apparaissait pas, « il faut cliquer deux fois »). La boucle
+# relève maintenant les événements par tranches de cette durée ; c'est aussi le délai maximal avant de traiter un clic.
+_RELEVE_EVENEMENTS_MS = 50
+
 # Extension (2026-09-30) : après l'écran de pré-connexion, 3 clics guidés supplémentaires
 # identifient le champ identifiant, le champ mot de passe et le bouton de soumission — motivée par
 # un échec réel en production (`tenter_connexion_generique` devine le champ identifiant par
@@ -222,8 +230,11 @@ class SessionLive:
             self.pret.set()
             while not self._fermeture_demandee.is_set():
                 try:
-                    commande = self.entrantes.get(timeout=0.5)
+                    commande = self.entrantes.get_nowait()
                 except queue.Empty:
+                    # Pas de commande : on rend la main à Playwright, qui distribue les images en attente
+                    # (voir `_RELEVE_EVENEMENTS_MS`). Jamais une attente sur la file elle-même.
+                    page.wait_for_timeout(_RELEVE_EVENEMENTS_MS)
                     continue
                 try:
                     self._traiter(page, commande)
