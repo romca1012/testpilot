@@ -39,6 +39,20 @@ def _summary(run: dict, case_count: int) -> schemas.RunSummary:
         verts_a_confirmer=run.get("verts_a_confirmer", 0))
 
 
+def _refuser_les_cas_non_automatises(repo: RunRepo, case_ids: list[int]) -> None:
+    """422 si la sélection contient des cas sans test automatisé — message qui les nomme et dit quoi faire."""
+    sans_test = repo.cas_non_automatises(case_ids)
+    if not sans_test:
+        return
+    noms = ", ".join(f"C{c['id']} « {c['title']} »" for c in sans_test[:5])
+    reste = f" et {len(sans_test) - 5} autre(s)" if len(sans_test) > 5 else ""
+    raise HTTPException(
+        status_code=422,
+        detail=(f"{len(sans_test)} cas sélectionné(s) n'ont pas de test technique et ne peuvent pas entrer dans une "
+                f"exécution automatique : {noms}{reste}. Retirez-les de la sélection, faites-les automatiser, ou "
+                "créez une exécution manuelle pour les jouer à la main."))
+
+
 @router.post("/api/projects/{project_id}/runs", response_model=schemas.RunSummary, status_code=201,
             dependencies=[Depends(access.require_project_access)])
 def create_run(project_id: int, body: schemas.RunIn, conn=Depends(get_conn)):
@@ -64,6 +78,10 @@ def create_run(project_id: int, body: schemas.RunIn, conn=Depends(get_conn)):
                             detail=f"mode d'exécution inconnu : « {body.mode} ». Valeurs "
                                    f"possibles : {', '.join(MODES_EXECUTION)}.")
     repo = RunRepo(conn)
+    if body.mode != MODE_MANUELLE and body.selection_mode == "frozen":
+        # Une campagne AUTOMATIQUE ne joue que des cas automatisés (2026-10-12). Refusé ici, en nommant les cas, plutôt
+        # que de les laisser disparaître de la campagne sans un mot.
+        _refuser_les_cas_non_automatises(repo, body.case_ids)
     run_id = repo.create(project_id=project_id, name=body.name.strip(),
                          description=body.description, refs=body.refs,
                          selection_mode=body.selection_mode, mode=body.mode,
@@ -79,7 +97,10 @@ def list_runs(project_id: int, conn=Depends(get_conn)):
     repo = RunRepo(conn)
     out = []
     for run in repo.list_for_project(project_id):
-        count = run["frozen_count"] if run["selection_mode"] == "frozen" else len(repo.case_ids(run["id"]))
+        # `frozen_count` compte la liaison brute : exact pour une campagne manuelle figée. Une campagne AUTOMATIQUE passe
+        # par `case_ids`, seule à savoir quels cas en font réellement partie (cas automatisés, 2026-10-12).
+        figee_manuelle = run["selection_mode"] == "frozen" and run.get("mode", "automatique") == MODE_MANUELLE
+        count = run["frozen_count"] if figee_manuelle else len(repo.case_ids(run["id"]))
         out.append(_summary(run, count))
     return out
 

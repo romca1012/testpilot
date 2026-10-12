@@ -19,6 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from testpilot import config
+from outils_cas import doter_d_un_test_technique
 from testpilot.api import app as app_mod
 from testpilot.api.erreurs import CATALOGUE, ErreurMetier, depuis_service
 
@@ -113,8 +114,9 @@ def test_UNE_situation_metier_UN_code_partout(client):
     # ⚠️ Un cas dans la campagne : sans lui, le lancement répond « campagne vide » — le diagnostic
     # le plus précis quand les deux sont vrais (ordre voulu, lot 1). Le test doit isoler la cause
     # qu'il prétend vérifier, sinon il vérifie autre chose.
-    client.post(f"/api/modules/{mid}/cases/manual",
-                json={"title": "Un cas", "test_steps": ["a"], "expected_result": "ok"})
+    cid = client.post(f"/api/modules/{mid}/cases/manual",
+                      json={"title": "Un cas", "test_steps": ["a"], "expected_result": "ok"}).json()["id"]
+    doter_d_un_test_technique(cid)   # sans test technique, la campagne automatique serait vide (2026-10-12)
     rid = client.post(f"/api/projects/{pid}/runs",
                       json={"name": "C", "selection_mode": "all"}).json()["id"]
 

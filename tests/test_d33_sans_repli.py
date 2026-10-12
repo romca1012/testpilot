@@ -16,12 +16,13 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
+from outils_cas import creer_cas_avec_test_technique
 from testpilot import config
 from testpilot.api import app as app_mod
 from testpilot.api.services import campaign_service, run_service
 from testpilot.execution.behave_result import MODE_STRICT_ENV, SANS_REPLI_ENV
 from testpilot.store.db import _migrate_60_sans_repli_adaptatif, get_initialized_db
-from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo, RunRepo, VersionRepo
+from testpilot.store.repositories import ModuleRepo, ProjectRepo, RunRepo, VersionRepo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"))
 import _base_helpers as H  # noqa: E402
@@ -38,7 +39,7 @@ def conn(tmp_path, monkeypatch):
 
 def _projet_et_cas(conn):
     pid = ProjectRepo(conn).create(name="P")
-    cid = CaseRepo(conn).create(title="C", module_id=ModuleRepo(conn).create(project_id=pid, name="M"), feature_slug="c")
+    cid = creer_cas_avec_test_technique(conn, title="C", module_id=ModuleRepo(conn).create(project_id=pid, name="M"), feature_slug="c")
     VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="", feature_content="# f", steps_content="# s")
     return pid, cid
 

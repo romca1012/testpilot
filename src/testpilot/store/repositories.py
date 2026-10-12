@@ -807,9 +807,16 @@ _ATTENTE_CHANGEE_SQL = (
     " WHERE cv.id = tc.current_version_id AND lv.id = " + _DERNIERE_VERSION_JUGEE +
     " AND (COALESCE(cv.expected_result, '') <> COALESCE(lv.expected_result, '')"
     "  OR COALESCE(cv.test_steps, '') <> COALESCE(lv.test_steps, '')))")
+# Un cas est AUTOMATISÉ quand sa version COURANTE porte un test technique (Gherkin non vide) — la même définition que la
+# mention « Test automatisé : Oui » de la fiche du cas. Un cas saisi à la main ou importé d'un cahier Excel ne l'est pas tant
+# qu'on ne l'a pas fait automatiser. Signal de DONNÉE (présence du test), jamais une lecture de ce que le test contient.
+_CAS_AUTOMATISE_SQL = ("EXISTS (SELECT 1 FROM test_case_version tcv_auto WHERE tcv_auto.id = tc.current_version_id"
+                       " AND TRIM(tcv_auto.feature_content) <> '')")
+
 _CASE_SELECT = (
     "SELECT tc.*, m.name AS module_name, m.project_id AS project_id, p.name AS project_name,"
     " g.title AS group_title,"
+    " (" + _CAS_AUTOMATISE_SQL + ") AS automatise,"
     " " + _ATTENTE_CHANGEE_SQL + " AS attente_changee,"
     " " + _DERNIERE_VERSION_JUGEE + " AS last_verdict_version_id"
     " FROM test_case tc"
@@ -2026,12 +2033,23 @@ class RunRepo:
         # filtre, lancer une campagne EXÉCUTERAIT des cas que l'utilisateur croit supprimés,
         # contre la vraie application. C'est le défaut le plus grave qu'aurait pu introduire la
         # suppression douce — trouvé par un test qui portait sur tout autre chose.
+        # ⚠️ Une campagne AUTOMATIQUE ne contient que les cas qui ont un test automatisé (2026-10-12). Un cas saisi à la
+        # main ou importé d'Excel n'a rien que la machine puisse jouer : il y figurait quand même, restait « Untested » pour
+        # toujours et faussait le total et le pourcentage de la campagne. Une campagne MANUELLE garde tous les cas (une
+        # personne peut jouer à la main un cas automatisé comme un autre).
+        # L'HISTORIQUE n'est pas réécrit : un cas qui a DÉJÀ un résultat dans cette campagne y reste visible, même s'il
+        # n'est pas automatisé (campagnes antérieures à cette règle).
+        filtre, params_filtre = "", ()
+        if run.get("mode", MODE_AUTOMATIQUE) != MODE_MANUELLE:
+            filtre = (" AND (" + _CAS_AUTOMATISE_SQL + " OR EXISTS (SELECT 1 FROM test_result tr_deja"
+                      " WHERE tr_deja.run_id=? AND tr_deja.case_id=tc.id))")
+            params_filtre = (run_id,)
         if run["selection_mode"] == "all":
             return [r["id"] for r in self.conn.execute(
                 "SELECT tc.id FROM test_case tc JOIN module m ON tc.module_id=m.id"
                 " JOIN project p ON m.project_id=p.id"
                 " WHERE m.project_id=? AND tc.deleted_at='' AND m.deleted_at=''"
-                " AND p.deleted_at='' ORDER BY tc.id", (run["project_id"],))]
+                " AND p.deleted_at=''" + filtre + " ORDER BY tc.id", (run["project_id"], *params_filtre))]
         return [r["case_id"] for r in self.conn.execute(
             "SELECT trc.case_id FROM test_run_case trc"
             " JOIN test_case tc ON trc.case_id=tc.id"
@@ -2039,7 +2057,17 @@ class RunRepo:
             " LEFT JOIN project p ON m.project_id=p.id"
             " WHERE trc.run_id=? AND tc.deleted_at=''"
             " AND (m.id IS NULL OR m.deleted_at='')"
-            " AND (p.id IS NULL OR p.deleted_at='') ORDER BY trc.case_id", (run_id,))]
+            " AND (p.id IS NULL OR p.deleted_at='')" + filtre + " ORDER BY trc.case_id", (run_id, *params_filtre))]
+
+    def cas_non_automatises(self, case_ids: list[int]) -> list[dict]:
+        """Parmi `case_ids`, ceux qui n'ont PAS de test automatisé (`id`, `title`) — pour refuser, à la création, une
+        sélection figée automatique qui en contient, en les nommant."""
+        if not case_ids:
+            return []
+        marqueurs = ",".join("?" * len(case_ids))
+        return _rows(self.conn.execute(
+            f"SELECT tc.id, tc.title FROM test_case tc WHERE tc.id IN ({marqueurs})"
+            f" AND NOT {_CAS_AUTOMATISE_SQL} ORDER BY tc.id", list(case_ids)))
 
     def cases_with_results(self, run_id: int) -> list[dict]:
         """Chaque cas du run + son résultat DANS CE run, lu au REGISTRE (2026-08-04).
@@ -2302,12 +2330,14 @@ class ScheduledRunRepo:
         row = self.get(scheduled_id)
         if row is None:
             return []
+        # Une planification ne déclenche que des campagnes AUTOMATIQUES : seuls les cas automatisés en font partie
+        # (même règle que `RunRepo.case_ids`, 2026-10-12).
         if row["selection_mode"] == "all":
             return [r["id"] for r in self.conn.execute(
                 "SELECT tc.id FROM test_case tc JOIN module m ON tc.module_id=m.id"
                 " JOIN project p ON m.project_id=p.id"
                 " WHERE m.project_id=? AND tc.deleted_at='' AND m.deleted_at=''"
-                " AND p.deleted_at='' ORDER BY tc.id", (row["project_id"],))]
+                " AND p.deleted_at='' AND " + _CAS_AUTOMATISE_SQL + " ORDER BY tc.id", (row["project_id"],))]
         return [r["case_id"] for r in self.conn.execute(
             "SELECT src.case_id FROM scheduled_run_case src"
             " JOIN test_case tc ON src.case_id=tc.id"
@@ -2315,7 +2345,8 @@ class ScheduledRunRepo:
             " LEFT JOIN project p ON m.project_id=p.id"
             " WHERE src.scheduled_run_id=? AND tc.deleted_at=''"
             " AND (m.id IS NULL OR m.deleted_at='')"
-            " AND (p.id IS NULL OR p.deleted_at='') ORDER BY src.case_id", (scheduled_id,))]
+            " AND (p.id IS NULL OR p.deleted_at='') AND " + _CAS_AUTOMATISE_SQL + " ORDER BY src.case_id",
+            (scheduled_id,))]
 
     def set_active(self, scheduled_id: int, active: bool) -> None:
         self.conn.execute("UPDATE scheduled_run SET is_active=? WHERE id=?",
