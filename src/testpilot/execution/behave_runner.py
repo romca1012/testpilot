@@ -22,6 +22,7 @@ from pathlib import Path
 
 from testpilot import config
 from testpilot.guardrails import bac_a_sable
+from testpilot.parametres import valeurs as valeurs_du_projet
 from testpilot.execution.behave_result import (
     FIELD_FALLBACK_FILE_ENV,
     FIELD_FALLBACK_FILENAME,
@@ -155,6 +156,10 @@ class BehaveRunner:
         # n'accorde l'exemption « non assertif » qu'aux fonctions du SOCLE — jamais à une fonction de ce fichier,
         # sinon un step généré pourrait se déclarer exempté pour masquer un `Alors` vide. Garantie STRUCTURELLE
         # (d'où vient la fonction), pas une détection de forme dans le code de l'agent.
+        # Lot PT-03 : ce que le PROJET déclare de ses valeurs (monnaie, écriture des nombres) ne s'hérite jamais du serveur ni
+        # du `.env` — vide si la connexion ne le fournit pas (`load_dotenv()` ne remplace pas une variable posée, même vide).
+        for variable in valeurs_du_projet.JAMAIS_HERITEES:
+            env[variable] = self.connection.get(variable, "")
         if module_name:
             env[GENERATED_STEPS_FILE_ENV] = f"{module_name}_steps.py"
         # `src` importable dans le sous-processus : le résolveur déterministe (§2bis) importe

@@ -26,6 +26,7 @@ from pathlib import Path
 import parse as parse_lib  # dépendance transitive de behave — motifs `{champ}` des libellés.
 
 from testpilot import config
+from testpilot.generation import interrupteurs
 
 _DECORATORS = {"given", "when", "then", "step"}
 
@@ -54,6 +55,12 @@ class SharedStep:
     # formulaire ») est une attente, pas une assertion : `write_test_plan` ne le compte pas. `True` par
     # défaut = inconnu ou assertif (jamais plus strict que l'historique quand la bibliothèque n'est pas lisible).
     asserte: bool = True
+    # Lot PT-03 : nom de la variable d'environnement qui doit être allumée pour que ce step soit MONTRÉ à l'agent
+    # (`@derriere_interrupteur("…")`, lu par AST). Vide = toujours montré. Le step reste réservé et exécutable dans tous
+    # les cas : seul le prompt change, pour que l'effet d'un step de plus se mesure avant d'être activé.
+    interrupteur: str = ""
+    # Lot PT-03 : `@compare_des_nombres` — la valeur attendue de ce step se compare comme un nombre. Lu par AST.
+    compare_des_nombres: bool = False
 
 
 # ── Quels noms de la bibliothèque CONSIGNENT un constat ? (déplacé de `tools/write.py`, Q1) ──────────
@@ -144,6 +151,10 @@ def extract_steps(source_code: str, source: str = "",
         doc = ast.get_docstring(node) or ""
         note = doc.strip().splitlines()[0].strip() if doc.strip() else ""
         appels = {_nom_appele(n) for n in ast.walk(node) if isinstance(n, ast.Call)}
+        interrupteur = next(
+            (d.args[0].value for d in node.decorator_list
+             if isinstance(d, ast.Call) and _decorator_name(d.func) == "derriere_interrupteur" and d.args
+             and isinstance(d.args[0], ast.Constant) and isinstance(d.args[0].value, str)), "")
         for deco in node.decorator_list:
             if not isinstance(deco, ast.Call) or not deco.args:
                 continue
@@ -155,8 +166,9 @@ def extract_steps(source_code: str, source: str = "",
                 asserte = True
                 if constatent is not None and name in ("then", "step"):
                     asserte = bool(appels & constatent)
-                steps.append(SharedStep(keyword=name, label=arg.value.strip(),
-                                        source=source, note=note, asserte=asserte))
+                steps.append(SharedStep(keyword=name, label=arg.value.strip(), source=source, note=note,
+                                        asserte=asserte, interrupteur=interrupteur,
+                                        compare_des_nombres="compare_des_nombres" in _decorateurs(node)))
     return steps
 
 
@@ -352,6 +364,8 @@ def as_prompt_section(steps: list[SharedStep]) -> str:
     contenu long/de référence) : l'agent voit distinctement ce qui est portable (`generic`) de
     ce qui appartient au connecteur actif — utile dès qu'un 2ᵉ connecteur existera.
     """
+    # Lot PT-03 : un step derrière un interrupteur éteint n'est pas montré (lu à chaque appel, jamais figé à l'import).
+    steps = [s for s in steps if not s.interrupteur or interrupteurs.allume(s.interrupteur)]
     if not steps:
         return ""
 

@@ -21,6 +21,7 @@ ENV_TOOLS_STRICT = "TESTPILOT_TOOLS_STRICT"
 ENV_PROMPT_HYPOTHESES = "TESTPILOT_PROMPT_HYPOTHESES"
 ENV_TOOLS_DESCRIPTIONS_V2 = "TESTPILOT_TOOLS_DESCRIPTIONS_V2"
 ENV_REGLES_CONNECTEUR = "TESTPILOT_REGLES_CONNECTEUR"
+ENV_STEP_NOMBRE = "TESTPILOT_STEP_NOMBRE"
 
 _VRAI = frozenset({"1", "true", "yes", "oui", "on"})
 
@@ -48,3 +49,8 @@ def descriptions_v2_actif(env: Mapping[str, str] | None = None) -> bool:
 def regles_connecteur_actif(env: Mapping[str, str] | None = None) -> bool:
     """Règles par connecteur (`Connector.rules()`) et section « comptes » dès le compte principal (lot Q3, D20)."""
     return _actif(ENV_REGLES_CONNECTEUR, env)
+
+
+def allume(nom: str, env: Mapping[str, str] | None = None) -> bool:
+    """L'interrupteur `nom` est-il allumé ? Pour un step marqué `@derriere_interrupteur("<nom>")` dans la bibliothèque."""
+    return _actif(nom, env)

@@ -31,6 +31,7 @@ import json
 import logging
 
 from testpilot.connectors import auth_strategie as _auth
+from testpilot.parametres import valeurs as valeurs_du_projet
 from testpilot.connectors import oracle_config as _oracle
 from testpilot.connectors.contexte_navigateur import depuis_projet
 
@@ -202,6 +203,9 @@ def project_env(project: dict | None, comptes: list[dict] | None = None,
     # Lot 07c (C3) : le contexte navigateur est TOUJOURS transmis, défauts compris — un navigateur qui retomberait sur la langue
     # et le fuseau de la machine changerait de comportement d'un poste à l'autre. Jamais « vide → config globale » ici.
     env.update(depuis_projet(project).env())
+    # Lot PT-03 : la monnaie et l'écriture des nombres DÉCLARÉES par le projet, lues par le constat « le nombre affiché … vaut … ».
+    # Rien de déclaré = rien ici ; le lanceur pose alors ces variables VIDES (`valeurs.JAMAIS_HERITEES`), jamais celles du serveur.
+    env.update(valeurs_du_projet.env(project))
     if comptes:
         env[ENV_COMPTES] = json.dumps(
             [{"label": c["label"], "username": c["username"], "password": c["password"]} for c in comptes],

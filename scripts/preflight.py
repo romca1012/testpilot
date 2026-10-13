@@ -17,7 +17,8 @@ def verifier(*, navigateur: bool = False) -> dict:
 
     for relatif in (
         "environment.py", "tp_json_formatter.py", "steps_library/_base_helpers.py",
-        "steps_library/_accent_matcher.py", "steps_library/generic/_generic_steps.py",
+        "steps_library/_accent_matcher.py", "steps_library/_lecture_nombre.py",
+        "steps_library/generic/_generic_steps.py",
         "steps_library/odoo/_odoo_steps.py", "steps_library/odoo/_odoo_background_steps.py",
     ):
         if not (config.BEHAVE_RUNTIME_DIR / relatif).is_file():

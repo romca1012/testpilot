@@ -38,6 +38,21 @@ from testpilot.connectors.oracle_http import (
     compte_resultats as _compte_resultats_oracle,
 )
 import pyotp
+# Lot PT-03 : lecture d'un nombre affiché, avec son unité. Import au NIVEAU MODULE (`steps/` sort du `sys.path` après le
+# chargement) — et valable des DEUX façons dont ce fichier est chargé : à plat par Behave (`steps/` sur le `sys.path`), ou
+# comme module du paquet `behave_runtime.steps_library` par des tests et des scripts. Mesuré le 2026-10-13 : le seul import à
+# plat cassait 15 tests (`ModuleNotFoundError: No module named '_lecture_nombre'`). Noms préfixés : rien de ceci n'est offert
+# à un step généré.
+if __package__:
+    from ._lecture_nombre import (
+        DIFFERENT as _VALEUR_DIFFERENTE, EGAL as _VALEUR_EGALE, LectureImpossible as _LectureImpossible,
+        comparer_valeurs as _comparer_valeurs, est_un_code_de_monnaie as _est_un_code_de_monnaie, lire_nombre as _lire_nombre,
+    )
+else:
+    from _lecture_nombre import (
+        DIFFERENT as _VALEUR_DIFFERENTE, EGAL as _VALEUR_EGALE, LectureImpossible as _LectureImpossible,
+        comparer_valeurs as _comparer_valeurs, est_un_code_de_monnaie as _est_un_code_de_monnaie, lire_nombre as _lire_nombre,
+    )
 
 try:  # l'arbre d'une expression régulière (`page_affiche_texte_de_la_forme`) — module renommé en Python 3.11
     from re import _parser as _analyse_regex
@@ -119,6 +134,27 @@ def nombre_de_constats_reussis() -> int:
     """Constats RÉUSSIS consignés depuis le début du processus. Un constat échoué n'est PAS compté : un `Alors`
     qui avale lui-même son échec (`try/except AssertionError`) n'a rien prouvé (revue du 2026-10-07)."""
     return _COMPTEUR_CONSTATS["n"]
+
+
+def derriere_interrupteur(nom_variable: str):
+    """Lot PT-03 : ce step EXISTE et s'exécute, mais n'est montré à l'agent que si la variable d'environnement
+    `nom_variable` est allumée (`generation/interrupteurs.py`). Pourquoi : montrer un step de plus change ce que l'agent
+    écrit, donc se MESURE sur le banc avant d'être activé (D21). Marqueur lu par AST dans `generation/steps_library.py` ;
+    il ne change rien à l'exécution. À poser SOUS le décorateur Behave."""
+    def marquer(fonction):
+        fonction._tp_interrupteur = nom_variable
+        return fonction
+    return marquer
+
+
+def compare_des_nombres(fonction):
+    """Lot PT-03 : ce step compare sa valeur attendue comme un NOMBRE (« 7 » vaut « 7,00 »). Marqueur lu par AST dans
+    `generation/steps_library.py`, pour la garde « valeur recopiée de l'essai » (`generation/tools/essai.py`) : elle doit
+    alors comparer des valeurs, pas des écritures. Décidé par la STRUCTURE du step apparié, jamais par le texte que l'agent a
+    écrit (revue du 2026-10-13 : « le nombre affiche pour … », sans accent, est apparié par Behave et échappait à une garde
+    qui lisait le libellé). Il ne change rien à l'exécution. À poser SOUS le décorateur Behave."""
+    fonction._tp_compare_des_nombres = True
+    return fonction
 
 
 def non_assertif(fonction):
@@ -3694,6 +3730,97 @@ def valeur_affichee_vaut(page, libelle: str, attendu: str) -> None:
     if len(distinctes) != 1:
         raise _erreur_de_lecture(page, libelle, distinctes)
     raise AssertionError(f"La valeur affichée pour « {libelle} » est « {distinctes[0]} », « {attendu} » attendu, sur {page.url}.")
+
+
+# Lot PT-03 : ce que le PROJET a déclaré de l'écriture de ses valeurs (onglet « Valeurs attendues » des paramètres de test).
+# Noms et valeurs DUPLIQUÉS de `testpilot/parametres/valeurs.py` (ce harnais ne dépend pas du paquet applicatif) — test
+# d'accord : `tests/test_valeurs_du_projet.py`. Déclaré par une PERSONNE, jamais écrit par l'agent ; lu à chaque constat.
+_ENV_DEVISE_DU_PROJET = "TESTPILOT_PROJET_DEVISE"
+_ENV_FORMAT_NOMBRE_DU_PROJET = "TESTPILOT_PROJET_FORMAT_NOMBRE"
+# écriture déclarée -> (séparateur décimal, séparateur de milliers). `None` : l'écriture ne nomme pas ce séparateur (les
+# milliers de « 1 234,56 » sont une espace) — elle ne tranche donc rien pour lui.
+_SEPARATEURS_DU_FORMAT = {"espace_virgule": (",", None), "virgule_point": (".", ","), "point_virgule": (",", ".")}
+
+
+def _valeurs_du_projet() -> tuple[str, str | None, str | None]:
+    """(monnaie du projet, séparateur décimal, séparateur de milliers). Une valeur absente ou INCONNUE vaut « rien de
+    déclaré » : le constat retombe sur son comportement le plus prudent (ne pas conclure), jamais sur une hypothèse."""
+    devise = os.environ.get(_ENV_DEVISE_DU_PROJET, "").strip().upper()
+    decimal, milliers = _SEPARATEURS_DU_FORMAT.get(os.environ.get(_ENV_FORMAT_NOMBRE_DU_PROJET, "").strip().lower(), (None, None))
+    return (devise if _est_un_code_de_monnaie(devise) else ""), decimal, milliers
+
+
+def _juger_nombre(texte_affiche: str, voulu, devise_du_projet: str = "", decimal_du_projet: str | None = None,
+                  milliers_du_projet: str | None = None):
+    """(état, message) pour UNE valeur lue à l'écran. Trois états : égal, différent, non concluant (`None`).
+
+    L'écriture des nombres du projet ne sert qu'à lire l'ÉCRAN (c'est l'application qui écrit ainsi) ; la valeur attendue,
+    elle, doit se lire sans aide."""
+    try:
+        lu = _lire_nombre(texte_affiche, avec_unite=True, decimal_si_ambigu=decimal_du_projet,
+                          milliers_si_ambigu=milliers_du_projet)
+    except _LectureImpossible as exc:
+        if not re.search(r"\d", texte_affiche):
+            # Aucun chiffre : l'application n'affiche pas un nombre là où il en est attendu un (« N/A », vide).
+            return _VALEUR_DIFFERENTE, f"la valeur affichée « {texte_affiche} » n'est pas un nombre"
+        # Des chiffres, mais une écriture que le lecteur refuse de deviner (« 1,234 », deux nombres) : la limite est
+        # la nôtre, pas un défaut de l'application.
+        return None, f"la valeur affichée « {texte_affiche} » ne se lit pas sans ambiguïté ({exc})"
+    resultat = _comparer_valeurs(lu, voulu, devise_du_projet=devise_du_projet)
+    if resultat.etat in (_VALEUR_EGALE, _VALEUR_DIFFERENTE):
+        return resultat.etat, resultat.message
+    return None, resultat.message
+
+
+# Nom PRIVÉ, volontairement : un step généré ne peut pas l'importer (`tools/write.py` refuse les noms privés de la
+# bibliothèque). Appelé à la main avec un littéral, il échappait à la garde « valeur recopiée de l'essai » (revue du
+# 2026-10-13, reproduit) — le seul chemin vers ce constat est le step du catalogue, que la garde reconnaît.
+@constat
+def _nombre_affiche_vaut(page, libelle: str, attendu: str) -> None:
+    """`Alors le nombre affiché pour "<libellé>" vaut "<valeur>"` — la valeur à côté du libellé, lue comme un NOMBRE avec
+    son unité, quelle que soit sa nature : « 1 234,50 € » vaut « 1234.50 EUR » et pas « 1 234,50 $ » ; « 1,5 kg » vaut
+    « 1500 g » ; « 18 % » n'est pas « 18 € ». Comparaison EXACTE, aucune tolérance : un centime d'écart est un défaut (une
+    marge ne viendra jamais du texte du test, seulement d'une règle déclarée). Lot PT-03, mesuré : le step texte « la valeur
+    affichée pour … est … » sortait `non_conforme` sur une application saine dès que l'écriture différait (« 129.51 EUR »
+    pour « 129,51 € »).
+
+    Quatre issues, chacune avec son signal :
+    - la valeur attendue ne se lit pas (« environ 100 », « 1,234 ») : le TEST est mal posé — `ConstatInvalideError` ;
+    - aucun libellé, ou plusieurs valeurs : `ElementIntrouvableError`, comme le step texte ;
+    - nombre différent, natures différentes (5 kg contre 5 km), autre monnaie, ou pas de nombre du tout à l'écran :
+      `AssertionError` (défaut de l'application) ;
+    - bon nombre mais l'unité attendue n'est PAS affichée à côté, unités que rien ne permet de rapprocher, ou écriture que
+      le lecteur refuse de deviner : `ConstatNonConcluantError` — ni un succès (l'unité n'est pas prouvée) ni une accusation.
+    Relue jusqu'au délai tant qu'elle n'est pas égale : un total recalculé après l'action n'est pas un défaut.
+
+    Décision A24 — la valeur attendue n'écrit pas d'unité et l'écran en affiche une : pour une monnaie, elle est lue dans
+    la monnaie DÉCLARÉE par le projet (un écran dans une autre monnaie est un défaut) ; sans déclaration, et pour toute
+    autre unité, le constat ne conclut pas. L'écriture des nombres déclarée par le projet lève l'ambiguïté d'une valeur
+    AFFICHÉE (« 1.234 »), jamais celle de la valeur attendue."""
+    cible = _libelle_normalise(libelle)
+    try:
+        voulu = _lire_nombre(attendu, avec_unite=True)
+    except _LectureImpossible as exc:
+        raise ConstatInvalideError(
+            f"La valeur attendue « {attendu} » ne se lit pas comme un nombre unique ({exc}). Écrivez-la sans ambiguïté "
+            "(« 1 234,50 € », « 412 000 XOF », « 18 % », « 1,5 kg »).") from exc
+    devise_du_projet, decimal_du_projet, milliers_du_projet = _valeurs_du_projet()
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    while True:
+        distinctes = _valeurs_affichees(page, cible)
+        etat, message = (_juger_nombre(distinctes[0], voulu, devise_du_projet, decimal_du_projet, milliers_du_projet)
+                         if len(distinctes) == 1 else (None, ""))
+        if etat == _VALEUR_EGALE:
+            return
+        if time.monotonic() >= fin:
+            break
+        time.sleep(0.25)
+    if len(distinctes) != 1:
+        raise _erreur_de_lecture(page, libelle, distinctes)
+    detail = f"Nombre affiché pour « {libelle} » : « {distinctes[0]} », « {attendu} » attendu — {message}, sur {page.url}."
+    if etat == _VALEUR_DIFFERENTE:
+        raise AssertionError(detail)
+    raise ConstatNonConcluantError(detail)
 
 
 # Un motif doit porter une PARTIE FIXE : au moins ce nombre de caractères littéraux consécutifs (hors espaces), lus dans l'arbre
