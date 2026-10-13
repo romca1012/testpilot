@@ -56,7 +56,8 @@ async function enregistrer() {
 <template>
   <form class="rounded-xl border border-border bg-surface-raised shadow-sm" data-testid="configurations" @submit.prevent="enregistrer">
     <fieldset class="p-4 sm:p-6" :disabled="!peutRegler">
-      <legend class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Navigateur de test</legend>
+      <legend class="sr-only">Navigateur de test</legend>
+      <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground" aria-hidden="true">Navigateur de test</div>
       <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <label class="block"><span class="text-sm font-medium">Langue</span>
           <input v-model="form.browser_locale" data-testid="browser-locale" :placeholder="projet.browser_effectif?.locale || 'fr-FR'"

@@ -91,7 +91,7 @@ onMounted(charger)
     <p v-if="chargement" class="mt-6 text-sm text-muted-foreground" aria-live="polite">Chargement…</p>
 
     <template v-if="projet">
-      <div role="tablist" aria-label="Paramètres de test" class="mt-5 flex gap-1 overflow-x-auto border-b border-border">
+      <div role="tablist" aria-label="Paramètres de test" class="mt-5 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border">
         <RouterLink v-for="o in ONGLETS" :key="o.cle" role="tab"
                     :to="{ name: 'project-test-params', params: { pid, onglet: o.cle } }"
                     :id="`onglet-${o.cle}`" :aria-selected="onglet === o.cle" :data-testid="`onglet-${o.cle}`"
