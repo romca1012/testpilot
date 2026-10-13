@@ -23,13 +23,14 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 | A20 | Rien n'est poussé avant la fin de tout le chantier (voir R9). | 2026-10-13 |
 | A21 | Quand l'application visée par un projet change (adresse ou base de données), l'autorisation donnée à l'IA d'agir pendant la génération est **retirée d'office** et doit être redonnée dans l'onglet « État de départ ». Règle **globale**, la même pour tous les connecteurs ; l'écran le dit quand cela arrive. Appliquée côté serveur (`routes/projects.py`). | 2026-10-13 |
 | A22 | Rappel du porteur : aucune fonctionnalité propre à un type d'application. Une fonctionnalité qui ne peut pas être étendue à toutes les applications est supprimée. | 2026-10-13 |
+| A23 | La remise à zéro de l'application, et l'essai des actions par l'IA qui en dépend, sont étendus à **toutes** les applications (aujourd'hui : connecteur web seulement). | 2026-10-13 |
 
 Interrupteur (confirmé par le porteur le 2026-10-13) : il ne sert qu'au temps de la construction, pour comparer
 l'ancien écran et le nouveau. Le changement étant définitif, il est retiré au lot PT-07 avec l'ancien écran.
 
-Écart à la règle A22, relevé et **non traité** : l'onglet « État de départ » n'offre l'adresse de remise à zéro qu'aux
-projets du connecteur web, parce que l'essai des actions par l'IA n'existe que pour lui (lot VH-07). L'autorisation, elle,
-est commune à tous. À trancher par le porteur : étendre la remise à zéro à tous les connecteurs, ou la retirer.
+Écart à la règle A22, relevé le 2026-10-13 : l'onglet « État de départ » n'offre l'adresse de remise à zéro qu'aux projets
+du connecteur web, parce que l'essai des actions par l'IA n'existe que pour lui (lot VH-07). **Tranché (A23) : on l'étend à
+toutes les applications**, au lot PT-04. D'ici là le champ reste réservé au connecteur web.
 
 ## 2. Règles de réalisation — valables pour tous les lots
 
@@ -177,6 +178,7 @@ différentes sortent `non_conforme` ; une unité attendue et non affichée ne co
 |---|---|
 | PT-04a | Plusieurs environnements par projet ; choix au lancement ; **la protection de la production est évaluée pour chaque environnement**, jamais contournée. |
 | PT-04b | Compte choisi au lancement ; exploration avec chaque compte ; l'agent reçoit la cartographie du compte visé. |
+| PT-04d | **Remise à zéro pour toutes les applications (A23).** L'adresse de remise à zéro et l'essai des actions par l'IA avant d'écrire un test, aujourd'hui réservés au connecteur web, sont étendus à tous les connecteurs ; l'onglet « État de départ » devient identique pour tous. Touche la génération : interrupteur, revue `verdict-reviewer`, mesure sur le banc, coût avant et après. |
 | PT-04c | Choix du navigateur. **Écart avec la maquette** : aujourd'hui tout le code lance Chromium (exécution, exploration, enregistrement, connecteurs) et le confinement réseau des essais repose sur des options propres à Chromium. **Décidé le 2026-10-13** : garder le groupe « Navigateur » dans le modèle, ne livrer que Chromium, instruire Firefox à part. |
 
 Tests : une campagne jouée sur deux environnements produit deux exécutions distinctes ; un environnement déclaré en
@@ -265,7 +267,7 @@ Règle du dépôt (CLAUDE.md §5.3) : un lot qui dépend d'une décision non val
 | PT-01b | écrit, relu (revue indépendante : aucun bloquant, sept points corrigés) et vérifié à l'écran sur l'instance locale ; règle A21 ajoutée ; suite du serveur de clôture en cours | 2026-10-13 | — | |
 | PT-02a à PT-02d | à faire | | | |
 | PT-03 | écrit sur `lot-cv01-montants-affiches`, non commité, **15** régressions (et non 19 : 4 des échecs d'abord comptés existent aussi sur `master`, voir `docs/mesures/parametres-de-test-reference-2026-10-13.md`) et six points de revue à traiter | 2026-10-13 | | `PLAN-CALCUL-DE-VALEURS-2026-10.md` §6.1 |
-| PT-04a à PT-04c | à faire | | | |
+| PT-04a à PT-04d | à faire | | | |
 | PT-05 | à faire | | | |
 | PT-06a à PT-06d | à faire | | | |
 | PT-07 | à faire | | | |
