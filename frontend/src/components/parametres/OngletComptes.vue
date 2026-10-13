@@ -6,15 +6,20 @@
 // 1. un mot de passe est en ÉCRITURE SEULE — jamais réaffiché, et une modification sans nouveau mot de passe ne l'envoie pas
 //    (l'envoyer vide l'effacerait) ;
 // 2. seuls `admin` et `dev` voient les gestes d'ajout, de modification et de suppression (le serveur tranche aussi).
-// Le compte « principal » est celui de la connexion du projet : il se règle encore dans « Identité et application ».
-import { onMounted, ref, watch } from 'vue'
-import { api, type ProjectAccount, type ProjectSummary } from '../../lib/api'
+//
+// Lot PT-01b (décision du porteur, 2026-10-14) : le compte « principal » se règle ICI, comme les autres, avec sa façon de se
+// connecter — il n'est plus à part dans « Application cible ». Il reste enregistré sur le projet (mêmes colonnes) et passe
+// par la route du projet, que seul un administrateur du projet peut appeler : d'où `peutRegler`, distinct de `peutGerer`.
+// Ses secrets (mot de passe, secret du code à usage unique, session) suivent la même règle d'écriture seule.
+import { computed, onMounted, ref, watch } from 'vue'
+import { api, AUTH_STRATEGIES, LIBELLE_AUTH_STRATEGIE, type ProjectAccount, type ProjectSummary } from '../../lib/api'
 import Button from '../ui/Button.vue'
 import Hint from '../ui/Hint.vue'
 import Modal from '../ui/Modal.vue'
 import ConfirmDialog from '../ConfirmDialog.vue'
 
-const props = defineProps<{ projet: ProjectSummary; peutGerer: boolean }>()
+const props = defineProps<{ projet: ProjectSummary; peutGerer: boolean; peutRegler?: boolean }>()
+const emit = defineEmits<{ (e: 'enregistre', projet: ProjectSummary): void }>()
 
 const comptes = ref<ProjectAccount[]>([])
 const chargement = ref(true)
@@ -77,6 +82,46 @@ async function enregistrer() {
   }
 }
 
+// ── Le compte principal ────────────────────────────────────────────────────────────────────────────────────────────────
+const principalOuvert = ref(false)
+const principal = ref({ username: '', password: '', auth_strategie: 'formulaire', totp_secret: '', injected_session: '' })
+// La façon de se connecter ne concerne que le connecteur générique : Odoo ouvre sa propre session (lot 07b-2).
+const estWeb = computed(() => props.projet.connector_type === 'web')
+
+function modifierPrincipal() {
+  // ⚠️ secrets TOUJOURS vides : vide = « inchangé » (le serveur ne les renvoie jamais).
+  principal.value = {
+    username: props.projet.username || '', password: '',
+    auth_strategie: props.projet.auth_strategie || 'formulaire', totp_secret: '', injected_session: '',
+  }
+  erreurFormulaire.value = ''
+  principalOuvert.value = true
+}
+
+async function enregistrerPrincipal() {
+  if (!props.peutRegler) return
+  enregistrement.value = true
+  erreurFormulaire.value = ''
+  try {
+    const patch: Record<string, string> = { username: principal.value.username }
+    // Un secret n'est envoyé QUE s'il a été saisi : l'omettre le laisse intact, l'envoyer vide l'effacerait.
+    if (principal.value.password) patch.password = principal.value.password
+    if (estWeb.value) {
+      patch.auth_strategie = principal.value.auth_strategie
+      if (principal.value.totp_secret) patch.totp_secret = principal.value.totp_secret
+      if (principal.value.injected_session) patch.injected_session = principal.value.injected_session
+    }
+    const maj = await api.updateProject(props.projet.id, patch)
+    emit('enregistre', { ...props.projet, ...maj })
+    principalOuvert.value = false
+    await charger()
+  } catch (e: any) {
+    erreurFormulaire.value = e?.message || 'Enregistrement du compte impossible.'
+  } finally {
+    enregistrement.value = false
+  }
+}
+
 async function supprimer() {
   const c = aSupprimer.value
   if (!c || c.id === null) return
@@ -122,7 +167,10 @@ onMounted(charger)
             <td class="px-4 py-3" :aria-label="c.has_secret ? 'Mot de passe enregistré' : 'Aucun mot de passe'">{{ c.has_secret ? '••••••••' : '—' }}</td>
             <td class="px-4 py-3">{{ c.business_role || '—' }}</td>
             <td class="px-4 py-2 text-right">
-              <span v-if="c.principal" class="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Principal</span>
+              <span v-if="c.principal" class="inline-flex items-center gap-1.5">
+                <span class="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Principal</span>
+                <Button v-if="peutRegler" type="button" variant="ghost" size="sm" data-testid="principal-modifier" @click="modifierPrincipal">Modifier</Button>
+              </span>
               <span v-else-if="peutGerer" class="inline-flex gap-1.5">
                 <Button type="button" variant="ghost" size="sm" @click="modifier(c)">Modifier</Button>
                 <Button type="button" variant="ghost" size="sm" class="text-destructive" @click="aSupprimer = c">Supprimer</Button>
@@ -158,6 +206,39 @@ onMounted(charger)
         <Button type="button" variant="secondary" @click="enCours = null">Annuler</Button>
         <Button type="submit" form="form-compte" variant="primary" data-testid="compte-enregistrer" :loading="enregistrement"
                 :disabled="!form.label.trim() || !form.username.trim()">Enregistrer</Button>
+      </template>
+    </Modal>
+
+    <Modal :open="principalOuvert" title="Modifier le compte principal" @close="principalOuvert = false">
+      <form id="form-compte-principal" class="grid grid-cols-1 gap-4 sm:grid-cols-2" data-testid="principal-formulaire" @submit.prevent="enregistrerPrincipal">
+        <label class="block"><span class="text-sm font-medium">Identifiant</span>
+          <input v-model="principal.username" autocomplete="off" data-testid="principal-identifiant"
+                 class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3 outline-none focus:border-primary" /></label>
+        <label class="block"><span class="text-sm font-medium">Mot de passe</span>
+          <input v-model="principal.password" type="password" autocomplete="new-password" placeholder="Inchangé" data-testid="principal-mot-de-passe"
+                 class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3 outline-none focus:border-primary" /></label>
+        <template v-if="estWeb">
+          <label class="block sm:col-span-2"><span class="text-sm font-medium">Façon de se connecter</span>
+            <select v-model="principal.auth_strategie" data-testid="auth-strategie"
+                    class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3 outline-none focus:border-primary">
+              <option v-for="s in AUTH_STRATEGIES" :key="s" :value="s">{{ LIBELLE_AUTH_STRATEGIE[s] }}</option>
+            </select></label>
+          <label v-if="principal.auth_strategie === 'totp'" class="block sm:col-span-2">
+            <span class="text-sm font-medium">Secret du code à usage unique</span>
+            <Hint text="Le secret partagé (base32) donné par l'application au moment d'activer le code à usage unique." />
+            <input v-model="principal.totp_secret" data-testid="totp-secret" autocomplete="off" :placeholder="projet.has_totp_secret ? 'Inchangé' : ''"
+                   class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3 outline-none focus:border-primary" /></label>
+          <label v-if="principal.auth_strategie === 'session_injectee'" class="block sm:col-span-2">
+            <span class="text-sm font-medium">Session déjà ouverte</span>
+            <Hint text="L'export de session d'un navigateur déjà connecté (connexion d'entreprise). Jamais produit par TestPilot ; à renouveler quand il expire." />
+            <textarea v-model="principal.injected_session" data-testid="injected-session" rows="3" :placeholder="projet.has_injected_session ? 'Inchangée' : ''"
+                      class="mt-1.5 w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs outline-none focus:border-primary"></textarea></label>
+        </template>
+        <p v-if="erreurFormulaire" role="alert" class="text-sm text-destructive sm:col-span-2">{{ erreurFormulaire }}</p>
+      </form>
+      <template #footer>
+        <Button type="button" variant="secondary" @click="principalOuvert = false">Annuler</Button>
+        <Button type="submit" form="form-compte-principal" variant="primary" data-testid="principal-enregistrer" :loading="enregistrement">Enregistrer</Button>
       </template>
     </Modal>
 

@@ -622,7 +622,8 @@ export interface ElementCorbeille {
 export interface Artifact { name: string; size: number; label: string }
 export interface Artifacts { available: boolean; reason: string; files: Artifact[] }
 
-/** Un compte de test du projet. `principal` = le compte de la connexion du projet (id `null`, modifiable dans « Application cible »).
+/** Un compte de test du projet. `principal` = le compte de la connexion du projet (id `null`, enregistré sur le projet ; il se
+ *  règle dans « Paramètres de test » › « Comptes », ou dans « Application cible » tant que cette organisation est éteinte).
  *  Le mot de passe n'est JAMAIS renvoyé : `has_secret` dit seulement qu'il est enregistré. */
 export interface ProjectAccount {
   id: number | null; label: string; username: string; business_role: string

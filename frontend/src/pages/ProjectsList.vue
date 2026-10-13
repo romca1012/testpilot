@@ -300,7 +300,8 @@ function startEdit(p: ProjectSummary) {
   editing.value = p
   editError.value = ''
   compteEnCours.value = null
-  void chargerComptes()
+  // Avec « Paramètres de test », la fenêtre ne montre plus les comptes : inutile de les demander au serveur.
+  if (!parametresDeTestActifs.value) void chargerComptes()
   edit.value = {
     name: p.name, connector_type: p.connector_type || 'odoo',
     connector_version: p.connector_version || '', base_url: p.base_url || '',
@@ -369,6 +370,18 @@ async function saveEdit() {
   saving.value = true
   editError.value = ''
   try {
+    // Lot PT-01b : avec « Paramètres de test », cette fenêtre ne porte plus que le nom, le connecteur, la version et
+    // l'adresse. Elle n'envoie donc QUE ces champs : renvoyer les autres écraserait ce qui est réglé dans les onglets.
+    if (parametresDeTestActifs.value) {
+      await api.updateProject(editing.value.id, {
+        name: edit.value.name.trim(), connector_type: edit.value.connector_type,
+        connector_version: edit.value.connector_version, base_url: edit.value.base_url, database: edit.value.database,
+      })
+      editing.value = null
+      await ensureLoaded(true)
+      await load()
+      return
+    }
     const patch: Record<string, string | boolean> = {
       name: edit.value.name.trim(),
       connector_type: edit.value.connector_type,
@@ -705,14 +718,15 @@ onMounted(async () => { await load(); await loadExplorations() })
           <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label class="block"><span class="text-sm font-medium">URL</span><input v-model="edit.base_url" placeholder="http://localhost:10017" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
             <label v-if="edit.connector_type === 'odoo'" class="block"><span class="text-sm font-medium">Base de données</span><input v-model="edit.database" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
-            <label class="block"><span class="text-sm font-medium">Utilisateur{{ edit.connector_type === 'odoo' ? '' : ' (facultatif)' }}</span><input v-model="edit.username" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
-            <label class="block"><span class="text-sm font-medium">Mot de passe{{ edit.connector_type === 'odoo' ? '' : ' (facultatif)' }}</span><input v-model="edit.password" type="password" placeholder="Inchangé" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <!-- Lot PT-01b : avec « Paramètres de test », le compte principal se règle dans l'onglet « Comptes ». -->
+            <label v-if="!parametresDeTestActifs" class="block"><span class="text-sm font-medium">Utilisateur{{ edit.connector_type === 'odoo' ? '' : ' (facultatif)' }}</span><input v-model="edit.username" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
+            <label v-if="!parametresDeTestActifs" class="block"><span class="text-sm font-medium">Mot de passe{{ edit.connector_type === 'odoo' ? '' : ' (facultatif)' }}</span><input v-model="edit.password" type="password" placeholder="Inchangé" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none" /></label>
           </div>
-          <p class="mt-2 text-xs text-muted-foreground">Le mot de passe n'est jamais réaffiché. Laissez ce champ vide pour le conserver tel quel.</p>
+          <p v-if="!parametresDeTestActifs" class="mt-2 text-xs text-muted-foreground">Le mot de passe n'est jamais réaffiché. Laissez ce champ vide pour le conserver tel quel.</p>
         </fieldset>
         <!-- Lot 07c : le navigateur de test est FIGÉ par le projet, pas par la machine qui le lance — la même campagne affiche
              alors les mêmes libellés, les mêmes dates et la même mise en page partout. Vide = le défaut. -->
-        <fieldset class="rounded-lg border border-border p-3" data-testid="navigateur-de-test">
+        <fieldset v-if="!parametresDeTestActifs" class="rounded-lg border border-border p-3" data-testid="navigateur-de-test">
           <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Navigateur de test</legend>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <label class="block"><span class="text-sm font-medium">Langue</span>
@@ -733,7 +747,7 @@ onMounted(async () => { await load(); await loadExplorations() })
         </fieldset>
         <!-- Lot 07b-2 (C2) : la connexion du compte principal se réutilise une fois par run (`storage_state`) au lieu d'être
              refaite à chaque scénario. Réservé au connecteur générique : Odoo se connecte par sa propre session RPC. -->
-        <fieldset v-if="edit.connector_type === 'web'" class="rounded-lg border border-border p-3" data-testid="strategie-connexion">
+        <fieldset v-if="!parametresDeTestActifs && edit.connector_type === 'web'" class="rounded-lg border border-border p-3" data-testid="strategie-connexion">
           <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Stratégie de connexion</legend>
           <label class="block">
             <span class="text-sm font-medium">Comment se connecter</span>
@@ -757,7 +771,7 @@ onMounted(async () => { await load(); await loadExplorations() })
           <p class="mt-2 text-xs text-muted-foreground">Les comptes secondaires (ci-dessous) restent toujours en formulaire simple.</p>
         </fieldset>
         <!-- Lot 07b-1 (D8) : les comptes de test. L'IA n'en voit que les libellés ; un mot de passe enregistré n'est jamais réaffiché. -->
-        <fieldset class="rounded-lg border border-border p-3" data-testid="comptes-du-projet">
+        <fieldset v-if="!parametresDeTestActifs" class="rounded-lg border border-border p-3" data-testid="comptes-du-projet">
           <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Comptes de test</legend>
           <ul class="space-y-1.5">
             <li v-for="c in comptesDeTest" :key="c.id ?? 'principal'" class="flex flex-wrap items-center gap-2 text-sm" data-testid="compte-ligne">
@@ -788,7 +802,7 @@ onMounted(async () => { await load(); await loadExplorations() })
           <Button v-else-if="peutGererComptes" type="button" variant="secondary" size="sm" class="mt-3" data-testid="compte-ajouter" @click="nouveauCompte">Ajouter un compte</Button>
           <p v-if="compteErreur" role="alert" class="mt-2 text-sm text-destructive" data-testid="compte-erreur">{{ compteErreur }}</p>
         </fieldset>
-        <fieldset v-if="edit.connector_type === 'odoo'" class="rounded-lg border border-border p-3">
+        <fieldset v-if="!parametresDeTestActifs && edit.connector_type === 'odoo'" class="rounded-lg border border-border p-3">
           <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Génération — calibration en écriture</legend>
           <label class="flex items-start gap-2.5">
             <input type="checkbox" v-model="edit.calibration_writes_enabled" class="mt-0.5" />
@@ -803,7 +817,7 @@ onMounted(async () => { await load(); await loadExplorations() })
             </span>
           </label>
         </fieldset>
-        <fieldset v-if="edit.connector_type === 'web'" class="rounded-lg border border-border p-3" data-testid="bac-a-sable">
+        <fieldset v-if="!parametresDeTestActifs && edit.connector_type === 'web'" class="rounded-lg border border-border p-3" data-testid="bac-a-sable">
           <legend class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Génération — bac à sable</legend>
           <label class="flex items-start gap-2.5">
             <input type="checkbox" v-model="edit.calibration_writes_enabled" class="mt-0.5" data-testid="bac-a-sable-autorise" />
