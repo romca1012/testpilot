@@ -25,6 +25,7 @@ from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import notification_service
 from testpilot.api.routes import auth
+from testpilot.parametres import valeurs as valeurs_du_projet
 from testpilot.store.repositories import SettingRepo
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -45,6 +46,16 @@ def list_timezones():
     """
     return [schemas.TimezoneOption(value=value, label=label)
             for value, label in SettingRepo.FUSEAUX_HORAIRES]
+
+
+@router.get("/options/valeurs-du-projet", response_model=schemas.ValeursDuProjetOptions)
+def list_valeurs_du_projet():
+    """Catalogue unique des monnaies et des écritures de nombres qu'un projet peut déclarer (lot PT-03).
+
+    Même raison que les fuseaux ci-dessus : l'écran ne tient pas une seconde liste qui divergerait de la validation — ni de
+    ce que le lecteur de nombres sait reconnaître à l'écran d'une application.
+    """
+    return schemas.ValeursDuProjetOptions(**valeurs_du_projet.referentiel())
 
 
 @router.get("/security-status", response_model=schemas.SecurityStatusOut,

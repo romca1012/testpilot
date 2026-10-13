@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 61
+_SCHEMA_VERSION = 62
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -264,6 +264,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_60_sans_repli_adaptatif(conn)
     if version < 61:
         _migrate_61_bac_a_sable_reset(conn)
+    if version < 62:
+        _migrate_62_valeurs_du_projet(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -422,6 +424,22 @@ def _migrate_50_contexte_navigateur(conn: sqlite3.Connection) -> None:
     for colonne in ("browser_locale", "browser_timezone", "browser_viewport"):
         if colonne not in _column_names(conn, "project"):
             conn.execute(f"ALTER TABLE project ADD COLUMN {colonne} TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_62_valeurs_du_projet(conn: sqlite3.Connection) -> None:
+    """Lot PT-03 (paramètres de test, décisions A8 et A24) : comment le PROJET écrit ses valeurs.
+
+    `project.devise` : la monnaie du projet (code ISO 4217) — un test qui attend « 129,51 » sans unité est lu dans cette
+    monnaie quand l'écran affiche un montant. `project.format_nombre` : l'écriture des nombres de l'application
+    (`espace_virgule` = « 1 234,56 », `virgule_point` = « 1,234.56 », `point_virgule` = « 1.234,56 » ; CHECK) — elle tranche
+    une valeur affichée ambiguë. Deux colonnes texte, ajoutées seulement si absentes (idempotent). **Vide = rien de
+    déclaré** : rien ne change pour un projet existant.
+    """
+    if "devise" not in _column_names(conn, "project"):
+        conn.execute("ALTER TABLE project ADD COLUMN devise TEXT NOT NULL DEFAULT ''")
+    if "format_nombre" not in _column_names(conn, "project"):
+        conn.execute("ALTER TABLE project ADD COLUMN format_nombre TEXT NOT NULL DEFAULT ''"
+                     " CHECK (format_nombre IN ('', 'espace_virgule', 'virgule_point', 'point_virgule'))")
 
 
 def _migrate_61_bac_a_sable_reset(conn: sqlite3.Connection) -> None:
