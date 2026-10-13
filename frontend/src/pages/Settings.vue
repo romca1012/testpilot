@@ -48,6 +48,8 @@ const CLES_SMTP = new Set([
 const CLES_PAGES_DEDIEES = new Set([
   ...CLES_SMTP,
   'instance_name', 'instance_timezone', 'date_format',
+  // Lot PT-00 : l'interrupteur « Paramètres de test » est une case à cocher de « Paramètres du site », pas un champ libre.
+  'parametres_de_test_enabled',
 ])
 const reglagesGeneriques = computed(() => reglages.value.filter((r) => !CLES_PAGES_DEDIEES.has(r.key)))
 
