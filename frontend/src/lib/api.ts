@@ -428,6 +428,8 @@ export const api = {
   // chercher pourquoi sa variable semble ignorée.
   listSettings: () => request<SettingOut[]>('/api/settings'),
   listTimezoneOptions: () => request<TimezoneOption[]>('/api/settings/options/timezones'),
+  // Lot PT-03 : monnaies et écritures de nombres qu'un projet peut déclarer (catalogue du serveur, jamais une seconde liste).
+  valeursDuProjetOptions: () => request<ValeursDuProjetOptions>('/api/settings/options/valeurs-du-projet'),
   getSecurityStatus: () => request<SecurityStatus>('/api/settings/security-status'),
   setSetting: (key: string, value: string) =>
     request<SettingOut>(`/api/settings/${key}`, { method: 'PATCH', body: JSON.stringify({ value }) }),
@@ -649,6 +651,8 @@ export interface ProjectSummary {
   bac_a_sable_reset?: string
   // Un essai de l'IA a laissé l'application dans son état : ses exécutions sont retenues tant qu'elle n'est pas remise à zéro.
   bac_a_sable_non_remis?: boolean
+  // Lot PT-03 (migration 62) : comment le projet écrit ses valeurs — monnaie (code ISO) et écriture des nombres. '' = rien de déclaré.
+  devise?: string; format_nombre?: string
   // Lot 07c : contexte navigateur FIGÉ (langue, fuseau, taille de fenêtre). '' = le défaut ; `browser_effectif` dit ce qui sera
   // réellement utilisé (calculé par le SERVEUR, jamais recalculé ici). Optionnels : une réponse ancienne n'en porte pas.
   browser_locale?: string; browser_timezone?: string; browser_viewport?: string
@@ -850,6 +854,8 @@ export interface ProjectInput {
   bac_a_sable_reset?: string
   bac_a_sable_remis_a_zero?: boolean
   browser_locale?: string; browser_timezone?: string; browser_viewport?: string
+  // Lot PT-03 : monnaie (code ISO) et écriture des nombres du projet. '' = rien de déclaré.
+  devise?: string; format_nombre?: string
   // Lot 07b-2 : `totp_secret`/`injected_session` en écriture seule, comme `password`.
   auth_strategie?: string; totp_secret?: string; injected_session?: string
 }
@@ -1076,6 +1082,7 @@ export interface SettingOut {
   secret: boolean
 }
 export interface TimezoneOption { value: string; label: string }
+export interface ValeursDuProjetOptions { devises: string[]; formats_nombre: { cle: string; libelle: string }[] }
 export interface SecurityStatus {
   password_min_length: number; password_hash: string; session_idle_minutes: number; session_max_hours: number
   cookie_http_only: boolean; cookie_same_site: string; cookie_secure: boolean

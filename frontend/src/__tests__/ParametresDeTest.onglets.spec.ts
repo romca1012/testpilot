@@ -16,6 +16,7 @@ const listProjectAccounts = vi.fn()
 const createProjectAccount = vi.fn()
 const updateProjectAccount = vi.fn()
 const deleteProjectAccount = vi.fn()
+const valeursDuProjetOptions = vi.fn()
 
 vi.mock('../lib/api', () => ({
   api: {
@@ -24,6 +25,7 @@ vi.mock('../lib/api', () => ({
     createProjectAccount: (...a: any[]) => createProjectAccount(...a),
     updateProjectAccount: (...a: any[]) => updateProjectAccount(...a),
     deleteProjectAccount: (...a: any[]) => deleteProjectAccount(...a),
+    valeursDuProjetOptions: (...a: any[]) => valeursDuProjetOptions(...a),
   },
   AUTH_STRATEGIES: ['formulaire', 'totp', 'session_injectee', 'aucune'],
   LIBELLE_AUTH_STRATEGIE: { formulaire: 'Formulaire de connexion', totp: 'Code à usage unique (TOTP)',
@@ -33,6 +35,7 @@ vi.mock('../lib/api', () => ({
 import OngletConfigurations from '../components/parametres/OngletConfigurations.vue'
 import OngletComptes from '../components/parametres/OngletComptes.vue'
 import OngletEtatDeDepart from '../components/parametres/OngletEtatDeDepart.vue'
+import OngletValeursAttendues from '../components/parametres/OngletValeursAttendues.vue'
 
 const SECRET = 'S3cret-Commercial-9f2c'
 const projet = (plus: Record<string, unknown> = {}) => ({
@@ -64,6 +67,8 @@ beforeEach(() => {
   createProjectAccount.mockResolvedValue({ ...COMPTES[1], id: 8 })
   updateProjectAccount.mockResolvedValue(COMPTES[1])
   deleteProjectAccount.mockResolvedValue(undefined)
+  valeursDuProjetOptions.mockResolvedValue({ devises: ['EUR', 'USD', 'XOF'],
+    formats_nombre: [{ cle: 'espace_virgule', libelle: '1 234,56' }, { cle: 'virgule_point', libelle: '1,234.56' }] })
 })
 
 describe('Paramètres de test — onglet Configurations', () => {
@@ -359,6 +364,97 @@ describe('Paramètres de test — onglet État de départ', () => {
 
     expect(w.get('fieldset').attributes('disabled')).toBeDefined()
     await w.get('[data-testid="bac-a-sable-reset"]').setValue('/autre')   // modifié : c'est bien le rôle qui arrête l'envoi
+    await w.get('form').trigger('submit')
+    await flushPromises()
+    expect(updateProject).not.toHaveBeenCalled()
+  })
+})
+
+describe('Paramètres de test — onglet Valeurs attendues (PT-03)', () => {
+  const ouvrir = async (plus: Record<string, unknown> = {}, peutRegler = true) => {
+    const w = mount(OngletValeursAttendues, { props: { projet: projet(plus), peutRegler }, global: { stubs } })
+    await flushPromises()
+    return w
+  }
+  const choix = (w: any, repere: string) => w.get(`[data-testid="${repere}"]`).findAll('option').map((o: any) => o.attributes('value'))
+
+  it('un projet qui n\u2019a rien déclaré ne montre rien de choisi, et propose ce que le serveur connaît', async () => {
+    const w = await ouvrir()
+
+    expect((w.get('[data-testid="devise"]').element as HTMLSelectElement).value).toBe('')
+    expect((w.get('[data-testid="format-nombre"]').element as HTMLSelectElement).value).toBe('')
+    expect(choix(w, 'devise').sort()).toEqual(['', 'EUR', 'USD', 'XOF'])
+    expect(choix(w, 'format-nombre')).toEqual(['', 'espace_virgule', 'virgule_point'])
+    expect(w.get('[data-testid="format-nombre"]').text()).toContain('1 234,56')
+  })
+
+  it('reprend la monnaie et l\u2019écriture déjà déclarées, la monnaie nommée en clair', async () => {
+    const w = await ouvrir({ devise: 'EUR', format_nombre: 'espace_virgule' })
+
+    expect((w.get('[data-testid="devise"]').element as HTMLSelectElement).value).toBe('EUR')
+    expect((w.get('[data-testid="format-nombre"]').element as HTMLSelectElement).value).toBe('espace_virgule')
+    expect(w.get('[data-testid="devise"] option[value="EUR"]').text()).toMatch(/^Euro \(EUR\)$/i)
+  })
+
+  it('falsifiable : n\u2019envoie que ses deux réglages, jamais l\u2019identité ni la connexion', async () => {
+    const w = await ouvrir()
+    await w.get('[data-testid="devise"]').setValue('XOF')
+    await w.get('[data-testid="format-nombre"]').setValue('espace_virgule')
+    await w.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(updateProject).toHaveBeenCalledTimes(1)
+    expect(updateProject).toHaveBeenCalledWith(4, { devise: 'XOF', format_nombre: 'espace_virgule' })
+    expect(w.get('[data-testid="enregistre"]').text()).toBe('Enregistré')
+    expect(w.emitted('enregistre')![0][0]).toMatchObject({ devise: 'XOF', effective_role: 'admin' })
+  })
+
+  it('falsifiable : retirer une déclaration envoie une valeur vide (et non rien)', async () => {
+    const w = await ouvrir({ devise: 'EUR', format_nombre: 'virgule_point' })
+    await w.get('[data-testid="devise"]').setValue('')
+    await w.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(updateProject).toHaveBeenCalledWith(4, { devise: '', format_nombre: 'virgule_point' })
+  })
+
+  it('une monnaie enregistrée reste affichée même si le catalogue ne répond pas', async () => {
+    valeursDuProjetOptions.mockRejectedValue(new Error('Serveur injoignable'))
+    const w = await ouvrir({ devise: 'MAD', format_nombre: 'point_virgule' })
+
+    expect((w.get('[data-testid="devise"]').element as HTMLSelectElement).value).toBe('MAD')
+    // … et l'écriture enregistrée aussi, sous un libellé : jamais sa clé brute à l'écran.
+    expect((w.get('[data-testid="format-nombre"]').element as HTMLSelectElement).value).toBe('point_virgule')
+    expect(w.get('[data-testid="format-nombre"]').text()).not.toContain('point_virgule')
+    expect(w.get('[role="alert"]').text()).toContain('Serveur injoignable')
+  })
+
+  it('signale une modification non enregistrée, puis la lève à l\u2019annulation', async () => {
+    const w = await ouvrir()
+    await w.get('[data-testid="devise"]').setValue('USD')
+    expect(w.emitted('modifie')!.at(-1)).toEqual([true])
+
+    await w.findAll('button').find((b) => b.text() === 'Annuler')!.trigger('click')
+    expect(w.emitted('modifie')!.at(-1)).toEqual([false])
+    expect((w.get('[data-testid="devise"]').element as HTMLSelectElement).value).toBe('')
+  })
+
+  it('montre le refus du serveur et garde le choix', async () => {
+    updateProject.mockRejectedValue(new Error('monnaie inconnue'))
+    const w = await ouvrir()
+    await w.get('[data-testid="devise"]').setValue('USD')
+    await w.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(w.get('[role="alert"]').text()).toContain('monnaie inconnue')
+    expect((w.get('[data-testid="devise"]').element as HTMLSelectElement).value).toBe('USD')
+  })
+
+  it('reste en lecture pour qui n\u2019administre pas le projet, et n\u2019envoie rien', async () => {
+    const w = await ouvrir({}, false)
+
+    expect(w.get('fieldset').attributes('disabled')).toBeDefined()
+    await w.get('[data-testid="devise"]').setValue('USD')   // modifié : c'est bien le rôle qui arrête l'envoi
     await w.get('form').trigger('submit')
     await flushPromises()
     expect(updateProject).not.toHaveBeenCalled()

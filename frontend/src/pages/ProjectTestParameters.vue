@@ -15,11 +15,13 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import OngletConfigurations from '../components/parametres/OngletConfigurations.vue'
 import OngletComptes from '../components/parametres/OngletComptes.vue'
 import OngletEtatDeDepart from '../components/parametres/OngletEtatDeDepart.vue'
+import OngletValeursAttendues from '../components/parametres/OngletValeursAttendues.vue'
 
 const ONGLETS = [
   { cle: 'configurations', libelle: 'Configurations' },
   { cle: 'comptes', libelle: 'Comptes' },
   { cle: 'etat-de-depart', libelle: 'État de départ' },
+  { cle: 'valeurs-attendues', libelle: 'Valeurs attendues' },
 ] as const
 type CleOnglet = typeof ONGLETS[number]['cle']
 
@@ -111,8 +113,10 @@ onMounted(charger)
                               @enregistre="projet = $event" @modifie="modifie = $event" />
         <OngletComptes v-else-if="onglet === 'comptes'" :projet="projet" :peut-gerer="peutGererComptes" :peut-regler="peutRegler"
                        @enregistre="projet = $event" />
-        <OngletEtatDeDepart v-else :projet="projet" :peut-regler="peutRegler"
+        <OngletEtatDeDepart v-else-if="onglet === 'etat-de-depart'" :projet="projet" :peut-regler="peutRegler"
                             @enregistre="projet = $event" @modifie="modifie = $event" />
+        <OngletValeursAttendues v-else :projet="projet" :peut-regler="peutRegler"
+                                @enregistre="projet = $event" @modifie="modifie = $event" />
       </div>
     </template>
 
