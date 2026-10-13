@@ -21,6 +21,7 @@ from fastapi.responses import StreamingResponse
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import events_bus, exploration_service
+from testpilot.api.services.lecteur_de_nombres import lecteur as lecteur_de_nombres
 from testpilot.api.services.project_membership_service import ProjectMembershipService
 from testpilot.generation import domain_model
 from testpilot.guardrails import durable_jobs
@@ -31,6 +32,8 @@ from testpilot.store.repositories import (
     DuplicateName,
     ModuleRepo,
     CompteInvalide,
+    TestUnitRepo,
+    UniteInvalide,
     ProjectAccessRepo,
     ProjectAccountRepo,
     ProjectGroupAccessRepo,
@@ -334,6 +337,73 @@ def update_account(project_id: int, account_id: int, body: schemas.AccountPatch,
 def delete_account(project_id: int, account_id: int, conn=Depends(get_conn)):
     if not ProjectAccountRepo(conn).supprimer(project_id, account_id):
         raise HTTPException(status_code=404, detail=f"compte {account_id} introuvable")
+    return Response(status_code=204)
+
+
+# ── Unités ajoutées par le projet (lot PT-03) ───────────────────────────────────────────────────────────────────────────────
+# Lecture : tout membre du projet. Écriture : son administrateur, comme les autres réglages de l'onglet « Valeurs attendues ».
+# Une écriture est validée par le LECTEUR de nombres lui-même : ce que l'écran accepte est exactement ce que le test saura lire.
+
+_ECRITURES_MAX, _UNITES_MAX = 20, 100   # la liste voyage dans une variable d'environnement : elle reste petite
+
+
+def _ecritures_validees(body: schemas.UnitIn) -> tuple[str, list[str]]:
+    if len(body.ecritures) > _ECRITURES_MAX:
+        raise HTTPException(status_code=422, detail=f"unité refusée : {_ECRITURES_MAX} autres écritures au plus")
+    lecteur = lecteur_de_nombres()
+    try:
+        return lecteur.ecriture_d_unite_libre(body.nom), [lecteur.ecriture_d_unite_libre(e) for e in body.ecritures if e.strip()]
+    except lecteur.LectureImpossible as exc:
+        raise HTTPException(status_code=422, detail=f"unité refusée : {exc}") from exc
+
+
+@router.get("/{project_id}/units", response_model=list[schemas.UnitOut],
+           dependencies=[Depends(access.require_project_access)])
+def list_units(project_id: int, conn=Depends(get_conn)):
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    return [schemas.UnitOut(**u) for u in TestUnitRepo(conn).liste(project_id)]
+
+
+@router.post("/{project_id}/units", response_model=schemas.UnitOut, status_code=201,
+            dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
+def create_unit(project_id: int, body: schemas.UnitIn, conn=Depends(get_conn)):
+    if ProjectRepo(conn).get(project_id) is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    nom, ecritures = _ecritures_validees(body)
+    repo = TestUnitRepo(conn)
+    if len(repo.liste(project_id)) >= _UNITES_MAX:
+        raise HTTPException(status_code=422, detail=f"unité refusée : {_UNITES_MAX} unités au plus par projet")
+    try:
+        unit_id = repo.creer(project_id, nom=nom, ecritures=ecritures)
+    except UniteInvalide as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DuplicateName as exc:
+        raise _conflict(exc) from exc
+    return schemas.UnitOut(**repo.lire(project_id, unit_id))
+
+
+@router.put("/{project_id}/units/{unit_id}", response_model=schemas.UnitOut,
+           dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
+def update_unit(project_id: int, unit_id: int, body: schemas.UnitIn, conn=Depends(get_conn)):
+    nom, ecritures = _ecritures_validees(body)
+    repo = TestUnitRepo(conn)
+    try:
+        trouve = repo.modifier(project_id, unit_id, nom=nom, ecritures=ecritures)
+    except UniteInvalide as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DuplicateName as exc:
+        raise _conflict(exc) from exc
+    if not trouve:
+        raise HTTPException(status_code=404, detail=f"unité {unit_id} introuvable")
+    return schemas.UnitOut(**repo.lire(project_id, unit_id))
+
+
+@router.delete("/{project_id}/units/{unit_id}", status_code=204,
+              dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
+def delete_unit(project_id: int, unit_id: int, conn=Depends(get_conn)):
+    if not TestUnitRepo(conn).supprimer(project_id, unit_id):
+        raise HTTPException(status_code=404, detail=f"unité {unit_id} introuvable")
     return Response(status_code=204)
 
 
