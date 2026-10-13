@@ -178,6 +178,14 @@ export const api = {
     request<ProjectAccount>(`/api/projects/${id}/accounts/${accountId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteProjectAccount: (id: number | string, accountId: number) =>
     request<void>(`/api/projects/${id}/accounts/${accountId}`, { method: 'DELETE' }),
+  // ── Unités ajoutées par le projet (lot PT-03) : un nom et ses autres écritures ──
+  listProjectUnits: (id: number | string) => request<ProjectUnit[]>(`/api/projects/${id}/units`),
+  createProjectUnit: (id: number | string, payload: ProjectUnitInput) =>
+    request<ProjectUnit>(`/api/projects/${id}/units`, { method: 'POST', body: JSON.stringify(payload) }),
+  updateProjectUnit: (id: number | string, unitId: number, payload: ProjectUnitInput) =>
+    request<ProjectUnit>(`/api/projects/${id}/units/${unitId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteProjectUnit: (id: number | string, unitId: number) =>
+    request<void>(`/api/projects/${id}/units/${unitId}`, { method: 'DELETE' }),
   // ── Accès par projet — Admin seulement (migration 31, 2026-08-10) ──
   // Surcharge du rôle global : accès par défaut du projet (vide = rôle global) + exceptions
   // par compte. `no_access` rend le projet invisible/404 pour qui le porte.
@@ -627,6 +635,8 @@ export interface Artifacts { available: boolean; reason: string; files: Artifact
 /** Un compte de test du projet. `principal` = le compte de la connexion du projet (id `null`, enregistré sur le projet ; il se
  *  règle dans « Paramètres de test » › « Comptes », ou dans « Application cible » tant que cette organisation est éteinte).
  *  Le mot de passe n'est JAMAIS renvoyé : `has_secret` dit seulement qu'il est enregistré. */
+export interface ProjectUnitInput { nom: string; ecritures: string[] }
+export interface ProjectUnit extends ProjectUnitInput { id: number }
 export interface ProjectAccount {
   id: number | null; label: string; username: string; business_role: string
   has_secret: boolean; principal: boolean

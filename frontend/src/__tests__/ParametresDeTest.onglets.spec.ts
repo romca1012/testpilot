@@ -17,6 +17,10 @@ const createProjectAccount = vi.fn()
 const updateProjectAccount = vi.fn()
 const deleteProjectAccount = vi.fn()
 const valeursDuProjetOptions = vi.fn()
+const listProjectUnits = vi.fn()
+const createProjectUnit = vi.fn()
+const updateProjectUnit = vi.fn()
+const deleteProjectUnit = vi.fn()
 
 vi.mock('../lib/api', () => ({
   api: {
@@ -26,6 +30,10 @@ vi.mock('../lib/api', () => ({
     updateProjectAccount: (...a: any[]) => updateProjectAccount(...a),
     deleteProjectAccount: (...a: any[]) => deleteProjectAccount(...a),
     valeursDuProjetOptions: (...a: any[]) => valeursDuProjetOptions(...a),
+    listProjectUnits: (...a: any[]) => listProjectUnits(...a),
+    createProjectUnit: (...a: any[]) => createProjectUnit(...a),
+    updateProjectUnit: (...a: any[]) => updateProjectUnit(...a),
+    deleteProjectUnit: (...a: any[]) => deleteProjectUnit(...a),
   },
   AUTH_STRATEGIES: ['formulaire', 'totp', 'session_injectee', 'aucune'],
   LIBELLE_AUTH_STRATEGIE: { formulaire: 'Formulaire de connexion', totp: 'Code à usage unique (TOTP)',
@@ -36,6 +44,7 @@ import OngletConfigurations from '../components/parametres/OngletConfigurations.
 import OngletComptes from '../components/parametres/OngletComptes.vue'
 import OngletEtatDeDepart from '../components/parametres/OngletEtatDeDepart.vue'
 import OngletValeursAttendues from '../components/parametres/OngletValeursAttendues.vue'
+import UnitesAjoutees from '../components/parametres/UnitesAjoutees.vue'
 
 const SECRET = 'S3cret-Commercial-9f2c'
 const projet = (plus: Record<string, unknown> = {}) => ({
@@ -67,6 +76,10 @@ beforeEach(() => {
   createProjectAccount.mockResolvedValue({ ...COMPTES[1], id: 8 })
   updateProjectAccount.mockResolvedValue(COMPTES[1])
   deleteProjectAccount.mockResolvedValue(undefined)
+  listProjectUnits.mockResolvedValue([{ id: 3, nom: 'palette', ecritures: ['palettes', 'Palettes'] }])
+  createProjectUnit.mockResolvedValue({ id: 4, nom: 'carton', ecritures: [] })
+  updateProjectUnit.mockResolvedValue({ id: 3, nom: 'palette', ecritures: ['palettes'] })
+  deleteProjectUnit.mockResolvedValue(undefined)
   valeursDuProjetOptions.mockResolvedValue({ devises: ['EUR', 'USD', 'XOF'],
     formats_nombre: [{ cle: 'espace_virgule', libelle: '1 234,56' }, { cle: 'virgule_point', libelle: '1,234.56' }] })
 })
@@ -458,5 +471,95 @@ describe('Paramètres de test — onglet Valeurs attendues (PT-03)', () => {
     await w.get('form').trigger('submit')
     await flushPromises()
     expect(updateProject).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('Paramètres de test — unités ajoutées (PT-03)', () => {
+  const ouvrir = async (peutRegler = true) => {
+    const w = mount(UnitesAjoutees, { props: { projet: projet(), peutRegler }, global: { stubs } })
+    await flushPromises()
+    return w
+  }
+  const bouton = (w: any, texte: string) => w.findAll('button').find((b: any) => b.text() === texte)!
+
+  it('liste les unités du projet avec leurs autres écritures', async () => {
+    const w = await ouvrir()
+
+    expect(listProjectUnits).toHaveBeenCalledWith(4)
+    expect(w.findAll('[data-testid="unite"]').map((l) => l.text())).toEqual([expect.stringMatching(/^palette\s*palettes, Palettes/)])
+  })
+
+  it('un projet sans unité le dit en un mot', async () => {
+    listProjectUnits.mockResolvedValue([])
+    const w = await ouvrir()
+
+    expect(w.get('[data-testid="aucune-unite"]').text()).toBe('Aucune')
+    expect(w.find('table').exists()).toBe(false)
+  })
+
+  it('falsifiable : ajoute une unité, ses autres écritures découpées et nettoyées', async () => {
+    const w = await ouvrir()
+    await w.get('[data-testid="unite-ajouter"]').trigger('click')
+    await w.get('[data-testid="unite-nom"]').setValue('  carton ')
+    await w.get('[data-testid="unite-ecritures"]').setValue(' cartons , Cartons,, ')
+    await w.get('[data-testid="unite-formulaire"]').trigger('submit')
+    await flushPromises()
+
+    expect(createProjectUnit).toHaveBeenCalledWith(4, { nom: 'carton', ecritures: ['cartons', 'Cartons'] })
+    expect(w.find('[data-testid="fenetre"]').exists()).toBe(false)
+    expect(listProjectUnits).toHaveBeenCalledTimes(2)   // la liste est relue : elle montre ce que le serveur a gardé
+  })
+
+  it('modifie une unité en repartant de ce qui est enregistré', async () => {
+    const w = await ouvrir()
+    await bouton(w, 'Modifier').trigger('click')
+
+    expect((w.get('[data-testid="unite-nom"]').element as HTMLInputElement).value).toBe('palette')
+    expect((w.get('[data-testid="unite-ecritures"]').element as HTMLInputElement).value).toBe('palettes, Palettes')
+    await w.get('[data-testid="unite-ecritures"]').setValue('palettes')
+    await w.get('[data-testid="unite-formulaire"]').trigger('submit')
+    await flushPromises()
+
+    expect(updateProjectUnit).toHaveBeenCalledWith(4, 3, { nom: 'palette', ecritures: ['palettes'] })
+    expect(createProjectUnit).not.toHaveBeenCalled()
+  })
+
+  it('falsifiable : le refus du serveur est montré tel quel et la fenêtre reste ouverte', async () => {
+    createProjectUnit.mockRejectedValue(new Error('unité refusée : « kg » est déjà une unité ou une monnaie que l\u2019outil connaît'))
+    const w = await ouvrir()
+    await w.get('[data-testid="unite-ajouter"]').trigger('click')
+    await w.get('[data-testid="unite-nom"]').setValue('kg')
+    await w.get('[data-testid="unite-formulaire"]').trigger('submit')
+    await flushPromises()
+
+    expect(w.get('[data-testid="fenetre"] [role="alert"]').text()).toContain('est déjà une unité')
+    expect((w.get('[data-testid="unite-nom"]').element as HTMLInputElement).value).toBe('kg')
+  })
+
+  it('ne supprime une unité qu\u2019après confirmation', async () => {
+    const w = await ouvrir()
+    await bouton(w, 'Supprimer').trigger('click')
+    expect(deleteProjectUnit).not.toHaveBeenCalled()
+
+    await w.get('[data-testid="confirmer"]').trigger('click')
+    await flushPromises()
+    expect(deleteProjectUnit).toHaveBeenCalledWith(4, 3)
+  })
+
+  it('falsifiable : qui n\u2019administre pas le projet lit la liste, sans aucun geste', async () => {
+    const w = await ouvrir(false)
+
+    expect(w.findAll('[data-testid="unite"]')).toHaveLength(1)
+    expect(w.find('[data-testid="unite-ajouter"]').exists()).toBe(false)
+    expect(w.findAll('button').map((b) => b.text())).toEqual([])
+  })
+
+  it('l\u2019onglet « Valeurs attendues » montre les unités sous la monnaie', async () => {
+    const w = mount(OngletValeursAttendues, { props: { projet: projet(), peutRegler: true }, global: { stubs } })
+    await flushPromises()
+
+    expect(w.find('[data-testid="valeurs-attendues"]').exists()).toBe(true)
+    expect(w.find('[data-testid="unites-ajoutees"]').exists()).toBe(true)
   })
 })

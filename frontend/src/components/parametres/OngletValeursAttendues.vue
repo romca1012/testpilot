@@ -10,6 +10,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { api, type ProjectSummary, type ValeursDuProjetOptions } from '../../lib/api'
 import Button from '../ui/Button.vue'
+import UnitesAjoutees from './UnitesAjoutees.vue'
 import { projetEnregistre } from './fusion'
 
 const props = defineProps<{ projet: ProjectSummary; peutRegler: boolean }>()
@@ -84,6 +85,7 @@ async function enregistrer() {
 </script>
 
 <template>
+  <div>
   <form class="rounded-xl border border-border bg-surface-raised shadow-sm" data-testid="valeurs-attendues" @submit.prevent="enregistrer">
     <fieldset class="p-4 sm:p-6" :disabled="!peutRegler">
       <legend class="sr-only">Écriture des valeurs</legend>
@@ -110,4 +112,7 @@ async function enregistrer() {
       <Button type="submit" variant="primary" :loading="enregistrement" :disabled="!peutRegler || !modifie">Enregistrer</Button>
     </div>
   </form>
+  <!-- Les unités s'enregistrent une à une, dans leur propre fenêtre : elles ne dépendent pas du bouton ci-dessus. -->
+  <UnitesAjoutees :projet="projet" :peut-regler="peutRegler" />
+  </div>
 </template>
