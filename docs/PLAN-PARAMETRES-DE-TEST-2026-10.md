@@ -26,6 +26,12 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 | A23 | La remise à zéro de l'application, et l'essai des actions par l'IA qui en dépend, sont étendus à **toutes** les applications (aujourd'hui : connecteur web seulement). | 2026-10-13 |
 | A24 | **Valeur attendue sans unité alors que l'écran en affiche une** (ancienne V9) — choix « prudent » du porteur : jamais de réussite sans que l'unité soit vérifiée. Si l'écran affiche un montant et que le projet a **déclaré sa monnaie**, la valeur attendue est lue dans cette monnaie (une autre monnaie à l'écran est un défaut) ; sinon l'outil ne se prononce pas et demande d'écrire l'unité dans le test. Même prudence, appliquée par extension et annoncée au porteur : une notation partagée par plusieurs monnaies (« $ », « F CFA ») ne prouve une monnaie précise que si le projet l'a déclarée ; une mention écrite d'un seul côté (« TTC », « k » de « 5 k€ ») ne conclut pas ; l'écriture des nombres déclarée par le projet ne tranche une valeur **affichée** ambiguë que pour les séparateurs qu'elle nomme (« 1 234,56 » ne dit rien du point), jamais la valeur attendue. | 2026-10-13 |
 | A25 | **Unités ajoutées par un projet** (« palette », « point de fidélité ») — choix du porteur : « reconnaître ses écritures ». Le projet déclare l'unité et ses autres écritures exactes (« palettes », « Palettes ») ; l'outil les reconnaît alors comme la même unité. Aucune conversion (« 1 palette = 48 cartons » n'est pas retenu), aucune tolérance au-delà des écritures déclarées. Une unité que l'outil connaît déjà (« kg », « € ») ne peut pas être déclarée. | 2026-10-13 |
+| A26 | **Écriture d'une variable dans un test** (ancienne V2) : `{{nom}}`, entre doubles accolades — choix du porteur, écart voulu avec TestRail (`%nom%`) et avec la première rédaction de ce plan. Aucune confusion possible avec un pourcentage. | 2026-10-13 |
+| A27 | **Case vide d'un jeu de données** (ancienne V3) : elle reprend la valeur de la colonne « Par défaut ». | 2026-10-13 |
+| A28 | **Lancement avec plusieurs jeux de données** (ancienne V4) : une exécution par jeu, regroupées dans un plan ; l'écran annonce le nombre d'exécutions avant de créer ; **50 au plus** par lancement. | 2026-10-13 |
+| A29 | **Jeu de données modifié pendant une exécution** (ancienne V7) : les valeurs sont figées au lancement ; un rejeu reprend les mêmes. Écart voulu avec TestRail. | 2026-10-13 |
+| A30 | **Qui modifie les données de test d'un projet** (ancienne V5, pour le niveau projet) : testeurs, développeurs et administrateurs du projet, comme pour les tests ; les lecteurs consultent. Écart avec la proposition du dossier (développeurs et administrateurs seulement). Le niveau « bibliothèque commune » reste à décider au lot PT-05. | 2026-10-13 |
+| A31 | **Supprimer une variable ou un jeu de données utilisé** (ancienne V13) : mise à la corbeille, restaurable ; l'outil montre d'abord les tests concernés ; tant qu'elle y est, ces tests sortent « bloqué ». | 2026-10-13 |
 
 Interrupteur (confirmé par le porteur le 2026-10-13) : il ne sert qu'au temps de la construction, pour comparer
 l'ancien écran et le nouveau. Le changement étant définitif, il est retiré au lot PT-07 avec l'ancien écran.
@@ -72,14 +78,15 @@ et rend la valeur retenue avec **son niveau d'origine**. Appelé à un seul endr
 
 ### 3.3 Où une variable est remplacée
 
-- Écriture `%nom%` (V2). Nom limité à des lettres minuscules, chiffres et `_` : « 10 % de remise et 5 % » n'est jamais lu
-  comme une variable.
-- Remplacement au **lancement**, dans `run_service._assurer_script_sur_disque` : le test stocké garde ses `%nom%`, la copie
+- Écriture `{{nom}}` (A26). Nom fait de lettres minuscules (accents admis), de chiffres et de `_`, sans espace : « 10 % de
+  remise » n'est jamais concerné. Seul le **texte du test** (le `.feature`) est lu ; le code des steps n'est jamais modifié
+  (des accolades doublées y ont un autre sens).
+- Remplacement au **lancement**, dans `run_service._assurer_script_sur_disque` : le test stocké garde ses `{{nom}}`, la copie
   jouée reçoit les valeurs figées. Chaque exécution reçoit **son propre dossier** de script (aujourd'hui partagé par nom de
   module), pour que deux jeux de données joués en même temps ne s'écrasent pas.
 - Variable inconnue ou sans valeur : l'exécution n'est pas lancée, le cas sort « bloqué » avec la variable nommée — jamais
-  une chaîne `%nom%` saisie telle quelle dans l'application.
-- Les valeurs sont **figées au lancement** (V7) et relues depuis `parametres_figes` pour tout rejeu.
+  une chaîne `{{nom}}` saisie telle quelle dans l'application.
+- Les valeurs sont **figées au lancement** (A29) et relues depuis `parametres_figes` pour tout rejeu.
 
 ### 3.4 Interface
 
@@ -136,7 +143,7 @@ Acceptation :
 - [ ] mêmes droits qu'aujourd'hui ; navigation au clavier ; aucun texte d'explication à l'écran
 - [ ] suite complète et contrôles d'interface verts
 
-### PT-02 — Données de test (G) — décisions A2, A3 ; V2, V3, V4, V5, V7, V13
+### PT-02 — Données de test (G) — décisions A2, A3, A26 à A31
 
 But : un même test joué pour plusieurs situations.
 
@@ -250,7 +257,7 @@ PT-03 passe juste après PT-01).
 | Lot | Décisions qui le bloquent | Sans elles |
 |---|---|---|
 | PT-01 | aucune : V14 et V15 tranchées le 2026-10-13 (A18, A19) ; V1 acquise (le porteur emploie « Paramètres de test ») | — |
-| PT-02 | V2 (`%nom%`), V3 (case vide), V4 (une exécution par combinaison, limite), V5 (droits), V7 (valeurs figées), V13 (corbeille) | le lot ne démarre pas |
+| PT-02 | aucune : V2, V3, V4, V5, V7 et V13 tranchées le 2026-10-13 (A26 à A31) | — |
 | PT-03 | aucune : V9 tranchée le 2026-10-13 (A24), rôle des unités ajoutées tranché le même jour (A25) | — |
 | PT-04 | V16 (exploration par compte, compte au lancement) | PT-04a peut démarrer |
 | PT-05 | V5, V6 (remplacement local) | le lot ne démarre pas |
@@ -265,7 +272,7 @@ Règle du dépôt (CLAUDE.md §5.3) : un lot qui dépend d'une décision non val
 |---|---|
 | Un faux `conforme` introduit par un paramètre | Un paramètre vient d'une personne, jamais de l'agent ; variable inconnue = « bloqué » ; règle non validée = « à vérifier » ; tests de falsifiabilité à chaque lot ; revue `verdict-reviewer`. |
 | Régression pour les projets existants | R1, R2 ; test « sans réglage = identique à aujourd'hui » dans chaque lot ; interrupteur de retour arrière. |
-| Explosion du nombre d'exécutions | Nombre indiqué avant de créer ; limite fixée par V4 ; exécution en séquence comme aujourd'hui. |
+| Explosion du nombre d'exécutions | Nombre indiqué avant de créer ; 50 exécutions au plus par lancement (A28) ; exécution en séquence comme aujourd'hui. |
 | Deux exécutions qui se marchent dessus | Dossier de script par exécution (PT-02b), testé. |
 | Coût de l'IA | Rejouer un test avec d'autres données ne régénère rien ; seuls PT-02d et PT-04b changent ce que l'agent reçoit, et sont mesurés. |
 | Données sensibles | Mots de passe uniquement dans les comptes, chiffrés, jamais dans une variable ni dans un résultat ; `parametres_joues` ne contient que le **nom** du compte. |
