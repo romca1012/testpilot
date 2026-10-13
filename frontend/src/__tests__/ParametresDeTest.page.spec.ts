@@ -21,6 +21,8 @@ const push = vi.fn()
 const route = { name: 'admin-projects', params: {} as Record<string, string> }
 const session = ref<any>({ authenticated: true, role: 'admin' })
 const actifs = ref(false)
+const connu = ref(true)
+const replace = vi.fn()
 const gardes: Array<(to: any) => any> = []
 
 vi.mock('../lib/api', () => ({
@@ -36,9 +38,9 @@ vi.mock('../lib/api', () => ({
 }))
 vi.mock('../lib/useProjects', () => ({ useProjects: () => ({ ensureLoaded: vi.fn() }) }))
 vi.mock('../lib/useSession', () => ({ useSession: () => ({ session }) }))
-vi.mock('../lib/parametresDeTest', () => ({ useParametresDeTest: () => ({ actifs }) }))
+vi.mock('../lib/parametresDeTest', () => ({ useParametresDeTest: () => ({ actifs, connu }) }))
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, replace }),
   useRoute: () => route,
   onBeforeRouteLeave: (g: (to: any) => any) => { gardes.push(g) },
   onBeforeRouteUpdate: (g: (to: any) => any) => { gardes.push(g) },
@@ -141,7 +143,8 @@ describe('Fenêtre « Identité et application » — organisation allumée (PT-
 })
 
 describe('Page « Paramètres de test » d\'un projet', () => {
-  async function ouvrir(params: Record<string, string>) {
+  async function ouvrir(params: Record<string, string>, allume = true) {
+    actifs.value = allume
     route.name = 'project-test-params'
     route.params = params
     const w = mount(ProjectTestParameters, { global: { stubs } })
@@ -178,9 +181,21 @@ describe('Page « Paramètres de test » d\'un projet', () => {
     session.value = { authenticated: true, role: 'testeur' }
     listProjects.mockResolvedValue([{ ...PROJET, effective_role: 'dev' }])
 
-    expect((await ouvrir({ pid: '4', onglet: 'comptes' })).get('[data-testid="contenu-comptes"]').attributes('data-gerer')).toBe('true')
+    const comptes = (await ouvrir({ pid: '4', onglet: 'comptes' })).get('[data-testid="contenu-comptes"]')
+    expect(comptes.attributes('data-gerer')).toBe('true')
+    // … mais pas le compte principal, que seul un administrateur du projet peut modifier (le serveur refuserait, 403).
+    expect(comptes.attributes('data-regler')).toBe('false')
     expect((await ouvrir({ pid: '4', onglet: 'configurations' })).get('[data-testid="contenu-configurations"]').attributes('data-regler')).toBe('false')
     expect(listAdminProjects).not.toHaveBeenCalled()
+  })
+
+  it('falsifiable : organisation éteinte, l\u2019adresse de la page ramène aux projets', async () => {
+    await ouvrir({ pid: '4', onglet: 'comptes' }, false)
+    expect(replace).toHaveBeenCalledWith('/admin/projects')
+
+    replace.mockClear()
+    await ouvrir({ pid: '4', onglet: 'comptes' }, true)
+    expect(replace).not.toHaveBeenCalled()
   })
 
   it('falsifiable : on ne quitte pas un onglet modifié sans confirmation', async () => {

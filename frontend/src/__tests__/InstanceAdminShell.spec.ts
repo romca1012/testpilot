@@ -33,4 +33,27 @@ describe('administration de l’instance', () => {
     expect(wrapper.text()).not.toContain('Cas de test')
     expect(wrapper.findAll('a[href="/admin/projects"]').some(link => link.text().includes('Projets'))).toBe(true)
   })
+
+  // Lot PT-01a, revue du 2026-10-13 : « Projets » doit rester repéré sur la liste des projets COMME sur la page d'un projet.
+  it('repère « Projets » sur la liste des projets et sur la page d’un projet, nulle part ailleurs', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: ['/projects', '/admin/projects', '/admin/projects/:pid/parametres-de-test/:onglet?', '/settings',
+               '/settings/general', '/settings/security', '/utilisateurs'].map((path) => ({ path, component: { template: '<div />' } })),
+    })
+    await router.push('/admin/projects')
+    await router.isReady()
+    const wrapper = mount(InstanceAdminShell, { global: { plugins: [router] } })
+    const lien = () => wrapper.findAll('a[href="/admin/projects"]').find(l => l.text().includes('Projets'))!
+
+    expect(lien().attributes('aria-current')).toBe('page')
+
+    await router.push('/admin/projects/4/parametres-de-test/comptes')
+    await wrapper.vm.$nextTick()
+    expect(lien().attributes('aria-current')).toBe('page')
+
+    await router.push('/settings/general')
+    await wrapper.vm.$nextTick()
+    expect(lien().attributes('aria-current')).toBeUndefined()
+  })
 })

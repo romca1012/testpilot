@@ -36,7 +36,7 @@ const sousProjets = computed(() => String(route?.path || '').startsWith('/admin/
           <RouterLink to="/admin/projects"
                       class="inline-flex min-h-11 shrink-0 items-center rounded-md px-3 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
                       :class="sousProjets ? 'bg-primary/10 text-primary' : ''"
-                      :aria-current="sousProjets ? 'page' : undefined"
+                      v-bind="sousProjets ? { 'aria-current': 'page' } : {}"
                       active-class="bg-primary/10 text-primary">
             Projets
           </RouterLink>
