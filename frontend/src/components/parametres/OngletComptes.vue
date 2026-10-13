@@ -17,6 +17,7 @@ import Button from '../ui/Button.vue'
 import Hint from '../ui/Hint.vue'
 import Modal from '../ui/Modal.vue'
 import ConfirmDialog from '../ConfirmDialog.vue'
+import { projetEnregistre } from './fusion'
 
 const props = defineProps<{ projet: ProjectSummary; peutGerer: boolean; peutRegler?: boolean }>()
 const emit = defineEmits<{ (e: 'enregistre', projet: ProjectSummary): void }>()
@@ -74,6 +75,8 @@ async function enregistrer() {
       await api.updateProjectAccount(props.projet.id, enCours.value, patch)
     }
     enCours.value = null
+    // Aucun mot de passe saisi ne reste en mémoire une fois enregistré.
+    form.value = { label: '', username: '', password: '', business_role: '' }
     await charger()
   } catch (e: any) {
     erreurFormulaire.value = e?.message || 'Enregistrement du compte impossible.'
@@ -112,8 +115,10 @@ async function enregistrerPrincipal() {
       if (principal.value.injected_session) patch.injected_session = principal.value.injected_session
     }
     const maj = await api.updateProject(props.projet.id, patch)
-    emit('enregistre', { ...props.projet, ...maj })
+    emit('enregistre', projetEnregistre(props.projet, maj))
     principalOuvert.value = false
+    // Aucun secret saisi ne reste en mémoire une fois enregistré.
+    principal.value = { username: '', password: '', auth_strategie: 'formulaire', totp_secret: '', injected_session: '' }
     await charger()
   } catch (e: any) {
     erreurFormulaire.value = e?.message || 'Enregistrement du compte impossible.'

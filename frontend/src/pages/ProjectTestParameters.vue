@@ -6,10 +6,11 @@
 //
 // Une PAGE et non une fenêtre : chaque onglet a sa propre adresse (un lien ouvre le bon onglet, le retour arrière ramène
 // d'où l'on vient), et l'écran reste sobre — libellés, valeurs, boutons, aucune phrase d'explication (décision A15).
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch, watchEffect } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { api, type ProjectSummary } from '../lib/api'
 import { useSession } from '../lib/useSession'
+import { useParametresDeTest } from '../lib/parametresDeTest'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import OngletConfigurations from '../components/parametres/OngletConfigurations.vue'
 import OngletComptes from '../components/parametres/OngletComptes.vue'
@@ -25,6 +26,10 @@ type CleOnglet = typeof ONGLETS[number]['cle']
 const route = useRoute()
 const router = useRouter()
 const { session } = useSession()
+// La page n'existe que si l'installation a allumé la nouvelle organisation : éteinte, son adresse ramène aux projets
+// (revue du 2026-10-13 : seul le bouton était derrière l'interrupteur, pas la page).
+const { actifs, connu } = useParametresDeTest()
+watchEffect(() => { if (connu?.value && !actifs.value) router.replace('/admin/projects') })
 
 const projet = ref<ProjectSummary | null>(null)
 const chargement = ref(true)

@@ -78,7 +78,9 @@ describe('Paramètres généraux de l’instance', () => {
     expect(setSetting).toHaveBeenCalledTimes(4)
   })
 
-  it('interrupteur allumé sur le serveur : coché, et le décocher EFFACE le réglage', async () => {
+  it('interrupteur allumé sur le serveur : coché, et le décocher écrit « 0 » (jamais vide)', async () => {
+    // Revue du 2026-10-13 : une valeur vide EFFACE le réglage et rend la main à la variable d'environnement — si elle
+    // allume l'organisation, la case décochée revenait cochée.
     listSettings.mockResolvedValue([...valeurs,
       { key: 'parametres_de_test_enabled', value: '1', source: 'db', description: '', admin_only: true, secret: false }])
     const w = mount(GeneralSettings)
@@ -90,7 +92,7 @@ describe('Paramètres généraux de l’instance', () => {
     await w.get('form').trigger('submit')
     await flushPromises()
 
-    expect(setSetting).toHaveBeenCalledWith('parametres_de_test_enabled', '')
+    expect(setSetting).toHaveBeenCalledWith('parametres_de_test_enabled', '0')
   })
 
   it('reste en consultation seule pour un non-administrateur', async () => {
