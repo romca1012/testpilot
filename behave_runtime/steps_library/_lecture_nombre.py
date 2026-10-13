@@ -69,6 +69,11 @@ _RE_DEVISE = re.compile("|".join(_motif_devise(n) for n in sorted(_DEVISES, key=
 # jamais sinon (mois et années, °C et °F, Mo : aucune conversion devinée). Une unité que la table ne connaît pas n'est pas
 # refusée : elle est gardée telle quelle (`INCONNUE`) et ne vaut alors que pour la même écriture.
 MONNAIE, POURCENTAGE, INCONNUE = "monnaie", "pourcentage", "inconnue"
+# Une unité que le PROJET a déclarée (« palette », « point de fidélité ») avec ses autres écritures (« palettes »,
+# « Palettes ») : elle n'est toujours pas convertible, mais ses écritures désignent la même unité. Décision du porteur
+# (2026-10-13) : sans elle, « 12 Palettes » contre « 12 palettes » ne conclut pas (casse gardée, voir `_ecriture_normalisee`).
+DECLAREE = "unité du projet"
+_SANS_CONVERSION = (INCONNUE, DECLAREE)
 
 
 def _table_des_unites() -> dict[str, tuple[str, str, Fraction | None]]:
@@ -189,11 +194,15 @@ def _groupes_de_trois(texte: str, sep: str) -> bool:
 
 
 def lire_nombre(texte: str, *, separateur_decimal: str | None = None, avec_unite: bool = False,
-                decimal_si_ambigu: str | None = None, milliers_si_ambigu: str | None = None) -> NombreLu:
+                decimal_si_ambigu: str | None = None, milliers_si_ambigu: str | None = None,
+                unites_declarees: dict[str, str] | None = None) -> NombreLu:
     """Texte affiché -> `NombreLu`. `separateur_decimal` ('.' ou ',') lève l'ambiguïté quand l'appelant la connaît (langue).
 
     `avec_unite` : lit aussi ce qui SUIT le nombre comme une unité (« 1,5 kg », « 3 jours », « 12 pièces ») ; sans lui, tout
     texte autre qu'une devise ou un « % » reste refusé, comme avant le lot PT-03.
+
+    `unites_declarees` : écriture EXACTE -> nom de l'unité, pour les unités que le projet a déclarées. Elles ne passent
+    jamais devant une unité ou une monnaie que le lecteur connaît déjà (« kg » reste des kilogrammes).
 
     `decimal_si_ambigu` et `milliers_si_ambigu` ('.' ou ',') : l'écriture des nombres DÉCLARÉE par le projet. Elle ne
     tranche QUE ce que le lecteur refuse de deviner (« 1,234 » : mille deux cent trente-quatre, ou un virgule deux cent
@@ -282,7 +291,11 @@ def lire_nombre(texte: str, *, separateur_decimal: str | None = None, avec_unite
         raise LectureImpossible(f"« {brut} » : une valeur entre parenthèses ne se lit comme un nombre négatif que pour un montant")
     connue = _UNITES.get(suite)
     if connue is None:
-        return NombreLu(valeur, None, False, brut, nature=INCONNUE, unite=_ecriture_normalisee(suite))
+        ecriture = _ecriture_normalisee(suite)
+        declaree = (unites_declarees or {}).get(ecriture)
+        if declaree:
+            return NombreLu(valeur, None, False, brut, nature=DECLAREE, unite=declaree)
+        return NombreLu(valeur, None, False, brut, nature=INCONNUE, unite=ecriture)
     nature, canonique, rapport = connue
     return NombreLu(valeur, None, False, brut, nature=nature, unite=canonique, rapport=rapport)
 
@@ -448,6 +461,8 @@ class ComparaisonValeurs:
 def _unite(n: NombreLu) -> str:
     if not n.nature:
         return "aucune unité"
+    if n.nature == DECLAREE:
+        return f"unité du projet « {n.unite} »"
     if n.nature == INCONNUE:
         return f"unité « {n.unite} », inconnue de l'outil"
     if n.nature != MONNAIE:
@@ -539,13 +554,13 @@ def comparer_valeurs(lu: NombreLu, attendu: NombreLu, *, devise_du_projet: str =
             return issue(DIFFERENT)
         return issue(UNITE_NON_VERIFIABLE, sans_unite)
     if not lu.nature:
-        if (memes_nombres or attendu.qualificatif or attendu.nature in _NATURES_CONVERTIBLES or attendu.nature == INCONNUE
+        if (memes_nombres or attendu.qualificatif or attendu.nature in _NATURES_CONVERTIBLES or attendu.nature in _SANS_CONVERSION
                 or (attendu.nature == POURCENTAGE and _meme_taux_ecrit_autrement(lu.valeur, attendu.valeur))):
             return issue(UNITE_NON_VERIFIABLE,
                          "aucune unité n'est affichée à côté de la valeur" + ("" if memes_nombres else
                                                                              " : elle est peut-être exprimée autrement"))
         return issue(DIFFERENT)  # une monnaie ou un pourcentage ne se convertit pas : un autre nombre est une autre valeur
-    if INCONNUE in (lu.nature, attendu.nature):
+    if lu.nature in _SANS_CONVERSION or attendu.nature in _SANS_CONVERSION:
         if lu.nature != attendu.nature or lu.unite != attendu.unite:
             return issue(UNITE_NON_VERIFIABLE, "l'outil ne sait pas rapprocher ces deux unités")
         return issue(EGAL if memes_nombres else DIFFERENT)
@@ -591,3 +606,30 @@ def comparer_valeurs(lu: NombreLu, attendu: NombreLu, *, devise_du_projet: str =
     if abs(convertie - voulue) <= fenetre:
         return issue(UNITE_NON_VERIFIABLE, f"{conversion}, l'écart est inférieur à l'arrondi de l'affichage")
     return issue(DIFFERENT, conversion)
+
+
+def ecriture_d_unite_libre(texte: str) -> str:
+    """L'écriture d'une unité qu'un projet peut DÉCLARER, normalisée — ou `LectureImpossible`, qui dit pourquoi en clair.
+
+    Une seule règle : sans aucune déclaration, « 1 <écriture> » doit se lire comme une unité INCONNUE écrite exactement
+    ainsi — c'est le seul cas où une déclaration change quelque chose. Sont donc refusées : une unité que le lecteur
+    connaît déjà (« kg », « jours »), tout ce qui porte une monnaie ou un pourcentage (« € », « k€ », « €/kg », « % par
+    mois » : le lecteur les lit avant de consulter les déclarations, une telle écriture resterait sans effet), et ce qu'il
+    ne saurait pas lire après un nombre (un chiffre, une parenthèse, plus de 24 caractères)."""
+    ecriture = _ecriture_normalisee(str(texte))
+    if not ecriture:
+        raise LectureImpossible("écriture vide")
+    if re.search(r"\d", ecriture):
+        raise LectureImpossible(f"« {ecriture} » : une unité ne s'écrit pas avec un chiffre (pour un carré, « ² »)")
+    if _RE_DEVISE.search(ecriture) or "%" in ecriture or "‰" in ecriture:
+        raise LectureImpossible(f"« {ecriture} » porte une monnaie ou un pourcentage, que l'outil lit déjà")
+    try:
+        lu = lire_nombre(f"1 {ecriture}", avec_unite=True)
+    except LectureImpossible:
+        raise LectureImpossible(f"« {ecriture} » ne se lit pas comme une unité après un nombre "
+                                f"(des lettres, {_LONGUEUR_MAX_UNITE} caractères au plus)") from None
+    if lu.nature != INCONNUE:
+        raise LectureImpossible(f"« {ecriture} » est déjà une unité que l'outil connaît")
+    if lu.unite != ecriture:
+        raise LectureImpossible(f"« {ecriture} » serait lue « {lu.unite} » : écrivez-la ainsi")
+    return ecriture

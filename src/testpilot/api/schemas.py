@@ -583,6 +583,18 @@ class ProjectPatch(BaseModel):
     format_nombre: str | None = None
 
 
+class UnitIn(BaseModel):
+    """Une unité ajoutée par le projet (lot PT-03) : son nom et ses autres écritures (« palette » ; « palettes », « Palettes »)."""
+    nom: str
+    ecritures: list[str] = []
+
+
+class UnitOut(BaseModel):
+    id: int
+    nom: str
+    ecritures: list[str] = []
+
+
 class AccountIn(BaseModel):
     """Un compte SECONDAIRE du projet (lot 07b-1, D8). `password` : accepté en entrée, jamais relu en sortie."""
     label: str

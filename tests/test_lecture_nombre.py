@@ -520,3 +520,67 @@ def test_falsifiable_une_valeur_construite_a_la_main_ne_peut_pas_etre_incoherent
 ])
 def test_falsifiable_une_notation_partagee_n_est_jamais_reduite_a_une_seule_monnaie(ecran, attendu, devise, issue):
     assert _a24(ecran, attendu, devise) == issue
+
+
+# ── Lot PT-03 : les unités AJOUTÉES par un projet (décision du porteur, 2026-10-13 : « reconnaître ses écritures ») ────────
+
+_UNITES_DU_PROJET = {"palette": "palette", "palettes": "palette", "Palettes": "palette",
+                     "point de fidélité": "point de fidélité", "points": "point de fidélité", "kg": "palette"}
+
+
+def _avec_unites(ecran: str, attendu: str, unites=_UNITES_DU_PROJET, devise: str = "") -> str:
+    def lu(texte):
+        return ln.lire_nombre(texte, avec_unite=True, unites_declarees=unites)
+    return ln.comparer_valeurs(lu(ecran), lu(attendu), devise_du_projet=devise).etat
+
+
+@pytest.mark.parametrize("ecran, attendu, issue", [
+    ("12 Palettes", "12 palettes", ln.EGAL), ("12 palette", "12 Palettes", ln.EGAL), ("1 250 points", "1250 point de fidélité", ln.EGAL),
+    ("13 Palettes", "12 palettes", ln.DIFFERENT), ("12 palettes", "12 points", ln.UNITE_NON_VERIFIABLE),
+    # Une écriture que le projet n'a PAS déclarée reste inconnue : rien n'est deviné, pas même une majuscule.
+    ("12 PALETTES", "12 palettes", ln.UNITE_NON_VERIFIABLE), ("12 palettes", "12 cartons", ln.UNITE_NON_VERIFIABLE),
+    # Aucune conversion, et la décision A24 vaut comme pour toute unité.
+    ("12 palettes", "12", ln.UNITE_NON_VERIFIABLE), ("12", "12 palettes", ln.UNITE_NON_VERIFIABLE),
+    ("13", "12 palettes", ln.UNITE_NON_VERIFIABLE), ("12 palettes", "12 €", ln.UNITE_NON_VERIFIABLE),
+])
+def test_une_unite_declaree_par_le_projet_se_reconnait_sous_toutes_ses_ecritures(ecran, attendu, issue):
+    assert _avec_unites(ecran, attendu) == issue
+
+
+def test_falsifiable_sans_declaration_les_memes_ecritures_ne_concluent_pas():
+    assert _avec_unites("12 Palettes", "12 palettes", unites=None) == ln.UNITE_NON_VERIFIABLE
+    assert _avec_unites("12 Palettes", "12 palettes", unites={}) == ln.UNITE_NON_VERIFIABLE
+
+
+def test_falsifiable_une_declaration_ne_passe_jamais_devant_une_unite_que_l_outil_connait():
+    """« kg » déclaré comme une palette (base éditée à la main) reste des kilogrammes : 5 kg vaut toujours 5000 g."""
+    lu = ln.lire_nombre("5 kg", avec_unite=True, unites_declarees=_UNITES_DU_PROJET)
+
+    assert (lu.nature, lu.unite) == ("masse", "kg")
+    assert _avec_unites("5 kg", "5000 g") == ln.EGAL and _avec_unites("5 kg", "5 palettes") == ln.UNITE_NON_VERIFIABLE
+    assert ln.lire_nombre("5 €", avec_unite=True, unites_declarees={"€": "palette"}).nature == ln.MONNAIE
+
+
+@pytest.mark.parametrize("ecriture", ["palette", "Palettes", "point de fidélité", "pièces/carton", "UI", "dam²", "a-b"])
+def test_une_ecriture_libre_peut_etre_declaree(ecriture):
+    assert ln.ecriture_d_unite_libre(f"  {ecriture} ") == ecriture
+
+
+@pytest.mark.parametrize("ecriture", ["kg", "Kg", "€", "USD", "F CFA", "%", "‰", "k€", "m2", "jours", "", "   ", "2x", "x2",
+                                      "12", "une unité beaucoup trop longue pour être lue", "palette (bois)",
+                                      # Revue du 2026-10-13 : acceptées, elles seraient restées SANS EFFET (le lecteur lit la
+                                      # monnaie et le pourcentage avant de consulter les déclarations) ou relues autrement.
+                                      "€/kg", "EUR/kg", "$/h", "% par mois", "%/an", "dam2", "000 x", "a\u2013b"])
+def test_falsifiable_une_ecriture_deja_connue_ou_illisible_ne_peut_pas_etre_declaree(ecriture):
+    with pytest.raises(ln.LectureImpossible) as refus:
+        ln.ecriture_d_unite_libre(ecriture)
+    assert "« 1 " not in str(refus.value), "le message ne montre pas le « 1 » qui a servi à l'essai"
+
+
+def test_falsifiable_ce_qui_peut_etre_declare_est_exactement_ce_qu_une_declaration_change():
+    """La propriété qui fonde la validation : une écriture ACCEPTÉE, une fois déclarée, est bien lue comme l'unité du projet."""
+    for ecriture in ("palette", "point de fidélité", "pièces/carton", "dam²", "a-b"):
+        acceptee = ln.ecriture_d_unite_libre(ecriture)
+        lu = ln.lire_nombre(f"3 {acceptee}", avec_unite=True, unites_declarees={acceptee: "x"})
+        assert (lu.nature, lu.unite) == (ln.DECLAREE, "x"), ecriture
+    assert "serait lue « a-b »" in str(pytest.raises(ln.LectureImpossible, ln.ecriture_d_unite_libre, "a\u2013b").value)

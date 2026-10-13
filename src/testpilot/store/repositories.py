@@ -3433,6 +3433,76 @@ LIBELLE_PRINCIPAL = "principal"
 _LIBELLE_MAX = 80
 
 
+class UniteInvalide(ValueError):
+    """Une unité ajoutée mal formée (vide, déjà connue de l'outil, illisible après un nombre)."""
+
+
+class TestUnitRepo:
+    """Les unités AJOUTÉES par un projet (lot PT-03, migration 63) : un nom et ses autres écritures.
+
+    Les écritures arrivent DÉJÀ validées par l'appelant (`parametres/lecteur.py` : les règles du lecteur de nombres) ; ce
+    dépôt garde ce qui relève de la base : une écriture ne désigne qu'UNE unité du projet — comparaison EXACTE, casse
+    comprise, comme le constat (« mA » et « MA » ne sont pas la même écriture).
+    """
+
+    __test__ = False   # pas une classe de test, malgré son nom (pytest)
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    @staticmethod
+    def _sortie(ligne) -> dict:
+        try:
+            ecritures = json.loads(ligne["ecritures"] or "[]")
+        except (ValueError, TypeError):
+            ecritures = []
+        return {"id": ligne["id"], "nom": ligne["nom"], "ecritures": [str(e) for e in ecritures] if isinstance(ecritures, list) else []}
+
+    def liste(self, project_id: int) -> list[dict]:
+        return [self._sortie(l) for l in self.conn.execute(
+            "SELECT id, nom, ecritures FROM test_unit WHERE project_id=? ORDER BY id", (project_id,))]
+
+    def lire(self, project_id: int, unit_id: int) -> dict | None:
+        ligne = self.conn.execute("SELECT id, nom, ecritures FROM test_unit WHERE project_id=? AND id=?",
+                                  (project_id, unit_id)).fetchone()
+        return self._sortie(ligne) if ligne else None
+
+    def _preparer(self, project_id: int, nom: str, ecritures: list[str], *, excluding: int | None = None) -> list[str]:
+        """Les autres écritures, sans doublon ni le nom lui-même ; refuse une écriture qu'une AUTRE unité du projet porte déjà."""
+        if not nom:
+            raise UniteInvalide("le nom de l'unité est requis")
+        autres = [e for e in dict.fromkeys(ecritures) if e and e != nom]
+        for unite in self.liste(project_id):
+            if unite["id"] == excluding:
+                continue
+            prises = {unite["nom"], *unite["ecritures"]}
+            communes = sorted(prises & {nom, *autres})
+            if communes:
+                raise DuplicateName(f"« {communes[0]} » désigne déjà l'unité « {unite['nom']} » de ce projet")
+        return autres
+
+    def creer(self, project_id: int, *, nom: str, ecritures: list[str]) -> int:
+        autres = self._preparer(project_id, nom, ecritures)
+        cur = self.conn.execute("INSERT INTO test_unit (project_id, nom, ecritures, created_at) VALUES (?,?,?,?)",
+                                (project_id, nom, json.dumps(autres, ensure_ascii=False), now_iso()))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def modifier(self, project_id: int, unit_id: int, *, nom: str, ecritures: list[str]) -> bool:
+        if self.lire(project_id, unit_id) is None:
+            return False
+        autres = self._preparer(project_id, nom, ecritures, excluding=unit_id)
+        self.conn.execute("UPDATE test_unit SET nom=?, ecritures=? WHERE project_id=? AND id=?",
+                          (nom, json.dumps(autres, ensure_ascii=False), project_id, unit_id))
+        self.conn.commit()
+        return True
+
+    def supprimer(self, project_id: int, unit_id: int) -> bool:
+        cur = self.conn.execute("DELETE FROM test_unit WHERE project_id=? AND id=?", (project_id, unit_id))
+        self.conn.commit()
+        return cur.rowcount > 0
+
+
 class CompteInvalide(ValueError):
     """Un compte de projet mal formé (libellé vide, réservé, trop long, ou contenant un guillemet)."""
 

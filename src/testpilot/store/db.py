@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 62
+_SCHEMA_VERSION = 63
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -266,6 +266,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_61_bac_a_sable_reset(conn)
     if version < 62:
         _migrate_62_valeurs_du_projet(conn)
+    if version < 63:
+        _migrate_63_test_unit(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -424,6 +426,23 @@ def _migrate_50_contexte_navigateur(conn: sqlite3.Connection) -> None:
     for colonne in ("browser_locale", "browser_timezone", "browser_viewport"):
         if colonne not in _column_names(conn, "project"):
             conn.execute(f"ALTER TABLE project ADD COLUMN {colonne} TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_63_test_unit(conn: sqlite3.Connection) -> None:
+    """Lot PT-03 (paramètres de test) : les unités AJOUTÉES par un projet (« palette », « point de fidélité »).
+
+    Une ligne par unité : son nom, et ses autres écritures (liste JSON) — « 12 Palettes » et « 12 palettes » désignent alors
+    la même unité pour le constat « le nombre affiché … vaut … ». Aucune conversion. `project_id` est NULLABLE dès la
+    création : NULL désignera une unité de la bibliothèque commune (lot PT-05, décision A3) ; aucune ligne n'en porte
+    aujourd'hui. Table nouvelle, créée seulement si absente (idempotent) ; rien ne change pour un projet existant.
+    """
+    conn.execute('''CREATE TABLE IF NOT EXISTS test_unit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER REFERENCES project(id) ON DELETE CASCADE,
+        nom TEXT NOT NULL,
+        ecritures TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        UNIQUE(project_id, nom))''')
 
 
 def _migrate_62_valeurs_du_projet(conn: sqlite3.Connection) -> None:
