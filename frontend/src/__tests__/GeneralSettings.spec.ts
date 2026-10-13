@@ -63,6 +63,36 @@ describe('Paramètres généraux de l’instance', () => {
     expect(w.text()).toContain('Paramètres généraux enregistrés.')
   })
 
+  // ── Lot PT-00 : l'interrupteur « Paramètres de test » ──────────────────────────────────────────────────────────────
+  it('interrupteur « Paramètres de test » : éteint par défaut, et écrit seulement quand il change', async () => {
+    const w = mount(GeneralSettings)
+    await flushPromises()
+    const interrupteur = w.get('[data-testid="interrupteur-parametres-de-test"]')
+    expect((interrupteur.element as HTMLInputElement).checked).toBe(false)
+
+    await interrupteur.setValue(true)
+    await w.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(setSetting).toHaveBeenCalledWith('parametres_de_test_enabled', '1')
+    expect(setSetting).toHaveBeenCalledTimes(4)
+  })
+
+  it('interrupteur allumé sur le serveur : coché, et le décocher EFFACE le réglage', async () => {
+    listSettings.mockResolvedValue([...valeurs,
+      { key: 'parametres_de_test_enabled', value: '1', source: 'db', description: '', admin_only: true, secret: false }])
+    const w = mount(GeneralSettings)
+    await flushPromises()
+    const interrupteur = w.get('[data-testid="interrupteur-parametres-de-test"]')
+    expect((interrupteur.element as HTMLInputElement).checked).toBe(true)
+
+    await interrupteur.setValue(false)
+    await w.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(setSetting).toHaveBeenCalledWith('parametres_de_test_enabled', '')
+  })
+
   it('reste en consultation seule pour un non-administrateur', async () => {
     session.value.role = 'testeur'
     const w = mount(GeneralSettings)
@@ -70,5 +100,6 @@ describe('Paramètres généraux de l’instance', () => {
     expect(w.text()).toContain('Consultation uniquement')
     expect(w.get('input').attributes('disabled')).toBeDefined()
     expect(w.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="interrupteur-parametres-de-test"]').attributes('disabled')).toBeDefined()
   })
 })

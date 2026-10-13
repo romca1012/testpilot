@@ -109,6 +109,23 @@ def test_les_valeurs_d_usine_suivent_config(conn):
             f"{attribut} : le défaut de config.py a changé sans mettre à jour _DEFAUTS_USINE")
 
 
+# ── Lot PT-00 : l'interrupteur « Paramètres de test » ─────────────────────────
+
+def test_l_interrupteur_parametres_de_test_est_eteint_par_defaut_et_reserve_a_l_admin(conn):
+    """Éteint tant que personne ne l'allume : l'interface reste celle d'avant (décisions A6 et A17). Falsifiable : un défaut
+    allumé ferait apparaître la nouvelle organisation chez tous les utilisateurs à la mise en ligne."""
+    reglages = SettingRepo(conn)
+
+    assert reglages.resoudre("parametres_de_test_enabled") == ("", "default")
+    _, _, admin_seulement, secret = SettingRepo.CLES_CONNUES["parametres_de_test_enabled"]
+    assert (admin_seulement, secret) == (True, False)
+
+    reglages.ecrire("parametres_de_test_enabled", "1", par="admin")
+    assert reglages.resoudre("parametres_de_test_enabled") == ("1", "db")
+    reglages.ecrire("parametres_de_test_enabled", "", par="admin")   # vide = effacer : retour à l'écran d'avant
+    assert reglages.resoudre("parametres_de_test_enabled") == ("", "default")
+
+
 # ── Le compte de service n'est plus un réglage (2026-08-12) ──────────────────
 
 def test_le_compte_de_service_n_est_plus_un_reglage_modifiable(conn, client):
