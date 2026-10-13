@@ -24,7 +24,7 @@ const router = useRouter()
 const NO_SHELL = ROUTES_SANS_SHELL
 const useShell = computed(() => !NO_SHELL.includes(String(route.name)))
 const useInstanceAdmin = computed(() =>
-  ['admin-projects', 'settings', 'settings-general', 'settings-security', 'utilisateurs', 'utilisateur-detail', 'role-detail'].includes(String(route.name)))
+  ['admin-projects', 'project-test-params', 'settings', 'settings-general', 'settings-security', 'utilisateurs', 'utilisateur-detail', 'role-detail'].includes(String(route.name)))
 
 // ⚠️ UN SEUL <RouterView>, enveloppé conditionnellement — jamais deux en parallèle.
 // Deux <RouterView> frères (un dans le shell, un hors) se disputaient la même vue pendant une

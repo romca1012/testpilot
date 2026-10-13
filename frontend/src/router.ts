@@ -12,6 +12,12 @@ export const routes = [
   { path: '/', name: 'home', component: () => import('./pages/Home.vue') },
   { path: '/projects', name: 'projects', component: () => import('./pages/ProjectsList.vue') },
   { path: '/admin/projects', name: 'admin-projects', component: () => import('./pages/ProjectsList.vue') },
+  // Les PARAMÈTRES DE TEST d'un projet (lot PT-01a, 2026-10-14) : navigateur, comptes, état de départ. Rangés SOUS
+  // l'administration des projets, là où vivent déjà ses autres paramètres (« Identité et application », « Accès ») — et non
+  // sous `/projects/:pid`, dont le menu ne reçoit aucune entrée nouvelle (décision A14). L'onglet est dans l'adresse : un lien
+  // ouvre le bon onglet, le retour arrière ramène d'où l'on vient.
+  { path: '/admin/projects/:pid/parametres-de-test/:onglet?', name: 'project-test-params',
+    component: () => import('./pages/ProjectTestParameters.vue') },
 
   // Première vue d'un projet : la LISTE des cas façon TestRail (option (a), 2026-07-20). Le shell
   // « Cas de test » (CasesShell) est choisi par App.vue pour ces routes.

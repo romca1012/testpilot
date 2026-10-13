@@ -8,6 +8,7 @@ import {
 } from '../lib/api'
 import { useProjects } from '../lib/useProjects'
 import { useSession } from '../lib/useSession'
+import { useParametresDeTest } from '../lib/parametresDeTest'
 import Button from '../components/ui/Button.vue'
 import Icon from '../components/ui/Icon.vue'
 import Modal from '../components/ui/Modal.vue'
@@ -24,6 +25,9 @@ const { session } = useSession()
 // Scaleway, 2026-09-08 — un Admin sur une instance neuve, zéro projet, n'avait aucun moyen d'en
 // créer un depuis l'écran où il atterrit après connexion).
 const estAdmin = computed(() => session.value?.role === 'admin')
+// Lot PT-01a : le bouton « Paramètres de test » n'existe que si l'installation a allumé la nouvelle organisation. Éteinte
+// (défaut), cette page est strictement celle d'avant.
+const { actifs: parametresDeTestActifs } = useParametresDeTest()
 const { ensureLoaded } = useProjects()
 const projects = ref<ProjectSummary[]>([])
 const loading = ref(true)
@@ -596,6 +600,10 @@ onMounted(async () => { await load(); await loadExplorations() })
             </Button>
             <Button v-if="session?.role === 'admin'" variant="secondary" size="sm" @click.stop="openAccess(p)">
               Accès
+            </Button>
+            <Button v-if="parametresDeTestActifs" variant="secondary" size="sm" data-testid="ouvrir-parametres-de-test"
+                    @click.stop="router.push({ name: 'project-test-params', params: { pid: String(p.id), onglet: 'configurations' } })">
+              Paramètres de test
             </Button>
             <Button variant="ghost" size="sm" class="text-destructive" @click.stop="toDelete = p">
               Supprimer

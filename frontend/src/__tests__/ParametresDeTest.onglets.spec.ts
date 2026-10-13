@@ -1,0 +1,242 @@
+/**
+ * Lot PT-01a — les trois onglets de « Paramètres de test » d'un projet.
+ *
+ * Ces réglages vivaient dans la fenêtre « Identité et application ». Ils passent par les MÊMES routes, sur les MÊMES données.
+ * Ce que ces tests gardent :
+ * 1. un projet existant retrouve ses valeurs sans rien saisir ;
+ * 2. un onglet n'envoie QUE ses champs — jamais le nom, l'adresse ni un mot de passe du projet (les renvoyer les écraserait) ;
+ * 3. le mot de passe d'un compte reste en écriture seule ;
+ * 4. l'écran ne propose pas un geste que le serveur refuserait.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+
+const updateProject = vi.fn()
+const listProjectAccounts = vi.fn()
+const createProjectAccount = vi.fn()
+const updateProjectAccount = vi.fn()
+const deleteProjectAccount = vi.fn()
+
+vi.mock('../lib/api', () => ({
+  api: {
+    updateProject: (...a: any[]) => updateProject(...a),
+    listProjectAccounts: (...a: any[]) => listProjectAccounts(...a),
+    createProjectAccount: (...a: any[]) => createProjectAccount(...a),
+    updateProjectAccount: (...a: any[]) => updateProjectAccount(...a),
+    deleteProjectAccount: (...a: any[]) => deleteProjectAccount(...a),
+  },
+}))
+
+import OngletConfigurations from '../components/parametres/OngletConfigurations.vue'
+import OngletComptes from '../components/parametres/OngletComptes.vue'
+import OngletEtatDeDepart from '../components/parametres/OngletEtatDeDepart.vue'
+
+const SECRET = 'S3cret-Commercial-9f2c'
+const projet = (plus: Record<string, unknown> = {}) => ({
+  id: 4, name: 'Portail', description: '', connector_type: 'web', connector_version: '', base_url: 'https://app.example',
+  database: '', username: 'admin', module_count: 1, case_count: 3, effective_role: 'admin',
+  calibration_writes_enabled: true, bac_a_sable_reset: '/reset', bac_a_sable_non_remis: false,
+  browser_locale: 'en-GB', browser_timezone: '', browser_viewport: '390x844',
+  browser_effectif: { locale: 'en-GB', timezone: 'Europe/Paris', viewport: '390x844' }, browser_avertissements: [],
+  ...plus,
+}) as any
+const COMPTES = [
+  { id: null, label: 'principal', username: 'admin', business_role: '', has_secret: true, principal: true },
+  { id: 7, label: 'Commercial', username: 'banc_commercial', business_role: 'Vendeur', has_secret: true, principal: false },
+]
+const stubs = {
+  // `v-bind="$attrs"` : le bouton factice garde son type, son état désactivé, son repère de test et son clic.
+  Button: { template: '<button v-bind="$attrs"><slot/></button>', inheritAttrs: false },
+  Hint: true,
+  Modal: { props: ['open'], template: '<div v-if="open" data-testid="fenetre"><slot/><slot name="footer"/></div>' },
+  ConfirmDialog: { props: ['open'], emits: ['confirm', 'cancel'],
+                   template: '<div v-if="open" data-testid="confirmation"><button data-testid="confirmer" @click="$emit(\'confirm\')">ok</button></div>' },
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  updateProject.mockImplementation((_id: number, patch: any) => Promise.resolve({ ...projet(), ...patch }))
+  listProjectAccounts.mockResolvedValue(COMPTES)
+  createProjectAccount.mockResolvedValue({ ...COMPTES[1], id: 8 })
+  updateProjectAccount.mockResolvedValue(COMPTES[1])
+  deleteProjectAccount.mockResolvedValue(undefined)
+})
+
+describe('Paramètres de test — onglet Configurations', () => {
+  it('reprend le navigateur de test déjà enregistré, sans rien à ressaisir', async () => {
+    const w = mount(OngletConfigurations, { props: { projet: projet(), peutRegler: true }, global: { stubs } })
+
+    expect((w.get('[data-testid="browser-locale"]').element as HTMLInputElement).value).toBe('en-GB')
+    expect((w.get('[data-testid="browser-viewport"]').element as HTMLInputElement).value).toBe('390x844')
+    // Un champ vide montre le défaut que le serveur appliquera.
+    expect(w.get('[data-testid="browser-timezone"]').attributes('placeholder')).toBe('Europe/Paris')
+    expect(w.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('falsifiable : n\'envoie que les trois champs du navigateur, jamais l\'identité ni la connexion', async () => {
+    const w = mount(OngletConfigurations, { props: { projet: projet(), peutRegler: true }, global: { stubs } })
+    await w.get('[data-testid="browser-timezone"]').setValue('Africa/Dakar')
+    await w.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(updateProject).toHaveBeenCalledTimes(1)
+    expect(updateProject).toHaveBeenCalledWith(4, { browser_locale: 'en-GB', browser_timezone: 'Africa/Dakar', browser_viewport: '390x844' })
+    expect(w.emitted('enregistre')![0][0]).toMatchObject({ id: 4, name: 'Portail', browser_timezone: 'Africa/Dakar' })
+    expect(w.get('[data-testid="enregistre"]').text()).toBe('Enregistré')
+  })
+
+  it('signale une modification non enregistrée, puis la lève à l\'annulation', async () => {
+    const w = mount(OngletConfigurations, { props: { projet: projet(), peutRegler: true }, global: { stubs } })
+    await w.get('[data-testid="browser-locale"]').setValue('fr-FR')
+    expect(w.emitted('modifie')!.at(-1)).toEqual([true])
+
+    await w.findAll('button').find((b) => b.text() === 'Annuler')!.trigger('click')
+    expect((w.get('[data-testid="browser-locale"]').element as HTMLInputElement).value).toBe('en-GB')
+    expect(w.emitted('modifie')!.at(-1)).toEqual([false])
+  })
+
+  it('reste en lecture pour qui n\'administre pas le projet, et n\'envoie rien', async () => {
+    const w = mount(OngletConfigurations, { props: { projet: projet(), peutRegler: false }, global: { stubs } })
+
+    expect(w.get('fieldset').attributes('disabled')).toBeDefined()
+    await w.get('form').trigger('submit')
+    expect(updateProject).not.toHaveBeenCalled()
+  })
+
+  it('montre le refus du serveur et garde la saisie', async () => {
+    updateProject.mockRejectedValueOnce(new Error('taille de fenêtre mal formée'))
+    const w = mount(OngletConfigurations, { props: { projet: projet(), peutRegler: true }, global: { stubs } })
+    await w.get('[data-testid="browser-viewport"]').setValue('grand')
+    await w.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(w.get('[role="alert"]').text()).toContain('taille de fenêtre mal formée')
+    expect((w.get('[data-testid="browser-viewport"]').element as HTMLInputElement).value).toBe('grand')
+    expect(w.emitted('enregistre')).toBeUndefined()
+  })
+
+  it('dit quand une valeur enregistrée est écartée au profit du défaut', () => {
+    const w = mount(OngletConfigurations, {
+      props: { projet: projet({ browser_avertissements: ['langue « xx » inconnue'] }), peutRegler: true }, global: { stubs } })
+
+    expect(w.get('[data-testid="browser-avertissements"]').text()).toContain('langue « xx » inconnue')
+  })
+})
+
+describe('Paramètres de test — onglet Comptes', () => {
+  async function ouvrir(peutGerer: boolean) {
+    const w = mount(OngletComptes, { props: { projet: projet(), peutGerer }, global: { stubs } })
+    await flushPromises()
+    return w
+  }
+
+  it('liste le compte principal puis les autres, sans jamais afficher un secret', async () => {
+    const w = await ouvrir(true)
+    const lignes = w.findAll('[data-testid="compte-ligne"]')
+
+    expect(lignes).toHaveLength(2)
+    expect(lignes[0].text()).toContain('principal')
+    expect(lignes[0].text()).toContain('Principal')
+    expect(lignes[1].text()).toContain('Commercial')
+    expect(lignes[1].text()).toContain('Vendeur')
+    expect(w.html()).not.toContain(SECRET)
+    // Le compte principal ne se modifie ni ne se supprime ici.
+    expect(lignes[0].findAll('button')).toHaveLength(0)
+  })
+
+  it('ajoute un compte par la route existante', async () => {
+    const w = await ouvrir(true)
+    await w.get('[data-testid="compte-ajouter"]').trigger('click')
+    await w.get('[data-testid="compte-libelle"]').setValue('Gestionnaire')
+    await w.get('[data-testid="compte-identifiant"]').setValue('gest.demo')
+    await w.get('[data-testid="compte-mot-de-passe"]').setValue(SECRET)
+    await w.get('[data-testid="compte-formulaire"]').trigger('submit')
+    await flushPromises()
+
+    expect(createProjectAccount).toHaveBeenCalledWith(4, { label: 'Gestionnaire', username: 'gest.demo', password: SECRET, business_role: '' })
+    expect(w.find('[data-testid="fenetre"]').exists()).toBe(false)
+    expect(listProjectAccounts).toHaveBeenCalledTimes(2)
+  })
+
+  it('falsifiable : modifier un compte sans saisir de mot de passe ne l\'envoie pas (l\'envoyer vide l\'effacerait)', async () => {
+    const w = await ouvrir(true)
+    await w.findAll('button').find((b) => b.text() === 'Modifier')!.trigger('click')
+
+    expect((w.get('[data-testid="compte-mot-de-passe"]').element as HTMLInputElement).value).toBe('')
+    await w.get('[data-testid="compte-libelle"]').setValue('Commercial Nord')
+    await w.get('[data-testid="compte-formulaire"]').trigger('submit')
+    await flushPromises()
+
+    expect(updateProjectAccount).toHaveBeenCalledWith(4, 7, { label: 'Commercial Nord', username: 'banc_commercial', business_role: 'Vendeur' })
+  })
+
+  it('ne supprime un compte qu\'après confirmation', async () => {
+    const w = await ouvrir(true)
+    await w.findAll('button').find((b) => b.text() === 'Supprimer')!.trigger('click')
+
+    expect(deleteProjectAccount).not.toHaveBeenCalled()
+    await w.get('[data-testid="confirmer"]').trigger('click')
+    await flushPromises()
+
+    expect(deleteProjectAccount).toHaveBeenCalledWith(4, 7)
+  })
+
+  it('ne montre aucun geste à qui ne peut pas gérer les comptes', async () => {
+    const w = await ouvrir(false)
+
+    expect(w.find('[data-testid="compte-ajouter"]').exists()).toBe(false)
+    expect(w.findAll('button')).toHaveLength(0)
+    expect(w.findAll('[data-testid="compte-ligne"]')).toHaveLength(2)
+  })
+})
+
+describe('Paramètres de test — onglet État de départ', () => {
+  it('reprend l\'autorisation et l\'adresse de remise à zéro déjà enregistrées', () => {
+    const w = mount(OngletEtatDeDepart, { props: { projet: projet(), peutRegler: true }, global: { stubs } })
+
+    expect((w.get('[data-testid="bac-a-sable-autorise"]').element as HTMLInputElement).checked).toBe(true)
+    expect((w.get('[data-testid="bac-a-sable-reset"]').element as HTMLInputElement).value).toBe('/reset')
+  })
+
+  it('falsifiable : n\'envoie que ses deux réglages', async () => {
+    const w = mount(OngletEtatDeDepart, { props: { projet: projet(), peutRegler: true }, global: { stubs } })
+    await w.get('[data-testid="bac-a-sable-reset"]').setValue('/remise-a-zero')
+    await w.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(updateProject).toHaveBeenCalledWith(4, { calibration_writes_enabled: true, bac_a_sable_reset: '/remise-a-zero' })
+  })
+
+  it('Odoo : pas d\'adresse de remise à zéro, ni à l\'écran ni dans l\'envoi', async () => {
+    const w = mount(OngletEtatDeDepart, {
+      props: { projet: projet({ connector_type: 'odoo', calibration_writes_enabled: false, bac_a_sable_reset: '' }), peutRegler: true },
+      global: { stubs } })
+
+    expect(w.find('[data-testid="bac-a-sable-reset"]').exists()).toBe(false)
+    await w.get('[data-testid="bac-a-sable-autorise"]').setValue(true)
+    await w.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(updateProject).toHaveBeenCalledWith(4, { calibration_writes_enabled: true })
+  })
+
+  it('une remise à zéro en échec se voit, et se déclare levée par la route existante', async () => {
+    updateProject.mockResolvedValueOnce({ ...projet(), bac_a_sable_non_remis: false })
+    const w = mount(OngletEtatDeDepart, { props: { projet: projet({ bac_a_sable_non_remis: true }), peutRegler: true }, global: { stubs } })
+
+    expect(w.get('[data-testid="bac-a-sable-non-remis"]').text()).toContain('les exécutions de ce projet sont retenues')
+    await w.get('[data-testid="bac-a-sable-declarer-remis"]').trigger('click')
+    await flushPromises()
+
+    expect(updateProject).toHaveBeenCalledWith(4, { bac_a_sable_remis_a_zero: true })
+    expect(w.emitted('enregistre')![0][0]).toMatchObject({ bac_a_sable_non_remis: false })
+  })
+
+  it('reste en lecture pour qui n\'administre pas le projet', async () => {
+    const w = mount(OngletEtatDeDepart, { props: { projet: projet(), peutRegler: false }, global: { stubs } })
+
+    expect(w.get('fieldset').attributes('disabled')).toBeDefined()
+    await w.get('form').trigger('submit')
+    expect(updateProject).not.toHaveBeenCalled()
+  })
+})
