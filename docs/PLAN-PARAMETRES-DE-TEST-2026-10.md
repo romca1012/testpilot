@@ -22,7 +22,7 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 | A19 | Le compte principal se modifie dans l'onglet « Comptes », au même endroit que les autres, avec sa façon de se connecter. La fenêtre « Identité et application » ne garde que le nom du projet, le connecteur, la version et l'adresse. (V15) | 2026-10-14 |
 | A20 | Rien n'est poussé avant la fin de tout le chantier (voir R9). | 2026-10-14 |
 
-Lecture retenue pour l'interrupteur (à confirmer par le porteur) : il ne sert qu'au temps de la construction, pour comparer
+Interrupteur (confirmé par le porteur le 2026-10-14) : il ne sert qu'au temps de la construction, pour comparer
 l'ancien écran et le nouveau. Le changement étant définitif, il est retiré au lot PT-07 avec l'ancien écran.
 
 ## 2. Règles de réalisation — valables pour tous les lots
