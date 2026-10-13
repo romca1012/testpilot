@@ -214,7 +214,7 @@ describe('Paramètres de test — onglet Comptes', () => {
   })
 })
 
-// Lot PT-01b (décision du porteur, 2026-10-14) : le compte principal se règle ici, comme les autres, avec sa façon de se connecter.
+// Lot PT-01b (décision du porteur, 2026-10-13) : le compte principal se règle ici, comme les autres, avec sa façon de se connecter.
 describe('Paramètres de test — onglet Comptes, compte principal', () => {
   async function ouvrir(plus: Record<string, unknown> = {}, peutRegler = true) {
     const w = mount(OngletComptes, { props: { projet: projet(plus), peutGerer: true, peutRegler }, global: { stubs } })

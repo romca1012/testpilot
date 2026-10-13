@@ -1,6 +1,6 @@
 # Paramètres de test — mesures de référence avant travaux (lot PT-00)
 
-Date : 2026-10-14. Code mesuré : `master` = `846ef04`, sur une copie de travail intacte, poste Windows du porteur.
+Date : 2026-10-13. Code mesuré : `master` = `846ef04`, sur une copie de travail intacte, poste Windows du porteur.
 
 ## Suite de contrôles du serveur
 
@@ -26,14 +26,15 @@ Conséquence pour les lots suivants : ces 5 échecs ne sont pas des régressions
 
 Commande : `npm --prefix frontend test -- --run`, puis `npm --prefix frontend run type-check`.
 
-| Mesure | Avant le chantier | Après PT-00 | Après PT-01a |
-|---|---|---|---|
-| Fichiers de tests | 61 | 61 | 63 |
-| Tests réussis | 401 | 403 | 426 |
-| Vérification des types | propre | propre | propre |
+| Mesure | Avant le chantier | Après PT-00 | Après PT-01a | Après PT-01b et la revue |
+|---|---|---|---|---|
+| Fichiers de tests | 61 | 61 | 63 | 64 |
+| Tests réussis | 401 | 403 | 426 | 442 |
+| Vérification des types | propre | propre | propre | propre |
 
-Un test d'interface a échoué une fois, puis réussi aux relances, pendant que la suite du serveur tournait sur le même
-poste. Il n'a pas été identifié. À surveiller ; il n'est pas compté comme une régression.
+Un test d'interface instable, antérieur au chantier : `ProjectsList.premierAdmin.spec.ts` (« propose de créer directement
+ici… ») échoue de temps en temps quand le poste est chargé (1 fois sur 3 passages complets pendant la revue, 3 réussites
+sur 3 lancé seul). Cause non instruite ; il n'est pas compté comme une régression.
 
 ## Banc d'agents
 

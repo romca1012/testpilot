@@ -12,7 +12,7 @@ export const routes = [
   { path: '/', name: 'home', component: () => import('./pages/Home.vue') },
   { path: '/projects', name: 'projects', component: () => import('./pages/ProjectsList.vue') },
   { path: '/admin/projects', name: 'admin-projects', component: () => import('./pages/ProjectsList.vue') },
-  // Les PARAMÈTRES DE TEST d'un projet (lot PT-01a, 2026-10-14) : navigateur, comptes, état de départ. Rangés SOUS
+  // Les PARAMÈTRES DE TEST d'un projet (lot PT-01a, 2026-10-13) : navigateur, comptes, état de départ. Rangés SOUS
   // l'administration des projets, là où vivent déjà ses autres paramètres (« Identité et application », « Accès ») — et non
   // sous `/projects/:pid`, dont le menu ne reçoit aucune entrée nouvelle (décision A14). L'onglet est dans l'adresse : un lien
   // ouvre le bon onglet, le retour arrière ramène d'où l'on vient.

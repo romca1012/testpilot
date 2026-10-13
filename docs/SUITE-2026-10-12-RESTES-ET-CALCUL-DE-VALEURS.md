@@ -72,5 +72,5 @@ démarrage par les outils 1 et 2) et **D22** (« à confirmer »). Selon CLAUDE.
 
 La vision du porteur (2026-10-12) et les décisions du 2026-10-13 remplacent l'enchaînement d'abord proposé ici : le plan
 a d'abord été écrit dans `PLAN-CALCUL-DE-VALEURS-2026-10.md` (branche `lot-cv01-montants-affiches`), puis élargi le
-2026-10-14 : le chantier s'appelle désormais « Paramètres de test », et son plan est `PLAN-PARAMETRES-DE-TEST-2026-10.md`
+2026-10-13 : le chantier s'appelle désormais « Paramètres de test », et son plan est `PLAN-PARAMETRES-DE-TEST-2026-10.md`
 (lots PT-00 à PT-07). Le calcul de valeurs en devient les lots PT-03 et PT-06.

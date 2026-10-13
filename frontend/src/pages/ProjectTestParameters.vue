@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// LES PARAMÈTRES DE TEST D'UN PROJET (lot PT-01a, 2026-10-14) — ce qu'on règle pour jouer ses tests : le navigateur, les
+// LES PARAMÈTRES DE TEST D'UN PROJET (lot PT-01a, 2026-10-13) — ce qu'on règle pour jouer ses tests : le navigateur, les
 // comptes, l'état de départ. Ces réglages vivaient au bas de la longue fenêtre « Identité et application » ; ils se lisent et
 // s'enregistrent ICI par les MÊMES routes du serveur, sur les MÊMES données : rien n'est copié, rien n'est à ressaisir
 // (décisions A16 et A17 du dossier de cadrage).
