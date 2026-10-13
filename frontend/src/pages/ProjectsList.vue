@@ -223,6 +223,7 @@ function membresVisibles() {
 // C'est aussi le préalable à l'exploration : on ne cartographie pas une application dont on ne
 // peut pas rectifier l'adresse.
 const editing = ref<ProjectSummary | null>(null)
+const information = ref('')
 const saving = ref(false)
 const editError = ref('')
 const edit = ref({
@@ -373,10 +374,16 @@ async function saveEdit() {
     // Lot PT-01b : avec « Paramètres de test », cette fenêtre ne porte plus que le nom, le connecteur, la version et
     // l'adresse. Elle n'envoie donc QUE ces champs : renvoyer les autres écraserait ce qui est réglé dans les onglets.
     if (parametresDeTestActifs.value) {
-      await api.updateProject(editing.value.id, {
+      const autoriseeAvant = !!editing.value.calibration_writes_enabled
+      const maj = await api.updateProject(editing.value.id, {
         name: edit.value.name.trim(), connector_type: edit.value.connector_type,
         connector_version: edit.value.connector_version, base_url: edit.value.base_url, database: edit.value.database,
       })
+      // Décision A21 : changer l'application visée retire l'autorisation donnée à l'IA. Le serveur le fait ; l'écran le
+      // DIT — un réglage qui change sans que personne l'ait touché ne doit pas passer inaperçu.
+      information.value = autoriseeAvant && !maj?.calibration_writes_enabled
+        ? `Application de « ${maj.name} » modifiée : l'IA ne peut plus y agir tant que ce n'est pas réautorisé dans Paramètres de test › État de départ.`
+        : ''
       editing.value = null
       await ensureLoaded(true)
       await load()
@@ -502,6 +509,8 @@ onMounted(async () => { await load(); await loadExplorations() })
       </Button>
     </header>
 
+    <p v-if="information" role="status" data-testid="information"
+       class="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm">{{ information }}</p>
     <div v-if="loading" class="text-sm text-muted-foreground">Chargement…</div>
     <p v-else-if="error" class="text-sm text-destructive">{{ error }}</p>
     <div v-else-if="!projects.length"

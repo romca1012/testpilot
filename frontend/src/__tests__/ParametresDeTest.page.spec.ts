@@ -134,6 +134,30 @@ describe('Fenêtre « Identité et application » — organisation allumée (PT-
       name: 'Portail', connector_type: 'web', connector_version: '', base_url: 'https://app.example', database: '' })
   })
 
+  it('falsifiable : dit quand le changement d’application a retiré l’autorisation donnée à l’IA (décision A21)', async () => {
+    actifs.value = true
+    listAdminProjects.mockResolvedValue([{ ...PROJET, calibration_writes_enabled: true }])
+    // Le serveur retire l'autorisation quand l'adresse change ; il la garde sinon.
+    updateProject.mockResolvedValueOnce({ ...PROJET, base_url: 'https://autre.example', calibration_writes_enabled: false })
+    const w = await ouvrirLaFenetre()
+    await w.get('#form-edit-project').trigger('submit')
+    await flushPromises()
+
+    expect(w.get('[data-testid="information"]').text()).toContain("l'IA ne peut plus y agir")
+    expect(w.get('[data-testid="information"]').text()).toContain('État de départ')
+  })
+
+  it('ne dit rien quand l’autorisation n’a pas changé', async () => {
+    actifs.value = true
+    listAdminProjects.mockResolvedValue([{ ...PROJET, calibration_writes_enabled: true }])
+    updateProject.mockResolvedValueOnce({ ...PROJET, calibration_writes_enabled: true })
+    const w = await ouvrirLaFenetre()
+    await w.get('#form-edit-project').trigger('submit')
+    await flushPromises()
+
+    expect(w.find('[data-testid="information"]').exists()).toBe(false)
+  })
+
   it('organisation éteinte : la fenêtre est celle d’avant, avec toutes ses rubriques', async () => {
     const fenetre = (await ouvrirLaFenetre()).get('[data-testid="fenetre"]')
 
