@@ -24,6 +24,7 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 | A21 | Quand l'application visée par un projet change (adresse ou base de données), l'autorisation donnée à l'IA d'agir pendant la génération est **retirée d'office** et doit être redonnée dans l'onglet « État de départ ». Règle **globale**, la même pour tous les connecteurs ; l'écran le dit quand cela arrive. Appliquée côté serveur (`routes/projects.py`). | 2026-10-13 |
 | A22 | Rappel du porteur : aucune fonctionnalité propre à un type d'application. Une fonctionnalité qui ne peut pas être étendue à toutes les applications est supprimée. | 2026-10-13 |
 | A23 | La remise à zéro de l'application, et l'essai des actions par l'IA qui en dépend, sont étendus à **toutes** les applications (aujourd'hui : connecteur web seulement). | 2026-10-13 |
+| A24 | **Valeur attendue sans unité alors que l'écran en affiche une** (ancienne V9) — choix « prudent » du porteur : jamais de réussite sans que l'unité soit vérifiée. Si l'écran affiche un montant et que le projet a **déclaré sa monnaie**, la valeur attendue est lue dans cette monnaie (une autre monnaie à l'écran est un défaut) ; sinon l'outil ne se prononce pas et demande d'écrire l'unité dans le test. Même prudence, appliquée par extension et annoncée au porteur : une notation partagée par plusieurs monnaies (« $ », « F CFA ») ne prouve une monnaie précise que si le projet l'a déclarée ; une mention écrite d'un seul côté (« TTC », « k » de « 5 k€ ») ne conclut pas ; l'écriture des nombres déclarée par le projet ne tranche une valeur **affichée** ambiguë que pour les séparateurs qu'elle nomme (« 1 234,56 » ne dit rien du point), jamais la valeur attendue. | 2026-10-13 |
 
 Interrupteur (confirmé par le porteur le 2026-10-13) : il ne sert qu'au temps de la construction, pour comparer
 l'ancien écran et le nouveau. Le changement étant définitif, il est retiré au lot PT-07 avec l'ancien écran.
@@ -43,7 +44,7 @@ toutes les applications**, au lot PT-04. D'ici là le champ reste réservé au c
 | R5 | Écrans sobres | A15 | Libellés, valeurs, pastilles, boutons. Aucune phrase d'explication à l'écran. Skill UI UX Pro Max appliqué à chaque écran. |
 | R6 | Verdict intact | CLAUDE.md §3, §4 | Un paramètre est **déclaré par une personne**, jamais écrit par l'agent. Aucun chemin nouveau vers `conforme` sans preuve. Revue `verdict-reviewer` avant le premier commit de tout lot qui touche `verdict/`, `execution/`, `behave_runtime/`, `generation/` ou le schéma. |
 | R7 | Mesurer avant d'activer | CLAUDE.md §5, §8 | Tout ce qui change ce que l'agent reçoit est mesuré sur le banc (faux verts, premier essai, coût) avant d'être allumé. Budget annoncé avant chaque campagne. |
-| R8 | Schéma : les quatre pièces | CLAUDE.md §6 | Migration SQLite idempotente (la prochaine est la **62**), révision Alembic chaînée sur `d1a7b3c5e924`, `schema_sa.py`, test de migration + `test_schema_sa_portable.py`. |
+| R8 | Schéma : les quatre pièces | CLAUDE.md §6 | Migration SQLite idempotente (la prochaine est la **63** ; la 62 est prise par PT-03), révision Alembic chaînée sur `e7c2f4a9b136`, `schema_sa.py`, test de migration + `test_schema_sa_portable.py`. |
 | R9 | Rien n'est poussé avant la fin du chantier | porteur, 2026-10-13 | Un lot = une branche **locale**, des commits atomiques. **Aucun push, aucune PR, aucune fusion** tant que les lots PT-00 à PT-07 ne sont pas tous terminés, vérifiés (contrôles automatiques ET essais à l'écran sur l'instance locale) et verts. Remplace, pour ce chantier, « un lot = une PR » de CLAUDE.md §5. `master` est ramené régulièrement dans les branches, en local, pour ne pas dériver. |
 
 ## 3. Architecture cible
@@ -161,13 +162,21 @@ Acceptation :
 
 But : un montant, un taux, un poids sont comparés comme des nombres avec leur unité.
 
-Déjà écrit sur `lot-cv01-montants-affiches`, **non commité**. Reste à faire, dans l'ordre :
-1. corriger l'import qui casse 19 contrôles (bibliothèque chargée de deux façons) ;
-2. traiter les six points de la revue du 2026-10-13 ;
-3. intégrer la généralisation aux unités (prototype validé hors dépôt) : nombre, unité, nature ; step « le nombre affiché
-   pour … vaut … » ;
-4. monnaie et écriture des nombres du projet (onglet « Valeurs attendues ») ; règle V9 ;
-5. deuxième revue, suite complète, mesure sur le banc avant d'allumer.
+Écrit sur la branche locale `lot-pt03-valeurs-avec-unite` (reprise du travail commencé sous le nom CV-01). État :
+1. fait — import valable des deux façons dont la bibliothèque est chargée (les 15 régressions du premier jet ont disparu) ;
+2. fait — les six points de la première revue ;
+3. fait — nombre, unité, nature ; step « le nombre affiché pour … vaut … », derrière l'interrupteur `TESTPILOT_STEP_NOMBRE` éteint ;
+4. fait — monnaie et écriture des nombres du projet (migration 62, onglet « Valeurs attendues »), règle A24 ;
+   **reste** : les « unités ajoutées » du projet (table `test_unit`), dont le rôle exact est à définir avec le porteur ;
+5. fait — quatre passes de revue indépendante (la deuxième et la troisième ont trouvé des faux verts, tous reproduits puis
+   corrigés avec un contrôle par cas ; la quatrième : aucun bloquant) ; **reste** : la mesure sur le banc avant d'allumer l'interrupteur (budget à annoncer).
+
+Limites connues, à mesurer sur le banc : une mention affichée que le test n'écrit pas (« 129,51 € TTC » contre « 129,51 € »)
+ne conclut pas ; une unité écrite dans une autre casse ne conclut pas ; un code de monnaie qui est aussi un mot (« TOP 5 »)
+est lu comme un montant ; la garde « valeur recopiée de l'essai » ne voit pas une valeur convertie (« 1,5 kg » vu, « 1500 g »
+écrit ; « 5 ‰ » vu, « 0,5 % » écrit), et ne compare par valeur les petits entiers que pour ce step — trois steps plus anciens
+comparent aussi des nombres (deux steps d'oracle, un step de document) et pourront recevoir le même marqueur
+`@compare_des_nombres` ; une réussite obtenue grâce à la monnaie du projet ne laisse pas de trace dans le résultat.
 
 Acceptation : celle du lot CV-01, plus : une même valeur dans deux unités convertibles est reconnue ; deux natures
 différentes sortent `non_conforme` ; une unité attendue et non affichée ne conclut pas.
@@ -237,7 +246,7 @@ PT-03 passe juste après PT-01).
 |---|---|---|
 | PT-01 | aucune : V14 et V15 tranchées le 2026-10-13 (A18, A19) ; V1 acquise (le porteur emploie « Paramètres de test ») | — |
 | PT-02 | V2 (`%nom%`), V3 (case vide), V4 (une exécution par combinaison, limite), V5 (droits), V7 (valeurs figées), V13 (corbeille) | le lot ne démarre pas |
-| PT-03 | V9 (unité absente de l'attendu) | les points 1 à 3 peuvent être faits ; le point 4 attend |
+| PT-03 | aucune : V9 tranchée le 2026-10-13 (A24) ; reste à définir avec le porteur ce que fait une « unité ajoutée » | les unités ajoutées attendent ; le reste est fait |
 | PT-04 | V16 (exploration par compte, compte au lancement) | PT-04a peut démarrer |
 | PT-05 | V5, V6 (remplacement local) | le lot ne démarre pas |
 | PT-06 | V8 (délai « à revérifier »), V10 (qui valide) | PT-06a peut démarrer |
@@ -264,9 +273,9 @@ Règle du dépôt (CLAUDE.md §5.3) : un lot qui dépend d'une décision non val
 |---|---|---|---|---|
 | PT-00 | terminé en local (plan, interrupteur, mesures de référence) ; fiches d'écran faites pour PT-01 seulement | 2026-10-13 | — | |
 | PT-01a | terminé en local : écrit, relu, vérifié à l'écran ; suite du serveur identique à la référence (4 207 réussis, les 5 échecs connus) | 2026-10-13 | — | |
-| PT-01b | écrit, relu (revue indépendante : aucun bloquant, sept points corrigés) et vérifié à l'écran sur l'instance locale ; règle A21 ajoutée ; suite du serveur de clôture en cours | 2026-10-13 | — | |
+| PT-01b | terminé en local : écrit, relu (aucun bloquant, sept points corrigés), vérifié à l'écran ; règle A21 ajoutée ; suite du serveur de clôture : 4 219 réussis, les 5 échecs connus du poste | 2026-10-13 | — | |
 | PT-02a à PT-02d | à faire | | | |
-| PT-03 | écrit sur `lot-cv01-montants-affiches`, non commité, **15** régressions (et non 19 : 4 des échecs d'abord comptés existent aussi sur `master`, voir `docs/mesures/parametres-de-test-reference-2026-10-13.md`) et six points de revue à traiter | 2026-10-13 | | `PLAN-CALCUL-DE-VALEURS-2026-10.md` §6.1 |
+| PT-03 | en cours : comparaison avec unité, règle A24, monnaie et écriture des nombres du projet écrites, relues trois fois et vérifiées à l'écran ; restent les unités ajoutées et la mesure sur le banc (interrupteur éteint d'ici là) | 2026-10-13 | — | historique : `PLAN-CALCUL-DE-VALEURS-2026-10.md` §6.1 |
 | PT-04a à PT-04d | à faire | | | |
 | PT-05 | à faire | | | |
 | PT-06a à PT-06d | à faire | | | |
