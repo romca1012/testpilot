@@ -1201,3 +1201,106 @@ def test_de_bout_en_bout_une_remise_a_zero_qui_redirige_interdit_l_essai(boutiqu
 
     assert not sortie.ok and "REMISE_A_ZERO_IMPOSSIBLE" in sortie.observation
     assert _ETAT_SERVEUR == {"panier": 0, "resets": 0}, "aucune action n'a été jouée sur une application non remise à zéro"
+
+
+# ── Lot PT-03 (revue du 2026-10-13) : la garde compare aussi les NOMBRES, pas seulement leur écriture ────────────────────
+
+
+@pytest.mark.parametrize("attendu", ["129.15 EUR", "129.15", "129,150 €", "EUR 129.15"])
+def test_falsifiable_une_valeur_vue_a_l_essai_et_recrite_autrement_ne_devient_pas_un_attendu(tmp_path, attendu):
+    """Avec un step qui compare des nombres, l'agent voit « 129,15 € » à l'essai (la spécification dit 129,51 €), écrit
+    « 129.15 EUR », et le test réussit : la garde, qui comparait des écritures, ne voyait rien."""
+    ctx = _apres_un_essai(tmp_path, _SPEC)
+
+    sortie = w.write_feature_file(ctx, _FEATURE.format(bouton="Valider la commande", attendu=attendu))
+
+    assert not sortie.ok and "VALEUR_TIREE_DE_L_ESSAI" in sortie.observation, sortie.observation
+    assert "écrit autrement" in sortie.observation, "le refus dit que c'est la VALEUR qui a été reconnue"
+    assert not (tmp_path / "m.feature").exists()
+
+
+@pytest.mark.parametrize("texte, vu, specification, refuse, refuse_pour_le_step_nombre", [
+    ("le total vaut 129.51 EUR", "Payer 129,51 €", "Le total TTC est de 129,51 €.", False, False),   # la spécification le dit
+    ("le total vaut 1234.50 EUR", "Payer 1 234,50 €", "Le total est de 1 234,50 €.", False, False),
+    ("le total vaut 1234.50 EUR", "Payer 1 234,50 €", "Le total est affiché.", True, True),         # groupes de milliers
+    ("le total vaut 1234,50 CHF", "Total 1'234.50 CHF", "Le total est affiché.", True, True),       # … à apostrophe
+    ("le total vaut 129,15 €", "Payer 129.15 EUR", "Le total est affiché.", True, True),
+    ("la liste compte 4 lignes", "Payer 129,15 €", "La liste est affichée.", False, False),          # jamais vu à l'essai
+    ("échéance le 10/11/2026", "Le 10/11/2026", "Une échéance est affichée.", True, True),          # déjà refusé par l'écriture
+    ("la liste compte 10 lignes", "Le 10/11/2026", "La liste est affichée.", False, False),          # le jour d'une date
+    # Troisième revue (faux refus reproduits) : un petit entier affiché avec des décimales ne bloque pas un compte… sauf
+    # dans le step qui compare des nombres, où « 3 » EST « 3,00 ».
+    ("la liste compte 3 lignes", "Page 3.0", "La liste est affichée.", False, True),
+    ("la liste compte 1 ligne", "Quantité 1,00", "La ligne est ajoutée.", False, True),
+    ("la liste compte 2 lignes", "Prix 2,00 €", "La liste est affichée.", False, True),
+    ("la liste compte 0 ligne", "Total 0,00 €", "La liste est vide.", False, True),
+    ("la liste compte 3 lignes", "Page 3.0", "La liste compte trois lignes.", False, False),         # nombre écrit en lettres
+])
+def test_la_garde_des_valeurs_ne_retire_rien_et_ne_refuse_que_ce_qui_vient_de_l_essai(texte, vu, specification, refuse,
+                                                                                    refuse_pour_le_step_nombre):
+    essai = SimpleNamespace(vus={j: vu for j in e._jetons_a_chiffres(vu)}, textes={},
+                            nombres={v: vu for v in e._valeurs_numeriques(vu)})
+    exigences = {"expected_result": specification}
+
+    assert bool(e._tires_de(texte, essai, exigences)) is refuse
+    assert bool(e._tires_de(texte, essai, exigences, toutes_les_valeurs=True)) is refuse_pour_le_step_nombre
+
+
+_FEATURE_NOMBRE = """# language: fr
+Fonctionnalité: Commande
+
+  Scénario: Validation
+    Quand j'ouvre la page "/panier"
+    Et je clique sur le bouton "Valider la commande"
+    Alors {alors}
+"""
+
+
+def test_falsifiable_le_step_qui_compare_des_nombres_est_garde_meme_pour_un_petit_entier(tmp_path):
+    """De bout en bout, par l'outil d'écriture : « Quantité 7,00 » vue à l'essai, la spécification n'en dit rien."""
+    ctx = _apres_un_essai(tmp_path, _SPEC)
+    ctx.essai.vus["7,00"] = "Quantité 7,00"
+
+    refuse = w.write_feature_file(ctx, _FEATURE_NOMBRE.format(alors='le nombre affiché pour "Quantité" vaut "7"'))
+    assert not refuse.ok and "VALEUR_TIREE_DE_L_ESSAI" in refuse.observation and "écrit autrement" in refuse.observation
+    # Quatrième revue (reproduit jusqu'au verdict `conforme`) : Behave apparie SANS tenir compte des accents ; une garde qui
+    # lisait le libellé laissait passer la même phrase écrite « affiche ».
+    sans_accent = w.write_feature_file(ctx, _FEATURE_NOMBRE.format(alors='le nombre affiche pour "Quantité" vaut "7"'))
+    assert not sans_accent.ok and "VALEUR_TIREE_DE_L_ESSAI" in sans_accent.observation, sans_accent.observation
+
+    ailleurs = w.write_feature_file(ctx, _FEATURE_NOMBRE.format(alors='la page affiche le texte "7 articles"'))
+    assert "VALEUR_TIREE_DE_L_ESSAI" not in ailleurs.observation, "un autre « Alors » n'est pas bloqué par ce petit entier"
+
+
+def test_la_garde_reconnait_un_step_qui_compare_des_nombres_par_la_bibliotheque_pas_par_son_texte():
+    """Le marqueur `@compare_des_nombres` est lu dans la bibliothèque ; la phrase du test n'est que rapprochée du step,
+    accents pliés, comme Behave le fait."""
+    from testpilot.generation import steps_library
+
+    marques = [s.label for s in steps_library.catalogue() if s.compare_des_nombres]
+    assert marques == ['le nombre affiché pour "{libelle}" vaut "{valeur}"'], "registre fermé : l'étendre se décide ici"
+    motifs = e._motifs_des_steps_qui_comparent_des_nombres()
+    assert e._compare_des_nombres('le nombre affiché pour "Total" vaut "12 €"', motifs)
+    assert e._compare_des_nombres('le nombre affiche pour "Total" vaut "12 €"', motifs)
+    assert not e._compare_des_nombres('la valeur affichée pour "Total" est "12 €"', motifs)
+    assert not e._compare_des_nombres('la page affiche le texte "le nombre affiché"', motifs)
+
+
+def test_falsifiable_un_step_genere_ne_peut_pas_appeler_le_constat_de_nombre_a_la_main(tmp_path):
+    """Quatrième revue (reproduit) : importé de la bibliothèque et appelé avec un littéral, le constat échappait à la garde
+    des petits entiers. Son nom est privé : l'outil d'écriture refuse l'import."""
+    ctx = _apres_un_essai(tmp_path, _SPEC)
+    steps = ("from behave import then\nfrom _base_helpers import _nombre_affiche_vaut\n\n\n"
+             "@then('le total est bon')\ndef verifier(context):\n    _nombre_affiche_vaut(context.page, \"Total\", \"7\")\n")
+
+    sortie = w.write_steps_file(ctx, steps)
+
+    assert not sortie.ok and "nom privé de la bibliothèque" in sortie.observation, sortie.observation
+
+
+def test_un_nombre_ambigu_garde_ses_deux_lectures():
+    from decimal import Decimal
+
+    assert e._valeurs_numeriques("Plafond 1,234") == {Decimal("1.234"), Decimal("1234")}
+    assert e._valeurs_numeriques("Payer 1 234,50 € le 10/11/2026") >= {Decimal("1234.50"), Decimal("2026")}
+    assert Decimal("10") not in e._valeurs_numeriques("Le 10/11/2026")
