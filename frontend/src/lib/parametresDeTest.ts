@@ -12,6 +12,7 @@ export function estAllume(valeur: string | undefined | null): boolean {
 }
 
 export function useParametresDeTest() {
-  const { get } = useSettings()
-  return { actifs: computed(() => estAllume(get(CLE_PARAMETRES_DE_TEST))) }
+  const { get, loaded } = useSettings()
+  // `connu` : les réglages sont arrivés. Avant, « éteint » voudrait seulement dire « pas encore chargé ».
+  return { actifs: computed(() => estAllume(get(CLE_PARAMETRES_DE_TEST))), connu: loaded }
 }

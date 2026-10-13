@@ -58,7 +58,8 @@ const stubs = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  updateProject.mockImplementation((_id: number, patch: any) => Promise.resolve({ ...projet(), ...patch }))
+  // Comme le vrai serveur : `PATCH /api/projects/:id` rend `effective_role: ''` (il ne recalcule pas le rôle).
+  updateProject.mockImplementation((_id: number, patch: any) => Promise.resolve({ ...projet(), ...patch, effective_role: '' }))
   listProjectAccounts.mockResolvedValue(COMPTES)
   createProjectAccount.mockResolvedValue({ ...COMPTES[1], id: 8 })
   updateProjectAccount.mockResolvedValue(COMPTES[1])
@@ -88,6 +89,23 @@ describe('Paramètres de test — onglet Configurations', () => {
     expect(w.get('[data-testid="enregistre"]').text()).toBe('Enregistré')
   })
 
+  it('falsifiable : le rôle sur le projet survit à l\u2019enregistrement (le serveur le rend vide)', async () => {
+    const w = mount(OngletConfigurations, { props: { projet: projet(), peutRegler: true }, global: { stubs } })
+    await w.get('[data-testid="browser-timezone"]').setValue('Africa/Dakar')
+    await w.get('form').trigger('submit')
+    await flushPromises()
+
+    expect((w.emitted('enregistre')![0][0] as any).effective_role).toBe('admin')
+  })
+
+  it('une saisie en cours n\u2019est pas écrasée quand la page renvoie le projet', async () => {
+    const w = mount(OngletConfigurations, { props: { projet: projet(), peutRegler: true }, global: { stubs } })
+    await w.get('[data-testid="browser-locale"]').setValue('fr-CA')
+    await w.setProps({ projet: projet({ name: 'Portail renommé' }) })
+
+    expect((w.get('[data-testid="browser-locale"]').element as HTMLInputElement).value).toBe('fr-CA')
+  })
+
   it('signale une modification non enregistrée, puis la lève à l\'annulation', async () => {
     const w = mount(OngletConfigurations, { props: { projet: projet(), peutRegler: true }, global: { stubs } })
     await w.get('[data-testid="browser-locale"]').setValue('fr-FR')
@@ -102,7 +120,10 @@ describe('Paramètres de test — onglet Configurations', () => {
     const w = mount(OngletConfigurations, { props: { projet: projet(), peutRegler: false }, global: { stubs } })
 
     expect(w.get('fieldset').attributes('disabled')).toBeDefined()
+    // On MODIFIE avant d'envoyer : sinon c'est « rien n'a changé » qui arrête l'envoi, et la garde du rôle n'est pas éprouvée.
+    await w.get('[data-testid="browser-locale"]').setValue('fr-CA')
     await w.get('form').trigger('submit')
+    await flushPromises()
     expect(updateProject).not.toHaveBeenCalled()
   })
 
@@ -222,7 +243,7 @@ describe('Paramètres de test — onglet Comptes, compte principal', () => {
 
     expect(updateProject).toHaveBeenCalledTimes(1)
     expect(updateProject).toHaveBeenCalledWith(4, { username: 'testeur', auth_strategie: 'totp' })
-    expect(w.emitted('enregistre')![0][0]).toMatchObject({ id: 4, username: 'testeur' })
+    expect(w.emitted('enregistre')![0][0]).toMatchObject({ id: 4, username: 'testeur', effective_role: 'admin' })
     expect(w.find('[data-testid="principal-formulaire"]').exists()).toBe(false)
   })
 
@@ -306,18 +327,40 @@ describe('Paramètres de test — onglet État de départ', () => {
     const w = mount(OngletEtatDeDepart, { props: { projet: projet({ bac_a_sable_non_remis: true }), peutRegler: true }, global: { stubs } })
 
     expect(w.get('[data-testid="bac-a-sable-non-remis"]').text()).toContain('les exécutions de ce projet sont retenues')
+    // Une adresse tapée mais pas encore enregistrée ne doit pas disparaître quand on déclare la remise à zéro.
+    await w.get('[data-testid="bac-a-sable-reset"]').setValue('/nouvelle-remise')
     await w.get('[data-testid="bac-a-sable-declarer-remis"]').trigger('click')
+    // Ce geste lève la retenue des exécutions : rien ne part avant la confirmation.
+    expect(updateProject).not.toHaveBeenCalled()
+    await w.get('[data-testid="confirmer"]').trigger('click')
     await flushPromises()
 
     expect(updateProject).toHaveBeenCalledWith(4, { bac_a_sable_remis_a_zero: true })
-    expect(w.emitted('enregistre')![0][0]).toMatchObject({ bac_a_sable_non_remis: false })
+    const enregistre = w.emitted('enregistre')![0][0] as any
+    expect(enregistre).toMatchObject({ bac_a_sable_non_remis: false, effective_role: 'admin' })
+    await w.setProps({ projet: enregistre })
+    expect((w.get('[data-testid="bac-a-sable-reset"]').element as HTMLInputElement).value).toBe('/nouvelle-remise')
+  })
+
+  it('falsifiable : une remise à zéro déclarée pour une AUTRE adresse que celle du projet est signalée', () => {
+    const perimee = mount(OngletEtatDeDepart, {
+      props: { projet: projet({ base_url: 'https://production.example', bac_a_sable_reset: 'https://recette.example/reset' }), peutRegler: true },
+      global: { stubs } })
+    const valide = mount(OngletEtatDeDepart, {
+      props: { projet: projet({ base_url: 'https://recette.example', bac_a_sable_reset: 'https://recette.example/reset' }), peutRegler: true },
+      global: { stubs } })
+
+    expect(perimee.get('[data-testid="declaration-perimee"]').text()).toContain("n'est plus celle de l'application du projet")
+    expect(valide.find('[data-testid="declaration-perimee"]').exists()).toBe(false)
   })
 
   it('reste en lecture pour qui n\'administre pas le projet', async () => {
     const w = mount(OngletEtatDeDepart, { props: { projet: projet(), peutRegler: false }, global: { stubs } })
 
     expect(w.get('fieldset').attributes('disabled')).toBeDefined()
+    await w.get('[data-testid="bac-a-sable-reset"]').setValue('/autre')   // modifié : c'est bien le rôle qui arrête l'envoi
     await w.get('form').trigger('submit')
+    await flushPromises()
     expect(updateProject).not.toHaveBeenCalled()
   })
 })

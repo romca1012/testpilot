@@ -79,7 +79,7 @@ async function apresChangementObligatoire() {
 
 watchEffect(() => {
   document.title = getReglage('instance_name') || 'TestPilot'
-  const adminRoutes = ['admin-projects', 'settings', 'settings-general', 'settings-security', 'utilisateurs', 'utilisateur-detail', 'role-detail']
+  const adminRoutes = ['admin-projects', 'project-test-params', 'settings', 'settings-general', 'settings-security', 'utilisateurs', 'utilisateur-detail', 'role-detail']
   if (sessionConnue.value && session.value?.authenticated && session.value.role !== 'admin'
       && adminRoutes.includes(String(route.name))) router.replace('/projects')
 })

@@ -8,6 +8,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { api, type ProjectSummary } from '../../lib/api'
 import Button from '../ui/Button.vue'
+import { projetEnregistre } from './fusion'
 
 const props = defineProps<{ projet: ProjectSummary; peutRegler: boolean }>()
 const emit = defineEmits<{ (e: 'enregistre', projet: ProjectSummary): void; (e: 'modifie', valeur: boolean): void }>()
@@ -18,16 +19,20 @@ const enregistrement = ref(false)
 const erreur = ref('')
 const enregistreA = ref(false)
 
+const modifie = computed(() => Object.entries(form).some(([k, v]) => (initial.value as Record<string, string>)[k] !== v))
+watch(modifie, (v) => emit('modifie', v), { immediate: true })
+
 function reprendre(p: ProjectSummary) {
   form.browser_locale = p.browser_locale || ''
   form.browser_timezone = p.browser_timezone || ''
   form.browser_viewport = p.browser_viewport || ''
   initial.value = { ...form }
 }
-watch(() => props.projet, reprendre, { immediate: true })
+// La page renvoie le projet après chaque enregistrement : on ne reprend ses valeurs que si rien n'est en cours de saisie
+// (revue du 2026-10-13 : déclarer la remise à zéro effaçait une adresse tapée mais pas encore enregistrée).
+reprendre(props.projet)
+watch(() => props.projet, (p) => { if (!modifie.value) reprendre(p) })
 
-const modifie = computed(() => Object.entries(form).some(([k, v]) => (initial.value as Record<string, string>)[k] !== v))
-watch(modifie, (v) => emit('modifie', v), { immediate: true })
 
 async function enregistrer() {
   if (!props.peutRegler || !modifie.value) return
@@ -40,7 +45,7 @@ async function enregistrer() {
       browser_timezone: form.browser_timezone.trim(),
       browser_viewport: form.browser_viewport.trim(),
     })
-    const enregistre = { ...props.projet, ...maj }
+    const enregistre = projetEnregistre(props.projet, maj)
     // L'onglet repart de ce que le serveur a enregistré, sans attendre que la page lui renvoie le projet.
     reprendre(enregistre)
     emit('enregistre', enregistre)

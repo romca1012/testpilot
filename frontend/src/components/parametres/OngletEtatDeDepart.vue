@@ -9,7 +9,9 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { api, type ProjectSummary } from '../../lib/api'
 import Button from '../ui/Button.vue'
+import { projetEnregistre } from './fusion'
 import Hint from '../ui/Hint.vue'
+import ConfirmDialog from '../ConfirmDialog.vue'
 
 const props = defineProps<{ projet: ProjectSummary; peutRegler: boolean }>()
 const emit = defineEmits<{ (e: 'enregistre', projet: ProjectSummary): void; (e: 'modifie', valeur: boolean): void }>()
@@ -21,16 +23,33 @@ const erreur = ref('')
 const enregistreA = ref(false)
 const estWeb = computed(() => props.projet.connector_type === 'web')
 
+const modifie = computed(() => form.calibration_writes_enabled !== initial.value.calibration_writes_enabled
+  || form.bac_a_sable_reset !== initial.value.bac_a_sable_reset)
+watch(modifie, (v) => emit('modifie', v), { immediate: true })
+// 3. Revue du 2026-10-13 : depuis que l'adresse du projet se change dans une autre fenêtre, une déclaration de remise à zéro
+// peut rester attachée à l'ANCIENNE adresse. Le serveur coupe alors les essais de l'IA (bon sens : rien n'est joué sur la
+// nouvelle adresse) — mais l'écran montrait une case cochée et une adresse déclarée, le contraire de l'état réel.
+const declarationPerimee = computed(() => {
+  const remise = props.projet.bac_a_sable_reset || ''
+  if (!estWeb.value || !remise || !props.projet.base_url) return false
+  try {
+    return new URL(remise).origin !== new URL(props.projet.base_url).origin
+  } catch {
+    return false  // adresse non absolue : rien à comparer, le serveur fait foi
+  }
+})
+const aConfirmer = ref(false)
+
 function reprendre(p: ProjectSummary) {
   form.calibration_writes_enabled = !!p.calibration_writes_enabled
   form.bac_a_sable_reset = p.bac_a_sable_reset || ''
   initial.value = { ...form }
 }
-watch(() => props.projet, reprendre, { immediate: true })
+// La page renvoie le projet après chaque enregistrement : on ne reprend ses valeurs que si rien n'est en cours de saisie
+// (revue du 2026-10-13 : déclarer la remise à zéro effaçait une adresse tapée mais pas encore enregistrée).
+reprendre(props.projet)
+watch(() => props.projet, (p) => { if (!modifie.value) reprendre(p) })
 
-const modifie = computed(() => form.calibration_writes_enabled !== initial.value.calibration_writes_enabled
-  || form.bac_a_sable_reset !== initial.value.bac_a_sable_reset)
-watch(modifie, (v) => emit('modifie', v), { immediate: true })
 
 async function enregistrer() {
   if (!props.peutRegler || !modifie.value) return
@@ -42,7 +61,7 @@ async function enregistrer() {
     // D26 : '' = retirer la déclaration de bac à sable. Sans objet pour Odoo, qui n'a pas d'adresse de remise à zéro.
     if (estWeb.value) patch.bac_a_sable_reset = form.bac_a_sable_reset.trim()
     const maj = await api.updateProject(props.projet.id, patch)
-    const enregistre = { ...props.projet, ...maj }
+    const enregistre = projetEnregistre(props.projet, maj)
     // L'onglet repart de ce que le serveur a enregistré, sans attendre que la page lui renvoie le projet.
     reprendre(enregistre)
     emit('enregistre', enregistre)
@@ -56,10 +75,11 @@ async function enregistrer() {
 
 // D26 : le porteur déclare avoir remis LUI-MÊME l'application à zéro — lève la marque qui retient ses exécutions.
 async function declarerRemisAZero() {
+  aConfirmer.value = false
   erreur.value = ''
   try {
     const maj = await api.updateProject(props.projet.id, { bac_a_sable_remis_a_zero: true })
-    emit('enregistre', { ...props.projet, ...maj })
+    emit('enregistre', projetEnregistre(props.projet, maj))
   } catch (e: any) {
     erreur.value = e?.message || 'Déclaration impossible.'
   }
@@ -72,7 +92,11 @@ async function declarerRemisAZero() {
          class="m-4 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm sm:mx-6">
       <span>Remise à zéro en échec : les exécutions de ce projet sont retenues.</span>
       <Button type="button" variant="secondary" size="sm" class="ml-auto" data-testid="bac-a-sable-declarer-remis"
-              :disabled="!peutRegler" @click="declarerRemisAZero">L'application a été remise à zéro</Button>
+              :disabled="!peutRegler" @click="aConfirmer = true">L'application a été remise à zéro</Button>
+    </div>
+    <div v-if="declarationPerimee" role="status" data-testid="declaration-perimee"
+         class="m-4 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm sm:mx-6">
+      L'adresse de remise à zéro n'est plus celle de l'application du projet : l'IA ne joue aucune action tant qu'elle n'est pas redéclarée.
     </div>
     <fieldset class="p-4 sm:p-6" :disabled="!peutRegler">
       <legend class="sr-only">État de départ</legend>
@@ -95,5 +119,9 @@ async function declarerRemisAZero() {
       <Button type="button" variant="secondary" :disabled="!modifie || enregistrement" @click="reprendre(projet)">Annuler</Button>
       <Button type="submit" variant="primary" :loading="enregistrement" :disabled="!peutRegler || !modifie">Enregistrer</Button>
     </div>
+    <!-- Ce geste lève la retenue des exécutions : il protège le verdict, il se confirme. -->
+    <ConfirmDialog :open="aConfirmer" title="Lever la retenue des exécutions ?"
+                   message="À confirmer seulement si l'application a bien été remise dans son état de départ."
+                   confirm-label="Confirmer" @confirm="declarerRemisAZero" @cancel="aConfirmer = false" />
   </form>
 </template>

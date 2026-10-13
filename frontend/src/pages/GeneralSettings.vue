@@ -18,9 +18,10 @@ const form = reactive({
   instance_name: 'TestPilot',
   instance_timezone: 'Europe/Paris',
   date_format: 'DD/MM/YYYY',
-  // Lot PT-00 : '1' = nouvelle organisation « Paramètres de test » ; '' = l'écran d'avant (une valeur vide EFFACE le
-  // réglage côté serveur, qui rend alors la main à la variable d'environnement puis au défaut).
-  parametres_de_test_enabled: '',
+  // Lot PT-00 : '1' = nouvelle organisation « Paramètres de test » ; '0' = l'écran d'avant. Jamais '' : une valeur vide
+  // EFFACE le réglage et rend la main à la variable d'environnement du serveur — si elle vaut « 1 », la case décochée
+  // revenait cochée (revue du 2026-10-13, reproduit).
+  parametres_de_test_enabled: '0',
 })
 
 const formats = [
@@ -37,7 +38,7 @@ function appliquer(reglages: SettingOut[]) {
   form.instance_name = valeurs.instance_name || 'TestPilot'
   form.instance_timezone = valeurs.instance_timezone || 'Europe/Paris'
   form.date_format = valeurs.date_format || 'DD/MM/YYYY'
-  form.parametres_de_test_enabled = estAllume(valeurs.parametres_de_test_enabled) ? '1' : ''
+  form.parametres_de_test_enabled = estAllume(valeurs.parametres_de_test_enabled) ? '1' : '0'
   initial.value = { ...form }
 }
 
@@ -136,7 +137,7 @@ onMounted(charger)
         <label class="flex min-h-11 max-w-xl items-center gap-3">
           <input type="checkbox" :checked="form.parametres_de_test_enabled === '1'" :disabled="!estAdmin"
                  data-testid="interrupteur-parametres-de-test" class="h-4 w-4"
-                 @change="form.parametres_de_test_enabled = ($event.target as HTMLInputElement).checked ? '1' : ''" />
+                 @change="form.parametres_de_test_enabled = ($event.target as HTMLInputElement).checked ? '1' : '0'" />
           <span class="text-sm font-medium">Paramètres de test</span>
         </label>
       </div>
