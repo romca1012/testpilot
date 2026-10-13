@@ -27,6 +27,23 @@ def test_preflight_refuse_image_sans_harnais(tmp_path, monkeypatch):
         preflight.verifier()
 
 
+def test_falsifiable_preflight_refuse_un_harnais_sans_le_lecteur_de_nombres(tmp_path, monkeypatch):
+    """Lot PT-03 : `_base_helpers.py` importe `_lecture_nombre.py` au niveau module. Une image qui l'aurait perdu ferait
+    échouer TOUS les runs au chargement des steps : le démarrage doit le dire, en nommant le fichier."""
+    source = config.BEHAVE_RUNTIME_DIR
+    for fichier in source.rglob("*.py"):
+        relatif = fichier.relative_to(source)
+        if "generated" in relatif.parts or relatif.name == "_lecture_nombre.py":
+            continue
+        (tmp_path / relatif).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / relatif).write_text("", encoding="utf-8")
+    monkeypatch.setattr(config, "PRODUCTION", False)
+    monkeypatch.setattr(config, "BEHAVE_RUNTIME_DIR", tmp_path)
+
+    with pytest.raises(RuntimeError, match="_lecture_nombre.py"):
+        preflight.verifier()
+
+
 def test_smoke_refuse_http_hors_controle_local():
     with pytest.raises(RuntimeError, match="HTTPS"):
         verify_deployment.verifier("http://testpilot.example")

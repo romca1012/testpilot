@@ -19,7 +19,7 @@ from _base_helpers import (
     wait_form_submission, remplir_formulaire_valide,
     select_product_in_list, select_product_partial, NavigationImpossibleError,
     connexion_web_utilisateur,
-    non_assertif,
+    non_assertif, derriere_interrupteur, compare_des_nombres,
     # Vocabulaire universel (lot 07d) — imports au NIVEAU MODULE, jamais différés (`steps/` sort du sys.path après le chargement).
     ouvrir_page, page_affiche_texte, page_n_affiche_pas_texte, url_contient, tableau_contient_ligne,
     tableau_compte_lignes, cliquer_dans_ligne, decider_dialogue, telecharger_via, fichier_telecharge_se_nomme,
@@ -31,6 +31,8 @@ from _base_helpers import (
     # Lot VH-06 : les steps qui manquaient (saisie dans une ligne, valeur à côté d'un libellé, motif, relevé, liste d'oracle).
     saisir_dans_ligne, valeur_affichee_vaut, page_affiche_texte_de_la_forme,
     oracle_liste_contient, oracle_liste_contient_valeur_affichee,
+    # Lot PT-03 : un nombre affiché, lu avec son unité (monnaie, pourcentage, poids, durée…).
+    _nombre_affiche_vaut,
 )
 
 # ⚠️ Chaque step d'ACTION ci-dessous est déclaré sous `@given` ET `@when` (bug SauceDemo,
@@ -320,6 +322,14 @@ def step_saisir_dans_ligne(context, champ, valeur, texte):
 def step_valeur_affichee(context, libelle, valeur):
     """La valeur affichée À CÔTÉ d'un libellé, ENTIÈRE (jamais un morceau) — à préférer à « la page affiche le texte » si la valeur peut apparaître ailleurs."""
     valeur_affichee_vaut(context.page, libelle, valeur)
+
+
+@then('le nombre affiché pour "{libelle}" vaut "{valeur}"')
+@derriere_interrupteur("TESTPILOT_STEP_NOMBRE")
+@compare_des_nombres
+def step_nombre_affiche(context, libelle, valeur):
+    """Un montant, un taux, une quantité ou une mesure à côté d'un libellé, comparé comme un NOMBRE avec son unité (« 1 234,50 € » = « 1234.50 EUR », « 1,5 kg » = « 1500 g », jamais « 1 234,50 $ ») — écris la valeur comme la spécification la donne, AVEC son unité et sa mention (« HT », « TTC ») : sans elles, le constat ne conclut pas."""
+    _nombre_affiche_vaut(context.page, libelle, valeur)
 
 
 @then('la page affiche un texte de la forme "{motif}"')
