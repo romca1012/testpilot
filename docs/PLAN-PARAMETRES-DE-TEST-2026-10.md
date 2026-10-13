@@ -26,7 +26,7 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 | R6 | Verdict intact | CLAUDE.md §3, §4 | Un paramètre est **déclaré par une personne**, jamais écrit par l'agent. Aucun chemin nouveau vers `conforme` sans preuve. Revue `verdict-reviewer` avant le premier commit de tout lot qui touche `verdict/`, `execution/`, `behave_runtime/`, `generation/` ou le schéma. |
 | R7 | Mesurer avant d'activer | CLAUDE.md §5, §8 | Tout ce qui change ce que l'agent reçoit est mesuré sur le banc (faux verts, premier essai, coût) avant d'être allumé. Budget annoncé avant chaque campagne. |
 | R8 | Schéma : les quatre pièces | CLAUDE.md §6 | Migration SQLite idempotente (la prochaine est la **62**), révision Alembic chaînée sur `d1a7b3c5e924`, `schema_sa.py`, test de migration + `test_schema_sa_portable.py`. |
-| R9 | Un lot = une branche = une PR | CLAUDE.md §5 | Validation à l'écran par le porteur sur une instance locale avant de pousser ; push et fusion sur son accord, 4 contrôles verts. |
+| R9 | Rien n'est poussé avant la fin du chantier | porteur, 2026-10-14 | Un lot = une branche **locale**, des commits atomiques. **Aucun push, aucune PR, aucune fusion** tant que les lots PT-00 à PT-07 ne sont pas tous terminés, vérifiés (contrôles automatiques ET essais à l'écran sur l'instance locale) et verts. Remplace, pour ce chantier, « un lot = une PR » de CLAUDE.md §5. `master` est ramené régulièrement dans les branches, en local, pour ne pas dériver. |
 
 ## 3. Architecture cible
 
@@ -240,10 +240,11 @@ Règle du dépôt (CLAUDE.md §5.3) : un lot qui dépend d'une décision non val
 
 | Lot | Statut | Date | PR | Rapport |
 |---|---|---|---|---|
-| PT-00 | en cours | 2026-10-14 | | |
-| PT-01a, PT-01b | PT-01a en cours ; PT-01b attend V14 et V15 | 2026-10-14 | | |
+| PT-00 | terminé en local (plan, interrupteur, mesures de référence) ; fiches d'écran faites pour PT-01 seulement | 2026-10-14 | — | |
+| PT-01a | écrit et vérifié à l'écran sur l'instance locale ; suite du serveur et revue en cours | 2026-10-14 | — | |
+| PT-01b | attend V14 et V15 | | | |
 | PT-02a à PT-02d | à faire | | | |
-| PT-03 | écrit sur `lot-cv01-montants-affiches`, non commité, 19 régressions et six points de revue à traiter | 2026-10-13 | | `PLAN-CALCUL-DE-VALEURS-2026-10.md` §6.1 |
+| PT-03 | écrit sur `lot-cv01-montants-affiches`, non commité, **15** régressions (et non 19 : 4 des échecs d'abord comptés existent aussi sur `master`, voir `docs/mesures/parametres-de-test-reference-2026-10-14.md`) et six points de revue à traiter | 2026-10-14 | | `PLAN-CALCUL-DE-VALEURS-2026-10.md` §6.1 |
 | PT-04a à PT-04c | à faire | | | |
 | PT-05 | à faire | | | |
 | PT-06a à PT-06d | à faire | | | |
