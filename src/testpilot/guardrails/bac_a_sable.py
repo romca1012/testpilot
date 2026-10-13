@@ -179,10 +179,12 @@ def _retablir(cle: str) -> None:
         remettre_a_zero(url)
         _retirer_la_marque(cle)
     except Exception as exc:
+        # Lot PT-01b (2026-10-13) : le message ne nomme plus la rubrique « Génération — bac à sable » — elle a quitté la
+        # fenêtre du projet pour « Paramètres de test », et les deux écrans coexistent jusqu'au lot PT-07.
         raise BacASableNonRemisAZero(
             "un essai de génération a laissé cette application dans son état et son rétablissement échoue "
             f"({type(exc).__name__}) : l'exécution n'est pas jouée. Remettez l'application à zéro, puis déclarez-le dans les "
-            "réglages du projet (« Génération — bac à sable »).") from exc
+            "réglages du projet (remise à zéro).") from exc
 
 
 # ── Exclusion remise à zéro / exécutions réelles, par application ─────────────────────────────────────────

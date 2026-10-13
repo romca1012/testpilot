@@ -2878,12 +2878,13 @@ class SettingRepo:
             True,
             False,
         ),
-        # Lot PT-00 (2026-10-14) : l'interrupteur de la nouvelle organisation « Paramètres de test ». Un réglage et non
+        # Lot PT-00 (2026-10-13) : l'interrupteur de la nouvelle organisation « Paramètres de test ». Un réglage et non
         # une simple variable d'environnement : l'Admin doit pouvoir revenir à l'ancien écran sans redémarrer le serveur.
         "parametres_de_test_enabled": (
             "PARAMETRES_DE_TEST_ENABLED",
             "Afficher la nouvelle organisation « Paramètres de test » d'un projet. « 1 » = activé, "
-            "vide/« 0 » = désactivé (défaut — l'écran reste celui d'avant).",
+            "« 0 » = désactivé même si la variable d'environnement l'allume, vide = suivre la variable "
+            "d'environnement puis le défaut (désactivé — l'écran reste celui d'avant).",
             True,
             False,
         ),
