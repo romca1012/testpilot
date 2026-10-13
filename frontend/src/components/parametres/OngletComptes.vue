@@ -101,7 +101,7 @@ onMounted(charger)
 <template>
   <section class="rounded-xl border border-border bg-surface-raised shadow-sm" data-testid="comptes">
     <p v-if="erreur" role="alert" class="m-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" data-testid="compte-erreur">{{ erreur }}</p>
-    <div class="overflow-x-auto">
+    <div class="overflow-x-auto overflow-y-hidden">
       <table class="w-full text-sm">
         <thead>
           <tr class="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">

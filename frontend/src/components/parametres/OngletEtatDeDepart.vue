@@ -74,7 +74,7 @@ async function declarerRemisAZero() {
       <Button type="button" variant="secondary" size="sm" class="ml-auto" data-testid="bac-a-sable-declarer-remis"
               :disabled="!peutRegler" @click="declarerRemisAZero">L'application a été remise à zéro</Button>
     </div>
-    <fieldset class="space-y-5 p-4 sm:p-6" :disabled="!peutRegler">
+    <fieldset class="p-4 sm:p-6" :disabled="!peutRegler">
       <legend class="sr-only">État de départ</legend>
       <label class="flex min-h-11 items-center gap-3">
         <input type="checkbox" v-model="form.calibration_writes_enabled" class="h-4 w-4" data-testid="bac-a-sable-autorise" />
@@ -82,7 +82,7 @@ async function declarerRemisAZero() {
         <Hint v-if="estWeb" text="À n'activer que sur une application réservée aux tests, que l'on peut remettre à zéro. L'IA voit alors où mène chaque action avant d'écrire le test." />
         <Hint v-else text="À n'activer que sur un environnement de test : l'IA soumet un vrai formulaire pour lire le message affiché, puis supprime ce qu'elle a créé." />
       </label>
-      <label v-if="estWeb" class="block max-w-xl">
+      <label v-if="estWeb" class="mt-5 block max-w-xl">
         <span class="text-sm font-medium">Adresse de remise à zéro</span>
         <Hint text="Un chemin de l'application, appelé avant et après chaque essai : toute l'application revient à son état de départ. Sans cette adresse, l'IA ne joue aucune action." />
         <input v-model="form.bac_a_sable_reset" type="text" placeholder="/reset" data-testid="bac-a-sable-reset"
