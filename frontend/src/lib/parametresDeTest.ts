@@ -1,4 +1,4 @@
-// Lot PT-00 (2026-10-14) — la nouvelle organisation « Paramètres de test » est-elle allumée sur cette installation ?
+// Lot PT-00 (2026-10-13) — la nouvelle organisation « Paramètres de test » est-elle allumée sur cette installation ?
 //
 // Un seul endroit pour le savoir : chaque écran concerné pose la même question, et un interrupteur lu de deux façons
 // finirait par montrer la nouveauté à moitié. Éteint (défaut), l'interface est strictement celle d'avant.

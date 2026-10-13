@@ -7,7 +7,7 @@
 //    (l'envoyer vide l'effacerait) ;
 // 2. seuls `admin` et `dev` voient les gestes d'ajout, de modification et de suppression (le serveur tranche aussi).
 //
-// Lot PT-01b (décision du porteur, 2026-10-14) : le compte « principal » se règle ICI, comme les autres, avec sa façon de se
+// Lot PT-01b (décision du porteur, 2026-10-13) : le compte « principal » se règle ICI, comme les autres, avec sa façon de se
 // connecter — il n'est plus à part dans « Application cible ». Il reste enregistré sur le projet (mêmes colonnes) et passe
 // par la route du projet, que seul un administrateur du projet peut appeler : d'où `peutRegler`, distinct de `peutGerer`.
 // Ses secrets (mot de passe, secret du code à usage unique, session) suivent la même règle d'écriture seule.

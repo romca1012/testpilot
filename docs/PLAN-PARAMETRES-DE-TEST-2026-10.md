@@ -1,6 +1,6 @@
 # Plan de réalisation — Paramètres de test (lots PT-00 à PT-07)
 
-Date : 2026-10-14. Statut : **validé par le porteur le 2026-10-14** (plan, ordre et les deux arbitrages du §5) ; PT-00 et
+Date : 2026-10-13. Statut : **validé par le porteur le 2026-10-13** (plan, ordre et les deux arbitrages du §5) ; PT-00 et
 PT-01 lancés le même jour. Référence de code : `master` = `846ef04`.
 Source des décisions : `reports/parametres-de-test-dossier-de-cadrage-2026-10-13.pdf` (version 3) — décisions prises
 **A1 à A17**, décisions ouvertes **V1 à V16** (V12 tranchée, devenue A16).
@@ -18,11 +18,11 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 
 | ID | Décision | Date |
 |---|---|---|
-| A18 | Le déplacement des comptes, du navigateur et de la remise à zéro est **définitif**. Aucune ligne de renvoi dans l'ancienne fenêtre : « ne pas être brusque » veut dire que le nouvel écran est bien fait et **vérifié avant** que l'ancien soit retiré, pas que l'utilisateur est guidé de l'un à l'autre. Remplace la proposition V14 et la page « transition » du dossier (les trois fenêtres côte à côte). | 2026-10-14 |
-| A19 | Le compte principal se modifie dans l'onglet « Comptes », au même endroit que les autres, avec sa façon de se connecter. La fenêtre « Identité et application » ne garde que le nom du projet, le connecteur, la version et l'adresse. (V15) | 2026-10-14 |
-| A20 | Rien n'est poussé avant la fin de tout le chantier (voir R9). | 2026-10-14 |
+| A18 | Le déplacement des comptes, du navigateur et de la remise à zéro est **définitif**. Aucune ligne de renvoi dans l'ancienne fenêtre : « ne pas être brusque » veut dire que le nouvel écran est bien fait et **vérifié avant** que l'ancien soit retiré, pas que l'utilisateur est guidé de l'un à l'autre. Remplace la proposition V14 et la page « transition » du dossier (les trois fenêtres côte à côte). | 2026-10-13 |
+| A19 | Le compte principal se modifie dans l'onglet « Comptes », au même endroit que les autres, avec sa façon de se connecter. La fenêtre « Identité et application » ne garde que le nom du projet, le connecteur, la version et l'adresse. (V15) | 2026-10-13 |
+| A20 | Rien n'est poussé avant la fin de tout le chantier (voir R9). | 2026-10-13 |
 
-Interrupteur (confirmé par le porteur le 2026-10-14) : il ne sert qu'au temps de la construction, pour comparer
+Interrupteur (confirmé par le porteur le 2026-10-13) : il ne sert qu'au temps de la construction, pour comparer
 l'ancien écran et le nouveau. Le changement étant définitif, il est retiré au lot PT-07 avec l'ancien écran.
 
 ## 2. Règles de réalisation — valables pour tous les lots
@@ -37,7 +37,7 @@ l'ancien écran et le nouveau. Le changement étant définitif, il est retiré a
 | R6 | Verdict intact | CLAUDE.md §3, §4 | Un paramètre est **déclaré par une personne**, jamais écrit par l'agent. Aucun chemin nouveau vers `conforme` sans preuve. Revue `verdict-reviewer` avant le premier commit de tout lot qui touche `verdict/`, `execution/`, `behave_runtime/`, `generation/` ou le schéma. |
 | R7 | Mesurer avant d'activer | CLAUDE.md §5, §8 | Tout ce qui change ce que l'agent reçoit est mesuré sur le banc (faux verts, premier essai, coût) avant d'être allumé. Budget annoncé avant chaque campagne. |
 | R8 | Schéma : les quatre pièces | CLAUDE.md §6 | Migration SQLite idempotente (la prochaine est la **62**), révision Alembic chaînée sur `d1a7b3c5e924`, `schema_sa.py`, test de migration + `test_schema_sa_portable.py`. |
-| R9 | Rien n'est poussé avant la fin du chantier | porteur, 2026-10-14 | Un lot = une branche **locale**, des commits atomiques. **Aucun push, aucune PR, aucune fusion** tant que les lots PT-00 à PT-07 ne sont pas tous terminés, vérifiés (contrôles automatiques ET essais à l'écran sur l'instance locale) et verts. Remplace, pour ce chantier, « un lot = une PR » de CLAUDE.md §5. `master` est ramené régulièrement dans les branches, en local, pour ne pas dériver. |
+| R9 | Rien n'est poussé avant la fin du chantier | porteur, 2026-10-13 | Un lot = une branche **locale**, des commits atomiques. **Aucun push, aucune PR, aucune fusion** tant que les lots PT-00 à PT-07 ne sont pas tous terminés, vérifiés (contrôles automatiques ET essais à l'écran sur l'instance locale) et verts. Remplace, pour ce chantier, « un lot = une PR » de CLAUDE.md §5. `master` est ramené régulièrement dans les branches, en local, pour ne pas dériver. |
 
 ## 3. Architecture cible
 
@@ -109,7 +109,7 @@ But : un seul endroit pour régler les tests d'un projet, sans rien changer à c
 | Sous-lot | Contenu |
 |---|---|
 | PT-01a | Page « Paramètres de test » du projet, onglets **Configurations** (langue, fuseau, taille d'écran actuels), **Comptes**, **État de départ**. Bouton dans « Paramètres du projet ». Mêmes appels serveur qu'aujourd'hui. |
-| PT-01b | **Décidé le 2026-10-14.** Le déplacement est **définitif**, sans ligne de renvoi : la fenêtre « Identité et application » ne garde que le nom, le connecteur, la version et l'adresse. Le compte principal se règle dans l'onglet « Comptes », avec sa façon de se connecter. L'ancien écran n'est retiré qu'une fois le nouveau vérifié (contrôles et essais à l'écran). Message de l'outil qui cite l'ancien emplacement mis à jour. |
+| PT-01b | **Décidé le 2026-10-13.** Le déplacement est **définitif**, sans ligne de renvoi : la fenêtre « Identité et application » ne garde que le nom, le connecteur, la version et l'adresse. Le compte principal se règle dans l'onglet « Comptes », avec sa façon de se connecter. L'ancien écran n'est retiré qu'une fois le nouveau vérifié (contrôles et essais à l'écran). Message de l'outil qui cite l'ancien emplacement mis à jour. |
 
 Schéma : **aucun changement**. Serveur : aucune route modifiée (si V15 = oui : le compte principal devient modifiable depuis
 l'onglet « Comptes », par la route existante de mise à jour du projet).
@@ -171,7 +171,7 @@ différentes sortent `non_conforme` ; une unité attendue et non affichée ne co
 |---|---|
 | PT-04a | Plusieurs environnements par projet ; choix au lancement ; **la protection de la production est évaluée pour chaque environnement**, jamais contournée. |
 | PT-04b | Compte choisi au lancement ; exploration avec chaque compte ; l'agent reçoit la cartographie du compte visé. |
-| PT-04c | Choix du navigateur. **Écart avec la maquette** : aujourd'hui tout le code lance Chromium (exécution, exploration, enregistrement, connecteurs) et le confinement réseau des essais repose sur des options propres à Chromium. **Décidé le 2026-10-14** : garder le groupe « Navigateur » dans le modèle, ne livrer que Chromium, instruire Firefox à part. |
+| PT-04c | Choix du navigateur. **Écart avec la maquette** : aujourd'hui tout le code lance Chromium (exécution, exploration, enregistrement, connecteurs) et le confinement réseau des essais repose sur des options propres à Chromium. **Décidé le 2026-10-13** : garder le groupe « Navigateur » dans le modèle, ne livrer que Chromium, instruire Firefox à part. |
 
 Tests : une campagne jouée sur deux environnements produit deux exécutions distinctes ; un environnement déclaré en
 production est refusé au lancement ; un test joué « en tant que » un compte sans droit sort le verdict attendu (règle D34
@@ -206,7 +206,7 @@ ses captures refaites ; mesure de clôture sur le banc ; mise en ligne sur
 
 ## 5. Ordre et jalons
 
-Ordre : PT-00 → PT-01 → **PT-03** → PT-02 → PT-04 → PT-05 → PT-06 → PT-07 (ordre A7, modifié sur un point le 2026-10-14 :
+Ordre : PT-00 → PT-01 → **PT-03** → PT-02 → PT-04 → PT-05 → PT-06 → PT-07 (ordre A7, modifié sur un point le 2026-10-13 :
 PT-03 passe juste après PT-01).
 
 | Jalon | Atteint après | Ce que l'utilisateur peut faire |
@@ -218,7 +218,7 @@ PT-03 passe juste après PT-01).
 | J5 — Réutilisable | PT-05 | Reprendre dans un projet ce qu'un autre a réglé |
 | J6 — Valeur calculée | PT-06 | Vérifier une valeur sans l'avoir recopiée d'une spécification |
 
-**Arbitrages du porteur (2026-10-14).**
+**Arbitrages du porteur (2026-10-13).**
 1. PT-03 est déjà écrit et touche le fichier le plus modifié du dépôt (`behave_runtime/steps_library/_base_helpers.py`) :
    il est terminé **juste après PT-01**, avant PT-02.
 2. Navigateur : seul Chromium est livré (voir PT-04c) ; un second navigateur sera instruit à part.
@@ -227,7 +227,7 @@ PT-03 passe juste après PT-01).
 
 | Lot | Décisions qui le bloquent | Sans elles |
 |---|---|---|
-| PT-01 | aucune : V14 et V15 tranchées le 2026-10-14 (A18, A19) ; V1 acquise (le porteur emploie « Paramètres de test ») | — |
+| PT-01 | aucune : V14 et V15 tranchées le 2026-10-13 (A18, A19) ; V1 acquise (le porteur emploie « Paramètres de test ») | — |
 | PT-02 | V2 (`%nom%`), V3 (case vide), V4 (une exécution par combinaison, limite), V5 (droits), V7 (valeurs figées), V13 (corbeille) | le lot ne démarre pas |
 | PT-03 | V9 (unité absente de l'attendu) | les points 1 à 3 peuvent être faits ; le point 4 attend |
 | PT-04 | V16 (exploration par compte, compte au lancement) | PT-04a peut démarrer |
@@ -248,17 +248,17 @@ Règle du dépôt (CLAUDE.md §5.3) : un lot qui dépend d'une décision non val
 | Coût de l'IA | Rejouer un test avec d'autres données ne régénère rien ; seuls PT-02d et PT-04b changent ce que l'agent reçoit, et sont mesurés. |
 | Données sensibles | Mots de passe uniquement dans les comptes, chiffrés, jamais dans une variable ni dans un résultat ; `parametres_joues` ne contient que le **nom** du compte. |
 | Dérive de périmètre | Un lot ne fait que son contenu ; le reste va en « suggestions » du rapport de lot. |
-| Second navigateur | Voir PT-04c : écart signalé, arbitré le 2026-10-14 (Chromium seul). |
+| Second navigateur | Voir PT-04c : écart signalé, arbitré le 2026-10-13 (Chromium seul). |
 
 ## 8. Suivi
 
 | Lot | Statut | Date | PR | Rapport |
 |---|---|---|---|---|
-| PT-00 | terminé en local (plan, interrupteur, mesures de référence) ; fiches d'écran faites pour PT-01 seulement | 2026-10-14 | — | |
-| PT-01a | écrit et vérifié à l'écran sur l'instance locale ; suite du serveur et revue en cours | 2026-10-14 | — | |
-| PT-01b | écrit et vérifié à l'écran sur l'instance locale (fenêtre allégée, compte principal dans « Comptes ») ; reste le message du garde-fou de remise à zéro et la suite du serveur | 2026-10-14 | — | |
+| PT-00 | terminé en local (plan, interrupteur, mesures de référence) ; fiches d'écran faites pour PT-01 seulement | 2026-10-13 | — | |
+| PT-01a | écrit et vérifié à l'écran sur l'instance locale ; suite du serveur et revue en cours | 2026-10-13 | — | |
+| PT-01b | écrit et vérifié à l'écran sur l'instance locale (fenêtre allégée, compte principal dans « Comptes ») ; reste le message du garde-fou de remise à zéro et la suite du serveur | 2026-10-13 | — | |
 | PT-02a à PT-02d | à faire | | | |
-| PT-03 | écrit sur `lot-cv01-montants-affiches`, non commité, **15** régressions (et non 19 : 4 des échecs d'abord comptés existent aussi sur `master`, voir `docs/mesures/parametres-de-test-reference-2026-10-14.md`) et six points de revue à traiter | 2026-10-14 | | `PLAN-CALCUL-DE-VALEURS-2026-10.md` §6.1 |
+| PT-03 | écrit sur `lot-cv01-montants-affiches`, non commité, **15** régressions (et non 19 : 4 des échecs d'abord comptés existent aussi sur `master`, voir `docs/mesures/parametres-de-test-reference-2026-10-13.md`) et six points de revue à traiter | 2026-10-13 | | `PLAN-CALCUL-DE-VALEURS-2026-10.md` §6.1 |
 | PT-04a à PT-04c | à faire | | | |
 | PT-05 | à faire | | | |
 | PT-06a à PT-06d | à faire | | | |
