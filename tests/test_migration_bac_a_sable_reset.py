@@ -10,7 +10,7 @@ import importlib.util
 import sqlite3
 from pathlib import Path
 
-from testpilot.store import db, portable_connection, schema_sa
+from testpilot.store import db, schema_sa
 from testpilot.store.db import _migrate_61_bac_a_sable_reset, get_initialized_db
 from testpilot.store.repositories import ProjectRepo
 
@@ -51,7 +51,6 @@ def test_la_revision_alembic_est_chainee_sur_la_tete_precedente():
     spec.loader.exec_module(revision)
 
     assert (revision.revision, revision.down_revision) == ("d1a7b3c5e924", "c9f4a2d6e813")
-    assert portable_connection.ALEMBIC_HEAD == "d1a7b3c5e924"
     autres_tetes = [p.name for p in chemin.parent.glob("*.py")
                     if p != chemin and 'down_revision = "c9f4a2d6e813"' in p.read_text(encoding="utf-8")]
     assert autres_tetes == [], "une seule révision descend de c9f4a2d6e813"

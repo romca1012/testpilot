@@ -59,6 +59,9 @@ class ProjectSummary(BaseModel):
     browser_timezone: str = ""
     browser_viewport: str = ""
     browser_effectif: dict[str, str] = {}
+    # Lot PT-03 (migration 62) : comment le projet écrit ses valeurs. Vide = rien de déclaré.
+    devise: str = ""
+    format_nombre: str = ""
     # Une valeur ENREGISTRÉE mais mal formée (base éditée à la main) est écartée au profit du défaut : on le DIT, jamais en silence.
     browser_avertissements: list[str] = []
     # Lot 07b-2 (C2) : stratégie de connexion du compte PRINCIPAL — `totp_secret`/`injected_session` ne sont JAMAIS exposés
@@ -575,6 +578,9 @@ class ProjectPatch(BaseModel):
     browser_locale: str | None = None
     browser_timezone: str | None = None
     browser_viewport: str | None = None
+    # Lot PT-03 : `None` = n'y touche pas ; `""` = rien de déclaré.
+    devise: str | None = None
+    format_nombre: str | None = None
 
 
 class AccountIn(BaseModel):
@@ -1190,6 +1196,17 @@ class TimezoneOption(BaseModel):
     label: str
 
 
+class FormatNombreOption(BaseModel):
+    cle: str
+    libelle: str
+
+
+class ValeursDuProjetOptions(BaseModel):
+    """Lot PT-03 : ce que l'onglet « Valeurs attendues » propose — monnaies déclarables et écritures des nombres."""
+    devises: list[str]
+    formats_nombre: list[FormatNombreOption]
+
+
 class SecurityStatusOut(BaseModel):
     password_min_length: int
     password_hash: str
@@ -1403,6 +1420,7 @@ def project_summary(row: dict) -> ProjectSummary:
         browser_timezone=row.get("browser_timezone", "") or "",
         browser_viewport=row.get("browser_viewport", "") or "",
         browser_effectif=_contexte_effectif(row),
+        devise=row.get("devise", "") or "", format_nombre=row.get("format_nombre", "") or "",
         browser_avertissements=_contexte_avertissements(row),
         auth_strategie=row.get("auth_strategie", "") or "formulaire",
         has_totp_secret=bool(row.get("totp_secret")), has_injected_session=bool(row.get("injected_session")),
