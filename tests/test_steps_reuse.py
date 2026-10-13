@@ -65,8 +65,17 @@ def test_catalogue_reel_non_vide_et_reserved_coherent():
 
 
 # ── A : le catalogue est montré à l'agent ────────────────────────────────────
-def test_prompt_expose_tous_les_steps_partages():
+def _allumer_les_interrupteurs_de_steps(monkeypatch, catalogue) -> None:
+    """Décor (lot PT-03) : un step posé derrière un interrupteur ÉTEINT est volontairement absent du prompt, le temps d'être
+    mesuré. Ces gardes portent sur « rien n'est perdu de ce qui doit être montré » : elles s'exécutent tout allumé. Le cas
+    éteint a son propre test (`tests/test_nombre_affiche.py`)."""
+    for nom in {s.interrupteur for s in catalogue if s.interrupteur}:
+        monkeypatch.setenv(nom, "1")
+
+
+def test_prompt_expose_tous_les_steps_partages(monkeypatch):
     catalogue = steps_library.catalogue()
+    _allumer_les_interrupteurs_de_steps(monkeypatch, catalogue)
     prompt = build_system_prompt(None, catalogue)
     assert "## Steps partagés disponibles" in prompt
     manquants = [s.label for s in catalogue if s.label not in prompt]
@@ -387,10 +396,11 @@ def test_as_prompt_section_omet_le_sous_titre_si_le_groupe_est_homogene():
     assert "####" not in section
 
 
-def test_falsifiable_aucun_step_n_est_perdu_par_le_sous_classement_par_intention():
+def test_falsifiable_aucun_step_n_est_perdu_par_le_sous_classement_par_intention(monkeypatch):
     """Le sous-classement est purement cosmétique : chaque step du catalogue réel doit rester
     présent dans le prompt, quelle que soit son intention devinée (correcte ou non)."""
     catalogue = steps_library.catalogue()
+    _allumer_les_interrupteurs_de_steps(monkeypatch, catalogue)
     section = steps_library.as_prompt_section(catalogue)
     manquants = [s.label for s in catalogue if s.label not in section]
     assert not manquants, f"steps perdus par le regroupement par intention : {manquants[:5]}"

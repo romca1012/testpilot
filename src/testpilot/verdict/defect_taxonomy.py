@@ -150,8 +150,9 @@ _EXCEPTION_TO_CAUSE = {
     # Même défaut, pour un parcours (section/page absente) plutôt qu'un élément d'action —
     # `access_portal_section`. Même famille que `HTTPError`, déjà classée ici.
     "NavigationImpossibleError": WRONG_NAVIGATION,
-    # Lot VH-02 (V1) : levée UNIQUEMENT par `_base_helpers.constater` quand sa condition ne peut pas être fausse (objet
-    # Playwright, méthode non appelée) — un défaut du CODE DU TEST, jamais de l'application ni un sélecteur introuvable.
+    # Lot VH-02 (V1) : levée par `_base_helpers.constater` quand sa condition ne peut pas être fausse (objet Playwright,
+    # méthode non appelée) et, depuis le lot PT-03, par `_nombre_affiche_vaut` quand la valeur ATTENDUE ne se lit pas comme un
+    # nombre unique — un défaut du CODE DU TEST, jamais de l'application ni un sélecteur introuvable.
     "ConstatInvalideError": BROKEN_TEST_CODE,
     # AJOUTÉ (lot 02, D1). Levée UNIQUEMENT par un step de Contexte de la bibliothèque quand un
     # PRÉREQUIS d'environnement n'est pas rempli. Classe dédiée, non ambiguë par construction.
