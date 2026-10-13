@@ -171,7 +171,10 @@ But : un montant, un taux, un poids sont comparés comme des nombres avec leur u
    fait aussi — les unités ajoutées du projet (migration 63, table `test_unit`, décision A25), relues à part : la revue a
    trouvé qu'elles n'arrivaient au test que pendant la génération, pas en campagne — corrigé, un seul point de chargement ;
 5. fait — quatre passes de revue indépendante (la deuxième et la troisième ont trouvé des faux verts, tous reproduits puis
-   corrigés avec un contrôle par cas ; la quatrième : aucun bloquant) ; **reste** : la mesure sur le banc avant d'allumer l'interrupteur (budget à annoncer).
+   corrigés avec un contrôle par cas ; la quatrième : aucun bloquant) ;
+6. fait — mesure SANS IA du step sur le banc d'agents web (décision du porteur, 2026-10-13 : « A maintenant puis C ») :
+   8 jeux sur 8 conformes à l'attendu, 0 $ (`docs/mesures/banc-agents-2026-10-13-pt03-step-nombre-sans-ia*.md`) ;
+   **reste** : la mesure avec l'IA, groupée avec la campagne du lot PT-02d — l'interrupteur reste éteint d'ici là.
 
 Limites connues, à mesurer sur le banc : une mention affichée que le test n'écrit pas (« 129,51 € TTC » contre « 129,51 € »)
 ne conclut pas ; une unité écrite dans une autre casse ne conclut pas ; un code de monnaie qui est aussi un mot (« TOP 5 »)
@@ -277,7 +280,7 @@ Règle du dépôt (CLAUDE.md §5.3) : un lot qui dépend d'une décision non val
 | PT-01a | terminé en local : écrit, relu, vérifié à l'écran ; suite du serveur identique à la référence (4 207 réussis, les 5 échecs connus) | 2026-10-13 | — | |
 | PT-01b | terminé en local : écrit, relu (aucun bloquant, sept points corrigés), vérifié à l'écran ; règle A21 ajoutée ; suite du serveur de clôture : 4 219 réussis, les 5 échecs connus du poste | 2026-10-13 | — | |
 | PT-02a à PT-02d | à faire | | | |
-| PT-03 | en cours : comparaison avec unité, règle A24, monnaie, écriture des nombres et unités ajoutées (A25) écrites, relues et vérifiées à l'écran ; reste la mesure sur le banc (interrupteur éteint d'ici là) | 2026-10-13 | — | historique : `PLAN-CALCUL-DE-VALEURS-2026-10.md` §6.1 |
+| PT-03 | terminé en local, interrupteur ÉTEINT : comparaison avec unité, règle A24, monnaie, écriture des nombres, unités ajoutées (A25), relus et vérifiés à l'écran ; mesure sans IA : 8 jeux sur 8 ; la mesure avec l'IA est reportée dans la campagne de PT-02d, qui décidera de l'allumer | 2026-10-13 | — | `docs/mesures/banc-agents-2026-10-13-pt03-step-nombre-sans-ia-methode.md` |
 | PT-04a à PT-04d | à faire | | | |
 | PT-05 | à faire | | | |
 | PT-06a à PT-06d | à faire | | | |

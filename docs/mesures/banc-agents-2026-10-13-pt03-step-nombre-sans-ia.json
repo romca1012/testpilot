@@ -1,0 +1,305 @@
+{
+  "contexte": {
+    "date": "2026-10-13",
+    "etiquette": "pt03-step-nombre-sans-ia",
+    "commit": "677ce43",
+    "versions": {
+      "python": "3.12.14",
+      "testpilot": "0.1.0",
+      "behave": "1.3.3",
+      "playwright": "1.62.0"
+    },
+    "modele_generation": "claude-sonnet-4-6",
+    "mode": "reel",
+    "plafond_usd": 0.5,
+    "app": "boutique_locale",
+    "configuration_sha256": "1a9ac8873de83d174cedb9e4a8dcda338e684f28ca7a707857ff5e1aaf0bfd5c",
+    "sous_ensemble_de_cas": true,
+    "donnees_jetables": "C:\\Users\\ROMARI~1\\AppData\\Local\\Temp\\banc_agents_data_uf3pya48",
+    "generations_rejouees_depuis": "C:\\Users\\ROMARI~1\\AppData\\Local\\Temp\\claude\\C--Users-RomaricCAPO-CHICHI-AXENEO-testpilot\\149eb401-46c6-4c06-b83f-b8e1ec945b91\\scratchpad\\pt\\mesure_a_generations",
+    "reparation": false,
+    "bac_a_sable": false,
+    "tentatives_reparation": null
+  },
+  "indicateurs": {
+    "faux_verts": {
+      "k": 0,
+      "n": 4,
+      "non_concluants": 0,
+      "taux": 0.0,
+      "ic95": [
+        0.0,
+        0.48990002040399916
+      ]
+    },
+    "faux_rouges": {
+      "k": 0,
+      "n": 4,
+      "non_concluants": 0,
+      "taux": 0.0,
+      "ic95": [
+        0.0,
+        0.48990002040399916
+      ]
+    },
+    "pass_execution": {
+      "pass_at_1": {
+        "k": 2,
+        "n": 2,
+        "non_mesures": 0,
+        "taux": 1.0,
+        "ic95": [
+          0.34237195288961925,
+          1.0
+        ]
+      },
+      "pass_at_k": {
+        "k": 2,
+        "n": 2,
+        "non_mesures": 0,
+        "taux": 1.0,
+        "ic95": [
+          0.34237195288961925,
+          1.0
+        ]
+      },
+      "pass_hat_k": {
+        "k": 2,
+        "n": 2,
+        "non_mesures": 0,
+        "taux": 1.0,
+        "ic95": [
+          0.34237195288961925,
+          1.0
+        ]
+      }
+    },
+    "pass_resultat": {
+      "pass_at_1": {
+        "k": 2,
+        "n": 2,
+        "non_mesures": 0,
+        "taux": 1.0,
+        "ic95": [
+          0.34237195288961925,
+          1.0
+        ]
+      },
+      "pass_at_k": {
+        "k": 2,
+        "n": 2,
+        "non_mesures": 0,
+        "taux": 1.0,
+        "ic95": [
+          0.34237195288961925,
+          1.0
+        ]
+      },
+      "pass_hat_k": {
+        "k": 2,
+        "n": 2,
+        "non_mesures": 0,
+        "taux": 1.0,
+        "ic95": [
+          0.34237195288961925,
+          1.0
+        ]
+      }
+    },
+    "non_concluants": {},
+    "part_non_concluants_sous_defaut": 0.0,
+    "par_defaut": {
+      "total_faux": {
+        "jeux": 4,
+        "concluants": 4,
+        "detectes": 4,
+        "detectes_fiables": 4,
+        "ic95_detection_fiable": [
+          0.5100999795960008,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.5100999795960008,
+          1.0
+        ]
+      }
+    },
+    "cout": {
+      "total_usd": 0.0,
+      "total_eur": 0.0,
+      "taux_eur_usd": 1.08,
+      "generations": 4,
+      "generations_sans_cout_consigne": 0,
+      "par_generation_usd": 0.0,
+      "par_generation_eur": 0.0,
+      "par_cas_usd": {
+        "panier_total_tva": 0.0,
+        "panier_remise_arrondi": 0.0
+      }
+    },
+    "integrite": {
+      "verifiees": 8,
+      "divergentes": 0,
+      "non_rapportees": 0
+    },
+    "echantillon": {
+      "cas": 2,
+      "k": 2,
+      "essais_prevus": 4,
+      "essais_lances": 4,
+      "jeux": 8
+    },
+    "ecarts": [],
+    "apres_reparation": null
+  },
+  "interrompue": "",
+  "essais": [
+    {
+      "cas": "panier_total_tva",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pt03_panier_total_tva_t1.feature": "9416badaa204d52c0b86be224b3b4d50fa39c6fe34a44f0fd579b2f66a855eef",
+        "pt03_panier_total_tva_t1_steps.py": "491a2c724e7d1dc9430cd35efeffb36e38876cac33800a531121d774d4a116a7"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 1
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pt03_panier_remise_arrondi_t1.feature": "9c46b283f20402e232dbe6eda46d6992ffc2927ce751b154152ab9aac49773e6",
+        "pt03_panier_remise_arrondi_t1_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pt03_panier_total_tva_t2.feature": "135ca5f034be4c79e9fcdd1a8b212f1f9c8806450e322804eb8cdda614dd2ddd",
+        "pt03_panier_total_tva_t2_steps.py": "491a2c724e7d1dc9430cd35efeffb36e38876cac33800a531121d774d4a116a7"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 1
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.0,
+      "empreintes": {
+        "pt03_panier_remise_arrondi_t2.feature": "e33c105923fe81bb74c709778a97cc8872428e6ed9b90c1f015c043eafb11c6c",
+        "pt03_panier_remise_arrondi_t2_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0
+    }
+  ],
+  "observations": [
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 5.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Nombre affiché pour « Total TTC » : « 130,81 € », « 129,51 € » attendu — attendu 129.51 (monnaie, EUR), lu 130.81 (monnaie, EUR), comparaison exacte, sur http://127.0.0.1:62745/panier.",
+      "duree": 13.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Nombre affiché pour « Total TTC » : « 10,67 € », « 10,56 € » attendu — attendu 10.56 (monnaie, EUR), lu 10.67 (monnaie, EUR), comparaison exacte, sur http://127.0.0.1:62745/panier.",
+      "duree": 13.6,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 5.7,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Nombre affiché pour « Total TTC » : « 130,81 € », « 129.51 EUR » attendu — attendu 129.51 (monnaie, EUR), lu 130.81 (monnaie, EUR), comparaison exacte, sur http://127.0.0.1:62745/panier.",
+      "duree": 13.5,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.1,
+      "empreinte_ok": true
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Nombre affiché pour « Total TTC » : « 10,67 € », « 10.56 EUR » attendu — attendu 10.56 (monnaie, EUR), lu 10.67 (monnaie, EUR), comparaison exacte, sur http://127.0.0.1:62745/panier.",
+      "duree": 13.7,
+      "empreinte_ok": true
+    }
+  ],
+  "anomalies": [],
+  "reparations": [],
+  "observations_reparees": []
+}
