@@ -20,7 +20,11 @@ ENV_FORMAT_NOMBRE = "TESTPILOT_PROJET_FORMAT_NOMBRE"
 # fichier `.env` : une variable absente y prendrait la valeur qui s'y trouverait, et la monnaie d'un projet qui n'a rien
 # déclaré serait décidée par l'installation, sans son administrateur (revue du 2026-10-13). Le lanceur
 # (`BehaveRunner._subprocess_env`) les pose donc VIDES quand le projet ne les fournit pas.
-JAMAIS_HERITEES = (ENV_DEVISE, ENV_FORMAT_NOMBRE)
+# Les unités AJOUTÉES par le projet (« palette », avec ses autres écritures « palettes », « Palettes ») : une liste JSON
+# `[{"nom": …, "ecritures": […]}]`, lue par le constat « le nombre affiché … vaut … » pour reconnaître la même unité sous
+# plusieurs écritures. Aucune conversion.
+ENV_UNITES = "TESTPILOT_PROJET_UNITES"
+JAMAIS_HERITEES = (ENV_DEVISE, ENV_FORMAT_NOMBRE, ENV_UNITES)
 
 # Clé enregistrée (séparateur de milliers, puis séparateur décimal) -> ce que l'écran montre : un EXEMPLE d'écriture, plus
 # parlant qu'un nom. Énumération FERMÉE : contrainte `ck_project_format_nombre` (migration 62).
@@ -74,3 +78,12 @@ def referentiel() -> dict:
     """Ce que l'écran propose : les monnaies déclarables et les écritures de nombres, avec leur libellé."""
     return {"devises": sorted(CODES_DEVISE),
             "formats_nombre": [{"cle": cle, "libelle": libelle} for cle, libelle in LIBELLES_FORMAT_NOMBRE.items()]}
+
+
+def env_des_unites(unites: list[dict] | None) -> dict[str, str]:
+    """La variable transmise au sous-processus pour les unités ajoutées du projet. Aucune unité = aucune variable (le
+    lanceur la pose alors vide, `JAMAIS_HERITEES`)."""
+    import json
+
+    declarees = [{"nom": u["nom"], "ecritures": list(u.get("ecritures") or [])} for u in (unites or [])]
+    return {ENV_UNITES: json.dumps(declarees, ensure_ascii=False)} if declarees else {}

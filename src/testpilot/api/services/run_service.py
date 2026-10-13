@@ -16,7 +16,7 @@ from pathlib import Path
 
 from testpilot import config
 from testpilot.api.services import attachment_service, repair_service
-from testpilot.connectors.runtime_env import ConnexionIncomplete, cible_de, verifier_connexion
+from testpilot.connectors.runtime_env import ConnexionIncomplete, cible_de, unites_du_projet, verifier_connexion
 from testpilot.execution.behave_result import MODE_STRICT_ENV, SANS_REPLI_ENV
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.execution.executor import Executor
@@ -164,7 +164,7 @@ def resolve_connection(conn, case_id: int) -> dict[str, str]:
     comptes = ProjectAccountRepo(conn).pour_runtime(project["id"]) if a_un_projet else []
     sequence = project_login_recordings.lire(conn, project["id"]) if a_un_projet else None
     login_form = project_login_recordings.lire_formulaire(conn, project["id"]) if a_un_projet else None
-    return verifier_connexion(project, comptes, sequence, login_form)
+    return verifier_connexion(project, comptes, sequence, login_form, unites_du_projet(conn, project))
 
 
 def resolve_project_id(conn, case_id: int) -> int | None:

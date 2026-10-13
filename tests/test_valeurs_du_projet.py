@@ -10,6 +10,7 @@ Ce que ces tests gardent :
 """
 
 import sys
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -132,7 +133,7 @@ def test_falsifiable_une_valeur_enregistree_mais_inconnue_n_est_pas_transmise():
     """Base éditée à la main : une monnaie inventée ne doit pas devenir « la monnaie du projet » pour un constat."""
     assert valeurs.env({"devise": "ZZZ", "format_nombre": "tiret"}) == {}
     assert valeurs.env(None) == {}
-    assert set(valeurs.JAMAIS_HERITEES) == {valeurs.ENV_DEVISE, valeurs.ENV_FORMAT_NOMBRE}
+    assert set(valeurs.JAMAIS_HERITEES) == {valeurs.ENV_DEVISE, valeurs.ENV_FORMAT_NOMBRE, valeurs.ENV_UNITES}
 
 
 def test_ce_que_le_projet_declare_passe_le_lanceur_sans_etre_ecrase(tmp_path, monkeypatch):
@@ -178,3 +179,192 @@ def test_falsifiable_le_harnais_ne_retient_qu_une_declaration_qu_il_reconnait(mo
         monkeypatch.setenv(nom, valeur)
 
     assert H._valeurs_du_projet() == attendu
+
+
+# ── 4. Les unités AJOUTÉES par le projet (« palette » ; « palettes », « Palettes ») ───────────────────────────────────────
+
+
+def test_un_projet_declare_modifie_et_retire_ses_unites(client):
+    pid = _projet(client)
+    assert client.get(f"/api/projects/{pid}/units").json() == []
+
+    r = client.post(f"/api/projects/{pid}/units", json={"nom": " palette ", "ecritures": ["palettes", "Palettes", "palette", " "]})
+
+    assert r.status_code == 201 and r.json()["nom"] == "palette" and r.json()["ecritures"] == ["palettes", "Palettes"]
+    uid = r.json()["id"]
+    r = client.put(f"/api/projects/{pid}/units/{uid}", json={"nom": "palette", "ecritures": ["palettes"]})
+    assert r.json() == {"id": uid, "nom": "palette", "ecritures": ["palettes"]}
+    assert client.get(f"/api/projects/{pid}/units").json() == [{"id": uid, "nom": "palette", "ecritures": ["palettes"]}]
+    assert client.delete(f"/api/projects/{pid}/units/{uid}").status_code == 204
+    assert client.get(f"/api/projects/{pid}/units").json() == []
+    assert client.delete(f"/api/projects/{pid}/units/{uid}").status_code == 404
+    assert client.put(f"/api/projects/{pid}/units/{uid}", json={"nom": "palette"}).status_code == 404
+
+
+@pytest.mark.parametrize("corps", [
+    {"nom": "kg"}, {"nom": "€"}, {"nom": "USD"}, {"nom": ""}, {"nom": "2x"},
+    {"nom": "palette", "ecritures": ["kg"]}, {"nom": "palette", "ecritures": ["une unité beaucoup trop longue pour être lue"]},
+])
+def test_falsifiable_une_unite_que_l_outil_connait_deja_ou_ne_saurait_pas_lire_est_refusee(client, corps):
+    """L'écran ne peut pas accepter ce que le test ne saura pas lire : c'est le lecteur de nombres lui-même qui valide."""
+    pid = _projet(client)
+
+    r = client.post(f"/api/projects/{pid}/units", json=corps)
+
+    assert r.status_code == 422 and "unité refusée" in r.json()["detail"]
+    assert client.get(f"/api/projects/{pid}/units").json() == []
+
+
+def test_falsifiable_une_ecriture_ne_designe_qu_une_unite_du_projet(client):
+    pid, autre = _projet(client), _projet(client, "odoo")
+    client.post(f"/api/projects/{pid}/units", json={"nom": "palette", "ecritures": ["palettes"]})
+
+    assert client.post(f"/api/projects/{pid}/units", json={"nom": "carton", "ecritures": ["palettes"]}).status_code == 409
+    assert client.post(f"/api/projects/{pid}/units", json={"nom": "palettes"}).status_code == 409
+    carton = client.post(f"/api/projects/{pid}/units", json={"nom": "carton"}).json()["id"]
+    assert client.put(f"/api/projects/{pid}/units/{carton}", json={"nom": "palette"}).status_code == 409
+    # La casse COMPTE (comme pour le constat) et un autre projet ne gêne pas.
+    assert client.post(f"/api/projects/{pid}/units", json={"nom": "Palette"}).status_code == 201
+    assert client.post(f"/api/projects/{autre}/units", json={"nom": "palette"}).status_code == 201
+    assert client.put(f"/api/projects/{autre}/units/{carton}", json={"nom": "x"}).status_code == 404, "pas l'unité d'un autre projet"
+
+
+def test_les_unites_du_projet_arrivent_au_test_et_seulement_les_siennes(client, tmp_path, monkeypatch):
+    import json
+
+    from testpilot.execution.behave_runner import BehaveRunner
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import ProjectRepo
+
+    pid, autre = _projet(client), _projet(client, "odoo")
+    client.post(f"/api/projects/{pid}/units", json={"nom": "palette", "ecritures": ["palettes", "Palettes"]})
+    client.post(f"/api/projects/{autre}/units", json={"nom": "carton"})
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        env = runtime_env.env_du_projet(conn, ProjectRepo(conn).get(pid))
+        sans_unite = client.post("/api/projects", json={"name": "Sans unité", "connector_type": "odoo", "database": "d",
+                                                        "base_url": "https://recette.exemple.test", "username": "u",
+                                                        "password": "p"}).json()["id"]
+        sans = runtime_env.env_du_projet(conn, ProjectRepo(conn).get(sans_unite))
+    finally:
+        conn.close()
+
+    assert json.loads(env[valeurs.ENV_UNITES]) == [{"nom": "palette", "ecritures": ["palettes", "Palettes"]}]
+    assert valeurs.ENV_UNITES not in sans
+    # Le harnais en fait « écriture -> nom » ; un projet sans unité n'hérite pas de celles du serveur.
+    monkeypatch.setenv(valeurs.ENV_UNITES, env[valeurs.ENV_UNITES])
+    assert H._unites_du_projet() == {"palette": "palette", "palettes": "palette", "Palettes": "palette"}
+    transmis = BehaveRunner(connection=sans, connector_type="odoo", generated_dir=tmp_path)._subprocess_env(tmp_path)
+    assert transmis[valeurs.ENV_UNITES] == ""
+
+
+@pytest.mark.parametrize("valeur", ["", "pas du json", "{}", '[{"ecritures": ["x"]}]', '[42]', '"palette"',
+                                    '[{"nom": "palette", "ecritures": "abc"}]', '[{"nom": null}]', '[{"nom": "p", "ecritures": [1]}]',
+                                    '[{"nom": "palette"}, {"nom": 7}]'])
+def test_falsifiable_une_declaration_d_unites_illisible_vaut_aucune_unite(monkeypatch, valeur):
+    assert H._ENV_UNITES_DU_PROJET == valeurs.ENV_UNITES
+    monkeypatch.setenv(valeurs.ENV_UNITES, valeur)
+
+    assert H._unites_du_projet() == {}
+
+
+def test_le_lecteur_charge_par_l_application_est_celui_du_harnais():
+    from testpilot.api.services.lecteur_de_nombres import lecteur
+
+    assert Path(lecteur().__file__).samefile(Path(ln.__file__))
+    assert lecteur() is lecteur()
+
+
+def test_falsifiable_une_ecriture_revendiquee_par_deux_unites_n_en_designe_aucune(monkeypatch):
+    """Base éditée à la main, ou deux enregistrements concurrents : la dernière unité gagnait en silence, et « 12 paquet »
+    valait « 12 pal »."""
+    monkeypatch.setenv(valeurs.ENV_UNITES, '[{"nom": "palette", "ecritures": ["pal", "palettes"]}, {"nom": "paquet", "ecritures": ["pal"]}]')
+
+    unites = H._unites_du_projet()
+
+    assert unites == {"palette": "palette", "palettes": "palette", "paquet": "paquet"}
+    lu = lambda texte: ln.lire_nombre(texte, avec_unite=True, unites_declarees=unites)   # noqa: E731
+    assert ln.comparer_valeurs(lu("12 paquet"), lu("12 pal")).etat == ln.UNITE_NON_VERIFIABLE
+    assert ln.comparer_valeurs(lu("12 palette"), lu("12 pal")).etat == ln.UNITE_NON_VERIFIABLE
+
+
+def test_falsifiable_les_unites_arrivent_par_tous_les_chemins_qui_lancent_un_test(client):
+    """Revue du 2026-10-13 (bloquant) : seules les exécutions de la génération recevaient les unités ; une campagne ou une
+    ré-exécution ne les recevait pas — le même test, sur la même application, rendait deux verdicts."""
+    import json
+
+    from testpilot.api.services import run_service
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import CaseRepo, ModuleRepo, ProjectRepo
+
+    pid = _projet(client)
+    client.patch(f"/api/projects/{pid}", json={"devise": "EUR"})
+    client.post(f"/api/projects/{pid}/units", json={"nom": "palette", "ecritures": ["palettes", "Palettes"]})
+    attendu = [{"nom": "palette", "ecritures": ["palettes", "Palettes"]}]
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        projet = ProjectRepo(conn).get(pid)
+        cas = CaseRepo(conn).create(title="Cas", module_id=ModuleRepo(conn).create(project_id=pid, name="M"), feature_slug="cas")
+        chemins = {"génération": runtime_env.env_du_projet(conn, projet),
+                   "campagne": run_service.resolve_connection(conn, cas),
+                   "mesure": runtime_env.verifier_connexion_du_projet(conn, projet)}
+    finally:
+        conn.close()
+
+    for nom, env in chemins.items():
+        assert json.loads(env[valeurs.ENV_UNITES]) == attendu, nom
+        assert env[valeurs.ENV_DEVISE] == "EUR", nom
+
+
+def test_falsifiable_les_listes_d_unites_restent_petites(client):
+    pid = _projet(client)
+
+    trop = client.post(f"/api/projects/{pid}/units", json={"nom": "palette", "ecritures": [f"p{'a' * i}" for i in range(1, 22)]})
+
+    assert trop.status_code == 422 and "20 autres écritures au plus" in trop.json()["detail"]
+
+
+# ── 5. Qui a le droit de déclarer : l'administrateur du projet, et lui seul ───────────────────────────────────────────────
+
+
+@pytest.fixture
+def equipe(client):
+    """Un projet créé par un admin, avec un `dev`, un `testeur` et un `lecture_seule` membres du projet."""
+    from testpilot.api import access
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import UserRepo
+
+    def utilisateur(nom: str, role: str) -> int:
+        c = get_initialized_db(config.DB_PATH)
+        try:
+            return UserRepo(c).create(username=nom, password_hash=access.hacher_mot_de_passe("mdp"), role=role)
+        finally:
+            c.close()
+
+    utilisateur("Root", access.ROLE_ADMIN)
+    ids = {nom: utilisateur(nom, role) for nom, role in (("Dev", access.ROLE_DEV), ("Testeuse", access.ROLE_TESTEUR),
+                                                         ("Lecteur", access.ROLE_LECTURE_SEULE))}
+    _se_connecter(client, "Root")
+    pid = _projet(client)
+    for nom, role in (("Dev", "dev"), ("Testeuse", "testeur"), ("Lecteur", "lecture_seule")):
+        assert client.post(f"/api/projects/{pid}/members", json={"user_id": ids[nom], "role": role}).status_code == 201
+    uid = client.post(f"/api/projects/{pid}/units", json={"nom": "palette"}).json()["id"]
+    return pid, uid
+
+
+def _se_connecter(client, nom):
+    assert client.post("/api/auth/login", json={"username": nom, "password": "mdp"}).status_code == 200
+
+
+@pytest.mark.parametrize("nom", ["Dev", "Testeuse", "Lecteur"])
+def test_falsifiable_seul_l_administrateur_du_projet_declare_ses_valeurs(client, equipe, nom):
+    """Une déclaration change des verdicts : elle vient de la personne qui administre le projet, pas d'un autre membre."""
+    pid, uid = equipe
+    _se_connecter(client, nom)
+
+    assert client.get(f"/api/projects/{pid}/units").json() == [{"id": uid, "nom": "palette", "ecritures": []}], "tout membre lit"
+    assert client.post(f"/api/projects/{pid}/units", json={"nom": "carton"}).status_code == 403
+    assert client.put(f"/api/projects/{pid}/units/{uid}", json={"nom": "palette", "ecritures": ["kg"]}).status_code == 403
+    assert client.delete(f"/api/projects/{pid}/units/{uid}").status_code == 403
+    assert client.patch(f"/api/projects/{pid}", json={"devise": "USD"}).status_code == 403
+    assert client.patch(f"/api/projects/{pid}", json={"format_nombre": "point_virgule"}).status_code == 403

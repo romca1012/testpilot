@@ -3740,6 +3740,29 @@ _ENV_FORMAT_NOMBRE_DU_PROJET = "TESTPILOT_PROJET_FORMAT_NOMBRE"
 # écriture déclarée -> (séparateur décimal, séparateur de milliers). `None` : l'écriture ne nomme pas ce séparateur (les
 # milliers de « 1 234,56 » sont une espace) — elle ne tranche donc rien pour lui.
 _SEPARATEURS_DU_FORMAT = {"espace_virgule": (",", None), "virgule_point": (".", ","), "point_virgule": (",", ".")}
+_ENV_UNITES_DU_PROJET = "TESTPILOT_PROJET_UNITES"
+
+
+def _unites_du_projet() -> dict[str, str]:
+    """écriture -> nom, pour les unités que le projet a déclarées (`[{"nom": …, "ecritures": […]}]`). Illisible ou mal formé,
+    même en partie : AUCUNE unité déclarée — le constat reste prudent. Une écriture revendiquée par DEUX unités n'en désigne
+    aucune (revue du 2026-10-13 : la dernière gagnait en silence, et « 12 paquet » valait « 12 pal » d'une autre unité)."""
+    try:
+        declarees = json.loads(os.environ.get(_ENV_UNITES_DU_PROJET, "") or "[]")
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(declarees, list):
+        return {}
+    revendiquee_par: dict[str, set[str]] = {}
+    for unite in declarees:
+        nom = unite.get("nom") if isinstance(unite, dict) else None
+        ecritures = unite.get("ecritures", []) if isinstance(unite, dict) else None
+        if (not isinstance(nom, str) or not nom or not isinstance(ecritures, list)
+                or not all(isinstance(e, str) and e for e in ecritures)):
+            return {}
+        for ecriture in (nom, *ecritures):
+            revendiquee_par.setdefault(ecriture, set()).add(nom)
+    return {ecriture: next(iter(noms)) for ecriture, noms in revendiquee_par.items() if len(noms) == 1}
 
 
 def _valeurs_du_projet() -> tuple[str, str | None, str | None]:
@@ -3751,14 +3774,14 @@ def _valeurs_du_projet() -> tuple[str, str | None, str | None]:
 
 
 def _juger_nombre(texte_affiche: str, voulu, devise_du_projet: str = "", decimal_du_projet: str | None = None,
-                  milliers_du_projet: str | None = None):
+                  milliers_du_projet: str | None = None, unites_du_projet: dict[str, str] | None = None):
     """(état, message) pour UNE valeur lue à l'écran. Trois états : égal, différent, non concluant (`None`).
 
     L'écriture des nombres du projet ne sert qu'à lire l'ÉCRAN (c'est l'application qui écrit ainsi) ; la valeur attendue,
     elle, doit se lire sans aide."""
     try:
         lu = _lire_nombre(texte_affiche, avec_unite=True, decimal_si_ambigu=decimal_du_projet,
-                          milliers_si_ambigu=milliers_du_projet)
+                          milliers_si_ambigu=milliers_du_projet, unites_declarees=unites_du_projet)
     except _LectureImpossible as exc:
         if not re.search(r"\d", texte_affiche):
             # Aucun chiffre : l'application n'affiche pas un nombre là où il en est attendu un (« N/A », vide).
@@ -3799,7 +3822,8 @@ def _nombre_affiche_vaut(page, libelle: str, attendu: str) -> None:
     AFFICHÉE (« 1.234 »), jamais celle de la valeur attendue."""
     cible = _libelle_normalise(libelle)
     try:
-        voulu = _lire_nombre(attendu, avec_unite=True)
+        unites_du_projet = _unites_du_projet()   # une unité déclarée vaut des DEUX côtés, contrairement à l'écriture des nombres
+        voulu = _lire_nombre(attendu, avec_unite=True, unites_declarees=unites_du_projet)
     except _LectureImpossible as exc:
         raise ConstatInvalideError(
             f"La valeur attendue « {attendu} » ne se lit pas comme un nombre unique ({exc}). Écrivez-la sans ambiguïté "
@@ -3808,7 +3832,8 @@ def _nombre_affiche_vaut(page, libelle: str, attendu: str) -> None:
     fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
     while True:
         distinctes = _valeurs_affichees(page, cible)
-        etat, message = (_juger_nombre(distinctes[0], voulu, devise_du_projet, decimal_du_projet, milliers_du_projet)
+        etat, message = (_juger_nombre(distinctes[0], voulu, devise_du_projet, decimal_du_projet, milliers_du_projet,
+                                       unites_du_projet)
                          if len(distinctes) == 1 else (None, ""))
         if etat == _VALEUR_EGALE:
             return

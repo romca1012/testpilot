@@ -64,6 +64,7 @@ _PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Mon
   <dt>Prix affiché</dt><dd>12 € <s>15 €</s></dd>
   <dt>Tarif horaire</dt><dd>45 $/h</dd>
   <dt>Charge</dt><dd>1.234 kg</dd>
+  <dt>Livraison</dt><dd>12 Palettes</dd>
 </dl>
 <table><tr><th>Poste</th><th>Montant (F CFA)</th></tr><tr><td>Retraite</td><td>28 000</td></tr></table>
 </body></html>"""
@@ -235,6 +236,7 @@ def test_falsifiable_un_autre_montant_ou_une_autre_devise_est_un_defaut(page, li
     ("Compteur", "-3", "… et si l'on ne sait pas, on ne peut pas non plus le dire égal à moins trois"),
     ("Tarif horaire", "45 USD/h", "« 45 $/h » peut être en dollars canadiens (faux vert reproduit, troisième revue)"),
     ("Charge", "1234 kg", "« 1.234 kg » : rien ne dit si le point sépare des milliers"),
+    ("Livraison", "12 palettes", "« Palettes » et « palettes » : deux écritures que le projet n'a pas déclarées"),
     ("Colis", "12 pièces", "des parenthèses hors d'un montant ne disent pas « négatif » (faux rouge reproduit)"),
     ("Délai", "16 heures", "un jour n'a pas une durée fixe (faux rouge reproduit)"),
     ("Délai", "48 h", "un jour n'a pas une durée fixe (faux vert reproduit)"),
@@ -342,6 +344,21 @@ def test_l_ecriture_des_nombres_du_projet_tranche_une_valeur_affichee_ambigue(pa
     H._nombre_affiche_vaut(page, "Plafond", "1234")
     with pytest.raises(AssertionError, match="Plafond"):
         H._nombre_affiche_vaut(page, "Plafond", "1,2340")
+
+
+@pytest.mark.conformance
+def test_les_unites_ajoutees_par_le_projet_se_reconnaissent_sous_leurs_ecritures(page, monkeypatch):
+    """Décision du porteur (2026-10-13) : « 12 Palettes » à l'écran, « 12 palettes » attendu. Sans déclaration, pas de verdict
+    (liste plus haut) ; une fois l'unité et ses écritures déclarées par le projet, c'est la même unité — sans conversion."""
+    monkeypatch.setenv("TESTPILOT_PROJET_UNITES", '[{"nom": "palette", "ecritures": ["palettes", "Palettes"]}]')
+
+    H._nombre_affiche_vaut(page, "Livraison", "12 palettes")
+    H._nombre_affiche_vaut(page, "Livraison", "12 palette")
+    with pytest.raises(AssertionError, match="Livraison"):
+        H._nombre_affiche_vaut(page, "Livraison", "13 palettes")
+    for attendu in ("12", "12 cartons", "12 PALETTES"):
+        with pytest.raises(H.ConstatNonConcluantError, match="Livraison"):
+            H._nombre_affiche_vaut(page, "Livraison", attendu)
 
 
 @pytest.mark.conformance
