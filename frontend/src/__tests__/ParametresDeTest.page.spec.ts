@@ -64,6 +64,7 @@ const stubs = {
   ConfirmDialog: { props: ['open'], emits: ['confirm', 'cancel'],
                    template: '<div v-if="open" data-testid="confirmation"><button data-testid="quitter" @click="$emit(\'confirm\')">q</button></div>' },
   OngletConfigurations: onglet('configurations'), OngletComptes: onglet('comptes'), OngletEtatDeDepart: onglet('etat-de-depart'),
+  OngletValeursAttendues: onglet('valeurs-attendues'),
 }
 
 beforeEach(() => {
@@ -176,17 +177,25 @@ describe('Page « Paramètres de test » d\'un projet', () => {
     return w
   }
 
-  it('montre le projet et trois onglets, chacun avec sa propre adresse', async () => {
+  it('montre le projet et ses onglets, chacun avec sa propre adresse', async () => {
     const w = await ouvrir({ pid: '4', onglet: 'comptes' })
 
     expect(w.get('[data-testid="nom-du-projet"]').text()).toBe('Portail')
-    for (const cle of ['configurations', 'comptes', 'etat-de-depart']) {
+    for (const cle of ['configurations', 'comptes', 'etat-de-depart', 'valeurs-attendues']) {
       expect(JSON.parse(w.get(`[data-testid="onglet-${cle}"]`).attributes('data-vers')!))
         .toEqual({ name: 'project-test-params', params: { pid: '4', onglet: cle } })
     }
     expect(w.get('[data-testid="onglet-comptes"]').attributes('aria-selected')).toBe('true')
     expect(w.find('[data-testid="contenu-comptes"]').exists()).toBe(true)
     expect(w.find('[data-testid="contenu-configurations"]').exists()).toBe(false)
+  })
+
+  it('falsifiable : chaque onglet ouvre SON contenu, et lui seul (PT-03 : « Valeurs attendues »)', async () => {
+    for (const cle of ['configurations', 'comptes', 'etat-de-depart', 'valeurs-attendues']) {
+      const w = await ouvrir({ pid: '4', onglet: cle })
+
+      expect(w.findAll('[data-testid^="contenu-"]').map((c) => c.attributes('data-testid'))).toEqual([`contenu-${cle}`])
+    }
   })
 
   it('une adresse sans onglet, ou avec un onglet inconnu, ouvre le premier', async () => {
