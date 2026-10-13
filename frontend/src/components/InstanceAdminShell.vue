@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import ThemeSwitch from './ThemeSwitch.vue'
 import AccountMenu from './AccountMenu.vue'
 import { useSettings } from '../lib/useSettings'
 
 const { get } = useSettings()
 const nomInstance = computed(() => get('instance_name') || 'TestPilot')
+// Lot PT-01a : une page d'un projet (`/admin/projects/:pid/…`) est rangée SOUS « Projets ». Le lien ne se repère pas tout
+// seul (vue-router ne marque actif qu'un lien vers la route courante ou une route parente déclarée) : on le dit ici.
+const route = useRoute()
+const sousProjets = computed(() => String(route?.path || '').startsWith('/admin/projects/'))
 </script>
 
 <template>
@@ -30,6 +35,8 @@ const nomInstance = computed(() => get('instance_name') || 'TestPilot')
         <nav aria-label="Administration de l’instance" class="flex gap-2 overflow-x-auto md:flex-col md:overflow-visible">
           <RouterLink to="/admin/projects"
                       class="inline-flex min-h-11 shrink-0 items-center rounded-md px-3 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                      :class="sousProjets ? 'bg-primary/10 text-primary' : ''"
+                      :aria-current="sousProjets ? 'page' : undefined"
                       active-class="bg-primary/10 text-primary">
             Projets
           </RouterLink>
