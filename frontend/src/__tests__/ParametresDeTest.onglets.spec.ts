@@ -25,6 +25,9 @@ vi.mock('../lib/api', () => ({
     updateProjectAccount: (...a: any[]) => updateProjectAccount(...a),
     deleteProjectAccount: (...a: any[]) => deleteProjectAccount(...a),
   },
+  AUTH_STRATEGIES: ['formulaire', 'totp', 'session_injectee', 'aucune'],
+  LIBELLE_AUTH_STRATEGIE: { formulaire: 'Formulaire de connexion', totp: 'Code à usage unique (TOTP)',
+                           session_injectee: 'Session déjà ouverte (jeton fourni)', aucune: 'Aucune connexion' },
 }))
 
 import OngletConfigurations from '../components/parametres/OngletConfigurations.vue'
@@ -187,6 +190,84 @@ describe('Paramètres de test — onglet Comptes', () => {
     expect(w.find('[data-testid="compte-ajouter"]').exists()).toBe(false)
     expect(w.findAll('button')).toHaveLength(0)
     expect(w.findAll('[data-testid="compte-ligne"]')).toHaveLength(2)
+  })
+})
+
+// Lot PT-01b (décision du porteur, 2026-10-14) : le compte principal se règle ici, comme les autres, avec sa façon de se connecter.
+describe('Paramètres de test — onglet Comptes, compte principal', () => {
+  async function ouvrir(plus: Record<string, unknown> = {}, peutRegler = true) {
+    const w = mount(OngletComptes, { props: { projet: projet(plus), peutGerer: true, peutRegler }, global: { stubs } })
+    await flushPromises()
+    return w
+  }
+
+  it('s\'ouvre sur l\'identifiant enregistré, secrets vides', async () => {
+    const w = await ouvrir({ auth_strategie: 'totp', has_totp_secret: true })
+    await w.get('[data-testid="principal-modifier"]').trigger('click')
+
+    expect((w.get('[data-testid="principal-identifiant"]').element as HTMLInputElement).value).toBe('admin')
+    expect((w.get('[data-testid="principal-mot-de-passe"]').element as HTMLInputElement).value).toBe('')
+    expect((w.get('[data-testid="auth-strategie"]').element as HTMLSelectElement).value).toBe('totp')
+    // Le secret enregistré n'est jamais réaffiché : le champ dit seulement qu'il existe.
+    expect((w.get('[data-testid="totp-secret"]').element as HTMLInputElement).value).toBe('')
+    expect(w.get('[data-testid="totp-secret"]').attributes('placeholder')).toBe('Inchangé')
+  })
+
+  it('falsifiable : sans secret saisi, n\'envoie ni mot de passe ni secret (les envoyer vides les effacerait)', async () => {
+    const w = await ouvrir({ auth_strategie: 'totp', has_totp_secret: true })
+    await w.get('[data-testid="principal-modifier"]').trigger('click')
+    await w.get('[data-testid="principal-identifiant"]').setValue('testeur')
+    await w.get('[data-testid="principal-formulaire"]').trigger('submit')
+    await flushPromises()
+
+    expect(updateProject).toHaveBeenCalledTimes(1)
+    expect(updateProject).toHaveBeenCalledWith(4, { username: 'testeur', auth_strategie: 'totp' })
+    expect(w.emitted('enregistre')![0][0]).toMatchObject({ id: 4, username: 'testeur' })
+    expect(w.find('[data-testid="principal-formulaire"]').exists()).toBe(false)
+  })
+
+  it('envoie le mot de passe et le secret quand ils sont saisis, et jamais le nom ni l\'adresse du projet', async () => {
+    const w = await ouvrir()
+    await w.get('[data-testid="principal-modifier"]').trigger('click')
+    await w.get('[data-testid="principal-mot-de-passe"]').setValue(SECRET)
+    await w.get('[data-testid="auth-strategie"]').setValue('totp')
+    await w.get('[data-testid="totp-secret"]').setValue('JBSWY3DPEHPK3PXP')
+    await w.get('[data-testid="principal-formulaire"]').trigger('submit')
+    await flushPromises()
+
+    expect(updateProject).toHaveBeenCalledWith(4, { username: 'admin', password: SECRET, auth_strategie: 'totp', totp_secret: 'JBSWY3DPEHPK3PXP' })
+    expect(w.html()).not.toContain(SECRET)
+  })
+
+  it('Odoo : pas de façon de se connecter, ni à l\'écran ni dans l\'envoi', async () => {
+    const w = await ouvrir({ connector_type: 'odoo' })
+    await w.get('[data-testid="principal-modifier"]').trigger('click')
+
+    expect(w.find('[data-testid="auth-strategie"]').exists()).toBe(false)
+    await w.get('[data-testid="principal-identifiant"]').setValue('admin2')
+    await w.get('[data-testid="principal-formulaire"]').trigger('submit')
+    await flushPromises()
+
+    expect(updateProject).toHaveBeenCalledWith(4, { username: 'admin2' })
+  })
+
+  it('montre le refus du serveur et garde la fenêtre ouverte', async () => {
+    updateProject.mockRejectedValueOnce(new Error('secret TOTP mal formé'))
+    const w = await ouvrir()
+    await w.get('[data-testid="principal-modifier"]').trigger('click')
+    await w.get('[data-testid="principal-formulaire"]').trigger('submit')
+    await flushPromises()
+
+    expect(w.get('[role="alert"]').text()).toContain('secret TOTP mal formé')
+    expect(w.find('[data-testid="principal-formulaire"]').exists()).toBe(true)
+    expect(w.emitted('enregistre')).toBeUndefined()
+  })
+
+  it('qui gère les comptes sans administrer le projet ne peut pas modifier le compte principal', async () => {
+    const w = await ouvrir({}, false)
+
+    expect(w.find('[data-testid="principal-modifier"]').exists()).toBe(false)
+    expect(w.find('[data-testid="compte-ajouter"]').exists()).toBe(true)
   })
 })
 

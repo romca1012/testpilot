@@ -5,7 +5,9 @@
  * 1. interrupteur ÉTEINT : aucun bouton, la page des projets est celle d'avant (décisions A6 et A17) ;
  * 2. chaque onglet a sa propre adresse, et une adresse inconnue retombe sur le premier onglet ;
  * 3. le rôle sur le projet décide de ce que l'écran propose ;
- * 4. on ne quitte pas un onglet modifié sans confirmation.
+ * 4. on ne quitte pas un onglet modifié sans confirmation ;
+ * 5. (PT-01b) organisation allumée, la fenêtre « Identité et application » ne garde que le nom, le connecteur, la version et
+ *    l'adresse, et n'envoie que ces champs.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -14,6 +16,7 @@ import { ref } from 'vue'
 const listProjects = vi.fn()
 const listAdminProjects = vi.fn()
 const getExploration = vi.fn()
+const updateProject = vi.fn()
 const push = vi.fn()
 const route = { name: 'admin-projects', params: {} as Record<string, string> }
 const session = ref<any>({ authenticated: true, role: 'admin' })
@@ -25,7 +28,7 @@ vi.mock('../lib/api', () => ({
     listProjects: (...a: any[]) => listProjects(...a),
     listAdminProjects: (...a: any[]) => listAdminProjects(...a),
     getExploration: (...a: any[]) => getExploration(...a),
-    updateProject: vi.fn(), createProject: vi.fn(), deleteProject: vi.fn(), startExploration: vi.fn(),
+    updateProject: (...a: any[]) => updateProject(...a), createProject: vi.fn(), deleteProject: vi.fn(), startExploration: vi.fn(),
     listProjectAccounts: vi.fn().mockResolvedValue([]),
   },
   AUTH_STRATEGIES: ['formulaire', 'totp', 'session_injectee', 'aucune'],
@@ -52,7 +55,8 @@ const PAS_EXPLORE = { explored: false, running: false, job_id: '', mesure_le: ''
 const onglet = (nom: string) => ({ props: ['projet', 'peutRegler', 'peutGerer'], emits: ['modifie', 'enregistre'],
   template: `<div data-testid="contenu-${nom}" :data-regler="String(peutRegler)" :data-gerer="String(peutGerer)"><button data-testid="modifier" @click="$emit('modifie', true)">m</button></div>` })
 const stubs = {
-  Card: true, Icon: true, Modal: true,
+  Card: true, Icon: true,
+  Modal: { props: ['open'], template: '<div v-if="open" data-testid="fenetre"><slot/><slot name="footer"/></div>' },
   Button: { template: '<button type="button"><slot/></button>' },
   RouterLink: { props: ['to'], template: '<a :data-vers="JSON.stringify(to)"><slot/></a>' },
   ConfirmDialog: { props: ['open'], emits: ['confirm', 'cancel'],
@@ -70,6 +74,7 @@ beforeEach(() => {
   listProjects.mockResolvedValue([PROJET])
   listAdminProjects.mockResolvedValue([PROJET])
   getExploration.mockResolvedValue(PAS_EXPLORE)
+  updateProject.mockResolvedValue(PROJET)
 })
 
 describe('Page des projets — bouton « Paramètres de test »', () => {
@@ -91,6 +96,47 @@ describe('Page des projets — bouton « Paramètres de test »', () => {
     expect(push).toHaveBeenCalledWith({ name: 'project-test-params', params: { pid: '4', onglet: 'configurations' } })
     // Les deux boutons d'avant sont toujours là.
     expect(w.text()).toContain('Identité et application')
+  })
+})
+
+describe('Fenêtre « Identité et application » — organisation allumée (PT-01b)', () => {
+  const RUBRIQUES_DEPLACEES = ['navigateur-de-test', 'strategie-connexion', 'comptes-du-projet', 'bac-a-sable']
+
+  async function ouvrirLaFenetre() {
+    const boutons = { ...stubs, Button: { template: '<button v-bind="$attrs"><slot/></button>', inheritAttrs: false } }
+    const w = mount(ProjectsList, { global: { stubs: boutons } })
+    await flushPromises()
+    await w.findAll('button').find((b) => b.attributes('title')?.includes('Modifier'))!.trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('ne garde que le nom, le connecteur, la version et l’adresse', async () => {
+    actifs.value = true
+    const fenetre = (await ouvrirLaFenetre()).get('[data-testid="fenetre"]')
+
+    expect(fenetre.findAll('legend').map((l) => l.text())).toEqual(['Identité', 'Application cible'])
+    for (const rubrique of RUBRIQUES_DEPLACEES) expect(fenetre.find(`[data-testid="${rubrique}"]`).exists()).toBe(false)
+    expect(fenetre.find('input[type="password"]').exists()).toBe(false)
+    expect(fenetre.text()).not.toContain('Utilisateur')
+  })
+
+  it('falsifiable : n’envoie que ces champs — ni compte, ni navigateur, ni remise à zéro (réglés dans les onglets)', async () => {
+    actifs.value = true
+    const w = await ouvrirLaFenetre()
+    await w.get('#form-edit-project').trigger('submit')
+    await flushPromises()
+
+    expect(updateProject).toHaveBeenCalledTimes(1)
+    expect(updateProject).toHaveBeenCalledWith(4, {
+      name: 'Portail', connector_type: 'web', connector_version: '', base_url: 'https://app.example', database: '' })
+  })
+
+  it('organisation éteinte : la fenêtre est celle d’avant, avec toutes ses rubriques', async () => {
+    const fenetre = (await ouvrirLaFenetre()).get('[data-testid="fenetre"]')
+
+    for (const rubrique of RUBRIQUES_DEPLACEES) expect(fenetre.find(`[data-testid="${rubrique}"]`).exists()).toBe(true)
+    expect(fenetre.find('input[type="password"]').exists()).toBe(true)
   })
 })
 
