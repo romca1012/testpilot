@@ -104,7 +104,8 @@ onMounted(charger)
       <div role="tabpanel" :aria-labelledby="`onglet-${onglet}`" class="mt-5">
         <OngletConfigurations v-if="onglet === 'configurations'" :projet="projet" :peut-regler="peutRegler"
                               @enregistre="projet = $event" @modifie="modifie = $event" />
-        <OngletComptes v-else-if="onglet === 'comptes'" :projet="projet" :peut-gerer="peutGererComptes" />
+        <OngletComptes v-else-if="onglet === 'comptes'" :projet="projet" :peut-gerer="peutGererComptes" :peut-regler="peutRegler"
+                       @enregistre="projet = $event" />
         <OngletEtatDeDepart v-else :projet="projet" :peut-regler="peutRegler"
                             @enregistre="projet = $event" @modifie="modifie = $event" />
       </div>
