@@ -30,7 +30,9 @@ steps — ce qui marche à l'essai marchera au run. Coût : un run Behave par es
 
 from __future__ import annotations
 
+import contextlib
 import json
+from decimal import Decimal, InvalidOperation
 import logging
 import re
 import shutil
@@ -110,6 +112,9 @@ class EssaiBacASable:
     # (`valeurs_tirees_de_l_essai`). Les NOMS de champs, de boutons, de liens et de pages n'y sont pas : ils disent où agir.
     vus: dict[str, str] = field(default_factory=dict)
     textes: dict[str, str] = field(default_factory=dict)
+    # Lot PT-03 : les mêmes données, comme NOMBRES (valeur -> texte d'origine) — « 129.15 EUR » vu à l'essai ne devient pas
+    # l'attendu « 129,15 € » d'un step qui compare des nombres.
+    nombres: dict = field(default_factory=dict)
     # Tout ce que les essais ont montré (pour ne pas prendre, à l'essai suivant, un libellé déjà montré pour un libellé connu).
     montres: set[str] = field(default_factory=set)
 
@@ -226,6 +231,76 @@ _NOMBRES_EN_LETTRES = {"zero": "0", "aucun": "0", "aucune": "0", "un": "1", "une
                        "cinq": "5", "six": "6", "sept": "7", "huit": "8", "neuf": "9", "dix": "10", "onze": "11", "douze": "12"}
 
 
+# Lot PT-03 (revue du 2026-10-13) — depuis le step « le nombre affiché … vaut … », une valeur se compare comme un NOMBRE :
+# l'agent qui voit « 129.15 EUR » à l'essai peut écrire « 129,15 € », le test réussit, et une garde qui compare des écritures
+# ne voit rien. La garde compare donc AUSSI les valeurs. Elle n'en retire rien : un jeton refusé hier l'est toujours.
+_NOMBRE_SEUL = re.compile(r"\d+(?:[.,]\d+)*")
+# « 1 234,50 », « 1'234.50 » : coupés en deux jetons sinon.
+_NOMBRE_GROUPE = re.compile(r"(?<![\d.,])\d{1,3}(?:[ '’]\d{3})+(?:[.,]\d+)?(?!\d)")
+
+
+def _motifs_des_steps_qui_comparent_des_nombres() -> list:
+    """Les steps de la bibliothèque marqués `@compare_des_nombres`, prêts à être rapprochés d'une phrase de test. Pour eux, la
+    garde par valeur vaut aussi pour les petits entiers (« 7 » y EST « 7,00 »). Lus dans la bibliothèque à chaque appel —
+    jamais une liste tenue ici — et rapprochés accents PLIÉS, comme Behave apparie (`_accent_matcher.py`)."""
+    import parse as parse_lib
+    from testpilot.generation import steps_library
+
+    motifs = []
+    for step in steps_library.catalogue():
+        if step.compare_des_nombres:
+            with contextlib.suppress(ValueError, IndexError):
+                motifs.append(parse_lib.compile(_normaliser(step.label)))
+    return motifs
+
+
+def _compare_des_nombres(phrase: str, motifs: list) -> bool:
+    plie = _normaliser(phrase)
+    for motif in motifs:
+        with contextlib.suppress(ValueError, IndexError):
+            if motif.parse(plie) is not None:
+                return True
+    return False
+
+
+def _valeur_significative(valeur: Decimal) -> bool:
+    """Une valeur à décimales, ou d'au moins quatre chiffres. Un petit entier n'en est pas une : « Quantité 1,00 » vu à
+    l'essai faisait refuser « compte 1 ligne » dans n'importe quel « Alors » (revue du 2026-10-13, faux refus reproduit)."""
+    return valeur != valeur.to_integral_value() or abs(valeur) >= 1000
+
+
+def _lectures(ecrit: str) -> list[str]:
+    """Les lectures possibles d'un nombre écrit. « 1,234 » en a DEUX (mille deux cent trente-quatre, ou un virgule deux cent
+    trente-quatre) : la garde ne devine pas, elle les retient toutes les deux."""
+    brut = re.sub(r"[ '’]", "", ecrit)
+    points, virgules = brut.count("."), brut.count(",")
+    if not points and not virgules:
+        return [brut]
+    if points and virgules:
+        decimal = "." if brut.rfind(".") > brut.rfind(",") else ","
+        return [brut.replace("," if decimal == "." else ".", "").replace(decimal, ".")]
+    separateur = "." if points else ","
+    if brut.count(separateur) > 1:
+        return [brut.replace(separateur, "")]
+    entier, _, fraction = brut.partition(separateur)
+    return [f"{entier}.{fraction}"] + ([entier + fraction] if len(fraction) == 3 else [])
+
+
+def _valeurs_numeriques(texte: str) -> set[Decimal]:
+    """Les NOMBRES que `texte` écrit, quelle que soit leur écriture : « 129,15 », « 129.15 » et « 129,150 » sont la même
+    valeur ; « 1 234,50 » et « 1234.50 » aussi. Bâti sur `_jetons_a_chiffres` (même règle pour les dates : leurs petits
+    morceaux ne comptent pas), plus les nombres à groupes de milliers séparés par des espaces."""
+    ecrits = {j for j in _jetons_a_chiffres(texte) if _NOMBRE_SEUL.fullmatch(j)} | set(_NOMBRE_GROUPE.findall(_normaliser(texte)))
+    valeurs: set[Decimal] = set()
+    for ecrit in ecrits:
+        for lecture in _lectures(ecrit):
+            try:
+                valeurs.add(Decimal(lecture))
+            except InvalidOperation:
+                continue
+    return valeurs
+
+
 def _jetons_de_la_specification(specification: str) -> set[str]:
     mots = (mot.strip(_BORDS_DE_JETON) for mot in _normaliser(specification).split(" "))
     return _jetons_a_chiffres(specification) | {_NOMBRES_EN_LETTRES[mot] for mot in mots if mot in _NOMBRES_EN_LETTRES}
@@ -261,6 +336,8 @@ def _noter_les_nouveautes(essai: "EssaiBacASable", etat: dict | None, annuaire, 
                 continue
             for jeton in _jetons_a_chiffres(source):
                 essai.vus.setdefault(jeton, source)
+            for valeur in _valeurs_numeriques(source):
+                essai.nombres.setdefault(valeur, source)
     adresse = urlparse(str(etat.get("url") or ""))
     portes = [unquote(m) for m in adresse.path.split("/") if m and m not in morceaux]
     portes += [valeur for _cle, valeur in parse_qsl(adresse.query, keep_blank_values=False)]
@@ -268,17 +345,34 @@ def _noter_les_nouveautes(essai: "EssaiBacASable", etat: dict | None, annuaire, 
     for source in portes:
         for jeton in _jetons_a_chiffres(source):
             essai.vus.setdefault(jeton, f"l'adresse {adresse.path}")
+        for valeur in _valeurs_numeriques(source):
+            essai.nombres.setdefault(valeur, f"l'adresse {adresse.path}")
     for source in [valeur for _cle, valeur in parse_qsl(adresse.query)] + ([unquote(adresse.fragment)] if adresse.fragment else []):
         if len(_normaliser(source)) >= _LONGUEUR_MINIMALE_D_UN_TEXTE and not _jetons_a_chiffres(source):
             essai.textes.setdefault(_normaliser(source), f"l'adresse {adresse.path}")
 
 
-def _tires_de(texte: str, essai: "EssaiBacASable", exigences: dict | None) -> list[str]:
+def _tires_de(texte: str, essai: "EssaiBacASable", exigences: dict | None, *, toutes_les_valeurs: bool = False) -> list[str]:
     """Ce que `texte` cite et qui n'a été vu QU'À l'essai, la spécification ne le disant pas — chaque fois avec son origine."""
     specification = " ".join(str(v) for v in (exigences or {}).values())
     jetons_de_la_spec, spec_normalisee = _jetons_de_la_specification(specification), _normaliser(specification)
     tires = [f"« {jeton} » (vu à l'essai dans « {essai.vus[jeton][:60]} »)"
              for jeton in sorted(_jetons_a_chiffres(texte)) if jeton in essai.vus and jeton not in jetons_de_la_spec]
+    # La même règle sur les VALEURS : un nombre vu à l'essai, que la spécification ne dit pas, écrit autrement dans le test.
+    deja_refusees = {v for jeton in _jetons_a_chiffres(texte) if jeton in essai.vus and jeton not in jetons_de_la_spec
+                     for v in _valeurs_numeriques(jeton)}
+    valeurs_de_la_spec = _valeurs_numeriques(specification) | {Decimal(j) for j in jetons_de_la_spec if j.isascii() and j.isdigit()}
+    # Les valeurs des jetons vus, plus celles relevées à l'essai dans le texte entier (« 1 234,50 », coupé en deux jetons).
+    nombres_vus = {v: source for jeton, source in essai.vus.items() for v in _valeurs_numeriques(jeton)}
+    nombres_vus.update(getattr(essai, "nombres", None) or {})
+    # Portée : toute valeur pour le step qui compare des nombres (`toutes_les_valeurs`) ; ailleurs, les seules valeurs
+    # significatives. Limite assumée, comme pour les motifs déguisés : une valeur CONVERTIE (« 1,5 kg » vu, « 1500 g » écrit)
+    # n'est pas reconnue — la relecture humaine reste obligatoire (D23).
+    for valeur in sorted(_valeurs_numeriques(texte)):
+        if not (toutes_les_valeurs or _valeur_significative(valeur)):
+            continue
+        if valeur in nombres_vus and valeur not in valeurs_de_la_spec and valeur not in deja_refusees:
+            tires.append(f"« {valeur} » (vu à l'essai dans « {nombres_vus[valeur][:60]} », écrit autrement)")
     normalise = _normaliser(texte)
     for vu, origine in essai.textes.items():
         if vu not in spec_normalisee and re.search(rf"(?<!\w){re.escape(vu)}(?!\w)", normalise):
@@ -309,9 +403,11 @@ def valeurs_tirees_de_l_essai(feature, essai: "EssaiBacASable | None", exigences
     for scenario in feature.walk_scenarios():
         steps += list(scenario.steps)
     tires: list[str] = []
+    motifs = _motifs_des_steps_qui_comparent_des_nombres()
     for step in steps:
         if step.step_type == "then":
-            tires += _tires_de(_texte_entier(step), essai, exigences)
+            tires += _tires_de(_texte_entier(step), essai, exigences,
+                               toutes_les_valeurs=_compare_des_nombres(step.name or "", motifs))
     return tires
 
 
