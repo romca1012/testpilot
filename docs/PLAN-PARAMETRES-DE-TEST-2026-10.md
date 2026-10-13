@@ -14,12 +14,23 @@ Remplace l'ordre de `PLAN-CALCUL-DE-VALEURS-2026-10.md` : le calcul de valeurs d
 Six familles (A2) : configurations, comptes et rôles, données de test, état de départ, valeurs attendues, réglages
 d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagne → test, le plus précis l'emporte.
 
+## 1 bis. Décisions prises après le dossier de cadrage
+
+| ID | Décision | Date |
+|---|---|---|
+| A18 | Le déplacement des comptes, du navigateur et de la remise à zéro est **définitif**. Aucune ligne de renvoi dans l'ancienne fenêtre : « ne pas être brusque » veut dire que le nouvel écran est bien fait et **vérifié avant** que l'ancien soit retiré, pas que l'utilisateur est guidé de l'un à l'autre. Remplace la proposition V14 et la page « transition » du dossier (les trois fenêtres côte à côte). | 2026-10-14 |
+| A19 | Le compte principal se modifie dans l'onglet « Comptes », au même endroit que les autres, avec sa façon de se connecter. La fenêtre « Identité et application » ne garde que le nom du projet, le connecteur, la version et l'adresse. (V15) | 2026-10-14 |
+| A20 | Rien n'est poussé avant la fin de tout le chantier (voir R9). | 2026-10-14 |
+
+Lecture retenue pour l'interrupteur (à confirmer par le porteur) : il ne sert qu'au temps de la construction, pour comparer
+l'ancien écran et le nouveau. Le changement étant définitif, il est retiré au lot PT-07 avec l'ancien écran.
+
 ## 2. Règles de réalisation — valables pour tous les lots
 
 | # | Règle | Décision | Comment elle est tenue |
 |---|---|---|---|
 | R1 | Ne rien casser | A6 | Sans réglage, le comportement est celui d'aujourd'hui. Chaque nouveauté est livrée derrière un interrupteur éteint. Migrations **additives** seulement. Suite complète verte avant chaque commit. |
-| R2 | Rien à ressaisir | A17 | Un écran déplacé relit les **mêmes** données ; aucune copie, aucune conversion de données existantes. |
+| R2 | Rien à ressaisir | A17, A18 | Un écran déplacé relit les **mêmes** données ; aucune copie, aucune conversion de données existantes. |
 | R3 | Générique | A4 | Aucun nom de client, de métier ou de logiciel dans le code commun, les migrations, les libellés ni les tests. |
 | R4 | Dans l'existant, comme TestRail | A5, A14 | Aucune entrée ajoutée au menu du projet. Un bouton dans « Paramètres du projet », une entrée dans le menu d'administration. |
 | R5 | Écrans sobres | A15 | Libellés, valeurs, pastilles, boutons. Aucune phrase d'explication à l'écran. Skill UI UX Pro Max appliqué à chaque écran. |
@@ -91,14 +102,14 @@ But : partir sur des bases mesurées et des décisions prises.
 
 Acceptation : décisions du §6 marquées « validée » pour PT-01 et PT-02 ; références archivées dans `docs/mesures/`.
 
-### PT-01 — Rassembler l'existant, avec la transition (M) — décisions A14, A16, A17 ; V1, V14, V15
+### PT-01 — Rassembler l'existant (M) — décisions A14, A16, A17, A18, A19 ; V1
 
 But : un seul endroit pour régler les tests d'un projet, sans rien changer à ce qui est enregistré.
 
 | Sous-lot | Contenu |
 |---|---|
 | PT-01a | Page « Paramètres de test » du projet, onglets **Configurations** (langue, fuseau, taille d'écran actuels), **Comptes**, **État de départ**. Bouton dans « Paramètres du projet ». Mêmes appels serveur qu'aujourd'hui. |
-| PT-01b | Fenêtre « Identité et application » : les trois rubriques déplacées deviennent une ligne de renvoi (valeur actuelle + lien vers le bon onglet). Messages de l'outil qui citent l'ancien emplacement mis à jour. Guide utilisateur. |
+| PT-01b | **Décidé le 2026-10-14.** Le déplacement est **définitif**, sans ligne de renvoi : la fenêtre « Identité et application » ne garde que le nom, le connecteur, la version et l'adresse. Le compte principal se règle dans l'onglet « Comptes », avec sa façon de se connecter. L'ancien écran n'est retiré qu'une fois le nouveau vérifié (contrôles et essais à l'écran). Message de l'outil qui cite l'ancien emplacement mis à jour. |
 
 Schéma : **aucun changement**. Serveur : aucune route modifiée (si V15 = oui : le compte principal devient modifiable depuis
 l'onglet « Comptes », par la route existante de mise à jour du projet).
@@ -110,7 +121,9 @@ Acceptation :
 - [ ] un projet existant retrouve toutes ses valeurs dans les onglets, sans rien saisir
 - [ ] une modification faite dans un onglet est celle que l'exécution utilise (vérifié sur une exécution réelle locale)
 - [ ] interrupteur éteint : écran et comportement strictement identiques à aujourd'hui
-- [ ] l'ancienne fenêtre renvoie au bon onglet ; chaque onglet s'ouvre par son adresse
+- [ ] organisation allumée : la fenêtre « Identité et application » ne montre et n'envoie que nom, connecteur, version, adresse
+- [ ] le compte principal se modifie dans l'onglet « Comptes » ; un secret non saisi n'est jamais envoyé
+- [ ] chaque onglet s'ouvre par son adresse
 - [ ] mêmes droits qu'aujourd'hui ; navigation au clavier ; aucun texte d'explication à l'écran
 - [ ] suite complète et contrôles d'interface verts
 
@@ -187,7 +200,8 @@ validée ne donne ni `conforme` ni `non_conforme` ; coût par cas inchangé (le 
 
 ### PT-07 — Clôture (P)
 
-Retrait des renvois de l'ancienne fenêtre (V14) ; guide utilisateur ; mesure de clôture sur le banc ; mise en ligne sur
+Retrait de l'ancien écran et de l'interrupteur, une fois le nouveau vérifié de bout en bout (A18) ; guide utilisateur, avec
+ses captures refaites ; mesure de clôture sur le banc ; mise en ligne sur
 `/staging` par le porteur ; bilan avec les écarts au plan.
 
 ## 5. Ordre et jalons
@@ -213,7 +227,7 @@ PT-03 passe juste après PT-01).
 
 | Lot | Décisions qui le bloquent | Sans elles |
 |---|---|---|
-| PT-01 | V1 (nom), V14 (durée des renvois), V15 (compte principal dans l'onglet) | PT-01a peut démarrer ; PT-01b attend V14 et V15 |
+| PT-01 | aucune : V14 et V15 tranchées le 2026-10-14 (A18, A19) ; V1 acquise (le porteur emploie « Paramètres de test ») | — |
 | PT-02 | V2 (`%nom%`), V3 (case vide), V4 (une exécution par combinaison, limite), V5 (droits), V7 (valeurs figées), V13 (corbeille) | le lot ne démarre pas |
 | PT-03 | V9 (unité absente de l'attendu) | les points 1 à 3 peuvent être faits ; le point 4 attend |
 | PT-04 | V16 (exploration par compte, compte au lancement) | PT-04a peut démarrer |
@@ -242,7 +256,7 @@ Règle du dépôt (CLAUDE.md §5.3) : un lot qui dépend d'une décision non val
 |---|---|---|---|---|
 | PT-00 | terminé en local (plan, interrupteur, mesures de référence) ; fiches d'écran faites pour PT-01 seulement | 2026-10-14 | — | |
 | PT-01a | écrit et vérifié à l'écran sur l'instance locale ; suite du serveur et revue en cours | 2026-10-14 | — | |
-| PT-01b | attend V14 et V15 | | | |
+| PT-01b | écrit et vérifié à l'écran sur l'instance locale (fenêtre allégée, compte principal dans « Comptes ») ; reste le message du garde-fou de remise à zéro et la suite du serveur | 2026-10-14 | — | |
 | PT-02a à PT-02d | à faire | | | |
 | PT-03 | écrit sur `lot-cv01-montants-affiches`, non commité, **15** régressions (et non 19 : 4 des échecs d'abord comptés existent aussi sur `master`, voir `docs/mesures/parametres-de-test-reference-2026-10-14.md`) et six points de revue à traiter | 2026-10-14 | | `PLAN-CALCUL-DE-VALEURS-2026-10.md` §6.1 |
 | PT-04a à PT-04c | à faire | | | |
