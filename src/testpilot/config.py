@@ -323,7 +323,7 @@ DATE_FORMAT = os.getenv("TESTPILOT_DATE_FORMAT", "DD/MM/YYYY")
 # geste explicite de l'Admin (`SettingRepo`, la base l'emporte sur ces variables). `SMTP_PASSWORD`
 # n'a délibérément AUCUN défaut non vide : un secret ne doit jamais être codé en dur.
 NOTIFICATIONS_ENABLED = os.getenv("TESTPILOT_NOTIFICATIONS_ENABLED", "")
-# Lot PT-00 (2026-10-14) — la nouvelle organisation « Paramètres de test » s'allume à la demande. Éteinte (défaut),
+# Lot PT-00 (2026-10-13) — la nouvelle organisation « Paramètres de test » s'allume à la demande. Éteinte (défaut),
 # l'interface est STRICTEMENT celle d'avant : rien n'est cassé pour qui utilise déjà l'outil, et le retour en arrière
 # reste possible à tout moment (décisions A6 et A17 du dossier de cadrage). « 1 » = allumée.
 PARAMETRES_DE_TEST_ENABLED = os.getenv("TESTPILOT_PARAMETRES_DE_TEST", "")

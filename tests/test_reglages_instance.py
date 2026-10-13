@@ -111,7 +111,7 @@ def test_les_valeurs_d_usine_suivent_config(conn):
 
 # ── Lot PT-00 : l'interrupteur « Paramètres de test » ─────────────────────────
 
-def test_l_interrupteur_parametres_de_test_est_eteint_par_defaut_et_reserve_a_l_admin(conn):
+def test_l_interrupteur_parametres_de_test_est_eteint_par_defaut_et_reserve_a_l_admin(conn, monkeypatch):
     """Éteint tant que personne ne l'allume : l'interface reste celle d'avant (décisions A6 et A17). Falsifiable : un défaut
     allumé ferait apparaître la nouvelle organisation chez tous les utilisateurs à la mise en ligne."""
     reglages = SettingRepo(conn)
@@ -122,8 +122,14 @@ def test_l_interrupteur_parametres_de_test_est_eteint_par_defaut_et_reserve_a_l_
 
     reglages.ecrire("parametres_de_test_enabled", "1", par="admin")
     assert reglages.resoudre("parametres_de_test_enabled") == ("1", "db")
-    reglages.ecrire("parametres_de_test_enabled", "", par="admin")   # vide = effacer : retour à l'écran d'avant
-    assert reglages.resoudre("parametres_de_test_enabled") == ("", "default")
+    # « 0 » éteint POUR DE BON, même quand la variable d'environnement du serveur allume (revue du 2026-10-13 : une valeur
+    # vide effaçait le réglage, la variable reprenait la main, et la case décochée à l'écran revenait cochée).
+    monkeypatch.setattr(config, "PARAMETRES_DE_TEST_ENABLED", "1")
+    assert reglages.resoudre("parametres_de_test_enabled") == ("1", "db")
+    reglages.ecrire("parametres_de_test_enabled", "0", par="admin")
+    assert reglages.resoudre("parametres_de_test_enabled") == ("0", "db")
+    reglages.ecrire("parametres_de_test_enabled", "", par="admin")   # vide = effacer : la variable d'environnement reprend la main
+    assert reglages.resoudre("parametres_de_test_enabled") == ("1", "env")
 
 
 # ── Le compte de service n'est plus un réglage (2026-08-12) ──────────────────
