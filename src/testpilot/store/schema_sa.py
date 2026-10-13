@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 61
+ALIGNED_WITH_SCHEMA_VERSION = 62
 
 metadata = MetaData()
 
@@ -85,6 +85,10 @@ project = Table(
     Column("browser_locale", Text, nullable=False, server_default=""),
     Column("browser_timezone", Text, nullable=False, server_default=""),
     Column("browser_viewport", Text, nullable=False, server_default=""),
+    # Migration 62 (lot PT-03) : comment le projet écrit ses valeurs — monnaie (code ISO) et écriture des nombres
+    # (énumération fermée, `ck_project_format_nombre`). Vide = rien de déclaré.
+    Column("devise", Text, nullable=False, server_default=""),
+    Column("format_nombre", Text, nullable=False, server_default=""),
     # Migration 52 (lot 07b-2) : stratégie de connexion du compte PRINCIPAL (le harnais Behave réutilise sa session via
     # `storage_state`, une fois par run, plutôt que de refaire le formulaire à chaque scénario).
     Column("auth_strategie", Text, nullable=False, server_default="formulaire"),
@@ -111,6 +115,7 @@ project = Table(
     CheckConstraint("auth_strategie IN ('formulaire', 'totp', 'session_injectee', 'aucune')",
                     name="ck_project_auth_strategie"),
     CheckConstraint("oracle_type IN ('', 'http')", name="ck_project_oracle_type"),
+    CheckConstraint("format_nombre IN ('', 'espace_virgule', 'virgule_point', 'point_virgule')", name="ck_project_format_nombre"),
     # Partiel (vivants seulement) + NOCASE sur SQLite — voir la limite documentée en tête de
     # fichier : la collation n'est PAS reproduite ici, seule la clause `WHERE` l'est.
     Index("uq_project_name", "name", unique=True,
