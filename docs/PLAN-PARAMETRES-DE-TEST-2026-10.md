@@ -21,9 +21,15 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 | A18 | Le déplacement des comptes, du navigateur et de la remise à zéro est **définitif**. Aucune ligne de renvoi dans l'ancienne fenêtre : « ne pas être brusque » veut dire que le nouvel écran est bien fait et **vérifié avant** que l'ancien soit retiré, pas que l'utilisateur est guidé de l'un à l'autre. Remplace la proposition V14 et la page « transition » du dossier (les trois fenêtres côte à côte). | 2026-10-13 |
 | A19 | Le compte principal se modifie dans l'onglet « Comptes », au même endroit que les autres, avec sa façon de se connecter. La fenêtre « Identité et application » ne garde que le nom du projet, le connecteur, la version et l'adresse. (V15) | 2026-10-13 |
 | A20 | Rien n'est poussé avant la fin de tout le chantier (voir R9). | 2026-10-13 |
+| A21 | Quand l'application visée par un projet change (adresse ou base de données), l'autorisation donnée à l'IA d'agir pendant la génération est **retirée d'office** et doit être redonnée dans l'onglet « État de départ ». Règle **globale**, la même pour tous les connecteurs ; l'écran le dit quand cela arrive. Appliquée côté serveur (`routes/projects.py`). | 2026-10-13 |
+| A22 | Rappel du porteur : aucune fonctionnalité propre à un type d'application. Une fonctionnalité qui ne peut pas être étendue à toutes les applications est supprimée. | 2026-10-13 |
 
 Interrupteur (confirmé par le porteur le 2026-10-13) : il ne sert qu'au temps de la construction, pour comparer
 l'ancien écran et le nouveau. Le changement étant définitif, il est retiré au lot PT-07 avec l'ancien écran.
+
+Écart à la règle A22, relevé et **non traité** : l'onglet « État de départ » n'offre l'adresse de remise à zéro qu'aux
+projets du connecteur web, parce que l'essai des actions par l'IA n'existe que pour lui (lot VH-07). L'autorisation, elle,
+est commune à tous. À trancher par le porteur : étendre la remise à zéro à tous les connecteurs, ou la retirer.
 
 ## 2. Règles de réalisation — valables pour tous les lots
 
@@ -255,8 +261,8 @@ Règle du dépôt (CLAUDE.md §5.3) : un lot qui dépend d'une décision non val
 | Lot | Statut | Date | PR | Rapport |
 |---|---|---|---|---|
 | PT-00 | terminé en local (plan, interrupteur, mesures de référence) ; fiches d'écran faites pour PT-01 seulement | 2026-10-13 | — | |
-| PT-01a | écrit et vérifié à l'écran sur l'instance locale ; suite du serveur et revue en cours | 2026-10-13 | — | |
-| PT-01b | écrit et vérifié à l'écran sur l'instance locale (fenêtre allégée, compte principal dans « Comptes ») ; reste le message du garde-fou de remise à zéro et la suite du serveur | 2026-10-13 | — | |
+| PT-01a | terminé en local : écrit, relu, vérifié à l'écran ; suite du serveur identique à la référence (4 207 réussis, les 5 échecs connus) | 2026-10-13 | — | |
+| PT-01b | écrit, relu (revue indépendante : aucun bloquant, sept points corrigés) et vérifié à l'écran sur l'instance locale ; règle A21 ajoutée ; suite du serveur de clôture en cours | 2026-10-13 | — | |
 | PT-02a à PT-02d | à faire | | | |
 | PT-03 | écrit sur `lot-cv01-montants-affiches`, non commité, **15** régressions (et non 19 : 4 des échecs d'abord comptés existent aussi sur `master`, voir `docs/mesures/parametres-de-test-reference-2026-10-13.md`) et six points de revue à traiter | 2026-10-13 | | `PLAN-CALCUL-DE-VALEURS-2026-10.md` §6.1 |
 | PT-04a à PT-04c | à faire | | | |

@@ -144,6 +144,13 @@ def _refuser_strategie_invalide(auth_strategie: str, totp_secret: str, injected_
         raise HTTPException(status_code=422, detail="; ".join(problemes))
 
 
+def _application_visee(base_url: str | None, database: str | None) -> tuple[str, str]:
+    """Ce qui identifie l'application qu'un projet teste : son adresse (casse et barre finale ignorées) et, quand le
+    connecteur en a une, sa base de données. Deux projets Odoo sur le même serveur mais deux bases ne visent pas la même
+    application."""
+    return (base_url or "").strip().rstrip("/").lower(), (database or "").strip()
+
+
 def _refuser_profil_invalide(connector_type: str, profil_instance: str) -> None:
     """422 en français clair si `profil_instance` ne correspond à AUCUN fichier de profil réel
     (lot 06, D6) — un nom qui ne mène nulle part serait accepté puis silencieusement sans effet."""
@@ -216,6 +223,20 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=f"adresse de remise à zéro refusée : {exc}") from exc
     repo = ProjectRepo(conn)
+    # Décision A21 (porteur, 2026-10-13) — quand l'application visée change (adresse ou base de données), l'autorisation
+    # donnée à l'IA d'agir sur elle pendant la génération est RETIRÉE D'OFFICE : elle valait pour l'ancienne application, pas
+    # pour la nouvelle, et doit être redonnée en connaissance de cause. Règle GLOBALE, la même pour tous les connecteurs.
+    # Pourquoi maintenant : depuis le lot PT-01b, l'adresse et l'autorisation se règlent dans deux écrans différents — on ne
+    # voit plus l'une en changeant l'autre (revue du 2026-10-13). Un corps qui pose EXPLICITEMENT l'autorisation avec la
+    # nouvelle adresse est respecté : c'est un choix fait en la voyant. Lu AVANT toute écriture.
+    avant = repo.get(project_id) or {}
+    application_changee = (
+        (body.base_url is not None or body.database is not None)
+        and _application_visee(body.base_url if body.base_url is not None else avant.get("base_url"),
+                               body.database if body.database is not None else avant.get("database"))
+        != _application_visee(avant.get("base_url"), avant.get("database")))
+    retirer_l_autorisation = (application_changee and body.calibration_writes_enabled is None
+                              and bool(avant.get("calibration_writes_enabled")))
     try:
         if body.name is not None:
             repo.rename(project_id, name=body.name.strip(), description=body.description)
@@ -237,6 +258,8 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
         oracle_auth=body.oracle_auth, oracle_queries=body.oracle_queries)
     if body.calibration_writes_enabled is not None:
         repo.set_calibration_writes_enabled(project_id, body.calibration_writes_enabled)
+    elif retirer_l_autorisation:
+        repo.set_calibration_writes_enabled(project_id, False)
     if bac_a_sable_reset is not None:
         repo.set_bac_a_sable_reset(project_id, bac_a_sable_reset)
     if body.bac_a_sable_remis_a_zero:
