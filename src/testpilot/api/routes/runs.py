@@ -7,6 +7,7 @@ un geste explicite (incrément 1b). Ici : créer / lister / détailler.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from urllib.parse import quote
 
@@ -43,7 +44,16 @@ def _summary(run: dict, case_count: int) -> schemas.RunSummary:
         strict=bool(run.get("strict")),
         sans_repli=bool(run.get("sans_repli", 1)),
         verts_a_confirmer=run.get("verts_a_confirmer", 0),
-        dataset_id=run.get("dataset_id"))
+        dataset_id=run.get("dataset_id"), jeu_de_donnees=_jeu_fige(run.get("parametres_figes")))
+
+
+def _jeu_fige(texte: str | None) -> str:
+    """Le nom du jeu figé au lancement (lot PT-02c) — vide avant, ou si illisible : jamais deviné."""
+    try:
+        figes = json.loads(texte or "{}")
+    except ValueError:
+        return ""
+    return str(figes.get("jeu") or "") if isinstance(figes, dict) else ""
 
 
 def _refuser_les_cas_non_automatises(repo: RunRepo, case_ids: list[int]) -> None:

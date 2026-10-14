@@ -155,6 +155,20 @@
   </div>
   {% endif %}
 
+  {# --- Lot PT-02c : les données de test réellement posées dans ce test (figées au lancement) --- #}
+  {% if r.donnees_de_test.jeu or r.donnees_de_test.valeurs %}
+  <div class="card">
+    <h2>Données de test{% if r.donnees_de_test.jeu %} — {{ r.donnees_de_test.jeu }}{% endif %}</h2>
+    <table>
+      <tbody>
+        {% for nom, v in (r.donnees_de_test.valeurs or {}).items() %}
+        <tr><td>{{ "{{" ~ nom ~ "}}" }}</td><td>{{ v.valeur }}{% if r.donnees_de_test.jeu and v.origine != r.donnees_de_test.jeu %} <span class="sub">({{ v.origine }})</span>{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
   <div class="foot">TestPilot · rapport à deux axes (§5)</div>
 </div>
 </body>

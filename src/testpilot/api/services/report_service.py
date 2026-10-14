@@ -7,6 +7,7 @@ par le référentiel plutôt que par un ``ExecutionOutcome`` en mémoire.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 
@@ -98,4 +99,24 @@ def build_report_for_execution(conn: sqlite3.Connection, execution_id: int):
         target_database=execution.get("target_database", "") or "",
         target_username=execution.get("target_username", "") or "",
         residus=_field_fallbacks(execution.get("residus")),
+        donnees_de_test=_donnees_jouees(execution.get("parametres_joues")),
     )
+
+
+def _donnees_jouees(texte: str | None) -> dict:
+    """Ce qui a été posé dans le test (lot PT-02c). Illisible ou absent : rien — jamais une valeur reconstituée."""
+    try:
+        donnees = json.loads(texte or "{}")
+    except ValueError:
+        return {}
+    if not isinstance(donnees, dict):
+        return {}
+    # Forme attendue seulement : `{nom: {valeur, origine}}` — une ligne mal formée est écartée, jamais devinée (le rapport
+    # écran comme l'imprimable lisent ces champs).
+    valeurs = donnees.get("valeurs") if isinstance(donnees.get("valeurs"), dict) else {}
+    propres = {str(nom): {"valeur": str(v["valeur"]), "origine": str(v.get("origine") or "")}
+               for nom, v in valeurs.items() if isinstance(v, dict) and "valeur" in v}
+    jeu = donnees.get("jeu")
+    if not propres and not isinstance(jeu, str):
+        return {}
+    return {"jeu": jeu if isinstance(jeu, str) else "", "valeurs": propres}

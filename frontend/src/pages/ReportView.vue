@@ -46,6 +46,8 @@ onMounted(async () => {
     artefacts.value = null   // silencieux : le rapport reste lisible sans sa trace
   }
 })
+// Une variable telle qu'un test l'écrit — jamais écrite en dur dans le gabarit, où Vue y lirait une expression.
+const variableEcrite = (nom: string) => `{{${nom}}}`
 </script>
 
 <template>
@@ -138,6 +140,23 @@ onMounted(async () => {
         <!-- ⚠️ On DIT pourquoi il n'y a rien : « aucun fichier » et « aucune trace conservée »
              ne veulent pas dire la même chose. -->
         <p v-else class="text-sm text-muted-foreground">{{ artefacts.reason }}</p>
+      </Card>
+
+      <!-- Lot PT-02c : les données de test réellement posées dans CE test (figées au lancement). Une valeur reprise du jeu
+           « Par défaut » le dit, discrètement. -->
+      <Card v-if="report.donnees_de_test?.jeu || Object.keys(report.donnees_de_test?.valeurs || {}).length"
+            :title="`Données de test${report.donnees_de_test?.jeu ? ' — ' + report.donnees_de_test.jeu : ''}`" data-testid="donnees-jouees">
+        <table v-if="Object.keys(report.donnees_de_test?.valeurs || {}).length" class="w-full text-sm">
+          <tbody>
+            <tr v-for="(v, nom) in report.donnees_de_test?.valeurs" :key="nom" class="border-b border-border last:border-0">
+              <th scope="row" class="py-1.5 pr-4 text-left font-mono font-normal text-muted-foreground">{{ variableEcrite(String(nom)) }}</th>
+              <td class="py-1.5 break-all">{{ v.valeur }}
+                <span v-if="report.donnees_de_test?.jeu && v.origine !== report.donnees_de_test.jeu" class="ml-2 text-xs text-subtle-foreground">{{ v.origine }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="text-sm text-muted-foreground">Aucune variable dans ce test.</p>
       </Card>
 
       <!-- Résidus de teardown (lot 06, F6) : jamais bloquant, jamais supprimé automatiquement —
