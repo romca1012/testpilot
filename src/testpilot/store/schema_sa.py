@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 63
+ALIGNED_WITH_SCHEMA_VERSION = 64
 
 metadata = MetaData()
 
@@ -124,6 +124,52 @@ project = Table(
     sqlite_autoincrement=True,
 )
 
+
+# Migration 64 (lot PT-02) : les DONNÉES DE TEST — variables × jeux de données, une valeur par case. Variables et jeux vont
+# à la corbeille (`deleted_at`) : unicité du nom partielle, pour les vivants seulement. `project_id` NULL = bibliothèque
+# commune (lot PT-05) — aucune ligne aujourd'hui.
+test_variable = Table(
+    "test_variable",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("project_id", Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=True),
+    Column("nom", Text, nullable=False),
+    Column("description", Text, nullable=False, server_default=""),
+    Column("rang", Integer, nullable=False, server_default="0"),
+    Column("created_at", Text, nullable=False),
+    Column("deleted_at", Text, nullable=False, server_default=""),
+    Column("deleted_by", Text, nullable=False, server_default=""),
+    Index("uq_test_variable_nom", "project_id", "nom", unique=True,
+          sqlite_where=Column("deleted_at") == "",
+          postgresql_where=Column("deleted_at") == ""),
+    sqlite_autoincrement=True,
+)
+
+test_dataset = Table(
+    "test_dataset",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("project_id", Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=True),
+    Column("nom", Text, nullable=False),
+    Column("est_defaut", Integer, nullable=False, server_default="0"),
+    Column("rang", Integer, nullable=False, server_default="0"),
+    Column("created_at", Text, nullable=False),
+    Column("deleted_at", Text, nullable=False, server_default=""),
+    Column("deleted_by", Text, nullable=False, server_default=""),
+    CheckConstraint("est_defaut IN (0, 1)", name="ck_test_dataset_est_defaut"),
+    Index("uq_test_dataset_nom", "project_id", "nom", unique=True,
+          sqlite_where=Column("deleted_at") == "",
+          postgresql_where=Column("deleted_at") == ""),
+    sqlite_autoincrement=True,
+)
+
+test_dataset_value = Table(
+    "test_dataset_value",
+    metadata,
+    Column("dataset_id", Integer, ForeignKey("test_dataset.id", ondelete="CASCADE"), primary_key=True),
+    Column("variable_id", Integer, ForeignKey("test_variable.id", ondelete="CASCADE"), primary_key=True),
+    Column("valeur", Text, nullable=False, server_default=""),
+)
 
 # Migration 63 (lot PT-03) : les unités AJOUTÉES par un projet et leurs autres écritures (liste JSON). `project_id` NULL =
 # bibliothèque commune (lot PT-05) — aucune ligne aujourd'hui.
@@ -348,6 +394,8 @@ execution = Table(
     # `run_id` (migration 15) : PAS de FK dure dans `db.py` (`ALTER TABLE … ADD COLUMN run_id
     # INTEGER` sans REFERENCES) — repris à l'identique, NULL = exécutions mono-cas héritées.
     Column("run_id", Integer, nullable=True),
+    # Migration 64 (lot PT-02) : les valeurs que CE test a réellement reçues (JSON) — vide sans donnée de test.
+    Column("parametres_joues", Text, nullable=False, server_default=""),
     CheckConstraint(
         "execution_status IN ('success', 'technical_error', 'not_executed', 'blocked')",
         name="ck_execution_execution_status",
@@ -475,6 +523,9 @@ test_run = Table(
     CheckConstraint("strict IN (0, 1)", name="ck_test_run_strict"),
     # D33 (migration 60) : sans repli par le modèle de langage à l'exécution, réparation conservée. Cochée par défaut.
     Column("sans_repli", Integer, nullable=False, server_default="1"),
+    # Migration 64 (lot PT-02, A29) : le jeu de données choisi (sans FK dure, comme `plan_id`) et les valeurs FIGÉES au lancement.
+    Column("dataset_id", Integer, nullable=True),
+    Column("parametres_figes", Text, nullable=False, server_default=""),
     CheckConstraint("sans_repli IN (0, 1)", name="ck_test_run_sans_repli"),
     CheckConstraint("selection_mode IN ('all', 'frozen')", name="ck_test_run_selection_mode"),
     CheckConstraint("status IN ('draft', 'running', 'completed')", name="ck_test_run_status"),
