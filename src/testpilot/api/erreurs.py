@@ -58,6 +58,8 @@ CATALOGUE: dict[str, tuple[int, str]] = {
     "etat_incompatible":      (409, "L'action ne s'applique pas dans cet état"),
     # ── Campagnes ──
     "campagne_vide":          (422, "Cette campagne ne contient aucun cas"),
+    # Lot PT-02b : le jeu de données choisi pour la campagne est à la corbeille.
+    "jeu_de_donnees_indisponible": (409, "Le jeu de données de cette exécution n'est plus disponible"),
     "campagne_en_cours":      (409, "Cette campagne est déjà en cours"),
     "campagne_archivee":      (409, "Cette campagne est archivée (lecture seule)"),
     # ── Exécution MANUELLE d'un cas : la saisie de son résultat (2026-08-04) ──
@@ -110,6 +112,7 @@ _DEPUIS_SERVICE = {
     "invalid_metier": "metier_incomplet",
     "invalid_state": "etat_incompatible",
     "empty": "campagne_vide",
+    "dataset_missing": "jeu_de_donnees_indisponible",
     "already_running": "campagne_en_cours",
     "archived": "campagne_archivee",
     "manual": "campagne_manuelle",
