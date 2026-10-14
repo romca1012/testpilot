@@ -83,6 +83,15 @@ def start_campaign(conn, run_id: int, *, triggered_by: str = "") -> dict:
     except ConnexionIncomplete as err:
         raise CampaignError("no_connection", err.message()) from err
 
+    # Lot PT-02b (A29) : les valeurs des données de test sont FIGÉES ici, au lancement, une fois pour toute la campagne. Un jeu
+    # choisi qui n'existe plus (à la corbeille) : la campagne n'est pas lancée, plutôt que jouée avec d'autres valeurs.
+    from testpilot.api.services import donnees_de_test_service
+    from testpilot.store.repositories import DonneeDeTestInvalide
+    try:
+        donnees_de_test_service.figer_pour_la_campagne(conn, run)
+    except DonneeDeTestInvalide as err:
+        raise CampaignError("dataset_missing", f"le jeu de données de cette exécution n'est plus disponible : {err}") from err
+
     repo.set_status(run_id, "running", launched=True)
     # `strict` (lot 05, D5) : transmis à la tâche de fond comme le reste — un job durable relancé après un redémarrage
     # relit ces mêmes paramètres, et un job ancien (sans cette clé) retombe sur « non strict ».

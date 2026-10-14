@@ -1863,9 +1863,13 @@ class ExecutionRepo:
             "SELECT * FROM execution WHERE test_case_id=? ORDER BY id", (test_case_id,)))
 
     def has_for_version(self, version_id: int) -> bool:
-        """Dit si cette version précise a déjà été jouée."""
+        """Dit si cette version précise a déjà été jouée.
+
+        Lot PT-02b : une exécution « bloquée » AVANT d'être jouée (une donnée de test manquait : aucun scénario) n'a rien
+        joué — elle ne prend pas au vrai premier essai sa place de « premier jet », que mesure la qualité de génération."""
         row = self.conn.execute(
-            "SELECT 1 FROM execution WHERE version_id=? LIMIT 1", (version_id,)).fetchone()
+            "SELECT 1 FROM execution WHERE version_id=? AND NOT (execution_status='blocked' AND scenarios_total=0) LIMIT 1",
+            (version_id,)).fetchone()
         return row is not None
 
     def list_recent(self, limit: int = 50, *, project_id: int | None = None) -> list[dict]:
@@ -3464,6 +3468,11 @@ class TestDataRepo:
     def variables(self, project_id: int) -> list[dict]:
         return _rows(self.conn.execute(
             "SELECT id, nom, description FROM test_variable WHERE project_id=? AND deleted_at='' ORDER BY rang, id", (project_id,)))
+
+    def variables_a_la_corbeille(self, project_id: int) -> list[str]:
+        """Les noms des variables à la corbeille — pour dire « à la corbeille » plutôt qu'« inconnue » quand un test les écrit."""
+        return [l["nom"] for l in self.conn.execute(
+            "SELECT nom FROM test_variable WHERE project_id=? AND deleted_at<>''", (project_id,))]
 
     def jeux(self, project_id: int) -> list[dict]:
         lignes = _rows(self.conn.execute(
