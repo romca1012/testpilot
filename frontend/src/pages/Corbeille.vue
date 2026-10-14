@@ -23,6 +23,7 @@ const enCours = ref<string>('')
 // Libellés MÉTIER : le type technique (`specification`, `cas`) ne s'affiche jamais tel quel (§8).
 const LIBELLE: Record<string, string> = {
   projet: 'Projet', module: 'Module', specification: 'Spécification', cas: 'Cas de test',
+  variable: 'Variable', jeu_de_donnees: 'Jeu de données',
 }
 
 async function charger() {

@@ -178,6 +178,22 @@ export const api = {
     request<ProjectAccount>(`/api/projects/${id}/accounts/${accountId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteProjectAccount: (id: number | string, accountId: number) =>
     request<void>(`/api/projects/${id}/accounts/${accountId}`, { method: 'DELETE' }),
+  // ── Données de test du projet (lot PT-02) : variables × jeux de données. Chaque écriture rend le tableau à jour. ──
+  getTestData: (id: number | string) => request<DonneesDeTest>(`/api/projects/${id}/donnees-de-test`),
+  createTestVariable: (id: number | string, payload: { nom: string; description?: string }) =>
+    request<DonneesDeTest>(`/api/projects/${id}/donnees-de-test/variables`, { method: 'POST', body: JSON.stringify(payload) }),
+  testVariableUsages: (id: number | string, variableId: number) =>
+    request<{ id: number; title: string }[]>(`/api/projects/${id}/donnees-de-test/variables/${variableId}/usages`),
+  deleteTestVariable: (id: number | string, variableId: number) =>
+    request<void>(`/api/projects/${id}/donnees-de-test/variables/${variableId}`, { method: 'DELETE' }),
+  createTestDataset: (id: number | string, payload: { nom: string }) =>
+    request<DonneesDeTest>(`/api/projects/${id}/donnees-de-test/jeux`, { method: 'POST', body: JSON.stringify(payload) }),
+  renameTestDataset: (id: number | string, datasetId: number, payload: { nom: string }) =>
+    request<DonneesDeTest>(`/api/projects/${id}/donnees-de-test/jeux/${datasetId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  setDatasetValues: (id: number | string, datasetId: number, valeurs: Record<string, string>) =>
+    request<DonneesDeTest>(`/api/projects/${id}/donnees-de-test/jeux/${datasetId}/valeurs`, { method: 'PUT', body: JSON.stringify({ valeurs }) }),
+  deleteTestDataset: (id: number | string, datasetId: number) =>
+    request<void>(`/api/projects/${id}/donnees-de-test/jeux/${datasetId}`, { method: 'DELETE' }),
   // ── Unités ajoutées par le projet (lot PT-03) : un nom et ses autres écritures ──
   listProjectUnits: (id: number | string) => request<ProjectUnit[]>(`/api/projects/${id}/units`),
   createProjectUnit: (id: number | string, payload: ProjectUnitInput) =>
@@ -635,6 +651,10 @@ export interface Artifacts { available: boolean; reason: string; files: Artifact
 /** Un compte de test du projet. `principal` = le compte de la connexion du projet (id `null`, enregistré sur le projet ; il se
  *  règle dans « Paramètres de test » › « Comptes », ou dans « Application cible » tant que cette organisation est éteinte).
  *  Le mot de passe n'est JAMAIS renvoyé : `has_secret` dit seulement qu'il est enregistré. */
+// Lot PT-02 : `valeurs` = `{id de variable: valeur}` ; une case vide n'y figure pas (elle reprend le jeu « Par défaut »).
+export interface VariableDeTest { id: number; nom: string; description: string }
+export interface JeuDeDonnees { id: number; nom: string; est_defaut: boolean; valeurs: Record<string, string> }
+export interface DonneesDeTest { variables: VariableDeTest[]; jeux: JeuDeDonnees[] }
 export interface ProjectUnitInput { nom: string; ecritures: string[] }
 export interface ProjectUnit extends ProjectUnitInput { id: number }
 export interface ProjectAccount {
