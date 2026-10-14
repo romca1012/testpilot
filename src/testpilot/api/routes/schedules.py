@@ -17,7 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from testpilot.api import access, schemas
 from testpilot.api.deps import get_conn
-from testpilot.store.repositories import ProjectRepo, RunRepo, ScheduledRunRepo
+from testpilot.api.services import donnees_de_test_service
+from testpilot.store.repositories import DonneeDeTestInvalide, ProjectRepo, RunRepo, ScheduledRunRepo
 
 router = APIRouter(tags=["schedules"])
 
@@ -29,7 +30,8 @@ def _out(planif: dict) -> schemas.ScheduledRunOut:
         hour=planif["hour"], minute=planif["minute"], weekday=planif.get("weekday"),
         is_active=bool(planif.get("is_active", True)), created_by=planif.get("created_by", ""),
         created_at=planif.get("created_at", ""), last_run_id=planif.get("last_run_id"),
-        last_triggered_at=planif.get("last_triggered_at"))
+        last_triggered_at=planif.get("last_triggered_at"),
+        dataset_ids=donnees_de_test_service.ids_des_jeux(planif.get("dataset_ids")))
 
 
 @router.post("/api/projects/{project_id}/schedules", response_model=schemas.ScheduledRunOut,
@@ -65,10 +67,14 @@ def create_schedule(project_id: int, body: schemas.ScheduledRunIn, request: Requ
                 status_code=422,
                 detail=(f"{len(sans_test)} cas sélectionné(s) n'ont pas de test technique et ne peuvent pas être "
                         f"planifiés : {noms}{reste}. Retirez-les de la sélection ou faites-les automatiser."))
+    try:   # mêmes jeux admis qu'à un lancement à la main : du projet, vivants, 50 au plus (A28)
+        jeux = donnees_de_test_service.jeux_demandes(conn, project_id, body.dataset_ids)
+    except DonneeDeTestInvalide as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     scheduled_id = ScheduledRunRepo(conn).create(
         project_id=project_id, name=body.name.strip(), selection_mode=body.selection_mode,
         frequency=body.frequency, hour=body.hour, minute=body.minute, weekday=body.weekday,
-        case_ids=body.case_ids, created_by=access.utilisateur_de(request))
+        case_ids=body.case_ids, created_by=access.utilisateur_de(request), dataset_ids=[j["id"] for j in jeux])
     return _out(ScheduledRunRepo(conn).get(scheduled_id))
 
 

@@ -16,16 +16,15 @@ from fastapi.responses import FileResponse
 
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
-from testpilot.api.services import attachment_service, campaign_service
+from testpilot.api.services import attachment_service, campaign_service, donnees_de_test_service
 from testpilot.guardrails import durable_jobs
 from testpilot.store.repositories import (
     AssignmentRepo,
     CaseRepo,
-    PlanRepo,
+    DonneeDeTestInvalide,
     ProjectRepo,
     ResultRepo,
     RunRepo,
-    TestDataRepo,
 )
 from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE, MODES_EXECUTION, STATUTS_MANUELS
 
@@ -107,48 +106,29 @@ def create_run(project_id: int, body: schemas.RunIn, request: Request, conn=Depe
                              case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli,
                              dataset_id=jeux[0]["id"] if jeux else None)
         return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
-    # Plusieurs jeux (A28) : une exécution PAR jeu, regroupées dans un plan qui porte le nom demandé. La réponse décrit la
-    # première ; son `plan_id` mène au plan, où figurent toutes les autres.
-    # Décision A35 : la PREMIÈRE (le jeu « Par défaut » s'il est coché) joue tous les tests demandés ; les suivantes, la même
-    # sélection, mais seulement les tests qui écrivent des variables — un test sans variable rejoué à l'identique pour chaque
-    # jeu ne prouverait rien de plus. Ce tri se fait au LANCEMENT (`RunRepo.case_ids`), pas ici : figé à la création, il
-    # oubliait un test qui gagne une variable avant le lancement (revue du 2026-10-14).
-    jeux = sorted(jeux, key=lambda j: not j["est_defaut"])
-    plan_id = PlanRepo(conn).create(project_id=project_id, name=body.name.strip(), description=body.description,
-                                    refs=body.refs, created_by=access.utilisateur_de(request))
-    premier = None
-    for rang, jeu in enumerate(jeux):
-        run_id = repo.create(project_id=project_id, name=f"{body.name.strip()} — {jeu['nom']}",
-                             description=body.description, refs=body.refs,
-                             selection_mode=body.selection_mode, mode=body.mode,
-                             case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli,
-                             dataset_id=jeu["id"], seulement_variables=rang > 0)
-        PlanRepo(conn).assign_run(plan_id, run_id)
-        premier = premier or run_id
+    # Plusieurs jeux (A28, A35) : une exécution PAR jeu, regroupées dans un plan qui porte le nom demandé. La réponse décrit
+    # la première ; son `plan_id` mène au plan, où figurent toutes les autres.
+    _, premier, _ = donnees_de_test_service.creer_une_execution_par_jeu(
+        conn, project_id=project_id, nom=body.name.strip(), jeux=jeux, created_by=access.utilisateur_de(request),
+        description=body.description, refs=body.refs, selection_mode=body.selection_mode, mode=body.mode,
+        case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli)
     return _summary(repo.get(premier), len(repo.case_ids(premier)))
 
 
-JEUX_PAR_LANCEMENT_MAX = 50   # A28 : au-delà, un lancement par erreur créerait des dizaines d'exécutions
+JEUX_PAR_LANCEMENT_MAX = donnees_de_test_service.JEUX_PAR_LANCEMENT_MAX
 
 
 def _jeux_demandes(conn, project_id: int, body: schemas.RunIn) -> list[dict]:
-    """Les jeux de données demandés, vérifiés : du projet, vivants, sans doublon, 50 au plus, et seulement pour une
-    campagne AUTOMATIQUE (une valeur se pose dans un test joué par la machine)."""
-    demandes = list(dict.fromkeys(body.dataset_ids))
-    if not demandes:
+    """Les jeux de données demandés, vérifiés (`donnees_de_test_service.jeux_demandes`), et seulement pour une campagne
+    AUTOMATIQUE (une valeur se pose dans un test joué par la machine)."""
+    if not body.dataset_ids:
         return []
     if body.mode == MODE_MANUELLE:
         raise HTTPException(status_code=422, detail="les jeux de données se jouent dans une exécution automatique")
-    if len(demandes) > JEUX_PAR_LANCEMENT_MAX:
-        raise HTTPException(status_code=422, detail=f"{JEUX_PAR_LANCEMENT_MAX} jeux de données au plus par lancement")
-    depot = TestDataRepo(conn)
-    jeux = []
-    for dataset_id in demandes:
-        jeu = depot.jeu(project_id, dataset_id)
-        if jeu is None:
-            raise HTTPException(status_code=422, detail=f"jeu de données {dataset_id} introuvable dans ce projet")
-        jeux.append(jeu)
-    return jeux
+    try:
+        return donnees_de_test_service.jeux_demandes(conn, project_id, body.dataset_ids, maximum=JEUX_PAR_LANCEMENT_MAX)
+    except DonneeDeTestInvalide as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/api/projects/{project_id}/runs", response_model=list[schemas.RunSummary],

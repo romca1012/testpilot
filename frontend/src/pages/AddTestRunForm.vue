@@ -13,9 +13,10 @@
 // boutons proposés en permanence, et aucun qui s'impose.
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type CaseSummary, type JeuDeDonnees } from '../lib/api'
+import { api, type CaseSummary } from '../lib/api'
 import { useGroupes } from '../lib/donnees'
 import Button from '../components/ui/Button.vue'
+import ChoixDesJeux from '../components/parametres/ChoixDesJeux.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -41,40 +42,21 @@ const selected = ref<number[]>([])
 const saving = ref(false)
 const error = ref('')
 
-// Lot PT-02b (A28) : les jeux de données du projet. Rien n'est proposé à un projet qui n'a pas de variable : le formulaire
-// est alors celui d'avant. Un jeu coché = une exécution ; plusieurs = une exécution par jeu, regroupées dans un plan.
-const JEUX_MAX = 50
-const jeux = ref<JeuDeDonnees[]>([])
+// Lot PT-02b (A28, A35) : les jeux de données du projet (`ChoixDesJeux`) — rien n'est proposé à un projet sans variable.
 const jeuxCoches = ref<number[]>([])
-// Décision A35 : la première exécution joue tous les tests choisis ; les suivantes, seulement ceux qui écrivent des variables
-// (tri refait par le serveur au lancement : ce décompte est celui d'aujourd'hui). `null` : liste illisible, pas de détail.
-const casAvecVariables = ref<Set<number> | null>(null)
+const jeuxValides = ref(true)
 const testsChoisis = computed(() => form.value.selection === 'frozen' ? selected.value : casProposes.value.map((c) => c.id))
-const testsAvecVariables = computed(() => testsChoisis.value.filter((id) => casAvecVariables.value?.has(id)).length)
-const nombreDExecutions = computed(() => Math.max(1, jeuxCoches.value.length))
-const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`
 
 onMounted(async () => {
   // Borne explicite : au-delà, la composition d'une campagne passe par la liste des cas et sa
   // sélection multiple (lot C), qui sait paginer. Un formulaire ne doit pas charger 2 000 lignes.
   try { cases.value = (await api.listCases(pid, { limit: 500 })).items } catch { cases.value = [] }
-  try {
-    const tableau = await api.getTestData(pid)
-    if (tableau.variables.length) {
-      jeux.value = tableau.jeux
-      jeuxCoches.value = tableau.jeux.filter((j) => j.est_defaut).map((j) => j.id)
-    }
-  } catch { jeux.value = [] }   // tableau illisible : on crée comme avant, le serveur jouera le jeu « Par défaut »
-  if (jeux.value.length) {
-    // À part : un échec ici retire seulement le détail de l'annonce, jamais le choix des jeux.
-    try { casAvecVariables.value = new Set(await api.casAvecVariables(pid)) } catch { casAvecVariables.value = null }
-  }
 })
 
 const canSubmit = computed(() =>
   !!form.value.name.trim()
   && (form.value.selection === 'all' || selected.value.length > 0)
-  && (!jeux.value.length || form.value.mode !== 'automatique' || (jeuxCoches.value.length >= 1 && jeuxCoches.value.length <= JEUX_MAX)))
+  && (form.value.mode !== 'automatique' || jeuxValides.value))
 
 // ── Une exécution AUTOMATIQUE ne joue que les cas dotés d'un test technique (2026-10-12) ─────────────────────────────
 // Un cas saisi à la main ou importé d'Excel n'a rien que la machine puisse jouer : il restait « Untested » pour toujours
@@ -376,26 +358,8 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
       <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
 
       <!-- Lot PT-02b (A28, A32) : les jeux de données, pour une campagne automatique d'un projet qui a des variables. -->
-      <fieldset v-if="form.mode === 'automatique' && jeux.length" class="rounded-md border border-border p-3" data-testid="choix-jeux">
-        <legend class="px-1 text-sm font-medium">Données de test</legend>
-        <div class="flex flex-wrap gap-x-5 gap-y-2">
-          <label v-for="j in jeux" :key="j.id" class="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
-            <input type="checkbox" :value="j.id" v-model="jeuxCoches" :data-testid="`jeu-${j.id}`" class="accent-[hsl(var(--primary))]" />
-            {{ j.nom }}
-          </label>
-        </div>
-        <p class="mt-2 flex flex-wrap items-center gap-x-3 text-xs" aria-live="polite">
-          <span v-if="jeuxCoches.length > JEUX_MAX" class="text-destructive" data-testid="trop-de-jeux">{{ JEUX_MAX }} jeux au plus</span>
-          <span v-else-if="!jeuxCoches.length" class="text-destructive">Cochez au moins un jeu</span>
-          <span v-else class="text-muted-foreground" data-testid="nombre-executions">
-            <template v-if="nombreDExecutions === 1">1 exécution</template>
-            <template v-else-if="!casAvecVariables">{{ nombreDExecutions }} exécutions, regroupées dans un plan</template>
-            <template v-else>{{ nombreDExecutions }} exécutions : {{ pluriel(testsChoisis.length, 'test') }} dans la première,
-              {{ testsAvecVariables ? `${testsAvecVariables} avec variables` : 'aucun test avec variables' }} dans les autres</template>
-          </span>
-          <RouterLink :to="{ name: 'project-test-data', params: { pid } }" class="text-primary hover:underline" data-testid="lien-donnees">Données de test</RouterLink>
-        </p>
-      </fieldset>
+      <ChoixDesJeux :masque="form.mode !== 'automatique'" v-model="jeuxCoches" v-model:valide="jeuxValides" :pid="pid"
+                    :tests-choisis="testsChoisis" />
 
       <!-- D33 (2026-10-10) : sans repli par l'IA, cochée par défaut ; masquée si la campagne est stricte (qui l'inclut). -->
       <label v-if="form.mode === 'automatique' && !form.strict"

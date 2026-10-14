@@ -22,7 +22,7 @@ from pathlib import Path
 
 from testpilot import config
 from testpilot.parametres import resolution
-from testpilot.store.repositories import TestDataRepo, VersionRepo
+from testpilot.store.repositories import DonneeDeTestInvalide, PlanRepo, RunRepo, TestDataRepo, VersionRepo
 
 
 @dataclass
@@ -113,3 +113,61 @@ def preparer_le_script(conn, execution_id: int, case_id: int, version_id: int, m
     (dossier / f"{module_name}.feature").write_text(rendu.texte, encoding="utf-8")
     (dossier / f"{module_name}_steps.py").write_text(version.get("steps_content") or "", encoding="utf-8")
     return Script(dossier=dossier, parametres_joues=joues)
+
+
+# ── Une exécution par jeu de données (A28, A35) — lancement à la main ET planification ────────────────────────────────────
+
+JEUX_PAR_LANCEMENT_MAX = 50   # A28 : au-delà, un lancement par erreur créerait des dizaines d'exécutions
+
+
+def jeux_demandes(conn, project_id: int, dataset_ids: list[int], *, maximum: int = JEUX_PAR_LANCEMENT_MAX) -> list[dict]:
+    """Les jeux demandés, vérifiés : du projet, vivants, sans doublon, `maximum` au plus. Lève `DonneeDeTestInvalide` avec
+    un message à montrer tel quel — rien n'est créé."""
+    demandes = list(dict.fromkeys(dataset_ids))
+    if len(demandes) > maximum:
+        raise DonneeDeTestInvalide(f"{maximum} jeux de données au plus par lancement")
+    depot = TestDataRepo(conn)
+    jeux = []
+    for dataset_id in demandes:
+        jeu = depot.jeu(project_id, dataset_id)
+        if jeu is None:
+            raise DonneeDeTestInvalide(f"jeu de données {dataset_id} introuvable dans ce projet")
+        jeux.append(jeu)
+    return jeux
+
+
+def creer_une_execution_par_jeu(conn, *, project_id: int, nom: str, jeux: list[dict], created_by: str = "",
+                                description: str = "", refs: str = "", **champs) -> tuple[int, int, list[int]]:
+    """Plusieurs jeux (A28) : une exécution PAR jeu, regroupées dans un plan qui porte `nom`. Rend (plan, première
+    exécution, toutes les exécutions dans l'ordre). `champs` : ceux de `RunRepo.create` (sélection, mode, cas…).
+
+    Décision A35 : la PREMIÈRE (le jeu « Par défaut » s'il est demandé) joue tous les tests ; les suivantes, la même
+    sélection, mais seulement les tests qui écrivent des variables — un test sans variable rejoué à l'identique pour chaque
+    jeu ne prouverait rien de plus. Ce tri se fait au LANCEMENT (`RunRepo.case_ids`), pas ici : figé à la création, il
+    oubliait un test qui gagne une variable avant le lancement (revue du 2026-10-14)."""
+    jeux = sorted(jeux, key=lambda j: not j["est_defaut"])
+    plan_id = PlanRepo(conn).create(project_id=project_id, name=nom, description=description, refs=refs,
+                                    created_by=created_by)
+    run_ids = []
+    for rang, jeu in enumerate(jeux):
+        run_id = RunRepo(conn).create(project_id=project_id, name=f"{nom} — {jeu['nom']}", description=description,
+                                      refs=refs, dataset_id=jeu["id"], seulement_variables=rang > 0, **champs)
+        PlanRepo(conn).assign_run(plan_id, run_id)
+        run_ids.append(run_id)
+    return plan_id, run_ids[0], run_ids
+
+
+def ids_des_jeux(texte: str | None, *, strict: bool = False) -> list[int]:
+    """Les jeux d'une planification (`scheduled_run.dataset_ids`, liste JSON). Illisible : `[]` pour l'affichage ; avec
+    `strict` (au déclenchement), `DonneeDeTestInvalide` — jamais le jeu « Par défaut » joué à la place de jeux illisibles."""
+    if not (texte or "").strip():
+        return []
+    try:
+        ids = json.loads(texte)
+    except ValueError:
+        ids = None
+    if not isinstance(ids, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
+        if strict:
+            raise DonneeDeTestInvalide("les jeux de données de la planification sont illisibles")
+        return []
+    return ids

@@ -17,6 +17,7 @@ import { useSchedules, useCreerSchedule, usePatchSchedule, useSupprimerSchedule 
 import { localVersUtc, utcVersLocal } from '../lib/scheduleTime'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
+import ChoixDesJeux from '../components/parametres/ChoixDesJeux.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -84,10 +85,27 @@ const form = reactive({
 })
 const cases = ref<CaseSummary[]>([])
 const selected = ref<number[]>([])
+// Lot PT-02b (A28, A35) : les jeux de données joués à chaque déclenchement — même choix qu'au lancement à la main.
+const jeuxCoches = ref<number[]>([])
+const jeuxValides = ref(true)
+const testsChoisis = computed(() => form.selection === 'frozen' ? selected.value : cases.value.map((c) => c.id))
+// Les noms, pour la liste ; un jeu absent est à la corbeille — la planification ne joue alors RIEN tant qu'elle n'est pas
+// corrigée (décision du porteur, A36), et la liste le dit. Noms illisibles (`null`) : un décompte neutre, jamais
+// « à la corbeille » à tort.
+const nomsDesJeux = ref<Map<number, string> | null>(null)
+function jeuxLabel(ids: number[] | undefined) {
+  const liste = ids ?? []
+  if (!nomsDesJeux.value) return `${liste.length} jeu${liste.length > 1 ? 'x' : ''} de données`
+  return liste.map((id) => nomsDesJeux.value?.get(id) ?? 'jeu à la corbeille').join(', ')
+}
+function jeuALaCorbeille(ids: number[] | undefined) {
+  return !!nomsDesJeux.value && (ids ?? []).some((id) => !nomsDesJeux.value?.has(id))
+}
 onMounted(async () => {
   // Une planification déclenche des exécutions AUTOMATIQUES : seuls les cas dotés d'un test technique sont proposés
   // (2026-10-12 — le serveur applique la même règle).
   try { cases.value = (await api.listCases(pid.value, { limit: 500 })).items.filter((c) => c.automatise) } catch { cases.value = [] }
+  try { nomsDesJeux.value = new Map((await api.getTestData(pid.value)).jeux.map((j) => [j.id, j.nom])) } catch { nomsDesJeux.value = null }
 })
 const byModule = computed(() => {
   const map = new Map<string, CaseSummary[]>()
@@ -111,13 +129,14 @@ function toggleModule(rows: CaseSummary[]) {
 }
 
 const canSubmit = computed(() =>
-  !!form.name.trim() && (form.selection === 'all' || selected.value.length > 0))
+  !!form.name.trim() && (form.selection === 'all' || selected.value.length > 0) && jeuxValides.value)
 const creerSchedule = useCreerSchedule(pid)
 const createError = ref('')
 function resetForm() {
   form.name = 'Régression nocturne'
   form.selection = 'all'; form.frequency = 'daily'; form.weekday = 0; form.hour = 2; form.minute = 0
   selected.value = []
+  jeuxCoches.value = []
   createError.value = ''
 }
 function openCreate() { resetForm(); showCreate.value = true }
@@ -139,6 +158,7 @@ async function submit() {
       hour: utc.hour,
       minute: utc.minute,
       weekday: utc.weekday,
+      dataset_ids: jeuxCoches.value,
     })
     showCreate.value = false
   } catch (e: any) {
@@ -174,15 +194,21 @@ function goBack() { router.push({ name: 'executions', params: { pid: pid.value }
     </p>
 
     <div v-else class="mt-5 divide-y divide-border/40 border-t border-border/40">
-      <div v-for="s in schedules" :key="s.id" class="flex items-center gap-4 py-3.5 px-2 -mx-2"
+      <!-- `flex-wrap` + largeur minimale du texte : à faible largeur, les boutons passent à la ligne au lieu d'écraser le
+           texte en une colonne d'un mot (constaté le 2026-10-14). -->
+      <div v-for="s in schedules" :key="s.id" class="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5 px-2 -mx-2"
            :class="s.is_active ? '' : 'opacity-60'">
         <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium border border-success/30 bg-success/15 text-success shrink-0">
           Automatique
         </span>
-        <div class="min-w-0 flex-1">
+        <div class="min-w-[14rem] flex-1">
           <div class="text-sm font-medium truncate">{{ s.name }}</div>
           <div class="text-xs text-muted-foreground mt-0.5">
             {{ frequenceLabel(s) }} · {{ s.selection_mode === 'all' ? 'tous les cas' : 'sélection figée' }}
+            <template v-if="s.dataset_ids?.length"> · {{ jeuxLabel(s.dataset_ids) }}</template>
+          </div>
+          <div v-if="jeuALaCorbeille(s.dataset_ids)" class="text-xs text-destructive mt-0.5" data-testid="planif-bloquee">
+            Ne se déclenche pas : un jeu de données est à la corbeille
           </div>
           <div class="text-xs text-muted-foreground/70 mt-0.5">{{ dernierDeclenchement(s) }}</div>
         </div>
@@ -293,6 +319,8 @@ function goBack() { router.push({ name: 'executions', params: { pid: pid.value }
             </label>
           </div>
         </div>
+
+        <ChoixDesJeux v-model="jeuxCoches" v-model:valide="jeuxValides" :pid="pid" :tests-choisis="testsChoisis" />
 
         <p v-if="createError" class="text-sm text-destructive">{{ createError }}</p>
       </form>
