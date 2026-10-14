@@ -443,3 +443,37 @@ def test_cycle_sauvegarde_puis_restauration_complet_sur_postgresql(tmp_path):
         assert cas["title"] == "Cas à restaurer"
     finally:
         conn2.close()
+
+
+def test_tri_des_tests_a_variables_d_une_execution_sur_postgresql():
+    """Décision A35 : `RunRepo.case_ids` d'une exécution `seulement_variables` et `cas_qui_ecrivent_des_variables` passent
+    le motif `%{{%` en PARAMÈTRE — écrit en dur, la requête échouait sur PostgreSQL (revue du 2026-10-14). Sélection figée
+    ET vivante, un test qui écrit `{{client}}` et un test sans variable."""
+    from testpilot.store.repositories import TestDataRepo
+
+    suffixe = uuid4().hex[:8]
+    conn = get_initialized_db()
+    try:
+        pid = ProjectRepo(conn).create(name=f"Projet jeux {suffixe}", connector_type="web", base_url="http://app")
+        mid = ModuleRepo(conn).create(project_id=pid, name="Ventes")
+        cas = {}
+        for titre, feature in (("avec", "Fonctionnalité: X\n  Scénario: Y\n    Alors le client {{client}} est servi\n"),
+                               ("sans", "Fonctionnalité: X\n  Scénario: Y\n    Alors ok\n")):
+            cid = CaseRepo(conn).create(title=f"{titre} {suffixe}", module_id=mid, feature_slug=f"{titre}_{suffixe}")
+            vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="", feature_content=feature,
+                                           steps_content="# steps\n")
+            CaseRepo(conn).set_current_version(cid, vid)
+            cas[titre] = cid
+        conn.commit()
+        repo = RunRepo(conn)
+        figee = repo.create(project_id=pid, name="Figée", case_ids=[cas["avec"], cas["sans"]], seulement_variables=True)
+        vivante = repo.create(project_id=pid, name="Vivante", selection_mode="all", seulement_variables=True)
+        premiere = repo.create(project_id=pid, name="Première", selection_mode="all")
+        conn.commit()
+
+        assert TestDataRepo(conn).cas_qui_ecrivent_des_variables(pid) == [cas["avec"]]
+        assert repo.case_ids(figee) == [cas["avec"]]
+        assert repo.case_ids(vivante) == [cas["avec"]]
+        assert repo.case_ids(premiere) == sorted(cas.values())
+    finally:
+        conn.close()

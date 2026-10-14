@@ -99,15 +99,20 @@ def create_run(project_id: int, body: schemas.RunIn, request: Request, conn=Depe
         return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
     # Plusieurs jeux (A28) : une exécution PAR jeu, regroupées dans un plan qui porte le nom demandé. La réponse décrit la
     # première ; son `plan_id` mène au plan, où figurent toutes les autres.
+    # Décision A35 : la PREMIÈRE (le jeu « Par défaut » s'il est coché) joue tous les tests demandés ; les suivantes, la même
+    # sélection, mais seulement les tests qui écrivent des variables — un test sans variable rejoué à l'identique pour chaque
+    # jeu ne prouverait rien de plus. Ce tri se fait au LANCEMENT (`RunRepo.case_ids`), pas ici : figé à la création, il
+    # oubliait un test qui gagne une variable avant le lancement (revue du 2026-10-14).
+    jeux = sorted(jeux, key=lambda j: not j["est_defaut"])
     plan_id = PlanRepo(conn).create(project_id=project_id, name=body.name.strip(), description=body.description,
                                     refs=body.refs, created_by=access.utilisateur_de(request))
     premier = None
-    for jeu in jeux:
+    for rang, jeu in enumerate(jeux):
         run_id = repo.create(project_id=project_id, name=f"{body.name.strip()} — {jeu['nom']}",
                              description=body.description, refs=body.refs,
                              selection_mode=body.selection_mode, mode=body.mode,
                              case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli,
-                             dataset_id=jeu["id"])
+                             dataset_id=jeu["id"], seulement_variables=rang > 0)
         PlanRepo(conn).assign_run(plan_id, run_id)
         premier = premier or run_id
     return _summary(repo.get(premier), len(repo.case_ids(premier)))

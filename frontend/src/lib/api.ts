@@ -182,6 +182,7 @@ export const api = {
   getTestData: (id: number | string) => request<DonneesDeTest>(`/api/projects/${id}/donnees-de-test`),
   createTestVariable: (id: number | string, payload: { nom: string; description?: string }) =>
     request<DonneesDeTest>(`/api/projects/${id}/donnees-de-test/variables`, { method: 'POST', body: JSON.stringify(payload) }),
+  casAvecVariables: (id: number | string) => request<number[]>(`/api/projects/${id}/donnees-de-test/cas-avec-variables`),
   testVariableUsages: (id: number | string, variableId: number) =>
     request<{ id: number; title: string }[]>(`/api/projects/${id}/donnees-de-test/variables/${variableId}/usages`),
   deleteTestVariable: (id: number | string, variableId: number) =>

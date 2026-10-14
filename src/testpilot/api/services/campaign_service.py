@@ -62,6 +62,10 @@ def start_campaign(conn, run_id: int, *, triggered_by: str = "") -> dict:
                             "cette campagne est manuelle : ses résultats se saisissent à la main, "
                             "cas par cas. Créez une campagne automatique pour la faire jouer.")
     case_ids = repo.case_ids(run_id)
+    if not case_ids and run.get("seulement_variables") and repo.case_ids(run_id, tri_variables=False):
+        # A35 : l'exécution d'un jeu autre que le premier ne joue que les tests qui écrivent des variables — aucun n'en écrit.
+        raise CampaignError("empty", "aucun test de cette exécution n'utilise de donnée de test : rien à jouer avec ce jeu "
+                                     "(les autres tests sont joués une fois, dans la première exécution du plan)")
     if not case_ids:
         # Lancer une campagne vide produirait un run « terminé » sans rien avoir testé — un
         # succès trompeur. On refuse et on le dit.
