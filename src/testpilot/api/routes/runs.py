@@ -18,7 +18,13 @@ from testpilot.api.deps import get_conn
 from testpilot.api.services import attachment_service, campaign_service
 from testpilot.guardrails import durable_jobs
 from testpilot.store.repositories import (
-    AssignmentRepo, CaseRepo, ProjectRepo, ResultRepo, RunRepo,
+    AssignmentRepo,
+    CaseRepo,
+    PlanRepo,
+    ProjectRepo,
+    ResultRepo,
+    RunRepo,
+    TestDataRepo,
 )
 from testpilot.verdict.status import MODE_AUTOMATIQUE, MODE_MANUELLE, MODES_EXECUTION, STATUTS_MANUELS
 
@@ -36,7 +42,8 @@ def _summary(run: dict, case_count: int) -> schemas.RunSummary:
         plan_id=run.get("plan_id"),
         strict=bool(run.get("strict")),
         sans_repli=bool(run.get("sans_repli", 1)),
-        verts_a_confirmer=run.get("verts_a_confirmer", 0))
+        verts_a_confirmer=run.get("verts_a_confirmer", 0),
+        dataset_id=run.get("dataset_id"))
 
 
 def _refuser_les_cas_non_automatises(repo: RunRepo, case_ids: list[int]) -> None:
@@ -55,7 +62,7 @@ def _refuser_les_cas_non_automatises(repo: RunRepo, case_ids: list[int]) -> None
 
 @router.post("/api/projects/{project_id}/runs", response_model=schemas.RunSummary, status_code=201,
             dependencies=[Depends(access.require_project_access)])
-def create_run(project_id: int, body: schemas.RunIn, conn=Depends(get_conn)):
+def create_run(project_id: int, body: schemas.RunIn, request: Request, conn=Depends(get_conn)):
     """Crée une campagne en BROUILLON. Le mode de SÉLECTION `all` est vivant (les cas du projet) ;
     `frozen` fige la sélection fournie. Le filtrage dynamique n'est pas géré (422).
 
@@ -82,11 +89,51 @@ def create_run(project_id: int, body: schemas.RunIn, conn=Depends(get_conn)):
         # Une campagne AUTOMATIQUE ne joue que des cas automatisés (2026-10-12). Refusé ici, en nommant les cas, plutôt
         # que de les laisser disparaître de la campagne sans un mot.
         _refuser_les_cas_non_automatises(repo, body.case_ids)
-    run_id = repo.create(project_id=project_id, name=body.name.strip(),
-                         description=body.description, refs=body.refs,
-                         selection_mode=body.selection_mode, mode=body.mode,
-                         case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli)
-    return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
+    jeux = _jeux_demandes(conn, project_id, body)
+    if len(jeux) <= 1:
+        run_id = repo.create(project_id=project_id, name=body.name.strip(),
+                             description=body.description, refs=body.refs,
+                             selection_mode=body.selection_mode, mode=body.mode,
+                             case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli,
+                             dataset_id=jeux[0]["id"] if jeux else None)
+        return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
+    # Plusieurs jeux (A28) : une exécution PAR jeu, regroupées dans un plan qui porte le nom demandé. La réponse décrit la
+    # première ; son `plan_id` mène au plan, où figurent toutes les autres.
+    plan_id = PlanRepo(conn).create(project_id=project_id, name=body.name.strip(), description=body.description,
+                                    refs=body.refs, created_by=access.utilisateur_de(request))
+    premier = None
+    for jeu in jeux:
+        run_id = repo.create(project_id=project_id, name=f"{body.name.strip()} — {jeu['nom']}",
+                             description=body.description, refs=body.refs,
+                             selection_mode=body.selection_mode, mode=body.mode,
+                             case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli,
+                             dataset_id=jeu["id"])
+        PlanRepo(conn).assign_run(plan_id, run_id)
+        premier = premier or run_id
+    return _summary(repo.get(premier), len(repo.case_ids(premier)))
+
+
+JEUX_PAR_LANCEMENT_MAX = 50   # A28 : au-delà, un lancement par erreur créerait des dizaines d'exécutions
+
+
+def _jeux_demandes(conn, project_id: int, body: schemas.RunIn) -> list[dict]:
+    """Les jeux de données demandés, vérifiés : du projet, vivants, sans doublon, 50 au plus, et seulement pour une
+    campagne AUTOMATIQUE (une valeur se pose dans un test joué par la machine)."""
+    demandes = list(dict.fromkeys(body.dataset_ids))
+    if not demandes:
+        return []
+    if body.mode == MODE_MANUELLE:
+        raise HTTPException(status_code=422, detail="les jeux de données se jouent dans une exécution automatique")
+    if len(demandes) > JEUX_PAR_LANCEMENT_MAX:
+        raise HTTPException(status_code=422, detail=f"{JEUX_PAR_LANCEMENT_MAX} jeux de données au plus par lancement")
+    depot = TestDataRepo(conn)
+    jeux = []
+    for dataset_id in demandes:
+        jeu = depot.jeu(project_id, dataset_id)
+        if jeu is None:
+            raise HTTPException(status_code=422, detail=f"jeu de données {dataset_id} introuvable dans ce projet")
+        jeux.append(jeu)
+    return jeux
 
 
 @router.get("/api/projects/{project_id}/runs", response_model=list[schemas.RunSummary],
