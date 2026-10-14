@@ -840,6 +840,9 @@ class RunIn(BaseModel):
     # D33 (2026-10-10) : sans repli par le modèle de langage à l'exécution, second essai et réparation conservés. VRAI par
     # défaut (D25 : le repli est coupé par défaut en campagne) — à décocher explicitement pour l'autoriser.
     sans_repli: bool = True
+    # Lot PT-02b (A28) : les jeux de données à jouer. Vide : une seule exécution, avec le jeu « Par défaut » si le projet a
+    # des variables. Un jeu : une exécution qui le joue. Plusieurs : une exécution PAR jeu, regroupées dans un plan ; 50 au plus.
+    dataset_ids: list[int] = []
 
 
 class RunCaseResult(BaseModel):
@@ -944,6 +947,8 @@ class RunArchiveIn(BaseModel):
 
 class RunSummary(BaseModel):
     id: int
+    # Lot PT-02b : le jeu de données joué par cette campagne (`None` : « Par défaut » si le projet a des variables).
+    dataset_id: int | None = None
     project_id: int
     name: str
     status: str            # draft | running | completed
