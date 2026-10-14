@@ -318,6 +318,11 @@ class ProjectRepo:
             ("cas", "SELECT tc.id, tc.title AS titre, tc.deleted_at, tc.deleted_by"
                     " FROM test_case tc JOIN module m ON tc.module_id=m.id"
                     " WHERE m.project_id=? AND tc.deleted_at<>''"),
+            # Lot PT-02 (A31) : les données de test supprimées — restaurables comme le reste.
+            ("variable", "SELECT id, nom AS titre, deleted_at, deleted_by FROM test_variable"
+                         " WHERE project_id=? AND deleted_at<>''"),
+            ("jeu_de_donnees", "SELECT id, nom AS titre, deleted_at, deleted_by FROM test_dataset"
+                               " WHERE project_id=? AND deleted_at<>''"),
         ]
         out = []
         for type_, sql in requetes:
@@ -3431,6 +3436,235 @@ class ProjectGroupAccessRepo:
 
 LIBELLE_PRINCIPAL = "principal"
 _LIBELLE_MAX = 80
+
+
+class DonneeDeTestInvalide(ValueError):
+    """Une variable, un jeu de données ou une valeur refusés (limite atteinte, jeu par défaut intouchable…)."""
+
+
+NOM_DU_JEU_PAR_DEFAUT = "Par défaut"
+_VARIABLES_MAX, _JEUX_MAX, _NOM_DE_JEU_MAX = 200, 50, 60
+
+
+class TestDataRepo:
+    """Les DONNÉES DE TEST d'un projet (lot PT-02, migration 64) : variables × jeux de données.
+
+    Les noms et les valeurs arrivent DÉJÀ validés par l'appelant (`parametres/resolution.py` : ce qu'un test peut écrire et
+    recevoir sans être cassé) ; ce dépôt garde ce qui relève de la base — unicité parmi les vivants, appartenance au projet,
+    jeu « Par défaut » créé avec la première variable et jamais supprimé ni renommé. Une variable ne change pas de nom : les
+    tests la désignent par ce nom, la renommer les bloquerait tous sans que rien ne le montre.
+    """
+
+    __test__ = False   # pas une classe de test, malgré son nom (pytest)
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    # ── lecture ──
+    def variables(self, project_id: int) -> list[dict]:
+        return _rows(self.conn.execute(
+            "SELECT id, nom, description FROM test_variable WHERE project_id=? AND deleted_at='' ORDER BY rang, id", (project_id,)))
+
+    def jeux(self, project_id: int) -> list[dict]:
+        lignes = _rows(self.conn.execute(
+            "SELECT id, nom, est_defaut FROM test_dataset WHERE project_id=? AND deleted_at=''"
+            " ORDER BY est_defaut DESC, rang, id", (project_id,)))
+        return [l | {"est_defaut": bool(l["est_defaut"])} for l in lignes]
+
+    def jeu(self, project_id: int, dataset_id: int) -> dict | None:
+        return next((j for j in self.jeux(project_id) if j["id"] == dataset_id), None)
+
+    def tableau(self, project_id: int) -> dict:
+        """Tout le tableau : variables, jeux (le jeu par défaut en tête) et valeurs `{jeu_id: {variable_id: valeur}}` — les
+        cases vides n'y figurent pas."""
+        variables, jeux = self.variables(project_id), self.jeux(project_id)
+        valeurs: dict[int, dict[int, str]] = {j["id"]: {} for j in jeux}
+        vivantes = {v["id"] for v in variables}
+        if jeux:
+            marques = ",".join("?" * len(jeux))
+            for l in self.conn.execute(
+                    f"SELECT dataset_id, variable_id, valeur FROM test_dataset_value WHERE dataset_id IN ({marques})",
+                    [j["id"] for j in jeux]):
+                if l["variable_id"] in vivantes and l["valeur"] != "":
+                    valeurs[l["dataset_id"]][l["variable_id"]] = l["valeur"]
+        return {"variables": variables, "jeux": jeux, "valeurs": valeurs}
+
+    def niveaux(self, project_id: int, dataset_id: int | None = None) -> tuple[list[str], list[tuple[str, dict[str, str]]]]:
+        """(noms des variables vivantes, niveaux du plus général au plus précis) pour `resolution.resoudre` : le jeu par
+        défaut, puis le jeu choisi s'il en est un autre. Un jeu inconnu, d'un autre projet ou à la corbeille lève."""
+        t = self.tableau(project_id)
+        noms = {v["id"]: v["nom"] for v in t["variables"]}
+        niveaux = []
+        for j in t["jeux"]:
+            if j["est_defaut"] or j["id"] == dataset_id:
+                niveaux.append((j["nom"], {noms[vid]: valeur for vid, valeur in t["valeurs"][j["id"]].items()}))
+        if dataset_id is not None and not any(j["id"] == dataset_id for j in t["jeux"]):
+            raise DonneeDeTestInvalide("ce jeu de données n'existe plus dans ce projet")
+        return list(noms.values()), niveaux
+
+    def usages(self, project_id: int, nom: str) -> list[dict]:
+        """Les tests VIVANTS du projet dont la version courante écrit `{{nom}}` — montrés avant une suppression (A31)."""
+        from testpilot.parametres import resolution
+
+        lignes = self.conn.execute(
+            "SELECT tc.id, tc.title, v.feature_content FROM test_case tc JOIN module m ON tc.module_id = m.id"
+            " JOIN test_case_version v ON v.id = tc.current_version_id"
+            # Le motif passe en PARAMÈTRE : écrit dans la requête, son « % » est pris pour un marqueur par psycopg
+            # (revue du 2026-10-14 : 500 sur PostgreSQL, la confirmation de suppression ne s'ouvrait plus).
+            " WHERE m.project_id=? AND tc.deleted_at='' AND m.deleted_at='' AND v.feature_content LIKE ?"
+            " ORDER BY tc.id", (project_id, "%{{%"))
+        return [{"id": l["id"], "title": l["title"]} for l in lignes if nom in resolution.references(l["feature_content"])]
+
+    # ── écriture ──
+    def _jeu_par_defaut(self, project_id: int) -> int:
+        ligne = self.conn.execute("SELECT id FROM test_dataset WHERE project_id=? AND est_defaut=1 AND deleted_at=''",
+                                  (project_id,)).fetchone()
+        if ligne:
+            return ligne["id"]
+        cur = self.conn.execute("INSERT INTO test_dataset (project_id, nom, est_defaut, rang, created_at) VALUES (?,?,1,0,?)",
+                                (project_id, NOM_DU_JEU_PAR_DEFAUT, now_iso()))
+        return int(cur.lastrowid)
+
+    def _rang_suivant(self, table: str, project_id: int) -> int:
+        return int(self.conn.execute(f"SELECT COALESCE(MAX(rang), 0) + 1 FROM {table} WHERE project_id=?", (project_id,)).fetchone()[0])
+
+    def creer_variable(self, project_id: int, *, nom: str, description: str = "") -> int:
+        if any(v["nom"] == nom for v in self.variables(project_id)):
+            raise DuplicateName(f"une variable « {nom} » existe déjà dans ce projet")
+        if len(self.variables(project_id)) >= _VARIABLES_MAX:
+            raise DonneeDeTestInvalide(f"{_VARIABLES_MAX} variables au plus par projet")
+        self._jeu_par_defaut(project_id)
+        cur = self.conn.execute("INSERT INTO test_variable (project_id, nom, description, rang, created_at) VALUES (?,?,?,?,?)",
+                                (project_id, nom, " ".join((description or "").split())[:200],
+                                 self._rang_suivant("test_variable", project_id), now_iso()))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def decrire_variable(self, project_id: int, variable_id: int, description: str) -> bool:
+        cur = self.conn.execute("UPDATE test_variable SET description=? WHERE project_id=? AND id=? AND deleted_at=''",
+                                (" ".join((description or "").split())[:200], project_id, variable_id))
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def _nom_de_jeu(self, project_id: int, nom: str, *, excluding: int | None = None) -> str:
+        propre = " ".join((nom or "").split())
+        if not propre:
+            raise DonneeDeTestInvalide("le nom du jeu de données est requis")
+        if len(propre) > _NOM_DE_JEU_MAX:
+            raise DonneeDeTestInvalide(f"le nom d'un jeu de données ne dépasse pas {_NOM_DE_JEU_MAX} caractères")
+        for j in self.jeux(project_id):
+            if j["id"] != excluding and _key(j["nom"]) == _key(propre):
+                raise DuplicateName(f"un jeu de données « {j['nom']} » existe déjà dans ce projet")
+        return propre
+
+    def creer_jeu(self, project_id: int, *, nom: str) -> int:
+        self._jeu_par_defaut(project_id)
+        propre = self._nom_de_jeu(project_id, nom)
+        if len(self.jeux(project_id)) >= _JEUX_MAX:
+            raise DonneeDeTestInvalide(f"{_JEUX_MAX} jeux de données au plus par projet")
+        cur = self.conn.execute("INSERT INTO test_dataset (project_id, nom, est_defaut, rang, created_at) VALUES (?,?,0,?,?)",
+                                (project_id, propre, self._rang_suivant("test_dataset", project_id), now_iso()))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def renommer_jeu(self, project_id: int, dataset_id: int, nom: str) -> bool:
+        jeu = self.jeu(project_id, dataset_id)
+        if jeu is None:
+            return False
+        if jeu["est_defaut"]:
+            raise DonneeDeTestInvalide(f"le jeu « {NOM_DU_JEU_PAR_DEFAUT} » ne se renomme pas")
+        self.conn.execute("UPDATE test_dataset SET nom=? WHERE id=?", (self._nom_de_jeu(project_id, nom, excluding=dataset_id), dataset_id))
+        self.conn.commit()
+        return True
+
+    def poser_valeurs(self, project_id: int, dataset_id: int, valeurs: dict[int, str]) -> bool:
+        """Écrit les cases FOURNIES du jeu (les autres ne bougent pas) ; une valeur vide vide la case (elle reprend alors le
+        jeu par défaut). Une variable d'un autre projet, ou à la corbeille, est refusée — rien n'est écrit à moitié."""
+        from testpilot.parametres import resolution
+
+        if self.jeu(project_id, dataset_id) is None:
+            return False
+        try:   # revalidées ici aussi : un appelant qui écrirait par le dépôt ne contourne pas les règles du remplacement
+            valeurs = {variable_id: resolution.valider_valeur(valeur) for variable_id, valeur in valeurs.items()}
+        except resolution.ValeurInvalide as exc:
+            raise DonneeDeTestInvalide(str(exc)) from exc
+        vivantes = {v["id"] for v in self.variables(project_id)}
+        etrangeres = sorted(set(valeurs) - vivantes)
+        if etrangeres:
+            raise DonneeDeTestInvalide(f"variable inconnue dans ce projet : {etrangeres[0]}")
+        for variable_id, valeur in valeurs.items():
+            self.conn.execute("DELETE FROM test_dataset_value WHERE dataset_id=? AND variable_id=?", (dataset_id, variable_id))
+            if valeur != "":
+                self.conn.execute("INSERT INTO test_dataset_value (dataset_id, variable_id, valeur) VALUES (?,?,?)",
+                                  (dataset_id, variable_id, valeur))
+        self.conn.commit()
+        return True
+
+    def supprimer_variable(self, project_id: int, variable_id: int, par: str = "") -> bool:
+        """À la CORBEILLE (A31) : les tests qui l'écrivent sortiront « bloqué » tant qu'elle n'est pas restaurée."""
+        cur = self.conn.execute("UPDATE test_variable SET deleted_at=?, deleted_by=? WHERE project_id=? AND id=? AND deleted_at=''",
+                                (now_iso(), par, project_id, variable_id))
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def supprimer_jeu(self, project_id: int, dataset_id: int, par: str = "") -> bool:
+        jeu = self.jeu(project_id, dataset_id)
+        if jeu is None:
+            return False
+        if jeu["est_defaut"]:
+            raise DonneeDeTestInvalide(f"le jeu « {NOM_DU_JEU_PAR_DEFAUT} » ne se supprime pas")
+        self.conn.execute("UPDATE test_dataset SET deleted_at=?, deleted_by=? WHERE id=?", (now_iso(), par, dataset_id))
+        self.conn.commit()
+        return True
+
+
+class _CorbeilleDeDonneesDeTest:
+    """Le contrat de la corbeille (`routes/corbeille.py`) pour une table de données de test : `restaurer` et `purger`."""
+
+    __test__ = False
+    table = ""
+    libelle = ""
+    plafond = 0
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def restaurer(self, element_id: int) -> None:
+        """Mêmes règles qu'à la création (revue du 2026-10-14) : pas d'homonyme vivant, casse comprise, ni de plafond dépassé."""
+        ligne = self.conn.execute(f"SELECT project_id, nom FROM {self.table} WHERE id=?", (element_id,)).fetchone()
+        if ligne is None:
+            return
+        vivants = [dict(l) for l in self.conn.execute(f"SELECT id, nom FROM {self.table} WHERE project_id=? AND deleted_at=''",
+                                                      (ligne["project_id"],))]
+        if any(_key(v["nom"]) == _key(ligne["nom"]) and v["id"] != element_id for v in vivants):
+            raise ValueError(f"{self.libelle} du même nom existe déjà : renommez ou supprimez-la d'abord")
+        if len(vivants) >= self.plafond:
+            raise ValueError(f"{self.plafond} au plus par projet : supprimez-en d'abord")
+        try:
+            self.conn.execute(f"UPDATE {self.table} SET deleted_at='', deleted_by='' WHERE id=?", (element_id,))
+            self.conn.commit()
+        except INTEGRITY_ERRORS as exc:   # l'index d'unicité des vivants, si un homonyme est créé au même instant
+            self.conn.rollback()
+            raise ValueError(f"{self.libelle} du même nom existe déjà : renommez ou supprimez-la d'abord") from exc
+
+    def purger(self, element_id: int) -> None:
+        ligne = self.conn.execute(f"SELECT deleted_at FROM {self.table} WHERE id=?", (element_id,)).fetchone()
+        if ligne is None:
+            return
+        if not ligne["deleted_at"]:
+            raise ValueError("cet élément n'est pas à la corbeille : supprimez-le d'abord")
+        self.conn.execute(f"DELETE FROM {self.table} WHERE id=?", (element_id,))   # ses valeurs partent en cascade
+        self.conn.commit()
+
+
+class TestVariableRepo(_CorbeilleDeDonneesDeTest):
+    __test__ = False
+    table, libelle, plafond = "test_variable", "une variable", _VARIABLES_MAX
+
+
+class TestDatasetRepo(_CorbeilleDeDonneesDeTest):
+    __test__ = False
+    table, libelle, plafond = "test_dataset", "un jeu de données", _JEUX_MAX
 
 
 class UniteInvalide(ValueError):
