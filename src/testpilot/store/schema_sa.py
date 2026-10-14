@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 65
+ALIGNED_WITH_SCHEMA_VERSION = 66
 
 metadata = MetaData()
 
@@ -588,6 +588,9 @@ scheduled_run = Table(
     Column("created_at", Text, nullable=False),
     Column("last_run_id", Integer, nullable=True),
     Column("last_triggered_at", Text, nullable=True),
+    # Migration 66 (lot PT-02b, A28) : les jeux de données à jouer à chaque déclenchement (liste JSON d'ids) ; vide = comme
+    # avant (le jeu « Par défaut » si le projet a des variables).
+    Column("dataset_ids", Text, nullable=False, server_default=""),
     CheckConstraint("selection_mode IN ('all', 'frozen')",
                      name="ck_scheduled_run_selection_mode"),
     CheckConstraint("frequency IN ('daily', 'weekly')", name="ck_scheduled_run_frequency"),

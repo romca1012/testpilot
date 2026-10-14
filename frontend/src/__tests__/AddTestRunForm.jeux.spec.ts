@@ -135,6 +135,18 @@ describe('AddTestRunForm — jeux de données (PT-02b)', () => {
     expect(JSON.parse(w.get('[data-testid="lien-donnees"]').attributes('data-vers')!)).toEqual({ name: 'project-test-data', params: { pid: '1' } })
   })
 
+  it('passer en manuel puis revenir en automatique garde les jeux cochés', async () => {
+    const w = await formulaire()
+    await w.get('[data-testid="jeu-11"]').setValue(true)
+    const radio = (v: string) => w.findAll('input[type="radio"]').find((r: any) => (r.element as HTMLInputElement).value === v)!
+    await radio('manuelle').setValue(true)
+    await radio('automatique').setValue(true)
+
+    expect((w.get('[data-testid="jeu-11"]').element as HTMLInputElement).checked).toBe(true)
+    await envoyer(w)
+    expect(createRun.mock.calls[0][1]).toMatchObject({ dataset_ids: [10, 11] })
+  })
+
   it('une campagne manuelle ne montre ni n’envoie aucun jeu', async () => {
     const w = await formulaire()
     const manuelle = w.findAll('input[type="radio"]').find((r: any) => (r.element as HTMLInputElement).value === 'manuelle')!
