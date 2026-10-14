@@ -8,8 +8,8 @@
 // - Ajouter et modifier : testeurs et plus (`peutModifier`). Supprimer — une mise à la corbeille, restaurable — :
 //   l'administrateur du projet (`peutSupprimer`). Avant de supprimer une variable, l'écran montre les tests qui l'utilisent.
 // - Le serveur valide chaque nom et chaque valeur avec les règles du remplacement ; son refus est montré tel quel.
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { api, type DonneesDeTest, type JeuDeDonnees, type ProjectSummary, type VariableDeTest } from '../../lib/api'
+import { computed, onMounted, reactive, ref, shallowRef, watch } from 'vue'
+import { api, type DonneesDeTest, type ImportDonnees, type JeuDeDonnees, type ProjectSummary, type VariableDeTest } from '../../lib/api'
 import Button from '../ui/Button.vue'
 import Modal from '../ui/Modal.vue'
 import ConfirmDialog from '../ConfirmDialog.vue'
@@ -168,6 +168,40 @@ async function supprimer() {
     suppression.value = false
   }
 }
+
+// ── Excel (A37) : « Exporter » donne le tableau (et le modèle) ; « Importer » COMPLÈTE le tableau, après un aperçu ─────────
+const fichierImport = ref<HTMLInputElement | null>(null)
+// `shallowRef` : un `File` ne se rend pas réactif en profondeur.
+const aImporter = shallowRef<{ fichier: File; apercu: ImportDonnees } | null>(null)
+const importEnCours = ref(false)
+const rienAChanger = computed(() => !!aImporter.value && !aImporter.value.apercu.nouvelles_variables.length
+  && !aImporter.value.apercu.nouveaux_jeux.length && !aImporter.value.apercu.cases.length)
+async function fichierChoisi(e: Event) {
+  const input = e.target as HTMLInputElement
+  const fichier = input.files?.[0]
+  input.value = ''   // le même fichier, choisi de nouveau, doit relancer l'aperçu
+  if (!fichier) return
+  erreur.value = ''
+  try {
+    aImporter.value = { fichier, apercu: await api.previewTestDataImport(props.projet.id, fichier) }
+  } catch (err: any) {
+    erreur.value = err?.message || 'Fichier illisible.'
+  }
+}
+async function importer() {
+  const demande = aImporter.value
+  if (!demande || demande.apercu.erreurs.length) return
+  importEnCours.value = true
+  try {
+    reprendre(await api.importTestData(props.projet.id, demande.fichier))
+    aImporter.value = null
+    enregistreA.value = true
+  } catch (err: any) {
+    aImporter.value = { fichier: demande.fichier, apercu: { ...demande.apercu, erreurs: [err?.message || 'Import impossible.'] } }
+  } finally {
+    importEnCours.value = false
+  }
+}
 </script>
 
 <template>
@@ -219,6 +253,12 @@ async function supprimer() {
         <Button type="submit" variant="secondary" class="whitespace-nowrap" data-testid="variable-ajouter" :loading="ajoutVariable" :disabled="!nouvelleVariable.trim() || modifie">Ajouter une variable</Button>
       </form>
       <Button v-if="peutModifier && tableau.variables.length" type="button" variant="secondary" data-testid="jeu-ajouter" :disabled="modifie" @click="ouvrirJeu()">Ajouter un jeu</Button>
+      <a :href="api.exportTestDataUrl(projet.id)" download class="text-sm text-primary hover:underline" data-testid="donnees-exporter">Exporter</a>
+      <template v-if="peutModifier">
+        <input ref="fichierImport" type="file" accept=".xlsx" class="sr-only" data-testid="donnees-fichier" @change="fichierChoisi" />
+        <button type="button" class="text-sm text-primary hover:underline disabled:opacity-50" data-testid="donnees-importer"
+                :disabled="modifie" @click="fichierImport?.click()">Importer</button>
+      </template>
       <span v-if="enregistreA && !modifie" role="status" class="ml-auto text-sm text-success" data-testid="enregistre">Enregistré</span>
       <span v-else class="ml-auto" />
       <Button v-if="peutModifier" type="button" variant="secondary" :disabled="!modifie || enregistrement" @click="reprendre(tableau)">Annuler</Button>
@@ -235,6 +275,39 @@ async function supprimer() {
       <template #footer>
         <Button type="button" variant="secondary" @click="jeuEnCours = null">Annuler</Button>
         <Button type="submit" form="form-jeu" variant="primary" data-testid="jeu-enregistrer" :loading="enregistrementJeu" :disabled="!nomDuJeu.trim()">Enregistrer</Button>
+      </template>
+    </Modal>
+
+    <!-- A37 : ce que l'import ajoute et change, AVANT d'enregistrer ; une erreur dans le fichier, et rien n'est importé. -->
+    <Modal :open="aImporter !== null" title="Importer" :subtitle="aImporter?.fichier.name" @close="aImporter = null">
+      <div v-if="aImporter" class="space-y-3 text-sm" data-testid="import-apercu">
+        <ul v-if="aImporter.apercu.erreurs.length" class="space-y-1 text-destructive" role="alert" data-testid="import-erreurs">
+          <li v-for="e in aImporter.apercu.erreurs" :key="e">{{ e }}</li>
+        </ul>
+        <template v-else>
+          <p v-if="rienAChanger" class="text-muted-foreground">Aucun changement</p>
+          <p v-if="aImporter.apercu.nouvelles_variables.length">
+            <span class="text-muted-foreground">Variables ajoutées :</span>
+            <span class="font-mono"> {{ aImporter.apercu.nouvelles_variables.map(ecrite).join(', ') }}</span>
+          </p>
+          <p v-if="aImporter.apercu.nouveaux_jeux.length">
+            <span class="text-muted-foreground">Jeux ajoutés :</span> {{ aImporter.apercu.nouveaux_jeux.join(', ') }}
+          </p>
+          <table v-if="aImporter.apercu.cases.length" class="w-full text-xs" data-testid="import-cases">
+            <tbody>
+              <tr v-for="c in aImporter.apercu.cases" :key="`${c.variable}|${c.jeu}`" class="border-b border-border last:border-0">
+                <th scope="row" class="py-1.5 pr-3 text-left font-mono font-normal">{{ ecrite(c.variable) }}</th>
+                <td class="py-1.5 pr-3 text-muted-foreground">{{ c.jeu }}</td>
+                <td class="py-1.5 break-all"><span v-if="c.avant" class="text-muted-foreground line-through">{{ c.avant }}</span> {{ c.apres }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+      </div>
+      <template #footer>
+        <Button type="button" variant="secondary" @click="aImporter = null">Annuler</Button>
+        <Button type="button" variant="primary" data-testid="import-confirmer" :loading="importEnCours"
+                :disabled="!!aImporter?.apercu.erreurs.length || rienAChanger" @click="importer">Importer</Button>
       </template>
     </Modal>
 

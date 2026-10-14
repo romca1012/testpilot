@@ -22,6 +22,8 @@ const createTestDataset = vi.fn()
 const renameTestDataset = vi.fn()
 const setDatasetValues = vi.fn()
 const deleteTestDataset = vi.fn()
+const previewTestDataImport = vi.fn()
+const importTestData = vi.fn()
 const replace = vi.fn()
 const push = vi.fn()
 const session = ref<any>({ authenticated: true, role: 'testeur' })
@@ -40,6 +42,9 @@ vi.mock('../lib/api', () => ({
     renameTestDataset: (...a: any[]) => renameTestDataset(...a),
     setDatasetValues: (...a: any[]) => setDatasetValues(...a),
     deleteTestDataset: (...a: any[]) => deleteTestDataset(...a),
+    exportTestDataUrl: (id: any) => `/api/projects/${id}/donnees-de-test/export`,
+    previewTestDataImport: (...a: any[]) => previewTestDataImport(...a),
+    importTestData: (...a: any[]) => importTestData(...a),
   },
   roleSuffisant: (role: string, minimum: string) =>
     ['lecture_seule', 'testeur', 'dev', 'admin'].indexOf(role) >= ['lecture_seule', 'testeur', 'dev', 'admin'].indexOf(minimum),
@@ -287,5 +292,59 @@ describe('Page « Données de test » du projet (A32)', () => {
     await w.get('[data-testid="confirmer"]').trigger('click')
 
     expect(push).toHaveBeenCalledWith('/projects/4/cases')
+  })
+})
+
+
+describe('Données de test — Excel (A37)', () => {
+  const fichier = new File(['x'], 'donnees.xlsx')
+  async function choisir(w: any) {
+    const input = w.get('[data-testid="donnees-fichier"]')
+    Object.defineProperty(input.element, 'files', { value: [fichier], configurable: true })
+    await input.trigger('change')
+    await flushPromises()
+  }
+
+  it('« Exporter » mène au fichier du tableau', async () => {
+    const w = await ouvrir()
+
+    expect(w.get('[data-testid="donnees-exporter"]').attributes('href')).toBe('/api/projects/4/donnees-de-test/export')
+  })
+
+  it('falsifiable : l’aperçu montre ce qui change, puis « Importer » enregistre', async () => {
+    previewTestDataImport.mockResolvedValue({ nouvelles_variables: ['quantite'], nouveaux_jeux: ['Export'], erreurs: [],
+      cases: [{ variable: 'client', jeu: 'Par défaut', avant: 'Martin SARL', apres: 'Durand' }] })
+    importTestData.mockImplementation(() => Promise.resolve(TABLEAU()))
+    const w = await ouvrir()
+    await choisir(w)
+
+    const apercu = w.get('[data-testid="import-apercu"]').text()
+    expect(apercu).toContain('{{quantite}}')
+    expect(apercu).toContain('Export')
+    expect(w.get('[data-testid="import-cases"] tr').findAll('th, td').map((c: any) => c.text().trim()))
+      .toEqual(['{{client}}', 'Par défaut', 'Martin SARL Durand'])
+    expect(importTestData).not.toHaveBeenCalled()
+
+    await w.get('[data-testid="import-confirmer"]').trigger('click')
+    await flushPromises()
+    expect(importTestData).toHaveBeenCalledWith(4, fichier)
+    expect(w.find('[data-testid="import-apercu"]').exists()).toBe(false)
+  })
+
+  it('falsifiable : une erreur dans le fichier, on ne peut pas importer', async () => {
+    previewTestDataImport.mockResolvedValue({ nouvelles_variables: [], nouveaux_jeux: [], cases: [],
+      erreurs: ['case B2 : une valeur ne contient pas « {{ »'] })
+    const w = await ouvrir()
+    await choisir(w)
+
+    expect(w.get('[data-testid="import-erreurs"]').text()).toContain('case B2')
+    expect(w.get('[data-testid="import-confirmer"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('un lecteur ne voit pas « Importer »', async () => {
+    const w = await ouvrir(false, false)
+
+    expect(w.find('[data-testid="donnees-importer"]').exists()).toBe(false)
+    expect(w.find('[data-testid="donnees-exporter"]').exists()).toBe(true)
   })
 })

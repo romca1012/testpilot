@@ -288,6 +288,10 @@ def test_falsifiable_un_lecteur_consulte_sans_rien_modifier(client, equipe):
     assert client.post(_url(pid, "/jeux"), json={"nom": "X"}).status_code == 403
     assert client.put(_url(pid, f"/jeux/{export}/valeurs"), json={"valeurs": {str(ville): "x"}}).status_code == 403
     assert client.patch(_url(pid, f"/variables/{ville}"), json={"description": "x"}).status_code == 403
+    fichier = {"file": ("d.xlsx", b"x", "application/octet-stream")}
+    assert client.post(_url(pid, "/import/apercu"), files=fichier).status_code == 403
+    assert client.post(_url(pid, "/import"), files=fichier).status_code == 403
+    assert client.get(_url(pid, "/export")).status_code == 200
 
 
 def test_l_administrateur_du_projet_supprime(client, equipe):
