@@ -293,7 +293,8 @@ Règle du dépôt (CLAUDE.md §5.3) : un lot qui dépend d'une décision non val
 | PT-00 | terminé en local (plan, interrupteur, mesures de référence) ; fiches d'écran faites pour PT-01 seulement | 2026-10-13 | — | |
 | PT-01a | terminé en local : écrit, relu, vérifié à l'écran ; suite du serveur identique à la référence (4 207 réussis, les 5 échecs connus) | 2026-10-13 | — | |
 | PT-01b | terminé en local : écrit, relu (aucun bloquant, sept points corrigés), vérifié à l'écran ; règle A21 ajoutée ; suite du serveur de clôture : 4 219 réussis, les 5 échecs connus du poste | 2026-10-13 | — | |
-| PT-02a à PT-02d | à faire | | | |
+| PT-02a à PT-02c | fait en local, relu, suites vertes : tableau (corbeille, droits, import et export Excel A37), lancement avec un ou plusieurs jeux (A28, A35), planifications (A36), valeurs figées au lancement et affichées dans le rapport, fiche d'un test (aperçu par jeu, bouton Variable). Vérification à l'écran de la fiche et de l'import : à faire | 2026-10-14 | — | |
+| PT-02d | à faire : l'agent reçoit le nom des variables (interrupteur éteint) ; mesure sur le banc groupée avec celle de PT-03, budget à annoncer avant | | | |
 | PT-03 | terminé en local, interrupteur ÉTEINT : comparaison avec unité, règle A24, monnaie, écriture des nombres, unités ajoutées (A25), relus et vérifiés à l'écran ; mesure sans IA : 8 jeux sur 8 ; la mesure avec l'IA est reportée dans la campagne de PT-02d, qui décidera de l'allumer | 2026-10-13 | — | `docs/mesures/banc-agents-2026-10-13-pt03-step-nombre-sans-ia-methode.md` |
 | PT-04a à PT-04d | à faire | | | |
 | PT-05 | à faire | | | |
