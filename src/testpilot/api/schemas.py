@@ -949,6 +949,8 @@ class RunSummary(BaseModel):
     id: int
     # Lot PT-02b : le jeu de données joué par cette campagne (`None` : « Par défaut » si le projet a des variables).
     dataset_id: int | None = None
+    # Le jeu de données FIGÉ au lancement (nom) — vide tant que la campagne n'a pas été lancée, ou sans donnée de test.
+    jeu_de_donnees: str = ""
     project_id: int
     name: str
     status: str            # draft | running | completed
