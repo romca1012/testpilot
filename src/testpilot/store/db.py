@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 65
+_SCHEMA_VERSION = 66
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -272,6 +272,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_64_donnees_de_test(conn)
     if version < 65:
         _migrate_65_seulement_variables(conn)
+    if version < 66:
+        _migrate_66_planification_jeux(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -488,6 +490,14 @@ def _migrate_65_seulement_variables(conn: sqlite3.Connection) -> None:
     if _table_existe(conn, "test_run") and "seulement_variables" not in _column_names(conn, "test_run"):
         conn.execute("ALTER TABLE test_run ADD COLUMN seulement_variables INTEGER NOT NULL DEFAULT 0"
                      " CHECK (seulement_variables IN (0, 1))")
+
+
+def _migrate_66_planification_jeux(conn: sqlite3.Connection) -> None:
+    """Lot PT-02b (A28) : `scheduled_run.dataset_ids` — les jeux de données à jouer à chaque déclenchement (liste JSON
+    d'ids, comme `project.oracle_queries`). Vide par défaut : une planification existante joue comme avant (le jeu
+    « Par défaut » si le projet a des variables). Idempotente."""
+    if _table_existe(conn, "scheduled_run") and "dataset_ids" not in _column_names(conn, "scheduled_run"):
+        conn.execute("ALTER TABLE scheduled_run ADD COLUMN dataset_ids TEXT NOT NULL DEFAULT ''")
 
 
 def _table_existe(conn: sqlite3.Connection, nom: str) -> bool:

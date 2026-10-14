@@ -304,6 +304,7 @@ export function useCreerSchedule(pid: Id) {
     mutationFn: (v: {
       name: string; selection_mode: 'all' | 'frozen'; case_ids?: number[]
       frequency: 'daily' | 'weekly'; hour: number; minute: number; weekday?: number | null
+      dataset_ids?: number[]
     }) => api.createSchedule(sur(pid), v),
     onSuccess: () => { qc.invalidateQueries({ queryKey: cles.schedules(pid) }) },
   })

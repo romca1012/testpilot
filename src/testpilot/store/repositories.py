@@ -2092,6 +2092,22 @@ class RunRepo:
             " AND (m.id IS NULL OR m.deleted_at='')"
             " AND (p.id IS NULL OR p.deleted_at='')" + filtre + " ORDER BY trc.case_id", (run_id, *params_filtre))]
 
+    def supprimer_brouillon(self, run_id: int) -> bool:
+        """Retire une exécution JAMAIS lancée et sans aucun résultat (lot PT-02b : une planification qui n'a rien pu lancer
+        ne laisse pas de brouillon derrière elle). Toute autre exécution est gardée : rend False."""
+        intacte = self.conn.execute(
+            "SELECT 1 FROM test_run WHERE id=? AND status='draft' AND launched_at IS NULL"
+            " AND NOT EXISTS (SELECT 1 FROM test_result WHERE run_id=?)"
+            " AND NOT EXISTS (SELECT 1 FROM execution WHERE run_id=?)"
+            " AND NOT EXISTS (SELECT 1 FROM run_case_assignment WHERE run_id=?)",
+            (run_id, run_id, run_id, run_id)).fetchone()
+        if intacte is None:
+            return False
+        self.conn.execute("DELETE FROM test_run_case WHERE run_id=?", (run_id,))
+        self.conn.execute("DELETE FROM test_run WHERE id=?", (run_id,))
+        self.conn.commit()
+        return True
+
     def cas_non_automatises(self, case_ids: list[int]) -> list[dict]:
         """Parmi `case_ids`, ceux qui n'ont PAS de test automatisé (`id`, `title`) — pour refuser, à la création, une
         sélection figée automatique qui en contient, en les nommant."""
@@ -2322,17 +2338,20 @@ class ScheduledRunRepo:
 
     def create(self, *, project_id: int, name: str, selection_mode: str = "frozen",
                frequency: str, hour: int, minute: int, weekday: int | None = None,
-               case_ids: list[int] | None = None, created_by: str = "") -> int:
+               case_ids: list[int] | None = None, created_by: str = "",
+               dataset_ids: list[int] | None = None) -> int:
+        """`dataset_ids` (lot PT-02b, A28) : les jeux de données joués à chaque déclenchement — vide : comme avant (le jeu
+        « Par défaut » si le projet a des variables). Vérifiés par l'appelant (`donnees_de_test_service.jeux_demandes`)."""
         if frequency not in ("daily", "weekly"):
             raise ValueError(f"fréquence inconnue : {frequency!r} — attendu 'daily' ou 'weekly'")
         if frequency == "weekly" and weekday is None:
             raise ValueError("une planification hebdomadaire doit préciser le jour (weekday)")
         cur = self.conn.execute(
             "INSERT INTO scheduled_run (project_id, name, selection_mode, frequency, hour,"
-            " minute, weekday, is_active, created_by, created_at)"
-            " VALUES (?,?,?,?,?,?,?,1,?,?)",
+            " minute, weekday, is_active, created_by, created_at, dataset_ids)"
+            " VALUES (?,?,?,?,?,?,?,1,?,?,?)",
             (project_id, name, selection_mode, frequency, hour, minute, weekday,
-             created_by, now_iso()))
+             created_by, now_iso(), json.dumps(list(dict.fromkeys(dataset_ids))) if dataset_ids else ""))
         scheduled_id = int(cur.lastrowid)
         if selection_mode == "frozen":
             for cid in dict.fromkeys(case_ids or []):

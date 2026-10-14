@@ -331,6 +331,7 @@ export const api = {
   createSchedule: (projectId: number | string, body: {
     name: string; selection_mode: 'all' | 'frozen'; case_ids?: number[]
     frequency: 'daily' | 'weekly'; hour: number; minute: number; weekday?: number | null
+    dataset_ids?: number[]
   }) => request<ScheduledRun>(`/api/projects/${projectId}/schedules`, {
     method: 'POST', body: JSON.stringify(body),
   }),
@@ -807,6 +808,8 @@ export interface ScheduledRun {
   weekday: number | null; is_active: boolean
   created_by: string; created_at: string
   last_run_id: number | null; last_triggered_at: string | null
+  /** Lot PT-02b (A28) : les jeux de données joués à chaque déclenchement — vide : comme avant. */
+  dataset_ids?: number[]
 }
 
 /** Un résultat de CE cas dans UNE campagne (la sienne ou une autre) — « où et quand », pas

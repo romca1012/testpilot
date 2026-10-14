@@ -17,9 +17,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from testpilot.api.services import campaign_service
+from testpilot.api.services import campaign_service, donnees_de_test_service
 from testpilot.guardrails import durable_jobs
-from testpilot.store.repositories import RunRepo, ScheduledRunRepo
+from testpilot.store.repositories import DonneeDeTestInvalide, PlanRepo, RunRepo, ScheduledRunRepo, TestDataRepo
 from testpilot.verdict.status import MODE_AUTOMATIQUE
 
 logger = logging.getLogger(__name__)
@@ -55,19 +55,67 @@ def _declencher(conn, repo: ScheduledRunRepo, planif: dict, maintenant: datetime
     l'écriture du test et son exécution, et la déduplication « pas deux fois le même jour »
     cessait de fonctionner silencieusement."""
     case_ids = repo.case_ids(planif["id"])
-    run_id = RunRepo(conn).create(
-        project_id=planif["project_id"],
-        name=f"{planif['name']} — {maintenant.date().isoformat()}",
+    nom = f"{planif['name']} — {maintenant.date().isoformat()}"
+    champs = dict(
         selection_mode=planif["selection_mode"],
         mode=MODE_AUTOMATIQUE,  # ⚠️ TOUJOURS — jamais une valeur lue de `planif`
         case_ids=case_ids if planif["selection_mode"] == "frozen" else None,
     )
     acteur = f"scheduler:{planif['name']}"
+    jeux = _jeux_du_declenchement(conn, planif)
+    if len(jeux) <= 1:
+        # Un jeu choisi (ou le seul encore vivant) : son nom figure sur l'exécution, comme dans un plan.
+        run_id = RunRepo(conn).create(project_id=planif["project_id"], name=f"{nom} — {jeux[0]['nom']}" if jeux else nom,
+                                      dataset_id=jeux[0]["id"] if jeux else None, **champs)
+        _lancer(conn, run_id, acteur)
+        repo.mark_triggered(planif["id"], run_id, at=maintenant.isoformat())
+        return run_id
+    # Plusieurs jeux (lot PT-02b, A28, A35) : une exécution par jeu, regroupées dans un plan — exactement comme à la main.
+    plan_id, premier, run_ids = donnees_de_test_service.creer_une_execution_par_jeu(
+        conn, project_id=planif["project_id"], nom=nom, jeux=jeux, created_by=acteur, **champs)
+    try:
+        _lancer(conn, premier, acteur)
+    except Exception:
+        # La première ne part pas (connexion, campagne vide…) : rien ne part. Les brouillons créés sont retirés, sinon
+        # chaque passage de l'horloge en laisserait un plan de plus ce jour-là.
+        for run_id in run_ids:
+            RunRepo(conn).supprimer_brouillon(run_id)
+        PlanRepo(conn).delete(plan_id)
+        raise
+    # La première est partie : la planification est déclenchée pour aujourd'hui, QUOI QU'IL ARRIVE aux suivantes — sinon
+    # une erreur sur l'une d'elles relancerait une nouvelle première à chaque passage de l'horloge (revue du 2026-10-14).
+    repo.mark_triggered(planif["id"], premier, at=maintenant.isoformat())
+    for run_id in run_ids[1:]:
+        try:
+            _lancer(conn, run_id, acteur)
+        except campaign_service.CampaignError as exc:
+            if exc.code == "empty":
+                # A35 : aucun test de la sélection n'écrit de variable — rien à jouer avec ce jeu, l'exécution est retirée.
+                RunRepo(conn).supprimer_brouillon(run_id)
+            else:   # le brouillon reste dans le plan : c'est le signal visible qu'un jeu n'a pas été joué
+                logger.warning("[scheduler] planification %s : exécution %s non lancée — %s", planif["id"], run_id, exc)
+        except Exception:
+            logger.exception("[scheduler] planification %s : exécution %s non lancée", planif["id"], run_id)
+    return premier
+
+
+def _lancer(conn, run_id: int, acteur: str) -> None:
     params = campaign_service.start_campaign(conn, run_id, triggered_by=acteur)
     durable_jobs.submit_immediat(conn, kind="campaign", kwargs=params,
                                  queue_label=f"campaign:{run_id}")
-    repo.mark_triggered(planif["id"], run_id, at=maintenant.isoformat())
-    return run_id
+
+
+def _jeux_du_declenchement(conn, planif: dict) -> list[dict]:
+    """Les jeux de la planification. Décision du porteur (2026-10-14, A36) : si UN SEUL de ses jeux est à la corbeille, la
+    planification ne joue RIEN — ni les autres jeux, ni « Par défaut » à sa place — tant qu'on ne l'a pas corrigée
+    (restaurer le jeu, ou recréer la planification). La liste des planifications le montre."""
+    ids = donnees_de_test_service.ids_des_jeux(planif.get("dataset_ids"), strict=True)
+    depot = TestDataRepo(conn)
+    jeux = [j for j in (depot.jeu(planif["project_id"], i) for i in ids) if j is not None]
+    if len(jeux) < len(ids):
+        raise DonneeDeTestInvalide(f"{len(ids) - len(jeux)} jeu(x) de données de cette planification à la corbeille : "
+                                   "rien n'est joué tant qu'elle n'est pas corrigée")
+    return jeux
 
 
 def tick(conn, *, now: datetime | None = None) -> list[int]:

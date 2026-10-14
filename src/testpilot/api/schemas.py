@@ -1010,6 +1010,9 @@ class ScheduledRunIn(BaseModel):
     hour: int
     minute: int
     weekday: int | None = None         # requis si frequency == "weekly" (0=lundi)
+    # Lot PT-02b (A28) : les jeux de données joués à chaque déclenchement ; plusieurs : une exécution par jeu, regroupées
+    # dans un plan. Vide : comme avant.
+    dataset_ids: list[int] = []
 
 
 class ScheduledRunOut(BaseModel):
@@ -1026,6 +1029,7 @@ class ScheduledRunOut(BaseModel):
     created_at: str = ""
     last_run_id: int | None = None
     last_triggered_at: str | None = None
+    dataset_ids: list[int] = []
 
 
 class ScheduledRunPatchIn(BaseModel):
