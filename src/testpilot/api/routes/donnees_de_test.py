@@ -71,6 +71,13 @@ def decrire_une_variable(project_id: int, variable_id: int, body: schemas.Variab
     return _tableau(depot, project_id)
 
 
+@router.get("/cas-avec-variables", response_model=list[int], dependencies=_MEMBRE)
+def tests_qui_ecrivent_des_variables(project_id: int, conn=Depends(get_conn)):
+    """Les tests du projet qui écrivent des variables — pour que l'écran de lancement annonce, avant de créer, combien
+    seront joués pour chaque jeu au-delà du premier (décision A35)."""
+    return _depot(conn, project_id).cas_qui_ecrivent_des_variables(project_id)
+
+
 @router.get("/variables/{variable_id}/usages", response_model=list[schemas.UsageDeVariable], dependencies=_MEMBRE)
 def tests_qui_utilisent_la_variable(project_id: int, variable_id: int, conn=Depends(get_conn)):
     """Les tests du projet qui écrivent cette variable — montrés AVANT de la supprimer (A31)."""

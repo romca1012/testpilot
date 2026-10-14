@@ -3,6 +3,7 @@
 Ce que ces tests gardent :
 1. sans jeu demandé, la création est celle d'avant (une exécution, aucun jeu posé) ;
 2. un jeu : une exécution qui le porte ; plusieurs : une exécution PAR jeu, nommées d'après lui, regroupées dans un plan ;
+   un test qui n'écrit aucune variable n'est joué qu'UNE fois, dans la première (« Par défaut » en tête) — décision A35 ;
 3. 50 jeux au plus, des jeux du projet et vivants seulement, et seulement pour une campagne automatique ;
 4. les valeurs ne sont figées qu'au LANCEMENT (A29) : l'exécution créée ne porte encore aucune valeur.
 """
@@ -14,7 +15,7 @@ from testpilot import config
 from testpilot.api import app as app_mod
 from testpilot.api.routes import runs as routes_runs
 from testpilot.store.db import get_initialized_db
-from testpilot.store.repositories import CaseRepo, ModuleRepo, RunRepo, VersionRepo
+from testpilot.store.repositories import CaseRepo, ExecutionRepo, ModuleRepo, RunRepo, VersionRepo
 
 
 @pytest.fixture
@@ -24,19 +25,30 @@ def client(tmp_path, monkeypatch):
     return TestClient(app_mod.app)
 
 
-def _projet_avec_jeux(client, *noms: str) -> tuple[int, int, dict[str, int]]:
-    pid = client.post("/api/projects", json={"name": "Boutique", "connector_type": "web", "base_url": "https://app.exemple.test",
-                                              "username": "u", "password": "p"}).json()["id"]
+SANS_VARIABLE = "Fonctionnalité: X\n  Scénario: Y\n    Alors ok\n"
+AVEC_VARIABLE = "Fonctionnalité: X\n  Scénario: Y\n    Alors le client {{client}} est servi\n"
+
+
+def _cas(pid: int, titre: str, feature: str) -> int:
+    """Un cas automatisé du projet, dont la version courante a ce texte."""
     conn = get_initialized_db(config.DB_PATH)
-    try:   # un cas automatisé, pour une sélection figée valable
-        cid = CaseRepo(conn).create(title="Commande", module_id=ModuleRepo(conn).create(project_id=pid, name="Ventes"),
-                                    feature_slug="commande")
-        vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="",
-                                       feature_content="Fonctionnalité: X\n  Scénario: Y\n    Alors ok\n", steps_content="")
+    try:
+        module = conn.execute("SELECT id FROM module WHERE project_id=? ORDER BY id", (pid,)).fetchone()
+        module_id = module["id"] if module else ModuleRepo(conn).create(project_id=pid, name="Ventes")
+        cid = CaseRepo(conn).create(title=titre, module_id=module_id, feature_slug=titre.lower().replace(" ", "_"))
+        vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="", feature_content=feature,
+                                       steps_content="")
         conn.execute("UPDATE test_case SET current_version_id=? WHERE id=?", (vid, cid))
         conn.commit()
+        return cid
     finally:
         conn.close()
+
+
+def _projet_avec_jeux(client, *noms: str, feature: str = AVEC_VARIABLE) -> tuple[int, int, dict[str, int]]:
+    pid = client.post("/api/projects", json={"name": "Boutique", "connector_type": "web", "base_url": "https://app.exemple.test",
+                                              "username": "u", "password": "p"}).json()["id"]
+    cid = _cas(pid, "Commande", feature)   # un cas automatisé, pour une sélection figée valable
     base = f"/api/projects/{pid}/donnees-de-test"
     client.post(f"{base}/variables", json={"nom": "client"})
     for nom in noms:
@@ -85,6 +97,151 @@ def test_falsifiable_plusieurs_jeux_une_execution_par_jeu_regroupees_dans_un_pla
     assert sorted(l["dataset_id"] for l in lignes) == sorted([jeux["Par défaut"], jeux["Grosse commande"]])
     assert {l["parametres_figes"] for l in lignes} == {""}, "rien n'est figé avant le lancement (A29)"
     assert all(l["status"] == "draft" for l in lignes), "créer ne lance rien"
+
+
+def _executions_du_plan(client, plan_id: int) -> dict[str, list[int]]:
+    """{nom de l'exécution: ses cas}."""
+    runs = client.get(f"/api/plans/{plan_id}").json()["runs"]
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        return {x["name"]: RunRepo(conn).case_ids(x["id"]) for x in runs}
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("selection", ["frozen", "all"])
+def test_falsifiable_un_test_sans_variable_n_est_joue_qu_une_fois(client, selection):
+    pid, avec, jeux = _projet_avec_jeux(client, "Grosse commande", "Export")
+    sans = _cas(pid, "Accueil", SANS_VARIABLE)
+    # « Par défaut » demandé en DERNIER : c'est quand même lui qui joue tout (il passe en tête).
+    plus = {"dataset_ids": [jeux["Grosse commande"], jeux["Export"], jeux["Par défaut"]], "selection_mode": selection}
+    if selection == "all":
+        plus["case_ids"] = []
+
+    r = _creer(client, pid, avec, **plus)
+
+    assert r.status_code == 201, r.text
+    assert r.json()["name"] == "Recette — Par défaut"
+    assert _executions_du_plan(client, r.json()["plan_id"]) == {
+        "Recette — Par défaut": sorted([avec, sans]) if selection == "all" else [avec],
+        "Recette — Grosse commande": [avec],
+        "Recette — Export": [avec],
+    }
+
+
+def test_falsifiable_le_test_sans_variable_reste_dans_la_premiere_seulement(client):
+    pid, avec, jeux = _projet_avec_jeux(client, "Grosse commande")
+    sans = _cas(pid, "Accueil", SANS_VARIABLE)
+
+    r = _creer(client, pid, avec, case_ids=[avec, sans], dataset_ids=[jeux["Par défaut"], jeux["Grosse commande"]])
+
+    assert _executions_du_plan(client, r.json()["plan_id"]) == {
+        "Recette — Par défaut": sorted([avec, sans]), "Recette — Grosse commande": [avec]}
+
+
+def _nouvelle_version(cid: int, feature: str) -> None:
+    """Le test est régénéré : sa version courante a désormais ce texte."""
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="", feature_content=feature,
+                                       steps_content="")
+        conn.execute("UPDATE test_case SET current_version_id=? WHERE id=?", (vid, cid))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("selection", ["frozen", "all"])
+def test_falsifiable_un_test_qui_gagne_une_variable_apres_la_creation_est_joue_avec_chaque_jeu(client, selection):
+    """Revue du 2026-10-14 : le tri A35 se fait au LANCEMENT. Figé à la création, l'exécution « Grosse commande » sortait
+    conforme sans avoir jamais joué ce test avec son jeu."""
+    pid, avec, jeux = _projet_avec_jeux(client, "Grosse commande")
+    sans = _cas(pid, "Accueil", SANS_VARIABLE)
+    r = _creer(client, pid, avec, case_ids=[] if selection == "all" else [avec, sans], selection_mode=selection,
+               dataset_ids=[jeux["Par défaut"], jeux["Grosse commande"]])
+
+    _nouvelle_version(sans, AVEC_VARIABLE)   # entre la création et le lancement
+
+    assert _executions_du_plan(client, r.json()["plan_id"])["Recette — Grosse commande"] == sorted([avec, sans])
+    selections = {x["name"]: x["selection_mode"] for x in client.get(f"/api/plans/{r.json()['plan_id']}").json()["runs"]}
+    assert set(selections.values()) == {selection}, "la sélection demandée (vivante ou figée) est gardée pour chaque jeu"
+
+
+def test_un_test_deja_joue_reste_dans_l_execution_meme_s_il_perd_ses_variables(client):
+    """L'historique n'est pas réécrit : un résultat déjà obtenu dans l'exécution d'un jeu y reste visible."""
+    pid, cid, jeux = _projet_avec_jeux(client, "Grosse commande")
+    r = _creer(client, pid, cid, dataset_ids=[jeux["Par défaut"], jeux["Grosse commande"]])
+    second = next(x["id"] for x in client.get(f"/api/plans/{r.json()['plan_id']}").json()["runs"]
+                  if x["name"] == "Recette — Grosse commande")
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        version = conn.execute("SELECT current_version_id FROM test_case WHERE id=?", (cid,)).fetchone()[0]
+        eid = ExecutionRepo(conn).create(test_case_id=cid, version_id=version)
+        conn.execute("INSERT INTO test_result (run_id, case_id, mode, execution_id, created_at)"
+                     " VALUES (?, ?, 'automatique', ?, '2026-10-14')", (second, cid, eid))
+        conn.commit()
+    finally:
+        conn.close()
+
+    _nouvelle_version(cid, SANS_VARIABLE)
+
+    assert _executions_du_plan(client, r.json()["plan_id"])["Recette — Grosse commande"] == [cid]
+
+
+def test_falsifiable_aucun_test_avec_variable_l_execution_du_jeu_refuse_de_se_lancer_en_le_disant(client):
+    from testpilot.api.services import campaign_service
+
+    pid, cid, jeux = _projet_avec_jeux(client, "Grosse commande", feature=SANS_VARIABLE)
+    r = _creer(client, pid, cid, dataset_ids=[jeux["Par défaut"], jeux["Grosse commande"]])
+
+    assert _executions_du_plan(client, r.json()["plan_id"]) == {"Recette — Par défaut": [cid], "Recette — Grosse commande": []}
+    second = next(x["id"] for x in client.get(f"/api/plans/{r.json()['plan_id']}").json()["runs"]
+                  if x["name"] == "Recette — Grosse commande")
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        with pytest.raises(campaign_service.CampaignError) as refus:
+            campaign_service.start_campaign(conn, second)
+    finally:
+        conn.close()
+    assert refus.value.code == "empty" and "n'utilise de donnée de test" in str(refus.value)
+
+
+def test_une_execution_de_jeu_vide_pour_une_autre_raison_garde_le_message_d_origine(client):
+    """Tous ses tests à la corbeille : dire « aucun test n'utilise de donnée de test » serait faux."""
+    from testpilot.api.services import campaign_service
+
+    pid, cid, jeux = _projet_avec_jeux(client, "Grosse commande")
+    r = _creer(client, pid, cid, dataset_ids=[jeux["Par défaut"], jeux["Grosse commande"]])
+    second = next(x["id"] for x in client.get(f"/api/plans/{r.json()['plan_id']}").json()["runs"]
+                  if x["name"] == "Recette — Grosse commande")
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        conn.execute("UPDATE test_case SET deleted_at='2026-10-14' WHERE id=?", (cid,))
+        conn.commit()
+        with pytest.raises(campaign_service.CampaignError) as refus:
+            campaign_service.start_campaign(conn, second)
+    finally:
+        conn.close()
+    assert refus.value.code == "empty" and "n'utilise de donnée de test" not in str(refus.value)
+
+
+def test_une_variable_mal_ecrite_compte_comme_une_variable(client):
+    """Un test qui écrit `{{client}` (mal écrit) sera bloqué avec un message : il doit être joué pour chaque jeu, pas
+    disparaître des jeux suivants comme un test sans variable."""
+    pid, cid, jeux = _projet_avec_jeux(client, "Grosse commande",
+                                       feature="Fonctionnalité: X\n  Scénario: Y\n    Alors {{client}\n")
+
+    r = _creer(client, pid, cid, dataset_ids=[jeux["Par défaut"], jeux["Grosse commande"]])
+
+    assert _executions_du_plan(client, r.json()["plan_id"]) == {
+        "Recette — Par défaut": [cid], "Recette — Grosse commande": [cid]}
+
+
+def test_la_liste_des_tests_avec_variables_pour_l_ecran(client):
+    pid, avec, _ = _projet_avec_jeux(client)
+    _cas(pid, "Accueil", SANS_VARIABLE)
+
+    assert client.get(f"/api/projects/{pid}/donnees-de-test/cas-avec-variables").json() == [avec]
 
 
 @pytest.mark.parametrize("cas", ["autre_projet", "corbeille", "manuelle", "trop"])

@@ -13,13 +13,18 @@ import { monter } from './_montage'
 
 const createRun = vi.fn()
 const getTestData = vi.fn()
+const casAvecVariables = vi.fn()
 const push = vi.fn()
 vi.mock('../lib/api', () => ({
   api: {
-    listCases: () => Promise.resolve({ items: [], next_cursor: null, total: 0 }),
+    // Trois tests automatisés, seuls 21 et 22 écrivent des variables (décision A35) ; 23 est saisi à la main : une
+    // exécution automatique ne le joue pas, il ne doit pas être compté.
+    listCases: () => Promise.resolve({ items: [{ id: 20, automatise: true }, { id: 21, automatise: true },
+      { id: 22, automatise: true }, { id: 23, automatise: false }], next_cursor: null, total: 4 }),
     listGroups: () => Promise.resolve([]),
     createRun: (...a: any[]) => createRun(...a),
     getTestData: (...a: any[]) => getTestData(...a),
+    casAvecVariables: (...a: any[]) => casAvecVariables(...a),
   },
 }))
 vi.mock('vue-router', () => ({
@@ -38,6 +43,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   createRun.mockResolvedValue({ id: 9, plan_id: null })
   getTestData.mockResolvedValue(TABLEAU)
+  casAvecVariables.mockResolvedValue([21, 22])
 })
 
 async function formulaire() {
@@ -77,10 +83,30 @@ describe('AddTestRunForm — jeux de données (PT-02b)', () => {
     const w = await formulaire()
     await w.get('[data-testid="jeu-11"]').setValue(true)
 
-    expect(w.get('[data-testid="nombre-executions"]').text()).toBe('2 exécutions, regroupées dans un plan')
+    expect(w.get('[data-testid="nombre-executions"]').text().replace(/\s+/g, ' '))
+      .toBe('2 exécutions : 3 tests dans la première, 2 avec variables dans les autres')
     await envoyer(w)
     expect(createRun.mock.calls[0][1]).toMatchObject({ dataset_ids: [10, 11] })
     expect(push).toHaveBeenCalledWith({ name: 'plan-detail', params: { pid: '1', id: '4' } })
+  })
+
+  it('falsifiable (A35) : aucun test choisi n’écrit de variable, l’écran le dit', async () => {
+    casAvecVariables.mockResolvedValue([])
+    const w = await formulaire()
+    await w.get('[data-testid="jeu-11"]').setValue(true)
+
+    expect(w.get('[data-testid="nombre-executions"]').text().replace(/\s+/g, ' '))
+      .toBe('2 exécutions : 3 tests dans la première, aucun test avec variables dans les autres')
+  })
+
+  it('falsifiable : la liste des tests avec variables illisible ne retire pas le choix des jeux', async () => {
+    casAvecVariables.mockRejectedValue(new Error('indisponible'))
+    const w = await formulaire()
+    await w.get('[data-testid="jeu-11"]').setValue(true)
+
+    expect(w.get('[data-testid="nombre-executions"]').text()).toBe('2 exécutions, regroupées dans un plan')
+    await envoyer(w)
+    expect(createRun.mock.calls[0][1]).toMatchObject({ dataset_ids: [10, 11] })
   })
 
   it('falsifiable : aucun jeu coché, on ne peut pas créer', async () => {
