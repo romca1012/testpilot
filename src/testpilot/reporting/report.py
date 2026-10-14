@@ -100,6 +100,9 @@ class TestReport:
     # au-dessus d'un `max_id` mais jamais enregistrés — jamais bloquant, affichés pour permettre
     # à l'humain de statuer (effet de bord du test, ou création d'un tiers indiscernable).
     residus: list[str] = field(default_factory=list)
+    # Lot PT-02c : les DONNÉES DE TEST réellement posées dans ce test (`{"jeu": …, "valeurs": {nom: {valeur, origine}}}`),
+    # lues sur l'exécution — jamais dans le tableau d'aujourd'hui, qui a pu changer depuis (A29). Vide sans donnée de test.
+    donnees_de_test: dict = field(default_factory=dict)
 
     @property
     def needs_human_confirmation(self) -> bool:
@@ -128,7 +131,8 @@ def build_report(verdict: CaseVerdict, *, module_name: str, title: str = "",
                  monthly_cost_usd: float | None = None,
                  generated_at: str | None = None,
                  target_url: str = "", target_database: str = "",
-                 target_username: str = "", residus: list[str] | None = None) -> TestReport:
+                 target_username: str = "", residus: list[str] | None = None,
+                 donnees_de_test: dict | None = None) -> TestReport:
     """Construit un ``TestReport`` depuis un ``CaseVerdict`` et les métadonnées du run.
 
     ``repairs`` : tentatives dont on veut tracer l'origine et l'éventuelle confirmation en
@@ -168,6 +172,7 @@ def build_report(verdict: CaseVerdict, *, module_name: str, title: str = "",
         monthly_cost_usd=(round(monthly_cost_usd, 6) if monthly_cost_usd is not None else None),
         target_url=target_url, target_database=target_database, target_username=target_username,
         residus=list(residus or []),
+        donnees_de_test=dict(donnees_de_test or {}),
     )
 
 

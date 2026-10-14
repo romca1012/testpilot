@@ -746,6 +746,8 @@ export interface RunSummary {
   plan_id?: number | null
   /** Lot PT-02b : le jeu de données joué (`null` : « Par défaut » si le projet a des variables). */
   dataset_id?: number | null
+  /** Lot PT-02c : le jeu de données figé au lancement (vide avant, ou sans donnée de test). */
+  jeu_de_donnees?: string
 }
 /** Un cas DANS un run, avec son résultat (ou null = non testé). */
 export interface RunCaseResult {
@@ -1138,4 +1140,6 @@ export interface TestReport {
   target_url?: string; target_database?: string; target_username?: string
   // Résidus de teardown (lot 06, F6) — enregistrements ni supprimés ni archivés, jamais bloquant.
   residus?: string[]
+  // Lot PT-02c : les données de test réellement posées dans ce test — vide sans donnée de test.
+  donnees_de_test?: { jeu?: string; valeurs?: Record<string, { valeur: string; origine: string }> }
 }

@@ -302,3 +302,73 @@ def test_un_blocage_en_campagne_est_inscrit_au_registre_et_ne_prend_pas_le_premi
     assert base.execute("SELECT trigger FROM execution WHERE id=?", (eid,)).fetchone()[0] == "rerun"
     assert ExecutionRepo(base).has_for_version(vid) is False, "le vrai premier essai sera compté comme tel"
     assert ResultRepo  # le registre est bien celui des résultats de campagne
+
+
+# ── 6. Ce qui a été joué, affiché (lot PT-02c) ────────────────────────────────────────────────────────────────────────────
+
+
+def test_falsifiable_le_rapport_montre_les_valeurs_jouees_pas_celles_du_tableau_d_aujourd_hui(base):
+    from testpilot.api.services.report_service import build_report_for_execution
+
+    pid, cid, vid, ids = _cas(base, variables={"client": "Martin SARL", "ville": "Lyon"})
+    eid = _execution(base, cid, vid)
+    service.preparer_le_script(base, eid, cid, vid, "commande")
+    depot = TestDataRepo(base)
+    depot.poser_valeurs(pid, depot.jeux(pid)[0]["id"], {ids["client"]: "Autre client"})   # modifié APRÈS le jeu
+
+    rapport = build_report_for_execution(base, eid)
+
+    assert rapport.donnees_de_test["jeu"] == "Par défaut"
+    assert rapport.donnees_de_test["valeurs"]["client"] == {"valeur": "Martin SARL", "origine": "Par défaut"}
+
+
+@pytest.mark.parametrize("joues", ["", "{pas du json", "[1, 2]"])
+def test_sans_valeur_jouee_lisible_le_rapport_ne_montre_rien(base, joues):
+    from testpilot.api.services.report_service import build_report_for_execution
+
+    pid, cid, vid, _ = _cas(base)
+    eid = _execution(base, cid, vid)
+    base.execute("UPDATE execution SET parametres_joues=? WHERE id=?", (joues, eid))
+    base.commit()
+
+    assert build_report_for_execution(base, eid).donnees_de_test == {}, "jamais une valeur reconstituée"
+
+
+def test_une_valeur_jouee_mal_formee_est_ecartee_jamais_devinee(base):
+    from testpilot.api.services.report_service import build_report_for_execution
+
+    pid, cid, vid, _ = _cas(base)
+    eid = _execution(base, cid, vid)
+    joues = {"jeu": "Export", "valeurs": {"client": {"valeur": "Durand", "origine": "Export"}, "ville": "Lyon", "pays": {}}}
+    base.execute("UPDATE execution SET parametres_joues=? WHERE id=?", (json.dumps(joues), eid))
+    base.commit()
+
+    assert build_report_for_execution(base, eid).donnees_de_test == {
+        "jeu": "Export", "valeurs": {"client": {"valeur": "Durand", "origine": "Export"}}}
+
+
+def test_falsifiable_le_rapport_imprimable_montre_les_valeurs_jouees_echappees(base):
+    from testpilot.api.services.report_service import build_report_for_execution
+    from testpilot.reporting.report import render_html
+
+    pid, cid, vid, _ = _cas(base)   # la valeur est posée sur l'exécution : le tableau refuserait `<…>`
+    eid = _execution(base, cid, vid)
+    base.execute("UPDATE execution SET parametres_joues=? WHERE id=?", (json.dumps({"jeu": "Par défaut", "valeurs": {
+        "client": {"valeur": "<b>Martin</b>", "origine": "Par défaut"}}}), eid))
+    base.commit()
+
+    page = render_html(build_report_for_execution(base, eid))
+
+    assert "Données de test — Par défaut" in page and "{{client}}" in page
+    assert "&lt;b&gt;Martin&lt;/b&gt;" in page and "<b>Martin</b>" not in page
+
+
+def test_l_execution_affiche_le_jeu_fige_au_lancement_seulement(base):
+    from testpilot.api.routes.runs import _summary
+
+    pid, cid, vid, _ = _cas(base, variables={"client": "Martin SARL", "ville": "Lyon"})
+    run_id = RunRepo(base).create(project_id=pid, name="Campagne", case_ids=[cid])
+    avant = _summary(RunRepo(base).get(run_id), 1).jeu_de_donnees
+    service.figer_pour_la_campagne(base, RunRepo(base).get(run_id))
+
+    assert (avant, _summary(RunRepo(base).get(run_id), 1).jeu_de_donnees) == ("", "Par défaut")
