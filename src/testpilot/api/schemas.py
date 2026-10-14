@@ -996,6 +996,22 @@ class RunDetailOut(BaseModel):
     statuts_manuels: list[str] = []
 
 
+class CaseImporteeOut(BaseModel):
+    variable: str
+    jeu: str
+    avant: str
+    apres: str
+
+
+class ImportDonneesOut(BaseModel):
+    """Lot PT-02a (A37) : ce que l'import d'un fichier Excel ajoute ou change dans le tableau — et ses erreurs, une par case.
+    Avec une erreur, rien n'est écrit."""
+    nouvelles_variables: list[str] = []
+    nouveaux_jeux: list[str] = []
+    cases: list[CaseImporteeOut] = []
+    erreurs: list[str] = []
+
+
 class ApercuDonneesOut(BaseModel):
     """Lot PT-02c : un test tel qu'il serait joué aujourd'hui avec un jeu de données (fiche d'un test). `manques` non vide :
     il serait « bloqué », pour ces raisons."""
