@@ -288,7 +288,7 @@ async function importer() {
           <p v-if="rienAChanger" class="text-muted-foreground">Aucun changement</p>
           <p v-if="aImporter.apercu.nouvelles_variables.length">
             <span class="text-muted-foreground">Variables ajoutées :</span>
-            <span class="font-mono"> {{ aImporter.apercu.nouvelles_variables.map(ecrite).join(', ') }}</span>
+            <span class="ml-1 font-mono">{{ aImporter.apercu.nouvelles_variables.map(ecrite).join(', ') }}</span>
           </p>
           <p v-if="aImporter.apercu.nouveaux_jeux.length">
             <span class="text-muted-foreground">Jeux ajoutés :</span> {{ aImporter.apercu.nouveaux_jeux.join(', ') }}
