@@ -255,6 +255,8 @@ export const api = {
     strict?: boolean
     // D33 (2026-10-10) : sans repli par l'IA à l'exécution (second essai et réparation conservés). Vrai par défaut côté serveur.
     sans_repli?: boolean
+    // Lot PT-02b : les jeux de données à jouer — un seul : une exécution ; plusieurs : une par jeu, regroupées dans un plan.
+    dataset_ids?: number[]
   }) => request<RunSummary>(`/api/projects/${projectId}/runs`, {
     method: 'POST', body: JSON.stringify(body),
   }),
@@ -741,6 +743,8 @@ export interface RunSummary {
    *  hors de tout plan. Référence souple, jamais une FK dure côté serveur. Optionnel côté type :
    *  champ ajouté après coup, les campagnes lues avant cette version n'en ont pas dans leur cache. */
   plan_id?: number | null
+  /** Lot PT-02b : le jeu de données joué (`null` : « Par défaut » si le projet a des variables). */
+  dataset_id?: number | null
 }
 /** Un cas DANS un run, avec son résultat (ou null = non testé). */
 export interface RunCaseResult {

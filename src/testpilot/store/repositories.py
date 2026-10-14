@@ -1935,8 +1935,12 @@ class RunRepo:
 
     def create(self, *, project_id: int, name: str, description: str = "", refs: str = "",
                selection_mode: str = "frozen", mode: str = MODE_AUTOMATIQUE,
-               case_ids: list[int] | None = None, strict: bool = False, sans_repli: bool = True) -> int:
+               case_ids: list[int] | None = None, strict: bool = False, sans_repli: bool = True,
+               dataset_id: int | None = None) -> int:
         """Crée un run en BROUILLON (jamais lancé à la création — `0022` 8.c.1).
+
+        `dataset_id` (lot PT-02b) : le jeu de données joué par cette campagne ; `None` = le jeu « Par défaut » si le projet
+        a des variables, rien sinon. Les valeurs ne sont figées qu'au LANCEMENT (`donnees_de_test_service`).
 
         `case_ids` n'est matérialisé que pour `frozen` : en mode `all`, la sélection est vivante,
         la stocker figerait ce qu'on veut justement garder mouvant.
@@ -1951,8 +1955,9 @@ class RunRepo:
         ts = now_iso()
         cur = self.conn.execute(
             "INSERT INTO test_run (project_id, name, description, refs, selection_mode, mode,"
-            " status, created_at, strict, sans_repli) VALUES (?,?,?,?,?,?,'draft',?,?,?)",
-            (project_id, name, description, refs, selection_mode, mode, ts, 1 if strict else 0, 1 if sans_repli else 0))
+            " status, created_at, strict, sans_repli, dataset_id) VALUES (?,?,?,?,?,?,'draft',?,?,?,?)",
+            (project_id, name, description, refs, selection_mode, mode, ts, 1 if strict else 0, 1 if sans_repli else 0,
+             dataset_id))
         run_id = int(cur.lastrowid)
         if selection_mode == "frozen":
             for cid in dict.fromkeys(case_ids or []):  # dédup en gardant l'ordre

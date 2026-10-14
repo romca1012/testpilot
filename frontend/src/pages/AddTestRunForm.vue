@@ -13,7 +13,7 @@
 // boutons proposés en permanence, et aucun qui s'impose.
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, type CaseSummary } from '../lib/api'
+import { api, type CaseSummary, type JeuDeDonnees } from '../lib/api'
 import { useGroupes } from '../lib/donnees'
 import Button from '../components/ui/Button.vue'
 
@@ -41,15 +41,30 @@ const selected = ref<number[]>([])
 const saving = ref(false)
 const error = ref('')
 
+// Lot PT-02b (A28) : les jeux de données du projet. Rien n'est proposé à un projet qui n'a pas de variable : le formulaire
+// est alors celui d'avant. Un jeu coché = une exécution ; plusieurs = une exécution par jeu, regroupées dans un plan.
+const JEUX_MAX = 50
+const jeux = ref<JeuDeDonnees[]>([])
+const jeuxCoches = ref<number[]>([])
+const nombreDExecutions = computed(() => Math.max(1, jeuxCoches.value.length))
+
 onMounted(async () => {
   // Borne explicite : au-delà, la composition d'une campagne passe par la liste des cas et sa
   // sélection multiple (lot C), qui sait paginer. Un formulaire ne doit pas charger 2 000 lignes.
   try { cases.value = (await api.listCases(pid, { limit: 500 })).items } catch { cases.value = [] }
+  try {
+    const tableau = await api.getTestData(pid)
+    if (tableau.variables.length) {
+      jeux.value = tableau.jeux
+      jeuxCoches.value = tableau.jeux.filter((j) => j.est_defaut).map((j) => j.id)
+    }
+  } catch { jeux.value = [] }   // tableau illisible : on crée comme avant, le serveur jouera le jeu « Par défaut »
 })
 
 const canSubmit = computed(() =>
   !!form.value.name.trim()
-  && (form.value.selection === 'all' || selected.value.length > 0))
+  && (form.value.selection === 'all' || selected.value.length > 0)
+  && (!jeux.value.length || form.value.mode !== 'automatique' || (jeuxCoches.value.length >= 1 && jeuxCoches.value.length <= JEUX_MAX)))
 
 // ── Une exécution AUTOMATIQUE ne joue que les cas dotés d'un test technique (2026-10-12) ─────────────────────────────
 // Un cas saisi à la main ou importé d'Excel n'a rien que la machine puisse jouer : il restait « Untested » pour toujours
@@ -162,8 +177,11 @@ async function submit() {
       // La campagne stricte coupe déjà tout repli : l'option n'a de sens que pour une campagne automatique non stricte.
       sans_repli: form.value.mode === 'automatique' && (form.value.strict || form.value.sansRepli),
       case_ids: form.value.selection === 'frozen' ? selected.value : [],
+      dataset_ids: form.value.mode === 'automatique' ? jeuxCoches.value : [],
     })
-    router.push({ name: 'run-detail', params: { pid, id: String(run.id) } })
+    // Plusieurs jeux : les exécutions sont regroupées dans un plan — c'est lui qu'on ouvre, toutes y figurent.
+    if (run.plan_id && jeuxCoches.value.length > 1) router.push({ name: 'plan-detail', params: { pid, id: String(run.plan_id) } })
+    else router.push({ name: 'run-detail', params: { pid, id: String(run.id) } })
   } catch (e: any) {
     error.value = e?.message || 'Création impossible.'
   } finally {
@@ -346,6 +364,25 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
       </div>
 
       <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+
+      <!-- Lot PT-02b (A28, A32) : les jeux de données, pour une campagne automatique d'un projet qui a des variables. -->
+      <fieldset v-if="form.mode === 'automatique' && jeux.length" class="rounded-md border border-border p-3" data-testid="choix-jeux">
+        <legend class="px-1 text-sm font-medium">Données de test</legend>
+        <div class="flex flex-wrap gap-x-5 gap-y-2">
+          <label v-for="j in jeux" :key="j.id" class="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+            <input type="checkbox" :value="j.id" v-model="jeuxCoches" :data-testid="`jeu-${j.id}`" class="accent-[hsl(var(--primary))]" />
+            {{ j.nom }}
+          </label>
+        </div>
+        <p class="mt-2 flex flex-wrap items-center gap-x-3 text-xs" aria-live="polite">
+          <span v-if="jeuxCoches.length > JEUX_MAX" class="text-destructive" data-testid="trop-de-jeux">{{ JEUX_MAX }} jeux au plus</span>
+          <span v-else-if="!jeuxCoches.length" class="text-destructive">Cochez au moins un jeu</span>
+          <span v-else class="text-muted-foreground" data-testid="nombre-executions">
+            {{ nombreDExecutions }} exécution{{ nombreDExecutions > 1 ? 's' : '' }}{{ nombreDExecutions > 1 ? ', regroupées dans un plan' : '' }}
+          </span>
+          <RouterLink :to="{ name: 'project-test-data', params: { pid } }" class="text-primary hover:underline" data-testid="lien-donnees">Données de test</RouterLink>
+        </p>
+      </fieldset>
 
       <!-- D33 (2026-10-10) : sans repli par l'IA, cochée par défaut ; masquée si la campagne est stricte (qui l'inclut). -->
       <label v-if="form.mode === 'automatique' && !form.strict"
