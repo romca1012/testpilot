@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 63
+_SCHEMA_VERSION = 64
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -268,6 +268,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_62_valeurs_du_projet(conn)
     if version < 63:
         _migrate_63_test_unit(conn)
+    if version < 64:
+        _migrate_64_donnees_de_test(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -426,6 +428,58 @@ def _migrate_50_contexte_navigateur(conn: sqlite3.Connection) -> None:
     for colonne in ("browser_locale", "browser_timezone", "browser_viewport"):
         if colonne not in _column_names(conn, "project"):
             conn.execute(f"ALTER TABLE project ADD COLUMN {colonne} TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_64_donnees_de_test(conn: sqlite3.Connection) -> None:
+    """Lot PT-02 (paramètres de test, décisions A26 à A31) : les DONNÉES DE TEST d'un projet.
+
+    Un tableau : des VARIABLES (`test_variable`, écrites `{{nom}}` dans un test) × des JEUX DE DONNÉES (`test_dataset`, dont
+    le jeu « Par défaut », `est_defaut`) ; une valeur par case (`test_dataset_value` ; case absente ou vide = la valeur du
+    jeu par défaut, A27). Variables et jeux vont à la CORBEILLE (`deleted_at`, A31) : l'unicité du nom ne vaut que pour les
+    vivants. `project_id` NULLABLE dès la création : NULL désignera la bibliothèque commune (lot PT-05, A3).
+
+    Trois colonnes pour figer ce qui est joué (A29) : `test_run.dataset_id` (le jeu choisi, sans FK dure, comme `plan_id`),
+    `test_run.parametres_figes` (les valeurs figées au lancement, JSON) et `execution.parametres_joues` (ce que CE test a
+    réellement reçu, JSON). Vides par défaut : rien ne change pour une exécution sans donnée de test. Idempotente.
+    """
+    conn.execute('''CREATE TABLE IF NOT EXISTS test_variable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER REFERENCES project(id) ON DELETE CASCADE,
+        nom TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        rang INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        deleted_at TEXT NOT NULL DEFAULT '',
+        deleted_by TEXT NOT NULL DEFAULT '')''')
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_test_variable_nom ON test_variable(project_id, nom)"
+                 " WHERE deleted_at = ''")
+    conn.execute('''CREATE TABLE IF NOT EXISTS test_dataset (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER REFERENCES project(id) ON DELETE CASCADE,
+        nom TEXT NOT NULL,
+        est_defaut INTEGER NOT NULL DEFAULT 0 CHECK (est_defaut IN (0, 1)),
+        rang INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        deleted_at TEXT NOT NULL DEFAULT '',
+        deleted_by TEXT NOT NULL DEFAULT '')''')
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_test_dataset_nom ON test_dataset(project_id, nom)"
+                 " WHERE deleted_at = ''")
+    conn.execute('''CREATE TABLE IF NOT EXISTS test_dataset_value (
+        dataset_id INTEGER NOT NULL REFERENCES test_dataset(id) ON DELETE CASCADE,
+        variable_id INTEGER NOT NULL REFERENCES test_variable(id) ON DELETE CASCADE,
+        valeur TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (dataset_id, variable_id))''')
+    if _table_existe(conn, "test_run"):
+        if "dataset_id" not in _column_names(conn, "test_run"):
+            conn.execute("ALTER TABLE test_run ADD COLUMN dataset_id INTEGER")
+        if "parametres_figes" not in _column_names(conn, "test_run"):
+            conn.execute("ALTER TABLE test_run ADD COLUMN parametres_figes TEXT NOT NULL DEFAULT ''")
+    if _table_existe(conn, "execution") and "parametres_joues" not in _column_names(conn, "execution"):
+        conn.execute("ALTER TABLE execution ADD COLUMN parametres_joues TEXT NOT NULL DEFAULT ''")
+
+
+def _table_existe(conn: sqlite3.Connection, nom: str) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (nom,)).fetchone() is not None
 
 
 def _migrate_63_test_unit(conn: sqlite3.Connection) -> None:

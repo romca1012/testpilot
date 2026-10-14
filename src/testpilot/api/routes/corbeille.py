@@ -25,6 +25,8 @@ from testpilot.store.repositories import (
     CaseRepo,
     ModuleRepo,
     ProjectRepo,
+    TestDatasetRepo,
+    TestVariableRepo,
 )
 
 router = APIRouter(prefix="/api", tags=["corbeille"])
@@ -36,6 +38,9 @@ _DEPOTS = {
     "module": ModuleRepo,
     "specification": CaseGroupRepo,
     "cas": CaseRepo,
+    # Lot PT-02 (A31) : les données de test.
+    "variable": TestVariableRepo,
+    "jeu_de_donnees": TestDatasetRepo,
 }
 
 
@@ -59,6 +64,10 @@ def _project_id_depuis_element(conn, type_element: str, element_id: int) -> int 
         ligne = conn.execute(
             "SELECT m.project_id AS project_id FROM test_case tc"
             " JOIN module m ON tc.module_id = m.id WHERE tc.id = ?", (element_id,)).fetchone()
+        return ligne["project_id"] if ligne else None
+    if type_element in ("variable", "jeu_de_donnees"):
+        table = "test_variable" if type_element == "variable" else "test_dataset"
+        ligne = conn.execute(f"SELECT project_id FROM {table} WHERE id=?", (element_id,)).fetchone()
         return ligne["project_id"] if ligne else None
     return None
 
@@ -139,7 +148,10 @@ def restaurer(type_element: str, element_id: int, conn=Depends(get_conn)):
     tant que son module l'est. C'est la vérité, pas un défaut — et l'écran doit le dire plutôt
     que de laisser croire à un échec.
     """
-    _depot(conn, type_element).restaurer(element_id)
+    try:
+        _depot(conn, type_element).restaurer(element_id)
+    except ValueError as exc:   # lot PT-02 : un homonyme vivant existe (variable, jeu de données) — dit en clair, pas une erreur 500
+        raise erreurs.ErreurMetier("etat_incompatible", str(exc)) from exc
     return Response(status_code=204)
 
 

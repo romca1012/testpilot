@@ -583,6 +583,52 @@ class ProjectPatch(BaseModel):
     format_nombre: str | None = None
 
 
+# ── Données de test (lot PT-02) : variables × jeux de données ───────────────────────────────────────────────────────────────
+
+class VariableIn(BaseModel):
+    """Une variable, écrite `{{nom}}` dans un test : lettres minuscules, chiffres, « _ »."""
+    nom: str
+    description: str = ""
+
+
+class VariablePatch(BaseModel):
+    """Seule la description change : un nom envoyé est REFUSÉ en clair plutôt qu'ignoré (les tests désignent la variable par son nom)."""
+    model_config = ConfigDict(extra="forbid")
+    description: str = ""
+
+
+class VariableOut(BaseModel):
+    id: int
+    nom: str
+    description: str = ""
+
+
+class JeuDeDonneesIn(BaseModel):
+    nom: str
+
+
+class JeuDeDonneesOut(BaseModel):
+    id: int
+    nom: str
+    est_defaut: bool = False
+    # `{id de variable: valeur}` — une case vide n'y figure pas : elle reprend le jeu « Par défaut » (A27).
+    valeurs: dict[str, str] = {}
+
+
+class DonneesDeTestOut(BaseModel):
+    variables: list[VariableOut] = []
+    jeux: list[JeuDeDonneesOut] = []
+
+
+class ValeursDuJeuIn(BaseModel):
+    valeurs: dict[str, str] = {}
+
+
+class UsageDeVariable(BaseModel):
+    id: int
+    title: str
+
+
 class UnitIn(BaseModel):
     """Une unité ajoutée par le projet (lot PT-03) : son nom et ses autres écritures (« palette » ; « palettes », « Palettes »)."""
     nom: str
