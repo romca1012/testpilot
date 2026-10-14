@@ -996,6 +996,15 @@ class RunDetailOut(BaseModel):
     statuts_manuels: list[str] = []
 
 
+class ApercuDonneesOut(BaseModel):
+    """Lot PT-02c : un test tel qu'il serait joué aujourd'hui avec un jeu de données (fiche d'un test). `manques` non vide :
+    il serait « bloqué », pour ces raisons."""
+    jeu: str = ""
+    texte: str
+    manques: list[str] = []
+    valeurs: dict[str, dict[str, str]] = {}
+
+
 class ScheduledRunIn(BaseModel):
     """Création d'une planification récurrente (migration 43). `case_ids` n'est utilisé qu'en
     mode `frozen`, comme pour `RunIn`.

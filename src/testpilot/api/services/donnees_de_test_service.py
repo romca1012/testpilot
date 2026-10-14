@@ -71,6 +71,36 @@ def _project_id_du_cas(conn, case_id: int) -> int | None:
     return ligne[0] if ligne else None
 
 
+def _manques(conn, project_id: int | None, rendu: resolution.Remplacement) -> list[str]:
+    """Chaque valeur qui manque, nommée — le même message au lancement et dans l'aperçu de la fiche d'un test."""
+    a_la_corbeille = set(TestDataRepo(conn).variables_a_la_corbeille(project_id)) if project_id is not None else set()
+    manques = [n if n.startswith("variable mal") else
+               f"variable à la corbeille « {n} »" if n in a_la_corbeille else f"variable inconnue « {n} »"
+               for n in rendu.inconnues]
+    return manques + [f"variable sans valeur « {n} »" for n in rendu.sans_valeur]
+
+
+def apercu(conn, case_id: int, version_id: int, dataset_id: int | None = None) -> dict:
+    """Ce test tel qu'il serait joué AUJOURD'HUI avec ce jeu (« Par défaut » si aucun) — fiche d'un test, lot PT-02c.
+
+    Même calcul que `preparer_le_script` (mêmes niveaux, même remplacement, mêmes messages) : l'aperçu ne peut pas
+    annoncer un test que l'exécution jouerait autrement. Il n'écrit rien. Lève `DonneeDeTestInvalide` pour un jeu qui
+    n'est pas un jeu vivant du projet."""
+    version = VersionRepo(conn).get(version_id) or {}
+    feature = version.get("feature_content") or ""
+    project_id = _project_id_du_cas(conn, case_id)
+    depot = TestDataRepo(conn)
+    if dataset_id is not None and (project_id is None or depot.jeu(project_id, dataset_id) is None):
+        raise DonneeDeTestInvalide(f"jeu de données {dataset_id} introuvable dans ce projet")
+    noms, niveaux = depot.niveaux(project_id, dataset_id) if project_id is not None else ([], [])
+    if not noms and not niveaux:   # projet qui n'a jamais déclaré de variable : joué tel quel, comme `preparer_le_script`
+        return {"jeu": "", "texte": feature, "manques": [], "valeurs": {}}
+    rendu = resolution.remplacer(feature, resolution.resoudre(niveaux, noms), noms)
+    return {"jeu": niveaux[-1][0] if niveaux else "", "texte": rendu.texte,
+            "manques": [] if rendu.complet else _manques(conn, project_id, rendu),
+            "valeurs": {n: {"valeur": v.valeur, "origine": v.origine} for n, v in rendu.jouees.items()}}
+
+
 def preparer_le_script(conn, execution_id: int, case_id: int, version_id: int, module_name: str) -> Script:
     """Le test à jouer pour CETTE exécution. Voir la docstring du module."""
     version = VersionRepo(conn).get(version_id) or {}
@@ -91,12 +121,7 @@ def preparer_le_script(conn, execution_id: int, case_id: int, version_id: int, m
     valeurs = {n: resolution.Valeur(str(v.get("valeur", "")), str(v.get("origine", ""))) for n, v in (figes.get("valeurs") or {}).items()}
     rendu = resolution.remplacer(feature, valeurs, figes.get("connues") or [])
     if not rendu.complet:
-        project_id = _project_id_du_cas(conn, case_id)
-        a_la_corbeille = set(TestDataRepo(conn).variables_a_la_corbeille(project_id)) if project_id is not None else set()
-        manques = [n if n.startswith("variable mal") else
-                   f"variable à la corbeille « {n} »" if n in a_la_corbeille else f"variable inconnue « {n} »"
-                   for n in rendu.inconnues]
-        manques += [f"variable sans valeur « {n} »" for n in rendu.sans_valeur]
+        manques = _manques(conn, _project_id_du_cas(conn, case_id), rendu)
         # Une campagne garde les valeurs figées à SON lancement (A29) : la relancer rejouerait le même manque.
         suite = ("Complétez le tableau des données de test, puis créez une nouvelle exécution : celle-ci garde les valeurs "
                  "figées à son lancement." if campagne else "Complétez le tableau des données de test, puis relancez.")

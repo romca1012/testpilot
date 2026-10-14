@@ -512,6 +512,9 @@ export const api = {
     request<CaseSummary[]>(`/api/modules/${moduleId}/cases/order`, {
       method: 'PUT', body: JSON.stringify({ case_ids: caseIds }),
     }),
+  // Lot PT-02c : le test d'une version avec les valeurs d'un jeu de données — calculé par le serveur, comme au lancement.
+  apercuDonnees: (caseId: number | string, versionId: number | string, datasetId: number) =>
+    request<ApercuDonnees>(`/api/cases/${caseId}/versions/${versionId}/apercu-donnees?dataset_id=${datasetId}`),
   getCase: (id: number | string) => request<CaseDetail>(`/api/cases/${id}`),
   // Script COMPLET réellement exécuté (Phase 2) : `steps_content` propre au cas + le code des
   // steps partagés que son `.feature` référence — invisible autrement, la bibliothèque partagée
@@ -657,6 +660,8 @@ export interface Artifacts { available: boolean; reason: string; files: Artifact
  *  Le mot de passe n'est JAMAIS renvoyé : `has_secret` dit seulement qu'il est enregistré. */
 // Lot PT-02 : `valeurs` = `{id de variable: valeur}` ; une case vide n'y figure pas (elle reprend le jeu « Par défaut »).
 export interface VariableDeTest { id: number; nom: string; description: string }
+/** Lot PT-02c : un test tel qu'il serait joué avec un jeu de données ; `manques` non vide : il serait « bloqué ». */
+export interface ApercuDonnees { jeu: string; texte: string; manques: string[]; valeurs: Record<string, { valeur: string; origine: string }> }
 export interface JeuDeDonnees { id: number; nom: string; est_defaut: boolean; valeurs: Record<string, string> }
 export interface DonneesDeTest { variables: VariableDeTest[]; jeux: JeuDeDonnees[] }
 export interface ProjectUnitInput { nom: string; ecritures: string[] }
