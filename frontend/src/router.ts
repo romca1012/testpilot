@@ -50,6 +50,8 @@ export const routes = [
 
   // La CORBEILLE (§7) : supprimer masque, restaurer annule, détruire est un geste à part.
   { path: '/projects/:pid/corbeille', name: 'corbeille', component: () => import('./pages/Corbeille.vue') },
+  // Lot PT-02a (A32) : le tableau des données de test pour les membres du projet — atteint par un lien, pas par le menu.
+  { path: '/projects/:pid/donnees-de-test', name: 'project-test-data', component: () => import('./pages/ProjectTestData.vue') },
 
   // ── Routes HÉRITÉES, redirigées vers leur équivalent actuel ──────────────────────────────
   // Règle posée le 2026-07-20 : toute route doit être atteignable par un chemin CLAIR depuis

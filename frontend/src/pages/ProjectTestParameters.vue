@@ -15,11 +15,13 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import OngletConfigurations from '../components/parametres/OngletConfigurations.vue'
 import OngletComptes from '../components/parametres/OngletComptes.vue'
 import OngletEtatDeDepart from '../components/parametres/OngletEtatDeDepart.vue'
+import TableauDonneesDeTest from '../components/parametres/TableauDonneesDeTest.vue'
 import OngletValeursAttendues from '../components/parametres/OngletValeursAttendues.vue'
 
 const ONGLETS = [
   { cle: 'configurations', libelle: 'Configurations' },
   { cle: 'comptes', libelle: 'Comptes' },
+  { cle: 'donnees-de-test', libelle: 'Données de test' },
   { cle: 'etat-de-depart', libelle: 'État de départ' },
   { cle: 'valeurs-attendues', libelle: 'Valeurs attendues' },
 ] as const
@@ -45,6 +47,8 @@ const onglet = computed<CleOnglet>(() => {
 const role = computed(() => projet.value?.effective_role || session.value?.role || '')
 const peutRegler = computed(() => role.value === 'admin')
 const peutGererComptes = computed(() => ['admin', 'dev'].includes(role.value))
+// Décision A30 : le tableau des données de test se modifie comme les tests (testeur et plus) ; supprimer reste à l'administrateur.
+const peutModifierDonnees = computed(() => ['admin', 'dev', 'testeur'].includes(role.value))
 
 async function charger() {
   chargement.value = true
@@ -113,6 +117,8 @@ onMounted(charger)
                               @enregistre="projet = $event" @modifie="modifie = $event" />
         <OngletComptes v-else-if="onglet === 'comptes'" :projet="projet" :peut-gerer="peutGererComptes" :peut-regler="peutRegler"
                        @enregistre="projet = $event" />
+        <TableauDonneesDeTest v-else-if="onglet === 'donnees-de-test'" :projet="projet"
+                              :peut-modifier="peutModifierDonnees" :peut-supprimer="peutRegler" @modifie="modifie = $event" />
         <OngletEtatDeDepart v-else-if="onglet === 'etat-de-depart'" :projet="projet" :peut-regler="peutRegler"
                             @enregistre="projet = $event" @modifie="modifie = $event" />
         <OngletValeursAttendues v-else :projet="projet" :peut-regler="peutRegler"
