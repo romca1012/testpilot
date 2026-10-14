@@ -266,3 +266,19 @@ def test_falsifiable_une_demande_invalide_ne_cree_rien(client, monkeypatch, cas)
     assert r.status_code == 422, r.text
     assert client.get(f"/api/projects/{pid}/runs").json() == [], "aucune exécution créée"
     assert client.get(f"/api/projects/{pid}/plans").json() == [], "aucun plan créé"
+
+
+def test_l_apercu_par_jeu_de_la_fiche_d_un_test(client):
+    """Lot PT-02c : la fiche d'un test montre ce test avec les valeurs d'un jeu ; un jeu inconnu : 404."""
+    pid, cid, jeux = _projet_avec_jeux(client, "Grosse commande")
+    base = f"/api/projects/{pid}/donnees-de-test"
+    variable = client.get(base).json()["variables"][0]["id"]
+    client.put(f"{base}/jeux/{jeux['Grosse commande']}/valeurs", json={"valeurs": {str(variable): "Durand"}})
+    vid = client.get(f"/api/cases/{cid}").json()["current_version_id"]
+
+    vu = client.get(f"/api/cases/{cid}/versions/{vid}/apercu-donnees", params={"dataset_id": jeux["Grosse commande"]})
+    inconnu = client.get(f"/api/cases/{cid}/versions/{vid}/apercu-donnees", params={"dataset_id": 999999})
+
+    assert vu.status_code == 200, vu.text
+    assert "Alors le client Durand est servi" in vu.json()["texte"] and vu.json()["jeu"] == "Grosse commande"
+    assert inconnu.status_code == 404

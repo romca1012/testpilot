@@ -372,3 +372,59 @@ def test_l_execution_affiche_le_jeu_fige_au_lancement_seulement(base):
     service.figer_pour_la_campagne(base, RunRepo(base).get(run_id))
 
     assert (avant, _summary(RunRepo(base).get(run_id), 1).jeu_de_donnees) == ("", "Par défaut")
+
+
+# ── 7. L'aperçu de la fiche d'un test (lot PT-02c) ────────────────────────────────────────────────────────────────────────
+
+
+def test_falsifiable_l_apercu_montre_exactement_le_texte_que_l_execution_jouera(base):
+    pid, cid, vid, ids = _cas(base, variables={"client": "Martin SARL", "ville": "Lyon"})
+    depot = TestDataRepo(base)
+    grosse = depot.creer_jeu(pid, nom="Grosse commande")
+    depot.poser_valeurs(pid, grosse, {ids["client"]: "Durand Industrie"})
+    run_id = RunRepo(base).create(project_id=pid, name="Campagne", case_ids=[cid], dataset_id=grosse)
+    service.figer_pour_la_campagne(base, RunRepo(base).get(run_id))
+    script = service.preparer_le_script(base, _execution(base, cid, vid, run_id), cid, vid, "commande")
+
+    vu = service.apercu(base, cid, vid, grosse)
+
+    assert vu["texte"] == (script.dossier / "commande.feature").read_text(encoding="utf-8")
+    assert vu["jeu"] == "Grosse commande" and vu["manques"] == []
+    assert vu["valeurs"]["ville"] == {"valeur": "Lyon", "origine": "Par défaut"}
+
+
+def test_falsifiable_l_apercu_annonce_le_meme_blocage_que_l_execution(base):
+    pid, cid, vid, _ = _cas(base, FEATURE.replace("{{ville}}", "{{pays}}"), variables={"client": "Martin SARL"})
+    script = service.preparer_le_script(base, _execution(base, cid, vid), cid, vid, "commande")
+
+    vu = service.apercu(base, cid, vid)
+
+    assert vu["manques"] == ["variable inconnue « pays »"]
+    assert "variable inconnue « pays »" in script.blocage
+
+
+def test_l_apercu_n_ecrit_rien(base):
+    pid, cid, vid, _ = _cas(base, variables={"client": "Martin SARL", "ville": "Lyon"})
+    eid = _execution(base, cid, vid)
+
+    service.apercu(base, cid, vid)
+
+    assert _joues(base, eid) == "" and not (config.DATA_DIR / "executions").exists()
+
+
+def test_l_apercu_d_un_projet_sans_variable_est_le_test_tel_quel(base):
+    feature = "Fonctionnalité: X\n  Scénario: Y\n    Alors le courriel contient \"{{ object.name }}\"\n"
+    pid, cid, vid, _ = _cas(base, feature)
+
+    assert service.apercu(base, cid, vid) == {"jeu": "", "texte": feature, "manques": [], "valeurs": {}}
+
+
+def test_falsifiable_l_apercu_refuse_le_jeu_d_un_autre_projet(base):
+    pid, cid, vid, _ = _cas(base, variables={"client": "Martin SARL", "ville": "Lyon"})
+    autre = ProjectRepo(base).create(name="Autre", connector_type="web", base_url="http://b")
+    depot = TestDataRepo(base)
+    depot.creer_variable(autre, nom="x")
+    jeu_autre = depot.jeux(autre)[0]["id"]
+
+    with pytest.raises(service.DonneeDeTestInvalide):
+        service.apercu(base, cid, vid, jeu_autre)

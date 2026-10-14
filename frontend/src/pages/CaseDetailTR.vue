@@ -17,6 +17,8 @@ import TestsResultsTab from '../components/case/TestsResultsTab.vue'
 import DefectsTab from '../components/case/DefectsTab.vue'
 import HistoryTab from '../components/case/HistoryTab.vue'
 import CodeView from '../components/CodeView.vue'
+import ApercuParJeu from '../components/case/ApercuParJeu.vue'
+import InsererVariable from '../components/case/InsererVariable.vue'
 import RefsList from '../components/RefsList.vue'
 import ReviewGate from '../components/ReviewGate.vue'
 import Button from '../components/ui/Button.vue'
@@ -133,6 +135,16 @@ const peutEditerScript = computed(() => roleSuffisant(roleProjet.value, 'dev'))
 const peutSupprimer = computed(() => roleSuffisant(roleProjet.value, 'admin'))
 const editingScript = ref(false)
 const scriptDraft = ref({ feature: '', steps: '' })
+// Lot PT-02c : « Variable » écrit `{{nom}}` à l'endroit du curseur dans le texte du test en cours d'édition.
+const zoneFeature = ref<HTMLTextAreaElement | null>(null)
+function insererDansLeTest(texte: string) {
+  const zone = zoneFeature.value
+  const actuel = scriptDraft.value.feature
+  const debut = zone?.selectionStart ?? actuel.length
+  const fin = zone?.selectionEnd ?? actuel.length
+  scriptDraft.value.feature = actuel.slice(0, debut) + texte + actuel.slice(fin)
+  requestAnimationFrame(() => { zone?.focus(); zone?.setSelectionRange(debut + texte.length, debut + texte.length) })
+}
 const savingScript = ref(false)
 const scriptError = ref('')
 const scriptConflict = ref(false)   // même garde-fou anti-édition-concurrente que le métier
@@ -802,7 +814,8 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
             <button v-if="peutEditerScript && estVersionCourante" class="text-sm text-primary hover:underline"
                     @click="startEditScript">Modifier</button>
           </div>
-          <CodeView :content="versionAffichee?.feature_content || ''" lang="gherkin" />
+          <ApercuParJeu :pid="pid" :case-id="caseId" :version-id="versionAffichee?.id ?? null"
+                        :feature="versionAffichee?.feature_content || ''" />
 
           <div class="flex items-center justify-between gap-2 flex-wrap">
             <h3 class="text-sm font-semibold">Python (steps)</h3>
@@ -831,8 +844,11 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
         </template>
         <template v-else>
           <div>
-            <h3 class="text-sm font-semibold">Gherkin (.feature)</h3>
-            <textarea v-model="scriptDraft.feature" rows="14" spellcheck="false"
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-sm font-semibold">Gherkin (.feature)</h3>
+              <InsererVariable :pid="pid" @inserer="insererDansLeTest" />
+            </div>
+            <textarea ref="zoneFeature" v-model="scriptDraft.feature" rows="14" spellcheck="false"
                       class="mt-1 w-full rounded-md bg-background border border-border px-3 py-2 font-mono text-xs outline-none focus:border-primary"></textarea>
           </div>
           <div>
