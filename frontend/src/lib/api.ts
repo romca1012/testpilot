@@ -180,6 +180,18 @@ export const api = {
     request<void>(`/api/projects/${id}/accounts/${accountId}`, { method: 'DELETE' }),
   // ── Données de test du projet (lot PT-02) : variables × jeux de données. Chaque écriture rend le tableau à jour. ──
   getTestData: (id: number | string) => request<DonneesDeTest>(`/api/projects/${id}/donnees-de-test`),
+  // Lot PT-02a (A37) : le tableau en Excel — l'export sert de modèle ; l'import COMPLÈTE, après un aperçu sans écriture.
+  exportTestDataUrl: (id: number | string) => `${API_BASE}/api/projects/${id}/donnees-de-test/export`,
+  previewTestDataImport: (id: number | string, file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return requestForm<ImportDonnees>(`/api/projects/${id}/donnees-de-test/import/apercu`, fd)
+  },
+  importTestData: (id: number | string, file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return requestForm<DonneesDeTest>(`/api/projects/${id}/donnees-de-test/import`, fd)
+  },
   createTestVariable: (id: number | string, payload: { nom: string; description?: string }) =>
     request<DonneesDeTest>(`/api/projects/${id}/donnees-de-test/variables`, { method: 'POST', body: JSON.stringify(payload) }),
   casAvecVariables: (id: number | string) => request<number[]>(`/api/projects/${id}/donnees-de-test/cas-avec-variables`),
@@ -660,6 +672,11 @@ export interface Artifacts { available: boolean; reason: string; files: Artifact
  *  Le mot de passe n'est JAMAIS renvoyé : `has_secret` dit seulement qu'il est enregistré. */
 // Lot PT-02 : `valeurs` = `{id de variable: valeur}` ; une case vide n'y figure pas (elle reprend le jeu « Par défaut »).
 export interface VariableDeTest { id: number; nom: string; description: string }
+/** Lot PT-02a (A37) : ce qu'un import Excel ajouterait ou changerait ; une erreur, et rien n'est écrit. */
+export interface ImportDonnees {
+  nouvelles_variables: string[]; nouveaux_jeux: string[]
+  cases: { variable: string; jeu: string; avant: string; apres: string }[]; erreurs: string[]
+}
 /** Lot PT-02c : un test tel qu'il serait joué avec un jeu de données ; `manques` non vide : il serait « bloqué ». */
 export interface ApercuDonnees { jeu: string; texte: string; manques: string[]; valeurs: Record<string, { valeur: string; origine: string }> }
 export interface JeuDeDonnees { id: number; nom: string; est_defaut: boolean; valeurs: Record<string, string> }

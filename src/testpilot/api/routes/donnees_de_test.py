@@ -13,10 +13,12 @@ acceptent est exactement ce qu'un test pourra recevoir sans être cassé.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
+from testpilot.api.services import donnees_de_test_excel, spec_extract
+from testpilot.api.services.excel_import import FichierExcelInvalide
 from testpilot.parametres import resolution
 from testpilot.store.repositories import DonneeDeTestInvalide, DuplicateName, ProjectRepo, TestDataRepo
 
@@ -68,6 +70,47 @@ def decrire_une_variable(project_id: int, variable_id: int, body: schemas.Variab
     depot = _depot(conn, project_id)
     if not depot.decrire_variable(project_id, variable_id, body.description):
         raise HTTPException(status_code=404, detail=f"variable {variable_id} introuvable")
+    return _tableau(depot, project_id)
+
+
+@router.get("/export", dependencies=_MEMBRE)
+def exporter_le_tableau(project_id: int, conn=Depends(get_conn)):
+    """Le tableau en Excel — c'est aussi le modèle à remplir pour l'import (A37)."""
+    _depot(conn, project_id)
+    return Response(content=donnees_de_test_excel.exporter(conn, project_id),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="donnees-de-test.xlsx"'})
+
+
+async def _lire_le_fichier(fichier: UploadFile) -> donnees_de_test_excel.Lecture:
+    """Lecture BORNÉE (`lire_borne` refuse un fichier trop gros avant de l'avoir chargé), puis vérifiée."""
+    try:
+        data = await spec_extract.lire_borne(fichier, donnees_de_test_excel.TAILLE_MAX)
+    except erreurs.ErreurMetier as exc:   # le message de `lire_borne` parle d'une spécification : on dit ce qui est vrai ici
+        raise HTTPException(status_code=413, detail=(
+            f"tableau de données trop volumineux ({donnees_de_test_excel.TAILLE_MAX // (1024 * 1024)} Mo au plus)")) from exc
+    try:
+        return donnees_de_test_excel.lire(data)
+    except FichierExcelInvalide as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/import/apercu", response_model=schemas.ImportDonneesOut, dependencies=_MEMBRE)
+async def apercu_de_l_import(project_id: int, file: UploadFile = File(...), conn=Depends(get_conn)):
+    """Ce que l'import changerait, sans rien écrire (A37 : l'écran le montre avant d'enregistrer)."""
+    _depot(conn, project_id)
+    return schemas.ImportDonneesOut(**donnees_de_test_excel.comparer(conn, project_id, await _lire_le_fichier(file)))
+
+
+@router.post("/import", response_model=schemas.DonneesDeTestOut, dependencies=_MEMBRE)
+async def importer(project_id: int, file: UploadFile = File(...), conn=Depends(get_conn)):
+    """Complète le tableau avec le fichier (A37) : ajoute ce qui manque, met à jour les cases remplies, ne supprime rien.
+    Une seule erreur dans le fichier : rien n'est écrit."""
+    depot = _depot(conn, project_id)
+    try:
+        donnees_de_test_excel.appliquer(conn, project_id, await _lire_le_fichier(file))
+    except (DonneeDeTestInvalide, DuplicateName) as exc:
+        raise _refus(exc) from exc
     return _tableau(depot, project_id)
 
 
