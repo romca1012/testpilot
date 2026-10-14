@@ -8,10 +8,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from testpilot import config
 from testpilot.api import erreurs, access, schemas
 from testpilot.api.deps import get_conn
-from testpilot.api.services import events_bus, generation_service, run_service, script_service
+from testpilot.api.services import (
+    donnees_de_test_service, events_bus, generation_service, run_service, script_service,
+)
 from testpilot.guardrails import durable_jobs
 from testpilot.store.repositories import (
     CaseRepo,
+    DonneeDeTestInvalide,
     DuplicateName,
     ExecutionRepo,
     ProjectRepo,
@@ -345,6 +348,24 @@ def get_case(case_id: int, conn=Depends(get_conn)):
         executions=executions,
         gate=gate,
     )
+
+
+@router.get("/{case_id}/versions/{version_id}/apercu-donnees", response_model=schemas.ApercuDonneesOut,
+           dependencies=[Depends(access.require_project_access_depuis(
+               "case_id", access.project_id_depuis_case))])
+def get_apercu_donnees(case_id: int, version_id: int, dataset_id: int | None = None, conn=Depends(get_conn)):
+    """Le test de cette version avec les valeurs d'un jeu de données (lot PT-02c) — le même calcul qu'au lancement, rien
+    n'est écrit. Sans `dataset_id` : le jeu « Par défaut »."""
+    if CaseRepo(conn).get(case_id) is None:
+        raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
+    version = VersionRepo(conn).get(version_id)
+    if version is None or version.get("test_case_id") != case_id:
+        raise HTTPException(status_code=404,
+                            detail=f"version {version_id} introuvable pour le cas {case_id}")
+    try:
+        return schemas.ApercuDonneesOut(**donnees_de_test_service.apercu(conn, case_id, version_id, dataset_id))
+    except DonneeDeTestInvalide as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/{case_id}/versions/{version_id}/script-effectif", response_model=schemas.ScriptEffectifOut,
