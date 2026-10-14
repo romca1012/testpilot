@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 
 from testpilot import config
-from testpilot.api.services import attachment_service, repair_service
+from testpilot.api.services import attachment_service, donnees_de_test_service, repair_service
 from testpilot.connectors.runtime_env import ConnexionIncomplete, cible_de, unites_du_projet, verifier_connexion
 from testpilot.execution.behave_result import MODE_STRICT_ENV, SANS_REPLI_ENV
 from testpilot.execution.behave_runner import BehaveRunner
@@ -37,6 +37,7 @@ from testpilot.verdict import explication, review_gate
 from testpilot.verdict.status import (
     CONFIANCE_APRES_REPARATION,
     CaseVerdict,
+    EXEC_BLOCKED,
     EXEC_TECHNICAL_ERROR,
     FUNC_INDETERMINE,
     derive_verdict,
@@ -188,7 +189,8 @@ def resolve_profil_instance(conn, case_id: int) -> str | None:
     return (project_du_cas(conn, case_id) or {}).get("profil_instance") or None
 
 
-def _assurer_script_sur_disque(conn, version_id: int, module_name: str) -> None:
+def _assurer_script_sur_disque(conn, version_id: int, module_name: str, *, execution_id: int | None = None,
+                               case_id: int | None = None) -> donnees_de_test_service.Script:
     """Réécrit le `.feature`/`_steps.py` de CETTE version sur disque avant de l'exécuter.
 
     ⚠️ **Bug réel constaté le 2026-09-14** : 15/15 cas SauceDemo revenus « difficulté technique —
@@ -203,15 +205,21 @@ def _assurer_script_sur_disque(conn, version_id: int, module_name: str) -> None:
     régénération ou édition manuelle. La RE-exécution d'un cas déjà généré (run normal, campagne,
     planification) n'avait, elle, aucun filet : on l'ajoute ici, au point d'entrée commun à toutes
     ces voies. Idempotent — sans coût si le fichier existe déjà à l'identique.
+
+    Lot PT-02b : rend AUSSI le script à jouer pour l'exécution `execution_id` — la copie aux données de test posées, ou
+    « rien de propre » (`Script()`) pour le chemin d'aujourd'hui. Sans `execution_id`, seul le fichier partagé est écrit.
     """
     version = VersionRepo(conn).get(version_id)
     feature_content = (version or {}).get("feature_content") or ""
     if not feature_content.strip():
-        return  # cas sans Gherkin généré : rien à réécrire, le runner le dira lui-même
+        return donnees_de_test_service.Script()  # cas sans Gherkin généré : rien à réécrire, le runner le dira lui-même
     config.GENERATED_DIR.mkdir(parents=True, exist_ok=True)
     (config.GENERATED_DIR / f"{module_name}.feature").write_text(feature_content, encoding="utf-8")
     (config.GENERATED_DIR / f"{module_name}_steps.py").write_text(
         version.get("steps_content") or "", encoding="utf-8")
+    if execution_id is None or case_id is None:
+        return donnees_de_test_service.Script()
+    return donnees_de_test_service.preparer_le_script(conn, execution_id, case_id, version_id, module_name)
 
 
 def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int, *,
@@ -231,12 +239,20 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
     conn = None
     try:
         conn = get_initialized_db()
-        _assurer_script_sur_disque(conn, version_id, module_name)
+        # Lot PT-02b (A26-A29) : les données de test. Un test qui écrit `{{nom}}` est joué depuis une COPIE propre à cette
+        # exécution, valeurs posées ; une valeur qui manque : le cas n'est pas joué, il sort « bloqué ». Sans variable dans
+        # le projet, rien ne change (`script.dossier` vaut None : le fichier partagé d'aujourd'hui).
+        script = (_assurer_script_sur_disque(conn, version_id, module_name, execution_id=execution_id, case_id=case_id)
+                  or donnees_de_test_service.Script())
+        if script.blocage:
+            _ecrire_blocage(conn, execution_id, case_id, script.blocage)
+            return
         # Le runtime tape l'application DU PROJET du cas (décision 0005).
         runner = BehaveRunner(connection=resolve_connection(conn, case_id),
                               project_id=resolve_project_id(conn, case_id),
                               connector_type=resolve_connector_type(conn, case_id),
-                              profil_instance=resolve_profil_instance(conn, case_id))
+                              profil_instance=resolve_profil_instance(conn, case_id),
+                              **({"generated_dir": script.dossier} if script.dossier is not None else {}))
         if sans_repli:
             # D33 (2026-10-10) : campagne sans repli par le modèle de langage — posé sur le runner, donc valable pour CHAQUE
             # run du cas, tentatives de réparation comprises ; second essai et réparation restent permis (≠ strict).
@@ -255,7 +271,10 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
             # Ni qualification ni campagne STRICTE ne réparent (D5, complément du 2026-09-25) : le mode strict mesure le
             # test TEL QU'ÉCRIT — aucune intervention, humaine ou par modèle, entre la génération et le verdict. Une
             # réparation réécrit le test avec un LLM : un vert obtenu après elle n'aurait plus rien de strict.
-            if not qualification and not strict:
+            # Lot PT-02b : pas de réparation automatique d'un test joué avec des données de test. L'agent réécrirait le
+            # test GÉNÉRIQUE (avec ses `{{nom}}`) dans le fichier partagé, puis la tentative rejouerait la copie aux
+            # valeurs posées, restée telle quelle : ce qui serait rejoué ne serait pas ce qui a été réparé.
+            if not qualification and not strict and script.dossier is None:
                 _maybe_repair(conn, case_id=case_id, version_id=version_id, module_name=module_name,
                               outcome=outcome, runner=runner, triggered_by=triggered_by)
         except Exception:
@@ -578,6 +597,26 @@ def _ecrire_erreur(conn, execution_id: int, case_id: int, message: str) -> bool:
     except Exception:
         logger.exception("[run] échec de la clôture d'erreur pour %s", execution_id)
         return False
+
+
+def _ecrire_blocage(conn, execution_id: int, case_id: int, message: str) -> None:
+    """Lot PT-02b : le cas n'a pas été joué parce qu'une donnée de test manque — « bloqué », jamais « conforme » ni une
+    erreur technique : rien n'a été essayé sur l'application, et c'est une donnée qu'une personne doit compléter."""
+    try:
+        ExecutionRepo(conn).finalize(
+            execution_id, execution_status=EXEC_BLOCKED, functional_status=FUNC_INDETERMINE, scenarios_total=0,
+            scenarios_passed=0, scenarios_failed=0, cost_usd=0.0, iterations=0, duration_seconds=0.0,
+            error_message=(message or "")[:1000],
+            comment="Le test n'a pas été joué : une donnée de test manque. Complétez le tableau des données de test du "
+                    "projet, puis relancez.")
+        # Un test qui n'a pas été joué n'est le premier essai de rien : la qualité de génération ne le compte pas.
+        conn.execute("UPDATE execution SET trigger='rerun' WHERE id=?", (execution_id,))
+        conn.commit()
+        CaseRepo(conn).update_last_outcome(case_id, execution_status=EXEC_BLOCKED, functional_status=FUNC_INDETERMINE,
+                                           executed_at=now_iso())
+    except Exception:
+        logger.exception("[run] échec de la clôture « bloqué » pour %s", execution_id)
+        _finalize_error(conn, execution_id, case_id, message)
 
 
 def _finalize_error(conn, execution_id, case_id, message: str) -> None:
