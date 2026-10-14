@@ -819,6 +819,11 @@ _ATTENTE_CHANGEE_SQL = (
 # qu'on ne l'a pas fait automatiser. Signal de DONNÉE (présence du test), jamais une lecture de ce que le test contient.
 _CAS_AUTOMATISE_SQL = ("EXISTS (SELECT 1 FROM test_case_version tcv_auto WHERE tcv_auto.id = tc.current_version_id"
                        " AND TRIM(tcv_auto.feature_content) <> '')")
+# Décision A35 : la version courante du test écrit des doubles accolades — une variable, bien ou mal écrite (mal écrite, le
+# test sortira « bloqué » : il doit être joué pour le dire). Seul le texte du test reçoit des valeurs, pas le code des
+# étapes. Le motif est PASSÉ EN PARAMÈTRE (`"%{{%"`) : écrit en dur, il fait échouer la requête sur PostgreSQL.
+_ECRIT_DES_VARIABLES_SQL = ("EXISTS (SELECT 1 FROM test_case_version tcv_var WHERE tcv_var.id = tc.current_version_id"
+                            " AND tcv_var.feature_content LIKE ?)")
 
 _CASE_SELECT = (
     "SELECT tc.*, m.name AS module_name, m.project_id AS project_id, p.name AS project_name,"
@@ -1936,11 +1941,13 @@ class RunRepo:
     def create(self, *, project_id: int, name: str, description: str = "", refs: str = "",
                selection_mode: str = "frozen", mode: str = MODE_AUTOMATIQUE,
                case_ids: list[int] | None = None, strict: bool = False, sans_repli: bool = True,
-               dataset_id: int | None = None) -> int:
+               dataset_id: int | None = None, seulement_variables: bool = False) -> int:
         """Crée un run en BROUILLON (jamais lancé à la création — `0022` 8.c.1).
 
         `dataset_id` (lot PT-02b) : le jeu de données joué par cette campagne ; `None` = le jeu « Par défaut » si le projet
         a des variables, rien sinon. Les valeurs ne sont figées qu'au LANCEMENT (`donnees_de_test_service`).
+        `seulement_variables` (A35) : la sélection reste celle demandée, `case_ids()` n'en garde que les tests qui écrivent
+        des variables.
 
         `case_ids` n'est matérialisé que pour `frozen` : en mode `all`, la sélection est vivante,
         la stocker figerait ce qu'on veut justement garder mouvant.
@@ -1955,9 +1962,10 @@ class RunRepo:
         ts = now_iso()
         cur = self.conn.execute(
             "INSERT INTO test_run (project_id, name, description, refs, selection_mode, mode,"
-            " status, created_at, strict, sans_repli, dataset_id) VALUES (?,?,?,?,?,?,'draft',?,?,?,?)",
+            " status, created_at, strict, sans_repli, dataset_id, seulement_variables)"
+            " VALUES (?,?,?,?,?,?,'draft',?,?,?,?,?)",
             (project_id, name, description, refs, selection_mode, mode, ts, 1 if strict else 0, 1 if sans_repli else 0,
-             dataset_id))
+             dataset_id, 1 if seulement_variables else 0))
         run_id = int(cur.lastrowid)
         if selection_mode == "frozen":
             for cid in dict.fromkeys(case_ids or []):  # dédup en gardant l'ordre
@@ -2039,8 +2047,10 @@ class RunRepo:
             " FROM test_run r WHERE r.plan_id=? ORDER BY r.id DESC",
             (MODE_MANUELLE, plan_id)))
 
-    def case_ids(self, run_id: int) -> list[int]:
-        """Les cas du run : recalculés (mode `all`) ou lus dans la liaison figée (`frozen`)."""
+    def case_ids(self, run_id: int, *, tri_variables: bool = True) -> list[int]:
+        """Les cas du run : recalculés (mode `all`) ou lus dans la liaison figée (`frozen`).
+
+        `tri_variables=False` : sans le tri A35 — seulement pour EXPLIQUER une exécution vide, jamais pour jouer."""
         run = self.get(run_id)
         if run is None:
             return []
@@ -2060,6 +2070,13 @@ class RunRepo:
             filtre = (" AND (" + _CAS_AUTOMATISE_SQL + " OR EXISTS (SELECT 1 FROM test_result tr_deja"
                       " WHERE tr_deja.run_id=? AND tr_deja.case_id=tc.id))")
             params_filtre = (run_id,)
+        if tri_variables and run.get("seulement_variables"):
+            # Décision A35 : l'exécution d'un jeu autre que le premier ne joue que les tests qui écrivent des variables.
+            # Tri fait ICI, à la lecture — donc au lancement : un test qui gagne une variable après la création y entre.
+            # Un test qui a DÉJÀ un résultat dans cette exécution y reste (l'historique n'est pas réécrit).
+            filtre += (" AND (" + _ECRIT_DES_VARIABLES_SQL + " OR EXISTS (SELECT 1 FROM test_result tr_var"
+                       " WHERE tr_var.run_id=? AND tr_var.case_id=tc.id))")
+            params_filtre = (*params_filtre, "%{{%", run_id)
         if run["selection_mode"] == "all":
             return [r["id"] for r in self.conn.execute(
                 "SELECT tc.id FROM test_case tc JOIN module m ON tc.module_id=m.id"
@@ -3515,6 +3532,15 @@ class TestDataRepo:
         if dataset_id is not None and not any(j["id"] == dataset_id for j in t["jeux"]):
             raise DonneeDeTestInvalide("ce jeu de données n'existe plus dans ce projet")
         return list(noms.values()), niveaux
+
+    def cas_qui_ecrivent_des_variables(self, project_id: int) -> list[int]:
+        """Les tests VIVANTS du projet dont la version courante écrit au moins une variable entre doubles accolades — bien ou
+        mal écrite : un test qui en écrit une mal sera « bloqué », il doit être joué pour le dire (décision A35). Seul le
+        texte du test reçoit des valeurs (`preparer_le_script`) : c'est lui qu'on regarde, pas le code des étapes."""
+        return [l["id"] for l in self.conn.execute(
+            "SELECT tc.id FROM test_case tc JOIN module m ON tc.module_id = m.id"
+            " WHERE m.project_id=? AND tc.deleted_at='' AND m.deleted_at='' AND " + _ECRIT_DES_VARIABLES_SQL +
+            " ORDER BY tc.id", (project_id, "%{{%"))]
 
     def usages(self, project_id: int, nom: str) -> list[dict]:
         """Les tests VIVANTS du projet dont la version courante écrit `{{nom}}` — montrés avant une suppression (A31)."""

@@ -46,7 +46,13 @@ const error = ref('')
 const JEUX_MAX = 50
 const jeux = ref<JeuDeDonnees[]>([])
 const jeuxCoches = ref<number[]>([])
+// Décision A35 : la première exécution joue tous les tests choisis ; les suivantes, seulement ceux qui écrivent des variables
+// (tri refait par le serveur au lancement : ce décompte est celui d'aujourd'hui). `null` : liste illisible, pas de détail.
+const casAvecVariables = ref<Set<number> | null>(null)
+const testsChoisis = computed(() => form.value.selection === 'frozen' ? selected.value : casProposes.value.map((c) => c.id))
+const testsAvecVariables = computed(() => testsChoisis.value.filter((id) => casAvecVariables.value?.has(id)).length)
 const nombreDExecutions = computed(() => Math.max(1, jeuxCoches.value.length))
+const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`
 
 onMounted(async () => {
   // Borne explicite : au-delà, la composition d'une campagne passe par la liste des cas et sa
@@ -59,6 +65,10 @@ onMounted(async () => {
       jeuxCoches.value = tableau.jeux.filter((j) => j.est_defaut).map((j) => j.id)
     }
   } catch { jeux.value = [] }   // tableau illisible : on crée comme avant, le serveur jouera le jeu « Par défaut »
+  if (jeux.value.length) {
+    // À part : un échec ici retire seulement le détail de l'annonce, jamais le choix des jeux.
+    try { casAvecVariables.value = new Set(await api.casAvecVariables(pid)) } catch { casAvecVariables.value = null }
+  }
 })
 
 const canSubmit = computed(() =>
@@ -378,7 +388,10 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
           <span v-if="jeuxCoches.length > JEUX_MAX" class="text-destructive" data-testid="trop-de-jeux">{{ JEUX_MAX }} jeux au plus</span>
           <span v-else-if="!jeuxCoches.length" class="text-destructive">Cochez au moins un jeu</span>
           <span v-else class="text-muted-foreground" data-testid="nombre-executions">
-            {{ nombreDExecutions }} exécution{{ nombreDExecutions > 1 ? 's' : '' }}{{ nombreDExecutions > 1 ? ', regroupées dans un plan' : '' }}
+            <template v-if="nombreDExecutions === 1">1 exécution</template>
+            <template v-else-if="!casAvecVariables">{{ nombreDExecutions }} exécutions, regroupées dans un plan</template>
+            <template v-else>{{ nombreDExecutions }} exécutions : {{ pluriel(testsChoisis.length, 'test') }} dans la première,
+              {{ testsAvecVariables ? `${testsAvecVariables} avec variables` : 'aucun test avec variables' }} dans les autres</template>
           </span>
           <RouterLink :to="{ name: 'project-test-data', params: { pid } }" class="text-primary hover:underline" data-testid="lien-donnees">Données de test</RouterLink>
         </p>

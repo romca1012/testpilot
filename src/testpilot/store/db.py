@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 64
+_SCHEMA_VERSION = 65
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -270,6 +270,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_63_test_unit(conn)
     if version < 64:
         _migrate_64_donnees_de_test(conn)
+    if version < 65:
+        _migrate_65_seulement_variables(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -476,6 +478,16 @@ def _migrate_64_donnees_de_test(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE test_run ADD COLUMN parametres_figes TEXT NOT NULL DEFAULT ''")
     if _table_existe(conn, "execution") and "parametres_joues" not in _column_names(conn, "execution"):
         conn.execute("ALTER TABLE execution ADD COLUMN parametres_joues TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_65_seulement_variables(conn: sqlite3.Connection) -> None:
+    """Lot PT-02b (décision A35) : `test_run.seulement_variables` — une exécution d'un jeu AUTRE que le premier coché ne
+    joue que les tests qui écrivent des variables. Le tri se fait à la LECTURE (`RunRepo.case_ids`), donc au lancement :
+    figé à la création, il oubliait un test qui gagne une variable entre la création et le lancement (revue du
+    2026-10-14). 0 par défaut : rien ne change pour une exécution existante. Idempotente."""
+    if _table_existe(conn, "test_run") and "seulement_variables" not in _column_names(conn, "test_run"):
+        conn.execute("ALTER TABLE test_run ADD COLUMN seulement_variables INTEGER NOT NULL DEFAULT 0"
+                     " CHECK (seulement_variables IN (0, 1))")
 
 
 def _table_existe(conn: sqlite3.Connection, nom: str) -> bool:
