@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// Onglet « Valeurs attendues » (lot PT-03) — COMMENT l'application écrit ses valeurs, pour que l'outil les lise correctement.
-// Deux réglages déclarés par une personne : la monnaie du projet (un test qui attend « 129,51 » sans unité est lu dans cette
-// monnaie quand l'écran affiche un montant — décision A24) et l'écriture des nombres (« 1.234 » : mille deux cent
-// trente-quatre, ou un virgule deux cent trente-quatre ?). Rien de choisi = rien de déclaré : l'outil ne suppose rien.
+// Onglet « Valeurs attendues » (lot PT-03) — COMMENT l'application écrit ses nombres, pour que l'outil les lise correctement.
+// Un réglage déclaré par une personne : l'écriture des nombres (« 1.234 » : mille deux cent trente-quatre, ou un virgule
+// deux cent trente-quatre ?), plus les unités que le projet ajoute lui-même. Rien de choisi = rien de déclaré : l'outil ne
+// suppose rien. Aucune base toute faite (A38, porteur, 2026-10-15) : pas de monnaie du projet.
 // Les règles de calcul rejoindront cet onglet au lot PT-06 ; rien n'est annoncé à l'écran avant d'exister.
 //
 // Les choix proposés viennent du serveur (`/api/settings/options/valeurs-du-projet`) : l'écran ne tient pas sa propre liste.
-// Seuls ces deux champs partent dans l'enregistrement.
+// Seul ce champ part dans l'enregistrement.
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { api, type ProjectSummary, type ValeursDuProjetOptions } from '../../lib/api'
 import Button from '../ui/Button.vue'
@@ -16,9 +16,9 @@ import { projetEnregistre } from './fusion'
 const props = defineProps<{ projet: ProjectSummary; peutRegler: boolean }>()
 const emit = defineEmits<{ (e: 'enregistre', projet: ProjectSummary): void; (e: 'modifie', valeur: boolean): void }>()
 
-const form = reactive({ devise: '', format_nombre: '' })
+const form = reactive({ format_nombre: '' })
 const initial = ref({ ...form })
-const options = ref<ValeursDuProjetOptions>({ devises: [], formats_nombre: [] })
+const options = ref<ValeursDuProjetOptions>({ formats_nombre: [] })
 const enregistrement = ref(false)
 const erreur = ref('')
 const enregistreA = ref(false)
@@ -26,21 +26,6 @@ const enregistreA = ref(false)
 const modifie = computed(() => Object.entries(form).some(([k, v]) => (initial.value as Record<string, string>)[k] !== v))
 watch(modifie, (v) => emit('modifie', v), { immediate: true })
 
-// « Euro (EUR) » plutôt que « EUR » : le nom vient du navigateur, le code du serveur. Sans nom connu, le code seul.
-const nomDesMonnaies = (() => {
-  try { return new Intl.DisplayNames(['fr'], { type: 'currency' }) } catch { return null }
-})()
-function libelleDevise(code: string): string {
-  let nom = ''
-  try { nom = nomDesMonnaies?.of(code) || '' } catch { nom = '' }
-  return nom && nom !== code ? `${nom.charAt(0).toUpperCase()}${nom.slice(1)} (${code})` : code
-}
-// Une monnaie enregistrée reste proposée même si le catalogue n'a pas (encore) répondu : l'écran ne la fait jamais disparaître.
-const devises = computed(() => {
-  const codes = new Set(options.value.devises)
-  if (form.devise) codes.add(form.devise)
-  return [...codes].map((code) => ({ code, libelle: libelleDevise(code) })).sort((a, b) => a.libelle.localeCompare(b.libelle, 'fr'))
-})
 // Une écriture enregistrée reste proposée, elle aussi — sous un libellé, jamais sous sa clé (aucune valeur brute à l'écran).
 const formats = computed(() => {
   const connus = [...options.value.formats_nombre]
@@ -49,7 +34,6 @@ const formats = computed(() => {
 })
 
 function reprendre(p: ProjectSummary) {
-  form.devise = p.devise || ''
   form.format_nombre = p.format_nombre || ''
   initial.value = { ...form }
 }
@@ -71,7 +55,7 @@ async function enregistrer() {
   erreur.value = ''
   enregistreA.value = false
   try {
-    const maj = await api.updateProject(props.projet.id, { devise: form.devise, format_nombre: form.format_nombre })
+    const maj = await api.updateProject(props.projet.id, { format_nombre: form.format_nombre })
     const enregistre = projetEnregistre(props.projet, maj)
     reprendre(enregistre)
     emit('enregistre', enregistre)
@@ -90,13 +74,7 @@ async function enregistrer() {
     <fieldset class="p-4 sm:p-6" :disabled="!peutRegler">
       <legend class="sr-only">Écriture des valeurs</legend>
       <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground" aria-hidden="true">Écriture des valeurs</div>
-      <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label class="block"><span class="text-sm font-medium">Monnaie</span>
-          <select v-model="form.devise" data-testid="devise"
-                  class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3 outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60">
-            <option value="">Non déclarée</option>
-            <option v-for="d in devises" :key="d.code" :value="d.code">{{ d.libelle }}</option>
-          </select></label>
+      <div class="mt-3 grid grid-cols-1 gap-4 sm:max-w-sm">
         <label class="block"><span class="text-sm font-medium">Écriture des nombres</span>
           <select v-model="form.format_nombre" data-testid="format-nombre"
                   class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3 outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60">

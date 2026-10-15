@@ -196,7 +196,7 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
     if body.name is not None and not body.name.strip():
         raise HTTPException(status_code=422, detail="le nom du projet est requis")
     _refuser_contexte_invalide(body.browser_locale or "", body.browser_timezone or "", body.browser_viewport or "")
-    refus = valeurs_du_projet.erreurs(body.devise, body.format_nombre)
+    refus = valeurs_du_projet.erreurs(body.format_nombre)
     if refus:
         raise HTTPException(status_code=422, detail=" ; ".join(refus))
     if body.auth_strategie is not None:
@@ -259,7 +259,6 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
         browser_locale=None if body.browser_locale is None else body.browser_locale.strip(),
         browser_timezone=None if body.browser_timezone is None else body.browser_timezone.strip(),
         browser_viewport=None if body.browser_viewport is None else body.browser_viewport.strip(),
-        devise=None if body.devise is None else valeurs_du_projet.normaliser_devise(body.devise),
         format_nombre=None if body.format_nombre is None else valeurs_du_projet.normaliser_format(body.format_nombre),
         auth_strategie=body.auth_strategie, totp_secret=body.totp_secret, injected_session=body.injected_session,
         profil_instance=body.profil_instance,
