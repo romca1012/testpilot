@@ -5,6 +5,8 @@
 //
 // Un COMPTEUR, pas un booléen : si un jour une modale s'ouvre par-dessus une autre, le scroll ne
 // doit revenir qu'à la fermeture de la DERNIÈRE — un booléen partagé le redonnerait trop tôt.
+import { onBeforeUnmount, watch, type Ref } from 'vue'
+
 let verrous = 0
 let etatPrecedent: { overflow: string; paddingRight: string } | null = null
 
@@ -30,4 +32,18 @@ export function deverrouillerScroll() {
   document.body.style.overflow = etatPrecedent.overflow
   document.body.style.paddingRight = etatPrecedent.paddingRight
   etatPrecedent = null
+}
+
+/** Verrouille le défilement tant que `ouvert` est vrai — et le rend aussi quand le composant est RETIRÉ de la page encore
+ *  ouvert (son parent disparaît dans le même rendu que la fermeture) : un simple `watch` est alors arrêté avant d'avoir vu
+ *  `ouvert` passer à faux, et la page restait figée (mesuré le 2026-10-15 : « Associer aux données de test », le bouton
+ *  disparaît avec sa fenêtre quand il n'y a plus rien à proposer). */
+export function useVerrouScroll(ouvert: Ref<boolean>) {
+  let verrouille = false
+  const poser = (v: boolean) => {
+    if (v && !verrouille) { verrouillerScroll(); verrouille = true }
+    else if (!v && verrouille) { deverrouillerScroll(); verrouille = false }
+  }
+  watch(ouvert, poser)
+  onBeforeUnmount(() => poser(false))
 }
