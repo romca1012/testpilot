@@ -1283,7 +1283,8 @@ class CaseRepo:
         return version_id
 
     def update_script(self, case_id: int, *, feature_content: str, steps_content: str,
-                      editor: str = "ui", expected_version_id: int | None = None) -> int | None:
+                      editor: str = "ui", expected_version_id: int | None = None,
+                      resume: str = "Édition manuelle du script") -> int | None:
         """Édite directement le SCRIPT généré (Gherkin + Python) → **nouvelle version** (rôle
         Dev, 2026-08-07) — le MIROIR de `update_metier` : ici c'est le contenu MÉTIER qui est
         recopié tel quel, le contenu TECHNIQUE qui change.
@@ -1318,7 +1319,7 @@ class CaseRepo:
             spec_content=(current or {}).get("spec_content", ""),
             spec_hash=(current or {}).get("spec_hash", ""),
             feature_content=feature_content, steps_content=steps_content,
-            change_summary="Édition manuelle du script", created_by=editor,
+            change_summary=resume, created_by=editor,
             title=(current or {}).get("title") or case.get("title", ""),
             preconditions=(current or {}).get("preconditions", ""),
             test_steps=(current or {}).get("test_steps", ""),

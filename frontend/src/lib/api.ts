@@ -524,6 +524,12 @@ export const api = {
     request<CaseSummary[]>(`/api/modules/${moduleId}/cases/order`, {
       method: 'PUT', body: JSON.stringify({ case_ids: caseIds }),
     }),
+  // Étape E1 (A39) : associer un test déjà écrit aux données de test — le serveur propose et écrit, l'écran coche.
+  associationsDuCas: (caseId: number | string) => request<Associations>(`/api/cases/${caseId}/associations`),
+  associerDonnees: (caseId: number | string, versionId: number, choix: string[]) =>
+    request<CaseMetierOut>(`/api/cases/${caseId}/associations`, {
+      method: 'POST', body: JSON.stringify({ version_id: versionId, choix }),
+    }),
   // Lot PT-02c : le test d'une version avec les valeurs d'un jeu de données — calculé par le serveur, comme au lancement.
   apercuDonnees: (caseId: number | string, versionId: number | string, datasetId: number) =>
     request<ApercuDonnees>(`/api/cases/${caseId}/versions/${versionId}/apercu-donnees?dataset_id=${datasetId}`),
@@ -676,6 +682,14 @@ export interface VariableDeTest { id: number; nom: string; description: string }
 export interface ImportDonnees {
   nouvelles_variables: string[]; nouveaux_jeux: string[]
   cases: { variable: string; jeu: string; avant: string; apres: string }[]; erreurs: string[]
+}
+/** Étape E1 (A39) : ce qu'un test déjà écrit pourrait employer des données de test (version courante). */
+export interface Associations {
+  version_id: number
+  /** Une proposition par variable, avec TOUTES ses lignes (tout ou rien) ; `verification` : touche un « Alors ». */
+  propositions: { id: string; variable: string; valeur: string; verification: boolean;
+                  lignes: { ligne: number; avant: string; apres: string }[] }[]
+  ecartees: { variable: string; valeur: string; raison: string }[]
 }
 /** Lot PT-02c : un test tel qu'il serait joué avec un jeu de données ; `manques` non vide : il serait « bloqué ». */
 export interface ApercuDonnees { jeu: string; texte: string; manques: string[]; valeurs: Record<string, { valeur: string; origine: string }> }

@@ -9,7 +9,7 @@ from testpilot import config
 from testpilot.api import erreurs, access, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import (
-    donnees_de_test_service, events_bus, generation_service, run_service, script_service,
+    association_donnees, donnees_de_test_service, events_bus, generation_service, run_service, script_service,
 )
 from testpilot.guardrails import durable_jobs
 from testpilot.store.repositories import (
@@ -348,6 +348,58 @@ def get_case(case_id: int, conn=Depends(get_conn)):
         executions=executions,
         gate=gate,
     )
+
+
+def _base_d_association(conn, case_id: int):
+    cas = CaseRepo(conn).get(case_id)
+    if cas is None:
+        raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
+    version = VersionRepo(conn).get(cas.get("current_version_id")) if cas.get("current_version_id") else None
+    if version is None or not (version.get("feature_content") or "").strip():
+        raise HTTPException(status_code=404, detail=f"le cas {case_id} n'a pas encore de test technique")
+    valeurs, noms = association_donnees.valeurs_par_defaut(conn, cas["project_id"])
+    motifs = association_donnees.motifs_du_catalogue(ProjectRepo(conn).get(cas["project_id"]) or {})
+    return version, valeurs, noms, motifs
+
+
+_ACCES_AU_CAS = access.require_project_access_depuis("case_id", access.project_id_depuis_case)
+
+
+@router.get("/{case_id}/associations", response_model=schemas.AssociationsOut, dependencies=[Depends(_ACCES_AU_CAS)])
+def get_associations(case_id: int, conn=Depends(get_conn)):
+    """Étape E1 (A39) : les variables de test que ce test pourrait employer à la place de ses valeurs en dur — sans IA, rien
+    n'est écrit. Calculé sur la version COURANTE."""
+    version, valeurs, _noms, motifs = _base_d_association(conn, case_id)
+    trouve = association_donnees.propositions(version["feature_content"], version.get("steps_content") or "", valeurs, motifs)
+    return schemas.AssociationsOut(version_id=version["id"], **trouve)
+
+
+@router.post("/{case_id}/associations", response_model=schemas.CaseMetierOut, dependencies=[Depends(_ACCES_AU_CAS)])
+def post_associations(case_id: int, body: schemas.AssociationsIn, request: Request, conn=Depends(get_conn)):
+    """Associe le test aux données de test : nouvelle version, à relire comme toute modification (jamais approuvée d'office).
+    Ouvert aux testeurs (A30) : ils ne choisissent que parmi les propositions, le texte est calculé ici et rejoue EXACTEMENT
+    le test d'origine avec le jeu « Par défaut » (sinon rien n'est écrit). Une proposition qui touche une VÉRIFICATION est
+    ouverte aux testeurs aussi (décision A40, porteur, 2026-10-15) : la nouvelle version est à relire comme toute autre."""
+    version, valeurs, noms, motifs = _base_d_association(conn, case_id)
+    if body.version_id != version["id"]:
+        raise erreurs.ErreurMetier("conflit_edition", "le test a changé depuis : rechargez-le avant d'associer")
+    try:
+        associe, retenues = association_donnees.appliquer(version["feature_content"], version.get("steps_content") or "",
+                                                          valeurs, noms, motifs, body.choix)
+    except association_donnees.AssociationImpossible as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    cases = CaseRepo(conn)
+    try:
+        version_id = cases.update_script(
+            case_id, feature_content=associe, steps_content=version.get("steps_content") or "",
+            editor=access.utilisateur_de(request) or "ui", expected_version_id=version["id"],
+            resume="Association aux données de test : " + ", ".join("{{" + p["variable"] + "}}" for p in retenues))
+    except VersionConflict as exc:
+        raise erreurs.ErreurMetier("conflit_edition", str(exc)) from exc
+    cas_a_jour = cases.get(case_id)
+    _publier_changement(cas_a_jour, "case_script_changed")
+    return schemas.CaseMetierOut(case=schemas.case_summary(cas_a_jour), version_id=version_id,
+                                 version_created=version_id is not None)
 
 
 @router.get("/{case_id}/versions/{version_id}/apercu-donnees", response_model=schemas.ApercuDonneesOut,
