@@ -37,6 +37,7 @@ import ast
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -401,6 +402,8 @@ class EssaiConsigne:
     refus_ecriture: dict[str, int] = field(default_factory=dict)  # lot VH-04 : refus des gardes d'écriture, par code
     # Lot VH-06 : nombre de steps que le test DÉFINIT lui-même (code libre) ; `None` si la génération n'a rien produit.
     steps_generes: int | None = None
+    # Lot PT-02d : variables de test que le test généré ÉCRIT (`{{nom}}`) ; `None` si la génération n'a rien produit.
+    variables_ecrites: list[str] | None = None
 
 
 @dataclass
@@ -553,7 +556,8 @@ def executer_campagne(
             campagne.essais.append(EssaiConsigne(cas, essai, jouable, artefacts.erreur, cout_essai,
                                                  artefacts.empreintes if jouable else {},
                                                  dict(getattr(artefacts, "refus_ecriture", None) or {}),
-                                                 compter_steps_generes(artefacts.fichiers) if jouable else None))
+                                                 compter_steps_generes(artefacts.fichiers) if jouable else None,
+                                                 variables_ecrites(artefacts.fichiers) if jouable else None))
             journal(f"{cas} essai {essai} : {'généré' if jouable else 'GÉNÉRATION ÉCHOUÉE'} "
                     f"({'coût inconnu' if cout_essai is None else f'{cout_essai:.3f} $'})")
             traces: dict[str, dict | None] = {}
@@ -982,6 +986,12 @@ def rendre_markdown(campagne: Campagne, indicateurs: dict, contexte: dict) -> st
                    f"Tests générés sans AUCUN step écrit à la main : **{sans}/{len(mesures)}** ; steps définis par les tests : "
                    f"{sum(mesures)} au total (maximum {max(mesures)} dans un test). Un step écrit à la main n'a ni test de "
                    "falsifiabilité ni résolution éprouvée : la cible est zéro."]
+    ecrites = [t.variables_ecrites for t in campagne.essais if t.variables_ecrites is not None]
+    if any(ecrites):
+        lignes += ["", "## Données de test (lot PT-02d)", "",
+                   f"Tests générés qui écrivent au moins une variable : **{sum(1 for v in ecrites if v)}/{len(ecrites)}** ; "
+                   "variables écrites : " + ", ".join(f"`{n}` ×{c}" for n, c in Counter(n for v in ecrites for n in v)
+                                                     .most_common()) + "."]
     lignes += ["", "## Génération par essai", "",
                "| Cas | Essai | Généré | Coût ($) | Refus à l'écriture | Steps écrits à la main | Empreinte du test (sha256) |",
                "|---|---|---|---|---|---|---|"]
@@ -1172,6 +1182,16 @@ def executer_behave(dossier: Path, module: str, connexion: dict[str, str], proje
 _REFUS_ECRITURE_FILE_ENV = "TP_REFUS_ECRITURE_FILE"
 
 
+def variables_ecrites(fichiers: Mapping[str, str]) -> list[str]:
+    """Lot PT-02d : les noms des variables `{{nom}}` que le `.feature` généré écrit, sans doublon, dans l'ordre — pur, testé."""
+    noms: dict[str, None] = {}
+    for nom, contenu in fichiers.items():
+        if nom.endswith(".feature"):
+            for trouve in re.finditer(r"\{\{\s*(\w+)\s*\}\}", contenu):
+                noms.setdefault(trouve.group(1), None)
+    return list(noms)
+
+
 def compter_steps_generes(fichiers: Mapping[str, str]) -> int:
     """Lot VH-06 : le nombre de steps que le test généré DÉFINIT lui-même (décorateurs `@given`/`@when`/`@then`/`@step` de ses
     fichiers Python) — le « code libre », première source d'erreur technique mesurée. Lu dans l'AST ; un fichier illisible
@@ -1273,12 +1293,27 @@ class JoueurReel:
         defauts = [] if variante == VARIANTE_SAINE else [variante]
         dossier = Path(tempfile.mkdtemp(prefix="jeu_", dir=self.dossier_de_travail))
         try:
+            # Lot PT-02d : un test qui écrit `{{nom}}` est joué avec les valeurs du jeu « Par défaut », comme en production.
+            # `poses` : nom du fichier → texte réellement joué ; son empreinte est contrôlée après le jeu contre ce texte, puis
+            # rapportée comme celle du fichier généré (seules les variables ont changé, par le calcul de la production).
+            poses: dict[str, str] = {}
             for nom, contenu in artefacts.fichiers.items():
+                if nom.endswith(".feature"):
+                    joue, manques = poser_les_donnees_de_test(contenu, self.project_id)
+                    if manques:
+                        return Jeu(verdict="blocked", cause="donnee_de_test",
+                                   detail="Données de test : " + " ; ".join(manques[:3]), empreintes=None)
+                    if joue != contenu:
+                        poses[nom] = joue
+                        contenu = joue
                 (dossier / nom).write_bytes(contenu.encode("utf-8"))  # octets exacts : l'empreinte doit survivre
             self.application.reinitialiser(defauts)
             retour = self.executer(dossier, artefacts.module, self.connexion, self.project_id, self.connector_type,
                                    self.dossier_de_travail / "traces" / f"{artefacts.cas}-t{artefacts.essai}-{variante}")
             joues = {nom: empreinte((dossier / nom).read_bytes()) for nom in sorted(artefacts.fichiers)}
+            for nom, texte in poses.items():
+                if joues[nom] == empreinte(texte.encode("utf-8")):
+                    joues[nom] = empreinte(artefacts.fichiers[nom])
             return Jeu(verdict=verdict_du_banc(retour.get("execution"), retour.get("fonctionnel")),
                        cause=retour.get("cause", ""), detail=retour.get("detail", ""), duree=retour.get("duree"),
                        empreintes=joues, trace=retour.get("trace"))
@@ -1491,8 +1526,53 @@ def oracle_du_banc_web(url: str) -> dict:
             "oracle_queries": json.dumps([{"name": "etat", "method": "GET", "path": "/__etat"}])}
 
 
+# Lot PT-02d : les données de test du projet jetable (`--donnees-de-test`). Les valeurs « Par défaut » sont celles que les specs
+# du banc citent déjà (« Dupont SARL », « Lyon ») : un test qui écrit la variable joue exactement ce que la spec demande, et les
+# attendus du banc (`attendus.yaml`) restent valables. Hors option : rien n'est déclaré, la campagne est celle d'avant.
+DONNEES_DE_TEST_DU_BANC = {
+    "nom_client": ("le nom du client à créer", "Dupont SARL"),
+    "ville_client": ("la ville du client à créer", "Lyon"),
+}
+
+
+def declarer_les_donnees_de_test(conn, project_id: int) -> None:
+    from testpilot.store.repositories import TestDataRepo
+
+    depot = TestDataRepo(conn)
+    ids = {nom: depot.creer_variable(project_id, nom=nom, description=description)
+           for nom, (description, _valeur) in DONNEES_DE_TEST_DU_BANC.items()}
+    depot.poser_valeurs(project_id, depot.jeux(project_id)[0]["id"],
+                        {ids[nom]: valeur for nom, (_description, valeur) in DONNEES_DE_TEST_DU_BANC.items()})
+
+
+def poser_les_donnees_de_test(texte: str, project_id: int | None) -> tuple[str, list[str]]:
+    """Le test tel que la PRODUCTION le jouerait hors campagne : variables remplacées par les valeurs du jeu « Par défaut »
+    (`donnees_de_test_service`, même calcul). Rend (texte, manques) ; un manque : le jeu sort « bloqué », jamais joué."""
+    if "{{" not in texte and "}}" not in texte:
+        return texte, []
+    import sqlite3
+
+    from testpilot import config
+    from testpilot.parametres import resolution
+    from testpilot.store.repositories import TestDataRepo
+
+    with sqlite3.connect(config.DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        noms, niveaux = TestDataRepo(conn).niveaux(project_id) if project_id is not None else ([], [])
+    if not noms and not niveaux:
+        # Le banc est plus strict que la production ici (revue du 2026-10-14) : une génération rejouée depuis une campagne
+        # à données de test (`--generations-depuis`) sans `--donnees-de-test` jouerait `{{nom_client}}` tel quel, et un
+        # « n'affiche pas "{{nom_client}}" » sortirait conforme. Une référence sans aucune variable déclarée : bloqué.
+        if "{{" in texte:   # aussi large que le refus dans le code : une variable mal fermée compte
+            return texte, ["le test écrit une variable, mais ce projet de banc n'en déclare aucune (--donnees-de-test ?)"]
+        return texte, []
+    rendu = resolution.remplacer(texte, resolution.resoudre(niveaux, noms), noms)
+    return rendu.texte, list(rendu.inconnues) + [f"variable sans valeur « {n} »" for n in rendu.sans_valeur]
+
+
 def preparer_projet_web(url: str, compte: Mapping, specs: Mapping[str, dict], data_dir: Path,
-                        cle_secrete: str, bac_a_sable: bool = False) -> tuple[int, dict[str, int]]:
+                        cle_secrete: str, bac_a_sable: bool = False,
+                        donnees_de_test: bool = False) -> tuple[int, dict[str, int]]:
     """Projet `web` jetable + annuaire (exploration déterministe, navigateur réel) + un cas par spec. Mode réel seulement.
 
     `bac_a_sable` (lot VH-07, D26) : le projet se déclare bac à sable (calibration en écriture + remise à zéro `POST
@@ -1515,6 +1595,8 @@ def preparer_projet_web(url: str, compte: Mapping, specs: Mapping[str, dict], da
     if bac_a_sable:
         ProjectRepo(conn).set_calibration_writes_enabled(project_id, True)
         ProjectRepo(conn).set_bac_a_sable_reset(project_id, url.rstrip("/") + "/__reset")
+    if donnees_de_test:
+        declarer_les_donnees_de_test(conn, project_id)
     banc_projet.explorer(conn, project_id)
     module_id = ModuleRepo(conn).create(project_id=project_id, name=MODULE_DU_BANC)
     cas = CaseRepo(conn)
@@ -1653,6 +1735,10 @@ def main(argv: list[str] | None = None) -> int:
                               "au lieu d'en générer de nouveaux : aucun coût de génération")
     parseur.add_argument("--bac-a-sable", action="store_true",
                          help="lot VH-07 (D26) : le projet se déclare bac à sable — l'agent joue ses actions pendant la génération")
+    parseur.add_argument("--donnees-de-test", action="store_true",
+                         help="lot PT-02d : le projet jetable déclare des variables de test (valeurs « Par défaut » = celles des "
+                              "specs) ; un test qui les écrit est joué avec ces valeurs. L'agent ne les connaît que si "
+                              "TESTPILOT_VARIABLES_DE_TEST est allumé")
     parseur.add_argument("--hote", default="127.0.0.1", help="hôte de l'application locale : bouclage uniquement")
     parseur.add_argument("--cas", default=None, help="mise au point : cas séparés par des virgules (le rapport l'indique)")
     parseur.add_argument("--etiquette", default="")
@@ -1720,7 +1806,8 @@ def _lancer_reel(args, configuration: Configuration, cas_joues: list[str], taux:
     with ApplicationLocale(args.hote) as application:
         application.reinitialiser([])
         project_id, ids = preparer_projet_web(application.url, compte, specs, data_dir, cle,
-                                              bac_a_sable=bool(args.bac_a_sable))
+                                              bac_a_sable=bool(args.bac_a_sable),
+                                              donnees_de_test=bool(args.donnees_de_test))
         suivi = {"usd": 0.0, "max": 0.0}
         reste = (lambda: None if args.plafond_cout is None else args.plafond_cout - suivi["usd"])
 
@@ -1758,6 +1845,7 @@ def _lancer_reel(args, configuration: Configuration, cas_joues: list[str], taux:
                 "sous_ensemble_de_cas": bool(args.cas), "donnees_jetables": str(data_dir),
                 "generations_rejouees_depuis": str(args.generations_depuis) if args.generations_depuis else None,
                 "reparation": bool(args.reparer),
+                "donnees_de_test": bool(args.donnees_de_test),
                 "bac_a_sable": bool(args.bac_a_sable),
                 "tentatives_reparation": _tentatives_de_reparation(args.tentatives_reparation) if args.reparer else None}
     md, js = ecrire_sortie(campagne, indicateurs, contexte, args.sortie)

@@ -69,11 +69,14 @@ class GenerationAgent:
         # ⚠️ Il est propre au PROJET (son instance), plus au type de connecteur : deux projets
         # Odoo distincts n'ont ni les mêmes routes ni les mêmes champs.
         modele = domain_model.charger_modele(projet)
+        # Lot PT-02d : les noms des variables de test (interrupteur éteint : liste vide, message d'avant).
+        from testpilot.generation import variables_de_test
+        variables, valeurs_par_defaut = variables_de_test.pour_l_agent(projet)
         state.messages.append({"role": "user",
                                "content": prompt_mod.build_initial_message(
                                    plan, modele, metier, comptes=(projet or {}).get("comptes_libelles"),
                                    oracle=(projet or {}).get("oracle_requetes_disponibles"),
-                                   regeneration=regeneration)})
+                                   regeneration=regeneration, variables=variables)})
         if failure_context:
             state.messages[0]["content"] = [
                 {"type": "text", "text": state.messages[0]["content"]}, *failure_context]
@@ -111,6 +114,8 @@ class GenerationAgent:
         from testpilot.generation.tools import essai as essai_tools
         from testpilot.generation.tools import outils_optionnels
         ctx.essai = essai_tools.construire(projet, self.dry_runner, self.connector)
+        ctx.variables_de_test = frozenset(v["nom"] for v in variables)
+        ctx.valeurs_de_test = valeurs_par_defaut
         from testpilot.generation.provenance import fingerprint, target_fingerprint
         ctx.target_sha256 = target_fingerprint(projet)
         ctx.shared_steps = shared_steps

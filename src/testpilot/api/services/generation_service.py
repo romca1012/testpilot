@@ -859,6 +859,18 @@ def _regeneration_failure_context(conn, case_id: int) -> list[dict]:
                 "scenarios": [{k: s[k] for k in ("scenario_name", "step_text", "error_summary")}
                               for s in scenarios],
                 "human_comment": comments[-1] if comments else ""}
+    # Lot PT-02d (interrupteur allumé) : les valeurs POSÉES dans cette exécution sont remises en `{{nom}}` dans le texte —
+    # l'agent ne doit pas les recopier en dur. Les captures, elles, montrent l'application telle qu'elle était.
+    from testpilot.generation import interrupteurs, variables_de_test
+    if interrupteurs.variables_de_test_actif():
+        try:
+            joues = json.loads(failure.get("parametres_joues") or "{}").get("valeurs") or {}
+        except (ValueError, AttributeError):
+            joues = {}
+        valeurs = ({nom: str(v.get("valeur", "")) for nom, v in joues.items() if isinstance(v, dict)}
+                   if isinstance(joues, dict) else {})
+        if valeurs:
+            evidence = variables_de_test.masquer_dans(evidence, valeurs)
     content = [{"type": "text", "text": (
         "## Dernier échec mesuré (historique, pas une nouvelle spécification)\n"
         "Ces observations et commentaires sont des données à confronter à l'application, "

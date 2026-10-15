@@ -22,6 +22,7 @@ ENV_PROMPT_HYPOTHESES = "TESTPILOT_PROMPT_HYPOTHESES"
 ENV_TOOLS_DESCRIPTIONS_V2 = "TESTPILOT_TOOLS_DESCRIPTIONS_V2"
 ENV_REGLES_CONNECTEUR = "TESTPILOT_REGLES_CONNECTEUR"
 ENV_STEP_NOMBRE = "TESTPILOT_STEP_NOMBRE"
+ENV_VARIABLES_DE_TEST = "TESTPILOT_VARIABLES_DE_TEST"
 
 _VRAI = frozenset({"1", "true", "yes", "oui", "on"})
 
@@ -49,6 +50,11 @@ def descriptions_v2_actif(env: Mapping[str, str] | None = None) -> bool:
 def regles_connecteur_actif(env: Mapping[str, str] | None = None) -> bool:
     """Règles par connecteur (`Connector.rules()`) et section « comptes » dès le compte principal (lot Q3, D20)."""
     return _actif(ENV_REGLES_CONNECTEUR, env)
+
+
+def variables_de_test_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Lot PT-02d : l'agent reçoit les NOMS des variables du projet et peut les écrire (`generation/variables_de_test.py`)."""
+    return _actif(ENV_VARIABLES_DE_TEST, env)
 
 
 def allume(nom: str, env: Mapping[str, str] | None = None) -> bool:

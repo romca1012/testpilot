@@ -60,6 +60,14 @@ class ToolContext:
     # Lot VH-07 (D26) : le mode « exécuter puis écrire » de ce projet (`tools/essai.EssaiBacASable`), ou None — l'outil
     # `essayer_les_actions` n'est alors ni proposé à l'agent ni exécutable.
     essai: Any = None
+    # Lot PT-02d (interrupteur `TESTPILOT_VARIABLES_DE_TEST`) : les NOMS des variables de test que ce test peut écrire, et
+    # les valeurs du jeu « Par défaut » posées dans l'ESSAI — jamais montrées à l'agent. Vides : interrupteur éteint ou
+    # projet sans variable, rien ne change.
+    variables_de_test: frozenset[str] = field(default_factory=frozenset)
+    valeurs_de_test: dict[str, str] = field(default_factory=dict)
+    # Réparation et correction : les écritures `{{…}}` du test de référence, FIGÉES (ni ajout, ni retrait, ni renommage).
+    # `None` hors réparation/correction.
+    references_figees: list[str] | None = None
 
 
 @dataclass
