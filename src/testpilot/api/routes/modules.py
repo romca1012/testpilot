@@ -154,6 +154,12 @@ def create_manual_case(module_id: int, body: schemas.ManualCaseIn, request: Requ
         if groupe["module_id"] != module_id:
             raise HTTPException(status_code=422,
                                 detail="cette section appartient à un autre module")
+    # Lot PT-02f (A39) : un texte de cas qui cite une variable inconnue, mal écrite, ou dans le titre, est refusé (éteint : rien).
+    fautes = generation_service.refus_des_variables_du_cas(
+        conn, ModuleRepo(conn).get(module_id).get("project_id"),
+        {"title": body.title, "preconditions": body.preconditions, "steps": steps, "expected_result": body.expected_result})
+    if fautes:
+        raise HTTPException(status_code=422, detail=" ; ".join(fautes))
     try:
         cid = CaseRepo(conn).create_manual(
             module_id=module_id, title=body.title.strip(),

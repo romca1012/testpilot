@@ -1016,6 +1016,13 @@ class LigneAssociee(BaseModel):
     apres: str
 
 
+class LigneDuCasAssociee(BaseModel):
+    """Décision A41 : un texte du cas (« Étape 3 », « Résultat attendu »…) où la valeur est aussi remplacée."""
+    champ: str
+    avant: str
+    apres: str
+
+
 class PropositionAssociation(BaseModel):
     """Une variable, TOUT OU RIEN : toutes les lignes où sa valeur apparaît. `verification` : elle touche un « Alors »."""
     id: str
@@ -1023,6 +1030,7 @@ class PropositionAssociation(BaseModel):
     valeur: str
     verification: bool = False
     lignes: list[LigneAssociee] = []
+    lignes_du_cas: list[LigneDuCasAssociee] = []
 
 
 class AssociationsOut(BaseModel):

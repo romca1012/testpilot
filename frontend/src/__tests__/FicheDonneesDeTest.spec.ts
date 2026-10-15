@@ -114,7 +114,8 @@ describe('Fiche d’un test — bouton « Variable » (PT-02c)', () => {
 
 describe('Fiche d’un test — associer d’un clic (E1, A39)', () => {
   const PROPOSITIONS = { version_id: 70, ecartees: [], propositions: [
-    { id: 'client:aaaaaaaaaa', variable: 'client', valeur: 'Martin SARL', verification: true, lignes: [
+    { id: 'client:aaaaaaaaaa', variable: 'client', valeur: 'Martin SARL', verification: true,
+      lignes_du_cas: [{ champ: 'Étape 2', avant: 'Choisir Martin SARL', apres: 'Choisir {{client}}' }], lignes: [
       { ligne: 5, avant: 'Quand je renseigne le champ "Client" avec la valeur "Martin SARL"', apres: 'Quand je renseigne le champ "Client" avec la valeur "{{client}}"' },
       { ligne: 6, avant: 'Alors la page affiche le texte "Martin SARL"', apres: 'Alors la page affiche le texte "{{client}}"' },
     ] },
@@ -151,6 +152,9 @@ describe('Fiche d’un test — associer d’un clic (E1, A39)', () => {
     expect(texte).toContain('valeur "Martin SARL"')
     expect(texte).toContain('valeur "{{client}}"')
     expect(texte).toContain('texte "{{client}}"')
+    const cas = w.get('[data-testid="association-cas"]').text()   // A41 : le texte du cas change aussi
+    expect(cas).toContain('Étape 2')
+    expect(cas).toContain('Choisir {{client}}')
   })
 
   it('falsifiable : tout est coché d’emblée ; seuls les identifiants cochés partent, jamais du texte', async () => {

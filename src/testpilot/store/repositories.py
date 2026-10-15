@@ -177,6 +177,12 @@ class ProjectRepo:
             except sqlite3.OperationalError:   # base d'avant la migration 64 (tests à schéma minimal)
                 tableau = {"variables": [], "jeux": [], "valeurs": {}}
             projet["variables_de_test"] = [{"nom": v["nom"], "description": v["description"]} for v in tableau["variables"]]
+            # Lot PT-02f : une variable à la corbeille compte comme DÉCLARÉE — un projet qui en a eu n'est pas un projet sans
+            # donnée de test (revue du 2026-10-15) ; jamais montrée à l'agent.
+            try:
+                projet["variables_de_test_a_la_corbeille"] = TestDataRepo(self.conn).variables_a_la_corbeille(projet["id"])
+            except sqlite3.OperationalError:
+                projet["variables_de_test_a_la_corbeille"] = []
             defaut = next((j for j in tableau["jeux"] if j["est_defaut"]), None)
             noms = {v["id"]: v["nom"] for v in tableau["variables"]}
             projet["valeurs_de_test_par_defaut"] = (
@@ -1284,7 +1290,7 @@ class CaseRepo:
 
     def update_script(self, case_id: int, *, feature_content: str, steps_content: str,
                       editor: str = "ui", expected_version_id: int | None = None,
-                      resume: str = "Édition manuelle du script") -> int | None:
+                      resume: str = "Édition manuelle du script", metier: dict | None = None) -> int | None:
         """Édite directement le SCRIPT généré (Gherkin + Python) → **nouvelle version** (rôle
         Dev, 2026-08-07) — le MIROIR de `update_metier` : ici c'est le contenu MÉTIER qui est
         recopié tel quel, le contenu TECHNIQUE qui change.
@@ -1296,6 +1302,9 @@ class CaseRepo:
 
         `expected_version_id` : même garde-fou anti-édition-concurrente que `update_metier`
         (voir sa docstring) — lève `VersionConflict` si fourni et périmé.
+
+        `metier` (décision A41, associer d'un clic) : `{preconditions, test_steps, expected_result}` qui changent DANS LA
+        MÊME version que le script — le cas et son test restent d'accord. Absent : le métier est recopié, comme avant.
 
         Rend `None` si rien n'a changé (pas de version fantôme) — sinon l'id de la NOUVELLE
         version.
@@ -1309,9 +1318,11 @@ class CaseRepo:
         versions = VersionRepo(self.conn)
         current = (versions.get(case["current_version_id"])
                   if case.get("current_version_id") else None)
+        metier = metier or {}
         if (current is not None
                 and feature_content == (current.get("feature_content") or "")
-                and steps_content == (current.get("steps_content") or "")):
+                and steps_content == (current.get("steps_content") or "")
+                and all(v == (current.get(k) or "") for k, v in metier.items())):
             return None
 
         version_id = versions.create(
@@ -1321,9 +1332,9 @@ class CaseRepo:
             feature_content=feature_content, steps_content=steps_content,
             change_summary=resume, created_by=editor,
             title=(current or {}).get("title") or case.get("title", ""),
-            preconditions=(current or {}).get("preconditions", ""),
-            test_steps=(current or {}).get("test_steps", ""),
-            expected_result=(current or {}).get("expected_result", ""),
+            preconditions=metier.get("preconditions", (current or {}).get("preconditions", "")),
+            test_steps=metier.get("test_steps", (current or {}).get("test_steps", "")),
+            expected_result=metier.get("expected_result", (current or {}).get("expected_result", "")),
             verified_fields=(current or {}).get("verified_fields", ""),
             **revision_metadata(current))
         self.set_current_version(case_id, version_id)

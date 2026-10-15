@@ -65,6 +65,11 @@ class ToolContext:
     # projet sans variable, rien ne change.
     variables_de_test: frozenset[str] = field(default_factory=frozenset)
     valeurs_de_test: dict[str, str] = field(default_factory=dict)
+    # Lot PT-02f (interrupteur `TESTPILOT_CAS_DIT_SES_DONNEES`, cas connu) : `controle_du_cas` — les variables écrites sont
+    # contrôlées même quand le cas n'en cite aucune (« aucune autre » : `variables_de_test` est alors vide, toute variable
+    # est refusée) ; `variables_du_cas` — celles que le test DOIT employer. Éteint : faux et vide, rien ne change.
+    controle_du_cas: bool = False
+    variables_du_cas: frozenset[str] = field(default_factory=frozenset)
     # Réparation et correction : les écritures `{{…}}` du test de référence, FIGÉES (ni ajout, ni retrait, ni renommage).
     # `None` hors réparation/correction.
     references_figees: list[str] | None = None

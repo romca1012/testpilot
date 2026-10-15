@@ -510,6 +510,11 @@ def essayer_les_actions(ctx: "ToolContext", etapes: list[str]) -> "ToolOutcome":
     # Lot PT-02d : l'essai reçoit les valeurs du jeu « Par défaut » — jamais `{{client}}` saisi tel quel dans l'application.
     texte = _texte_du_scenario(etapes)
     noms = getattr(ctx, "variables_de_test", frozenset())
+    # Lot PT-02f : aucune variable permise (dernière à la corbeille) — un `{{…}}` ne serait remplacé par rien, et saisi tel
+    # quel dans l'application (revue du 2026-10-15). Refusé, comme à l'écriture.
+    if not noms and getattr(ctx, "controle_du_cas", False) and "{{" in texte:
+        return _outcome(f"[{NOM_OUTIL}] ESSAI_REFUSE : aucune donnée de test n'est permise pour ce cas — écris la valeur.",
+                        ok=False)
     if noms:
         from testpilot.generation import variables_de_test
         texte, manques = variables_de_test.texte_de_l_essai(texte, getattr(ctx, "valeurs_de_test", {}) or {}, noms)

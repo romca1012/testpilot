@@ -41,6 +41,8 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 | A38 | **Aucune base toute faite dans les paramètres** (porteur, 2026-10-15) : l'outil ne fournit pas de réglage tiré d'un cas particulier. La **monnaie du projet est retirée** (réglage, colonne, règle A24 pour sa partie « monnaie déclarée ») ; **l'écriture des nombres reste** un réglage ; **les unités ajoutées restent** (une liste vide que chaque projet remplit lui-même). La lecture des nombres continue de reconnaître « € » et « EUR » comme la même unité : c'est de la lecture, pas un réglage. Une valeur attendue écrite sans unité face à un montant affiché : l'outil ne se prononce pas et demande d'écrire l'unité (règle prudente d'A24, inchangée). | 2026-10-15 |
 | A39 | **Validée par le porteur le 2026-10-15** — option en plus, le parcours d'aujourd'hui ne change pas pour un projet sans paramètre. *Le cas fait foi, aussi pour les données* : quand le projet a déclaré des données de test, c'est le CAS (sa description, relue et validée par une personne) qui dit quelles données de test il emploie, écrites `{{client}}` ; l'IA les y propose à partir des variables du projet, la personne valide ; le test technique doit ensuite reprendre exactement ces variables — vérifié sans IA, refusé sinon. Les tests déjà écrits s'associent d'un clic (proposition sans IA, aperçu, nouvelle version à relire). | 2026-10-15 |
 | A40 | **Validée par le porteur le 2026-10-15** — associer d'un clic est ouvert à tous ceux qui modifient un test (testeurs compris), y compris quand l'association touche une VÉRIFICATION (une étape « Alors »), sans condition de rôle : la nouvelle version est à relire comme toute modification. Écartées : réservé au rôle développeur ; relecture obligatoirement par une autre personne. À savoir : une valeur saisie dans une action peut décider de ce qu'un « Alors » compte (« je filtre par "Martin SARL" » puis « la liste affiche 1 enregistrement ») ; la relecture de la nouvelle version reste le garde-fou. | 2026-10-15 |
+| A41 | **Validée par le porteur le 2026-10-15** — associer d'un clic remplace AUSSI la valeur dans le texte du cas (préconditions, étapes, résultat attendu) quand elle y est écrite, avec l'avant/après dans la même fenêtre : le cas et le test restent d'accord, une régénération garde la variable. Quand le cas n'écrit pas la valeur, la règle « le test technique reprend exactement les variables du cas » (E2) admet aussi les variables que le test actuel emploie déjà. Écartées : garder le cas tel quel ; bloquer la régénération. | 2026-10-15 |
+| A42 | **Validée par le porteur le 2026-10-15** — quand une modification faite à la main fait que le cas cite une donnée de test (`{{client}}`) que son test technique n'emploie pas, la modification est enregistrée mais le test ne peut plus être approuvé ni exécuté tant que l'écart existe ; la fiche affiche « le cas cite {{client}}, le test ne l'emploie pas ». On règle en régénérant le test ou en corrigeant le cas. L'inverse (le test emploie une donnée que le cas ne cite pas) reste admis (A41). Seulement avec PT-02f allumé et pour un projet qui déclare des données de test. Écartées : refuser la modification ; prévenir seulement. | 2026-10-15 |
 | — | Précisions annoncées au porteur le 2026-10-13, sans objection : la **mise à la corbeille** d'une variable ou d'un jeu reste réservée à l'administrateur du projet (comme toute suppression de l'outil : lui seul restaure) ; le **nom d'une variable ne se modifie pas** (les tests la désignent par ce nom) ; un lancement **sans jeu choisi** joue le jeu « Par défaut » si le projet a des variables, et rien ne change pour un projet qui n'en a pas. | 2026-10-13 |
 
 Interrupteur (confirmé par le porteur le 2026-10-13) : il ne sert qu'au temps de la construction, pour comparer
@@ -344,6 +346,16 @@ octet pour octet (garde : test d'identité, interrupteurs éteints).
 Total des mesures avec IA : **≈ 45 $**, chaque campagne annoncée et validée par le porteur avant d'être lancée, avec un
 plafond bloquant. Les étapes sans IA (E1, le code de E2, PT-04a, PT-05) avancent sans attendre les campagnes.
 
+**À mesurer en E3 (limites connues de PT-02f, revue du 2026-10-15)** : le contrôle « le test reprend les variables du cas »
+vérifie leur PRÉSENCE dans le test, pas qu'elles servent — un step écrit à la main qui ne fait rien de `{{client}}` passerait ;
+la campagne compte donc les variables placées dans un step de la bibliothèque qui consomme son paramètre. Une variable
+impossible à placer fait boucler l'agent jusqu'à sa limite d'itérations ou de coût (0,50 $) : compté dans le coût par cas.
+PT-02f n'agit qu'avec PT-02d allumé.
+Le banc d'agents crée ses cas sans IA (spécifications fixes) : avec `--donnees-de-test` et PT-02f allumé, leur texte cite
+`{{nom_client}}` par le remplacement de l'association d'un clic. La campagne M1 mesure donc le test TECHNIQUE ; ce que l'IA
+qui rédige les cas fait des variables (proposées, oubliées, inventées) et son coût se mesurent à part, par une génération
+complète depuis une spécification.
+
 ### 9.4 Ce que l'entreprise y gagne, étape par étape
 
 | Après | Ce qu'un utilisateur peut faire |
@@ -359,6 +371,8 @@ plafond bloquant. Les étapes sans IA (E1, le code de E2, PT-04a, PT-05) avancen
 
 - **A39** : validée le 2026-10-15.
 - **A40** (droits de l'association d'un clic) : validée le 2026-10-15 — ouverte à tous, sans condition.
+- **A41** (l'association d'un clic touche aussi le texte du cas) : validée le 2026-10-15.
+- **A42** (écart entre le cas et son test après une modification à la main : exécution bloquée) : validée le 2026-10-15.
 - **Budget de M1** (≈ 8 $, plafond 9 $) : accordé le 2026-10-15 ; le montant est rappelé au porteur juste avant le départ de la campagne.
 - Restent ouvertes, à leur étape : V16 (exploration par compte, E5), V5 et V6 (bibliothèque commune, E7), V8 et V10 (valeur
   calculée, E7).
@@ -372,6 +386,8 @@ plafond bloquant. Les étapes sans IA (E1, le code de E2, PT-04a, PT-05) avancen
 | PT-01b | terminé en local : écrit, relu (aucun bloquant, sept points corrigés), vérifié à l'écran ; règle A21 ajoutée ; suite du serveur de clôture : 4 219 réussis, les 5 échecs connus du poste | 2026-10-13 | — | |
 | PT-02a à PT-02c | fait en local, relu, suites vertes : tableau (corbeille, droits, import et export Excel A37), lancement avec un ou plusieurs jeux (A28, A35), planifications (A36), valeurs figées au lancement et affichées dans le rapport, fiche d'un test (aperçu par jeu, bouton Variable). vérifié à l'écran sur une copie locale le 2026-10-14 (lancement, plan, planifications, rapport, fiche, import et export) | 2026-10-14 | — | |
 | PT-02d | code fait en local, interrupteur `TESTPILOT_VARIABLES_DE_TEST` ÉTEINT, relu en trois passes : l'agent reçoit les noms (jamais les valeurs) ; à l'écriture, variable inconnue, mal écrite, mal placée, hors guillemets ou dans le code des steps refusée ; essai du bac à sable joué avec les valeurs « Par défaut » ; valeurs masquées dans ce qui revient à l'agent ; variables figées en réparation et en correction ; banc : option `--donnees-de-test`. **Reste** : la mesure avec l'IA (groupée avec PT-03), budget annoncé au porteur (~7 $, plafond 8 $), en attente de son accord ; l'interrupteur reste éteint d'ici là | 2026-10-15 | — | |
+| PT-02e (E1) | fait en local, relu en six passes, vérifié à l'écran : associer d'un clic un test déjà écrit (tout ou rien par variable, seulement les paramètres qui portent une donnée, A40 ouvert à tous, A41 le texte du cas aussi) ; correctif : page figée après la fermeture d'une fenêtre | 2026-10-15 | — | |
+| PT-02f (E2) | code fait en local, interrupteur `TESTPILOT_CAS_DIT_SES_DONNEES` ÉTEINT (n'agit qu'avec PT-02d), relu en quatre passes : l'IA des cas reçoit les noms des variables ; variable inconnue, mal écrite ou dans le titre refusée à la validation et à l'édition ; le test technique reprend exactement les variables du cas (A39) ; écart cas/test après une modification à la main : exécution bloquée (A42) ; banc prêt pour M1 | 2026-10-15 | — | |
 | PT-03 | terminé en local, interrupteur ÉTEINT : comparaison avec unité, règle A24, écriture des nombres, unités ajoutées (A25) ; monnaie du projet retirée le 2026-10-15 (A38), relus et vérifiés à l'écran ; mesure sans IA : 8 jeux sur 8 ; la mesure avec l'IA est reportée dans la campagne de PT-02d, qui décidera de l'allumer | 2026-10-13 | — | `docs/mesures/banc-agents-2026-10-13-pt03-step-nombre-sans-ia-methode.md` |
 | PT-04a à PT-04d | à faire | | | |
 | PT-05 | à faire | | | |

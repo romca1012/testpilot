@@ -311,6 +311,12 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
         # de lecture (`user_story`), jamais une Section imposée.
         cases: list[dict] = []
         metier_cost_total = 0.0
+        # Lot PT-02f (A39) : les variables du projet, montrées à l'IA qui rédige les cas (interrupteur éteint : aucune).
+        from testpilot.generation import variables_de_test
+        from testpilot.store.repositories import ProjectRepo
+        module = ModuleRepo(conn).get(module_id) or {}
+        variables_des_cas = variables_de_test.pour_les_cas(
+            ProjectRepo(conn).get(module.get("project_id")) if module.get("project_id") else None)
         for story in stories:
             for brief in story.cases:
                 # ⚠️ Budget PAR CAS, pas cumulé sur tout le lot (audit 2026-08-07, B2, bloquant) :
@@ -321,7 +327,9 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
                 # budget ; `metier_cost_total` n'accumule que pour le RAPPORT, jamais pour la
                 # décision du plafond.
                 case_tracker = CostTracker()
-                draft = propose_metier(plan, brief=brief.brief, cost_tracker=case_tracker)
+                # Sans variable, l'appel est celui d'avant, à l'argument près (les doublures de test l'attendent tel quel).
+                draft = propose_metier(plan, brief=brief.brief, cost_tracker=case_tracker,
+                                       **({"variables": variables_des_cas} if variables_des_cas else {}))
                 metier_cost_total += case_tracker.total_cost
                 if not draft.complete:
                     # Titre + étapes + résultat attendu sont obligatoires (`0022` n°3.c). On
@@ -395,6 +403,20 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
         conn.close()
 
 
+def refus_des_variables_du_cas(conn, project_id: int | None, metier: dict) -> list[str]:
+    """Lot PT-02f (A39) : ce qui empêche d'enregistrer ce texte de cas — variable dans le titre, mal écrite, inconnue du
+    projet. Interrupteur éteint : rien (un `{{…}}` y reste du texte, comme avant)."""
+    from testpilot.generation import interrupteurs, variables_de_test
+    if not interrupteurs.cas_dit_ses_donnees_actif():
+        return []
+    from testpilot.store.repositories import ProjectRepo
+    projet = ProjectRepo(conn).get(project_id) if project_id is not None else None
+    noms = [v.get("nom") for v in (projet or {}).get("variables_de_test") or [] if v.get("nom")]
+    if not noms:   # projet sans donnée de test : son parcours ne change pas (A39) — un `{{ nom }}` y reste du texte
+        return []
+    return variables_de_test.refus_dans_le_cas(metier, noms)
+
+
 def validate_metier(conn, job_id: str, cases: list[dict]) -> dict:
     """Enregistre les cas VALIDÉS (éventuellement corrigés ou réduits) et prépare la reprise.
 
@@ -438,6 +460,11 @@ def validate_metier(conn, job_id: str, cases: list[dict]) -> dict:
     if not validated:
         raise GenerationError("invalid_metier",
                               "aucun cas retenu — il ne reste rien à générer")
+    module = ModuleRepo(conn).get(job["module_id"]) or {}
+    for c in validated:
+        fautes = refus_des_variables_du_cas(conn, module.get("project_id"), c)
+        if fautes:
+            raise GenerationError("invalid_metier", f"« {c['title']} » : " + " ; ".join(fautes))
 
     jobs.maj(job_id, status="running", cases=validated)
     return {"module_id": job["module_id"], "title": job["title"],
@@ -818,6 +845,29 @@ def start_automation(conn, case_id: int, *, author: str = "") -> tuple[str, dict
         raise GenerationError(
             "invalid_metier",
             "ce cas doit avoir un titre, des étapes et un résultat attendu pour être automatisé")
+    # Lot PT-02f (A41) : les variables que le test ACTUEL emploie déjà — une régénération les garde même si le texte du cas
+    # ne les cite pas (association d'un clic sur une valeur que le cas n'écrivait pas). Absent sans variable : métier d'avant.
+    from testpilot.generation import interrupteurs
+    if interrupteurs.cas_dit_ses_donnees_actif():
+        from testpilot.generation import variables_de_test
+        from testpilot.parametres import resolution
+        from testpilot.store.repositories import ProjectRepo
+        deja = [n for n in resolution.references(version.get("feature_content") or "") if "{" not in n]
+        if deja:
+            metier["variables_deja_dans_le_test"] = deja
+        # Une variable que le cas cite et que le projet ne déclare pas (ou plus : corbeille, import) : jamais générer un test
+        # qui l'ignorerait en silence — le cas l'annonce, le test jouerait une valeur en dur (revue du 2026-10-15).
+        from testpilot.store.repositories import TestDataRepo
+        projet = ProjectRepo(conn).get(case.get("project_id")) or {}
+        vivantes = {v.get("nom") for v in projet.get("variables_de_test") or []}
+        # Une variable à la corbeille compte comme déclarée : sinon, la DERNIÈRE mise à la corbeille désactivait ce refus
+        # (revue du 2026-10-15). Un projet qui n'a jamais déclaré de variable garde son parcours (A39).
+        if vivantes or TestDataRepo(conn).variables_a_la_corbeille(case.get("project_id")):
+            absentes = [n for n in variables_de_test.variables_citees(metier) if n not in vivantes]
+            if absentes:
+                raise GenerationError(
+                    "invalid_metier", "le cas cite " + ", ".join("{{" + n + "}}" for n in absentes)
+                    + ", que le projet ne déclare pas : corrigez le cas ou rétablissez la variable")
 
     slug = case.get("feature_slug") or unique_feature_slug(conn, slugify(metier["title"]))
     from testpilot.store.repositories import CaseGroupRepo
