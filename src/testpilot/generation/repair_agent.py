@@ -245,6 +245,9 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
         ctx.gel_feature = reference_feature.read_text(encoding="utf-8") if reference_feature.exists() else None
         if ctx.gel_feature is None:
             logger.warning("[repair] %s : aucun .feature de référence — le gel du Gherkin est inactif", module_name)
+    # Lot PT-02d : les variables `{{…}}` du test de référence sont figées (la réparation ne joue pas les valeurs posées).
+    from testpilot.generation import variables_de_test
+    ctx.references_figees = variables_de_test.references_du_texte(ctx.gel_feature or "")
     # Lot VH-05 (revue du 2026-10-08) : une réparation passe par les MÊMES contrôles des littéraux que la génération.
     from testpilot.generation import litteraux_observes
     litteraux_observes.brancher_controles(ctx, connector_type, modele, config.BEHAVE_RUNTIME_DIR)

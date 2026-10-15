@@ -169,6 +169,19 @@ class ProjectRepo:
             from testpilot.connectors import oracle_config as _oracle_config
             projet["oracle_requetes_disponibles"] = _oracle_config.noms_declares(
                 projet.get("oracle_queries") or "[]")
+            # Lot PT-02d : les variables de test (noms, descriptions) — l'agent n'en voit que les NOMS, et seulement si
+            # l'interrupteur est allumé (`generation/variables_de_test.py`) ; les valeurs du jeu « Par défaut » ne servent
+            # qu'à l'essai dans le bac à sable, jamais au prompt.
+            try:
+                tableau = TestDataRepo(self.conn).tableau(projet["id"])
+            except sqlite3.OperationalError:   # base d'avant la migration 64 (tests à schéma minimal)
+                tableau = {"variables": [], "jeux": [], "valeurs": {}}
+            projet["variables_de_test"] = [{"nom": v["nom"], "description": v["description"]} for v in tableau["variables"]]
+            defaut = next((j for j in tableau["jeux"] if j["est_defaut"]), None)
+            noms = {v["id"]: v["nom"] for v in tableau["variables"]}
+            projet["valeurs_de_test_par_defaut"] = (
+                {noms[vid]: valeur for vid, valeur in tableau["valeurs"].get(defaut["id"], {}).items() if vid in noms}
+                if defaut else {})
         return projet
 
     def get(self, project_id: int) -> dict | None:

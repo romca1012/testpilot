@@ -35,7 +35,7 @@ def _cree_plus_tot(valeur: str, lignes_avant: list[str]) -> bool:
 
 
 def verifier_references(feature_content: str, options_select: dict, champs_relationnels: dict,
-                        name_search) -> list[dict]:
+                        name_search, *, ignorer_variables: bool = False) -> list[dict]:
     """Les références PROUVÉES inexistantes : `[{champ, valeur, ligne, source, proches}]`.
 
     `options_select` : `{champ: {valeurs et libellés}}` ; `champs_relationnels` : `{champ:
@@ -50,6 +50,7 @@ def verifier_references(feature_content: str, options_select: dict, champs_relat
                 continue
             champ, valeur = trouve
             if (not valeur.strip() or "rendue unique" in ligne or _PARAMETRE.search(valeur)
+                    or (ignorer_variables and "{{" in valeur)   # PT-02d : posée au lancement, différente par jeu
                     or _cree_plus_tot(valeur, lignes[:i])):
                 continue
             numero = ligne0 + i + 1
