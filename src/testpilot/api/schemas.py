@@ -1010,6 +1010,34 @@ class ImportDonneesOut(BaseModel):
     erreurs: list[str] = []
 
 
+class LigneAssociee(BaseModel):
+    ligne: int
+    avant: str
+    apres: str
+
+
+class PropositionAssociation(BaseModel):
+    """Une variable, TOUT OU RIEN : toutes les lignes où sa valeur apparaît. `verification` : elle touche un « Alors »."""
+    id: str
+    variable: str
+    valeur: str
+    verification: bool = False
+    lignes: list[LigneAssociee] = []
+
+
+class AssociationsOut(BaseModel):
+    """Étape E1 (A39) : ce qu'un test déjà écrit pourrait employer des données de test — calculé sur sa version COURANTE."""
+    version_id: int
+    propositions: list[PropositionAssociation] = []
+    ecartees: list[dict[str, str]] = []
+
+
+class AssociationsIn(BaseModel):
+    """Les propositions RETENUES (identifiants seulement : le serveur recalcule le texte, le client n'en fournit jamais)."""
+    version_id: int
+    choix: list[str]
+
+
 class ApercuDonneesOut(BaseModel):
     """Lot PT-02c : un test tel qu'il serait joué aujourd'hui avec un jeu de données (fiche d'un test). `manques` non vide :
     il serait « bloqué », pour ces raisons."""

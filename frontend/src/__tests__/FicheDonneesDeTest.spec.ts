@@ -12,15 +12,20 @@ import { monter } from './_montage'
 
 const getTestData = vi.fn()
 const apercuDonnees = vi.fn()
+const associationsDuCas = vi.fn()
+const associerDonnees = vi.fn()
 vi.mock('../lib/api', () => ({
   api: {
     getTestData: (...a: any[]) => getTestData(...a),
     apercuDonnees: (...a: any[]) => apercuDonnees(...a),
+    associationsDuCas: (...a: any[]) => associationsDuCas(...a),
+    associerDonnees: (...a: any[]) => associerDonnees(...a),
   },
 }))
 
 import ApercuParJeu from '../components/case/ApercuParJeu.vue'
 import InsererVariable from '../components/case/InsererVariable.vue'
+import AssocierDonnees from '../components/case/AssocierDonnees.vue'
 
 const TABLEAU = {
   variables: [{ id: 1, nom: 'client', description: '' }],
@@ -103,5 +108,72 @@ describe('Fiche d’un test — bouton « Variable » (PT-02c)', () => {
     await flushPromises()
 
     expect(w.find('[data-testid="inserer-variable"]').exists()).toBe(false)
+  })
+})
+
+
+describe('Fiche d’un test — associer d’un clic (E1, A39)', () => {
+  const PROPOSITIONS = { version_id: 70, ecartees: [], propositions: [
+    { id: 'client:aaaaaaaaaa', variable: 'client', valeur: 'Martin SARL', verification: true, lignes: [
+      { ligne: 5, avant: 'Quand je renseigne le champ "Client" avec la valeur "Martin SARL"', apres: 'Quand je renseigne le champ "Client" avec la valeur "{{client}}"' },
+      { ligne: 6, avant: 'Alors la page affiche le texte "Martin SARL"', apres: 'Alors la page affiche le texte "{{client}}"' },
+    ] },
+    { id: 'ville:bbbbbbbbbb', variable: 'ville', valeur: 'Lyon', verification: false, lignes: [
+      { ligne: 8, avant: 'Et je renseigne le champ "Ville" avec la valeur "Lyon"', apres: 'Et je renseigne le champ "Ville" avec la valeur "{{ville}}"' },
+    ] },
+  ] }
+  const stubsModal = { Modal: { props: ['open'], template: '<div v-if="open"><slot/><slot name="footer"/></div>' },
+                       Button: { template: '<button v-bind="$attrs"><slot/></button>', inheritAttrs: false } }
+  async function bouton(trouve: any = PROPOSITIONS) {
+    associationsDuCas.mockResolvedValue(trouve)
+    const w = monter(AssocierDonnees, { props: { caseId: 7, versionId: 70 }, global: { stubs: stubsModal } })
+    await flushPromises()
+    return w
+  }
+
+  it('falsifiable : rien à proposer, pas de bouton', async () => {
+    const w = await bouton({ ...PROPOSITIONS, propositions: [] })
+
+    expect(w.find('[data-testid="associer-donnees"]').exists()).toBe(false)
+  })
+
+  it('falsifiable : des propositions d’une autre version ne sont jamais montrées', async () => {
+    const w = await bouton({ ...PROPOSITIONS, version_id: 69 })
+
+    expect(w.find('[data-testid="associer-donnees"]').exists()).toBe(false)
+  })
+
+  it('montre, pour chaque variable, toutes ses lignes avant et après', async () => {
+    const w = await bouton()
+    await w.get('[data-testid="associer-donnees"]').trigger('click')
+
+    const texte = w.get('[data-testid="associations"]').text()
+    expect(texte).toContain('valeur "Martin SARL"')
+    expect(texte).toContain('valeur "{{client}}"')
+    expect(texte).toContain('texte "{{client}}"')
+  })
+
+  it('falsifiable : tout est coché d’emblée ; seuls les identifiants cochés partent, jamais du texte', async () => {
+    associerDonnees.mockResolvedValue({})
+    const w = await bouton()
+    await w.get('[data-testid="associer-donnees"]').trigger('click')
+    await w.get('[data-testid="association-ville:bbbbbbbbbb"]').setValue(false)
+
+    await w.get('[data-testid="associer-confirmer"]').trigger('click')
+    await flushPromises()
+
+    expect(associerDonnees).toHaveBeenCalledWith(7, 70, ['client:aaaaaaaaaa'])
+    expect(w.emitted('associe')).toHaveLength(1)
+  })
+
+  it('montre le refus du serveur sans fermer la fenêtre', async () => {
+    associerDonnees.mockRejectedValue(new Error('le test a changé depuis : rechargez-le avant d’associer'))
+    const w = await bouton()
+    await w.get('[data-testid="associer-donnees"]').trigger('click')
+    await w.get('[data-testid="associer-confirmer"]').trigger('click')
+    await flushPromises()
+
+    expect(w.get('[role="alert"]').text()).toContain('rechargez-le')
+    expect(w.emitted('associe')).toBeUndefined()
   })
 })

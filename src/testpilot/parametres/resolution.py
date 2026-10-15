@@ -99,6 +99,28 @@ def references(texte: str | None) -> list[str]:
     return list(vues)
 
 
+def places_des_lignes(lignes):
+    """(ligne, place) pour chaque ligne : « delimiteur » (ouvre ou ferme un bloc de texte), « bloc » (dedans) ou « hors ».
+    Seul le délimiteur qui a OUVERT le bloc le ferme, comme pour Behave : un « ``` » dans un bloc « \"\"\" » en fait partie
+    (revue du 2026-10-15 : basculer sur n'importe quel délimiteur prenait le texte d'un bloc pour des lignes d'étape)."""
+    bloc = None
+    for ligne in lignes:
+        propre = ligne.strip()
+        if bloc is not None:
+            if propre.startswith(bloc):
+                bloc = None
+                yield ligne, "delimiteur"
+            else:
+                yield ligne, "bloc"
+            continue
+        ouvrant = next((d for d in _BLOC_DE_TEXTE if propre.startswith(d)), None)
+        if ouvrant:
+            bloc = ouvrant
+            yield ligne, "delimiteur"
+        else:
+            yield ligne, "hors"
+
+
 def _mal_placees_ou_mal_ecrites(texte: str) -> list[str]:
     """Les lignes où une variable est mal écrite ou mal placée — rendues telles quelles (60 caractères) pour être dites.
 
@@ -107,12 +129,11 @@ def _mal_placees_ou_mal_ecrites(texte: str) -> list[str]:
     ces écritures passaient pour du texte, le test se jouait sans la valeur annoncée. « }} » seul (la fin d'un JSON) ne
     compte pas. Mal placée : hors d'une étape (après son mot-clé), d'une cellule de tableau ou d'un bloc de texte."""
     fautives: list[str] = []
-    dans_un_bloc = False
-    for ligne in texte.splitlines():
-        propre = ligne.strip()
-        if propre.startswith(_BLOC_DE_TEXTE):
-            dans_un_bloc = not dans_un_bloc
+    for ligne, place in places_des_lignes(texte.splitlines()):
+        if place == "delimiteur":
             continue
+        propre = ligne.strip()
+        dans_un_bloc = place == "bloc"
         trouvees = list(_REFERENCE.finditer(ligne))
         mal_ecrite = "{{" in _REFERENCE.sub("", ligne) or any(
             (t.start() > 0 and ligne[t.start() - 1] == "{") or (t.end() < len(ligne) and ligne[t.end()] == "}") for t in trouvees)

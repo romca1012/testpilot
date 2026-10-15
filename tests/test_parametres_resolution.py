@@ -192,6 +192,16 @@ def test_une_variable_dans_une_etape_un_tableau_ou_un_bloc_de_texte_est_remplace
     assert rendu.complet and "Martin SARL" in rendu.texte and "{{" not in rendu.texte
 
 
+def test_falsifiable_un_bloc_n_est_ferme_que_par_le_delimiteur_qui_l_a_ouvert():
+    """Revue du 2026-10-15 : un \u00ab ``` \u00bb dans un bloc \u00ab \"\"\" \u00bb fermait le bloc, puis le \u00ab \"\"\" \u00bb de fin en ROUVRAIT un \u2014 la
+    ligne de titre qui suivait passait pour du texte de bloc, et `{{client}}` y \u00e9tait remplac\u00e9 en silence (structure chang\u00e9e)."""
+    texte = '    """\n    ```\n    """\n  Sc\u00e9nario: Commande de {{client}}'
+
+    rendu = r.remplacer(texte, _CLIENT, ["client"])
+
+    assert not rendu.complet and any("mal \u00e9crite ou mal plac\u00e9e" in i for i in rendu.inconnues)
+
+
 @pytest.mark.parametrize("valeur", ["Martin\u2028SARL", "a\u2029b", "a\x85b", "\u200b", "a\u200bb", "x\u202ey", "<produit>",
                                     "un <client> ici"])
 def test_falsifiable_une_valeur_invisible_ou_a_double_sens_est_refusee(valeur):

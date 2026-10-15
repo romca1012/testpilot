@@ -19,6 +19,7 @@ import HistoryTab from '../components/case/HistoryTab.vue'
 import CodeView from '../components/CodeView.vue'
 import ApercuParJeu from '../components/case/ApercuParJeu.vue'
 import InsererVariable from '../components/case/InsererVariable.vue'
+import AssocierDonnees from '../components/case/AssocierDonnees.vue'
 import RefsList from '../components/RefsList.vue'
 import ReviewGate from '../components/ReviewGate.vue'
 import Button from '../components/ui/Button.vue'
@@ -811,8 +812,13 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
         <template v-else-if="!editingScript">
           <div class="flex items-center justify-between">
             <h3 class="text-sm font-semibold">Gherkin (.feature)</h3>
-            <button v-if="peutEditerScript && estVersionCourante" class="text-sm text-primary hover:underline"
-                    @click="startEditScript">Modifier</button>
+            <span class="flex items-center gap-4">
+              <!-- Étape E1 (A39, A40) : ouvert aux testeurs — ils ne choisissent que parmi les propositions du serveur. -->
+              <AssocierDonnees v-if="peutModifier && estVersionCourante" :case-id="caseId"
+                               :version-id="versionAffichee?.id ?? null" @associe="load" />
+              <button v-if="peutEditerScript && estVersionCourante" class="text-sm text-primary hover:underline"
+                      @click="startEditScript">Modifier</button>
+            </span>
           </div>
           <ApercuParJeu :pid="pid" :case-id="caseId" :version-id="versionAffichee?.id ?? null"
                         :feature="versionAffichee?.feature_content || ''" />

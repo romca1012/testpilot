@@ -39,7 +39,8 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 | A36 | **Planification dont une colonne a été mise à la corbeille** : elle ne joue **rien** (ni les autres colonnes, ni « Par défaut » à la place) tant qu'on ne l'a pas corrigée — restaurer la colonne ou recréer la planification. La liste des planifications affiche « Ne se déclenche pas : un jeu de données est à la corbeille ». | 2026-10-14 |
 | A37 | **Import Excel du tableau des données de test** : il **complète** le tableau — ajoute les variables et les colonnes qui manquent, met à jour les cases qu'il remplit ; une case vide du fichier ne vide rien, rien n'est supprimé. L'écran montre ce qui va changer avant d'enregistrer ; une seule erreur dans le fichier (nommée par sa case) et rien n'est écrit. L'export du tableau sert de modèle. | 2026-10-14 |
 | A38 | **Aucune base toute faite dans les paramètres** (porteur, 2026-10-15) : l'outil ne fournit pas de réglage tiré d'un cas particulier. La **monnaie du projet est retirée** (réglage, colonne, règle A24 pour sa partie « monnaie déclarée ») ; **l'écriture des nombres reste** un réglage ; **les unités ajoutées restent** (une liste vide que chaque projet remplit lui-même). La lecture des nombres continue de reconnaître « € » et « EUR » comme la même unité : c'est de la lecture, pas un réglage. Une valeur attendue écrite sans unité face à un montant affiché : l'outil ne se prononce pas et demande d'écrire l'unité (règle prudente d'A24, inchangée). | 2026-10-15 |
-| A39 | **Proposée, à valider** — option en plus, le parcours d'aujourd'hui ne change pas pour un projet sans paramètre. *Le cas fait foi, aussi pour les données* : quand le projet a déclaré des données de test, c'est le CAS (sa description, relue et validée par une personne) qui dit quelles données de test il emploie, écrites `{{client}}` ; l'IA les y propose à partir des variables du projet, la personne valide ; le test technique doit ensuite reprendre exactement ces variables — vérifié sans IA, refusé sinon. Les tests déjà écrits s'associent d'un clic (proposition sans IA, aperçu, nouvelle version à relire). | — |
+| A39 | **Validée par le porteur le 2026-10-15** — option en plus, le parcours d'aujourd'hui ne change pas pour un projet sans paramètre. *Le cas fait foi, aussi pour les données* : quand le projet a déclaré des données de test, c'est le CAS (sa description, relue et validée par une personne) qui dit quelles données de test il emploie, écrites `{{client}}` ; l'IA les y propose à partir des variables du projet, la personne valide ; le test technique doit ensuite reprendre exactement ces variables — vérifié sans IA, refusé sinon. Les tests déjà écrits s'associent d'un clic (proposition sans IA, aperçu, nouvelle version à relire). | 2026-10-15 |
+| A40 | **Validée par le porteur le 2026-10-15** — associer d'un clic est ouvert à tous ceux qui modifient un test (testeurs compris), y compris quand l'association touche une VÉRIFICATION (une étape « Alors »), sans condition de rôle : la nouvelle version est à relire comme toute modification. Écartées : réservé au rôle développeur ; relecture obligatoirement par une autre personne. À savoir : une valeur saisie dans une action peut décider de ce qu'un « Alors » compte (« je filtre par "Martin SARL" » puis « la liste affiche 1 enregistrement ») ; la relecture de la nouvelle version reste le garde-fou. | 2026-10-15 |
 | — | Précisions annoncées au porteur le 2026-10-13, sans objection : la **mise à la corbeille** d'une variable ou d'un jeu reste réservée à l'administrateur du projet (comme toute suppression de l'outil : lui seul restaure) ; le **nom d'une variable ne se modifie pas** (les tests la désignent par ce nom) ; un lancement **sans jeu choisi** joue le jeu « Par défaut » si le projet a des variables, et rien ne change pour un projet qui n'en a pas. | 2026-10-13 |
 
 Interrupteur (confirmé par le porteur le 2026-10-13) : il ne sert qu'au temps de la construction, pour comparer
@@ -304,7 +305,7 @@ mené à part.
   sur dix n'aboutit pas ;
 - limite : c'est notre application ; rien n'est mesuré sur une application jamais vue.
 
-### 9.2 Le principe (A39, à valider)
+### 9.2 Le principe (A39, validée le 2026-10-15)
 
 **Le parcours d'aujourd'hui ne change pas** (porteur, 2026-10-15) : une spécification devient des cas, les cas deviennent des
 tests techniques, on lance une exécution — exactement comme maintenant, pour tout projet qui ne déclare aucun paramètre de
@@ -356,8 +357,9 @@ plafond bloquant. Les étapes sans IA (E1, le code de E2, PT-04a, PT-05) avancen
 
 ### 9.5 Décisions à obtenir
 
-- **A39** (principe d'association par le cas) : à valider avant E2.
-- **Budget de M1** (≈ 8 $, plafond 9 $) : avant E3.
+- **A39** : validée le 2026-10-15.
+- **A40** (droits de l'association d'un clic) : validée le 2026-10-15 — ouverte à tous, sans condition.
+- **Budget de M1** (≈ 8 $, plafond 9 $) : accordé le 2026-10-15 ; le montant est rappelé au porteur juste avant le départ de la campagne.
 - Restent ouvertes, à leur étape : V16 (exploration par compte, E5), V5 et V6 (bibliothèque commune, E7), V8 et V10 (valeur
   calculée, E7).
 

@@ -68,13 +68,9 @@ def refus(feature: str, noms: frozenset[str] | set[str]) -> list[str]:
               f"{', '.join(sorted(noms)) or 'aucune'})" for n in rendu.inconnues]
     # Les mots d'étape sont ceux du dictionnaire de Behave (`resolution`), français et anglais : une liste écrite à la main
     # oubliait « Donc », « Sachant que »… (revue du 2026-10-14). Les lignes d'un bloc de texte ne sont pas des étapes.
-    dans_un_bloc = False
-    for ligne in (feature or "").splitlines():
+    for ligne, place in resolution.places_des_lignes((feature or "").splitlines()):
         propre = ligne.strip()
-        if propre.startswith(resolution._BLOC_DE_TEXTE):
-            dans_un_bloc = not dans_un_bloc
-            continue
-        if dans_un_bloc or not propre.startswith(resolution._MOTS_D_ETAPE):
+        if place != "hors" or not propre.startswith(resolution._MOTS_D_ETAPE):
             continue
         if "{{" in _ENTRE_GUILLEMETS.sub("", propre):
             fautes.append(f"« {propre} » : une variable s'écrit entre guillemets, dans une valeur (\"{{{{nom}}}}\")")
