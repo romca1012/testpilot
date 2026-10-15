@@ -5,10 +5,10 @@
 // Piège de focus et verrouillage du scroll : composables partagés avec Modal.vue (lib/
 // useFocusTrap, lib/scrollLock) — absents ici jusqu'au 2026-08-13, ce dialogue laissait `Tab`
 // s'échapper vers la page masquée derrière, et la page défilait encore sous l'overlay.
-import { toRef, watch } from 'vue'
+import { toRef } from 'vue'
 import Button from './ui/Button.vue'
 import { useFocusTrap } from '../lib/useFocusTrap'
-import { verrouillerScroll, deverrouillerScroll } from '../lib/scrollLock'
+import { useVerrouScroll } from '../lib/scrollLock'
 
 const props = defineProps<{
   open: boolean
@@ -22,7 +22,7 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void }>()
 
 const { panneau } = useFocusTrap(toRef(props, 'open'), () => emit('cancel'))
 
-watch(toRef(props, 'open'), (v) => (v ? verrouillerScroll() : deverrouillerScroll()))
+useVerrouScroll(toRef(props, 'open'))
 </script>
 
 <template>

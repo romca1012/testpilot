@@ -8,9 +8,9 @@
 // `lib/scrollLock`) — ConfirmDialog.vue et PaletteCommandes.vue les réutilisent aussi, plutôt que
 // chacune sa propre copie divergente (audit DA 2026-08-12 : 3 overlays, une seule vraiment
 // complète).
-import { toRef, watch } from 'vue'
+import { toRef } from 'vue'
 import { useFocusTrap } from '../../lib/useFocusTrap'
-import { verrouillerScroll, deverrouillerScroll } from '../../lib/scrollLock'
+import { useVerrouScroll } from '../../lib/scrollLock'
 
 const props = withDefaults(defineProps<{
   open: boolean
@@ -23,7 +23,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 const { panneau } = useFocusTrap(toRef(props, 'open'), () => emit('close'))
 
-watch(toRef(props, 'open'), (v) => (v ? verrouillerScroll() : deverrouillerScroll()))
+useVerrouScroll(toRef(props, 'open'))
 </script>
 
 <template>
