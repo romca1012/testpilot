@@ -1,4 +1,5 @@
-"""Migration 62 (paramètres de test, lot PT-03) — `project.devise` et `project.format_nombre`.
+"""Migration 62 (paramètres de test, lot PT-03) — `project.format_nombre` (la monnaie du projet, prévue d'abord, a été retirée
+avant tout envoi : A38, porteur, 2026-10-15).
 
 Les quatre pièces d'une évolution de schéma (CLAUDE.md §6) : migration SQLite idempotente, révision Alembic chaînée sur la tête
 précédente, `schema_sa` aligné, et ce test. Vide par défaut : sans déclaration, rien ne change pour un projet existant.
@@ -17,7 +18,7 @@ from testpilot.store.db import _migrate_62_valeurs_du_projet, get_initialized_db
 from testpilot.store.repositories import ProjectRepo
 
 RACINE = Path(__file__).resolve().parent.parent
-COLONNES = ("devise", "format_nombre")
+COLONNES = ("format_nombre",)
 
 
 def test_une_base_neuve_porte_les_colonnes_vides_par_defaut(tmp_path):
@@ -26,14 +27,12 @@ def test_une_base_neuve_porte_les_colonnes_vides_par_defaut(tmp_path):
 
     assert db._SCHEMA_VERSION >= 62
     projet = ProjectRepo(conn).get(pid)
-    assert (projet["devise"], projet["format_nombre"]) == ("", ""), "jamais posées implicitement"
-    ProjectRepo(conn).update_connection(pid, devise="XOF", format_nombre="espace_virgule")
-    projet = ProjectRepo(conn).get(pid)
-    assert (projet["devise"], projet["format_nombre"]) == ("XOF", "espace_virgule")
+    assert projet["format_nombre"] == "", "jamais posée implicitement"
+    assert "devise" not in projet, "aucune monnaie du projet (A38)"
+    ProjectRepo(conn).update_connection(pid, format_nombre="espace_virgule")
+    assert ProjectRepo(conn).get(pid)["format_nombre"] == "espace_virgule"
     ProjectRepo(conn).update_connection(pid, base_url="http://autre")   # `None` = n'y touche pas
-    assert ProjectRepo(conn).get(pid)["devise"] == "XOF"
-    ProjectRepo(conn).update_connection(pid, devise="")                 # `""` = retirer la déclaration
-    assert ProjectRepo(conn).get(pid)["devise"] == ""
+    assert ProjectRepo(conn).get(pid)["format_nombre"] == "espace_virgule"
     for ecriture in ("espace_virgule", "virgule_point", "point_virgule", ""):
         ProjectRepo(conn).update_connection(pid, format_nombre=ecriture)
     conn.close()
@@ -69,8 +68,8 @@ def test_falsifiable_reprise_d_une_base_pre_62(tmp_path):
     _migrate_62_valeurs_du_projet(base)
     _migrate_62_valeurs_du_projet(base)  # idempotente
 
-    assert tuple(base.execute("SELECT devise, format_nombre FROM project WHERE id=1").fetchone()) == ("", ""), \
-        "un projet existant ne déclare rien"
+    assert base.execute("SELECT format_nombre FROM project WHERE id=1").fetchone()[0] == "", "un projet existant ne déclare rien"
+    assert "devise" not in {r["name"] for r in base.execute("PRAGMA table_info(project)")}, "aucune colonne de monnaie (A38)"
     base.close()
 
 

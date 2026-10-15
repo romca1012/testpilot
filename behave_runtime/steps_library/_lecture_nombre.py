@@ -473,11 +473,6 @@ def _unite(n: NombreLu) -> str:
     return f"monnaie, « {n.notation_devise} » : {n.unite}, {', '.join(exemples)}… ({len(n.devises)} possibles)"
 
 
-def est_un_code_de_monnaie(code: str) -> bool:
-    """`code` est-il un code ISO 4217 que le lecteur connaît ? Pour valider la monnaie déclarée par un projet."""
-    return code in _CODES_ISO
-
-
 def _meme_taux_ecrit_autrement(a: Decimal, b: Decimal) -> bool:
     """18 (%) et 0,18, 5 (‰) et 0,005 : le même taux écrit de deux façons — ni égal ni différent tant que l'unité manque
     d'un côté."""
@@ -494,7 +489,7 @@ def _mention(n: NombreLu) -> str:
     return f"« {n.qualificatif} »" if n.qualificatif else "aucune mention"
 
 
-def comparer_valeurs(lu: NombreLu, attendu: NombreLu, *, devise_du_projet: str = "") -> ComparaisonValeurs:
+def comparer_valeurs(lu: NombreLu, attendu: NombreLu) -> ComparaisonValeurs:
     """La valeur LUE à l'écran contre l'attendu du test, nombre ET unité. Trois issues, jamais deux :
 
     - `DIFFERENT` : le nombre diffère (égalité EXACTE, aucune tolérance : un centime d'écart est un écart), ou les deux
@@ -506,11 +501,10 @@ def comparer_valeurs(lu: NombreLu, attendu: NombreLu, *, devise_du_projet: str =
       (1,5 kg = 1500 g) ; ou le même nombre sans unité des deux côtés.
 
     Décision A24 (porteur, 2026-10-13, « prudent ») — JAMAIS de réussite sans que l'unité soit vérifiée :
-    - l'attendu n'écrit pas d'unité et l'écran en affiche une : si c'est une monnaie et que le projet a déclaré la sienne
-      (`devise_du_projet`, un code ISO), l'attendu est lu dans la monnaie du projet (« 129,51 » attendu contre « 129,51 $ »
-      affiché est un DÉFAUT pour un projet en euros) ; sinon l'outil ne conclut pas. Avant, ce cas RÉUSSISSAIT sans trace ;
-    - une notation partagée par plusieurs monnaies (« $ », « F CFA ») ne prouve une monnaie précise que si le projet a
-      déclaré celle-ci ; écrite à l'identique des deux côtés, elle se compare à elle-même.
+    - l'attendu n'écrit pas d'unité et l'écran en affiche une : l'outil ne conclut pas et demande d'écrire l'unité. Avant
+      le lot PT-03, ce cas RÉUSSISSAIT sans trace. (Le projet ne déclare pas de monnaie : A38, 2026-10-15) ;
+    - une notation partagée par plusieurs monnaies (« $ », « F CFA ») ne prouve pas une monnaie précise ; écrite à
+      l'identique des deux côtés, elle se compare à elle-même.
 
     Deuxième revue (2026-10-13, faux verts reproduits) — ce qui accompagne une devise ou un pourcentage n'est JAMAIS ignoré :
     « 5 k€ » valait « 5 € », « 5 HK$ » valait « 5 USD », « 5 %o » valait « 5 % ». Les mentions doivent être les mêmes des
@@ -537,15 +531,6 @@ def comparer_valeurs(lu: NombreLu, attendu: NombreLu, *, devise_du_projet: str =
         if not lu.nature:  # aucune unité nulle part : deux nombres
             return issue(EGAL if memes_nombres else DIFFERENT)
         sans_unite = f"l'attendu n'écrit pas d'unité alors que l'écran en affiche une ({_unite(lu)}) : écrivez-la dans le test"
-        if lu.nature == MONNAIE and devise_du_projet:
-            lecture = f"l'attendu n'écrit pas d'unité : lu dans la monnaie du projet ({devise_du_projet})"
-            if devise_du_projet not in lu.devises:
-                if lu.mention_collee and len(lu.devises) > 1:  # « 5 C$ » : pas le « $ » nu, on n'accuse pas
-                    return issue(UNITE_NON_VERIFIABLE, f"{lecture} ; l'écran précise son symbole par {_mention(lu)}")
-                return issue(DIFFERENT, f"{lecture}, qui n'est pas celle de l'écran")
-            if lu.qualificatif:
-                return issue(UNITE_NON_VERIFIABLE, f"{lecture} ; l'écran ajoute {_mention(lu)}, que l'attendu n'écrit pas")
-            return issue(EGAL if memes_nombres else DIFFERENT, lecture)
         if lu.qualificatif or memes_nombres:
             return issue(UNITE_NON_VERIFIABLE, sans_unite)
         if lu.nature == MONNAIE:
@@ -581,10 +566,8 @@ def comparer_valeurs(lu: NombreLu, attendu: NombreLu, *, devise_du_projet: str =
         if attendu.devises == lu.devises:
             return issue(EGAL, "la même notation des deux côtés ; elle ne distingue pas ces monnaies entre elles"
                          if len(lu.devises) > 1 else "")
-        if devise_du_projet in (attendu.devises & lu.devises):
-            return issue(EGAL, f"notation partagée, lue dans la monnaie du projet ({devise_du_projet})")
         return issue(UNITE_NON_VERIFIABLE, "une notation partagée par plusieurs monnaies ne prouve pas celle qui est attendue : "
-                                           "déclarez la monnaie du projet, ou attendez la même notation")
+                                           "écrivez dans le test la même notation que l'écran, ou son code (EUR, USD…)")
     if lu.unite == attendu.unite:
         return issue(EGAL if memes_nombres else DIFFERENT)
     if lu.rapport is None or attendu.rapport is None:

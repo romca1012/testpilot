@@ -522,16 +522,13 @@ def _migrate_63_test_unit(conn: sqlite3.Connection) -> None:
 
 
 def _migrate_62_valeurs_du_projet(conn: sqlite3.Connection) -> None:
-    """Lot PT-03 (paramètres de test, décisions A8 et A24) : comment le PROJET écrit ses valeurs.
+    """Lot PT-03 (paramètres de test, décisions A8, A24 et A38) : comment le PROJET écrit ses nombres.
 
-    `project.devise` : la monnaie du projet (code ISO 4217) — un test qui attend « 129,51 » sans unité est lu dans cette
-    monnaie quand l'écran affiche un montant. `project.format_nombre` : l'écriture des nombres de l'application
-    (`espace_virgule` = « 1 234,56 », `virgule_point` = « 1,234.56 », `point_virgule` = « 1.234,56 » ; CHECK) — elle tranche
-    une valeur affichée ambiguë. Deux colonnes texte, ajoutées seulement si absentes (idempotent). **Vide = rien de
-    déclaré** : rien ne change pour un projet existant.
+    `project.format_nombre` : l'écriture des nombres de l'application (`espace_virgule` = « 1 234,56 », `virgule_point` =
+    « 1,234.56 », `point_virgule` = « 1.234,56 » ; CHECK) — elle tranche une valeur affichée ambiguë. Ajoutée seulement si
+    absente (idempotent). **Vide = rien de déclaré** : rien ne change pour un projet existant. La monnaie du projet,
+    prévue d'abord, a été retirée avant tout envoi (A38, porteur, 2026-10-15 : aucune base toute faite).
     """
-    if "devise" not in _column_names(conn, "project"):
-        conn.execute("ALTER TABLE project ADD COLUMN devise TEXT NOT NULL DEFAULT ''")
     if "format_nombre" not in _column_names(conn, "project"):
         conn.execute("ALTER TABLE project ADD COLUMN format_nombre TEXT NOT NULL DEFAULT ''"
                      " CHECK (format_nombre IN ('', 'espace_virgule', 'virgule_point', 'point_virgule'))")

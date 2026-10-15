@@ -1,10 +1,11 @@
-"""Monnaie et écriture des nombres d'un projet (paramètres de test, lot PT-03, décisions A8 et A24).
+"""Écriture des nombres d'un projet (paramètres de test, lot PT-03, décisions A8, A24 et A38).
 
 Revision ID: e7c2f4a9b136
 Revises: d1a7b3c5e924
 
-`project.devise` (code ISO 4217) et `project.format_nombre` (`espace_virgule`, `virgule_point` ou `point_virgule` ; CHECK) :
-vide = rien de déclaré, rien ne change pour un projet existant. Même évolution que la migration SQLite 62 (`store/db.py`).
+`project.format_nombre` (`espace_virgule`, `virgule_point` ou `point_virgule` ; CHECK) : vide = rien de déclaré, rien ne
+change pour un projet existant. Même évolution que la migration SQLite 62 (`store/db.py`). La monnaie du projet, prévue
+d'abord, a été retirée avant tout envoi (A38).
 """
 import sqlalchemy as sa
 from alembic import op
@@ -14,7 +15,7 @@ down_revision = "d1a7b3c5e924"
 branch_labels = None
 depends_on = None
 
-_COLONNES = ("devise", "format_nombre")
+_COLONNES = ("format_nombre",)
 _CONTRAINTE = "format_nombre IN ('', 'espace_virgule', 'virgule_point', 'point_virgule')"
 
 

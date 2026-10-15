@@ -27,7 +27,6 @@ from testpilot import config
 from testpilot.execution.behave_runner import BehaveRunner
 from testpilot.execution.executor import Executor
 from testpilot.generation import interrupteurs, steps_library
-from testpilot.parametres import valeurs
 from testpilot.verdict import status as st
 
 sys.path.insert(0, str(config.BEHAVE_RUNTIME_DIR / "steps_library"))
@@ -218,7 +217,7 @@ def test_falsifiable_un_autre_montant_ou_une_autre_devise_est_un_defaut(page, li
     ("Brut", "500 kg", "aucune unité à l'écran, et l'attendu en déclare une qui se convertit"),
     ("Montant dû", "129,51 € HT", "le bon montant, mais « TTC » est affiché là où « HT » est attendu"),
     # Décision A24 (« prudent ») : jamais de réussite sans que l'unité soit vérifiée.
-    ("Total TTC", "129,51", "l'attendu n'écrit pas d'unité, l'écran affiche des euros, le projet n'a rien déclaré"),
+    ("Total TTC", "129,51", "l'attendu n'écrit pas d'unité, l'écran affiche des euros"),
     ("Stock", "12", "l'attendu n'écrit pas d'unité, l'écran affiche des pièces"),
     ("Taux de TVA", "18", "l'attendu n'écrit pas d'unité, l'écran affiche un pourcentage"),
     ("Poids", "1500", "l'attendu n'écrit pas d'unité : 1500 grammes, peut-être"),
@@ -272,61 +271,30 @@ def test_falsifiable_deux_valeurs_distinctes_a_cote_du_libelle_ne_sont_pas_lues(
         H._nombre_affiche_vaut(page, "Prix affiché", "15 €")
 
 
-# ── Ce que le PROJET a déclaré (onglet « Valeurs attendues ») : monnaie et écriture des nombres ─────────────────────────
+# ── Ce que le PROJET a déclaré (onglet « Valeurs attendues ») : l'écriture des nombres, et aucune monnaie (A38) ─────────
 
 
 @pytest.fixture
 def projet(monkeypatch):
-    """Pose ce que le lanceur transmet au sous-processus pour un projet qui a déclaré ses valeurs."""
+    """Pose ce que le lanceur transmet au sous-processus pour un projet qui a déclaré son écriture des nombres."""
     for nom in ("TESTPILOT_PROJET_DEVISE", "TESTPILOT_PROJET_FORMAT_NOMBRE"):
         monkeypatch.delenv(nom, raising=False)
 
-    def declarer(devise: str = "", format_nombre: str = "") -> None:
-        monkeypatch.setenv("TESTPILOT_PROJET_DEVISE", devise)
+    def declarer(format_nombre: str = "") -> None:
         monkeypatch.setenv("TESTPILOT_PROJET_FORMAT_NOMBRE", format_nombre)
     return declarer
 
 
 @pytest.mark.conformance
-@pytest.mark.parametrize("devise, libelle, attendu", [
-    ("EUR", "Total TTC", "129,51"),             # sans unité dans le test : lu dans la monnaie du projet
-    ("XOF", "Net à payer", "412 000"),          # « F CFA » peut être XOF
-    ("XOF", "Net à payer", "412 000 XOF"),      # notation partagée, levée par la monnaie du projet
-    ("XAF", "Net à payer", "412 000 XAF"),
-    ("EUR", "Brut", "500 000"),                 # aucune unité nulle part : deux nombres, comme avant
+@pytest.mark.parametrize("libelle, attendu", [
+    ("Total TTC", "129,51"), ("Net à payer", "412 000"), ("Montant dû", "129,51"),
 ])
-def test_la_monnaie_declaree_par_le_projet_complete_un_attendu_sans_unite(page, projet, devise, libelle, attendu):
-    projet(devise=devise)
-
-    H._nombre_affiche_vaut(page, libelle, attendu)
-
-
-@pytest.mark.conformance
-@pytest.mark.parametrize("devise, libelle, attendu, pourquoi", [
-    ("USD", "Total TTC", "129,51", "le projet est en dollars, l'écran affiche des euros"),
-    ("EUR", "Net à payer", "412 000", "le projet est en euros, l'écran affiche des francs CFA"),
-    ("EUR", "Total TTC", "130", "la bonne monnaie, un autre nombre"),
-])
-def test_falsifiable_un_ecran_dans_une_autre_monnaie_que_celle_du_projet_est_un_defaut(page, projet, devise, libelle, attendu,
-                                                                                    pourquoi):
-    """La décision du porteur, mot pour mot : « 129,51 » attendu, « 129,51 $ » affiché, projet en euros → le test échoue."""
-    projet(devise=devise)
-
-    with pytest.raises(AssertionError, match="monnaie du projet"):
-        H._nombre_affiche_vaut(page, libelle, attendu)
-
-
-@pytest.mark.conformance
-@pytest.mark.parametrize("devise, libelle, attendu, pourquoi", [
-    ("EUR", "Stock", "12", "la monnaie du projet ne dit rien d'une quantité"),
-    ("EUR", "Taux de TVA", "18", "ni d'un pourcentage"),
-    ("EUR", "Montant dû", "129,51", "l'écran ajoute « TTC », que l'attendu n'écrit pas"),
-    ("EUR", "Brut", "500 000 €", "une monnaie attendue et non affichée ne se prouve pas par la déclaration du projet"),
-    ("XOF", "Net à payer", "412 000 XAF", "le projet est en XOF : « F CFA » ne prouve pas XAF"),
-    ("ZZZ", "Total TTC", "129,51", "une monnaie inconnue vaut « rien de déclaré »"),
-])
-def test_falsifiable_la_declaration_du_projet_ne_prouve_que_ce_qu_elle_dit(page, projet, devise, libelle, attendu, pourquoi):
-    projet(devise=devise)
+def test_falsifiable_un_montant_attendu_sans_unite_ne_conclut_jamais(page, projet, monkeypatch, libelle, attendu):
+    """A24 et A38 (porteur, 2026-10-15) : le projet ne déclare pas de monnaie. Même une ancienne variable de monnaie laissée
+    dans l'environnement du serveur n'est pas lue : le constat demande d'écrire l'unité, il ne conclut ni dans un sens ni
+    dans l'autre."""
+    projet()
+    monkeypatch.setenv("TESTPILOT_PROJET_DEVISE", "EUR")
 
     with pytest.raises(H.ConstatNonConcluantError, match=libelle):
         H._nombre_affiche_vaut(page, libelle, attendu)
@@ -423,39 +391,39 @@ def application():
 
 _OK, _DEFAUT, _RIEN = ((st.EXEC_SUCCESS, st.FUNC_CONFORME), (st.EXEC_SUCCESS, st.FUNC_NON_CONFORME), (None, st.FUNC_INDETERMINE))
 _SCENARIOS = {
-    # titre : (l'Alors, (exécution, fonctionnel) attendus SANS déclaration du projet, puis pour un projet déclaré en XOF)
-    "le même montant écrit autrement": ('le nombre affiché pour "Total TTC" vaut "129,51 €"', _OK, _OK),
-    "un centime d'écart": ('le nombre affiché pour "Total TTC" vaut "129,50 €"', _DEFAUT, _DEFAUT),
-    "une autre devise": ('le nombre affiché pour "Net à payer" vaut "412 000 €"', _DEFAUT, _DEFAUT),
-    "la devise attendue n'est pas à l'écran": ('le nombre affiché pour "Brut" vaut "500 000 XOF"', _RIEN, _RIEN),
-    "un montant attendu illisible": ('le nombre affiché pour "Total TTC" vaut "environ 130"',
-                                     (st.EXEC_TECHNICAL_ERROR, None), (st.EXEC_TECHNICAL_ERROR, None)),
-    # Décision A24 : jamais de réussite sans que l'unité soit vérifiée — la déclaration du projet est ce qui la vérifie.
-    "franc CFA et code de la monnaie": ('le nombre affiché pour "Net à payer" vaut "412 000 XOF"', _RIEN, _OK),
-    "un attendu sans unité": ('le nombre affiché pour "Net à payer" vaut "412 000"', _RIEN, _OK),
-    "un attendu sans unité, une autre monnaie à l'écran": ('le nombre affiché pour "Total TTC" vaut "129,51"', _RIEN, _DEFAUT),
-    "un attendu sans unité, une quantité à l'écran": ('le nombre affiché pour "Stock" vaut "12"', _RIEN, _RIEN),
+    # titre : (l'Alors, (exécution, fonctionnel) attendus) — le projet ne déclare pas de monnaie (A38, 2026-10-15)
+    "le même montant écrit autrement": ('le nombre affiché pour "Total TTC" vaut "129,51 €"', _OK),
+    "un centime d'écart": ('le nombre affiché pour "Total TTC" vaut "129,50 €"', _DEFAUT),
+    "une autre devise": ('le nombre affiché pour "Net à payer" vaut "412 000 €"', _DEFAUT),
+    "la devise attendue n'est pas à l'écran": ('le nombre affiché pour "Brut" vaut "500 000 XOF"', _RIEN),
+    "un montant attendu illisible": ('le nombre affiché pour "Total TTC" vaut "environ 130"', (st.EXEC_TECHNICAL_ERROR, None)),
+    # Décision A24 : jamais de réussite sans que l'unité soit vérifiée.
+    "franc CFA et code de la monnaie": ('le nombre affiché pour "Net à payer" vaut "412 000 XOF"', _RIEN),
+    "un attendu sans unité": ('le nombre affiché pour "Net à payer" vaut "412 000"', _RIEN),
+    "un attendu sans unité, une autre monnaie à l'écran": ('le nombre affiché pour "Total TTC" vaut "129,51"', _RIEN),
+    "un attendu sans unité, une quantité à l'écran": ('le nombre affiché pour "Stock" vaut "12"', _RIEN),
     # Deuxième revue : ces deux scénarios sortaient `conforme`.
-    "un multiplicateur à l'écran": ('le nombre affiché pour "Chiffre d\'affaires" vaut "5 €"', _RIEN, _RIEN),
-    "une autre mention à l'écran": ('le nombre affiché pour "Taux annuel" vaut "5 % mensuel"', _RIEN, _RIEN),
+    "un multiplicateur à l'écran": ('le nombre affiché pour "Chiffre d\'affaires" vaut "5 €"', _RIEN),
+    "une autre mention à l'écran": ('le nombre affiché pour "Taux annuel" vaut "5 % mensuel"', _RIEN),
 }
 
 
 @pytest.mark.conformance
-@pytest.mark.parametrize("devise_du_projet", ["", "XOF"])
-def test_falsifiable_le_verdict_dans_le_vrai_behave(application, devise_du_projet):
+@pytest.mark.parametrize("ancienne_monnaie", ["", "XOF"])
+def test_falsifiable_le_verdict_dans_le_vrai_behave(application, ancienne_monnaie):
     """LA GARDE, de bout en bout (lanceur, sous-processus Behave, verdict) : aucun scénario n'est `conforme` sans que le
     nombre ET l'unité soient prouvés. Un nombre ou une devise différents accusent l'application ; une unité non affichée,
     non écrite ou accompagnée d'une mention que l'attendu ne dit pas ne conclut pas ; un attendu illisible est une erreur
-    du test. La monnaie DÉCLARÉE par le projet voyage par les variables que le lanceur transmet (`parametres/valeurs.py`)."""
+    du test. Aucune monnaie du projet (A38) : une ancienne variable `TESTPILOT_PROJET_DEVISE` transmise au sous-processus ne
+    change AUCUN verdict (deuxième paramètre)."""
     lignes = ["Fonctionnalité: Montants affichés", ""]
-    for titre, (alors, _, _) in _SCENARIOS.items():
+    for titre, (alors, _) in _SCENARIOS.items():
         lignes += [f"  Scénario: {titre}", "    Soit j'accède à la page d'accueil de l'application",
                    '    Quand j\'ouvre la page "/montants.html"', f"    Alors {alors}", ""]
     dossier = Path(tempfile.mkdtemp(prefix="pt03_"))
     (dossier / "montants.feature").write_text("\n".join(lignes), encoding="utf-8")
     runner = BehaveRunner(connection={"WEB_URL": application, "WEB_USER": "", "WEB_PASSWORD": "",
-                                      **valeurs.env({"devise": devise_du_projet})},
+                                      **({"TESTPILOT_PROJET_DEVISE": ancienne_monnaie} if ancienne_monnaie else {})},
                           connector_type="web", generated_dir=dossier)
 
     outcome = Executor(runner, max_retries=0).execute("montants")
@@ -463,8 +431,7 @@ def test_falsifiable_le_verdict_dans_le_vrai_behave(application, devise_du_proje
     assert outcome.dry_run_passed, f"le step ne se résout pas : {outcome.error}"
     verdicts = {v.name: v for v in st.derive_verdict(outcome, connector_type="web").scenarios}
     fautes = []
-    for titre, (_, sans_declaration, projet_en_xof) in _SCENARIOS.items():
-        execution, fonctionnel = projet_en_xof if devise_du_projet else sans_declaration
+    for titre, (_, (execution, fonctionnel)) in _SCENARIOS.items():
         v = verdicts[titre]
         if fonctionnel != st.FUNC_CONFORME and v.functional_status == st.FUNC_CONFORME:
             fautes.append(f"« {titre} » est `conforme` — FAUX VERT")
