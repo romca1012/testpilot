@@ -488,7 +488,12 @@ class MetierDraftOut(BaseModel):
     LECTURE affiché en sous-titre sur l'écran de validation, jamais une Section imposée. L'IA
     continue à découper la spécification en user stories en interne (`decoupage.propose_decoupage`,
     ça l'aide à couvrir sans redondance), mais ce découpage ne crée plus AUCUN conteneur : c'est
-    l'utilisateur qui choisit où chaque cas atterrit (`group_id` sur `CaseValidationIn`)."""
+    l'utilisateur qui choisit où chaque cas atterrit (`group_id` sur `CaseValidationIn`).
+
+    `depend_dun_autre_cas_du_groupe` / `etat_a_creer_par_ce_cas` (F26(b), migration 58) : ni
+    affichés ni édités à l'écran, mais DÉCLARÉS ici pour que l'écran les reçoive et les renvoie
+    tels quels à `CaseValidationIn`. Non déclarés, pydantic les écartait sans bruit (mesuré le
+    2026-10-15) : la garde de `write_feature_file` n'était jamais armée sur le chemin réel."""
     title: str = ""
     preconditions: str = ""
     steps: list[str] = []
@@ -496,6 +501,8 @@ class MetierDraftOut(BaseModel):
     user_story: str = ""
     # IT-3c (A53) : les lignes proposées pour ce cas — `{nom de variable: valeur}` —, à relire avec lui.
     lignes: list[LigneProposee] = []
+    depend_dun_autre_cas_du_groupe: bool = False
+    etat_a_creer_par_ce_cas: str = ""
 
 
 class GenerationJobOut(BaseModel):
@@ -531,6 +538,11 @@ class CaseValidationIn(BaseModel):
     ⚠️ Pas de `group_id` ici (étape 3bis, 2026-08-07, revient sur l'étape 3 initiale) : la Section
     est choisie UNE FOIS, avant même la génération (`AddCaseIn.group_id`), pas cas par cas sur cet
     écran. `user_story` reste un simple repère de LECTURE affiché ici (jamais une Section).
+
+    `depend_dun_autre_cas_du_groupe` / `etat_a_creer_par_ce_cas` (F26(b), migration 58) : renvoyés
+    tels quels par l'écran depuis `MetierDraftOut`, puis transportés par `validate_metier` jusqu'à
+    `write_feature_file`. Défauts `False` / `""` : un client qui ne les envoie pas reste accepté,
+    sans dépendance fabriquée.
     """
     title: str
     preconditions: str = ""
@@ -538,6 +550,8 @@ class CaseValidationIn(BaseModel):
     expected_result: str
     user_story: str = ""
     lignes: list[LigneProposee] = []   # IT-3c : les lignes validées avec le cas (vide : aucune)
+    depend_dun_autre_cas_du_groupe: bool = False
+    etat_a_creer_par_ce_cas: str = ""
 
 
 class MetierValidationIn(BaseModel):
