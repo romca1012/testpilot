@@ -317,41 +317,37 @@ def test_une_monnaie_ne_se_convertit_jamais():
 # ── Lot PT-03 : décision A24 (porteur, 2026-10-13, « prudent ») — jamais de réussite sans que l'unité soit vérifiée ────────
 
 
-def _a24(ecran: str, attendu: str, devise: str = "") -> str:
-    return ln.comparer_valeurs(_lu(ecran), _lu(attendu), devise_du_projet=devise).etat
+def _a24(ecran: str, attendu: str) -> str:
+    return ln.comparer_valeurs(_lu(ecran), _lu(attendu)).etat
 
 
-@pytest.mark.parametrize("ecran, attendu, devise, issue", [
-    # L'attendu n'écrit pas d'unité, l'écran en affiche une, rien n'est déclaré : on ne conclut pas.
-    ("129,51 $", "129,51", "", ln.UNITE_NON_VERIFIABLE), ("129,51 €", "129,51", "", ln.UNITE_NON_VERIFIABLE),
-    ("18 %", "18", "", ln.UNITE_NON_VERIFIABLE), ("12 pièces", "12", "", ln.UNITE_NON_VERIFIABLE),
-    ("1,5 kg", "1,5", "", ln.UNITE_NON_VERIFIABLE), ("12 articles en stock", "12", "", ln.UNITE_NON_VERIFIABLE),
-    ("TOP 5", "5", "", ln.UNITE_NON_VERIFIABLE),
+@pytest.mark.parametrize("ecran, attendu, issue", [
+    # L'attendu n'écrit pas d'unité, l'écran en affiche une : on ne conclut pas (A24). Le projet ne déclare pas de
+    # monnaie (A38, 2026-10-15) : un montant sans unité ne conclut JAMAIS, quelle que soit la monnaie affichée.
+    ("129,51 $", "129,51", ln.UNITE_NON_VERIFIABLE), ("129,51 €", "129,51", ln.UNITE_NON_VERIFIABLE),
+    ("18 %", "18", ln.UNITE_NON_VERIFIABLE), ("12 pièces", "12", ln.UNITE_NON_VERIFIABLE),
+    ("1,5 kg", "1,5", ln.UNITE_NON_VERIFIABLE), ("12 articles en stock", "12", ln.UNITE_NON_VERIFIABLE),
+    ("TOP 5", "5", ln.UNITE_NON_VERIFIABLE), ("129,51 € TTC", "129,51", ln.UNITE_NON_VERIFIABLE),
+    ("129,51", "129,51 €", ln.UNITE_NON_VERIFIABLE), ("5 $", "5", ln.UNITE_NON_VERIFIABLE),
     # … et un autre nombre n'accuse l'application que si aucune autre écriture n'est possible.
-    ("130 $", "129,51", "", ln.DIFFERENT), ("20 %", "18", "", ln.DIFFERENT),
-    ("18 %", "0,18", "", ln.UNITE_NON_VERIFIABLE), ("5 ‰", "0,005", "", ln.UNITE_NON_VERIFIABLE),
-    ("1500 g", "1,5", "", ln.UNITE_NON_VERIFIABLE), ("13 pièces", "12", "", ln.UNITE_NON_VERIFIABLE),
-    # Le projet a déclaré sa monnaie : un attendu sans unité est lu dans cette monnaie.
-    ("129,51 €", "129,51", "EUR", ln.EGAL), ("129,51 $", "129,51", "EUR", ln.DIFFERENT),
-    ("129,51 $", "129,51", "USD", ln.EGAL), ("129,51 $", "129,51", "CAD", ln.EGAL),
-    ("130 €", "129,51", "EUR", ln.DIFFERENT), ("129,51 € TTC", "129,51", "EUR", ln.UNITE_NON_VERIFIABLE),
-    ("12 pièces", "12", "EUR", ln.UNITE_NON_VERIFIABLE), ("18 %", "18", "EUR", ln.UNITE_NON_VERIFIABLE),
-    ("129,51", "129,51", "EUR", ln.EGAL), ("129,51", "129,51 €", "EUR", ln.UNITE_NON_VERIFIABLE),
-    # Une notation partagée ne prouve une monnaie précise que si le projet a déclaré celle-ci.
-    ("5 $", "5 CAD", "", ln.UNITE_NON_VERIFIABLE), ("5 $", "5 CAD", "CAD", ln.EGAL), ("5 $", "5 CAD", "USD", ln.UNITE_NON_VERIFIABLE),
-    ("5 $", "5 $", "", ln.EGAL), ("412 000 XAF", "412 000 F CFA", "", ln.UNITE_NON_VERIFIABLE),
-    ("412 000 F CFA", "412 000 XOF", "XOF", ln.EGAL), ("412 000 FCFA", "412 000 F CFA", "", ln.EGAL),
-    ("6 $", "5 CAD", "", ln.DIFFERENT), ("5 $", "5 EUR", "USD", ln.DIFFERENT),
+    ("130 $", "129,51", ln.DIFFERENT), ("130 €", "129,51", ln.DIFFERENT), ("20 %", "18", ln.DIFFERENT),
+    ("18 %", "0,18", ln.UNITE_NON_VERIFIABLE), ("5 ‰", "0,005", ln.UNITE_NON_VERIFIABLE),
+    ("1500 g", "1,5", ln.UNITE_NON_VERIFIABLE), ("13 pièces", "12", ln.UNITE_NON_VERIFIABLE),
+    # Une notation partagée ne prouve pas une monnaie précise ; écrite à l'identique, elle se compare à elle-même.
+    ("5 $", "5 CAD", ln.UNITE_NON_VERIFIABLE), ("5 $", "5 $", ln.EGAL), ("412 000 XAF", "412 000 F CFA", ln.UNITE_NON_VERIFIABLE),
+    ("412 000 F CFA", "412 000 XOF", ln.UNITE_NON_VERIFIABLE), ("412 000 FCFA", "412 000 F CFA", ln.EGAL),
+    ("6 $", "5 CAD", ln.DIFFERENT), ("5 $", "5 EUR", ln.DIFFERENT),
 ])
-def test_falsifiable_jamais_de_reussite_sans_que_l_unite_soit_verifiee(ecran, attendu, devise, issue):
-    assert _a24(ecran, attendu, devise) == issue
+def test_falsifiable_jamais_de_reussite_sans_que_l_unite_soit_verifiee(ecran, attendu, issue):
+    assert _a24(ecran, attendu) == issue
 
 
-def test_le_message_dit_dans_quelle_monnaie_l_attendu_a_ete_lu():
-    resultat = ln.comparer_valeurs(_lu("129,51 $"), _lu("129,51"), devise_du_projet="EUR")
-
-    assert resultat.etat == ln.DIFFERENT and "monnaie du projet (EUR)" in resultat.message
-    assert "écrivez-la dans le test" in ln.comparer_valeurs(_lu("12 pièces"), _lu("12")).message
+def test_le_message_demande_d_ecrire_l_unite_sans_parler_de_monnaie_du_projet():
+    for ecran in ("129,51 $", "12 pièces"):
+        message = ln.comparer_valeurs(_lu(ecran), _lu(ecran.split()[0])).message
+        assert "écrivez-la dans le test" in message and "monnaie du projet" not in message
+    partagee = ln.comparer_valeurs(_lu("5 $"), _lu("5 CAD")).message
+    assert "déclarez" not in partagee and "même notation" in partagee
 
 
 _ECRITURES = {"1 234,56": (",", None), "1,234.56": (".", ","), "1.234,56": (",", ".")}
@@ -396,7 +392,6 @@ def test_falsifiable_une_ecriture_lisible_sans_aide_se_lit_comme_avant(texte, va
     """`separateur_decimal=","`, lui, lirait « 1234.50 » comme 123450 : il ne convient pas à un réglage de projet."""
     for declare in (",", "."):
         assert ln.lire_nombre(texte, decimal_si_ambigu=declare).valeur == D(valeur)
-    assert ln.est_un_code_de_monnaie("XOF") and not ln.est_un_code_de_monnaie("ZZZ") and not ln.est_un_code_de_monnaie("$")
 
 
 # ── Lot PT-03 : deuxième revue du 2026-10-13 — chaque cas a été REPRODUIT avant d'être corrigé ─────────────────────────────
@@ -501,25 +496,25 @@ def test_falsifiable_une_valeur_construite_a_la_main_ne_peut_pas_etre_incoherent
 # ── Lot PT-03 : troisième revue du 2026-10-13 ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("ecran, attendu, devise, issue", [
+@pytest.mark.parametrize("ecran, attendu, issue", [
     # N1 (faux vert reproduit) — un RAPPORT réduisait « $ » à sa monnaie la plus courante : « 45 $/h » valait « 45 USD/h ».
-    ("12 $/kg", "12 USD/kg", "", ln.UNITE_NON_VERIFIABLE), ("12 $/kg", "12 USD/kg", "CAD", ln.UNITE_NON_VERIFIABLE),
-    ("1 500 F CFA/mois", "1500 XOF/mois", "XAF", ln.UNITE_NON_VERIFIABLE), ("5 kr/h", "5 SEK/h", "", ln.UNITE_NON_VERIFIABLE),
-    ("5 £/h", "5 GBP/h", "", ln.UNITE_NON_VERIFIABLE), ("5 DH par jour", "5 MAD par jour", "", ln.UNITE_NON_VERIFIABLE),
-    ("12 €/kg", "12 EUR/kg", "", ln.EGAL), ("12 $/kg", "12 $ / kg", "", ln.EGAL), ("13 $/kg", "12 $/kg", "", ln.DIFFERENT),
+    ("12 $/kg", "12 USD/kg", ln.UNITE_NON_VERIFIABLE), ("1 500 F CFA/mois", "1500 XOF/mois", ln.UNITE_NON_VERIFIABLE),
+    ("5 kr/h", "5 SEK/h", ln.UNITE_NON_VERIFIABLE),
+    ("5 £/h", "5 GBP/h", ln.UNITE_NON_VERIFIABLE), ("5 DH par jour", "5 MAD par jour", ln.UNITE_NON_VERIFIABLE),
+    ("12 €/kg", "12 EUR/kg", ln.EGAL), ("12 $/kg", "12 $ / kg", ln.EGAL), ("13 $/kg", "12 $/kg", ln.DIFFERENT),
     # Un symbole partagé précisé par une mention n'est plus le symbole nu : on n'accuse pas (faux rouges reproduits).
-    ("5 C$", "5 NIO", "", ln.UNITE_NON_VERIFIABLE), ("5 T$", "5 TOP", "", ln.UNITE_NON_VERIFIABLE),
-    ("5 k€", "5 k$", "", ln.UNITE_NON_VERIFIABLE), ("5 C$", "5", "NIO", ln.UNITE_NON_VERIFIABLE),
-    ("5 C$", "5", "EUR", ln.UNITE_NON_VERIFIABLE),
+    ("5 C$", "5 NIO", ln.UNITE_NON_VERIFIABLE), ("5 T$", "5 TOP", ln.UNITE_NON_VERIFIABLE),
+    ("5 k€", "5 k$", ln.UNITE_NON_VERIFIABLE), ("5 C$", "5", ln.UNITE_NON_VERIFIABLE),
     # … sans mention, une autre monnaie reste un défaut.
-    ("5 $", "5 NIO", "", ln.DIFFERENT), ("5 $", "5", "EUR", ln.DIFFERENT),
+    ("5 $", "5 NIO", ln.DIFFERENT),
     # Quatrième revue : une mention SÉPARÉE du symbole (« HT ») ne change pas la monnaie — le défaut reste prouvé.
-    ("129,51 $ HT", "129,51 € HT", "", ln.DIFFERENT), ("5 £ TTC", "5 € TTC", "", ln.DIFFERENT),
-    ("5 $ HT", "6 € HT", "", ln.DIFFERENT), ("129,51 USD HT", "129,51", "EUR", ln.DIFFERENT),
-    ("129,51 $ HT", "129,51", "EUR", ln.DIFFERENT), ("129,51 € HT", "129,51", "EUR", ln.UNITE_NON_VERIFIABLE),
+    ("129,51 $ HT", "129,51 € HT", ln.DIFFERENT), ("5 £ TTC", "5 € TTC", ln.DIFFERENT),
+    ("5 $ HT", "6 € HT", ln.DIFFERENT),
+    # Sans unité dans l'attendu, une mention à l'écran ne conclut pas (A24, A38).
+    ("129,51 USD HT", "129,51", ln.UNITE_NON_VERIFIABLE), ("129,51 € HT", "129,51", ln.UNITE_NON_VERIFIABLE),
 ])
-def test_falsifiable_une_notation_partagee_n_est_jamais_reduite_a_une_seule_monnaie(ecran, attendu, devise, issue):
-    assert _a24(ecran, attendu, devise) == issue
+def test_falsifiable_une_notation_partagee_n_est_jamais_reduite_a_une_seule_monnaie(ecran, attendu, issue):
+    assert _a24(ecran, attendu) == issue
 
 
 # ── Lot PT-03 : les unités AJOUTÉES par un projet (décision du porteur, 2026-10-13 : « reconnaître ses écritures ») ────────
@@ -528,10 +523,10 @@ _UNITES_DU_PROJET = {"palette": "palette", "palettes": "palette", "Palettes": "p
                      "point de fidélité": "point de fidélité", "points": "point de fidélité", "kg": "palette"}
 
 
-def _avec_unites(ecran: str, attendu: str, unites=_UNITES_DU_PROJET, devise: str = "") -> str:
+def _avec_unites(ecran: str, attendu: str, unites=_UNITES_DU_PROJET) -> str:
     def lu(texte):
         return ln.lire_nombre(texte, avec_unite=True, unites_declarees=unites)
-    return ln.comparer_valeurs(lu(ecran), lu(attendu), devise_du_projet=devise).etat
+    return ln.comparer_valeurs(lu(ecran), lu(attendu)).etat
 
 
 @pytest.mark.parametrize("ecran, attendu, issue", [

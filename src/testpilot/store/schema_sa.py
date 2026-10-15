@@ -85,9 +85,8 @@ project = Table(
     Column("browser_locale", Text, nullable=False, server_default=""),
     Column("browser_timezone", Text, nullable=False, server_default=""),
     Column("browser_viewport", Text, nullable=False, server_default=""),
-    # Migration 62 (lot PT-03) : comment le projet écrit ses valeurs — monnaie (code ISO) et écriture des nombres
-    # (énumération fermée, `ck_project_format_nombre`). Vide = rien de déclaré.
-    Column("devise", Text, nullable=False, server_default=""),
+    # Migration 62 (lot PT-03) : comment le projet écrit ses nombres (énumération fermée, `ck_project_format_nombre`).
+    # Vide = rien de déclaré. Aucune monnaie du projet (A38).
     Column("format_nombre", Text, nullable=False, server_default=""),
     # Migration 52 (lot 07b-2) : stratégie de connexion du compte PRINCIPAL (le harnais Behave réutilise sa session via
     # `storage_state`, une fois par run, plutôt que de refaire le formulaire à chaque scénario).

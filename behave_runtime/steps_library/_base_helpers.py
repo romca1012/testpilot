@@ -46,12 +46,12 @@ import pyotp
 if __package__:
     from ._lecture_nombre import (
         DIFFERENT as _VALEUR_DIFFERENTE, EGAL as _VALEUR_EGALE, LectureImpossible as _LectureImpossible,
-        comparer_valeurs as _comparer_valeurs, est_un_code_de_monnaie as _est_un_code_de_monnaie, lire_nombre as _lire_nombre,
+        comparer_valeurs as _comparer_valeurs, lire_nombre as _lire_nombre,
     )
 else:
     from _lecture_nombre import (
         DIFFERENT as _VALEUR_DIFFERENTE, EGAL as _VALEUR_EGALE, LectureImpossible as _LectureImpossible,
-        comparer_valeurs as _comparer_valeurs, est_un_code_de_monnaie as _est_un_code_de_monnaie, lire_nombre as _lire_nombre,
+        comparer_valeurs as _comparer_valeurs, lire_nombre as _lire_nombre,
     )
 
 try:  # l'arbre d'une expression régulière (`page_affiche_texte_de_la_forme`) — module renommé en Python 3.11
@@ -3735,7 +3735,6 @@ def valeur_affichee_vaut(page, libelle: str, attendu: str) -> None:
 # Lot PT-03 : ce que le PROJET a déclaré de l'écriture de ses valeurs (onglet « Valeurs attendues » des paramètres de test).
 # Noms et valeurs DUPLIQUÉS de `testpilot/parametres/valeurs.py` (ce harnais ne dépend pas du paquet applicatif) — test
 # d'accord : `tests/test_valeurs_du_projet.py`. Déclaré par une PERSONNE, jamais écrit par l'agent ; lu à chaque constat.
-_ENV_DEVISE_DU_PROJET = "TESTPILOT_PROJET_DEVISE"
 _ENV_FORMAT_NOMBRE_DU_PROJET = "TESTPILOT_PROJET_FORMAT_NOMBRE"
 # écriture déclarée -> (séparateur décimal, séparateur de milliers). `None` : l'écriture ne nomme pas ce séparateur (les
 # milliers de « 1 234,56 » sont une espace) — elle ne tranche donc rien pour lui.
@@ -3765,15 +3764,14 @@ def _unites_du_projet() -> dict[str, str]:
     return {ecriture: next(iter(noms)) for ecriture, noms in revendiquee_par.items() if len(noms) == 1}
 
 
-def _valeurs_du_projet() -> tuple[str, str | None, str | None]:
-    """(monnaie du projet, séparateur décimal, séparateur de milliers). Une valeur absente ou INCONNUE vaut « rien de
-    déclaré » : le constat retombe sur son comportement le plus prudent (ne pas conclure), jamais sur une hypothèse."""
-    devise = os.environ.get(_ENV_DEVISE_DU_PROJET, "").strip().upper()
-    decimal, milliers = _SEPARATEURS_DU_FORMAT.get(os.environ.get(_ENV_FORMAT_NOMBRE_DU_PROJET, "").strip().lower(), (None, None))
-    return (devise if _est_un_code_de_monnaie(devise) else ""), decimal, milliers
+def _valeurs_du_projet() -> tuple[str | None, str | None]:
+    """(séparateur décimal, séparateur de milliers) de l'écriture des nombres déclarée par le projet. Absente ou INCONNUE :
+    « rien de déclaré », le constat retombe sur son comportement le plus prudent (ne pas conclure), jamais sur une
+    hypothèse. Le projet ne déclare PAS de monnaie (A38, porteur, 2026-10-15 : aucune base toute faite)."""
+    return _SEPARATEURS_DU_FORMAT.get(os.environ.get(_ENV_FORMAT_NOMBRE_DU_PROJET, "").strip().lower(), (None, None))
 
 
-def _juger_nombre(texte_affiche: str, voulu, devise_du_projet: str = "", decimal_du_projet: str | None = None,
+def _juger_nombre(texte_affiche: str, voulu, decimal_du_projet: str | None = None,
                   milliers_du_projet: str | None = None, unites_du_projet: dict[str, str] | None = None):
     """(état, message) pour UNE valeur lue à l'écran. Trois états : égal, différent, non concluant (`None`).
 
@@ -3789,7 +3787,7 @@ def _juger_nombre(texte_affiche: str, voulu, devise_du_projet: str = "", decimal
         # Des chiffres, mais une écriture que le lecteur refuse de deviner (« 1,234 », deux nombres) : la limite est
         # la nôtre, pas un défaut de l'application.
         return None, f"la valeur affichée « {texte_affiche} » ne se lit pas sans ambiguïté ({exc})"
-    resultat = _comparer_valeurs(lu, voulu, devise_du_projet=devise_du_projet)
+    resultat = _comparer_valeurs(lu, voulu)
     if resultat.etat in (_VALEUR_EGALE, _VALEUR_DIFFERENTE):
         return resultat.etat, resultat.message
     return None, resultat.message
@@ -3816,10 +3814,9 @@ def _nombre_affiche_vaut(page, libelle: str, attendu: str) -> None:
       le lecteur refuse de deviner : `ConstatNonConcluantError` — ni un succès (l'unité n'est pas prouvée) ni une accusation.
     Relue jusqu'au délai tant qu'elle n'est pas égale : un total recalculé après l'action n'est pas un défaut.
 
-    Décision A24 — la valeur attendue n'écrit pas d'unité et l'écran en affiche une : pour une monnaie, elle est lue dans
-    la monnaie DÉCLARÉE par le projet (un écran dans une autre monnaie est un défaut) ; sans déclaration, et pour toute
-    autre unité, le constat ne conclut pas. L'écriture des nombres déclarée par le projet lève l'ambiguïté d'une valeur
-    AFFICHÉE (« 1.234 »), jamais celle de la valeur attendue."""
+    Décision A24 — la valeur attendue n'écrit pas d'unité et l'écran en affiche une : le constat ne conclut pas, il demande
+    d'écrire l'unité dans le test (le projet ne déclare pas de monnaie, A38). L'écriture des nombres déclarée par le projet
+    lève l'ambiguïté d'une valeur AFFICHÉE (« 1.234 »), jamais celle de la valeur attendue."""
     cible = _libelle_normalise(libelle)
     try:
         unites_du_projet = _unites_du_projet()   # une unité déclarée vaut des DEUX côtés, contrairement à l'écriture des nombres
@@ -3828,12 +3825,11 @@ def _nombre_affiche_vaut(page, libelle: str, attendu: str) -> None:
         raise ConstatInvalideError(
             f"La valeur attendue « {attendu} » ne se lit pas comme un nombre unique ({exc}). Écrivez-la sans ambiguïté "
             "(« 1 234,50 € », « 412 000 XOF », « 18 % », « 1,5 kg »).") from exc
-    devise_du_projet, decimal_du_projet, milliers_du_projet = _valeurs_du_projet()
+    decimal_du_projet, milliers_du_projet = _valeurs_du_projet()
     fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
     while True:
         distinctes = _valeurs_affichees(page, cible)
-        etat, message = (_juger_nombre(distinctes[0], voulu, devise_du_projet, decimal_du_projet, milliers_du_projet,
-                                       unites_du_projet)
+        etat, message = (_juger_nombre(distinctes[0], voulu, decimal_du_projet, milliers_du_projet, unites_du_projet)
                          if len(distinctes) == 1 else (None, ""))
         if etat == _VALEUR_EGALE:
             return

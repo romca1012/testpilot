@@ -230,8 +230,8 @@ class ProjectRepo:
     # taille de fenêtre du navigateur qui la pilote) — `None` = n'y touche pas, `""` = revenir au défaut.
     _CONNEXION = ("connector_type", "connector_version", "base_url", "database", "username",
                   "browser_locale", "browser_timezone", "browser_viewport", "auth_strategie",
-                  # Lot PT-03 : monnaie et écriture des nombres du projet — même règle (`None` = n'y touche pas, `""` = rien de déclaré).
-                  "devise", "format_nombre",
+                  # Lot PT-03 : écriture des nombres du projet — même règle (`None` = n'y touche pas, `""` = rien de déclaré).
+                  "format_nombre",
                   # Lot 06 (D6) : le profil d'instance n'est pas un secret (comme `connector_version`).
                   "profil_instance",
                   # Lot 07e (D7) : `oracle_type`/`oracle_base_url`/`oracle_queries` ne sont PAS des
