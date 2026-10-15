@@ -38,6 +38,8 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 | A35 | **Plusieurs jeux cochés au lancement, et des tests qui n'écrivent aucune variable** : ces tests ne sont joués qu'UNE fois, dans la première exécution (celle du jeu « Par défaut » s'il est coché) ; les exécutions des autres jeux (une par jeu, toujours créées) ne jouent que les tests qui écrivent des variables. Ce tri se fait **au lancement**, comme les valeurs (A29) : un test qui gagne une variable après la création est joué avec chaque jeu ; un test qui a déjà un résultat dans une exécution y reste. Une exécution qui n'a alors aucun test à variables refuse de se lancer en le disant. L'écran l'annonce avant de créer. Écart voulu avec TestRail, qui rejoue tout à chaque jeu. | 2026-10-14 |
 | A36 | **Planification dont une colonne a été mise à la corbeille** : elle ne joue **rien** (ni les autres colonnes, ni « Par défaut » à la place) tant qu'on ne l'a pas corrigée — restaurer la colonne ou recréer la planification. La liste des planifications affiche « Ne se déclenche pas : un jeu de données est à la corbeille ». | 2026-10-14 |
 | A37 | **Import Excel du tableau des données de test** : il **complète** le tableau — ajoute les variables et les colonnes qui manquent, met à jour les cases qu'il remplit ; une case vide du fichier ne vide rien, rien n'est supprimé. L'écran montre ce qui va changer avant d'enregistrer ; une seule erreur dans le fichier (nommée par sa case) et rien n'est écrit. L'export du tableau sert de modèle. | 2026-10-14 |
+| A38 | **Aucune base toute faite dans les paramètres** (porteur, 2026-10-15) : l'outil ne fournit pas de réglage tiré d'un cas particulier. La **monnaie du projet est retirée** (réglage, colonne, règle A24 pour sa partie « monnaie déclarée ») ; **l'écriture des nombres reste** un réglage ; **les unités ajoutées restent** (une liste vide que chaque projet remplit lui-même). La lecture des nombres continue de reconnaître « € » et « EUR » comme la même unité : c'est de la lecture, pas un réglage. Une valeur attendue écrite sans unité face à un montant affiché : l'outil ne se prononce pas et demande d'écrire l'unité (règle prudente d'A24, inchangée). | 2026-10-15 |
+| A39 | **Proposée, à valider** — option en plus, le parcours d'aujourd'hui ne change pas pour un projet sans paramètre. *Le cas fait foi, aussi pour les données* : quand le projet a déclaré des données de test, c'est le CAS (sa description, relue et validée par une personne) qui dit quelles données de test il emploie, écrites `{{client}}` ; l'IA les y propose à partir des variables du projet, la personne valide ; le test technique doit ensuite reprendre exactement ces variables — vérifié sans IA, refusé sinon. Les tests déjà écrits s'associent d'un clic (proposition sans IA, aperçu, nouvelle version à relire). | — |
 | — | Précisions annoncées au porteur le 2026-10-13, sans objection : la **mise à la corbeille** d'une variable ou d'un jeu reste réservée à l'administrateur du projet (comme toute suppression de l'outil : lui seul restaure) ; le **nom d'une variable ne se modifie pas** (les tests la désignent par ce nom) ; un lancement **sans jeu choisi** joue le jeu « Par défaut » si le projet a des variables, et rien ne change pour un projet qui n'en a pas. | 2026-10-13 |
 
 Interrupteur (confirmé par le porteur le 2026-10-13) : il ne sert qu'au temps de la construction, pour comparer
@@ -242,7 +244,7 @@ ses captures refaites ; mesure de clôture sur le banc ; mise en ligne sur
 
 ## 5. Ordre et jalons
 
-Ordre : PT-00 → PT-01 → **PT-03** → PT-02 → PT-04 → PT-05 → PT-06 → PT-07 (ordre A7, modifié sur un point le 2026-10-13 :
+**Remplacé le 2026-10-15 par le §9 (génération et paramètres menés ensemble) pour tout ce qui reste.** Ordre d'origine : PT-00 → PT-01 → **PT-03** → PT-02 → PT-04 → PT-05 → PT-06 → PT-07 (ordre A7, modifié sur un point le 2026-10-13 :
 PT-03 passe juste après PT-01).
 
 | Jalon | Atteint après | Ce que l'utilisateur peut faire |
@@ -286,6 +288,79 @@ Règle du dépôt (CLAUDE.md §5.3) : un lot qui dépend d'une décision non val
 | Dérive de périmètre | Un lot ne fait que son contenu ; le reste va en « suggestions » du rapport de lot. |
 | Second navigateur | Voir PT-04c : écart signalé, arbitré le 2026-10-13 (Chromium seul). |
 
+## 9. Génération et paramètres de test, menés ensemble (2026-10-15)
+
+Demande du porteur, 2026-10-15 : les deux chantiers vont de pair. Les paramètres de test ajoutés doivent être compris et
+employés par l'IA, qui doit savoir à quels cas chacun s'applique ; la génération doit rester juste ; le but est un outil qui
+soit un atout en entreprise, pas une contrainte. Ce chapitre remplace l'ordre du §5 pour tout ce qui reste à faire. Il reprend
+les lots restants du plan `PLAN-VERDICT-HONNETE-ZERO-ERREUR-2026-10.md` (VH-02, VH-06, VH-08 à VH-10), qui n'est donc plus
+mené à part.
+
+### 9.1 Où en est la génération (mesuré, banc d'agents, 2026-10-11, `base-7`)
+
+- 0 faux vert sur 131 jeux concluants (base-2 à base-7) ; 0 faux rouge en base-7 ;
+- 23 essais sur 30 justes partout, 6 cas sur 10 justes aux trois essais — un test généré sur quatre n'est pas encore juste ;
+- causes restantes : l'agent ne connaît pas la FORME de la réponse de l'oracle (4 des 7 essais non justes), une génération
+  sur dix n'aboutit pas ;
+- limite : c'est notre application ; rien n'est mesuré sur une application jamais vue.
+
+### 9.2 Le principe (A39, à valider)
+
+**Le parcours d'aujourd'hui ne change pas** (porteur, 2026-10-15) : une spécification devient des cas, les cas deviennent des
+tests techniques, on lance une exécution — exactement comme maintenant, pour tout projet qui ne déclare aucun paramètre de
+test. Les paramètres de test sont une **option en plus** : ce qui suit ne s'applique qu'à un projet qui en a déclaré, et la
+génération les prend alors en compte en plus de ce qu'elle fait déjà. Un projet sans paramètre reçoit la même génération,
+octet pour octet (garde : test d'identité, interrupteurs éteints).
+
+1. **Le cas fait foi, aussi pour les données** (seulement si le projet a déclaré des données de test). Quand une spécification devient des cas, l'IA reçoit les variables du projet
+   (noms et descriptions, jamais les valeurs) et écrit dans la description du cas `{{client}}` là où le cas emploie cette
+   donnée. La personne qui relit le cas voit et valide ce lien — en clair, sans lire de script.
+2. **Le test technique suit le cas, contrôlé sans IA.** Chaque variable du cas doit apparaître dans le test technique, et
+   aucune autre : sinon l'écriture est refusée et l'agent corrige. Le lien ne dépend donc jamais d'une supposition de l'IA.
+3. **Les tests déjà écrits s'associent d'un clic, sans IA.** L'outil repère dans le test les valeurs identiques à celles du
+   jeu « Par défaut » (« Martin SARL ») et propose `{{client}}` ; la personne coche, voit l'aperçu, valide (nouvelle version
+   à relire, comme toute modification).
+4. **Les paramètres servent la génération.** Des valeurs déclarées par une personne remplacent les valeurs que l'IA invente
+   aujourd'hui (client inexistant, format refusé) ; la vérification des nombres avec leur unité remplace des comparaisons de
+   texte fragiles ; la forme de réponse de l'oracle et la cartographie par compte lui montrent ce qu'elle devait deviner.
+5. **Rien ne s'allume sans mesure.** Chaque nouveauté qui change ce que l'IA reçoit reste derrière un interrupteur éteint
+   jusqu'à une campagne du banc : zéro faux vert, au moins autant de tests justes, coût par cas sous 1 €.
+
+### 9.3 Les étapes
+
+| Étape | Paramètres de test | Génération | Mesure | Coût IA |
+|---|---|---|---|---|
+| E1 — Finir et corriger | PT-02d enregistré ; monnaie du projet retirée (A38) ; « associer d'un clic » (PT-02e, sans IA) | — | suites complètes | 0 |
+| E2 — Le cas dit ses données | PT-02f : l'IA propose `{{nom}}` dans la description des cas, la personne valide ; contrôle « le technique reprend exactement les variables du cas » | même lot : la génération du technique lit les variables du cas validé | banc : cas qui emploient des données | 0 (code) |
+| E3 — Mesure M1 | interrupteurs de PT-02d, PT-02f et PT-03 | — | campagne appariée éteint / allumé, cas avec et sans données | ≈ 8 $ |
+| E4 — Ce que l'IA devait deviner | PT-04a : plusieurs environnements (protection de la production évaluée pour chacun) — sans IA | VH-08 : l'agent voit un exemple de réponse de chaque requête d'oracle ; restes VH-02 et VH-06 (route inconnue = refus) | campagne M2 | ≈ 6 $ |
+| E5 — Comptes et état de départ pour tous | PT-04b : compte choisi au lancement ; PT-04d : remise à zéro pour toutes les applications | l'agent reçoit la cartographie du compte visé ; l'essai « exécuter puis écrire » devient possible hors connecteur web | campagne M3 (dont Odoo) | ≈ 8 $ |
+| E6 — Réparer sans tricher | — | VH-09 : réparation de l'adressage seulement, un test réparé doit refaire échouer les défauts qu'il détectait | régressions injectées | faible |
+| E7 — Réutiliser, calculer | PT-05 bibliothèque commune ; PT-06 valeur attendue calculée | l'agent emploie « vaut le résultat calculé » sur des spécifications sans résultat écrit | campagne M4 (erreurs de calcul introduites exprès) | ≈ 8 $ |
+| E8 — La preuve | tous les paramètres allumés qui ont passé leur mesure | VH-10 : application jamais vue (jeu mis de côté), Odoo réel | campagne de clôture | ≈ 15 $ |
+| E9 — Clôture | PT-07 : ancien écran et interrupteurs retirés, guide utilisateur | — | suites complètes, vérification à l'écran | 0 |
+
+Total des mesures avec IA : **≈ 45 $**, chaque campagne annoncée et validée par le porteur avant d'être lancée, avec un
+plafond bloquant. Les étapes sans IA (E1, le code de E2, PT-04a, PT-05) avancent sans attendre les campagnes.
+
+### 9.4 Ce que l'entreprise y gagne, étape par étape
+
+| Après | Ce qu'un utilisateur peut faire |
+|---|---|
+| E1 | Relier ses tests existants aux données de test d'un clic, sans toucher au script |
+| E3 | Écrire « le client » dans un cas : l'outil propose la variable, et le test généré la joue pour chaque jeu choisi |
+| E4 | Jouer une campagne sur la recette et sur la préproduction ; des tests générés plus souvent justes du premier coup |
+| E5 | Jouer un même test sous plusieurs rôles ; préparer l'application avant chaque test, quelle que soit l'application |
+| E7 | Vérifier un montant sans l'avoir recopié de la spécification ; reprendre les réglages d'un autre projet |
+| E8 | Des chiffres mesurés sur une application jamais vue, publiables à un client |
+
+### 9.5 Décisions à obtenir
+
+- **A39** (principe d'association par le cas) : à valider avant E2.
+- **Budget de M1** (≈ 8 $, plafond 9 $) : avant E3.
+- Restent ouvertes, à leur étape : V16 (exploration par compte, E5), V5 et V6 (bibliothèque commune, E7), V8 et V10 (valeur
+  calculée, E7).
+
 ## 8. Suivi
 
 | Lot | Statut | Date | PR | Rapport |
@@ -294,7 +369,7 @@ Règle du dépôt (CLAUDE.md §5.3) : un lot qui dépend d'une décision non val
 | PT-01a | terminé en local : écrit, relu, vérifié à l'écran ; suite du serveur identique à la référence (4 207 réussis, les 5 échecs connus) | 2026-10-13 | — | |
 | PT-01b | terminé en local : écrit, relu (aucun bloquant, sept points corrigés), vérifié à l'écran ; règle A21 ajoutée ; suite du serveur de clôture : 4 219 réussis, les 5 échecs connus du poste | 2026-10-13 | — | |
 | PT-02a à PT-02c | fait en local, relu, suites vertes : tableau (corbeille, droits, import et export Excel A37), lancement avec un ou plusieurs jeux (A28, A35), planifications (A36), valeurs figées au lancement et affichées dans le rapport, fiche d'un test (aperçu par jeu, bouton Variable). vérifié à l'écran sur une copie locale le 2026-10-14 (lancement, plan, planifications, rapport, fiche, import et export) | 2026-10-14 | — | |
-| PT-02d | à faire : l'agent reçoit le nom des variables (interrupteur éteint) ; mesure sur le banc groupée avec celle de PT-03, budget à annoncer avant | | | |
+| PT-02d | code fait en local, interrupteur `TESTPILOT_VARIABLES_DE_TEST` ÉTEINT, relu en trois passes : l'agent reçoit les noms (jamais les valeurs) ; à l'écriture, variable inconnue, mal écrite, mal placée, hors guillemets ou dans le code des steps refusée ; essai du bac à sable joué avec les valeurs « Par défaut » ; valeurs masquées dans ce qui revient à l'agent ; variables figées en réparation et en correction ; banc : option `--donnees-de-test`. **Reste** : la mesure avec l'IA (groupée avec PT-03), budget annoncé au porteur (~7 $, plafond 8 $), en attente de son accord ; l'interrupteur reste éteint d'ici là | 2026-10-15 | — | |
 | PT-03 | terminé en local, interrupteur ÉTEINT : comparaison avec unité, règle A24, monnaie, écriture des nombres, unités ajoutées (A25), relus et vérifiés à l'écran ; mesure sans IA : 8 jeux sur 8 ; la mesure avec l'IA est reportée dans la campagne de PT-02d, qui décidera de l'allumer | 2026-10-13 | — | `docs/mesures/banc-agents-2026-10-13-pt03-step-nombre-sans-ia-methode.md` |
 | PT-04a à PT-04d | à faire | | | |
 | PT-05 | à faire | | | |
