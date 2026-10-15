@@ -1545,6 +1545,21 @@ def declarer_les_donnees_de_test(conn, project_id: int) -> None:
                         {ids[nom]: valeur for nom, (_description, valeur) in DONNEES_DE_TEST_DU_BANC.items()})
 
 
+def citer_les_donnees_dans_le_cas(metier: dict) -> dict:
+    """Lot PT-02f (A39, interrupteur `TESTPILOT_CAS_DIT_SES_DONNEES`) : le cas du banc tel qu'une personne l'aurait validé —
+    « Dupont SARL » devient `{{nom_client}}` dans son texte, par le remplacement de l'association d'un clic (A41, sans IA). Le
+    test technique devra alors reprendre ces variables. Interrupteur éteint : le cas d'avant, inchangé."""
+    from testpilot.generation import interrupteurs
+    if not interrupteurs.cas_dit_ses_donnees_actif():
+        return metier
+    from testpilot.api.services import association_donnees
+
+    valeurs = {nom: valeur for nom, (_description, valeur) in DONNEES_DE_TEST_DU_BANC.items()}
+    retenues = [{"variable": nom, "valeur": valeur} for nom, valeur in valeurs.items()]
+    changes = association_donnees.cas_associe({**metier, "etapes_lisibles": True}, retenues, valeurs)
+    return {**metier, **(changes or {})}
+
+
 def poser_les_donnees_de_test(texte: str, project_id: int | None) -> tuple[str, list[str]]:
     """Le test tel que la PRODUCTION le jouerait hors campagne : variables remplacées par les valeurs du jeu « Par défaut »
     (`donnees_de_test_service`, même calcul). Rend (texte, manques) ; un manque : le jeu sort « bloqué », jamais joué."""
@@ -1602,6 +1617,8 @@ def preparer_projet_web(url: str, compte: Mapping, specs: Mapping[str, dict], da
     cas = CaseRepo(conn)
     ids: dict[str, int] = {}
     for slug, metier in specs.items():
+        if donnees_de_test:
+            metier = citer_les_donnees_dans_le_cas(metier)
         ids[slug] = cas.create_manual(
             module_id=module_id, title=metier["title"], preconditions=metier["preconditions"],
             test_steps=json.dumps(metier["steps"], ensure_ascii=False),

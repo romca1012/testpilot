@@ -799,14 +799,20 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     # Lot PT-02d (interrupteur allumé, projet à variables) : variables inconnues, mal écrites, mal placées ou hors guillemets
     # refusées ici, avec les règles mêmes de l'exécution. BLOQUANT. Interrupteur éteint : contrôle d'avant, inchangé.
     from testpilot.generation import variables_de_test
-    fautes = variables_de_test.refus(content, ctx.variables_de_test) if ctx.variables_de_test else []
+    fautes = (variables_de_test.refus(content, ctx.variables_de_test,
+                                      "le cas cite" if ctx.controle_du_cas else "le projet déclare")
+              if ctx.variables_de_test or ctx.controle_du_cas else [])
+    # Lot PT-02f (A39) : le cas fait foi — chaque variable qu'il cite est employée par le test (les autres sont refusées
+    # ci-dessus : `variables_de_test` ne contient que celles du cas).
+    fautes += variables_de_test.refus_variables_du_cas(content, ctx.variables_du_cas) if ctx.variables_du_cas else []
     if ctx.references_figees is not None:   # réparation, correction : les variables du test de référence ne bougent pas
         fautes += variables_de_test.refus_references_changees(content, ctx.references_figees)
     if fautes:
         return _outcome("[write_feature_file] VARIABLE_DE_TEST : " + " ; ".join(fautes[:5])
                         + ". Puis rappelle write_feature_file.", ok=False)
     refus = verifier_references(content, ctx.options_select, ctx.champs_relationnels, recherche,
-                                ignorer_variables=bool(ctx.variables_de_test or ctx.references_figees))
+                                ignorer_variables=bool(ctx.variables_de_test or ctx.references_figees
+                                                       or ctx.controle_du_cas))
     if refus:
         return _outcome(message_refus(refus), ok=False)
     # F26(b), migration 58 : question DIFFÉRENTE de `verifier_references` ci-dessus — pas « cette
@@ -852,7 +858,7 @@ def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     # Lot PT-02d (revue du 2026-10-14, faux vert) : une variable dans le code des steps n'est jamais remplacée — un constat
     # `"{{client}}" not in texte` y est toujours vrai. Dès que l'agent connaît la syntaxe (interrupteur allumé), ou que le
     # test de référence en écrit (réparation, correction) : refusée.
-    if ctx.variables_de_test or ctx.references_figees:
+    if ctx.variables_de_test or ctx.references_figees or ctx.controle_du_cas:
         from testpilot.generation import variables_de_test
         fautes = variables_de_test.refus_dans_le_code(content)
         if fautes:

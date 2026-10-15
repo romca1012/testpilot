@@ -69,6 +69,33 @@ def project_du_cas(conn, case_id: int) -> dict | None:
     return ProjectRepo(conn).get(project_id) if project_id else None
 
 
+def noms_declares(conn, project_id: int | None) -> list[str]:
+    """Les variables que le projet a DÉCLARÉES — vivantes et à la corbeille : la dernière mise à la corbeille ne fait pas
+    disparaître l'écart (revue du 2026-10-15)."""
+    from testpilot.store.repositories import TestDataRepo
+    if project_id is None:
+        return []
+    depot = TestDataRepo(conn)
+    return [v["nom"] for v in depot.variables(project_id)] + depot.variables_a_la_corbeille(project_id)
+
+
+def ecarts_cas_test(conn, case: dict, version_id: int | None, noms: list[str] | None = None) -> list[str]:
+    """Décision A42 : les variables que le cas cite et que son test n'emploie pas (vide hors PT-02f). `noms` : déjà lus
+    (une liste de cas du même projet ne relit pas le projet pour chacun)."""
+    from testpilot.generation import interrupteurs, variables_de_test
+    if not version_id or not interrupteurs.cas_dit_ses_donnees_actif():
+        return []
+    if noms is None:
+        noms = noms_declares(conn, case.get("project_id"))
+    return variables_de_test.ecart_cas_test(VersionRepo(conn).get(version_id), noms)
+
+
+def gate_du_cas(conn, case: dict, version_id: int) -> review_gate.GateDecision:
+    """La porte de relecture, plus l'écart cas/test (A42) — ce qui décide qu'une version peut être exécutée."""
+    return review_gate.bloquer_si_ecart(review_gate.evaluate_gate(ReviewRepo(conn), version_id),
+                                        ecarts_cas_test(conn, case, version_id))
+
+
 def trigger_run(conn, case_id: int, *, triggered_by: str = "") -> tuple[int, str, int, int]:
     """Valide le gate et crée la ligne d'exécution. Renvoie (execution_id, feature_slug, case_id, version_id).
 
@@ -82,7 +109,7 @@ def trigger_run(conn, case_id: int, *, triggered_by: str = "") -> tuple[int, str
     if not version_id:
         raise RunError("no_version", "aucune version générée pour ce cas")
 
-    gate = review_gate.evaluate_gate(ReviewRepo(conn), version_id)
+    gate = gate_du_cas(conn, case, version_id)
     if not gate.allowed:
         raise RunError("needs_review", gate.reason)
 

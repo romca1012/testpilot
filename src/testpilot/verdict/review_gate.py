@@ -32,6 +32,16 @@ def evaluate_gate(review_repo, version_id: int) -> GateDecision:
                         reason="relecture humaine obligatoire avant la première exécution")
 
 
+def bloquer_si_ecart(decision: GateDecision, ecarts: list[str]) -> GateDecision:
+    """Décision A42 : un écart entre le cas et son test (le cas cite une donnée que le test n'emploie pas) bloque
+    l'exécution, même d'une version approuvée — régénérer le test ou corriger le cas."""
+    if not ecarts:
+        return decision
+    return GateDecision(allowed=False, needs_review=True,
+                        reason="écart entre le cas et son test : " + " ; ".join(ecarts)
+                        + " — régénérez le test ou corrigez le cas")
+
+
 def submit_review(review_repo, *, case_id: int, version_id: int, approved: bool,
                   reviewer: str, comment: str = "",
                   repair_budget: int | None = None) -> GateDecision:

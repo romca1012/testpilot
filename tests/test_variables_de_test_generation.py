@@ -195,6 +195,18 @@ def test_falsifiable_sans_valeur_par_defaut_l_essai_n_est_pas_joue(tmp_path, bac
     assert joues == []
 
 
+def test_falsifiable_pt02f_sans_variable_permise_l_essai_ne_saisit_pas_une_variable(tmp_path, bac):
+    """Lot PT-02f (revue du 2026-10-15) : dernière variable à la corbeille, le cas en cite une — rien n'est permis, et
+    `{{client}}` aurait été saisi tel quel dans l'application."""
+    joues: list[str] = []
+    ctx = _ctx(tmp_path, joues, {})
+    ctx.variables_de_test, ctx.controle_du_cas = frozenset(), True
+
+    sortie = dispatch(e.NOM_OUTIL, {"etapes": ['Quand je renseigne le champ "Client" avec la valeur "{{client}}"']}, ctx)
+
+    assert not sortie.ok and "ESSAI_REFUSE" in sortie.observation and joues == []
+
+
 # ── Revue du 2026-10-14 ───────────────────────────────────────────────────────────────────────────────────────────────────
 
 STEPS_FAUX_VERT = '''from behave import then

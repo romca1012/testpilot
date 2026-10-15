@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Étape E1 (A39) : associer d'un clic un test déjà écrit aux données de test du projet. Le SERVEUR propose — une proposition
+// Étape E1 (A39, A41 : le texte du cas change aussi, montré au-dessus du script) : associer d'un clic un test déjà écrit aux données de test du projet. Le SERVEUR propose — une proposition
 // par variable, avec toutes ses lignes : elle s'applique en entier ou pas du tout — et écrit ; l'écran ne fait que montrer
 // l'avant/après et cocher, il n'envoie jamais de texte (vérifications comprises, ouvertes à tous : A40). Rien à proposer :
 // le bouton n'apparaît pas.
@@ -66,6 +66,11 @@ async function associer() {
               <span class="font-medium">{{ p.valeur }}</span>
               <span class="mx-1 text-muted-foreground">→</span>
               <span class="font-mono">{{ ecrite(p.variable) }}</span>
+              <span v-for="l in p.lignes_du_cas ?? []" :key="l.champ" class="mt-1 block text-xs" data-testid="association-cas">
+                <span class="block text-muted-foreground">{{ l.champ }}</span>
+                <span class="block text-muted-foreground line-through">{{ l.avant }}</span>
+                <span class="block">{{ l.apres }}</span>
+              </span>
               <span v-for="l in p.lignes" :key="l.ligne" class="mt-1 block font-mono text-xs">
                 <span class="block text-muted-foreground line-through">{{ l.ligne }}  {{ l.avant }}</span>
                 <span class="block">{{ l.ligne }}  {{ l.apres }}</span>

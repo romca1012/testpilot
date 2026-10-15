@@ -688,7 +688,9 @@ export interface Associations {
   version_id: number
   /** Une proposition par variable, avec TOUTES ses lignes (tout ou rien) ; `verification` : touche un « Alors ». */
   propositions: { id: string; variable: string; valeur: string; verification: boolean;
-                  lignes: { ligne: number; avant: string; apres: string }[] }[]
+                  lignes: { ligne: number; avant: string; apres: string }[]
+                  /** A41 : le texte du cas (« Étape 2 », « Résultat attendu »…) change dans la même version. */
+                  lignes_du_cas?: { champ: string; avant: string; apres: string }[] }[]
   ecartees: { variable: string; valeur: string; raison: string }[]
 }
 /** Lot PT-02c : un test tel qu'il serait joué avec un jeu de données ; `manques` non vide : il serait « bloqué ». */
