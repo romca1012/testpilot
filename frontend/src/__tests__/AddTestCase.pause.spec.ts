@@ -156,6 +156,31 @@ describe('AddTestCase — la pause métier (0022 n°5, étendue au §9, à PLAT 
     expect(w.find('[data-testid="lignes-proposees"]').exists()).toBe(false)
   })
 
+  it('renvoie TELS QUELS les champs de dépendance inter-cas (F26), même après correction', async () => {
+    // Ni affichés ni édités, mais indispensables à la garde de `write_feature_file` côté serveur.
+    // Le 2026-10-15, ils se perdaient à cette porte (schémas API) : on fige aussi le côté écran.
+    validateMetier.mockResolvedValue({ job_id: 'J1', status: 'running', case_ids: [], error: '' })
+    const etat = "Créer un équipement avec une référence unique avant de l'affecter."
+    const w = await jusquAuJob({
+      status: 'awaiting_metier', case_ids: [], error: '',
+      cases: casAvec({ ...DRAFT, depend_dun_autre_cas_du_groupe: true, etat_a_creer_par_ce_cas: etat } as any),
+    })
+    await w.find('[aria-expanded="false"]').trigger('click')
+    const titre = w.findAll('input').find(
+      (i) => (i.element as HTMLInputElement).value === DRAFT.title)!
+    await titre.setValue('MON titre corrigé')
+    await w.findAll('button').find((b) => b.text().includes('Valider'))!.trigger('click')
+    await flushPromises()
+
+    expect(validateMetier).toHaveBeenCalledWith('J1', [
+      expect.objectContaining({
+        title: 'MON titre corrigé',
+        depend_dun_autre_cas_du_groupe: true,
+        etat_a_creer_par_ce_cas: etat,
+      }),
+    ])
+  })
+
   it('REFUSE de valider un cas amputé de ses étapes', async () => {
     // Titre + étapes + résultat attendu sont obligatoires (0022 n°3.c) : un cas sans eux ne
     // vérifie rien. Le bouton est désactivé plutôt que de laisser le serveur refuser après coup.
