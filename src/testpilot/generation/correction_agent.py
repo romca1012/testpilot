@@ -132,6 +132,10 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
         reserved_steps=frozenset(s.label for s in shared_steps),
         calibration_writes_enabled=calibration_writes_enabled,
     )
+    # Lot PT-02d : les variables `{{…}}` du test corrigé sont figées — une correction ne remplace pas une valeur choisie au
+    # lancement par une valeur en dur (le contrôle des références ne les confronte plus aux enregistrements existants).
+    from testpilot.generation import variables_de_test
+    ctx.references_figees = variables_de_test.references_du_texte(feature_content or "")
     # Lot VH-05 (revue du 2026-10-08) : une correction passe par les MÊMES contrôles des littéraux que la génération.
     from testpilot.generation import litteraux_observes
     litteraux_observes.brancher_controles(ctx, connector_type, modele, config.BEHAVE_RUNTIME_DIR)

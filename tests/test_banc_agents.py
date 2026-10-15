@@ -1171,3 +1171,81 @@ def test_hors_pytest_la_barriere_ne_gene_pas_le_reel(monkeypatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
 
     ba.refuser_depense_reelle_sous_pytest(ba._APPEL_REEL, ba._APPEL_REEL, "essai")  # ne lève pas
+
+
+# ── Lot PT-02d : données de test du projet jetable ───────────────────────────────────────────────────────────────────────
+
+
+def test_variables_ecrites_lit_les_noms_du_feature_seulement():
+    fichiers = {"m.feature": 'Quand je saisis "{{nom_client}}" puis "{{ ville_client }}" et "{{nom_client}}"',
+                "m_steps.py": "x = '{{autre}}'"}
+
+    assert ba.variables_ecrites(fichiers) == ["nom_client", "ville_client"]
+    assert ba.variables_ecrites({"m.feature": "Alors ok"}) == []
+
+
+def test_falsifiable_le_joueur_pose_les_valeurs_et_rapporte_l_empreinte_du_test_genere(tmp_path, monkeypatch):
+    vus = {}
+    monkeypatch.setattr(ba, "poser_les_donnees_de_test",
+                        lambda texte, pid: (texte.replace("{{nom_client}}", "Dupont SARL"), []))
+
+    def executer(dossier, module, connexion, project_id, connector_type, traces):
+        vus["feature"] = (dossier / "m.feature").read_text(encoding="utf-8")
+        return {"execution": "success", "fonctionnel": "conforme", "cause": "", "detail": "", "duree": 1.0}
+
+    artefacts = ba.Artefacts("a", 1, {"m.feature": 'Quand je saisis "{{nom_client}}"\n', "m_steps.py": "S"}, 0.1, module="m")
+    jeu = _joueur(tmp_path, executer)(artefacts, ba.VARIANTE_SAINE)
+
+    assert vus["feature"] == 'Quand je saisis "Dupont SARL"\n', "jamais {{nom_client}} saisi tel quel"
+    assert jeu.verdict == "conforme" and jeu.empreintes == artefacts.empreintes
+
+
+def test_falsifiable_une_valeur_qui_manque_rend_le_jeu_bloque_sans_le_jouer(tmp_path, monkeypatch):
+    monkeypatch.setattr(ba, "poser_les_donnees_de_test", lambda texte, pid: (texte, ["variable inconnue « pays »"]))
+    joue = []
+
+    def executer(*a, **k):
+        joue.append(1)
+        return {"execution": "success", "fonctionnel": "conforme"}
+
+    artefacts = ba.Artefacts("a", 1, {"m.feature": '"{{pays}}"', "m_steps.py": "S"}, 0.1, module="m")
+    jeu = _joueur(tmp_path, executer)(artefacts, ba.VARIANTE_SAINE)
+
+    assert jeu.verdict == "blocked" and "pays" in jeu.detail and joue == []
+
+
+def test_poser_les_donnees_de_test_suit_le_calcul_de_la_production(tmp_path, monkeypatch):
+    from testpilot import config
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import ProjectRepo
+
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "banc.db")
+    conn = get_initialized_db(config.DB_PATH)
+    pid = ProjectRepo(conn).create(name="Banc", connector_type="web", base_url="http://127.0.0.1:1")
+    ba.declarer_les_donnees_de_test(conn, pid)
+    conn.close()
+
+    etape = 'Quand je saisis "{{nom_client}}" à "{{ville_client}}"'
+    assert ba.poser_les_donnees_de_test(etape, pid) == ('Quand je saisis "Dupont SARL" à "Lyon"', [])
+    texte, manques = ba.poser_les_donnees_de_test('Quand je saisis "{{pays}}"', pid)
+    assert texte == 'Quand je saisis "{{pays}}"' and manques == ["pays"]
+    # Projet sans variable : le banc BLOQUE une référence (plus strict que la production, revue du 2026-10-15).
+    assert ba.poser_les_donnees_de_test('"{{pays}}"', None)[1] != []
+
+
+def test_falsifiable_le_banc_bloque_une_variable_quand_le_projet_n_en_declare_aucune(tmp_path, monkeypatch):
+    """Rejeu sans --donnees-de-test d'une génération qui en écrivait : jamais `{{nom_client}}` joué tel quel."""
+    from testpilot import config
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import ProjectRepo
+
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "banc.db")
+    conn = get_initialized_db(config.DB_PATH)
+    pid = ProjectRepo(conn).create(name="Banc", connector_type="web", base_url="http://127.0.0.1:1")
+    conn.close()
+
+    texte, manques = ba.poser_les_donnees_de_test('Alors la liste ne contient pas "{{nom_client}}"', pid)
+
+    assert manques and "n'en déclare aucune" in manques[0]
+    assert ba.poser_les_donnees_de_test('Alors la liste ne contient pas "{{nom_client"', pid)[1] != [], "mal fermée"
+    assert ba.poser_les_donnees_de_test("Alors ok", pid) == ("Alors ok", [])

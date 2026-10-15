@@ -507,15 +507,26 @@ def essayer_les_actions(ctx: "ToolContext", etapes: list[str]) -> "ToolOutcome":
     if refus:
         return _outcome(f"[{NOM_OUTIL}] ESSAI_REFUSE : {refus}.", ok=False)
 
+    # Lot PT-02d : l'essai reçoit les valeurs du jeu « Par défaut » — jamais `{{client}}` saisi tel quel dans l'application.
+    texte = _texte_du_scenario(etapes)
+    noms = getattr(ctx, "variables_de_test", frozenset())
+    if noms:
+        from testpilot.generation import variables_de_test
+        texte, manques = variables_de_test.texte_de_l_essai(texte, getattr(ctx, "valeurs_de_test", {}) or {}, noms)
+        if manques:
+            return _outcome(f"[{NOM_OUTIL}] ESSAI_REFUSE : {' ; '.join(manques[:5])}.", ok=False)
+
     dossier = Path(tempfile.mkdtemp(prefix="tp_essai_"))
     module = f"essai_{uuid.uuid4().hex[:8]}"
     fichier_etat = dossier / "etat.json"
     try:
-        (dossier / f"{module}.feature").write_text(_texte_du_scenario(etapes), encoding="utf-8")
+        (dossier / f"{module}.feature").write_text(texte, encoding="utf-8")
         runner = essai.fabriquer_runner(dossier, {ESSAI_ETAT_FILE_ENV: str(fichier_etat)})
         a_blanc = runner.dry_run(module)
         if not a_blanc.success:
             inconnus = "; ".join(getattr(a_blanc, "undefined_steps", None) or []) or "voir le catalogue"
+            if noms:   # la marche à blanc a lu le texte aux valeurs posées : l'agent relit `{{nom}}` (lot PT-02d)
+                inconnus = variables_de_test.masquer(inconnus, getattr(ctx, "valeurs_de_test", {}) or {})
             return _outcome(f"[{NOM_OUTIL}] STEP_INCONNU : ces actions ne sont pas des steps du catalogue (ou sont ambiguës) : "
                             f"{inconnus}. Recopie les libellés de <bibliotheque_de_steps>.", ok=False)
         # Une remise à zéro pendant une exécution RÉELLE de l'application fausserait son verdict (jusqu'au faux vert sur un
@@ -575,7 +586,10 @@ def essayer_les_actions(ctx: "ToolContext", etapes: list[str]) -> "ToolOutcome":
             annuaire.observes_session.update(
                 str(el[k]).strip() for el in (etat.get("elements") or []) for k in ("nom", "texte")
                 if str(el.get(k) or "").strip())
-        return _outcome(_rendre(etat, echec, list(etapes), remis=remis))
+        rendu = _rendre(etat, echec, list(etapes), remis=remis)
+        if noms:   # lot PT-02d : l'agent relit `{{nom}}`, jamais la valeur posée (il la recopierait en dur)
+            rendu = variables_de_test.masquer(rendu, getattr(ctx, "valeurs_de_test", {}) or {})
+        return _outcome(rendu)
     finally:
         shutil.rmtree(dossier, ignore_errors=True)
 
