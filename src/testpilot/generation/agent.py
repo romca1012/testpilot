@@ -72,6 +72,12 @@ class GenerationAgent:
         # Lot PT-02d : les noms des variables de test (interrupteur éteint : liste vide, message d'avant).
         from testpilot.generation import variables_de_test
         variables, valeurs_par_defaut = variables_de_test.pour_l_agent(projet)
+        # Lot PT-02f (A39) : le cas fait foi — l'agent ne voit que les variables que le cas cite (plus celles que le test
+        # actuel emploie déjà, A41) et doit toutes les employer. Interrupteur éteint : `variables` inchangées.
+        variables, variables_requises, controle_du_cas = variables_de_test.du_cas(
+            variables, metier,
+            (metier or {}).get("variables_deja_dans_le_test") or (),
+            (projet or {}).get("variables_de_test_a_la_corbeille") or ())
         state.messages.append({"role": "user",
                                "content": prompt_mod.build_initial_message(
                                    plan, modele, metier, comptes=(projet or {}).get("comptes_libelles"),
@@ -116,6 +122,8 @@ class GenerationAgent:
         ctx.essai = essai_tools.construire(projet, self.dry_runner, self.connector)
         ctx.variables_de_test = frozenset(v["nom"] for v in variables)
         ctx.valeurs_de_test = valeurs_par_defaut
+        ctx.controle_du_cas = controle_du_cas
+        ctx.variables_du_cas = variables_requises
         from testpilot.generation.provenance import fingerprint, target_fingerprint
         ctx.target_sha256 = target_fingerprint(projet)
         ctx.shared_steps = shared_steps

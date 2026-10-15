@@ -325,6 +325,77 @@ def test_un_choix_qui_n_est_pas_une_proposition_est_refuse(choix):
         a.appliquer(_feature(SAISIE), "", VALEURS, NOMS, MOTIFS, choix)
 
 
+# ── 3 bis. Le texte du cas aussi (décision A41) ────────────────────────────────────────────────────────────────────────
+
+METIER = {"preconditions": "Le client Martin SARL existe", "steps": ["Ouvrir les commandes", "Choisir Martin SARL",
+                                                                     "Saisir 1 article"],
+          "expected_result": "La commande de Martin SARL est enregistrée"}
+
+
+def test_la_proposition_montre_aussi_le_texte_du_cas_qui_change():
+    p = a.propositions(_feature(SAISIE), "", VALEURS, MOTIFS, METIER)["propositions"][0]
+
+    assert [l["champ"] for l in p["lignes_du_cas"]] == ["Préconditions", "Étape 2", "Résultat attendu"]
+    assert p["lignes_du_cas"][1]["apres"] == "Choisir {{client}}"
+
+
+def test_le_texte_du_cas_associe_cite_la_variable_et_garde_le_reste():
+    retenues = a.propositions(_feature(SAISIE), "", VALEURS, MOTIFS, METIER)["propositions"]
+
+    nouveau = a.cas_associe(METIER, retenues, VALEURS)
+
+    assert nouveau["steps"] == ["Ouvrir les commandes", "Choisir {{client}}", "Saisir 1 article"]
+    assert nouveau["preconditions"] == "Le client {{client}} existe"
+    assert nouveau["expected_result"] == "La commande de {{client}} est enregistrée"
+    assert METIER["steps"][1] == "Choisir Martin SARL", "l'original n'est pas modifié"
+
+
+def test_une_valeur_courte_ou_absente_du_cas_ne_le_change_pas():
+    """« 1 » dans « Saisir 1 article » n'est pas touché (A41 : la régénération garde alors les variables du test)."""
+    feature = _feature('Quand je renseigne le champ "Quantité" avec la valeur "1"')
+    retenues = a.propositions(feature, "", {"quantite": "1"}, MOTIFS, METIER)["propositions"]
+
+    assert retenues and retenues[0]["lignes_du_cas"] == []
+    assert a.cas_associe(METIER, retenues) is None
+
+
+@pytest.mark.parametrize("test_steps", ["Ouvrir les commandes\nChoisir Martin SARL", "", '[{"action": "Martin SARL"}]'])
+def test_falsifiable_des_etapes_illisibles_ne_sont_jamais_reecrites(test_steps):
+    """Revue A41, reproduit : des étapes en texte simple (l'écran les découpe par lignes) devenaient « [] » dès que la valeur
+    était dans le résultat attendu — le cas perdait toutes ses étapes."""
+    metier = a.metier_de_la_version({"test_steps": test_steps, "expected_result": "Commande de Martin SARL"})
+    retenues = a.propositions(_feature(SAISIE), "", VALEURS, MOTIFS, metier)["propositions"]
+
+    assert a.cas_associe(metier, retenues, VALEURS) == {"expected_result": "Commande de {{client}}"}
+
+
+def test_falsifiable_une_valeur_dans_celle_d_une_autre_variable_n_est_pas_remplacee_dans_le_cas():
+    """Revue A41, reproduit : « Choisir Martin SARL » devenait « Choisir {{prenom}} SARL »."""
+    valeurs = {"prenom": "Martin", "client": "Martin SARL"}
+    metier = {**METIER, "steps": ["Choisir Martin SARL", "Saluer Martin"]}
+    retenues = a.propositions(_feature('Quand je renseigne le champ "Prénom" avec la valeur "Martin"'), "", valeurs, MOTIFS,
+                              metier)["propositions"]
+
+    assert a.cas_associe(metier, retenues, valeurs)["steps"] == ["Choisir Martin SARL", "Saluer {{prenom}}"]
+
+
+def test_falsifiable_un_nombre_n_est_pas_remplace_dans_le_cas():
+    """Revue A41, reproduit : « Saisir 100 articles à 100 EUR » — la quantité ou le prix ? Jamais deviné."""
+    metier = {**METIER, "steps": ["Saisir 100 articles à 100 EUR"]}
+    feature = _feature('Quand je renseigne le champ "Quantité" avec la valeur "100"')
+    retenues = a.propositions(feature, "", {"quantite": "100"}, MOTIFS, metier)["propositions"]
+
+    assert retenues and a.cas_associe(metier, retenues, {"quantite": "100"}) is None
+
+
+def test_une_proposition_non_choisie_laisse_le_cas_intact():
+    feature = _feature(SAISIE, 'Et je renseigne le champ "Ville" avec la valeur "Lyon"')
+    metier = {**METIER, "steps": ["Choisir Martin SARL", "Livrer à Lyon"]}
+    propositions = {p["variable"]: p for p in a.propositions(feature, "", VALEURS, MOTIFS, metier)["propositions"]}
+
+    assert a.cas_associe(metier, [propositions["ville"]], VALEURS) == {"steps": ["Choisir Martin SARL", "Livrer à {{ville}}"]}
+
+
 # ── 4. Par l'API ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -339,7 +410,7 @@ def _se_connecter(client, nom):
     assert client.post("/api/auth/login", json={"username": nom, "password": "mdp"}).status_code == 200
 
 
-def _cas(client, feature: str):
+def _cas(client, feature: str, metier: dict | None = None):
     """Projet (créé par l'administrateur), dev, testeuse, lecteur ; `client` = Martin SARL, `ville` = Lyon ; un cas."""
     conn = get_initialized_db(config.DB_PATH)
     try:
@@ -364,7 +435,7 @@ def _cas(client, feature: str):
         cid = CaseRepo(conn).create(title="Commande", module_id=ModuleRepo(conn).create(project_id=pid, name="Ventes"),
                                     feature_slug="commande")
         vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="", feature_content=feature,
-                                       steps_content="# steps\n")
+                                       steps_content="# steps\n", **(metier or {}))
         CaseRepo(conn).set_current_version(cid, vid)
         conn.commit()
     finally:
@@ -405,6 +476,36 @@ def test_une_testeuse_associe_aussi_une_verification_et_la_nouvelle_version_est_
     assert r.status_code == 200, r.text
     detail = client.get(f"/api/cases/{cid}").json()
     assert detail["current_version_id"] != vid and detail["gate"]["allowed"] is False
+
+
+def test_l_association_change_le_test_et_le_texte_du_cas_dans_la_meme_version(client):
+    import json
+
+    cid, vid = _cas(client, _feature(SAISIE), {"preconditions": "Rien", "expected_result": "Commande de Martin SARL",
+                                               "test_steps": json.dumps(["Choisir Martin SARL"], ensure_ascii=False)})
+    version, p = _proposition(client, cid, "client")
+    assert p["lignes_du_cas"][0]["champ"] == "Étape 1"
+
+    assert client.post(f"/api/cases/{cid}/associations", json={"version_id": version, "choix": [p["id"]]}).status_code == 200
+
+    detail = client.get(f"/api/cases/{cid}").json()
+    nouvelle = next(v for v in detail["versions"] if v["id"] == detail["current_version_id"])
+    assert json.loads(nouvelle["test_steps"]) == ["Choisir {{client}}"]
+    assert nouvelle["expected_result"] == "Commande de {{client}}" and nouvelle["preconditions"] == "Rien"
+    assert '"{{client}}"' in nouvelle["feature_content"]
+
+
+def test_falsifiable_des_etapes_en_texte_simple_sont_recopiees_a_l_identique(client):
+    """Revue A41 : de bout en bout — la nouvelle version garde ses étapes telles quelles, seul le résultat attendu change."""
+    etapes = "Ouvrir les commandes\nChoisir Martin SARL"
+    cid, _ = _cas(client, _feature(SAISIE), {"expected_result": "Commande de Martin SARL", "test_steps": etapes})
+    version, p = _proposition(client, cid, "client")
+
+    assert client.post(f"/api/cases/{cid}/associations", json={"version_id": version, "choix": [p["id"]]}).status_code == 200
+
+    detail = client.get(f"/api/cases/{cid}").json()
+    nouvelle = next(v for v in detail["versions"] if v["id"] == detail["current_version_id"])
+    assert nouvelle["test_steps"] == etapes and nouvelle["expected_result"] == "Commande de {{client}}"
 
 
 def test_falsifiable_un_lecteur_ne_peut_pas_associer(client):

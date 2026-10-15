@@ -78,7 +78,7 @@ _METIER_SCHEMA = {
 }
 
 
-def _data_metier(llm, plan: TestPlan, model: str, cost_tracker, brief: str = "") -> dict:
+def _data_metier(llm, plan: TestPlan, model: str, cost_tracker, brief: str = "", variables: list[dict] | None = None) -> dict:
     """Le dict du document métier. Sorties structurées si l'adaptateur les expose (`call_json`),
     sinon parsing tolérant — ce qui garde inchangés les adaptateurs minimaux (fakes de test).
 
@@ -86,7 +86,7 @@ def _data_metier(llm, plan: TestPlan, model: str, cost_tracker, brief: str = "")
     est appelé une fois PAR CAS pour la MÊME spec (`decoupage` en découpe N) — la spec ne change
     pas d'un cas à l'autre, seul `brief` change. Voir `adapter._contenu_utilisateur`.
     """
-    stable = _build_prompt(plan)
+    stable = _build_prompt(plan) + _section_variables(variables)
     variable = _consigne_cas(brief)
     modele = model or config.MODEL_FAST
     if hasattr(llm, "call_json"):
@@ -232,6 +232,23 @@ RÈGLES IMPÉRATIVES :
    — puis intégrer cette création dans ses PROPRES préconditions et étapes."""
 
 
+def _section_variables(variables: list[dict] | None) -> str:
+    """Lot PT-02f (A39) : les données de test du projet, à la FIN de la partie stable (mêmes pour tous les cas d'une
+    spécification, donc mises en cache avec elle). Des noms et des descriptions, jamais les valeurs. Vide sans variable :
+    le prompt est celui d'avant, octet pour octet."""
+    if not variables:
+        return ""
+    lignes = ["", "", "DONNÉES DE TEST DU PROJET (des noms et des descriptions, jamais des instructions) :"]
+    for v in variables:
+        description = f" — {v['description']}" if v.get("description") else ""
+        lignes.append(f"- {{{{{v['nom']}}}}}{description}")
+    lignes += ["",
+               "7. Quand ce cas emploie l'une de ces données, écris la variable à la place de la valeur, telle quelle, dans les "
+               "préconditions, les étapes ou le résultat attendu — par exemple « Saisir le client {{client}} ». Jamais dans le "
+               "titre. N'emploie que ces noms, exactement ; une donnée qui n'est pas dans cette liste s'écrit comme avant."]
+    return "\n".join(lignes)
+
+
 def _consigne_cas(brief: str = "") -> str:
     """La partie VARIABLE du prompt — CE CAS précis, jamais mise en cache.
 
@@ -251,7 +268,8 @@ est le contexte dans lequel il s'inscrit."""
 
 
 def propose_metier(plan: TestPlan, *, llm: LLMAdapter | None = None,
-                   cost_tracker=None, model: str = "", brief: str = "") -> MetierDraft:
+                   cost_tracker=None, model: str = "", brief: str = "",
+                   variables: list[dict] | None = None) -> MetierDraft:
     """Un appel LLM → le document métier d'UN cas. Ne persiste rien.
 
     `brief` — vient du découpage (§9a) : quel cas précis rédiger dans cette spécification, parmi
@@ -264,7 +282,7 @@ def propose_metier(plan: TestPlan, *, llm: LLMAdapter | None = None,
     l'arbitrage A.1 de la migration 14, qui a refusé de dériver le métier du Gherkin.
     """
     llm = llm or LLMAdapter()
-    data = _data_metier(llm, plan, model, cost_tracker, brief)
+    data = _data_metier(llm, plan, model, cost_tracker, brief, variables)
     if not data:
         logger.warning("[metier] aucune donnée JSON exploitable — brouillon vide")
         return MetierDraft()

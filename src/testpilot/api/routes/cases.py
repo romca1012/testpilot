@@ -3,6 +3,8 @@ déclenchement d'exécution, et action de relecture (gate actionnable depuis l'U
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 
 from testpilot import config
@@ -139,12 +141,16 @@ def cases_needing_review(request: Request, project_id: int, conn=Depends(get_con
         candidats.append(c)
     approuvees = ReviewRepo(conn).approved_version_ids(
         [c["current_version_id"] for c in candidats])
-    bloques = [c for c in candidats if c["current_version_id"] not in approuvees]
+    # Décision A42 : un écart entre le cas et son test bloque aussi une version APPROUVÉE — sans cette liste, il serait
+    # bloqué et invisible (revue du 2026-10-15). Vide hors PT-02f : liste d'avant.
+    noms = run_service.noms_declares(conn, project_id)
+    ecarts = {c["id"]: run_service.ecarts_cas_test(conn, c, c["current_version_id"], noms) for c in candidats}
+    bloques = [c for c in candidats if c["current_version_id"] not in approuvees or ecarts[c["id"]]]
 
     out = []
     for c in bloques:
         version_id = c["current_version_id"]
-        decision = review_gate.evaluate_gate(ReviewRepo(conn), version_id)
+        decision = review_gate.bloquer_si_ecart(review_gate.evaluate_gate(ReviewRepo(conn), version_id), ecarts[c["id"]])
         warnings = generation_service.lint_warnings_for_version(
             conn, c, version_rows_par_cas[c["id"]], version_id)
         out.append(schemas.CaseARelireOut(
@@ -322,7 +328,7 @@ def get_case(case_id: int, conn=Depends(get_conn)):
     version_id = case.get("current_version_id")
     gate = None
     if version_id:
-        decision = review_gate.evaluate_gate(ReviewRepo(conn), version_id)
+        decision = run_service.gate_du_cas(conn, case, version_id)   # A42 : l'écart cas/test bloque aussi
         # Les « points de vigilance » (0008 assertions, 0017 réparation, 0021 smoke-check) — MÊME
         # calcul que celui qui décide de l'approbation automatique à la génération
         # (`generation_service.lint_warnings_for_version`, amendement §4.3-bis, 2026-09-15) : un
@@ -365,12 +371,25 @@ def _base_d_association(conn, case_id: int):
 _ACCES_AU_CAS = access.require_project_access_depuis("case_id", access.project_id_depuis_case)
 
 
+def _metier_a_ecrire(metier: dict | None) -> dict | None:
+    """Le texte du cas associé (A41), dans la forme des colonnes de la version — `None` s'il ne change pas."""
+    if not metier:
+        return None
+    ecrit = {k: metier[k] for k in ("preconditions", "expected_result") if k in metier}
+    if "steps" in metier:   # seulement si elles changent — jamais réécrites autrement (revue A41)
+        ecrit["test_steps"] = json.dumps(metier["steps"], ensure_ascii=False)
+    return ecrit
+
+
 @router.get("/{case_id}/associations", response_model=schemas.AssociationsOut, dependencies=[Depends(_ACCES_AU_CAS)])
 def get_associations(case_id: int, conn=Depends(get_conn)):
     """Étape E1 (A39) : les variables de test que ce test pourrait employer à la place de ses valeurs en dur — sans IA, rien
     n'est écrit. Calculé sur la version COURANTE."""
     version, valeurs, _noms, motifs = _base_d_association(conn, case_id)
-    trouve = association_donnees.propositions(version["feature_content"], version.get("steps_content") or "", valeurs, motifs)
+    trouve = association_donnees.propositions(
+        version["feature_content"], version.get("steps_content") or "", valeurs, motifs,
+        association_donnees.metier_de_la_version(version),
+        association_donnees.valeurs_de_tous_les_jeux(conn, CaseRepo(conn).get(case_id)["project_id"]))
     return schemas.AssociationsOut(version_id=version["id"], **trouve)
 
 
@@ -393,7 +412,10 @@ def post_associations(case_id: int, body: schemas.AssociationsIn, request: Reque
         version_id = cases.update_script(
             case_id, feature_content=associe, steps_content=version.get("steps_content") or "",
             editor=access.utilisateur_de(request) or "ui", expected_version_id=version["id"],
-            resume="Association aux données de test : " + ", ".join("{{" + p["variable"] + "}}" for p in retenues))
+            resume="Association aux données de test : " + ", ".join("{{" + p["variable"] + "}}" for p in retenues),
+            metier=_metier_a_ecrire(association_donnees.cas_associe(
+                association_donnees.metier_de_la_version(version), retenues, valeurs,
+                association_donnees.valeurs_de_tous_les_jeux(conn, cases.get(case_id)["project_id"]))))
     except VersionConflict as exc:
         raise erreurs.ErreurMetier("conflit_edition", str(exc)) from exc
     cas_a_jour = cases.get(case_id)
@@ -503,6 +525,17 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
     # point de vigilance de la génération) — sinon une seconde édition, du titre seul, l'approuvait d'office et un test
     # vérifiant l'ancienne attente sortait de nouveau `conforme`. Un cas manuel sans test n'a rien à relire : inchangé.
     source = VersionRepo(conn).get(cases.get(case_id).get("current_version_id") or 0)
+    # Lot PT-02f (A39) : un texte de cas qui cite une variable inconnue, mal écrite, ou dans le titre, est refusé (éteint : rien).
+    try:
+        etapes = json.loads(body.test_steps) if body.test_steps is not None else []
+    except ValueError:
+        etapes = [body.test_steps]
+    fautes = generation_service.refus_des_variables_du_cas(
+        conn, cases.get(case_id).get("project_id"),
+        {"title": body.title or "", "preconditions": body.preconditions or "", "steps": etapes if isinstance(etapes, list)
+         else [str(etapes)], "expected_result": body.expected_result or ""})
+    if fautes:
+        raise HTTPException(status_code=422, detail=" ; ".join(fautes))
     source_non_relue = (review_gate.version_reparee_non_relue(ReviewRepo(conn), source)
                         or review_gate.test_non_relu(ReviewRepo(conn), source))
     try:
@@ -516,7 +549,8 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
     except VersionConflict as exc:
         raise erreurs.ErreurMetier("conflit_edition", str(exc)) from exc
     if (version_id is not None and not source_non_relue
-            and not review_gate.attente_metier_changee(source, VersionRepo(conn).get(version_id))):
+            and not review_gate.attente_metier_changee(source, VersionRepo(conn).get(version_id))
+            and not run_service.ecarts_cas_test(conn, cases.get(case_id), version_id)):   # A42 : jamais d'office
         review_gate.auto_approve_metier(ReviewRepo(conn), case_id=case_id, version_id=version_id,
                                         repair_budget=config.REPAIR_BUDGET_DEFAULT)
     cas_a_jour = cases.get(case_id)
@@ -597,6 +631,11 @@ def submit_review(case_id: int, body: schemas.ReviewIn, request: Request,
     version_id = case.get("current_version_id")
     if not version_id:
         raise HTTPException(status_code=409, detail="aucune version à relire pour ce cas")
+    # Décision A42 : une version dont le cas cite une donnée que le test n'emploie pas ne s'approuve pas (un rejet, si).
+    ecarts = run_service.ecarts_cas_test(conn, case, version_id) if body.approved else []
+    if ecarts:
+        raise HTTPException(status_code=409, detail=review_gate.bloquer_si_ecart(
+            review_gate.evaluate_gate(ReviewRepo(conn), version_id), ecarts).reason)
 
     decision = run_service.submit_review(
         conn, case_id, version_id, approved=body.approved,

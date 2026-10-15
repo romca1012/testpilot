@@ -1233,6 +1233,22 @@ def test_poser_les_donnees_de_test_suit_le_calcul_de_la_production(tmp_path, mon
     assert ba.poser_les_donnees_de_test('"{{pays}}"', None)[1] != []
 
 
+def test_le_cas_du_banc_cite_ses_donnees_seulement_quand_pt02f_est_allume(monkeypatch):
+    """PT-02f : le cas du banc tel qu'une personne l'aurait validé (« Dupont SARL » → {{nom_client}}) ; éteint : inchangé."""
+    from testpilot.generation import interrupteurs
+
+    metier = {"title": "Créer un client", "preconditions": "", "steps": ["Créer le client Dupont SARL à Lyon"],
+              "expected_result": "Dupont SARL apparaît dans la liste"}
+    monkeypatch.delenv(interrupteurs.ENV_CAS_DIT_SES_DONNEES, raising=False)
+    assert ba.citer_les_donnees_dans_le_cas(metier) == metier
+
+    monkeypatch.setenv(interrupteurs.ENV_CAS_DIT_SES_DONNEES, "1")
+    monkeypatch.setenv(interrupteurs.ENV_VARIABLES_DE_TEST, "1")   # PT-02f n'agit qu'avec PT-02d
+    cite = ba.citer_les_donnees_dans_le_cas(metier)
+    assert cite["steps"] == ["Créer le client {{nom_client}} à {{ville_client}}"]
+    assert cite["expected_result"] == "{{nom_client}} apparaît dans la liste" and cite["title"] == "Créer un client"
+
+
 def test_falsifiable_le_banc_bloque_une_variable_quand_le_projet_n_en_declare_aucune(tmp_path, monkeypatch):
     """Rejeu sans --donnees-de-test d'une génération qui en écrivait : jamais `{{nom_client}}` joué tel quel."""
     from testpilot import config

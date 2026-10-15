@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import re
 import tokenize
 import unicodedata
@@ -130,6 +131,15 @@ def valeurs_par_defaut(conn, project_id: int) -> tuple[dict[str, str], list[str]
 
     noms, niveaux = TestDataRepo(conn).niveaux(project_id)
     return {nom: v.valeur for nom, v in resolution.resoudre(niveaux, noms).items() if v.valeur}, list(noms)
+
+
+def valeurs_de_tous_les_jeux(conn, project_id: int) -> list[str]:
+    """Toutes les valeurs saisies, dans tous les jeux : « Martin » n'est pas remplacé dans « Martin SARL » même si « Martin SARL »
+    n'existe que dans un autre jeu que « Par défaut » (revue A41, 2e passe)."""
+    from testpilot.store.repositories import TestDataRepo
+
+    tableau = TestDataRepo(conn).tableau(project_id)
+    return list(dict.fromkeys(v for par_jeu in (tableau.get("valeurs") or {}).values() for v in par_jeu.values() if v))
 
 
 def _motif(valeur: str) -> re.Pattern:
@@ -311,8 +321,72 @@ def _reste(texte: str, places: list[tuple[int, int]]) -> str:
     return _VARIABLE_ECRITE.sub("\x00", texte)
 
 
-def propositions(feature: str, steps_content: str, valeurs: dict[str, str], motifs: list[MotifDEtape]) -> dict:
-    """{"propositions": [{id, variable, valeur, verification, lignes: [{ligne, avant, apres}]}], "ecartees": [...]}."""
+def metier_de_la_version(version: dict | None) -> dict:
+    """Le texte du cas d'une version : {preconditions, steps (liste), expected_result, etapes_lisibles}. Des étapes qui ne sont
+    pas une liste JSON de textes (texte simple, que l'écran découpe par lignes ; vide) : `etapes_lisibles` faux, elles ne
+    sont ni proposées ni réécrites (revue A41 : réécrites « [] », elles disparaissaient)."""
+    version = version or {}
+    try:
+        etapes = json.loads(version.get("test_steps") or "")
+    except (TypeError, ValueError):
+        etapes = None
+    lisibles = isinstance(etapes, list) and all(isinstance(e, str) for e in etapes)
+    return {"preconditions": str(version.get("preconditions") or ""), "steps": list(etapes) if lisibles else [],
+            "expected_result": str(version.get("expected_result") or ""), "etapes_lisibles": lisibles}
+
+
+def _textes_du_cas(metier: dict) -> list[tuple[tuple, str, str]]:
+    """((clé), libellé lisible, texte) pour chaque texte du cas — le titre n'en est pas : il nomme le cas."""
+    textes = [(("preconditions",), "Préconditions", metier.get("preconditions") or "")]
+    if metier.get("etapes_lisibles", True):
+        textes += [(("steps", i), f"Étape {i + 1}", e) for i, e in enumerate(metier.get("steps") or [])]
+    textes.append((("expected_result",), "Résultat attendu", metier.get("expected_result") or ""))
+    return textes
+
+
+def _dans_le_cas(metier: dict | None, valeur: str, nom: str, autres=()) -> list[dict]:
+    """Décision A41 (porteur, 2026-10-15) : la valeur est aussi remplacée dans le TEXTE du cas, là où elle y est écrite, pour
+    que le cas et le test restent d'accord (E2 : le test technique reprend les variables que le cas cite). Texte lu par des
+    personnes, jamais exécuté : chaque occurrence exacte en mot entier, SAUF (revue A41) :
+    - une valeur de moins de 3 caractères, ou un nombre (« 100 articles à 100 EUR » : la quantité ou le prix ?) ;
+    - une occurrence à l'intérieur de la valeur d'une AUTRE variable (`autres`) : « Martin » dans « Martin SARL ».
+    Le cas ne cite alors pas la variable ; la régénération admet celles que le test emploie déjà (A41)."""
+    if not metier or len(valeur) < 3 or not any(c.isalpha() for c in valeur):
+        return []
+    sortie = []
+    for cle, libelle, texte in _textes_du_cas(metier):
+        englobees = [(d, f) for autre in autres if autre != valeur and valeur in autre for d, f in _occurrences(texte, autre)]
+        places = [(d, f) for d, f in _occurrences(texte, valeur) if not any(a <= d and f <= b for a, b in englobees)]
+        if places:
+            sortie.append({"champ": libelle, "cle": list(cle), "avant": texte, "apres": _poser(texte, places, nom)})
+    return sortie
+
+
+def cas_associe(metier: dict | None, retenues: list[dict], valeurs: dict[str, str] | None = None,
+                autres_valeurs=()) -> dict | None:
+    """Ce qui change dans le texte du cas après l'association des `retenues` (les plus longues valeurs d'abord) : SEULEMENT
+    les champs modifiés (`preconditions`, `steps`, `expected_result`), ou `None` si rien ne change."""
+    if not metier:
+        return None
+    autres = [*(valeurs or {}).values(), *autres_valeurs]
+    nouveau = {"preconditions": metier.get("preconditions") or "", "steps": list(metier.get("steps") or []),
+               "expected_result": metier.get("expected_result") or "", "etapes_lisibles": metier.get("etapes_lisibles", True)}
+    for p in sorted(retenues, key=lambda p: len(p["valeur"]), reverse=True):
+        for change in _dans_le_cas(nouveau, p["valeur"], p["variable"], autres):
+            cle = change["cle"]
+            if cle[0] == "steps":
+                nouveau["steps"][cle[1]] = change["apres"]
+            else:
+                nouveau[cle[0]] = change["apres"]
+    changes = {k: nouveau[k] for k in ("preconditions", "steps", "expected_result")
+               if nouveau[k] != (metier.get(k) or ([] if k == "steps" else ""))}
+    return changes or None
+
+
+def propositions(feature: str, steps_content: str, valeurs: dict[str, str], motifs: list[MotifDEtape],
+                 metier: dict | None = None, autres_valeurs=()) -> dict:
+    """{"propositions": [{id, variable, valeur, verification, lignes: [{ligne, avant, apres}],
+    lignes_du_cas: [{champ, cle, avant, apres}]}], "ecartees": [...]}. `metier` : le texte du cas (A41)."""
     par_valeur: dict[str, list[str]] = {}
     for nom, valeur in valeurs.items():
         par_valeur.setdefault(valeur, []).append(nom)
@@ -354,7 +428,8 @@ def propositions(feature: str, steps_content: str, valeurs: dict[str, str], moti
             ecartees.append({"variable": nom, "valeur": valeur, "raison": raison})
         elif touchees:
             sortie.append({"id": _identifiant(nom, valeur), "variable": nom, "valeur": valeur,
-                           "verification": verification, "lignes": touchees, "_places": places_de})
+                           "verification": verification, "lignes": touchees, "_places": places_de,
+                           "lignes_du_cas": _dans_le_cas(metier, valeur, nom, [*valeurs.values(), *autres_valeurs])})
     # Deux valeurs qui se CHEVAUCHENT dans le test (« Martin SARL » et « SARL Lyon » dans « Martin SARL Lyon ») : appliquer
     # l'une détruit l'autre. La plus courte n'est pas proposée (à égalité : aucune) — revue du 2026-10-15, 3e passe.
     retirees = set()

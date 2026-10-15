@@ -23,6 +23,7 @@ ENV_TOOLS_DESCRIPTIONS_V2 = "TESTPILOT_TOOLS_DESCRIPTIONS_V2"
 ENV_REGLES_CONNECTEUR = "TESTPILOT_REGLES_CONNECTEUR"
 ENV_STEP_NOMBRE = "TESTPILOT_STEP_NOMBRE"
 ENV_VARIABLES_DE_TEST = "TESTPILOT_VARIABLES_DE_TEST"
+ENV_CAS_DIT_SES_DONNEES = "TESTPILOT_CAS_DIT_SES_DONNEES"
 
 _VRAI = frozenset({"1", "true", "yes", "oui", "on"})
 
@@ -55,6 +56,14 @@ def regles_connecteur_actif(env: Mapping[str, str] | None = None) -> bool:
 def variables_de_test_actif(env: Mapping[str, str] | None = None) -> bool:
     """Lot PT-02d : l'agent reçoit les NOMS des variables du projet et peut les écrire (`generation/variables_de_test.py`)."""
     return _actif(ENV_VARIABLES_DE_TEST, env)
+
+
+def cas_dit_ses_donnees_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Lot PT-02f (étape E2, A39) : l'IA écrit `{{nom}}` dans le texte des cas qu'elle propose ; le test technique reprend
+    EXACTEMENT les variables que le cas cite (`generation/variables_de_test.du_cas`). N'a d'effet qu'avec PT-02d allumé :
+    sans lui l'agent technique ne voit aucune variable, et un cas citant `{{client}}` aurait un test qui ne l'emploie pas
+    (revue du 2026-10-15, bloquant)."""
+    return _actif(ENV_CAS_DIT_SES_DONNEES, env) and variables_de_test_actif(env)
 
 
 def allume(nom: str, env: Mapping[str, str] | None = None) -> bool:
