@@ -378,14 +378,23 @@ Second jeu (porteur, 2026-10-16) : chaque test généré qui écrit une variable
 - **A42** (écart entre le cas et son test après une modification à la main : exécution bloquée) : validée le 2026-10-15.
 - **Budget de M1** (≈ 8 $, plafond 9 $) : accordé le 2026-10-15 ; le montant est rappelé au porteur juste avant le départ de la campagne.
 - Restent ouvertes, à leur étape : V16 (exploration par compte, E5), V5 et V6 (bibliothèque commune, E7), V8 et V10 (valeur
-  calculée, E7), V-AV1, V-AV2 et V-AV3 (§9.6, E8).
+  calculée, E7).
+- **V-AV1, V-AV2, V-AV3** (§9.6, E8) : validées le 2026-10-16.
 
 ### 9.6 L'IA ne part plus à l'aveugle (demande du porteur, 2026-10-16)
 
 **Le but.** Un test technique juste du PREMIER coup : exécutable sans rejeu, sans réparation, sans qu'une personne ait à
 relire le script. Mesuré au banc : un test est « juste du premier coup » s'il sort conforme sur l'application saine et
-non conforme sous chaque défaut, sans réparation. Aujourd'hui (`base-7`) : 23 essais sur 30. **Objectif proposé (V-AV3) :
+non conforme sous chaque défaut, sans réparation. Aujourd'hui (`base-7`) : 23 essais sur 30. **Objectif (V-AV3, validé par le porteur le 2026-10-16) :
 27 sur 30, toujours zéro faux vert.**
+
+**La vision du porteur (2026-10-16), qui commande ce chapitre.** L'utilisateur crée un projet et y met les identifiants de
+connexion ; une EXPLORATION de l'application est faite après la connexion ; la génération s'appuie sur cette exploration et
+sur ce que l'utilisateur a fourni pour écrire des tests techniques prêts pour l'exécution automatique. L'outil relève TOUT
+SEUL ce dont il a besoin. Les paramètres de test ne servent que si l'utilisateur les a précisés (pour des cas précis) ;
+sinon ils ne sont utilisés ni à la génération ni à l'exécution. Un test juste du premier coup se rejoue à chaque nouvelle
+fonctionnalité pour vérifier qu'il n'y a pas de régression ; ses statuts (passé, échoué, bloqué) disent la vérité sur
+l'application.
 
 **Le principe.** L'exploration de l'application mesure déjà, page par page, presque tout ce dont l'IA a besoin ; aujourd'hui
 une grande partie ne sert qu'à REFUSER après coup ce qu'elle a inventé. On le lui MONTRE avant qu'elle écrive. Une règle ne
@@ -402,11 +411,11 @@ avec les causes d'échec mesurées de `base-1` à `base-7`. Les manques, et ce q
 | AV-1 | Un projet web est annoncé « Type de système : odoo » ; l'analyse de la spécification lui suggère des modèles Odoo ; le prompt système renvoie à une section « Connecteur actif » vide par défaut | non mesuré, erreur franche (vérifiée dans le code) | le type de connecteur du projet | le passer à l'analyse ; toujours fournir la section du connecteur (ou retirer ses renvois) |
 | AV-2 | Le NOM EXACT des champs (nom technique et libellé visible, type, obligatoire), boutons et liens de chaque page : relevés par l'exploration, ils ne servent qu'au refus `LITTERAL_NON_OBSERVE` | 8 à 12 refus par campagne (tours et coût en plus) ; `base-3` : champs inventés ×4 | la cartographie du projet (`data/domain/projet-<id>.json` : champs, actions, liens par page) ; les formats et contraintes observés | une section « pages observées » : le détail complet des pages que le cas vise, un index court des autres ; les contraintes de TOUS les champs de ces pages, pas seulement des obligatoires |
 | AV-3 | Le texte affiché non cliquable : titres, en-têtes de tableau, libellé à côté d'une valeur (« Numéro de commande ») | `base-6`, `base-7` : 2 échecs, 1 faux rouge | — | l'exploration relève ces libellés de STRUCTURE (titres, en-têtes, couples libellé–valeur) ; les messages de RÉSULTAT restent pris dans le cas (règle ci-dessus) |
-| AV-4 | L'état de départ : quelles données existent déjà (clients, produits, commandes) | indirect : enregistrement existant réutilisé (F26) | la forme de l'oracle (VH-08) ; le nombre de lignes des listes vues à l'exploration | une description de l'état de départ — **source à décider (V-AV1)** : déclarée par une personne dans les paramètres de test (recommandé), ou relevée automatiquement, ou les deux |
+| AV-4 | L'état de départ : quelles données existent déjà (clients, produits, commandes) | indirect : enregistrement existant réutilisé (F26) | la forme de l'oracle (VH-08) ; le nombre de lignes des listes vues à l'exploration | **V-AV1 (porteur, 2026-10-16)** : si l'utilisateur a décrit l'état de départ dans les paramètres de test, il est employé ; sinon l'outil le RELÈVE TOUT SEUL (exploration : listes et nombre de lignes ; oracle : forme et contenu de l'état) |
 | AV-5 | La langue de l'interface | menu cherché en anglais sur une interface française (G7) ; message deviné (cas 97) | la langue déclarée du projet (`browser_locale`) | une ligne dans le prompt |
 | AV-6 | Les règles des applications web (compte « principal », pas d'appel direct au serveur, regarder la page d'arrivée) | `base-4` : 2 tests bloqués sur un compte inventé | écrites, derrière `TESTPILOT_REGLES_CONNECTEUR` (éteint) | les mesurer en M5 pour décider de les allumer ; lister aussi les attributs `context.*` du harnais (F20 : 1 sur 15) |
 | AV-7 | Des générations qui n'aboutissent pas | 5 sur 5 sur le MÊME cas (`panier_remise_arrondi`) en `base-5`, `base-6`, `base-7` : pas un hasard | les rapports et traces des campagnes | instruire la cause sur les traces, corriger, ajouter le cas au contrôle |
-| AV-8 | L'IA qui rédige les cas ne voit rien de l'application : elle écrit les étapes avec d'autres mots que ceux des écrans | non mesuré (le banc ne mesure pas cette passe) | la cartographie (pages, menus, libellés des boutons) | lui montrer les noms des pages et des actions pour qu'elle les emploie — **à décider (V-AV2)** : les cas restent écrits pour des personnes |
+| AV-8 | L'IA qui rédige les cas ne voit rien de l'application : elle écrit les étapes avec d'autres mots que ceux des écrans | non mesuré (le banc ne mesure pas cette passe) | la cartographie (pages, menus, libellés des boutons) | **V-AV2 (porteur, 2026-10-16)** : oui — elle emploie EXACTEMENT les termes des écrans (« Nouveau client », « Enregistrer »), relevés par l'exploration ; les cas restent écrits pour des personnes |
 | PT-04b (E5) | La cartographie du compte visé | non mesuré (un seul compte au banc) | déjà prévu | — |
 | PT-06 (E7) | Les montants calculés attendus | non mesuré | déjà prévu | — |
 
@@ -414,14 +423,15 @@ avec les causes d'échec mesurées de `base-1` à `base-7`. Les manques, et ce q
 `attempt_form_submission`, et le banc ne fournit pas les routes visées (la section des champs requis n'y apparaît jamais) ;
 M5 mesure l'agent dans les conditions de la production, et compte à part la passe qui rédige les cas (AV-8).
 
-**L'ordre.** AV-1 (une erreur, petite) ; AV-2 et AV-3 (le plus gros apport attendu, avec VH-08 déjà en E4) ; AV-5 ; AV-4
-(après V-AV1) ; AV-6 ; AV-7 ; AV-8 (après V-AV2). Chaque lot derrière un interrupteur éteint, relu, testé ; un projet sans
+**L'ordre.** AV-1 (une erreur, petite) ; AV-2 et AV-3 (le plus gros apport attendu, avec VH-08 déjà en E4) ; AV-5 ; AV-4 ;
+AV-6 ; AV-7 ; AV-8. Chaque lot derrière un interrupteur éteint, relu, testé ; un projet sans
 cartographie reçoit le prompt d'avant, octet pour octet. Puis la mesure M5, appariée éteint / allumé (≈ 8 $, annoncée avant),
 qui décide de l'allumage avec la même règle que M1 : zéro faux vert, au moins autant de tests justes du premier coup, coût
 par cas sous 1 €.
 
-**Décisions à obtenir pour E8** : V-AV1 (source de l'état de départ), V-AV2 (la rédaction des cas emploie les mots des
-écrans), V-AV3 (objectif : 27 tests justes du premier coup sur 30).
+**Décisions pour E8 : toutes validées par le porteur le 2026-10-16** — V-AV1 (état de départ : celui de l'utilisateur s'il l'a
+fourni, sinon relevé par l'outil), V-AV2 (la rédaction des cas emploie exactement les termes des écrans), V-AV3 (27 tests
+justes du premier coup sur 30, zéro faux vert).
 
 ## 8. Suivi
 
