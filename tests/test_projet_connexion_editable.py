@@ -113,11 +113,11 @@ def test_renommer_ne_touche_pas_a_la_connexion(client):
     assert r.json()["connector_version"] == "17"
 
 
-# ── Calibration en écriture (migration 45, 2026-09-16) — éteinte par défaut, décidée par PATCH ──
+# ── Calibration en écriture (migration 45) — allumée par défaut depuis la décision A43 (2026-10-16), réglable par PATCH ──
 
-def test_calibration_writes_enabled_est_eteinte_a_la_creation(client):
+def test_calibration_writes_enabled_est_allumee_a_la_creation(client):
     pid = _projet(client)
-    assert client.get("/api/projects").json()[0]["calibration_writes_enabled"] is False
+    assert client.get("/api/projects").json()[0]["calibration_writes_enabled"] is True
 
 
 def test_calibration_writes_enabled_est_activable_par_patch(client):

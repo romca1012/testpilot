@@ -21,19 +21,15 @@ from fastapi.responses import StreamingResponse
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
 from testpilot.api.services import events_bus, exploration_service
-from testpilot.api.services.lecteur_de_nombres import lecteur as lecteur_de_nombres
 from testpilot.api.services.project_membership_service import ProjectMembershipService
 from testpilot.generation import domain_model
 from testpilot.guardrails import durable_jobs
-from testpilot.parametres import valeurs as valeurs_du_projet
 from testpilot.store import live_session_tokens
 from testpilot.store.repositories import (
     CaseGroupRepo,
     DuplicateName,
     ModuleRepo,
     CompteInvalide,
-    TestUnitRepo,
-    UniteInvalide,
     ProjectAccessRepo,
     ProjectAccountRepo,
     ProjectGroupAccessRepo,
@@ -148,11 +144,12 @@ def _refuser_strategie_invalide(auth_strategie: str, totp_secret: str, injected_
         raise HTTPException(status_code=422, detail="; ".join(problemes))
 
 
-def _application_visee(base_url: str | None, database: str | None) -> tuple[str, str]:
-    """Ce qui identifie l'application qu'un projet teste : son adresse (casse et barre finale ignorées) et, quand le
-    connecteur en a une, sa base de données. Deux projets Odoo sur le même serveur mais deux bases ne visent pas la même
-    application."""
-    return (base_url or "").strip().rstrip("/").lower(), (database or "").strip()
+def _application_visee(connector_type: str | None, base_url: str | None, database: str | None) -> tuple[str, str, str]:
+    """Ce qui identifie l'application qu'un projet teste : son connecteur, son adresse (casse et barre finale ignorées) et,
+    quand le connecteur en a une, sa base de données. Deux projets Odoo sur le même serveur mais deux bases ne visent pas
+    la même application."""
+    return ((connector_type or "").strip().lower(), (base_url or "").strip().rstrip("/").lower(),
+            (database or "").strip())
 
 
 def _refuser_profil_invalide(connector_type: str, profil_instance: str) -> None:
@@ -196,9 +193,6 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
     if body.name is not None and not body.name.strip():
         raise HTTPException(status_code=422, detail="le nom du projet est requis")
     _refuser_contexte_invalide(body.browser_locale or "", body.browser_timezone or "", body.browser_viewport or "")
-    refus = valeurs_du_projet.erreurs(body.format_nombre)
-    if refus:
-        raise HTTPException(status_code=422, detail=" ; ".join(refus))
     if body.auth_strategie is not None:
         _refuser_strategie_invalide(body.auth_strategie, body.totp_secret or "", body.injected_session or "")
     if body.profil_instance:
@@ -230,20 +224,17 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=f"adresse de remise à zéro refusée : {exc}") from exc
     repo = ProjectRepo(conn)
-    # Décision A21 (porteur, 2026-10-13) — quand l'application visée change (adresse ou base de données), l'autorisation
-    # donnée à l'IA d'agir sur elle pendant la génération est RETIRÉE D'OFFICE : elle valait pour l'ancienne application, pas
-    # pour la nouvelle, et doit être redonnée en connaissance de cause. Règle GLOBALE, la même pour tous les connecteurs.
-    # Pourquoi maintenant : depuis le lot PT-01b, l'adresse et l'autorisation se règlent dans deux écrans différents — on ne
-    # voit plus l'une en changeant l'autre (revue du 2026-10-13). Un corps qui pose EXPLICITEMENT l'autorisation avec la
-    # nouvelle adresse est respecté : c'est un choix fait en la voyant. Lu AVANT toute écriture.
+    # Décision A43 (porteur, 2026-10-16) : la règle A21 est retirée — changer l'adresse de l'application ne décoche plus
+    # « L'IA peut agir sur cette application ».
+    # Décision A47 (porteur, 2026-10-16, revue d'A45) : mais la déclaration « Instance de test » vaut pour UNE application.
+    # Si le connecteur, l'adresse ou la base changent, elle tombe — même si ce corps la renvoie cochée (l'ancienne fenêtre
+    # renvoie toujours la valeur qu'elle a lue) : la nouvelle application doit être déclarée à part, par un second geste.
     avant = repo.get(project_id) or {}
-    application_changee = (
-        (body.base_url is not None or body.database is not None)
-        and _application_visee(body.base_url if body.base_url is not None else avant.get("base_url"),
-                               body.database if body.database is not None else avant.get("database"))
-        != _application_visee(avant.get("base_url"), avant.get("database")))
-    retirer_l_autorisation = (application_changee and body.calibration_writes_enabled is None
-                              and bool(avant.get("calibration_writes_enabled")))
+    application_changee = _application_visee(
+        body.connector_type if body.connector_type is not None else avant.get("connector_type"),
+        body.base_url if body.base_url is not None else avant.get("base_url"),
+        body.database if body.database is not None else avant.get("database"),
+    ) != _application_visee(avant.get("connector_type"), avant.get("base_url"), avant.get("database"))
     try:
         if body.name is not None:
             repo.rename(project_id, name=body.name.strip(), description=body.description)
@@ -252,6 +243,10 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
             repo.rename(project_id, name=current["name"], description=body.description)
     except DuplicateName as exc:
         raise _conflict(exc) from exc
+    if application_changee:
+        # A47 : la déclaration tombe AVANT que la nouvelle application soit enregistrée (chacune valide à part) — une
+        # requête interrompue entre les deux laisse au pire une déclaration retirée, jamais une nouvelle application déclarée.
+        repo.set_instance_de_test(project_id, False)
     repo.update_connection(
         project_id, connector_type=body.connector_type, connector_version=body.connector_version,
         base_url=body.base_url, database=body.database, username=body.username,
@@ -259,15 +254,14 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
         browser_locale=None if body.browser_locale is None else body.browser_locale.strip(),
         browser_timezone=None if body.browser_timezone is None else body.browser_timezone.strip(),
         browser_viewport=None if body.browser_viewport is None else body.browser_viewport.strip(),
-        format_nombre=None if body.format_nombre is None else valeurs_du_projet.normaliser_format(body.format_nombre),
         auth_strategie=body.auth_strategie, totp_secret=body.totp_secret, injected_session=body.injected_session,
         profil_instance=body.profil_instance,
         oracle_type=body.oracle_type, oracle_base_url=body.oracle_base_url,
         oracle_auth=body.oracle_auth, oracle_queries=body.oracle_queries)
     if body.calibration_writes_enabled is not None:
         repo.set_calibration_writes_enabled(project_id, body.calibration_writes_enabled)
-    elif retirer_l_autorisation:
-        repo.set_calibration_writes_enabled(project_id, False)
+    if not application_changee and body.instance_de_test is not None:
+        repo.set_instance_de_test(project_id, body.instance_de_test)
     if bac_a_sable_reset is not None:
         repo.set_bac_a_sable_reset(project_id, bac_a_sable_reset)
     if body.bac_a_sable_remis_a_zero:
@@ -336,73 +330,6 @@ def update_account(project_id: int, account_id: int, body: schemas.AccountPatch,
 def delete_account(project_id: int, account_id: int, conn=Depends(get_conn)):
     if not ProjectAccountRepo(conn).supprimer(project_id, account_id):
         raise HTTPException(status_code=404, detail=f"compte {account_id} introuvable")
-    return Response(status_code=204)
-
-
-# ── Unités ajoutées par le projet (lot PT-03) ───────────────────────────────────────────────────────────────────────────────
-# Lecture : tout membre du projet. Écriture : son administrateur, comme les autres réglages de l'onglet « Valeurs attendues ».
-# Une écriture est validée par le LECTEUR de nombres lui-même : ce que l'écran accepte est exactement ce que le test saura lire.
-
-_ECRITURES_MAX, _UNITES_MAX = 20, 100   # la liste voyage dans une variable d'environnement : elle reste petite
-
-
-def _ecritures_validees(body: schemas.UnitIn) -> tuple[str, list[str]]:
-    if len(body.ecritures) > _ECRITURES_MAX:
-        raise HTTPException(status_code=422, detail=f"unité refusée : {_ECRITURES_MAX} autres écritures au plus")
-    lecteur = lecteur_de_nombres()
-    try:
-        return lecteur.ecriture_d_unite_libre(body.nom), [lecteur.ecriture_d_unite_libre(e) for e in body.ecritures if e.strip()]
-    except lecteur.LectureImpossible as exc:
-        raise HTTPException(status_code=422, detail=f"unité refusée : {exc}") from exc
-
-
-@router.get("/{project_id}/units", response_model=list[schemas.UnitOut],
-           dependencies=[Depends(access.require_project_access)])
-def list_units(project_id: int, conn=Depends(get_conn)):
-    if ProjectRepo(conn).get(project_id) is None:
-        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
-    return [schemas.UnitOut(**u) for u in TestUnitRepo(conn).liste(project_id)]
-
-
-@router.post("/{project_id}/units", response_model=schemas.UnitOut, status_code=201,
-            dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
-def create_unit(project_id: int, body: schemas.UnitIn, conn=Depends(get_conn)):
-    if ProjectRepo(conn).get(project_id) is None:
-        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
-    nom, ecritures = _ecritures_validees(body)
-    repo = TestUnitRepo(conn)
-    if len(repo.liste(project_id)) >= _UNITES_MAX:
-        raise HTTPException(status_code=422, detail=f"unité refusée : {_UNITES_MAX} unités au plus par projet")
-    try:
-        unit_id = repo.creer(project_id, nom=nom, ecritures=ecritures)
-    except UniteInvalide as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except DuplicateName as exc:
-        raise _conflict(exc) from exc
-    return schemas.UnitOut(**repo.lire(project_id, unit_id))
-
-
-@router.put("/{project_id}/units/{unit_id}", response_model=schemas.UnitOut,
-           dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
-def update_unit(project_id: int, unit_id: int, body: schemas.UnitIn, conn=Depends(get_conn)):
-    nom, ecritures = _ecritures_validees(body)
-    repo = TestUnitRepo(conn)
-    try:
-        trouve = repo.modifier(project_id, unit_id, nom=nom, ecritures=ecritures)
-    except UniteInvalide as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except DuplicateName as exc:
-        raise _conflict(exc) from exc
-    if not trouve:
-        raise HTTPException(status_code=404, detail=f"unité {unit_id} introuvable")
-    return schemas.UnitOut(**repo.lire(project_id, unit_id))
-
-
-@router.delete("/{project_id}/units/{unit_id}", status_code=204,
-              dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
-def delete_unit(project_id: int, unit_id: int, conn=Depends(get_conn)):
-    if not TestUnitRepo(conn).supprimer(project_id, unit_id):
-        raise HTTPException(status_code=404, detail=f"unité {unit_id} introuvable")
     return Response(status_code=204)
 
 

@@ -329,6 +329,11 @@ class OdooConnector(Connector):
 
     def attempt_form_submission(self, page_url: str, field_values: dict,
                                 model: str = "") -> dict:
+        if not (model or "").strip():
+            # A45 (2026-10-16) : sans modèle, la donnée créée ne peut pas être supprimée après lecture du message — elle
+            # resterait dans l'application. Refusé AVANT d'ouvrir le formulaire : rien n'est soumis.
+            return {"submitted": False, "url": "", "message": "", "cleaned_up": False,
+                    "error": "`model` requis : sans lui, la donnée créée ne serait pas supprimée — rien n'a été soumis"}
         try:
             resultat = self._run_in_browser(
                 self._attempt_form_submission_sync, page_url, field_values)

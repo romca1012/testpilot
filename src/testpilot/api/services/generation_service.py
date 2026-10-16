@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 from testpilot.generation import gel_verifications
 from testpilot.generation.provenance import revision_metadata
+from testpilot.parametres.ia_peut_agir import ia_peut_ecrire
 from testpilot.verdict import review_gate
 import logging
 import re
@@ -991,7 +992,7 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
                 profil_instance=(project or {}).get("profil_instance"),
                 dry_runner=runner,
                 require_review=regeneration,
-                calibration_writes_enabled=bool((project or {}).get("calibration_writes_enabled")))
+                calibration_writes_enabled=ia_peut_ecrire(project))
             GenerationJobRepo(conn).maj(job_id, status="done", case_ids=[case_id])
         else:
             GenerationJobRepo(conn).maj(job_id, status="failed",
@@ -1144,8 +1145,7 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                         connector_version=(project or {}).get("connector_version", ""),
                         profil_instance=(project or {}).get("profil_instance"),
                         dry_runner=runner_tache,
-                        calibration_writes_enabled=bool(
-                            (project or {}).get("calibration_writes_enabled")))
+                        calibration_writes_enabled=ia_peut_ecrire(project))
                     return {"case_id": result.case_id}
                 # Le cas n'a pas été persisté avec ce slug (génération arrêtée avant la fin) :
                 # le rendre disponible, sinon ce titre reste bloqué pour rien.

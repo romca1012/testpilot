@@ -4,6 +4,9 @@
 // « Identité et application » : mêmes champs, même route, mêmes refus du serveur (une adresse de remise à zéro d'une autre
 // application est refusée, 422).
 //
+// A45 (2026-10-16) : pour Odoo, la case « L'IA peut agir » ne suffit pas — le projet doit aussi se déclarer instance de test.
+// C'est la seconde condition d'Odoo, comme l'adresse de remise à zéro est celle du web.
+//
 // Les deux réglages du bac à sable restent ENSEMBLE : l'autorisation n'a d'effet qu'avec une adresse de remise à zéro, et
 // l'adresse ne sert qu'à elle. Les explications longues de l'ancien écran sont portées par une infobulle, pas par l'écran.
 import { computed, reactive, ref, watch } from 'vue'
@@ -16,7 +19,7 @@ import ConfirmDialog from '../ConfirmDialog.vue'
 const props = defineProps<{ projet: ProjectSummary; peutRegler: boolean }>()
 const emit = defineEmits<{ (e: 'enregistre', projet: ProjectSummary): void; (e: 'modifie', valeur: boolean): void }>()
 
-const form = reactive({ calibration_writes_enabled: false, bac_a_sable_reset: '' })
+const form = reactive({ calibration_writes_enabled: false, instance_de_test: false, bac_a_sable_reset: '' })
 const initial = ref({ ...form })
 const enregistrement = ref(false)
 const erreur = ref('')
@@ -24,6 +27,7 @@ const enregistreA = ref(false)
 const estWeb = computed(() => props.projet.connector_type === 'web')
 
 const modifie = computed(() => form.calibration_writes_enabled !== initial.value.calibration_writes_enabled
+  || form.instance_de_test !== initial.value.instance_de_test
   || form.bac_a_sable_reset !== initial.value.bac_a_sable_reset)
 watch(modifie, (v) => emit('modifie', v), { immediate: true })
 // 3. Revue du 2026-10-13 : depuis que l'adresse du projet se change dans une autre fenêtre, une déclaration de remise à zéro
@@ -42,6 +46,7 @@ const aConfirmer = ref(false)
 
 function reprendre(p: ProjectSummary) {
   form.calibration_writes_enabled = !!p.calibration_writes_enabled
+  form.instance_de_test = !!p.instance_de_test
   form.bac_a_sable_reset = p.bac_a_sable_reset || ''
   initial.value = { ...form }
 }
@@ -60,6 +65,9 @@ async function enregistrer() {
     const patch: Record<string, string | boolean> = { calibration_writes_enabled: form.calibration_writes_enabled }
     // D26 : '' = retirer la déclaration de bac à sable. Sans objet pour Odoo, qui n'a pas d'adresse de remise à zéro.
     if (estWeb.value) patch.bac_a_sable_reset = form.bac_a_sable_reset.trim()
+    // Revue A47 : envoyée seulement si la personne l'a changée — renvoyer une case lue plus tôt pourrait redéclarer une
+    // application qui a changé entre-temps dans un autre onglet.
+    else if (form.instance_de_test !== initial.value.instance_de_test) patch.instance_de_test = form.instance_de_test
     const maj = await api.updateProject(props.projet.id, patch)
     const enregistre = projetEnregistre(props.projet, maj)
     // L'onglet repart de ce que le serveur a enregistré, sans attendre que la page lui renvoie le projet.
@@ -103,8 +111,13 @@ async function declarerRemisAZero() {
       <label class="flex min-h-11 items-center gap-3">
         <input type="checkbox" v-model="form.calibration_writes_enabled" class="h-4 w-4" data-testid="bac-a-sable-autorise" />
         <span class="text-sm font-medium">L'IA peut agir sur cette application pendant la génération</span>
-        <Hint v-if="estWeb" text="À n'activer que sur une application réservée aux tests, que l'on peut remettre à zéro. L'IA voit alors où mène chaque action avant d'écrire le test." />
-        <Hint v-else text="À n'activer que sur un environnement de test : l'IA soumet un vrai formulaire pour lire le message affiché, puis supprime ce qu'elle a créé." />
+        <Hint v-if="estWeb" text="L'IA joue ses actions pour voir où elles mènent avant d'écrire le test. Seulement avec une adresse de remise à zéro." />
+        <Hint v-else text="L'IA soumet un vrai formulaire pour lire le message affiché, puis supprime ce qu'elle a créé. Seulement sur une instance de test déclarée." />
+      </label>
+      <label v-if="!estWeb" class="mt-3 flex min-h-11 items-center gap-3">
+        <input type="checkbox" v-model="form.instance_de_test" class="h-4 w-4" data-testid="instance-de-test" />
+        <span class="text-sm font-medium">Instance de test</span>
+        <Hint text="Sans cette déclaration, l'IA n'écrit jamais dans une application Odoo, même autorisée." />
       </label>
       <label v-if="estWeb" class="mt-5 block max-w-xl">
         <span class="text-sm font-medium">Adresse de remise à zéro</span>

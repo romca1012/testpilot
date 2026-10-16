@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 66
+_SCHEMA_VERSION = 68
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -274,6 +274,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_65_seulement_variables(conn)
     if version < 66:
         _migrate_66_planification_jeux(conn)
+    if version < 67:
+        _migrate_67_ia_peut_agir_par_defaut(conn)
+    if version < 68:
+        _migrate_68_instance_de_test(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -498,6 +502,33 @@ def _migrate_66_planification_jeux(conn: sqlite3.Connection) -> None:
     « Par défaut » si le projet a des variables). Idempotente."""
     if _table_existe(conn, "scheduled_run") and "dataset_ids" not in _column_names(conn, "scheduled_run"):
         conn.execute("ALTER TABLE scheduled_run ADD COLUMN dataset_ids TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_67_ia_peut_agir_par_defaut(conn: sqlite3.Connection) -> None:
+    """Décision A43 (porteur, 2026-10-16) : « L'IA peut agir sur cette application pendant la génération »
+    (`project.calibration_writes_enabled`) est coché PAR DÉFAUT — TestPilot vise des environnements de test, l'agent doit
+    pouvoir explorer et essayer. Les projets EXISTANTS sont cochés aussi (« partout »). La protection de la production
+    reste (jamais d'action sur une production) ; une application web sans adresse de remise à zéro n'a toujours pas d'essai.
+    Le défaut des projets NOUVEAUX est porté par `ProjectRepo.create` (SQLite ne change pas le défaut d'une colonne
+    existante) et par `schema.sql` pour une base neuve. Exécutée une seule fois (version de schéma) ; rejouée, sans effet
+    de plus.
+
+    Revue d'A43 (A45) : un projet qui avait DÉCLARÉ une adresse de remise à zéro et laissé la case décochée a refusé
+    l'autorisation en connaissance de cause — il n'est pas recoché."""
+    colonnes = _column_names(conn, "project")
+    if "calibration_writes_enabled" not in colonnes:
+        return
+    refus_delibere = " AND bac_a_sable_reset=''" if "bac_a_sable_reset" in colonnes else ""
+    conn.execute(f"UPDATE project SET calibration_writes_enabled=1 WHERE calibration_writes_enabled=0{refus_delibere}")
+
+
+def _migrate_68_instance_de_test(conn: sqlite3.Connection) -> None:
+    """Décision A45 (porteur, 2026-10-16) : `project.instance_de_test` — un projet Odoo se déclare instance de test. Sans
+    cette déclaration, l'IA n'écrit jamais dans l'application pendant la génération, même si « L'IA peut agir » est coché
+    (`parametres/ia_peut_agir.py`) : la protection de la production n'agit que pour toute l'installation, jamais projet
+    par projet. Éteint par défaut, jamais posé implicitement. Idempotente."""
+    if "instance_de_test" not in _column_names(conn, "project"):
+        conn.execute("ALTER TABLE project ADD COLUMN instance_de_test INTEGER NOT NULL DEFAULT 0")
 
 
 def _table_existe(conn: sqlite3.Connection, nom: str) -> bool:

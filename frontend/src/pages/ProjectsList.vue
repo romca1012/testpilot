@@ -223,12 +223,12 @@ function membresVisibles() {
 // C'est aussi le préalable à l'exploration : on ne cartographie pas une application dont on ne
 // peut pas rectifier l'adresse.
 const editing = ref<ProjectSummary | null>(null)
-const information = ref('')
 const saving = ref(false)
 const editError = ref('')
 const edit = ref({
   name: '', connector_type: 'odoo', connector_version: '', base_url: '', database: '', username: '', password: '',
   calibration_writes_enabled: false,
+  instance_de_test: false,
   bac_a_sable_reset: '',
   browser_locale: '', browser_timezone: '', browser_viewport: '',
   auth_strategie: 'formulaire', totp_secret: '', injected_session: '',
@@ -311,6 +311,7 @@ function startEdit(p: ProjectSummary) {
     // signifie « inchangé », jamais « efface-le » — d'où le filtrage à l'enregistrement.
     password: '',
     calibration_writes_enabled: p.calibration_writes_enabled,
+    instance_de_test: !!p.instance_de_test,
     bac_a_sable_reset: p.bac_a_sable_reset || '',
     browser_locale: p.browser_locale || '', browser_timezone: p.browser_timezone || '',
     browser_viewport: p.browser_viewport || '',
@@ -374,16 +375,10 @@ async function saveEdit() {
     // Lot PT-01b : avec « Paramètres de test », cette fenêtre ne porte plus que le nom, le connecteur, la version et
     // l'adresse. Elle n'envoie donc QUE ces champs : renvoyer les autres écraserait ce qui est réglé dans les onglets.
     if (parametresDeTestActifs.value) {
-      const autoriseeAvant = !!editing.value.calibration_writes_enabled
-      const maj = await api.updateProject(editing.value.id, {
+      await api.updateProject(editing.value.id, {
         name: edit.value.name.trim(), connector_type: edit.value.connector_type,
         connector_version: edit.value.connector_version, base_url: edit.value.base_url, database: edit.value.database,
       })
-      // Décision A21 : changer l'application visée retire l'autorisation donnée à l'IA. Le serveur le fait ; l'écran le
-      // DIT — un réglage qui change sans que personne l'ait touché ne doit pas passer inaperçu.
-      information.value = autoriseeAvant && !maj?.calibration_writes_enabled
-        ? `Application de « ${maj.name} » modifiée : l'IA ne peut plus y agir tant que ce n'est pas réautorisé dans Paramètres de test › État de départ.`
-        : ''
       editing.value = null
       await ensureLoaded(true)
       await load()
@@ -397,6 +392,7 @@ async function saveEdit() {
       database: edit.value.database,
       username: edit.value.username,
       calibration_writes_enabled: edit.value.calibration_writes_enabled,
+      instance_de_test: edit.value.instance_de_test,
       // D26 : '' = retirer la déclaration de bac à sable ; le serveur refuse une adresse d'une autre application (422).
       bac_a_sable_reset: edit.value.bac_a_sable_reset,
       // Lot 07c : '' = revenir au défaut (fr-FR, Europe/Paris, 1440x900) ; le serveur refuse une valeur mal formée (422).
@@ -509,8 +505,6 @@ onMounted(async () => { await load(); await loadExplorations() })
       </Button>
     </header>
 
-    <p v-if="information" role="status" data-testid="information"
-       class="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm">{{ information }}</p>
     <div v-if="loading" class="text-sm text-muted-foreground">Chargement…</div>
     <p v-else-if="error" class="text-sm text-destructive">{{ error }}</p>
     <div v-else-if="!projects.length"
@@ -819,11 +813,14 @@ onMounted(async () => { await load(); await loadExplorations() })
               Autoriser l'IA à soumettre un vrai formulaire pendant la génération pour observer le
               message réel affiché, puis à supprimer aussitôt ce qu'elle a créé.
               <span class="mt-1 block text-xs text-muted-foreground">
-                Éteint par défaut : n'active que si <strong>{{ edit.base_url || 'cette application' }}</strong>
-                est un environnement de test — une donnée de calibration peut y être créée le temps de sa
-                vérification.
+                Coché par défaut, mais sans effet tant que <strong>{{ edit.base_url || 'cette application' }}</strong>
+                n'est pas déclarée instance de test ci-dessous.
               </span>
             </span>
+          </label>
+          <label class="mt-3 flex items-start gap-2.5">
+            <input type="checkbox" v-model="edit.instance_de_test" class="mt-0.5" data-testid="instance-de-test" />
+            <span class="text-sm">Instance de test</span>
           </label>
         </fieldset>
         <fieldset v-if="!parametresDeTestActifs && edit.connector_type === 'web'" class="rounded-lg border border-border p-3" data-testid="bac-a-sable">
@@ -833,8 +830,8 @@ onMounted(async () => { await load(); await loadExplorations() })
             <span class="text-sm">
               Autoriser l'IA à jouer ses actions sur cette application pendant qu'elle écrit le test.
               <span class="mt-1 block text-xs text-muted-foreground">
-                Éteint par défaut : n'active que si <strong>{{ edit.base_url || 'cette application' }}</strong> est un
-                environnement de test que l'on peut remettre à zéro. L'IA voit alors sur quelle page mène chaque action,
+                Coché par défaut, mais sans effet sans adresse de remise à zéro : <strong>{{ edit.base_url || 'cette application' }}</strong>
+                doit être un environnement de test que l'on peut remettre à zéro. L'IA voit alors sur quelle page mène chaque action,
                 ce qui évite les tests qui plantent à leur première exécution.
               </span>
             </span>

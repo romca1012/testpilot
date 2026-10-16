@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 66
+ALIGNED_WITH_SCHEMA_VERSION = 68
 
 metadata = MetaData()
 
@@ -76,9 +76,11 @@ project = Table(
     Column("database", Text, nullable=False, server_default=""),
     Column("username", Text, nullable=False, server_default=""),
     Column("password", Text, nullable=False, server_default=""),
-    # Migration 45 : calibration en ÉCRITURE pendant la génération (RPC create+delete, Odoo
-    # seulement) — ÉTEINTE par défaut, activée projet par projet par son porteur.
-    Column("calibration_writes_enabled", Integer, nullable=False, server_default="0"),
+    # Migration 45 : « L'IA peut agir sur cette application » pendant la génération — ALLUMÉ par défaut depuis A43
+    # (migration 67). Pour Odoo, il ne suffit pas : voir `instance_de_test`.
+    Column("calibration_writes_enabled", Integer, nullable=False, server_default="1"),
+    # Migration 68 (A45) : le projet Odoo se déclare instance de test — sans elle, l'IA n'y écrit jamais. Éteint par défaut.
+    Column("instance_de_test", Integer, nullable=False, server_default="0"),
     # Migration 61 (D26) : adresse de remise à zéro du bac à sable — vide = aucun essai pendant la génération.
     Column("bac_a_sable_reset", Text, nullable=False, server_default=""),
     # Migration 50 (lot 07c) : contexte navigateur FIGÉ — vide = le défaut (fr-FR, Europe/Paris, 1440x900).

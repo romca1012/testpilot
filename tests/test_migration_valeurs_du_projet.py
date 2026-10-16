@@ -29,12 +29,9 @@ def test_une_base_neuve_porte_les_colonnes_vides_par_defaut(tmp_path):
     projet = ProjectRepo(conn).get(pid)
     assert projet["format_nombre"] == "", "jamais posée implicitement"
     assert "devise" not in projet, "aucune monnaie du projet (A38)"
-    ProjectRepo(conn).update_connection(pid, format_nombre="espace_virgule")
-    assert ProjectRepo(conn).get(pid)["format_nombre"] == "espace_virgule"
-    ProjectRepo(conn).update_connection(pid, base_url="http://autre")   # `None` = n'y touche pas
-    assert ProjectRepo(conn).get(pid)["format_nombre"] == "espace_virgule"
-    for ecriture in ("espace_virgule", "virgule_point", "point_virgule", ""):
-        ProjectRepo(conn).update_connection(pid, format_nombre=ecriture)
+    # Décision A44 (2026-10-16) : la colonne reste, inutilisée — plus rien ne l'écrit.
+    ProjectRepo(conn).update_connection(pid, format_nombre="espace_virgule", base_url="http://autre")
+    assert ProjectRepo(conn).get(pid)["format_nombre"] == ""
     conn.close()
 
 
@@ -94,7 +91,6 @@ def test_le_schema_portable_est_aligne():
         colonne = schema_sa.metadata.tables["project"].c[nom]
         assert not colonne.nullable and str(colonne.server_default.arg) == ""
     contraintes = {c.name: str(c.sqltext) for c in schema_sa.metadata.tables["project"].constraints if getattr(c, "sqltext", None) is not None}
-    from testpilot.parametres import valeurs
-    for cle in valeurs.LIBELLES_FORMAT_NOMBRE:
-        assert f"'{cle}'" in contraintes["ck_project_format_nombre"], "la contrainte et le catalogue disent la même liste"
-    assert contraintes["ck_project_format_nombre"].count("'") == 2 * (len(valeurs.LIBELLES_FORMAT_NOMBRE) + 1)
+    for cle in ("espace_virgule", "virgule_point", "point_virgule"):   # les valeurs que la migration 62 admettait
+        assert f"'{cle}'" in contraintes["ck_project_format_nombre"]
+    assert contraintes["ck_project_format_nombre"].count("'") == 2 * 4
