@@ -1,0 +1,1121 @@
+{
+  "contexte": {
+    "date": "2026-10-16",
+    "etiquette": "m2-allume",
+    "commit": "178054f",
+    "versions": {
+      "python": "3.12.14",
+      "testpilot": "0.1.0",
+      "behave": "1.3.3",
+      "playwright": "1.62.0"
+    },
+    "modele_generation": "claude-sonnet-4-6",
+    "mode": "reel",
+    "plafond_usd": 3.5,
+    "app": "boutique_locale",
+    "configuration_sha256": "1a9ac8873de83d174cedb9e4a8dcda338e684f28ca7a707857ff5e1aaf0bfd5c",
+    "sous_ensemble_de_cas": false,
+    "donnees_jetables": "C:\\Users\\ROMARI~1\\AppData\\Local\\Temp\\banc_agents_data_8uzllagl",
+    "generations_rejouees_depuis": null,
+    "reparation": false,
+    "donnees_de_test": true,
+    "second_jeu": {
+      "nom_client": "Martin Lefèvre SA",
+      "ville_client": "Paris"
+    },
+    "bac_a_sable": true,
+    "tentatives_reparation": null
+  },
+  "indicateurs": {
+    "faux_verts": {
+      "k": 0,
+      "n": 11,
+      "non_concluants": 6,
+      "taux": 0.0,
+      "ic95": [
+        2.7755575615628914e-17,
+        0.2588400172488141
+      ]
+    },
+    "faux_rouges": {
+      "k": 0,
+      "n": 12,
+      "non_concluants": 7,
+      "taux": 0.0,
+      "ic95": [
+        0.0,
+        0.2425007574992425
+      ]
+    },
+    "pass_execution": {
+      "pass_at_1": {
+        "k": 6,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.6,
+        "ic95": [
+          0.3126695474501864,
+          0.8318224187964902
+        ]
+      },
+      "pass_at_k": {
+        "k": 7,
+        "n": 9,
+        "non_mesures": 1,
+        "taux": 0.7777777777777778,
+        "ic95": [
+          0.4525833436728054,
+          0.9367762376877727
+        ]
+      },
+      "pass_hat_k": {
+        "k": 4,
+        "n": 9,
+        "non_mesures": 1,
+        "taux": 0.4444444444444444,
+        "ic95": [
+          0.188775429471914,
+          0.7333526542559703
+        ]
+      }
+    },
+    "pass_resultat": {
+      "pass_at_1": {
+        "k": 6,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.6,
+        "ic95": [
+          0.3126695474501864,
+          0.8318224187964902
+        ]
+      },
+      "pass_at_k": {
+        "k": 7,
+        "n": 9,
+        "non_mesures": 1,
+        "taux": 0.7777777777777778,
+        "ic95": [
+          0.4525833436728054,
+          0.9367762376877727
+        ]
+      },
+      "pass_hat_k": {
+        "k": 4,
+        "n": 9,
+        "non_mesures": 1,
+        "taux": 0.4444444444444444,
+        "ic95": [
+          0.188775429471914,
+          0.7333526542559703
+        ]
+      }
+    },
+    "non_concluants": {
+      "technical_error": 13
+    },
+    "part_non_concluants_sous_defaut": 0.35294117647058826,
+    "par_defaut": {
+      "etat_non_enregistre": {
+        "jeux": 4,
+        "concluants": 3,
+        "detectes": 3,
+        "detectes_fiables": 3,
+        "ic95_detection_fiable": [
+          0.43849391955098227,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 1,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      },
+      "filtre_ignore": {
+        "jeux": 1,
+        "concluants": 1,
+        "detectes": 1,
+        "detectes_fiables": 1,
+        "ic95_detection_fiable": [
+          0.20654329147389294,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.20654329147389294,
+          1.0
+        ]
+      },
+      "login_accepte_tout": {
+        "jeux": 2,
+        "concluants": 0,
+        "detectes": 0,
+        "detectes_fiables": 0,
+        "ic95_detection_fiable": null,
+        "faux_verts": 0,
+        "non_concluants": 2,
+        "ic95_detection": null
+      },
+      "message_erreur_absent": {
+        "jeux": 4,
+        "concluants": 4,
+        "detectes": 4,
+        "detectes_fiables": 4,
+        "ic95_detection_fiable": [
+          0.5100999795960008,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.5100999795960008,
+          1.0
+        ]
+      },
+      "total_faux": {
+        "jeux": 4,
+        "concluants": 1,
+        "detectes": 1,
+        "detectes_fiables": 1,
+        "ic95_detection_fiable": [
+          0.20654329147389294,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 3,
+        "ic95_detection": [
+          0.20654329147389294,
+          1.0
+        ]
+      },
+      "validation_absente": {
+        "jeux": 2,
+        "concluants": 2,
+        "detectes": 2,
+        "detectes_fiables": 2,
+        "ic95_detection_fiable": [
+          0.34237195288961925,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.34237195288961925,
+          1.0
+        ]
+      }
+    },
+    "cout": {
+      "total_usd": 3.134412,
+      "total_eur": 2.902233,
+      "taux_eur_usd": 1.08,
+      "generations": 19,
+      "generations_sans_cout_consigne": 0,
+      "par_generation_usd": 0.164969,
+      "par_generation_eur": 0.152749,
+      "par_cas_usd": {
+        "client_creation_nom_limite": 0.091468,
+        "client_creation_nom_requis": 0.134706,
+        "client_creation_valide": 0.114537,
+        "commande_confirmation": 0.174279,
+        "commande_persistance_serveur": 0.44653,
+        "connexion_refusee": 0.120497,
+        "connexion_valide": 0.133045,
+        "panier_remise_arrondi": 0.132464,
+        "panier_total_tva": 0.17192,
+        "produits_recherche": 0.095521
+      }
+    },
+    "integrite": {
+      "verifiees": 23,
+      "divergentes": 0,
+      "non_rapportees": 0
+    },
+    "echantillon": {
+      "cas": 10,
+      "k": 2,
+      "essais_prevus": 20,
+      "essais_lances": 19,
+      "jeux": 36
+    },
+    "ecarts": [
+      {
+        "cas": "commande_confirmation",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "etat_non_enregistre",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "connexion_refusee",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "connexion_refusee",
+        "variante": "login_accepte_tout",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "connexion_refusee",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "connexion_refusee",
+        "variante": "login_accepte_tout",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "total_faux",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      }
+    ],
+    "apres_reparation": null,
+    "second_jeu": {
+      "rejoues": 4,
+      "conformes_a_l_attendu": 4,
+      "prouves": 2,
+      "valeur_du_premier_jeu_en_dur": 0,
+      "preuve_partielle": 0,
+      "aucune_trace_au_serveur": 2,
+      "non_rejoues_saine_en_ecart": 0,
+      "integrite": {
+        "verifiees": 4,
+        "divergentes": 0,
+        "non_rapportees": 0
+      }
+    }
+  },
+  "interrompue": "plafond de coût : cumul 3.134 $ + essai le plus cher attendu 0.503 $ > plafond 3.500 $ (avant produits_recherche, essai 2)",
+  "essais": [
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.08559,
+      "empreintes": {
+        "pilote_p1_c1_i1_20261016T144105.feature": "652aabc9829f0978438c5e38ad2c84543a272d4efe66670049bd0dffdbff0a47",
+        "pilote_p1_c1_i1_20261016T144105_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.179223,
+      "empreintes": {
+        "pilote_p1_c2_i1_20261016T144255.feature": "1f7497aadd155155c133078ca75a13ed0fa93d549f8c0560984154a36166315a",
+        "pilote_p1_c2_i1_20261016T144255_steps.py": "e4389655c4b9fdc908df91eb2226ccff62e23c2b72770b439f2eda84910f6616"
+      },
+      "refus_ecriture": {
+        "LITTERAL_NON_OBSERVE": 1
+      },
+      "steps_generes": 1,
+      "variables_ecrites": [
+        "ville_client"
+      ]
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.11188,
+      "empreintes": {
+        "pilote_p1_c3_i1_20261016T144653.feature": "64436e6cb8ff25ba1facfae7f88a2c6f87ddf33d4618df018219075879ea20b3",
+        "pilote_p1_c3_i1_20261016T144653_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {
+        "ECHAPPEMENT_LITTERAL": 1
+      },
+      "steps_generes": 0,
+      "variables_ecrites": [
+        "nom_client",
+        "ville_client"
+      ]
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 1,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.205058,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 1,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.502722,
+      "empreintes": {},
+      "refus_ecriture": {
+        "LITTERAL_NON_OBSERVE": 3
+      },
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 1,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.126865,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.155627,
+      "empreintes": {
+        "pilote_p1_c7_i1_20261016T150000.feature": "0adac8667fa0377983f97d7b9609bab9570a88433907e978c16befed9d94a020",
+        "pilote_p1_c7_i1_20261016T150000_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.136985,
+      "empreintes": {
+        "pilote_p1_c8_i1_20261016T150301.feature": "3e9f3e7f1c7c422502125602c48516fcfea8bc95ca906506395961502d68b759",
+        "pilote_p1_c8_i1_20261016T150301_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 1,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.189313,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "produits_recherche",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.095521,
+      "empreintes": {
+        "pilote_p1_c10_i1_20261016T150918.feature": "9224d47cb1f15511376c4c32d6c9531acc4c622ca4ff880d7c8086ad7c3fb87e",
+        "pilote_p1_c10_i1_20261016T150918_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.097346,
+      "empreintes": {
+        "pilote_p1_c1_i2_20261016T151110.feature": "3186f915f3248b03bc65c6b7bda146b00729d58065c4240175dba238116f1428",
+        "pilote_p1_c1_i2_20261016T151110_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.090188,
+      "empreintes": {
+        "pilote_p1_c2_i2_20261016T151259.feature": "6a9ec6715dee8e2b1fd587a0ed2ab6a84f49c8e24b631bbd71f2eb213fd909ca",
+        "pilote_p1_c2_i2_20261016T151259_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": [
+        "ville_client"
+      ]
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.117195,
+      "empreintes": {
+        "pilote_p1_c3_i2_20261016T151513.feature": "8df2c3a5fc682e2ef4d2da923c18a67d6a1342ea1514f1e2d6a5ae67c3b55dcc",
+        "pilote_p1_c3_i2_20261016T151513_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {
+        "ECHAPPEMENT_LITTERAL": 1
+      },
+      "steps_generes": 0,
+      "variables_ecrites": [
+        "nom_client",
+        "ville_client"
+      ]
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.143501,
+      "empreintes": {
+        "pilote_p1_c4_i2_20261016T151736.feature": "ce83ddd5ca39f96c139cad4ad7841e0be28c7c4af4aad98042783b2c717ceb66",
+        "pilote_p1_c4_i2_20261016T151736_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.390339,
+      "empreintes": {
+        "pilote_p1_c5_i2_20261016T152011.feature": "1bfedb3c4332b8c3e2eb669579a2f04164ceefeb08a027d2b00fede411cb5f7e",
+        "pilote_p1_c5_i2_20261016T152011_steps.py": "5e8105f2f017b47f2d98eaf6e23a7a9b15194f7e04c5267373b06f8186e7d109"
+      },
+      "refus_ecriture": {
+        "LITTERAL_NON_OBSERVE": 2
+      },
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 2,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.114128,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.110462,
+      "empreintes": {
+        "pilote_p1_c7_i2_20261016T152807.feature": "3e006dfe9b9ebb62bfd785b8c63a9017d9b550d752d175d420af7a376a0a92f9",
+        "pilote_p1_c7_i2_20261016T152807_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 2,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.127942,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 2,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.154527,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    }
+  ],
+  "observations": [
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 7.4,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:60825/clients/nouveau (mot entier, casse respectée).",
+      "duree": 15.0,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 11.9,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Aucune erreur de validation visible dans le formulaire.",
+      "duree": 19.4,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Aucune erreur de validation visible dans le formulaire.",
+      "duree": 19.0,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 9.7,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: aucun des 0 élément(s) du champ « enregistrements » de l'oracle « etat » n'a « nom » = « Dupont SARL »",
+      "duree": 9.8,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.0,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 7.2,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 10,56 € » n'est pas affiché sur http://127.0.0.1:60825/panier (mot entier, casse respectée).",
+      "duree": 15.0,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 8.5,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "filtre_ignore",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 2 produits affichés » n'est pas affiché sur http://127.0.0.1:60825/produits?q=souris (mot entier, casse respectée).",
+      "duree": 15.1,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 8.0,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:60825/clients/nouveau (mot entier, casse respectée).",
+      "duree": 15.2,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 9.7,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:60825/clients/nouveau (mot entier, casse respectée).",
+      "duree": 17.2,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:60825/clients/nouveau (mot entier, casse respectée).",
+      "duree": 17.2,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 12.0,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Dupont SARL » n'est pas affiché sur http://127.0.0.1:60825/clients (mot entier, casse respectée).",
+      "duree": 19.2,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 18.6,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 18.4,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: le champ « commandes » de l'oracle « etat » compte 0 élément(s), 1 attendu(s)",
+      "duree": 17.8,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 9.1,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    }
+  ],
+  "anomalies": [],
+  "reparations": [],
+  "observations_reparees": [],
+  "observations_second_jeu": [
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine_second_jeu",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.7,
+      "empreinte_ok": true,
+      "preuve": "aucune des valeurs"
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine_second_jeu",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 9.9,
+      "empreinte_ok": true,
+      "preuve": "valeurs du second jeu"
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine_second_jeu",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 9.4,
+      "empreinte_ok": true,
+      "preuve": "aucune des valeurs"
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine_second_jeu",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 11.5,
+      "empreinte_ok": true,
+      "preuve": "valeurs du second jeu"
+    }
+  ],
+  "second_jeu_non_rejoues": []
+}

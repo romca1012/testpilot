@@ -1,0 +1,1059 @@
+{
+  "contexte": {
+    "date": "2026-10-16",
+    "etiquette": "m2-eteint",
+    "commit": "178054f",
+    "versions": {
+      "python": "3.12.14",
+      "testpilot": "0.1.0",
+      "behave": "1.3.3",
+      "playwright": "1.62.0"
+    },
+    "modele_generation": "claude-sonnet-4-6",
+    "mode": "reel",
+    "plafond_usd": 3.5,
+    "app": "boutique_locale",
+    "configuration_sha256": "1a9ac8873de83d174cedb9e4a8dcda338e684f28ca7a707857ff5e1aaf0bfd5c",
+    "sous_ensemble_de_cas": false,
+    "donnees_jetables": "C:\\Users\\ROMARI~1\\AppData\\Local\\Temp\\banc_agents_data_wfy5fxdb",
+    "generations_rejouees_depuis": null,
+    "reparation": false,
+    "donnees_de_test": true,
+    "second_jeu": {
+      "nom_client": "Martin Lefèvre SA",
+      "ville_client": "Paris"
+    },
+    "bac_a_sable": true,
+    "tentatives_reparation": null
+  },
+  "indicateurs": {
+    "faux_verts": {
+      "k": 0,
+      "n": 12,
+      "non_concluants": 4,
+      "taux": 0.0,
+      "ic95": [
+        0.0,
+        0.2425007574992425
+      ]
+    },
+    "faux_rouges": {
+      "k": 0,
+      "n": 14,
+      "non_concluants": 4,
+      "taux": 0.0,
+      "ic95": [
+        0.0,
+        0.21531701192718142
+      ]
+    },
+    "pass_execution": {
+      "pass_at_1": {
+        "k": 8,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.8,
+        "ic95": [
+          0.49015684672072335,
+          0.9433190520193067
+        ]
+      },
+      "pass_at_k": {
+        "k": 7,
+        "n": 8,
+        "non_mesures": 2,
+        "taux": 0.875,
+        "ic95": [
+          0.5291051942301386,
+          0.9775830911367038
+        ]
+      },
+      "pass_hat_k": {
+        "k": 5,
+        "n": 8,
+        "non_mesures": 2,
+        "taux": 0.625,
+        "ic95": [
+          0.30573785458380187,
+          0.863158240538479
+        ]
+      }
+    },
+    "pass_resultat": {
+      "pass_at_1": {
+        "k": 8,
+        "n": 10,
+        "non_mesures": 0,
+        "taux": 0.8,
+        "ic95": [
+          0.49015684672072335,
+          0.9433190520193067
+        ]
+      },
+      "pass_at_k": {
+        "k": 7,
+        "n": 8,
+        "non_mesures": 2,
+        "taux": 0.875,
+        "ic95": [
+          0.5291051942301386,
+          0.9775830911367038
+        ]
+      },
+      "pass_hat_k": {
+        "k": 4,
+        "n": 8,
+        "non_mesures": 2,
+        "taux": 0.5,
+        "ic95": [
+          0.21521252682444186,
+          0.7847874731755582
+        ]
+      }
+    },
+    "non_concluants": {
+      "technical_error": 8
+    },
+    "part_non_concluants_sous_defaut": 0.25,
+    "par_defaut": {
+      "etat_non_enregistre": {
+        "jeux": 4,
+        "concluants": 1,
+        "detectes": 1,
+        "detectes_fiables": 1,
+        "ic95_detection_fiable": [
+          0.20654329147389294,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 3,
+        "ic95_detection": [
+          0.20654329147389294,
+          1.0
+        ]
+      },
+      "filtre_ignore": {
+        "jeux": 1,
+        "concluants": 1,
+        "detectes": 1,
+        "detectes_fiables": 1,
+        "ic95_detection_fiable": [
+          0.20654329147389294,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.20654329147389294,
+          1.0
+        ]
+      },
+      "login_accepte_tout": {
+        "jeux": 2,
+        "concluants": 2,
+        "detectes": 2,
+        "detectes_fiables": 2,
+        "ic95_detection_fiable": [
+          0.34237195288961925,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.34237195288961925,
+          1.0
+        ]
+      },
+      "message_erreur_absent": {
+        "jeux": 4,
+        "concluants": 4,
+        "detectes": 4,
+        "detectes_fiables": 4,
+        "ic95_detection_fiable": [
+          0.5100999795960008,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.5100999795960008,
+          1.0
+        ]
+      },
+      "total_faux": {
+        "jeux": 3,
+        "concluants": 2,
+        "detectes": 2,
+        "detectes_fiables": 2,
+        "ic95_detection_fiable": [
+          0.34237195288961925,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 1,
+        "ic95_detection": [
+          0.34237195288961925,
+          1.0
+        ]
+      },
+      "validation_absente": {
+        "jeux": 2,
+        "concluants": 2,
+        "detectes": 2,
+        "detectes_fiables": 2,
+        "ic95_detection_fiable": [
+          0.34237195288961925,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.34237195288961925,
+          1.0
+        ]
+      }
+    },
+    "cout": {
+      "total_usd": 3.049387,
+      "total_eur": 2.823506,
+      "taux_eur_usd": 1.08,
+      "generations": 18,
+      "generations_sans_cout_consigne": 0,
+      "par_generation_usd": 0.16941,
+      "par_generation_eur": 0.156861,
+      "par_cas_usd": {
+        "client_creation_nom_limite": 0.135854,
+        "client_creation_nom_requis": 0.115239,
+        "client_creation_valide": 0.110006,
+        "commande_confirmation": 0.146397,
+        "commande_persistance_serveur": 0.510551,
+        "connexion_refusee": 0.117899,
+        "connexion_valide": 0.127051,
+        "panier_remise_arrondi": 0.13765,
+        "panier_total_tva": 0.16205,
+        "produits_recherche": 0.086044
+      }
+    },
+    "integrite": {
+      "verifiees": 28,
+      "divergentes": 0,
+      "non_rapportees": 0
+    },
+    "echantillon": {
+      "cas": 10,
+      "k": 2,
+      "essais_prevus": 20,
+      "essais_lances": 18,
+      "jeux": 34
+    },
+    "ecarts": [
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "etat_non_enregistre",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "total_faux",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "client_creation_valide",
+        "variante": "etat_non_enregistre",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "commande_confirmation",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "broken_test_code"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "commande_persistance_serveur",
+        "variante": "etat_non_enregistre",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      }
+    ],
+    "apres_reparation": null,
+    "second_jeu": {
+      "rejoues": 4,
+      "conformes_a_l_attendu": 4,
+      "prouves": 2,
+      "valeur_du_premier_jeu_en_dur": 0,
+      "preuve_partielle": 0,
+      "aucune_trace_au_serveur": 2,
+      "non_rejoues_saine_en_ecart": 0,
+      "integrite": {
+        "verifiees": 4,
+        "divergentes": 0,
+        "non_rapportees": 0
+      }
+    }
+  },
+  "interrompue": "plafond de coût : cumul 3.049 $ + essai le plus cher attendu 0.515 $ > plafond 3.500 $ (avant panier_total_tva, essai 2)",
+  "essais": [
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.136082,
+      "empreintes": {
+        "pilote_p1_c1_i1_20261016T134810.feature": "70d9f463244868178a0bacad725457139df5ef3c7fbd013faecdacf759451ac4",
+        "pilote_p1_c1_i1_20261016T134810_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.124501,
+      "empreintes": {
+        "pilote_p1_c2_i1_20261016T134935.feature": "cc39af3f450f8b4d50287bf3eabec5d27994ef05ffe0cf5613b03d23f092323e",
+        "pilote_p1_c2_i1_20261016T134935_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": [
+        "ville_client"
+      ]
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.115014,
+      "empreintes": {
+        "pilote_p1_c3_i1_20261016T135138.feature": "36a053a38a24b68802410be468e712742326dc0162cae736c52ba93f454949c7",
+        "pilote_p1_c3_i1_20261016T135138_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": [
+        "nom_client",
+        "ville_client"
+      ]
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.136052,
+      "empreintes": {
+        "pilote_p1_c4_i1_20261016T135346.feature": "6eea2d0e72b950cab0d5b970e009de93e30657a47c4edfd52b56ec2d13595efe",
+        "pilote_p1_c4_i1_20261016T135346_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 1,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.505972,
+      "empreintes": {},
+      "refus_ecriture": {
+        "TRANSPORT_INTERDIT": 1,
+        "LITTERAL_NON_OBSERVE": 2,
+        "ASSERTION_MAL_PLACEE": 2
+      },
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.121629,
+      "empreintes": {
+        "pilote_p1_c6_i1_20261016T140205.feature": "dabcae015fe5c4f65f89a139e53761306c68b7ccdbf12c17bf3fb1f2b7b5a3e0",
+        "pilote_p1_c6_i1_20261016T140205_steps.py": "7530bd6b3b847205f31bcf51b6cc09b3a35a84b6912396cd23bd5af549fcd0d4"
+      },
+      "refus_ecriture": {
+        "LITTERAL_NON_OBSERVE": 1
+      },
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.133194,
+      "empreintes": {
+        "pilote_p1_c7_i1_20261016T140423.feature": "c3a9c7d9dc9e9b220042697daa23dbb4c690d577508cd6c13bd054cd4c199c6e",
+        "pilote_p1_c7_i1_20261016T140423_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 1,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.135354,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.16205,
+      "empreintes": {
+        "pilote_p1_c9_i1_20261016T140920.feature": "9fb082d88e28b69593d2971688941dfb1411a16a8cf503a41204cb6b7cb8f84f",
+        "pilote_p1_c9_i1_20261016T140920_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "produits_recherche",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.086044,
+      "empreintes": {
+        "pilote_p1_c10_i1_20261016T141446.feature": "2c20681d20caf4f6ec5bb7fdd44abb79100ed6303421803a15e0952df7190eee",
+        "pilote_p1_c10_i1_20261016T141446_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.135627,
+      "empreintes": {
+        "pilote_p1_c1_i2_20261016T141645.feature": "2210ac0a6a0b605197aff2159db0593278f59bb2ac2629808395397bcb0ff415",
+        "pilote_p1_c1_i2_20261016T141645_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.105978,
+      "empreintes": {
+        "pilote_p1_c2_i2_20261016T141910.feature": "af2312a94b54c99ffbcb659c2830684d7901f46aea259fc63017c0d17cfa4f35",
+        "pilote_p1_c2_i2_20261016T141910_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": [
+        "ville_client"
+      ]
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.104997,
+      "empreintes": {
+        "pilote_p1_c3_i2_20261016T142143.feature": "3c078ab10bfc88a83640819953c15c1adbb4f578364a42a9e423c0e058b58136",
+        "pilote_p1_c3_i2_20261016T142143_steps.py": "897309651b22017269785e8541b5e4e973065812949a124fe275c077c851561b"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 2,
+      "variables_ecrites": [
+        "nom_client",
+        "ville_client"
+      ]
+    },
+    {
+      "cas": "commande_confirmation",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.156742,
+      "empreintes": {
+        "pilote_p1_c4_i2_20261016T142359.feature": "4a51b008626d49644afa262565755034b3698f4c45fc1024315cf00d4e70dff1",
+        "pilote_p1_c4_i2_20261016T142359_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "essai": 2,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.51513,
+      "empreintes": {},
+      "refus_ecriture": {
+        "ECHAPPEMENT_LITTERAL": 1
+      },
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "connexion_refusee",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.114168,
+      "empreintes": {
+        "pilote_p1_c6_i2_20261016T143316.feature": "ddda47b1bc439059935f857f4c1885add25980ea00d58ddd3490134589e403c6",
+        "pilote_p1_c6_i2_20261016T143316_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "connexion_valide",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.120907,
+      "empreintes": {
+        "pilote_p1_c7_i2_20261016T143557.feature": "b3e0c4586ad6dcfb22a75fe6c7c4ad838c5f9b3b669a94cc44945c6d3fa0aaf9",
+        "pilote_p1_c7_i2_20261016T143557_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.139946,
+      "empreintes": {
+        "pilote_p1_c8_i2_20261016T143813.feature": "a066f2e729033fc950d40ca4448a5b34bc663ae172e2e535da1727fcb4b4fd92",
+        "pilote_p1_c8_i2_20261016T143813_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    }
+  ],
+  "observations": [
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 5.8,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:54734/clients/nouveau (mot entier, casse respectée).",
+      "duree": 13.6,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 5.5,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:54734/clients/nouveau (mot entier, casse respectée).",
+      "duree": 13.5,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:54734/clients/nouveau (mot entier, casse respectée).",
+      "duree": 13.6,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 7.9,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Dupont SARL » n'est pas affiché sur http://127.0.0.1:54734/clients (mot entier, casse respectée).",
+      "duree": 16.2,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.2,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 6.1,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Identifiant ou mot de passe incorrect. » n'est pas affiché sur http://127.0.0.1:54734/produits (mot entier, casse respectée).",
+      "duree": 13.8,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 5.9,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 47.0,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 129,51 € » n'est pas affiché sur http://127.0.0.1:54734/panier (mot entier, casse respectée).",
+      "duree": 37.3,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 9.4,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "produits_recherche",
+      "variante": "filtre_ignore",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Clavier mécanique » est affiché sur http://127.0.0.1:54734/produits?q=souris, alors qu'il ne devrait pas l'être.",
+      "duree": 15.9,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 11.1,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_limite",
+      "variante": "message_erreur_absent",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom ne doit pas dépasser 40 caractères. » n'est pas affiché sur http://127.0.0.1:54734/clients/nouveau (mot entier, casse respectée).",
+      "duree": 19.0,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 8.8,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:54734/clients/nouveau (mot entier, casse respectée).",
+      "duree": 16.4,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:54734/clients/nouveau (mot entier, casse respectée).",
+      "duree": 16.2,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 10.1,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator(\"table tbody tr, ul li, .client-row\").first to be visible",
+      "duree": 18.0,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "commande_confirmation",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "broken_test_code",
+      "detail": " la réponse de l'oracle « etat » est un objet, pas une liste : elle ne se compte pas en résultats. Pour compter une liste qu'il contient, utiliser « le champ \"<chemin>\" de l'oracle \"<requête>\" compte <n> élément(s) » ; pour une valeur, « le champ \"<chemin>\" de l'oracle \"<requête>\" vaut \"<valeur>\" ».",
+      "duree": 8.3,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "commande_persistance_serveur",
+      "variante": "etat_non_enregistre",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 7.7,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "connexion_refusee",
+      "variante": "login_accepte_tout",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Identifiant ou mot de passe incorrect. » n'est pas affiché sur http://127.0.0.1:54734/produits (mot entier, casse respectée).",
+      "duree": 15.5,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "connexion_valide",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 8.2,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 8.3,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 10,56 € » n'est pas affiché sur http://127.0.0.1:54734/panier (mot entier, casse respectée).",
+      "duree": 15.8,
+      "empreinte_ok": true,
+      "preuve": ""
+    }
+  ],
+  "anomalies": [],
+  "reparations": [],
+  "observations_reparees": [],
+  "observations_second_jeu": [
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine_second_jeu",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 5.5,
+      "empreinte_ok": true,
+      "preuve": "aucune des valeurs"
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine_second_jeu",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 7.1,
+      "empreinte_ok": true,
+      "preuve": "valeurs du second jeu"
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine_second_jeu",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 8.5,
+      "empreinte_ok": true,
+      "preuve": "aucune des valeurs"
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine_second_jeu",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 9.9,
+      "empreinte_ok": true,
+      "preuve": "valeurs du second jeu"
+    }
+  ],
+  "second_jeu_non_rejoues": []
+}
