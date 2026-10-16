@@ -21,6 +21,7 @@ from testpilot.generation.react_loop import run_loop
 from testpilot.generation.state import AgentState, GenerationResult
 from testpilot.store.repositories import ensure_default_module
 from testpilot.generation.tools import ToolContext
+from testpilot.parametres.ia_peut_agir import ia_peut_ecrire
 from testpilot.guardrails.cost_tracker import CostTracker
 from testpilot.llm.adapter import LLMAdapter
 
@@ -101,8 +102,9 @@ class GenerationAgent:
             generated_dir=config.GENERATED_DIR,
             connector=self.connector,
             reserved_steps=frozenset(s.label for s in shared_steps),
-            # Migration 45 (2026-09-16) : décision du PROJET, jamais un défaut du connecteur.
-            calibration_writes_enabled=bool((projet or {}).get("calibration_writes_enabled")),
+            # Migration 45 (2026-09-16) : décision du PROJET, jamais un défaut du connecteur ; pour Odoo, il doit AUSSI se
+            # déclarer instance de test (A45).
+            calibration_writes_enabled=ia_peut_ecrire(projet),
             qualification=qualification,
             project_id=(projet or {}).get("id"),
             # F26(b), migration 58 : signal déterministe pour `write_feature_file` — JAMAIS montré

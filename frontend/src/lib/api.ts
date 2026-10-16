@@ -207,14 +207,6 @@ export const api = {
     request<DonneesDeTest>(`/api/projects/${id}/donnees-de-test/jeux/${datasetId}/valeurs`, { method: 'PUT', body: JSON.stringify({ valeurs }) }),
   deleteTestDataset: (id: number | string, datasetId: number) =>
     request<void>(`/api/projects/${id}/donnees-de-test/jeux/${datasetId}`, { method: 'DELETE' }),
-  // ── Unités ajoutées par le projet (lot PT-03) : un nom et ses autres écritures ──
-  listProjectUnits: (id: number | string) => request<ProjectUnit[]>(`/api/projects/${id}/units`),
-  createProjectUnit: (id: number | string, payload: ProjectUnitInput) =>
-    request<ProjectUnit>(`/api/projects/${id}/units`, { method: 'POST', body: JSON.stringify(payload) }),
-  updateProjectUnit: (id: number | string, unitId: number, payload: ProjectUnitInput) =>
-    request<ProjectUnit>(`/api/projects/${id}/units/${unitId}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  deleteProjectUnit: (id: number | string, unitId: number) =>
-    request<void>(`/api/projects/${id}/units/${unitId}`, { method: 'DELETE' }),
   // ── Accès par projet — Admin seulement (migration 31, 2026-08-10) ──
   // Surcharge du rôle global : accès par défaut du projet (vide = rôle global) + exceptions
   // par compte. `no_access` rend le projet invisible/404 pour qui le porte.
@@ -469,7 +461,6 @@ export const api = {
   listSettings: () => request<SettingOut[]>('/api/settings'),
   listTimezoneOptions: () => request<TimezoneOption[]>('/api/settings/options/timezones'),
   // Lot PT-03 : monnaies et écritures de nombres qu'un projet peut déclarer (catalogue du serveur, jamais une seconde liste).
-  valeursDuProjetOptions: () => request<ValeursDuProjetOptions>('/api/settings/options/valeurs-du-projet'),
   getSecurityStatus: () => request<SecurityStatus>('/api/settings/security-status'),
   setSetting: (key: string, value: string) =>
     request<SettingOut>(`/api/settings/${key}`, { method: 'PATCH', body: JSON.stringify({ value }) }),
@@ -697,8 +688,6 @@ export interface Associations {
 export interface ApercuDonnees { jeu: string; texte: string; manques: string[]; valeurs: Record<string, { valeur: string; origine: string }> }
 export interface JeuDeDonnees { id: number; nom: string; est_defaut: boolean; valeurs: Record<string, string> }
 export interface DonneesDeTest { variables: VariableDeTest[]; jeux: JeuDeDonnees[] }
-export interface ProjectUnitInput { nom: string; ecritures: string[] }
-export interface ProjectUnit extends ProjectUnitInput { id: number }
 export interface ProjectAccount {
   id: number | null; label: string; username: string; business_role: string
   has_secret: boolean; principal: boolean
@@ -712,19 +701,15 @@ export interface ProjectSummary {
   // légitime quand l'application ne l'expose pas (migration 38), jamais une valeur à deviner.
   connector_version: string
   base_url: string; database: string; username: string
-  // Calibration en ÉCRITURE pendant la génération (migration 45, 2026-09-16) — éteinte par
-  // défaut : soumettre un vrai formulaire pourrait créer une donnée réelle. Le porteur du projet
-  // l'active explicitement s'il sait que l'application configurée le tolère. Disponible
-  // seulement pour un connecteur qui sait aussi supprimer ce qu'il crée (Odoo) — sans effet pour
-  // le connecteur générique, qui refuse toujours.
+  // « L'IA peut agir sur cette application » pendant la génération (migration 45) — coché par défaut depuis A43 (2026-10-16).
   calibration_writes_enabled: boolean
+  // A45 (migration 68) : un projet Odoo se déclare instance de test — sans elle, l'IA n'y écrit jamais, case cochée ou non.
+  instance_de_test?: boolean
   // D26 (migration 61) : adresse de remise à zéro du bac à sable. Avec la calibration en écriture, l'IA peut JOUER ses actions
   // pendant la génération ; l'application est remise à zéro avant et après chaque essai. '' = aucun essai.
   bac_a_sable_reset?: string
   // Un essai de l'IA a laissé l'application dans son état : ses exécutions sont retenues tant qu'elle n'est pas remise à zéro.
   bac_a_sable_non_remis?: boolean
-  // Lot PT-03 (migration 62) : comment le projet écrit ses nombres. '' = rien de déclaré. Aucune monnaie du projet (A38).
-  format_nombre?: string
   // Lot 07c : contexte navigateur FIGÉ (langue, fuseau, taille de fenêtre). '' = le défaut ; `browser_effectif` dit ce qui sera
   // réellement utilisé (calculé par le SERVEUR, jamais recalculé ici). Optionnels : une réponse ancienne n'en porte pas.
   browser_locale?: string; browser_timezone?: string; browser_viewport?: string
@@ -929,11 +914,10 @@ export interface ProjectInput {
   connector_type: string; connector_version: string
   base_url: string; database: string; username: string; password: string
   calibration_writes_enabled?: boolean
+  instance_de_test?: boolean
   bac_a_sable_reset?: string
   bac_a_sable_remis_a_zero?: boolean
   browser_locale?: string; browser_timezone?: string; browser_viewport?: string
-  // Lot PT-03 : écriture des nombres du projet. '' = rien de déclaré.
-  format_nombre?: string
   // Lot 07b-2 : `totp_secret`/`injected_session` en écriture seule, comme `password`.
   auth_strategie?: string; totp_secret?: string; injected_session?: string
 }
@@ -1160,7 +1144,6 @@ export interface SettingOut {
   secret: boolean
 }
 export interface TimezoneOption { value: string; label: string }
-export interface ValeursDuProjetOptions { formats_nombre: { cle: string; libelle: string }[] }
 export interface SecurityStatus {
   password_min_length: number; password_hash: string; session_idle_minutes: number; session_max_hours: number
   cookie_http_only: boolean; cookie_same_site: string; cookie_secure: boolean

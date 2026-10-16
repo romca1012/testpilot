@@ -64,7 +64,6 @@ const stubs = {
   ConfirmDialog: { props: ['open'], emits: ['confirm', 'cancel'],
                    template: '<div v-if="open" data-testid="confirmation"><button data-testid="quitter" @click="$emit(\'confirm\')">q</button></div>' },
   OngletConfigurations: onglet('configurations'), OngletComptes: onglet('comptes'), OngletEtatDeDepart: onglet('etat-de-depart'),
-  OngletValeursAttendues: onglet('valeurs-attendues'),
   TableauDonneesDeTest: onglet('donnees-de-test'),
 }
 
@@ -136,28 +135,19 @@ describe('Fenêtre « Identité et application » — organisation allumée (PT-
       name: 'Portail', connector_type: 'web', connector_version: '', base_url: 'https://app.example', database: '' })
   })
 
-  it('falsifiable : dit quand le changement d’application a retiré l’autorisation donnée à l’IA (décision A21)', async () => {
+  it('décision A43 : changer l’application n’annonce plus de retrait d’autorisation (A21 retirée)', async () => {
     actifs.value = true
     listAdminProjects.mockResolvedValue([{ ...PROJET, calibration_writes_enabled: true }])
-    // Le serveur retire l'autorisation quand l'adresse change ; il la garde sinon.
-    updateProject.mockResolvedValueOnce({ ...PROJET, base_url: 'https://autre.example', calibration_writes_enabled: false })
+    updateProject.mockResolvedValueOnce({ ...PROJET, base_url: 'https://autre.example', calibration_writes_enabled: true })
     const w = await ouvrirLaFenetre()
     await w.get('#form-edit-project').trigger('submit')
     await flushPromises()
 
-    expect(w.get('[data-testid="information"]').text()).toContain("l'IA ne peut plus y agir")
-    expect(w.get('[data-testid="information"]').text()).toContain('État de départ')
-  })
-
-  it('ne dit rien quand l’autorisation n’a pas changé', async () => {
-    actifs.value = true
-    listAdminProjects.mockResolvedValue([{ ...PROJET, calibration_writes_enabled: true }])
-    updateProject.mockResolvedValueOnce({ ...PROJET, calibration_writes_enabled: true })
-    const w = await ouvrirLaFenetre()
-    await w.get('#form-edit-project').trigger('submit')
-    await flushPromises()
-
-    expect(w.find('[data-testid="information"]').exists()).toBe(false)
+    // L'enregistrement a bien eu lieu (c'est après lui que l'ancien message apparaissait) : l'absence du message prouve quelque chose.
+    expect(updateProject).toHaveBeenCalledTimes(1)
+    expect(updateProject.mock.calls[0][1]).toMatchObject({ base_url: expect.any(String) })
+    expect(w.text()).not.toContain("l'IA ne peut plus y agir")
+    expect(w.text()).not.toContain('ne peut plus')
   })
 
   it('organisation éteinte : la fenêtre est celle d’avant, avec toutes ses rubriques', async () => {
@@ -178,11 +168,18 @@ describe('Page « Paramètres de test » d\'un projet', () => {
     return w
   }
 
+  it('falsifiable : l’onglet « Valeurs attendues » est retiré (A44) ; son ancienne adresse retombe sur Configurations', async () => {
+    const w = await ouvrir({ pid: '4', onglet: 'valeurs-attendues' })
+
+    expect(w.find('[data-testid="onglet-valeurs-attendues"]').exists()).toBe(false)
+    expect(w.findAll('[data-testid^="contenu-"]').map((c) => c.attributes('data-testid'))).toEqual(['contenu-configurations'])
+  })
+
   it('montre le projet et ses onglets, chacun avec sa propre adresse', async () => {
     const w = await ouvrir({ pid: '4', onglet: 'comptes' })
 
     expect(w.get('[data-testid="nom-du-projet"]').text()).toBe('Portail')
-    for (const cle of ['configurations', 'comptes', 'donnees-de-test', 'etat-de-depart', 'valeurs-attendues']) {
+    for (const cle of ['configurations', 'comptes', 'donnees-de-test', 'etat-de-depart']) {
       expect(JSON.parse(w.get(`[data-testid="onglet-${cle}"]`).attributes('data-vers')!))
         .toEqual({ name: 'project-test-params', params: { pid: '4', onglet: cle } })
     }
@@ -191,8 +188,8 @@ describe('Page « Paramètres de test » d\'un projet', () => {
     expect(w.find('[data-testid="contenu-configurations"]').exists()).toBe(false)
   })
 
-  it('falsifiable : chaque onglet ouvre SON contenu, et lui seul (PT-03 : « Valeurs attendues »)', async () => {
-    for (const cle of ['configurations', 'comptes', 'donnees-de-test', 'etat-de-depart', 'valeurs-attendues']) {
+  it('falsifiable : chaque onglet ouvre SON contenu, et lui seul', async () => {
+    for (const cle of ['configurations', 'comptes', 'donnees-de-test', 'etat-de-depart']) {
       const w = await ouvrir({ pid: '4', onglet: cle })
 
       expect(w.findAll('[data-testid^="contenu-"]').map((c) => c.attributes('data-testid'))).toEqual([`contenu-${cle}`])

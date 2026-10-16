@@ -9,7 +9,8 @@ l'écriture universellement sûre, mais de la rendre **décidée explicitement p
 projet**, et bornée à un connecteur qui sait aussi ANNULER ce qu'il crée (Odoo, RPC `delete`) —
 jamais le connecteur générique, qui n'a aucune garantie de suppression et refuse explicitement.
 
-Éteinte par défaut sur tout projet (`project.calibration_writes_enabled`, migration 45).
+Allumée par défaut depuis A43 (`project.calibration_writes_enabled`, migration 67) ; pour Odoo, le projet doit
+aussi se déclarer instance de test (A45, `tests/test_ia_peut_agir.py`).
 """
 
 from __future__ import annotations
@@ -243,7 +244,9 @@ def test_odoo_attempt_form_submission_sans_modele_ne_nettoie_pas():
 
     resultat = conn.attempt_form_submission("/nouveau-ticket", {"name": "x"})  # pas de model
 
-    assert resultat["cleaned_up"] is False
+    # Décision A45 (2026-10-16) : la règle a changé — sans modèle, la soumission est REFUSÉE (rien n'est créé), au lieu
+    # d'être faite sans nettoyage. Voir `tests/test_ia_peut_agir.py`.
+    assert resultat["submitted"] is False and resultat["cleaned_up"] is False
 
 
 def test_odoo_attempt_form_submission_id_non_reconnu_ne_nettoie_pas():
@@ -280,7 +283,7 @@ def test_odoo_attempt_form_submission_signale_un_echec_de_nettoyage_sans_lever()
 def test_odoo_attempt_form_submission_ne_leve_jamais():
     conn = OdooConnector("http://localhost:9999", "db", "admin", "admin")
     conn._run_in_browser = lambda fn, *a: (_ for _ in ()).throw(RuntimeError("navigateur mort"))
-    resultat = conn.attempt_form_submission("/x", {"name": "y"})
+    resultat = conn.attempt_form_submission("/x", {"name": "y"}, model="helpdesk.ticket")  # A45 : modèle requis
     assert resultat["submitted"] is False
     assert "navigateur mort" in resultat["error"]
 
@@ -379,9 +382,10 @@ def conn(tmp_path, monkeypatch):
     c.close()
 
 
-def test_calibration_writes_enabled_est_eteint_par_defaut(conn):
+def test_calibration_writes_enabled_est_allume_par_defaut(conn):
+    """Décision A43 (porteur, 2026-10-16) : allumé par défaut — TestPilot vise des environnements de test (avant : éteint)."""
     pid = ProjectRepo(conn).create(name="P")
-    assert ProjectRepo(conn).get(pid)["calibration_writes_enabled"] in (0, False)
+    assert ProjectRepo(conn).get(pid)["calibration_writes_enabled"] in (1, True)
 
 
 def test_set_calibration_writes_enabled(conn):

@@ -86,8 +86,8 @@ class Connector(ABC):
         qui s'affiche VRAIMENT, et NETTOIE ce qui a été créé si le connecteur en a les moyens —
         {submitted, url, message, cleaned_up, error}.
 
-        Réservée aux projets qui ont explicitement autorisé la calibration en écriture
-        (`project.calibration_writes_enabled`, migration 45, 2026-09-16) : vérifié par
+        Réservée aux projets où l'IA peut agir et qui, hors web, se déclarent instance de test
+        (`parametres.ia_peut_agir`, décisions A43 et A45 du 2026-10-16) : vérifié par
         l'appelant (le tool `attempt_form_submission`), pas ici — un connecteur ne connaît pas
         les réglages du projet. `model`, quand fourni, identifie ce qui a été créé pour le
         supprimer (RPC) ; sans capacité de suppression garantie, un connecteur DOIT refuser

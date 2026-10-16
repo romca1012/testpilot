@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import parse_qsl, unquote, urljoin, urlparse
 
 from testpilot.guardrails import bac_a_sable
+from testpilot.parametres.ia_peut_agir import ia_peut_ecrire
 
 if TYPE_CHECKING:
     from testpilot.generation.tools import ToolContext, ToolOutcome
@@ -633,7 +634,7 @@ def construire(projet: dict | None, dry_runner, connector=None) -> EssaiBacASabl
     from testpilot.execution.behave_result import SANS_REPLI_ENV
 
     projet = projet or {}
-    if not projet.get("calibration_writes_enabled") or (projet.get("connector_type") or "").lower() != "web":
+    if not ia_peut_ecrire(projet) or (projet.get("connector_type") or "").lower() != "web":
         return None
     try:
         url = adresse_declaree(str(projet.get("base_url") or ""), str(projet.get("bac_a_sable_reset") or ""))

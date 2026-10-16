@@ -296,8 +296,8 @@ def attempt_login(ctx: "ToolContext", username: str, password: str) -> "ToolOutc
 
 def attempt_form_submission(ctx: "ToolContext", page_url: str, field_values: dict,
                             model: str = "") -> "ToolOutcome":
-    """Calibration en écriture (2026-09-16) : réservée aux projets qui l'ont EXPLICITEMENT
-    autorisée (`project.calibration_writes_enabled`) — jamais activée par défaut, un formulaire
+    """Calibration en écriture (2026-09-16) : réservée aux projets où l'IA peut agir (A43) et qui,
+    pour Odoo, se déclarent instance de test (A45, `parametres.ia_peut_agir`) — un formulaire
     quelconque pourrait créer une vraie donnée. Refusée d'elle-même pour un connecteur qui ne
     sait pas garantir un nettoyage après coup (le connecteur générique lève `NotImplementedError`
     — seul Odoo, via RPC `delete`, l'implémente à ce jour)."""

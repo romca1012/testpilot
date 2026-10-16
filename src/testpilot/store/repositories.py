@@ -117,18 +117,21 @@ class ProjectRepo:
                owner_id: int | None = None, browser_locale: str = "", browser_timezone: str = "",
                browser_viewport: str = "", auth_strategie: str = "formulaire", totp_secret: str = "",
                injected_session: str = "", profil_instance: str = "", oracle_type: str = "",
-               oracle_base_url: str = "", oracle_auth: str = "", oracle_queries: str = "[]") -> int:
+               oracle_base_url: str = "", oracle_auth: str = "", oracle_queries: str = "[]",
+               calibration_writes_enabled: bool = True) -> int:
+        """`calibration_writes_enabled` : « L'IA peut agir sur cette application » — allumé par défaut (décision A43)."""
         self.ensure_name_free(name)
         cur = self.conn.execute(
             "INSERT INTO project (name, description, connector_type, connector_version,"
             " base_url, database, username, password, created_at, browser_locale, browser_timezone,"
             " browser_viewport, auth_strategie, totp_secret, injected_session, profil_instance,"
-            " oracle_type, oracle_base_url, oracle_auth, oracle_queries) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " oracle_type, oracle_base_url, oracle_auth, oracle_queries, calibration_writes_enabled)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (name, description, connector_type, connector_version, base_url, database, username,
              secrets_mod.chiffrer(password), now_iso(), browser_locale, browser_timezone, browser_viewport,
              auth_strategie, secrets_mod.chiffrer(totp_secret), secrets_mod.chiffrer(injected_session),
              profil_instance, oracle_type, oracle_base_url, secrets_mod.chiffrer(oracle_auth),
-             oracle_queries or "[]"))
+             oracle_queries or "[]", 1 if calibration_writes_enabled else 0))
         self.conn.commit()
         project_id = int(cur.lastrowid)
         if private:
@@ -236,8 +239,6 @@ class ProjectRepo:
     # taille de fenêtre du navigateur qui la pilote) — `None` = n'y touche pas, `""` = revenir au défaut.
     _CONNEXION = ("connector_type", "connector_version", "base_url", "database", "username",
                   "browser_locale", "browser_timezone", "browser_viewport", "auth_strategie",
-                  # Lot PT-03 : écriture des nombres du projet — même règle (`None` = n'y touche pas, `""` = rien de déclaré).
-                  "format_nombre",
                   # Lot 06 (D6) : le profil d'instance n'est pas un secret (comme `connector_version`).
                   "profil_instance",
                   # Lot 07e (D7) : `oracle_type`/`oracle_base_url`/`oracle_queries` ne sont PAS des
@@ -278,11 +279,17 @@ class ProjectRepo:
         À part de `update_connection` : ce n'est pas une information de connexion, c'est une
         décision de POLITIQUE — le porteur du projet accepte, ou pas, qu'un formulaire réel soit
         soumis (et nettoyé, cf. `OdooConnector.attempt_form_submission`) pendant la génération.
-        Éteint par défaut (migration 45), jamais activé implicitement.
+        Allumé par défaut depuis A43 (migration 67) ; pour Odoo, `instance_de_test` doit l'être aussi (A45).
         """
         self.conn.execute(
             "UPDATE project SET calibration_writes_enabled=? WHERE id=?",
             (1 if enabled else 0, project_id))
+        self.conn.commit()
+
+    def set_instance_de_test(self, project_id: int, oui: bool) -> None:
+        """Le projet se déclare (ou plus) instance de test (migration 68, A45). Décision de POLITIQUE du porteur, comme
+        l'autorisation d'agir : jamais posée implicitement."""
+        self.conn.execute("UPDATE project SET instance_de_test=? WHERE id=?", (1 if oui else 0, project_id))
         self.conn.commit()
 
     def set_bac_a_sable_reset(self, project_id: int, adresse: str) -> None:

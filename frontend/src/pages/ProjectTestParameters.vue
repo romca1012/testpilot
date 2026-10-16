@@ -16,14 +16,12 @@ import OngletConfigurations from '../components/parametres/OngletConfigurations.
 import OngletComptes from '../components/parametres/OngletComptes.vue'
 import OngletEtatDeDepart from '../components/parametres/OngletEtatDeDepart.vue'
 import TableauDonneesDeTest from '../components/parametres/TableauDonneesDeTest.vue'
-import OngletValeursAttendues from '../components/parametres/OngletValeursAttendues.vue'
 
 const ONGLETS = [
   { cle: 'configurations', libelle: 'Configurations' },
   { cle: 'comptes', libelle: 'Comptes' },
   { cle: 'donnees-de-test', libelle: 'Données de test' },
   { cle: 'etat-de-depart', libelle: 'État de départ' },
-  { cle: 'valeurs-attendues', libelle: 'Valeurs attendues' },
 ] as const
 type CleOnglet = typeof ONGLETS[number]['cle']
 
@@ -119,10 +117,8 @@ onMounted(charger)
                        @enregistre="projet = $event" />
         <TableauDonneesDeTest v-else-if="onglet === 'donnees-de-test'" :projet="projet"
                               :peut-modifier="peutModifierDonnees" :peut-supprimer="peutRegler" @modifie="modifie = $event" />
-        <OngletEtatDeDepart v-else-if="onglet === 'etat-de-depart'" :projet="projet" :peut-regler="peutRegler"
+        <OngletEtatDeDepart v-else :projet="projet" :peut-regler="peutRegler"
                             @enregistre="projet = $event" @modifie="modifie = $event" />
-        <OngletValeursAttendues v-else :projet="projet" :peut-regler="peutRegler"
-                                @enregistre="projet = $event" @modifie="modifie = $event" />
       </div>
     </template>
 
