@@ -336,14 +336,15 @@ octet pour octet (garde : test d'identité, interrupteurs éteints).
 | E1 — Finir et corriger | PT-02d enregistré ; monnaie du projet retirée (A38) ; « associer d'un clic » (PT-02e, sans IA) | — | suites complètes | 0 |
 | E2 — Le cas dit ses données | PT-02f : l'IA propose `{{nom}}` dans la description des cas, la personne valide ; contrôle « le technique reprend exactement les variables du cas » | même lot : la génération du technique lit les variables du cas validé | banc : cas qui emploient des données | 0 (code) |
 | E3 — Mesure M1 | interrupteurs de PT-02d, PT-02f et PT-03 | — | campagne appariée éteint / allumé, cas avec et sans données | ≈ 8 $ |
-| E4 — Ce que l'IA devait deviner | PT-04a : plusieurs environnements (protection de la production évaluée pour chacun) — sans IA | VH-08 : l'agent voit un exemple de réponse de chaque requête d'oracle ; restes VH-02 et VH-06 (route inconnue = refus) | campagne M2 | ≈ 6 $ |
+| E4 — Ce que l'IA devait deviner | PT-04a : plusieurs environnements (protection de la production évaluée pour chacun) — sans IA | VH-08 : l'agent voit la FORME de la réponse de chaque requête d'oracle (objet ou liste, clés, types, un exemple aux valeurs masquées — relevée par un appel en lecture à l'exploration) ; restes VH-02 et VH-06 (route inconnue = refus) | campagne M2 | ≈ 6 $ |
 | E5 — Comptes et état de départ pour tous | PT-04b : compte choisi au lancement ; PT-04d : remise à zéro pour toutes les applications | l'agent reçoit la cartographie du compte visé ; l'essai « exécuter puis écrire » devient possible hors connecteur web | campagne M3 (dont Odoo) | ≈ 8 $ |
 | E6 — Réparer sans tricher | — | VH-09 : réparation de l'adressage seulement, un test réparé doit refaire échouer les défauts qu'il détectait | régressions injectées | faible |
 | E7 — Réutiliser, calculer | PT-05 bibliothèque commune ; PT-06 valeur attendue calculée | l'agent emploie « vaut le résultat calculé » sur des spécifications sans résultat écrit | campagne M4 (erreurs de calcul introduites exprès) | ≈ 8 $ |
-| E8 — La preuve | tous les paramètres allumés qui ont passé leur mesure | VH-10 : application jamais vue (jeu mis de côté), Odoo réel | campagne de clôture | ≈ 15 $ |
-| E9 — Clôture | PT-07 : ancien écran et interrupteurs retirés, guide utilisateur | — | suites complètes, vérification à l'écran | 0 |
+| E8 — L'IA ne part plus à l'aveugle (§9.6) | AV-4 : l'état de départ de l'application, déclaré dans les paramètres de test | AV-1 à AV-3, AV-5 à AV-8 : tout ce que l'exploration a déjà relevé est MONTRÉ à l'IA avant qu'elle écrive | campagne M5 appariée | ≈ 8 $ |
+| E9 — La preuve | tous les paramètres allumés qui ont passé leur mesure | VH-10 : application jamais vue (jeu mis de côté), Odoo réel | campagne de clôture | ≈ 15 $ |
+| E10 — Clôture | PT-07 : ancien écran et interrupteurs retirés, guide utilisateur | — | suites complètes, vérification à l'écran | 0 |
 
-Total des mesures avec IA : **≈ 45 $**, chaque campagne annoncée et validée par le porteur avant d'être lancée, avec un
+Total des mesures avec IA : **≈ 53 $**, chaque campagne annoncée et validée par le porteur avant d'être lancée, avec un
 plafond bloquant. Les étapes sans IA (E1, le code de E2, PT-04a, PT-05) avancent sans attendre les campagnes.
 
 **À mesurer en E3 (limites connues de PT-02f, revue du 2026-10-15)** : le contrôle « le test reprend les variables du cas »
@@ -366,7 +367,8 @@ Second jeu (porteur, 2026-10-16) : chaque test généré qui écrit une variable
 | E4 | Jouer une campagne sur la recette et sur la préproduction ; des tests générés plus souvent justes du premier coup |
 | E5 | Jouer un même test sous plusieurs rôles ; préparer l'application avant chaque test, quelle que soit l'application |
 | E7 | Vérifier un montant sans l'avoir recopié de la spécification ; reprendre les réglages d'un autre projet |
-| E8 | Des chiffres mesurés sur une application jamais vue, publiables à un client |
+| E8 | Des tests techniques justes du premier coup plus souvent : l'IA écrit avec ce qu'on a observé de l'application, pas avec ce qu'elle suppose |
+| E9 | Des chiffres mesurés sur une application jamais vue, publiables à un client |
 
 ### 9.5 Décisions à obtenir
 
@@ -376,7 +378,50 @@ Second jeu (porteur, 2026-10-16) : chaque test généré qui écrit une variable
 - **A42** (écart entre le cas et son test après une modification à la main : exécution bloquée) : validée le 2026-10-15.
 - **Budget de M1** (≈ 8 $, plafond 9 $) : accordé le 2026-10-15 ; le montant est rappelé au porteur juste avant le départ de la campagne.
 - Restent ouvertes, à leur étape : V16 (exploration par compte, E5), V5 et V6 (bibliothèque commune, E7), V8 et V10 (valeur
-  calculée, E7).
+  calculée, E7), V-AV1, V-AV2 et V-AV3 (§9.6, E8).
+
+### 9.6 L'IA ne part plus à l'aveugle (demande du porteur, 2026-10-16)
+
+**Le but.** Un test technique juste du PREMIER coup : exécutable sans rejeu, sans réparation, sans qu'une personne ait à
+relire le script. Mesuré au banc : un test est « juste du premier coup » s'il sort conforme sur l'application saine et
+non conforme sous chaque défaut, sans réparation. Aujourd'hui (`base-7`) : 23 essais sur 30. **Objectif proposé (V-AV3) :
+27 sur 30, toujours zéro faux vert.**
+
+**Le principe.** L'exploration de l'application mesure déjà, page par page, presque tout ce dont l'IA a besoin ; aujourd'hui
+une grande partie ne sert qu'à REFUSER après coup ce qu'elle a inventé. On le lui MONTRE avant qu'elle écrive. Une règle ne
+change pas : ce qui est OBSERVÉ dans l'application sert à savoir OÙ aller et QUOI toucher ; ce qu'un test VÉRIFIE (message de
+résultat, montant, valeur attendue) vient toujours du cas validé par une personne — jamais de ce que l'application affiche
+aujourd'hui, sinon un test recopierait un défaut et le déclarerait conforme (D26, condition 4).
+
+**L'inventaire (2026-10-16).** Ce que l'IA reçoit aujourd'hui, ce qu'elle peut aller chercher, et ce qui lui manque, croisé
+avec les causes d'échec mesurées de `base-1` à `base-7`. Les manques, et ce qui permet de les combler :
+
+| Lot | Manque | Mesuré | Déjà là, réutilisable | À construire |
+|---|---|---|---|---|
+| VH-08 (E4) | La FORME de la réponse de l'oracle : l'agent n'en connaît que le nom | 4 des 7 échecs de `base-7` | requêtes déclarées dans le projet | un appel en lecture de chaque requête à l'exploration ; la structure (objet ou liste, clés, types) et un exemple aux valeurs masquées dans le prompt |
+| AV-1 | Un projet web est annoncé « Type de système : odoo » ; l'analyse de la spécification lui suggère des modèles Odoo ; le prompt système renvoie à une section « Connecteur actif » vide par défaut | non mesuré, erreur franche (vérifiée dans le code) | le type de connecteur du projet | le passer à l'analyse ; toujours fournir la section du connecteur (ou retirer ses renvois) |
+| AV-2 | Le NOM EXACT des champs (nom technique et libellé visible, type, obligatoire), boutons et liens de chaque page : relevés par l'exploration, ils ne servent qu'au refus `LITTERAL_NON_OBSERVE` | 8 à 12 refus par campagne (tours et coût en plus) ; `base-3` : champs inventés ×4 | la cartographie du projet (`data/domain/projet-<id>.json` : champs, actions, liens par page) ; les formats et contraintes observés | une section « pages observées » : le détail complet des pages que le cas vise, un index court des autres ; les contraintes de TOUS les champs de ces pages, pas seulement des obligatoires |
+| AV-3 | Le texte affiché non cliquable : titres, en-têtes de tableau, libellé à côté d'une valeur (« Numéro de commande ») | `base-6`, `base-7` : 2 échecs, 1 faux rouge | — | l'exploration relève ces libellés de STRUCTURE (titres, en-têtes, couples libellé–valeur) ; les messages de RÉSULTAT restent pris dans le cas (règle ci-dessus) |
+| AV-4 | L'état de départ : quelles données existent déjà (clients, produits, commandes) | indirect : enregistrement existant réutilisé (F26) | la forme de l'oracle (VH-08) ; le nombre de lignes des listes vues à l'exploration | une description de l'état de départ — **source à décider (V-AV1)** : déclarée par une personne dans les paramètres de test (recommandé), ou relevée automatiquement, ou les deux |
+| AV-5 | La langue de l'interface | menu cherché en anglais sur une interface française (G7) ; message deviné (cas 97) | la langue déclarée du projet (`browser_locale`) | une ligne dans le prompt |
+| AV-6 | Les règles des applications web (compte « principal », pas d'appel direct au serveur, regarder la page d'arrivée) | `base-4` : 2 tests bloqués sur un compte inventé | écrites, derrière `TESTPILOT_REGLES_CONNECTEUR` (éteint) | les mesurer en M5 pour décider de les allumer ; lister aussi les attributs `context.*` du harnais (F20 : 1 sur 15) |
+| AV-7 | Des générations qui n'aboutissent pas | 5 sur 5 sur le MÊME cas (`panier_remise_arrondi`) en `base-5`, `base-6`, `base-7` : pas un hasard | les rapports et traces des campagnes | instruire la cause sur les traces, corriger, ajouter le cas au contrôle |
+| AV-8 | L'IA qui rédige les cas ne voit rien de l'application : elle écrit les étapes avec d'autres mots que ceux des écrans | non mesuré (le banc ne mesure pas cette passe) | la cartographie (pages, menus, libellés des boutons) | lui montrer les noms des pages et des actions pour qu'elle les emploie — **à décider (V-AV2)** : les cas restent écrits pour des personnes |
+| PT-04b (E5) | La cartographie du compte visé | non mesuré (un seul compte au banc) | déjà prévu | — |
+| PT-06 (E7) | Les montants calculés attendus | non mesuré | déjà prévu | — |
+
+**Les biais du banc à corriger dans la mesure M5** : le mode qualification prive l'agent de `query_data`, `attempt_login` et
+`attempt_form_submission`, et le banc ne fournit pas les routes visées (la section des champs requis n'y apparaît jamais) ;
+M5 mesure l'agent dans les conditions de la production, et compte à part la passe qui rédige les cas (AV-8).
+
+**L'ordre.** AV-1 (une erreur, petite) ; AV-2 et AV-3 (le plus gros apport attendu, avec VH-08 déjà en E4) ; AV-5 ; AV-4
+(après V-AV1) ; AV-6 ; AV-7 ; AV-8 (après V-AV2). Chaque lot derrière un interrupteur éteint, relu, testé ; un projet sans
+cartographie reçoit le prompt d'avant, octet pour octet. Puis la mesure M5, appariée éteint / allumé (≈ 8 $, annoncée avant),
+qui décide de l'allumage avec la même règle que M1 : zéro faux vert, au moins autant de tests justes du premier coup, coût
+par cas sous 1 €.
+
+**Décisions à obtenir pour E8** : V-AV1 (source de l'état de départ), V-AV2 (la rédaction des cas emploie les mots des
+écrans), V-AV3 (objectif : 27 tests justes du premier coup sur 30).
 
 ## 8. Suivi
 
