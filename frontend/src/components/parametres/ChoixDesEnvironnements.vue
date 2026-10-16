@@ -4,12 +4,12 @@
 //
 // Rien n'est proposé à un projet qui n'a que son environnement par défaut : le formulaire est alors celui d'avant. Le défaut
 // est coché d'emblée. Un environnement « Production » est montré, jamais cochable (A48) ; le serveur le refuse aussi.
-// Plusieurs environnements cochés : une exécution par environnement (et par jeu), regroupées dans un plan. Quand le bloc
-// des jeux est affiché (`jeux` > 0), c'est lui qui annonce le nombre d'exécutions.
+// Plusieurs environnements cochés : une exécution par environnement, regroupées dans un plan ; les lignes de données de test
+// sont des itérations de chacune (A52). Quand le bloc des jeux est affiché (`jeux` > 0), c'est lui qui annonce le décompte.
 import { computed, onMounted, ref, watchEffect } from 'vue'
 import { api, type Environnement } from '../../lib/api'
 
-const EXECUTIONS_PAR_LANCEMENT_MAX = 50   // le serveur applique la même borne (jeux × environnements)
+const EXECUTIONS_PAR_LANCEMENT_MAX = 20   // le serveur applique la même borne (environnements par lancement)
 
 const props = defineProps<{ pid: string; masque?: boolean; jeux?: number }>()
 const coches = defineModel<number[]>({ required: true })
@@ -17,7 +17,7 @@ const valide = defineModel<boolean>('valide', { default: true })
 
 const environnements = ref<Environnement[]>([])
 const actif = computed(() => environnements.value.length > 1)
-const nombreDExecutions = computed(() => Math.max(1, props.jeux ?? 0) * Math.max(1, coches.value.length))
+const nombreDExecutions = computed(() => Math.max(1, coches.value.length))
 watchEffect(() => {
   valide.value = !actif.value || (coches.value.length >= 1 && nombreDExecutions.value <= EXECUTIONS_PAR_LANCEMENT_MAX)
 })

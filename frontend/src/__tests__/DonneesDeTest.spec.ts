@@ -101,12 +101,14 @@ beforeEach(() => {
 })
 
 describe('Données de test — le tableau', () => {
-  it('montre les variables entre doubles accolades et le jeu « Par défaut » en tête', async () => {
+  // A54 (2026-10-16, changement délibéré) : comme le Data Table — les variables en colonnes, une LIGNE par jeu.
+  it('montre les variables en colonnes et le jeu « Par défaut » en première ligne', async () => {
     const w = await ouvrir()
 
     expect(getTestData).toHaveBeenCalledWith(4)
-    expect(w.findAll('[data-testid="variable"] th').map((c) => c.text())).toEqual(['{{client}}', '{{ville}}'])
-    expect(w.findAll('thead th').slice(1, 3).map((c) => c.text())).toEqual([expect.stringMatching(/^Par défaut$/), expect.stringMatching(/^Grosse commande/)])
+    expect(w.findAll('[data-testid="variable"]').map((c) => c.text())).toEqual([
+      expect.stringMatching(/^\{\{client\}\}/), expect.stringMatching(/^\{\{ville\}\}/)])
+    expect(w.findAll('tbody th').map((c) => c.text())).toEqual([expect.stringMatching(/^Par défaut$/), expect.stringMatching(/^Grosse commande/)])
     expect((champ(w, 10, 2).element as HTMLInputElement).value).toBe('Lyon')
   })
 

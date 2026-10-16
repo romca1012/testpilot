@@ -77,8 +77,8 @@ describe('SchedulesList — jeux de données (PT-02b)', () => {
     expect((w.get('[data-testid="jeu-10"]').element as HTMLInputElement).checked).toBe(true)
     await w.get('[data-testid="jeu-11"]').setValue(true)
 
-    expect(w.get('[data-testid="nombre-executions"]').text().replace(/\s+/g, ' '))
-      .toBe('2 exécutions : 2 tests dans la première, 1 avec variables dans les autres')
+    // A52 : une exécution, une itération par ligne (changement délibéré : avant, une exécution par jeu).
+    expect(w.get('[data-testid="nombre-executions"]').text()).toBe('1 exécution, 2 itérations')
     await creer(w)
     expect(createSchedule.mock.calls[0][1]).toMatchObject({ dataset_ids: [10, 11] })
   })

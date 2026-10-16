@@ -2,9 +2,9 @@
 
 Ce que ces tests gardent :
 1. une planification sans jeu se déclenche comme avant (une exécution, aucun jeu posé) ;
-2. plusieurs jeux : à chaque déclenchement, une exécution PAR jeu regroupées dans un plan, toutes lancées ; la première
-   joue tous les tests, les autres seulement ceux qui écrivent des variables (A35) ; un jeu sans test à variables ne
-   laisse pas d'exécution vide derrière lui ;
+2. plusieurs jeux : à chaque déclenchement, UNE exécution qui les joue en itérations (A52, 2026-10-16 — changement
+   délibéré : avant, une exécution par jeu dans un plan) ; plusieurs ENVIRONNEMENTS : une exécution chacun, dans un plan,
+   toutes lancées — une qui ne part pas reste visible, et la planification n'est pas relancée ;
 3. un seul jeu mis à la corbeille depuis : RIEN n'est lancé (décision du porteur, A36) — jamais le jeu « Par défaut » ni
    les autres jeux à la place ; une première exécution qui ne part pas ne laisse aucun brouillon ;
 4. à la création : mêmes jeux admis qu'à la main (du projet, vivants, 50 au plus).
@@ -93,30 +93,18 @@ def test_un_jeu_une_execution_qui_le_porte(conn):
     assert (run["dataset_id"], run["plan_id"], run["seulement_variables"]) == (jeux["Grosse commande"], None, 0)
 
 
-def test_falsifiable_plusieurs_jeux_une_execution_par_jeu_toutes_lancees(conn):
+def test_falsifiable_plusieurs_jeux_une_seule_execution_lancee(conn):
+    import json
+
     pid, avec, sans, jeux = _projet(conn, "Grosse commande")
     _planifier(conn, pid, [jeux["Grosse commande"], jeux["Par défaut"]])
 
     [premier] = scheduler_service.tick(conn, now=MAINTENANT)
 
-    plan_id = RunRepo(conn).get(premier)["plan_id"]
-    runs = {r["name"]: r for r in PlanRepo(conn).runs_of_plan(plan_id)}
-    assert set(runs) == {"Nocturne — 2026-10-14 — Par défaut", "Nocturne — 2026-10-14 — Grosse commande"}
-    assert runs["Nocturne — 2026-10-14 — Par défaut"]["id"] == premier, "« Par défaut » en tête, même demandé en second"
-    assert {r["status"] for r in runs.values()} == {"running"}
+    run = RunRepo(conn).get(premier)
+    assert run["plan_id"] is None and run["status"] == "running" and run["name"] == "Nocturne — 2026-10-14"
+    assert json.loads(run["dataset_ids"]) == [jeux["Par défaut"], jeux["Grosse commande"]], "« Par défaut » en tête"
     assert RunRepo(conn).case_ids(premier) == sorted([avec, sans])
-    assert RunRepo(conn).case_ids(runs["Nocturne — 2026-10-14 — Grosse commande"]["id"]) == [avec], "A35"
-
-
-def test_falsifiable_un_jeu_sans_test_a_variables_ne_laisse_pas_d_execution_vide(conn):
-    pid, avec, sans, jeux = _projet(conn, "Grosse commande", avec_variables=False)
-    _planifier(conn, pid, [jeux["Par défaut"], jeux["Grosse commande"]])
-
-    [premier] = scheduler_service.tick(conn, now=MAINTENANT)
-
-    runs = PlanRepo(conn).runs_of_plan(RunRepo(conn).get(premier)["plan_id"])
-    assert [r["id"] for r in runs] == [premier]
-    assert RunRepo(conn).get(premier)["status"] == "running"
 
 
 def test_falsifiable_un_seul_jeu_a_la_corbeille_rien_n_est_lance(conn):
@@ -209,33 +197,47 @@ def test_un_brouillon_intact_est_supprime(conn):
     assert RunRepo(conn).get(run_id) is None
 
 
+def _deux_environnements(conn, pid: int) -> list[int]:
+    from testpilot.store.repositories import ProjectEnvironmentRepo
+    eid = ProjectEnvironmentRepo(conn).creer(pid, {"nom": "Préproduction", "base_url": "http://y", "connector_version": "",
+                                                   "database": "db", "oracle_base_url": "", "nature": "test"})
+    return [0, eid]
+
+
 def test_falsifiable_une_suivante_qui_ne_part_pas_reste_dans_le_plan_les_autres_continuent(conn, monkeypatch):
-    """Un échec autre que « rien à jouer » : le brouillon reste visible dans le plan, c'est le signal qu'un jeu n'a pas été
-    joué ; les autres jeux partent quand même."""
-    pid, avec, sans, jeux = _projet(conn, "Grosse commande", "Export")
-    _planifier(conn, pid, [jeux["Par défaut"], jeux["Grosse commande"], jeux["Export"]])
+    """Plusieurs environnements (PT-04a) : un échec sur l'un laisse son brouillon visible dans le plan — c'est le signal
+    qu'il n'a pas été joué ; les autres partent quand même."""
+    pid, avec, sans, jeux = _projet(conn)
+    sid = _planifier(conn, pid, [])
+    conn.execute("UPDATE scheduled_run SET environment_ids=? WHERE id=?",
+                 (__import__("json").dumps(_deux_environnements(conn, pid)), sid))
+    conn.commit()
     vrai = scheduler_service.campaign_service.start_campaign
 
-    def refuse_grosse_commande(conn_, run_id, **kw):
-        if RunRepo(conn_).get(run_id)["name"].endswith("Grosse commande"):
-            raise scheduler_service.campaign_service.CampaignError("dataset_missing", "jeu à la corbeille")
+    def refuse_preproduction(conn_, run_id, **kw):
+        if RunRepo(conn_).get(run_id)["name"].endswith("Préproduction"):
+            raise scheduler_service.campaign_service.CampaignError("no_connection", "connexion incomplète")
         return vrai(conn_, run_id, **kw)
-    monkeypatch.setattr(scheduler_service.campaign_service, "start_campaign", refuse_grosse_commande)
+    monkeypatch.setattr(scheduler_service.campaign_service, "start_campaign", refuse_preproduction)
 
     [premier] = scheduler_service.tick(conn, now=MAINTENANT)
 
     statuts = {r["name"].split(" — ")[-1]: r["status"]
                for r in PlanRepo(conn).runs_of_plan(RunRepo(conn).get(premier)["plan_id"])}
-    assert statuts == {"Par défaut": "running", "Grosse commande": "draft", "Export": "running"}
+    assert statuts == {"Par défaut": "running", "Préproduction": "draft"}
 
 
 def test_falsifiable_une_erreur_sur_une_suivante_ne_relance_pas_la_planification(conn, monkeypatch):
     """Revue du 2026-10-14 : sans `mark_triggered` après la première, chaque passage de l'horloge relançait une nouvelle
     première exécution, contre la vraie application, toute la journée."""
+    import json
+
     from testpilot.guardrails import durable_jobs
 
-    pid, avec, sans, jeux = _projet(conn, "Grosse commande")
-    _planifier(conn, pid, [jeux["Par défaut"], jeux["Grosse commande"]])
+    pid, avec, sans, jeux = _projet(conn)
+    sid = _planifier(conn, pid, [])
+    conn.execute("UPDATE scheduled_run SET environment_ids=? WHERE id=?", (json.dumps(_deux_environnements(conn, pid)), sid))
+    conn.commit()
     appels = []
 
     def soumettre(conn_, **kw):
@@ -299,3 +301,13 @@ def test_falsifiable_un_jeu_invalide_est_refuse_a_la_creation(client, cas):
 
     assert r.status_code == 422, r.text
     assert client.get(f"/api/projects/{pid}/schedules").json() == []
+
+
+def test_une_planification_a_un_seul_jeu_garde_son_nom_d_avant(conn):
+    """R1 : « Nocturne — <date> — <jeu> », comme avant A52."""
+    pid, avec, sans, jeux = _projet(conn, "Grosse commande")
+    _planifier(conn, pid, [jeux["Grosse commande"]])
+
+    [premier] = scheduler_service.tick(conn, now=MAINTENANT)
+
+    assert RunRepo(conn).get(premier)["name"] == "Nocturne — 2026-10-14 — Grosse commande"

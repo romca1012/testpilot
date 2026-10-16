@@ -1190,5 +1190,9 @@ export interface TestReport {
   // Résidus de teardown (lot 06, F6) — enregistrements ni supprimés ni archivés, jamais bloquant.
   residus?: string[]
   // Lot PT-02c : les données de test réellement posées dans ce test — vide sans donnée de test.
-  donnees_de_test?: { jeu?: string; valeurs?: Record<string, { valeur: string; origine: string }> }
+  donnees_de_test?: {
+    jeu?: string; valeurs?: Record<string, { valeur: string; origine: string }>
+    // A52 : plusieurs lignes jouées, une itération par ligne.
+    iterations?: { jeu: string; valeurs: Record<string, { valeur: string; origine: string }> }[]
+  }
 }
