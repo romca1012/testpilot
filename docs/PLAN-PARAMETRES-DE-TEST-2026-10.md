@@ -388,11 +388,13 @@ relire le script. Mesuré au banc : un test est « juste du premier coup » s'il
 non conforme sous chaque défaut, sans réparation. Aujourd'hui (`base-7`) : 23 essais sur 30. **Objectif (V-AV3, validé par le porteur le 2026-10-16) :
 27 sur 30, toujours zéro faux vert.**
 
-**La vision du porteur (2026-10-16), qui commande ce chapitre.** L'utilisateur crée un projet et y met les identifiants de
-connexion ; une EXPLORATION de l'application est faite après la connexion ; la génération s'appuie sur cette exploration et
-sur ce que l'utilisateur a fourni pour écrire des tests techniques prêts pour l'exécution automatique. L'outil relève TOUT
-SEUL ce dont il a besoin. Les paramètres de test ne servent que si l'utilisateur les a précisés (pour des cas précis) ;
-sinon ils ne sont utilisés ni à la génération ni à l'exécution. Un test juste du premier coup se rejoue à chaque nouvelle
+**La vision du porteur (2026-10-16), qui commande ce chapitre.** TOUT le parcours de l'utilisateur sert à recueillir ce
+dont la génération a besoin : (1) il crée un projet et y met les identifiants ; (2) la CONNEXION est enregistrée une fois et
+rejouée autant de fois qu'il le faut — un test technique ne la réécrit jamais, elle est déjà validée ; (3) l'EXPLORATION
+relève les pages, champs, boutons et liens de l'application — elle doit servir à la génération ; (4) les PARAMÈTRES DE TEST,
+s'il en a déclaré, disent ce qu'il veut voir employé — à la génération, à nous de comprendre exactement ce qu'il veut ; à
+l'exécution, on lui demande s'il faut les utiliser (déjà en place). L'outil relève tout seul ce qui n'est pas fourni. L'IA
+n'est pas une source de vérité, mais avec les bonnes informations elle écrit des tests propres. Un test juste du premier coup se rejoue à chaque nouvelle
 fonctionnalité pour vérifier qu'il n'y a pas de régression ; ses statuts (passé, échoué, bloqué) disent la vérité sur
 l'application.
 
@@ -413,7 +415,7 @@ avec les causes d'échec mesurées de `base-1` à `base-7`. Les manques, et ce q
 | AV-3 | Le texte affiché non cliquable : titres, en-têtes de tableau, libellé à côté d'une valeur (« Numéro de commande ») | `base-6`, `base-7` : 2 échecs, 1 faux rouge | — | l'exploration relève ces libellés de STRUCTURE (titres, en-têtes, couples libellé–valeur) ; les messages de RÉSULTAT restent pris dans le cas (règle ci-dessus) |
 | AV-4 | L'état de départ : quelles données existent déjà (clients, produits, commandes) | indirect : enregistrement existant réutilisé (F26) | la forme de l'oracle (VH-08) ; le nombre de lignes des listes vues à l'exploration | **V-AV1 (porteur, 2026-10-16)** : si l'utilisateur a décrit l'état de départ dans les paramètres de test, il est employé ; sinon l'outil le RELÈVE TOUT SEUL (exploration : listes et nombre de lignes ; oracle : forme et contenu de l'état) |
 | AV-5 | La langue de l'interface | menu cherché en anglais sur une interface française (G7) ; message deviné (cas 97) | la langue déclarée du projet (`browser_locale`) | une ligne dans le prompt |
-| AV-6 | Les règles des applications web (compte « principal », pas d'appel direct au serveur, regarder la page d'arrivée) | `base-4` : 2 tests bloqués sur un compte inventé | écrites, derrière `TESTPILOT_REGLES_CONNECTEUR` (éteint) | les mesurer en M5 pour décider de les allumer ; lister aussi les attributs `context.*` du harnais (F20 : 1 sur 15) |
+| AV-6 | La connexion est DÉJÀ faite (connexion enregistrée, rejouée par le harnais) : le test ne la réécrit pas. La consigne existe (prompt système, web : « n'écris JAMAIS de step de connexion ») mais une consigne ne suffit pas ; règles web (compte « principal », pas d'appel direct au serveur, page d'arrivée) | `base-4` : 2 tests bloqués sur un compte inventé | connexion enregistrée (`auth_strategie`, une fois par run) ; règles écrites derrière `TESTPILOT_REGLES_CONNECTEUR` (éteint) | une GARDE à l'écriture, sans IA : un test dont le cas ne porte pas sur la connexion ne peut pas saisir d'identifiants ni ouvrir la page de connexion ; mesurer les règles en M5 ; lister les attributs `context.*` du harnais (F20 : 1 sur 15) |
 | AV-7 | Des générations qui n'aboutissent pas | 5 sur 5 sur le MÊME cas (`panier_remise_arrondi`) en `base-5`, `base-6`, `base-7` : pas un hasard | les rapports et traces des campagnes | instruire la cause sur les traces, corriger, ajouter le cas au contrôle |
 | AV-8 | L'IA qui rédige les cas ne voit rien de l'application : elle écrit les étapes avec d'autres mots que ceux des écrans | non mesuré (le banc ne mesure pas cette passe) | la cartographie (pages, menus, libellés des boutons) | **V-AV2 (porteur, 2026-10-16)** : oui — elle emploie EXACTEMENT les termes des écrans (« Nouveau client », « Enregistrer »), relevés par l'exploration ; les cas restent écrits pour des personnes |
 | PT-04b (E5) | La cartographie du compte visé | non mesuré (un seul compte au banc) | déjà prévu | — |
