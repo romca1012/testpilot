@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Onglet « Configurations » (lot PT-01a) — DANS QUELLES CONDITIONS les tests sont joués. Pour l'instant : le navigateur de
-// test (langue, fuseau, taille de fenêtre), tel qu'il existait dans « Identité et application » (lot 07c). Les environnements
-// multiples viendront au lot PT-04 ; rien n'est annoncé à l'écran avant d'exister.
+// Onglet « Configurations » (lot PT-01a) — DANS QUELLES CONDITIONS les tests sont joués : les environnements (lot PT-04a,
+// `Environnements.vue`, qui s'enregistrent ligne à ligne) et le navigateur de test (langue, fuseau, taille de fenêtre), tel
+// qu'il existait dans « Identité et application » (lot 07c).
 //
 // Mêmes champs, même route (`PATCH /api/projects/:id`), mêmes règles : une valeur vide rend la main au défaut, une valeur mal
 // formée est refusée par le serveur (422). Seuls ces trois champs partent : l'identité et la connexion ne sont jamais renvoyées.
@@ -9,6 +9,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { api, type ProjectSummary } from '../../lib/api'
 import Button from '../ui/Button.vue'
 import { projetEnregistre } from './fusion'
+import Environnements from './Environnements.vue'
 
 const props = defineProps<{ projet: ProjectSummary; peutRegler: boolean }>()
 const emit = defineEmits<{ (e: 'enregistre', projet: ProjectSummary): void; (e: 'modifie', valeur: boolean): void }>()
@@ -59,6 +60,8 @@ async function enregistrer() {
 </script>
 
 <template>
+  <div class="space-y-6">
+  <Environnements :projet="projet" :peut-regler="peutRegler" />
   <form class="rounded-xl border border-border bg-surface-raised shadow-sm" data-testid="configurations" @submit.prevent="enregistrer">
     <fieldset class="p-4 sm:p-6" :disabled="!peutRegler">
       <legend class="sr-only">Navigateur de test</legend>
@@ -86,4 +89,5 @@ async function enregistrer() {
       <Button type="submit" variant="primary" :loading="enregistrement" :disabled="!peutRegler || !modifie">Enregistrer</Button>
     </div>
   </form>
+  </div>
 </template>

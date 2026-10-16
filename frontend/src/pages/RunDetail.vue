@@ -505,6 +505,10 @@ async function resultatAjoute() {
           <p v-if="detail?.run.jeu_de_donnees" class="mt-1 text-xs text-muted-foreground" data-testid="jeu-joue">
             Données de test : <span class="text-foreground">{{ detail.run.jeu_de_donnees }}</span>
           </p>
+          <!-- Lot PT-04a : l'environnement figé au lancement (affiché seulement si le projet en a plusieurs). -->
+          <p v-if="detail?.run.environnement" class="mt-1 text-xs text-muted-foreground" data-testid="environnement-joue">
+            Environnement : <span class="text-foreground">{{ detail.run.environnement }}</span>
+          </p>
           <p v-if="detail?.run.strict" class="mt-1 text-xs text-muted-foreground">Campagne stricte : sans repli, second essai ni réparation.</p>
           <p v-else-if="detail?.run.sans_repli && detail?.run.mode !== 'manuelle'" class="mt-1 text-xs text-muted-foreground"
              data-testid="campagne-sans-repli">Sans repli par l'IA : second essai et réparation actifs.</p>
