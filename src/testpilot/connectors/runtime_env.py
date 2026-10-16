@@ -31,7 +31,6 @@ import json
 import logging
 
 from testpilot.connectors import auth_strategie as _auth
-from testpilot.parametres import valeurs as valeurs_du_projet
 from testpilot.connectors import oracle_config as _oracle
 from testpilot.connectors.contexte_navigateur import depuis_projet
 
@@ -107,19 +106,9 @@ class ConnexionIncomplete(Exception):
                 f"l'outil ne sait pas contre quelle application il travaille.")
 
 
-def unites_du_projet(conn, project: dict | None) -> list[dict]:
-    """Les unités ajoutées par le projet (lot PT-03), pour le sous-processus du test. LE point de chargement, appelé par tous
-    les chemins qui lancent un test (`env_du_projet`, `verifier_connexion_du_projet`, `run_service.resolve_connection`) :
-    revue du 2026-10-13, les unités n'arrivaient qu'aux exécutions de la génération — le même test rendait un verdict
-    pendant la génération et « pas de verdict » en campagne."""
-    from testpilot.store.repositories import TestUnitRepo
-
-    return TestUnitRepo(conn).liste(project["id"]) if project and project.get("id") else []
-
-
 def verifier_connexion(project: dict | None, comptes: list[dict] | None = None,
                        sequence_connexion: list[dict] | None = None,
-                       login_form: dict | None = None, unites: list[dict] | None = None) -> dict[str, str]:
+                       login_form: dict | None = None) -> dict[str, str]:
     """Rend les variables d'environnement du projet, ou **lève** si elles ne suffisent pas.
 
     Jamais de repli silencieux : mieux vaut un refus explicite qu'un résultat obtenu contre une
@@ -140,7 +129,7 @@ def verifier_connexion(project: dict | None, comptes: list[dict] | None = None,
         raise ConnexionIncomplete(project, manquants)
 
     _verifier_oracle_joignable(project)
-    return project_env(project, comptes, sequence_connexion, login_form, unites)
+    return project_env(project, comptes, sequence_connexion, login_form)
 
 
 def _config_oracle(project: dict) -> dict | None:
@@ -187,10 +176,8 @@ def cible_de(project: dict | None) -> dict[str, str]:
 
 def project_env(project: dict | None, comptes: list[dict] | None = None,
                 sequence_connexion: list[dict] | None = None,
-                login_form: dict | None = None, unites: list[dict] | None = None) -> dict[str, str]:
+                login_form: dict | None = None) -> dict[str, str]:
     """Variables d'environnement de connexion déduites d'un projet. Vide si non applicable.
-
-    `unites` (lot PT-03) : les unités ajoutées par le projet (`TestUnitRepo.liste`), pour le constat « le nombre affiché … ».
 
     `comptes` : les comptes secondaires (`ProjectAccountRepo.pour_runtime`), secrets déchiffrés — transmis tels quels au sous-processus,
     qui en a besoin pour se connecter. Jamais passés à la génération (elle ne reçoit que les libellés).
@@ -215,10 +202,8 @@ def project_env(project: dict | None, comptes: list[dict] | None = None,
     # Lot 07c (C3) : le contexte navigateur est TOUJOURS transmis, défauts compris — un navigateur qui retomberait sur la langue
     # et le fuseau de la machine changerait de comportement d'un poste à l'autre. Jamais « vide → config globale » ici.
     env.update(depuis_projet(project).env())
-    # Lot PT-03 : la monnaie et l'écriture des nombres DÉCLARÉES par le projet, lues par le constat « le nombre affiché … vaut … ».
-    # Rien de déclaré = rien ici ; le lanceur pose alors ces variables VIDES (`valeurs.JAMAIS_HERITEES`), jamais celles du serveur.
-    env.update(valeurs_du_projet.env(project))
-    env.update(valeurs_du_projet.env_des_unites(unites))
+    # Décision A44 (porteur, 2026-10-16) : l'écriture des nombres et les unités ne sont plus déclarées par le projet ; le
+    # lanceur pose leurs variables VIDES (`parametres.valeurs.JAMAIS_HERITEES`) — partout « Non déclarée ».
     if comptes:
         env[ENV_COMPTES] = json.dumps(
             [{"label": c["label"], "username": c["username"], "password": c["password"]} for c in comptes],
@@ -263,7 +248,7 @@ def env_du_projet(conn, project: dict | None) -> dict[str, str]:
     comptes = ProjectAccountRepo(conn).pour_runtime(project["id"])
     sequence = project_login_recordings.lire(conn, project["id"])
     login_form = project_login_recordings.lire_formulaire(conn, project["id"])
-    return project_env(project, comptes, sequence, login_form, unites_du_projet(conn, project))
+    return project_env(project, comptes, sequence, login_form)
 
 
 def verifier_connexion_du_projet(conn, project: dict | None) -> dict[str, str]:
@@ -284,4 +269,4 @@ def verifier_connexion_du_projet(conn, project: dict | None) -> dict[str, str]:
     comptes = ProjectAccountRepo(conn).pour_runtime(project["id"]) if a_un_projet else []
     sequence = project_login_recordings.lire(conn, project["id"]) if a_un_projet else None
     login_form = project_login_recordings.lire_formulaire(conn, project["id"]) if a_un_projet else None
-    return verifier_connexion(project, comptes, sequence, login_form, unites_du_projet(conn, project))
+    return verifier_connexion(project, comptes, sequence, login_form)

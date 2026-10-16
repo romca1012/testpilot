@@ -44,10 +44,11 @@ class ProjectSummary(BaseModel):
     database: str = ""
     username: str = ""
     # password : jamais exposé par l'API (write-only, cf. décision 0005).
-    # Migration 45 : calibration en ÉCRITURE pendant la génération — éteinte par défaut, décidée
-    # par le porteur du projet (jamais activée implicitement, cf. `ProjectRepo.
-    # set_calibration_writes_enabled`).
+    # Migration 45 : « L'IA peut agir sur cette application » — allumé en base par défaut depuis A43 (migration 67) ; la
+    # valeur affichée est TOUJOURS celle de la base (`project_summary`), jamais ce défaut de modèle.
     calibration_writes_enabled: bool = False
+    # Migration 68 (A45) : le projet Odoo se déclare instance de test — sans elle, l'IA n'y écrit jamais.
+    instance_de_test: bool = False
     # Migration 61 (D26) : adresse de remise à zéro du bac à sable — vide = aucun essai pendant la génération.
     bac_a_sable_reset: str = ""
     # Un essai de génération a laissé l'application dans son état et elle ne se remet pas à zéro : ses exécutions réelles
@@ -59,8 +60,6 @@ class ProjectSummary(BaseModel):
     browser_timezone: str = ""
     browser_viewport: str = ""
     browser_effectif: dict[str, str] = {}
-    # Lot PT-03 (migration 62) : comment le projet écrit ses nombres. Vide = rien de déclaré. Aucune monnaie (A38).
-    format_nombre: str = ""
     # Une valeur ENREGISTRÉE mais mal formée (base éditée à la main) est écartée au profit du défaut : on le DIT, jamais en silence.
     browser_avertissements: list[str] = []
     # Lot 07b-2 (C2) : stratégie de connexion du compte PRINCIPAL — `totp_secret`/`injected_session` ne sont JAMAIS exposés
@@ -569,6 +568,8 @@ class ProjectPatch(BaseModel):
     # `None` = n'y touche pas, comme les autres champs de ce PATCH — pas de `""` ambigu possible
     # pour un booléen, mais la même discipline (silence = inchangé) s'applique.
     calibration_writes_enabled: bool | None = None
+    # A45 : `None` = n'y touche pas.
+    instance_de_test: bool | None = None
     # D26 : `None` = n'y touche pas ; `""` = retirer la déclaration (plus aucun essai pendant la génération).
     bac_a_sable_reset: str | None = None
     # Décision du porteur : « j'ai remis l'application à zéro moi-même » — lève la marque qui retient les exécutions.
@@ -577,8 +578,6 @@ class ProjectPatch(BaseModel):
     browser_locale: str | None = None
     browser_timezone: str | None = None
     browser_viewport: str | None = None
-    # Lot PT-03 : `None` = n'y touche pas ; `""` = rien de déclaré.
-    format_nombre: str | None = None
 
 
 # ── Données de test (lot PT-02) : variables × jeux de données ───────────────────────────────────────────────────────────────
@@ -625,18 +624,6 @@ class ValeursDuJeuIn(BaseModel):
 class UsageDeVariable(BaseModel):
     id: int
     title: str
-
-
-class UnitIn(BaseModel):
-    """Une unité ajoutée par le projet (lot PT-03) : son nom et ses autres écritures (« palette » ; « palettes », « Palettes »)."""
-    nom: str
-    ecritures: list[str] = []
-
-
-class UnitOut(BaseModel):
-    id: int
-    nom: str
-    ecritures: list[str] = []
 
 
 class AccountIn(BaseModel):
@@ -1329,11 +1316,6 @@ class FormatNombreOption(BaseModel):
     libelle: str
 
 
-class ValeursDuProjetOptions(BaseModel):
-    """Lot PT-03 : ce que l'onglet « Valeurs attendues » propose — les écritures des nombres."""
-    formats_nombre: list[FormatNombreOption]
-
-
 class SecurityStatusOut(BaseModel):
     password_min_length: int
     password_hash: str
@@ -1541,13 +1523,13 @@ def project_summary(row: dict) -> ProjectSummary:
         connector_version=row.get("connector_version", ""), base_url=row.get("base_url", ""),
         database=row.get("database", ""), username=row.get("username", ""),
         calibration_writes_enabled=bool(row.get("calibration_writes_enabled", 0)),
+        instance_de_test=bool(row.get("instance_de_test", 0)),
         bac_a_sable_reset=row.get("bac_a_sable_reset", "") or "",
         bac_a_sable_non_remis=_bac_a_sable_non_remis(row.get("base_url", "") or ""),
         browser_locale=row.get("browser_locale", "") or "",
         browser_timezone=row.get("browser_timezone", "") or "",
         browser_viewport=row.get("browser_viewport", "") or "",
         browser_effectif=_contexte_effectif(row),
-        format_nombre=row.get("format_nombre", "") or "",
         browser_avertissements=_contexte_avertissements(row),
         auth_strategie=row.get("auth_strategie", "") or "formulaire",
         has_totp_secret=bool(row.get("totp_secret")), has_injected_session=bool(row.get("injected_session")),

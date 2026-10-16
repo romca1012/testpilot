@@ -24,9 +24,9 @@ class ToolContext:
     generated_dir: Path
     connector: Connector | None = None
     reserved_steps: frozenset[str] = field(default_factory=frozenset)
-    # Migration 45 (2026-09-16) : calibration en ÉCRITURE pendant la génération — éteinte par
-    # défaut, activée par le porteur du projet (`project.calibration_writes_enabled`). Vérifiée
-    # ICI (le tool), pas dans le connecteur : un connecteur ne connaît pas les réglages du projet.
+    # Migration 45 (2026-09-16) : calibration en ÉCRITURE pendant la génération — calculée par
+    # `parametres.ia_peut_agir.ia_peut_ecrire` (A43 : case cochée par défaut ; A45 : Odoo doit aussi se
+    # déclarer instance de test). Vérifiée ICI (le tool), pas dans le connecteur : il ne connaît pas le projet.
     calibration_writes_enabled: bool = False
     qualification: bool = False
     # Lot 12 : le projet, pour relire SES règles apprises (formats de saisie déjà mesurés) — `None`

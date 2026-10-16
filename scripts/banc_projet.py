@@ -100,6 +100,9 @@ def assurer_le_projet(conn, version: str, url: str, base: str = "banc", utilisat
     nom = nom_du_projet(version)
     existant = next((p for p in repo.list_all() if p["name"] == nom), None)
     if existant:
+        if (existant.get("base_url"), existant.get("database")) != (url, base):
+            # A47 : une autre application n'hérite jamais de la déclaration « Instance de test ».
+            conn.execute("UPDATE project SET instance_de_test=0 WHERE id=?", (existant["id"],))
         conn.execute("UPDATE project SET base_url=?, database=?, username=?, connector_version=? WHERE id=?",
                      (url, base, utilisateur, version, existant["id"]))
         from testpilot.store import secrets as secrets_mod
