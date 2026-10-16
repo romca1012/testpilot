@@ -1187,7 +1187,7 @@ def test_variables_ecrites_lit_les_noms_du_feature_seulement():
 def test_falsifiable_le_joueur_pose_les_valeurs_et_rapporte_l_empreinte_du_test_genere(tmp_path, monkeypatch):
     vus = {}
     monkeypatch.setattr(ba, "poser_les_donnees_de_test",
-                        lambda texte, pid: (texte.replace("{{nom_client}}", "Dupont SARL"), []))
+                        lambda texte, pid, valeurs=None: (texte.replace("{{nom_client}}", "Dupont SARL"), []))
 
     def executer(dossier, module, connexion, project_id, connector_type, traces):
         vus["feature"] = (dossier / "m.feature").read_text(encoding="utf-8")
@@ -1201,7 +1201,8 @@ def test_falsifiable_le_joueur_pose_les_valeurs_et_rapporte_l_empreinte_du_test_
 
 
 def test_falsifiable_une_valeur_qui_manque_rend_le_jeu_bloque_sans_le_jouer(tmp_path, monkeypatch):
-    monkeypatch.setattr(ba, "poser_les_donnees_de_test", lambda texte, pid: (texte, ["variable inconnue « pays »"]))
+    monkeypatch.setattr(ba, "poser_les_donnees_de_test",
+                        lambda texte, pid, valeurs=None: (texte, ["variable inconnue « pays »"]))
     joue = []
 
     def executer(*a, **k):
@@ -1265,3 +1266,176 @@ def test_falsifiable_le_banc_bloque_une_variable_quand_le_projet_n_en_declare_au
     assert manques and "n'en déclare aucune" in manques[0]
     assert ba.poser_les_donnees_de_test('Alors la liste ne contient pas "{{nom_client"', pid)[1] != [], "mal fermée"
     assert ba.poser_les_donnees_de_test("Alors ok", pid) == ("Alors ok", [])
+
+
+# ── Second jeu de données (porteur, 2026-10-16) ──────────────────────────────────────────────────────────────────────────
+
+
+class MondeAVariables(Monde):
+    """Le test du cas « a » écrit `{{nom_client}}` ; celui de « b » n'écrit aucune variable."""
+
+    def generer(self, cas, essai):
+        artefacts = super().generer(cas, essai)
+        if cas == "a":
+            artefacts.fichiers[f"{cas}.feature"] += '\n    Quand je saisis "{{nom_client}}"'
+        return artefacts
+
+
+def test_falsifiable_le_second_jeu_rejoue_seulement_les_tests_a_variables_et_compte_a_part():
+    """Un test dont la variable ne sert pas (attendu figé) sort non conforme au second jeu : dit, jamais mélangé à pass@k."""
+    rejoues = []
+
+    def second_jeu(artefacts):
+        rejoues.append(artefacts.cas)
+        return ba.Jeu(verdict="non_conforme", detail="attendu figé", empreintes=artefacts.empreintes)
+
+    camp = campagne(MondeAVariables(), second_jeu=second_jeu)
+    indicateurs = ba.calculer_indicateurs(camp)
+
+    assert rejoues == ["a"], "seul le test qui écrit une variable est rejoué"
+    assert [(o.cas, o.variante, o.attendu, o.obtenu) for o in camp.observations_second_jeu] == \
+        [("a", ba.VARIANTE_SECOND_JEU, "conforme", "non_conforme")]
+    assert len(camp.observations) == JEUX_PAR_ESSAI, "les jeux d'avant, inchangés"
+    assert indicateurs["second_jeu"]["rejoues"] == 1 and indicateurs["second_jeu"]["conformes_a_l_attendu"] == 0
+    assert indicateurs["faux_verts"] == ba.calculer_indicateurs(campagne(MondeAVariables()))["faux_verts"]
+    texte = ba.rendre_markdown(camp, indicateurs, {"date": "2026-10-16", "mode": "a_sec"})
+    assert "## Second jeu de données" in texte and "attendu figé" in texte and "0/1" in texte
+
+
+def test_sans_second_jeu_le_rapport_est_celui_d_avant():
+    camp = campagne(MondeAVariables())
+
+    assert camp.observations_second_jeu == [] and ba.calculer_indicateurs(camp)["second_jeu"] is None
+    assert "Second jeu" not in ba.rendre_markdown(camp, ba.calculer_indicateurs(camp), {"date": "2026-10-16", "mode": "a_sec"})
+
+
+def test_le_second_jeu_pose_ses_valeurs_comme_un_jeu_de_la_production(tmp_path, monkeypatch):
+    from testpilot import config
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import ProjectRepo
+
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "banc.db")
+    conn = get_initialized_db(config.DB_PATH)
+    pid = ProjectRepo(conn).create(name="Banc", connector_type="web", base_url="http://127.0.0.1:1")
+    ba.declarer_les_donnees_de_test(conn, pid)
+    conn.close()
+
+    etape = 'Quand je saisis "{{nom_client}}" à "{{ville_client}}"'
+    assert ba.poser_les_donnees_de_test(etape, pid, ba.SECOND_JEU_DU_BANC) == \
+        ('Quand je saisis "Martin Lefèvre SA" à "Paris"', [])
+    assert all(len(v) <= 40 for v in ba.SECOND_JEU_DU_BANC.values()), "valeurs valides pour l'application du banc"
+
+
+def test_le_joueur_reel_joue_le_second_jeu_et_range_ses_traces_a_part(tmp_path, monkeypatch):
+    vus = {}
+    monkeypatch.setattr(ba, "poser_les_donnees_de_test",
+                        lambda texte, pid, valeurs=None: (texte.replace("{{nom_client}}", (valeurs or {}).get(
+                            "nom_client", "Dupont SARL")), []))
+
+    def executer(dossier, module, connexion, project_id, connector_type, traces):
+        vus["feature"], vus["traces"] = (dossier / "m.feature").read_text(encoding="utf-8"), traces
+        return {"execution": "success", "fonctionnel": "conforme", "cause": "", "detail": "", "duree": 1.0}
+
+    artefacts = ba.Artefacts("a", 1, {"m.feature": 'Quand je saisis "{{nom_client}}"\n', "m_steps.py": "S"}, 0.1, module="m")
+    jeu = _joueur(tmp_path, executer)(artefacts, ba.VARIANTE_SAINE, ba.SECOND_JEU_DU_BANC)
+
+    assert vus["feature"] == 'Quand je saisis "Martin Lefèvre SA"\n'
+    assert vus["traces"].name.endswith("-second-jeu") and jeu.empreintes == artefacts.empreintes
+
+
+
+def test_falsifiable_le_second_jeu_n_est_pas_rejoue_quand_la_saine_est_deja_en_ecart():
+    """Revue du 2026-10-16 : un test cassé l'est sur les deux jeux — l'écart ne dit rien de la variable, il n'est pas compté."""
+    rejoues = []
+    monde = MondeAVariables(verdicts={("a", "saine", 1): "technical_error"})
+
+    camp = campagne(monde, second_jeu=lambda a: rejoues.append(a.cas) or ba.Jeu("conforme", empreintes=a.empreintes))
+
+    assert rejoues == [] and camp.observations_second_jeu == []
+    assert camp.second_jeu_non_rejoues == [{"cas": "a", "essai": 1, "saine": "technical_error"}]
+    assert ba.calculer_indicateurs(camp)["second_jeu"]["non_rejoues_saine_en_ecart"] == 1
+
+
+@pytest.mark.parametrize("jeu, cause", [
+    (lambda a: ba.Jeu("conforme", empreintes={"x": "y"}), "empreinte_divergente"),
+    (lambda a: (_ for _ in ()).throw(RuntimeError("navigateur tombé")), "jeu_en_exception"),
+])
+def test_falsifiable_le_second_jeu_passe_par_les_protections_du_jeu(jeu, cause):
+    """Revue du 2026-10-16 : une empreinte divergente ou une exception au second jeu n'est jamais comptée conforme."""
+    camp = campagne(MondeAVariables(), second_jeu=jeu)
+    sj = ba.calculer_indicateurs(camp)["second_jeu"]
+
+    assert [(o.obtenu, o.cause) for o in camp.observations_second_jeu] == [("technical_error", cause)]
+    assert sj["conformes_a_l_attendu"] == 0 and sj["prouves"] == 0
+    if cause == "empreinte_divergente":
+        assert sj["integrite"]["divergentes"] == 1
+
+
+@pytest.mark.parametrize("etat, attendu", [
+    ({"enregistrements": [{"nom": "Martin Lefèvre SA", "ville": "Paris"}]}, ba.PREUVE_OK),
+    ({"enregistrements": [{"nom": "Dupont SARL", "ville": "Paris"}]}, ba.PREUVE_EN_DUR),   # en dur dans le code des steps
+    ({"enregistrements": [{"nom": "Martin Lefèvre SA", "ville": ""}]}, ba.PREUVE_PARTIELLE),  # la ville ne sert pas
+    ({"enregistrements": [{"nom": "Martin Lefèvre SA", "ville": "Parisienne"}]}, ba.PREUVE_PARTIELLE),  # champ à champ
+    ({"enregistrements": []}, ba.PREUVE_ABSENTE),
+    (None, ""),
+])
+def test_falsifiable_la_preuve_vient_de_l_etat_du_serveur(etat, attendu):
+    """Revue du 2026-10-16 : CHAQUE variable écrite doit avoir atteint le serveur ; une seule ne prouve pas l'autre."""
+    premier = {n: v for n, (_d, v) in ba.DONNEES_DE_TEST_DU_BANC.items()}
+
+    assert ba.preuve_par_l_etat(etat, ba.SECOND_JEU_DU_BANC, premier, ["nom_client", "ville_client"]) == attendu
+
+
+def test_falsifiable_conforme_sans_preuve_n_est_pas_compte_prouve():
+    """Revue du 2026-10-16 : steps écrits à la main qui saisissent « Dupont SARL » en dur — le second jeu sort conforme, mais
+    l'état du serveur le dit : jamais compté « prouvé »."""
+    camp = campagne(MondeAVariables(), second_jeu=lambda a: ba.Jeu("conforme", empreintes=a.empreintes,
+                                                                   preuve=ba.PREUVE_EN_DUR))
+    sj = ba.calculer_indicateurs(camp)["second_jeu"]
+
+    assert sj["conformes_a_l_attendu"] == 1 and sj["prouves"] == 0 and sj["valeur_du_premier_jeu_en_dur"] == 1
+    assert ba.PREUVE_EN_DUR in ba.rendre_markdown(camp, ba.calculer_indicateurs(camp), {"date": "2026-10-16",
+                                                                                       "mode": "a_sec"})
+
+
+def test_le_joueur_lit_l_etat_du_serveur_apres_le_second_jeu_avant_la_remise_a_zero(tmp_path, monkeypatch):
+    class AppAvecEtat(AppDouble):
+        def etat(self):
+            self.appels.append(["etat"])
+            return {"enregistrements": [{"nom": "Martin Lefèvre SA", "ville": "Paris"}]}
+
+    app = AppAvecEtat()
+    monkeypatch.setattr(ba, "poser_les_donnees_de_test", lambda texte, pid, valeurs=None: (texte, []))
+    artefacts = ba.Artefacts("a", 1, {"m.feature": 'Quand je saisis "{{nom_client}}"', "m_steps.py": "S"}, 0.1, module="m")
+
+    def executer(*a, **k):
+        app.appels.append(["executer"])
+        return {"execution": "success", "fonctionnel": "conforme"}
+
+    jeu = _joueur(tmp_path, executer, app)(artefacts, ba.VARIANTE_SAINE, ba.SECOND_JEU_DU_BANC)
+
+    assert jeu.preuve == ba.PREUVE_OK
+    assert app.appels == [[], ["executer"], ["etat"], []], "lu APRÈS le jeu et AVANT la remise à zéro"
+    app.appels.clear()
+    assert _joueur(tmp_path, executer, app)(artefacts, ba.VARIANTE_SAINE).preuve == "" and ["etat"] not in app.appels
+
+
+def test_un_etat_illisible_garde_le_verdict_du_jeu(tmp_path, monkeypatch):
+    class AppEtatEnPanne(AppDouble):
+        def etat(self):
+            raise RuntimeError("GET /__etat : HTTP 500")
+
+    monkeypatch.setattr(ba, "poser_les_donnees_de_test", lambda texte, pid, valeurs=None: (texte, []))
+    artefacts = ba.Artefacts("a", 1, {"m.feature": "F", "m_steps.py": "S"}, 0.1, module="m")
+    jeu = _joueur(tmp_path, lambda *a, **k: {"execution": "success", "fonctionnel": "conforme"}, AppEtatEnPanne())(
+        artefacts, ba.VARIANTE_SAINE, ba.SECOND_JEU_DU_BANC)
+
+    assert jeu.verdict == "conforme" and jeu.preuve == ba.PREUVE_ILLISIBLE
+
+
+def test_les_valeurs_du_second_jeu_passent_le_controle_de_saisie_de_la_production():
+    from testpilot.parametres import resolution
+
+    assert all(resolution.valider_valeur(v) == v for v in ba.SECOND_JEU_DU_BANC.values())
+    assert set(ba.SECOND_JEU_DU_BANC) == set(ba.DONNEES_DE_TEST_DU_BANC), "chaque variable du banc change de valeur"
+    assert all(ba.SECOND_JEU_DU_BANC[n] != v for n, (_d, v) in ba.DONNEES_DE_TEST_DU_BANC.items())

@@ -68,6 +68,9 @@ MODULE_DU_BANC = "Banc agents web"
 SUFFIXE_DE_TITRE = "(banc d'agents web)"
 
 VARIANTE_SAINE = stats.VARIANTE_SAINE
+# Le rejeu d'un test qui écrit des variables, sur l'application SAINE, avec un SECOND jeu de données (porteur, 2026-10-16) :
+# compté à part, jamais dans pass@k ni dans les faux verts — les indicateurs restent comparables aux campagnes d'avant.
+VARIANTE_SECOND_JEU = "saine_second_jeu"
 # `attendus.yaml` parle en statuts de LECTURE (comme `specs/banc/attendus.yaml`) ; `banc_stats` en verdicts fonctionnels.
 STATUT_VERS_VERDICT = {"passed": "conforme", "failed": "non_conforme"}
 HOTES_LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -374,6 +377,8 @@ class Jeu:
     empreintes: dict[str, str] | None = None  # None = non rapportées (le rapport le dit)
     # Ce que l'échec a montré, SANS interprétation (scénarios et étapes en échec) : l'agent de réparation le reçoit tel quel.
     trace: dict | None = None
+    # Second jeu : ce que l'état du SERVEUR montre après le jeu (`preuve_par_l_etat`) ; vide ailleurs.
+    preuve: str = ""
 
 
 @dataclass
@@ -389,6 +394,7 @@ class Observation:
     detail: str = ""
     duree: float | None = None
     empreinte_ok: bool | None = None  # vrai/faux = vérifiée ; None = non rapportée
+    preuve: str = ""  # second jeu seulement : `preuve_par_l_etat`
 
 
 @dataclass
@@ -433,6 +439,11 @@ class Campagne:
     reparations: list[ReparationConsignee] = field(default_factory=list)
     observations_reparees: list[Observation] = field(default_factory=list)
     reparation_demandee: bool = False
+    # Second jeu de données (`--donnees-de-test`) : vides sinon, le rapport ne change pas d'un octet.
+    observations_second_jeu: list[Observation] = field(default_factory=list)
+    second_jeu_demande: bool = False
+    # Essais dont la saine (premier jeu) est déjà en écart : un écart au second jeu n'y dirait rien de la variable.
+    second_jeu_non_rejoues: list[dict] = field(default_factory=list)
 
 
 # ── Plafond de coût, en amont ────────────────────────────────────────────────────────────────────────────
@@ -503,6 +514,7 @@ def executer_campagne(
     journal: Callable[[str], None] = lambda _message: None,
     reparer: Callable[[Artefacts, Jeu], Artefacts | None] | None = None,
     tentatives_reparation: int = 1,
+    second_jeu: Callable[[Artefacts], Jeu | str] | None = None,
 ) -> Campagne:
     """Joue la campagne : k essais par cas, UNE génération par (cas, essai), jouée sur la saine et chaque défaut listé.
 
@@ -526,7 +538,8 @@ def executer_campagne(
     mesurer_cout = cout or (lambda artefacts: artefacts.cout_usd)
     attendu_de = {(a.cas, a.variante): a.attendu for a in attendus}
 
-    campagne = Campagne(k=k, cas=specs, essais_prevus=k * len(specs), reparation_demandee=reparer is not None)
+    campagne = Campagne(k=k, cas=specs, essais_prevus=k * len(specs), reparation_demandee=reparer is not None,
+                        second_jeu_demande=second_jeu is not None)
     cumul = cout_max = 0.0
     for essai in range(1, k + 1):
         for cas in specs:
@@ -572,6 +585,19 @@ def executer_campagne(
                     _jouer_une_variante(jouer, artefacts, variante, essai, attendu, campagne.anomalies, traces))
                 derniere = campagne.observations[-1]
                 journal(f"  {variante:<24} attendu {attendu:<13} obtenu {derniere.obtenu}")
+            if second_jeu is not None and jouable and variables_ecrites(artefacts.fichiers):
+                saine = next(o for o in campagne.observations if (o.cas, o.essai, o.variante) == (cas, essai, VARIANTE_SAINE))
+                if saine.obtenu != saine.attendu:
+                    # Le test est déjà en écart avec le premier jeu : un écart au second ne dirait rien de la variable.
+                    campagne.second_jeu_non_rejoues.append({"cas": cas, "essai": essai, "saine": saine.obtenu})
+                else:
+                    # Le MÊME test, sur la saine, avec d'autres valeurs : la variable sert-elle vraiment ? (sans coût LLM)
+                    campagne.observations_second_jeu.append(_jouer_une_variante(
+                        lambda a, _variante: second_jeu(a), artefacts, VARIANTE_SECOND_JEU, essai,
+                        attendu_de[(cas, VARIANTE_SAINE)], campagne.anomalies))
+                    derniere = campagne.observations_second_jeu[-1]
+                    journal(f"  {VARIANTE_SECOND_JEU:<24} attendu {derniere.attendu:<13} obtenu {derniere.obtenu} "
+                            f"(état serveur : {derniere.preuve or 'non lu'})")
             if reparer is not None and jouable:
                 saine = next((o for o in campagne.observations
                               if (o.cas, o.essai, o.variante) == (cas, essai, VARIANTE_SAINE)), None)
@@ -686,7 +712,7 @@ def _jouer_une_variante(jouer, artefacts: Artefacts, variante: str, essai: int, 
         return Observation(cas, variante, essai, attendu, "technical_error", cause="empreinte_divergente",
                            detail=f"verdict ignoré : {jeu.verdict}", duree=jeu.duree, empreinte_ok=False)
     return Observation(cas, variante, essai, attendu, jeu.verdict, cause=jeu.cause, detail=jeu.detail,
-                       duree=jeu.duree, empreinte_ok=empreinte_ok)
+                       duree=jeu.duree, empreinte_ok=empreinte_ok, preuve=getattr(jeu, "preuve", "") or "")
 
 
 # ── Indicateurs ──────────────────────────────────────────────────────────────────────────────────────────
@@ -792,6 +818,26 @@ def calculer_indicateurs(campagne: Campagne, taux_eur_usd: float | None = None) 
             for o in campagne.observations if o.obtenu != o.attendu
         ],
         "apres_reparation": calculer_apres_reparation(campagne),
+        "second_jeu": (indicateurs_second_jeu(campagne) if campagne.second_jeu_demande else None),
+    }
+
+
+def indicateurs_second_jeu(campagne: Campagne) -> dict:
+    """Le second jeu, compté À PART. « Prouvée » exige les deux : conforme à l'attendu ET l'état du serveur montre les valeurs
+    du second jeu sans celles du premier — un verdict conforme seul prouve seulement que le test ne casse pas (revue du
+    2026-10-16 : une valeur restée en dur dans le code des steps passait)."""
+    o = campagne.observations_second_jeu
+    return {
+        "rejoues": len(o),
+        "conformes_a_l_attendu": sum(1 for x in o if x.obtenu == x.attendu),
+        "prouves": sum(1 for x in o if x.obtenu == x.attendu and x.preuve == PREUVE_OK),
+        "valeur_du_premier_jeu_en_dur": sum(1 for x in o if x.preuve == PREUVE_EN_DUR),
+        "preuve_partielle": sum(1 for x in o if x.preuve == PREUVE_PARTIELLE),
+        "aucune_trace_au_serveur": sum(1 for x in o if x.preuve == PREUVE_ABSENTE),
+        "non_rejoues_saine_en_ecart": len(campagne.second_jeu_non_rejoues),
+        "integrite": {"verifiees": sum(1 for x in o if x.empreinte_ok is True),
+                      "divergentes": sum(1 for x in o if x.empreinte_ok is False),
+                      "non_rapportees": sum(1 for x in o if x.empreinte_ok is None)},
     }
 
 
@@ -900,6 +946,11 @@ def _lignes_comparees(i: dict, a: dict) -> list[str]:
     ]
 
 
+def _cellule(texte: str | None) -> str:
+    """Une cellule de tableau Markdown sûre : ni barre verticale ni retour à la ligne."""
+    return ((texte or "—").replace("|", "\\|").replace("\r", " ").replace("\n", " "))[:120]
+
+
 def rendre_markdown(campagne: Campagne, indicateurs: dict, contexte: dict) -> str:
     i = indicateurs
     e = i["echantillon"]
@@ -992,6 +1043,34 @@ def rendre_markdown(campagne: Campagne, indicateurs: dict, contexte: dict) -> st
                    f"Tests générés qui écrivent au moins une variable : **{sum(1 for v in ecrites if v)}/{len(ecrites)}** ; "
                    "variables écrites : " + ", ".join(f"`{n}` ×{c}" for n, c in Counter(n for v in ecrites for n in v)
                                                      .most_common()) + "."]
+    if campagne.second_jeu_demande:
+        rejoues = campagne.observations_second_jeu
+        sj = indicateurs_second_jeu(campagne)
+        lignes += ["", "## Second jeu de données", "",
+                   "Chaque test qui écrit une variable, et dont le jeu sur l'application SAINE est conforme à l'attendu, est "
+                   "rejoué sur la saine avec un second jeu ("
+                   + ", ".join(f"`{n}` = « {v} »" for n, v in SECOND_JEU_DU_BANC.items()) + "). Un test est compté "
+                   "PROUVÉ seulement si le jeu est conforme ET si l'état du serveur montre la valeur du second jeu de CHAQUE "
+                   "variable qu'il écrit, sans aucune valeur du premier ; un verdict conforme seul dit seulement que le test "
+                   "ne casse pas. « Prouvé » dit que les valeurs ont atteint le serveur, pas qu'un « Alors » les vérifie. Un "
+                   "cas qui ne crée rien (« aucune trace au serveur ») ne peut pas être prouvé ainsi. Compté à part : jamais "
+                   "dans pass@k ni dans les faux verts. Les versions réparées ne sont pas rejouées au second jeu.", ""]
+        if rejoues:
+            lignes += [f"Rejoués : **{sj['rejoues']}** ; conformes à l'attendu : **{sj['conformes_a_l_attendu']}/"
+                       f"{sj['rejoues']}** ; variable prouvée par l'état du serveur : **{sj['prouves']}/{sj['rejoues']}** ; "
+                       f"valeur du premier jeu restée en dur : **{sj['valeur_du_premier_jeu_en_dur']}** ; preuve "
+                       f"partielle : **{sj['preuve_partielle']}** ; aucune trace au serveur : "
+                       f"{sj['aucune_trace_au_serveur']}. Intégrité : "
+                       f"{sj['integrite']['verifiees']} vérifiées, {sj['integrite']['divergentes']} divergentes, "
+                       f"{sj['integrite']['non_rapportees']} non rapportées.", "",
+                       "| Cas | Essai | Attendu | Obtenu | État du serveur | Cause | Détail |", "|---|---|---|---|---|---|---|"]
+            lignes += [f"| {o.cas} | {o.essai} | {o.attendu} | {o.obtenu} | {o.preuve or 'non lu'} | {o.cause or '—'} | "
+                       f"{_cellule(o.detail)} |" for o in rejoues]
+        else:
+            lignes.append("Aucun test rejouable (aucun test n'écrit de variable, ou leur saine est déjà en écart) : non mesuré.")
+        if campagne.second_jeu_non_rejoues:
+            lignes += ["", "Non rejoués, leur saine étant déjà en écart : " + ", ".join(
+                f"{n['cas']} essai {n['essai']} (saine : {n['saine']})" for n in campagne.second_jeu_non_rejoues) + "."]
     lignes += ["", "## Génération par essai", "",
                "| Cas | Essai | Généré | Coût ($) | Refus à l'écriture | Steps écrits à la main | Empreinte du test (sha256) |",
                "|---|---|---|---|---|---|---|"]
@@ -1043,6 +1122,8 @@ def ecrire_sortie(campagne: Campagne, indicateurs: dict, contexte: dict, dossier
         "anomalies": campagne.anomalies,
         "reparations": [vars(r) for r in campagne.reparations],
         "observations_reparees": [vars(o) for o in campagne.observations_reparees],
+        "observations_second_jeu": [vars(o) for o in campagne.observations_second_jeu],
+        "second_jeu_non_rejoues": campagne.second_jeu_non_rejoues,
     }, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return md, js
 
@@ -1132,6 +1213,10 @@ class ApplicationLocale:
                 return json.loads(reponse.read().decode("utf-8") or "{}")
         except urllib.error.HTTPError as erreur:
             raise RuntimeError(f"{methode} {chemin} : HTTP {erreur.code}") from erreur
+
+    def etat(self) -> dict:
+        """L'état du serveur (`GET /__etat`) — lu après un jeu, AVANT la remise à zéro."""
+        return self._appeler("GET", "/__etat")
 
     def reinitialiser(self, defauts: Sequence[str]) -> None:
         voulus = sorted(defauts)
@@ -1289,7 +1374,7 @@ class JoueurReel:
         self.project_id = project_id
         self.connector_type = connector_type
 
-    def __call__(self, artefacts: Artefacts, variante: str) -> Jeu:
+    def __call__(self, artefacts: Artefacts, variante: str, valeurs: Mapping[str, str] | None = None) -> Jeu:
         defauts = [] if variante == VARIANTE_SAINE else [variante]
         dossier = Path(tempfile.mkdtemp(prefix="jeu_", dir=self.dossier_de_travail))
         try:
@@ -1299,7 +1384,7 @@ class JoueurReel:
             poses: dict[str, str] = {}
             for nom, contenu in artefacts.fichiers.items():
                 if nom.endswith(".feature"):
-                    joue, manques = poser_les_donnees_de_test(contenu, self.project_id)
+                    joue, manques = poser_les_donnees_de_test(contenu, self.project_id, valeurs)
                     if manques:
                         return Jeu(verdict="blocked", cause="donnee_de_test",
                                    detail="Données de test : " + " ; ".join(manques[:3]), empreintes=None)
@@ -1309,14 +1394,24 @@ class JoueurReel:
                 (dossier / nom).write_bytes(contenu.encode("utf-8"))  # octets exacts : l'empreinte doit survivre
             self.application.reinitialiser(defauts)
             retour = self.executer(dossier, artefacts.module, self.connexion, self.project_id, self.connector_type,
-                                   self.dossier_de_travail / "traces" / f"{artefacts.cas}-t{artefacts.essai}-{variante}")
+                                   self.dossier_de_travail / "traces" / (f"{artefacts.cas}-t{artefacts.essai}-{variante}"
+                                                                     + ("-second-jeu" if valeurs is not None else "")))
+            preuve = ""
+            if valeurs is not None and hasattr(self.application, "etat"):
+                try:   # lu APRÈS le jeu et AVANT la remise à zéro (finally) ; illisible : le verdict Behave est gardé
+                    etat = self.application.etat()
+                except Exception:
+                    preuve = PREUVE_ILLISIBLE
+                else:
+                    preuve = preuve_par_l_etat(etat, valeurs, {n: v for n, (_d, v) in DONNEES_DE_TEST_DU_BANC.items()},
+                                               variables_ecrites(artefacts.fichiers))
             joues = {nom: empreinte((dossier / nom).read_bytes()) for nom in sorted(artefacts.fichiers)}
             for nom, texte in poses.items():
                 if joues[nom] == empreinte(texte.encode("utf-8")):
                     joues[nom] = empreinte(artefacts.fichiers[nom])
             return Jeu(verdict=verdict_du_banc(retour.get("execution"), retour.get("fonctionnel")),
                        cause=retour.get("cause", ""), detail=retour.get("detail", ""), duree=retour.get("duree"),
-                       empreintes=joues, trace=retour.get("trace"))
+                       empreintes=joues, trace=retour.get("trace"), preuve=preuve)
         finally:
             try:
                 self.application.reinitialiser([])  # jamais laisser un défaut actif derrière soi
@@ -1533,6 +1628,9 @@ DONNEES_DE_TEST_DU_BANC = {
     "nom_client": ("le nom du client à créer", "Dupont SARL"),
     "ville_client": ("la ville du client à créer", "Lyon"),
 }
+# Le second jeu (porteur, 2026-10-16) : d'autres valeurs VALIDES pour l'application (nom de 40 caractères au plus, ville
+# quelconque) — un test qui emploie vraiment ses variables y sort comme avec le premier.
+SECOND_JEU_DU_BANC = {"nom_client": "Martin Lefèvre SA", "ville_client": "Paris"}
 
 
 def declarer_les_donnees_de_test(conn, project_id: int) -> None:
@@ -1560,9 +1658,51 @@ def citer_les_donnees_dans_le_cas(metier: dict) -> dict:
     return {**metier, **(changes or {})}
 
 
-def poser_les_donnees_de_test(texte: str, project_id: int | None) -> tuple[str, list[str]]:
+PREUVE_OK = "valeurs du second jeu"
+PREUVE_PARTIELLE = "valeurs du second jeu en partie seulement"
+PREUVE_EN_DUR = "valeur du premier jeu en dur"
+PREUVE_ABSENTE = "aucune des valeurs"
+PREUVE_ILLISIBLE = "état illisible"
+
+
+def _textes_de(valeur) -> set[str]:
+    """Toutes les valeurs TEXTE d'un état JSON (champ à champ, jamais un morceau : « Lyon » n'est pas dans « Lyonnaise »)."""
+    if isinstance(valeur, str):
+        return {valeur.strip()}
+    if isinstance(valeur, Mapping):
+        return set().union(*(_textes_de(v) for v in valeur.values())) if valeur else set()
+    if isinstance(valeur, (list, tuple)):
+        return set().union(*(_textes_de(v) for v in valeur)) if valeur else set()
+    return set()
+
+
+def preuve_par_l_etat(etat: Mapping | None, second: Mapping[str, str], premier: Mapping[str, str],
+                      ecrites: Iterable[str] = ()) -> str:
+    """Ce que l'état du SERVEUR (`/__etat`, signal du runtime) montre après un jeu au second jeu. Repose sur un état VIDÉ
+    avant le jeu (`ApplicationLocale.reinitialiser` le vérifie) : tout ce qu'on y lit vient du jeu.
+
+    - une valeur du premier jeu : restée en dur quelque part (`.feature` ou code des steps) ;
+    - la valeur du second jeu de CHAQUE variable que le test écrit (`ecrites`) : elles ont toutes atteint le serveur ;
+    - une partie seulement : une variable écrite ne sert pas (revue du 2026-10-16) — jamais comptée prouvée ;
+    - aucune : le cas ne crée rien (ou le test n'a rien soumis).
+    « Prouvé » dit que les valeurs ont atteint le serveur, pas qu'un « Alors » les vérifie."""
+    if etat is None:
+        return ""
+    textes = _textes_de(etat)
+    if any(v and v in textes for v in premier.values()):
+        return PREUVE_EN_DUR
+    attendues = [second[n] for n in (list(ecrites) or list(second)) if second.get(n)]
+    presentes = [v for v in attendues if v in textes]
+    if presentes and len(presentes) == len(attendues):
+        return PREUVE_OK
+    return PREUVE_PARTIELLE if presentes else PREUVE_ABSENTE
+
+
+def poser_les_donnees_de_test(texte: str, project_id: int | None,
+                              valeurs: Mapping[str, str] | None = None) -> tuple[str, list[str]]:
     """Le test tel que la PRODUCTION le jouerait hors campagne : variables remplacées par les valeurs du jeu « Par défaut »
-    (`donnees_de_test_service`, même calcul). Rend (texte, manques) ; un manque : le jeu sort « bloqué », jamais joué."""
+    (`donnees_de_test_service`, même calcul) — ou par `valeurs` (second jeu) pour les variables déclarées qu'il fixe.
+    Rend (texte, manques) ; un manque : le jeu sort « bloqué », jamais joué."""
     if "{{" not in texte and "}}" not in texte:
         return texte, []
     import sqlite3
@@ -1581,7 +1721,10 @@ def poser_les_donnees_de_test(texte: str, project_id: int | None) -> tuple[str, 
         if "{{" in texte:   # aussi large que le refus dans le code : une variable mal fermée compte
             return texte, ["le test écrit une variable, mais ce projet de banc n'en déclare aucune (--donnees-de-test ?)"]
         return texte, []
-    rendu = resolution.remplacer(texte, resolution.resoudre(niveaux, noms), noms)
+    poses = resolution.resoudre(niveaux, noms)
+    if valeurs is not None:
+        poses = {**poses, **{n: resolution.Valeur(v, "second jeu") for n, v in valeurs.items() if n in noms}}
+    rendu = resolution.remplacer(texte, poses, noms)
     return rendu.texte, list(rendu.inconnues) + [f"variable sans valeur « {n} »" for n in rendu.sans_valeur]
 
 
@@ -1853,7 +1996,8 @@ def _lancer_reel(args, configuration: Configuration, cas_joues: list[str], taux:
             list(specs), attendus, args.essais, generer, jouer, defauts_connus=defauts_codes, cout=cout,
             plafond_usd=args.plafond_cout, cout_estime_essai=args.cout_estime_essai, reel=True,
             journal=lambda m: print(m, flush=True), reparer=reparer,
-            tentatives_reparation=_tentatives_de_reparation(args.tentatives_reparation))
+            tentatives_reparation=_tentatives_de_reparation(args.tentatives_reparation),
+            second_jeu=(lambda a: jouer(a, VARIANTE_SAINE, SECOND_JEU_DU_BANC)) if args.donnees_de_test else None)
     indicateurs = calculer_indicateurs(campagne, taux)
     contexte = {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "etiquette": args.etiquette,
                 "commit": _commit(), "versions": _versions(), "modele_generation": _modele(),
@@ -1863,6 +2007,7 @@ def _lancer_reel(args, configuration: Configuration, cas_joues: list[str], taux:
                 "generations_rejouees_depuis": str(args.generations_depuis) if args.generations_depuis else None,
                 "reparation": bool(args.reparer),
                 "donnees_de_test": bool(args.donnees_de_test),
+                "second_jeu": SECOND_JEU_DU_BANC if args.donnees_de_test else None,
                 "bac_a_sable": bool(args.bac_a_sable),
                 "tentatives_reparation": _tentatives_de_reparation(args.tentatives_reparation) if args.reparer else None}
     md, js = ecrire_sortie(campagne, indicateurs, contexte, args.sortie)
