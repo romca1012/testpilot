@@ -355,6 +355,7 @@ Le banc d'agents crée ses cas sans IA (spécifications fixes) : avec `--donnees
 `{{nom_client}}` par le remplacement de l'association d'un clic. La campagne M1 mesure donc le test TECHNIQUE ; ce que l'IA
 qui rédige les cas fait des variables (proposées, oubliées, inventées) et son coût se mesurent à part, par une génération
 complète depuis une spécification.
+Second jeu (porteur, 2026-10-16) : chaque test généré qui écrit une variable, et dont le jeu sur la saine est juste, est rejoué sans IA sur la saine avec un second jeu (« Martin Lefèvre SA », « Paris »). La variable est PROUVÉE seulement si le jeu est conforme ET si l'état du serveur montre les valeurs du second jeu sans celles du premier ; compté à part de pass@k et des faux verts.
 
 ### 9.4 Ce que l'entreprise y gagne, étape par étape
 
