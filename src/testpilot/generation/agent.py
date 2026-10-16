@@ -43,6 +43,17 @@ class GenerationAgent:
         self.max_iterations = max_iterations if max_iterations is not None else config.MAX_ITERATIONS
         self.stall_limit = stall_limit if stall_limit is not None else config.REPAIR_STALL_LIMIT
 
+    @staticmethod
+    def _formes_oracle(modele: dict | None, projet: dict | None) -> dict | None:
+        """Lot VH-08 (A51) : les formes relevées à l'exploration, seulement pour les requêtes ENCORE déclarées et si
+        l'interrupteur est allumé. Éteint : None, le message est celui d'avant, octet pour octet."""
+        from testpilot.generation import interrupteurs
+        if not interrupteurs.forme_oracle_actif():
+            return None
+        declarees = set((projet or {}).get("oracle_requetes_disponibles") or ())
+        formes = (modele or {}).get("formes_oracle") or {}
+        return {nom: f for nom, f in formes.items() if nom in declarees} or None
+
     def generate(self, plan: TestPlan, *, case_id: int | None = None,
                  title: str = "", author: str = "", module_id: int | None = None,
                  metier: dict | None = None, group_id: int | None = None,
@@ -83,7 +94,8 @@ class GenerationAgent:
                                "content": prompt_mod.build_initial_message(
                                    plan, modele, metier, comptes=(projet or {}).get("comptes_libelles"),
                                    oracle=(projet or {}).get("oracle_requetes_disponibles"),
-                                   regeneration=regeneration, variables=variables)})
+                                   regeneration=regeneration, variables=variables,
+                                   formes_oracle=self._formes_oracle(modele, projet))})
         if failure_context:
             state.messages[0]["content"] = [
                 {"type": "text", "text": state.messages[0]["content"]}, *failure_context]
@@ -122,6 +134,12 @@ class GenerationAgent:
         from testpilot.generation.tools import essai as essai_tools
         from testpilot.generation.tools import outils_optionnels
         ctx.essai = essai_tools.construire(projet, self.dry_runner, self.connector)
+        # Lot VH-08 (A51, interrupteur) : les requêtes d'oracle DÉCLARÉES — un test qui en cite une autre est refusé à
+        # l'écriture. Éteint : `None`, aucun contrôle (l'exécution le bloque, comme avant).
+        from testpilot.generation import interrupteurs as _interrupteurs
+        ctx.requetes_oracle = (frozenset((projet or {}).get("oracle_requetes_disponibles") or ())
+                               if _interrupteurs.forme_oracle_actif() and projet is not None else None)
+        ctx.formes_oracle = self._formes_oracle(modele, projet)
         ctx.variables_de_test = frozenset(v["nom"] for v in variables)
         ctx.valeurs_de_test = valeurs_par_defaut
         ctx.controle_du_cas = controle_du_cas

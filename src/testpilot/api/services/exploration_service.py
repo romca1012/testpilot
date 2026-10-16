@@ -102,7 +102,7 @@ def start_exploration(conn, project_id: int) -> tuple[str, dict]:
     # plusieurs secondes sur une erreur réseau incompréhensible — ou pire, explorerait l'instance
     # par défaut de la machine et écrirait un annuaire qui ne décrit PAS ce projet (2026-07-24).
     # Le message dit quoi corriger.
-    from testpilot.connectors.runtime_env import ConnexionIncomplete, verifier_connexion
+    from testpilot.connectors.runtime_env import ConnexionIncomplete, _config_oracle, verifier_connexion
     try:
         verifier_connexion(projet)
     except ConnexionIncomplete as err:
@@ -133,6 +133,8 @@ def start_exploration(conn, project_id: int) -> tuple[str, dict]:
         # Extension (2026-09-30) : le descripteur du formulaire de connexion lui-même (3 clics
         # guidés), ou `None` si jamais capturé — même motif que `sequence_connexion` ci-dessus.
         "login_form": project_login_recordings.lire_formulaire(conn, project_id),
+        # Lot VH-08 (A51) : l'oracle du projet, pour en relever la FORME des réponses (requêtes GET seulement). `None` : aucun.
+        "oracle": _config_oracle(projet),
     }}
 
 
@@ -212,6 +214,16 @@ def _crawl(connexion: dict, max_pages: int) -> dict:
     }
 
 
+def _relever_l_oracle(config: dict) -> dict:
+    """{requête: forme} pour les requêtes GET déclarées (`connectors/forme_oracle`). Isolé pour être remplaçable en test."""
+    from testpilot.connectors import forme_oracle
+    from testpilot.connectors.oracle_http import OracleHttp
+
+    oracle = OracleHttp(config.get("base_url") or "", config.get("auth") or {}, config.get("queries") or [])
+    lecture = forme_oracle.requetes_en_lecture(json.dumps(config.get("queries") or []))
+    return forme_oracle.relever(oracle.executer, lecture)
+
+
 def run_exploration(job_id: str, *, project_id: int, connexion: dict,
                     max_pages: int = MAX_PAGES_DEFAUT) -> None:
     """Tâche de fond : cartographie l'application DU PROJET et range le résultat sous son id."""
@@ -235,6 +247,11 @@ def run_exploration(job_id: str, *, project_id: int, connexion: dict,
             "methode": "crawl déterministe Playwright, aucun LLM",
             **mesure,
         }
+        from testpilot.generation import interrupteurs
+        if connexion.get("oracle") and interrupteurs.forme_oracle_actif():
+            # Lot VH-08 (A51, interrupteur) : la forme des réponses de chaque requête GET de l'oracle — jamais une valeur ni
+            # un compte. Éteint : l'oracle n'est pas appelé, l'exploration est celle d'avant.
+            modele["formes_oracle"] = _relever_l_oracle(connexion["oracle"])
         chemin = domain_model.chemin_du_modele(project_id)
         chemin.parent.mkdir(parents=True, exist_ok=True)
         chemin.write_text(json.dumps(modele, ensure_ascii=False, indent=2), encoding="utf-8")

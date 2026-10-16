@@ -57,6 +57,9 @@ logger = logging.getLogger(__name__)
 NOM_OUTIL = "essayer_les_actions"
 # Nom DUPLIQUÉ côté `behave_runtime/environment.py` (le harnais ne dépend pas du paquet) : un test d'accord les compare.
 ESSAI_ETAT_FILE_ENV = "TP_ESSAI_ETAT_FILE"
+# Lot VH-08 (A51) : le harnais relève la forme des réponses de l'oracle à la fin de l'essai, avant sa remise à zéro. Posé
+# seulement si l'interrupteur `TESTPILOT_FORME_ORACLE` est allumé (nom dupliqué dans `behave_runtime/environment.py`).
+ESSAI_FORME_ORACLE_ENV = "TP_ESSAI_FORME_ORACLE"
 MAX_ESSAIS_PAR_GENERATION = 6
 # Appels à l'outil, refus compris : un agent ne relance pas indéfiniment un essai refusé (chaque appel est un tour payé).
 MAX_TENTATIVES = 12
@@ -449,7 +452,7 @@ def chaines_tirees_de_l_essai(chaines, essai: "EssaiBacASable | None", exigences
     return [tire for chaine in chaines for tire in _tires_de(chaine, essai, exigences)]
 
 
-def _rendre(etat: dict | None, echec: dict | None, etapes: list[str], *, remis: bool) -> str:
+def _rendre(etat: dict | None, echec: dict | None, etapes: list[str], *, remis: bool, formes: dict | None = None) -> str:
     if remis:
         lignes = ["Essai joué sur le bac à sable (remis à zéro avant et après) — rien de ce qu'il a fait ne subsiste."]
     else:
@@ -472,6 +475,11 @@ def _rendre(etat: dict | None, echec: dict | None, etapes: list[str], *, remis: 
             lignes.append(f"- {el.get('role', '?')} « {el.get('nom', '')} »{type_}{affiche}")
     else:
         lignes.append("La page finale n'a pas pu être lue.")
+    if formes:
+        # Lot VH-08 (A51) : relevée AVANT la remise à zéro — la seule fois où les listes de l'application ont des éléments.
+        from testpilot.connectors import forme_oracle
+        lignes.append("Forme des réponses de l'oracle, complétée par tes essais (valeurs masquées, aucun compte) :")
+        lignes += forme_oracle.rendre_tout(formes)
     lignes.append("Rappel : ces éléments te disent OÙ agir ; les valeurs attendues des « Alors » viennent de la spécification.")
     return "\n".join(lignes)
 
@@ -527,7 +535,12 @@ def essayer_les_actions(ctx: "ToolContext", etapes: list[str]) -> "ToolOutcome":
     fichier_etat = dossier / "etat.json"
     try:
         (dossier / f"{module}.feature").write_text(texte, encoding="utf-8")
-        runner = essai.fabriquer_runner(dossier, {ESSAI_ETAT_FILE_ENV: str(fichier_etat)})
+        from testpilot.generation import interrupteurs
+        variables_d_essai = {ESSAI_ETAT_FILE_ENV: str(fichier_etat)}
+        if interrupteurs.forme_oracle_actif() and getattr(ctx, "formes_oracle", None):
+            # Rien à compléter sans forme relevée à l'exploration : l'oracle n'est alors pas appelé.
+            variables_d_essai[ESSAI_FORME_ORACLE_ENV] = "1"
+        runner = essai.fabriquer_runner(dossier, variables_d_essai)
         a_blanc = runner.dry_run(module)
         if not a_blanc.success:
             inconnus = "; ".join(getattr(a_blanc, "undefined_steps", None) or []) or "voir le catalogue"
@@ -592,7 +605,14 @@ def essayer_les_actions(ctx: "ToolContext", etapes: list[str]) -> "ToolOutcome":
             annuaire.observes_session.update(
                 str(el[k]).strip() for el in (etat.get("elements") or []) for k in ("nom", "texte")
                 if str(el.get(k) or "").strip())
-        rendu = _rendre(etat, echec, list(etapes), remis=remis)
+        formes = None
+        if getattr(ctx, "formes_oracle", None) and etat and etat.get("formes_oracle"):
+            # Lot VH-08 (A51, revue du 2026-10-16) : le CUMUL exploration ∪ essais — jamais la forme brute de l'instant, qui
+            # dirait qu'une liste est vide maintenant, ou montrerait des clés qui sont des données.
+            from testpilot.connectors import forme_oracle
+            ctx.formes_oracle = forme_oracle.completer_tout(ctx.formes_oracle, etat["formes_oracle"])
+            formes = ctx.formes_oracle
+        rendu = _rendre(etat, echec, list(etapes), remis=remis, formes=formes)
         if noms:   # lot PT-02d : l'agent relit `{{nom}}`, jamais la valeur posée (il la recopierait en dur)
             rendu = variables_de_test.masquer(rendu, getattr(ctx, "valeurs_de_test", {}) or {})
         return _outcome(rendu)

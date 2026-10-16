@@ -51,6 +51,13 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 | A48 | **Validée par le porteur le 2026-10-16** (PT-04a) — un environnement a une NATURE obligatoire, « Test » ou « Production », choisie à sa création sans valeur par défaut. Un environnement « Production » est affiché mais jamais joué : le lancement est refusé, et le harnais le refuse aussi de son côté (`ODOO_ENV=prod` posé pour son exécution). L'environnement par défaut des projets existants est « Test » (ce qu'il est aujourd'hui de fait). La protection de toute l'installation (`ODOO_ENV=prod`) reste inchangée. | 2026-10-16 |
 | A49 | **Validée par le porteur le 2026-10-16** (PT-04a) — un environnement porte un nom, une adresse, une version, une base (Odoo) et l'adresse de son oracle. Les comptes de l'onglet « Comptes » servent sur tous les environnements ; des identifiants propres à un environnement viendront avec le choix du compte au lancement (E5, PT-04b). | 2026-10-16 |
 | A50 | **Validée par le porteur le 2026-10-16** (PT-04a) — l'exploration, la génération, ses essais et la remise à zéro restent sur l'environnement PAR DÉFAUT, comme aujourd'hui. Les autres environnements servent seulement à rejouer des tests déjà écrits. | 2026-10-16 |
+| A51 | **Validée par le porteur le 2026-10-16** (VH-08) — l'IA connaît la FORME des réponses de l'oracle (objet ou liste, clés, types ; jamais une valeur, jamais un nombre d'éléments) : relevée à l'exploration, et surtout relevée À LA FIN DE CHAQUE ESSAI sur le bac à sable, avant sa remise à zéro — à l'exploration, les listes de l'application sont souvent vides et la forme de leurs éléments inconnue. Seules les requêtes GET sont appelées (lecture). Derrière l'interrupteur `TESTPILOT_FORME_ORACLE`, éteint jusqu'à la mesure M2. Avec : un test qui cite une requête d'oracle non déclarée est refusé à l'écriture. Revue du 2026-10-16 : après un essai, la
+forme montrée est le CUMUL exploration ∪ essais ; les clés d'un objet viennent de l'exploration seule (un objet vide à
+l'exploration puis rempli : « ses clés sont des données ») ; une clé vue seulement à l'essai n'est montrée que dans un
+élément de liste et si elle a la syntaxe d'un nom de champ. Ce qu'un essai laisse encore deviner, ASSUMÉ : qu'un élément a
+existé (la forme d'une liste devient connue) ; à l'inverse, une liste encore « vide, forme inconnue » ou un champ encore
+« vide » après les essais disent qu'ils ne se sont jamais remplis ; une clé de donnée écrite comme un nom de champ
+(snake_case) passerait. Aucun de ces cas ne donne une valeur attendue : elle vient toujours du cas validé. | 2026-10-16 |
 | — | Précisions annoncées au porteur le 2026-10-13, sans objection : la **mise à la corbeille** d'une variable ou d'un jeu reste réservée à l'administrateur du projet (comme toute suppression de l'outil : lui seul restaure) ; le **nom d'une variable ne se modifie pas** (les tests la désignent par ce nom) ; un lancement **sans jeu choisi** joue le jeu « Par défaut » si le projet a des variables, et rien ne change pour un projet qui n'en a pas. | 2026-10-13 |
 
 Interrupteur (confirmé par le porteur le 2026-10-13) : il ne sert qu'au temps de la construction, pour comparer
@@ -392,6 +399,7 @@ Second jeu (porteur, 2026-10-16) : chaque test généré qui écrit une variable
 - **A45** (Odoo : « instance de test » en plus) et **A46** (données de test allumées, montants avec unité éteints) : validées le 2026-10-16.
 - **A47** (« Instance de test » décochée quand l'application change) : validée le 2026-10-16.
 - **A48** (nature Test / Production obligatoire), **A49** (mêmes comptes partout, oracle par environnement) et **A50** (génération sur l'environnement par défaut) : validées le 2026-10-16 pour PT-04a.
+- **A51** (forme des réponses de l'oracle lue à l'exploration et à la fin de chaque essai) : validée le 2026-10-16.
 
 ### 9.6 L'IA ne part plus à l'aveugle (demande du porteur, 2026-10-16)
 
