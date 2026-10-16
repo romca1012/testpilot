@@ -65,7 +65,8 @@ def test_la_revision_alembic_est_chainee_sur_la_tete_precedente():
     spec.loader.exec_module(revision)
 
     assert (revision.revision, revision.down_revision) == ("e4b8c2f19a63", "d9e3a1b7c582")
-    assert portable_connection.ALEMBIC_HEAD == "e4b8c2f19a63"
+    # La tête a avancé depuis (migration 69, PT-04a) : vérifiée par `test_migration_environnements.py`.
+    assert portable_connection.ALEMBIC_HEAD != "d9e3a1b7c582"
     autres = [p.name for p in chemin.parent.glob("*.py")
               if p != chemin and 'down_revision = "d9e3a1b7c582"' in p.read_text(encoding="utf-8")]
     assert autres == [], "une seule révision descend de d9e3a1b7c582"

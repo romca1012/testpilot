@@ -23,6 +23,7 @@ from testpilot.api.deps import get_conn
 from testpilot.store.repositories import (
     CaseGroupRepo,
     CaseRepo,
+    EnvironnementCorbeilleRepo,
     ModuleRepo,
     ProjectRepo,
     TestDatasetRepo,
@@ -41,6 +42,8 @@ _DEPOTS = {
     # Lot PT-02 (A31) : les données de test.
     "variable": TestVariableRepo,
     "jeu_de_donnees": TestDatasetRepo,
+    # Lot PT-04a : les environnements ajoutés.
+    "environnement": EnvironnementCorbeilleRepo,
 }
 
 
@@ -65,8 +68,9 @@ def _project_id_depuis_element(conn, type_element: str, element_id: int) -> int 
             "SELECT m.project_id AS project_id FROM test_case tc"
             " JOIN module m ON tc.module_id = m.id WHERE tc.id = ?", (element_id,)).fetchone()
         return ligne["project_id"] if ligne else None
-    if type_element in ("variable", "jeu_de_donnees"):
-        table = "test_variable" if type_element == "variable" else "test_dataset"
+    if type_element in ("variable", "jeu_de_donnees", "environnement"):
+        table = {"variable": "test_variable", "jeu_de_donnees": "test_dataset",
+                 "environnement": "project_environment"}[type_element]
         ligne = conn.execute(f"SELECT project_id FROM {table} WHERE id=?", (element_id,)).fetchone()
         return ligne["project_id"] if ligne else None
     return None

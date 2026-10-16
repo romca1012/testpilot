@@ -828,6 +828,9 @@ class RunIn(BaseModel):
     # Lot PT-02b (A28) : les jeux de données à jouer. Vide : une seule exécution, avec le jeu « Par défaut » si le projet a
     # des variables. Un jeu : une exécution qui le joue. Plusieurs : une exécution PAR jeu, regroupées dans un plan ; 50 au plus.
     dataset_ids: list[int] = []
+    # Lot PT-04a : les environnements à jouer (0 = par défaut). Vide : le défaut seul, comme avant. Plusieurs : une exécution
+    # par jeu ET par environnement, regroupées dans un plan ; 50 au plus en tout. « Production » : refusé (A48).
+    environment_ids: list[int] = []
 
 
 class RunCaseResult(BaseModel):
@@ -936,6 +939,9 @@ class RunSummary(BaseModel):
     dataset_id: int | None = None
     # Le jeu de données FIGÉ au lancement (nom) — vide tant que la campagne n'a pas été lancée, ou sans donnée de test.
     jeu_de_donnees: str = ""
+    # Lot PT-04a : l'environnement choisi (`None` : par défaut) et son nom FIGÉ au lancement — vide sans environnement ajouté.
+    environment_id: int | None = None
+    environnement: str = ""
     project_id: int
     name: str
     status: str            # draft | running | completed
@@ -1059,6 +1065,8 @@ class ScheduledRunIn(BaseModel):
     # Lot PT-02b (A28) : les jeux de données joués à chaque déclenchement ; plusieurs : une exécution par jeu, regroupées
     # dans un plan. Vide : comme avant.
     dataset_ids: list[int] = []
+    # Lot PT-04a : les environnements joués à chaque déclenchement (0 = par défaut). Vide : le défaut seul.
+    environment_ids: list[int] = []
 
 
 class ScheduledRunOut(BaseModel):
@@ -1076,6 +1084,7 @@ class ScheduledRunOut(BaseModel):
     last_run_id: int | None = None
     last_triggered_at: str | None = None
     dataset_ids: list[int] = []
+    environment_ids: list[int] = []
 
 
 class ScheduledRunPatchIn(BaseModel):
@@ -1702,3 +1711,36 @@ def _bac_a_sable_non_remis(base_url: str) -> bool:
     from testpilot.guardrails import bac_a_sable
 
     return bac_a_sable.non_remis(bac_a_sable.cle_d_application(base_url)) is not None
+
+
+# ── Environnements d'un projet (lot PT-04a, A48 à A50) ─────────────────────────────────────────────────────────────────────
+
+class EnvironnementIn(BaseModel):
+    """Un environnement ajouté. `nature` n'a PAS de défaut (A48) : « test » ou « production », choisi par une personne.
+    Pour l'environnement par défaut (0), seul `nom` est lu."""
+    nom: str
+    base_url: str = ""
+    nature: str = ""
+    connector_version: str = ""
+    database: str = ""
+    oracle_base_url: str = ""
+
+
+class EnvironnementOut(BaseModel):
+    id: int
+    nom: str
+    base_url: str
+    connector_version: str = ""
+    database: str = ""
+    oracle_base_url: str = ""
+    nature: str
+    nature_libelle: str     # CONTINUITE §4.7 : jamais la valeur brute à l'écran
+    est_defaut: bool = False
+
+
+def environnement_out(e: dict) -> EnvironnementOut:
+    from testpilot.parametres.environnements import LIBELLES_NATURE
+    return EnvironnementOut(id=e["id"], nom=e["nom"], base_url=e.get("base_url", ""),
+                            connector_version=e.get("connector_version", "") or "", database=e.get("database", "") or "",
+                            oracle_base_url=e.get("oracle_base_url", "") or "", nature=e["nature"],
+                            nature_libelle=LIBELLES_NATURE[e["nature"]], est_defaut=bool(e.get("est_defaut")))

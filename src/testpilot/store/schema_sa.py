@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 68
+ALIGNED_WITH_SCHEMA_VERSION = 69
 
 metadata = MetaData()
 
@@ -81,6 +81,8 @@ project = Table(
     Column("calibration_writes_enabled", Integer, nullable=False, server_default="1"),
     # Migration 68 (A45) : le projet Odoo se déclare instance de test — sans elle, l'IA n'y écrit jamais. Éteint par défaut.
     Column("instance_de_test", Integer, nullable=False, server_default="0"),
+    # Migration 69 (PT-04a) : le nom de l'environnement par défaut (adresse, base et version restent ci-dessus) ; vide = « Par défaut ».
+    Column("environnement_nom", Text, nullable=False, server_default=""),
     # Migration 61 (D26) : adresse de remise à zéro du bac à sable — vide = aucun essai pendant la génération.
     Column("bac_a_sable_reset", Text, nullable=False, server_default=""),
     # Migration 50 (lot 07c) : contexte navigateur FIGÉ — vide = le défaut (fr-FR, Europe/Paris, 1440x900).
@@ -159,6 +161,30 @@ test_dataset = Table(
     Column("deleted_by", Text, nullable=False, server_default=""),
     CheckConstraint("est_defaut IN (0, 1)", name="ck_test_dataset_est_defaut"),
     Index("uq_test_dataset_nom", "project_id", "nom", unique=True,
+          sqlite_where=Column("deleted_at") == "",
+          postgresql_where=Column("deleted_at") == ""),
+    sqlite_autoincrement=True,
+)
+
+# ── Environnements ajoutés d'un projet (migration 69, lot PT-04a, A48 à A50) ──
+project_environment = Table(
+    "project_environment",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("project_id", Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False),
+    Column("nom", Text, nullable=False),
+    Column("base_url", Text, nullable=False),
+    Column("connector_version", Text, nullable=False, server_default=""),
+    Column("database", Text, nullable=False, server_default=""),
+    Column("oracle_base_url", Text, nullable=False, server_default=""),
+    # A48 : nature obligatoire, sans défaut — un environnement « production » n'est jamais joué.
+    Column("nature", Text, nullable=False),
+    Column("rang", Integer, nullable=False, server_default="0"),
+    Column("created_at", Text, nullable=False),
+    Column("deleted_at", Text, nullable=False, server_default=""),
+    Column("deleted_by", Text, nullable=False, server_default=""),
+    CheckConstraint("nature IN ('test', 'production')", name="ck_project_environment_nature"),
+    Index("uq_project_environment_nom", "project_id", "nom", unique=True,
           sqlite_where=Column("deleted_at") == "",
           postgresql_where=Column("deleted_at") == ""),
     sqlite_autoincrement=True,
@@ -529,6 +555,9 @@ test_run = Table(
     Column("parametres_figes", Text, nullable=False, server_default=""),
     # Migration 65 (A35) : n'y jouer que les tests qui écrivent des variables — tri fait au lancement (`RunRepo.case_ids`).
     Column("seulement_variables", Integer, nullable=False, server_default="0"),
+    # Migration 69 (PT-04a) : l'environnement choisi (NULL = par défaut, sans FK dure) et ses valeurs FIGÉES au lancement.
+    Column("environment_id", Integer, nullable=True),
+    Column("environnement_fige", Text, nullable=False, server_default=""),
     CheckConstraint("seulement_variables IN (0, 1)", name="ck_test_run_seulement_variables"),
     CheckConstraint("sans_repli IN (0, 1)", name="ck_test_run_sans_repli"),
     CheckConstraint("selection_mode IN ('all', 'frozen')", name="ck_test_run_selection_mode"),
@@ -592,6 +621,8 @@ scheduled_run = Table(
     # Migration 66 (lot PT-02b, A28) : les jeux de données à jouer à chaque déclenchement (liste JSON d'ids) ; vide = comme
     # avant (le jeu « Par défaut » si le projet a des variables).
     Column("dataset_ids", Text, nullable=False, server_default=""),
+    # Migration 69 (PT-04a) : les environnements à jouer (liste JSON d'ids, 0 = par défaut) ; vide = le défaut seul.
+    Column("environment_ids", Text, nullable=False, server_default=""),
     CheckConstraint("selection_mode IN ('all', 'frozen')",
                      name="ck_scheduled_run_selection_mode"),
     CheckConstraint("frequency IN ('daily', 'weekly')", name="ck_scheduled_run_frequency"),

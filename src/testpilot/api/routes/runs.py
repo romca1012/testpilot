@@ -16,8 +16,9 @@ from fastapi.responses import FileResponse
 
 from testpilot.api import access, erreurs, schemas
 from testpilot.api.deps import get_conn
-from testpilot.api.services import attachment_service, campaign_service, donnees_de_test_service
+from testpilot.api.services import attachment_service, campaign_service, donnees_de_test_service, environnements_service
 from testpilot.guardrails import durable_jobs
+from testpilot.parametres.environnements import EnvironnementInvalide
 from testpilot.store.repositories import (
     AssignmentRepo,
     CaseRepo,
@@ -43,7 +44,8 @@ def _summary(run: dict, case_count: int) -> schemas.RunSummary:
         strict=bool(run.get("strict")),
         sans_repli=bool(run.get("sans_repli", 1)),
         verts_a_confirmer=run.get("verts_a_confirmer", 0),
-        dataset_id=run.get("dataset_id"), jeu_de_donnees=_jeu_fige(run.get("parametres_figes")))
+        dataset_id=run.get("dataset_id"), jeu_de_donnees=_jeu_fige(run.get("parametres_figes")),
+        environment_id=run.get("environment_id"), environnement=environnements_service.libelle_du_run(run))
 
 
 def _jeu_fige(texte: str | None) -> str:
@@ -99,18 +101,25 @@ def create_run(project_id: int, body: schemas.RunIn, request: Request, conn=Depe
         # que de les laisser disparaître de la campagne sans un mot.
         _refuser_les_cas_non_automatises(repo, body.case_ids)
     jeux = _jeux_demandes(conn, project_id, body)
-    if len(jeux) <= 1:
+    environnements = _environnements_demandes(conn, project_id, body)
+    if max(len(jeux), 1) * len(environnements) > JEUX_PAR_LANCEMENT_MAX:
+        raise HTTPException(status_code=422, detail=f"{JEUX_PAR_LANCEMENT_MAX} exécutions au plus par lancement "
+                                                    "(jeux de données × environnements)")
+    if len(jeux) <= 1 and len(environnements) == 1:
+        environnement = environnements[0]
         run_id = repo.create(project_id=project_id, name=body.name.strip(),
                              description=body.description, refs=body.refs,
                              selection_mode=body.selection_mode, mode=body.mode,
                              case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli,
-                             dataset_id=jeux[0]["id"] if jeux else None)
+                             dataset_id=jeux[0]["id"] if jeux else None,
+                             environment_id=environnement["id"] if environnement else None)
         return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
-    # Plusieurs jeux (A28, A35) : une exécution PAR jeu, regroupées dans un plan qui porte le nom demandé. La réponse décrit
-    # la première ; son `plan_id` mène au plan, où figurent toutes les autres.
+    # Plusieurs jeux (A28, A35) ou environnements (PT-04a) : une exécution par jeu ET par environnement, regroupées dans un
+    # plan qui porte le nom demandé. La réponse décrit la première ; son `plan_id` mène au plan, où figurent les autres.
     _, premier, _ = donnees_de_test_service.creer_une_execution_par_jeu(
         conn, project_id=project_id, nom=body.name.strip(), jeux=jeux, created_by=access.utilisateur_de(request),
-        description=body.description, refs=body.refs, selection_mode=body.selection_mode, mode=body.mode,
+        description=body.description, refs=body.refs, environnements=environnements,
+        selection_mode=body.selection_mode, mode=body.mode,
         case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli)
     return _summary(repo.get(premier), len(repo.case_ids(premier)))
 
@@ -128,6 +137,19 @@ def _jeux_demandes(conn, project_id: int, body: schemas.RunIn) -> list[dict]:
     try:
         return donnees_de_test_service.jeux_demandes(conn, project_id, body.dataset_ids, maximum=JEUX_PAR_LANCEMENT_MAX)
     except DonneeDeTestInvalide as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _environnements_demandes(conn, project_id: int, body: schemas.RunIn) -> list[dict | None]:
+    """Les environnements demandés, vérifiés (`environnements_service`) ; None = par défaut. Un environnement ajouté ne se
+    joue que dans une exécution AUTOMATIQUE : une campagne manuelle se saisit, l'environnement s'y décrit dans son nom."""
+    if not body.environment_ids or body.environment_ids == [0]:
+        return [None]
+    if body.mode == MODE_MANUELLE:
+        raise HTTPException(status_code=422, detail="les environnements se jouent dans une exécution automatique")
+    try:
+        return environnements_service.environnements_demandes(conn, project_id, body.environment_ids)
+    except EnvironnementInvalide as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

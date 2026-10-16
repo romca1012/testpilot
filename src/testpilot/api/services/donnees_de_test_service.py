@@ -162,23 +162,40 @@ def jeux_demandes(conn, project_id: int, dataset_ids: list[int], *, maximum: int
 
 
 def creer_une_execution_par_jeu(conn, *, project_id: int, nom: str, jeux: list[dict], created_by: str = "",
-                                description: str = "", refs: str = "", **champs) -> tuple[int, int, list[int]]:
+                                description: str = "", refs: str = "", environnements: list[dict | None] | None = None,
+                                **champs) -> tuple[int, int, list[int]]:
     """Plusieurs jeux (A28) : une exécution PAR jeu, regroupées dans un plan qui porte `nom`. Rend (plan, première
     exécution, toutes les exécutions dans l'ordre). `champs` : ceux de `RunRepo.create` (sélection, mode, cas…).
 
     Décision A35 : la PREMIÈRE (le jeu « Par défaut » s'il est demandé) joue tous les tests ; les suivantes, la même
     sélection, mais seulement les tests qui écrivent des variables — un test sans variable rejoué à l'identique pour chaque
     jeu ne prouverait rien de plus. Ce tri se fait au LANCEMENT (`RunRepo.case_ids`), pas ici : figé à la création, il
-    oubliait un test qui gagne une variable avant le lancement (revue du 2026-10-14)."""
-    jeux = sorted(jeux, key=lambda j: not j["est_defaut"])
+    oubliait un test qui gagne une variable avant le lancement (revue du 2026-10-14).
+
+    Lot PT-04a : `environnements` (None = l'environnement par défaut ; absent = le défaut seul) — une exécution par jeu ET
+    par environnement. A35 vaut dans CHAQUE environnement : son premier jeu joue tous les tests. Le nom de chaque exécution
+    porte le jeu et l'environnement quand il y en a plusieurs. `jeux` vide : aucune donnée de test, un run par environnement."""
+    from testpilot.api.services import environnements_service
+    from testpilot.store.repositories import ProjectRepo
+
+    jeux = sorted(jeux, key=lambda j: not j["est_defaut"]) or [None]
+    environnements = environnements or [None]
+    projet = ProjectRepo(conn).get(project_id) or {}
     plan_id = PlanRepo(conn).create(project_id=project_id, name=nom, description=description, refs=refs,
                                     created_by=created_by)
     run_ids = []
-    for rang, jeu in enumerate(jeux):
-        run_id = RunRepo(conn).create(project_id=project_id, name=f"{nom} — {jeu['nom']}", description=description,
-                                      refs=refs, dataset_id=jeu["id"], seulement_variables=rang > 0, **champs)
-        PlanRepo(conn).assign_run(plan_id, run_id)
-        run_ids.append(run_id)
+    for environnement in environnements:
+        for rang, jeu in enumerate(jeux):
+            parties = [nom]
+            if len(jeux) > 1:
+                parties.append(jeu["nom"])
+            if len(environnements) > 1:
+                parties.append(environnements_service.nom_de(conn, projet, environnement))
+            run_id = RunRepo(conn).create(project_id=project_id, name=" — ".join(parties), description=description,
+                                          refs=refs, dataset_id=jeu["id"] if jeu else None, seulement_variables=rang > 0,
+                                          environment_id=environnement["id"] if environnement else None, **champs)
+            PlanRepo(conn).assign_run(plan_id, run_id)
+            run_ids.append(run_id)
     return plan_id, run_ids[0], run_ids
 
 
