@@ -13,6 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from testpilot.api import access, schemas
 from testpilot.api.deps import get_conn
+from testpilot.api.routes.runs import _jeu_fige
+from testpilot.api.services import environnements_service
 from testpilot.store.repositories import PlanRepo, ProjectRepo, RunRepo
 
 router = APIRouter(tags=["plans"])
@@ -89,7 +91,10 @@ def get_plan(plan_id: int, conn=Depends(get_conn)):
                         else len(RunRepo(conn).case_ids(r["id"]))),
             tested_count=r.get("tested_count", 0), manuel_count=r.get("manuel_count", 0),
             is_archived=bool(r.get("is_archived")), created_at=r.get("created_at", ""),
-            plan_id=r.get("plan_id"))
+            plan_id=r.get("plan_id"), strict=bool(r.get("strict")), dataset_id=r.get("dataset_id"),
+            # Lot PT-04a : le plan d'un lancement par jeu et par environnement dit, pour chaque exécution, ce qui a été joué.
+            jeu_de_donnees=_jeu_fige(r.get("parametres_figes")), environment_id=r.get("environment_id"),
+            environnement=environnements_service.libelle_du_run(r))
         for r in PlanRepo(conn).runs_of_plan(plan_id)
     ]
     return schemas.PlanDetailOut(plan=_out(plan), runs=runs)

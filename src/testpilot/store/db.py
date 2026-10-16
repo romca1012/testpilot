@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 68
+_SCHEMA_VERSION = 69
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -278,6 +278,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_67_ia_peut_agir_par_defaut(conn)
     if version < 68:
         _migrate_68_instance_de_test(conn)
+    if version < 69:
+        _migrate_69_environnements(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -529,6 +531,44 @@ def _migrate_68_instance_de_test(conn: sqlite3.Connection) -> None:
     par projet. Éteint par défaut, jamais posé implicitement. Idempotente."""
     if "instance_de_test" not in _column_names(conn, "project"):
         conn.execute("ALTER TABLE project ADD COLUMN instance_de_test INTEGER NOT NULL DEFAULT 0")
+
+
+def _migrate_69_environnements(conn: sqlite3.Connection) -> None:
+    """Lot PT-04a (décisions A48 à A50, porteur, 2026-10-16) : plusieurs ENVIRONNEMENTS par projet (recette, préproduction…).
+
+    L'environnement PAR DÉFAUT reste l'adresse, la base et la version du projet, SANS être déplacées (§3.1 du plan) : seul
+    son nom s'ajoute (`project.environnement_nom`, vide = « Par défaut »). Les environnements AJOUTÉS vivent dans
+    `project_environment` avec une NATURE obligatoire, sans défaut (A48) : « test », ou « production », jamais joué. Ils vont
+    à la corbeille (`deleted_at`) ; l'unicité du nom ne vaut que pour les vivants. Les comptes restent ceux du projet (A49).
+
+    `test_run.environment_id` : l'environnement choisi (NULL = par défaut, sans FK dure, comme `dataset_id`) ;
+    `test_run.environnement_fige` : ses valeurs FIGÉES au lancement (JSON), pour qu'une modification ultérieure ne change pas
+    ce qu'une campagne déjà lancée joue. `scheduled_run.environment_ids` : ceux d'une planification (liste JSON). Vides par
+    défaut : rien ne change pour un projet sans environnement ajouté. Idempotente."""
+    conn.execute('''CREATE TABLE IF NOT EXISTS project_environment (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+        nom TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        connector_version TEXT NOT NULL DEFAULT '',
+        database TEXT NOT NULL DEFAULT '',
+        oracle_base_url TEXT NOT NULL DEFAULT '',
+        nature TEXT NOT NULL CHECK (nature IN ('test', 'production')),
+        rang INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        deleted_at TEXT NOT NULL DEFAULT '',
+        deleted_by TEXT NOT NULL DEFAULT '')''')
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_project_environment_nom ON project_environment(project_id, nom)"
+                 " WHERE deleted_at = ''")
+    if "environnement_nom" not in _column_names(conn, "project"):
+        conn.execute("ALTER TABLE project ADD COLUMN environnement_nom TEXT NOT NULL DEFAULT ''")
+    if _table_existe(conn, "test_run"):
+        if "environment_id" not in _column_names(conn, "test_run"):
+            conn.execute("ALTER TABLE test_run ADD COLUMN environment_id INTEGER")
+        if "environnement_fige" not in _column_names(conn, "test_run"):
+            conn.execute("ALTER TABLE test_run ADD COLUMN environnement_fige TEXT NOT NULL DEFAULT ''")
+    if _table_existe(conn, "scheduled_run") and "environment_ids" not in _column_names(conn, "scheduled_run"):
+        conn.execute("ALTER TABLE scheduled_run ADD COLUMN environment_ids TEXT NOT NULL DEFAULT ''")
 
 
 def _table_existe(conn: sqlite3.Connection, nom: str) -> bool:

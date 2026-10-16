@@ -64,7 +64,7 @@ class BehaveRunner:
                  steps_library_dir: Path | None = None, dry_timeout: int | None = None,
                  real_timeout: int | None = None, connection: dict[str, str] | None = None,
                  project_id: int | None = None, connector_type: str | None = None,
-                 profil_instance: str | None = None, essai: bool = False):
+                 profil_instance: str | None = None, essai: bool = False, environnement_ajoute: bool = False):
         self.runtime_dir = runtime_dir or config.BEHAVE_RUNTIME_DIR
         self.generated_dir = generated_dir or config.GENERATED_DIR
         self.steps_library_dir = steps_library_dir or config.STEPS_LIBRARY_DIR
@@ -95,6 +95,10 @@ class BehaveRunner:
         # agent tente en tâtonnant n'est pas un fait sur l'application ; (2) il ne prend pas la place d'une exécution
         # réelle dans `bac_a_sable` — c'est l'outil d'essai qui tient l'exclusion, remises à zéro comprises.
         self.essai = bool(essai)
+        # Lot PT-04a (A50, revue du 2026-10-16) : un run sur un environnement AJOUTÉ (recette, préproduction…) n'apprend rien
+        # non plus — la mémoire du projet (refus, paliers de sélecteurs, menus) sert la génération, qui ne travaille que sur
+        # l'environnement par défaut ; une autre version de l'application lui enseignerait des faits qui ne sont pas les siens.
+        self.sans_apprentissage = bool(essai or environnement_ajoute)
 
     def _cle_d_application(self) -> str | None:
         """L'application que ce runner vise (origine de son adresse) — deux projets peuvent viser la même. `None` sans
@@ -293,7 +297,7 @@ class BehaveRunner:
         - **best-effort, jamais fatal** — un disque plein ne doit pas faire tomber une exécution
           qui a créé de vraies données dans l'application testée (même arbitrage que l'archivage).
         """
-        if dry_run or self.essai or self.project_id is None or not result.refus_mesures:
+        if dry_run or self.sans_apprentissage or self.project_id is None or not result.refus_mesures:
             return
         try:
             from testpilot.generation import regles_apprises
@@ -325,7 +329,7 @@ class BehaveRunner:
         - **best-effort, jamais fatal** — une dérive non enregistrée est un défaut mineur de
           visibilité, jamais une raison de faire tomber une exécution réelle.
         """
-        if dry_run or self.essai or self.project_id is None or not result.selector_tiers:
+        if dry_run or self.sans_apprentissage or self.project_id is None or not result.selector_tiers:
             return
         try:
             from testpilot.execution import selector_memory
@@ -359,7 +363,7 @@ class BehaveRunner:
         - **best-effort, jamais fatal** — un libellé non appris est un défaut mineur de qualité de
           génération, jamais une raison de faire tomber une exécution réelle.
         """
-        if dry_run or self.essai or self.project_id is None or not result.menus_appris:
+        if dry_run or self.sans_apprentissage or self.project_id is None or not result.menus_appris:
             return
         try:
             from testpilot.generation import menu_appris

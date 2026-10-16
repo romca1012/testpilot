@@ -17,7 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from testpilot.api import access, schemas
 from testpilot.api.deps import get_conn
-from testpilot.api.services import donnees_de_test_service
+from testpilot.api.services import donnees_de_test_service, environnements_service
+from testpilot.parametres import environnements
 from testpilot.store.repositories import DonneeDeTestInvalide, ProjectRepo, RunRepo, ScheduledRunRepo
 
 router = APIRouter(tags=["schedules"])
@@ -31,7 +32,8 @@ def _out(planif: dict) -> schemas.ScheduledRunOut:
         is_active=bool(planif.get("is_active", True)), created_by=planif.get("created_by", ""),
         created_at=planif.get("created_at", ""), last_run_id=planif.get("last_run_id"),
         last_triggered_at=planif.get("last_triggered_at"),
-        dataset_ids=donnees_de_test_service.ids_des_jeux(planif.get("dataset_ids")))
+        dataset_ids=donnees_de_test_service.ids_des_jeux(planif.get("dataset_ids")),
+        environment_ids=environnements.ids_lus(planif.get("environment_ids")))
 
 
 @router.post("/api/projects/{project_id}/schedules", response_model=schemas.ScheduledRunOut,
@@ -71,10 +73,19 @@ def create_schedule(project_id: int, body: schemas.ScheduledRunIn, request: Requ
         jeux = donnees_de_test_service.jeux_demandes(conn, project_id, body.dataset_ids)
     except DonneeDeTestInvalide as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:   # lot PT-04a : mêmes environnements admis qu'à la main — du projet, vivants, jamais « Production » (A48)
+        choisis = environnements_service.environnements_demandes(conn, project_id, body.environment_ids)
+    except environnements.EnvironnementInvalide as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if max(len(jeux), 1) * len(choisis) > donnees_de_test_service.JEUX_PAR_LANCEMENT_MAX:
+        raise HTTPException(status_code=422, detail=f"{donnees_de_test_service.JEUX_PAR_LANCEMENT_MAX} exécutions au plus "
+                                                    "par déclenchement (jeux de données × environnements)")
+    ids_choisis = [e["id"] if e else environnements.DEFAUT for e in choisis]
     scheduled_id = ScheduledRunRepo(conn).create(
         project_id=project_id, name=body.name.strip(), selection_mode=body.selection_mode,
         frequency=body.frequency, hour=body.hour, minute=body.minute, weekday=body.weekday,
-        case_ids=body.case_ids, created_by=access.utilisateur_de(request), dataset_ids=[j["id"] for j in jeux])
+        case_ids=body.case_ids, created_by=access.utilisateur_de(request), dataset_ids=[j["id"] for j in jeux],
+        environment_ids=[] if ids_choisis == [environnements.DEFAUT] else ids_choisis)
     return _out(ScheduledRunRepo(conn).get(scheduled_id))
 
 

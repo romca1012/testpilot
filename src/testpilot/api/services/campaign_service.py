@@ -30,7 +30,7 @@ class CampaignError(Exception):
 
     def __init__(self, code: str, detail: str):
         super().__init__(detail)
-        self.code = code  # not_found | empty | already_running | archived | manual | no_connection
+        self.code = code  # not_found | empty | already_running | archived | manual | no_connection | environment_refused
         self.detail = detail
 
 
@@ -82,8 +82,17 @@ def start_campaign(conn, run_id: int, *, triggered_by: str = "") -> dict:
     # mauvaise chose).
     from testpilot.connectors.runtime_env import ConnexionIncomplete, verifier_connexion
     from testpilot.store.repositories import ProjectRepo
+    # Lot PT-04a (A48) : l'environnement de la campagne est vérifié et FIGÉ ici, avant la connexion — un environnement
+    # « Production », supprimé ou illisible : la campagne n'est pas lancée, jamais jouée ailleurs que ce qui était annoncé.
+    from testpilot.api.services import environnements_service
+    from testpilot.parametres.environnements import EnvironnementInvalide, projet_sur
     try:
-        verifier_connexion(ProjectRepo(conn).get(run["project_id"]))
+        environnements_service.figer_pour_la_campagne(conn, run)
+        environnement = environnements_service.environnement_du_run(conn, run_id)
+    except EnvironnementInvalide as err:
+        raise CampaignError("environment_refused", str(err)) from err
+    try:
+        verifier_connexion(projet_sur(ProjectRepo(conn).get(run["project_id"]), environnement))
     except ConnexionIncomplete as err:
         raise CampaignError("no_connection", err.message()) from err
 
@@ -117,10 +126,27 @@ def run_campaign(run_id: int, case_ids: list[int], *, triggered_by: str = "", st
     """
     conn = get_initialized_db()
     try:
+        # Lot PT-04a : l'environnement FIGÉ au lancement (None = par défaut). Illisible ou jamais figé : aucun cas n'est joué
+        # — `finally` clôt la campagne, chaque cas reste « non testé » plutôt que joué contre une autre application.
+        from testpilot.api.services import environnements_service
+        try:
+            environnement = environnements_service.environnement_du_run(conn, run_id)
+        except ValueError:
+            logger.exception("[campagne %s] environnement illisible : aucun cas n'est joué", run_id)
+            return
         for case_id in case_ids:
+            if environnement is not None:
+                # Revue du 2026-10-16 : passé en « Production » ou mis à la corbeille PENDANT la campagne, l'environnement
+                # ne joue plus — les cas restants restent non testés, aucun n'est joué contre une production déclarée.
+                try:
+                    environnements_service.environnement_du_run(conn, run_id)
+                except ValueError:
+                    logger.warning("[campagne %s] environnement devenu injouable : les cas restants ne sont pas joués", run_id)
+                    break
             try:
                 eid, slug, cid, vid = run_service.trigger_run(conn, case_id,
-                                                               triggered_by=triggered_by)
+                                                               triggered_by=triggered_by,
+                                                               environnement=environnement)
             except run_service.RunError as err:
                 # Un cas non exécutable (sans version, gate fermé) ne fait pas tomber la campagne :
                 # les autres continuent. Mais rester au seul journal serveur (2026-09-15) laissait
@@ -130,7 +156,7 @@ def run_campaign(run_id: int, case_ids: list[int], *, triggered_by: str = "", st
                 logger.warning("[campagne %s] cas %s non lancé : %s", run_id, case_id, err.detail)
                 run_service.enregistrer_lancement_bloque(
                     conn, case_id=case_id, code=err.code, message=err.detail, run_id=run_id,
-                    triggered_by=triggered_by)
+                    triggered_by=triggered_by, environnement=environnement)
                 continue
             # Le rattachement AVANT l'exécution : si le processus meurt en cours de route, la
             # ligne d'exécution reste reliée à sa campagne (sinon elle deviendrait orpheline).
@@ -139,7 +165,8 @@ def run_campaign(run_id: int, case_ids: list[int], *, triggered_by: str = "", st
             try:
                 run_service.run_execution(eid, slug, cid, vid, triggered_by=triggered_by,
                                           **({"strict": True} if strict else {}),
-                                          **({"sans_repli": True} if sans_repli else {}))
+                                          **({"sans_repli": True} if sans_repli else {}),
+                                          **({"environnement": environnement} if environnement else {}))
             except Exception:
                 # `run_execution` a son propre filet (statut technical_error) ; on protège quand
                 # même la boucle pour que les cas suivants soient joués.

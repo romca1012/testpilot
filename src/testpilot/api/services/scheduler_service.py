@@ -17,7 +17,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from testpilot.api.services import campaign_service, donnees_de_test_service
+from testpilot.api.services import campaign_service, donnees_de_test_service, environnements_service
+from testpilot.parametres import environnements as envs
 from testpilot.guardrails import durable_jobs
 from testpilot.store.repositories import DonneeDeTestInvalide, PlanRepo, RunRepo, ScheduledRunRepo, TestDataRepo
 from testpilot.verdict.status import MODE_AUTOMATIQUE
@@ -63,16 +64,21 @@ def _declencher(conn, repo: ScheduledRunRepo, planif: dict, maintenant: datetime
     )
     acteur = f"scheduler:{planif['name']}"
     jeux = _jeux_du_declenchement(conn, planif)
-    if len(jeux) <= 1:
+    environnements = _environnements_du_declenchement(conn, planif)
+    if len(jeux) <= 1 and len(environnements) == 1:
         # Un jeu choisi (ou le seul encore vivant) : son nom figure sur l'exécution, comme dans un plan.
+        environnement = environnements[0]
         run_id = RunRepo(conn).create(project_id=planif["project_id"], name=f"{nom} — {jeux[0]['nom']}" if jeux else nom,
-                                      dataset_id=jeux[0]["id"] if jeux else None, **champs)
+                                      dataset_id=jeux[0]["id"] if jeux else None,
+                                      environment_id=environnement["id"] if environnement else None, **champs)
         _lancer(conn, run_id, acteur)
         repo.mark_triggered(planif["id"], run_id, at=maintenant.isoformat())
         return run_id
     # Plusieurs jeux (lot PT-02b, A28, A35) : une exécution par jeu, regroupées dans un plan — exactement comme à la main.
+    # Lot PT-04a : et une par environnement.
     plan_id, premier, run_ids = donnees_de_test_service.creer_une_execution_par_jeu(
-        conn, project_id=planif["project_id"], nom=nom, jeux=jeux, created_by=acteur, **champs)
+        conn, project_id=planif["project_id"], nom=nom, jeux=jeux, created_by=acteur, environnements=environnements,
+        **champs)
     try:
         _lancer(conn, premier, acteur)
     except Exception:
@@ -116,6 +122,16 @@ def _jeux_du_declenchement(conn, planif: dict) -> list[dict]:
         raise DonneeDeTestInvalide(f"{len(ids) - len(jeux)} jeu(x) de données de cette planification à la corbeille : "
                                    "rien n'est joué tant qu'elle n'est pas corrigée")
     return jeux
+
+
+def _environnements_du_declenchement(conn, planif: dict) -> list[dict | None]:
+    """Les environnements de la planification (None = par défaut). Même règle que les jeux (A36) : un seul à la corbeille,
+    devenu « Production » ou illisible, et rien n'est joué — jamais un autre environnement à sa place."""
+    ids = envs.ids_lus(planif.get("environment_ids"), strict=True)
+    try:
+        return environnements_service.environnements_demandes(conn, planif["project_id"], ids)
+    except envs.EnvironnementInvalide as exc:
+        raise envs.EnvironnementInvalide(f"{exc} : rien n'est joué tant que la planification n'est pas corrigée") from exc
 
 
 def tick(conn, *, now: datetime | None = None) -> list[int]:

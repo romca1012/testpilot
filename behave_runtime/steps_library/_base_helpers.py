@@ -784,8 +784,39 @@ def connecter_le_navigateur_si_page_vide(context) -> None:
         playwright_login(context)
 
 
+def url_dans_l_application(base: str, url: str) -> str:
+    """L'URL complète d'une page DE L'APPLICATION testée : un chemin est rattaché à `base` ; une URL absolue n'est acceptée
+    que sur la même origine (schéma et hôte), comme `ouvrir_page`.
+
+    Lot PT-04a (revue du 2026-10-16, bloquant) : un test écrit sur l'environnement par défaut et rejoué sur un autre (recette,
+    préproduction) ne doit jamais ouvrir l'application de l'environnement d'origine par une URL écrite en dur — le constat
+    qui suivrait serait attribué à un environnement qui n'a jamais été sollicité (faux `conforme`). Refus = problème de
+    PARCOURS (`NavigationImpossibleError`), jamais un verdict sur l'application."""
+    base = (base or "").rstrip("/")
+    url = (url or "").strip()
+    if not re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", url):
+        return f"{base}{url}" if url.startswith("/") else f"{base}/{url}"
+    if _origine(url) != _origine(base):
+        raise NavigationImpossibleError(
+            f"« {url} » n'est pas une page de l'application testée ({base}) : un test n'ouvre que des pages de l'environnement joué.")
+    return url
+
+
+def _origine(url: str) -> tuple[str, str, int | None]:
+    """(schéma, hôte, port) : casse ignorée, port par défaut retiré — même règle que `parametres/environnements.origine`."""
+    morceaux = urlparse(url)
+    schema = (morceaux.scheme or "").lower()
+    try:
+        port = morceaux.port
+    except ValueError:
+        port = None
+    if port == {"http": 80, "https": 443}.get(schema):
+        port = None
+    return schema, (morceaux.hostname or "").lower(), port
+
+
 def navigate(context, url):
-    full_url = url if url.startswith("http") else f"{context.odoo_url.rstrip('/')}{url}"
+    full_url = url_dans_l_application(context.odoo_url, url)
     connecter_le_navigateur_si_page_vide(context)
     # domcontentloaded (fiable) au lieu de networkidle : l'interaction suivante auto-attendra sa cible.
     context.page.goto(full_url, wait_until="domcontentloaded")

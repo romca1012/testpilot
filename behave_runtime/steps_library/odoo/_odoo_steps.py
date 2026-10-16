@@ -15,7 +15,7 @@ from _base_helpers import (
     PreconditionNonRemplieError,
     memorize_record_count, check_count_not_increased, check_count_increased_by_one, no_duplicate,
     validation_error_notification, playwright_login, navigate_menu, constater, se_connecter_en_tant_que,
-    _max_id_attr, ConstatNonConcluantError,
+    _max_id_attr, ConstatNonConcluantError, url_dans_l_application,
 )
 
 
@@ -253,7 +253,8 @@ def step_navigate_menu(context, menu_path):
 @given('je navigue vers l\'URL du portail "{url}"')
 @when('je navigue vers l\'URL du portail "{url}"')
 def step_navigate_url(context, url):
-    full_url = url if url.startswith("http") else f"{context.odoo_url.rstrip('/')}{url}"
+    # Lot PT-04a : jamais une autre origine que l'environnement joué (`url_dans_l_application`).
+    full_url = url_dans_l_application(context.odoo_url, url)
     if context.page.url in ("about:blank", ""):
         playwright_login(context)
     # domcontentloaded (fiable) ; l'interaction suivante auto-attendra sa cible.
