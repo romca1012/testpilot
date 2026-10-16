@@ -37,8 +37,8 @@ Fonctionnalité: Commande
 
 @pytest.fixture(autouse=True)
 def eteints(monkeypatch):
-    monkeypatch.delenv(interrupteurs.ENV_CAS_DIT_SES_DONNEES, raising=False)
-    monkeypatch.delenv(interrupteurs.ENV_VARIABLES_DE_TEST, raising=False)
+    monkeypatch.setenv(interrupteurs.ENV_CAS_DIT_SES_DONNEES, "0")
+    monkeypatch.setenv(interrupteurs.ENV_VARIABLES_DE_TEST, "0")
 
 
 def _allumer(monkeypatch):
@@ -419,7 +419,7 @@ def test_falsifiable_editer_le_cas_sans_le_test_bloque_l_approbation_et_l_execut
                                                                ["case"]["project_id"]}).json()
     assert [c["case_id"] for c in a_relire] == [cid] and "{{client}}" in a_relire[0]["reason"], "trouvable, raison juste"
     # Jamais approuvée d'office : PT-02f éteint, la version reste à relire (revue du 2026-10-15, 2e passe).
-    monkeypatch.delenv(interrupteurs.ENV_CAS_DIT_SES_DONNEES)
+    monkeypatch.setenv(interrupteurs.ENV_CAS_DIT_SES_DONNEES, "0")
     assert client.get(f"/api/cases/{cid}").json()["gate"]["allowed"] is False
 
 
