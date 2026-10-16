@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 69
+ALIGNED_WITH_SCHEMA_VERSION = 70
 
 metadata = MetaData()
 
@@ -558,6 +558,8 @@ test_run = Table(
     # Migration 69 (PT-04a) : l'environnement choisi (NULL = par défaut, sans FK dure) et ses valeurs FIGÉES au lancement.
     Column("environment_id", Integer, nullable=True),
     Column("environnement_fige", Text, nullable=False, server_default=""),
+    # Migration 70 (A52) : les lignes de données de test jouées, une itération par ligne (liste JSON) ; vide = `dataset_id`.
+    Column("dataset_ids", Text, nullable=False, server_default=""),
     CheckConstraint("seulement_variables IN (0, 1)", name="ck_test_run_seulement_variables"),
     CheckConstraint("sans_repli IN (0, 1)", name="ck_test_run_sans_repli"),
     CheckConstraint("selection_mode IN ('all', 'frozen')", name="ck_test_run_selection_mode"),

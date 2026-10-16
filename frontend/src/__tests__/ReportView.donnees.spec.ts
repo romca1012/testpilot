@@ -57,4 +57,16 @@ describe('ReportView — données de test jouées (PT-02c)', () => {
     const lignes = carte.findAll('tr').map((l) => [l.get('th').text(), l.get('td').text().replace(/\s+/g, ' ').trim()])
     expect(lignes).toEqual([['{{client}}', 'Durand Industrie'], ['{{ville}}', 'Lyon Par défaut']])
   })
+
+  it('falsifiable (A52) : plusieurs lignes jouées, une ligne par itération, une colonne par variable', async () => {
+    const w = await rapport({ donnees_de_test: { jeu: 'Par défaut, Adulte', valeurs: {}, iterations: [
+      { jeu: 'Par défaut', valeurs: { age: { valeur: '5', origine: 'Par défaut' }, resultat: { valeur: 'Refusé', origine: 'Par défaut' } } },
+      { jeu: 'Adulte', valeurs: { age: { valeur: '18', origine: 'Adulte' }, resultat: { valeur: 'Bienvenue', origine: 'Adulte' } } }] } })
+
+    const carte = w.get('[data-testid="iterations-jouees"]')
+    expect(carte.text()).toContain('2 itérations')
+    expect(carte.findAll('tbody tr').map((l) => l.findAll('td').map((c) => c.text().trim()))).toEqual([
+      ['Par défaut', '5', 'Refusé'], ['Adulte', '18', 'Bienvenue']])
+    expect(w.find('[data-testid="donnees-jouees"]').exists()).toBe(false)
+  })
 })

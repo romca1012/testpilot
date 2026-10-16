@@ -1982,9 +1982,11 @@ class RunRepo:
                selection_mode: str = "frozen", mode: str = MODE_AUTOMATIQUE,
                case_ids: list[int] | None = None, strict: bool = False, sans_repli: bool = True,
                dataset_id: int | None = None, seulement_variables: bool = False,
-               environment_id: int | None = None) -> int:
+               environment_id: int | None = None, dataset_ids: list[int] | None = None) -> int:
         """Crée un run en BROUILLON (jamais lancé à la création — `0022` 8.c.1).
 
+        `dataset_ids` (A52) : plusieurs lignes de données de test, une ITÉRATION par ligne dans cette même campagne (valeurs
+        figées au lancement). Vide : `dataset_id`, comme avant.
         `environment_id` (lot PT-04a) : l'environnement ajouté joué par cette campagne ; `None` = l'environnement par défaut
         (l'adresse du projet, comme avant). Ses valeurs ne sont figées qu'au LANCEMENT (`environnements_service`).
 
@@ -2006,10 +2008,11 @@ class RunRepo:
         ts = now_iso()
         cur = self.conn.execute(
             "INSERT INTO test_run (project_id, name, description, refs, selection_mode, mode,"
-            " status, created_at, strict, sans_repli, dataset_id, seulement_variables, environment_id)"
-            " VALUES (?,?,?,?,?,?,'draft',?,?,?,?,?,?)",
+            " status, created_at, strict, sans_repli, dataset_id, seulement_variables, environment_id, dataset_ids)"
+            " VALUES (?,?,?,?,?,?,'draft',?,?,?,?,?,?,?)",
             (project_id, name, description, refs, selection_mode, mode, ts, 1 if strict else 0, 1 if sans_repli else 0,
-             dataset_id, 1 if seulement_variables else 0, environment_id))
+             dataset_id, 1 if seulement_variables else 0, environment_id,
+             json.dumps(list(dict.fromkeys(dataset_ids))) if dataset_ids else ""))
         run_id = int(cur.lastrowid)
         if selection_mode == "frozen":
             for cid in dict.fromkeys(case_ids or []):  # dédup en gardant l'ordre

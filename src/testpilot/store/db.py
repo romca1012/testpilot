@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 69
+_SCHEMA_VERSION = 70
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -280,6 +280,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_68_instance_de_test(conn)
     if version < 69:
         _migrate_69_environnements(conn)
+    if version < 70:
+        _migrate_70_iterations(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -569,6 +571,14 @@ def _migrate_69_environnements(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE test_run ADD COLUMN environnement_fige TEXT NOT NULL DEFAULT ''")
     if _table_existe(conn, "scheduled_run") and "environment_ids" not in _column_names(conn, "scheduled_run"):
         conn.execute("ALTER TABLE scheduled_run ADD COLUMN environment_ids TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_70_iterations(conn: sqlite3.Connection) -> None:
+    """Décision A52 (porteur, 2026-10-16) : une exécution joue PLUSIEURS lignes de données de test, une itération par ligne
+    (le « Data Table » de QTP/UFT). `test_run.dataset_ids` : ces lignes (liste JSON d'ids) ; vide = comme avant (`dataset_id`,
+    un seul jeu). Additive, idempotente."""
+    if _table_existe(conn, "test_run") and "dataset_ids" not in _column_names(conn, "test_run"):
+        conn.execute("ALTER TABLE test_run ADD COLUMN dataset_ids TEXT NOT NULL DEFAULT ''")
 
 
 def _table_existe(conn: sqlite3.Connection, nom: str) -> bool:

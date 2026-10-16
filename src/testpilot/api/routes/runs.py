@@ -102,21 +102,10 @@ def create_run(project_id: int, body: schemas.RunIn, request: Request, conn=Depe
         _refuser_les_cas_non_automatises(repo, body.case_ids)
     jeux = _jeux_demandes(conn, project_id, body)
     environnements = _environnements_demandes(conn, project_id, body)
-    if max(len(jeux), 1) * len(environnements) > JEUX_PAR_LANCEMENT_MAX:
-        raise HTTPException(status_code=422, detail=f"{JEUX_PAR_LANCEMENT_MAX} exécutions au plus par lancement "
-                                                    "(jeux de données × environnements)")
-    if len(jeux) <= 1 and len(environnements) == 1:
-        environnement = environnements[0]
-        run_id = repo.create(project_id=project_id, name=body.name.strip(),
-                             description=body.description, refs=body.refs,
-                             selection_mode=body.selection_mode, mode=body.mode,
-                             case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli,
-                             dataset_id=jeux[0]["id"] if jeux else None,
-                             environment_id=environnement["id"] if environnement else None)
-        return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
-    # Plusieurs jeux (A28, A35) ou environnements (PT-04a) : une exécution par jeu ET par environnement, regroupées dans un
-    # plan qui porte le nom demandé. La réponse décrit la première ; son `plan_id` mène au plan, où figurent les autres.
-    _, premier, _ = donnees_de_test_service.creer_une_execution_par_jeu(
+    # A52 : UNE exécution par environnement, qui joue toutes les lignes choisies (une itération par ligne). Plusieurs
+    # environnements (PT-04a) : regroupées dans un plan qui porte le nom demandé ; la réponse décrit la première, son
+    # `plan_id` mène au plan.
+    _, premier, _ = donnees_de_test_service.creer_les_executions(
         conn, project_id=project_id, nom=body.name.strip(), jeux=jeux, created_by=access.utilisateur_de(request),
         description=body.description, refs=body.refs, environnements=environnements,
         selection_mode=body.selection_mode, mode=body.mode,

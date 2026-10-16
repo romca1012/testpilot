@@ -1,7 +1,8 @@
 """Le tableau des données de test en Excel (lot PT-02a) : l'exporter, et l'importer en le COMPLÉTANT.
 
-Le format est celui de l'écran : première ligne « Variable » puis un jeu de données par colonne (« Par défaut » d'abord),
-une variable par ligne, une valeur par case. L'export sert de modèle à remplir.
+Le format est celui de l'écran (A54, 2026-10-16, comme le « Data Table » de QTP/UFT) : case A1 « Ligne », puis une VARIABLE
+par colonne ; une ligne par jeu de données (« Par défaut » d'abord), une valeur par case. L'export sert de modèle à remplir.
+Un fichier à l'ancien format (A1 « Variable », une variable par ligne, un jeu par colonne) est toujours accepté à l'import.
 
 Décision du porteur (2026-10-14, A37) : l'import COMPLÈTE le tableau — il ajoute les variables et les jeux qui manquent et
 met à jour les cases qu'il remplit ; une case vide du fichier ne vide rien, rien n'est supprimé. L'écran montre ce qui va
@@ -26,7 +27,8 @@ from testpilot.store.repositories import (
     _JEUX_MAX, _NOM_DE_JEU_MAX, _VARIABLES_MAX, NOM_DU_JEU_PAR_DEFAUT, DonneeDeTestInvalide, TestDataRepo, _key,
 )
 
-ENTETE = "Variable"
+ENTETE = "Ligne"            # A54 : une ligne par jeu de données, une variable par colonne
+ENTETE_ANCIEN = "Variable"  # avant A54 : une variable par ligne, un jeu par colonne — toujours lu
 TAILLE_MAX = 2 * 1024 * 1024   # un tableau de 200 variables × 50 jeux tient très largement
 DECOMPRESSE_MAX = 50 * 1024 * 1024
 LIGNES_PARCOURUES = 5000   # au-delà, même vides, les lignes ne sont pas lues
@@ -102,7 +104,8 @@ def _lignes(data: bytes) -> list[list]:
     try:
         lignes = []
         feuille = classeur.worksheets[0]
-        for numero, ligne in enumerate(feuille.iter_rows(max_row=LIGNES_PARCOURUES, max_col=_JEUX_MAX + 2), start=1):
+        colonnes_max = max(_JEUX_MAX, _VARIABLES_MAX) + 2   # les deux sens du tableau (A54 et l'ancien)
+        for numero, ligne in enumerate(feuille.iter_rows(max_row=LIGNES_PARCOURUES, max_col=colonnes_max), start=1):
             if any(getattr(c, "value", None) not in (None, "") for c in ligne):
                 lignes.append([numero, list(ligne)])
         return lignes
@@ -122,8 +125,6 @@ def lire(data: bytes) -> Lecture:
     if not lignes or lignes[0][0] != 1:
         lecture.erreurs.append(f"case A1 : « {ENTETE} » attendu (le modèle s'obtient avec « Exporter »)")
         return lecture
-    if len(lignes) - 1 > _VARIABLES_MAX:
-        lecture.erreurs.append(f"{_VARIABLES_MAX} variables au plus")
     entete = []
     for i, case in enumerate(lignes[0][1]):
         try:
@@ -133,9 +134,14 @@ def lire(data: bytes) -> Lecture:
             entete.append("")
     while entete and not entete[-1].strip():
         entete.pop()
-    if not entete or entete[0].strip().casefold() != ENTETE.casefold():
+    sens = entete[0].strip().casefold() if entete else ""
+    if sens == ENTETE.casefold():
+        return _lire_par_lignes(lignes, entete, lecture)
+    if sens != ENTETE_ANCIEN.casefold():
         lecture.erreurs.append(f"case A1 : « {ENTETE} » attendu (le modèle s'obtient avec « Exporter »)")
         return lecture
+    if len(lignes) - 1 > _VARIABLES_MAX:
+        lecture.erreurs.append(f"{_VARIABLES_MAX} variables au plus")
     if len(entete) - 1 > _JEUX_MAX:
         lecture.erreurs.append(f"{_JEUX_MAX} jeux de données au plus")
     colonnes: dict[int, str] = {}
@@ -180,52 +186,57 @@ def lire(data: bytes) -> Lecture:
                 lecture.erreurs.append(f"case {_colonne(i)}{numero} : colonne sans nom de jeu de données")
                 break
     return lecture
-    if len(lignes) > _VARIABLES_MAX + 1:
+
+
+def _lire_par_lignes(lignes: list[list], entete: list[str], lecture: Lecture) -> Lecture:
+    """A54 : une VARIABLE par colonne (en-tête), une ligne par JEU de données (colonne A). Mêmes règles que l'ancien sens,
+    chaque faute nommée par sa case."""
+    if len(entete) - 1 > _VARIABLES_MAX:
         lecture.erreurs.append(f"{_VARIABLES_MAX} variables au plus")
-    entete = [_texte(c) for c in lignes[0]]
-    while entete and not entete[-1].strip():
-        entete.pop()
-    if not entete or entete[0].strip().casefold() != ENTETE.casefold():
-        lecture.erreurs.append(f"case A1 : « {ENTETE} » attendu (le modèle s'obtient avec « Exporter »)")
-        return lecture
-    if len(entete) - 1 > _JEUX_MAX:
+    if len(lignes) - 1 > _JEUX_MAX:
         lecture.erreurs.append(f"{_JEUX_MAX} jeux de données au plus")
     colonnes: dict[int, str] = {}
     for i, brut in enumerate(entete[1:], start=1):
-        nom = " ".join(brut.split())
-        if not nom:
-            lecture.erreurs.append(f"case {_colonne(i)}1 : nom du jeu de données manquant")
-        elif len(nom) > _NOM_DE_JEU_MAX:
-            lecture.erreurs.append(f"case {_colonne(i)}1 : {_NOM_DE_JEU_MAX} caractères au plus")
-        elif any(_key(nom) == _key(deja) for deja in lecture.jeux):
-            lecture.erreurs.append(f"case {_colonne(i)}1 : le jeu « {nom} » est déjà une autre colonne")
-        else:
-            colonnes[i] = nom
-            lecture.jeux.append(nom)
-    for numero, ligne in enumerate(lignes[1:], start=2):
-        cases = [_texte(c) for c in ligne]
-        if not any(c.strip() for c in cases):
-            continue   # ligne vide : ignorée
         try:
-            variable = resolution.valider_nom(cases[0].strip())
+            variable = resolution.valider_nom(_nom(brut))
         except resolution.NomInvalide as exc:
-            lecture.erreurs.append(f"case A{numero} : {exc}")
+            lecture.erreurs.append(f"case {_colonne(i)}1 : {exc}")
             continue
         if variable in lecture.variables:
-            lecture.erreurs.append(f"case A{numero} : la variable « {variable} » est déjà une autre ligne")
+            lecture.erreurs.append(f"case {_colonne(i)}1 : la variable « {variable} » est déjà une autre colonne")
             continue
+        colonnes[i] = variable
         lecture.variables.append(variable)
-        for i, jeu in colonnes.items():
+    for numero, ligne in lignes[1:]:
+        cases: list[str] = []
+        for i, case in enumerate(ligne):
+            try:
+                cases.append(_texte(case))
+            except _CaseInvalide as exc:
+                lecture.erreurs.append(f"case {_colonne(i)}{numero} : {exc}")
+                cases.append("")
+        nom = _nom(cases[0]) if cases else ""
+        if not nom:
+            lecture.erreurs.append(f"case A{numero} : nom du jeu de données manquant")
+            continue
+        if len(nom) > _NOM_DE_JEU_MAX:
+            lecture.erreurs.append(f"case A{numero} : {_NOM_DE_JEU_MAX} caractères au plus")
+            continue
+        if any(_key(nom) == _key(deja) for deja in lecture.jeux):
+            lecture.erreurs.append(f"case A{numero} : le jeu « {nom} » est déjà une autre ligne")
+            continue
+        lecture.jeux.append(nom)
+        for i, variable in colonnes.items():
             valeur = cases[i] if i < len(cases) else ""
             if not valeur.strip():
                 continue   # case vide (ou d'espaces seulement) : ne vide rien (A37)
             try:
-                lecture.valeurs[(variable, jeu)] = resolution.valider_valeur(valeur)
+                lecture.valeurs[(variable, nom)] = resolution.valider_valeur(valeur)
             except resolution.ValeurInvalide as exc:
                 lecture.erreurs.append(f"case {_colonne(i)}{numero} : {exc}")
         for i in range(len(entete), len(cases)):
             if cases[i].strip():
-                lecture.erreurs.append(f"case {_colonne(i)}{numero} : colonne sans nom de jeu de données")
+                lecture.erreurs.append(f"case {_colonne(i)}{numero} : colonne sans nom de variable")
                 break
     return lecture
 
@@ -289,9 +300,10 @@ def exporter(conn, project_id: int) -> bytes:
     classeur = openpyxl.Workbook()
     feuille = classeur.active
     feuille.title = "Données de test"
-    lignes = [[ENTETE, *[j["nom"] for j in tableau["jeux"]]]]
-    for v in tableau["variables"]:
-        lignes.append([v["nom"], *[tableau["valeurs"][j["id"]].get(v["id"], "") for j in tableau["jeux"]]])
+    # A54 : une ligne par jeu de données (« Par défaut » d'abord), une variable par colonne.
+    lignes = [[ENTETE, *[v["nom"] for v in tableau["variables"]]]]
+    for j in tableau["jeux"]:
+        lignes.append([j["nom"], *[tableau["valeurs"][j["id"]].get(v["id"], "") for v in tableau["variables"]]])
     for r, ligne in enumerate(lignes, start=1):
         for c, valeur in enumerate(ligne, start=1):
             feuille.cell(row=r, column=c).number_format = "@"   # ce qu'on tape dans le modèle reste du texte

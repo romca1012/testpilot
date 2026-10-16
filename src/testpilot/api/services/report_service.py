@@ -117,6 +117,14 @@ def _donnees_jouees(texte: str | None) -> dict:
     propres = {str(nom): {"valeur": str(v["valeur"]), "origine": str(v.get("origine") or "")}
                for nom, v in valeurs.items() if isinstance(v, dict) and "valeur" in v}
     jeu = donnees.get("jeu")
-    if not propres and not isinstance(jeu, str):
+    # A52 : plusieurs lignes jouées, une itération chacune — même forme que `valeurs`, par itération.
+    iterations = []
+    for it in donnees.get("iterations") if isinstance(donnees.get("iterations"), list) else []:
+        if isinstance(it, dict) and isinstance(it.get("valeurs"), dict):
+            iterations.append({"jeu": str(it.get("jeu") or ""),
+                               "valeurs": {str(n): {"valeur": str(v["valeur"]), "origine": str(v.get("origine") or "")}
+                                           for n, v in it["valeurs"].items() if isinstance(v, dict) and "valeur" in v}})
+    if not propres and not iterations and not isinstance(jeu, str):
         return {}
-    return {"jeu": jeu if isinstance(jeu, str) else "", "valeurs": propres}
+    return {"jeu": jeu if isinstance(jeu, str) else "", "valeurs": propres,
+            **({"iterations": iterations} if iterations else {})}
