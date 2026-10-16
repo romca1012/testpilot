@@ -1,0 +1,492 @@
+{
+  "contexte": {
+    "date": "2026-10-16",
+    "etiquette": "m1c-nombres",
+    "commit": "9fa0ef6",
+    "versions": {
+      "python": "3.12.14",
+      "testpilot": "0.1.0",
+      "behave": "1.3.3",
+      "playwright": "1.62.0"
+    },
+    "modele_generation": "claude-sonnet-4-6",
+    "mode": "reel",
+    "plafond_usd": 1.2,
+    "app": "boutique_locale",
+    "configuration_sha256": "1a9ac8873de83d174cedb9e4a8dcda338e684f28ca7a707857ff5e1aaf0bfd5c",
+    "sous_ensemble_de_cas": true,
+    "donnees_jetables": "C:\\Users\\ROMARI~1\\AppData\\Local\\Temp\\banc_agents_data_7jfxpj2f",
+    "generations_rejouees_depuis": null,
+    "reparation": false,
+    "donnees_de_test": true,
+    "second_jeu": {
+      "nom_client": "Martin Lefèvre SA",
+      "ville_client": "Paris"
+    },
+    "bac_a_sable": false,
+    "tentatives_reparation": null
+  },
+  "indicateurs": {
+    "faux_verts": {
+      "k": 0,
+      "n": 0,
+      "non_concluants": 6,
+      "taux": null,
+      "ic95": null
+    },
+    "faux_rouges": {
+      "k": 0,
+      "n": 0,
+      "non_concluants": 6,
+      "taux": null,
+      "ic95": null
+    },
+    "pass_execution": {
+      "pass_at_1": {
+        "k": 0,
+        "n": 2,
+        "non_mesures": 0,
+        "taux": 0.0,
+        "ic95": [
+          0.0,
+          0.6576280471103807
+        ]
+      },
+      "pass_at_k": {
+        "k": 0,
+        "n": 2,
+        "non_mesures": 0,
+        "taux": 0.0,
+        "ic95": [
+          0.0,
+          0.6576280471103807
+        ]
+      },
+      "pass_hat_k": {
+        "k": 0,
+        "n": 2,
+        "non_mesures": 0,
+        "taux": 0.0,
+        "ic95": [
+          0.0,
+          0.6576280471103807
+        ]
+      }
+    },
+    "pass_resultat": {
+      "pass_at_1": {
+        "k": 0,
+        "n": 2,
+        "non_mesures": 0,
+        "taux": 0.0,
+        "ic95": [
+          0.0,
+          0.6576280471103807
+        ]
+      },
+      "pass_at_k": {
+        "k": 0,
+        "n": 2,
+        "non_mesures": 0,
+        "taux": 0.0,
+        "ic95": [
+          0.0,
+          0.6576280471103807
+        ]
+      },
+      "pass_hat_k": {
+        "k": 0,
+        "n": 2,
+        "non_mesures": 0,
+        "taux": 0.0,
+        "ic95": [
+          0.0,
+          0.6576280471103807
+        ]
+      }
+    },
+    "non_concluants": {
+      "technical_error": 12
+    },
+    "part_non_concluants_sous_defaut": 1.0,
+    "par_defaut": {
+      "total_faux": {
+        "jeux": 6,
+        "concluants": 0,
+        "detectes": 0,
+        "detectes_fiables": 0,
+        "ic95_detection_fiable": null,
+        "faux_verts": 0,
+        "non_concluants": 6,
+        "ic95_detection": null
+      }
+    },
+    "cout": {
+      "total_usd": 0.848828,
+      "total_eur": 0.785952,
+      "taux_eur_usd": 1.08,
+      "generations": 6,
+      "generations_sans_cout_consigne": 0,
+      "par_generation_usd": 0.141471,
+      "par_generation_eur": 0.130992,
+      "par_cas_usd": {
+        "panier_total_tva": 0.17198,
+        "panier_remise_arrondi": 0.110962
+      }
+    },
+    "integrite": {
+      "verifiees": 6,
+      "divergentes": 0,
+      "non_rapportees": 0
+    },
+    "echantillon": {
+      "cas": 2,
+      "k": 3,
+      "essais_prevus": 6,
+      "essais_lances": 6,
+      "jeux": 12
+    },
+    "ecarts": [
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "total_faux",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "total_faux",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 3,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "total_faux",
+        "essai": 3,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      }
+    ],
+    "apres_reparation": null,
+    "second_jeu": {
+      "rejoues": 0,
+      "conformes_a_l_attendu": 0,
+      "prouves": 0,
+      "valeur_du_premier_jeu_en_dur": 0,
+      "preuve_partielle": 0,
+      "aucune_trace_au_serveur": 0,
+      "non_rejoues_saine_en_ecart": 0,
+      "integrite": {
+        "verifiees": 0,
+        "divergentes": 0,
+        "non_rapportees": 0
+      }
+    }
+  },
+  "interrompue": "",
+  "essais": [
+    {
+      "cas": "panier_total_tva",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.216723,
+      "empreintes": {
+        "pilote_p1_c1_i1_20261016T094703.feature": "7c5d9c74a840ed7cb674242e1e4a75738f9d380039e6db5eb02be32d8b935a3c",
+        "pilote_p1_c1_i1_20261016T094703_steps.py": "017426df0fe719c765237bf641396bc7aa77147d2f726f94c9f0ba9dd9e8bfb9"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 2,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 1,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.14847,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.168668,
+      "empreintes": {
+        "pilote_p1_c1_i2_20261016T095257.feature": "a707e260050da95642983e10c6cab1c8e0078ac0d5673687a056c31e369ac43a",
+        "pilote_p1_c1_i2_20261016T095257_steps.py": "2e6d18ace01018817055588027eaacd2927972af7f05568509006187dbd77131"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 4,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 2,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.09528,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.13055,
+      "empreintes": {
+        "pilote_p1_c1_i3_20261016T095731.feature": "54889ba5abf7471c6faa94400e389ffbdec46412352deb98eb7055b44fe01e63",
+        "pilote_p1_c1_i3_20261016T095731_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 3,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.089137,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    }
+  ],
+  "observations": [
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Bouton 'Ajouter Câble HDMI au panier' : aucun élément actionnable sur http://127.0.0.1:51908/panier",
+      "duree": 30.4,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Bouton 'Ajouter Câble HDMI au panier' : aucun élément actionnable sur http://127.0.0.1:51908/panier",
+      "duree": 31.4,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator(\"input[aria-label=\\\"Quantité de Clavier mécanique\\\"]\") to be visible",
+      "duree": 19.7,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator(\"input[aria-label=\\\"Quantité de Clavier mécanique\\\"]\") to be visible",
+      "duree": 18.0,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune ligne contenant « Câble HDMI » ne porte de champ de saisie sur http://127.0.0.1:51908/panier.",
+      "duree": 20.2,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune ligne contenant « Câble HDMI » ne porte de champ de saisie sur http://127.0.0.1:51908/panier.",
+      "duree": 20.1,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    }
+  ],
+  "anomalies": [],
+  "reparations": [],
+  "observations_reparees": [],
+  "observations_second_jeu": [],
+  "second_jeu_non_rejoues": []
+}

@@ -1749,7 +1749,9 @@ def preparer_projet_web(url: str, compte: Mapping, specs: Mapping[str, dict], da
     project_id = ProjectRepo(conn).create(
         name="Banc agents web — boutique locale", description="Banc d'agents web (Q2-d) : application locale à défauts.",
         connector_type="web", base_url=url, username=compte["identifiant"], password=compte["mot_de_passe"],
-        **oracle_du_banc_web(url))
+        # Décision A43 : « L'IA peut agir » est allumé par défaut ; le banc le fixe lui-même (allumé seulement avec
+        # --bac-a-sable) pour que ses campagnes restent comparables à celles d'avant.
+        calibration_writes_enabled=bac_a_sable, **oracle_du_banc_web(url))
     if bac_a_sable:
         ProjectRepo(conn).set_calibration_writes_enabled(project_id, True)
         ProjectRepo(conn).set_bac_a_sable_reset(project_id, url.rstrip("/") + "/__reset")
