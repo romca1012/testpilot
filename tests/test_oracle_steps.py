@@ -191,11 +191,23 @@ def test_falsifiable_oracle_champ_compte_echoue_sur_un_ecart(serveur, sidecar):
 
 
 def test_falsifiable_oracle_champ_compte_ne_devine_pas_zero_sur_un_chemin_absent_ou_une_non_liste(serveur):
-    """Un champ absent ou qui n'est pas une liste n'est JAMAIS « 0 élément » : sinon « aucune commande » réussirait à tort."""
+    """Un champ absent ou qui n'est pas une liste n'est JAMAIS « 0 élément » : sinon « aucune commande » réussirait à tort.
+
+    Lot VH-08 (2026-10-16), changement DÉLIBÉRÉ de l'attendu pour la NON-LISTE seulement, comme VH-04 pour « renvoie N
+    résultats » : ce test exigeait un constat échoué (`AssertionError` → `non_conforme`, une accusation de l'application),
+    le seul faux rouge mesuré en base-6. Une non-liste est un test mal posé (`ReponseOracleNonComptableError`) — toujours
+    jamais un vert. Le chemin absent reste un constat échoué."""
     with pytest.raises(AssertionError, match="introuvable"):
         H.oracle_champ_compte(_etat(serveur), "commande", "etat", 0)
-    with pytest.raises(AssertionError, match="n'est pas une liste"):
+    with pytest.raises(H.ReponseOracleNonComptableError, match="n'est pas une liste"):
         H.oracle_champ_compte(_etat(serveur), "panier", "etat", 0)
+
+
+def test_falsifiable_oracle_champ_compte_sur_null_reste_un_constat_echoue(monkeypatch):
+    """Revue du 2026-10-16 : `null` à la place d'une liste peut être une application cassée — constat échoué, comme avant."""
+    monkeypatch.setattr(H, "_executer_oracle", lambda context, requete: {"commandes": None})
+    with pytest.raises(AssertionError, match="vide"):
+        H.oracle_champ_compte(SimpleNamespace(), "commandes", "etat", 0)
 
 
 def test_renvoie_n_resultats_sur_un_objet_oriente_vers_le_comptage_d_un_champ(serveur, sidecar):

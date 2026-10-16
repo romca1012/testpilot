@@ -35,6 +35,6 @@ def test_le_cas_ne_dit_ses_donnees_qu_avec_les_variables_de_test():
 
 def test_falsifiable_les_montants_avec_unite_et_les_autres_restent_eteints():
     for nom in (i.ENV_STEP_NOMBRE, i.ENV_TOOLS_STRICT, i.ENV_PROMPT_HYPOTHESES, i.ENV_TOOLS_DESCRIPTIONS_V2,
-                i.ENV_REGLES_CONNECTEUR):
+                i.ENV_REGLES_CONNECTEUR, i.ENV_FORME_ORACLE):
         assert i.allume(nom, {}) is False, nom
     assert i.allume(i.ENV_STEP_NOMBRE, {i.ENV_STEP_NOMBRE: "1"}) is True

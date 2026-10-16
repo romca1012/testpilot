@@ -635,10 +635,29 @@ def _section_oracle(requetes: list[str] | None) -> str:
     return "\n".join(lignes)
 
 
+def _section_formes_oracle(formes: dict | None) -> str:
+    """Lot VH-08 (A51, interrupteur) : la FORME de la réponse de chaque requête d'oracle, relevée à l'exploration — jamais
+    une valeur ni un compte (`connectors/forme_oracle`). Vide sans forme relevée : rien n'est ajouté."""
+    if not formes:
+        return ""
+    from testpilot.connectors import forme_oracle
+    lignes = ["## Forme des réponses de l'oracle (relevée à l'exploration, valeurs masquées)",
+              "",
+              "Choisis le step d'oracle d'après cette forme : une LISTE se compte (`renvoie <n> résultat(s)` si la réponse "
+              "entière est une liste, `le champ \"<chemin>\" … compte <n> élément(s)` sinon) ou se parcourt "
+              "(`la liste \"<chemin>\" de l'oracle … contient un élément dont …`) ; une valeur simple se lit champ par champ "
+              "(`le champ \"a.b\" de l'oracle … vaut …`). Un OBJET ne se compte pas. Une liste vide à l'exploration ne dit "
+              "pas la forme de ses éléments : un essai sur le bac à sable la montre, s'il est disponible. Les valeurs "
+              "attendues viennent toujours de la spécification.",
+              ""]
+    lignes += forme_oracle.rendre_tout(formes)
+    return "\n".join(lignes)
+
+
 def build_initial_message(plan: TestPlan, modele: dict | None = None,
                           metier: dict | None = None, comptes: list[dict] | None = None,
                           oracle: list[str] | None = None, regeneration: bool = False,
-                          variables: list[dict] | None = None) -> str:
+                          variables: list[dict] | None = None, formes_oracle: dict | None = None) -> str:
     """Message utilisateur initial : le plan mis en forme pour la boucle ReAct.
 
     `modele` — l'annuaire du domaine (`domain_model.charger_modele`). Optionnel : sans lui, le
@@ -689,6 +708,10 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None,
     section_oracle = _section_oracle(oracle)
     if section_oracle:
         lines.append("\n" + section_oracle)
+    # Lot VH-08 (interrupteur) : la forme des réponses de ces requêtes. Vide : rien n'est ajouté, message d'avant.
+    section_formes = _section_formes_oracle(formes_oracle) if section_oracle else ""
+    if section_formes:
+        lines.append("\n" + section_formes)
 
     # Lot PT-02d (interrupteur) : les NOMS des variables de test du projet — jamais leurs valeurs. Vide : rien n'est ajouté.
     from testpilot.generation import variables_de_test

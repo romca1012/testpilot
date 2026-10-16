@@ -73,6 +73,12 @@ class ToolContext:
     # Réparation et correction : les écritures `{{…}}` du test de référence, FIGÉES (ni ajout, ni retrait, ni renommage).
     # `None` hors réparation/correction.
     references_figees: list[str] | None = None
+    # Lot VH-08 (A51, interrupteur `TESTPILOT_FORME_ORACLE`) : les NOMS des requêtes d'oracle déclarées — un test qui en cite
+    # une autre est refusé à l'écriture. `None` : interrupteur éteint ou hors projet, aucun contrôle.
+    requetes_oracle: frozenset[str] | None = None
+    # Lot VH-08 (A51) : la forme des réponses de l'oracle relevée à l'exploration, COMPLÉTÉE par chaque essai (cumul). `None` :
+    # interrupteur éteint, aucune forme relevée.
+    formes_oracle: dict | None = None
 
 
 @dataclass
