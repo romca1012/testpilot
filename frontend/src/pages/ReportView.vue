@@ -144,7 +144,30 @@ const variableEcrite = (nom: string) => `{{${nom}}}`
 
       <!-- Lot PT-02c : les données de test réellement posées dans CE test (figées au lancement). Une valeur reprise du jeu
            « Par défaut » le dit, discrètement. -->
-      <Card v-if="report.donnees_de_test?.jeu || Object.keys(report.donnees_de_test?.valeurs || {}).length"
+      <!-- A52 : plusieurs lignes jouées — une itération par ligne, comme le Data Table. -->
+      <Card v-if="report.donnees_de_test?.iterations?.length"
+            :title="`Données de test — ${report.donnees_de_test.iterations.length} itérations`" data-testid="iterations-jouees">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th scope="col" class="py-1.5 pr-4 font-medium">Ligne</th>
+                <th v-for="nom in Object.keys(report.donnees_de_test.iterations[0].valeurs)" :key="nom" scope="col"
+                    class="py-1.5 pr-4 font-mono font-normal normal-case">{{ variableEcrite(nom) }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="it in report.donnees_de_test.iterations" :key="it.jeu" class="border-b border-border last:border-0">
+                <td class="py-1.5 pr-4">{{ it.jeu }}</td>
+                <td v-for="nom in Object.keys(report.donnees_de_test.iterations[0].valeurs)" :key="nom" class="py-1.5 pr-4 break-all">
+                  {{ it.valeurs[nom]?.valeur }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      <Card v-else-if="report.donnees_de_test?.jeu || Object.keys(report.donnees_de_test?.valeurs || {}).length"
             :title="`Données de test${report.donnees_de_test?.jeu ? ' — ' + report.donnees_de_test.jeu : ''}`" data-testid="donnees-jouees">
         <table v-if="Object.keys(report.donnees_de_test?.valeurs || {}).length" class="w-full text-sm">
           <tbody>

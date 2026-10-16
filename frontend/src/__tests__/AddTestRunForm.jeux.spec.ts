@@ -68,54 +68,44 @@ describe('AddTestRunForm — jeux de données (PT-02b)', () => {
     expect(push).toHaveBeenCalledWith({ name: 'run-detail', params: { pid: '1', id: '9' } })
   })
 
-  it('le jeu « Par défaut » est coché d’emblée : une exécution', async () => {
+  // A52 (2026-10-16, changement délibéré des attendus) : chaque ligne cochée est une ITÉRATION de la même exécution — plus
+  // une exécution par jeu regroupées dans un plan.
+  it('le jeu « Par défaut » est coché d’emblée : une exécution, une itération', async () => {
     const w = await formulaire()
 
     expect((w.get('[data-testid="jeu-10"]').element as HTMLInputElement).checked).toBe(true)
     expect((w.get('[data-testid="jeu-11"]').element as HTMLInputElement).checked).toBe(false)
-    expect(w.get('[data-testid="nombre-executions"]').text()).toBe('1 exécution')
+    expect(w.get('[data-testid="nombre-executions"]').text()).toBe('1 exécution, 1 itération')
     await envoyer(w)
     expect(createRun.mock.calls[0][1]).toMatchObject({ dataset_ids: [10] })
   })
 
-  it('falsifiable : deux jeux cochés, l’écran l’annonce et ouvre le plan qui les regroupe', async () => {
-    createRun.mockResolvedValue({ id: 9, plan_id: 4 })
+  it('falsifiable : deux lignes cochées, une seule exécution de deux itérations, ouverte directement', async () => {
     const w = await formulaire()
     await w.get('[data-testid="jeu-11"]').setValue(true)
 
-    expect(w.get('[data-testid="nombre-executions"]').text().replace(/\s+/g, ' '))
-      .toBe('2 exécutions : 3 tests dans la première, 2 avec variables dans les autres')
+    expect(w.get('[data-testid="nombre-executions"]').text()).toBe('1 exécution, 2 itérations')
     await envoyer(w)
     expect(createRun.mock.calls[0][1]).toMatchObject({ dataset_ids: [10, 11] })
-    expect(push).toHaveBeenCalledWith({ name: 'plan-detail', params: { pid: '1', id: '4' } })
+    expect(push).toHaveBeenCalledWith({ name: 'run-detail', params: { pid: '1', id: '9' } })
   })
 
-  it('falsifiable (A35) : aucun test choisi n’écrit de variable, l’écran le dit', async () => {
-    casAvecVariables.mockResolvedValue([])
+  it('« Toutes les lignes » les coche toutes, puis revient à « Par défaut » seul', async () => {
     const w = await formulaire()
-    await w.get('[data-testid="jeu-11"]').setValue(true)
+    await w.get('[data-testid="toutes-les-lignes"]').trigger('click')
 
-    expect(w.get('[data-testid="nombre-executions"]').text().replace(/\s+/g, ' '))
-      .toBe('2 exécutions : 3 tests dans la première, aucun test avec variables dans les autres')
+    expect(w.get('[data-testid="nombre-executions"]').text()).toBe('1 exécution, 2 itérations')
+    await w.get('[data-testid="toutes-les-lignes"]').trigger('click')
+    expect(w.get('[data-testid="nombre-executions"]').text()).toBe('1 exécution, 1 itération')
   })
 
-  it('falsifiable : la liste des tests avec variables illisible ne retire pas le choix des jeux', async () => {
-    casAvecVariables.mockRejectedValue(new Error('indisponible'))
-    const w = await formulaire()
-    await w.get('[data-testid="jeu-11"]').setValue(true)
-
-    expect(w.get('[data-testid="nombre-executions"]').text()).toBe('2 exécutions, regroupées dans un plan')
-    await envoyer(w)
-    expect(createRun.mock.calls[0][1]).toMatchObject({ dataset_ids: [10, 11] })
-  })
-
-  it('falsifiable : aucun jeu coché, on ne peut pas créer', async () => {
+  it('falsifiable : aucune ligne cochée, on ne peut pas créer', async () => {
     const w = await formulaire()
     await w.get('[data-testid="jeu-10"]').setValue(false)
     await envoyer(w)
 
     expect(createRun).not.toHaveBeenCalled()
-    expect(w.get('[data-testid="choix-jeux"]').text()).toContain('Cochez au moins un jeu')
+    expect(w.get('[data-testid="choix-jeux"]').text()).toContain('Cochez au moins une ligne')
   })
 
   it('falsifiable : au-delà de 50 jeux cochés, on ne peut pas créer', async () => {
@@ -125,7 +115,7 @@ describe('AddTestRunForm — jeux de données (PT-02b)', () => {
     for (let i = 1; i < 51; i++) await w.get(`[data-testid="jeu-${100 + i}"]`).setValue(true)
     await envoyer(w)
 
-    expect(w.get('[data-testid="trop-de-jeux"]').text()).toBe('50 jeux au plus')
+    expect(w.get('[data-testid="trop-de-jeux"]').text()).toBe('50 lignes au plus')
     expect(createRun).not.toHaveBeenCalled()
   })
 

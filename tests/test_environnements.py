@@ -2,7 +2,8 @@
 
 Ce que ces tests gardent :
 1. un environnement ajouté déclare sa NATURE, sans défaut (A48) ; l'environnement par défaut est le projet, seul son nom change ;
-2. une exécution par jeu ET par environnement, dans un plan ; 50 au plus ; « Production » refusé à la création ;
+2. une exécution par environnement, dans un plan, les lignes de données en itérations de chacune (A52) ; « Production »
+   refusé à la création ;
 3. au lancement, l'environnement est relu et FIGÉ : devenu « Production » ou supprimé entre-temps, rien ne part ;
 4. chaque cas est joué contre l'adresse, la base et l'oracle de SON environnement — jamais celui du projet par erreur ;
    sans oracle déclaré pour l'environnement, pas d'oracle (celui du projet interrogerait une autre application) ;
@@ -186,9 +187,9 @@ def test_falsifiable_un_plan_par_environnement_et_par_jeu(client):
 
     assert r.status_code == 201
     plan = client.get(f"/api/plans/{r.json()['plan_id']}").json()
+    # A52 : une exécution par ENVIRONNEMENT ; les lignes de données sont des itérations de chacune.
     assert sorted((x["name"], x["environment_id"]) for x in plan["runs"]) == sorted([
-        ("Nuit — Par défaut — Recette", None), ("Nuit — Pro — Recette", None),
-        ("Nuit — Par défaut — Préproduction", eid), ("Nuit — Pro — Préproduction", eid)])
+        ("Nuit — Recette", None), ("Nuit — Préproduction", eid)])
 
 
 def test_falsifiable_la_production_et_l_inconnu_sont_refuses_sans_rien_creer(client):
@@ -201,23 +202,6 @@ def test_falsifiable_la_production_et_l_inconnu_sont_refuses_sans_rien_creer(cli
     assert r.status_code == 422 and "production" in r.json()["detail"]
     assert _creer(client, pid, cid, environment_ids=[999]).status_code == 422
     assert _creer(client, pid, cid, environment_ids=[prod], mode="manuelle").status_code == 422
-    assert client.get(f"/api/projects/{pid}/runs").json() == []
-
-
-def test_cinquante_executions_au_plus_en_tout(client, monkeypatch):
-    from testpilot.api.routes import runs
-    monkeypatch.setattr(runs, "JEUX_PAR_LANCEMENT_MAX", 3)
-    pid = _projet(client)
-    cid = _cas(pid)
-    _ajouter(client, pid)
-    base = f"/api/projects/{pid}/donnees-de-test"
-    client.post(f"{base}/variables", json={"nom": "client"})
-    client.post(f"{base}/jeux", json={"nom": "Pro"})
-    jeux = [j["id"] for j in client.get(base).json()["jeux"]]
-
-    r = _creer(client, pid, cid, environment_ids=[0, _id(client, pid, "Préproduction")], dataset_ids=jeux)
-
-    assert r.status_code == 422 and "3 exécutions au plus" in r.json()["detail"]
     assert client.get(f"/api/projects/{pid}/runs").json() == []
 
 

@@ -77,9 +77,8 @@ def create_schedule(project_id: int, body: schemas.ScheduledRunIn, request: Requ
         choisis = environnements_service.environnements_demandes(conn, project_id, body.environment_ids)
     except environnements.EnvironnementInvalide as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    if max(len(jeux), 1) * len(choisis) > donnees_de_test_service.JEUX_PAR_LANCEMENT_MAX:
-        raise HTTPException(status_code=422, detail=f"{donnees_de_test_service.JEUX_PAR_LANCEMENT_MAX} exécutions au plus "
-                                                    "par déclenchement (jeux de données × environnements)")
+    # A52 : les lignes sont des itérations d'une même exécution — 50 lignes au plus (`jeux_demandes`), une exécution par
+    # environnement (`environnements_demandes`) ; plus de plafond sur leur produit.
     ids_choisis = [e["id"] if e else environnements.DEFAUT for e in choisis]
     scheduled_id = ScheduledRunRepo(conn).create(
         project_id=project_id, name=body.name.strip(), selection_mode=body.selection_mode,

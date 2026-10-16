@@ -52,6 +52,10 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 | A49 | **Validée par le porteur le 2026-10-16** (PT-04a) — un environnement porte un nom, une adresse, une version, une base (Odoo) et l'adresse de son oracle. Les comptes de l'onglet « Comptes » servent sur tous les environnements ; des identifiants propres à un environnement viendront avec le choix du compte au lancement (E5, PT-04b). | 2026-10-16 |
 | A50 | **Validée par le porteur le 2026-10-16** (PT-04a) — l'exploration, la génération, ses essais et la remise à zéro restent sur l'environnement PAR DÉFAUT, comme aujourd'hui. Les autres environnements servent seulement à rejouer des tests déjà écrits. | 2026-10-16 |
 | A51 | **Validée par le porteur le 2026-10-16** (VH-08) — l'IA connaît la FORME des réponses de l'oracle (objet ou liste, clés, types ; jamais une valeur, jamais un nombre d'éléments) : relevée à l'exploration, et surtout relevée À LA FIN DE CHAQUE ESSAI sur le bac à sable, avant sa remise à zéro — à l'exploration, les listes de l'application sont souvent vides et la forme de leurs éléments inconnue. Seules les requêtes GET sont appelées (lecture). Derrière l'interrupteur `TESTPILOT_FORME_ORACLE`, éteint jusqu'à la mesure M2. Avec : un test qui cite une requête d'oracle non déclarée est refusé à l'écriture. Revue du 2026-10-16 : après un essai, la
+| A52 | **Validée par le porteur le 2026-10-16** (itérations, sur le modèle du « Data Table » de QTP/UFT montré par son tuteur) — un test lancé avec plusieurs lignes de données de test donne UNE exécution, avec UNE ITÉRATION par ligne et un résultat par itération ; le test est en échec si une itération échoue. Remplace la partie « une exécution par jeu, regroupées dans un plan » d'A28 ; les environnements restent une exécution chacun (PT-04a). | 2026-10-16 |
+| A53 | **Validée par le porteur le 2026-10-16** — quand la spécification décrit des comportements différents selon une valeur (« moins de 18 ans : refusé »), l'IA PROPOSE les lignes et le résultat attendu de chacune, valeurs limites comprises ; une personne les relit et les valide, comme un cas. Une personne peut toujours les saisir ou les importer. Une valeur attendue reste déclarée par une personne : proposée par l'IA, elle ne compte qu'une fois validée. | 2026-10-16 |
+| A54 | **Validée par le porteur le 2026-10-16** — le tableau des données de test se lit comme le Data Table et Excel : les variables en colonnes, UNE LIGNE par jeu de valeurs (une itération) ; le jeu « Par défaut » reste la première ligne (A27 inchangée : une case vide en reprend la valeur). | 2026-10-16 |
+| A55 | **Validée par le porteur le 2026-10-16** — remplir une colonne avec des enregistrements qui existent dans l'application (« plusieurs clients déjà en base ») : lot SÉPARÉ, après les itérations, avec sa propre mesure. | 2026-10-16 |
 forme montrée est le CUMUL exploration ∪ essais ; les clés d'un objet viennent de l'exploration seule (un objet vide à
 l'exploration puis rempli : « ses clés sont des données ») ; une clé vue seulement à l'essai n'est montrée que dans un
 élément de liste et si elle a la syntaxe d'un nom de champ. Ce qu'un essai laisse encore deviner, ASSUMÉ : qu'un élément a
@@ -400,6 +404,7 @@ Second jeu (porteur, 2026-10-16) : chaque test généré qui écrit une variable
 - **A47** (« Instance de test » décochée quand l'application change) : validée le 2026-10-16.
 - **A48** (nature Test / Production obligatoire), **A49** (mêmes comptes partout, oracle par environnement) et **A50** (génération sur l'environnement par défaut) : validées le 2026-10-16 pour PT-04a.
 - **A51** (forme des réponses de l'oracle lue à l'exploration et à la fin de chaque essai) : validée le 2026-10-16.
+- **A52** à **A55** (itérations dans une exécution, lignes proposées par l'IA et validées, tableau en lignes, remplissage depuis l'application à part) : validées le 2026-10-16.
 
 ### 9.6 L'IA ne part plus à l'aveugle (demande du porteur, 2026-10-16)
 
@@ -459,6 +464,35 @@ par cas sous 1 €.
 fourni, sinon relevé par l'outil), V-AV2 (la rédaction des cas emploie exactement les termes des écrans), V-AV3 (27 tests
 justes du premier coup sur 30, zéro faux vert).
 
+### 9.7 Itérations : un test, une ligne de données par itération (demande du porteur, 2026-10-16)
+
+**Le besoin.** Le « Data Table » de QTP/UFT (montré par le tuteur du porteur) : un même test est rejoué une fois par ligne
+d'un tableau, chaque ligne portant ses valeurs ET son résultat attendu. Exemple : `{{age}}` = 5, 10, 18 et
+`{{resultat_attendu}}` = « Accès refusé… », « Accès refusé… », « Bienvenue ». Un seul test, trois itérations ; si l'application
+laisse entrer un enfant de 5 ans, seule l'itération 1 échoue. Décisions A52 à A55.
+
+**Ce qui existe déjà.** Variables et jeux de valeurs (un jeu = une ligne) ; une valeur attendue peut déjà être une variable,
+déclarée par une personne ; au lancement, on coche les jeux à jouer.
+
+**Les choix techniques (annoncés au porteur).**
+- Les itérations d'un test sont les lignes cochées, réduites aux valeurs DE SES variables : deux lignes qui ne diffèrent que
+  par une variable qu'il n'emploie pas ne font qu'une itération ; un test sans variable est joué une fois (A35 devient
+  naturelle).
+- Une exécution, un seul passage de Behave : la copie du test propre à l'exécution devient un « Plan du scénario » dont les
+  « Exemples » sont les itérations (`{{age}}` → `<age>`) ; un `Contexte` qui emploie une variable est recopié en tête de chaque
+  scénario. Chaque itération est un scénario avec son résultat ; le verdict de l'exécution est le pire des itérations (règles
+  du verdict inchangées : une itération qui n'a rien prouvé n'est jamais conforme).
+- Les valeurs restent figées au lancement (A29), pour TOUTES les lignes choisies.
+
+**Les lots.**
+
+| Lot | Contenu | IA | Mesure |
+|---|---|---|---|
+| IT-1 | Itérations dans une exécution : lancement (toutes les lignes, une seule, de la ligne X à Y), valeurs figées, copie en plan de scénario, résultat par itération à l'écran et dans le rapport ; planifications | non | suites, essais à l'écran |
+| IT-2 | Le tableau en lignes (A54) : variables en colonnes, une ligne par jeu ; import et export Excel dans ce sens | non | essais à l'écran |
+| IT-3 | L'IA qui rédige les cas propose les lignes et leur résultat attendu (valeurs limites comprises), validées par une personne avec le cas (A53) ; l'IA technique écrit un seul test qui emploie les variables du cas | oui, interrupteur | banc : un cas « classes de valeurs » ajouté à l'application d'essai, avec un défaut à la limite |
+| IT-4 | Remplir une colonne depuis l'application (A55) | — | lot séparé |
+
 ## 8. Suivi
 
 | Lot | Statut | Date | PR | Rapport |
@@ -472,6 +506,9 @@ justes du premier coup sur 30, zéro faux vert).
 | PT-02f (E2) | code fait en local, interrupteur `TESTPILOT_CAS_DIT_SES_DONNEES` **ALLUMÉ par défaut depuis A46** (n'agit qu'avec PT-02d), relu en quatre passes : l'IA des cas reçoit les noms des variables ; variable inconnue, mal écrite ou dans le titre refusée à la validation et à l'édition ; le test technique reprend exactement les variables du cas (A39) ; écart cas/test après une modification à la main : exécution bloquée (A42) ; banc prêt pour M1 | 2026-10-15 | — | |
 | PT-03 | terminé en local, interrupteur ÉTEINT : comparaison avec unité, règle A24, écriture des nombres, unités ajoutées (A25) ; monnaie du projet retirée le 2026-10-15 (A38), relus et vérifiés à l'écran ; mesure sans IA : 8 jeux sur 8 ; mesure avec l'IA faite le 2026-10-16 : non concluante (génération qui n'aboutit pas, mauvaise page sans bac à sable) — l'interrupteur reste ÉTEINT (A46), à remesurer avec le bac à sable après AV-7 ; onglet « Valeurs attendues » retiré (A44) | 2026-10-16 | — | `docs/mesures/banc-agents-2026-10-13-pt03-step-nombre-sans-ia-methode.md` |
 | PT-04a | code fait en local (branche `lot-pt04a-environnements`), décisions A48 à A50 : environnements ajoutés (nature Test/Production obligatoire, production jamais jouée), une exécution par jeu ET par environnement, valeurs figées au lancement, oracle propre à chaque environnement, génération et réparation sur le défaut seulement ; relecture et vérification à l'écran en cours | 2026-10-16 | — | |
+| VH-08 | code fait en local (branche `lot-vh08-forme-oracle`), relu en deux passes, suites vertes ; interrupteur `TESTPILOT_FORME_ORACLE` ÉTEINT. **Mesure M2 (2026-10-16, 6,18 $)** : 0 faux vert des deux côtés, mais justes du premier coup 6/10 allumé contre 8/10 éteint et 7 générations qui n'aboutissent pas contre 3 (dont `connexion_refusee` 2/2, sans oracle : l'IA s'arrête d'elle-même au 9e tour sans écrire le test) — **règle non tenue, reste éteint** ; cause à trouver en rejouant ces cas avec la conversation gardée (≈ 0,30 $, accord du porteur attendu) | 2026-10-16 | — | `docs/mesures/banc-agents-2026-10-16-m2-eteint.md`, `…-m2-allume.md` |
+| IT-1 et IT-2 (A52, A54) | code fait en local (branche `lot-pt02g-iterations`), relu en deux passes (trois bloquants corrigés : variable écrite autrement restée littérale, variable dans une cellule d'exemples, barre oblique doublée), suites vertes : une exécution, une itération par ligne, rapport par itération, tableau et Excel en lignes. **Reste** : choix « de la ligne X à Y » (aujourd'hui : cases + « Toutes les lignes ») ; résultat par itération sur l'écran de l'exécution (aujourd'hui : noms des scénarios du rapport) ; vérification à l'écran par le porteur | 2026-10-16 | — | |
+| IT-3 (A53) | à faire : l'IA propose les lignes et leur résultat attendu, validées avec le cas | | | |
 | PT-04b à PT-04d | à faire | | | |
 | PT-05 | à faire | | | |
 | PT-06a à PT-06d | à faire | | | |

@@ -65,28 +65,19 @@ def _declencher(conn, repo: ScheduledRunRepo, planif: dict, maintenant: datetime
     acteur = f"scheduler:{planif['name']}"
     jeux = _jeux_du_declenchement(conn, planif)
     environnements = _environnements_du_declenchement(conn, planif)
-    if len(jeux) <= 1 and len(environnements) == 1:
-        # Un jeu choisi (ou le seul encore vivant) : son nom figure sur l'exécution, comme dans un plan.
-        environnement = environnements[0]
-        run_id = RunRepo(conn).create(project_id=planif["project_id"], name=f"{nom} — {jeux[0]['nom']}" if jeux else nom,
-                                      dataset_id=jeux[0]["id"] if jeux else None,
-                                      environment_id=environnement["id"] if environnement else None, **champs)
-        _lancer(conn, run_id, acteur)
-        repo.mark_triggered(planif["id"], run_id, at=maintenant.isoformat())
-        return run_id
-    # Plusieurs jeux (lot PT-02b, A28, A35) : une exécution par jeu, regroupées dans un plan — exactement comme à la main.
-    # Lot PT-04a : et une par environnement.
-    plan_id, premier, run_ids = donnees_de_test_service.creer_une_execution_par_jeu(
+    # A52 : une exécution par environnement, toutes les lignes dedans (une itération par ligne) — exactement comme à la main.
+    plan_id, premier, run_ids = donnees_de_test_service.creer_les_executions(
         conn, project_id=planif["project_id"], nom=nom, jeux=jeux, created_by=acteur, environnements=environnements,
-        **champs)
+        nommer_le_jeu=True, **champs)
     try:
         _lancer(conn, premier, acteur)
     except Exception:
         # La première ne part pas (connexion, campagne vide…) : rien ne part. Les brouillons créés sont retirés, sinon
-        # chaque passage de l'horloge en laisserait un plan de plus ce jour-là.
+        # chaque passage de l'horloge en laisserait de plus ce jour-là.
         for run_id in run_ids:
             RunRepo(conn).supprimer_brouillon(run_id)
-        PlanRepo(conn).delete(plan_id)
+        if plan_id is not None:
+            PlanRepo(conn).delete(plan_id)
         raise
     # La première est partie : la planification est déclenchée pour aujourd'hui, QUOI QU'IL ARRIVE aux suivantes — sinon
     # une erreur sur l'une d'elles relancerait une nouvelle première à chaque passage de l'horloge (revue du 2026-10-14).
@@ -94,13 +85,7 @@ def _declencher(conn, repo: ScheduledRunRepo, planif: dict, maintenant: datetime
     for run_id in run_ids[1:]:
         try:
             _lancer(conn, run_id, acteur)
-        except campaign_service.CampaignError as exc:
-            if exc.code == "empty":
-                # A35 : aucun test de la sélection n'écrit de variable — rien à jouer avec ce jeu, l'exécution est retirée.
-                RunRepo(conn).supprimer_brouillon(run_id)
-            else:   # le brouillon reste dans le plan : c'est le signal visible qu'un jeu n'a pas été joué
-                logger.warning("[scheduler] planification %s : exécution %s non lancée — %s", planif["id"], run_id, exc)
-        except Exception:
+        except Exception:   # le brouillon reste dans le plan : c'est le signal visible qu'un environnement n'a pas été joué
             logger.exception("[scheduler] planification %s : exécution %s non lancée", planif["id"], run_id)
     return premier
 

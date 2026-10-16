@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from testpilot import config
+from testpilot.parametres import iterations as iterations_mod
 from testpilot.parametres import resolution
 from testpilot.store.repositories import DonneeDeTestInvalide, PlanRepo, RunRepo, TestDataRepo, VersionRepo
 
@@ -38,6 +39,21 @@ def figer_pour_la_campagne(conn, run: dict) -> None:
     Lève `DonneeDeTestInvalide` si le jeu choisi n'existe plus (à la corbeille) : la campagne n'est alors pas lancée, plutôt
     que jouée avec d'autres valeurs que celles annoncées. Un projet sans variable et sans jeu choisi : rien n'est figé."""
     if (run.get("parametres_figes") or "").strip():
+        return
+    lignes = ids_des_jeux(run.get("dataset_ids"), strict=True)
+    if lignes:
+        # A52 : plusieurs lignes — une itération par ligne. Chacune figée, dans l'ordre choisi ; une ligne à la corbeille :
+        # rien n'est lancé (`DonneeDeTestInvalide`), comme pour un seul jeu.
+        depot = TestDataRepo(conn)
+        jeux, noms = [], []
+        for dataset_id in lignes:
+            noms, niveaux = depot.niveaux(run["project_id"], dataset_id)
+            valeurs = resolution.resoudre(niveaux, noms)
+            jeux.append({"jeu": niveaux[-1][0] if niveaux else "", "dataset_id": dataset_id,
+                         "valeurs": {n: {"valeur": v.valeur, "origine": v.origine} for n, v in valeurs.items()}})
+        figes = {"jeu": ", ".join(j["jeu"] for j in jeux), "jeux": jeux, "connues": noms}
+        conn.execute("UPDATE test_run SET parametres_figes=? WHERE id=?", (json.dumps(figes, ensure_ascii=False), run["id"]))
+        conn.commit()
         return
     noms, niveaux = TestDataRepo(conn).niveaux(run["project_id"], run.get("dataset_id"))
     # « Rien à figer » seulement pour un projet qui n'a JAMAIS déclaré de variable (aucun jeu, pas même « Par défaut », qui
@@ -118,6 +134,8 @@ def preparer_le_script(conn, execution_id: int, case_id: int, version_id: int, m
             return Script()   # un projet qui n'a jamais déclaré de variable : le chemin d'aujourd'hui, octet pour octet
         figes = {"jeu": niveaux[-1][0] if niveaux else "", "connues": noms,
                  "valeurs": {n: {"valeur": v.valeur, "origine": v.origine} for n, v in resolution.resoudre(niveaux, noms).items()}}
+    if isinstance(figes.get("jeux"), list):
+        return _preparer_les_iterations(conn, execution_id, case_id, module_name, version, figes, campagne)
     valeurs = {n: resolution.Valeur(str(v.get("valeur", "")), str(v.get("origine", ""))) for n, v in (figes.get("valeurs") or {}).items()}
     rendu = resolution.remplacer(feature, valeurs, figes.get("connues") or [])
     if not rendu.complet:
@@ -140,7 +158,68 @@ def preparer_le_script(conn, execution_id: int, case_id: int, version_id: int, m
     return Script(dossier=dossier, parametres_joues=joues)
 
 
-# ── Une exécution par jeu de données (A28, A35) — lancement à la main ET planification ────────────────────────────────────
+def _preparer_les_iterations(conn, execution_id: int, case_id: int, module_name: str, version: dict, figes: dict,
+                             campagne: bool) -> Script:
+    """A52 : plusieurs lignes figées — le test est joué une fois par ligne, dans CETTE exécution (`parametres/iterations`).
+
+    Chaque ligne est résolue avec les mêmes règles qu'un jeu seul ; une valeur qui manque dans une ligne : le test n'est pas
+    joué (« bloqué », la ligne nommée). Les itérations sont les lignes réduites aux valeurs des variables du test : une seule
+    restante, il est joué comme avec un jeu seul ; aucune variable, il se joue tel quel."""
+    feature = version.get("feature_content") or ""
+    connues = figes.get("connues") or []
+    if not figes["jeux"]:
+        return Script(blocage="Données de test : les valeurs figées de cette campagne sont illisibles. Créez une nouvelle "
+                              "exécution.")
+    rendus = []
+    for ligne in figes["jeux"]:
+        if not isinstance(ligne, dict) or not isinstance(ligne.get("valeurs"), dict):
+            return Script(blocage="Données de test : les valeurs figées de cette campagne sont illisibles. Créez une nouvelle "
+                                  "exécution.")
+        valeurs = {n: resolution.Valeur(str(v.get("valeur", "")), str(v.get("origine", "")))
+                   for n, v in ligne["valeurs"].items() if isinstance(v, dict)}
+        rendu = resolution.remplacer(feature, valeurs, connues)
+        if not rendu.complet:
+            manques = _manques(conn, _project_id_du_cas(conn, case_id), rendu)
+            suite = ("Complétez le tableau des données de test, puis créez une nouvelle exécution : celle-ci garde les "
+                     "valeurs figées à son lancement." if campagne else "Complétez le tableau des données de test, puis relancez.")
+            return Script(blocage=f"Données de test (ligne « {ligne.get('jeu') or 'Par défaut'} ») : " + " ; ".join(manques)
+                          + f". Le test n'a pas été joué. {suite}")
+        rendus.append((str(ligne.get("jeu") or ""), rendu))
+    # Même réduction que `iterations_mod.iterations` (deux lignes aux mêmes valeurs ne font qu'une itération), en gardant
+    # pour chacune l'origine de ses valeurs (« Par défaut » hérité ou non), montrée dans le rapport.
+    groupes: dict[tuple, tuple[list[str], resolution.Remplacement]] = {}
+    for nom, rendu in rendus:
+        cle = tuple(sorted((n, v.valeur) for n, v in rendu.jouees.items()))
+        groupes.setdefault(cle, ([], rendu))[0].append(nom)
+    detail = [(" / ".join(noms), rendu) for noms, rendu in groupes.values()]
+    iters = [(nom, {n: v.valeur for n, v in rendu.jouees.items()}) for nom, rendu in detail]
+    if len(detail) > 1:
+        joues = {"jeu": figes.get("jeu") or "",
+                 "iterations": [{"jeu": nom, "valeurs": {n: {"valeur": v.valeur, "origine": v.origine}
+                                                         for n, v in rendu.jouees.items()}} for nom, rendu in detail],
+                 "valeurs": {}}
+    else:   # une seule itération (mêmes valeurs pour ce test, ou aucune variable) : consignée comme un jeu seul
+        nom, rendu = detail[0]
+        joues = {"jeu": nom, "valeurs": {n: {"valeur": v.valeur, "origine": v.origine} for n, v in rendu.jouees.items()}}
+    conn.execute("UPDATE execution SET parametres_joues=? WHERE id=?", (json.dumps(joues, ensure_ascii=False), execution_id))
+    conn.commit()
+    if not rendus[0][1].jouees:
+        return Script(parametres_joues=joues)   # aucune variable dans ce test : une seule itération, il se joue tel quel
+    if len(iters) == 1:
+        texte = rendus[0][1].texte
+    else:
+        try:
+            texte = iterations_mod.en_plan_de_scenario(feature, iters, connues)
+        except iterations_mod.IterationsImpossibles as exc:
+            return Script(blocage=f"Itérations : {exc}. Le test n'a pas été joué.")
+    dossier = Path(config.DATA_DIR) / "executions" / str(execution_id) / "script"
+    dossier.mkdir(parents=True, exist_ok=True)
+    (dossier / f"{module_name}.feature").write_text(texte, encoding="utf-8")
+    (dossier / f"{module_name}_steps.py").write_text(version.get("steps_content") or "", encoding="utf-8")
+    return Script(dossier=dossier, parametres_joues=joues)
+
+
+# ── Création des exécutions : une par environnement, toutes les lignes dedans (A52) ──────────────────────────────────────
 
 JEUX_PAR_LANCEMENT_MAX = 50   # A28 : au-delà, un lancement par erreur créerait des dizaines d'exécutions
 
@@ -161,41 +240,40 @@ def jeux_demandes(conn, project_id: int, dataset_ids: list[int], *, maximum: int
     return jeux
 
 
-def creer_une_execution_par_jeu(conn, *, project_id: int, nom: str, jeux: list[dict], created_by: str = "",
-                                description: str = "", refs: str = "", environnements: list[dict | None] | None = None,
-                                **champs) -> tuple[int, int, list[int]]:
-    """Plusieurs jeux (A28) : une exécution PAR jeu, regroupées dans un plan qui porte `nom`. Rend (plan, première
-    exécution, toutes les exécutions dans l'ordre). `champs` : ceux de `RunRepo.create` (sélection, mode, cas…).
+def creer_les_executions(conn, *, project_id: int, nom: str, jeux: list[dict], created_by: str = "",
+                         description: str = "", refs: str = "", environnements: list[dict | None] | None = None,
+                         nommer_le_jeu: bool = False, **champs) -> tuple[int | None, int, list[int]]:
+    """Décision A52 : UNE exécution par environnement (PT-04a), qui joue TOUTES les lignes choisies — une itération par ligne,
+    jamais une exécution par ligne (remplace la règle d'A28 « une exécution par jeu, regroupées dans un plan »). Plusieurs
+    environnements : leurs exécutions sont regroupées dans un plan qui porte `nom`. Rend (plan ou None, première exécution,
+    toutes les exécutions). `champs` : ceux de `RunRepo.create` (sélection, mode, cas…).
 
-    Décision A35 : la PREMIÈRE (le jeu « Par défaut » s'il est demandé) joue tous les tests ; les suivantes, la même
-    sélection, mais seulement les tests qui écrivent des variables — un test sans variable rejoué à l'identique pour chaque
-    jeu ne prouverait rien de plus. Ce tri se fait au LANCEMENT (`RunRepo.case_ids`), pas ici : figé à la création, il
-    oubliait un test qui gagne une variable avant le lancement (revue du 2026-10-14).
-
-    Lot PT-04a : `environnements` (None = l'environnement par défaut ; absent = le défaut seul) — une exécution par jeu ET
-    par environnement. A35 vaut dans CHAQUE environnement : son premier jeu joue tous les tests. Le nom de chaque exécution
-    porte le jeu et l'environnement quand il y en a plusieurs. `jeux` vide : aucune donnée de test, un run par environnement."""
+    Un seul jeu : posé comme avant (`dataset_id`) ; plusieurs : `dataset_ids`, le jeu « Par défaut » en tête s'il est
+    choisi."""
     from testpilot.api.services import environnements_service
     from testpilot.store.repositories import ProjectRepo
 
-    jeux = sorted(jeux, key=lambda j: not j["est_defaut"]) or [None]
+    jeux = sorted(jeux, key=lambda j: not j["est_defaut"])
+    lignes = ({"dataset_id": jeux[0]["id"]} if len(jeux) == 1 else {"dataset_ids": [j["id"] for j in jeux]} if jeux else {})
     environnements = environnements or [None]
+    if nommer_le_jeu and len(jeux) == 1 and len(environnements) == 1:
+        nom = f"{nom} — {jeux[0]['nom']}"   # une planification à un seul jeu le nommait déjà ainsi (R1)
+    if len(environnements) == 1:
+        environnement = environnements[0]
+        run_id = RunRepo(conn).create(project_id=project_id, name=nom, description=description, refs=refs,
+                                      environment_id=environnement["id"] if environnement else None, **lignes, **champs)
+        return None, run_id, [run_id]
     projet = ProjectRepo(conn).get(project_id) or {}
     plan_id = PlanRepo(conn).create(project_id=project_id, name=nom, description=description, refs=refs,
                                     created_by=created_by)
     run_ids = []
     for environnement in environnements:
-        for rang, jeu in enumerate(jeux):
-            parties = [nom]
-            if len(jeux) > 1:
-                parties.append(jeu["nom"])
-            if len(environnements) > 1:
-                parties.append(environnements_service.nom_de(conn, projet, environnement))
-            run_id = RunRepo(conn).create(project_id=project_id, name=" — ".join(parties), description=description,
-                                          refs=refs, dataset_id=jeu["id"] if jeu else None, seulement_variables=rang > 0,
-                                          environment_id=environnement["id"] if environnement else None, **champs)
-            PlanRepo(conn).assign_run(plan_id, run_id)
-            run_ids.append(run_id)
+        run_id = RunRepo(conn).create(project_id=project_id,
+                                      name=f"{nom} — {environnements_service.nom_de(conn, projet, environnement)}",
+                                      description=description, refs=refs,
+                                      environment_id=environnement["id"] if environnement else None, **lignes, **champs)
+        PlanRepo(conn).assign_run(plan_id, run_id)
+        run_ids.append(run_id)
     return plan_id, run_ids[0], run_ids
 
 

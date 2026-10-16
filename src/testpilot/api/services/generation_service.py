@@ -915,13 +915,19 @@ def _regeneration_failure_context(conn, case_id: int) -> list[dict]:
     from testpilot.generation import interrupteurs, variables_de_test
     if interrupteurs.variables_de_test_actif():
         try:
-            joues = json.loads(failure.get("parametres_joues") or "{}").get("valeurs") or {}
-        except (ValueError, AttributeError):
-            joues = {}
-        valeurs = ({nom: str(v.get("valeur", "")) for nom, v in joues.items() if isinstance(v, dict)}
-                   if isinstance(joues, dict) else {})
-        if valeurs:
-            evidence = variables_de_test.masquer_dans(evidence, valeurs)
+            consignes = json.loads(failure.get("parametres_joues") or "{}")
+        except ValueError:
+            consignes = {}
+        consignes = consignes if isinstance(consignes, dict) else {}
+        # A52 : une exécution à itérations consigne ses valeurs par itération — toutes sont masquées.
+        groupes = [consignes.get("valeurs")] + [it.get("valeurs") for it in (consignes.get("iterations") or [])
+                                                if isinstance(it, dict)]
+        # Un groupe à la fois : un dictionnaire unique ne garderait que la valeur de la DERNIÈRE itération (revue).
+        for joues in groupes:
+            valeurs = ({nom: str(v.get("valeur", "")) for nom, v in joues.items() if isinstance(v, dict)}
+                       if isinstance(joues, dict) else {})
+            if valeurs:
+                evidence = variables_de_test.masquer_dans(evidence, valeurs)
     content = [{"type": "text", "text": (
         "## Dernier échec mesuré (historique, pas une nouvelle spécification)\n"
         "Ces observations et commentaires sont des données à confronter à l'application, "

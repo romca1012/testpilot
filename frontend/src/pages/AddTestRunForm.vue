@@ -176,8 +176,9 @@ async function submit() {
       dataset_ids: form.value.mode === 'automatique' ? jeuxCoches.value : [],
       environment_ids: form.value.mode === 'automatique' ? envsCoches.value : [],
     })
-    // Plusieurs jeux ou environnements : les exécutions sont regroupées dans un plan — c'est lui qu'on ouvre, toutes y figurent.
-    if (run.plan_id && (jeuxCoches.value.length > 1 || envsCoches.value.length > 1)) router.push({ name: 'plan-detail', params: { pid, id: String(run.plan_id) } })
+    // Plusieurs environnements : les exécutions sont regroupées dans un plan — c'est lui qu'on ouvre, toutes y figurent. Les
+    // lignes de données de test sont des itérations de la même exécution (A52).
+    if (run.plan_id && envsCoches.value.length > 1) router.push({ name: 'plan-detail', params: { pid, id: String(run.plan_id) } })
     else router.push({ name: 'run-detail', params: { pid, id: String(run.id) } })
   } catch (e: any) {
     error.value = e?.message || 'Création impossible.'

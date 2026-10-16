@@ -211,33 +211,38 @@ async function importer() {
 
     <!-- `relative` : sans lui, un libellé masqué (`sr-only`, positionné en absolu) échappe au défilement et élargit toute la page. -->
     <div v-else class="relative overflow-x-auto">
+      <!-- A54 (2026-10-16) : comme le « Data Table » de QTP/UFT et Excel — les variables en colonnes, UNE LIGNE par jeu de
+           valeurs (une itération au lancement). Le jeu « Par défaut » reste la première ligne ; une case vide en reprend la
+           valeur (A27), montrée en gris. -->
       <table v-if="tableau.variables.length" class="w-full text-sm" data-testid="tableau-donnees">
         <thead>
           <tr class="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <th scope="col" class="px-4 py-3 font-medium sm:px-6">Variable</th>
-            <th v-for="jeu in tableau.jeux" :key="jeu.id" scope="col" class="min-w-44 px-3 py-3 font-medium" :data-testid="`jeu-${jeu.id}`">
+            <th scope="col" class="px-4 py-3 font-medium sm:px-6">Ligne</th>
+            <th v-for="v in tableau.variables" :key="v.id" scope="col" class="min-w-44 px-3 py-3 font-medium" data-testid="variable">
               <span class="flex items-center justify-between gap-2">
-                <span class="normal-case tracking-normal text-foreground">{{ jeu.nom }}</span>
-                <span v-if="!jeu.est_defaut" class="flex shrink-0 gap-1 normal-case tracking-normal">
+                <span class="font-mono normal-case tracking-normal text-foreground">{{ ecrite(v.nom) }}</span>
+                <Button v-if="peutSupprimer" type="button" variant="ghost" size="sm" class="shrink-0 normal-case tracking-normal text-destructive"
+                        :aria-label="`Supprimer la variable ${v.nom}`" @click="demanderSuppressionVariable(v)">Supprimer</Button>
+              </span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="jeu in tableau.jeux" :key="jeu.id" class="border-b border-border last:border-0" :data-testid="`jeu-${jeu.id}`">
+            <th scope="row" class="whitespace-nowrap px-4 py-2 text-left font-medium sm:px-6">
+              <span class="flex items-center gap-2">
+                <span>{{ jeu.nom }}</span>
+                <span v-if="!jeu.est_defaut" class="flex shrink-0 gap-1">
                   <Button v-if="peutModifier" type="button" variant="ghost" size="sm" :aria-label="`Renommer ${jeu.nom}`" @click="ouvrirJeu(jeu)">Renommer</Button>
                   <Button v-if="peutSupprimer" type="button" variant="ghost" size="sm" class="text-destructive" :aria-label="`Supprimer ${jeu.nom}`" @click="demanderSuppressionJeu(jeu)">Supprimer</Button>
                 </span>
               </span>
             </th>
-            <th scope="col" class="px-3 py-3"><span class="sr-only">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="v in tableau.variables" :key="v.id" class="border-b border-border last:border-0" data-testid="variable">
-            <th scope="row" class="whitespace-nowrap px-4 py-2 text-left font-mono text-sm font-medium sm:px-6">{{ ecrite(v.nom) }}</th>
-            <td v-for="jeu in tableau.jeux" :key="jeu.id" class="px-3 py-2">
+            <td v-for="v in tableau.variables" :key="v.id" class="px-3 py-2">
               <input v-model="saisie[jeu.id][v.id]" :disabled="!peutModifier" :data-testid="`case-${jeu.id}-${v.id}`"
                      :aria-label="`${v.nom} pour ${jeu.nom}`"
                      :placeholder="jeu.est_defaut ? '' : (jeuParDefaut ? saisie[jeuParDefaut.id]?.[v.id] || '' : '')"
                      class="h-10 w-full rounded-md border border-border bg-surface px-3 outline-none placeholder:text-muted-foreground/70 focus:border-primary disabled:cursor-not-allowed disabled:opacity-60" />
-            </td>
-            <td class="whitespace-nowrap px-3 py-2 text-right">
-              <Button v-if="peutSupprimer" type="button" variant="ghost" size="sm" class="text-destructive" :aria-label="`Supprimer la variable ${v.nom}`" @click="demanderSuppressionVariable(v)">Supprimer</Button>
             </td>
           </tr>
         </tbody>
@@ -252,7 +257,7 @@ async function importer() {
                class="h-10 w-full min-w-0 rounded-md border border-border bg-surface px-3 font-mono text-sm outline-none focus:border-primary sm:w-48" />
         <Button type="submit" variant="secondary" class="whitespace-nowrap" data-testid="variable-ajouter" :loading="ajoutVariable" :disabled="!nouvelleVariable.trim() || modifie">Ajouter une variable</Button>
       </form>
-      <Button v-if="peutModifier && tableau.variables.length" type="button" variant="secondary" data-testid="jeu-ajouter" :disabled="modifie" @click="ouvrirJeu()">Ajouter un jeu</Button>
+      <Button v-if="peutModifier && tableau.variables.length" type="button" variant="secondary" data-testid="jeu-ajouter" :disabled="modifie" @click="ouvrirJeu()">Ajouter une ligne</Button>
       <a :href="api.exportTestDataUrl(projet.id)" download class="text-sm text-primary hover:underline" data-testid="donnees-exporter">Exporter</a>
       <template v-if="peutModifier">
         <input ref="fichierImport" type="file" accept=".xlsx" class="sr-only" data-testid="donnees-fichier" @change="fichierChoisi" />

@@ -262,6 +262,14 @@ def _assurer_script_sur_disque(conn, version_id: int, module_name: str, *, execu
     return donnees_de_test_service.preparer_le_script(conn, execution_id, case_id, version_id, module_name)
 
 
+DELAI_DES_ITERATIONS_MAX = 3 * 3600   # A52 : au-delà, un sous-processus bloqué retiendrait le bac à sable des heures
+
+
+def delai_des_iterations(delai: int, iterations: int) -> int:
+    """Le délai d'un passage de Behave qui joue `iterations` itérations : un délai de passage par itération, plafonné."""
+    return min(delai * max(1, iterations), max(delai, DELAI_DES_ITERATIONS_MAX))
+
+
 def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int, *,
                   triggered_by: str = "", qualification: bool = False, strict: bool = False,
                   sans_repli: bool = False, environnement: dict | None = None) -> None:
@@ -311,6 +319,11 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
                               profil_instance=resolve_profil_instance(conn, case_id),
                               **({"environnement_ajoute": True} if environnement is not None else {}),
                               **({"generated_dir": script.dossier} if script.dossier is not None else {}))
+        iterations_jouees = len((script.parametres_joues or {}).get("iterations") or [])
+        if iterations_jouees > 1 and hasattr(runner, "real_timeout"):
+            # A52 : toutes les itérations tournent dans un seul passage de Behave — le délai est celui d'un passage par
+            # itération ; sinon un délai dépassé effacerait le résultat de chacune (erreur technique, jamais un vert).
+            runner.real_timeout = delai_des_iterations(runner.real_timeout, iterations_jouees)
         if sans_repli:
             # D33 (2026-10-10) : campagne sans repli par le modèle de langage — posé sur le runner, donc valable pour CHAQUE
             # run du cas, tentatives de réparation comprises ; second essai et réparation restent permis (≠ strict).

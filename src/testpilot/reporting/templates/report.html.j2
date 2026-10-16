@@ -156,7 +156,22 @@
   {% endif %}
 
   {# --- Lot PT-02c : les données de test réellement posées dans ce test (figées au lancement) --- #}
-  {% if r.donnees_de_test.jeu or r.donnees_de_test.valeurs %}
+  {% if r.donnees_de_test.iterations %}
+  {# A52 : plusieurs lignes jouées — une itération par ligne, comme le Data Table : une ligne par itération, une colonne par
+     variable. #}
+  {% set noms = r.donnees_de_test.iterations[0].valeurs.keys() | list %}
+  <div class="card">
+    <h2>Données de test — {{ r.donnees_de_test.iterations | length }} itérations</h2>
+    <table>
+      <thead><tr><th>Ligne</th>{% for nom in noms %}<th>{{ "{{" ~ nom ~ "}}" }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for it in r.donnees_de_test.iterations %}
+        <tr><td>{{ it.jeu }}</td>{% for nom in noms %}<td>{{ (it.valeurs.get(nom) or {}).get("valeur", "") }}</td>{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif r.donnees_de_test.jeu or r.donnees_de_test.valeurs %}
   <div class="card">
     <h2>Données de test{% if r.donnees_de_test.jeu %} — {{ r.donnees_de_test.jeu }}{% endif %}</h2>
     <table>
