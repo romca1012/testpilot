@@ -139,6 +139,7 @@ def test_falsifiable_l_exploration_releve_la_forme_des_requetes_get(tmp_path, mo
 
     monkeypatch.setenv(interrupteurs.ENV_FORME_ORACLE, "1")
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(domain_model, "DOMAIN_DIR", tmp_path / "domain")   # jamais l'annuaire réel du poste
     appelees = []
     monkeypatch.setattr(oracle_http.OracleHttp, "executer", lambda self, nom: appelees.append(nom) or PLEINE)
     monkeypatch.setattr(ex, "_crawl", lambda connexion, max_pages: {"pages": {"/": {}}, "transitions": {}})
@@ -163,6 +164,7 @@ def test_sans_oracle_ou_interrupteur_eteint_l_exploration_est_celle_d_avant(tmp_
 
     monkeypatch.setenv(interrupteurs.ENV_FORME_ORACLE, "1" if allume else "0")
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(domain_model, "DOMAIN_DIR", tmp_path / "domain")   # jamais l'annuaire réel du poste
     monkeypatch.setattr(oracle_http.OracleHttp, "executer", lambda self, nom: pytest.fail("l'oracle ne doit pas être appelé"))
     monkeypatch.setattr(ex, "_crawl", lambda connexion, max_pages: {"pages": {"/": {}}, "transitions": {}})
     ex.run_exploration("job", project_id=4, connexion={"connector_type": "web", "nom": "B", "base_url": "http://app",
@@ -198,6 +200,7 @@ def test_falsifiable_la_generation_branche_les_formes_et_le_controle_des_requete
     from testpilot.generation import agent as agent_mod
 
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(agent_mod.domain_model, "DOMAIN_DIR", tmp_path / "domain")   # jamais l'annuaire réel du poste
     vus = []
 
     def _boucle(**kw):
