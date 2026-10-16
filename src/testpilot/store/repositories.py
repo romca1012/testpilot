@@ -286,6 +286,11 @@ class ProjectRepo:
             (1 if enabled else 0, project_id))
         self.conn.commit()
 
+    def set_environnement_nom(self, project_id: int, nom: str) -> None:
+        """Le nom de l'environnement PAR DÉFAUT (lot PT-04a) — son adresse, sa base et sa version restent celles du projet."""
+        self.conn.execute("UPDATE project SET environnement_nom=? WHERE id=?", ((nom or "").strip(), project_id))
+        self.conn.commit()
+
     def set_instance_de_test(self, project_id: int, oui: bool) -> None:
         """Le projet se déclare (ou plus) instance de test (migration 68, A45). Décision de POLITIQUE du porteur, comme
         l'autorisation d'agir : jamais posée implicitement."""
@@ -349,6 +354,9 @@ class ProjectRepo:
                          " WHERE project_id=? AND deleted_at<>''"),
             ("jeu_de_donnees", "SELECT id, nom AS titre, deleted_at, deleted_by FROM test_dataset"
                                " WHERE project_id=? AND deleted_at<>''"),
+            # Lot PT-04a : les environnements ajoutés supprimés.
+            ("environnement", "SELECT id, nom AS titre, deleted_at, deleted_by FROM project_environment"
+                              " WHERE project_id=? AND deleted_at<>''"),
         ]
         out = []
         for type_, sql in requetes:
@@ -1973,8 +1981,12 @@ class RunRepo:
     def create(self, *, project_id: int, name: str, description: str = "", refs: str = "",
                selection_mode: str = "frozen", mode: str = MODE_AUTOMATIQUE,
                case_ids: list[int] | None = None, strict: bool = False, sans_repli: bool = True,
-               dataset_id: int | None = None, seulement_variables: bool = False) -> int:
+               dataset_id: int | None = None, seulement_variables: bool = False,
+               environment_id: int | None = None) -> int:
         """Crée un run en BROUILLON (jamais lancé à la création — `0022` 8.c.1).
+
+        `environment_id` (lot PT-04a) : l'environnement ajouté joué par cette campagne ; `None` = l'environnement par défaut
+        (l'adresse du projet, comme avant). Ses valeurs ne sont figées qu'au LANCEMENT (`environnements_service`).
 
         `dataset_id` (lot PT-02b) : le jeu de données joué par cette campagne ; `None` = le jeu « Par défaut » si le projet
         a des variables, rien sinon. Les valeurs ne sont figées qu'au LANCEMENT (`donnees_de_test_service`).
@@ -1994,10 +2006,10 @@ class RunRepo:
         ts = now_iso()
         cur = self.conn.execute(
             "INSERT INTO test_run (project_id, name, description, refs, selection_mode, mode,"
-            " status, created_at, strict, sans_repli, dataset_id, seulement_variables)"
-            " VALUES (?,?,?,?,?,?,'draft',?,?,?,?,?)",
+            " status, created_at, strict, sans_repli, dataset_id, seulement_variables, environment_id)"
+            " VALUES (?,?,?,?,?,?,'draft',?,?,?,?,?,?)",
             (project_id, name, description, refs, selection_mode, mode, ts, 1 if strict else 0, 1 if sans_repli else 0,
-             dataset_id, 1 if seulement_variables else 0))
+             dataset_id, 1 if seulement_variables else 0, environment_id))
         run_id = int(cur.lastrowid)
         if selection_mode == "frozen":
             for cid in dict.fromkeys(case_ids or []):  # dédup en gardant l'ordre
@@ -2371,19 +2383,22 @@ class ScheduledRunRepo:
     def create(self, *, project_id: int, name: str, selection_mode: str = "frozen",
                frequency: str, hour: int, minute: int, weekday: int | None = None,
                case_ids: list[int] | None = None, created_by: str = "",
-               dataset_ids: list[int] | None = None) -> int:
+               dataset_ids: list[int] | None = None, environment_ids: list[int] | None = None) -> int:
         """`dataset_ids` (lot PT-02b, A28) : les jeux de données joués à chaque déclenchement — vide : comme avant (le jeu
-        « Par défaut » si le projet a des variables). Vérifiés par l'appelant (`donnees_de_test_service.jeux_demandes`)."""
+        « Par défaut » si le projet a des variables). Vérifiés par l'appelant (`donnees_de_test_service.jeux_demandes`).
+        `environment_ids` (lot PT-04a) : les environnements joués (0 = par défaut) — vide : le défaut seul, comme avant.
+        Vérifiés par l'appelant (`environnements_service.environnements_demandes`)."""
         if frequency not in ("daily", "weekly"):
             raise ValueError(f"fréquence inconnue : {frequency!r} — attendu 'daily' ou 'weekly'")
         if frequency == "weekly" and weekday is None:
             raise ValueError("une planification hebdomadaire doit préciser le jour (weekday)")
         cur = self.conn.execute(
             "INSERT INTO scheduled_run (project_id, name, selection_mode, frequency, hour,"
-            " minute, weekday, is_active, created_by, created_at, dataset_ids)"
-            " VALUES (?,?,?,?,?,?,?,1,?,?,?)",
+            " minute, weekday, is_active, created_by, created_at, dataset_ids, environment_ids)"
+            " VALUES (?,?,?,?,?,?,?,1,?,?,?,?)",
             (project_id, name, selection_mode, frequency, hour, minute, weekday,
-             created_by, now_iso(), json.dumps(list(dict.fromkeys(dataset_ids))) if dataset_ids else ""))
+             created_by, now_iso(), json.dumps(list(dict.fromkeys(dataset_ids))) if dataset_ids else "",
+             json.dumps(list(dict.fromkeys(environment_ids))) if environment_ids else ""))
         scheduled_id = int(cur.lastrowid)
         if selection_mode == "frozen":
             for cid in dict.fromkeys(case_ids or []):
@@ -3748,6 +3763,78 @@ class _CorbeilleDeDonneesDeTest:
         self.conn.commit()
 
 
+class ProjectEnvironmentRepo:
+    """Les environnements AJOUTÉS d'un projet (lot PT-04a, migration 69). Les champs arrivent DÉJÀ validés
+    (`parametres/environnements.valider`) ; ce dépôt garde ce qui relève de la base — appartenance au projet, unicité du nom
+    parmi les vivants (environnement par défaut compris), plafond. L'environnement par défaut n'est PAS ici : c'est le
+    projet lui-même (§3.1 du plan)."""
+
+    __test__ = False
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def liste(self, project_id: int) -> list[dict]:
+        return [dict(r) for r in self.conn.execute(
+            "SELECT * FROM project_environment WHERE project_id=? AND deleted_at='' ORDER BY rang, id", (project_id,))]
+
+    def get(self, project_id: int, environment_id: int) -> dict | None:
+        ligne = self.conn.execute("SELECT * FROM project_environment WHERE project_id=? AND id=? AND deleted_at=''",
+                                  (project_id, environment_id)).fetchone()
+        return dict(ligne) if ligne else None
+
+    def _nom_libre(self, project_id: int, nom: str, sauf: int | None = None) -> None:
+        from testpilot.parametres import environnements as env
+        projet = self.conn.execute("SELECT environnement_nom FROM project WHERE id=?", (project_id,)).fetchone()
+        pris = [env.nom_affiche(projet["environnement_nom"] if projet else "")]
+        pris += [e["nom"] for e in self.liste(project_id) if e["id"] != sauf]
+        if any(_key(n) == _key(nom) for n in pris):
+            raise env.EnvironnementInvalide(f"un environnement « {nom} » existe déjà sur ce projet")
+
+    def creer(self, project_id: int, champs: dict) -> int:
+        from testpilot.parametres import environnements as env
+        if len(self.liste(project_id)) + 1 >= env.ENVIRONNEMENTS_MAX:
+            raise env.EnvironnementInvalide(f"{env.ENVIRONNEMENTS_MAX} environnements au plus par projet")
+        self._nom_libre(project_id, champs["nom"])
+        rang = self.conn.execute("SELECT COALESCE(MAX(rang), 0) + 1 FROM project_environment WHERE project_id=?",
+                                 (project_id,)).fetchone()[0]
+        try:
+            cur = self.conn.execute(
+                "INSERT INTO project_environment (project_id, nom, base_url, connector_version, database, oracle_base_url,"
+                " nature, rang, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (project_id, champs["nom"], champs["base_url"], champs["connector_version"], champs["database"],
+                 champs["oracle_base_url"], champs["nature"], rang, now_iso()))
+            self.conn.commit()
+        except INTEGRITY_ERRORS as exc:
+            self.conn.rollback()
+            raise env.EnvironnementInvalide(f"un environnement « {champs['nom']} » existe déjà sur ce projet") from exc
+        return int(cur.lastrowid)
+
+    def modifier(self, project_id: int, environment_id: int, champs: dict) -> bool:
+        from testpilot.parametres import environnements as env
+        if self.get(project_id, environment_id) is None:
+            return False
+        self._nom_libre(project_id, champs["nom"], sauf=environment_id)
+        try:
+            self.conn.execute(
+                "UPDATE project_environment SET nom=?, base_url=?, connector_version=?, database=?, oracle_base_url=?,"
+                " nature=? WHERE id=?",
+                (champs["nom"], champs["base_url"], champs["connector_version"], champs["database"],
+                 champs["oracle_base_url"], champs["nature"], environment_id))
+            self.conn.commit()
+        except INTEGRITY_ERRORS as exc:
+            self.conn.rollback()
+            raise env.EnvironnementInvalide(f"un environnement « {champs['nom']} » existe déjà sur ce projet") from exc
+        return True
+
+    def supprimer(self, project_id: int, environment_id: int, par: str = "") -> bool:
+        """À la CORBEILLE : une planification qui le joue ne se déclenche plus tant qu'il n'est pas restauré."""
+        cur = self.conn.execute("UPDATE project_environment SET deleted_at=?, deleted_by=? WHERE project_id=? AND id=?"
+                                " AND deleted_at=''", (now_iso(), par, project_id, environment_id))
+        self.conn.commit()
+        return cur.rowcount > 0
+
+
 class TestVariableRepo(_CorbeilleDeDonneesDeTest):
     __test__ = False
     table, libelle, plafond = "test_variable", "une variable", _VARIABLES_MAX
@@ -3756,6 +3843,25 @@ class TestVariableRepo(_CorbeilleDeDonneesDeTest):
 class TestDatasetRepo(_CorbeilleDeDonneesDeTest):
     __test__ = False
     table, libelle, plafond = "test_dataset", "un jeu de données", _JEUX_MAX
+
+
+class EnvironnementCorbeilleRepo(_CorbeilleDeDonneesDeTest):
+    """Lot PT-04a : un environnement ajouté se restaure ou se purge comme une variable — et son nom ne doit pas non plus être
+    celui de l'environnement par défaut (revue du 2026-10-16)."""
+    __test__ = False
+    table, libelle, plafond = "project_environment", "un environnement", 19   # 20 avec l'environnement par défaut
+
+    def restaurer(self, element_id: int) -> None:
+        from testpilot.parametres.environnements import nom_affiche
+        ligne = self.conn.execute("SELECT e.nom, p.environnement_nom FROM project_environment e"
+                                  " JOIN project p ON p.id = e.project_id WHERE e.id=?", (element_id,)).fetchone()
+        if ligne is not None and _key(ligne["nom"]) == _key(nom_affiche(ligne["environnement_nom"])):
+            raise ValueError("l'environnement par défaut porte déjà ce nom : renommez-le d'abord")
+        try:
+            super().restaurer(element_id)
+        except ValueError as exc:
+            raise ValueError(str(exc).replace("existe déjà : renommez ou supprimez-la", "existe déjà : renommez-le ou "
+                                                                                       "supprimez-le")) from exc
 
 
 class UniteInvalide(ValueError):

@@ -62,11 +62,13 @@ class RunError(Exception):
         self.detail = detail
 
 
-def project_du_cas(conn, case_id: int) -> dict | None:
-    """Le PROJET auquel appartient le cas — porteur de la connexion (décision 0005)."""
+def project_du_cas(conn, case_id: int, environnement: dict | None = None) -> dict | None:
+    """Le PROJET auquel appartient le cas — porteur de la connexion (décision 0005). Lot PT-04a : tel qu'un test le voit
+    sur `environnement` (adresse, base, version et oracle remplacés ; None = l'environnement par défaut, le projet tel quel)."""
+    from testpilot.parametres.environnements import projet_sur
     case = CaseRepo(conn).get(case_id)
     project_id = (case or {}).get("project_id")
-    return ProjectRepo(conn).get(project_id) if project_id else None
+    return projet_sur(ProjectRepo(conn).get(project_id) if project_id else None, environnement)
 
 
 def noms_declares(conn, project_id: int | None) -> list[str]:
@@ -96,7 +98,8 @@ def gate_du_cas(conn, case: dict, version_id: int) -> review_gate.GateDecision:
                                         ecarts_cas_test(conn, case, version_id))
 
 
-def trigger_run(conn, case_id: int, *, triggered_by: str = "") -> tuple[int, str, int, int]:
+def trigger_run(conn, case_id: int, *, triggered_by: str = "",
+                environnement: dict | None = None) -> tuple[int, str, int, int]:
     """Valide le gate et crée la ligne d'exécution. Renvoie (execution_id, feature_slug, case_id, version_id).
 
     `triggered_by` (migration 32) : le compte qui a demandé ce run — résolu par l'APPELANT,
@@ -116,8 +119,8 @@ def trigger_run(conn, case_id: int, *, triggered_by: str = "") -> tuple[int, str
     # ⚠️ **Savoir contre quoi on teste, AVANT de tester** (2026-07-24). Sans connexion complète, le
     # runtime retombait sur la configuration globale de la machine : l'écran montrait un projet, le
     # navigateur en testait un autre, et le résultat était faux **sans laisser de trace**. On
-    # refuse, et on dit quoi corriger.
-    project = project_du_cas(conn, case_id)
+    # refuse, et on dit quoi corriger. Lot PT-04a : contre l'environnement de la campagne, s'il en a un.
+    project = project_du_cas(conn, case_id, environnement)
     try:
         verifier_connexion(project)
     except ConnexionIncomplete as err:
@@ -126,7 +129,9 @@ def trigger_run(conn, case_id: int, *, triggered_by: str = "") -> tuple[int, str
     execs = ExecutionRepo(conn)
     # Le premier jet appartient à chaque VERSION générée. Après une régénération, la première
     # exécution de la nouvelle version doit alimenter à nouveau l'onglet Qualité.
-    trigger = "rerun" if execs.has_for_version(version_id) else "first_run"
+    # Lot PT-04a (A50) : sur l'environnement PAR DÉFAUT seulement, là où la version a été générée — un premier passage en
+    # préproduction ne mesure pas la qualité de la génération.
+    trigger = "rerun" if environnement is not None or execs.has_for_version(version_id) else "first_run"
     eid = execs.create(test_case_id=case_id, version_id=version_id, trigger=trigger,
                        cible=cible_de(project), triggered_by=triggered_by)
     _RUNNING.add(eid)
@@ -136,7 +141,7 @@ def trigger_run(conn, case_id: int, *, triggered_by: str = "") -> tuple[int, str
 
 def enregistrer_lancement_bloque(conn, *, case_id: int, code: str, message: str,
                                   run_id: int | None = None,
-                                  triggered_by: str = "") -> int | None:
+                                  triggered_by: str = "", environnement: dict | None = None) -> int | None:
     """Rend visible, dans l'historique du cas, un lancement bloqué AVANT `trigger_run` — au lieu
     de ne laisser trace que dans le journal serveur (bug réel, 2026-09-15) : une campagne qui
     butait sur `needs_review`/`no_connection` journalisait `RunError` puis passait au cas suivant,
@@ -161,9 +166,9 @@ def enregistrer_lancement_bloque(conn, *, case_id: int, code: str, message: str,
     version_id = (case or {}).get("current_version_id")
     if not version_id:
         return None
-    project = project_du_cas(conn, case_id)
+    project = project_du_cas(conn, case_id, environnement)
     execs = ExecutionRepo(conn)
-    trigger = "rerun" if execs.has_for_version(version_id) else "first_run"
+    trigger = "rerun" if environnement is not None or execs.has_for_version(version_id) else "first_run"
     eid = execs.create(test_case_id=case_id, version_id=version_id, trigger=trigger,
                        cible=cible_de(project), triggered_by=triggered_by)
     if run_id is not None:
@@ -173,7 +178,7 @@ def enregistrer_lancement_bloque(conn, *, case_id: int, code: str, message: str,
     return eid
 
 
-def resolve_connection(conn, case_id: int) -> dict[str, str]:
+def resolve_connection(conn, case_id: int, environnement: dict | None = None) -> dict[str, str]:
     """Connexion (variables d'env) du PROJET auquel appartient le cas.
 
     Le run doit taper l'application du projet affiché, pas la config globale — sinon
@@ -187,12 +192,20 @@ def resolve_connection(conn, case_id: int) -> dict[str, str]:
     from testpilot.store import project_login_recordings
     from testpilot.store.repositories import ProjectAccountRepo
 
-    project = project_du_cas(conn, case_id)
+    from testpilot.parametres import environnements
+
+    project = project_du_cas(conn, case_id, environnement)
     a_un_projet = bool(project and project.get("id"))
     comptes = ProjectAccountRepo(conn).pour_runtime(project["id"]) if a_un_projet else []
     sequence = project_login_recordings.lire(conn, project["id"]) if a_un_projet else None
     login_form = project_login_recordings.lire_formulaire(conn, project["id"]) if a_un_projet else None
-    return verifier_connexion(project, comptes, sequence, login_form)
+    connexion = verifier_connexion(project, comptes, sequence, login_form)
+    if environnements.est_production(environnement):
+        # A48, second verrou : refusé au lancement, mais si un chemin y parvenait quand même, la garde du harnais refuse de
+        # jouer (exception à son démarrage → erreur technique, jamais `conforme`).
+        nom, valeur = environnements.GARDE_PRODUCTION
+        connexion = {**connexion, nom: valeur}
+    return connexion
 
 
 def resolve_project_id(conn, case_id: int) -> int | None:
@@ -251,7 +264,7 @@ def _assurer_script_sur_disque(conn, version_id: int, module_name: str, *, execu
 
 def run_execution(execution_id: int, module_name: str, case_id: int, version_id: int, *,
                   triggered_by: str = "", qualification: bool = False, strict: bool = False,
-                  sans_repli: bool = False) -> None:
+                  sans_repli: bool = False, environnement: dict | None = None) -> None:
     """Tâche de fond : lance Behave réel, calcule + persiste le verdict à deux axes.
 
     Puis tente une RÉPARATION si le gate l'a autorisée (décision 0014) : la boucle vit dans
@@ -274,11 +287,29 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
         if script.blocage:
             _ecrire_blocage(conn, execution_id, case_id, script.blocage)
             return
+        if environnement is not None:
+            # Lot PT-04a (revue du 2026-10-16) : un test qui écrit en dur l'adresse d'une AUTRE application (celle de
+            # l'environnement où il a été écrit) n'est pas joué ici — il sortirait de l'environnement choisi.
+            from testpilot.parametres.environnements import adresses_d_une_autre_application
+            version = VersionRepo(conn).get(version_id) or {}
+            ailleurs = adresses_d_une_autre_application(version.get("feature_content") or "",
+                                                         version.get("steps_content") or "", environnement["base_url"])
+            if ailleurs:
+                _ecrire_blocage(conn, execution_id, case_id,
+                                f"ce test ouvre une adresse écrite en dur ({ailleurs[0]}) qui n'est pas celle de "
+                                f"l'environnement « {environnement.get('nom', '')} » : il n'y est pas joué",
+                                commentaire="Le test n'a pas été joué : il écrit en dur l'adresse d'une autre "
+                                            "application. Remplacez-la par un chemin relatif, puis relancez.")
+                return
         # Le runtime tape l'application DU PROJET du cas (décision 0005).
-        runner = BehaveRunner(connection=resolve_connection(conn, case_id),
+        # Lot PT-04a : sur l'environnement de la campagne (None = par défaut).
+        # Sans environnement ajouté, l'appel est exactement celui d'avant (R1).
+        runner = BehaveRunner(connection=resolve_connection(
+                                  conn, case_id, **({"environnement": environnement} if environnement else {})),
                               project_id=resolve_project_id(conn, case_id),
                               connector_type=resolve_connector_type(conn, case_id),
                               profil_instance=resolve_profil_instance(conn, case_id),
+                              **({"environnement_ajoute": True} if environnement is not None else {}),
                               **({"generated_dir": script.dossier} if script.dossier is not None else {}))
         if sans_repli:
             # D33 (2026-10-10) : campagne sans repli par le modèle de langage — posé sur le runner, donc valable pour CHAQUE
@@ -301,7 +332,9 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
             # Lot PT-02b : pas de réparation automatique d'un test joué avec des données de test. L'agent réécrirait le
             # test GÉNÉRIQUE (avec ses `{{nom}}`) dans le fichier partagé, puis la tentative rejouerait la copie aux
             # valeurs posées, restée telle quelle : ce qui serait rejoué ne serait pas ce qui a été réparé.
-            if not qualification and not strict and script.dossier is None:
+            # Lot PT-04a (A50) : pas de réparation sur un environnement ajouté — la réparation réécrit le test avec l'IA, qui
+            # ne travaille que sur l'environnement par défaut ; un test réparé ailleurs ne serait pas celui qui a été mesuré.
+            if not qualification and not strict and script.dossier is None and environnement is None:
                 _maybe_repair(conn, case_id=case_id, version_id=version_id, module_name=module_name,
                               outcome=outcome, runner=runner, triggered_by=triggered_by)
         except Exception:
@@ -626,7 +659,7 @@ def _ecrire_erreur(conn, execution_id: int, case_id: int, message: str) -> bool:
         return False
 
 
-def _ecrire_blocage(conn, execution_id: int, case_id: int, message: str) -> None:
+def _ecrire_blocage(conn, execution_id: int, case_id: int, message: str, *, commentaire: str = "") -> None:
     """Lot PT-02b : le cas n'a pas été joué parce qu'une donnée de test manque — « bloqué », jamais « conforme » ni une
     erreur technique : rien n'a été essayé sur l'application, et c'est une donnée qu'une personne doit compléter."""
     try:
@@ -634,8 +667,8 @@ def _ecrire_blocage(conn, execution_id: int, case_id: int, message: str) -> None
             execution_id, execution_status=EXEC_BLOCKED, functional_status=FUNC_INDETERMINE, scenarios_total=0,
             scenarios_passed=0, scenarios_failed=0, cost_usd=0.0, iterations=0, duration_seconds=0.0,
             error_message=(message or "")[:1000],
-            comment="Le test n'a pas été joué : une donnée de test manque. Complétez le tableau des données de test du "
-                    "projet, puis relancez.")
+            comment=commentaire or ("Le test n'a pas été joué : une donnée de test manque. Complétez le tableau des "
+                                    "données de test du projet, puis relancez."))
         # Un test qui n'a pas été joué n'est le premier essai de rien : la qualité de génération ne le compte pas.
         conn.execute("UPDATE execution SET trigger='rerun' WHERE id=?", (execution_id,))
         conn.commit()
