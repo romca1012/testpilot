@@ -178,6 +178,14 @@ export const api = {
     request<ProjectAccount>(`/api/projects/${id}/accounts/${accountId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteProjectAccount: (id: number | string, accountId: number) =>
     request<void>(`/api/projects/${id}/accounts/${accountId}`, { method: 'DELETE' }),
+  // ── Environnements du projet (lot PT-04a, A48 à A50) : 0 = l'environnement par défaut (le projet). Chaque écriture rend la liste. ──
+  listEnvironnements: (id: number | string) => request<Environnement[]>(`/api/projects/${id}/environnements`),
+  createEnvironnement: (id: number | string, body: EnvironnementInput) =>
+    request<Environnement[]>(`/api/projects/${id}/environnements`, { method: 'POST', body: JSON.stringify(body) }),
+  updateEnvironnement: (id: number | string, envId: number, body: EnvironnementInput) =>
+    request<Environnement[]>(`/api/projects/${id}/environnements/${envId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteEnvironnement: (id: number | string, envId: number) =>
+    request<void>(`/api/projects/${id}/environnements/${envId}`, { method: 'DELETE' }),
   // ── Données de test du projet (lot PT-02) : variables × jeux de données. Chaque écriture rend le tableau à jour. ──
   getTestData: (id: number | string) => request<DonneesDeTest>(`/api/projects/${id}/donnees-de-test`),
   // Lot PT-02a (A37) : le tableau en Excel — l'export sert de modèle ; l'import COMPLÈTE, après un aperçu sans écriture.
@@ -262,6 +270,8 @@ export const api = {
     sans_repli?: boolean
     // Lot PT-02b : les jeux de données à jouer — un seul : une exécution ; plusieurs : une par jeu, regroupées dans un plan.
     dataset_ids?: number[]
+    // Lot PT-04a : les environnements (0 = par défaut) — une exécution par jeu ET par environnement.
+    environment_ids?: number[]
   }) => request<RunSummary>(`/api/projects/${projectId}/runs`, {
     method: 'POST', body: JSON.stringify(body),
   }),
@@ -336,6 +346,7 @@ export const api = {
     name: string; selection_mode: 'all' | 'frozen'; case_ids?: number[]
     frequency: 'daily' | 'weekly'; hour: number; minute: number; weekday?: number | null
     dataset_ids?: number[]
+    environment_ids?: number[]
   }) => request<ScheduledRun>(`/api/projects/${projectId}/schedules`, {
     method: 'POST', body: JSON.stringify(body),
   }),
@@ -772,6 +783,9 @@ export interface RunSummary {
   dataset_id?: number | null
   /** Lot PT-02c : le jeu de données figé au lancement (vide avant, ou sans donnée de test). */
   jeu_de_donnees?: string
+  // Lot PT-04a : l'environnement choisi (null = par défaut) et son nom figé au lancement — vide sans environnement ajouté.
+  environment_id?: number | null
+  environnement?: string
 }
 /** Un cas DANS un run, avec son résultat (ou null = non testé). */
 export interface RunCaseResult {
@@ -833,6 +847,17 @@ export interface ScheduledRun {
   last_run_id: number | null; last_triggered_at: string | null
   /** Lot PT-02b (A28) : les jeux de données joués à chaque déclenchement — vide : comme avant. */
   dataset_ids?: number[]
+  /** Lot PT-04a : les environnements joués (0 = par défaut) — vide : le défaut seul. */
+  environment_ids?: number[]
+}
+
+/** Lot PT-04a : un environnement du projet. `id` 0 = le défaut (le projet lui-même : seul son nom se règle ici). */
+export interface Environnement {
+  id: number; nom: string; base_url: string; connector_version: string; database: string; oracle_base_url: string
+  nature: 'test' | 'production'; nature_libelle: string; est_defaut: boolean
+}
+export interface EnvironnementInput {
+  nom: string; base_url?: string; nature?: string; connector_version?: string; database?: string; oracle_base_url?: string
 }
 
 /** Un résultat de CE cas dans UNE campagne (la sienne ou une autre) — « où et quand », pas
