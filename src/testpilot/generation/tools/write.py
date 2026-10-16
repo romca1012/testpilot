@@ -810,6 +810,13 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if fautes:
         return _outcome("[write_feature_file] VARIABLE_DE_TEST : " + " ; ".join(fautes[:5])
                         + ". Puis rappelle write_feature_file.", ok=False)
+    # Lot VH-08 (A51, interrupteur) : une requête d'oracle que le projet ne déclare pas — l'exécution la bloquerait.
+    inconnues = requetes_oracle_inconnues(content, ctx.requetes_oracle)
+    if inconnues:
+        disponibles = ", ".join(f"« {n} »" for n in sorted(ctx.requetes_oracle or ())) or "aucune"
+        return _outcome(f"[write_feature_file] ORACLE_INCONNU : requête(s) d'oracle non déclarée(s) sur ce projet : "
+                        f"{', '.join(f'« {n} »' for n in inconnues)}. Requêtes disponibles : {disponibles}. "
+                        "Puis rappelle write_feature_file.", ok=False)
     refus = verifier_references(content, ctx.options_select, ctx.champs_relationnels, recherche,
                                 ignorer_variables=bool(ctx.variables_de_test or ctx.references_figees
                                                        or ctx.controle_du_cas))
@@ -985,3 +992,49 @@ def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
         f"[write_steps_file] OK — {path.name}, {len(declared)} step(s) déclaré(s).",
         steps_content=content,
     )
+
+
+# Lot VH-08 (A51) : les steps d'oracle de la bibliothèque citent leur requête par `de l'oracle "<nom>"` ou `l'oracle "<nom>"`.
+_REQUETE_D_ORACLE = re.compile(r"l'oracle \"([^\"\n]+)\"")
+
+
+def requetes_oracle_inconnues(feature: str, declarees: frozenset[str] | None) -> list[str]:
+    """Les requêtes d'oracle citées par les ÉTAPES du test (lues par le parseur de Behave : ni la description, ni un
+    commentaire) et que le projet ne déclare pas. Un paramètre de plan de scénario (`<requete>`) n'est pas un nom. `declarees`
+    None : aucun contrôle (interrupteur éteint). Un Gherkin illisible : rien ici, l'écriture le refuse ailleurs."""
+    if declarees is None:
+        return []
+    from behave.parser import ParserError, parse_feature
+    try:
+        parsed = parse_feature(feature or "", language="fr")
+    except ParserError:
+        return []
+    if parsed is None:
+        return []
+    # Contexte et scénarios, y compris sous une `Règle:` (que `parsed.scenarios` ne parcourt pas).
+    conteneurs = [parsed, *(getattr(parsed, "rules", None) or [])]
+    noms: list[str] = []
+    for conteneur in conteneurs:
+        fond = getattr(conteneur, "background", None)
+        for etape in (list(fond.steps) if fond else []):
+            noms += _REQUETE_D_ORACLE.findall(etape.name or "")
+        for scenario in getattr(conteneur, "scenarios", None) or []:
+            valeurs = _valeurs_des_exemples(scenario)
+            for etape in getattr(scenario, "steps", None) or []:
+                for nom in _REQUETE_D_ORACLE.findall(etape.name or ""):
+                    # Un `<paramètre>` de plan de scénario : ce sont les valeurs de ses Exemples qui sont des requêtes.
+                    noms += valeurs.get(nom[1:-1], []) if nom.startswith("<") and nom.endswith(">") else [nom]
+    return list(dict.fromkeys(nom for nom in noms if nom not in declarees))
+
+
+def _valeurs_des_exemples(scenario) -> dict[str, list[str]]:
+    """{colonne: valeurs} des tables `Exemples` d'un plan de scénario (vide pour un scénario simple)."""
+    valeurs: dict[str, list[str]] = {}
+    for exemples in getattr(scenario, "examples", None) or []:
+        table = getattr(exemples, "table", None)
+        if table is None:
+            continue
+        for ligne in table.rows:
+            for colonne, cellule in zip(table.headings, ligne.cells):
+                valeurs.setdefault(colonne, []).append(cellule)
+    return valeurs

@@ -1002,6 +1002,9 @@ def _ecrire_sidecar_residus(context, scenario) -> None:
 
 # Lot VH-07 (D26) — nom DUPLIQUÉ de `testpilot.generation.tools.essai.ESSAI_ETAT_FILE_ENV` (test d'accord).
 ESSAI_ETAT_FILE_ENV = "TP_ESSAI_ETAT_FILE"
+# Lot VH-08 (A51) — nom DUPLIQUÉ de `testpilot.generation.tools.essai.ESSAI_FORME_ORACLE_ENV` (test d'accord). Posé seulement
+# quand l'interrupteur `TESTPILOT_FORME_ORACLE` est allumé : éteint, l'essai n'appelle pas l'oracle.
+ESSAI_FORME_ORACLE_ENV = "TP_ESSAI_FORME_ORACLE"
 
 
 # Relevé PROPRE à l'essai — pas celui des outils d'observation (`_web_helpers._JS_ELEMENTS_INTERACTIFS`), qui rend le texte de
@@ -1034,6 +1037,22 @@ _JS_CONTROLES_D_ESSAI = """(max) => {
 }"""
 
 
+def _formes_de_l_oracle_a_la_fin_de_l_essai(context) -> dict:
+    """Lot VH-08 (A51) : la FORME des réponses de l'oracle à la fin de l'essai, AVANT la remise à zéro — c'est le seul moment où
+    les listes de l'application ont des éléments (une commande passée). Requêtes GET seulement ; jamais une valeur ni un compte
+    (`connectors/forme_oracle`). Vide si l'interrupteur est éteint, sans oracle, ou illisible."""
+    if os.environ.get(ESSAI_FORME_ORACLE_ENV) != "1" or getattr(context, "oracle", None) is None:
+        return {}
+    # Même motif que `before_all` : le socle (`_base_helpers`, qui dépend déjà de `testpilot.connectors`) fait le relevé ;
+    # ce harnais, lui, ne dépend pas du paquet applicatif.
+    try:
+        from _base_helpers import formes_de_l_oracle
+    except Exception as exc:   # un échec ici ne doit pas faire perdre le relevé de la page (`etat.json`)
+        print(f"[essai] forme de l'oracle non relevée : {type(exc).__name__}")
+        return {}
+    return formes_de_l_oracle(context.oracle, os.environ)
+
+
 def _consigner_etat_d_essai(context) -> None:
     """Un ESSAI de génération (« exécuter puis écrire ») : consigne OÙ le navigateur se trouve à la fin et quels CONTRÔLES
     il montre — rien d'autre. Aucun texte libre de la page (ni titre, ni message, ni total, ni valeur de champ) : ce que
@@ -1045,6 +1064,9 @@ def _consigner_etat_d_essai(context) -> None:
         return
     try:
         etat = {"url": page.url, "elements": page.evaluate(_JS_CONTROLES_D_ESSAI, 120) or []}
+        formes = _formes_de_l_oracle_a_la_fin_de_l_essai(context)
+        if formes:
+            etat["formes_oracle"] = formes
         with open(chemin, "w", encoding="utf-8") as handle:
             handle.write(json.dumps(etat, ensure_ascii=False))
     except Exception as exc:

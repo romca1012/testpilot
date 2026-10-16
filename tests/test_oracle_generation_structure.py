@@ -29,7 +29,9 @@ def test_structure_la_generation_n_a_aucun_chemin_vers_un_secret_ni_une_definiti
     authentification, définition de requête) ni la variable qui la transporte au sous-processus —
     seul `oracle_requetes_disponibles` (des noms) doit y circuler."""
     interdits = ("oracle_auth", "oracle_base_url", "OracleHttp", "oracle_http",
-                 "oracle_config", _oracle.ENV_ORACLE, "oracle_queries")
+                 "oracle_config", _oracle.ENV_ORACLE, "oracle_queries",
+                 # Lot VH-08 : la génération LIT une forme déjà relevée ; elle n'appelle jamais l'oracle pour la relever.
+                 "requetes_en_lecture", "forme_oracle.relever")
     fautifs = [(f.relative_to(RACINE).as_posix(), mot) for f in _sources("src/testpilot/generation")
                for mot in interdits if mot in f.read_text(encoding="utf-8")]
     assert fautifs == []

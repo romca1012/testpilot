@@ -32,6 +32,7 @@ from testpilot.connectors._web_helpers import (
 from testpilot.connectors import auth_strategie as _auth
 # Oracle backend HTTP optionnel (lot 07e, D7) — import PLAT, même motif que `_web_helpers` ci-dessus
 # (bug de cycle de vie Behave mesuré le 2026-09-22, cf. avertissement en tête de fichier).
+from testpilot.connectors import forme_oracle as _forme_oracle
 from testpilot.connectors import oracle_config as _oracle_config
 from testpilot.connectors.oracle_http import (
     OracleHttp, OracleIndisponible, RequeteOracleInconnue, champ as _champ_oracle,
@@ -4224,6 +4225,19 @@ def construire_oracle(environ) -> tuple[object | None, str]:
     return oracle, ""
 
 
+def formes_de_l_oracle(oracle, environ) -> dict:
+    """Lot VH-08 (A51) : la FORME des réponses des requêtes GET de l'oracle — jamais une valeur (`connectors/forme_oracle`).
+    Appelée par le harnais à la fin d'un ESSAI, avant sa remise à zéro. Appel brut : aucun constat, aucune source consignée.
+    Best-effort : `{}` si rien n'est lisible."""
+    try:
+        config = json.loads(environ.get(_oracle_config.ENV_ORACLE) or "{}")
+        noms = _forme_oracle.requetes_en_lecture(json.dumps(config.get("queries") or []))
+        return _forme_oracle.relever(oracle.executer, noms)
+    except Exception as exc:
+        print(f"[essai] forme de l'oracle non relevée : {type(exc).__name__}")
+        return {}
+
+
 def _resoudre_oracle(context) -> OracleHttp:
     """L'oracle du projet, ou un PRÉREQUIS MANQUANT (→ `blocked`) : absent ou mal configuré n'est
     jamais un défaut de l'application testée."""
@@ -4281,7 +4295,10 @@ def oracle_renvoie_n_resultats(context, requete: str, n: int) -> None:
 
 def oracle_champ_compte(context, chemin: str, requete: str, n: int) -> None:
     """`Alors le champ "<chemin>" de l'oracle "<requête>" compte <n> élément(s)` — la LISTE à ce chemin a exactement `n`
-    éléments. Un chemin absent, ou une valeur qui n'est pas une liste, consigne un constat ÉCHOUÉ (jamais 0 deviné)."""
+    éléments. Un chemin absent consigne un constat ÉCHOUÉ (jamais 0 deviné). Une valeur qui n'est pas une liste : le test est
+    mal posé (lot VH-08, mesuré en base-6 le 2026-10-11 : seul faux rouge de la campagne — « compte N éléments » écrit sur un
+    objet sortait `non_conforme` sur une application saine), comme pour `oracle_renvoie_n_resultats` et `oracle_champ_vaut` :
+    jamais une accusation, jamais un vert."""
     reponse = _executer_oracle(context, requete)
     with _source_du_constat("oracle"):
         try:
@@ -4289,10 +4306,15 @@ def oracle_champ_compte(context, chemin: str, requete: str, n: int) -> None:
         except (KeyError, IndexError, TypeError) as exc:
             constater(False, f"le champ « {chemin} » de l'oracle « {requete} » est introuvable : {exc}")
             return
-        if not isinstance(valeur, list):
-            constater(False, f"le champ « {chemin} » de l'oracle « {requete} » n'est pas une liste "
-                             f"({type(valeur).__name__}) : ses éléments ne peuvent pas être comptés")
+        if valeur is None:
+            # `null` à la place d'une liste : l'application peut être cassée — un constat échoué, comme avant.
+            constater(False, f"le champ « {chemin} » de l'oracle « {requete} » est vide (null) : aucun élément à compter")
             return
+        if not isinstance(valeur, list):
+            raise ReponseOracleNonComptableError(
+                f"le champ « {chemin} » de l'oracle « {requete} » n'est pas une liste ({type(valeur).__name__}) : ses "
+                "éléments ne se comptent pas. Pour une valeur, utiliser « le champ \"<chemin>\" de l'oracle \"<requête>\" "
+                "vaut \"<valeur>\" ».")
         constater(len(valeur) == n,
                  f"le champ « {chemin} » de l'oracle « {requete} » compte {len(valeur)} élément(s), {n} attendu(s)")
 
