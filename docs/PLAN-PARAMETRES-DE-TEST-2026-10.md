@@ -340,7 +340,7 @@ octet pour octet (garde : test d'identité, interrupteurs éteints).
 | E5 — Comptes et état de départ pour tous | PT-04b : compte choisi au lancement ; PT-04d : remise à zéro pour toutes les applications | l'agent reçoit la cartographie du compte visé ; l'essai « exécuter puis écrire » devient possible hors connecteur web | campagne M3 (dont Odoo) | ≈ 8 $ |
 | E6 — Réparer sans tricher | — | VH-09 : réparation de l'adressage seulement, un test réparé doit refaire échouer les défauts qu'il détectait | régressions injectées | faible |
 | E7 — Réutiliser, calculer | PT-05 bibliothèque commune ; PT-06 valeur attendue calculée | l'agent emploie « vaut le résultat calculé » sur des spécifications sans résultat écrit | campagne M4 (erreurs de calcul introduites exprès) | ≈ 8 $ |
-| E8 — L'IA ne part plus à l'aveugle (§9.6) | AV-4 : l'état de départ de l'application, déclaré dans les paramètres de test | AV-1 à AV-3, AV-5 à AV-8 : tout ce que l'exploration a déjà relevé est MONTRÉ à l'IA avant qu'elle écrive | campagne M5 appariée | ≈ 8 $ |
+| E8 — L'IA ne part plus à l'aveugle (§9.6) | AV-4 : l'état de départ de l'application, déclaré dans les paramètres de test | AV-1 à AV-3, AV-5 à AV-9 : tout ce que l'exploration a déjà relevé est MONTRÉ à l'IA avant qu'elle écrive | campagne M5 appariée | ≈ 8 $ |
 | E9 — La preuve | tous les paramètres allumés qui ont passé leur mesure | VH-10 : application jamais vue (jeu mis de côté), Odoo réel | campagne de clôture | ≈ 15 $ |
 | E10 — Clôture | PT-07 : ancien écran et interrupteurs retirés, guide utilisateur | — | suites complètes, vérification à l'écran | 0 |
 
@@ -394,7 +394,10 @@ rejouée autant de fois qu'il le faut — un test technique ne la réécrit jama
 relève les pages, champs, boutons et liens de l'application — elle doit servir à la génération ; (4) les PARAMÈTRES DE TEST,
 s'il en a déclaré, disent ce qu'il veut voir employé — à la génération, à nous de comprendre exactement ce qu'il veut ; à
 l'exécution, on lui demande s'il faut les utiliser (déjà en place). L'outil relève tout seul ce qui n'est pas fourni. L'IA
-n'est pas une source de vérité, mais avec les bonnes informations elle écrit des tests propres. Un test juste du premier coup se rejoue à chaque nouvelle
+n'est pas une source de vérité, mais avec les bonnes informations elle écrit des tests propres. **Ce qui manque au moment
+de la génération est RELEVÉ, jamais inventé** (porteur, 2026-10-16) : l'agent doit disposer, pour chaque connecteur, des
+outils qui lui permettent d'aller chercher lui-même le détail qui lui manque, et ce qu'il n'a pas observé reste refusé à
+l'écriture (gardes existantes). Un test juste du premier coup se rejoue à chaque nouvelle
 fonctionnalité pour vérifier qu'il n'y a pas de régression ; ses statuts (passé, échoué, bloqué) disent la vérité sur
 l'application.
 
@@ -418,6 +421,7 @@ avec les causes d'échec mesurées de `base-1` à `base-7`. Les manques, et ce q
 | AV-6 | La connexion est DÉJÀ faite (connexion enregistrée, rejouée par le harnais) : le test ne la réécrit pas. La consigne existe (prompt système, web : « n'écris JAMAIS de step de connexion ») mais une consigne ne suffit pas ; règles web (compte « principal », pas d'appel direct au serveur, page d'arrivée) | `base-4` : 2 tests bloqués sur un compte inventé | connexion enregistrée (`auth_strategie`, une fois par run) ; règles écrites derrière `TESTPILOT_REGLES_CONNECTEUR` (éteint) | une GARDE à l'écriture, sans IA : un test dont le cas ne porte pas sur la connexion ne peut pas saisir d'identifiants ni ouvrir la page de connexion ; mesurer les règles en M5 ; lister les attributs `context.*` du harnais (F20 : 1 sur 15) |
 | AV-7 | Des générations qui n'aboutissent pas | 5 sur 5 sur le MÊME cas (`panier_remise_arrondi`) en `base-5`, `base-6`, `base-7` : pas un hasard | les rapports et traces des campagnes | instruire la cause sur les traces, corriger, ajouter le cas au contrôle |
 | AV-8 | L'IA qui rédige les cas ne voit rien de l'application : elle écrit les étapes avec d'autres mots que ceux des écrans | non mesuré (le banc ne mesure pas cette passe) | la cartographie (pages, menus, libellés des boutons) | **V-AV2 (porteur, 2026-10-16)** : oui — elle emploie EXACTEMENT les termes des écrans (« Nouveau client », « Enregistrer »), relevés par l'exploration ; les cas restent écrits pour des personnes |
+| AV-9 | Des outils de RELEVÉ incomplets selon le connecteur : en web, l'agent ne peut pas consulter les données (`inspect_schema` et `query_data` non implémentés) ni soumettre un formulaire pour en voir la réponse (`attempt_form_submission` non implémenté, alors que D36 le prévoyait) — il ne peut donc que supposer ou s'arrêter | non mesuré séparément (le banc coupe aussi ces outils en mode qualification) | l'oracle HTTP du projet (lecture de l'état) ; l'essai en bac à sable (VH-07) ; l'implémentation Odoo de ces outils | en web : la consultation des données par l'oracle déclaré ; la soumission d'essai dans le bac à sable (D36), le message rapporté servant à ÉCRIRE, jamais à vérifier ; chaque outil disponible dit clairement à l'agent ce qu'il peut relever |
 | PT-04b (E5) | La cartographie du compte visé | non mesuré (un seul compte au banc) | déjà prévu | — |
 | PT-06 (E7) | Les montants calculés attendus | non mesuré | déjà prévu | — |
 
@@ -426,7 +430,7 @@ avec les causes d'échec mesurées de `base-1` à `base-7`. Les manques, et ce q
 M5 mesure l'agent dans les conditions de la production, et compte à part la passe qui rédige les cas (AV-8).
 
 **L'ordre.** AV-1 (une erreur, petite) ; AV-2 et AV-3 (le plus gros apport attendu, avec VH-08 déjà en E4) ; AV-5 ; AV-4 ;
-AV-6 ; AV-7 ; AV-8. Chaque lot derrière un interrupteur éteint, relu, testé ; un projet sans
+AV-9 ; AV-6 ; AV-7 ; AV-8. Chaque lot derrière un interrupteur éteint, relu, testé ; un projet sans
 cartographie reçoit le prompt d'avant, octet pour octet. Puis la mesure M5, appariée éteint / allumé (≈ 8 $, annoncée avant),
 qui décide de l'allumage avec la même règle que M1 : zéro faux vert, au moins autant de tests justes du premier coup, coût
 par cas sous 1 €.
