@@ -1,4 +1,4 @@
-"""Lot PT-02d — la génération et les données de test (interrupteur `TESTPILOT_VARIABLES_DE_TEST`, éteint par défaut).
+"""Lot PT-02d — la génération et les données de test (interrupteur `TESTPILOT_VARIABLES_DE_TEST`, allumé par défaut depuis A46 : ces tests l'éteignent par un `0`).
 
 Ce que ces tests gardent :
 1. interrupteur éteint : l'agent ne reçoit rien de plus, et ce qu'il peut écrire est contrôlé comme avant ;
@@ -44,8 +44,8 @@ def allume(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def eteint_par_defaut(monkeypatch):
-    monkeypatch.delenv(interrupteurs.ENV_VARIABLES_DE_TEST, raising=False)
+def eteint_sauf_mention_contraire(monkeypatch):
+    monkeypatch.setenv(interrupteurs.ENV_VARIABLES_DE_TEST, "0")
 
 
 def _plan():

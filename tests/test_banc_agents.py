@@ -1240,7 +1240,7 @@ def test_le_cas_du_banc_cite_ses_donnees_seulement_quand_pt02f_est_allume(monkey
 
     metier = {"title": "Créer un client", "preconditions": "", "steps": ["Créer le client Dupont SARL à Lyon"],
               "expected_result": "Dupont SARL apparaît dans la liste"}
-    monkeypatch.delenv(interrupteurs.ENV_CAS_DIT_SES_DONNEES, raising=False)
+    monkeypatch.setenv(interrupteurs.ENV_CAS_DIT_SES_DONNEES, "0")
     assert ba.citer_les_donnees_dans_le_cas(metier) == metier
 
     monkeypatch.setenv(interrupteurs.ENV_CAS_DIT_SES_DONNEES, "1")
