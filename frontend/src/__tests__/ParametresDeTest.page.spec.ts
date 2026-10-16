@@ -27,6 +27,8 @@ const gardes: Array<(to: any) => any> = []
 
 vi.mock('../lib/api', () => ({
   api: {
+    // Lot PT-04a : l'onglet « Configurations » charge aussi les environnements (ici, le défaut seul).
+    listEnvironnements: () => Promise.resolve([]),
     listProjects: (...a: any[]) => listProjects(...a),
     listAdminProjects: (...a: any[]) => listAdminProjects(...a),
     getExploration: (...a: any[]) => getExploration(...a),

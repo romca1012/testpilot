@@ -18,6 +18,7 @@ import { localVersUtc, utcVersLocal } from '../lib/scheduleTime'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 import ChoixDesJeux from '../components/parametres/ChoixDesJeux.vue'
+import ChoixDesEnvironnements from '../components/parametres/ChoixDesEnvironnements.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -101,11 +102,34 @@ function jeuxLabel(ids: number[] | undefined) {
 function jeuALaCorbeille(ids: number[] | undefined) {
   return !!nomsDesJeux.value && (ids ?? []).some((id) => !nomsDesJeux.value?.has(id))
 }
+// Lot PT-04a : les environnements joués à chaque déclenchement — même règle que les jeux : un seul absent (à la corbeille),
+// et la planification ne joue rien ; la liste le dit.
+const envsCoches = ref<number[]>([])
+const envsValides = ref(true)
+const nomsDesEnvironnements = ref<Map<number, string> | null>(null)
+// Un environnement passé en « Production » bloque aussi la planification (A48) : le serveur ne joue rien.
+const environnementsDeProduction = ref<Set<number>>(new Set())
+function envsLabel(ids: number[] | undefined) {
+  const liste = ids ?? []
+  if (!nomsDesEnvironnements.value) return `${liste.length} environnement${liste.length > 1 ? 's' : ''}`
+  return liste.map((id) => nomsDesEnvironnements.value?.get(id) ?? 'environnement à la corbeille').join(', ')
+}
+function envALaCorbeille(ids: number[] | undefined) {
+  return !!nomsDesEnvironnements.value && (ids ?? []).some((id) => !nomsDesEnvironnements.value?.has(id))
+}
+function envDeProduction(ids: number[] | undefined) {
+  return (ids ?? []).some((id) => environnementsDeProduction.value.has(id))
+}
 onMounted(async () => {
   // Une planification déclenche des exécutions AUTOMATIQUES : seuls les cas dotés d'un test technique sont proposés
   // (2026-10-12 — le serveur applique la même règle).
   try { cases.value = (await api.listCases(pid.value, { limit: 500 })).items.filter((c) => c.automatise) } catch { cases.value = [] }
   try { nomsDesJeux.value = new Map((await api.getTestData(pid.value)).jeux.map((j) => [j.id, j.nom])) } catch { nomsDesJeux.value = null }
+  try {
+    const environnements = await api.listEnvironnements(pid.value)
+    nomsDesEnvironnements.value = new Map(environnements.map((e) => [e.id, e.nom]))
+    environnementsDeProduction.value = new Set(environnements.filter((e) => e.nature === 'production').map((e) => e.id))
+  } catch { nomsDesEnvironnements.value = null }
 })
 const byModule = computed(() => {
   const map = new Map<string, CaseSummary[]>()
@@ -129,7 +153,7 @@ function toggleModule(rows: CaseSummary[]) {
 }
 
 const canSubmit = computed(() =>
-  !!form.name.trim() && (form.selection === 'all' || selected.value.length > 0) && jeuxValides.value)
+  !!form.name.trim() && (form.selection === 'all' || selected.value.length > 0) && jeuxValides.value && envsValides.value)
 const creerSchedule = useCreerSchedule(pid)
 const createError = ref('')
 function resetForm() {
@@ -137,6 +161,7 @@ function resetForm() {
   form.selection = 'all'; form.frequency = 'daily'; form.weekday = 0; form.hour = 2; form.minute = 0
   selected.value = []
   jeuxCoches.value = []
+  envsCoches.value = []
   createError.value = ''
 }
 function openCreate() { resetForm(); showCreate.value = true }
@@ -159,6 +184,7 @@ async function submit() {
       minute: utc.minute,
       weekday: utc.weekday,
       dataset_ids: jeuxCoches.value,
+      environment_ids: envsCoches.value,
     })
     showCreate.value = false
   } catch (e: any) {
@@ -206,9 +232,16 @@ function goBack() { router.push({ name: 'executions', params: { pid: pid.value }
           <div class="text-xs text-muted-foreground mt-0.5">
             {{ frequenceLabel(s) }} · {{ s.selection_mode === 'all' ? 'tous les cas' : 'sélection figée' }}
             <template v-if="s.dataset_ids?.length"> · {{ jeuxLabel(s.dataset_ids) }}</template>
+            <template v-if="s.environment_ids?.length"> · {{ envsLabel(s.environment_ids) }}</template>
           </div>
           <div v-if="jeuALaCorbeille(s.dataset_ids)" class="text-xs text-destructive mt-0.5" data-testid="planif-bloquee">
             Ne se déclenche pas : un jeu de données est à la corbeille
+          </div>
+          <div v-if="envALaCorbeille(s.environment_ids)" class="text-xs text-destructive mt-0.5" data-testid="planif-bloquee-env">
+            Ne se déclenche pas : un environnement est à la corbeille
+          </div>
+          <div v-else-if="envDeProduction(s.environment_ids)" class="text-xs text-destructive mt-0.5" data-testid="planif-bloquee-prod">
+            Ne se déclenche pas : un environnement est de production
           </div>
           <div class="text-xs text-muted-foreground/70 mt-0.5">{{ dernierDeclenchement(s) }}</div>
         </div>
@@ -320,7 +353,9 @@ function goBack() { router.push({ name: 'executions', params: { pid: pid.value }
           </div>
         </div>
 
-        <ChoixDesJeux v-model="jeuxCoches" v-model:valide="jeuxValides" :pid="pid" :tests-choisis="testsChoisis" />
+        <ChoixDesJeux v-model="jeuxCoches" v-model:valide="jeuxValides" :pid="pid" :tests-choisis="testsChoisis"
+                      :environnements="envsCoches.length" />
+        <ChoixDesEnvironnements v-model="envsCoches" v-model:valide="envsValides" :pid="pid" :jeux="jeuxCoches.length" />
 
         <p v-if="createError" class="text-sm text-destructive">{{ createError }}</p>
       </form>

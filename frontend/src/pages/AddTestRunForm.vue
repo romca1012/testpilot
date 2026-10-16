@@ -17,6 +17,7 @@ import { api, type CaseSummary } from '../lib/api'
 import { useGroupes } from '../lib/donnees'
 import Button from '../components/ui/Button.vue'
 import ChoixDesJeux from '../components/parametres/ChoixDesJeux.vue'
+import ChoixDesEnvironnements from '../components/parametres/ChoixDesEnvironnements.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -45,6 +46,9 @@ const error = ref('')
 // Lot PT-02b (A28, A35) : les jeux de données du projet (`ChoixDesJeux`) — rien n'est proposé à un projet sans variable.
 const jeuxCoches = ref<number[]>([])
 const jeuxValides = ref(true)
+// Lot PT-04a : les environnements (`ChoixDesEnvironnements`) — rien n'est proposé à un projet qui n'a que le défaut.
+const envsCoches = ref<number[]>([])
+const envsValides = ref(true)
 const testsChoisis = computed(() => form.value.selection === 'frozen' ? selected.value : casProposes.value.map((c) => c.id))
 
 onMounted(async () => {
@@ -56,7 +60,7 @@ onMounted(async () => {
 const canSubmit = computed(() =>
   !!form.value.name.trim()
   && (form.value.selection === 'all' || selected.value.length > 0)
-  && (form.value.mode !== 'automatique' || jeuxValides.value))
+  && (form.value.mode !== 'automatique' || (jeuxValides.value && envsValides.value)))
 
 // ── Une exécution AUTOMATIQUE ne joue que les cas dotés d'un test technique (2026-10-12) ─────────────────────────────
 // Un cas saisi à la main ou importé d'Excel n'a rien que la machine puisse jouer : il restait « Untested » pour toujours
@@ -170,9 +174,10 @@ async function submit() {
       sans_repli: form.value.mode === 'automatique' && (form.value.strict || form.value.sansRepli),
       case_ids: form.value.selection === 'frozen' ? selected.value : [],
       dataset_ids: form.value.mode === 'automatique' ? jeuxCoches.value : [],
+      environment_ids: form.value.mode === 'automatique' ? envsCoches.value : [],
     })
-    // Plusieurs jeux : les exécutions sont regroupées dans un plan — c'est lui qu'on ouvre, toutes y figurent.
-    if (run.plan_id && jeuxCoches.value.length > 1) router.push({ name: 'plan-detail', params: { pid, id: String(run.plan_id) } })
+    // Plusieurs jeux ou environnements : les exécutions sont regroupées dans un plan — c'est lui qu'on ouvre, toutes y figurent.
+    if (run.plan_id && (jeuxCoches.value.length > 1 || envsCoches.value.length > 1)) router.push({ name: 'plan-detail', params: { pid, id: String(run.plan_id) } })
     else router.push({ name: 'run-detail', params: { pid, id: String(run.id) } })
   } catch (e: any) {
     error.value = e?.message || 'Création impossible.'
@@ -359,7 +364,10 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
 
       <!-- Lot PT-02b (A28, A32) : les jeux de données, pour une campagne automatique d'un projet qui a des variables. -->
       <ChoixDesJeux :masque="form.mode !== 'automatique'" v-model="jeuxCoches" v-model:valide="jeuxValides" :pid="pid"
-                    :tests-choisis="testsChoisis" />
+                    :tests-choisis="testsChoisis" :environnements="envsCoches.length" />
+      <!-- Lot PT-04a : les environnements, pour une campagne automatique d'un projet qui en a plusieurs. -->
+      <ChoixDesEnvironnements :masque="form.mode !== 'automatique'" v-model="envsCoches" v-model:valide="envsValides" :pid="pid"
+                              :jeux="jeuxCoches.length" />
 
       <!-- D33 (2026-10-10) : sans repli par l'IA, cochée par défaut ; masquée si la campagne est stricte (qui l'inclut). -->
       <label v-if="form.mode === 'automatique' && !form.strict"

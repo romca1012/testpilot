@@ -19,6 +19,8 @@ const deleteProjectAccount = vi.fn()
 
 vi.mock('../lib/api', () => ({
   api: {
+    // Lot PT-04a : l'onglet « Configurations » charge aussi les environnements (ici, le défaut seul).
+    listEnvironnements: () => Promise.resolve([]),
     updateProject: (...a: any[]) => updateProject(...a),
     listProjectAccounts: (...a: any[]) => listProjectAccounts(...a),
     createProjectAccount: (...a: any[]) => createProjectAccount(...a),
