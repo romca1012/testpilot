@@ -1,0 +1,834 @@
+{
+  "contexte": {
+    "date": "2026-10-16",
+    "etiquette": "m1c-eteint",
+    "commit": "9fa0ef6",
+    "versions": {
+      "python": "3.12.14",
+      "testpilot": "0.1.0",
+      "behave": "1.3.3",
+      "playwright": "1.62.0"
+    },
+    "modele_generation": "claude-sonnet-4-6",
+    "mode": "reel",
+    "plafond_usd": 1.8,
+    "app": "boutique_locale",
+    "configuration_sha256": "1a9ac8873de83d174cedb9e4a8dcda338e684f28ca7a707857ff5e1aaf0bfd5c",
+    "sous_ensemble_de_cas": true,
+    "donnees_jetables": "C:\\Users\\ROMARI~1\\AppData\\Local\\Temp\\banc_agents_data_ib3hd027",
+    "generations_rejouees_depuis": null,
+    "reparation": false,
+    "donnees_de_test": true,
+    "second_jeu": {
+      "nom_client": "Martin Lefèvre SA",
+      "ville_client": "Paris"
+    },
+    "bac_a_sable": false,
+    "tentatives_reparation": null
+  },
+  "indicateurs": {
+    "faux_verts": {
+      "k": 0,
+      "n": 8,
+      "non_concluants": 7,
+      "taux": 0.0,
+      "ic95": [
+        0.0,
+        0.3244156195108769
+      ]
+    },
+    "faux_rouges": {
+      "k": 0,
+      "n": 5,
+      "non_concluants": 7,
+      "taux": 0.0,
+      "ic95": [
+        0.0,
+        0.43449149475208104
+      ]
+    },
+    "pass_execution": {
+      "pass_at_1": {
+        "k": 1,
+        "n": 4,
+        "non_mesures": 0,
+        "taux": 0.25,
+        "ic95": [
+          0.045586062644636216,
+          0.6993639475573634
+        ]
+      },
+      "pass_at_k": {
+        "k": 3,
+        "n": 4,
+        "non_mesures": 0,
+        "taux": 0.75,
+        "ic95": [
+          0.3006360524426366,
+          0.9544139373553637
+        ]
+      },
+      "pass_hat_k": {
+        "k": 1,
+        "n": 4,
+        "non_mesures": 0,
+        "taux": 0.25,
+        "ic95": [
+          0.045586062644636216,
+          0.6993639475573634
+        ]
+      }
+    },
+    "pass_resultat": {
+      "pass_at_1": {
+        "k": 1,
+        "n": 4,
+        "non_mesures": 0,
+        "taux": 0.25,
+        "ic95": [
+          0.045586062644636216,
+          0.6993639475573634
+        ]
+      },
+      "pass_at_k": {
+        "k": 3,
+        "n": 4,
+        "non_mesures": 0,
+        "taux": 0.75,
+        "ic95": [
+          0.3006360524426366,
+          0.9544139373553637
+        ]
+      },
+      "pass_hat_k": {
+        "k": 1,
+        "n": 4,
+        "non_mesures": 0,
+        "taux": 0.25,
+        "ic95": [
+          0.045586062644636216,
+          0.6993639475573634
+        ]
+      }
+    },
+    "non_concluants": {
+      "technical_error": 14
+    },
+    "part_non_concluants_sous_defaut": 0.4666666666666667,
+    "par_defaut": {
+      "etat_non_enregistre": {
+        "jeux": 3,
+        "concluants": 1,
+        "detectes": 1,
+        "detectes_fiables": 1,
+        "ic95_detection_fiable": [
+          0.20654329147389294,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 2,
+        "ic95_detection": [
+          0.20654329147389294,
+          1.0
+        ]
+      },
+      "message_erreur_absent": {
+        "jeux": 3,
+        "concluants": 3,
+        "detectes": 3,
+        "detectes_fiables": 3,
+        "ic95_detection_fiable": [
+          0.43849391955098227,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      },
+      "total_faux": {
+        "jeux": 6,
+        "concluants": 1,
+        "detectes": 1,
+        "detectes_fiables": 1,
+        "ic95_detection_fiable": [
+          0.20654329147389294,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 5,
+        "ic95_detection": [
+          0.20654329147389294,
+          1.0
+        ]
+      },
+      "validation_absente": {
+        "jeux": 3,
+        "concluants": 3,
+        "detectes": 3,
+        "detectes_fiables": 3,
+        "ic95_detection_fiable": [
+          0.43849391955098227,
+          1.0
+        ],
+        "faux_verts": 0,
+        "non_concluants": 0,
+        "ic95_detection": [
+          0.43849391955098227,
+          1.0
+        ]
+      }
+    },
+    "cout": {
+      "total_usd": 1.407598,
+      "total_eur": 1.303331,
+      "taux_eur_usd": 1.08,
+      "generations": 12,
+      "generations_sans_cout_consigne": 0,
+      "par_generation_usd": 0.1173,
+      "par_generation_eur": 0.108611,
+      "par_cas_usd": {
+        "client_creation_valide": 0.109609,
+        "client_creation_nom_requis": 0.105999,
+        "panier_total_tva": 0.126478,
+        "panier_remise_arrondi": 0.127114
+      }
+    },
+    "integrite": {
+      "verifiees": 21,
+      "divergentes": 0,
+      "non_rapportees": 0
+    },
+    "echantillon": {
+      "cas": 4,
+      "k": 3,
+      "essais_prevus": 12,
+      "essais_lances": 12,
+      "jeux": 27
+    },
+    "ecarts": [
+      {
+        "cas": "client_creation_valide",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "client_creation_valide",
+        "variante": "etat_non_enregistre",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "saine",
+        "essai": 1,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "total_faux",
+        "essai": 1,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "client_creation_valide",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "client_creation_valide",
+        "variante": "etat_non_enregistre",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "saine",
+        "essai": 2,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_remise_arrondi",
+        "variante": "total_faux",
+        "essai": 2,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "generation_echouee"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "saine",
+        "essai": 3,
+        "attendu": "conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      },
+      {
+        "cas": "panier_total_tva",
+        "variante": "total_faux",
+        "essai": 3,
+        "attendu": "non_conforme",
+        "obtenu": "technical_error",
+        "cause": "wrong_field_name"
+      }
+    ],
+    "apres_reparation": null,
+    "second_jeu": {
+      "rejoues": 0,
+      "conformes_a_l_attendu": 0,
+      "prouves": 0,
+      "valeur_du_premier_jeu_en_dur": 0,
+      "preuve_partielle": 0,
+      "aucune_trace_au_serveur": 0,
+      "non_rejoues_saine_en_ecart": 0,
+      "integrite": {
+        "verifiees": 0,
+        "divergentes": 0,
+        "non_rapportees": 0
+      }
+    }
+  },
+  "interrompue": "",
+  "essais": [
+    {
+      "cas": "client_creation_valide",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.141456,
+      "empreintes": {
+        "pilote_p1_c1_i1_20261016T090443.feature": "9d6d84fd75ee52a5062c791136ea0b9d09b2f0aca18b4cd5f266f5adf49159ec",
+        "pilote_p1_c1_i1_20261016T090443_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 1,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.091912,
+      "empreintes": {
+        "pilote_p1_c2_i1_20261016T090707.feature": "a23519490981d54b6fb3d3ae60e0c782528bc5b664658b6b19d5d3e8b597cd6d",
+        "pilote_p1_c2_i1_20261016T090707_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 1,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.124635,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 1,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.088592,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.089821,
+      "empreintes": {
+        "pilote_p1_c1_i2_20261016T091210.feature": "371e0e46c93d8261b6bc6c0ac879db0fe5416fb109857382f837d3f3d90a36c2",
+        "pilote_p1_c1_i2_20261016T091210_steps.py": "5230c33fd61ba9f4a33fefc9361e27b94842a71a21b20bd0704ead236feb10bf"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.127985,
+      "empreintes": {
+        "pilote_p1_c2_i2_20261016T091436.feature": "a3c31ab823b35dcc4fcc918b85c0110ea768b5301c53aac1e369b01d92915401",
+        "pilote_p1_c2_i2_20261016T091436_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 2,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.13102,
+      "empreintes": {
+        "pilote_p1_c3_i2_20261016T091715.feature": "fdcbca43d49a2a366e8c98c37942a3d21e5bfdc9101cb00110cb9a29d95b0e30",
+        "pilote_p1_c3_i2_20261016T091715_steps.py": "4a6034d355a23680287d735afc0b99928287d630b43182d0364cccc35ff25779"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 4,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 2,
+      "genere": false,
+      "erreur": "génération sans essai à blanc passé",
+      "cout_usd": 0.123527,
+      "empreintes": {},
+      "refus_ecriture": {},
+      "steps_generes": null,
+      "variables_ecrites": null
+    },
+    {
+      "cas": "client_creation_valide",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.097549,
+      "empreintes": {
+        "pilote_p1_c1_i3_20261016T092233.feature": "17fc8a659c792b91f6ec2860f49ed7870b6b6e78086cc46e64e6237ece6fe770",
+        "pilote_p1_c1_i3_20261016T092233_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.098099,
+      "empreintes": {
+        "pilote_p1_c2_i3_20261016T092430.feature": "65d0795b5676cefc92ce88cc56f3118f7afee5e4307874a82020d72ee1259c4b",
+        "pilote_p1_c2_i3_20261016T092430_steps.py": "47ba92661e4b8ffd5150f71c7c970150f090ff71e8d7f1dac942bc8135975b32"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_total_tva",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.123778,
+      "empreintes": {
+        "pilote_p1_c3_i3_20261016T092653.feature": "67a578e422d30d1582f4cd461e97ecca1a76a49a0f3e7f64f45d177365a2ab54",
+        "pilote_p1_c3_i3_20261016T092653_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "essai": 3,
+      "genere": true,
+      "erreur": "",
+      "cout_usd": 0.169224,
+      "empreintes": {
+        "pilote_p1_c4_i3_20261016T092935.feature": "1b586412c2e03ce7c631ced450299ab81943569e2c32dee832b40f008e99688c",
+        "pilote_p1_c4_i3_20261016T092935_steps.py": "4a841430a21e19e6d2d6b3351eb78a6f03340eb26c88db9c5ee18cfed992f71f"
+      },
+      "refus_ecriture": {},
+      "steps_generes": 0,
+      "variables_ecrites": []
+    }
+  ],
+  "observations": [
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucun tableau « clients » sur http://127.0.0.1:57871/clients (ni par son nom accessible exact, ni sous un titre portant ce texte).",
+      "duree": 26.0,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucun tableau « clients » sur http://127.0.0.1:57871/clients (ni par son nom accessible exact, ni sous un titre portant ce texte).",
+      "duree": 25.4,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.6,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Aucune erreur de validation visible dans le formulaire.",
+      "duree": 21.5,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Aucune erreur de validation visible dans le formulaire.",
+      "duree": 21.6,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 1,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 1,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucun tableau « clients » sur http://127.0.0.1:57871/clients (ni par son nom accessible exact, ni sous un titre portant ce texte).",
+      "duree": 25.1,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucun tableau « clients » sur http://127.0.0.1:57871/clients (ni par son nom accessible exact, ni sous un titre portant ce texte).",
+      "duree": 24.8,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 12.5,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:57871/clients/nouveau (mot entier, casse respectée).",
+      "duree": 21.2,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:57871/clients/nouveau (mot entier, casse respectée).",
+      "duree": 22.1,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Champ 'Quantité de Câble HDMI' introuvable sur http://127.0.0.1:57871/panier",
+      "duree": 35.8,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Champ 'Quantité de Câble HDMI' introuvable sur http://127.0.0.1:57871/panier",
+      "duree": 35.8,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 2,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 2,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "generation_echouee",
+      "detail": "génération sans essai à blanc passé",
+      "duree": null,
+      "empreinte_ok": null,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.6,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_valide",
+      "variante": "etat_non_enregistre",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Dupont SARL » n'est pas affiché sur http://127.0.0.1:57871/clients (mot entier, casse respectée).",
+      "duree": 21.8,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 13.4,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "validation_absente",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:57871/clients/nouveau (mot entier, casse respectée).",
+      "duree": 20.9,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "client_creation_nom_requis",
+      "variante": "message_erreur_absent",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « Le nom est obligatoire. » n'est pas affiché sur http://127.0.0.1:57871/clients/nouveau (mot entier, casse respectée).",
+      "duree": 21.3,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune ligne contenant « Câble HDMI » ne porte de champ de saisie sur http://127.0.0.1:57871/panier.",
+      "duree": 18.8,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_total_tva",
+      "variante": "total_faux",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "technical_error",
+      "cause": "wrong_field_name",
+      "detail": "_base_helpers.ElementIntrouvableError: Aucune ligne contenant « Câble HDMI » ne porte de champ de saisie sur http://127.0.0.1:57871/panier.",
+      "duree": 18.6,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "saine",
+      "essai": 3,
+      "attendu": "conforme",
+      "obtenu": "conforme",
+      "cause": "",
+      "detail": "",
+      "duree": 21.6,
+      "empreinte_ok": true,
+      "preuve": ""
+    },
+    {
+      "cas": "panier_remise_arrondi",
+      "variante": "total_faux",
+      "essai": 3,
+      "attendu": "non_conforme",
+      "obtenu": "non_conforme",
+      "cause": "assertion_mismatch",
+      "detail": "ASSERT FAILED: Le texte « 10,56 € » n'est pas affiché sur http://127.0.0.1:57871/panier (mot entier, casse respectée).",
+      "duree": 27.8,
+      "empreinte_ok": true,
+      "preuve": ""
+    }
+  ],
+  "anomalies": [],
+  "reparations": [],
+  "observations_reparees": [],
+  "observations_second_jeu": [],
+  "second_jeu_non_rejoues": []
+}
