@@ -303,6 +303,48 @@ def test_falsifiable_l_essai_demande_la_forme_seulement_interrupteur_allume(tmp_
     assert "CMD-0042" not in sortie.observation and "129.15" not in sortie.observation
 
 
+def test_falsifiable_apres_un_essai_seul_ce_qui_change_est_redit(tmp_path, monkeypatch):
+    """Rejeu de M2 (2026-10-17) : le cumul entier revenait après chaque essai, six fois sur un même cas. L'IA l'a déjà reçu ;
+    un essai qui n'apprend rien n'ajoute rien, et un essai qui apprend une requête ne redit que celle-là."""
+    from testpilot.execution.behave_result import BehaveResult
+    from testpilot.generation.litteraux_observes import Annuaire
+    from testpilot.guardrails import bac_a_sable
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    bac_a_sable.reinitialiser_pour_les_tests()
+    monkeypatch.setenv(interrupteurs.ENV_FORME_ORACLE, "1")
+    reponses = [{"etat": {"commandes": [{"numero": "C1"}]}, "stock": {"articles": []}},
+                {"etat": {"commandes": [{"numero": "C2"}]}, "stock": {"articles": []}},
+                {"etat": {"commandes": []}, "stock": {"articles": [{"ref": "A-1"}]}}]
+
+    class _Runner:
+        def __init__(self, variables):
+            self.variables = variables
+
+        def dry_run(self, module):
+            return BehaveResult(success=True, returncode=0, dry_run=True, undefined_steps=[])
+
+        def real_run(self, module):
+            etat = {"url": "http://app/", "elements": [],
+                    "formes_oracle": {nom: f.forme(r) for nom, r in reponses.pop(0).items()}}
+            Path(self.variables[e.ESSAI_ETAT_FILE_ENV]).write_text(json.dumps(etat), encoding="utf-8")
+            return BehaveResult(success=True, returncode=0, failures=[])
+
+    essai = e.EssaiBacASable(remettre_a_zero=lambda: None, cle="http://app:80",
+                             fabriquer_runner=lambda dossier, variables: _Runner(variables))
+    ctx = ToolContext(module_name="m", generated_dir=tmp_path, essai=essai, annuaire=Annuaire(),
+                      formes_oracle={"etat": f.forme({"commandes": []}), "stock": f.forme({"articles": []})})
+
+    sorties = [e.essayer_les_actions(ctx, ['Quand j\'ouvre la page "/produits"']).observation for _ in range(3)]
+    bac_a_sable.reinitialiser_pour_les_tests()
+
+    assert "« etat »" in sorties[0] and "numero : texte" in sorties[0] and "« stock »" not in sorties[0]
+    assert "Forme des réponses de l'oracle : rien de nouveau depuis ce que tu as reçu." in sorties[1]
+    assert "« etat »" not in sorties[1] and "« stock »" not in sorties[1], "rien de nouveau : rien n'est redit"
+    assert "« stock »" in sorties[2] and "ref : texte" in sorties[2] and "« etat »" not in sorties[2]
+    assert ctx.formes_oracle["etat"] == {"commandes": {"liste": {"numero": "texte"}}}, "le cumul, lui, garde tout"
+
+
 # ── 5. Une requête d'oracle non déclarée est refusée à l'écriture ────────────────────────────────────────────────────────
 
 FEATURE = ('# language: fr\nFonctionnalité: F\n  Scénario: S\n    Quand j\'ouvre la page "/"\n'
