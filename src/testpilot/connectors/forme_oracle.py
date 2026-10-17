@@ -202,3 +202,11 @@ def completer_tout(cumul: dict, essai: dict) -> dict:
     """Le cumul de chaque requête de l'exploration, complété par un essai. Une requête jamais relevée à l'exploration n'est
     pas montrée : rien à quoi comparer ses clés."""
     return {nom: completer(base, (essai or {}).get(nom)) for nom, base in cumul.items()}
+
+
+def nouveautes(avant: dict, apres: dict) -> dict:
+    """Les requêtes dont le cumul a changé : ce qu'un essai vient d'apprendre à l'IA.
+
+    Rejeu de M2 (2026-10-17) : le cumul ENTIER revenait après chaque essai — 6 fois sur un même cas — sans rien de nouveau la
+    plupart du temps. L'IA l'a déjà reçu (message initial, essais précédents) ; seul ce qui change lui est redit."""
+    return {nom: f for nom, f in apres.items() if f != (avant or {}).get(nom)}

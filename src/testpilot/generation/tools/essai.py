@@ -452,7 +452,8 @@ def chaines_tirees_de_l_essai(chaines, essai: "EssaiBacASable | None", exigences
     return [tire for chaine in chaines for tire in _tires_de(chaine, essai, exigences)]
 
 
-def _rendre(etat: dict | None, echec: dict | None, etapes: list[str], *, remis: bool, formes: dict | None = None) -> str:
+def _rendre(etat: dict | None, echec: dict | None, etapes: list[str], *, remis: bool, formes: dict | None = None,
+            oracle_lu: bool = False) -> str:
     if remis:
         lignes = ["Essai joué sur le bac à sable (remis à zéro avant et après) — rien de ce qu'il a fait ne subsiste."]
     else:
@@ -478,8 +479,13 @@ def _rendre(etat: dict | None, echec: dict | None, etapes: list[str], *, remis: 
     if formes:
         # Lot VH-08 (A51) : relevée AVANT la remise à zéro — la seule fois où les listes de l'application ont des éléments.
         from testpilot.connectors import forme_oracle
-        lignes.append("Forme des réponses de l'oracle, complétée par tes essais (valeurs masquées, aucun compte) :")
+        lignes.append("Forme des réponses de l'oracle — requêtes dont la forme est complétée par cet essai, les autres sont "
+                      "inchangées (forme entière, valeurs masquées, aucun compte) :")
         lignes += forme_oracle.rendre_tout(formes)
+    elif oracle_lu:
+        # Revue du 2026-10-17 : un silence ne distinguerait pas « rien de nouveau » d'« oracle non lu » — l'IA relancerait un
+        # essai pour revoir l'oracle. Ne dit rien que le cumul entier, rendu à chaque essai avant ce correctif, ne disait.
+        lignes.append("Forme des réponses de l'oracle : rien de nouveau depuis ce que tu as reçu.")
     lignes.append("Rappel : ces éléments te disent OÙ agir ; les valeurs attendues des « Alors » viennent de la spécification.")
     return "\n".join(lignes)
 
@@ -605,14 +611,16 @@ def essayer_les_actions(ctx: "ToolContext", etapes: list[str]) -> "ToolOutcome":
             annuaire.observes_session.update(
                 str(el[k]).strip() for el in (etat.get("elements") or []) for k in ("nom", "texte")
                 if str(el.get(k) or "").strip())
-        formes = None
+        formes, oracle_lu = None, False
         if getattr(ctx, "formes_oracle", None) and etat and etat.get("formes_oracle"):
             # Lot VH-08 (A51, revue du 2026-10-16) : le CUMUL exploration ∪ essais — jamais la forme brute de l'instant, qui
             # dirait qu'une liste est vide maintenant, ou montrerait des clés qui sont des données.
             from testpilot.connectors import forme_oracle
-            ctx.formes_oracle = forme_oracle.completer_tout(ctx.formes_oracle, etat["formes_oracle"])
-            formes = ctx.formes_oracle
-        rendu = _rendre(etat, echec, list(etapes), remis=remis, formes=formes)
+            avant = ctx.formes_oracle
+            ctx.formes_oracle = forme_oracle.completer_tout(avant, etat["formes_oracle"])
+            # Seules les requêtes dont la forme vient de changer : le reste, l'IA l'a déjà reçu (rejeu de M2, 2026-10-17).
+            formes, oracle_lu = forme_oracle.nouveautes(avant, ctx.formes_oracle), True
+        rendu = _rendre(etat, echec, list(etapes), remis=remis, formes=formes, oracle_lu=oracle_lu)
         if noms:   # lot PT-02d : l'agent relit `{{nom}}`, jamais la valeur posée (il la recopierait en dur)
             rendu = variables_de_test.masquer(rendu, getattr(ctx, "valeurs_de_test", {}) or {})
         return _outcome(rendu)
