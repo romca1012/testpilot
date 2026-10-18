@@ -4,7 +4,8 @@
  * Ce que ces tests gardent :
  * 1. un projet sans variable voit le formulaire d'avant, et n'envoie aucun jeu ;
  * 2. le jeu « Par défaut » est coché d'emblée ; l'écran annonce combien d'exécutions seront créées ;
- * 3. plusieurs jeux : la page ouverte ensuite est le PLAN qui les regroupe ; 50 au plus ; au moins un ;
+ * 3. plusieurs jeux : la page ouverte ensuite est le PLAN qui les regroupe ; 50 au plus ; aucun coché : « Par défaut » (A56) ;
+ *    « de la ligne X à Y » coche une plage dans l'ordre du tableau ;
  * 4. un lien mène au tableau des données de test ; une campagne manuelle n'envoie aucun jeu.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -99,13 +100,37 @@ describe('AddTestRunForm — jeux de données (PT-02b)', () => {
     expect(w.get('[data-testid="nombre-executions"]').text()).toBe('1 exécution, 1 itération')
   })
 
-  it('falsifiable : aucune ligne cochée, on ne peut pas créer', async () => {
+  // A56 (porteur, 2026-10-18 — changement délibéré de l'attendu « aucune ligne : on ne peut pas créer ») : les données de
+  // test sont facultatives ; aucune ligne cochée, le test est joué avec les valeurs « Par défaut » (le serveur, recevant une
+  // liste vide, fige le jeu « Par défaut » — `test_lancement_par_jeux.py`).
+  it('falsifiable : aucune ligne cochée, l’exécution est créée avec les valeurs par défaut', async () => {
     const w = await formulaire()
     await w.get('[data-testid="jeu-10"]').setValue(false)
-    await envoyer(w)
 
-    expect(createRun).not.toHaveBeenCalled()
-    expect(w.get('[data-testid="choix-jeux"]').text()).toContain('Cochez au moins une ligne')
+    expect(w.get('[data-testid="nombre-executions"]').text()).toBe('1 exécution, valeurs par défaut')
+    await envoyer(w)
+    expect(createRun).toHaveBeenCalledTimes(1)
+    expect(createRun.mock.calls[0][1]).toMatchObject({ dataset_ids: [] })
+  })
+
+  it('falsifiable : « de la ligne 2 à 3 » coche ces lignes-là, dans l’ordre du tableau', async () => {
+    getTestData.mockResolvedValue({ ...TABLEAU, jeux: [...TABLEAU.jeux,
+      { id: 12, nom: 'Mineur', est_defaut: false, valeurs: {} }, { id: 13, nom: 'Majeur', est_defaut: false, valeurs: {} }] })
+    const w = await formulaire()
+
+    expect(w.get('[data-testid="plage-a"]').element).toHaveProperty('value', '4')
+    await w.get('[data-testid="plage-de"]').setValue('3')
+    await w.get('[data-testid="plage-a"]').setValue('2')   // à l'envers : la plage est remise dans l'ordre
+    await w.get('[data-testid="plage-cocher"]').trigger('click')
+
+    expect(w.get('[data-testid="nombre-executions"]').text()).toBe('1 exécution, 2 itérations')
+    await envoyer(w)
+    expect(createRun.mock.calls[0][1]).toMatchObject({ dataset_ids: [11, 12] })
+  })
+
+  it('deux lignes seulement : pas de plage à choisir', async () => {
+    const w = await formulaire()
+    expect(w.find('[data-testid="plage"]').exists()).toBe(false)
   })
 
   it('falsifiable : au-delà de 50 jeux cochés, on ne peut pas créer', async () => {
