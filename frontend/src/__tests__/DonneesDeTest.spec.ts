@@ -108,7 +108,9 @@ describe('Données de test — le tableau', () => {
     expect(getTestData).toHaveBeenCalledWith(4)
     expect(w.findAll('[data-testid="variable"]').map((c) => c.text())).toEqual([
       expect.stringMatching(/^\{\{client\}\}/), expect.stringMatching(/^\{\{ville\}\}/)])
-    expect(w.findAll('tbody th').map((c) => c.text())).toEqual([expect.stringMatching(/^Par défaut$/), expect.stringMatching(/^Grosse commande/)])
+    expect(w.findAll('tbody th').map((c) => c.text())).toEqual([expect.stringMatching(/^1Par défaut$/), expect.stringMatching(/^2Grosse commande/)])
+    // A56 : chaque ligne porte son numéro, celui que « de la ligne X à Y » emploie au lancement.
+    expect(w.get('[data-testid="numero-11"]').text()).toBe('2')
     expect((champ(w, 10, 2).element as HTMLInputElement).value).toBe('Lyon')
   })
 

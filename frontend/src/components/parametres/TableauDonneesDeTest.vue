@@ -228,9 +228,10 @@ async function importer() {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="jeu in tableau.jeux" :key="jeu.id" class="border-b border-border last:border-0" :data-testid="`jeu-${jeu.id}`">
+          <tr v-for="(jeu, i) in tableau.jeux" :key="jeu.id" class="border-b border-border last:border-0" :data-testid="`jeu-${jeu.id}`">
             <th scope="row" class="whitespace-nowrap px-4 py-2 text-left font-medium sm:px-6">
               <span class="flex items-center gap-2">
+                <span class="w-5 text-right text-xs font-normal tabular-nums text-muted-foreground" :data-testid="`numero-${jeu.id}`">{{ i + 1 }}</span>
                 <span>{{ jeu.nom }}</span>
                 <span v-if="!jeu.est_defaut" class="flex shrink-0 gap-1">
                   <Button v-if="peutModifier" type="button" variant="ghost" size="sm" :aria-label="`Renommer ${jeu.nom}`" @click="ouvrirJeu(jeu)">Renommer</Button>

@@ -3,7 +3,7 @@
  *
  * Ce que ces tests gardent :
  * 1. un projet sans variable voit la fenêtre d'avant et n'envoie aucun jeu ;
- * 2. le jeu « Par défaut » est coché d'emblée ; les jeux cochés sont envoyés ; aucun coché : on ne peut pas créer ;
+ * 2. le jeu « Par défaut » est coché d'emblée ; les jeux cochés sont envoyés ; aucun coché : « Par défaut » (A56) ;
  * 3. la liste nomme les jeux d'une planification ; l'un d'eux à la corbeille : elle dit qu'elle ne se déclenche pas (A36).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -83,11 +83,15 @@ describe('SchedulesList — jeux de données (PT-02b)', () => {
     expect(createSchedule.mock.calls[0][1]).toMatchObject({ dataset_ids: [10, 11] })
   })
 
-  it('falsifiable : aucun jeu coché, on ne peut pas créer', async () => {
+  // A56 (porteur, 2026-10-18 — changement délibéré de l'attendu « aucun coché : on ne peut pas créer ») : la planification
+  // se crée et jouera les valeurs « Par défaut » du moment de chaque déclenchement.
+  it('falsifiable : aucun jeu coché, la planification se crée avec les valeurs par défaut', async () => {
     const w = await fenetre()
     await w.get('[data-testid="jeu-10"]').setValue(false)
 
-    expect(w.get('button[form="form-create-schedule"]').attributes('disabled')).toBeDefined()
+    expect(w.get('button[form="form-create-schedule"]').attributes('disabled')).toBeUndefined()
+    await creer(w)
+    expect(createSchedule.mock.calls[0][1]).toMatchObject({ dataset_ids: [] })
   })
 
   it('la liste nomme les jeux, et signale un jeu à la corbeille', async () => {
