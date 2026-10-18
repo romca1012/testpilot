@@ -209,6 +209,19 @@ describe('RunsOverview — liste des campagnes', () => {
 })
 
 describe('RunDetail — les cas du run et leur résultat', () => {
+  // A52 : le résultat de chaque itération d'un cas, tel que le serveur l'a calculé — jamais redérivé à l'écran.
+  it('falsifiable : un cas joué en itérations montre le résultat de chacune', async () => {
+    const detail = await getRun()
+    getRun.mockResolvedValue({ ...detail, cases: [{ ...detail.cases[0], statut: 'failed', iterations: [
+      { numero: 1, jeu: 'Par défaut', statut: 'passed' }, { numero: 2, jeu: 'Dix ans', statut: 'failed' }] }, detail.cases[1]] })
+    const w = mount(RunDetail)
+    await flushPromises()
+
+    expect(w.findAll('[data-testid="iterations-du-cas"]')).toHaveLength(1)
+    expect(w.get('[data-testid="iteration-1"]').text()).toBe('1Par défaut · Passed')
+    expect(w.get('[data-testid="iteration-2"]').text()).toBe('2Dix ans · Failed')
+  })
+
   it('liste les cas avec leur statut, « Untested » si non exécuté', async () => {
     const w = mount(RunDetail)
     await flushPromises()

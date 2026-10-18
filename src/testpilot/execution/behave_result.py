@@ -64,6 +64,17 @@ class BehaveScenario:
     # Lot VH-02 (V10) : constats ÉCHOUÉS consignés pendant ce scénario, quel que soit le step. Dans un scénario passé, c'est
     # une vérification qui a échoué sans faire échouer le test (exception avalée) : jamais `conforme`. `None` = mécanisme absent.
     constats_echoues: int | None = None
+    # A52 : la ligne du scénario dans le fichier joué, lue dans `location` (« fichier:ligne »), que Behave écrit EN TEXTE au
+    # début du scénario — un step ne peut plus la changer (mesuré sur behave 1.3.3, 2026-10-18 ; les `tags` du JSON, eux, sont
+    # la liste vivante du scénario). Relie un résultat à son itération (`parametres/iterations.rangs_par_ligne`). 0 : inconnue.
+    # Affichage seulement — le verdict ne la lit jamais.
+    ligne: int = 0
+
+
+def ligne_de(location) -> int:
+    """« chemin/test.feature:14 » → 14 ; illisible → 0."""
+    _, _, fin = str(location or "").rpartition(":")
+    return int(fin) if fin.isdigit() else 0
 
 
 @dataclass
@@ -627,6 +638,7 @@ def parse_behave_json(json_output: str, returncode: int, dry_run: bool = False,
                 result.skipped += 1
             result.scenarios.append(BehaveScenario(
                 name=name, status=sc_status, duration=round(duration, 3), error=first_error,
+                ligne=ligne_de(scenario.get("location")),
             ))
 
     result.undefined_steps = sorted(undefined)

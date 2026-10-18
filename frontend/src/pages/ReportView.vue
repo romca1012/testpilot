@@ -12,7 +12,7 @@ import StatTile from '../components/StatTile.vue'
 import StatusPair from '../components/StatusPair.vue'
 import {
   functionalView, executionView, toneClasses,
-  defectOriginView, costSourceLabel,
+  defectOriginView, costSourceLabel, testStatusMeta,
 } from '../lib/status'
 
 const route = useRoute()
@@ -154,6 +154,7 @@ const variableEcrite = (nom: string) => `{{${nom}}}`
                 <th scope="col" class="py-1.5 pr-4 font-medium">Ligne</th>
                 <th v-for="nom in Object.keys(report.donnees_de_test.iterations[0].valeurs)" :key="nom" scope="col"
                     class="py-1.5 pr-4 font-mono font-normal normal-case">{{ variableEcrite(nom) }}</th>
+                <th v-if="report.donnees_de_test.iterations.some((i) => i.statut)" scope="col" class="py-1.5 pr-4 font-medium">Résultat</th>
               </tr>
             </thead>
             <tbody>
@@ -161,6 +162,10 @@ const variableEcrite = (nom: string) => `{{${nom}}}`
                 <td class="py-1.5 pr-4">{{ it.jeu }}</td>
                 <td v-for="nom in Object.keys(report.donnees_de_test.iterations[0].valeurs)" :key="nom" class="py-1.5 pr-4 break-all">
                   {{ it.valeurs[nom]?.valeur }}
+                </td>
+                <td v-if="report.donnees_de_test.iterations.some((i) => i.statut)" class="py-1.5 pr-4">
+                  <span v-if="it.statut" class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold" :class="testStatusMeta(it.statut).badge"
+                        data-testid="resultat-iteration">{{ testStatusMeta(it.statut).label }}</span>
                 </td>
               </tr>
             </tbody>

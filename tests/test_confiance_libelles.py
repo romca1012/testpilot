@@ -29,6 +29,14 @@ def test_toute_confiance_a_un_libelle_francais():
         assert st.LIBELLES_CONFIANCE.get(confiance), confiance
 
 
+def test_les_libelles_des_statuts_sont_les_memes_des_deux_cotes():
+    """Résultat par itération du rapport imprimable (2026-10-18) : les libellés de l'écran, jamais une valeur brute."""
+    source = (RACINE / "frontend" / "src" / "lib" / "status.ts").read_text(encoding="utf-8")
+    bloc = re.search(r"const TEST_STATUS: Record<TestStatusCode, .*?> = \{(.*?)\n\}", source, re.S).group(1)
+    assert dict(re.findall(r"^\s*(\w+):\s*\{ label: '([^']*)'", bloc, re.M)) == st.LIBELLES_STATUT
+    assert set(st.LIBELLES_STATUT) == set(st.STATUTS)
+
+
 def test_le_libelle_a_confirmer_est_le_meme_des_deux_cotes():
     source = (RACINE / "frontend" / "src" / "lib" / "status.ts").read_text(encoding="utf-8")
     assert f"A_CONFIRMER_LABEL = '{st.LIBELLE_A_CONFIRMER}'" in source

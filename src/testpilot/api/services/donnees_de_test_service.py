@@ -212,6 +212,11 @@ def _preparer_les_iterations(conn, execution_id: int, case_id: int, module_name:
             texte = iterations_mod.en_plan_de_scenario(feature, iters, connues)
         except iterations_mod.IterationsImpossibles as exc:
             return Script(blocage=f"Itérations : {exc}. Le test n'a pas été joué.")
+        # Revue du 2026-10-18 : le rattachement d'un résultat à son itération se décide ICI, sur le texte écrit par le
+        # serveur, avant l'exécution — jamais sur ce que le run rend (`run_service._persist` lit cette table).
+        joues["rangs_par_ligne"] = {str(ligne): rangs for ligne, rangs in iterations_mod.rangs_par_ligne(texte).items()}
+        conn.execute("UPDATE execution SET parametres_joues=? WHERE id=?", (json.dumps(joues, ensure_ascii=False), execution_id))
+        conn.commit()
     dossier = Path(config.DATA_DIR) / "executions" / str(execution_id) / "script"
     dossier.mkdir(parents=True, exist_ok=True)
     (dossier / f"{module_name}.feature").write_text(texte, encoding="utf-8")

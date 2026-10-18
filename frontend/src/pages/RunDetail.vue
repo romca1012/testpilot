@@ -594,7 +594,17 @@ async function resultatAjoute() {
                 class="group border-b border-border/40 hover:bg-accent/30 cursor-pointer"
                 @click="openCase(c)">
               <td class="py-3 pl-1 font-bold tabular-nums whitespace-nowrap text-muted-foreground">C{{ c.id }}</td>
-              <td class="py-3 px-2.5 text-primary group-hover:underline leading-snug">{{ c.title }}</td>
+              <td class="py-3 px-2.5 leading-snug">
+                <span class="text-primary group-hover:underline">{{ c.title }}</span>
+                <!-- A52 : le résultat de chaque itération (une ligne de données de test), calculé par le serveur. -->
+                <span v-if="c.iterations?.length" class="mt-1 flex flex-wrap gap-1" data-testid="iterations-du-cas">
+                  <span v-for="it in c.iterations" :key="it.numero"
+                        class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs" :class="testStatusMeta(it.statut).badge"
+                        :data-testid="`iteration-${it.numero}`">
+                    <span class="tabular-nums">{{ it.numero }}</span>{{ it.jeu }} · {{ testStatusMeta(it.statut).label }}
+                  </span>
+                </span>
+              </td>
               <!-- « Assigné à » : qui SUPERVISE ce cas dans cette campagne (2026-09-14, inspiré
                    de TestRail) — choisi parmi les membres RÉELS du projet, jamais tapé à la main.
                    Lecture seule pour qui n'a pas le droit de modifier (même seuil que « + Résultat »). -->

@@ -808,6 +808,8 @@ export interface RunCaseResult {
   /** Qui SUPERVISE ce cas DANS cette campagne (2026-09-14, traçabilité — inspiré de TestRail).
    *  '' = personne assigné, jamais un nom deviné. Vaut pour un cas manuel comme automatique. */
   assigned_to: string
+  /** A52 : le résultat de chaque itération de ce cas, calculé par le serveur (vide : une seule ligne jouée). */
+  iterations?: { numero: number; jeu: string; statut: string }[]
 }
 export interface AssignmentOut {
   case_id: number; assigned_to: string; assigned_by: string; assigned_at: string
@@ -1193,6 +1195,6 @@ export interface TestReport {
   donnees_de_test?: {
     jeu?: string; valeurs?: Record<string, { valeur: string; origine: string }>
     // A52 : plusieurs lignes jouées, une itération par ligne.
-    iterations?: { jeu: string; valeurs: Record<string, { valeur: string; origine: string }> }[]
+    iterations?: { jeu: string; valeurs: Record<string, { valeur: string; origine: string }>; statut?: string }[]
   }
 }

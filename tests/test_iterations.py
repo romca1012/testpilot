@@ -306,7 +306,9 @@ def test_un_plan_sans_exemples_et_les_etiquettes_des_exemples():
             '    @lent\n    Exemples: E\n      | q |\n' + r'      | a\|b |' + '\n')
     texte = it.en_plan_de_scenario(avec, [("A", {"age": "5"}), ("B", {"age": "18"})], ["age"])
     exemples = [e for s in parse_feature(texte, language="fr").scenarios for e in s.examples]
-    assert [e.tags for e in exemples] == [["lent"], ["lent"]]
+    # 2026-10-18 (résultat par itération, changement délibéré de l'attendu) : l'étiquette du test est gardée, celle de
+    # l'itération s'y ajoute.
+    assert [e.tags for e in exemples] == [["lent", "tp_iteration_1"], ["lent", "tp_iteration_2"]]
     assert sorted(s.steps[0].name for s in _scenarios(texte)) == ['je saisis "18" et "a|b"', 'je saisis "5" et "a|b"']
 
 
@@ -378,3 +380,196 @@ def test_falsifiable_l_agent_de_correction_ne_voit_aucune_valeur_d_aucune_iterat
     texte = json.dumps(contexte, ensure_ascii=False)
     assert "âge 15 " not in texte and "âge 10 " not in texte and "âge 18 " not in texte
     assert texte.count("{{age}}") >= 3
+
+
+def test_falsifiable_aucune_ligne_choisie_le_test_est_joue_avec_les_valeurs_par_defaut(base):
+    """A56 (porteur, 2026-10-18) : les données de test sont facultatives au lancement. Aucune ligne choisie : une seule
+    itération, celle des valeurs « Par défaut » — jamais un `{{age}}` saisi tel quel, jamais un test bloqué faute de ligne."""
+    pid, cid, vid, jeux = _projet(base)
+    run_id = RunRepo(base).create(project_id=pid, name="Nuit", case_ids=[cid])
+    service.figer_pour_la_campagne(base, RunRepo(base).get(run_id))
+    eid = _execution(base, run_id, cid, vid)
+
+    script = service.preparer_le_script(base, eid, cid, vid, "acces")
+
+    assert script.blocage == "" and script.dossier is not None
+    joue = (script.dossier / "acces.feature").read_text(encoding="utf-8")
+    assert "{{" not in joue and [s.steps[0].name for s in _scenarios(joue)] == ['je renseigne l\'âge "5"']
+    consignees = json.loads(base.execute("SELECT parametres_joues FROM execution WHERE id=?", (eid,)).fetchone()[0])
+    assert consignees["jeu"] == "Par défaut" and "iterations" not in consignees
+
+
+# ── Le résultat de chaque itération (2026-10-18) ────────────────────────────────────────────────────────────────────────────
+
+def test_chaque_exemples_porte_les_iterations_qu_il_couvre():
+    """Le second scénario n'emploie que `{{titre}}`, identique aux lignes 1 et 3 : un seul « Exemples » pour les deux."""
+    feature = AGE + '\n  Scénario: Accueil\n    Alors la page affiche le texte "{{titre}}"\n'
+    texte = it.en_plan_de_scenario(feature, [("A", {"age": "5", "resultat": "Non", "titre": "Salut"}),
+                                             ("B", {"age": "10", "resultat": "Non", "titre": "Bonjour"}),
+                                             ("C", {"age": "18", "resultat": "Oui", "titre": "Salut"})])
+    etiquettes = [[e.tags for e in s.examples] for s in parse_feature(texte, language="fr").scenarios]
+    assert etiquettes == [[["tp_iteration_1"], ["tp_iteration_2"], ["tp_iteration_3"]],
+                          [["tp_iteration_1", "tp_iteration_3"], ["tp_iteration_2"]]]
+    rangees = [r.line for s in parse_feature(texte, language="fr").scenarios for e in s.examples for r in e.table.rows]
+    assert [it.rangs_par_ligne(texte)[ligne] for ligne in rangees] == [[1], [2], [3], [1, 3], [2]]
+
+
+def test_falsifiable_un_test_qui_ecrit_deja_l_etiquette_d_iteration_est_refuse():
+    """Sinon un scénario se ferait passer pour l'itération d'une autre ligne à l'écran."""
+    feature = AGE.replace("  Scénario: Accès", "  @tp_iteration_2\n  Scénario: Accès")
+    with pytest.raises(it.IterationsImpossibles, match="tp_iteration_"):
+        it.en_plan_de_scenario(feature, LIGNES)
+
+
+# Revue du 2026-10-18 (bloquant) : un scénario commun à toutes les lignes, en échec, qui tente de se faire passer pour la
+# seule itération 1 — par une étiquette `@<t>` que Behave remplace, ET par un step qui réécrit ses étiquettes et sa ligne.
+COMMUN = """
+  @<t>
+  Plan du scénario: Commun
+    Alors la vérification commune passe
+
+    Exemples: E
+      | t |
+      | tp_iteration_1 |
+"""
+STEPS_COMMUN = STEPS_AGE + '''
+
+@then('la vérification commune passe')
+def commune(context):
+    context.scenario.tags[:] = ["tp_iteration_1"]
+    context.scenario.line = 1
+    assert False, "la vérification commune échoue"
+'''
+
+
+def test_falsifiable_vrai_behave_chaque_iteration_a_son_resultat_sans_qu_un_test_puisse_le_forger(base, tmp_path, monkeypatch):
+    """Bout en bout : le plan réécrit, sa table « ligne → itérations » posée par la préparation, joué par Behave, relu par
+    `parse_behave_json`, jugé par `derive_verdict`, enregistré par `run_service._persist`, montré par `iterations_jouees`.
+    Le scénario commun en échec couvre TOUTES les itérations, malgré ses deux tentatives de se rattacher à la seule
+    première ; une ligne nommée comme une annotation de Behave (« -- @2.1 ») ne trompe rien : le nom n'est jamais lu."""
+    from types import SimpleNamespace
+
+    from testpilot.api.services import run_service
+    from testpilot.execution.behave_result import parse_behave_json
+    from testpilot.verdict.status import derive_verdict
+
+    pid, cid, vid, jeux = _projet(base, feature=AGE + COMMUN)
+    lignes = [(nom if nom != "Adulte" else "Adulte -- @2.1", valeurs) for nom, valeurs in LIGNES]
+    run_id = RunRepo(base).create(project_id=pid, name="Nuit", case_ids=[cid], dataset_ids=list(jeux.values()))
+    base.execute("UPDATE test_dataset SET nom=? WHERE id=?", ("Adulte -- @2.1", jeux["Adulte"]))
+    base.commit()
+    service.figer_pour_la_campagne(base, RunRepo(base).get(run_id))
+    eid = _execution(base, run_id, cid, vid)
+    script = service.preparer_le_script(base, eid, cid, vid, "acces")
+    assert script.blocage == "", script.blocage
+    (script.dossier / "steps").mkdir()
+    (script.dossier / "steps" / "age_steps.py").write_text(STEPS_COMMUN, encoding="utf-8")
+    (script.dossier / "acces_steps.py").unlink()
+    sortie = tmp_path / "resultat.json"
+    fini = subprocess.run([sys.executable, "-m", "behave", "--lang", "fr", "--no-capture", "-f", "json", "-o", str(sortie),
+                           str(script.dossier)], cwd=script.dossier, capture_output=True, text=True, check=False)
+    resultat = parse_behave_json(sortie.read_text(encoding="utf-8"), fini.returncode)
+    assert len(resultat.scenarios) == 4, fini.stdout[-2000:]
+
+    verdict = derive_verdict(SimpleNamespace(dry_run_passed=True, real_run=resultat, retried=False))
+    base.execute("UPDATE execution SET execution_status=?, functional_status=? WHERE id=?",
+                 (verdict.execution_status, verdict.functional_status, eid))
+    base.commit()
+    monkeypatch.setattr(run_service, "_expliquer", lambda *a, **k: "")   # jamais d'appel à l'IA depuis un test
+    run_service._persist(base, eid, cid, verdict, SimpleNamespace(real_run=resultat), 0.0, "acces")
+
+    execution = ExecutionRepo(base).get(eid)
+    vues = report_service.iterations_jouees(execution, ExecutionRepo(base).list_scenario_results(eid))
+    assert [v["jeu"] for v in vues] == ["Par défaut", "Dix ans", "Adulte -- @2.1"]
+    # Le commun échoue par un `assert` nu (classé « à revérifier », règle du verdict inchangée) : il couvre CHAQUE itération,
+    # aucune ne sort réussie. Rattaché à la seule première (l'ancien mécanisme par étiquettes), la 3e sortait « passed ».
+    assert [v["statut"] for v in vues] == ["retest", "failed", "retest"]
+    rangs = [r["iterations"] for r in ExecutionRepo(base).list_scenario_results(eid)]
+    assert rangs == ["1", "2", "3", ""]
+
+
+def test_falsifiable_sans_le_scenario_commun_seule_l_iteration_fautive_echoue(base, tmp_path, monkeypatch):
+    """Le même chemin, sans le scénario commun : seule « Dix ans » (l'application laisse entrer dès 10 ans) échoue."""
+    from types import SimpleNamespace
+
+    from testpilot.api.services import run_service
+    from testpilot.execution.behave_result import parse_behave_json
+    from testpilot.verdict.status import derive_verdict
+
+    pid, cid, vid, jeux = _projet(base)
+    run_id = RunRepo(base).create(project_id=pid, name="Nuit", case_ids=[cid], dataset_ids=list(jeux.values()))
+    service.figer_pour_la_campagne(base, RunRepo(base).get(run_id))
+    eid = _execution(base, run_id, cid, vid)
+    script = service.preparer_le_script(base, eid, cid, vid, "acces")
+    (script.dossier / "steps").mkdir()
+    (script.dossier / "steps" / "age_steps.py").write_text(STEPS_AGE, encoding="utf-8")
+    (script.dossier / "acces_steps.py").unlink()
+    sortie = tmp_path / "resultat.json"
+    fini = subprocess.run([sys.executable, "-m", "behave", "--lang", "fr", "--no-capture", "-f", "json", "-o", str(sortie),
+                           str(script.dossier)], cwd=script.dossier, capture_output=True, text=True, check=False)
+    resultat = parse_behave_json(sortie.read_text(encoding="utf-8"), fini.returncode)
+    verdict = derive_verdict(SimpleNamespace(dry_run_passed=True, real_run=resultat, retried=False))
+    base.execute("UPDATE execution SET execution_status=?, functional_status=? WHERE id=?",
+                 (verdict.execution_status, verdict.functional_status, eid))
+    base.commit()
+    monkeypatch.setattr(run_service, "_expliquer", lambda *a, **k: "")   # jamais d'appel à l'IA depuis un test
+    run_service._persist(base, eid, cid, verdict, SimpleNamespace(real_run=resultat), 0.0, "acces")
+
+    vues = report_service.iterations_jouees(ExecutionRepo(base).get(eid), ExecutionRepo(base).list_scenario_results(eid))
+    assert [v["statut"] for v in vues] == ["passed", "failed", "passed"]
+
+
+def test_falsifiable_aucun_scenario_rapporte_les_iterations_disent_ce_que_dit_le_cas():
+    from testpilot.verdict.status import statuts_par_iteration
+    assert statuts_par_iteration([], 2, "blocked") == ["blocked", "blocked"]
+    assert statuts_par_iteration([], 2, "untested") == ["untested", "untested"]
+
+
+def _sv(execution, fonctionnel, iterations=()):
+    from testpilot.verdict.status import ScenarioVerdict
+    return ScenarioVerdict("S", execution, fonctionnel, iterations=tuple(iterations))
+
+
+def test_falsifiable_une_iteration_sans_scenario_n_est_jamais_reussie():
+    from testpilot.verdict.status import statuts_par_iteration
+    assert statuts_par_iteration([_sv("success", "conforme", [1])], 2, "passed") == ["passed", "untested"]
+
+
+def test_falsifiable_un_scenario_commun_qui_echoue_fait_echouer_chaque_iteration():
+    from testpilot.verdict.status import statuts_par_iteration
+    scenarios = [_sv("success", "conforme", [1]), _sv("success", "conforme", [2]), _sv("success", "non_conforme")]
+    assert statuts_par_iteration(scenarios, 2, "failed") == ["failed", "failed"]
+
+
+def test_falsifiable_un_cas_declasse_ne_montre_jamais_toutes_ses_iterations_en_vert():
+    """Une garde au niveau du cas (hors scénarios) l'a sorti « à revérifier » : ses itérations ne disent pas « réussi »."""
+    from testpilot.verdict.status import statuts_par_iteration
+    scenarios = [_sv("success", "conforme", [1]), _sv("success", "conforme", [2])]
+    assert statuts_par_iteration(scenarios, 2, "retest") == ["retest", "retest"]
+    assert statuts_par_iteration(scenarios, 2, "passed") == ["passed", "passed"]
+
+
+def test_falsifiable_l_ecran_de_l_execution_montre_le_resultat_de_chaque_iteration(base):
+    """Ce que l'écran reçoit (`_iterations_des_resultats`) et le rapport (`build_report_for_execution`) : le nom de chaque
+    ligne et son statut, relus depuis la base."""
+    from testpilot.api.routes import runs as routes_runs
+
+    pid, cid, vid, jeux = _projet(base)
+    eid = ExecutionRepo(base).create(test_case_id=cid, version_id=vid)
+    joues = {"jeu": "", "valeurs": {}, "iterations": [{"jeu": j, "valeurs": {"age": {"valeur": v, "origine": j}}}
+                                                      for j, v in (("Par défaut", "5"), ("Dix ans", "10"), ("Adulte", "18"))]}
+    base.execute("UPDATE execution SET parametres_joues=?, execution_status='success', functional_status='non_conforme'"
+                 " WHERE id=?", (json.dumps(joues), eid))
+    base.commit()
+    depot = ExecutionRepo(base)
+    for rangs, fonctionnel in (("1", "conforme"), ("2", "non_conforme"), ("3", "conforme")):
+        depot.add_scenario_result(execution_id=eid, scenario_name=f"Accès -- @{rangs}.1", execution_status="success",
+                                  functional_status=fonctionnel, iterations=rangs)
+
+    vues = routes_runs._iterations_des_resultats(base, [eid, None])
+
+    assert vues == {eid: [{"numero": 1, "jeu": "Par défaut", "statut": "passed"},
+                          {"numero": 2, "jeu": "Dix ans", "statut": "failed"},
+                          {"numero": 3, "jeu": "Adulte", "statut": "passed"}]}
+    rapport = report_service.build_report_for_execution(base, eid)
+    assert [i["statut"] for i in rapport.donnees_de_test["iterations"]] == ["passed", "failed", "passed"]

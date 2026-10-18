@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 70
+_SCHEMA_VERSION = 71
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -282,6 +282,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_69_environnements(conn)
     if version < 70:
         _migrate_70_iterations(conn)
+    if version < 71:
+        _migrate_71_iteration_du_scenario(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -579,6 +581,15 @@ def _migrate_70_iterations(conn: sqlite3.Connection) -> None:
     un seul jeu). Additive, idempotente."""
     if _table_existe(conn, "test_run") and "dataset_ids" not in _column_names(conn, "test_run"):
         conn.execute("ALTER TABLE test_run ADD COLUMN dataset_ids TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_71_iteration_du_scenario(conn: sqlite3.Connection) -> None:
+    """Décision A52 : un résultat PAR ITÉRATION à l'écran. `scenario_result.iterations` : les numéros des itérations (1 = la
+    première ligne jouée) que ce scénario couvre, « 1,3 », lus dans les étiquettes que `parametres/iterations` pose et que
+    Behave rend dans son JSON ; vide = toutes (scénario sans variable, exécution d'avant, une seule ligne). Additive,
+    idempotente."""
+    if _table_existe(conn, "scenario_result") and "iterations" not in _column_names(conn, "scenario_result"):
+        conn.execute("ALTER TABLE scenario_result ADD COLUMN iterations TEXT NOT NULL DEFAULT ''")
 
 
 def _table_existe(conn: sqlite3.Connection, nom: str) -> bool:

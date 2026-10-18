@@ -15,6 +15,14 @@ Deux règles :
   recopié en tête de chaque scénario (Behave ne remplace pas `<nom>` dans un contexte). Un plan déjà écrit garde ses
   exemples, chacun combiné avec chaque itération. Deux filets, relus sur le résultat : plus AUCUNE `{{…}}`, et exactement le
   nombre de scénarios attendu (revue du 2026-10-16 : une variable restée littérale faisait passer un « n'est pas affiché »).
+
+Chaque « Exemples » écrit porte l'étiquette `@tp_iteration_<k>` de chaque itération qu'il couvre (k = rang de l'itération,
+1 = la première). Le résultat d'un scénario est relié à son itération par sa LIGNE dans le fichier joué (`rangs_par_ligne`,
+lue sur le texte que le serveur vient d'écrire, avant l'exécution) — jamais par le nom du scénario, qui reprend librement le
+nom de la ligne de données, ni par les étiquettes du JSON de Behave : revue du 2026-10-18 (bloquant), mesurée sur behave
+1.3.3, un step peut réécrire `context.scenario.tags` et une étiquette `@<t>` d'un plan est remplacée par Behave ; la ligne,
+elle, est figée en texte au début du scénario. Un scénario sans étiquette les couvre toutes. Un test qui écrit déjà une telle
+étiquette est refusé : il se ferait passer pour une itération.
 """
 
 from __future__ import annotations
@@ -25,6 +33,7 @@ from testpilot.parametres import resolution
 
 PLAN = "Plan du scénario"
 EXEMPLES = "Exemples"
+ETIQUETTE = "tp_iteration_"
 
 
 class IterationsImpossibles(ValueError):
@@ -42,6 +51,52 @@ def iterations(lignes: Sequence[tuple[str, Mapping[str, str]]]) -> list[tuple[st
         else:
             vues[cle] = [[nom], dict(valeurs)]
     return [(" / ".join(noms), valeurs) for noms, valeurs in vues.values()]
+
+
+def _regrouper(iters: Sequence[tuple[str, Mapping[str, str]]], employes: Sequence[str]) -> list[tuple[list[int], str, dict]]:
+    """`iterations` restreintes aux variables d'UN scénario, chacune avec les rangs (1 = la première) des itérations du test
+    qu'elle couvre : deux lignes identiques pour ce scénario n'y sont jouées qu'une fois, pour les deux."""
+    vues: dict[tuple, list] = {}
+    for rang, (nom, valeurs) in enumerate(iters, start=1):
+        propres = {n: str(valeurs[n]) for n in employes}
+        cle = tuple(sorted(propres.items()))
+        if cle in vues:
+            vues[cle][0].append(rang)
+            vues[cle][1].append(nom)
+        else:
+            vues[cle] = [[rang], [nom], propres]
+    return [(rangs, " / ".join(noms), valeurs) for rangs, noms, valeurs in vues.values()]
+
+
+def _etiquettes(rangs: Sequence[int]) -> str:
+    return " ".join(f"@{ETIQUETTE}{k}" for k in rangs)
+
+
+def _etiquettes_du_test(modele) -> list[str]:
+    tags = list(getattr(modele, "tags", None) or [])
+    for s in modele.scenarios:
+        tags += list(getattr(s, "tags", None) or [])
+        for e in getattr(s, "examples", None) or []:
+            tags += list(getattr(e, "tags", None) or [])
+    return [str(t) for t in tags]
+
+
+def rangs_par_ligne(texte: str) -> dict[int, list[int]]:
+    """{ligne d'une rangée d'exemples: rangs des itérations qu'elle joue}, lu sur le texte ÉCRIT par `en_plan_de_scenario` —
+    lecture statique : une étiquette `@<t>` y reste littérale. Behave rend un scénario de plan à la ligne de sa rangée
+    (mesuré sur behave 1.3.3). Une ligne absente de la table (scénario ordinaire, rangée sans étiquette) couvre toutes les
+    itérations."""
+    from behave.parser import parse_feature
+
+    modele = parse_feature(texte, language="fr")
+    table: dict[int, list[int]] = {}
+    for scenario in (modele.scenarios if modele is not None else []):
+        for exemples in getattr(scenario, "examples", None) or []:
+            rangs = sorted({int(t[len(ETIQUETTE):]) for t in map(str, exemples.tags or [])
+                            if t.startswith(ETIQUETTE) and t[len(ETIQUETTE):].isdigit()})
+            if rangs and exemples.table is not None:
+                table.update({rangee.line: rangs for rangee in exemples.table.rows})
+    return table
 
 
 def _poser(texte: str, valeurs: Mapping[str, str], connues: Iterable[str]) -> str:
@@ -91,6 +146,8 @@ def en_plan_de_scenario(feature: str, iters: Sequence[tuple[str, Mapping[str, st
         raise IterationsImpossibles("le test est vide")
     if getattr(modele, "rules", None):
         raise IterationsImpossibles("un test organisé en « Règle » ne se joue pas encore en itérations")
+    if any(t.startswith(ETIQUETTE) for t in _etiquettes_du_test(modele)):
+        raise IterationsImpossibles(f"le test écrit déjà une étiquette « @{ETIQUETTE}… », réservée aux itérations")
     lignes = feature.split("\n")
     marques = _poser(feature, {n: f"<{n}>" for n in noms}, connues).split("\n")   # `{{age}}` → `<age>`, mêmes lignes
     if len(marques) != len(lignes):
@@ -134,9 +191,9 @@ def en_plan_de_scenario(feature: str, iters: Sequence[tuple[str, Mapping[str, st
             sortie += origine
             attendues += lignes_d_exemples
         else:
-            propres = iterations([(nom, {n: v[n] for n in employes}) for nom, v in iters])
+            propres = _regrouper(iters, employes)
             if len(propres) == 1:    # mêmes valeurs dans toutes les lignes pour CE scénario : joué une fois, valeurs posées
-                sortie += _poser("\n".join(origine), propres[0][1], connues).split("\n")
+                sortie += _poser("\n".join(origine), propres[0][2], connues).split("\n")
                 attendues += lignes_d_exemples
             else:
                 ordinaire = scenario.__class__.__name__ != "ScenarioOutline"   # dans un plan, `<nom>` est une colonne
@@ -174,8 +231,9 @@ def _plan(marque: list[str], scenario, debut: int, decalage: int, employes: list
         corps[entete] = corps[entete].replace(f"{scenario.keyword}:", f"{PLAN}:", 1)
         while corps and not corps[-1].strip():
             corps.pop()
-        for nom_ligne, valeurs in iters:
-            corps += ["", f"{retrait}{EXEMPLES}: {nom_ligne}", _ligne_de_table(list(employes), retrait + "  "),
+        for rangs, nom_ligne, valeurs in iters:
+            corps += ["", f"{retrait}{_etiquettes(rangs)}", f"{retrait}{EXEMPLES}: {nom_ligne}",
+                      _ligne_de_table(list(employes), retrait + "  "),
                       _ligne_de_table([valeurs[n] for n in employes], retrait + "  ")]
         return corps + [""]
     # Un plan déjà écrit : chaque « Exemples » combiné avec chaque itération (ses colonnes + les variables). Ses cellules
@@ -194,10 +252,8 @@ def _plan(marque: list[str], scenario, debut: int, decalage: int, employes: list
         if e.table is None:
             continue
         etiquettes = " ".join(f"@{t}" for t in (getattr(e, "tags", None) or []))
-        for nom_ligne, valeurs in iters:
-            corps += [""]
-            if etiquettes:
-                corps.append(f"{retrait}{etiquettes}")
+        for rangs, nom_ligne, valeurs in iters:
+            corps += ["", f"{retrait}{(etiquettes + ' ') if etiquettes else ''}{_etiquettes(rangs)}"]
             corps.append(f"{retrait}{e.keyword}: {(e.name + ' — ') if e.name else ''}{nom_ligne}")
             corps.append(_ligne_de_table([_cellule_recopiee(h) for h in e.table.headings] + list(employes), retrait + "  "))
             for rangee in e.table.rows:

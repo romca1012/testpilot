@@ -572,14 +572,30 @@ def _joindre_captures(conn, execution_id: int, result_id: int | None) -> None:
                        exc_info=True)
 
 
+def _rangs_par_ligne(conn, execution_id: int) -> dict[str, list]:
+    """A52 : {ligne: rangs d'itérations}, posée AVANT l'exécution par `donnees_de_test_service` sur le texte qu'il a écrit
+    (revue du 2026-10-18 : jamais déduite de ce que le run rend). Absente ou illisible : {} — chaque scénario couvre alors
+    toutes les itérations (lecture prudente)."""
+    ligne = conn.execute("SELECT parametres_joues FROM execution WHERE id=?", (execution_id,)).fetchone()
+    try:
+        table = json.loads((ligne[0] if ligne else "") or "{}").get("rangs_par_ligne") or {}
+    except (ValueError, AttributeError):
+        return {}
+    if not isinstance(table, dict):
+        return {}
+    return {str(k): [r for r in v if isinstance(r, int) and r >= 1] for k, v in table.items() if isinstance(v, list)}
+
+
 def _persist(conn, execution_id, case_id, verdict, outcome, duration, module_name: str = "") -> None:
     execs = ExecutionRepo(conn)
+    rangs = _rangs_par_ligne(conn, execution_id)
     for s in verdict.scenarios:
         execs.add_scenario_result(
             execution_id=execution_id, scenario_name=s.name,
             execution_status=s.execution_status, functional_status=s.functional_status,
             failure_type=s.failure_type, cause_category=s.cause_category,
             error_summary=(s.error or "")[:500], step_text=s.step_text,
+            iterations=",".join(str(k) for k in rangs.get(str(getattr(s, "ligne", 0) or 0), [])),
         )
 
     if outcome.real_run is not None and outcome.real_run.failures:

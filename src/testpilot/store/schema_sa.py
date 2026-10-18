@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 70
+ALIGNED_WITH_SCHEMA_VERSION = 71
 
 metadata = MetaData()
 
@@ -454,6 +454,7 @@ scenario_result = Table(
     Column("cause_category", Text, nullable=False, server_default=""),
     Column("error_summary", Text, nullable=False, server_default=""),
     Column("step_text", Text, nullable=False, server_default=""),
+    Column("iterations", Text, nullable=False, server_default=""),   # migration 71 (A52) : « 1,3 », vide = toutes
     CheckConstraint(
         "execution_status IN ('success', 'technical_error', 'blocked')",
         name="ck_scenario_result_execution_status",
