@@ -23,6 +23,7 @@ from testpilot.store.repositories import (
     AssignmentRepo,
     CaseRepo,
     DonneeDeTestInvalide,
+    ExecutionRepo,
     ProjectRepo,
     ResultRepo,
     RunRepo,
@@ -198,6 +199,22 @@ def archive_run(run_id: int, body: schemas.RunArchiveIn, conn=Depends(get_conn))
     return _summary(repo.get(run_id), len(repo.case_ids(run_id)))
 
 
+def _iterations_des_resultats(conn, execution_ids: list) -> dict[int, list[dict]]:
+    """A52 : {exécution: [{numero, jeu, statut}]} pour les exécutions qui ont joué plusieurs lignes — une requête pour
+    toutes, puis les scénarios des seules exécutions concernées."""
+    from testpilot.api.services.report_service import iterations_jouees
+
+    ids = [i for i in execution_ids if isinstance(i, int)]
+    if not ids:
+        return {}
+    marques = ",".join("?" * len(ids))
+    executions = [dict(r) for r in conn.execute(
+        f"SELECT id, parametres_joues, execution_status, functional_status FROM execution WHERE id IN ({marques})"
+        " AND parametres_joues LIKE '%\"iterations\"%'", ids)]
+    depot = ExecutionRepo(conn)
+    return {e["id"]: iterations_jouees(e, depot.list_scenario_results(e["id"])) for e in executions}
+
+
 @router.get("/api/runs/{run_id}", response_model=schemas.RunDetailOut,
            dependencies=[Depends(access.require_project_access_depuis(
                "run_id", access.project_id_depuis_run))])
@@ -210,7 +227,10 @@ def get_run(run_id: int, conn=Depends(get_conn)):
     from testpilot.verdict.status import a_confirmer, statut_de_test
 
     cases = []
-    for c in repo.cases_with_results(run_id):
+    lignes = repo.cases_with_results(run_id)
+    iterations = _iterations_des_resultats(conn, [(c["result"] or {}).get("execution_id") for c in lignes
+                                                  if (c["result"] or {}).get("mode") == MODE_AUTOMATIQUE])
+    for c in lignes:
         res = c["result"] or {}
         ex, fo = res.get("execution_status"), res.get("functional_status")
         manuel = res.get("statut_manuel", "") or ""
@@ -228,7 +248,8 @@ def get_run(run_id: int, conn=Depends(get_conn)):
             statut=statut_de_test(ex, fo, manuel),
             confiance=res.get("confiance") or "nominale",
             a_confirmer=a_confirmer(statut_de_test(ex, fo, manuel), res.get("confiance")),
-            assigned_to=c.get("assigned_to", "") or ""))
+            assigned_to=c.get("assigned_to", "") or "",
+            iterations=iterations.get(res.get("execution_id"), []) if res.get("mode") == MODE_AUTOMATIQUE else []))
     cibles = repo.cibles_du_run(run_id)
     return schemas.RunDetailOut(
         run=_summary(run, len(cases)), description=run.get("description", ""),

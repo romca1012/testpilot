@@ -132,6 +132,11 @@ class ScenarioVerdict:
     # Lot 07e (D7) : ce scénario a interrogé l'oracle backend sous un `Alors` (réussi ou échoué).
     oracle_verifie: bool = False
     serveur_verifie: bool = False  # lot VH-04 (point 4) : oracle OU lecture RPC observée sous un `Alors`
+    # A52 : la ligne du scénario dans le fichier joué (`BehaveScenario.ligne`) et les rangs des itérations qu'il couvre (vide =
+    # toutes), que `run_service._persist` déduit de la ligne. Aucune règle de verdict ne les lit : ils ne servent qu'à montrer
+    # le résultat de chaque itération (`statuts_par_iteration`).
+    ligne: int = 0
+    iterations: tuple[int, ...] = ()
 
 
 @dataclass
@@ -189,6 +194,7 @@ def scenario_verdict(scenario, failures: list) -> ScenarioVerdict:
     verdict = _scenario_verdict_axes(scenario, failures)
     verdict.oracle_verifie = bool(getattr(scenario, "oracle_verifie", False))
     verdict.serveur_verifie = verdict.oracle_verifie or bool(getattr(scenario, "serveur_verifie", False))
+    verdict.ligne = int(getattr(scenario, "ligne", 0) or 0)   # transportée pour l'affichage, jamais lue ici
     return verdict
 
 
@@ -326,6 +332,26 @@ def aggregate(verdicts: list[ScenarioVerdict], *, connector_type: str | None = N
     )
 
 
+def statuts_par_iteration(scenarios: list[ScenarioVerdict], nombre: int, statut_du_cas: str) -> list[str]:
+    """A52 : le statut de lecture de chaque itération (rang 1 à `nombre`), pour l'écran — jamais un verdict.
+
+    Une itération est jugée sur ses scénarios — ceux qui la portent, et ceux qui les couvrent toutes (sans étiquette) — par la
+    MÊME règle que le cas (`aggregate` puis `statut_de_test`) : sans scénario rapporté, « non testé », jamais « réussi ».
+    Garde-fou : quand le cas n'est pas réussi alors que toutes ses itérations le paraissent (une garde au niveau du cas l'a
+    déclassé), elles prennent le statut du cas — l'écran ne montre jamais tout en vert un cas qui ne l'est pas. De même quand
+    aucune n'a de scénario rapporté (revue du 2026-10-18 : « Untested » partout sous un cas « Blocked »)."""
+    statuts = []
+    for rang in range(1, max(0, nombre) + 1):
+        siens = [s for s in scenarios if not s.iterations or rang in s.iterations]
+        verdict = aggregate(siens)
+        statuts.append(statut_de_test(verdict.execution_status, verdict.functional_status))
+    if statuts and statut_du_cas != STATUT_PASSED and all(s == STATUT_PASSED for s in statuts):
+        return [statut_du_cas] * len(statuts)
+    if statuts and statut_du_cas not in (STATUT_PASSED, STATUT_UNTESTED) and all(s == STATUT_UNTESTED for s in statuts):
+        return [statut_du_cas] * len(statuts)   # aucun scénario rapporté (interruption) : l'écran dit ce que dit le cas
+    return statuts
+
+
 # ── Le statut de LECTURE d'un cas (déplacé depuis le frontend le 2026-07-24) ──────────────────
 # Les deux axes du §5 sont la vérité ; ce statut est leur PROJECTION en une étiquette unique, pour
 # les listes et les tableaux de bord. Il ne remplace jamais les deux axes : il les résume.
@@ -343,6 +369,10 @@ STATUT_UNTESTED = "untested"
 
 # Ordre canonique (légende des graphiques, colonnes de filtre).
 STATUTS = (STATUT_PASSED, STATUT_BLOCKED, STATUT_RETEST, STATUT_FAILED, STATUT_UNTESTED)
+# Les libellés de l'écran (vocabulaire de TestRail), DUPLIQUÉS de `frontend/src/lib/status.ts::TEST_STATUS` pour le rapport
+# imprimable — un test vérifie qu'ils sont d'accord (CONTINUITE §4.7 : aucune valeur brute à l'écran).
+LIBELLES_STATUT = {STATUT_PASSED: "Passed", STATUT_FAILED: "Failed", STATUT_RETEST: "Retest", STATUT_BLOCKED: "Blocked",
+                   STATUT_UNTESTED: "Untested"}
 
 # ── Le MODE d'exécution : qui a joué le test ─────────────────────────────────
 # Vocabulaire arrêté le 2026-08-04 (il remplace « provenance : exécuté / déclaré »). « Déclaré »

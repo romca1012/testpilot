@@ -20,7 +20,31 @@ from testpilot.store.repositories import (
     VersionRepo,
 )
 from testpilot.verdict.defect_origin import DefectVerdict
-from testpilot.verdict.status import CaseVerdict, ScenarioVerdict
+from testpilot.verdict.status import (
+    LIBELLES_STATUT,
+    CaseVerdict,
+    ScenarioVerdict,
+    statut_de_test,
+    statuts_par_iteration,
+)
+
+
+def _rangs(texte) -> tuple[int, ...]:
+    """« 1,3 » (`scenario_result.iterations`, migration 71) → (1, 3). Illisible ou vide : () = toutes."""
+    return tuple(int(p) for p in str(texte or "").split(",") if p.strip().isdigit() and int(p) >= 1)
+
+
+def iterations_jouees(execution: dict, scenario_rows: list[dict]) -> list[dict]:
+    """A52 : [{numero, jeu, statut}] — une entrée par itération jouée, son statut calculé par la règle du cas
+    (`verdict.status.statuts_par_iteration`). Vide quand l'exécution n'a pas joué plusieurs lignes."""
+    iterations = _donnees_jouees(execution.get("parametres_joues")).get("iterations") or []
+    if not iterations:
+        return []
+    verdicts = _verdict_from_db(execution, scenario_rows).scenarios
+    statut_du_cas = statut_de_test(execution.get("execution_status"), execution.get("functional_status"))
+    statuts = statuts_par_iteration(verdicts, len(iterations), statut_du_cas)
+    return [{"numero": rang, "jeu": it["jeu"], "statut": statut}
+            for rang, (it, statut) in enumerate(zip(iterations, statuts), start=1)]
 
 
 def _verdict_from_db(execution: dict, scenario_rows: list[dict]) -> CaseVerdict:
@@ -32,6 +56,7 @@ def _verdict_from_db(execution: dict, scenario_rows: list[dict]) -> CaseVerdict:
             failure_type=s.get("failure_type", ""),
             cause_category=s.get("cause_category", ""),
             error=s.get("error_summary", ""),
+            iterations=_rangs(s.get("iterations")),
         )
         for s in scenario_rows
     ]
@@ -77,7 +102,13 @@ def build_report_for_execution(conn: sqlite3.Connection, execution_id: int):
 
     case = CaseRepo(conn).get(execution["test_case_id"])
     version = VersionRepo(conn).get(execution["version_id"])
-    verdict = _verdict_from_db(execution, execs.list_scenario_results(execution_id))
+    lignes = execs.list_scenario_results(execution_id)
+    verdict = _verdict_from_db(execution, lignes)
+    donnees = _donnees_jouees(execution.get("parametres_joues"))
+    if donnees.get("iterations"):   # A52 : chaque itération avec son résultat
+        for it, jouee in zip(donnees["iterations"], iterations_jouees(execution, lignes)):
+            it["statut"] = jouee["statut"]
+            it["statut_libelle"] = LIBELLES_STATUT.get(jouee["statut"], LIBELLES_STATUT["untested"])
     repairs = _repairs_from_db(RepairRepo(conn).list_for_execution(execution_id))
 
     return report_mod.build_report(
@@ -99,7 +130,7 @@ def build_report_for_execution(conn: sqlite3.Connection, execution_id: int):
         target_database=execution.get("target_database", "") or "",
         target_username=execution.get("target_username", "") or "",
         residus=_field_fallbacks(execution.get("residus")),
-        donnees_de_test=_donnees_jouees(execution.get("parametres_joues")),
+        donnees_de_test=donnees,
     )
 
 
