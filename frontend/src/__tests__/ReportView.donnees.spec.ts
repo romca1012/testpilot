@@ -68,5 +68,14 @@ describe('ReportView — données de test jouées (PT-02c)', () => {
     expect(carte.findAll('tbody tr').map((l) => l.findAll('td').map((c) => c.text().trim()))).toEqual([
       ['Par défaut', '5', 'Refusé'], ['Adulte', '18', 'Bienvenue']])
     expect(w.find('[data-testid="donnees-jouees"]').exists()).toBe(false)
+    expect(w.find('[data-testid="resultat-iteration"]').exists()).toBe(false)   // rapport d'avant : aucun résultat inventé
+  })
+
+  it('falsifiable : chaque itération montre son résultat, calculé par le serveur', async () => {
+    const w = await rapport({ donnees_de_test: { jeu: '', valeurs: {}, iterations: [
+      { jeu: 'Par défaut', valeurs: { age: { valeur: '5', origine: 'Par défaut' } }, statut: 'passed' },
+      { jeu: 'Dix ans', valeurs: { age: { valeur: '10', origine: 'Dix ans' } }, statut: 'failed' }] } })
+
+    expect(w.findAll('[data-testid="resultat-iteration"]').map((b) => b.text())).toEqual(['Passed', 'Failed'])
   })
 })

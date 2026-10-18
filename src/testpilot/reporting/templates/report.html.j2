@@ -163,10 +163,10 @@
   <div class="card">
     <h2>Données de test — {{ r.donnees_de_test.iterations | length }} itérations</h2>
     <table>
-      <thead><tr><th>Ligne</th>{% for nom in noms %}<th>{{ "{{" ~ nom ~ "}}" }}</th>{% endfor %}</tr></thead>
+      <thead><tr><th>Ligne</th>{% for nom in noms %}<th>{{ "{{" ~ nom ~ "}}" }}</th>{% endfor %}<th>Résultat</th></tr></thead>
       <tbody>
         {% for it in r.donnees_de_test.iterations %}
-        <tr><td>{{ it.jeu }}</td>{% for nom in noms %}<td>{{ (it.valeurs.get(nom) or {}).get("valeur", "") }}</td>{% endfor %}</tr>
+        <tr><td>{{ it.jeu }}</td>{% for nom in noms %}<td>{{ (it.valeurs.get(nom) or {}).get("valeur", "") }}</td>{% endfor %}<td>{{ it.statut_libelle or "" }}</td></tr>
         {% endfor %}
       </tbody>
     </table>

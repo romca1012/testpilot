@@ -833,6 +833,14 @@ class RunIn(BaseModel):
     environment_ids: list[int] = []
 
 
+class IterationDuCas(BaseModel):
+    """A52 : une itération d'un cas dans une exécution — son rang (1 = la première ligne jouée), le nom de sa ligne, son
+    statut de lecture (calculé par le serveur, `verdict.status.statuts_par_iteration`)."""
+    numero: int
+    jeu: str = ""
+    statut: str = "untested"
+
+
 class RunCaseResult(BaseModel):
     """Un cas DANS un run, avec son DERNIER résultat — automatique ou manuel — ou rien si non testé."""
     id: int
@@ -860,6 +868,8 @@ class RunCaseResult(BaseModel):
     # Qui SUPERVISE ce cas dans CETTE campagne (2026-09-14, traçabilité — inspiré de TestRail).
     # `""` = personne assigné, jamais un nom deviné. Vaut pour un cas manuel comme automatique.
     assigned_to: str = ""
+    # A52 : le résultat de chaque itération de ce cas (vide : une seule ligne jouée, ou résultat manuel).
+    iterations: list[IterationDuCas] = []
 
 
 class AssignmentIn(BaseModel):
