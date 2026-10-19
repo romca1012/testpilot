@@ -420,6 +420,71 @@ def test_les_cas_CORRIGES_par_l_humain_font_foi(client, monkeypatch):
     assert recu["cases"][0]["steps"] == ["Mon étape unique"]
 
 
+def test_le_signal_F26_survit_a_l_ALLER_RETOUR_par_l_ecran_de_validation(client, monkeypatch):
+    """F26(b), migration 58 — défaut repéré le 2026-10-19 : `MetierDraftOut` et `CaseValidationIn`
+    ne déclaraient pas `depend_dun_autre_cas_du_groupe` / `etat_a_creer_par_ce_cas`. Pydantic
+    ignore les champs en trop : le GET du job les retirait, le POST de validation aussi, et
+    `resume_generation` recevait toujours False / "" — `write_feature_file` ne pouvait donc jamais
+    refuser une référence à une entité que le cas devait créer lui-même.
+
+    Le corps renvoyé est la proposition LUE telle quelle, comme le fait l'écran (`{...c}` dans
+    `AddTestCase.vue`) : c'est l'aller-retour réel, pas un corps fabriqué pour le test."""
+    _stub_analyse(monkeypatch)
+    _stub_decoupage(monkeypatch, [("Affectation", ["Affecter un équipement"])])
+    etat = "Créer un équipement avec une référence unique avant de l'affecter."
+    monkeypatch.setattr(metier_writer, "propose_metier",
+                        lambda plan, *, brief="", cost_tracker=None, **kw: MetierDraft(
+                            title=brief, preconditions="Un équipement créé par ce cas",
+                            steps=["Affecter l'équipement"], expected_result="Affecté",
+                            depend_dun_autre_cas_du_groupe=True,
+                            etat_a_creer_par_ce_cas=etat))
+    recu = {}
+    monkeypatch.setattr(generation_service, "resume_generation",
+                        lambda job_id, **kw: recu.update(kw))
+
+    pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
+    mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
+    job_id = client.post(f"/api/modules/{mid}/cases",
+                         json={"spec_content": "La spec", "title": "T"}).json()["job_id"]
+
+    propose = client.get(f"/api/modules/jobs/{job_id}").json()["cases"]
+    assert propose[0]["depend_dun_autre_cas_du_groupe"] is True, "perdu à l'aller (GET)"
+    assert propose[0]["etat_a_creer_par_ce_cas"] == etat, "perdu à l'aller (GET)"
+
+    r = client.post(f"/api/modules/jobs/{job_id}/metier", json={"cases": propose})
+
+    assert r.status_code == 202
+    assert recu["cases"][0]["depend_dun_autre_cas_du_groupe"] is True, "perdu au retour (POST)"
+    assert recu["cases"][0]["etat_a_creer_par_ce_cas"] == etat, "perdu au retour (POST)"
+
+
+def test_sans_signal_F26_la_validation_reste_inchangee(client, monkeypatch):
+    """Contre-essai : un cas sans dépendance (l'immense majorité) et un corps qui omet les deux
+    champs (client plus ancien) repartent à False / "" — aucun signal fabriqué par défaut."""
+    _stub_analyse(monkeypatch)
+    _stub_decoupage(monkeypatch, [("Connexion", ["Cas"])])
+    _stub_metier(monkeypatch)
+    recu = {}
+    monkeypatch.setattr(generation_service, "resume_generation",
+                        lambda job_id, **kw: recu.update(kw))
+
+    pid = client.post("/api/projects", json=_PROJET_CONNECTE).json()["id"]
+    mid = client.post(f"/api/projects/{pid}/modules", json={"name": "M"}).json()["id"]
+    job_id = client.post(f"/api/modules/{mid}/cases",
+                         json={"spec_content": "La spec", "title": "T"}).json()["job_id"]
+
+    propose = client.get(f"/api/modules/jobs/{job_id}").json()["cases"]
+    assert propose[0]["depend_dun_autre_cas_du_groupe"] is False
+    assert propose[0]["etat_a_creer_par_ce_cas"] == ""
+
+    r = client.post(f"/api/modules/jobs/{job_id}/metier", json={"cases": [
+        {"title": "T", "steps": ["a"], "expected_result": "r"}]})
+
+    assert r.status_code == 202
+    assert recu["cases"][0]["depend_dun_autre_cas_du_groupe"] is False
+    assert recu["cases"][0]["etat_a_creer_par_ce_cas"] == ""
+
+
 def test_un_cas_incomplet_est_REFUSE(client, monkeypatch):
     _stub_analyse(monkeypatch)
     _stub_decoupage(monkeypatch, [("Connexion", ["Cas"])])
