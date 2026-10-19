@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 71
+ALIGNED_WITH_SCHEMA_VERSION = 72
 
 metadata = MetaData()
 
@@ -194,6 +194,28 @@ test_dataset_value = Table(
     "test_dataset_value",
     metadata,
     Column("dataset_id", Integer, ForeignKey("test_dataset.id", ondelete="CASCADE"), primary_key=True),
+    Column("variable_id", Integer, ForeignKey("test_variable.id", ondelete="CASCADE"), primary_key=True),
+    Column("valeur", Text, nullable=False, server_default=""),
+)
+
+# Migration 72 (A57, A58) : les lignes PROPRES À UN CAS — ses classes de valeurs, jouées en itérations quand on lance ce cas.
+# Les colonnes restent les variables du projet ; une case vide reprend la valeur du projet.
+case_data_row = Table(
+    "case_data_row",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("case_id", Integer, ForeignKey("test_case.id", ondelete="CASCADE"), nullable=False),
+    Column("nom", Text, nullable=False, server_default=""),
+    Column("rang", Integer, nullable=False, server_default="0"),
+    Column("created_at", Text, nullable=False),
+    Index("idx_case_data_row_case", "case_id"),
+    sqlite_autoincrement=True,
+)
+
+case_data_value = Table(
+    "case_data_value",
+    metadata,
+    Column("row_id", Integer, ForeignKey("case_data_row.id", ondelete="CASCADE"), primary_key=True),
     Column("variable_id", Integer, ForeignKey("test_variable.id", ondelete="CASCADE"), primary_key=True),
     Column("valeur", Text, nullable=False, server_default=""),
 )
@@ -561,6 +583,8 @@ test_run = Table(
     Column("environnement_fige", Text, nullable=False, server_default=""),
     # Migration 70 (A52) : les lignes de données de test jouées, une itération par ligne (liste JSON) ; vide = `dataset_id`.
     Column("dataset_ids", Text, nullable=False, server_default=""),
+    Column("lignes_des_cas", Text, nullable=False, server_default="toutes"),   # migration 72 (A58)
+    CheckConstraint("lignes_des_cas IN ('toutes', 'premiere')", name="ck_test_run_lignes_des_cas"),
     CheckConstraint("seulement_variables IN (0, 1)", name="ck_test_run_seulement_variables"),
     CheckConstraint("sans_repli IN (0, 1)", name="ck_test_run_sans_repli"),
     CheckConstraint("selection_mode IN ('all', 'frozen')", name="ck_test_run_selection_mode"),

@@ -28,6 +28,7 @@ from testpilot.api.routes import (
     cases,
     corbeille,
     donnees_de_test,
+    donnees_du_cas,
     environnements,
     executions,
     groups,
@@ -285,6 +286,7 @@ def create_app() -> FastAPI:
     app.include_router(corbeille.router)
     app.include_router(projects.router)
     app.include_router(donnees_de_test.router)
+    app.include_router(donnees_du_cas.router)
     app.include_router(environnements.router)
     app.include_router(live_session.router)
     app.include_router(modules.router)

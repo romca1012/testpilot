@@ -32,6 +32,8 @@ _TABLES_AVEC_ID = {
     "test_variable", "test_dataset",
     # Environnements ajoutés (migration 69, lot PT-04a) : `ProjectEnvironmentRepo.creer` utilise `.lastrowid`.
     "project_environment",
+    # Lignes propres à un cas (migration 72, A57) : `CaseDataRepo.remplacer` utilise `.lastrowid`.
+    "case_data_row",
 }
 # Vérifié contre le VRAI schéma (`schema_sa.metadata`), pas retapé à l'œil (2026-09-03) :
 # `generation_attempt`/`test_scenario_result` ne correspondaient à AUCUNE table réelle (noms
@@ -40,7 +42,7 @@ _TABLES_AVEC_ID = {
 # vrai run. `generation_job` reste absente à raison : sa clé primaire est un TEXT (UUID) fourni
 # par l'appelant, jamais un entier généré par la base — `.lastrowid` n'y a jamais de sens.
 _INSERT = re.compile(r"^\s*INSERT\s+INTO\s+[\"']?([a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE)
-ALEMBIC_HEAD = "b3e7c9d1f405"
+ALEMBIC_HEAD = "c5f2a8e4d917"
 _urls_verifiees: set[str] = set()
 _verrou_verification = threading.Lock()
 

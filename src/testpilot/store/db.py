@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 71
+_SCHEMA_VERSION = 72
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -284,6 +284,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_70_iterations(conn)
     if version < 71:
         _migrate_71_iteration_du_scenario(conn)
+    if version < 72:
+        _migrate_72_lignes_du_cas(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -590,6 +592,31 @@ def _migrate_71_iteration_du_scenario(conn: sqlite3.Connection) -> None:
     idempotente."""
     if _table_existe(conn, "scenario_result") and "iterations" not in _column_names(conn, "scenario_result"):
         conn.execute("ALTER TABLE scenario_result ADD COLUMN iterations TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_72_lignes_du_cas(conn: sqlite3.Connection) -> None:
+    """Décisions A57 et A58 (porteur, 2026-10-19) : les LIGNES PROPRES À UN CAS — ses classes de valeurs (« 17 ans → Accès
+    refusé ») et le résultat attendu de chacune, jouées en itérations quand on lance ce cas. Les colonnes restent les
+    variables du PROJET (`test_variable`) : un nom est déclaré une fois ; une case vide reprend la valeur du projet.
+
+    `case_data_row` : une ligne du cas (nom facultatif, rang) ; `case_data_value` : une valeur par case. Une ligne retirée à
+    l'écran est effacée (c'est une modification du cas, comme une étape retirée). `test_run.lignes_des_cas` : au lancement,
+    « toutes » les lignes de chaque cas (défaut) ou « premiere » seulement. Additive, idempotente."""
+    conn.execute('''CREATE TABLE IF NOT EXISTS case_data_row (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL REFERENCES test_case(id) ON DELETE CASCADE,
+        nom TEXT NOT NULL DEFAULT '',
+        rang INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL)''')
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_case_data_row_case ON case_data_row(case_id)")
+    conn.execute('''CREATE TABLE IF NOT EXISTS case_data_value (
+        row_id INTEGER NOT NULL REFERENCES case_data_row(id) ON DELETE CASCADE,
+        variable_id INTEGER NOT NULL REFERENCES test_variable(id) ON DELETE CASCADE,
+        valeur TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (row_id, variable_id))''')
+    if _table_existe(conn, "test_run") and "lignes_des_cas" not in _column_names(conn, "test_run"):
+        conn.execute("ALTER TABLE test_run ADD COLUMN lignes_des_cas TEXT NOT NULL DEFAULT 'toutes'"
+                     " CHECK (lignes_des_cas IN ('toutes', 'premiere'))")
 
 
 def _table_existe(conn: sqlite3.Connection, nom: str) -> bool:

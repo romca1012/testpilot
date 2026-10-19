@@ -84,12 +84,22 @@ def noms_declares(conn, project_id: int | None) -> list[str]:
 def ecarts_cas_test(conn, case: dict, version_id: int | None, noms: list[str] | None = None) -> list[str]:
     """Décision A42 : les variables que le cas cite et que son test n'emploie pas (vide hors PT-02f). `noms` : déjà lus
     (une liste de cas du même projet ne relit pas le projet pour chacun)."""
+    from testpilot.api.services.donnees_de_test_service import ecart_lignes_test
     from testpilot.generation import interrupteurs, variables_de_test
-    if not version_id or not interrupteurs.cas_dit_ses_donnees_actif():
+    from testpilot.store.repositories import CaseDataRepo
+    if not version_id:
         return []
+    version = VersionRepo(conn).get(version_id)
+    # Revue du 2026-10-19 (A57) : les lignes propres au cas font varier des variables que son test doit employer — sinon
+    # elles fusionneraient en une seule itération jouée avec la valeur écrite en dur. Indépendant de l'interrupteur PT-02f :
+    # ces lignes, une personne les a saisies.
+    lignes = CaseDataRepo(conn).variables_des_lignes(case["id"]) if case.get("id") else []
+    ecarts = ecart_lignes_test((version or {}).get("feature_content") or "", lignes) if lignes else []
+    if not interrupteurs.cas_dit_ses_donnees_actif():
+        return ecarts
     if noms is None:
         noms = noms_declares(conn, case.get("project_id"))
-    return variables_de_test.ecart_cas_test(VersionRepo(conn).get(version_id), noms)
+    return variables_de_test.ecart_cas_test(version, noms) + ecarts
 
 
 def gate_du_cas(conn, case: dict, version_id: int) -> review_gate.GateDecision:

@@ -158,7 +158,7 @@ const variableEcrite = (nom: string) => `{{${nom}}}`
               </tr>
             </thead>
             <tbody>
-              <tr v-for="it in report.donnees_de_test.iterations" :key="it.jeu" class="border-b border-border last:border-0">
+              <tr v-for="(it, n) in report.donnees_de_test.iterations" :key="n" class="border-b border-border last:border-0">
                 <td class="py-1.5 pr-4">{{ it.jeu }}</td>
                 <td v-for="nom in Object.keys(report.donnees_de_test.iterations[0].valeurs)" :key="nom" class="py-1.5 pr-4 break-all">
                   {{ it.valeurs[nom]?.valeur }}
