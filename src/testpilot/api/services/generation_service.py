@@ -592,6 +592,12 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
     # le modèle a DÉCLARÉ avoir fait. Toujours actif (pas conditionné à une preuve d'observation).
     if current and current.get("feature_content"):
         warnings += enregistrement_lint.lint_enregistrements_non_crees(current["feature_content"])
+        # IT-3b (revue du 2026-10-19) : les lignes propres au cas font varier des variables qu'aucun « Alors » n'emploie.
+        from testpilot.generation import variables_de_test
+        from testpilot.store.repositories import CaseDataRepo
+        if case.get("id"):
+            warnings += variables_de_test.lint_alors_sans_variable_des_lignes(
+                current["feature_content"], CaseDataRepo(conn).variables_des_lignes(case["id"]))
     if current and current.get('observation_evidence'):
         from testpilot.generation.evidence import contextual_warnings
         from testpilot.generation.provenance import target_fingerprint
@@ -723,6 +729,14 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
         logger.info("[generation] cas %s (version %s) reste à relire — %d point(s) de "
                    "vigilance", case_id, version_id, len(warnings))
         return
+    # IT-3b (revue du 2026-10-19) : « même résultat attendu pour toutes les lignes du cas » peut être légitime (classe
+    # d'équivalence) — le relecteur décide ; il retire l'approbation automatique mais ne déclenche AUCUN appel de correction.
+    from testpilot.generation.variables_de_test import ALORS_IDENTIQUE
+    a_corriger = [w for w in warnings if w.get("kind") != ALORS_IDENTIQUE]
+    if not a_corriger:
+        logger.info("[generation] cas %s (version %s) reste à relire — même résultat attendu pour toutes les lignes",
+                    case_id, version_id)
+        return
 
     version = next((v for v in version_rows if v["id"] == version_id), None)
     if version is None:
@@ -730,7 +744,7 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
 
     from testpilot.generation import correction_agent
     proposal = correction_agent.propose_correction(
-        module_name=module_name, lint_warnings=warnings,
+        module_name=module_name, lint_warnings=a_corriger,
         feature_content=version.get("feature_content") or "",
         steps_content=version.get("steps_content") or "",
         connector=connector, connector_type=connector_type,
@@ -846,6 +860,13 @@ def start_automation(conn, case_id: int, *, author: str = "") -> tuple[str, dict
         raise GenerationError(
             "invalid_metier",
             "ce cas doit avoir un titre, des étapes et un résultat attendu pour être automatisé")
+    # IT-3b (A57, A58) : les lignes propres au cas font varier ces variables — le test DOIT les employer (sinon A59 le
+    # bloque à l'exécution). Des NOMS seulement : le métier part dans la file des tâches et peut être sérialisé en entier
+    # (revue du 2026-10-19) ; les valeurs de l'essai sont relues au moment de jouer (`run_automation`). Absent sans ligne.
+    from testpilot.store.repositories import CaseDataRepo
+    variables_des_lignes = CaseDataRepo(conn).variables_des_lignes(case_id)
+    if variables_des_lignes:
+        metier["variables_des_lignes"] = variables_des_lignes
     # Lot PT-02f (A41) : les variables que le test ACTUEL emploie déjà — une régénération les garde même si le texte du cas
     # ne les cite pas (association d'un clic sur une valeur que le cas n'écrivait pas). Absent sans variable : métier d'avant.
     from testpilot.generation import interrupteurs
@@ -980,10 +1001,14 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
 
         agent = GenerationAgent(dry_runner=runner, connector=connector,
                                 case_repo=CaseRepo(conn), version_repo=VersionRepo(conn))
+        # IT-3b : l'essai sur le bac à sable joue la PREMIÈRE ligne du cas — relue maintenant, jamais transportée dans le
+        # métier (une tâche reprise après un redémarrage joue les lignes du moment).
+        from testpilot.store.repositories import CaseDataRepo
+        lignes_du_cas = CaseDataRepo(conn).niveaux(case_id)
         result = agent.generate(
             plan, case_id=case_id, metier=metier, author=author, projet=project,
             failure_context=_regeneration_failure_context(conn, case_id) if regeneration else None,
-            regeneration=regeneration)
+            regeneration=regeneration, valeurs_d_essai=dict(lignes_du_cas[0][1]) if lignes_du_cas else None)
 
         _record_generation_cost(conn, case_id=case_id,
                                 analysis_usd=analysis_tracker.total_cost,

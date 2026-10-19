@@ -59,7 +59,8 @@ class GenerationAgent:
                  metier: dict | None = None, group_id: int | None = None,
                  projet: dict | None = None, refs: str = "",
                  failure_context: list[dict] | None = None,
-                 qualification: bool = False, regeneration: bool = False) -> GenerationResult:
+                 qualification: bool = False, regeneration: bool = False,
+                 valeurs_d_essai: dict | None = None) -> GenerationResult:
         """`metier` — le document métier VALIDÉ (passe 4b de `0022`). Présent, il fixe le périmètre
         du Gherkin et se fige DANS la version, avec lui (décision n°10 : une version = le cas
         entier). Absent, le comportement est celui d'avant (chemin CLI et cas legacy).
@@ -72,7 +73,10 @@ class GenerationAgent:
 
         `regeneration` — voir `prompt.build_initial_message` (F26) : coupe le rappel de la
         spécification brute d'origine quand le métier transmis peut porter une correction propre
-        à ce cas."""
+        à ce cas.
+
+        `valeurs_d_essai` (IT-3b) — la première ligne propre au cas, posée par-dessus le jeu « Par défaut » pour l'essai sur
+        le bac à sable (comme l'exécution la jouerait). Jamais montrée : masquée dans tout ce qui revient à l'agent."""
         state = AgentState(module_name=plan.module_name)
         # L'annuaire du domaine alimente la CONTRAINTE de complétude (champs requis + obligation
         # de soumettre). Jusqu'ici seul le GATE le lisait : la génération devait deviner les
@@ -141,7 +145,9 @@ class GenerationAgent:
                                if _interrupteurs.forme_oracle_actif() and projet is not None else None)
         ctx.formes_oracle = self._formes_oracle(modele, projet)
         ctx.variables_de_test = frozenset(v["nom"] for v in variables)
-        ctx.valeurs_de_test = valeurs_par_defaut
+        # IT-3b : l'essai sur le bac à sable joue la PREMIÈRE ligne du cas, posée par-dessus le jeu « Par défaut » — comme
+        # l'exécution la jouerait. Masquées dans tout ce qui revient à l'agent (PT-02d).
+        ctx.valeurs_de_test = {**valeurs_par_defaut, **{str(n): str(v) for n, v in (valeurs_d_essai or {}).items()}}
         ctx.controle_du_cas = controle_du_cas
         ctx.variables_du_cas = variables_requises
         from testpilot.generation.provenance import fingerprint, target_fingerprint
