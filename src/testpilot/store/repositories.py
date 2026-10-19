@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -1100,6 +1101,14 @@ class CaseRepo:
                 (config.GENERATED_DIR / f"{slug}_steps.py").write_text(
                     version.get("steps_content") or "", encoding="utf-8")
 
+        # A57 (revue du 2026-10-19) : les lignes propres au cas sont du CONTENU, comme ses étapes — copiées dans le même
+        # projet (leurs colonnes sont ses variables) ; vers un autre projet, elles n'auraient pas de colonne.
+        if source.get("project_id") == ModuleRepo(self.conn).get(groupe["module_id"])["project_id"]:
+            lignes = CaseDataRepo(self.conn).lignes(case_id)
+            if lignes:
+                CaseDataRepo(self.conn).remplacer(new_id, source["project_id"],
+                                                  [{"nom": l["nom"], "valeurs": l["valeurs"]} for l in lignes])
+
         return new_id
 
     def delete(self, case_id: int, par: str = "") -> None:
@@ -1982,11 +1991,13 @@ class RunRepo:
                selection_mode: str = "frozen", mode: str = MODE_AUTOMATIQUE,
                case_ids: list[int] | None = None, strict: bool = False, sans_repli: bool = True,
                dataset_id: int | None = None, seulement_variables: bool = False,
-               environment_id: int | None = None, dataset_ids: list[int] | None = None) -> int:
+               environment_id: int | None = None, dataset_ids: list[int] | None = None,
+               lignes_des_cas: str = "toutes") -> int:
         """Crée un run en BROUILLON (jamais lancé à la création — `0022` 8.c.1).
 
         `dataset_ids` (A52) : plusieurs lignes de données de test, une ITÉRATION par ligne dans cette même campagne (valeurs
         figées au lancement). Vide : `dataset_id`, comme avant.
+        `lignes_des_cas` (A58) : « toutes » les lignes propres de chaque cas (défaut) ou sa « premiere » seulement.
         `environment_id` (lot PT-04a) : l'environnement ajouté joué par cette campagne ; `None` = l'environnement par défaut
         (l'adresse du projet, comme avant). Ses valeurs ne sont figées qu'au LANCEMENT (`environnements_service`).
 
@@ -2005,14 +2016,16 @@ class RunRepo:
         """
         if mode not in MODES_EXECUTION:
             raise ValueError(f"mode d'exécution inconnu : {mode!r} — attendu {list(MODES_EXECUTION)}")
+        if lignes_des_cas not in ("toutes", "premiere"):
+            raise ValueError(f"lignes des cas : « toutes » ou « premiere », pas {lignes_des_cas!r}")
         ts = now_iso()
         cur = self.conn.execute(
             "INSERT INTO test_run (project_id, name, description, refs, selection_mode, mode,"
-            " status, created_at, strict, sans_repli, dataset_id, seulement_variables, environment_id, dataset_ids)"
-            " VALUES (?,?,?,?,?,?,'draft',?,?,?,?,?,?,?)",
+            " status, created_at, strict, sans_repli, dataset_id, seulement_variables, environment_id, dataset_ids,"
+            " lignes_des_cas) VALUES (?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?)",
             (project_id, name, description, refs, selection_mode, mode, ts, 1 if strict else 0, 1 if sans_repli else 0,
              dataset_id, 1 if seulement_variables else 0, environment_id,
-             json.dumps(list(dict.fromkeys(dataset_ids))) if dataset_ids else ""))
+             json.dumps(list(dict.fromkeys(dataset_ids))) if dataset_ids else "", lignes_des_cas))
         run_id = int(cur.lastrowid)
         if selection_mode == "frozen":
             for cid in dict.fromkeys(case_ids or []):  # dédup en gardant l'ordre
@@ -4224,3 +4237,104 @@ class AccessAuditRepo:
     def list_for_project(self, project_id: int) -> list[dict]:
         return _rows(self.conn.execute(
             "SELECT * FROM access_audit WHERE project_id=? ORDER BY id", (project_id,)))
+
+
+LIGNES_DU_CAS_MAX = 50   # A28 : comme les lignes d'un lancement
+
+
+class CaseDataRepo:
+    """Les LIGNES PROPRES À UN CAS (migration 72, décisions A57 et A58) : ses classes de valeurs et le résultat attendu de
+    chacune, une itération par ligne quand on lance ce cas. Les colonnes sont des variables VIVANTES du projet du cas ; une
+    case absente ou vide reprend la valeur du projet (A27, A58-4). Les valeurs arrivent DÉJÀ validées par l'appelant
+    (`parametres/resolution.valider_valeur`)."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def lignes(self, case_id: int) -> list[dict]:
+        """[{id, nom, rang, valeurs: {variable_id: valeur}}] dans l'ordre, valeurs des seules variables vivantes, cases
+        vides absentes."""
+        lignes = _rows(self.conn.execute(
+            "SELECT id, nom, rang FROM case_data_row WHERE case_id=? ORDER BY rang, id", (case_id,)))
+        if not lignes:
+            return []
+        par_id = {l["id"]: l | {"valeurs": {}} for l in lignes}
+        marques = ",".join("?" * len(par_id))
+        for v in self.conn.execute(
+                f"SELECT cv.row_id, cv.variable_id, cv.valeur FROM case_data_value cv"
+                f" JOIN test_variable tv ON tv.id = cv.variable_id AND tv.deleted_at = ''"
+                f" WHERE cv.row_id IN ({marques})", list(par_id)):
+            if v["valeur"] != "":
+                par_id[v["row_id"]]["valeurs"][v["variable_id"]] = v["valeur"]
+        return list(par_id.values())
+
+    def niveaux(self, case_id: int) -> list[tuple[str, dict[str, str]]]:
+        """[(nom de la ligne, {nom de variable: valeur})] — ce que `resolution.resoudre` pose PAR-DESSUS le projet. Une
+        ligne sans nom est nommée d'après son rang (« Ligne 2 »)."""
+        lignes = self.lignes(case_id)
+        ids = sorted({vid for l in lignes for vid in l["valeurs"]})
+        noms = {r["id"]: r["nom"] for r in self.conn.execute(
+            f"SELECT id, nom FROM test_variable WHERE id IN ({','.join('?' * len(ids))})", ids)} if ids else {}
+        return [(l["nom"] or f"Ligne {rang}", {noms[vid]: v for vid, v in l["valeurs"].items() if vid in noms})
+                for rang, l in enumerate(lignes, start=1)]
+
+    def variables_des_lignes(self, case_id: int) -> list[str]:
+        """Les variables (vivantes) auxquelles les lignes du cas donnent une valeur — une requête."""
+        return [r[0] for r in self.conn.execute(
+            "SELECT DISTINCT tv.nom FROM case_data_row r JOIN case_data_value cv ON cv.row_id = r.id AND cv.valeur <> ''"
+            " JOIN test_variable tv ON tv.id = cv.variable_id AND tv.deleted_at = '' WHERE r.case_id=? ORDER BY tv.nom",
+            (case_id,))]
+
+    def cas_avec_lignes(self, project_id: int) -> list[int]:
+        return [r[0] for r in self.conn.execute(
+            "SELECT DISTINCT r.case_id FROM case_data_row r JOIN test_case tc ON tc.id = r.case_id"
+            " JOIN module m ON m.id = tc.module_id WHERE m.project_id=? ORDER BY r.case_id", (project_id,))]
+
+    def remplacer(self, case_id: int, project_id: int, lignes: list[dict]) -> None:
+        """Remplace TOUTES les lignes du cas par `lignes` ([{id?, nom, valeurs: {variable_id: valeur}}], dans l'ordre). Tout
+        est vérifié AVANT d'écrire — rien n'est enregistré à moitié : 50 lignes au plus, noms de 60 caractères au plus et
+        distincts, variables vivantes de CE projet. Lève `DonneeDeTestInvalide`.
+
+        `id` : la ligne existante que celle-ci reprend. Ses valeurs pour une variable à la corbeille (que l'écran ne montre
+        pas) sont gardées : restaurée, la variable les retrouve (revue du 2026-10-19)."""
+        if len(lignes) > LIGNES_DU_CAS_MAX:
+            raise DonneeDeTestInvalide(f"{LIGNES_DU_CAS_MAX} lignes au plus pour un cas")
+        vivantes = {v["id"] for v in TestDataRepo(self.conn).variables(project_id)}
+        vus: set[str] = set()
+        for rang, ligne in enumerate(lignes, start=1):
+            nom = (ligne.get("nom") or "").strip()
+            if len(nom) > _NOM_DE_JEU_MAX:
+                raise DonneeDeTestInvalide(f"nom de ligne trop long ({_NOM_DE_JEU_MAX} caractères au plus)")
+            if nom and _key(nom) in vus:
+                raise DonneeDeTestInvalide(f"deux lignes s'appellent « {nom} »")
+            # Une ligne sans nom s'appelle « Ligne <rang> » (`niveaux`) : ce nom, porté à un autre rang, ferait deux itérations
+            # du même nom (revue du 2026-10-19).
+            numero = re.fullmatch(r"ligne\s+(\d+)", nom.casefold())
+            if numero and int(numero.group(1)) != rang:
+                raise DonneeDeTestInvalide(f"« {nom} » est le nom donné d'office à une autre ligne : choisissez-en un autre")
+            vus.add(_key(nom)) if nom else None
+            etrangeres = set(ligne.get("valeurs") or {}) - vivantes
+            if etrangeres:
+                raise DonneeDeTestInvalide("une colonne n'est pas une variable de ce projet (ou elle est à la corbeille)")
+        maintenant = datetime.now(timezone.utc).isoformat()
+        gardees: dict[int, list[tuple[int, str]]] = {}
+        for v in self.conn.execute(
+                "SELECT cv.row_id, cv.variable_id, cv.valeur FROM case_data_value cv JOIN case_data_row r ON r.id = cv.row_id"
+                " WHERE r.case_id=?", (case_id,)):
+            if v["variable_id"] not in vivantes:
+                gardees.setdefault(v["row_id"], []).append((v["variable_id"], v["valeur"]))
+        self.conn.execute("DELETE FROM case_data_value WHERE row_id IN (SELECT id FROM case_data_row WHERE case_id=?)",
+                          (case_id,))
+        self.conn.execute("DELETE FROM case_data_row WHERE case_id=?", (case_id,))
+        for rang, ligne in enumerate(lignes, start=1):
+            cur = self.conn.execute("INSERT INTO case_data_row (case_id, nom, rang, created_at) VALUES (?,?,?,?)",
+                                    (case_id, (ligne.get("nom") or "").strip(), rang, maintenant))
+            row_id = int(cur.lastrowid)
+            for variable_id, valeur in gardees.get(ligne.get("id"), []):
+                self.conn.execute("INSERT INTO case_data_value (row_id, variable_id, valeur) VALUES (?,?,?)",
+                                  (row_id, variable_id, valeur))
+            for variable_id, valeur in (ligne.get("valeurs") or {}).items():
+                if valeur != "":
+                    self.conn.execute("INSERT INTO case_data_value (row_id, variable_id, valeur) VALUES (?,?,?)",
+                                      (row_id, int(variable_id), valeur))
+        self.conn.commit()

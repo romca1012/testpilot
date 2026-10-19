@@ -15,12 +15,17 @@ const LIGNES_PAR_LANCEMENT_MAX = 50   // le serveur applique la même borne
 
 // `masque` : le bloc disparaît (campagne manuelle) sans perdre les lignes cochées, retrouvées en revenant en automatique.
 // `environnements` (lot PT-04a) : combien d'environnements sont cochés — une exécution par environnement.
-const props = defineProps<{ pid: string; testsChoisis: number[]; masque?: boolean; environnements?: number }>()
+// `avecLignesDesCas` (A58) : propose « toutes » ou « la première » des lignes propres aux cas choisis — au lancement
+// seulement (une planification joue toutes les lignes).
+const props = defineProps<{ pid: string; testsChoisis: number[]; masque?: boolean; environnements?: number; avecLignesDesCas?: boolean }>()
+const lignesDesCas = defineModel<'toutes' | 'premiere'>('lignesDesCas', { default: 'toutes' })
 const coches = defineModel<number[]>({ required: true })
 // Vrai quand le formulaire peut être envoyé de ce point de vue : 50 lignes cochées au plus (aucune : « Par défaut », A56).
 const valide = defineModel<boolean>('valide', { default: true })
 
 const jeux = ref<JeuDeDonnees[]>([])
+const casAvecLignes = ref<number[]>([])
+const casChoisisAvecLignes = computed(() => props.testsChoisis.filter((id) => casAvecLignes.value.includes(id)).length)
 const executions = computed(() => Math.max(1, props.environnements ?? 1))
 const toutes = computed(() => jeux.value.length > 0 && coches.value.length === jeux.value.length)
 const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`
@@ -47,6 +52,10 @@ onMounted(async () => {
       jeux.value = tableau.jeux
       coches.value = tableau.jeux.filter((j) => j.est_defaut).map((j) => j.id)
       a.value = tableau.jeux.length
+      if (props.avecLignesDesCas) {
+        // Illisible : le choix n'est pas proposé, et le serveur joue toutes les lignes (son défaut) — rien d'autre ne change.
+        try { casAvecLignes.value = await api.casAvecLignes(props.pid) } catch { casAvecLignes.value = [] }
+      }
     }
   } catch { jeux.value = [] }   // tableau illisible : on crée comme avant, le serveur jouera le jeu « Par défaut »
 })
@@ -84,5 +93,16 @@ onMounted(async () => {
       </span>
       <RouterLink :to="{ name: 'project-test-data', params: { pid } }" class="text-primary hover:underline" data-testid="lien-donnees">Données de test</RouterLink>
     </p>
+    <!-- A58 : un cas qui a ses propres lignes les joue toutes, une itération chacune — ou seulement la première. -->
+    <div v-if="avecLignesDesCas && casChoisisAvecLignes" class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"
+         role="radiogroup" aria-label="Lignes propres aux cas" data-testid="lignes-des-cas">
+      <span class="text-muted-foreground">Lignes des cas ({{ casChoisisAvecLignes }})</span>
+      <label class="flex min-h-11 cursor-pointer items-center gap-1.5">
+        <input type="radio" value="toutes" v-model="lignesDesCas" data-testid="lignes-toutes" class="accent-[hsl(var(--primary))]" />Toutes
+      </label>
+      <label class="flex min-h-11 cursor-pointer items-center gap-1.5">
+        <input type="radio" value="premiere" v-model="lignesDesCas" data-testid="lignes-premiere" class="accent-[hsl(var(--primary))]" />La première seulement
+      </label>
+    </div>
   </fieldset>
 </template>

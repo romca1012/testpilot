@@ -57,6 +57,9 @@ d'exécution. Quatre niveaux (A3) : bibliothèque commune → projet → campagn
 | A54 | **Validée par le porteur le 2026-10-16** — le tableau des données de test se lit comme le Data Table et Excel : les variables en colonnes, UNE LIGNE par jeu de valeurs (une itération) ; le jeu « Par défaut » reste la première ligne (A27 inchangée : une case vide en reprend la valeur). | 2026-10-16 |
 | A55 | **Validée par le porteur le 2026-10-16** — remplir une colonne avec des enregistrements qui existent dans l'application (« plusieurs clients déjà en base ») : lot SÉPARÉ, après les itérations, avec sa propre mesure. | 2026-10-16 |
 | A56 | **Validée par le porteur le 2026-10-18** — les données de test sont FACULTATIVES au lancement : aucune ligne cochée, un test qui emploie une variable est joué avec les valeurs « Par défaut » (jamais bloqué faute de ligne ; une valeur absente du jeu « Par défaut » le bloque toujours, en la nommant). | 2026-10-18 |
+| A57 | **Validée par le porteur le 2026-10-19** (après comparaison avec UFT, Azure DevOps, Xray, Katalon, Cucumber) — les données de test ont DEUX niveaux : le tableau du PROJET garde ce qui est partagé par plusieurs cas (client de référence, comptes…) ; chaque CAS peut avoir ses propres lignes (ses classes de valeurs et le résultat attendu de chacune), jouées en itérations quand on lance ce cas. L'essentiel (porteur) : jouer un test avec TOUTES les valeurs d'une variable, une itération par valeur. | 2026-10-19 |
+| A58 | **Validée par le porteur le 2026-10-19** — ce que l'IA fait pour qu'aucune tâche manuelle piégeuse ne reste : (1) elle propose les lignes d'un cas, valeurs limites comprises, et le résultat attendu de chacune (A53, validées par une personne avec le cas) ; (2) elle reprend une donnée déjà dans le projet au lieu de la recopier ; (3) lancer un cas joue ses propres lignes, sans rien cocher (réduire à une ligne ou « de la ligne X à Y » reste possible) ; (4) une case vide d'une ligne du cas reprend la valeur du projet ; (5) elle signale les lignes d'un cas que la spécification a rendues fausses et propose les nouvelles. | 2026-10-19 |
+| A59 | **Validée par le porteur le 2026-10-19** (revue IT-3a, bloquant) — un cas dont les lignes font varier une variable que son test n'emploie pas (valeur écrite en dur) ne se joue pas : bloqué en nommant la variable, « régénérez le test ». Sinon ses lignes fusionneraient en UNE itération jouée avec la valeur en dur, et l'écran annoncerait toutes les classes jouées. Même règle qu'A42 (écart cas/test). | 2026-10-19 |
 forme montrée est le CUMUL exploration ∪ essais ; les clés d'un objet viennent de l'exploration seule (un objet vide à
 l'exploration puis rempli : « ses clés sont des données ») ; une clé vue seulement à l'essai n'est montrée que dans un
 élément de liste et si elle a la syntaxe d'un nom de champ. Ce qu'un essai laisse encore deviner, ASSUMÉ : qu'un élément a
@@ -407,6 +410,7 @@ Second jeu (porteur, 2026-10-16) : chaque test généré qui écrit une variable
 - **A51** (forme des réponses de l'oracle lue à l'exploration et à la fin de chaque essai) : validée le 2026-10-16.
 - **A52** à **A55** (itérations dans une exécution, lignes proposées par l'IA et validées, tableau en lignes, remplissage depuis l'application à part) : validées le 2026-10-16.
 - **A56** (données de test facultatives au lancement : aucune ligne cochée = valeurs « Par défaut ») : validée le 2026-10-18.
+- **A57** (deux niveaux : projet partagé, lignes propres au cas), **A58** (ce que l'IA fait) et **A59** (test qui n'emploie pas les variables des lignes de son cas : bloqué) : validées le 2026-10-19.
 
 ### 9.6 L'IA ne part plus à l'aveugle (demande du porteur, 2026-10-16)
 
@@ -495,6 +499,18 @@ déclarée par une personne ; au lancement, on coche les jeux à jouer.
 | IT-3 | L'IA qui rédige les cas propose les lignes et leur résultat attendu (valeurs limites comprises), validées par une personne avec le cas (A53) ; l'IA technique écrit un seul test qui emploie les variables du cas | oui, interrupteur | banc : un cas « classes de valeurs » ajouté à l'application d'essai, avec un défaut à la limite |
 | IT-4 | Remplir une colonne depuis l'application (A55) | — | lot séparé |
 
+**IT-3 découpé (A57, A58, 2026-10-19).** Priorité du porteur : jouer un test avec toutes les valeurs d'une variable.
+
+| Lot | Contenu | IA | Mesure |
+|---|---|---|---|
+| IT-3a | Les lignes d'un cas : un petit tableau dans la fiche du cas (variables en colonnes, une ligne par valeur, résultat attendu compris) ; les colonnes sont des variables déclarées dans le projet (choix technique annoncé le 2026-10-19 : un nom est déclaré une fois ; ses valeurs sont dans le projet, dans un cas, ou les deux — la case vide d'un cas reprend la valeur du projet) ; lancer ce cas joue toutes ses lignes en itérations (réduire possible) | non | suites, essais à l'écran |
+| IT-3b | L'IA technique écrit UN test qui emploie les variables du cas (variables propres au cas comprises) ; son essai sur le bac à sable joue la première ligne | oui (existant étendu) | banc |
+| IT-3c | L'IA des cas propose les lignes et leur résultat attendu (valeurs limites), reprend les variables du projet, relecture et validation avec le cas | oui, interrupteur | banc : cas « classes de valeurs » avec un défaut à la limite |
+| IT-3d | Lignes rendues fausses par une spécification modifiée : signalées, nouvelles lignes proposées | oui | essais |
+| IT-3e | Mesure de bout en bout (budget annoncé avant) | oui | campagne |
+
+Choix technique annoncé : des lignes du PROJET cochées au lancement ET des lignes du cas se combinent (chaque ligne du cas jouée sur chaque ligne du projet cochée), 50 itérations au plus ; par défaut seule « Par défaut » est cochée, donc un cas joue exactement ses lignes.
+
 ## 8. Suivi
 
 | Lot | Statut | Date | PR | Rapport |
@@ -510,7 +526,7 @@ déclarée par une personne ; au lancement, on coche les jeux à jouer.
 | PT-04a | code fait en local (branche `lot-pt04a-environnements`), décisions A48 à A50 : environnements ajoutés (nature Test/Production obligatoire, production jamais jouée), une exécution par jeu ET par environnement, valeurs figées au lancement, oracle propre à chaque environnement, génération et réparation sur le défaut seulement ; relecture et vérification à l'écran en cours | 2026-10-16 | — | |
 | VH-08 | code fait en local (branche `lot-vh08-forme-oracle`), relu en deux passes, suites vertes ; interrupteur `TESTPILOT_FORME_ORACLE` ÉTEINT. **Mesure M2 (2026-10-16, 6,18 $)** : 0 faux vert des deux côtés, mais justes du premier coup 6/10 allumé contre 8/10 éteint et 7 générations qui n'aboutissent pas contre 3 (dont `connexion_refusee` 2/2, sans oracle : l'IA s'arrête d'elle-même au 9e tour sans écrire le test) — **règle non tenue, reste éteint** ; **Rejeu (2026-10-17, 0,37 $, conversation gardée)** de `connexion_refusee` et `panier_total_tva` allumé : 2/2 justes, 0 faux vert, les deux défauts vus — l'abandon ne se reproduit pas (variabilité sur un petit échantillon) ; mais le cumul entier de la forme revenait après chaque essai (6 fois sur le panier) → corrigé : seul ce qu'un essai vient d'apprendre est redit (`forme_oracle.nouveautes`). Reste éteint ; à remesurer sur un échantillon plus grand (≈ 9-10 $, accord du porteur attendu) | 2026-10-17 | — | `docs/mesures/banc-agents-2026-10-16-m2-eteint.md`, `…-m2-allume.md`, `…-m2-diag.md` |
 | IT-1 et IT-2 (A52, A54) | code fait en local (branche `lot-pt02g-iterations`), relu en deux passes (trois bloquants corrigés : variable écrite autrement restée littérale, variable dans une cellule d'exemples, barre oblique doublée), suites vertes : une exécution, une itération par ligne, rapport par itération, tableau et Excel en lignes. **2026-10-18** : A56 (aucune ligne cochée = « Par défaut »), « de la ligne X à Y » et numéro de ligne dans le tableau ; résultat de chaque itération sur l'écran de l'exécution et dans le rapport (chaque « Exemples » porte `@tp_iteration_<k>` ; le serveur en tire, AVANT l'exécution et sur le texte qu'il a écrit, la table « ligne → itérations », puis rattache chaque résultat par sa ligne, que Behave fige au début du scénario — jamais par le nom ni par les étiquettes du JSON, qu'un step peut réécrire (revue, deux passes) ; migration 71 `scenario_result.iterations`). **Reste** : vérification à l'écran par le porteur | 2026-10-18 | — | |
-| IT-3 (A53) | à faire : l'IA propose les lignes et leur résultat attendu, validées avec le cas | | | |
+| IT-3 (A53, A57 à A59) | découpé le 2026-10-19 en IT-3a à IT-3e (§9.7). **IT-3a fait en local**, relu en deux passes (bloquant corrigé : un test qui écrit en dur la valeur que les lignes du cas font varier jouait une seule itération en annonçant toutes les classes → bloqué, A59) : lignes propres au cas dans sa fiche, jouées en itérations (toutes ou la première), figées au lancement, combinées aux lignes du projet cochées, migration 72 ; vrai Behave : seule la valeur limite mal traitée échoue. **Reste** : vérification à l'écran par le porteur ; IT-3b à IT-3e | 2026-10-19 | | |
 | PT-04b à PT-04d | à faire | | | |
 | PT-05 | à faire | | | |
 | PT-06a à PT-06d | à faire | | | |

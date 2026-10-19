@@ -23,7 +23,14 @@ from pathlib import Path
 from testpilot import config
 from testpilot.parametres import iterations as iterations_mod
 from testpilot.parametres import resolution
-from testpilot.store.repositories import DonneeDeTestInvalide, PlanRepo, RunRepo, TestDataRepo, VersionRepo
+from testpilot.store.repositories import (
+    CaseDataRepo,
+    DonneeDeTestInvalide,
+    PlanRepo,
+    RunRepo,
+    TestDataRepo,
+    VersionRepo,
+)
 
 
 @dataclass
@@ -37,9 +44,76 @@ def figer_pour_la_campagne(conn, run: dict) -> None:
     """Fige les valeurs de la campagne au lancement — une seule fois : une relance reprend ce qui est déjà figé.
 
     Lève `DonneeDeTestInvalide` si le jeu choisi n'existe plus (à la corbeille) : la campagne n'est alors pas lancée, plutôt
-    que jouée avec d'autres valeurs que celles annoncées. Un projet sans variable et sans jeu choisi : rien n'est figé."""
+    que jouée avec d'autres valeurs que celles annoncées. Un projet sans variable et sans jeu choisi : rien n'est figé.
+    A57/A58 : les lignes propres à chaque cas de la campagne sont figées avec le reste (`lignes_des_cas`), et la liste des
+    cas présents au lancement (`cas_figes`). Une seule écriture (revue du 2026-10-19 : en deux, une erreur entre les deux
+    laissait une campagne figée sans les lignes de ses cas, à jamais)."""
     if (run.get("parametres_figes") or "").strip():
         return
+    figes = _figes_du_projet(conn, run)
+    if figes is None:   # projet sans variable : rien à figer, comme avant (R1) — une ligne de cas n'y porte aucune valeur
+        return
+    lignes, cas = _lignes_des_cas_de_la_campagne(conn, run)
+    figes["cas_figes"] = cas
+    if lignes:
+        figes["lignes_des_cas"] = lignes
+    conn.execute("UPDATE test_run SET parametres_figes=? WHERE id=?", (json.dumps(figes, ensure_ascii=False), run["id"]))
+    conn.commit()
+
+
+def _lignes_des_cas_de_la_campagne(conn, run: dict) -> tuple[dict[str, list[dict]], list[int]]:
+    """({case_id: [{jeu, valeurs: {nom: {valeur, origine}}}]} pour les cas qui ont leurs propres lignes — toutes, ou la
+    première seulement (`test_run.lignes_des_cas`, A58) ; les cas de la campagne à cet instant)."""
+    depot = CaseDataRepo(conn)
+    avec_lignes = set(depot.cas_avec_lignes(run["project_id"]))
+    premiere = (run.get("lignes_des_cas") or "toutes") == "premiere"
+    cas = list(RunRepo(conn).case_ids(run["id"]))
+    figees = {}
+    for case_id in cas:
+        if case_id not in avec_lignes:
+            continue
+        niveaux = depot.niveaux(case_id)[:1] if premiere else depot.niveaux(case_id)
+        if niveaux:
+            figees[str(case_id)] = _lignes_jouables(niveaux)
+    return figees, cas
+
+
+def _lignes_jouables(niveaux: list[tuple[str, dict[str, str]]]) -> list[dict]:
+    return [{"jeu": nom, "valeurs": {n: {"valeur": v, "origine": nom} for n, v in valeurs.items()}} for nom, valeurs in niveaux]
+
+
+def _avec_les_lignes_du_cas(figes: dict, lignes: list[dict]) -> dict:
+    """A57/A58 : chaque ligne propre au cas, posée PAR-DESSUS chaque ligne du projet jouée — la valeur du cas l'emporte, une
+    case vide du cas reprend celle du projet. Par défaut seule « Par défaut » est jouée : le cas joue alors exactement ses
+    lignes."""
+    bases = figes["jeux"] if isinstance(figes.get("jeux"), list) else [{"jeu": figes.get("jeu") or "",
+                                                                        "valeurs": figes.get("valeurs") or {}}]
+    jeux = []
+    for base in bases:
+        for ligne in lignes:
+            nom = ligne["jeu"] if len(bases) == 1 else f"{base.get('jeu') or 'Par défaut'} · {ligne['jeu']}"
+            jeux.append({"jeu": nom, "valeurs": {**(base.get("valeurs") or {}), **ligne["valeurs"]}})
+    return {"jeu": figes.get("jeu") or "", "jeux": jeux, "connues": figes.get("connues") or []}
+
+
+def _variables_des_lignes(lignes: list[dict]) -> set[str]:
+    return {n for ligne in lignes for n in (ligne.get("valeurs") or {})}
+
+
+def ecart_lignes_test(feature: str, variables_des_lignes) -> list[str]:
+    """Revue du 2026-10-19 (bloquant) : les variables que les lignes du cas font varier et que son test n'emploie pas. Le
+    test écrit alors la valeur en dur : ses lignes fusionneraient en UNE itération, jouée avec cette seule valeur, et
+    l'écran annoncerait toutes les classes jouées — un « conforme » sur des valeurs jamais posées. Non vide : le test ne se
+    joue pas (A59, porteur, 2026-10-19 ; même règle qu'A42). Rien sans test technique."""
+    if not (feature or "").strip():
+        return []
+    employees = set(resolution.references(feature))
+    return [f"les lignes du cas donnent « {{{{{nom}}}}} », le test ne l'emploie pas"
+            for nom in sorted(set(variables_des_lignes)) if nom not in employees]
+
+
+def _figes_du_projet(conn, run: dict) -> dict | None:
+    """Les valeurs du tableau du PROJET (jeu choisi, ou lignes choisies) — `None` : rien à figer."""
     lignes = ids_des_jeux(run.get("dataset_ids"), strict=True)
     if lignes:
         # A52 : plusieurs lignes — une itération par ligne. Chacune figée, dans l'ordre choisi ; une ligne à la corbeille :
@@ -51,21 +125,16 @@ def figer_pour_la_campagne(conn, run: dict) -> None:
             valeurs = resolution.resoudre(niveaux, noms)
             jeux.append({"jeu": niveaux[-1][0] if niveaux else "", "dataset_id": dataset_id,
                          "valeurs": {n: {"valeur": v.valeur, "origine": v.origine} for n, v in valeurs.items()}})
-        figes = {"jeu": ", ".join(j["jeu"] for j in jeux), "jeux": jeux, "connues": noms}
-        conn.execute("UPDATE test_run SET parametres_figes=? WHERE id=?", (json.dumps(figes, ensure_ascii=False), run["id"]))
-        conn.commit()
-        return
+        return {"jeu": ", ".join(j["jeu"] for j in jeux), "jeux": jeux, "connues": noms}
     noms, niveaux = TestDataRepo(conn).niveaux(run["project_id"], run.get("dataset_id"))
     # « Rien à figer » seulement pour un projet qui n'a JAMAIS déclaré de variable (aucun jeu, pas même « Par défaut », qui
     # naît avec la première et ne se supprime pas). Un projet dont toutes les variables sont à la corbeille fige un tableau
     # VIDE : ses tests qui écrivent `{{nom}}` sortiront « bloqué » (A31) — revue du 2026-10-14, ils étaient joués tels quels.
     if not noms and not niveaux and run.get("dataset_id") is None:
-        return
+        return None
     valeurs = resolution.resoudre(niveaux, noms)
-    figes = {"jeu": niveaux[-1][0] if niveaux else "", "dataset_id": run.get("dataset_id"), "connues": noms,
-             "valeurs": {n: {"valeur": v.valeur, "origine": v.origine} for n, v in valeurs.items()}}
-    conn.execute("UPDATE test_run SET parametres_figes=? WHERE id=?", (json.dumps(figes, ensure_ascii=False), run["id"]))
-    conn.commit()
+    return {"jeu": niveaux[-1][0] if niveaux else "", "dataset_id": run.get("dataset_id"), "connues": noms,
+            "valeurs": {n: {"valeur": v.valeur, "origine": v.origine} for n, v in valeurs.items()}}
 
 
 def _figes_de_l_execution(conn, execution_id: int) -> dict | None:
@@ -111,9 +180,14 @@ def apercu(conn, case_id: int, version_id: int, dataset_id: int | None = None) -
     noms, niveaux = depot.niveaux(project_id, dataset_id) if project_id is not None else ([], [])
     if not noms and not niveaux:   # projet qui n'a jamais déclaré de variable : joué tel quel, comme `preparer_le_script`
         return {"jeu": "", "texte": feature, "manques": [], "valeurs": {}}
+    # A57 (revue du 2026-10-19) : un cas qui a ses propres lignes est joué avec elles — l'aperçu montre la PREMIÈRE, posée
+    # par-dessus le projet, et dit l'écart qui bloquerait l'exécution.
+    du_cas = CaseDataRepo(conn).niveaux(case_id)
+    ecart = ecart_lignes_test(feature, {n for _, v in du_cas for n in v}) if du_cas else []
+    niveaux = niveaux + du_cas[:1]
     rendu = resolution.remplacer(feature, resolution.resoudre(niveaux, noms), noms)
     return {"jeu": niveaux[-1][0] if niveaux else "", "texte": rendu.texte,
-            "manques": [] if rendu.complet else _manques(conn, project_id, rendu),
+            "manques": ecart + ([] if rendu.complet else _manques(conn, project_id, rendu)),
             "valeurs": {n: {"valeur": v.valeur, "origine": v.origine} for n, v in rendu.jouees.items()}}
 
 
@@ -134,6 +208,30 @@ def preparer_le_script(conn, execution_id: int, case_id: int, version_id: int, m
             return Script()   # un projet qui n'a jamais déclaré de variable : le chemin d'aujourd'hui, octet pour octet
         figes = {"jeu": niveaux[-1][0] if niveaux else "", "connues": noms,
                  "valeurs": {n: {"valeur": v.valeur, "origine": v.origine} for n, v in resolution.resoudre(niveaux, noms).items()}}
+        lignes_du_cas = _lignes_jouables(CaseDataRepo(conn).niveaux(case_id))
+    else:
+        lignes_du_cas = (figes.get("lignes_des_cas") or {}).get(str(case_id)) if isinstance(
+            figes.get("lignes_des_cas"), dict) else None
+        cas_figes = figes.get("cas_figes")
+        if isinstance(cas_figes, list) and case_id not in cas_figes and CaseDataRepo(conn).lignes(case_id):
+            # Revue du 2026-10-19 : un cas entré dans la campagne APRÈS son lancement (sélection « tous les cas ») n'a pas
+            # de lignes figées. Joué avec les valeurs du projet, ses classes de valeurs ne le seraient jamais, sans un mot ;
+            # les figer maintenant contournerait A29.
+            return Script(blocage="Données de test : ce cas a ses propres lignes, ajouté à la campagne après son lancement "
+                                  "— elles n'ont pas été figées. Créez une nouvelle exécution. Le test n'a pas été joué.")
+    if lignes_du_cas:
+        # A57/A58 : les lignes propres au cas, chacune une itération — figées au lancement avec le reste (A29).
+        ecart = ecart_lignes_test(feature, _variables_des_lignes(lignes_du_cas))
+        if ecart:
+            # A59 (porteur, 2026-10-19). Régénérer seul ne suffit pas : l'IA écrit `{{nom}}` quand le CAS la cite (A39).
+            return Script(blocage="Données de test : " + " ; ".join(ecart) + ". Citez-la dans les étapes ou le résultat "
+                                  "attendu du cas puis régénérez le test, ou retirez cette colonne des lignes du cas. Le test "
+                                  "n'a pas été joué.")
+        figes = _avec_les_lignes_du_cas(figes, lignes_du_cas)
+        if len(figes["jeux"]) > JEUX_PAR_LANCEMENT_MAX:
+            return Script(blocage=f"Données de test : {len(figes['jeux'])} itérations pour ce cas, {JEUX_PAR_LANCEMENT_MAX} au "
+                                  "plus. Cochez moins de lignes du projet, ou réduisez les lignes du cas. Le test n'a pas été "
+                                  "joué.")
     if isinstance(figes.get("jeux"), list):
         return _preparer_les_iterations(conn, execution_id, case_id, module_name, version, figes, campagne)
     valeurs = {n: resolution.Valeur(str(v.get("valeur", "")), str(v.get("origine", ""))) for n, v in (figes.get("valeurs") or {}).items()}

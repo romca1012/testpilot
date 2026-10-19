@@ -110,7 +110,7 @@ def create_run(project_id: int, body: schemas.RunIn, request: Request, conn=Depe
         conn, project_id=project_id, nom=body.name.strip(), jeux=jeux, created_by=access.utilisateur_de(request),
         description=body.description, refs=body.refs, environnements=environnements,
         selection_mode=body.selection_mode, mode=body.mode,
-        case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli)
+        case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli, lignes_des_cas=body.lignes_des_cas)
     return _summary(repo.get(premier), len(repo.case_ids(premier)))
 
 

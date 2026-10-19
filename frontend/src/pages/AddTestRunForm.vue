@@ -45,6 +45,7 @@ const error = ref('')
 
 // Lot PT-02b (A28, A35) : les jeux de données du projet (`ChoixDesJeux`) — rien n'est proposé à un projet sans variable.
 const jeuxCoches = ref<number[]>([])
+const lignesDesCas = ref<'toutes' | 'premiere'>('toutes')   // A58
 const jeuxValides = ref(true)
 // Lot PT-04a : les environnements (`ChoixDesEnvironnements`) — rien n'est proposé à un projet qui n'a que le défaut.
 const envsCoches = ref<number[]>([])
@@ -175,6 +176,7 @@ async function submit() {
       case_ids: form.value.selection === 'frozen' ? selected.value : [],
       dataset_ids: form.value.mode === 'automatique' ? jeuxCoches.value : [],
       environment_ids: form.value.mode === 'automatique' ? envsCoches.value : [],
+      lignes_des_cas: lignesDesCas.value,
     })
     // Plusieurs environnements : les exécutions sont regroupées dans un plan — c'est lui qu'on ouvre, toutes y figurent. Les
     // lignes de données de test sont des itérations de la même exécution (A52).
@@ -365,7 +367,8 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
 
       <!-- Lot PT-02b (A28, A32) : les jeux de données, pour une campagne automatique d'un projet qui a des variables. -->
       <ChoixDesJeux :masque="form.mode !== 'automatique'" v-model="jeuxCoches" v-model:valide="jeuxValides" :pid="pid"
-                    :tests-choisis="testsChoisis" :environnements="envsCoches.length" />
+                    :tests-choisis="testsChoisis" :environnements="envsCoches.length"
+                    v-model:lignes-des-cas="lignesDesCas" avec-lignes-des-cas />
       <!-- Lot PT-04a : les environnements, pour une campagne automatique d'un projet qui en a plusieurs. -->
       <ChoixDesEnvironnements :masque="form.mode !== 'automatique'" v-model="envsCoches" v-model:valide="envsValides" :pid="pid"
                               :jeux="jeuxCoches.length" />
