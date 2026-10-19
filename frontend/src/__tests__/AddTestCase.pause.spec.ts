@@ -126,6 +126,36 @@ describe('AddTestCase — la pause métier (0022 n°5, étendue au §9, à PLAT 
     ])
   })
 
+  // IT-3c (A53) : les lignes proposées par l'IA se relisent et se corrigent avec le cas ; ce que la personne envoie fait foi.
+  it('falsifiable : les lignes proposées s’affichent, se corrigent, et partent nettoyées', async () => {
+    validateMetier.mockResolvedValue({ job_id: 'J1', status: 'running', case_ids: [], error: '' })
+    const avecLignes = { ...DRAFT, lignes: [
+      { nom: 'Juste mineur', valeurs: { age: '17', resultat: 'Refusé' } },
+      { nom: 'Majeur', valeurs: { age: '18', resultat: 'Bienvenue' } },
+      { nom: 'À retirer', valeurs: { age: '99', resultat: 'x' } }] }
+    const w = await jusquAuJob({ status: 'awaiting_metier', cases: casAvec(avecLignes), case_ids: [], error: '' })
+    // Replié, le cas dit qu'il porte des lignes : on ne les valide pas sans le savoir (revue du 2026-10-19).
+    expect(w.get('[data-testid="nombre-lignes-proposees"]').text()).toBe('3 lignes proposées')
+    await w.find('[aria-expanded="false"]').trigger('click')
+
+    const bloc = w.get('[data-testid="lignes-proposees"]')
+    expect(bloc.findAll('th').map((t) => t.text()).filter(Boolean)).toEqual(['Ligne', '{{age}}', '{{resultat}}'])
+    await bloc.get('input[aria-label="resultat, ligne 2"]').setValue('  ')          // vidée : reprendra la valeur du projet
+    await bloc.findAll('button').filter((b) => b.attributes('title') === 'Retirer la ligne')[2].trigger('click')
+    await w.findAll('button').find((b) => b.text().includes('Valider'))!.trigger('click')
+    await flushPromises()
+
+    expect(validateMetier.mock.calls[0][1][0].lignes).toEqual([
+      { nom: 'Juste mineur', valeurs: { age: '17', resultat: 'Refusé' } },
+      { nom: 'Majeur', valeurs: { age: '18' } }])
+  })
+
+  it('un cas sans ligne proposée ne montre aucun tableau', async () => {
+    const w = await jusquAuJob({ status: 'awaiting_metier', cases: casAvec(), case_ids: [], error: '' })
+    await w.find('[aria-expanded="false"]').trigger('click')
+    expect(w.find('[data-testid="lignes-proposees"]').exists()).toBe(false)
+  })
+
   it('REFUSE de valider un cas amputé de ses étapes', async () => {
     // Titre + étapes + résultat attendu sont obligatoires (0022 n°3.c) : un cas sans eux ne
     // vérifie rien. Le bouton est désactivé plutôt que de laisser le serveur refuser après coup.

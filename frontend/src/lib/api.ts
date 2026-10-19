@@ -1068,6 +1068,8 @@ export interface MetierDraft {
   // devait créer lui-même (cf. `metier_writer.MetierDraft.as_dict`).
   depend_dun_autre_cas_du_groupe?: boolean
   etat_a_creer_par_ce_cas?: string
+  // IT-3c (A53) : les lignes proposées pour ce cas — `{nom de variable: valeur}` —, relues et validées avec lui.
+  lignes?: { nom: string; valeurs: Record<string, string> }[]
 }
 export interface GenerationJob {
   // running | awaiting_metier | done | failed

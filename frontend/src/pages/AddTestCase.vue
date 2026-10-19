@@ -135,6 +135,10 @@ const toutValide = computed(() => cas.value.length > 0 && cas.value.every(casCom
 function addStep(i: number) { cas.value[i].steps.push('') }
 function removeStep(i: number, j: number) { cas.value[i].steps.splice(j, 1) }
 function removeCase(i: number) { cas.value.splice(i, 1) }
+// IT-3c : les colonnes des lignes proposées — les variables que l'IA a employées, dans l'ordre d'apparition.
+function colonnesDes(c: MetierDraft): string[] {
+  return [...new Set((c.lignes ?? []).flatMap((l) => Object.keys(l.valeurs)))]
+}
 
 // Une SPÉCIFICATION peut fournir le document (`?spec=`, depuis sa fiche, lot 4 du 2026-07-24) :
 // on part alors du texte déjà rédigé plutôt que de le recoller à la main — c'était le chaînon
@@ -313,6 +317,11 @@ async function validerMetier() {
   etape.value = 'gherkin'
   const retenus = cas.value.map((c) => ({
     ...c, steps: c.steps.map((s) => s.trim()).filter(Boolean),
+    // IT-3c : une case vidée reprendra la valeur du projet ; une ligne vidée entièrement est retirée.
+    lignes: (c.lignes ?? [])
+      .map((l) => ({ nom: l.nom.trim(), valeurs: Object.fromEntries(
+        Object.entries(l.valeurs).map(([k, v]) => [k, String(v ?? '').trim()]).filter(([, v]) => v)) }))
+      .filter((l) => Object.keys(l.valeurs).length),
   }))
   try {
     await api.validateMetier(jobId.value, retenus)
@@ -478,6 +487,9 @@ const echecsPartiels = computed(() => avertissementPartiel.value.split('; ').fil
                 <svg class="w-3.5 h-3.5 shrink-0 transition-transform" :class="deplies.has(i) ? '' : '-rotate-90'"
                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
                 <span class="min-w-0 flex-1 truncate font-medium">{{ cas[i].title || '(sans titre)' }}</span>
+                <span v-if="cas[i].lignes?.length" class="shrink-0 text-xs text-muted-foreground" data-testid="nombre-lignes-proposees">
+                  {{ cas[i].lignes!.length }} ligne{{ cas[i].lignes!.length > 1 ? 's' : '' }} proposée{{ cas[i].lignes!.length > 1 ? 's' : '' }}
+                </span>
                 <span v-if="!casComplet(cas[i])"
                       class="shrink-0 rounded-full bg-destructive/15 text-destructive text-xs font-semibold px-2 py-0.5">
                   incomplet
@@ -519,6 +531,35 @@ const echecsPartiels = computed(() => avertissementPartiel.value.split('; ').fil
                           placeholder="Une seule phrase de verdict pour tout le cas"
                           class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none"></textarea>
               </label>
+
+              <!-- IT-3c (A53) : les lignes que l'IA propose pour ce cas — une itération chacune, à relire avec lui. -->
+              <div v-if="cas[i].lignes?.length" data-testid="lignes-proposees">
+                <span class="text-sm font-medium">Données de test de ce cas</span>
+                <div class="mt-1 overflow-x-auto">
+                  <table class="w-full text-sm">
+                    <thead>
+                      <tr class="border-b border-border text-left text-xs text-muted-foreground">
+                        <th scope="col" class="py-1.5 pr-3 font-medium">Ligne</th>
+                        <th v-for="v in colonnesDes(cas[i])" :key="v" scope="col" class="py-1.5 pr-3 font-mono font-normal">{{ '{' + '{' + v + '}' + '}' }}</th>
+                        <th scope="col" class="w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(l, k) in cas[i].lignes" :key="k" class="border-b border-border last:border-0">
+                        <td class="py-1 pr-3"><input v-model="l.nom" maxlength="60" :aria-label="`Nom de la ligne ${k + 1}`"
+                               class="w-36 rounded border border-border bg-surface-raised px-1.5 py-1" /></td>
+                        <td v-for="v in colonnesDes(cas[i])" :key="v" class="py-1 pr-3">
+                          <input v-model="l.valeurs[v]" :aria-label="`${v}, ligne ${k + 1}`" placeholder="valeur du projet"
+                                 class="w-36 rounded border border-border bg-surface-raised px-1.5 py-1" />
+                        </td>
+                        <td class="py-1 text-right">
+                          <IconButton size="sm" variant="danger" label="Retirer la ligne" @click="cas[i].lignes!.splice(k, 1)">✕</IconButton>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
               <p v-if="!casComplet(cas[i])" class="text-xs text-muted-foreground">
                 Titre, au moins une étape et résultat attendu sont nécessaires — un cas sans eux

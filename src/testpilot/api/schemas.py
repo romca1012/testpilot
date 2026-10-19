@@ -449,6 +449,12 @@ class AddCaseIn(BaseModel):
     group_id: int | None = None
 
 
+class LigneProposee(BaseModel):
+    """IT-3c : une ligne d'un cas, proposée par l'IA ou corrigée par la personne — ses valeurs par NOM de variable."""
+    nom: str = ""
+    valeurs: dict[str, str] = {}
+
+
 class MetierDraftOut(BaseModel):
     """Le document métier proposé par l'IA — à valider ou corriger avant l'écriture du Gherkin.
 
@@ -462,6 +468,8 @@ class MetierDraftOut(BaseModel):
     steps: list[str] = []
     expected_result: str = ""
     user_story: str = ""
+    # IT-3c (A53) : les lignes proposées pour ce cas — `{nom de variable: valeur}` —, à relire avec lui.
+    lignes: list[LigneProposee] = []
 
 
 class GenerationJobOut(BaseModel):
@@ -503,6 +511,7 @@ class CaseValidationIn(BaseModel):
     steps: list[str]
     expected_result: str
     user_story: str = ""
+    lignes: list[LigneProposee] = []   # IT-3c : les lignes validées avec le cas (vide : aucune)
 
 
 class MetierValidationIn(BaseModel):

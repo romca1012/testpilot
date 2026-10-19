@@ -77,8 +77,32 @@ _METIER_SCHEMA = {
     "additionalProperties": False,
 }
 
+# IT-3c (A53, A58, A60), interrupteur `TESTPILOT_LIGNES_PROPOSEES` : les lignes du cas, une par classe de valeurs. Les
+# valeurs d'une ligne sont une LISTE de paires (une variable, sa valeur) — les sorties structurées n'admettent pas d'objet
+# aux clés libres. Éteint : le schéma ci-dessus, inchangé.
+_LIGNES_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "nom": {"type": "string", "description": "Ce que la ligne représente, en quelques mots (« Juste majeur »)."},
+            "valeurs": {"type": "array", "items": {
+                "type": "object",
+                "properties": {"variable": {"type": "string"}, "valeur": {"type": "string"}},
+                "required": ["variable", "valeur"], "additionalProperties": False}},
+        },
+        "required": ["nom", "valeurs"],
+        "additionalProperties": False,
+    },
+}
+_METIER_AVEC_LIGNES_SCHEMA = {**_METIER_SCHEMA,
+                              "properties": {**_METIER_SCHEMA["properties"], "lignes": _LIGNES_SCHEMA},
+                              "required": [*_METIER_SCHEMA["required"], "lignes"]}
+LIGNES_PROPOSEES_MAX = 20   # au-delà, ce ne sont plus des classes de valeurs
 
-def _data_metier(llm, plan: TestPlan, model: str, cost_tracker, brief: str = "", variables: list[dict] | None = None) -> dict:
+
+def _data_metier(llm, plan: TestPlan, model: str, cost_tracker, brief: str = "", variables: list[dict] | None = None,
+                 proposer_lignes: bool = False) -> dict:
     """Le dict du document métier. Sorties structurées si l'adaptateur les expose (`call_json`),
     sinon parsing tolérant — ce qui garde inchangés les adaptateurs minimaux (fakes de test).
 
@@ -86,15 +110,18 @@ def _data_metier(llm, plan: TestPlan, model: str, cost_tracker, brief: str = "",
     est appelé une fois PAR CAS pour la MÊME spec (`decoupage` en découpe N) — la spec ne change
     pas d'un cas à l'autre, seul `brief` change. Voir `adapter._contenu_utilisateur`.
     """
-    stable = _build_prompt(plan) + _section_variables(variables)
+    proposer_lignes = bool(proposer_lignes and variables)
+    stable = _build_prompt(plan) + _section_variables(variables) + (_section_lignes() if proposer_lignes else "")
     variable = _consigne_cas(brief)
     modele = model or config.MODEL_FAST
     if hasattr(llm, "call_json"):
         return llm.call_json(system_prompt=_SYSTEM, cached_prefix=stable, user_content=variable,
-                             schema=_METIER_SCHEMA, model=modele, max_tokens=2000,
+                             schema=_METIER_AVEC_LIGNES_SCHEMA if proposer_lignes else _METIER_SCHEMA,
+                             model=modele, max_tokens=3000 if proposer_lignes else 2000,
                              cost_tracker=cost_tracker, label="metier") or {}
     raw = llm.call_simple(system_prompt=_SYSTEM, cached_prefix=stable, user_content=variable,
-                          model=modele, max_tokens=2000, cost_tracker=cost_tracker, label="metier")
+                          model=modele, max_tokens=3000 if proposer_lignes else 2000, cost_tracker=cost_tracker,
+                          label="metier")
     match = re.search(r"\{.*\}", raw or "", re.DOTALL)
     if not match:
         return {}
@@ -142,19 +169,23 @@ class MetierDraft:
     def __init__(self, *, title: str = "", preconditions: str = "",
                  steps: list[str] | None = None, expected_result: str = "",
                  depend_dun_autre_cas_du_groupe: bool = False,
-                 etat_a_creer_par_ce_cas: str = ""):
+                 etat_a_creer_par_ce_cas: str = "", lignes: list[dict] | None = None):
         self.title = title
         self.preconditions = preconditions
         self.steps = steps or []
         self.expected_result = expected_result
         self.depend_dun_autre_cas_du_groupe = depend_dun_autre_cas_du_groupe
         self.etat_a_creer_par_ce_cas = etat_a_creer_par_ce_cas
+        # IT-3c : les lignes PROPOSÉES ([{nom, valeurs: {variable: valeur}}]) — déjà nettoyées (`lignes_propres`), jamais
+        # enregistrées avant qu'une personne valide le cas.
+        self.lignes = lignes or []
 
     def as_dict(self) -> dict:
-        return {"title": self.title, "preconditions": self.preconditions,
-                "steps": list(self.steps), "expected_result": self.expected_result,
-                "depend_dun_autre_cas_du_groupe": self.depend_dun_autre_cas_du_groupe,
-                "etat_a_creer_par_ce_cas": self.etat_a_creer_par_ce_cas}
+        donnees = {"title": self.title, "preconditions": self.preconditions,
+                   "steps": list(self.steps), "expected_result": self.expected_result,
+                   "depend_dun_autre_cas_du_groupe": self.depend_dun_autre_cas_du_groupe,
+                   "etat_a_creer_par_ce_cas": self.etat_a_creer_par_ce_cas}
+        return {**donnees, "lignes": [dict(l) for l in self.lignes]} if self.lignes else donnees
 
     @property
     def complete(self) -> bool:
@@ -249,6 +280,72 @@ def _section_variables(variables: list[dict] | None) -> str:
     return "\n".join(lignes)
 
 
+def _section_lignes() -> str:
+    """IT-3c (A53, A60) : la consigne des lignes proposées — à la fin de la partie stable, après les variables."""
+    return ("\n\n8. LIGNES DU CAS (« lignes ») : quand la spécification fait dépendre le résultat d'une VALEUR (un âge, un "
+            "montant, une quantité, une date…) et qu'une variable de la liste ci-dessus porte cette valeur, ce cas est joué "
+            "une fois par ligne. Propose une ligne par classe de valeurs, AVEC les valeurs limites (juste avant, à et juste "
+            "après chaque limite que la spécification donne), chacune avec, si la liste a une variable pour lui, le résultat "
+            "attendu de cette ligne tel que la spécification le dit. Écris alors ces variables dans le cas à la place des "
+            "valeurs (règle 7). Une valeur s'écrit telle qu'une personne la saisirait, sans guillemets ni barre verticale. "
+            "N'emploie QUE des variables de la liste — jamais une autre, même utile : si aucune ne porte la valeur, ou si "
+            "la spécification ne fait dépendre le résultat d'aucune valeur, « lignes » est une liste vide. "
+            f"{LIGNES_PROPOSEES_MAX} lignes au plus.")
+
+
+def lignes_propres(brutes, noms_connus) -> list[dict]:
+    """Les lignes proposées par l'IA, NETTOYÉES sans rien inventer : une ligne dont UNE valeur n'est pas recevable
+    (variable hors du projet — A60 —, valeur qu'un test ne peut pas recevoir) est écartée EN ENTIER — amputée, elle serait
+    une autre classe que celle proposée, et sa case vide reprendrait la valeur du projet comme attendu (revue du
+    2026-10-19 : « 17 ans » jouée en attendant « Bienvenue »). Une ligne vide, un doublon de nom ou de valeurs, et au-delà
+    de `LIGNES_PROPOSEES_MAX`, sont écartés ; un nom « Ligne N » est retiré (c'est le nom donné d'office). Le texte de
+    l'IA n'est jamais exécuté : ce sont des données que la personne relit.
+
+    Revue du 2026-10-19 (2e passe) : une ligne qui OMET une variable que les autres lignes renseignent, ou la laisse vide,
+    est écartée aussi — l'IA ne voit que les NOMS des variables (A39), jamais leurs valeurs : une case vide de sa part
+    n'est jamais une reprise voulue de la valeur du projet (« 18 ans » jouée en attendant « Refusé »)."""
+    from testpilot.parametres import resolution
+    from collections import Counter
+
+    connus = set(noms_connus or ())
+    recevables = []
+    for ligne in brutes or []:
+        if not isinstance(ligne, dict):
+            continue
+        valeurs, recevable = {}, True
+        for paire in ligne.get("valeurs") or []:
+            if not isinstance(paire, dict) or str(paire.get("variable") or "").strip() not in connus:
+                recevable = False
+                break
+            try:
+                valeurs[str(paire["variable"]).strip()] = resolution.valider_valeur(str(paire.get("valeur") or ""))
+            except resolution.ValeurInvalide:
+                recevable = False
+                break
+        if not recevable or not valeurs or any(v == "" for v in valeurs.values()):
+            continue
+        nom = str(ligne.get("nom") or "").strip()[:60]
+        recevables.append({"nom": "" if re.fullmatch(r"(?i)ligne\s+\d+", nom) else nom, "valeurs": valeurs})
+    # Toutes les lignes gardées renseignent les MÊMES variables — celles de la MAJORITÉ des lignes (revue, 3e passe : une
+    # seule ligne avec une variable de trop ne fait plus écarter toutes les autres). Égalité : aucune ligne, plutôt que
+    # deviner. Une ligne qui en omet une, ou en ajoute une, est écartée — jamais complétée.
+    frequences = Counter(frozenset(l["valeurs"]) for l in recevables).most_common()
+    if not frequences or (len(frequences) > 1 and frequences[0][1] == frequences[1][1]):
+        return []
+    reference = frequences[0][0]
+    propres, noms, contenus = [], set(), set()
+    for ligne in recevables:   # doublons filtrés APRÈS le choix de la référence
+        cle_du_nom = " ".join(ligne["nom"].split()).casefold()   # comme la règle commune des noms (espaces et casse)
+        contenu = tuple(sorted(ligne["valeurs"].items()))
+        if frozenset(ligne["valeurs"]) != reference or contenu in contenus or (ligne["nom"] and cle_du_nom in noms):
+            continue
+        contenus.add(contenu)
+        if ligne["nom"]:
+            noms.add(cle_du_nom)
+        propres.append(ligne)
+    return propres[:LIGNES_PROPOSEES_MAX]
+
+
 def _consigne_cas(brief: str = "") -> str:
     """La partie VARIABLE du prompt — CE CAS précis, jamais mise en cache.
 
@@ -269,7 +366,7 @@ est le contexte dans lequel il s'inscrit."""
 
 def propose_metier(plan: TestPlan, *, llm: LLMAdapter | None = None,
                    cost_tracker=None, model: str = "", brief: str = "",
-                   variables: list[dict] | None = None) -> MetierDraft:
+                   variables: list[dict] | None = None, proposer_lignes: bool = False) -> MetierDraft:
     """Un appel LLM → le document métier d'UN cas. Ne persiste rien.
 
     `brief` — vient du découpage (§9a) : quel cas précis rédiger dans cette spécification, parmi
@@ -282,7 +379,8 @@ def propose_metier(plan: TestPlan, *, llm: LLMAdapter | None = None,
     l'arbitrage A.1 de la migration 14, qui a refusé de dériver le métier du Gherkin.
     """
     llm = llm or LLMAdapter()
-    data = _data_metier(llm, plan, model, cost_tracker, brief, variables)
+    data = (_data_metier(llm, plan, model, cost_tracker, brief, variables, proposer_lignes=True) if proposer_lignes
+            else _data_metier(llm, plan, model, cost_tracker, brief, variables))
     if not data:
         logger.warning("[metier] aucune donnée JSON exploitable — brouillon vide")
         return MetierDraft()
@@ -295,6 +393,7 @@ def propose_metier(plan: TestPlan, *, llm: LLMAdapter | None = None,
         expected_result=str(data.get("expected_result", "") or "").strip(),
         depend_dun_autre_cas_du_groupe=bool(data.get("depend_dun_autre_cas_du_groupe", False)),
         etat_a_creer_par_ce_cas=str(data.get("etat_a_creer_par_ce_cas", "") or "").strip(),
+        lignes=lignes_propres(data.get("lignes"), [v.get("nom") for v in variables or []]) if proposer_lignes else [],
     )
 
 
