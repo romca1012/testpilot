@@ -29,6 +29,7 @@ ENV_STEP_NOMBRE = "TESTPILOT_STEP_NOMBRE"
 ENV_VARIABLES_DE_TEST = "TESTPILOT_VARIABLES_DE_TEST"
 ENV_CAS_DIT_SES_DONNEES = "TESTPILOT_CAS_DIT_SES_DONNEES"
 ENV_FORME_ORACLE = "TESTPILOT_FORME_ORACLE"
+ENV_LIGNES_PROPOSEES = "TESTPILOT_LIGNES_PROPOSEES"
 
 _VRAI = frozenset({"1", "true", "yes", "oui", "on"})
 _ALLUMES_PAR_DEFAUT = frozenset({ENV_VARIABLES_DE_TEST, ENV_CAS_DIT_SES_DONNEES})
@@ -78,6 +79,14 @@ def cas_dit_ses_donnees_actif(env: Mapping[str, str] | None = None) -> bool:
     sans lui l'agent technique ne voit aucune variable, et un cas citant `{{client}}` aurait un test qui ne l'emploie pas
     (revue du 2026-10-15, bloquant). Allumé par défaut (A46)."""
     return _allume_par_defaut(ENV_CAS_DIT_SES_DONNEES, env) and variables_de_test_actif(env)
+
+
+def lignes_proposees_actif(env: Mapping[str, str] | None = None) -> bool:
+    """IT-3c (A53, A58, A60) : l'IA qui rédige les cas propose les lignes d'un cas — ses classes de valeurs, valeurs limites
+    comprises, et le résultat attendu de chacune — pour les seules variables DÉJÀ déclarées dans le projet ; une personne
+    les relit et les valide avec le cas. N'a d'effet qu'avec PT-02f (les variables montrées à l'IA des cas). Éteint
+    jusqu'à sa mesure."""
+    return _actif(ENV_LIGNES_PROPOSEES, env) and cas_dit_ses_donnees_actif(env)
 
 
 def forme_oracle_actif(env: Mapping[str, str] | None = None) -> bool:

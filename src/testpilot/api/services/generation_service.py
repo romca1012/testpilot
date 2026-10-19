@@ -36,7 +36,7 @@ import uuid
 from testpilot import config
 from testpilot.api.services import notification_service
 from testpilot.store.db import get_initialized_db
-from testpilot.store.repositories import CaseRepo, DuplicateName, GenerationJobRepo, ModuleRepo
+from testpilot.store.repositories import CaseRepo, DonneeDeTestInvalide, DuplicateName, GenerationJobRepo, ModuleRepo
 
 logger = logging.getLogger(__name__)
 
@@ -318,6 +318,9 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
         module = ModuleRepo(conn).get(module_id) or {}
         variables_des_cas = variables_de_test.pour_les_cas(
             ProjectRepo(conn).get(module.get("project_id")) if module.get("project_id") else None)
+        # IT-3c (interrupteur, éteint) : l'IA propose aussi les lignes du cas, pour ces seules variables (A60).
+        from testpilot.generation import interrupteurs as _interrupteurs
+        proposer_lignes = bool(variables_des_cas) and _interrupteurs.lignes_proposees_actif()
         for story in stories:
             for brief in story.cases:
                 # ⚠️ Budget PAR CAS, pas cumulé sur tout le lot (audit 2026-08-07, B2, bloquant) :
@@ -330,7 +333,8 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
                 case_tracker = CostTracker()
                 # Sans variable, l'appel est celui d'avant, à l'argument près (les doublures de test l'attendent tel quel).
                 draft = propose_metier(plan, brief=brief.brief, cost_tracker=case_tracker,
-                                       **({"variables": variables_des_cas} if variables_des_cas else {}))
+                                       **({"variables": variables_des_cas} if variables_des_cas else {}),
+                                       **({"proposer_lignes": True} if proposer_lignes else {}))
                 metier_cost_total += case_tracker.total_cost
                 if not draft.complete:
                     # Titre + étapes + résultat attendu sont obligatoires (`0022` n°3.c). On
@@ -456,6 +460,7 @@ def validate_metier(conn, job_id: str, cases: list[dict]) -> dict:
             # CE cas devait créer lui-même (cf. docstring de `MetierDraft.as_dict`).
             "depend_dun_autre_cas_du_groupe": bool(c.get("depend_dun_autre_cas_du_groupe", False)),
             "etat_a_creer_par_ce_cas": str(c.get("etat_a_creer_par_ce_cas", "") or "").strip(),
+            **({"lignes": c["lignes"]} if c.get("lignes") else {}),
         })
 
     if not validated:
@@ -463,7 +468,8 @@ def validate_metier(conn, job_id: str, cases: list[dict]) -> dict:
                               "aucun cas retenu — il ne reste rien à générer")
     module = ModuleRepo(conn).get(job["module_id"]) or {}
     for c in validated:
-        fautes = refus_des_variables_du_cas(conn, module.get("project_id"), c)
+        fautes = refus_des_variables_du_cas(conn, module.get("project_id"), c) + _refus_des_lignes(
+            conn, module.get("project_id"), c.get("lignes") or [])
         if fautes:
             raise GenerationError("invalid_metier", f"« {c['title']} » : " + " ; ".join(fautes))
 
@@ -471,6 +477,56 @@ def validate_metier(conn, job_id: str, cases: list[dict]) -> dict:
     return {"module_id": job["module_id"], "title": job["title"],
            "spec_content": job["spec_content"], "author": job["author"],
            "group_id": job.get("group_id"), "cases": validated}
+
+
+def _refus_des_lignes(conn, project_id, lignes: list[dict]) -> list[str]:
+    """IT-3c : les lignes que la personne valide avec le cas — mêmes règles que dans sa fiche (`CaseDataRepo.remplacer`) :
+    variables VIVANTES du projet, valeurs qu'un test peut recevoir, 50 lignes au plus, noms distincts. Vide : acceptées."""
+    from testpilot.parametres import resolution
+    from testpilot.store.repositories import TestDataRepo, fautes_des_noms_de_lignes
+    if not lignes:
+        return []
+    depot = TestDataRepo(conn)
+    connues = {v["nom"] for v in depot.variables(project_id)} if project_id else set()
+    a_la_corbeille = set(depot.variables_a_la_corbeille(project_id)) if project_id else set()
+    fautes = fautes_des_noms_de_lignes([str(l.get("nom") or "") for l in lignes])   # la règle de la fiche du cas
+    for ligne in lignes:
+        nom = str(ligne.get("nom") or "").strip()
+        for variable, valeur in (ligne.get("valeurs") or {}).items():
+            if variable in a_la_corbeille and variable not in connues:
+                fautes.append(f"ligne « {nom or '?'} » : « {{{{{variable}}}}} » est à la corbeille")
+            elif variable not in connues:
+                fautes.append(f"ligne « {nom or '?'} » : « {{{{{variable}}}}} » n'est pas une variable du projet")
+            try:
+                resolution.valider_valeur(valeur)
+            except resolution.ValeurInvalide as exc:
+                fautes.append(f"ligne « {nom or '?'} » : {exc}")
+    return list(dict.fromkeys(fautes))
+
+
+def _variables_disparues(conn, project_id, lignes: list[dict]) -> list[str]:
+    """IT-3c (revue du 2026-10-19) : les variables des lignes validées qui ne sont plus vivantes (corbeille entre la
+    validation et la génération). Non vide : le cas n'est PAS généré — écarter la colonne laisserait des lignes vides,
+    jouées sous leurs noms avec une même valeur (l'affichage trompeur qu'A59 interdit)."""
+    from testpilot.store.repositories import TestDataRepo
+    vivantes = {v["nom"] for v in TestDataRepo(conn).variables(project_id)} if project_id else set()
+    return sorted({n for l in lignes for n in (l.get("valeurs") or {})} - vivantes)
+
+
+def _enregistrer_les_lignes(conn, case_id: int, project_id, lignes: list[dict]) -> None:
+    """IT-3c : les lignes validées avec le cas deviennent SES lignes (A57) — variables vérifiées vivantes juste avant la
+    génération (`_variables_disparues`), mêmes règles que la fiche du cas (`CaseDataRepo.remplacer`, qui lève
+    `DonneeDeTestInvalide`)."""
+    from testpilot.store.repositories import CaseDataRepo, TestDataRepo
+    if not lignes or not project_id:
+        return
+    ids = {v["nom"]: v["id"] for v in TestDataRepo(conn).variables(project_id)}
+    # Revue du 2026-10-19 (2e passe) : la génération dure des minutes — une variable peut partir à la corbeille PENDANT.
+    disparues = _variables_disparues(conn, project_id, lignes)
+    if disparues:
+        raise DonneeDeTestInvalide(", ".join("{{" + n + "}}" for n in disparues) + " : plus une variable du projet (corbeille)")
+    CaseDataRepo(conn).remplacer(case_id, project_id, [
+        {"nom": l.get("nom") or "", "valeurs": {ids[n]: v for n, v in (l.get("valeurs") or {}).items()}} for l in lignes])
 
 
 _AUTEUR_REPARATION = review_gate.AUTEUR_REPARATION
@@ -1144,11 +1200,24 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                          "depend_dun_autre_cas_du_groupe": bool(
                              case.get("depend_dun_autre_cas_du_groupe", False)),
                          "etat_a_creer_par_ce_cas": case.get("etat_a_creer_par_ce_cas", "")}
+                # IT-3c : les lignes validées avec le cas — le test doit employer leurs variables (IT-3b), l'essai joue la
+                # première. Des noms dans le métier ; les valeurs en paramètre séparé, jamais dans le métier.
+                lignes = case.get("lignes") or []
+                disparues = _variables_disparues(conn_tache, (project or {}).get("id"), lignes) if lignes else []
+                if disparues:
+                    liberer_feature_slug(slug)
+                    return {"erreur": f"« {case['title']} » : les lignes validées emploient "
+                            + ", ".join("{{" + n + "}}" for n in disparues) + ", passée(s) à la corbeille depuis — le cas "
+                              "n'a pas été créé ; rétablissez la variable ou relancez la génération"}
+                if lignes:
+                    metier["variables_des_lignes"] = sorted({n for l in lignes for n in (l.get("valeurs") or {})})
                 try:
                     result = agent_tache.generate(case_plan, group_id=group_id, metier=metier,
                                                   module_id=module_id, title=case["title"],
                                                   author=author, projet=project,
-                                                  refs=case.get("user_story", ""))
+                                                  refs=case.get("user_story", ""),
+                                                  **({"valeurs_d_essai": dict(lignes[0].get("valeurs") or {})}
+                                                     if lignes else {}))
                 except DuplicateName as exc:
                     liberer_feature_slug(slug)
                     return {"erreur": f"« {case['title']} » : {exc}"}
@@ -1169,6 +1238,13 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                                         generation_usd=result.cost_usd)
 
                 if result.success and result.case_id:
+                    # Avant les points de vigilance : ils lisent les lignes du cas (IT-3b). Un refus ne touche que CE cas
+                    # (revue du 2026-10-19 : il faisait échouer tout le lot) ; le cas, déjà créé, reste à relire.
+                    try:
+                        _enregistrer_les_lignes(conn_tache, result.case_id, (project or {}).get("id"), lignes)
+                    except DonneeDeTestInvalide as exc:
+                        return {"erreur": f"« {case['title']} » : ses lignes n'ont pas pu être enregistrées ({exc}) — "
+                                          "le cas est créé sans elles, à compléter dans sa fiche"}
                     _finaliser_version_generee(
                         conn_tache, result.case_id, result.version_id, module_name=slug,
                         connector=connecteur_tache,
