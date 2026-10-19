@@ -18,6 +18,7 @@ import DefectsTab from '../components/case/DefectsTab.vue'
 import HistoryTab from '../components/case/HistoryTab.vue'
 import CodeView from '../components/CodeView.vue'
 import ApercuParJeu from '../components/case/ApercuParJeu.vue'
+import LignesDuCas from '../components/case/LignesDuCas.vue'
 import InsererVariable from '../components/case/InsererVariable.vue'
 import AssocierDonnees from '../components/case/AssocierDonnees.vue'
 import RefsList from '../components/RefsList.vue'
@@ -641,6 +642,9 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
             </ul>
             <p v-else class="mt-3 text-muted-foreground">Aucun résultat attendu renseigné.</p>
           </section>
+
+          <!-- A57 : les lignes propres à ce cas, une itération chacune quand on le lance. -->
+          <LignesDuCas :key="caseId" :case-id="caseId" :peut-modifier="peutModifier" />
 
           <!-- Cas MANUEL (aucun Gherkin) : le test technique n'existe pas encore. -->
           <section v-if="!hasGherkin" class="mt-8">

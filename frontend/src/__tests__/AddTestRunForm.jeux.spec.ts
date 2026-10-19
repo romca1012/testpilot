@@ -15,6 +15,7 @@ import { monter } from './_montage'
 const createRun = vi.fn()
 const getTestData = vi.fn()
 const casAvecVariables = vi.fn()
+const casAvecLignes = vi.fn()
 const push = vi.fn()
 vi.mock('../lib/api', () => ({
   api: {
@@ -26,6 +27,7 @@ vi.mock('../lib/api', () => ({
     createRun: (...a: any[]) => createRun(...a),
     getTestData: (...a: any[]) => getTestData(...a),
     casAvecVariables: (...a: any[]) => casAvecVariables(...a),
+    casAvecLignes: (...a: any[]) => casAvecLignes(...a),
   },
 }))
 vi.mock('vue-router', () => ({
@@ -45,6 +47,7 @@ beforeEach(() => {
   createRun.mockResolvedValue({ id: 9, plan_id: null })
   getTestData.mockResolvedValue(TABLEAU)
   casAvecVariables.mockResolvedValue([21, 22])
+  casAvecLignes.mockResolvedValue([])
 })
 
 async function formulaire() {
@@ -170,5 +173,24 @@ describe('AddTestRunForm — jeux de données (PT-02b)', () => {
     expect(w.find('[data-testid="choix-jeux"]').exists()).toBe(false)
     await envoyer(w)
     expect(createRun.mock.calls[0][1]).toMatchObject({ dataset_ids: [] })
+  })
+
+  // A58 : un cas choisi qui a ses propres lignes — « toutes » (défaut) ou « la première seulement ».
+  it('falsifiable : un cas choisi qui a ses lignes propose toutes ou la première, et l’envoie', async () => {
+    casAvecLignes.mockResolvedValue([21])
+    const w = await formulaire()
+
+    expect(w.get('[data-testid="lignes-des-cas"]').text()).toContain('Lignes des cas (1)')
+    await envoyer(w)
+    expect(createRun.mock.calls[0][1]).toMatchObject({ lignes_des_cas: 'toutes' })
+    await w.get('[data-testid="lignes-premiere"]').setValue(true)
+    await envoyer(w)
+    expect(createRun.mock.calls[1][1]).toMatchObject({ lignes_des_cas: 'premiere' })
+  })
+
+  it('aucun cas choisi n’a de lignes : rien n’est proposé', async () => {
+    casAvecLignes.mockResolvedValue([99])
+    const w = await formulaire()
+    expect(w.find('[data-testid="lignes-des-cas"]').exists()).toBe(false)
   })
 })

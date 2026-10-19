@@ -203,6 +203,11 @@ export const api = {
   createTestVariable: (id: number | string, payload: { nom: string; description?: string }) =>
     request<DonneesDeTest>(`/api/projects/${id}/donnees-de-test/variables`, { method: 'POST', body: JSON.stringify(payload) }),
   casAvecVariables: (id: number | string) => request<number[]>(`/api/projects/${id}/donnees-de-test/cas-avec-variables`),
+  // A57 : les cas qui ont leurs propres lignes, et les lignes d'un cas (ses classes de valeurs, jouées en itérations).
+  casAvecLignes: (id: number | string) => request<number[]>(`/api/projects/${id}/donnees-de-test/cas-avec-lignes`),
+  getCaseData: (caseId: number | string) => request<DonneesDuCas>(`/api/cases/${caseId}/donnees-de-test`),
+  setCaseData: (caseId: number | string, lignes: { id?: number; nom: string; valeurs: Record<string, string> }[]) =>
+    request<DonneesDuCas>(`/api/cases/${caseId}/donnees-de-test`, { method: 'PUT', body: JSON.stringify({ lignes }) }),
   testVariableUsages: (id: number | string, variableId: number) =>
     request<{ id: number; title: string }[]>(`/api/projects/${id}/donnees-de-test/variables/${variableId}/usages`),
   deleteTestVariable: (id: number | string, variableId: number) =>
@@ -272,6 +277,8 @@ export const api = {
     dataset_ids?: number[]
     // Lot PT-04a : les environnements (0 = par défaut) — une exécution par jeu ET par environnement.
     environment_ids?: number[]
+    // A58 : les lignes propres à chaque cas — toutes (défaut) ou la première seulement.
+    lignes_des_cas?: 'toutes' | 'premiere'
   }) => request<RunSummary>(`/api/projects/${projectId}/runs`, {
     method: 'POST', body: JSON.stringify(body),
   }),
@@ -699,6 +706,8 @@ export interface Associations {
 export interface ApercuDonnees { jeu: string; texte: string; manques: string[]; valeurs: Record<string, { valeur: string; origine: string }> }
 export interface JeuDeDonnees { id: number; nom: string; est_defaut: boolean; valeurs: Record<string, string> }
 export interface DonneesDeTest { variables: VariableDeTest[]; jeux: JeuDeDonnees[] }
+export interface LigneDuCas { id: number; nom: string; valeurs: Record<string, string> }
+export interface DonneesDuCas { variables: VariableDeTest[]; lignes: LigneDuCas[]; ecarts?: string[] }
 export interface ProjectAccount {
   id: number | null; label: string; username: string; business_role: string
   has_secret: boolean; principal: boolean

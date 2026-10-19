@@ -20,7 +20,7 @@ from testpilot.api.deps import get_conn
 from testpilot.api.services import donnees_de_test_excel, spec_extract
 from testpilot.api.services.excel_import import FichierExcelInvalide
 from testpilot.parametres import resolution
-from testpilot.store.repositories import DonneeDeTestInvalide, DuplicateName, ProjectRepo, TestDataRepo
+from testpilot.store.repositories import CaseDataRepo, DonneeDeTestInvalide, DuplicateName, ProjectRepo, TestDataRepo
 
 router = APIRouter(prefix="/api/projects/{project_id}/donnees-de-test", tags=["donnees-de-test"])
 
@@ -119,6 +119,14 @@ def tests_qui_ecrivent_des_variables(project_id: int, conn=Depends(get_conn)):
     """Les tests du projet qui écrivent des variables — pour que l'écran de lancement annonce, avant de créer, combien
     seront joués pour chaque jeu au-delà du premier (décision A35)."""
     return _depot(conn, project_id).cas_qui_ecrivent_des_variables(project_id)
+
+
+@router.get("/cas-avec-lignes", response_model=list[int], dependencies=_MEMBRE)
+def cas_qui_ont_leurs_lignes(project_id: int, conn=Depends(get_conn)):
+    """A57 : les cas du projet qui ont leurs propres lignes — pour que l'écran de lancement propose « toutes leurs lignes »
+    ou « la première seulement »."""
+    _depot(conn, project_id)
+    return CaseDataRepo(conn).cas_avec_lignes(project_id)
 
 
 @router.get("/variables/{variable_id}/usages", response_model=list[schemas.UsageDeVariable], dependencies=_MEMBRE)

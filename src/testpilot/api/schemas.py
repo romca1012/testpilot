@@ -7,7 +7,7 @@ réponses stables. La séparation exécution/fonctionnel du §5 est préservée 
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -621,6 +621,34 @@ class ValeursDuJeuIn(BaseModel):
     valeurs: dict[str, str] = {}
 
 
+class LigneDuCasOut(BaseModel):
+    """A57 : une ligne propre à un cas — ses valeurs `{id de variable: valeur}`, cases vides absentes."""
+    id: int
+    nom: str = ""
+    valeurs: dict[str, str] = {}
+
+
+class DonneesDuCasOut(BaseModel):
+    variables: list[VariableOut] = []   # les colonnes possibles : les variables vivantes du projet
+    lignes: list[LigneDuCasOut] = []
+    # Revue du 2026-10-19 : les variables que les lignes font varier et que le test du cas n'emploie pas — il ne se joue
+    # pas tant que le test n'est pas régénéré (message montré tel quel).
+    ecarts: list[str] = []
+
+
+class LigneDuCasIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: int | None = None   # la ligne existante reprise (ses valeurs d'une variable à la corbeille sont gardées)
+    nom: str = ""
+    valeurs: dict[str, str] = {}
+
+
+class LignesDuCasIn(BaseModel):
+    """A57 : TOUTES les lignes du cas, dans l'ordre — elles remplacent les précédentes."""
+    model_config = ConfigDict(extra="forbid")
+    lignes: list[LigneDuCasIn] = []
+
+
 class UsageDeVariable(BaseModel):
     id: int
     title: str
@@ -831,6 +859,8 @@ class RunIn(BaseModel):
     # Lot PT-04a : les environnements à jouer (0 = par défaut). Vide : le défaut seul, comme avant. Plusieurs : une exécution
     # par jeu ET par environnement, regroupées dans un plan ; 50 au plus en tout. « Production » : refusé (A48).
     environment_ids: list[int] = []
+    # A58 : les lignes propres à chaque cas — « toutes » (défaut : chaque cas joue toutes ses lignes) ou « premiere ».
+    lignes_des_cas: Literal["toutes", "premiere"] = "toutes"
 
 
 class IterationDuCas(BaseModel):
