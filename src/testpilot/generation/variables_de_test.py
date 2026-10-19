@@ -40,8 +40,9 @@ def pour_l_agent(projet: dict | None) -> tuple[list[dict], dict[str, str]]:
     return variables, dict(projet.get("valeurs_de_test_par_defaut") or {})
 
 
-def section_prompt(variables: list[dict] | None) -> str:
-    """La section du message initial — vide sans variable."""
+def section_prompt(variables: list[dict] | None, variables_des_lignes=()) -> str:
+    """La section du message initial — vide sans variable. `variables_des_lignes` (IT-3b) : celles que les lignes du cas
+    font varier — le cas est joué une fois par ligne."""
     if not variables:
         return ""
     lignes = ["## Données de test du projet",
@@ -56,6 +57,15 @@ def section_prompt(variables: list[dict] | None) -> str:
                "exemple `Quand je renseigne le champ \"Client\" avec la valeur \"{{client}}\"`. N'emploie que ces noms, "
                "exactement ; une donnée qui n'est pas dans cette liste s'écrit comme avant. Une variable ne s'écrit que "
                "dans le .feature, jamais dans le code Python des steps."]
+    du_cas = [n for n in dict.fromkeys(variables_des_lignes or ()) if any(v["nom"] == n for v in variables)]
+    if du_cas:
+        noms = ", ".join(f"`{{{{{n}}}}}`" for n in du_cas)
+        lignes += ["",
+                   f"Ce cas est joué UNE FOIS PAR LIGNE de ses données de test : {noms} changent d'une ligne à l'autre "
+                   "(valeurs limites comprises, et le résultat attendu de chacune quand une variable le porte). Écris UN SEUL "
+                   "scénario qui emploie ces variables partout où le cas en parle — celle du résultat attendu dans l'« Alors », "
+                   "jamais un « Alors » qui se contente de relire la valeur que le test vient de saisir —, jamais un scénario "
+                   "par valeur ni une valeur écrite en dur : l'outil le rejoue pour chaque ligne."]
     return "\n".join(lignes)
 
 
@@ -143,10 +153,16 @@ def du_cas(variables: list[dict], metier: dict | None, deja_dans_le_test=(),
     PT-02f allumé, cas connu, projet à variables vues par l'agent (PT-02d) : seulement celles que le cas cite — toutes
     requises — plus celles que le test actuel emploie déjà (A41 : une régénération garde l'association d'un clic quand le
     cas n'écrivait pas la valeur) ; toute autre est refusée à l'écriture, même si le cas n'en cite aucune. Sinon :
-    inchangé (PT-02d), rien de requis, aucun contrôle de plus."""
+    inchangé (PT-02d), rien de requis, aucun contrôle de plus.
+
+    IT-3b (A57 à A59) : les variables que les LIGNES du cas font varier (`metier["variables_des_lignes"]`) sont requises
+    comme si le cas les citait — même PT-02f éteint : ces lignes, une personne les a saisies, et un test qui ne les emploie
+    pas est bloqué à l'exécution (A59)."""
+    lignes = {str(n) for n in (metier or {}).get("variables_des_lignes") or ()}
     if not interrupteurs.cas_dit_ses_donnees_actif() or metier is None:
-        return variables, frozenset(), False
-    citees = set(variables_citees(metier))
+        noms = {v["nom"] for v in variables}
+        return variables, frozenset(lignes & noms), False
+    citees = set(variables_citees(metier)) | lignes
     if not variables:
         # Aucune variable vivante, mais le projet en a déclaré (à la corbeille) et le cas en cite : rien n'est montré et toute
         # écriture `{{…}}` — .feature ou code des steps — est refusée (revue du 2026-10-15, faux vert `"{{client}}" not in
@@ -176,6 +192,50 @@ def ecart_cas_test(version: dict | None, noms_du_projet) -> list[str]:
     employees = set(resolution.references(feature))
     return [f"le cas cite « {{{{{nom}}}}} », le test ne l'emploie pas" for nom in variables_citees(metier)
             if nom not in employees]
+
+
+ALORS_IDENTIQUE = "alors_identique_pour_toutes_les_lignes"
+
+
+def lint_alors_sans_variable_des_lignes(feature: str, variables_des_lignes) -> list[dict]:
+    """IT-3b (revue du 2026-10-19), signal DÉTECTIF : les lignes du cas font varier des variables, mais aucun « Alors » d'un
+    scénario n'en VÉRIFIE une — il attend le MÊME résultat pour toutes les lignes. Légitime pour une classe d'équivalence ; un
+    piège si le résultat attendu change d'une ligne à l'autre (une application qui refuse à tort à 18 ans passerait sur
+    toutes les lignes). Une variable ne compte que si elle est dans un « Alors » ET dans aucune autre étape du scénario :
+    « Alors le champ "Âge" contient "{{age}}" » relit la saisie, il ne vérifie aucun résultat (revue, 2e passe). Lu sur la
+    STRUCTURE du Gherkin (type de step : « Alors » et les « Et »/« Mais » qui le suivent ; textes, tableaux et blocs de
+    texte), jamais sur le libellé. Scénarios d'une « Règle » et plans compris. Jamais bloquant : le relecteur décide."""
+    lignes = set(variables_des_lignes or ())
+    if not lignes or not (feature or "").strip():
+        return []
+    from behave.parser import ParserError, parse_feature
+    try:
+        modele = parse_feature(feature, language="fr")
+    except ParserError:
+        return []
+    if modele is None:
+        return []
+
+    def references_de(step) -> set[str]:
+        texte = " ".join([step.name, *(c for r in (step.table.rows if step.table else []) for c in r.cells), step.text or ""])
+        return set(resolution.references(texte)) & lignes
+
+    contexte = set().union(*(references_de(s) for s in (modele.background.steps if modele.background else [])))
+    avis = []
+    for scenario in modele.walk_scenarios(with_outlines=True):
+        if getattr(scenario, "_row", None) is not None:
+            continue   # une instance d'un plan : le plan lui-même est lu (mesuré sur behave 1.3.3 : instances `_row` non nul)
+        alors = [s for s in scenario.steps if getattr(s, "step_type", "") == "then"]
+        if not alors:
+            continue
+        ailleurs = contexte.union(*(references_de(s) for s in scenario.steps if getattr(s, "step_type", "") != "then"))
+        verifiees = set().union(*(references_de(s) for s in alors)) - ailleurs
+        if not verifiees:
+            noms = ", ".join("{{" + n + "}}" for n in sorted(lignes))
+            avis.append({"step": scenario.name, "line": scenario.line, "kind": ALORS_IDENTIQUE,
+                         "message": f"les lignes du cas font varier {noms}, mais aucun « Alors » n'en vérifie une (sans la "
+                                    "saisir ailleurs) : ce scénario attend le même résultat pour toutes les lignes"})
+    return avis
 
 
 def refus_variables_du_cas(feature: str, requises: frozenset[str] | set[str]) -> list[str]:
