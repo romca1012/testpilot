@@ -715,7 +715,7 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None,
 
     # Lot PT-02d (interrupteur) : les NOMS des variables de test du projet — jamais leurs valeurs. Vide : rien n'est ajouté.
     from testpilot.generation import variables_de_test
-    section_variables = variables_de_test.section_prompt(variables)
+    section_variables = variables_de_test.section_prompt(variables, (metier or {}).get("variables_des_lignes") or ())
     if section_variables:
         lines.append("\n" + section_variables)
 
