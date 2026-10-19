@@ -4242,6 +4242,29 @@ class AccessAuditRepo:
 LIGNES_DU_CAS_MAX = 50   # A28 : comme les lignes d'un lancement
 
 
+def fautes_des_noms_de_lignes(noms: list[str]) -> list[str]:
+    """Les règles des noms des lignes d'un cas — UNE seule source pour la fiche du cas (`CaseDataRepo.remplacer`) et la
+    validation des lignes proposées (`generation_service._refus_des_lignes`) : 50 lignes au plus, noms de 60 caractères au
+    plus, distincts (casse et espaces compris), et jamais « Ligne N » à un autre rang que N (le nom donné d'office à une
+    ligne sans nom, `CaseDataRepo.niveaux`). Pure."""
+    fautes = []
+    if len(noms) > LIGNES_DU_CAS_MAX:
+        fautes.append(f"{LIGNES_DU_CAS_MAX} lignes au plus pour un cas")
+    vus: set[str] = set()
+    for rang, nom in enumerate(noms, start=1):
+        nom = (nom or "").strip()
+        if len(nom) > _NOM_DE_JEU_MAX:
+            fautes.append(f"nom de ligne trop long ({_NOM_DE_JEU_MAX} caractères au plus)")
+        if nom and _key(nom) in vus:
+            fautes.append(f"deux lignes s'appellent « {nom} »")
+        numero = re.fullmatch(r"ligne\s+(\d+)", nom.casefold())
+        if numero and int(numero.group(1)) != rang:
+            fautes.append(f"« {nom} » est le nom donné d'office à une autre ligne : choisissez-en un autre")
+        if nom:
+            vus.add(_key(nom))
+    return list(dict.fromkeys(fautes))
+
+
 class CaseDataRepo:
     """Les LIGNES PROPRES À UN CAS (migration 72, décisions A57 et A58) : ses classes de valeurs et le résultat attendu de
     chacune, une itération par ligne quand on lance ce cas. Les colonnes sont des variables VIVANTES du projet du cas ; une
@@ -4297,22 +4320,11 @@ class CaseDataRepo:
 
         `id` : la ligne existante que celle-ci reprend. Ses valeurs pour une variable à la corbeille (que l'écran ne montre
         pas) sont gardées : restaurée, la variable les retrouve (revue du 2026-10-19)."""
-        if len(lignes) > LIGNES_DU_CAS_MAX:
-            raise DonneeDeTestInvalide(f"{LIGNES_DU_CAS_MAX} lignes au plus pour un cas")
+        fautes = fautes_des_noms_de_lignes([ligne.get("nom") or "" for ligne in lignes])
+        if fautes:
+            raise DonneeDeTestInvalide(fautes[0])
         vivantes = {v["id"] for v in TestDataRepo(self.conn).variables(project_id)}
-        vus: set[str] = set()
-        for rang, ligne in enumerate(lignes, start=1):
-            nom = (ligne.get("nom") or "").strip()
-            if len(nom) > _NOM_DE_JEU_MAX:
-                raise DonneeDeTestInvalide(f"nom de ligne trop long ({_NOM_DE_JEU_MAX} caractères au plus)")
-            if nom and _key(nom) in vus:
-                raise DonneeDeTestInvalide(f"deux lignes s'appellent « {nom} »")
-            # Une ligne sans nom s'appelle « Ligne <rang> » (`niveaux`) : ce nom, porté à un autre rang, ferait deux itérations
-            # du même nom (revue du 2026-10-19).
-            numero = re.fullmatch(r"ligne\s+(\d+)", nom.casefold())
-            if numero and int(numero.group(1)) != rang:
-                raise DonneeDeTestInvalide(f"« {nom} » est le nom donné d'office à une autre ligne : choisissez-en un autre")
-            vus.add(_key(nom)) if nom else None
+        for ligne in lignes:
             etrangeres = set(ligne.get("valeurs") or {}) - vivantes
             if etrangeres:
                 raise DonneeDeTestInvalide("une colonne n'est pas une variable de ce projet (ou elle est à la corbeille)")
