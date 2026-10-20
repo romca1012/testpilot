@@ -360,6 +360,12 @@ class Artefacts:
     resume: str = ""  # réparation : ce que l'agent DIT avoir fait (information pour un humain, jamais un signal)
     # Lot VH-04 : refus des gardes d'écriture pendant cette génération, par code (`TP_REFUS_ECRITURE_FILE`, posé par le banc).
     refus_ecriture: dict[str, int] = field(default_factory=dict)
+    # Étape 3 du plan unique : le produit aurait-il livré ce test PRÊT À LANCER ? Points de vigilance de la version (même
+    # calcul que le produit, `lint_warnings_for_version`), avant toute correction d'après-coup. `None` : non mesuré.
+    pret_a_lancer: bool | None = None
+    avis_restants: list[str] = field(default_factory=list)
+    # Étape 2 : relevé du contrôle de fin d'écriture (provenance), `None` si l'interrupteur était éteint.
+    controle: dict | None = None
 
     @property
     def empreintes(self) -> dict[str, str]:
@@ -410,6 +416,10 @@ class EssaiConsigne:
     steps_generes: int | None = None
     # Lot PT-02d : variables de test que le test généré ÉCRIT (`{{nom}}`) ; `None` si la génération n'a rien produit.
     variables_ecrites: list[str] | None = None
+    # Étape 3 : prêt à lancer (None = non mesuré), points de vigilance restants, relevé du contrôle de fin d'écriture.
+    pret_a_lancer: bool | None = None
+    avis_restants: list[str] = field(default_factory=list)
+    controle: dict | None = None
 
 
 @dataclass
@@ -570,7 +580,11 @@ def executer_campagne(
                                                  artefacts.empreintes if jouable else {},
                                                  dict(getattr(artefacts, "refus_ecriture", None) or {}),
                                                  compter_steps_generes(artefacts.fichiers) if jouable else None,
-                                                 variables_ecrites(artefacts.fichiers) if jouable else None))
+                                                 variables_ecrites(artefacts.fichiers) if jouable else None,
+                                                 pret_a_lancer=getattr(artefacts, "pret_a_lancer", None) if jouable else None,
+                                                 avis_restants=list(getattr(artefacts, "avis_restants", None) or [])
+                                                 if jouable else [],
+                                                 controle=getattr(artefacts, "controle", None)))
             journal(f"{cas} essai {essai} : {'généré' if jouable else 'GÉNÉRATION ÉCHOUÉE'} "
                     f"({'coût inconnu' if cout_essai is None else f'{cout_essai:.3f} $'})")
             traces: dict[str, dict | None] = {}
@@ -903,6 +917,57 @@ def code_de_sortie(indicateurs: dict, campagne: Campagne) -> int:
 # ── Rendu ────────────────────────────────────────────────────────────────────────────────────────────────
 
 
+def _section_prets_a_lancer(campagne: "Campagne", contexte: Mapping) -> list[str]:
+    """Étape 3 : la part des tests que le produit livrerait PRÊTS À LANCER. Revue (2026-10-20) : le dénominateur est
+    celui des essais LANCÉS — une génération échouée ou une mesure impossible n'est jamais retirée en silence (sinon
+    « 18/18 » au lieu de 18/22) ; et la comparaison « éteint / allumé » dit son biais."""
+    lances = list(campagne.essais)
+    mesures = [t for t in lances if getattr(t, "pret_a_lancer", None) is not None]
+    impossibles = [t for t in lances if t.genere and getattr(t, "pret_a_lancer", None) is None
+                   and any(str(a).startswith("mesure impossible") for a in (t.avis_restants or []))]
+    controles = [t.controle for t in lances if getattr(t, "controle", None)]
+    if not (mesures or impossibles or controles):
+        return []   # campagne sans cette mesure (doublures, à sec) : le rapport ne change pas d'un octet
+    prets = {(t.cas, t.essai) for t in mesures if t.pret_a_lancer}
+    echouees = sum(1 for t in lances if not t.genere)
+    avis = Counter(k for t in mesures for k in (t.avis_restants or []))
+    # Le pire cas : un test livré prêt à lancer qui sort conforme sur une application FAUSSE.
+    faux_verts_prets = sum(1 for o in campagne.observations if o.variante != VARIANTE_SAINE
+                           and o.obtenu == "conforme" and (o.cas, o.essai) in prets)
+    allume = (contexte.get("interrupteurs") or {}).get("TESTPILOT_CONTROLE_FIN_ECRITURE")
+    if allume is None:
+        allume = bool(controles)
+    lignes = ["", "## Prêts à lancer (étape 3 du plan unique)", "",
+              f"Tests que le produit livrerait **prêts à lancer** (aucun point de vigilance) : "
+              f"**{stats.formater_taux(len(prets), len(lances))}** des essais lancés ; générations échouées : {echouees} ; "
+              f"mesures impossibles : {len(impossibles)} ; faux verts parmi les prêts : **{faux_verts_prets}**.",
+              "",
+              ("Contrôle de fin d'écriture **allumé** : la correction d'après-coup ne repasse pas sur les points déjà vus — "
+               "mesure proche du produit, ses tours sont dans le coût." if allume else
+               "Contrôle de fin d'écriture **éteint** : borne BASSE — le produit tenterait une correction automatique sur "
+               "ces points, non jouée et non coûtée ici. Ne pas comparer au bras allumé sans le dire."),
+              "", "| Raison du blocage | Tests |", "|---|---|"]
+    lignes += [f"| `{k}` | {n} |" for k, n in avis.most_common()] or ["| — | 0 |"]
+    if impossibles:
+        lignes += ["", "Mesures impossibles : " + " ; ".join(
+            f"{t.cas} essai {t.essai} ({', '.join(t.avis_restants)})" for t in impossibles) + "."]
+    if controles:
+        envoyes = Counter(k for c in controles for k in (c.get("avis_envoyes") or []))
+        tours = Counter(int(c.get("tours") or 0) for c in controles)
+        lignes += ["", f"Contrôle de fin d'écriture : {len(controles)} génération(s) ; tours "
+                   + ", ".join(f"{t} ×{n}" for t, n in sorted(tours.items()))
+                   + " ; générations où l'IA a reçu le point : "
+                   + (", ".join(f"`{k}` ×{n}" for k, n in envoyes.most_common()) or "aucune") + "."]
+    return lignes
+
+
+def _interrupteurs_actifs() -> dict[str, bool]:
+    """Chaque interrupteur `TESTPILOT_*` de `generation/interrupteurs.py`, tel que la génération le lira (défauts compris)."""
+    sys.path.insert(0, str(RACINE / "src"))
+    from testpilot.generation import interrupteurs as i
+    return {getattr(i, nom): i.allume(getattr(i, nom)) for nom in dir(i) if nom.startswith("ENV_")}
+
+
 def _taux(d: dict) -> str:
     return stats.formater_taux(d["k"], d["n"], d.get("non_concluants", 0))
 
@@ -1037,6 +1102,7 @@ def rendre_markdown(campagne: Campagne, indicateurs: dict, contexte: dict) -> st
                    f"Tests générés sans AUCUN step écrit à la main : **{sans}/{len(mesures)}** ; steps définis par les tests : "
                    f"{sum(mesures)} au total (maximum {max(mesures)} dans un test). Un step écrit à la main n'a ni test de "
                    "falsifiabilité ni résolution éprouvée : la cible est zéro."]
+    lignes += _section_prets_a_lancer(campagne, contexte)
     ecrites = [t.variables_ecrites for t in campagne.essais if t.variables_ecrites is not None]
     if any(ecrites):
         lignes += ["", "## Données de test (lot PT-02d)", "",
@@ -1475,6 +1541,16 @@ class GenerateurReel:
             raise RuntimeError(f"le moteur de génération a échoué (code {processus.returncode}, aucun rapport)")
         artefacts = artefacts_depuis_rapport(cas, essai, rapports[0])
         artefacts.refus_ecriture = lire_refus_d_ecriture(refus)
+        gen = rapports[0].get("generation") or {}
+        artefacts.controle = (gen.get("generation_provenance") or {}).get("controle_fin_ecriture")
+        if artefacts.genere_ok and artefacts.fichiers:
+            try:
+                artefacts.pret_a_lancer, artefacts.avis_restants = evaluer_pret_a_lancer(self.ids_de_cas[cas], gen,
+                                                                                         self.data_dir)
+            except ConfigurationInvalide:
+                raise   # revue : une isolation cassée ARRÊTE la campagne, elle ne devient jamais « non mesuré »
+            except Exception as exc:  # une mesure qui tombe ne devient jamais « prêt » : non mesuré, et dit
+                artefacts.pret_a_lancer, artefacts.avis_restants = None, [f"mesure impossible : {type(exc).__name__}"]
         return artefacts
 
 
@@ -1590,6 +1666,43 @@ class GenerateurDepuisDisque:
         origine = artefacts_depuis_rapport(cas, essai, rapports[0])
         origine.cout_usd = 0.0
         return origine
+
+
+def evaluer_pret_a_lancer(case_id: int, gen: Mapping, data_dir: Path) -> tuple[bool, list[str]]:
+    """Étape 3 du plan unique : le test généré, enregistré comme le produit l'enregistre (version du cas, avec ses preuves,
+    son registre et sa provenance), puis ses points de vigilance calculés par le produit lui-même
+    (`generation_service.lint_warnings_for_version`). Aucun appel à l'IA : la correction d'après-coup n'est pas jouée —
+    « prêt à lancer » se lit donc AVANT correction. Contrôle allumé : la correction ne repasserait pas sur les points déjà
+    vus, la mesure est proche du produit ; contrôle ÉTEINT : borne basse (le produit tenterait une correction). Base
+    jetable du banc seulement : la garde d'isolement (`verifier_donnees_
+    isolees`, incident du 2026-10-07) est vérifiée AVANT d'ouvrir la base — mesuré en écrivant cette mesure, une doublure
+    de test avait ouvert la base par défaut du worktree."""
+    from testpilot import config
+    from testpilot.api.services import generation_service
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import CaseRepo, VersionRepo
+
+    verifier_donnees_isolees(config.DB_PATH, data_dir, getattr(config, "DB_URL", ""))
+    conn = get_initialized_db(Path(config.DB_PATH))
+    try:
+        cas = CaseRepo(conn).get(case_id)
+        versions = VersionRepo(conn)
+        metier = versions.get(cas["current_version_id"]) or {}
+        vid = versions.create(
+            test_case_id=case_id, spec_content="", spec_hash="", created_by="banc-agents",
+            feature_content=gen.get("feature_content") or "", steps_content=gen.get("steps_content") or "",
+            title=metier.get("title") or "", preconditions=metier.get("preconditions") or "",
+            test_steps=metier.get("test_steps") or "", expected_result=metier.get("expected_result") or "",
+            observation_evidence=json.dumps(gen.get("observation_evidence") or [], ensure_ascii=False),
+            generation_provenance=json.dumps(gen.get("generation_provenance") or {}, ensure_ascii=False),
+            verified_fields=json.dumps(gen.get("verified_fields") or {}, ensure_ascii=False))
+        # Seules la version métier et CETTE génération : les essais précédents du même cas ne sont pas son histoire.
+        lignes = [v for v in versions.list_for_case(case_id) if v["id"] in (metier.get("id"), vid)]
+        avis = generation_service.lint_warnings_for_version(conn, cas, lignes, vid)
+    finally:
+        conn.close()
+    sortes = sorted({a.get("kind") or "?" for a in avis})
+    return not sortes, sortes
 
 
 def artefacts_depuis_rapport(cas: str, essai: int, rapport: Mapping) -> Artefacts:
@@ -2011,6 +2124,8 @@ def _lancer_reel(args, configuration: Configuration, cas_joues: list[str], taux:
                 "donnees_de_test": bool(args.donnees_de_test),
                 "second_jeu": SECOND_JEU_DU_BANC if args.donnees_de_test else None,
                 "bac_a_sable": bool(args.bac_a_sable),
+                # Étape 3 : l'état de TOUS les interrupteurs — une comparaison « éteint / allumé » ne repose plus sur l'étiquette.
+                "interrupteurs": _interrupteurs_actifs(),
                 "tentatives_reparation": _tentatives_de_reparation(args.tentatives_reparation) if args.reparer else None}
     md, js = ecrire_sortie(campagne, indicateurs, contexte, args.sortie)
     code = code_de_sortie(indicateurs, campagne)
