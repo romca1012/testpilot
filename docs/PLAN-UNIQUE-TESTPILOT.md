@@ -73,6 +73,7 @@ tort, aucun paramètre n'est vraiment utilisable. Ces deux étapes servent tes d
 - « Automatiser avec l'IA » testé de bout en bout.
 - **De toi :** l'écran « bloqué » (maquette sobre d'abord).
 - **3 à 4 jours — 0 $**
+- **État : code fait en local le 2026-10-20** (branche `lot-etape2-bloque`, non poussé), relu en deux passes jusqu'à « aucun bloquant ». Décisions : A67 (« bloqué » recalculé, jamais enregistré), A68 (écran validé). Le contrôle de fin d'écriture est derrière `TESTPILOT_CONTROLE_FIN_ECRITURE`, **éteint** jusqu'à la mesure de l'étape 3 (règle des interrupteurs). Écarts : le gel D30 à l'écriture de la correction n'est pas fait (même issue : bloqué) ; « de bout en bout » = essai réel avec l'IA accepté par le porteur (≈ 1 $), à faire.
 
 #### Étape 3 — Mesure de contrôle n°1
 - Sur le banc (11 cas, dont « Contrôle d'accès » avec un défaut à la limite) : part des cas **prêts à lancer**

@@ -267,6 +267,11 @@ pas.
 >
 > **Test de la borne, avant d'écrire une garde** : *« est-ce que cette garde peut refuser un test
 > légitime ? »* Si oui → détective. Si non → bloquante recevable, à arbitrer.
+>
+> *(2026-10-20, décisions A61 et A63 du porteur.)* Le **contrôle de fin d'écriture** renvoie ces gardes
+> détectives à l'IA pendant la génération : elle corrige, **ou garde son test** — rien n'est refusé à
+> l'écriture. Ce qui reste rend le test **bloqué** au lancement, avec sa raison, jusqu'à ce qu'une personne
+> le débloque : c'est la même porte qu'au gate (« un humain tranche »), nommée autrement. La borne tient.
 
 **Coût : nul.** Validation à l'écriture = code pur, exécuté avant tout appel LLM supplémentaire.
 Mieux : un rejet à l'écriture **économise** un run réel.
