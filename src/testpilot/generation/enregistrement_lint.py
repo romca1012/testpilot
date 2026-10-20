@@ -4,7 +4,8 @@ le modèle, structurellement contraignable mais pas infaillible. Celui-ci porte 
 produit — ce qui s'exécute réellement — et sert de filet pour tout ce qui échapperait au premier
 contrôle.
 
-Signal DÉTECTIF, jamais bloquant (même régime que 0008/0017/0021, D4) : un cas qui ouvre un
+Signal DÉTECTIF, jamais refusé à l'écriture (même régime que 0008/0017/0021, D4 ; étape 2, A63 : un avis restant
+rend le test « bloqué » avec sa raison, une personne le débloque) : un cas qui ouvre un
 enregistrement réel en lecture seule n'est pas un problème en soi — mais le relecteur doit le
 savoir avant d'approuver, impossible à manquer, distinct de l'avertissement générique.
 
@@ -33,11 +34,14 @@ from __future__ import annotations
 
 import re
 
+from testpilot.generation.gherkin_mots_cles import DEBUT_CONTEXTE, DEBUT_SCENARIO
+
 _CREE_CHAMP = re.compile(r'je renseigne le champ "([^"]+)" avec la valeur "([^"]+)"')
 _LIGNE_TABLEAU = re.compile(r'^\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|')
 _OUVRE = re.compile(r"j'ouvre l'enregistrement \"([^\"]+)\" du modèle \"([^\"]+)\"")
-_DEBUT_CONTEXTE = re.compile(r"^\s*(Contexte|Background)\s*:")
-_DEBUT_SCENARIO = re.compile(r"^\s*(Scénario|Scenario|Plan du scénario)\s*:")
+# Étape 2 (A61) : les mots-clés viennent de Behave (`Exemple:` est un scénario en français).
+_DEBUT_CONTEXTE = DEBUT_CONTEXTE
+_DEBUT_SCENARIO = DEBUT_SCENARIO
 # Toute chaîne citée OU cellule de tableau au format décoré Odoo : "[CODE] Libellé".
 _VALEUR_DECOREE = re.compile(r'(?:"(\[\S+\]\s[^"]+)"|\|\s*(\[\S+\]\s[^|]+?)\s*\|)')
 

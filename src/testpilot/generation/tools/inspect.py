@@ -86,12 +86,15 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
     if info.get("error"):
         return _outcome(f"[inspect_page_form] {info['error']}", ok=False)
     fields = info.get("fields", [])
-    required = [f["name"] for f in fields if f.get("required")]
+    # Étape 2 (revue, C3) : un champ relevé dans un cadre (iframe) le dit — la saisie s'écrit « dans le cadre "X", … ».
+    def affiche(f):
+        return f'{f["name"]} (cadre « {f["cadre"][0]} »)' if f.get("cadre") else f["name"]
+    required = [affiche(f) for f in fields if f.get("required")]
     submission = summarize_submission_mechanism(info.get("submission"))
     names = [f["name"] for f in fields if f.get("name")]
     outcome = _outcome(
         f"Formulaire {page_url} : {len(fields)} champ(s), requis={required}. "
-        f"Noms observés : {names}. "
+        f"Noms observés : {[affiche(f) for f in fields if f.get('name')]}. "
         f"Soumission : {submission or 'inconnue'}."
     )
     outcome.verified_fields = {f"inspect_page_form:{page_url}": names}
@@ -110,7 +113,7 @@ def inspect_page_form(ctx: "ToolContext", page_url: str) -> "ToolOutcome":
         # Un select qui ne contient encore que son placeholder (valeur vide) est peuplé plus tard par
         # JavaScript : ses options ne sont PAS exhaustives, il ne fait autorité pour rien.
         reelles = [(v, t) for v, t in (champ.get("options") or []) if str(v).strip()]
-        if (champ.get("tag") == "select" and reelles and champ.get("name")
+        if (champ.get("tag") == "select" and reelles and champ.get("name") and not champ.get("cadre")
                 and champ["name"] in independants):
             ctx.options_select.setdefault(champ["name"], set()).update(
                 {str(v) for v, _t in reelles} | {str(t) for _v, t in reelles})

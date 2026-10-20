@@ -204,6 +204,11 @@ class GateOut(BaseModel):
     # Avertissements NON-bloquants sur les assertions générées (décision 0008). N'affectent
     # jamais `allowed` : ils informent le relecteur, le gate reste souverain.
     lint_warnings: list[LintWarning] = []
+    # Étape 2 (A63, A67) : « bloqué » = `not allowed`, recalculé ; `raisons` dit pourquoi, en phrases courtes.
+    bloque: bool = False
+    raisons: list[str] = []
+    # Revue de l'étape 2 (C5) : une approbation peut-elle débloquer ? Faux en cas d'écart cas/test (A42).
+    debloquable: bool = False
 
 
 class RefusAConfirmerOut(BaseModel):
@@ -241,6 +246,8 @@ class CaseARelireOut(BaseModel):
     version_id: int
     reason: str
     lint_warnings_count: int = 0
+    # Étape 2 (A63, A67, A68) : la première raison s'affiche dans la liste (« Bloqué : <raison> »).
+    raisons: list[str] = []
 
 
 class ExecutionSummary(BaseModel):

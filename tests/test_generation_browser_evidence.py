@@ -36,3 +36,21 @@ def test_observation_navigateur_et_mutation_champ_masque(tmp_path):
             assert contextual_warnings(feature, ctx.observations, target_sha256='local')
         finally:
             browser.close()
+
+
+def test_les_champs_d_une_vraie_iframe_sont_releves_avec_le_nom_du_cadre():
+    """Étape 2 (A61) : `page.frames`, `main_frame`, `parent_frame` et `frame_element()` réels — un champ d'un cadre est relevé
+    avec les noms de sa balise ; un cadre dans un cadre ne l'est pas (l'exécution ne l'atteint pas)."""
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.set_content('''<html lang="fr"><body><input name="email">
+                <iframe name="paiement" title="Paiement sécurisé"
+                        srcdoc="<input name='carte'><iframe name='profond' srcdoc=&quot;<input name='cache'>&quot;></iframe>">
+                </iframe></body></html>''')
+            page.frame(name="paiement").wait_for_selector("input[name='carte']")
+            champs = {f["name"]: f.get("cadre") for f in extract_form(page)["fields"]}
+            assert champs == {"email": None, "carte": ["paiement", "Paiement sécurisé"]}, champs
+        finally:
+            browser.close()

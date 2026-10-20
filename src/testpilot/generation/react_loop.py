@@ -92,10 +92,31 @@ def _append_user_text(state: AgentState, text: str) -> None:
     state.messages.append({"role": "user", "content": [{"type": "text", "text": text}]})
 
 
+def message_de_controle(avis: list[dict]) -> str:
+    """Étape 2 (A61) : ce que l'IA reçoit quand son test passe la vérification à blanc mais garde des points de vigilance.
+    Les textes viennent des contrôles de TestPilot, jamais de l'agent."""
+    lignes = []
+    for a in avis[:20]:
+        ou = f" (ligne {a['line']})" if a.get("line") else ""
+        lignes.append(f"- [{a.get('kind', '?')}]{ou} {a.get('message') or a.get('step') or ''}".rstrip())
+    return ("[contrôle de fin d'écriture] Le test passe la vérification à blanc, mais ces points le laisseraient BLOQUÉ "
+            "au lancement :\n" + "\n".join(lignes) + "\nCe que le test VÉRIFIE (« Alors », Exemples, fonctions "
+            "@then) est désormais gelé : une réécriture qui y touche sera refusée. Corrige le reste en réécrivant le "
+            "fichier concerné (write_feature_file, write_steps_file) — pour un champ jamais vu, observe d'abord la page "
+            "(inspect_page_form) ; pour un message, soumets le formulaire (attempt_form_submission). Si un point ne "
+            "s'applique pas à ce test, termine sans rien réécrire : le test sera livré bloqué avec ce point, et une "
+            "personne tranchera.")
+
+
 def run_loop(*, llm, system_prompt: str, state: AgentState, ctx: ToolContext,
              dry_runner, cost_tracker, max_iterations: int, stall_limit: int,
-             model: str = "") -> AgentState:
-    """Exécute la boucle jusqu'à un dry-run vert ou l'activation d'un garde-fou."""
+             model: str = "", controle_fin=None, tours_de_controle: int = 2) -> AgentState:
+    """Exécute la boucle jusqu'à un dry-run vert ou l'activation d'un garde-fou.
+
+    `controle_fin` (étape 2, A61 — interrupteur `TESTPILOT_CONTROLE_FIN_ECRITURE`) : `state -> avis`. Quand le dry-run
+    passe et qu'il reste des avis, ils sont renvoyés à l'IA (au plus `tours_de_controle` fois) au lieu de clore ; si elle
+    termine sans réécrire, la génération est réussie avec des avis restants — le test sera livré bloqué (A63). Absent :
+    la boucle d'avant, à l'identique."""
     # Q3-a : les outils sont calculés UNE fois par run (jamais par tour : un préfixe d'outils qui
     # changerait en cours de route invaliderait le cache de prompt). Interrupteurs éteints, c'est
     # exactement l'ancienne liste `TOOLS_DEFINITIONS`.
@@ -142,6 +163,16 @@ def run_loop(*, llm, system_prompt: str, state: AgentState, ctx: ToolContext,
         # Dry-run automatique dès que les deux fichiers sont prêts.
         verdict = _maybe_dry_run(state, dry_runner, stall_limit)
         if verdict == "passed":
+            avis = controle_fin(state) if controle_fin and state.tours_de_controle < tours_de_controle else []
+            if avis and i + 1 < max_iterations:
+                # Revue de l'étape 2 (B1) : dès le premier renvoi, les vérifications sont GELÉES (comme en réparation,
+                # VH-03) — l'IA ne peut plus faire taire un point en affaiblissant ce que le test prouve.
+                if ctx.gel_feature is None and ctx.gel_steps is None:
+                    ctx.gel_feature, ctx.gel_steps, ctx.gel_motif = state.feature_content, state.steps_content, "controle"
+                state.tours_de_controle += 1
+                state.avis_envoyes += [a.get("kind") or "" for a in avis]
+                _append_user_text(state, message_de_controle(avis))
+                continue
             state.stopped_reason = "done"
             return state
         if verdict == "stalled":

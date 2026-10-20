@@ -24,6 +24,7 @@ pris pour un simple « timeout ».
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from testpilot.generation import gel_verifications
 from testpilot.generation.provenance import revision_metadata
 from testpilot.parametres.ia_peut_agir import ia_peut_ecrire
@@ -605,6 +606,17 @@ def _approuvee_par_une_personne(conn, version_id) -> bool:
     return bool(derniere and derniere["decision"] == "approved" and derniere.get("reviewer") != "validation-metier")
 
 
+def _apport_des_preuves(version_rows: list[dict], current: dict) -> dict:
+    """La version qui a apporté les preuves d'observation de `current` : la plus ancienne des versions consécutives qui
+    portent exactement les mêmes (une copie, une édition du métier, une correction les recopient)."""
+    apport = current
+    for v in sorted((v for v in version_rows if v["id"] < current["id"]), key=lambda v: v["id"], reverse=True):
+        if (v.get("observation_evidence") or "") != (current.get("observation_evidence") or ""):
+            break
+        apport = v
+    return apport
+
+
 ATTENTE_METIER_CHANGEE = "attente_metier_changee"
 VALEUR_VUE_A_L_ESSAI = "valeur_vue_a_l_essai"
 
@@ -727,29 +739,38 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
     d'explosion d'une réparation (0017), champs/valeurs absents du domaine mesuré (0021). Extrait
     ici (2026-09-15) pour servir aussi de critère à l'approbation automatique — un seul point de
     calcul, jamais deux qui pourraient diverger sur ce qu'est « un cas propre »."""
-    from testpilot.generation import assertion_lint, domain_model, enregistrement_lint, repair_diff, smoke_check
-    from testpilot.store.repositories import ProjectRepo
+    from testpilot.generation import domain_model, repair_diff
+    from testpilot.generation.avis_du_test import avis_du_test
+    from testpilot.generation.provenance import target_fingerprint
+    from testpilot.store.repositories import CaseDataRepo, ProjectRepo
 
     current = next((v for v in version_rows if v["id"] == version_id), None)
-    warnings = assertion_lint.lint_steps(current.get("steps_content", "") if current else "")
-    # F26, point 1 (2026-10-01) : filet de sécurité structurel, complémentaire au contrôle amont
-    # `metier_writer.verifier_dependance_inter_cas` — opère sur le Gherkin produit, pas sur ce que
-    # le modèle a DÉCLARÉ avoir fait. Toujours actif (pas conditionné à une preuve d'observation).
-    if current and current.get("feature_content"):
-        warnings += enregistrement_lint.lint_enregistrements_non_crees(current["feature_content"])
-        # IT-3b (revue du 2026-10-19) : les lignes propres au cas font varier des variables qu'aucun « Alors » n'emploie.
-        from testpilot.generation import variables_de_test
-        from testpilot.store.repositories import CaseDataRepo
-        if case.get("id"):
-            warnings += variables_de_test.lint_alors_sans_variable_des_lignes(
-                current["feature_content"], CaseDataRepo(conn).variables_des_lignes(case["id"]))
-    if current and current.get('observation_evidence'):
-        from testpilot.generation.evidence import contextual_warnings
-        from testpilot.generation.provenance import target_fingerprint
-        project = ProjectRepo(conn).get(case.get('project_id'))
-        warnings += contextual_warnings(
-            current.get('feature_content') or '', json.loads(current['observation_evidence']),
-            target_sha256=target_fingerprint(project), base_url=(project or {}).get('base_url', ''))
+    # Étape 2 (A61) : les points qui ne dépendent que du TEST — le même calcul que le contrôle de fin d'écriture
+    # (`generation/avis_du_test.py`), jamais deux qui pourraient diverger.
+    warnings: list[dict] = []
+    if current:
+        projet = ProjectRepo(conn).get(case["project_id"]) if case.get("project_id") else None
+        evidence = current.get("observation_evidence")
+        # Étape 2 (A67) : l'âge des preuves au moment où le test a été ÉCRIT — un calcul stable dans le temps, puisque
+        # l'état « bloqué » est recalculé à chaque affichage. Date illisible : maintenant (l'ancien comportement).
+        # Revue de l'étape 2 (C1) : la version qui a APPORTÉ ces preuves — une régénération qui réécrit le même test avec de
+        # nouvelles preuves les date d'aujourd'hui, pas du jour où ce test avait été écrit la première fois.
+        try:
+            ecrit_le = datetime.fromisoformat(_apport_des_preuves(version_rows, current).get("created_at") or "")
+        except (TypeError, ValueError):
+            ecrit_le = None
+        registry = current.get("verified_fields")
+        warnings += avis_du_test(
+            feature=current.get("feature_content") or "", steps=current.get("steps_content") or "",
+            observations=json.loads(evidence) if evidence else None,
+            target_sha256=target_fingerprint(projet), base_url=(projet or {}).get("base_url", ""), reference_time=ecrit_le,
+            variables_des_lignes=(CaseDataRepo(conn).variables_des_lignes(case["id"])
+                                  if case.get("id") and (current.get("feature_content") or "") else ()),
+            connecteur_web=bool(projet) and (projet.get("connector_type") or "") == "web",
+            intention=_intention_declaree(case, current),
+            modele=domain_model.charger_modele(projet) if projet else None,
+            # Sans projet, pas de contrôle des champs (comme avant) : `verified_fields` à None et aucun annuaire.
+            verified_fields=(json.loads(registry) if registry else None) if projet else None)
 
     # Lot 09 (C9) : `diff_feature` complète `blast_radius` (steps.py) par le `.feature` lui-même
     # — un scénario supprimé, une ligne Alors/Et réécrite, une valeur d'Examples changée. Volontai-
@@ -783,20 +804,18 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
             warnings += repair_diff.diff_feature(avant.get("feature_content") or "",
                                                  current.get("feature_content") or "")
 
-    if current and case.get("project_id"):
-        projet = ProjectRepo(conn).get(case["project_id"])
-        # Lot 07a : seul le connecteur `web` connecte AUTOMATIQUEMENT à l'ouverture. L'intention est
-        # celle DÉCLARÉE (contenu métier de la version), jamais le Gherkin que l'agent a écrit.
-        if projet and (projet.get("connector_type") or "") == "web":
-            warnings += smoke_check.check_intention_connexion(
-                _intention_declaree(case, current), current.get("feature_content") or "")
-        modele = domain_model.charger_modele(projet) if projet else None
-        registry = current.get("verified_fields")
-        if modele or registry:
-            warnings += smoke_check.smoke_check(
-                current.get("feature_content") or "", current.get("steps_content") or "",
-                modele=modele, verified_fields=json.loads(registry) if registry else None)
     return warnings
+
+
+def _avis_deja_vus_a_l_ecriture(version_rows: list[dict], version_id: int) -> set[str]:
+    """Les sortes de points que le contrôle de fin d'écriture a renvoyées à l'IA (provenance de la version)."""
+    version = next((v for v in version_rows if v["id"] == version_id), None) or {}
+    try:
+        provenance = json.loads(version.get("generation_provenance") or "{}")
+    except ValueError:
+        return set()
+    controle = provenance.get("controle_fin_ecriture") if isinstance(provenance, dict) else None
+    return set(controle.get("avis_envoyes") or ()) if isinstance(controle, dict) else set()
 
 
 def _auto_approuver(conn, case_id: int, version_id: int | None) -> None:
@@ -881,9 +900,14 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
     from testpilot.generation.variables_de_test import ALORS_IDENTIQUE
     # Revue A62 : une correction automatique ne peut pas savoir si l'application est juste — pas d'appel non plus.
     a_corriger = [w for w in warnings if w.get("kind") not in (ALORS_IDENTIQUE, VERIFICATION_CHANGEE_APRES_DEFAUT)]
+    # Étape 2 (A61, A63) : l'IA a déjà vu ces points pendant l'écriture (contrôle de fin d'écriture) et a gardé son test —
+    # « malgré ses essais » : livré bloqué, pas d'appel de correction de plus.
+    deja_vus = _avis_deja_vus_a_l_ecriture(version_rows, version_id)
+    if any(w.get("kind") in deja_vus for w in warnings):
+        a_corriger = []   # un point que l'IA a gardé reste : la correction ne pourrait plus faire approuver la version
     if not a_corriger:
-        logger.info("[generation] cas %s (version %s) reste à relire — même résultat attendu pour toutes les lignes",
-                    case_id, version_id)
+        logger.info("[generation] cas %s (version %s) livré bloqué — %d point(s) qu'une correction ne traite pas "
+                    "(déjà vus à l'écriture, ou à juger par une personne)", case_id, version_id, len(warnings))
         return
 
     version = next((v for v in version_rows if v["id"] == version_id), None)
@@ -1180,7 +1204,14 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
             plan, case_id=case_id, metier=metier, author=author, projet=project,
             failure_context=_regeneration_failure_context(conn, case_id) if regeneration else None,
             regeneration=regeneration, valeurs_d_essai=dict(lignes_du_cas[0][1]) if lignes_du_cas else None,
-            regeneration_apres_defaut=_dernier_defaut_fonctionnel(conn, case_id) if regeneration else None)
+            regeneration_apres_defaut=_dernier_defaut_fonctionnel(conn, case_id) if regeneration else None,
+            # Étape 2 (A61) : de quoi calculer, pendant l'écriture, les MÊMES points que sur la version enregistrée.
+            variables_des_lignes=CaseDataRepo(conn).variables_des_lignes(case_id),
+            intention=_intention_declaree(CaseRepo(conn).get(case_id) or {}, {
+                "title": (metier or {}).get("title"), "preconditions": (metier or {}).get("preconditions"),
+                "test_steps": json.dumps((metier or {}).get("steps"), ensure_ascii=False)
+                if (metier or {}).get("steps") else "",
+                "expected_result": (metier or {}).get("expected_result")}))
 
         _record_generation_cost(conn, case_id=case_id,
                                 analysis_usd=analysis_tracker.total_cost,

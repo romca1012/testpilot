@@ -30,6 +30,7 @@ ENV_VARIABLES_DE_TEST = "TESTPILOT_VARIABLES_DE_TEST"
 ENV_CAS_DIT_SES_DONNEES = "TESTPILOT_CAS_DIT_SES_DONNEES"
 ENV_FORME_ORACLE = "TESTPILOT_FORME_ORACLE"
 ENV_LIGNES_PROPOSEES = "TESTPILOT_LIGNES_PROPOSEES"
+ENV_CONTROLE_FIN_ECRITURE = "TESTPILOT_CONTROLE_FIN_ECRITURE"
 
 _VRAI = frozenset({"1", "true", "yes", "oui", "on"})
 _ALLUMES_PAR_DEFAUT = frozenset({ENV_VARIABLES_DE_TEST, ENV_CAS_DIT_SES_DONNEES})
@@ -93,6 +94,13 @@ def forme_oracle_actif(env: Mapping[str, str] | None = None) -> bool:
     """Lot VH-08 (A51) : l'agent voit la FORME des réponses de l'oracle (relevée à l'exploration et à la fin de chaque essai),
     et une requête d'oracle non déclarée est refusée à l'écriture. Éteint jusqu'à la mesure M2."""
     return _actif(ENV_FORME_ORACLE, env)
+
+
+def controle_fin_ecriture_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Étape 2 du plan unique (A61) : quand le test passe la vérification à blanc, ses points de vigilance (ceux qui ne
+    dépendent que du test, `generation/avis_du_test.py`) sont renvoyés à l'IA, qui les corrige avant de rendre la main
+    (deux fois au plus). Change ce que l'API reçoit (des tours en plus) : éteint jusqu'à sa mesure (étape 3)."""
+    return _actif(ENV_CONTROLE_FIN_ECRITURE, env)
 
 
 def allume(nom: str, env: Mapping[str, str] | None = None) -> bool:
