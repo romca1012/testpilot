@@ -268,7 +268,7 @@ function openModule(moduleId: number) {
 const nav = computed(() => [
   { key: 'cases', label: 'Cas de test', to: { name: 'cases', params: { pid: pid.value } },
     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-  ...(peutModifier.value ? [{ key: 'a-relire', label: 'Cas à relire',
+  ...(peutModifier.value ? [{ key: 'a-relire', label: 'Cas bloqués',
     to: { name: 'cases-needing-review', params: { pid: pid.value } },
     icon: 'M12 9v4m0 4h.01M10.3 3.9L2.7 17a2 2 0 001.7 3h15.2a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z' },
   ] : []),

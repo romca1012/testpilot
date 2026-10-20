@@ -1016,6 +1016,8 @@ export interface PageCas { items: CaseSummary[]; next_cursor: string | null; tot
 export interface CaseARelire {
   case_id: number; title: string; module_name: string; version_id: number
   reason: string; lint_warnings_count: number
+  // Étape 2 (A63, A67) : pourquoi le test ne sera pas lancé — la première s'affiche dans la liste.
+  raisons?: string[]
 }
 
 // D32 (2026-10-09) — une valeur que l'application a refusée alors que le métier d'un cas la demande.
@@ -1098,6 +1100,11 @@ export interface GateOut {
   repair_budget: number
   repair_budget_default: number
   lint_warnings?: LintWarning[]
+  // Étape 2 (A63, A67) : « bloqué » = `!allowed`, recalculé par le serveur ; `raisons` en phrases courtes.
+  bloque?: boolean
+  raisons?: string[]
+  // Revue de l'étape 2 (C5) : faux en cas d'écart cas/test — l'approbation est refusée, « Débloquer » ne s'affiche pas.
+  debloquable?: boolean
 }
 export interface ExecutionSummary {
   id: number; test_case_id: number; version_id: number

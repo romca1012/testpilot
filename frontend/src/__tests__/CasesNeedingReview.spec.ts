@@ -34,9 +34,9 @@ async function page(cas: any[]) {
 }
 
 describe('CasesNeedingReview', () => {
-  it("dit qu'il n'y a rien à relire quand la liste est vide", async () => {
+  it("dit qu'il n'y a aucun cas bloqué quand la liste est vide", async () => {   // A68 : « à relire » devient « bloqué »
     const w = await page([])
-    expect(w.text()).toContain('Aucun cas à relire')
+    expect(w.text()).toContain('Aucun cas bloqué')
   })
 
   it('liste un cas bloqué avec sa raison et son nombre de points de vigilance', async () => {
@@ -51,6 +51,15 @@ describe('CasesNeedingReview', () => {
     expect(w.text()).toContain('Boutique')
     expect(w.text()).toContain('relecture humaine obligatoire')
     expect(w.text()).toContain('2')
+  })
+
+  it('étape 2 (A68) : la liste dit « Bloqué » par sa première raison', async () => {
+    const w = await page([{
+      case_id: 157, title: 'Contrôle d’accès', module_name: 'Accès', version_id: 9, reason: 'r',
+      lint_warnings_count: 1, raisons: ['Régénéré après un défaut de l’application : il ne vérifie plus la même chose.'],
+    }])
+    expect(w.text()).toContain('Cas bloqués')
+    expect(w.text()).toContain('il ne vérifie plus la même chose')
   })
 
   it('ouvrir un cas renvoie vers sa fiche (où vit le geste d’approbation)', async () => {
