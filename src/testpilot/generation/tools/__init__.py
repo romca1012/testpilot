@@ -57,6 +57,8 @@ class ToolContext:
     # `None` hors réparation : aucun gel.
     gel_feature: str | None = None
     gel_steps: str | None = None
+    # Étape 2 (revue, B1) : « reparation » (VH-03) ou « controle » (contrôle de fin d'écriture) — seul le message change.
+    gel_motif: str = "reparation"
     # Lot VH-07 (D26) : le mode « exécuter puis écrire » de ce projet (`tools/essai.EssaiBacASable`), ou None — l'outil
     # `essayer_les_actions` n'est alors ni proposé à l'agent ni exécutable.
     essai: Any = None

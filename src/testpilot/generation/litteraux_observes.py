@@ -27,6 +27,8 @@ from difflib import get_close_matches
 from functools import lru_cache
 from pathlib import Path
 
+from testpilot.generation.gherkin_mots_cles import DEBUT_CONTEXTE, DEBUT_REGLE, DEBUT_SCENARIO
+
 # Steps de la bibliothèque dont un paramètre DÉSIGNE un élément de l'application. Le reste des steps n'est pas contrôlé ici.
 _ETAPE = re.compile(r'^\s*(?:Soit|Étant donné|Etant donné|Quand|Lorsque|Alors|Et|Mais)\s+(?P<texte>.+?)\s*$')
 _CHAMP = [re.compile(r'^je renseigne le champ "(?P<champ>[^"]+)" avec la valeur "[^"]*"$'),
@@ -149,7 +151,7 @@ def controler_feature(feature: str, annuaire: Annuaire) -> list[Ecart]:
     ecarts: list[Ecart] = []
     route: str | None = None
     for numero, ligne in enumerate(feature.splitlines(), start=1):
-        if re.match(r"^\s*(Scénario|Scenario|Plan du scénario|Contexte)\b", ligne):
+        if DEBUT_SCENARIO.match(ligne) or DEBUT_CONTEXTE.match(ligne) or DEBUT_REGLE.match(ligne):   # étape 2 : `Exemple:`
             route = None
             continue
         m = _ETAPE.match(ligne)

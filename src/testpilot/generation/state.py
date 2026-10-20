@@ -25,6 +25,9 @@ class AgentState:
     stalled: bool = False
     stopped_reason: str = ""
     verified_fields: dict[str, list[str]] = field(default_factory=dict)
+    # Étape 2 (A61) : contrôle de fin d'écriture — tours déjà faits et sortes de points renvoyées à l'IA.
+    tours_de_controle: int = 0
+    avis_envoyes: list[str] = field(default_factory=list)
 
 
 @dataclass

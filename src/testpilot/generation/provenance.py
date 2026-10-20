@@ -17,11 +17,15 @@ def target_fingerprint(project: dict | None) -> str:
 
 
 def revision_metadata(version: dict | None) -> dict:
-    """Conserve les observations, sans certifier le plan d'un script modifié."""
+    """Conserve les observations, sans certifier le plan d'un script modifié.
+
+    Étape 2 (A61, 2026-10-20) : une version jamais instrumentée (`''` : saisie à la main, antérieure aux preuves) le reste
+    — elle devenait `'[]'` (« instrumentée, rien vu ») à sa première copie, et tous ses champs sortaient « sans preuve ».
+    Même distinction que `verified_fields` (None ≠ {}). Une génération écrit toujours une liste, même vide."""
     version = version or {}
     origin = json.loads(version.get('generation_provenance') or '{}')
     return {
-        'observation_evidence': version.get('observation_evidence') or '[]',
+        'observation_evidence': version.get('observation_evidence') or '',
         'generation_provenance': json.dumps({
             'derived_from_version': version.get('id'), 'origin': origin,
         }, ensure_ascii=False),

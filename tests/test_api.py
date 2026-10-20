@@ -104,7 +104,8 @@ def test_run_refuse_si_non_approuve(client):
     conn.close()
     resp = client.post(f"/api/cases/{cid}/runs")
     assert resp.status_code == 409
-    assert "relecture" in resp.json()["detail"].lower()
+    # A68 (porteur, 2026-10-20) : le vocabulaire « relecture » devient « bloqué » — le lancement reste refusé (409).
+    assert "bloqué" in resp.json()["detail"].lower()
 
 
 def test_run_refuse_si_pas_de_version(client):
