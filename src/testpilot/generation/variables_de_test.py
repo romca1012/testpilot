@@ -65,7 +65,8 @@ def section_prompt(variables: list[dict] | None, variables_des_lignes=()) -> str
                    "(valeurs limites comprises, et le résultat attendu de chacune quand une variable le porte). Écris UN SEUL "
                    "scénario qui emploie ces variables partout où le cas en parle — celle du résultat attendu dans l'« Alors », "
                    "jamais un « Alors » qui se contente de relire la valeur que le test vient de saisir —, jamais un scénario "
-                   "par valeur ni une valeur écrite en dur : l'outil le rejoue pour chaque ligne."]
+                   "par valeur, ni une valeur écrite en dur, ni un « Plan du scénario » avec des « Exemples » pour ces "
+                   "variables : l'outil le rejoue lui-même pour chaque ligne."]
     return "\n".join(lignes)
 
 
@@ -236,6 +237,25 @@ def lint_alors_sans_variable_des_lignes(feature: str, variables_des_lignes) -> l
                          "message": f"les lignes du cas font varier {noms}, mais aucun « Alors » n'en vérifie une (sans la "
                                     "saisir ailleurs) : ce scénario attend le même résultat pour toutes les lignes"})
     return avis
+
+
+def refus_non_iterable(feature: str, noms) -> list[str]:
+    """A61 : le test, s'il emploie des variables, peut-il être rejoué ligne par ligne ? On le réécrit comme l'exécution le
+    fera (`parametres/iterations.en_plan_de_scenario`) avec deux lignes fictives différentes : un refus de la réécriture est
+    un test qui sortirait « bloqué » au lancement (mesuré le 2026-10-20 : un « Plan du scénario » dont les Exemples
+    répétaient `{{client}} | {{age}}`). Vide : rejouable."""
+    from testpilot.parametres import iterations
+
+    employes = [n for n in dict.fromkeys(resolution.references(feature)) if n in set(noms or ())]
+    if not employes:
+        return []
+    try:
+        iterations.en_plan_de_scenario(feature, [("A", {n: f"essai-a-{i}" for i, n in enumerate(employes)}),
+                                                 ("B", {n: f"essai-b-{i}" for i, n in enumerate(employes)})], list(noms))
+    except iterations.IterationsImpossibles as exc:
+        return [f"ce test ne pourrait pas être rejoué ligne par ligne ({exc}) — écris un « Scénario » simple qui emploie "
+                "les variables directement dans ses étapes, sans « Plan du scénario » ni « Exemples » pour elles"]
+    return []
 
 
 def refus_variables_du_cas(feature: str, requises: frozenset[str] | set[str]) -> list[str]:

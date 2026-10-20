@@ -248,6 +248,7 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
     # Lot PT-02d : les variables `{{…}}` du test de référence sont figées (la réparation ne joue pas les valeurs posées).
     from testpilot.generation import variables_de_test
     ctx.references_figees = variables_de_test.references_du_texte(ctx.gel_feature or "")
+    ctx.feature_de_reference = ctx.gel_feature or ""
     # Lot VH-05 (revue du 2026-10-08) : une réparation passe par les MÊMES contrôles des littéraux que la génération.
     from testpilot.generation import litteraux_observes
     litteraux_observes.brancher_controles(ctx, connector_type, modele, config.BEHAVE_RUNTIME_DIR)
