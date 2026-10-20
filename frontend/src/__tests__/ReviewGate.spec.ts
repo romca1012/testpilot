@@ -40,7 +40,7 @@ describe('ReviewGate — le gate autorise le budget de réparation (0014, option
   it('transmet le budget à l\'approbation', async () => {
     const w = mount(ReviewGate, { props: { caseId: 1, gate: A_RELIRE } })
     await w.find('input[type="number"]').setValue(3)
-    await w.findAll('button').find((b) => b.text().includes('Approuver'))!.trigger('click')
+    await w.findAll('button').find((b) => b.text().includes('Débloquer'))!.trigger('click')   // A68
     expect(api.reviewCase).toHaveBeenCalledWith(1, true, '', 3)
   })
 
@@ -114,5 +114,36 @@ describe('ReviewGate — le gate autorise le budget de réparation (0014, option
   it('une version approuvée SANS réparation le dit', () => {
     const w = mount(ReviewGate, { props: { caseId: 1, gate: { ...APPROUVE, repair_budget: 0 } } })
     expect(w.text()).toContain('interdite pour cette version')
+  })
+
+  // Étape 2 (A63, A68, porteur 2026-10-20) : « Bloqué », la raison en une ligne, jamais « à relire ».
+  it('un test non approuvé est « Bloqué », avec ses raisons et le bouton « Débloquer »', () => {
+    const w = mount(ReviewGate, { props: { caseId: 1, gate: {
+      ...A_RELIRE, bloque: true, raisons: ['Régénéré après un défaut de l’application : il ne vérifie plus la même chose.'],
+      lint_warnings: [{ step: '', line: 0, kind: 'verification_changee_apres_defaut', message: 'm' }] } } })
+    expect(w.text()).toContain('Bloqué')
+    expect(w.text()).toContain('Ce test ne sera pas lancé.')
+    expect(w.text()).toContain('il ne vérifie plus la même chose')
+    expect(w.text()).not.toContain('Relecture requise')
+    expect(w.findAll('button').some((b) => b.text().includes('Débloquer'))).toBe(true)
+    expect(w.find('details').exists()).toBe(true)
+  })
+
+  it.each([
+    ['champ_ui_non_verifie', 'preuve'], ['champs_requis_manquants', 'formulaire'],
+    ['soumission_absente', 'formulaire'], ['menu_non_observe', 'donnée'],
+  ])('étape 2 : « %s » a son étiquette (%s), jamais « à vérifier »', (kind, famille) => {
+    const w = mount(ReviewGate, { props: { caseId: 1, gate: {
+      ...A_RELIRE, lint_warnings: [{ step: 's', line: 1, kind, message: 'm' }] } } })
+    expect(w.text()).toContain(famille)
+    expect(w.text()).not.toContain('à vérifier')
+  })
+
+  // Revue de l'étape 2 (C5) : un écart cas/test (A42) refuse l'approbation — « Débloquer » ne s'affiche pas.
+  it('ne propose pas « Débloquer » quand une approbation ne peut pas débloquer', () => {
+    const w = mount(ReviewGate, { props: { caseId: 1, gate: {
+      ...A_RELIRE, bloque: true, debloquable: false, raisons: ['Écart entre le cas et son test : x.'] } } })
+    expect(w.text()).toContain('Bloqué')
+    expect(w.findAll('button').some((b) => b.text().includes('Débloquer'))).toBe(false)
   })
 })

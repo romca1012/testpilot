@@ -41,15 +41,9 @@ function ouvrirCas(caseId: number) {
 <template>
   <div class="p-6 md:p-8 max-w-4xl">
     <header>
-      <h1 class="text-2xl font-semibold tracking-tight">Cas à relire</h1>
-      <p class="mt-1 text-sm text-muted-foreground">
-        Ces cas ont un <strong class="text-foreground">point de vigilance réel</strong> relevé à la
-        génération (assertion qui ne peut jamais échouer, réparation à risque, champ ou valeur
-        absent de l'application mesurée) : ils ne sont donc <strong class="text-foreground">pas
-        approuvés automatiquement</strong> et ne peuvent pas être lancés depuis un run tant qu'un
-        humain n'a pas tranché. Ouvrez un cas pour voir le détail et approuver ou rejeter sa
-        version.
-      </p>
+      <!-- Étape 2 (A63, A68) : des cas BLOQUÉS avec leur raison, jamais « à relire ». -->
+      <h1 class="text-2xl font-semibold tracking-tight">Cas bloqués</h1>
+      <p class="mt-1 text-sm text-muted-foreground">Ils ne seront pas lancés tant qu'une personne ne les a pas débloqués.</p>
     </header>
 
     <div v-if="loading" class="mt-8 space-y-2">
@@ -66,8 +60,7 @@ function ouvrirCas(caseId: number) {
 
     <div v-else-if="!cas.length" class="mt-8 rounded-xl border border-border bg-card px-5 py-10 text-center">
       <p class="text-sm text-muted-foreground">
-        Aucun cas à relire pour l'instant — tous les cas générés sont soit approuvés automatiquement
-        (aucun point de vigilance), soit pas encore générés.
+        Aucun cas bloqué.
       </p>
     </div>
 
@@ -86,7 +79,7 @@ function ouvrirCas(caseId: number) {
             @click="ouvrirCas(c.case_id)">
           <td class="py-2.5 px-2.5 text-primary group-hover:underline">C{{ c.case_id }} — {{ c.title }}</td>
           <td class="py-2.5 px-2.5 text-muted-foreground">{{ c.module_name || '—' }}</td>
-          <td class="py-2.5 px-2.5 text-muted-foreground">{{ c.reason }}</td>
+          <td class="py-2.5 px-2.5 text-muted-foreground">{{ c.raisons?.[0] || c.reason }}</td>
           <td class="py-2.5 px-2.5 text-right tabular-nums">
             <span class="rounded-full bg-warning/15 text-warning text-xs font-semibold px-2 py-0.5">
               {{ c.lint_warnings_count }}

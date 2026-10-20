@@ -680,12 +680,8 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
                lancé par AUCUN run — sans action ici, il reste bloqué indéfiniment (bug réel,
                2026-09-15). L'auto-approbation §4.3 reste le chemin normal ; ceci est le filet. -->
           <section v-if="needsReview" class="mt-8">
-            <h2 class="font-semibold pb-2 border-b border-border">Relecture requise</h2>
-            <p class="mt-2 text-xs text-muted-foreground">
-              Ce test ne peut pas être lancé depuis un run tant que sa version n'a pas été
-              approuvée. Modifier puis enregistrer le contenu métier ci-dessus l'approuve
-              aussi — ou décidez directement ici.
-            </p>
+            <!-- Étape 2 (A68) : sobre — le badge et la raison disent tout. -->
+            <h2 class="font-semibold pb-2 border-b border-border">Lancement</h2>
             <div class="mt-3">
               <ReviewGate :case-id="caseId" :gate="gate" @reviewed="onReviewed" />
             </div>
