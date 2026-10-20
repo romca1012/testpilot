@@ -82,6 +82,11 @@ tort, aucun paramètre n'est vraiment utilisable. Ces deux étapes servent tes d
   l'étape 5.
 - **De toi :** accord sur le budget.
 - **1 jour — environ 8 à 10 $**
+- **État (2026-10-20) : préparée, campagnes EN ATTENTE DE CRÉDIT d'API** (décision du porteur : pas de dépense pour l'instant). Le banc mesure désormais, sans coût, la part des tests **prêts à lancer** (même calcul que le produit), leurs raisons de blocage, le relevé du contrôle de fin d'écriture et l'état des interrupteurs (branche `lot-etape3-mesure`). À lancer dès que le crédit le permet, dans cet ordre :
+  1. campagne « contrôle éteint » : 11 cas × 2, plafond 4,5 $ (`lanceurs/campagne_banc.py eteint 4.5`) ;
+  2. campagne « contrôle allumé » : 11 cas × 2, plafond 5,5 $ (`campagne_banc.py allume 5.5`) ;
+  3. essai réel de l'étape 2 par le porteur sur l'instance d'essai (≈ 1 $).
+  Écart : les lignes proposées par l'IA ne sont pas mesurables sur le banc (ses cas viennent des specs, sans l'IA des cas) — à outiller à l'étape 6. Tant que ces mesures manquent, le contrôle de fin d'écriture reste éteint.
 
 ### PARTIE B — Tes deux priorités, menées ensemble
 
