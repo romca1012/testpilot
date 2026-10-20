@@ -550,7 +550,8 @@ critique des tests : c'est la limite structurelle de ce qu'un test peut voir. �
    vigilance) — après une génération **comme après une régénération** (A62 : la règle « une
    régénération impose une relecture » est supprimée). « À relire » est l'exception : les contrôles
    s'appliquent pendant la génération (A61) ; un test que l'IA n'arrive pas à rendre propre est
-   livré **bloqué** au lancement avec sa raison (A63, étape 2 du plan unique). Exception gardée :
+   livré **bloqué** au lancement avec sa raison (A63, construit le 2026-10-20 : « bloqué » est
+   recalculé à chaque affichage, jamais enregistré — A67 ; seule une approbation le débloque). Exception gardée :
    une régénération faite après un défaut **fonctionnel** qui change ce que le test vérifiait n'est
    **jamais** approuvée d'office, même à travers une correction automatique, et seule une
    approbation humaine l'éteint (`verification_changee_apres_defaut`, A65 validée le 2026-10-20) — sinon l'IA
