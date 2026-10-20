@@ -60,7 +60,8 @@ class GenerationAgent:
                  projet: dict | None = None, refs: str = "",
                  failure_context: list[dict] | None = None,
                  qualification: bool = False, regeneration: bool = False,
-                 valeurs_d_essai: dict | None = None) -> GenerationResult:
+                 valeurs_d_essai: dict | None = None,
+                 regeneration_apres_defaut: dict | None = None) -> GenerationResult:
         """`metier` — le document métier VALIDÉ (passe 4b de `0022`). Présent, il fixe le périmètre
         du Gherkin et se fige DANS la version, avec lui (décision n°10 : une version = le cas
         entier). Absent, le comportement est celui d'avant (chemin CLI et cas legacy).
@@ -74,6 +75,10 @@ class GenerationAgent:
         `regeneration` — voir `prompt.build_initial_message` (F26) : coupe le rappel de la
         spécification brute d'origine quand le métier transmis peut porter une correction propre
         à ce cas.
+
+        `regeneration_apres_defaut` (revue A62, 2026-10-20) — `{execution_id, version_id}` quand on régénère un test dont la
+        dernière exécution a trouvé un défaut FONCTIONNEL : fait consigné dans la provenance, lu par les points de
+        vigilance (`generation_service._verification_changee_apres_defaut`) — jamais montré à l'agent.
 
         `valeurs_d_essai` (IT-3b) — la première ligne propre au cas, posée par-dessus le jeu « Par défaut » pour l'essai sur
         le bac à sable (comme l'exécution la jouerait). Jamais montrée : masquée dans tout ce qui revient à l'agent."""
@@ -192,6 +197,8 @@ class GenerationAgent:
             'artifact_sha256': fingerprint([result.feature_content, result.steps_content]),
             'cost_usd': result.cost_usd, 'iterations': result.iterations,
         }
+        if regeneration_apres_defaut:
+            result.generation_provenance['regeneration_apres_defaut'] = dict(regeneration_apres_defaut)
         if ctx.essai is not None:
             # Lot VH-07 : ce test a été écrit après des essais sur le bac à sable — fait consigné, jamais un verdict.
             result.generation_provenance['essais'] = {
