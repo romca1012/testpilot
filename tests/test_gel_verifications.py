@@ -208,3 +208,15 @@ def test_une_correction_qui_touche_une_verification_le_dit_dans_l_historique(tmp
     courante = VersionRepo(conn).get(CaseRepo(conn).get(cid)["current_version_id"])
     assert courante["change_summary"].startswith("[VÉRIFICATIONS MODIFIÉES")
     conn.close()
+
+
+def test_falsifiable_le_tableau_d_un_alors_est_gele():
+    """Étape 3 (revue de l'étape 2, remarque 1) : seul le libellé de l'« Alors » était comparé."""
+    from testpilot.generation import gel_verifications as gel
+
+    avant = ("# language: fr\nFonctionnalité: F\n  Scénario: S\n    Alors le panier affiche :\n"
+             "      | total  |\n      | 129,51 |\n")
+    assert gel.feature_modifiee(avant, avant) == []
+    assert gel.feature_modifiee(avant, avant.replace("129,51", "107,93")), "la valeur attendue du tableau a changé"
+    texte = avant.replace("      | total  |\n      | 129,51 |\n", '      """\n      Total 129,51\n      """\n')
+    assert gel.feature_modifiee(texte, texte.replace("129,51", "107,93")), "le texte joint aussi"

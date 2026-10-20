@@ -745,7 +745,9 @@ class AppDouble:
         self.appels.append(list(defauts))
 
 
-def test_le_generateur_reel_transmet_le_reste_du_budget_et_reinitialise_la_saine(tmp_path):
+def test_le_generateur_reel_transmet_le_reste_du_budget_et_reinitialise_la_saine(tmp_path, monkeypatch):
+    # Étape 3 : la mesure « prêt à lancer » a sa propre base jetable — doublée ici (testée dans test_banc_pret_a_lancer).
+    monkeypatch.setattr(ba, "evaluer_pret_a_lancer", lambda case_id, gen, data_dir: (True, []))
     app = AppDouble()
     lancements = []
 
@@ -772,6 +774,7 @@ def test_le_generateur_reel_transmet_le_reste_du_budget_et_reinitialise_la_saine
     assert commande[commande.index("--out") + 1] == "banc-agents-a-t2"
     assert commande[commande.index("--expected-base-url") + 1] == "http://127.0.0.1:1"
     assert artefacts.genere_ok and artefacts.cas == "a" and artefacts.essai == 2
+    assert artefacts.pret_a_lancer is True, "la mesure est branchée sur chaque génération réussie"
 
 
 def test_le_generateur_reel_ignore_un_campagne_json_perime_et_leve_arret_si_le_moteur_s_arrete(tmp_path):

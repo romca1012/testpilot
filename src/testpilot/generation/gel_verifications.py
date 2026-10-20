@@ -53,9 +53,12 @@ def _alors_et_exemples(feature: str) -> dict[str, tuple] | None:
         return {}
     gel: dict[str, tuple] = {}
     if parsed.background is not None:
-        gel["__contexte__"] = (tuple(s.name for s in parsed.background.steps if s.step_type == "then"), ())
+        gel["__contexte__"] = (tuple(_contenu_d_etape(s) for s in parsed.background.steps if s.step_type == "then"), ())
     for scenario in parsed.walk_scenarios(with_outlines=True):
-        alors = tuple(step.name for step in scenario.steps if step.step_type == "then")
+        # Étape 3 (revue de l'étape 2, remarque 1) : le TABLEAU et le TEXTE JOINT d'un « Alors » comptent autant que son
+        # libellé — un `@then` qui lit `context.table` vérifiait autre chose sans que le gel le voie (réparation comme
+        # contrôle de fin d'écriture).
+        alors = tuple(_contenu_d_etape(step) for step in scenario.steps if step.step_type == "then")
         exemples = tuple(tuple(tuple(ligne.cells) for ligne in (ex.table.rows if ex.table else []))
                          for ex in getattr(scenario, "examples", []) or [])
         gel[scenario.name] = (alors, exemples)
