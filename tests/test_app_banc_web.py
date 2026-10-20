@@ -119,7 +119,7 @@ def frais(base: str) -> Navigateur:
 
 
 def observer(base: str) -> dict:
-    """Rejoue les parcours des 10 specs et rend ce que l'ÉCRAN et l'ÉTAT SERVEUR montrent, clé par clé."""
+    """Rejoue les parcours des 11 specs et rend ce que l'ÉCRAN et l'ÉTAT SERVEUR montrent, clé par clé."""
     obs: dict = {}
 
     # Connexion (un navigateur neuf par essai, sans session)
@@ -220,6 +220,16 @@ def observer(base: str) -> dict:
         [(ligne["nom"], ligne["quantite"]) for ligne in commandes[0]["lignes"]] if commandes else None
     )
     obs["commande_panier_etat_vide"] = etat(base)["panier"]["lignes"] == []
+
+    # Contrôle d'accès (IT-3e, 2026-10-20) : 17 refusé, 18 accepté, un âge illisible refusé avec son message
+    nav = frais(base)
+    obs["acces_17_refuse"] = "Accès refusé : il faut avoir 18 ans ou plus." in unescape(
+        nav.post("/acces", {"client": "Dupont SARL", "age": "17"})[1])
+    obs["acces_18_bienvenue"] = "Bienvenue, Dupont SARL !" in unescape(
+        nav.post("/acces", {"client": "Dupont SARL", "age": "18"})[1])
+    obs["acces_16_refuse"] = "Accès refusé" in unescape(nav.post("/acces", {"client": "", "age": "16"})[1])
+    obs["acces_illisible_message"] = "L'âge doit être un nombre entier entre 0 et 130." in unescape(
+        nav.post("/acces", {"client": "", "age": "dix-sept"})[1])
     return obs
 
 
@@ -246,6 +256,8 @@ DIFFERENCES_ATTENDUES: dict[str, set[str]] = {
     # (`recherche_vide` n'y figure pas : une recherche vide liste déjà tout, comme l'application saine)
     "filtre_ignore": {"recherche_souris", "recherche_majuscules", "recherche_zzz_message"},
     "login_accepte_tout": {"connexion_mauvais_mdp_acceptee", "connexion_mauvais_mdp_message"},
+    # Seul 17 ans change : 16 reste refusé, 18 accepté (« n'altère QUE la limite »).
+    "limite_age_decalee": {"acces_17_refuse"},
 }
 
 
@@ -295,6 +307,8 @@ def test_application_saine_donne_les_valeurs_des_specs(observations):
     assert sain["commande_nb_etat"] == 1 and sain["commande_total_etat"] == "42.48"
     assert sain["commande_numero_etat"] == "CMD-0001"
     assert sain["commande_lignes_etat"] == [("Tapis de souris", 3)]
+    assert sain["acces_17_refuse"] and sain["acces_18_bienvenue"] and sain["acces_16_refuse"]
+    assert sain["acces_illisible_message"] is True
 
 
 # ── Chaque défaut est observable et n'altère QUE son comportement ────────────────────────────────────────────
@@ -653,7 +667,8 @@ def _specs() -> set[str]:
 
 def test_nombre_et_forme_des_specs():
     noms = _specs()
-    assert 8 <= len(noms) <= 10
+    # 2026-10-20 (IT-3e) : 11 avec le contrôle d'accès (classes de valeurs, défaut à la limite).
+    assert 8 <= len(noms) <= 11
     for nom in noms:
         texte = (SPECS / f"{nom}.md").read_text(encoding="utf-8")
         for section in ("## Contexte technique", "## Besoin", "## Parcours", "## Critère de réussite"):

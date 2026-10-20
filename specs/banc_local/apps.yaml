@@ -7,7 +7,7 @@ version: 1
 apps:
   boutique_locale:
     description: >-
-      Petite boutique web (connexion, produits, clients, panier, commandes) à défauts injectables, servie en local
+      Petite boutique web (connexion, produits, clients, panier, commandes, contrôle d'accès) à défauts injectables, servie en local
       pour mesurer si un test généré détecte un défaut sans accuser une application saine.
     lancement: python -m banc.app_web.serveur --defauts total_faux
     hote: 127.0.0.1          # loopback uniquement ; tout autre hôte est refusé à l'ouverture
@@ -28,3 +28,4 @@ apps:
       - etat_non_enregistre
       - filtre_ignore
       - login_accepte_tout
+      - limite_age_decalee

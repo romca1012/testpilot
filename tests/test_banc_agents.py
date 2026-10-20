@@ -500,7 +500,8 @@ def test_k_invalide_est_refuse():
 def test_la_configuration_du_depot_est_coherente_et_l_equilibre_est_la():
     conf = ba.charger_configuration()
 
-    assert len(conf.specs) == 10
+    # 2026-10-20 (IT-3e) : 11 specs depuis l'ajout du contrôle d'accès (`acces_age_limite`, défaut `limite_age_decalee`).
+    assert len(conf.specs) == 11
     assert {a.cas for a in conf.attendus if a.variante == "saine"} == set(conf.specs)  # jeu équilibré : toutes en saine
     assert {a.variante for a in conf.attendus} - {"saine"} == set(conf.defauts_connus)  # chaque défaut est exercé
     assert all(a.attendu == "conforme" for a in conf.attendus if a.variante == "saine")
@@ -522,7 +523,7 @@ def _charger_depuis(dossier):
 
 
 def test_une_configuration_copiee_a_l_identique_est_valide(tmp_path):
-    assert len(_charger_depuis(_copie_de_la_configuration(tmp_path)).specs) == 10
+    assert len(_charger_depuis(_copie_de_la_configuration(tmp_path)).specs) == 11
 
 
 def test_falsifiable_un_cas_sans_attendu_dans_le_fichier_est_refuse(tmp_path):
@@ -645,7 +646,7 @@ def test_le_mode_a_sec_valide_sans_rien_lancer_et_affiche_le_budget(monkeypatch,
     sortie = capsys.readouterr().out
 
     assert code == 0
-    assert "Configuration valide : 10 specs" in sortie and "30 générations" in sortie
+    assert "Configuration valide : 11 specs" in sortie and "33 générations" in sortie
     assert "rien n'a été généré ni joué" in sortie and "non mesuré sur le web" in sortie
 
 

@@ -17,6 +17,7 @@ from html import escape as _e
 from typing import Iterable
 
 from .calcul import (
+    AGE_MAX,
     NOM_CLIENT_MAX,
     QUANTITE_MAX,
     TAUX_TVA,
@@ -50,6 +51,7 @@ _NAV = (
     ("/clients", "Clients"),
     ("/panier", "Panier"),
     ("/commandes", "Commandes"),
+    ("/acces", "Contrôle d'accès"),
 )
 
 
@@ -214,6 +216,34 @@ def client_formulaire(
         '<button type="submit">Enregistrer</button></form>'
     )
     return _page("Nouveau client", corps, identifiant=identifiant)
+
+
+def acces_formulaire(identifiant: str, client: str = "", age: str = "", erreur: str | None = None) -> str:
+    """Contrôle d'accès (IT-3e) : un client, un âge ; la réponse est donnée sur la page suivante."""
+    decrit = "aide-age erreur-age" if erreur else "aide-age"
+    invalide = ' aria-invalid="true"' if erreur else ""
+    message = f'<p id="erreur-age" class="erreur" role="alert">{_e(erreur)}</p>' if erreur else ""
+    corps = (
+        "<h1>Contrôle d'accès</h1>"
+        '<form method="post" action="/acces" novalidate>'
+        '<div class="champ"><label for="client">Nom du client</label>'
+        f'<input type="text" id="client" name="client" value="{_e(client)}"></div>'
+        '<div class="champ"><label for="age">Âge</label>'
+        f'<input type="text" id="age" name="age" inputmode="numeric" aria-describedby="{decrit}"{invalide} value="{_e(age)}">'
+        f'<small id="aide-age" class="aide">En années, de 0 à {AGE_MAX}.</small>{message}</div>'
+        '<button type="submit">Vérifier l\'accès</button></form>'
+    )
+    return _page("Contrôle d'accès", corps, identifiant=identifiant)
+
+
+def acces_resultat(identifiant: str, client: str, autorise: bool, message_refus: str) -> str:
+    if autorise:
+        texte = f"Bienvenue, {client} !" if client else "Bienvenue !"
+        reponse = f'<p id="resultat-acces" class="succes" role="status">{_e(texte)}</p>'
+    else:
+        reponse = f'<p id="resultat-acces" class="erreur" role="alert">{_e(message_refus)}</p>'
+    corps = "<h1>Résultat du contrôle</h1>" + reponse + '<p><a href="/acces">Nouveau contrôle</a></p>'
+    return _page("Résultat du contrôle", corps, identifiant=identifiant)
 
 
 def client_cree(identifiant: str, nom: str) -> str:

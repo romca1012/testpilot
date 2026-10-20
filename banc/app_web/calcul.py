@@ -26,6 +26,21 @@ TAUX_TVA = Decimal("18")
 CENTIME = Decimal("0.01")
 QUANTITE_MAX = 99
 NOM_CLIENT_MAX = 40
+# Contrôle d'accès (IT-3e, classes de valeurs) : l'accès est réservé aux 18 ans et plus ; un âge s'écrit en chiffres,
+# de 0 à 130.
+AGE_MIN = 18
+AGE_MAX = 130
+MESSAGE_ACCES_REFUSE = "Accès refusé : il faut avoir 18 ans ou plus."
+MESSAGE_AGE_INVALIDE = "L'âge doit être un nombre entier entre 0 et 130."
+
+
+def lire_age(texte: str) -> int | None:
+    """L'âge saisi, ou None s'il n'est pas un entier de 0 à AGE_MAX (« 17,5 », « -1 », « dix-sept » : invalides)."""
+    brut = (texte or "").strip()
+    if not brut.isdigit():
+        return None
+    age = int(brut)
+    return age if 0 <= age <= AGE_MAX else None
 
 
 @dataclass(frozen=True)
