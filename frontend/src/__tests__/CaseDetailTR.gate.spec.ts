@@ -123,7 +123,8 @@ describe('CaseDetailTR — relecture bloquée : le filet réapparaît', () => {
     const w = await page(A_RELIRE)
     expect(w.findComponent({ name: 'ReviewGate' }).exists()).toBe(true)
     expect(w.text()).not.toContain('Ce test est prêt')
-    const btn = w.findAll('button').find((b) => b.text().includes('Approuver la version'))
+    // A68 (2026-10-20) : « Approuver la version » devient « Débloquer ».
+    const btn = w.findAll('button').find((b) => b.text().includes('Débloquer'))
     expect(btn).toBeDefined()
   })
 
@@ -132,7 +133,7 @@ describe('CaseDetailTR — relecture bloquée : le filet réapparaît', () => {
     const w = await page(A_RELIRE)
     getCase.mockResolvedValue(detail(APPROUVE))  // ce que l'API renverra APRÈS approbation
 
-    await w.findAll('button').find((b) => b.text().includes('Approuver la version'))!.trigger('click')
+    await w.findAll('button').find((b) => b.text().includes('Débloquer'))!.trigger('click')
     await flushPromises()
 
     expect(api.reviewCase).toHaveBeenCalledWith(1, true, '', expect.any(Number))

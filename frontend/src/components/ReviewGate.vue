@@ -40,6 +40,11 @@ const FAMILLES: Record<string, string> = {
   alors_identique_pour_toutes_les_lignes: 'donnée',
   // Revue A62 (2026-10-20) — régénéré après un vrai défaut, il ne vérifie plus la même chose.
   verification_changee_apres_defaut: 'défaut ?',
+  // Étape 2 (A61) — ces sortes s'affichaient « à vérifier » faute d'étiquette.
+  champ_ui_non_verifie: 'preuve',
+  champs_requis_manquants: 'formulaire',
+  soumission_absente: 'formulaire',
+  menu_non_observe: 'donnée',
   // Lot VH-07 (D26) — un « Alors » cite une valeur que l'IA a vue sur l'application pendant un essai avant d'écrire.
   valeur_vue_a_l_essai: 'donnée',
   // 0021 — le test référence quelque chose qui n'existe pas dans l'application.
@@ -97,6 +102,7 @@ async function decide(approved: boolean) {
 
 <template>
   <div class="space-y-3">
+    <!-- Étape 2 (A63, A68, porteur 2026-10-20) : « Bloqué », la raison en une ligne. Jamais « à relire ». -->
     <div class="flex items-start gap-2">
       <span
         class="mt-0.5 inline-flex h-5 items-center rounded-full border px-2 text-xs font-medium"
@@ -104,10 +110,13 @@ async function decide(approved: boolean) {
           ? 'border-success/30 bg-success/15 text-success'
           : 'border-warning/40 bg-warning/15 text-warning'"
       >
-        {{ gate?.allowed ? 'Approuvé' : 'Relecture requise' }}
+        {{ gate?.allowed ? 'Approuvé' : 'Bloqué' }}
       </span>
-      <p class="text-sm text-muted-foreground">{{ gate?.reason }}</p>
+      <p class="text-sm text-muted-foreground">{{ gate?.allowed ? gate?.reason : 'Ce test ne sera pas lancé.' }}</p>
     </div>
+    <ul v-if="!gate?.allowed && gate?.raisons?.length" class="space-y-0.5 pl-1">
+      <li v-for="(r, i) in gate.raisons" :key="i" class="text-sm text-foreground">• {{ r }}</li>
+    </ul>
 
     <!-- Avertissements NON-bloquants. Informent le relecteur ; ne désactivent JAMAIS
          l'approbation — le gate reste souverain. Trois familles y arrivent :
@@ -117,13 +126,12 @@ async function decide(approved: boolean) {
          ⚠️ Le titre disait « Assertions à vérifier — pourraient ne jamais échouer » : vrai pour
          0008 SEUL, faux dès qu'un champ inexistant arrive ici. Un titre qui ment sur son contenu,
          c'est « affiché ≠ réel » (§4.6) — on nomme donc la famille de chaque avis, ligne à ligne. -->
-    <div v-if="gate?.lint_warnings?.length"
-         class="rounded-lg border border-warning/40 bg-warning/10 p-3 space-y-1.5">
-      <p class="flex items-center gap-1.5 text-xs font-medium text-warning">
-        <span aria-hidden="true">⚠</span>
-        {{ gate.lint_warnings.length }} point{{ gate.lint_warnings.length > 1 ? 's' : '' }} à vérifier avant d'approuver
-      </p>
-      <ul class="space-y-1">
+    <details v-if="gate?.lint_warnings?.length"
+             class="rounded-lg border border-warning/40 bg-warning/10 p-3 space-y-1.5">
+      <summary class="cursor-pointer text-xs font-medium text-warning">
+        Détail ({{ gate.lint_warnings.length }} point{{ gate.lint_warnings.length > 1 ? 's' : '' }})
+      </summary>
+      <ul class="mt-1.5 space-y-1">
         <li v-for="(w, i) in gate.lint_warnings" :key="i" class="text-xs text-muted-foreground">
           <span :class="['mr-1 rounded px-1 py-0.5 text-[10px] font-medium', classeFamille(w.kind)]">
             {{ familleAvis(w.kind) }}
@@ -132,10 +140,7 @@ async function decide(approved: boolean) {
           <template v-if="w.line"> (ligne {{ w.line }})</template> — {{ w.message }}
         </li>
       </ul>
-      <p class="text-[11px] text-muted-foreground/80">
-        Signal indicatif : à vous de juger. L'approbation reste possible.
-      </p>
-    </div>
+    </details>
 
     <!-- Budget de réparation — visible AVANT d'approuver : le relecteur doit savoir ce qu'il
          autorise. C'est le gate qui permet la réparation, pas la boucle qui se sert. -->
@@ -163,7 +168,7 @@ async function decide(approved: boolean) {
     </p>
 
     <div v-if="!gate?.allowed" class="flex gap-2">
-      <Button variant="primary" :loading="busy" @click="decide(true)">Approuver la version</Button>
+      <Button v-if="gate?.debloquable !== false" variant="primary" :loading="busy" @click="decide(true)">Débloquer</Button>
       <Button variant="danger" :disabled="busy" @click="decide(false)">Rejeter</Button>
     </div>
     <div v-else class="flex gap-2">
