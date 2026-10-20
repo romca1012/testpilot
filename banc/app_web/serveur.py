@@ -11,7 +11,7 @@ ce serveur par un nom de domaine tiers). Les identifiants ci-dessous sont des va
 `specs/banc_local/apps.yaml` ; ils ne protègent rien.
 
 Routes de l'application : /connexion, /deconnexion, /produits, /panier(/ajouter|/mettre-a-jour), /clients,
-/clients/nouveau, /commande/confirmer, /commande/<numéro>, /commandes. Routes du banc : POST /__reset, GET /__etat,
+/clients/nouveau, /commande/confirmer, /commande/<numéro>, /commandes, /acces. Routes du banc : POST /__reset, GET /__etat,
 GET|POST /__defauts. `/__etat` ne dit JAMAIS quels défauts sont actifs (l'agent ne doit pas pouvoir le lire par
 l'oracle) : seul `GET /__defauts`, réservé au harnais, le fait.
 """
@@ -286,6 +286,8 @@ class _Requete(BaseHTTPRequestHandler):
                 return self._envoyer(200, pages.commande_confirmee(moi, commande))
         if chemin == "/commandes" and methode == "GET":
             return self._envoyer(200, pages.commandes(moi, etat.commandes))
+        if chemin == "/acces":
+            return self._acces(methode, moi)
         self._envoyer(404, pages.introuvable(moi))
 
     def _connexion(self, methode: str) -> None:
@@ -415,6 +417,20 @@ class _Requete(BaseHTTPRequestHandler):
         etat.prochain_client += 1
         self._envoyer(200, pages.client_cree(moi, nom))
 
+    # ── Contrôle d'accès (IT-3e : classes de valeurs, défaut à la limite) ───────────────────────────────────────
+    def _acces(self, methode: str, moi: str) -> None:
+        if methode == "GET":
+            return self._envoyer(200, pages.acces_formulaire(moi))
+        if methode != "POST":
+            return self._envoyer(405, pages.introuvable(moi))
+        champs = self._formulaire()
+        client, age_saisi = champs.get("client", "").strip(), champs.get("age", "").strip()
+        age = calcul.lire_age(age_saisi)
+        if age is None:
+            return self._envoyer(200, pages.acces_formulaire(moi, client, age_saisi, calcul.MESSAGE_AGE_INVALIDE))
+        limite = calcul.AGE_MIN - 1 if self.server.defauts.actif("limite_age_decalee") else calcul.AGE_MIN
+        self._envoyer(200, pages.acces_resultat(moi, client, age >= limite, calcul.MESSAGE_ACCES_REFUSE))
+
     # ── Commandes ───────────────────────────────────────────────────────────────────────────────────────────
     def _commande_confirmer(self, moi: str) -> None:
         etat, defauts = self.server.etat, self.server.defauts
@@ -449,7 +465,7 @@ class _Requete(BaseHTTPRequestHandler):
 _ROUTES_CONNUES = frozenset(
     {
         "/produits", "/panier", "/panier/ajouter", "/panier/mettre-a-jour", "/clients", "/clients/nouveau",
-        "/commande/confirmer", "/commandes", "/deconnexion",
+        "/commande/confirmer", "/commandes", "/deconnexion", "/acces",
     }
 )
 

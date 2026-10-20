@@ -52,6 +52,11 @@ CATALOGUE: dict[str, Defaut] = {
             "la liste de produits pour un texte de recherche quelconque",
         ),
         Defaut(
+            "limite_age_decalee",
+            "Le contrôle d'accès laisse entrer dès 17 ans au lieu de 18 (les autres âges ne changent pas).",
+            "la page « Contrôle d'accès » pour un âge de 17 ans : « Bienvenue » au lieu du refus",
+        ),
+        Defaut(
             "login_accepte_tout",
             "Un identifiant connu est accepté avec N'IMPORTE QUEL mot de passe.",
             "la connexion avec un mot de passe erroné mène à la liste des produits",

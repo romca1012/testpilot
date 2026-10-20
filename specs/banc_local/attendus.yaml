@@ -18,6 +18,7 @@
 #   etat_non_enregistre  — la confirmation d'une commande / d'un client s'affiche, rien n'est conservé côté serveur
 #   filtre_ignore        — la recherche de produits ne filtre pas (tous les produits sont toujours listés)
 #   login_accepte_tout   — un identifiant connu est accepté avec N'IMPORTE QUEL mot de passe
+#   limite_age_decalee   — le contrôle d'accès laisse entrer dès 17 ans au lieu de 18 (ajouté le 2026-10-20, IT-3e)
 version: 1
 app: boutique_locale
 
@@ -33,6 +34,7 @@ sain:
   panier_remise_arrondi: passed
   commande_confirmation: passed
   commande_persistance_serveur: passed
+  acces_age_limite: passed
 
 # Défauts injectés, un par un. Sert la mesure des faux verts : le cas listé doit sortir `failed`.
 defauts:
@@ -69,3 +71,7 @@ defauts:
     # Le critère exige le refus d'un mot de passe erroné ; le défaut le laisse passer et mène à « Produits ».
     connexion_refusee: failed
     # Non listé : connexion_valide — la connexion avec le bon mot de passe fonctionne aussi sous le défaut.
+
+  limite_age_decalee:
+    # Le critère exige le refus à 17 ans ; le défaut laisse entrer dès 17 ans : « Bienvenue » au lieu du message de refus.
+    acces_age_limite: failed
