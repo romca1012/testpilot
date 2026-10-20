@@ -31,6 +31,8 @@ Module PUR : aucune I/O, aucun LLM ; parsing Gherkin par Behave (déjà la réf�
 from __future__ import annotations
 
 import ast
+import re
+import unicodedata
 from collections import Counter
 from collections.abc import Callable
 
@@ -78,6 +80,146 @@ def feature_modifiee(reference: str, proposition: str) -> list[str]:
         if exemples_apres != exemples:
             ecarts.append(f"les Exemples {etiquette} ont changé")
     return ecarts
+
+
+_LITTERAL = re.compile(r'"([^"]*)"')
+
+
+def _contenu_d_etape(step) -> tuple:
+    """Tout ce qu'une étape porte : mot-clé, texte, texte joint, tableau (en-têtes et cellules)."""
+    table = (tuple(step.table.headings), tuple(tuple(r.cells) for r in step.table.rows)) if step.table else ()
+    return (step.step_type, step.name, step.text or "", table)
+
+
+def _scenarios(feature: str) -> dict[str, tuple] | None:
+    """Par scénario (Contexte compris, Plans et scénarios dépliés) : ses étapes complètes et ses tableaux d'Exemples."""
+    from behave.parser import ParserError, parse_feature
+
+    try:
+        parsed = parse_feature(feature, language="fr")
+    except ParserError:
+        return None
+    if parsed is None:
+        return {}
+    gel: dict[str, tuple] = {}
+    if parsed.background is not None:
+        gel["__contexte__"] = (tuple(parsed.background.steps), ())
+    for scenario in parsed.walk_scenarios(with_outlines=True):
+        exemples = tuple((tuple(ex.table.headings), tuple(tuple(r.cells) for r in ex.table.rows))
+                         for ex in getattr(scenario, "examples", []) or [] if ex.table)
+        gel[scenario.name] = (tuple(scenario.steps), exemples)
+    return gel
+
+
+def _ecarts_par_scenario(reference: str, proposition: str, comparer) -> list[str]:
+    avant, apres = _scenarios(reference), _scenarios(proposition)
+    if avant is None or apres is None:
+        return []  # un Gherkin illisible est refusé ailleurs (`write_feature_file`)
+    ecarts = []
+    for nom, contenu in avant.items():
+        etiquette = "du Contexte" if nom == "__contexte__" else f"du scénario « {nom} »"
+        if nom not in apres:
+            ecarts.append(f"le scénario « {nom} » a disparu ou changé de nom" if nom != "__contexte__"
+                          else "le Contexte a disparu")
+            continue
+        ecarts += [f"{ecart} {etiquette}" for ecart in comparer(contenu, apres[nom])]
+    for nom in apres:
+        if nom not in avant:
+            ecarts.append("le Contexte a été ajouté" if nom == "__contexte__" else f"nouveau scénario « {nom} »")
+    return ecarts
+
+
+def scenario_modifie(reference: str, proposition: str) -> list[str]:
+    """Ce que `proposition` change à `reference`, étape par étape — pas seulement les « Alors ». Après un défaut
+    FONCTIONNEL, changer une donnée d'un « Quand » (17 → 16 ans, mesuré en quatrième passe de revue) change ce que le test
+    prouve autant que changer un « Alors » (A65)."""
+    def comparer(avant, apres):
+        (etapes, exemples), (etapes_apres, exemples_apres) = avant, apres
+        ecarts = []
+        if [_contenu_d_etape(e) for e in etapes] != [_contenu_d_etape(e) for e in etapes_apres]:
+            ecarts.append("les étapes")
+        if exemples != exemples_apres:
+            ecarts.append("les Exemples")
+        return [f"{quoi} ont changé" for quoi in ecarts]
+    return _ecarts_par_scenario(reference, proposition, comparer)
+
+
+def _cite(valeur: str, metier: str) -> bool:
+    """La valeur figure dans le métier, ou elle porte un chiffre alors que le métier en porte un aussi. Fail-closed
+    (cinquième passe de revue) : « 1 000 € » ou « 31/01/2026 » dans le cas ne ressemblent pas, en texte, aux littéraux
+    « 1000 » ou « 2026-01-31 » — une borne écrite autrement échappait à la garde. Un nombre ou une date ne change donc sans
+    avis que si le cas n'en cite aucun."""
+    def plier(texte: str) -> str:   # « Prémium » et « Premium » : la même valeur
+        return "".join(c for c in unicodedata.normalize("NFKD", texte) if not unicodedata.combining(c)).casefold()
+
+    valeur = valeur.strip()
+    if not valeur:
+        return False
+    if plier(valeur) in plier(metier):
+        return True
+    return any(c.isdigit() for c in valeur) and any(c.isdigit() for c in metier)
+
+
+def donnee_seule_modifiee(reference: str, proposition: str, metier: str) -> list[str]:
+    """Décision A66 (porteur, 2026-10-20) : après une « donnée refusée », changer la DONNÉE saisie est la réparation
+    attendue. Est une donnée : un littéral entre guillemets d'une étape qui n'est pas un « Alors », ou une cellule d'une
+    colonne d'Exemples qu'aucun « Alors » ne cite (`<colonne>` dans son texte, son texte joint ou son tableau).
+
+    Tout le reste est un écart, comme `scenario_modifie` : un « Alors » (texte, texte joint, tableau), la forme d'une
+    étape, une colonne citée. Et une donnée dont l'ANCIENNE valeur figure dans le métier validé par une personne (`metier` :
+    étapes, résultat attendu, préconditions) n'est pas « seulement une donnée » — le cas l'impose (quatrième passe : une
+    application qui pose à tort `min="19"` refuse le 18 que le cas exige ; passer à 19 masquerait le défaut).
+
+    Double protection, mesurée par mutation : les scénarios dépliés d'un Plan (« … -- @1.1 ») portent dans leurs « Alors »
+    (texte, texte joint, tableau) la valeur de chaque ligne — eux voient déjà une colonne citée qui change ; la
+    recherche des colonnes citées tient même si Behave cessait de les rendre."""
+    def citees(etapes) -> set[str]:
+        textes = " ".join(" ".join([e.name, e.text or ""] + (list(e.table.headings) + [c for r in e.table.rows
+                                                                                       for c in r.cells]
+                                                             if e.table else []))
+                          for e in etapes if e.step_type == "then")
+        return {m.group(1) for m in re.finditer(r"<([^<>]+)>", textes)}
+
+    def comparer(avant, apres):
+        (etapes, exemples), (etapes_apres, exemples_apres) = avant, apres
+        ecarts = []
+        if len(etapes) != len(etapes_apres):
+            return ["les étapes ont changé"]
+        for e, f in zip(etapes, etapes_apres):
+            if e.step_type == "then" or f.step_type == "then" or e.text or f.text or e.table or f.table:
+                if _contenu_d_etape(e) != _contenu_d_etape(f):
+                    ecarts.append("une vérification ou une étape à tableau a changé")
+                continue
+            if (e.step_type, _LITTERAL.sub('""', e.name)) != (f.step_type, _LITTERAL.sub('""', f.name)):
+                ecarts.append("la forme d'une étape a changé")
+                continue
+            litteraux, litteraux_apres = _LITTERAL.findall(e.name), _LITTERAL.findall(f.name)
+            # Seule la DERNIÈRE valeur d'une étape est une donnée (`… le champ "age" avec la valeur "18"`) : le nom du champ
+            # ou du bouton qui change, c'est une autre étape (cinquième passe de revue).
+            # Une étape à un seul littéral (`j'ouvre la page "/acces"`, un clic) n'a pas de donnée : changer sa cible, c'est
+            # contourner l'écran fautif (sixième passe de revue).
+            if litteraux[:-1] != litteraux_apres[:-1] or (len(litteraux) < 2 and litteraux != litteraux_apres):
+                ecarts.append("la cible d'une étape a changé")
+            elif litteraux and litteraux[-1] != litteraux_apres[-1] and _cite(litteraux[-1], metier):
+                ecarts.append(f"la donnée « {litteraux[-1]} », que le cas cite, a changé")
+        colonnes_citees = citees(etapes) | citees(etapes_apres)
+        if [ex[0] for ex in exemples] != [ex[0] for ex in exemples_apres]:
+            ecarts.append("les colonnes des Exemples ont changé")
+            return ecarts
+        for (entetes, lignes), (_, lignes_apres) in zip(exemples, exemples_apres):
+            if len(lignes) != len(lignes_apres):
+                ecarts.append("le nombre de lignes des Exemples a changé")
+                continue
+            for ligne, ligne_apres in zip(lignes, lignes_apres):
+                for entete, ancienne, nouvelle in zip(entetes, ligne, ligne_apres):
+                    if ancienne == nouvelle:
+                        continue
+                    if entete in colonnes_citees:
+                        ecarts.append(f"le résultat attendu « {entete} » des Exemples a changé")
+                    elif _cite(ancienne, metier):
+                        ecarts.append(f"la donnée « {ancienne} », que le cas cite, a changé")
+        return ecarts
+    return _ecarts_par_scenario(reference, proposition, comparer)
 
 
 # ── _steps.py ─────────────────────────────────────────────────────────────────────────────────────────────
