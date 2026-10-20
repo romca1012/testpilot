@@ -153,10 +153,14 @@ def cases_needing_review(request: Request, project_id: int, conn=Depends(get_con
         decision = review_gate.bloquer_si_ecart(review_gate.evaluate_gate(ReviewRepo(conn), version_id), ecarts[c["id"]])
         warnings = generation_service.lint_warnings_for_version(
             conn, c, version_rows_par_cas[c["id"]], version_id)
+        derniere = ReviewRepo(conn).latest_for_version(version_id)
+        raisons = review_gate.raisons_du_blocage(
+            decision, approuvee=version_id in approuvees, rejetee=bool(derniere and derniere["decision"] == "rejected"),
+            ecarts=ecarts[c["id"]], avis=warnings)
         out.append(schemas.CaseARelireOut(
             case_id=c["id"], title=c["title"], module_name=c.get("module_name") or "",
             version_id=version_id, reason=decision.reason,
-            lint_warnings_count=len(warnings)))
+            lint_warnings_count=len(warnings), raisons=raisons))
     return out
 
 
@@ -328,18 +332,20 @@ def get_case(case_id: int, conn=Depends(get_conn)):
     version_id = case.get("current_version_id")
     gate = None
     if version_id:
-        decision = run_service.gate_du_cas(conn, case, version_id)   # A42 : l'écart cas/test bloque aussi
         # Les « points de vigilance » (0008 assertions, 0017 réparation, 0021 smoke-check) — MÊME
         # calcul que celui qui décide de l'approbation automatique à la génération
         # (`generation_service.lint_warnings_for_version`, amendement §4.3-bis, 2026-09-15) : un
         # seul point de vérité pour « ce cas est-il propre ? », jamais deux calculs qui pourraient
         # diverger. Informe le relecteur sans jamais changer `allowed` — le gate reste souverain.
         warnings = generation_service.lint_warnings_for_version(conn, case, version_rows, version_id)
+        # A42 : l'écart cas/test bloque aussi. Étape 2 (A63, A67) : « bloqué » et ses raisons, recalculés.
+        decision, raisons, debloquable = run_service.blocage_du_cas(conn, case, version_id, warnings)
         gate = schemas.GateOut(allowed=decision.allowed, needs_review=decision.needs_review,
                                reason=decision.reason,
                                repair_budget=ReviewRepo(conn).repair_budget_for_version(version_id),
                                repair_budget_default=config.REPAIR_BUDGET_DEFAULT,
-                               lint_warnings=[schemas.LintWarning(**w) for w in warnings])
+                               lint_warnings=[schemas.LintWarning(**w) for w in warnings],
+                               bloque=not decision.allowed, raisons=raisons, debloquable=debloquable)
     executions = [
         schemas.execution_summary(r, running=run_service.is_running(r["id"]))
         for r in ExecutionRepo(conn).list_for_case(case_id)
@@ -651,5 +657,8 @@ def submit_review(case_id: int, body: schemas.ReviewIn, request: Request,
         repair_budget=budget,
         gate=schemas.GateOut(allowed=decision.allowed, needs_review=decision.needs_review,
                              reason=decision.reason, repair_budget=budget,
-                             repair_budget_default=config.REPAIR_BUDGET_DEFAULT),
+                             repair_budget_default=config.REPAIR_BUDGET_DEFAULT,
+                             bloque=not decision.allowed, debloquable=not decision.allowed,
+                             raisons=review_gate.raisons_du_blocage(
+                                 decision, approuvee=decision.allowed, rejetee=not body.approved, ecarts=[], avis=[])),
     )

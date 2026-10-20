@@ -52,11 +52,16 @@ def extract_form(page) -> dict:
 
     ``page`` est un objet duck-typé (Playwright Page ou fake de test) exposant
     ``query_selector_all`` / ``query_selector``. Retour :
-    ``{fields:[{name,required,type}], submission:{mechanism,endpoint,trigger_selector}}``.
+    ``{fields:[{name,required,type[,cadre]}], submission:{mechanism,endpoint,trigger_selector}}``.
     """
+    return _extraire_formulaire(page)
+
+
+def _champs(racine, cadre: list[str] | None = None) -> list[dict]:
+    """Les champs d'un document (la page, ou un cadre : un `Frame` Playwright expose les mêmes `query_selector_all`)."""
     fields: list[dict] = []
     seen: set[str] = set()
-    for el in page.query_selector_all("input, select, textarea"):
+    for el in racine.query_selector_all("input, select, textarea"):
         name = el.get_attribute("name") or el.get_attribute("id") or ""
         if not name or name in seen:
             continue
@@ -70,6 +75,8 @@ def extract_form(page) -> dict:
             "required": el.get_attribute("required") is not None,
             "type": input_type,
         })
+        if cadre:
+            fields[-1]["cadre"] = list(cadre)
         if hasattr(el, 'evaluate'):
             fields[-1].update(el.evaluate('''el => ({
                 tag: el.tagName.toLowerCase(),
@@ -84,6 +91,37 @@ def extract_form(page) -> dict:
                 data_mask: el.getAttribute('data-mask'),
                 inputmask: el.getAttribute('data-inputmask') || el.getAttribute('inputmask')
             })'''))
+    return fields
+
+
+def _cadres(page):
+    """Les cadres ENFANTS de la page (ceux que `_base_helpers.cadre` atteint), avec les noms qui les désignent. Une fausse
+    page de test sans `frames` n'en a aucun ; un cadre illisible (détaché, autre origine refusée) est ignoré."""
+    principal = getattr(page, "main_frame", None)
+    for frame in getattr(page, "frames", None) or []:
+        if frame is principal or getattr(frame, "parent_frame", None) is not principal:
+            continue
+        try:
+            balise = frame.frame_element()
+            noms = [v for v in (balise.get_attribute(a) for a in ("name", "title", "id")) if v]
+        except PlaywrightError:
+            continue
+        if noms:
+            yield frame, noms
+
+
+def _extraire_formulaire(page) -> dict:
+    fields = _champs(page)
+    # Étape 2 (A61, 2026-10-20) : les champs d'un cadre (iframe) enfant de la page, marqués du nom du cadre (`name`, `title`
+    # ou `id` de la balise — la règle même de `_base_helpers.cadre` à l'exécution). Sans eux, un test qui saisit « dans le
+    # cadre "X" » n'avait jamais de preuve et restait à relire.
+    for frame, noms in _cadres(page):
+        # Revue (C2) : un cadre de publicité ou de consentement qui se recharge pendant le relevé ne doit pas effacer les
+        # champs de la page principale.
+        try:
+            fields += _champs(frame, cadre=noms)
+        except PlaywrightError:
+            continue
 
     submission = _detect_submission(page)
     html = page.query_selector('html')

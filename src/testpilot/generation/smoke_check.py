@@ -27,6 +27,9 @@ et attendu** :
 
 La sortie alimente donc le **même bandeau non-bloquant** que le lint `0008` au gate : `allowed`
 n'est jamais touché, un humain tranche. Même contrat de sortie (`list[dict]`), même bandeau.
+Étape 2 (A61, A63, 2026-10-20) : ces avis sont aussi renvoyés à l'IA en fin d'écriture (elle corrige ou garde son
+test, rien n'est refusé) ; un avis restant empêche l'approbation automatique, le test est livré « bloqué » avec sa
+raison jusqu'à ce qu'une personne le débloque.
 
 ⚠️ **Le modèle est une PHOTO.** Il vieillit dès que l'application change : un avertissement peut
 donc dire « ce champ n'existe pas » alors qu'il vient d'être ajouté. C'est la seconde raison de ne
@@ -39,6 +42,8 @@ import difflib
 import re
 import unicodedata
 from dataclasses import dataclass
+
+from testpilot.generation.gherkin_mots_cles import DEBUT_SCENARIO
 
 # ── Les tournures Gherkin qui posent une VALEUR dans un CHAMP ────────────────
 #
@@ -244,7 +249,7 @@ def _scenarios(feature_content: str) -> list[tuple[str, int, list[str]]]:
     il ne remplit pas de formulaire."""
     scenarios, courant = [], None
     for num, ligne in enumerate(feature_content.split("\n"), 1):
-        if re.match(r"\s*(?:Scénario|Scenario)\b", ligne):
+        if DEBUT_SCENARIO.match(ligne):   # étape 2 (A61) : aussi `Exemple:` et `Plan du scénario:`
             courant = (ligne.strip().split(":", 1)[-1].strip() or "sans titre", num, [])
             scenarios.append(courant)
         elif courant is not None:

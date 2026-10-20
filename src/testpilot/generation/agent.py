@@ -61,7 +61,8 @@ class GenerationAgent:
                  failure_context: list[dict] | None = None,
                  qualification: bool = False, regeneration: bool = False,
                  valeurs_d_essai: dict | None = None,
-                 regeneration_apres_defaut: dict | None = None) -> GenerationResult:
+                 regeneration_apres_defaut: dict | None = None,
+                 variables_des_lignes=None, intention: str | None = None) -> GenerationResult:
         """`metier` — le document métier VALIDÉ (passe 4b de `0022`). Présent, il fixe le périmètre
         du Gherkin et se fige DANS la version, avec lui (décision n°10 : une version = le cas
         entier). Absent, le comportement est celui d'avant (chemin CLI et cas legacy).
@@ -79,6 +80,10 @@ class GenerationAgent:
         `regeneration_apres_defaut` (revue A62, 2026-10-20) — `{execution_id, version_id}` quand on régénère un test dont la
         dernière exécution a trouvé un défaut FONCTIONNEL : fait consigné dans la provenance, lu par les points de
         vigilance (`generation_service._verification_changee_apres_defaut`) — jamais montré à l'agent.
+
+        `variables_des_lignes`, `intention` (étape 2, A61) — pour le contrôle de fin d'écriture : les variables que les
+        lignes du cas font varier, et ce que le cas DÉCLARE tester (`generation_service._intention_declaree`). Absents :
+        aucune variable, et l'intention lue dans `metier`.
 
         `valeurs_d_essai` (IT-3b) — la première ligne propre au cas, posée par-dessus le jeu « Par défaut » pour l'essai sur
         le bac à sable (comme l'exécution la jouerait). Jamais montrée : masquée dans tout ce qui revient à l'agent."""
@@ -175,6 +180,32 @@ class GenerationAgent:
         from testpilot.generation.tools.api_definitions import tools_for_api
         outils_envoyes = tools_for_api(avec=outils_optionnels(ctx))
         input_sha256 = fingerprint(state.messages[0])
+        # Étape 2 (A61, interrupteur éteint jusqu'à sa mesure) : quand le test passe la vérification à blanc, ses points de
+        # vigilance — le MÊME calcul que sur la version enregistrée (`avis_du_test`) — sont renvoyés à l'IA avant de clore.
+        controle = None
+        if _interrupteurs.controle_fin_ecriture_actif():
+            from testpilot.generation.avis_du_test import avis_du_test
+            m = metier or {}
+            intention_du_cas = intention if intention is not None else "\n".join(str(x) for x in (
+                m.get("title") or title, m.get("preconditions"),
+                json.dumps(m["steps"], ensure_ascii=False) if m.get("steps") else "", m.get("expected_result")) if x)
+
+            from testpilot.generation.variables_de_test import ALORS_IDENTIQUE
+
+            def controle(etat):
+                # Revue de l'étape 2 (C4) : « même résultat pour toutes les lignes » peut être légitime (classe
+                # d'équivalence) — une personne en juge ; le renvoyer à l'IA la pousserait à déformer le test.
+                return [a for a in _avis_du_test(etat) if a.get("kind") != ALORS_IDENTIQUE]
+
+            def _avis_du_test(etat):
+                return avis_du_test(
+                    feature=etat.feature_content, steps=etat.steps_content, observations=ctx.observations,
+                    target_sha256=ctx.target_sha256, base_url=(projet or {}).get("base_url", ""), reference_time=None,
+                    variables_des_lignes=variables_des_lignes or (),
+                    connecteur_web=projet is not None and (connector_type or "") == "web",
+                    # Le registre est TOUJOURS contrôlé : la version enregistrée l'est aussi (un cas a toujours un projet,
+                    # au pire celui par défaut) — mesuré par `test_controle_fin_ecriture` (même calcul).
+                    intention=intention_du_cas, modele=modele, verified_fields=etat.verified_fields)
         run_loop(
             llm=self.llm,
             system_prompt=system_prompt,
@@ -184,6 +215,7 @@ class GenerationAgent:
             cost_tracker=self.cost_tracker,
             max_iterations=self.max_iterations,
             stall_limit=self.stall_limit,
+            controle_fin=controle,
         )
         result = self._build_result(plan, state)
         result.observation_evidence = ctx.observations
@@ -199,6 +231,12 @@ class GenerationAgent:
         }
         if regeneration_apres_defaut:
             result.generation_provenance['regeneration_apres_defaut'] = dict(regeneration_apres_defaut)
+        if controle is not None:
+            # Étape 2 : fait consigné pour la mesure (étape 3) et pour la correction d'après-coup, qui ne repasse pas sur
+            # des points que l'IA a déjà vus (`generation_service._finaliser_version_generee`).
+            result.generation_provenance['controle_fin_ecriture'] = {
+                'tours': state.tours_de_controle, 'avis_envoyes': sorted(set(state.avis_envoyes)),
+                'avis_restants': sorted({a.get('kind') or '' for a in controle(state)}) if state.dry_run_passed else []}
         if ctx.essai is not None:
             # Lot VH-07 : ce test a été écrit après des essais sur le bac à sable — fait consigné, jamais un verdict.
             result.generation_provenance['essais'] = {

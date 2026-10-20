@@ -108,6 +108,21 @@ def gate_du_cas(conn, case: dict, version_id: int) -> review_gate.GateDecision:
                                         ecarts_cas_test(conn, case, version_id))
 
 
+def blocage_du_cas(conn, case: dict, version_id: int, avis: list[dict],
+                   noms: list[str] | None = None) -> tuple[review_gate.GateDecision, list[str], bool]:
+    """Étape 2 (A63, A67) : la décision de `gate_du_cas`, pourquoi la version ne sera pas lancée — recalculé, jamais
+    enregistré — et si une approbation peut la débloquer (revue, C5 : pas en cas d'écart cas/test, A42 refuse
+    l'approbation). `avis` : les points de vigilance de la version (`generation_service.lint_warnings_for_version`)."""
+    ecarts = ecarts_cas_test(conn, case, version_id, noms)
+    revues = ReviewRepo(conn)
+    decision = review_gate.bloquer_si_ecart(review_gate.evaluate_gate(revues, version_id), ecarts)
+    derniere = revues.latest_for_version(version_id)
+    raisons = review_gate.raisons_du_blocage(
+        decision, approuvee=revues.is_version_approved(version_id),
+        rejetee=bool(derniere and derniere["decision"] == "rejected"), ecarts=ecarts, avis=avis)
+    return decision, raisons, not decision.allowed and not ecarts
+
+
 def trigger_run(conn, case_id: int, *, triggered_by: str = "",
                 environnement: dict | None = None) -> tuple[int, str, int, int]:
     """Valide le gate et crée la ligne d'exécution. Renvoie (execution_id, feature_slug, case_id, version_id).

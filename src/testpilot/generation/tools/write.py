@@ -676,7 +676,14 @@ def _forbidden_python(tree: ast.AST) -> str:
     return ""
 
 
-def _message_gel(outil: str, touche: list[str]) -> str:
+def _message_gel(outil: str, touche: list[str], motif: str = "reparation") -> str:
+    if motif == "controle":
+        # Étape 2 (revue, B1) : faire taire un point de vigilance en changeant ce que le test vérifie (un message exact
+        # remplacé par « une erreur est affichée ») fabriquerait un vert sur une application fausse.
+        return (f"[{outil}] VERIFICATION_GELEE : pendant le contrôle de fin d'écriture, ce que le test VÉRIFIE (« Alors », "
+                "Exemples, fonctions @then) ne change plus : " + " ; ".join(touche[:6]) + ". Corrige ailleurs (observer "
+                "la page ou le message, la donnée saisie, la navigation) ; sinon termine sans réécrire — le test sera "
+                "livré bloqué avec son point, et une personne tranchera.")
     return (f"[{outil}] VERIFICATION_GELEE : une réparation corrige OÙ le test lit l'application (sélecteur, attente, "
             "navigation), jamais CE QU'IL VÉRIFIE : " + " ; ".join(touche[:6]) + ". Remets ces vérifications à "
             "l'identique ; si tu conclus que le test vérifie la mauvaise chose, ne réécris rien et dis-le.")
@@ -846,7 +853,7 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if ctx.gel_feature:
         touche = gel_verifications.feature_modifiee(ctx.gel_feature, content)
         if touche:
-            return _outcome(_message_gel("write_feature_file", touche), ok=False)
+            return _outcome(_message_gel("write_feature_file", touche, ctx.gel_motif), ok=False)
     # Lot VH-05 (D24) : tout champ, bouton ou page cité existe À L'IDENTIQUE dans ce que l'exploration a observé. BLOQUANT.
     indications = ""
     if ctx.annuaire is not None:
@@ -956,7 +963,7 @@ def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if ctx.gel_steps:
         touche = gel_verifications.steps_modifies(ctx.gel_steps, content)
         if touche:
-            return _outcome(_message_gel("write_steps_file", touche), ok=False)
+            return _outcome(_message_gel("write_steps_file", touche, ctx.gel_motif), ok=False)
 
     # 3sexies. Lot VH-05 (D24) : réseau direct, `context.X` inventé ou secret (tous connecteurs) ; sélecteurs par texte libre et
     # libellés non observés (connecteur web avec annuaire). BLOQUANT.
