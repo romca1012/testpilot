@@ -581,6 +581,30 @@ def _ecriture_du_test(version_rows: list[dict], current: dict) -> dict:
     return meme_test[-1] if meme_test else current
 
 
+def _chaine_de_provenance(version: dict) -> list[dict]:
+    """La provenance de `version` puis celles dont elle dérive, de la plus récente à l'origine. Une correction, une
+    réparation ou une copie range la provenance d'origine sous `origin` (`provenance.revision_metadata`) : lire la seule
+    clé de premier niveau perdait un signal dès qu'une correction s'intercalait (revue A62, deuxième passe, 2026-10-20)."""
+    try:
+        provenance = json.loads(version.get("generation_provenance") or "{}")
+    except ValueError:
+        return []
+    chaine = []
+    while isinstance(provenance, dict) and len(chaine) < 100:
+        chaine.append(provenance)
+        provenance = provenance.get("origin")
+    return chaine
+
+
+def _approuvee_par_une_personne(conn, version_id) -> bool:
+    """La dernière décision sur la version est une approbation HUMAINE — pas l'approbation automatique tracée
+    `validation-metier`, qui n'a rien jugé."""
+    from testpilot.store.repositories import ReviewRepo
+
+    derniere = ReviewRepo(conn).latest_for_version(version_id) if version_id else None
+    return bool(derniere and derniere["decision"] == "approved" and derniere.get("reviewer") != "validation-metier")
+
+
 ATTENTE_METIER_CHANGEE = "attente_metier_changee"
 VALEUR_VUE_A_L_ESSAI = "valeur_vue_a_l_essai"
 
@@ -595,16 +619,81 @@ def _valeurs_vues_a_l_essai(version_rows: list[dict], current: dict) -> list[dic
     from testpilot.generation.tools.essai import alors_qui_citent
 
     ecriture = _ecriture_du_test(version_rows, current) or current
-    try:
-        provenance = json.loads(ecriture.get("generation_provenance") or "{}")
-    except ValueError:
-        return []
-    donnees = ((provenance.get("essais") or {}).get("donnees_vues") or []) if isinstance(provenance, dict) else []
+    # Revue A62 (2026-10-20) : aussi à travers une correction automatique, qui range la provenance sous `origin` — sinon la
+    # version corrigée perdait le signal et s'approuvait d'office.
+    essais = next((p["essais"] for p in _chaine_de_provenance(ecriture) if isinstance(p.get("essais"), dict)), {})
+    donnees = essais.get("donnees_vues") or []
     return [{"step": phrase, "line": 0, "kind": VALEUR_VUE_A_L_ESSAI,
              "message": (f"Cet « Alors » cite {', '.join('« ' + j + ' »' for j in jetons)}, que l'IA a vu sur l'application "
                          "pendant un essai avant d'écrire le test. Vérifiez que c'est bien la valeur que la spécification "
                          "annonce POUR CE POINT, et pas seulement celle que l'application affiche.")}
             for phrase, jetons in alors_qui_citent(current.get("feature_content") or "", donnees)]
+
+
+VERIFICATION_CHANGEE_APRES_DEFAUT = "verification_changee_apres_defaut"
+
+
+def _fait_de_regeneration_apres_defaut(conn, version: dict) -> dict | None:
+    """Le fait `regeneration_apres_defaut` porté par `version` ou par une version dont elle dérive (correction, réparation,
+    copie). La recherche s'arrête à une version approuvée par une personne : quelqu'un a jugé le test, le fait est purgé."""
+    for provenance in _chaine_de_provenance(version):
+        fait = provenance.get("regeneration_apres_defaut")
+        if isinstance(fait, dict):
+            return fait
+        if _approuvee_par_une_personne(conn, provenance.get("derived_from_version")):
+            return None
+    return None
+
+
+def _verification_changee_apres_defaut(conn, version_rows: list[dict], current: dict) -> list[dict]:
+    """Revue A62 (bloquant, 2026-10-20) : une régénération faite après un défaut FONCTIONNEL, dont le nouveau test change ce
+    que l'ancien vérifiait. Exemple mesuré en revue : le cas attend 129,51 €, l'application affiche 107,93 € (vrai défaut),
+    on régénère, l'IA lit 107,93 € sur la capture et l'écrit dans l'« Alors » — le test passerait au vert sur une
+    application fausse. Aucune autre garde ne le voit (les valeurs vues à l'essai ne couvrent pas une capture d'échec).
+
+    Signal consigné par la génération (`regeneration_apres_defaut` dans la provenance, suivi à travers les corrections),
+    jamais le texte de l'agent ; la comparaison porte sur la STRUCTURE — toutes les étapes (une donnée d'un « Quand »
+    aussi : 17 → 16 ans, quatrième passe de revue), Exemples et fonctions de vérification, comme D30. Après une « donnée
+    refusée » (A66), changer la seule donnée saisie n'est pas un écart, sauf si le métier validé la cite. Seule une approbation HUMAINE l'éteint. Pas d'exemption quand le cas a changé (deuxième passe de revue :
+    une retouche d'une étape suffisait à l'éteindre) — changer le cas après un défaut puis voir la vérification changer
+    mérite un regard. Toutes les autres régénérations restent prêtes à lancer (A62)."""
+    from testpilot.generation import gel_verifications
+    from testpilot.store.repositories import ExecutionRepo, VersionRepo
+
+    fait = _fait_de_regeneration_apres_defaut(conn, _ecriture_du_test(version_rows, current) or current)
+    if fait is None:
+        return []   # le cas courant : aucune lecture de la base
+    # Une personne a jugé CE test (la version courante, ou une précédente qui porte exactement le même test — une édition du
+    # métier le recopie) : le fait est purgé. Sinon une retouche du titre ressuscitait l'avis (troisième passe de revue).
+    if any(_approuvee_par_une_personne(conn, v["id"]) for v in [current, *_versions_du_meme_test(version_rows, current)]):
+        return []
+    testee = next((v for v in version_rows if v["id"] == fait.get("version_id")), None) \
+        or VersionRepo(conn).get(fait.get("version_id"))
+    # A66 (porteur, 2026-10-20) : après une « donnée refusée » (l'application n'est pas en cause, c'est la donnée du test),
+    # changer la seule donnée saisie est la réparation attendue — pas d'avis. Statut relu dans l'exécution, jamais déduit.
+    echec = ExecutionRepo(conn).get(fait.get("execution_id")) if fait.get("execution_id") else None
+    donnee_refusee = bool(echec) and echec.get("functional_status") == "donnee_invalide"
+    if testee is None:
+        ecarts = ["la version testée lors de l'échec est introuvable"]   # fait présent mais inexploitable : on signale
+    else:
+        avant, apres = testee.get("feature_content") or "", current.get("feature_content") or ""
+        # Le métier VALIDÉ PAR UNE PERSONNE (jamais le texte de l'agent), des deux versions : une donnée qu'il cite n'est
+        # pas « seulement une donnée ».
+        metier = " ".join(str(v.get(champ) or "") for v in (testee, current)
+                          for champ in ("title", "preconditions", "test_steps", "expected_result"))
+        ecarts = ((gel_verifications.donnee_seule_modifiee(avant, apres, metier) if donnee_refusee
+                   else gel_verifications.scenario_modifie(avant, apres))
+                  + gel_verifications.steps_modifies(testee.get("steps_content") or "",
+                                                     current.get("steps_content") or ""))
+    if not ecarts:
+        return []
+    cas_change = testee is not None and review_gate.attente_metier_changee(testee, current)
+    return [{"step": "", "line": 0, "kind": VERIFICATION_CHANGEE_APRES_DEFAUT,
+             "message": ("Ce test a été régénéré après un échec FONCTIONNEL (l'application ne faisait peut-être pas ce que le "
+                         "cas demande) et il ne vérifie plus la même chose : " + " ; ".join(ecarts) + ". "
+                         + ("Le cas a été modifié depuis : vérifiez que le test suit le cas, et pas ce qu'affichait "
+                            "l'application." if cas_change else
+                            "Le cas, lui, n'a pas changé. Vérifiez que l'application est juste avant de lancer ce test."))}]
 
 
 def _attente_changee_depuis_le_test(conn, version_rows: list[dict], current: dict) -> list[dict]:
@@ -684,6 +773,7 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
     if current:
         warnings += _attente_changee_depuis_le_test(conn, version_rows, current)
         warnings += _valeurs_vues_a_l_essai(version_rows, current)
+        warnings += _verification_changee_apres_defaut(conn, version_rows, current)
     if current and current.get("created_by") == _AUTEUR_REPARATION:
         precedentes = [v for v in version_rows if v["id"] < current["id"]]
         if precedentes:
@@ -743,8 +833,7 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
                                module_name: str | None = None, connector=None,
                                connector_type: str | None = None, connector_version: str = "",
                                profil_instance: str | None = None,
-                               dry_runner=None, calibration_writes_enabled: bool = False,
-                               require_review: bool = False) -> None:
+                               dry_runner=None, calibration_writes_enabled: bool = False) -> None:
     """Décide du sort d'une version fraîchement générée — amendement §4.3-bis (2026-09-15),
     étendu (2026-09-16) : un point de vigilance déclenche une CORRECTION avant de reporter le
     problème à l'utilisateur, pas seulement un blocage.
@@ -755,9 +844,12 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
     reportait TOUJOURS le problème à un humain alors que l'IA qui a écrit le test peut souvent le
     corriger elle-même : c'est tout l'intérêt de générer avec un LLM plutôt qu'à la main.
 
-    Une régénération impose une relecture humaine, même après correction (backlog 0.2).
+    A62 (porteur, 2026-10-20) : une régénération suit le MÊME chemin qu'une génération — l'ancienne règle « une
+    régénération impose une relecture humaine, même après correction » (backlog 0.2) est retirée. Après une génération ou
+    une régénération, le test doit être prêt à lancer (A61) ; la sécurité vient des contrôles, pas d'une relecture
+    systématique.
 
-    1. Propre → approuvée automatiquement sauf régénération.
+    1. Propre → approuvée automatiquement.
     2. Signalée, correction possible (`module_name`/`dry_runner` fournis par l'appelant — les
        deux tests unitaires isolés ne les fournissent pas, et c'est très bien : ils veulent la
        décision de gate, pas un appel LLM) → **UNE** tentative de correction
@@ -777,8 +869,7 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
     version_rows = VersionRepo(conn).list_for_case(case_id)
     warnings = lint_warnings_for_version(conn, case, version_rows, version_id)
     if not warnings:
-        if not require_review:
-            _auto_approuver(conn, case_id, version_id)
+        _auto_approuver(conn, case_id, version_id)
         return
 
     if not (module_name and dry_runner is not None):
@@ -788,7 +879,8 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
     # IT-3b (revue du 2026-10-19) : « même résultat attendu pour toutes les lignes du cas » peut être légitime (classe
     # d'équivalence) — le relecteur décide ; il retire l'approbation automatique mais ne déclenche AUCUN appel de correction.
     from testpilot.generation.variables_de_test import ALORS_IDENTIQUE
-    a_corriger = [w for w in warnings if w.get("kind") != ALORS_IDENTIQUE]
+    # Revue A62 : une correction automatique ne peut pas savoir si l'application est juste — pas d'appel non plus.
+    a_corriger = [w for w in warnings if w.get("kind") not in (ALORS_IDENTIQUE, VERIFICATION_CHANGEE_APRES_DEFAUT)]
     if not a_corriger:
         logger.info("[generation] cas %s (version %s) reste à relire — même résultat attendu pour toutes les lignes",
                     case_id, version_id)
@@ -849,8 +941,7 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
         logger.info("[generation] cas %s : la correction touche aux vérifications (%s)",
                    case_id, "; ".join(verifications_touchees))
     if not warnings_apres:
-        if not require_review:
-            _auto_approuver(conn, case_id, version_corrigee_id)
+        _auto_approuver(conn, case_id, version_corrigee_id)
     else:
         logger.info("[generation] cas %s : correction tentée, %d point(s) de vigilance "
                    "restants — reste à relire", case_id, len(warnings_apres))
@@ -963,6 +1054,32 @@ def start_automation(conn, case_id: int, *, author: str = "") -> tuple[str, dict
                     "author": author or "ui"}
 
 
+def _dernier_echec(conn, case_id: int) -> dict | None:
+    """La dernière exécution en échec du cas — la MÊME que celle montrée à l'agent qui régénère."""
+    from testpilot.store.repositories import ExecutionRepo
+    return next((e for e in reversed(ExecutionRepo(conn).list_for_case(case_id))
+                 if e["execution_status"] in {"technical_error", "blocked"}
+                 or e["functional_status"] in {"non_conforme", "donnee_invalide"}), None)
+
+
+def _dernier_defaut_fonctionnel(conn, case_id: int) -> dict | None:
+    """Revue A62 (bloquant, 2026-10-20) : `{execution_id, version_id}` si le dernier verdict fonctionnel DÉFINITIF du cas
+    est un défaut (`non_conforme`, `donnee_invalide`) — l'application a peut-être raison de faire échouer le test. Une
+    exécution `indetermine` (erreur technique, blocage) ne compte pas : un bac à sable indisponible APRÈS le défaut
+    effaçait le fait (deuxième passe de revue). Et toujours quand l'échec MONTRÉ à l'agent (`_dernier_echec`) est un défaut,
+    même si un `conforme` plus récent existe (troisième passe : défaut intermittent, l'agent recevait la capture à 107,93 €
+    sans qu'aucun fait ne soit consigné)."""
+    from testpilot.store.repositories import ExecutionRepo
+    defauts = {"non_conforme", "donnee_invalide"}
+    executions = list(reversed(ExecutionRepo(conn).list_for_case(case_id)))
+    montre = _dernier_echec(conn, case_id)
+    definitif = next((e for e in executions if e["functional_status"] in defauts | {"conforme"}), None)
+    for execution in (montre, definitif):
+        if execution is not None and execution.get("functional_status") in defauts:
+            return {"execution_id": execution["id"], "version_id": execution["version_id"]}
+    return None
+
+
 def _regeneration_failure_context(conn, case_id: int) -> list[dict]:
     import base64
     from pathlib import Path
@@ -970,9 +1087,7 @@ def _regeneration_failure_context(conn, case_id: int) -> list[dict]:
     from testpilot.store.repositories import ExecutionRepo, RepairRepo
 
     repo = ExecutionRepo(conn)
-    failure = next((e for e in reversed(repo.list_for_case(case_id))
-                    if e["execution_status"] in {"technical_error", "blocked"}
-                    or e["functional_status"] in {"non_conforme", "donnee_invalide"}), None)
+    failure = _dernier_echec(conn, case_id)   # le même échec que celui que lit `_dernier_defaut_fonctionnel`
     if failure is None:
         return []
     # Exécution locale 146 (2026-09-18) : error_message vide malgré une DonneeRefuseeError
@@ -1064,7 +1179,8 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
         result = agent.generate(
             plan, case_id=case_id, metier=metier, author=author, projet=project,
             failure_context=_regeneration_failure_context(conn, case_id) if regeneration else None,
-            regeneration=regeneration, valeurs_d_essai=dict(lignes_du_cas[0][1]) if lignes_du_cas else None)
+            regeneration=regeneration, valeurs_d_essai=dict(lignes_du_cas[0][1]) if lignes_du_cas else None,
+            regeneration_apres_defaut=_dernier_defaut_fonctionnel(conn, case_id) if regeneration else None)
 
         _record_generation_cost(conn, case_id=case_id,
                                 analysis_usd=analysis_tracker.total_cost,
@@ -1078,7 +1194,6 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
                 connector_version=(project or {}).get("connector_version", ""),
                 profil_instance=(project or {}).get("profil_instance"),
                 dry_runner=runner,
-                require_review=regeneration,
                 calibration_writes_enabled=ia_peut_ecrire(project))
             GenerationJobRepo(conn).maj(job_id, status="done", case_ids=[case_id])
         else:

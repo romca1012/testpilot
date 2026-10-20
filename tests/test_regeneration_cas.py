@@ -88,7 +88,9 @@ def test_une_premiere_generation_garde_la_spec_brute_complete_sans_troncature(co
     assert "FIN : back-office uniquement" in message
 
 
-def test_regeneration_nouvelle_version_pipeline_lint_et_gate_humain(conn, monkeypatch, tmp_path):
+def test_regeneration_nouvelle_version_pipeline_lint_et_approbation(conn, monkeypatch, tmp_path):
+    """A62 (porteur, 2026-10-20, changement délibéré de l'attendu) : une régénération propre est approuvée comme une
+    génération — plus de relecture humaine imposée."""
     cid, vid, _ = existing_case(conn)
     seen = []
     monkeypatch.setattr("testpilot.connectors.factory.build_connector", lambda p: SimpleNamespace(connect=lambda: None, disconnect=lambda: None, rules=lambda: ""))
@@ -126,7 +128,7 @@ def test_regeneration_nouvelle_version_pipeline_lint_et_gate_humain(conn, monkey
     assert VersionRepo(conn).get(vid)["feature_content"] == "ancien Gherkin"
     assert VersionRepo(conn).get(current)["feature_content"] == feature
     assert dry_runs == [True]
-    assert evaluate_gate(ReviewRepo(conn), current).needs_review
+    assert evaluate_gate(ReviewRepo(conn), current).allowed
 
 
 def test_execution_146_erreur_scenario_capture_et_commentaire_humain(conn, tmp_path):
@@ -168,7 +170,9 @@ def test_generation_transmet_les_preuves_dans_message_multimodal(monkeypatch):
     assert seen[0]["content"][1:] == blocks
 
 
-def test_regeneration_corrigee_reste_a_relire_apres_second_controle(conn, monkeypatch):
+def test_regeneration_corrigee_est_approuvee_apres_second_controle(conn, monkeypatch):
+    """A62 (porteur, 2026-10-20, changement délibéré de l'attendu) : une régénération corrigée et propre est approuvée
+    comme une génération — plus de relecture humaine imposée (ancienne règle « backlog 0.2 » retirée)."""
     from testpilot.generation.correction_agent import CorrectionProposal
 
     cid, vid, _ = existing_case(conn)
@@ -179,11 +183,18 @@ def test_regeneration_corrigee_reste_a_relire_apres_second_controle(conn, monkey
     monkeypatch.setattr(service, "lint_warnings_for_version", lint)
     monkeypatch.setattr("testpilot.generation.correction_agent.propose_correction", lambda **kw: CorrectionProposal(
         changed=True, feature_content="corrigé", steps_content="corrigé", summary="assertion vérifiée"))
-    service._finaliser_version_generee(conn, cid, vid, module_name="parc", dry_runner=object(), require_review=True)
+    service._finaliser_version_generee(conn, cid, vid, module_name="parc", dry_runner=object())
     current = CaseRepo(conn).get(cid)["current_version_id"]
     assert current != vid
     assert checks == [vid, current]
-    assert evaluate_gate(ReviewRepo(conn), current).needs_review
+    assert evaluate_gate(ReviewRepo(conn), current).allowed, "propre après correction : prête à lancer"
+
+
+def test_falsifiable_l_automatisation_ne_reserve_plus_la_relecture_a_la_regeneration():
+    """A62 : le paramètre qui imposait la relecture après une régénération n'existe plus."""
+    import inspect
+    assert "require_review" not in inspect.signature(service._finaliser_version_generee).parameters
+    assert "require_review" not in inspect.getsource(service.run_automation)
 
 
 def test_api_c19_avec_technique_accepte_la_regeneration(conn, monkeypatch):
