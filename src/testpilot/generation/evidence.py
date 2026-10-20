@@ -1,8 +1,9 @@
 """Preuves UI contextualisées ; un schéma RPC n'est pas une observation de page."""
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
-from urllib.parse import urlsplit, urljoin
+from urllib.parse import urljoin, urlsplit
 
 
 def page_identity(url: str, base_url: str = '') -> str:
@@ -29,9 +30,22 @@ def record_observation(ctx, *, source: str, resource: str, fields: list[dict],
     return ctx.observations[-1]['id']
 
 
+# A61 (porteur, 2026-10-20 : « une génération doit être prête à lancer ») — mesuré sur un projet web : l'étape générique
+# `j'ouvre la page "/acces"` n'était pas reconnue comme une navigation (seule l'écriture Odoo « navigue vers » l'était) ;
+# tous les champs d'un test web sortaient « sans preuve » et le cas restait à relire, preuve pourtant présente.
+_NAVIGATION = re.compile(r'(?:navigue\s+vers\s+(?:l\'URL\s+du\s+portail\s+)?|ouvre\s+la\s+page\s+)"(?P<url>[^"]+)"', re.IGNORECASE)
+
+
 def contextual_warnings(feature: str, evidence: list[dict], *, target_sha256: str = '',
                         base_url: str = '', max_age_seconds: int = 86400) -> list[dict]:
-    from testpilot.generation.smoke_check import _ROUTE_NAV, _extraire_champ_valeur
+    """Un champ que le test renseigne doit avoir été VU à l'écran (source « ui », visible, récent, même cible) — sur la page
+    où le test l'emploie quand le texte la nomme (`j'ouvre la page …`, `navigue vers …`). Arrivé par un clic (menu, lien),
+    le texte ne nomme pas la page : une preuve d'écran de la version (recopiée de version en version), récente et de la
+    même cible, où le champ était visible, suffit (A61, mesuré sur un test qui clique « Contrôle d'accès » : le champ avait
+    été vu sur la page atteinte, le cas restait à relire). Pire cas : le champ n'existe pas sur la page atteinte — l'étape
+    de saisie échoue à l'exécution (erreur technique), jamais un « conforme ». Jamais un schéma RPC à la place d'une
+    observation d'écran."""
+    from testpilot.generation.smoke_check import _extraire_champ_valeur
     warnings = []
     route = None
     background_route = None
@@ -49,7 +63,7 @@ def contextual_warnings(feature: str, evidence: list[dict], *, target_sha256: st
         if line.strip().startswith(('Scénario:', 'Scenario:', 'Plan du scénario:')):
             route = background_route
             in_background = False
-        nav = _ROUTE_NAV.search(line)
+        nav = _NAVIGATION.search(line)
         if nav:
             route = page_identity(nav.group('url'), base_url)
             if in_background:
@@ -61,7 +75,7 @@ def contextual_warnings(feature: str, evidence: list[dict], *, target_sha256: st
         usable = [e for e in evidence if e.get('source') == 'ui'
                   and fresh(e)
                   and (not target_sha256 or e.get('target_sha256') == target_sha256)
-                  and route is not None and page_identity(e.get('resource', ''), base_url) == route]
+                  and (route is None or page_identity(e.get('resource', ''), base_url) == route)]
         if any(name in {f.get('name') for f in e.get('fields', [])
                         if f.get('visible') is True} for e in usable):
             continue

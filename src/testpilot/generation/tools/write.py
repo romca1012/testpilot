@@ -807,6 +807,16 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     fautes += variables_de_test.refus_variables_du_cas(content, ctx.variables_du_cas) if ctx.variables_du_cas else []
     if ctx.references_figees is not None:   # réparation, correction : les variables du test de référence ne bougent pas
         fautes += variables_de_test.refus_references_changees(content, ctx.references_figees)
+    # A61 (porteur, 2026-10-20) : un test qui emploie des données de test doit pouvoir être joué avec plusieurs lignes
+    # (A52) — sinon il sortirait « bloqué » au lancement. Vérifié ICI, sans IA, par la réécriture même de l'exécution.
+    # Seulement si rien d'autre n'est faux (revue : une variable inconnue faisait aussi échouer la réécriture, et l'agent
+    # cherchait un « Plan du scénario » qui n'existait pas). Aussi en correction et en réparation (variables figées).
+    from testpilot.parametres import resolution as _resolution   # les variables figées sont écrites « {{nom}} »
+    noms_rejouables = ctx.variables_de_test or frozenset(_resolution.references(" ".join(ctx.references_figees or ())))
+    deja_non_rejouable = (ctx.feature_de_reference is not None
+                          and bool(variables_de_test.refus_non_iterable(ctx.feature_de_reference, noms_rejouables)))
+    if not fautes and noms_rejouables and not deja_non_rejouable:
+        fautes += variables_de_test.refus_non_iterable(content, noms_rejouables)
     if fautes:
         return _outcome("[write_feature_file] VARIABLE_DE_TEST : " + " ; ".join(fautes[:5])
                         + ". Puis rappelle write_feature_file.", ok=False)
