@@ -543,8 +543,18 @@ critique des tests : c'est la limite structurelle de ce qu'un test peut voir. �
    et `functional_status` (l'app est-elle conforme ?) sont deux jugements distincts, partout :
    base, API, rapport, UI (`StatusPair`). Jamais un badge unique « OK/KO ».
 2. **Un statut n'est jamais déclaratif** : il est toujours la conséquence d'une exécution réelle.
-3. **Le gate de relecture humaine est obligatoire avant la première exécution** d'une version
-   générée par IA (§4). Il dépend de l'approbation de la **version**, jamais du module/projet.
+3. **Aucune version générée par IA ne s'exécute sans approbation** — approbation de la
+   **version**, jamais du module/projet. *(Mis à jour le 2026-10-20, décisions A61 à A63 du
+   porteur, en accord avec le brief §4.5 amendé le 2026-07-21/24.)* L'approbation est
+   **automatique et tracée** quand le métier a été validé et que le test est propre (aucun point de
+   vigilance) — après une génération **comme après une régénération** (A62 : la règle « une
+   régénération impose une relecture » est supprimée). « À relire » est l'exception : les contrôles
+   s'appliquent pendant la génération (A61) ; un test que l'IA n'arrive pas à rendre propre est
+   livré **bloqué** au lancement avec sa raison (A63, étape 2 du plan unique). Exception gardée :
+   une régénération faite après un défaut **fonctionnel** qui change ce que le test vérifiait n'est
+   **jamais** approuvée d'office, même à travers une correction automatique, et seule une
+   approbation humaine l'éteint (`verification_changee_apres_defaut`, A65 validée le 2026-10-20) — sinon l'IA
+   recopie la valeur fausse de l'application et le test passe au vert.
 4. **Asymétrie du défaut** (§5) : un `vrai_bug` se remonte **directement** ; un
    `test_a_reparer` ou un `indetermine` exige une **confirmation humaine** (faux-négatif
    inacceptable, faux-positif acceptable).

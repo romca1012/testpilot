@@ -1,14 +1,15 @@
 # CLAUDE.md — Instructions permanentes pour Claude Code sur TestPilot
 
 Ce fichier est lu à chaque session. Il dit **comment travailler** sur ce dépôt. Le **quoi**
-(le chantier en cours) est dans `docs/PLAN-FIABILITE-VERDICT-2026-09.md`, découpé en lots
-exécutables via les commandes `/lot-01-…` à `/lot-10-…` (`.claude/commands/`).
+(le chantier en cours) est dans `docs/PLAN-UNIQUE-TESTPILOT.md` (validé le 2026-10-20), qui
+remplace les plans précédents (`docs/PLAN-FIABILITE-VERDICT-2026-09.md` et suivants, gardés en
+archives pour leurs registres de décisions).
 
 ## 1. Ce qu'est TestPilot, en cinq lignes
 
 Outil de test management piloté par IA : une spec devient un `.feature` Gherkin (+ steps Python)
-écrit par un agent LLM (`src/testpilot/generation/`), relu par un humain (gate obligatoire),
-puis exécuté **réellement** par Behave + Playwright dans un sous-processus
+écrit par un agent LLM (`src/testpilot/generation/`), approuvé avant toute exécution
+(automatiquement s'il est propre, sinon bloqué avec sa raison — brief §4.5, A61-A63), puis exécuté **réellement** par Behave + Playwright dans un sous-processus
 (`src/testpilot/execution/`, `behave_runtime/`). Le verdict est calculé de façon déterministe
 sur **deux axes qui ne fusionnent jamais** : exécution et fonctionnel (`src/testpilot/verdict/`).
 Connecteurs : `odoo` (RPC + UI) et `web` générique (UI seule) — `src/testpilot/connectors/`.
@@ -18,7 +19,11 @@ Connecteurs : `odoo` (RPC + UI) et `web` générique (UI seule) — `src/testpil
 1. `docs/brief-produit-outil-test-management-ia.md` — le brief produit. Seule source de vérité.
 2. `docs/PRINCIPES.md` — ce qu'on ne re-débat plus.
 3. `docs/CONTINUITE.md` §4 — **invariants à ne jamais régresser** (lis-les avant chaque lot).
-4. `docs/PLAN-FIABILITE-VERDICT-2026-09.md` — le chantier courant et son **registre de décisions**.
+4. `docs/PLAN-UNIQUE-TESTPILOT.md` — le chantier courant, étape par étape. Les registres de
+   décisions restent dans `docs/PLAN-FIABILITE-VERDICT-2026-09.md` (D1 à D15),
+   `docs/PLAN-QUALITE-AGENTS-2026-10.md` (D21, D22),
+   `docs/PLAN-VERDICT-HONNETE-ZERO-ERREUR-2026-10.md` (D23 à D38) et
+   `docs/PLAN-PARAMETRES-DE-TEST-2026-10.md` (A#).
 
 En cas de conflit entre ces documents et une consigne de lot : **arrête-toi et signale-le**.
 
