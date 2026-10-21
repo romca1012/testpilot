@@ -35,7 +35,7 @@ watch(modifie, (v) => emit('modifie', v), { immediate: true })
 // nouvelle adresse) — mais l'écran montrait une case cochée et une adresse déclarée, le contraire de l'état réel.
 const declarationPerimee = computed(() => {
   const remise = props.projet.bac_a_sable_reset || ''
-  if (!estWeb.value || !remise || !props.projet.base_url) return false
+  if (!remise || !props.projet.base_url) return false   // étape 4 (A71) : tous les connecteurs
   try {
     return new URL(remise).origin !== new URL(props.projet.base_url).origin
   } catch {
@@ -63,11 +63,11 @@ async function enregistrer() {
   enregistreA.value = false
   try {
     const patch: Record<string, string | boolean> = { calibration_writes_enabled: form.calibration_writes_enabled }
-    // D26 : '' = retirer la déclaration de bac à sable. Sans objet pour Odoo, qui n'a pas d'adresse de remise à zéro.
-    if (estWeb.value) patch.bac_a_sable_reset = form.bac_a_sable_reset.trim()
+    // D26 : '' = retirer la déclaration de bac à sable. Étape 4 (A71) : Odoo aussi a une adresse de remise à zéro.
+    patch.bac_a_sable_reset = form.bac_a_sable_reset.trim()
     // Revue A47 : envoyée seulement si la personne l'a changée — renvoyer une case lue plus tôt pourrait redéclarer une
-    // application qui a changé entre-temps dans un autre onglet.
-    else if (form.instance_de_test !== initial.value.instance_de_test) patch.instance_de_test = form.instance_de_test
+    // application qui a changé entre-temps dans un autre onglet. Odoo seulement (A45).
+    if (!estWeb.value && form.instance_de_test !== initial.value.instance_de_test) patch.instance_de_test = form.instance_de_test
     const maj = await api.updateProject(props.projet.id, patch)
     const enregistre = projetEnregistre(props.projet, maj)
     // L'onglet repart de ce que le serveur a enregistré, sans attendre que la page lui renvoie le projet.
@@ -119,9 +119,9 @@ async function declarerRemisAZero() {
         <span class="text-sm font-medium">Instance de test</span>
         <Hint text="Sans cette déclaration, l'IA n'écrit jamais dans une application Odoo, même autorisée." />
       </label>
-      <label v-if="estWeb" class="mt-5 block max-w-xl">
+      <label class="mt-5 block max-w-xl">
         <span class="text-sm font-medium">Adresse de remise à zéro</span>
-        <Hint text="Un chemin de l'application, appelé avant et après chaque essai : toute l'application revient à son état de départ. Sans cette adresse, l'IA ne joue aucune action." />
+        <Hint text="Un chemin de l'application qui la remet à son état de départ et répond {&quot;remis_a_zero&quot;: true}. Appelé avant chaque test, qui est alors joué seul, et avant et après chaque essai de l'IA." />
         <input v-model="form.bac_a_sable_reset" type="text" placeholder="/reset" data-testid="bac-a-sable-reset"
                class="mt-1.5 h-11 w-full rounded-md border border-border bg-surface px-3 outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60" />
       </label>
