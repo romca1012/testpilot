@@ -3,12 +3,13 @@
 // une itération par ligne quand on lance ce cas. Les colonnes sont des variables du projet ; une case vide reprend la valeur
 // du projet (affichée « — »). Le tableau du projet garde ce qui est partagé par plusieurs cas.
 import { computed, onMounted, ref } from 'vue'
-import { api, type VariableDeTest } from '../../lib/api'
+import { api, type LigneDuCas, type VariableDeTest } from '../../lib/api'
 import Button from '../ui/Button.vue'
 
 const props = defineProps<{ caseId: number | string; peutModifier: boolean }>()
 
-interface Ligne { id?: number; nom: string; valeurs: Record<string, string> }
+// Étape 4, morceau 7 (A90-A92) : `compte` — '' : celui du cas (« Joué en tant que ») ; 'principal' ; ou l'id d'un compte.
+interface Ligne { id?: number; nom: string; valeurs: Record<string, string>; compte: string; compteJoue?: string }
 
 const variables = ref<VariableDeTest[]>([])
 const lignes = ref<Ligne[]>([])
@@ -19,6 +20,13 @@ const colonnesBrouillon = ref<string[]>([])
 const enregistrement = ref(false)
 const erreur = ref('')
 const ecarts = ref<string[]>([])   // le test n'emploie pas une variable des lignes : il ne se joue pas
+const comptes = ref<{ id: number | null; libelle: string }[]>([])   // vide : pas de colonne « Compte » (écran sobre)
+const COMPTE_DU_CAS = ''
+
+function depuisLeServeur(l: LigneDuCas): Ligne {
+  const compte = !l.compte_choisi ? COMPTE_DU_CAS : l.compte_id == null ? 'principal' : String(l.compte_id)
+  return { id: l.id, nom: l.nom, valeurs: { ...l.valeurs }, compte, compteJoue: l.compte_joue || '' }
+}
 
 const nomDe = (id: string) => variables.value.find((v) => String(v.id) === id)?.nom ?? '?'
 const affichees = computed(() => (edition.value ? colonnesBrouillon.value : colonnes.value))
@@ -33,16 +41,17 @@ async function charger() {
   try {
     const d = await api.getCaseData(props.caseId)
     variables.value = d.variables
-    lignes.value = d.lignes.map((l) => ({ id: l.id, nom: l.nom, valeurs: { ...l.valeurs } }))
+    lignes.value = d.lignes.map(depuisLeServeur)
     colonnes.value = colonnesDe(lignes.value)
     ecarts.value = d.ecarts ?? []
+    comptes.value = d.comptes ?? []
   } catch { variables.value = [] }   // illisible : la section ne s'affiche pas, la fiche reste utilisable
 }
 
 function modifier() {
-  brouillon.value = lignes.value.map((l) => ({ id: l.id, nom: l.nom, valeurs: { ...l.valeurs } }))
+  brouillon.value = lignes.value.map((l) => ({ ...l, valeurs: { ...l.valeurs } }))
   colonnesBrouillon.value = [...colonnes.value]
-  if (!brouillon.value.length) brouillon.value.push({ nom: '', valeurs: {} })
+  if (!brouillon.value.length) brouillon.value.push({ nom: '', valeurs: {}, compte: COMPTE_DU_CAS })
   erreur.value = ''
   edition.value = true
 }
@@ -65,9 +74,14 @@ async function enregistrer() {
       ...(l.id ? { id: l.id } : {}),
       nom: l.nom.trim(),
       valeurs: Object.fromEntries(colonnesBrouillon.value.map((id) => [id, (l.valeurs[id] ?? '').trim()]).filter(([, v]) => v !== '')),
+      // A90 : envoyé seulement quand la colonne existe (sinon : exactement l'envoi d'avant).
+      ...(comptes.value.length ? {
+        compte_choisi: l.compte !== COMPTE_DU_CAS,
+        compte_id: l.compte === COMPTE_DU_CAS || l.compte === 'principal' ? null : Number(l.compte),
+      } : {}),
     }))
     const d = await api.setCaseData(props.caseId, envoi)
-    lignes.value = d.lignes.map((l) => ({ id: l.id, nom: l.nom, valeurs: { ...l.valeurs } }))
+    lignes.value = d.lignes.map(depuisLeServeur)
     colonnes.value = colonnesDe(lignes.value)
     ecarts.value = d.ecarts ?? []
     edition.value = false
@@ -108,6 +122,8 @@ onMounted(charger)
                         :aria-label="`Retirer la colonne ${nomDe(id)}`" @click="retirerColonne(id)">×</button>
               </span>
             </th>
+            <!-- A90 : seulement si le projet a d'autres comptes que le principal. -->
+            <th v-if="comptes.length" scope="col" class="py-1.5 pr-3 font-medium" data-testid="colonne-compte">Compte</th>
             <th v-if="edition && ajoutables.length" scope="col" class="py-1.5 font-normal">
               <select class="rounded border border-border bg-background px-1 py-0.5 text-xs text-foreground" aria-label="Ajouter une colonne"
                       data-testid="ajouter-colonne" @change="ajouterColonne(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''">
@@ -131,6 +147,15 @@ onMounted(charger)
               <span v-else-if="l.valeurs[id]" class="break-all">{{ l.valeurs[id] }}</span>
               <span v-else class="text-muted-foreground" title="Valeur du projet">—</span>
             </td>
+            <td v-if="comptes.length" class="py-1.5 pr-3" :data-testid="`compte-${i}`">
+              <select v-if="edition" v-model="l.compte" :aria-label="`Compte de la ligne ${i + 1}`"
+                      class="rounded border border-border bg-background px-1 py-1 text-sm">
+                <option :value="COMPTE_DU_CAS">Compte du cas</option>
+                <option v-for="c in comptes" :key="c.id ?? 'principal'" :value="c.id == null ? 'principal' : String(c.id)">{{ c.libelle }}</option>
+              </select>
+              <!-- A91 : le compte avec lequel la ligne SERA jouée ; A92 : un compte supprimé se voit. -->
+              <span v-else :class="l.compteJoue?.startsWith('compte supprimé') ? 'text-warning' : ''">{{ l.compteJoue }}</span>
+            </td>
             <td v-if="edition" class="py-1.5 text-right">
               <button type="button" class="text-muted-foreground hover:text-destructive" :aria-label="`Retirer la ligne ${i + 1}`"
                       @click="brouillon.splice(i, 1)">×</button>
@@ -141,7 +166,7 @@ onMounted(charger)
     </div>
 
     <div v-if="edition" class="mt-3 flex flex-wrap items-center gap-2">
-      <Button variant="secondary" size="sm" data-testid="ajouter-ligne" @click="brouillon.push({ nom: '', valeurs: {} })">Ajouter une ligne</Button>
+      <Button variant="secondary" size="sm" data-testid="ajouter-ligne" @click="brouillon.push({ nom: '', valeurs: {}, compte: COMPTE_DU_CAS })">Ajouter une ligne</Button>
       <span class="flex-1"></span>
       <span v-if="erreur" class="text-sm text-destructive" role="alert">{{ erreur }}</span>
       <Button variant="ghost" size="sm" @click="edition = false">Annuler</Button>

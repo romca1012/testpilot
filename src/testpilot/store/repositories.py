@@ -4296,7 +4296,7 @@ class CaseDataRepo:
         """[{id, nom, rang, valeurs: {variable_id: valeur}}] dans l'ordre, valeurs des seules variables vivantes, cases
         vides absentes."""
         lignes = _rows(self.conn.execute(
-            "SELECT id, nom, rang FROM case_data_row WHERE case_id=? ORDER BY rang, id", (case_id,)))
+            "SELECT id, nom, rang, compte_choisi, compte_id FROM case_data_row WHERE case_id=? ORDER BY rang, id", (case_id,)))
         if not lignes:
             return []
         par_id = {l["id"]: l | {"valeurs": {}} for l in lignes}
@@ -4318,6 +4318,12 @@ class CaseDataRepo:
             f"SELECT id, nom FROM test_variable WHERE id IN ({','.join('?' * len(ids))})", ids)} if ids else {}
         return [(l["nom"] or f"Ligne {rang}", {noms[vid]: v for vid, v in l["valeurs"].items() if vid in noms})
                 for rang, l in enumerate(lignes, start=1)]
+
+    def comptes_des_lignes(self, case_id: int) -> list[dict]:
+        """Étape 4, morceau 7 (A90, A91) : `[{nom, choisi, compte_id}]` dans l'ordre de `niveaux` — `choisi` faux : la ligne
+        reprend « Joué en tant que » du cas ; vrai : `compte_id` est son compte (None = le principal)."""
+        return [{"nom": l["nom"] or f"Ligne {rang}", "choisi": bool(l["compte_choisi"]), "compte_id": l["compte_id"]}
+                for rang, l in enumerate(self.lignes(case_id), start=1)]
 
     def variables_des_lignes(self, case_id: int) -> list[str]:
         """Les variables (vivantes) auxquelles les lignes du cas donnent une valeur — une requête."""
@@ -4346,6 +4352,13 @@ class CaseDataRepo:
             etrangeres = set(ligne.get("valeurs") or {}) - vivantes
             if etrangeres:
                 raise DonneeDeTestInvalide("une colonne n'est pas une variable de ce projet (ou elle est à la corbeille)")
+        # Étape 4, morceau 7 (A90) : le compte d'une ligne est un compte de CE projet (ou le principal) — jamais un autre.
+        comptes = {c["id"]: c["label"] for c in ProjectAccountRepo(self.conn).liste(project_id)}
+        for ligne in lignes:
+            if ligne.get("compte_choisi") and ligne.get("compte_id") is not None and ligne["compte_id"] not in comptes:
+                raise DonneeDeTestInvalide(
+                    f"la ligne « {(ligne.get('nom') or '').strip() or 'sans nom'} » est jouée avec un compte qui n'est pas "
+                    f"(ou plus) de ce projet — choisissez-en un autre (comptes : {', '.join(['principal', *comptes.values()])})")
         maintenant = datetime.now(timezone.utc).isoformat()
         gardees: dict[int, list[tuple[int, str]]] = {}
         for v in self.conn.execute(
@@ -4357,8 +4370,11 @@ class CaseDataRepo:
                           (case_id,))
         self.conn.execute("DELETE FROM case_data_row WHERE case_id=?", (case_id,))
         for rang, ligne in enumerate(lignes, start=1):
-            cur = self.conn.execute("INSERT INTO case_data_row (case_id, nom, rang, created_at) VALUES (?,?,?,?)",
-                                    (case_id, (ligne.get("nom") or "").strip(), rang, maintenant))
+            choisi = bool(ligne.get("compte_choisi"))
+            cur = self.conn.execute(
+                "INSERT INTO case_data_row (case_id, nom, rang, created_at, compte_choisi, compte_id) VALUES (?,?,?,?,?,?)",
+                (case_id, (ligne.get("nom") or "").strip(), rang, maintenant, int(choisi),
+                 ligne.get("compte_id") if choisi else None))
             row_id = int(cur.lastrowid)
             for variable_id, valeur in gardees.get(ligne.get("id"), []):
                 self.conn.execute("INSERT INTO case_data_value (row_id, variable_id, valeur) VALUES (?,?,?)",

@@ -60,6 +60,9 @@ def valider_nom(nom: str | None) -> str:
         raise NomInvalide("le nom de la variable est requis")
     if len(propre) > NOM_MAX:
         raise NomInvalide(f"le nom d'une variable ne dépasse pas {NOM_MAX} caractères")
+    if propre.startswith("tp_"):
+        # Étape 4, morceau 7 : « tp_… » est réservé à TestPilot (la colonne `tp_compte` porte le compte de chaque itération).
+        raise NomInvalide(f"« {(nom or '').strip()} » : un nom de variable ne commence pas par « tp_ » (réservé à TestPilot)")
     if not _NOM.fullmatch(propre):
         raise NomInvalide(f"« {(nom or '').strip()} » : un nom de variable commence par une lettre et ne contient que des "
                           "lettres minuscules, des chiffres et « _ » (pas d'espace)")

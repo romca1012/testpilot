@@ -391,6 +391,9 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
             libelle, runner.compte_refus = compte_du_test(conn, case_id, version_id)
             if libelle:
                 runner.connection = {**runner.connection, ENV_COMPTE_DU_TEST: libelle}
+        if getattr(script, "comptes_par_iteration", False):
+            # Étape 4, morceau 7 : le serveur a écrit le compte de chaque itération — le harnais n'obéit qu'à ce signal.
+            runner.connection = {**runner.connection, "TESTPILOT_COMPTES_PAR_ITERATION": "1"}
         if environnement is None and hasattr(runner, "remise_a_zero_url"):
             # Étape 4 (A72) : un projet qui a déclaré une adresse de remise à zéro y revient avant CHAQUE run réel de ce cas
             # (réparations comprises). Environnement par défaut seulement (A50 : l'adresse déclarée vaut pour lui).

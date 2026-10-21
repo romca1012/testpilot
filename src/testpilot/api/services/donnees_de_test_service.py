@@ -37,6 +37,7 @@ from testpilot.store.repositories import (
 class Script:
     dossier: Path | None = None          # où lire le test à jouer ; None = le chemin d'aujourd'hui
     parametres_joues: dict = field(default_factory=dict)
+    comptes_par_iteration: bool = False  # étape 4, morceau 7 : le serveur a écrit la colonne `tp_compte` (le harnais y obéit)
     blocage: str = ""                    # non vide : le cas n'est pas joué, il sort « bloqué » avec ce message
 
 
@@ -74,12 +75,49 @@ def _lignes_des_cas_de_la_campagne(conn, run: dict) -> tuple[dict[str, list[dict
             continue
         niveaux = depot.niveaux(case_id)[:1] if premiere else depot.niveaux(case_id)
         if niveaux:
-            figees[str(case_id)] = _lignes_jouables(niveaux)
+            # Étape 4, morceau 7 : le compte de chaque ligne, figé au lancement avec ses valeurs (A29).
+            figees[str(case_id)] = _lignes_jouables(niveaux, _comptes_des_lignes(conn, case_id, run["project_id"]))
     return figees, cas
 
 
-def _lignes_jouables(niveaux: list[tuple[str, dict[str, str]]]) -> list[dict]:
-    return [{"jeu": nom, "valeurs": {n: {"valeur": v, "origine": nom} for n, v in valeurs.items()}} for nom, valeurs in niveaux]
+def _lignes_jouables(niveaux: list[tuple[str, dict[str, str]]], comptes: list[dict] | None = None) -> list[dict]:
+    """`comptes` (étape 4, morceau 7) : `[{libelle}]` dans le même ordre — `libelle` None : la ligne reprend le compte du cas ;
+    `"compte supprimé"` est un blocage (A92). Absent : les lignes d'avant, sans compte."""
+    lignes = [{"jeu": nom, "valeurs": {n: {"valeur": v, "origine": nom} for n, v in valeurs.items()}} for nom, valeurs in niveaux]
+    for ligne, compte in zip(lignes, comptes or []):
+        if compte.get("choisi"):
+            ligne["compte"] = compte.get("libelle")
+            # Revue : figé par IDENTIFIANT — un compte supprimé ou renommé après le lancement se relit au moment de jouer (A92).
+            ligne["compte_id"] = compte.get("compte_id")
+    return lignes
+
+
+COMPTE_SUPPRIME = "\x00compte supprimé"   # jamais un libellé saisissable : un blocage, pas un compte
+
+
+def _comptes_des_lignes(conn, case_id: int, project_id: int | None) -> list[dict]:
+    """`[{choisi, libelle}]` des lignes du cas (A90) — le libellé du compte choisi, « principal », ou le marqueur d'un compte
+    supprimé depuis (A92 : le test ne sera pas joué, jamais le principal à sa place)."""
+    from testpilot.store.repositories import ProjectAccountRepo
+
+    lignes = CaseDataRepo(conn).comptes_des_lignes(case_id)
+    if not any(l["choisi"] for l in lignes):
+        return []
+    comptes = {c["id"]: c["label"] for c in ProjectAccountRepo(conn).liste(project_id)} if project_id is not None else {}
+    return [{"choisi": l["choisi"], "compte_id": l["compte_id"],
+             "libelle": ("principal" if l["compte_id"] is None else comptes.get(l["compte_id"], COMPTE_SUPPRIME))
+             if l["choisi"] else None} for l in lignes]
+
+
+def _compte_du_cas(conn, version: dict, project_id: int | None) -> str:
+    """Le libellé du compte « Joué en tant que » de la version — ce que reprend une ligne sans compte (A91)."""
+    from testpilot.store.repositories import ProjectAccountRepo
+
+    compte_id = (version or {}).get("compte_id")
+    if compte_id is None or project_id is None:
+        return "principal"
+    compte = ProjectAccountRepo(conn).lire(project_id, compte_id)
+    return compte["label"] if compte else COMPTE_SUPPRIME
 
 
 def _avec_les_lignes_du_cas(figes: dict, lignes: list[dict]) -> dict:
@@ -92,7 +130,8 @@ def _avec_les_lignes_du_cas(figes: dict, lignes: list[dict]) -> dict:
     for base in bases:
         for ligne in lignes:
             nom = ligne["jeu"] if len(bases) == 1 else f"{base.get('jeu') or 'Par défaut'} · {ligne['jeu']}"
-            jeux.append({"jeu": nom, "valeurs": {**(base.get("valeurs") or {}), **ligne["valeurs"]}})
+            jeux.append({"jeu": nom, "valeurs": {**(base.get("valeurs") or {}), **ligne["valeurs"]},
+                         **({"compte": ligne["compte"], "compte_id": ligne.get("compte_id")} if "compte" in ligne else {})})
     return {"jeu": figes.get("jeu") or "", "jeux": jeux, "connues": figes.get("connues") or []}
 
 
@@ -208,7 +247,8 @@ def preparer_le_script(conn, execution_id: int, case_id: int, version_id: int, m
             return Script()   # un projet qui n'a jamais déclaré de variable : le chemin d'aujourd'hui, octet pour octet
         figes = {"jeu": niveaux[-1][0] if niveaux else "", "connues": noms,
                  "valeurs": {n: {"valeur": v.valeur, "origine": v.origine} for n, v in resolution.resoudre(niveaux, noms).items()}}
-        lignes_du_cas = _lignes_jouables(CaseDataRepo(conn).niveaux(case_id))
+        lignes_du_cas = _lignes_jouables(CaseDataRepo(conn).niveaux(case_id),
+                                         _comptes_des_lignes(conn, case_id, _project_id_du_cas(conn, case_id)))
     else:
         lignes_du_cas = (figes.get("lignes_des_cas") or {}).get(str(case_id)) if isinstance(
             figes.get("lignes_des_cas"), dict) else None
@@ -268,6 +308,29 @@ def _preparer_les_iterations(conn, execution_id: int, case_id: int, module_name:
     if not figes["jeux"]:
         return Script(blocage="Données de test : les valeurs figées de cette campagne sont illisibles. Créez une nouvelle "
                               "exécution.")
+    # Étape 4, morceau 7 (A90-A92) : une ligne au moins a son propre compte — chaque itération porte le sien (colonne
+    # réservée des Exemples) ; une ligne sans compte reprend « Joué en tant que » du cas (A91).
+    par_compte = any("compte" in ligne for ligne in figes["jeux"] if isinstance(ligne, dict))
+    du_cas = _compte_du_cas(conn, version, _project_id_du_cas(conn, case_id)) if par_compte else None
+    if par_compte and iterations_mod.COLONNE_COMPTE in connues:
+        # Revue : une variable « tp_compte » créée avant que le nom soit réservé — sa valeur serait écrasée par le compte.
+        return Script(blocage=f"Données de test : la variable « {iterations_mod.COLONNE_COMPTE} » porte un nom réservé à "
+                              "TestPilot — renommez-la pour jouer les lignes avec leur compte. Le test n'a pas été joué.")
+    if par_compte:
+        from testpilot.store.repositories import ProjectAccountRepo
+        project_id = _project_id_du_cas(conn, case_id)
+        actuels = {c["id"]: c["label"] for c in ProjectAccountRepo(conn).liste(project_id)} if project_id is not None else {}
+        for ligne in figes["jeux"]:
+            if isinstance(ligne, dict) and "compte" in ligne and ligne.get("compte") not in (None, COMPTE_SUPPRIME):
+                # Revue (A92) : relu MAINTENANT par son identifiant — supprimé depuis le lancement : bloqué ; renommé : son
+                # nom d'aujourd'hui (celui que le harnais connaît).
+                if ligne.get("compte_id") is not None:
+                    ligne["compte"] = actuels.get(ligne["compte_id"], COMPTE_SUPPRIME)
+        for ligne in figes["jeux"]:
+            compte = ligne.get("compte") if isinstance(ligne, dict) else None
+            if (compte or du_cas) == COMPTE_SUPPRIME:
+                return Script(blocage=f"Données de test : la ligne « {ligne.get('jeu') or 'Par défaut'} » est jouée avec un "
+                                      "compte supprimé — choisissez-en un autre. Le test n'a pas été joué.")
     rendus = []
     for ligne in figes["jeux"]:
         if not isinstance(ligne, dict) or not isinstance(ligne.get("valeurs"), dict):
@@ -282,32 +345,38 @@ def _preparer_les_iterations(conn, execution_id: int, case_id: int, module_name:
                      "valeurs figées à son lancement." if campagne else "Complétez le tableau des données de test, puis relancez.")
             return Script(blocage=f"Données de test (ligne « {ligne.get('jeu') or 'Par défaut'} ») : " + " ; ".join(manques)
                           + f". Le test n'a pas été joué. {suite}")
-        rendus.append((str(ligne.get("jeu") or ""), rendu))
+        rendus.append((str(ligne.get("jeu") or ""), rendu, (ligne.get("compte") or du_cas) if par_compte else None))
     # Même réduction que `iterations_mod.iterations` (deux lignes aux mêmes valeurs ne font qu'une itération), en gardant
-    # pour chacune l'origine de ses valeurs (« Par défaut » hérité ou non), montrée dans le rapport.
-    groupes: dict[tuple, tuple[list[str], resolution.Remplacement]] = {}
-    for nom, rendu in rendus:
-        cle = tuple(sorted((n, v.valeur) for n, v in rendu.jouees.items()))
-        groupes.setdefault(cle, ([], rendu))[0].append(nom)
-    detail = [(" / ".join(noms), rendu) for noms, rendu in groupes.values()]
-    iters = [(nom, {n: v.valeur for n, v in rendu.jouees.items()}) for nom, rendu in detail]
-    if len(detail) > 1:
+    # pour chacune l'origine de ses valeurs (« Par défaut » hérité ou non), montrée dans le rapport. Le compte en fait partie :
+    # deux lignes qui ne diffèrent que par leur compte sont deux itérations (sinon la ligne « Lecteur » ne serait jamais jouée).
+    groupes: dict[tuple, tuple[list[str], resolution.Remplacement, str | None]] = {}
+    for nom, rendu, compte in rendus:
+        cle = (compte, tuple(sorted((n, v.valeur) for n, v in rendu.jouees.items())))
+        groupes.setdefault(cle, ([], rendu, compte))[0].append(nom)
+    detail = [(" / ".join(noms), rendu, compte) for noms, rendu, compte in groupes.values()]
+    colonne = iterations_mod.COLONNE_COMPTE
+    iters = [(nom, {**{n: v.valeur for n, v in rendu.jouees.items()},
+                    **({colonne: (compte or "").replace("|", "\\|")} if par_compte else {})})   # « | » échappé (Behave)
+             for nom, rendu, compte in detail]
+    if len(detail) > 1 or par_compte:
         joues = {"jeu": figes.get("jeu") or "",
                  "iterations": [{"jeu": nom, "valeurs": {n: {"valeur": v.valeur, "origine": v.origine}
-                                                         for n, v in rendu.jouees.items()}} for nom, rendu in detail],
+                                                         for n, v in rendu.jouees.items()},
+                                 **({"compte": compte} if par_compte else {})} for nom, rendu, compte in detail],
                  "valeurs": {}}
     else:   # une seule itération (mêmes valeurs pour ce test, ou aucune variable) : consignée comme un jeu seul
-        nom, rendu = detail[0]
+        nom, rendu, _ = detail[0]
         joues = {"jeu": nom, "valeurs": {n: {"valeur": v.valeur, "origine": v.origine} for n, v in rendu.jouees.items()}}
     conn.execute("UPDATE execution SET parametres_joues=? WHERE id=?", (json.dumps(joues, ensure_ascii=False), execution_id))
     conn.commit()
-    if not rendus[0][1].jouees:
+    if not rendus[0][1].jouees and not par_compte:
         return Script(parametres_joues=joues)   # aucune variable dans ce test : une seule itération, il se joue tel quel
-    if len(iters) == 1:
+    if len(iters) == 1 and not par_compte:
         texte = rendus[0][1].texte
     else:
         try:
-            texte = iterations_mod.en_plan_de_scenario(feature, iters, connues)
+            texte = iterations_mod.en_plan_de_scenario(feature, iters, connues,
+                                                       toujours=(colonne,) if par_compte else ())
         except iterations_mod.IterationsImpossibles as exc:
             return Script(blocage=f"Itérations : {exc}. Le test n'a pas été joué.")
         # Revue du 2026-10-18 : le rattachement d'un résultat à son itération se décide ICI, sur le texte écrit par le
@@ -319,7 +388,7 @@ def _preparer_les_iterations(conn, execution_id: int, case_id: int, module_name:
     dossier.mkdir(parents=True, exist_ok=True)
     (dossier / f"{module_name}.feature").write_text(texte, encoding="utf-8")
     (dossier / f"{module_name}_steps.py").write_text(version.get("steps_content") or "", encoding="utf-8")
-    return Script(dossier=dossier, parametres_joues=joues)
+    return Script(dossier=dossier, parametres_joues=joues, comptes_par_iteration=par_compte)
 
 
 # ── Création des exécutions : une par environnement, toutes les lignes dedans (A52) ──────────────────────────────────────
