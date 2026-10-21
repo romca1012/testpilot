@@ -572,6 +572,24 @@ def record_exists(env, model, field, value):
     return ids
 
 
+class Enregistrement:
+    """Un enregistrement dont on ne lit QUE les champs demandés. Revue d'A96 (mesuré sur le banc Odoo 17) : `browse(id)` lit
+    d'emblée tous les champs du modèle — un compte restreint (« Commercial ») était refusé sur un champ sans rapport
+    (`purchase.order`) et une application saine sortait « à réparer ». `Model.read([id], champs)` ne lit que ceux-là."""
+
+    def __init__(self, Model, ids):
+        self._Model, self._ids = Model, list(ids) if isinstance(ids, (list, tuple)) else [ids]
+
+    def read(self, champs):
+        if hasattr(self._Model, "_odoo"):   # un vrai modèle odoorpc
+            return self._Model.read(self._ids, champs)
+        return self._Model.browse(self._ids if len(self._ids) > 1 else self._ids[0]).read(champs)   # doublures de test
+
+
+def enregistrement(Model, ids) -> Enregistrement:
+    return Enregistrement(Model, ids)
+
+
 def record_exists_contains(env, model, field, value):
     m = re.search(r'"([^"]+)"', field)
     actual_field = m.group(1) if m else field.strip()
@@ -579,14 +597,14 @@ def record_exists_contains(env, model, field, value):
 
 
 def field_equals(env, model, record_id, field, expected):
-    record = env[model].browse(record_id)
+    record = enregistrement(env[model], record_id)
     actual = record.read([field])[0][field]
     constater(str(actual) == expected,
               f"Champ '{field}' dans '{model}' : attendu '{expected}', obtenu '{actual}'.")
 
 
 def field_not_empty(env, model, record_id, field):
-    record = env[model].browse(record_id)
+    record = enregistrement(env[model], record_id)
     value = record.read([field])[0][field]
     constater(value not in (False, None, "", []), f"Le champ '{field}' est vide.")
 
@@ -604,13 +622,13 @@ def no_partial_record(env, model, field):
 
 def field_m2o_equals(env, model, record_id, field, expected):
     Model = env[model]
-    record_data = Model.browse(record_id).read([field])[0]
+    record_data = enregistrement(Model, record_id).read([field])[0]
     actual = record_data[field]
     if isinstance(actual, (list, tuple)) and len(actual) > 0:
         related_id = actual[0]
         field_info = Model.fields_get([field])
         related_model_name = field_info[field]["relation"]
-        related_data = env[related_model_name].browse(related_id).read(["name"])[0]
+        related_data = enregistrement(env[related_model_name], related_id).read(["name"])[0]
         actual_name = related_data["name"]
     else:
         actual_name = str(actual)
@@ -620,13 +638,13 @@ def field_m2o_equals(env, model, record_id, field, expected):
 
 def field_m2o_contains(env, model, record_id, field, partial):
     Model = env[model]
-    record_data = Model.browse(record_id).read([field])[0]
+    record_data = enregistrement(Model, record_id).read([field])[0]
     actual = record_data[field]
     if isinstance(actual, (list, tuple)) and len(actual) > 0:
         related_id = actual[0]
         field_info = Model.fields_get([field])
         related_model_name = field_info[field]["relation"]
-        related_data = env[related_model_name].browse(related_id).read(["name"])[0]
+        related_data = enregistrement(env[related_model_name], related_id).read(["name"])[0]
         actual_name = related_data["name"]
     else:
         actual_name = str(actual)
@@ -2517,6 +2535,8 @@ def _crees_par_ce_scenario(context, model) -> list[int]:
         champ, jeton = marqueur
         try:
             return env.search(domaine + [(champ, "like", jeton)])
+        except ConstatNonConcluantError:
+            raise   # A96 : le compte voit moins que le principal — jamais avalé par le repli ci-dessous
         except Exception:
             pass  # champ absent de CE modèle : le marqueur ne s'y applique pas, repli sur `ids`.
     return ids
@@ -2610,7 +2630,7 @@ def check_count_not_increased(context, model):
     augmente, ids = _poll_until(
         lambda: _crees_par_ce_scenario(context, model), lambda v: len(v) > 0)
     if augmente:
-        global_actuel = context.odoo.env[model].search_count([])
+        global_actuel = session_principale(context).env[model].search_count([])   # diagnostic : le principal
         raise AssertionError(
             f"Enregistrement(s) créé(s) par ce scénario dans '{model}' malgré l'attente d'aucune "
             f"création : ids {ids} (domaine [('id', '>', {max_id})]). "
@@ -2944,7 +2964,7 @@ def check_count_increased_by_one(context, model):
         # tentative (dans `_crees_par_ce_scenario`) n'a pas su les départager : impossible de dire
         # laquelle est celle du scénario. Une ambiguïté n'est JAMAIS un succès par défaut — même
         # motif que `record_ids` multiples ailleurs dans la bibliothèque (0007).
-        global_actuel = context.odoo.env[model].search_count([])
+        global_actuel = session_principale(context).env[model].search_count([])   # diagnostic : le principal
         raise AssertionError(
             f"{len(ids)} créations détectées dans '{model}' depuis id > {max_id} (domaine "
             f"[('id', '>', {max_id})]), impossible de distinguer celle de ce scénario : "
@@ -3002,7 +3022,7 @@ def check_count_increased_by_one(context, model):
         # pas — modèle différent, ou délai au-delà de la fenêtre. On tombe sur le constat ci-dessous.
 
     # Sinon (refus serveur affiché à l'écran, ou silence total) : constat de comptage + explication.
-    global_actuel = context.odoo.env[model].search_count([])
+    global_actuel = session_principale(context).env[model].search_count([])   # diagnostic : le principal
     pourquoi = diagnostic_soumission(page) if page is not None else ""
     # ⚠️ F10 (D12) — le SILENCE TOTAL : ni réponse serveur exploitable (JSON ni code d'erreur), ni
     # message affiché, ni champ invalide. Rien ne désigne l'application : `indetermine`, jamais
@@ -4495,6 +4515,150 @@ def _ouvrir_session_rpc(context, user: str, password: str):
     return session
 
 
+# ── A96 (porteur, 2026-10-21) : un cas joué avec un compte est VÉRIFIÉ avec ce compte ──────────────────────────────────────
+
+_LECTURES_RECOUPEES = frozenset({"search", "search_count", "search_read", "read_group", "read", "name_search"})
+
+
+def _ids(resultat) -> set:
+    if not isinstance(resultat, (list, tuple)):
+        return set()
+    return {(r.get("id") if isinstance(r, dict) else r[0] if isinstance(r, (list, tuple)) and r else r) for r in resultat}
+
+
+def refus_de_droits(exc: BaseException) -> bool:
+    """Le serveur a refusé PAR DROITS (classe `AccessError`/`AccessDenied`, ou nom d'exception Odoo transmis par l'erreur RPC)."""
+    if type(exc).__name__ in ("AccessError", "AccessDenied"):
+        return True
+    info = getattr(exc, "info", None)
+    nom = ((info or {}).get("data") or {}).get("name", "") if isinstance(info, dict) else ""
+    return bool(re.search(r"\bAccess(Error|Denied)\b", str(nom))
+                or re.match(r"^\s*(odoo\.exceptions\.)?Access(Error|Denied)\b", str(exc))
+                or "not allowed to access" in str(exc))
+
+
+def _principal_voit_davantage(method: str, compte, principal) -> bool:
+    """Revue d'A96 (bloquant, mesuré sur le banc) : pas seulement « le compte ne voit rien » — un compte qui ne voit qu'UNE
+    PARTIE (un exemplaire sur deux d'un doublon, les liés qui sont les siens) conclut lui aussi sur ce qu'il a le droit de
+    voir. Le principal voit davantage : plus d'enregistrements, un nombre plus grand, plus de liés dans un champ."""
+    if method == "search_count":
+        return isinstance(principal, int) and isinstance(compte, int) and principal > compte
+    if method in ("read", "search_read"):   # revue : search_read compare aussi les liés des champs lus
+        par_id = {r.get("id"): r for r in (compte or []) if isinstance(r, dict)}
+        for vu in principal or []:
+            mien = par_id.get(vu.get("id")) if isinstance(vu, dict) else None
+            if mien is None:
+                return True
+            for champ, valeur in vu.items():
+                if isinstance(valeur, list) and set(map(str, valeur)) - set(map(str, mien.get(champ) or [])):
+                    return True
+        return False
+    if method == "read_group":
+        return len(principal or []) > len(compte or []) or principal != compte
+    return bool(_ids(principal) - _ids(compte)) or (not compte and bool(principal))
+
+
+def _noter_creation(context, model: str, record_id: int) -> None:
+    """Même enregistrement que `environment.register_created` (le harnais ne s'importe pas ici) : supprimé au nettoyage, par le
+    principal. Idempotent, dans l'ordre de première apparition."""
+    ids = context.created.setdefault(model, [])
+    if record_id not in ids:
+        ids.append(record_id)
+    ordre = getattr(context, "created_ordre", None)
+    if ordre is not None and (model, record_id) not in ordre:
+        ordre.append((model, record_id))
+
+
+def session_principale(context):
+    """La session du compte PRINCIPAL — mise en place des données (Soit, Quand), nettoyage, et recoupement d'une absence."""
+    return getattr(context, "_odoo_principal", None) or context.odoo
+
+
+class SessionDesVerifications:
+    """La session serveur des « Alors » d'un cas joué avec un compte (A96) : ses lectures sont celles de CE compte.
+
+    Ouverte au premier appel (une connexion refusée lève DANS le step, jamais un crochet muet). Garde-fou : une lecture qui
+    répond « rien / aucun » est recoupée avec le principal — s'il voit quelque chose, `ConstatNonConcluantError` (jamais
+    « Passé ») : on ne peut pas savoir si l'application a fauté ou si ce compte n'a simplement pas le droit de voir (exemple :
+    « aucune commande n'a été créée » est vrai pour un compte qui ne voit aucune commande). Une création éventuelle est
+    nettoyée par le principal, comme les autres."""
+
+    def __init__(self, context, libelle: str):
+        self._context, self._libelle, self._session = context, libelle, None
+
+    def _ouvrir(self):
+        if self._session is not None:
+            return self._session
+        context = self._context
+        try:
+            session = _ouvrir_session_rpc(context, getattr(context, "odoo_user", ""), getattr(context, "odoo_password", ""))
+        except Exception as exc:
+            # Revue : un prérequis (mot de passe changé, compte archivé, délai d'Odoo) — « bloqué », jamais « à réparer ».
+            raise PreconditionNonRemplieError(
+                f"PRÉREQUIS MANQUANT : connexion au serveur impossible avec le compte « {self._libelle} » "
+                f"({type(exc).__name__}) — vérifiez son identifiant et son mot de passe dans les réglages du projet.") from exc
+        reel, principal, libelle = session.execute_kw, session_principale(context), self._libelle
+
+        def contredit(model, refus=False):
+            # Revue : la garde PERSISTE — un step généré qui avalerait l'exception (`except Exception: return 0`) ne fait
+            # pas passer son « Alors » : `after_step` relit ce repère et le consigne « sans constat » (indéterminé).
+            debut = (f"« {libelle} » n'a pas le droit de lire {model}" if refus
+                     else f"« {libelle} » voit moins que le compte principal dans {model}")
+            message = (f"{debut} : on ne peut pas savoir si l'application a fauté ou si ce compte n'a pas le droit de voir. "
+                       "Pour tester une interdiction de voir, utilisez « cet utilisateur ne voit pas l'enregistrement » ; pour "
+                       "une action refusée, vérifiez à l'écran que rien n'a changé.")
+            context._tp_recoupement_contredit = message
+            return ConstatNonConcluantError(message)
+
+        def lire(model, method, args=None, kwargs=None):
+            try:
+                resultat = reel(model, method, args, kwargs)
+            except Exception as exc:
+                if method in _LECTURES_RECOUPEES and refus_de_droits(exc):
+                    # Revue : le cas extrême de « voit moins » — une lecture refusée au compte n'est pas un test à réparer.
+                    raise contredit(model, refus=True) from exc
+                raise
+            if method in _LECTURES_RECOUPEES:
+                if _principal_voit_davantage(method, resultat, principal.execute_kw(model, method, args, kwargs)):
+                    raise contredit(model)
+                noter_lecture_rpc()   # revue : une lecture du serveur RÉUSSIE, comme celles du principal (VH-04 point 4)
+            if method == "create":
+                for record_id in ([resultat] if isinstance(resultat, int) else (resultat or [])):
+                    if isinstance(record_id, int):
+                        _noter_creation(context, model, record_id)
+            return resultat
+
+        session.execute_kw = lire
+        # Revue : l'autre porte d'odoorpc (`execute(model, method, *args)`) passe par le même recoupement.
+        session.execute = lambda model, method, *args: lire(model, method, list(args), {})
+        self._session = session
+        return session
+
+    @property
+    def env(self):
+        return self._ouvrir().env
+
+    def __getattr__(self, nom):
+        return getattr(self._ouvrir(), nom)
+
+
+def poser_la_session_des_verifications(context, step_type: str) -> None:
+    """Avant chaque step : un « Alors » d'un cas joué avec un autre compte que le principal lit avec CE compte (A96) ; tout
+    autre step garde la session du principal. Sans session serveur (web) : rien."""
+    principal = getattr(context, "_odoo_principal", None)
+    if principal is None:
+        return
+    courant = getattr(context, "compte_courant", _LIBELLE_PRINCIPAL) or _LIBELLE_PRINCIPAL
+    if step_type != "then" or _cle_de_libelle(courant) == _LIBELLE_PRINCIPAL:
+        context.odoo = principal
+        return
+    sessions = context.__dict__.setdefault("_sessions_des_verifications", {})
+    cle = (_cle_de_libelle(courant), getattr(context, "odoo_user", ""))
+    if cle not in sessions:
+        sessions[cle] = SessionDesVerifications(context, courant)
+    context.odoo = sessions[cle]
+
+
 def session_rpc_du_compte_qui_agit(context):
     """La session RPC du compte qui joue les ÉCRANS — pour un step qui vérifie un REFUS DE DROITS (A76, exception à A73).
 
@@ -4512,9 +4676,10 @@ def session_rpc_du_compte_qui_agit(context):
 def se_connecter_en_tant_que(context, libelle: str, *, connecteur: str) -> None:
     """Ouvre un NOUVEAU contexte navigateur (cookies, stockage et session repartent de zéro) et s'y connecte avec le compte `libelle`.
 
-    Odoo : connexion UI avec ce compte ; la session RPC des vérifications reste celle du compte PRINCIPAL (décision A73, porteur,
-    2026-10-20 : un observateur qui voit moins que tout fabriquerait de faux « Passé » — « aucune commande créée » serait vrai
-    pour un compte qui ne voit pas les commandes). Le compte est vérifié auprès du serveur par une authentification jetable.
+    Odoo : connexion UI avec ce compte ; ses « Alors » liront aussi le serveur avec lui (A96, porteur 2026-10-21 —
+    `SessionDesVerifications`, recoupée avec le principal : un compte qui voit MOINS que le principal ne conclut jamais
+    « Passé »). La mise en place et le nettoyage restent au principal. Le compte est vérifié auprès du serveur par une
+    authentification jetable.
     Web : page d'accueil du projet puis connexion. Tout échec (compte inconnu, mot de passe refusé, formulaire introuvable) est un
     `PreconditionNonRemplieError` : le test n'a pas pu entrer, l'application n'a rien « mal fait ». Le compte courant n'est mémorisé
     qu'une fois la connexion RÉUSSIE."""
@@ -4549,8 +4714,8 @@ def se_connecter_en_tant_que(context, libelle: str, *, connecteur: str) -> None:
 
 def appliquer_compte_du_test(context, connecteur: str, libelle: str) -> str:
     """Étape 4 (A70) : le compte avec lequel CE cas est joué (`TESTPILOT_COMPTE_DU_TEST`, posé par l'exécution) devient le
-    compte des écrans pour tout le run — connexion initiale, reconnexion après une session perdue, chaque scénario. La session
-    RPC des vérifications reste le principal (A73). Rend l'erreur (compte inconnu, sans mot de passe…) ou "" : jamais un
+    compte des écrans pour tout le run — connexion initiale, reconnexion après une session perdue, chaque scénario. Ses
+    « Alors » lisent aussi le serveur avec lui (A96, `poser_la_session_des_verifications`). Rend l'erreur (compte inconnu, sans mot de passe…) ou "" : jamais un
     repli silencieux sur le principal — `before_scenario` bloque chaque scénario avec cette raison."""
     libelle = (libelle or "").strip()
     context.compte_du_test = _LIBELLE_PRINCIPAL

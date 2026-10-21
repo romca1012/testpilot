@@ -12,7 +12,7 @@ import re
 from behave import given, then, when
 
 from _base_helpers import (ConstatNonConcluantError, ElementIntrouvableError, constater, constater_visible,
-                           derriere_interrupteur, session_rpc_du_compte_qui_agit)
+                           derriere_interrupteur, session_principale, session_rpc_du_compte_qui_agit)
 from _odoo_steps import _exiger_enregistrement_en_contexte
 from _selecteurs import odoo_attendre_inactif, selecteurs
 
@@ -54,7 +54,8 @@ def step_action_refusee(context, methode):
         raise RuntimeError(f"« {methode} » est une méthode privée : Odoo la refuse à tout utilisateur, son refus ne prouve "
                            "rien sur les droits. Nommez la méthode publique de l'action (ex. `action_confirm`).")
     # A76 : le refus se prouve avec le compte qui AGIT — le principal (A73) réussirait l'appel sur une application saine.
-    Model = session_rpc_du_compte_qui_agit(context).env[context.last_record_model]
+    session = session_rpc_du_compte_qui_agit(context)
+    Model = session.env[context.last_record_model]
     identifiant = context.last_record_ids[0]
     # A76 (revue de l'étape 4, 2026-10-21) : depuis A73 l'enregistrement est créé par le principal ; un compte qui ne le VOIT pas
     # (règle « ses propres documents ») est refusé dès la lecture — ce refus ne dit rien de l'ACTION. Non concluant, jamais vert.
@@ -70,7 +71,13 @@ def step_action_refusee(context, methode):
             "peut pas être attribué à l'action. Créez l'enregistrement avec ce compte (ou un enregistrement qu'il voit).")
     refuse = False
     try:
-        getattr(Model.browse(identifiant), methode)()
+        if hasattr(session, "execute_kw"):
+            # Revue d'A96 (bloquant, mesuré sur le banc) : JAMAIS `browse(id).methode()` — odoorpc lit d'abord tous les champs
+            # de l'enregistrement ; pour un compte restreint, ce refus de LECTURE (un champ sans rapport) passait pour le refus
+            # de l'action, et un refus seulement affiché à l'écran sortait « Passé ». L'action seule, sur cet identifiant.
+            session.execute_kw(context.last_record_model, methode, [[identifiant]])
+        else:
+            getattr(Model.browse(identifiant), methode)()   # doublures de test
     except Exception as exc:
         # Lot VH-04 (audit V7) : seul un REFUS DE DROITS du serveur prouve le refus. Avant, TOUTE exception comptait — une
         # méthode mal orthographiée, une panne RPC, un enregistrement verrouillé passaient pour « l'action est refusée ».
@@ -90,7 +97,8 @@ def _le_compte_qui_agit_voit(context) -> tuple[bool, str]:
     _exiger_enregistrement_en_contexte(
         context, "Aucun enregistrement en contexte — impossible de vérifier ce que voit ce compte.", avec_modele=True)
     modele, identifiant = context.last_record_model, context.last_record_ids[0]
-    if not context.odoo.env[modele].search_count([("id", "=", identifiant)]):
+    # A96 : sous un « Alors », `context.odoo` est la session du compte — l'existence se vérifie avec le PRINCIPAL.
+    if not session_principale(context).env[modele].search_count([("id", "=", identifiant)]):
         raise ConstatNonConcluantError(f"{modele} #{identifiant} n'existe plus (le compte principal ne le voit pas) : ce "
                                        "que voit ce compte ne peut pas être vérifié.")
     # Revue (bloquant) : la session du compte s'ouvre HORS du `try` — un refus de CONNEXION (`AccessDenied` : mot de passe

@@ -290,70 +290,27 @@ def test_falsifiable_allume_un_compte_en_connexion_impossible_n_appelle_jamais_l
         "l'écran dit pourquoi et quoi faire"
 
 
-# ── A89 : une vérification lue par le principal, pour un cas joué avec un autre compte ──────────────────────────────────────
+# ── A96 (remplace l'avis A89) : plus aucun cas « à relire » pour une vérification lue par le serveur ──────────────────────
 
-_LU_PAR_LE_SERVEUR = '''
+_LU_PAR_LE_SERVEUR = """
 from behave import then
 
 
 @then("le lecteur voit la facture")
 def step_voit(context):
     constater(context.odoo.env["account.move"].search_count([]) == 1, "facture")
-
-
-@then("la facture est affichée")
-def step_affichee(context):
-    constater(context.page.locator("text=F-001").count() == 1, "affichée")
-'''
-
-
-def test_falsifiable_a89_une_verification_lue_par_le_principal_est_signalee_pour_un_autre_compte():
-    from testpilot.generation.assertion_lint import LU_PAR_LE_PRINCIPAL
-    from testpilot.generation.avis_du_test import avis_du_test
-
-    commun = dict(feature="", steps=_LU_PAR_LE_SERVEUR, observations=None, target_sha256="", base_url="",
-                  reference_time=None, variables_des_lignes=(), connecteur_web=False, intention="", modele=None,
-                  verified_fields=None)
-    avis = [a for a in avis_du_test(**commun, joue_avec_un_autre_compte=True) if a["kind"] == LU_PAR_LE_PRINCIPAL]
-    assert [a["step"] for a in avis] == ["le lecteur voit la facture"], "l'écran, lui, prouve ce que voit le compte"
-    assert not [a for a in avis_du_test(**commun) if a["kind"] == LU_PAR_LE_PRINCIPAL], "le principal : rien à dire"
-
-
-def test_a89_l_avis_a_une_raison_en_francais():
-    from testpilot.verdict.review_gate import RAISONS_DES_AVIS
-
-    assert RAISONS_DES_AVIS["verification_lue_par_le_principal"].startswith("Une vérification lit le serveur")
-
-
-_TAUTOLOGIE = """
-@then("truc")
-def s(context):
-    assert True
 """
 
 
-@pytest.mark.parametrize("avec_tautologie", [False, True])
-def test_falsifiable_a89_l_avis_n_est_jamais_envoye_a_la_correction(conn, monkeypatch, avec_tautologie):
-    """Revue : prouvé par le comportement — avec l'avis A89 seul, la correction n'est pas appelée ; avec un autre point en
-    plus, elle reçoit cet autre point SEUL (l'avis A89 est à juger par une personne)."""
-    from testpilot.api.services import generation_service
-    from testpilot.generation import correction_agent
+def test_a96_une_verification_lue_par_le_serveur_ne_met_plus_rien_a_relire():
+    """A96 : les « Alors » d'un cas joué avec un compte lisent avec CE compte — l'avis A89 (« à relire ») disparaît."""
+    from testpilot.generation.avis_du_test import avis_du_test
+    from testpilot.verdict.review_gate import RAISONS_DES_AVIS
 
-    projet, lecteur, _ = _projet_explore(conn, monkeypatch)
-    steps = "from behave import then\n" + _LU_PAR_LE_SERVEUR + (_TAUTOLOGIE if avec_tautologie else "")
-    cas, vid = _cas(conn, projet, compte_id=lecteur, ecrit_pour={"compte_id": lecteur, "libelle": "Lecteur", "vue": "principal"})
-    conn.execute("UPDATE test_case_version SET steps_content=? WHERE id=?", (steps, vid))
-    conn.commit()
-    recus = []
-
-    def fausse_correction(**kw):
-        recus.append(sorted({w["kind"] for w in kw["lint_warnings"]}))
-        return correction_agent.CorrectionProposal(changed=False, feature_content="", steps_content="", summary="",
-                                                   cost_usd=0.0, stopped_reason="done")
-    monkeypatch.setattr(correction_agent, "propose_correction", fausse_correction)
-    generation_service._finaliser_version_generee(conn, cas["id"], vid, module_name="m", connector=None,
-                                                  dry_runner=object())
-    assert recus == ([["always_true_constant"]] if avec_tautologie else []), "jamais l'avis A89 à la correction"
+    avis = avis_du_test(feature="", steps=_LU_PAR_LE_SERVEUR, observations=None, target_sha256="", base_url="",
+                        reference_time=None, variables_des_lignes=(), connecteur_web=False, intention="", modele=None,
+                        verified_fields=None)
+    assert avis == [] and "verification_lue_par_le_principal" not in RAISONS_DES_AVIS
 
 
 def test_falsifiable_a86_un_identifiant_change_depuis_l_ecriture_bloque(conn, monkeypatch):
@@ -502,3 +459,234 @@ def test_falsifiable_allume_projet_web_l_identite_est_prouvee_avant_tout_appel_a
                                       metier={"title": "Devis"})
     assert vus["kw"]["verifier_identite"] is True and vus["kw"]["user"] == "lecteur"
     assert generation_service.get_job(conn, "job-web")["error"].startswith("Lecteur : observation avec le compte du cas")
+
+
+
+# ── A96 : le harnais vérifie avec le compte du cas, recoupé avec le principal ────────────────────────────────────────────
+
+@pytest.fixture
+def H():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"))
+    import _base_helpers
+    return _base_helpers
+
+
+class _SessionRPC:
+    def __init__(self, reponses):
+        self.reponses, self.appels = reponses, []
+
+    def execute_kw(self, model, method, args=None, kwargs=None):
+        self.appels.append((model, method))
+        return self.reponses.get((model, method), 0)
+
+
+def _ctx_a96(H, monkeypatch, *, principal, compte):
+    principale, du_compte = _SessionRPC(principal), _SessionRPC(compte)
+    monkeypatch.setattr(H, "_ouvrir_session_rpc", lambda ctx, u, p: du_compte)
+    ctx = SimpleNamespace(odoo=principale, _odoo_principal=principale, compte_courant="Lecteur", odoo_user="lecteur",
+                          odoo_password="pw", created={}, created_ordre=[])
+    return ctx, principale, du_compte
+
+
+def test_falsifiable_a96_un_alors_lit_avec_le_compte_et_les_autres_steps_avec_le_principal(H, monkeypatch):
+    ctx, principale, _ = _ctx_a96(H, monkeypatch, principal={}, compte={})
+    H.poser_la_session_des_verifications(ctx, "given")
+    assert ctx.odoo is principale, "mise en place des données : le principal"
+    H.poser_la_session_des_verifications(ctx, "then")
+    assert isinstance(ctx.odoo, H.SessionDesVerifications)
+    ctx.compte_courant = "principal"
+    H.poser_la_session_des_verifications(ctx, "then")
+    assert ctx.odoo is principale, "un cas joué avec le principal ne change pas"
+    web = SimpleNamespace(odoo=None, compte_courant="Lecteur")
+    H.poser_la_session_des_verifications(web, "then")
+    assert web.odoo is None, "web : aucune session serveur"
+
+
+def test_falsifiable_a96_le_compte_voit_la_meme_chose_que_le_principal_c_est_son_verdict(H, monkeypatch):
+    ctx, _, _ = _ctx_a96(H, monkeypatch, principal={("account.move", "search"): [7]}, compte={("account.move", "search"): [7]})
+    assert H.SessionDesVerifications(ctx, "Lecteur").execute_kw("account.move", "search", [[("name", "=", "F-001")]]) == [7]
+
+
+@pytest.mark.parametrize("methode, compte, principal", [
+    ("search", [30], [30, 29]),        # mesuré : un doublon dont le compte ne voit qu'un exemplaire — « pas de doublon »
+    ("search_count", 1, 2),
+    ("read", [{"id": 5, "sale_order_ids": [30]}], [{"id": 5, "sale_order_ids": [30, 29]}]),   # mesuré : liés filtrés
+])
+def test_falsifiable_a96_le_compte_qui_voit_une_partie_n_est_jamais_passe(H, monkeypatch, methode, compte, principal):
+    """Revue d'A96 (bloquant, mesuré sur le banc) : pas seulement « rien » — un compte qui voit une PARTIE conclut sur ce qu'il
+    a le droit de voir (« aucun doublon » vrai pour le compte, faux pour l'application)."""
+    ctx, _, _ = _ctx_a96(H, monkeypatch, principal={("sale.order", methode): principal}, compte={("sale.order", methode): compte})
+    with pytest.raises(H.ConstatNonConcluantError, match="« Lecteur » voit moins que le compte principal dans sale.order"):
+        H.SessionDesVerifications(ctx, "Lecteur").execute_kw("sale.order", methode, [[]])
+
+
+def test_falsifiable_a96_une_absence_contredite_par_le_principal_n_est_jamais_passe(H, monkeypatch):
+    """« Aucune commande n'a été créée » vu par un compte qui ne voit aucune commande — le principal en voit une : on ne sait
+    pas si l'application a fauté, « non concluant », jamais « Passé »."""
+    ctx, _, _ = _ctx_a96(H, monkeypatch, principal={("sale.order", "search"): [42]}, compte={("sale.order", "search"): []})
+    session = H.SessionDesVerifications(ctx, "Lecteur")
+    with pytest.raises(H.ConstatNonConcluantError, match="« Lecteur » voit moins que le compte principal dans sale.order"):
+        session.execute_kw("sale.order", "search", [[("id", ">", 10)]])
+
+
+def test_a96_une_absence_confirmee_par_le_principal_est_une_vraie_absence(H, monkeypatch):
+    ctx, _, _ = _ctx_a96(H, monkeypatch, principal={("sale.order", "search"): []}, compte={("sale.order", "search"): []})
+    assert H.SessionDesVerifications(ctx, "Lecteur").execute_kw("sale.order", "search", [[]]) == []
+
+
+def test_a96_une_creation_sous_un_alors_est_nettoyee_par_le_principal(H, monkeypatch):
+    ctx, _, _ = _ctx_a96(H, monkeypatch, principal={}, compte={("res.partner", "create"): 77})
+    H.SessionDesVerifications(ctx, "Lecteur").execute_kw("res.partner", "create", [{}])
+    assert ctx.created == {"res.partner": [77]} and ctx.created_ordre == [("res.partner", 77)]
+
+
+def test_a96_le_message_a_l_ia_ne_dit_plus_que_le_serveur_se_lit_avec_le_principal():
+    plan = TestPlan(module_name="m", models=[], scenarios=[], personas=["u"], portal_routes=[], risks=[],
+                    connector_type="odoo", cost_usd=0.0, raw_spec="x")
+    message = prompt_mod.build_initial_message(plan, None, compte_du_test={"libelle": "Lecteur", "vue": "compte"})
+    assert "lisent l'écran ET le serveur avec « Lecteur »" in message and "qui voit TOUT" not in message
+
+
+
+def test_falsifiable_a96_une_connexion_refusee_du_compte_est_un_prerequis(H, monkeypatch):
+    def _refus(*a):
+        raise RuntimeError("Wrong login ID or password")
+    monkeypatch.setattr(H, "_ouvrir_session_rpc", _refus)
+    ctx = SimpleNamespace(odoo=None, _odoo_principal=_SessionRPC({}), compte_courant="Lecteur", odoo_user="lecteur",
+                          odoo_password="mauvais")
+    with pytest.raises(H.PreconditionNonRemplieError, match="connexion au serveur impossible avec le compte « Lecteur »"):
+        H.SessionDesVerifications(ctx, "Lecteur").execute_kw("sale.order", "search", [[]])
+
+
+def test_falsifiable_a96_une_lecture_du_compte_compte_comme_lecture_du_serveur(H, monkeypatch):
+    vus = []
+    monkeypatch.setattr(H, "noter_lecture_rpc", lambda: vus.append(True))
+    ctx, _, _ = _ctx_a96(H, monkeypatch, principal={("sale.order", "search"): [1]}, compte={("sale.order", "search"): [1]})
+    H.SessionDesVerifications(ctx, "Lecteur").execute_kw("sale.order", "search", [[]])
+    assert vus == [True]
+
+
+def test_falsifiable_a96_lire_un_champ_ne_lit_que_ce_champ(H):
+    """Revue d'A96 (mesuré sur le banc) : `browse(id)` lisait tous les champs — un compte restreint était refusé sur un champ
+    sans rapport. Un vrai modèle odoorpc (attribut `_odoo`) est lu par `read([id], [champ])`, rien d'autre."""
+    appels = []
+
+    class _Modele:
+        _odoo = object()
+
+        @classmethod
+        def read(cls, ids, champs):
+            appels.append((ids, champs))
+            return [{"id": ids[0], champs[0]: "x@y"}]
+
+        @classmethod
+        def browse(cls, *a):
+            raise AssertionError("browse lirait tous les champs")
+    assert H.enregistrement(_Modele, 10).read(["email"]) == [{"id": 10, "email": "x@y"}] and appels == [([10], ["email"])]
+
+
+def test_falsifiable_a96_les_crochets_posent_et_rendent_la_session_du_principal():
+    """Revue d'A96 : sans le retour du principal en fin de step, le nettoyage tournerait avec le compte (suppressions
+    refusées, résidus) ; sans la sauvegarde, il n'y aurait rien à rendre."""
+    from pathlib import Path
+
+    texte = (Path(__file__).resolve().parent.parent / "behave_runtime" / "environment.py").read_text(encoding="utf-8")
+    debut = texte.index("def before_scenario(")
+    scenario = texte[debut:texte.index("\ndef ", debut + 10)]
+    assert "context._odoo_principal = context.odoo" in scenario
+    etape = texte[texte.index("def before_step("):texte.index("def after_step(")]
+    assert "poser_la_session_des_verifications(context" in etape
+    fin = texte[texte.index("def after_step("):]
+    assert "context.odoo = context._odoo_principal" in fin[:fin.index("\ndef ", 10)]
+
+
+def test_falsifiable_a96_ne_pas_voir_verifie_l_existence_avec_le_principal(H, monkeypatch):
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library" / "odoo"))
+    """Sous un « Alors », `context.odoo` est la session du compte : l'existence de l'enregistrement se vérifie avec le
+    PRINCIPAL (sinon « cet utilisateur ne voit pas » serait non concluant à chaque fois)."""
+    import types
+    import _odoo_droits_steps as droits
+
+    monkeypatch.setattr(droits, "session_rpc_du_compte_qui_agit",
+                        lambda ctx: types.SimpleNamespace(env={"sale.order": types.SimpleNamespace(search_count=lambda d: 0)}))
+    ctx = types.SimpleNamespace(
+        last_record_model="sale.order", last_record_ids=[1], odoo=types.SimpleNamespace(env={}),
+        _odoo_principal=types.SimpleNamespace(env={"sale.order": types.SimpleNamespace(search_count=lambda d: 1)}))
+    droits.step_utilisateur_ne_voit_pas_enregistrement(ctx)
+
+
+
+# ── Revue d'A96, seconde passe ───────────────────────────────────────────────────────────────────────────────────────────
+
+def test_falsifiable_a96_le_refus_d_action_appelle_l_action_seule_jamais_browse(monkeypatch):
+    """Mesuré sur le banc : `browse(id).write()` refusé (lecture d'un champ sans rapport) alors que le `write` direct du
+    commercial est AUTORISÉ — le refus n'existait qu'à l'écran, et le cas sortait « Passé »."""
+    import sys
+    import types
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"))
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library" / "odoo"))
+    import _odoo_droits_steps as droits
+
+    class AccessError(Exception):
+        pass
+
+    class _Modele:
+        def search_count(self, domaine):
+            return 1
+
+        def browse(self, *a):
+            raise AccessError("You are not allowed to access 'Bon de commande fournisseur' (purchase.order) records.")
+
+    session = types.SimpleNamespace(env={"res.partner": _Modele()}, execute_kw=lambda *a: True)   # l'action réussit
+    monkeypatch.setattr(droits, "session_rpc_du_compte_qui_agit", lambda ctx: session)
+    monkeypatch.setattr(droits, "constater_visible", lambda loc, message="": None)
+    page = types.SimpleNamespace(locator=lambda sel: object())
+    ctx = types.SimpleNamespace(page=page, odoo_version=(17, 0), last_record_model="res.partner", last_record_ids=[10])
+    with pytest.raises(AssertionError):
+        droits.step_action_refusee(ctx, "write")
+
+
+def test_falsifiable_a96_une_lecture_refusee_au_compte_est_non_concluante_pas_a_reparer(H, monkeypatch):
+    class _Refus:
+        def execute_kw(self, *a, **k):
+            raise RuntimeError("You are not allowed to access 'Bon de commande fournisseur' (purchase.order) records.")
+    monkeypatch.setattr(H, "_ouvrir_session_rpc", lambda ctx, u, p: _Refus())
+    ctx = SimpleNamespace(_odoo_principal=_SessionRPC({}), compte_courant="Lecteur", odoo_user="l", odoo_password="p")
+    with pytest.raises(H.ConstatNonConcluantError, match="« Lecteur » n'a pas le droit de lire purchase.order"):
+        H.SessionDesVerifications(ctx, "Lecteur").execute_kw("purchase.order", "search_count", [[]])
+
+
+def test_falsifiable_a96_l_autre_porte_d_odoorpc_est_recoupee_aussi(H, monkeypatch):
+    ctx, _, compte = _ctx_a96(H, monkeypatch, principal={("sale.order", "search_count"): 2},
+                              compte={("sale.order", "search_count"): 1})
+    compte.execute = None
+    session = H.SessionDesVerifications(ctx, "Lecteur")
+    with pytest.raises(H.ConstatNonConcluantError):
+        session.execute("sale.order", "search_count", [])
+
+
+def test_falsifiable_a96_search_read_compare_aussi_les_lies(H, monkeypatch):
+    ctx, _, _ = _ctx_a96(H, monkeypatch, principal={("res.partner", "search_read"): [{"id": 5, "sale_order_ids": [32, 31]}]},
+                         compte={("res.partner", "search_read"): [{"id": 5, "sale_order_ids": [32]}]})
+    with pytest.raises(H.ConstatNonConcluantError):
+        H.SessionDesVerifications(ctx, "Lecteur").execute_kw("res.partner", "search_read", [[]])
+
+
+def test_falsifiable_a96_la_garde_persiste_meme_si_le_step_avale_l_exception(H, monkeypatch):
+    """Revue : un step généré `try: … except Exception: return 0` effaçait la garde — le repère reste sur le contexte, et
+    `after_step` en fait un « Alors » sans constat (indéterminé)."""
+    ctx, _, _ = _ctx_a96(H, monkeypatch, principal={("sale.order", "search_count"): 2}, compte={("sale.order", "search_count"): 1})
+    try:
+        H.SessionDesVerifications(ctx, "Lecteur").execute_kw("sale.order", "search_count", [[]])
+    except Exception:
+        pass   # ce que ferait un step qui avale
+    assert ctx._tp_recoupement_contredit.startswith("« Lecteur » voit moins")
+    from pathlib import Path
+    texte = (Path(__file__).resolve().parent.parent / "behave_runtime" / "environment.py").read_text(encoding="utf-8")
+    fin = texte[texte.index("def after_step("):]
+    assert 'raison="recoupement_contredit"' in fin[:fin.index("\ndef ", 10)]
