@@ -120,6 +120,22 @@ describe('CaseDetailTR — Joué en tant que (A70)', () => {
     expect('compte_id' in updateCaseMetier.mock.calls[0][1]).toBe(false)
   })
 
+  it('dit quand le compte du cas n’a pas encore été exploré, ou n’a pas pu s’y connecter (A80)', async () => {
+    const jamais = await page(detail([{ id: null, libelle: 'principal' }, { id: 4, libelle: 'Lecteur', exploration: 'jamais' } as any], 4))
+    expect(jamais.get('[data-testid="exploration-du-compte"]').text())
+      .toBe('Lecteur pas encore exploré — actualisez l’exploration du projet'.replace('’', "'"))
+    const echec = await page(detail([{ id: null, libelle: 'principal' }, { id: 4, libelle: 'Lecteur', exploration: 'echec' } as any], 4))
+    expect(echec.get('[data-testid="exploration-du-compte"]').text()).toContain('connexion impossible lors de l')
+    const erreur = await page(detail([{ id: null, libelle: 'principal' }, { id: 4, libelle: 'Lecteur', exploration: 'erreur' } as any], 4))
+    expect(erreur.get('[data-testid="exploration-du-compte"]').text()).toContain('l\'exploration a échoué pour ce compte')
+    const incomplet = await page(detail([{ id: null, libelle: 'principal' }, { id: 4, libelle: 'Lecteur', exploration: 'incomplet' } as any], 4))
+    expect(incomplet.get('[data-testid="exploration-du-compte"]').text()).toContain('exploration incomplète')
+    const ok = await page(detail([{ id: null, libelle: 'principal' }, { id: 4, libelle: 'Lecteur', exploration: '' } as any], 4))
+    expect(ok.find('[data-testid="exploration-du-compte"]').exists()).toBe(false)
+    const principal = await page(detail([{ id: null, libelle: 'principal' }, { id: 4, libelle: 'Lecteur', exploration: 'jamais' } as any], null))
+    expect(principal.find('[data-testid="exploration-du-compte"]').exists()).toBe(false)
+  })
+
   it('un compte inchangé ne crée aucune version', async () => {
     const w = await page(detail(DEUX, 4))
     await w.get('button').trigger('click')

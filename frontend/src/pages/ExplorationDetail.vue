@@ -101,6 +101,18 @@ onMounted(async () => {
           <StatTile label="Liens" :value="totalLiens" icon="dot" tone="muted" />
         </div>
 
+        <!-- A83 : une exploration arrêtée ou interrompue le dit ici aussi. -->
+        <p v-if="etat?.incomplete" class="text-sm text-warning" data-testid="detail-incomplete">
+          Exploration incomplète ({{ etat.incomplete }} à {{ etat.incomplete_pages }} pages) : des pages manquent peut-être.
+        </p>
+        <!-- A82 : les pages sœurs identiques, regroupées après 3 exemples — comptées, pas visitées une à une. -->
+        <div v-if="etat?.familles?.length" class="space-y-1 text-xs text-muted-foreground" data-testid="detail-familles">
+          <div v-for="f in etat.familles" :key="f.modele">
+            <code class="text-foreground">{{ f.modele }}</code> : 1 modèle, {{ f.exemples.length }} exemples visités,
+            {{ f.pages_du_meme_modele }} page{{ f.pages_du_meme_modele > 1 ? 's' : '' }} du même modèle
+          </div>
+        </div>
+
         <input v-model="filtre" type="text" placeholder="Filtrer par route ou par titre…"
                class="h-9 w-full max-w-sm rounded-md border border-border bg-surface-raised px-3 text-sm
                       placeholder:text-subtle-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
