@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 72
+_SCHEMA_VERSION = 73
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -286,6 +286,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_71_iteration_du_scenario(conn)
     if version < 72:
         _migrate_72_lignes_du_cas(conn)
+    if version < 73:
+        _migrate_73_compte_du_cas(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -592,6 +594,14 @@ def _migrate_71_iteration_du_scenario(conn: sqlite3.Connection) -> None:
     idempotente."""
     if _table_existe(conn, "scenario_result") and "iterations" not in _column_names(conn, "scenario_result"):
         conn.execute("ALTER TABLE scenario_result ADD COLUMN iterations TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_73_compte_du_cas(conn: sqlite3.Connection) -> None:
+    """Décision A70 (porteur, 2026-10-20, étape 4) : le compte avec lequel une version du cas est jouée — `project_account.id`,
+    NULL = le compte principal (toute version d'avant). Sans clé étrangère à suppression automatique : un compte supprimé ne
+    fait jamais rejouer le cas avec le principal en silence (l'exécution le dit et bloque). Additive, idempotente."""
+    if _table_existe(conn, "test_case_version") and "compte_id" not in _column_names(conn, "test_case_version"):
+        conn.execute("ALTER TABLE test_case_version ADD COLUMN compte_id INTEGER")
 
 
 def _migrate_72_lignes_du_cas(conn: sqlite3.Connection) -> None:
