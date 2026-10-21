@@ -60,8 +60,6 @@ const FAMILLES: Record<string, string> = {
   // signal distinct des autres familles (pas une assertion fragile, pas un risque de réparation,
   // pas une valeur absente du domaine) — un risque d'agir sur une donnée réelle de l'application.
   enregistrement_non_cree_par_le_scenario: 'donnée réelle',
-  // Étape 4, morceau 7 (A89) — lu par le compte principal, qui voit tout : ce que voit le compte du cas n'est pas prouvé.
-  verification_lue_par_le_principal: 'compte',
 }
 
 // Repli explicite : un `kind` inconnu s'affiche quand même. Le taire ferait disparaître un
