@@ -359,7 +359,18 @@ def get_case(case_id: int, conn=Depends(get_conn)):
         reviews=[schemas.review_out(r) for r in ReviewRepo(conn).list_for_case(case_id)],
         executions=executions,
         gate=gate,
+        comptes=_comptes_du_projet(conn, case.get("project_id")),
     )
+
+
+def _comptes_du_projet(conn, project_id) -> list[schemas.CompteChoixOut]:
+    """Étape 4 (A70) : le principal, puis les comptes du projet — libellés seulement (D8)."""
+    from testpilot.store.repositories import ProjectAccountRepo
+
+    comptes = [schemas.CompteChoixOut(id=None, libelle="principal")]
+    if project_id:
+        comptes += [schemas.CompteChoixOut(id=c["id"], libelle=c["label"]) for c in ProjectAccountRepo(conn).liste(project_id)]
+    return comptes
 
 
 def _base_d_association(conn, case_id: int):
@@ -544,12 +555,20 @@ def update_case_metier(case_id: int, body: schemas.CaseMetierIn, conn=Depends(ge
         raise HTTPException(status_code=422, detail=" ; ".join(fautes))
     source_non_relue = (review_gate.version_reparee_non_relue(ReviewRepo(conn), source)
                         or review_gate.test_non_relu(ReviewRepo(conn), source))
+    # Étape 4 (A70) : « Joué en tant que » ne vise qu'un compte de CE projet ; absent du corps, le compte ne change pas.
+    compte = ...
+    if "compte_id" in body.model_fields_set:
+        compte = body.compte_id
+        if compte is not None:
+            from testpilot.store.repositories import ProjectAccountRepo
+            if ProjectAccountRepo(conn).lire(cases.get(case_id).get("project_id"), compte) is None:
+                raise HTTPException(status_code=422, detail="ce compte n'appartient pas au projet du cas")
     try:
         version_id = cases.update_metier(
             case_id, title=body.title, preconditions=body.preconditions,
             test_steps=body.test_steps, expected_result=body.expected_result,
             refs=body.refs, estimate=body.estimate, editor=body.editor,
-            expected_version_id=body.base_version_id)
+            expected_version_id=body.base_version_id, compte_id=compte)
     except DuplicateName as exc:
         raise erreurs.ErreurMetier("nom_deja_pris", str(exc)) from exc
     except VersionConflict as exc:

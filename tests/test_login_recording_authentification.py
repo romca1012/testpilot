@@ -151,3 +151,24 @@ def test_falsifiable_la_reconnexion_en_cours_de_scenario_transmet_la_sequence(mo
     assert appels[0]["sequence_connexion"] == etapes, (
         "la séquence enregistrée pour le projet n'a pas été transmise à la reconnexion en cours "
         "de scénario — elle retomberait sur une liste vide, quelle que soit la séquence réelle")
+
+
+def test_falsifiable_la_reconnexion_d_un_compte_secondaire_se_fait_par_formulaire_sans_second_facteur(monkeypatch):
+    """Étape 4 (A70, revue 2026-10-21) : un cas joué avec « Lecteur » dont la session s'invalide se reconnecte avec SES
+    identifiants, par formulaire — le second facteur et la stratégie sont ceux du principal seul (même règle que la connexion
+    initiale). Le principal, lui, garde sa stratégie et son code."""
+    H = _charger_base_helpers()
+    from types import SimpleNamespace
+
+    appels = []
+    monkeypatch.setattr(H, "_mot_de_passe_visible", lambda page: True)
+    monkeypatch.setattr(H, "authentifier_selon_la_strategie", lambda page, **kw: appels.append(kw))
+    for courant in ("Lecteur", "principal"):
+        context = SimpleNamespace(
+            page=_FakePage(mot_de_passe_visible=True), auth_strategie=H._auth.TOTP,
+            web_url="https://app.example", web_user="lecteur", web_password="pw", totp_secret="SECRETPRINCIPAL",
+            compte_courant=courant, _browser_context=SimpleNamespace(storage_state=lambda path: None))
+        H._verifier_ou_reconnecter_session(context, "https://app.example/espace")
+
+    assert (appels[0]["strategie"], appels[0]["totp_secret"]) == (H._auth.FORMULAIRE, "")
+    assert (appels[1]["strategie"], appels[1]["totp_secret"]) == (H._auth.TOTP, "SECRETPRINCIPAL")

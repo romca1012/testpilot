@@ -956,6 +956,8 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
         depend_dun_autre_cas_du_groupe=bool(version.get("depend_dun_autre_cas_du_groupe", False)),
         etat_a_creer_par_ce_cas=version.get("etat_a_creer_par_ce_cas") or "",
         verified_fields=json.dumps(proposal.verified_fields, ensure_ascii=False),
+        # Étape 4 (A70) : le compte de la version CORRIGÉE, explicitement (une correction ne touche jamais le métier).
+        compte_id=version.get("compte_id"),
         **revision_metadata(version))
     CaseRepo(conn).set_current_version(case_id, version_corrigee_id)
 

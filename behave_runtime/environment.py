@@ -328,7 +328,7 @@ def playwright_browser(context):
     headed = os.environ.get("PLAYWRIGHT_HEADED", "0") == "1"
     context._playwright = sync_playwright().start()
     context.browser = context._playwright.chromium.launch(headless=not headed, args=_arguments_de_confinement())
-    # Lot 07b-2 : la session du compte principal, obtenue UNE fois dans `before_all`, équipe le PREMIER contexte du scénario
+    # Lot 07b-2 : la session du compte du run (le principal, ou le compte du cas — A70), obtenue UNE fois dans `before_all`, équipe le PREMIER contexte du scénario
     # (jamais les réouvertures du lot 07b-1 : un changement de compte reste un contexte neuf).
     _ouvrir_contexte_navigateur(context, avec_storage_state=True)
     # Lot 07b-1 (D8) : « je me connecte en tant que … » repart d'un contexte NEUF (cookies et stockage vides) via ce crochet.
@@ -343,7 +343,7 @@ def _ouvrir_contexte_navigateur(context, *, avec_storage_state: bool = False) ->
     """Un `BrowserContext` (langue, fuseau et fenêtre du projet), sa trace, sa page — une seule fonction pour le premier et pour ceux
     qu'un changement de compte rouvre (`avec_storage_state=False` dans ce cas : lot 07b-1, jamais la session du principal).
 
-    `avec_storage_state=True` (lot 07b-2) : charge la session du compte principal obtenue par `before_all`, si le fichier existe
+    `avec_storage_state=True` (lot 07b-2) : charge la session du compte du run (A70) obtenue par `before_all`, si le fichier existe
     (absent quand la stratégie est `aucune`, ou quand la connexion initiale a échoué — `before_scenario` bloque alors avant
     d'ouvrir quoi que ce soit)."""
     kwargs = contexte_navigateur_fige()
@@ -473,6 +473,11 @@ def before_all(context):
 
     context.comptes, context.comptes_erreur = construire_comptes(_CONNECTOR_TYPE, os.environ)
     context.compte_courant = "principal"
+    # Étape 4 (A70, A73) : le compte avec lequel CE cas est joué — écrans et connexions ; les vérifications RPC restent au principal.
+    from _base_helpers import appliquer_compte_du_test
+
+    context._erreur_compte_du_test = appliquer_compte_du_test(
+        context, _CONNECTOR_TYPE, os.environ.get("TESTPILOT_COMPTE_DU_TEST", ""))
     # Lot 07e (D7) : l'oracle backend du projet, résolu une fois pour tout le run (les requêtes
     # nommées et l'authentification ne changent jamais en cours de run).
     from _base_helpers import construire_oracle
@@ -483,7 +488,12 @@ def before_all(context):
     context.totp_secret = _TOTP_SECRET
     context.injected_session = _INJECTED_SESSION
     context._erreur_connexion_initiale = ""
-    if _CONNECTOR_TYPE == "web" and _AUTH_STRATEGIE != "aucune" and _WEB_URL:
+    # Étape 4 (revue, 2026-10-21) : sans connexion, « joué en tant que » serait un run anonyme — bloqué, jamais joué ainsi.
+    from _base_helpers import refus_du_compte_sans_connexion
+
+    context._erreur_compte_du_test = context._erreur_compte_du_test or refus_du_compte_sans_connexion(
+        _CONNECTOR_TYPE, _AUTH_STRATEGIE, getattr(context, "compte_du_test", "principal"))
+    if _CONNECTOR_TYPE == "web" and _AUTH_STRATEGIE != "aucune" and _WEB_URL and not context._erreur_compte_du_test:
         _tenter_connexion_initiale(context)
 
 
@@ -497,7 +507,9 @@ def _tenter_connexion_initiale(context) -> None:
     from _base_helpers import PreconditionNonRemplieError, authentifier_selon_la_strategie
 
     injection = None
-    if _AUTH_STRATEGIE == "session_injectee" and _INJECTED_SESSION:
+    # Étape 4 (A70) : une session injectée est celle du PRINCIPAL — jamais pour un compte secondaire.
+    if (_AUTH_STRATEGIE == "session_injectee" and _INJECTED_SESSION
+            and getattr(context, "compte_du_test", "principal") == "principal"):
         try:
             injection = json.loads(_INJECTED_SESSION)
         except (ValueError, TypeError):
@@ -515,8 +527,12 @@ def _tenter_connexion_initiale(context) -> None:
             contexte = navigateur.new_context(storage_state=injection, **contexte_navigateur_fige())
             page = contexte.new_page()
             try:
-                authentifier_selon_la_strategie(page, strategie=_AUTH_STRATEGIE, web_url=_WEB_URL,
-                                                user=_WEB_USER, password=_WEB_PASSWORD, totp_secret=_TOTP_SECRET,
+                # Étape 4 (A70) : avec le compte du RUN. Un compte secondaire se connecte par formulaire (sa stratégie propre —
+                # second facteur, session injectée — est celle du principal seul).
+                secondaire = getattr(context, "compte_du_test", "principal") != "principal"
+                authentifier_selon_la_strategie(page, strategie="formulaire" if secondaire else _AUTH_STRATEGIE,
+                                                web_url=_WEB_URL, user=context.web_user, password=context.web_password,
+                                                totp_secret="" if secondaire else _TOTP_SECRET,
                                                 sequence_connexion=sequence_connexion,
                                                 login_form=login_form)
             except PreconditionNonRemplieError as exc:
@@ -816,6 +832,10 @@ def before_scenario(context, scenario):
     definir_etat_constat(scenario=scenario.name, step_type="")
     # Lot 07b-2 (C2) : la connexion initiale du run a échoué (avant tout scénario) — bloqué, jamais un vert ni un défaut
     # applicatif présumé. AVANT d'ouvrir quoi que ce soit (navigateur, session RPC).
+    if getattr(context, "_erreur_compte_du_test", ""):
+        from _base_helpers import PreconditionNonRemplieError
+        # Étape 4 (A70) : jamais joué avec un autre compte que celui du cas — bloqué, avec la raison.
+        raise PreconditionNonRemplieError(context._erreur_compte_du_test)
     if getattr(context, "_erreur_connexion_initiale", ""):
         from _base_helpers import PreconditionNonRemplieError
 

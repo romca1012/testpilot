@@ -1087,7 +1087,12 @@ class CaseRepo:
                 expected_result=version.get("expected_result") or "",
                 verified_fields=(version.get("verified_fields") or "")
                 if source.get("project_id") == ModuleRepo(self.conn).get(groupe["module_id"])["project_id"]
-                else "{}", **revision_metadata(version))
+                else "{}",
+                # A70 : un compte appartient à SON projet — copié ailleurs, le cas est joué avec le principal (visible).
+                compte_id=(version.get("compte_id")
+                           if source.get("project_id") == ModuleRepo(self.conn).get(groupe["module_id"])["project_id"]
+                           else None),
+                **revision_metadata(version))
             self.set_current_version(new_id, vid)
 
             # ⚠️ Le RUNNER lit le script SUR DISQUE (`config.GENERATED_DIR/{slug}.feature`),
@@ -1228,7 +1233,8 @@ class CaseRepo:
                       preconditions: str | None = None, test_steps: str | None = None,
                       expected_result: str | None = None,
                       refs: str | None = None, estimate: str | None = None,
-                      editor: str = "ui", expected_version_id: int | None = None) -> int | None:
+                      editor: str = "ui", expected_version_id: int | None = None,
+                      compte_id=...) -> int | None:
         """Édite le contenu métier d'un cas → **crée une NOUVELLE version** (décision `0022` n°10).
 
         ⚠️ **Jamais un `UPDATE` en place sur la version courante.** Une version est un état figé :
@@ -1280,11 +1286,14 @@ class CaseRepo:
         new_steps = pick(test_steps, "test_steps", "")
         new_expected = pick(expected_result, "expected_result", "")
 
+        # Étape 4 (A70) : le compte avec lequel le cas est joué fait partie du cas — le changer crée une version. `...` : inchangé.
+        nouveau_compte = (current or {}).get("compte_id") if compte_id is ... else compte_id
         inchange = (current is not None
                     and new_title == (current.get("title") or case.get("title", ""))
                     and new_pre == (current.get("preconditions") or "")
                     and new_steps == (current.get("test_steps") or "")
-                    and new_expected == (current.get("expected_result") or ""))
+                    and new_expected == (current.get("expected_result") or "")
+                    and nouveau_compte == (current.get("compte_id")))
         if inchange:
             return None   # rien de versionné n'a bougé : pas de version fantôme
 
@@ -1300,7 +1309,7 @@ class CaseRepo:
             change_summary="Édition manuelle du contenu métier",
             created_by=editor,
             title=new_title, preconditions=new_pre, test_steps=new_steps,
-            expected_result=new_expected,
+            expected_result=new_expected, compte_id=nouveau_compte,
             verified_fields=(current or {}).get("verified_fields", ""),
             **revision_metadata(current),
         )
@@ -1609,7 +1618,7 @@ class VersionRepo:
                expected_result: str = "", verified_fields: str = "",
                observation_evidence: str = "", generation_provenance: str = "",
                technical_plan: str = "", depend_dun_autre_cas_du_groupe: bool = False,
-               etat_a_creer_par_ce_cas: str = "") -> int:
+               etat_a_creer_par_ce_cas: str = "", compte_id=...) -> int:
         """Crée une version — **le CAS ENTIER**, métier ET technique (décision `0022` n°10).
 
         Les champs métier (`title`, `preconditions`, `test_steps`, `expected_result`)
@@ -1620,7 +1629,16 @@ class VersionRepo:
         ce que `metier_writer.MetierDraft` a calculé pour ce cas — survit ainsi au round-trip par
         la base jusqu'à `tools/write.py`, seul capable de refuser une référence à une entité que
         ce cas devait créer lui-même, au moment où l'agent écrit le Gherkin.
+
+        `compte_id` (migration 73, A70) : le compte du projet avec lequel cette version est jouée, `None` = le principal. Non
+        fourni (`...`) : celui de la version COURANTE du cas — une édition, une correction, une réparation, une régénération
+        gardent le compte sans qu'aucun appelant n'ait à y penser (sinon le cas retomberait sur le principal en silence).
         """
+        if compte_id is ...:
+            ligne = self.conn.execute(
+                "SELECT v.compte_id FROM test_case c JOIN test_case_version v ON v.id = c.current_version_id"
+                " WHERE c.id = ?", (test_case_id,)).fetchone()
+            compte_id = ligne[0] if ligne else None
         number = self.conn.execute(
             "SELECT COALESCE(MAX(version_number), 0) + 1 AS n"
             " FROM test_case_version WHERE test_case_id=?",
@@ -1632,13 +1650,13 @@ class VersionRepo:
             " change_summary, created_at, created_by,"
             " title, preconditions, test_steps, expected_result, verified_fields,"
             " observation_evidence, generation_provenance, technical_plan,"
-            " depend_dun_autre_cas_du_groupe, etat_a_creer_par_ce_cas)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " depend_dun_autre_cas_du_groupe, etat_a_creer_par_ce_cas, compte_id)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (test_case_id, number, spec_content, spec_hash, feature_content, steps_content,
              feature_path, steps_path, change_summary, now_iso(), created_by,
              title, preconditions, test_steps, expected_result, verified_fields,
              observation_evidence, generation_provenance, technical_plan,
-             int(bool(depend_dun_autre_cas_du_groupe)), etat_a_creer_par_ce_cas),
+             int(bool(depend_dun_autre_cas_du_groupe)), etat_a_creer_par_ce_cas, compte_id),
         )
         self.conn.commit()
         return int(cur.lastrowid)

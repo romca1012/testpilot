@@ -4471,42 +4471,139 @@ def _resoudre_compte(context, libelle: str) -> dict:
     return compte
 
 
+def _verifier_compte_odoo(context, user: str, password: str) -> None:
+    """Le serveur Odoo accepte-t-il ce compte ? Une authentification JETABLE (XML-RPC `common.authenticate`) — la session des
+    vérifications (`context.odoo`) n'est jamais touchée (A73). Lève si le compte est refusé."""
+    import xmlrpc.client
+
+    commun = xmlrpc.client.ServerProxy(f"{(context.odoo_url or '').rstrip('/')}/xmlrpc/2/common", allow_none=True)
+    if not commun.authenticate(context.odoo_db, user, password, {}):
+        raise RuntimeError("identifiants refusés par le serveur")
+
+
+def _ouvrir_session_rpc(context, user: str, password: str):
+    """Une session OdooRPC NEUVE pour ce compte — mêmes hôte, port et protocole que la session des vérifications
+    (`environment.odoo_session`). Lève si le serveur refuse le compte."""
+    import odoorpc
+    from urllib.parse import urlparse
+
+    parsed = urlparse(context.odoo_url or "")
+    port = parsed.port or (443 if parsed.scheme == "https" else 8069)
+    protocol = "jsonrpc+ssl" if parsed.scheme == "https" else "jsonrpc"
+    session = odoorpc.ODOO(parsed.hostname or "localhost", protocol=protocol, port=port)
+    session.login(context.odoo_db, user, password)
+    return session
+
+
+def session_rpc_du_compte_qui_agit(context):
+    """La session RPC du compte qui joue les ÉCRANS — pour un step qui vérifie un REFUS DE DROITS (A76, exception à A73).
+
+    A73 garde `context.odoo` au principal parce qu'un observateur qui voit moins que tout fabriquerait de faux « Passé ». Un refus
+    de droits est l'inverse : il ne se prouve qu'avec le compte refusé — le principal (souvent administrateur) réussit l'appel, et
+    une application saine sortirait « non conforme » (relevé par la revue de l'étape 4, 2026-10-21). Compte principal : la
+    session des vérifications, inchangée ; autre compte : une session jetable ouverte avec ses identifiants."""
+    principal = (getattr(context, "comptes", None) or {}).get(_LIBELLE_PRINCIPAL)
+    user = getattr(context, "odoo_user", "") or ""
+    if principal is None or not user or user == principal["user"]:
+        return context.odoo
+    return _ouvrir_session_rpc(context, user, getattr(context, "odoo_password", "") or "")
+
+
 def se_connecter_en_tant_que(context, libelle: str, *, connecteur: str) -> None:
     """Ouvre un NOUVEAU contexte navigateur (cookies, stockage et session repartent de zéro) et s'y connecte avec le compte `libelle`.
 
-    Odoo : connexion UI puis session RPC rouverte — les vérifications suivantes voient ce que voit CE compte. Web : page d'accueil du
-    projet puis connexion. Tout échec (compte inconnu, mot de passe refusé, formulaire introuvable) est un `PreconditionNonRemplieError` :
-    le test n'a pas pu entrer, l'application n'a rien « mal fait ». Le compte courant n'est mémorisé qu'une fois la connexion RÉUSSIE."""
+    Odoo : connexion UI avec ce compte ; la session RPC des vérifications reste celle du compte PRINCIPAL (décision A73, porteur,
+    2026-10-20 : un observateur qui voit moins que tout fabriquerait de faux « Passé » — « aucune commande créée » serait vrai
+    pour un compte qui ne voit pas les commandes). Le compte est vérifié auprès du serveur par une authentification jetable.
+    Web : page d'accueil du projet puis connexion. Tout échec (compte inconnu, mot de passe refusé, formulaire introuvable) est un
+    `PreconditionNonRemplieError` : le test n'a pas pu entrer, l'application n'a rien « mal fait ». Le compte courant n'est mémorisé
+    qu'une fois la connexion RÉUSSIE."""
     compte = _resoudre_compte(context, libelle)
-    context._reouvrir_contexte()
-    if connecteur == "odoo":
-        context.odoo_user, context.odoo_password = compte["user"], compte["password"]
-        try:
-            playwright_login(context)
-            context.odoo.login(context.odoo_db, compte["user"], compte["password"])
-            context.page.goto(context.odoo_url, wait_until="domcontentloaded")
-        except Exception as exc:
-            raise PreconditionNonRemplieError(
-                f"PRÉREQUIS MANQUANT : connexion impossible avec le compte « {compte['label']} » ({type(exc).__name__}) — "
-                "vérifiez son identifiant et son mot de passe dans les réglages du projet.") from exc
-    else:
-        context.web_user, context.web_password = compte["user"], compte["password"]
-        context._tp_connecte = False
-        if not context.web_url:
-            raise PreconditionNonRemplieError("PRÉREQUIS MANQUANT : URL de l'application introuvable (WEB_URL absent).")
-        context.page.goto(context.web_url, wait_until="domcontentloaded")
-        connexion_web_utilisateur(context, explicite=True)
+    # Revue de l'étape 4 (2026-10-21) : une connexion ratée rend les identifiants d'AVANT — sinon `compte_courant` (inchangé)
+    # et les identifiants (déjà ceux du compte refusé) divergeaient, et le scénario suivant se jouait avec le mauvais compte.
+    precedents = tuple(getattr(context, nom, "") for nom in ("odoo_user", "odoo_password", "web_user", "web_password"))
+    try:
+        context._reouvrir_contexte()
+        if connecteur == "odoo":
+            context.odoo_user, context.odoo_password = compte["user"], compte["password"]
+            try:
+                playwright_login(context)
+                _verifier_compte_odoo(context, compte["user"], compte["password"])
+                context.page.goto(context.odoo_url, wait_until="domcontentloaded")
+            except Exception as exc:
+                raise PreconditionNonRemplieError(
+                    f"PRÉREQUIS MANQUANT : connexion impossible avec le compte « {compte['label']} » ({type(exc).__name__}) — "
+                    "vérifiez son identifiant et son mot de passe dans les réglages du projet.") from exc
+        else:
+            context.web_user, context.web_password = compte["user"], compte["password"]
+            context._tp_connecte = False
+            if not context.web_url:
+                raise PreconditionNonRemplieError("PRÉREQUIS MANQUANT : URL de l'application introuvable (WEB_URL absent).")
+            context.page.goto(context.web_url, wait_until="domcontentloaded")
+            connexion_web_utilisateur(context, explicite=True)
+    except BaseException:
+        context.odoo_user, context.odoo_password, context.web_user, context.web_password = precedents
+        raise
     context.compte_courant = compte["label"]
 
 
+def appliquer_compte_du_test(context, connecteur: str, libelle: str) -> str:
+    """Étape 4 (A70) : le compte avec lequel CE cas est joué (`TESTPILOT_COMPTE_DU_TEST`, posé par l'exécution) devient le
+    compte des écrans pour tout le run — connexion initiale, reconnexion après une session perdue, chaque scénario. La session
+    RPC des vérifications reste le principal (A73). Rend l'erreur (compte inconnu, sans mot de passe…) ou "" : jamais un
+    repli silencieux sur le principal — `before_scenario` bloque chaque scénario avec cette raison."""
+    libelle = (libelle or "").strip()
+    context.compte_du_test = _LIBELLE_PRINCIPAL
+    if not libelle or _cle_de_libelle(libelle) == _LIBELLE_PRINCIPAL:
+        return ""
+    try:
+        compte = _resoudre_compte(context, libelle)
+    except PreconditionNonRemplieError as exc:
+        return str(exc)
+    if (connecteur or "").lower() == "odoo":
+        context.odoo_user, context.odoo_password = compte["user"], compte["password"]
+    else:
+        context.web_user, context.web_password = compte["user"], compte["password"]
+    context.compte_courant = context.compte_du_test = compte["label"]
+    return ""
+
+
+def refus_du_compte_sans_connexion(connecteur: str, strategie: str, compte_du_test: str) -> str:
+    """Revue de l'étape 4 (bloquant, 2026-10-21) : un projet web qui ne se connecte pas (stratégie `aucune`) ne peut jouer aucun
+    cas « en tant que » un compte — le run serait ANONYME, et un « le texte Administration n'est pas affiché » sortirait conforme
+    pour un lecteur qui le voit. Rend la raison du blocage, ou "" (Odoo se connecte toujours par l'écran de connexion)."""
+    if (connecteur or "").lower() == "odoo" or strategie != _auth.AUCUNE:
+        return ""
+    if (compte_du_test or _LIBELLE_PRINCIPAL) == _LIBELLE_PRINCIPAL:
+        return ""
+    return (f"PRÉREQUIS MANQUANT : ce cas est joué en tant que « {compte_du_test} », mais le projet ne se connecte pas "
+            "(connexion « aucune ») — choisissez une façon de se connecter dans les réglages du projet, ou le compte principal.")
+
+
 def retablir_le_compte_principal(context) -> None:
-    """Fin de scénario : la session RPC redevient celle du compte principal, qui a créé les données à nettoyer. Best-effort absolu, comme
+    """Fin de scénario : la session RPC redevient celle du compte principal, qui a créé les données à nettoyer ; les écrans
+    reviennent au compte du RUN (le compte du test, A70, sinon le principal) pour le scénario suivant. Best-effort absolu, comme
     tout le teardown — jamais un motif de masquer le verdict."""
-    if getattr(context, "compte_courant", _LIBELLE_PRINCIPAL) == _LIBELLE_PRINCIPAL:
+    du_run = getattr(context, "compte_du_test", _LIBELLE_PRINCIPAL) or _LIBELLE_PRINCIPAL
+    if getattr(context, "compte_courant", _LIBELLE_PRINCIPAL) == du_run:
+        return
+    if du_run != _LIBELLE_PRINCIPAL:
+        compte = (getattr(context, "comptes", None) or {}).get(_cle_de_libelle(du_run))
+        if compte:
+            context.odoo_user, context.odoo_password = compte["user"], compte["password"]
+            context.web_user, context.web_password = compte["user"], compte["password"]
+            context.compte_courant = du_run
         return
     principal = (getattr(context, "comptes", None) or {}).get(_LIBELLE_PRINCIPAL)
     odoo = getattr(context, "odoo", None)
-    if not principal or odoo is None:
+    if not principal:
+        return
+    if odoo is None:
+        # Web (revue de l'étape 4, 2026-10-21) : sans session RPC, seuls les identifiants des écrans reviennent au principal —
+        # sinon une reconnexion du scénario suivant se ferait avec le compte secondaire d'un scénario précédent.
+        context.odoo_user, context.odoo_password = principal["user"], principal["password"]
+        context.web_user, context.web_password = principal["user"], principal["password"]
+        context.compte_courant = _LIBELLE_PRINCIPAL
         return
     try:
         odoo.login(context.odoo_db, principal["user"], principal["password"])
@@ -4725,10 +4822,13 @@ def _verifier_ou_reconnecter_session(context, url_visee: str) -> None:
             f"PRÉREQUIS MANQUANT : la session s'est invalidée sur {url_visee} et une reconnexion, déjà tentée dans ce "
             "scénario, a aussi échoué.")
     context._reconnexion_tentee = True
+    # Étape 4 (A70, revue 2026-10-21) : un compte secondaire à l'écran (compte du cas ou step de connexion) se reconnecte par
+    # formulaire, sans le second facteur du principal — même règle que la connexion initiale (`environment.before_all`).
+    secondaire = (getattr(context, "compte_courant", _LIBELLE_PRINCIPAL) or _LIBELLE_PRINCIPAL) != _LIBELLE_PRINCIPAL
     authentifier_selon_la_strategie(
-        context.page, strategie=strategie, web_url=getattr(context, "web_url", "") or "",
+        context.page, strategie=_auth.FORMULAIRE if secondaire else strategie, web_url=getattr(context, "web_url", "") or "",
         user=getattr(context, "web_user", "") or "", password=getattr(context, "web_password", "") or "",
-        totp_secret=getattr(context, "totp_secret", "") or "",
+        totp_secret="" if secondaire else (getattr(context, "totp_secret", "") or ""),
         # Bloquant trouvé en revue verdict-reviewer chantier-entier (2026-09-30) : sans ce
         # paramètre, une reconnexion en cours de scénario qui retombe sur un écran intercalé
         # échouait avec « Vérifiez l'identifiant, le mot de passe » — alors que la vraie cause
