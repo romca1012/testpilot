@@ -319,11 +319,16 @@ class GenericWebConnector(Connector):
             # `rejouer_sequence_connexion` ci-dessus, `FormulaireConnexionObsoleteError` remonte
             # sans filet si l'application a changé, jamais un repli silencieux sur l'autre
             # détection (voir `_web_helpers.remplir_et_soumettre_formulaire_connexion`).
+            # Étape 4, morceau 6 : de quoi juger APRÈS coup si la connexion a pris (`crawl_identite_confirmee`) — l'adresse
+            # de l'écran de connexion, et si un formulaire a réellement été soumis (la détection générique rend `False` quand
+            # elle n'en trouve aucun, et le crawl continuait alors en visiteur, sans rien dire).
+            ctx.url_avant_connexion = getattr(ctx.page, "url", "")
             if self._login_form:
                 remplir_et_soumettre_formulaire_connexion(
                     ctx.page, self._login_form, self._user, self._password)
+                ctx.connexion_soumise = True
             else:
-                tenter_connexion_generique(ctx.page, self._user, self._password)
+                ctx.connexion_soumise = bool(tenter_connexion_generique(ctx.page, self._user, self._password))
             # ⚠️ Un diagnostic ne doit jamais faire échouer la connexion elle-même — `try/except`
             # explicite (pas seulement le best-effort interne de `lire_message_erreur_visible`,
             # qui suppose déjà un `page.locator()` fonctionnel : un faux `Page` de test qui ne
@@ -352,6 +357,27 @@ class GenericWebConnector(Connector):
                 getattr(ctx.page, "url", "?"), message_erreur, reponses_connexion,
                 requetes_echouees, erreurs_console, erreurs_js, texte_page)
         return _connexion
+
+    def crawl_identite_confirmee(self, ctx, identifiant: str) -> str:
+        """Comptes secondaires (étape 4, morceau 6) : un formulaire a été soumis ET la connexion a réussi selon LE MÊME
+        critère que l'exécution (`_base_helpers.connexion_reussie`) — l'adresse a quitté l'écran de connexion ET plus aucun
+        champ mot de passe n'est visible ; une page illisible ne confirme rien. Revue du 2026-10-21 (bloquant) : « adresse
+        changée OU mot de passe disparu » confirmait un refus redirigé vers `/login?error` — et le parcours, fait en
+        visiteur, était rangé sous ce compte."""
+        if not getattr(ctx, "connexion_soumise", False):
+            return "connexion impossible : aucun formulaire de connexion trouvé sur la page d'accueil du projet"
+        sans_fragment = lambda u: (u or "").split("#", 1)[0].rstrip("/")  # noqa: E731
+        try:
+            # Tous les champs mot de passe (jusqu'à 5, comme `_mot_de_passe_visible` du runtime) : un champ caché d'inscription
+            # placé avant le vrai ne doit pas faire passer un refus pour une connexion.
+            champs = (ctx.page.query_selector_all("input[type='password']") or [])[:5]
+            mot_de_passe_visible = any(c.is_visible() for c in champs)
+            adresse_quittee = sans_fragment(ctx.page.url) != sans_fragment(getattr(ctx, "url_avant_connexion", ""))
+        except Exception:
+            return "connexion impossible : l'écran après la connexion n'a pas pu être lu"
+        if not adresse_quittee or mot_de_passe_visible:
+            return "connexion impossible : l'écran de connexion est resté affiché — vérifiez son mot de passe"
+        return ""
 
     # ── Interne (réseau isolé, surchargeable en test) ──────────────────────────
     def _run_in_browser(self, fn, *args):

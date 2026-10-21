@@ -31,6 +31,9 @@ dist/
 # et une régression de l'application deviendrait la nouvelle vérité sans que personne la voie.
 !/data/domain/
 !/data/domain/*.json
+# Étape 4 (A79) : ce que voit chaque compte secondaire — jamais versionné.
+/data/domain/projet-*-comptes.json
+/data/domain/projet-*-tentative.json
 /behave_runtime/generated/*
 !/behave_runtime/generated/.gitkeep
 

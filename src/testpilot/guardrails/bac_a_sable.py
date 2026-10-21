@@ -62,6 +62,16 @@ class BacASableNonRemisAZero(RuntimeError):
     """Un essai a laissé l'application dans son état et elle ne se remet toujours pas à zéro : aucune exécution n'est jouée."""
 
 
+class ApplicationOccupeeParExploration(BacASableNonRemisAZero):
+    """A77 (porteur, 2026-10-21) : l'exploration parcourt l'application avec chaque compte — aucun test, aucune remise à zéro
+    pendant ce temps (deux comptes verraient deux états, et une différence de DONNÉES passerait pour une différence de DROITS).
+    Sous-classe de `BacASableNonRemisAZero` : le test n'est pas joué et sort « bloqué » avec cette raison, jamais un verdict."""
+
+
+MESSAGE_EXPLORATION = ("application occupée par l'exploration du projet : le test n'est pas joué. Relancez-le quand "
+                       "l'exploration est finie.")
+
+
 def cle_d_application(url: str | None) -> str | None:
     """L'ORIGINE d'une adresse (`schéma://hôte:port`, en minuscules, port par défaut explicité) — ce qui identifie une
     application, quel que soit le projet qui la vise. `None` si l'adresse ne se lit pas : aucune garde (comportement d'avant)."""
@@ -210,6 +220,12 @@ class _Verrou:
         self.condition = threading.Condition()
         self.executions = 0
         self.essai = False  # une remise à zéro est en cours : essai, ou rétablissement avant un run
+        self.exploration = False  # A77 : l'exploration parcourt l'application, rien d'autre n'y touche
+        self.exploration_en_attente = 0  # A77 (revue) : elle attend la fin des tests en cours — aucun NOUVEAU test ne démarre
+
+    @property
+    def occupee_par_l_exploration(self) -> bool:
+        return self.exploration or self.exploration_en_attente > 0
 
 
 _registre = threading.Lock()
@@ -233,8 +249,10 @@ def execution_reelle(cle: str | None):
     verrou = _verrou(cle)
     while True:
         with verrou.condition:
-            while verrou.essai:
+            while verrou.essai and not verrou.occupee_par_l_exploration:
                 verrou.condition.wait()
+            if verrou.occupee_par_l_exploration:
+                raise ApplicationOccupeeParExploration(MESSAGE_EXPLORATION)
             # La marque n'est posée que par un essai, donc sous exclusion : la lire ici, verrou tenu et sans essai, est sûr.
             if non_remis(cle) is None:
                 verrou.executions += 1
@@ -268,7 +286,9 @@ def essai(cle: str | None, attente_s: float | None = None):
     verrou = _verrou(cle)
     limite = time.monotonic() + max(0.0, ATTENTE_ESSAI_S if attente_s is None else attente_s)
     with verrou.condition:
-        while verrou.essai or verrou.executions:
+        while verrou.essai or verrou.executions or verrou.occupee_par_l_exploration:
+            if verrou.occupee_par_l_exploration:
+                raise BacASableOccupe("l'application est occupée par l'exploration du projet")
             reste = limite - time.monotonic()
             if reste <= 0:
                 raise BacASableOccupe(
@@ -304,8 +324,10 @@ def execution_remise_a_zero(cle: str | None, url: str):
         raise BacASableNonRemisAZero(f"adresse de remise à zéro illisible ({url}) : le test n'est pas joué")
     verrou = _verrou(cle)
     with verrou.condition:
-        while verrou.essai or verrou.executions:
+        while (verrou.essai or verrou.executions) and not verrou.occupee_par_l_exploration:
             verrou.condition.wait()
+        if verrou.occupee_par_l_exploration:
+            raise ApplicationOccupeeParExploration(MESSAGE_EXPLORATION)
         verrou.essai = True
     try:
         try:
@@ -318,4 +340,32 @@ def execution_remise_a_zero(cle: str | None, url: str):
     finally:
         with verrou.condition:
             verrou.essai = False
+            verrou.condition.notify_all()
+
+
+@contextmanager
+def exploration(cle: str | None, en_attente=None):
+    """A77 (porteur, 2026-10-21) : tenu pendant TOUTE une exploration. Attend que les tests et remises à zéro en cours sur
+    cette application finissent (`en_attente()` est appelé une fois si elle doit attendre — l'écran le dit), puis la tient :
+    un test lancé pendant ce temps n'est pas joué (`ApplicationOccupeeParExploration`, « bloqué » avec la raison), un essai de
+    génération est refusé. Sans clé : rien (comportement d'avant)."""
+    if not cle:
+        yield
+        return
+    verrou = _verrou(cle)
+    with verrou.condition:
+        if (verrou.essai or verrou.executions or verrou.exploration) and en_attente is not None:
+            en_attente()
+        verrou.exploration_en_attente += 1   # dès maintenant, aucun NOUVEAU test ne démarre : l'attente a une fin
+        try:
+            while verrou.essai or verrou.executions or verrou.exploration:
+                verrou.condition.wait()
+        finally:
+            verrou.exploration_en_attente -= 1
+        verrou.exploration = True
+    try:
+        yield
+    finally:
+        with verrou.condition:
+            verrou.exploration = False
             verrou.condition.notify_all()
