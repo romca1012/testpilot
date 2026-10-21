@@ -115,7 +115,10 @@ def test_falsifiable_le_registre_des_steps_derriere_un_interrupteur_est_ferme():
     sans qu'aucun test rougisse (revue du 2026-10-13) : la liste est donc fermée, et l'allonger se décide ici."""
     derriere = {s.label for s in steps_library.catalogue() if s.interrupteur}
 
-    assert derriere == {_LIBELLE_DU_STEP}
+    # Étape 4, morceau 7 (A89, porteur 2026-10-21) : les deux vérifications « ce que voit le compte du test », montrées à
+    # l'IA seulement avec l'écriture par compte (`TESTPILOT_GENERATION_PAR_COMPTE`).
+    assert derriere == {_LIBELLE_DU_STEP, "cet utilisateur voit l'enregistrement",
+                        "cet utilisateur ne voit pas l'enregistrement"}
 
 
 # ── Le helper, sur un vrai Chromium ─────────────────────────────────────────────────────────────────────────────────────

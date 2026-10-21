@@ -12,7 +12,7 @@ import re
 from behave import given, then, when
 
 from _base_helpers import (ConstatNonConcluantError, ElementIntrouvableError, constater, constater_visible,
-                           session_rpc_du_compte_qui_agit)
+                           derriere_interrupteur, session_rpc_du_compte_qui_agit)
 from _odoo_steps import _exiger_enregistrement_en_contexte
 from _selecteurs import odoo_attendre_inactif, selecteurs
 
@@ -81,6 +81,46 @@ def step_action_refusee(context, methode):
     constater(refuse,
              f"L'appel RPC direct de '{methode}' a RÉUSSI malgré le refus visible à l'écran — "
              "l'action n'est pas réellement bloquée côté serveur.")
+
+
+def _le_compte_qui_agit_voit(context) -> tuple[bool, str]:
+    """(ce compte voit-il l'enregistrement courant ?, sa description) — lu avec la session du compte qui AGIT (A76) ; un
+    refus de lecture vaut « ne voit pas ». L'enregistrement doit EXISTER pour le principal, qui voit tout (A73) : sinon
+    « ne voit pas » serait vrai pour un enregistrement disparu — non concluant, jamais vert."""
+    _exiger_enregistrement_en_contexte(
+        context, "Aucun enregistrement en contexte — impossible de vérifier ce que voit ce compte.", avec_modele=True)
+    modele, identifiant = context.last_record_model, context.last_record_ids[0]
+    if not context.odoo.env[modele].search_count([("id", "=", identifiant)]):
+        raise ConstatNonConcluantError(f"{modele} #{identifiant} n'existe plus (le compte principal ne le voit pas) : ce "
+                                       "que voit ce compte ne peut pas être vérifié.")
+    # Revue (bloquant) : la session du compte s'ouvre HORS du `try` — un refus de CONNEXION (`AccessDenied` : mot de passe
+    # changé, compte archivé, délai d'Odoo après 5 échecs de connexion) remonte en erreur technique, jamais en « ne voit pas ».
+    lecture = session_rpc_du_compte_qui_agit(context).env[modele]
+    try:
+        vu = bool(lecture.search_count([("id", "=", identifiant)]))
+    except Exception as exc:
+        if not _est_un_refus_d_acces(exc):
+            raise
+        vu = False
+    return vu, f"{modele} #{identifiant}"
+
+
+@then("cet utilisateur voit l'enregistrement")
+@derriere_interrupteur("TESTPILOT_GENERATION_PAR_COMPTE")
+def step_utilisateur_voit_enregistrement(context):
+    """A89 : ce que voit le compte du test se prouve AVEC CE COMPTE (lecture serveur faite par lui), jamais par la session des
+    vérifications — le compte principal voit tout, son « je la vois » passait pour celui du lecteur."""
+    vu, quoi = _le_compte_qui_agit_voit(context)
+    constater(vu, f"{quoi} n'est PAS visible pour ce compte — le serveur le lui cache.")
+
+
+@then("cet utilisateur ne voit pas l'enregistrement")
+@derriere_interrupteur("TESTPILOT_GENERATION_PAR_COMPTE")
+def step_utilisateur_ne_voit_pas_enregistrement(context):
+    """A89 : le pendant — un enregistrement que ce compte ne doit pas voir ; il existe (le principal le voit) mais le serveur
+    le refuse à CE compte."""
+    vu, quoi = _le_compte_qui_agit_voit(context)
+    constater(not vu, f"{quoi} est VISIBLE pour ce compte alors qu'il ne devrait pas l'être.")
 
 
 @given('je travaille dans la société "{nom}"')
