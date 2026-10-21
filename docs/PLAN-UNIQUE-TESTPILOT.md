@@ -99,6 +99,10 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
   avant d'écrire partout, pas seulement sur le web — c'est l'un des plus gros leviers pour la génération du premier coup.
 - **De toi :** V16 (une exploration par compte ?).
 - **2 à 3 jours — 0 $** (mesuré à l'étape 8)
+- *En cours (2026-10-21)* — tranché : A69 à A76. Morceaux 1 à 4 (remise à zéro avant chaque cas, Odoo compris) faits ;
+  morceau 5 (« Joué en tant que » sur le cas) fait, revu en trois passes ; morceau 6 : une exploration par compte (A69) ;
+  morceau 7 : l'IA écrit pour les écrans du compte du cas (éteint par défaut) **et la colonne `{{compte}}` des lignes de
+  données** pour les tests de droits (A70, porteur 2026-10-21).
 
 #### Étape 5 — L'IA ne part plus à l'aveugle (génération du premier coup)
 - Avant d'écrire, l'IA reçoit tout ce que l'exploration a relevé : pages, champs, listes et leur nombre de lignes,
