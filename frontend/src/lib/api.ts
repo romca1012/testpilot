@@ -367,6 +367,9 @@ export const api = {
     request<void>(`/api/schedules/${scheduledId}`, { method: 'DELETE' }),
   startExploration: (id: number | string) =>
     request<Exploration>(`/api/projects/${id}/exploration`, { method: 'POST' }),
+  // A83 : « Arrêter » — ce qui a été vu est gardé, affiché « incomplète ».
+  stopExploration: (id: number | string) =>
+    request<Exploration>(`/api/projects/${id}/exploration/arret`, { method: 'POST' }),
   // Lot « Enregistrement assisté du chemin de connexion » (sous-lots B/C) : émet un jeton d'accès
   // à usage unique pour démarrer une session en direct — la WebSocket elle-même (authentifiée par
   // ce jeton dans l'URL, jamais par cookie) est ouverte directement par `useLiveSession.ts`, pas
@@ -931,6 +934,18 @@ export interface Exploration {
   // seul signe visible que ce complément a bien tourné sur CETTE mesure, sans lire le fichier
   // `data/domain/…json` à la main.
   modeles_backoffice: number
+  // Étape 4, morceau 6 (A77-A83) : pendant — « 142 pages vues · compte 2 sur 3 (Lecteur) », ou l'attente des tests en cours ;
+  progression?: { rang?: number; total?: number; libelle?: string; pages?: number; attente?: boolean }
+  arret_demande?: boolean
+  // après — « incomplète (arrêtée à 142 pages) », jamais présentée comme complète ;
+  incomplete?: string; incomplete_pages?: number
+  // A84 : une exploration arrêtée qui a laissé la carte précédente en place.
+  derniere_tentative?: { le?: string; raison?: string; pages?: number; carte_gardee_du?: string }
+  familles?: { modele: string; exemples: string[]; pages_du_meme_modele: number }[]
+  // chaque compte secondaire (libellé seulement) : exploré, incomplet, en échec, à actualiser.
+  comptes_total?: number
+  comptes?: { id: number; libelle: string; statut: 'explore' | 'incomplet' | 'connexion_impossible' | 'echec' | 'a_actualiser'
+              message: string }[]
 }
 // Une page telle que le crawl l'a vue — forme volontairement souple (`Record<string, any>`) :
 // elle varie selon le connecteur (un <select> porte des `options`, un champ contraint porte
@@ -1094,7 +1109,12 @@ export interface VersionOut {
   // Étape 4 (A70) : le compte avec lequel cette version est jouée ; `null` = le principal.
   compte_id?: number | null
 }
-export interface CompteChoix { id: number | null; libelle: string }
+export interface CompteChoix {
+  id: number | null; libelle: string
+  // Étape 4, morceau 6 (A80) : '' (exploré, ou principal), 'jamais' (pas encore exploré), 'echec' (connexion impossible),
+  // 'erreur' (l'exploration a planté), 'incomplet' (arrêtée en route).
+  exploration?: '' | 'jamais' | 'echec' | 'erreur' | 'incomplet'; exploration_message?: string
+}
 export interface ReviewOut {
   id: number; version_id: number; decision: string; reviewer: string; comment: string; decided_at: string
 }

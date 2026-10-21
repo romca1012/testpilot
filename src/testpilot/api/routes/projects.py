@@ -356,9 +356,21 @@ def get_exploration(project_id: int, conn=Depends(get_conn)):
     projet = ProjectRepo(conn).get(project_id)
     if projet is None:
         raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
-    etat = exploration_service.etat(project_id, projet)
+    etat = exploration_service.etat(project_id, projet, conn=conn)
     job = exploration_service.get_job(etat["job_id"]) if etat["job_id"] else None
     return schemas.ExplorationOut(**etat, error=(job or {}).get("error", ""))
+
+
+@router.post("/{project_id}/exploration/arret", response_model=schemas.ExplorationOut,
+            dependencies=[Depends(access.require_project_role(access.ROLE_ADMIN))])
+def stop_exploration(project_id: int, conn=Depends(get_conn)):
+    """A83 (porteur, 2026-10-21) : « Arrêter ». Ce qui a été vu est gardé et affiché « incomplet », jamais comme complet."""
+    projet = ProjectRepo(conn).get(project_id)
+    if projet is None:
+        raise HTTPException(status_code=404, detail=f"projet {project_id} introuvable")
+    if not exploration_service.demander_arret(project_id):
+        raise HTTPException(status_code=409, detail="aucune exploration en cours sur ce projet")
+    return schemas.ExplorationOut(**exploration_service.etat(project_id, projet, conn=conn))
 
 
 @router.get("/{project_id}/exploration/pages", response_model=list[schemas.ExplorationPageOut],
