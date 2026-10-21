@@ -100,6 +100,13 @@ class GenerationAgent:
         modele = modele_du_cas.modele if modele_du_cas is not None else domain_model.charger_modele(projet)
         compte_du_test = ({**modele_du_cas.compte, "vue": modele_du_cas.vue}
                           if modele_du_cas is not None and modele_du_cas.compte else None)
+        # Revue finale : des lignes à compte — UNE consigne (celle des lignes, qui dit déjà le compte des lignes vides), jamais
+        # deux contradictoires ; elle dit de qui sont les écrans fournis.
+        lignes_a_compte = modele_du_cas.comptes_des_lignes if modele_du_cas is not None else []
+        ecrans_de = ((modele_du_cas.compte or {}).get("libelle") if modele_du_cas is not None and modele_du_cas.vue == "compte"
+                     else "principal")
+        if lignes_a_compte:
+            compte_du_test = None
         # Lot PT-02d : les noms des variables de test (interrupteur éteint : liste vide, message d'avant).
         from testpilot.generation import variables_de_test
         variables, valeurs_par_defaut = variables_de_test.pour_l_agent(projet)
@@ -115,7 +122,9 @@ class GenerationAgent:
                                    oracle=(projet or {}).get("oracle_requetes_disponibles"),
                                    regeneration=regeneration, variables=variables,
                                    formes_oracle=self._formes_oracle(modele, projet),
-                                   **({"compte_du_test": compte_du_test} if compte_du_test else {}))})
+                                   **({"compte_du_test": compte_du_test} if compte_du_test else {}),
+                                   **({"comptes_des_lignes": lignes_a_compte, "ecrans_de": ecrans_de}
+                                      if lignes_a_compte else {}))})
         if failure_context:
             state.messages[0]["content"] = [
                 {"type": "text", "text": state.messages[0]["content"]}, *failure_context]
