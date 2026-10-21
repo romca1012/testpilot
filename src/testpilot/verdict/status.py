@@ -267,6 +267,10 @@ def derive_verdict(outcome: ExecutionOutcome, *, connector_type: str | None = No
         return CaseVerdict(EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE, ground_truth=gt)
 
     real = outcome.real_run
+    if real is not None and real.returncode < 0 and getattr(real, "prerequis_manquant", ""):
+        # Étape 4 (A72) : rien n'a été joué — l'application n'a pas pu être remise à zéro. Prérequis d'environnement
+        # manquant (D1) : « bloqué », jamais un verdict ni une panne du test.
+        return CaseVerdict(EXEC_BLOCKED, FUNC_INDETERMINE, ground_truth=gt)
     if real is None or real.returncode < 0:
         # Crash / timeout du sous-processus → interruption technique.
         return CaseVerdict(EXEC_TECHNICAL_ERROR, FUNC_INDETERMINE, ground_truth=gt)

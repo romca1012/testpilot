@@ -247,6 +247,13 @@ def update_project(project_id: int, body: schemas.ProjectPatch, conn=Depends(get
         # A47 : la déclaration tombe AVANT que la nouvelle application soit enregistrée (chacune valide à part) — une
         # requête interrompue entre les deux laisse au pire une déclaration retirée, jamais une nouvelle application déclarée.
         repo.set_instance_de_test(project_id, False)
+        # Revue de l'étape 4 : l'adresse de remise à zéro tombe aussi, AVANT la nouvelle connexion (même ordre qu'A47) — un
+        # projet Odoo passé de la base « test » à la base « client » sur le même hôte aurait remis « test » à zéro avant
+        # chaque cas, puis joué sur « client ». Une adresse renvoyée telle qu'elle a été lue ne la redéclare pas ; une
+        # adresse NOUVELLE dans ce même corps, si (validée plus haut, écrite après la connexion).
+        repo.set_bac_a_sable_reset(project_id, "")
+        if bac_a_sable_reset is None or bac_a_sable_reset == (avant.get("bac_a_sable_reset") or ""):
+            bac_a_sable_reset = None
     repo.update_connection(
         project_id, connector_type=body.connector_type, connector_version=body.connector_version,
         base_url=body.base_url, database=body.database, username=body.username,

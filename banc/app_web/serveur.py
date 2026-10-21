@@ -232,7 +232,8 @@ class _Requete(BaseHTTPRequestHandler):
         if chemin == "/__reset" and methode == "POST":
             self._corps()
             etat.remettre_a_zero()
-            return self._json(200, {"ok": True})
+            # A75 (2026-10-20) : la remise à zéro le DIT — TestPilot n'accepte que cette réponse comme preuve.
+            return self._json(200, {"ok": True, "remis_a_zero": True})
         if chemin == "/__etat" and methode == "GET":
             return self._json(200, etat.vue_json())
         if chemin == "/__defauts" and methode == "GET":

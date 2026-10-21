@@ -86,14 +86,29 @@ class _SansRedirection(urllib.request.HTTPRedirectHandler):
         return None
 
 
+REPONSE_DE_REMISE_A_ZERO = '{"remis_a_zero": true}'
+
+
 def remettre_a_zero(url: str, delai_s: int = DELAI_REMISE_A_ZERO_S) -> None:
     """`POST` sur l'adresse de remise à zéro. Toute réponse autre que 2xx directe (redirection comprise), ou aucune réponse,
-    LÈVE : sans remise à zéro prouvée, ni essai ni exécution."""
+    LÈVE : sans remise à zéro prouvée, ni essai ni exécution.
+
+    Décision A75 (porteur, 2026-10-20) : la réponse doit AUSSI le dire — un corps JSON `{"remis_a_zero": true}`. Une adresse
+    mal saisie (« / », une page d'accueil) répond 200 sur la plupart des applications : on aurait cru l'application remise à
+    zéro, et l'IA aurait essayé ses actions dans de vraies données. Un 204 vide, un 200 en HTML ou `{"ok": true}` ne prouvent
+    plus rien."""
     requete = urllib.request.Request(url, data=b"{}", method="POST", headers={"Content-Type": "application/json"})
     ouvreur = urllib.request.build_opener(_SansRedirection)
     with ouvreur.open(requete, timeout=delai_s) as reponse:
         if not 200 <= int(reponse.status) < 300:
             raise RuntimeError(f"la remise à zéro a répondu {reponse.status}")
+        corps = reponse.read(4096)
+    try:
+        lu = json.loads(corps.decode("utf-8")) if corps else None
+    except (UnicodeDecodeError, ValueError):
+        lu = None
+    if not (isinstance(lu, dict) and lu.get("remis_a_zero") is True):
+        raise RuntimeError(f"la remise à zéro n'a pas confirmé : réponse attendue {REPONSE_DE_REMISE_A_ZERO}")
 
 
 # ── Marque : « un essai a laissé cette application dans son état » ────────────────────────────────────────
@@ -274,3 +289,33 @@ def reinitialiser_pour_les_tests() -> None:
     with _registre:
         _verrous.clear()
     _marques_en_memoire.clear()
+
+
+@contextmanager
+def execution_remise_a_zero(cle: str | None, url: str):
+    """Décision A72 (porteur, 2026-10-20) : avant CHAQUE exécution réelle d'un cas, l'application déclarée « à remettre à
+    zéro » y revient — puis le test est joué SEUL sur cette application (aucune autre exécution, aucun essai pendant ce
+    temps : une remise à zéro au milieu d'un autre test effacerait ce qu'il vérifie). Sans remise à zéro prouvée (A75) :
+    `BacASableNonRemisAZero`, le test n'est pas joué — jamais un verdict sur un état douteux (exemple mesuré : un client
+    « Martin SARL » laissé par un test précédent faisait passer « je crée Martin SARL, alors il existe » sans création).
+    La remise à zéro retire aussi une marque laissée par un essai (elle vaut rétablissement)."""
+    cle = cle or cle_d_application(url)
+    if not cle:
+        raise BacASableNonRemisAZero(f"adresse de remise à zéro illisible ({url}) : le test n'est pas joué")
+    verrou = _verrou(cle)
+    with verrou.condition:
+        while verrou.essai or verrou.executions:
+            verrou.condition.wait()
+        verrou.essai = True
+    try:
+        try:
+            remettre_a_zero_et_demarquer(cle, url)
+        except Exception as exc:
+            raise BacASableNonRemisAZero(
+                f"la remise à zéro avant le test a échoué ({type(exc).__name__} : {exc}) : le test n'est pas joué. Vérifiez "
+                "l'adresse de remise à zéro du projet (Paramètres de test, État de départ).") from exc
+        yield
+    finally:
+        with verrou.condition:
+            verrou.essai = False
+            verrou.condition.notify_all()
