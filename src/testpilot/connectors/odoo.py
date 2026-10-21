@@ -444,6 +444,60 @@ class OdooConnector(Connector):
             H.playwright_login(ctx)
         return _login
 
+    def crawl_identite_confirmee(self, ctx, identifiant: str) -> str:
+        """Comptes secondaires (étape 4, morceau 6) : la session ouverte par l'écran de connexion est-elle celle de CE compte ?
+        Mesuré sur le banc Odoo 17.0 (2026-10-21) : `/web/session/get_session_info`, appelé avec les cookies de la page,
+        rend `result.username` = l'identifiant connecté (`banc_commercial`) ; sans session, une erreur « Session Expired »
+        et aucun `result`. Toute autre réponse = connexion impossible, jamais un relevé attribué au compte."""
+        import json as _json
+        try:
+            reponse = ctx.page.request.post(
+                f"{(self._url or '').rstrip('/')}/web/session/get_session_info",
+                data=_json.dumps({"jsonrpc": "2.0", "method": "call", "params": {}}),
+                headers={"Content-Type": "application/json"})
+            connecte = str(((reponse.json() or {}).get("result") or {}).get("username") or "")
+        except Exception as exc:
+            return f"connexion impossible : la session ouverte est illisible ({type(exc).__name__})"
+        if not connecte or connecte.strip().lower() != (identifiant or "").strip().lower():
+            return "connexion impossible : Odoo n'a pas ouvert la session de ce compte — vérifiez son mot de passe"
+        return ""
+
+    def menus_visibles(self, page) -> list[dict] | None:
+        """Les chemins de menu du compte connecté, lus dans `load_menus` — DÉJÀ filtré par ses droits, et lisible par tout
+        utilisateur. Mesuré sur le banc 17.0 (2026-10-21) : `discover_menus` rend `[]` pour un compte non administrateur
+        (la lecture de `ir.actions.act_window` lève `AccessError`, sans exception côté client) — la carte aurait conclu « ce
+        compte ne voit aucun menu ». Ici, ni modèle ni action : seulement ce que l'écran propose. `None` si illisible."""
+        try:
+            menus = page.request.get(f"{self._url}/web/webclient/load_menus/{uuid.uuid4().hex}").json()
+        except Exception as exc:
+            logger.warning("[odoo] menus visibles illisibles : %s", type(exc).__name__)
+            return None
+        if not isinstance(menus, dict) or "root" not in menus:
+            return None
+        parents = {}
+        for parent_id, parent in menus.items():
+            if isinstance(parent, dict):
+                for child_id in parent.get("children", []) or []:
+                    parents[str(child_id)] = str(parent_id)
+        resultat: dict[str, str] = {}
+        for menu_id, m in menus.items():
+            if menu_id == "root" or not isinstance(m, dict) or not m.get("name"):
+                continue
+            parties, courant, visites = [], str(menu_id), set()
+            while courant in menus and courant not in visites and courant != "root":
+                visites.add(courant)
+                parties.append(str((menus[courant] or {}).get("name") or ""))
+                courant = parents.get(courant)
+            chemin = " / ".join(reversed([p for p in parties if p]))
+            # L'identifiant technique (`xmlid`, ex. `sale.menu_sale_order`) ne dépend pas de la langue de l'utilisateur.
+            if chemin:
+                resultat.setdefault(str(m.get("xmlid") or "") or f"chemin:{chemin}", chemin)
+        return [{"cle": cle, "chemin": chemin} for cle, chemin in sorted(resultat.items())]
+
+    def crawl_session_toujours_ouverte(self, ctx, identifiant: str) -> bool | None:
+        """Même mesure que `crawl_identite_confirmee` (banc 17.0, 2026-10-21), en fin de parcours."""
+        return self.crawl_identite_confirmee(ctx, identifiant) == ""
+
     def discover_menus(self, page) -> list[dict]:
         """Énumère TOUS les menus (portail + back-office) que le compte connecté peut RÉELLEMENT
         voir, et résout chacun vers son modèle technique réel — sans dépendre du crawl.

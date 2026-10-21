@@ -88,7 +88,7 @@ def chemin_legacy(connector_type: str = "odoo") -> Path:
     return DOMAIN_DIR / f"{(connector_type or 'odoo').lower()}.json"
 
 
-@lru_cache(maxsize=4)
+@lru_cache(maxsize=8)   # étape 4 : + l'annexe des comptes de chaque projet affiché
 def _charger(chemin: str, mtime: float, taille: int) -> dict:
     """Cache indexé sur (chemin, mtime, taille) : régénérer le modèle l'invalide sans redémarrage.
 
@@ -149,6 +149,34 @@ def charger_par_projet_id(project_id) -> dict | None:
         return _charger(str(chemin), info.st_mtime, info.st_size)
     except (OSError, json.JSONDecodeError):
         logger.exception("[domaine] modèle %s illisible (runtime résolveur)", chemin)
+        return None
+
+
+def chemin_annexe_des_comptes(project_id) -> Path:
+    """Étape 4, morceau 6 (A69 révisée, A79) : ce que les comptes SECONDAIRES ont vu lors de la dernière exploration, à côté
+    du modèle du projet. Le modèle (`projet-N.json`) reste EXACTEMENT la vue du principal — tous ses lecteurs d'aujourd'hui
+    (génération, réparation, résolveur, empreinte de provenance) n'y voient rien de nouveau. Hors de git (`.gitignore`) :
+    il décrit ce que voit chaque compte."""
+    return DOMAIN_DIR / f"projet-{int(project_id)}-comptes.json"
+
+
+def chemin_derniere_tentative(project_id) -> Path:
+    """A84 : une exploration arrêtée qui n'a PAS remplacé la carte précédente — sa date, sa raison, son nombre de pages,
+    pour que l'écran le dise. Effacé dès qu'une carte est réécrite. Hors de git, comme l'annexe des comptes."""
+    return DOMAIN_DIR / f"projet-{int(project_id)}-tentative.json"
+
+
+def charger_annexe_des_comptes(project_id) -> dict | None:
+    """L'annexe telle qu'écrite, ou `None`. Sa VALIDITÉ (même exploration que le modèle, comptes inchangés) se juge chez
+    l'appelant, qui a les comptes en main (`exploration_service`)."""
+    chemin = chemin_annexe_des_comptes(project_id)
+    if not chemin.exists():
+        return None
+    try:
+        info = chemin.stat()
+        return _charger(str(chemin), info.st_mtime, info.st_size)
+    except (OSError, json.JSONDecodeError):
+        logger.exception("[domaine] annexe des comptes %s illisible", chemin)
         return None
 
 
