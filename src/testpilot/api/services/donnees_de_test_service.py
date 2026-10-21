@@ -109,6 +109,32 @@ def _comptes_des_lignes(conn, case_id: int, project_id: int | None) -> list[dict
              if l["choisi"] else None} for l in lignes]
 
 
+def _ecart_des_lignes_figees(conn, case_id: int, version: dict, jeux: list, *, campagne: bool = False) -> str:
+    """Le compte EFFECTIF de chaque ligne jouée (la sienne, figée ; sinon celui du cas) doit être un compte pour lequel le test a
+    été écrit (`ecrit_pour.comptes_des_lignes`, sinon le seul compte de l'écriture). Rend le blocage, ou "" ."""
+    from testpilot.api.services.modele_du_cas import ecrit_pour_de_la_version
+
+    if not (version.get("feature_content") or "").strip():
+        return ""
+    ecrit = ecrit_pour_de_la_version(VersionRepo(conn).list_for_case(case_id), version)
+    ecrits = set(ecrit.get("comptes_des_lignes") or [ecrit.get("compte_id") or 0])
+    du_cas = _compte_du_cas(conn, version, _project_id_du_cas(conn, case_id))
+    for ligne in jeux:
+        if not isinstance(ligne, dict):
+            continue
+        a_son_compte = "compte" in ligne
+        # Le compte_id figé s'il existe (données figées anciennes : sinon le libellé « principal » vaut 0).
+        effectif = (ligne["compte_id"] if "compte_id" in ligne else None if a_son_compte else version.get("compte_id")) or 0
+        if effectif not in ecrits:
+            libelle = ligne.get("compte") if a_son_compte else du_cas
+            suite = (" Cette exécution garde les comptes figés à son lancement : corrigez la fiche, puis créez une nouvelle "
+                     "exécution." if campagne else "")
+            return (f"Données de test : la ligne « {ligne.get('jeu') or 'Par défaut'} » est jouée en tant que « {libelle} », le "
+                    "test n'a pas été écrit pour ce compte — régénérez le test, ou remettez cette ligne sur le compte pour "
+                    f"lequel il a été écrit. Le test n'a pas été joué.{suite}")
+    return ""
+
+
 def _compte_du_cas(conn, version: dict, project_id: int | None) -> str:
     """Le libellé du compte « Joué en tant que » de la version — ce que reprend une ligne sans compte (A91)."""
     from testpilot.store.repositories import ProjectAccountRepo
@@ -331,6 +357,11 @@ def _preparer_les_iterations(conn, execution_id: int, case_id: int, module_name:
             if (compte or du_cas) == COMPTE_SUPPRIME:
                 return Script(blocage=f"Données de test : la ligne « {ligne.get('jeu') or 'Par défaut'} » est jouée avec un "
                                       "compte supprimé — choisissez-en un autre. Le test n'a pas été joué.")
+    # Revue finale (bloquant) : « écrit pour » se vérifie sur les lignes FIGÉES, celles que ce run joue — la porte relit la
+    # base, où la ligne a pu être remise au compte du cas depuis le lancement (même double contrôle qu'A59).
+    ecart = _ecart_des_lignes_figees(conn, case_id, version, figes["jeux"], campagne=campagne)
+    if ecart:
+        return Script(blocage=ecart)
     rendus = []
     for ligne in figes["jeux"]:
         if not isinstance(ligne, dict) or not isinstance(ligne.get("valeurs"), dict):

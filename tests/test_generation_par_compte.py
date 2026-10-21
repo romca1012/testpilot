@@ -690,3 +690,174 @@ def test_falsifiable_a96_la_garde_persiste_meme_si_le_step_avale_l_exception(H, 
     texte = (Path(__file__).resolve().parent.parent / "behave_runtime" / "environment.py").read_text(encoding="utf-8")
     fin = texte[texte.index("def after_step("):]
     assert 'raison="recoupement_contredit"' in fin[:fin.index("\ndef ", 10)]
+
+
+
+# ── Liens entre l'écriture par compte (partie A) et la colonne « Compte » des lignes (partie B) ─────────────────────────
+
+def _lignes(conn, projet, cas_id, lignes):
+    """`lignes` : [(nom, compte_id | "principal" | None)] — None = case vide (compte du cas)."""
+    from testpilot.store.repositories import CaseDataRepo, TestDataRepo
+
+    depot = TestDataRepo(conn)
+    nom = f"resultat_{cas_id}"
+    variable = next((v["id"] for v in depot.variables(projet["id"]) if v["nom"] == nom), None) or depot.creer_variable(
+        projet["id"], nom=nom)
+    CaseDataRepo(conn).remplacer(cas_id, projet["id"], [
+        {"nom": nom, "valeurs": {variable: "x"}, "compte_choisi": compte is not None,
+         "compte_id": None if compte in (None, "principal") else compte} for nom, compte in lignes])
+
+
+def test_falsifiable_une_ligne_jouee_avec_un_compte_pour_lequel_le_test_n_a_pas_ete_ecrit_est_bloquee(conn, monkeypatch):
+    from testpilot.api.services import run_service
+
+    projet, lecteur, manager = _projet_explore(conn, monkeypatch)
+    cas, vid = _cas(conn, projet, ecrit_pour={"compte_id": None, "libelle": "principal", "vue": "principal",
+                                              "comptes_des_lignes": [0, lecteur]})
+    _lignes(conn, projet, cas["id"], [("L1", "principal"), ("L2", lecteur)])
+    assert [e for e in run_service.ecarts_cas_test(conn, cas, vid) if "est jouée en tant que" in e] == [], "écrit pour ces comptes : rien"
+    _lignes(conn, projet, cas["id"], [("L1", "principal"), ("L2", manager)])
+    assert [e for e in run_service.ecarts_cas_test(conn, cas, vid) if "est jouée en tant que" in e] == [
+        "la ligne « L2 » est jouée en tant que « Manager », le test n'a pas été écrit pour ce compte (régénérez le test, ou "
+        "remettez cette ligne sur le compte pour lequel il a été écrit)"]
+
+
+def test_falsifiable_un_test_d_avant_les_comptes_des_lignes_est_repute_ecrit_pour_le_seul_compte_du_cas(conn, monkeypatch):
+    from testpilot.api.services import run_service
+
+    projet, lecteur, _ = _projet_explore(conn, monkeypatch)
+    cas, vid = _cas(conn, projet, ecrit_pour={"compte_id": None, "libelle": "principal", "vue": "principal"})
+    _lignes(conn, projet, cas["id"], [("L1", None), ("L2", lecteur)])
+    assert any("la ligne « L2 » est jouée en tant que « Lecteur »" in e for e in run_service.ecarts_cas_test(conn, cas, vid))
+
+
+def test_pour_la_generation_note_les_comptes_des_lignes_pour_lesquels_le_test_est_ecrit(conn, monkeypatch):
+    projet, lecteur, _ = _projet_explore(conn, monkeypatch)
+    cas, _ = _cas(conn, projet, compte_id=lecteur)
+    _lignes(conn, projet, cas["id"], [("Vide", None), ("Principal", "principal")])
+    cible = mdc.pour_la_generation(conn, projet, lecteur, cas["id"])
+    assert [(l["nom"], l["libelle"]) for l in cible.comptes_des_lignes] == [("Vide", "Lecteur"), ("Principal", "principal")]
+    assert cible.ecrit_pour["comptes_des_lignes"] == sorted({0, lecteur})
+
+
+def test_la_consigne_des_lignes_n_apparait_qu_avec_des_lignes_a_compte():
+    plan = TestPlan(module_name="m", models=[], scenarios=[], personas=["u"], portal_routes=[], risks=[],
+                    connector_type="odoo", cost_usd=0.0, raw_spec="x")
+    assert prompt_mod.build_initial_message(plan, None) == prompt_mod.build_initial_message(plan, None, comptes_des_lignes=None)
+    message = prompt_mod.build_initial_message(plan, None, comptes_des_lignes=[
+        {"nom": "L1", "libelle": "Lecteur"}, {"nom": "L2", "libelle": "Manager"}])
+    assert "« L1 » en tant que « Lecteur », « L2 » en tant que « Manager »" in message and "n'écris AUCUNE connexion" in message
+
+
+def test_falsifiable_allume_l_essai_se_joue_avec_le_compte_de_la_premiere_ligne(conn, monkeypatch):
+    from testpilot.connectors.runtime_env import ENV_COMPTE_DU_TEST
+
+    projet, lecteur, manager = _projet_explore(conn, monkeypatch)
+    cas, _ = _cas(conn, projet)   # cas joué avec le principal, lignes à compte
+    _lignes(conn, projet, cas["id"], [("L1", manager), ("L2", lecteur)])
+    monkeypatch.setenv(interrupteurs.ENV_GENERATION_PAR_COMPTE, "1")
+    vus = _automatiser(conn, monkeypatch, cas["id"])
+    assert vus["runner"][ENV_COMPTE_DU_TEST] == "Manager"
+    assert [l["libelle"] for l in vus["generate"]["modele_du_cas"].comptes_des_lignes] == ["Manager", "Lecteur"]
+    monkeypatch.delenv(interrupteurs.ENV_GENERATION_PAR_COMPTE)
+    eteint = _automatiser(conn, monkeypatch, cas["id"])
+    assert ENV_COMPTE_DU_TEST not in eteint["runner"] and eteint["generate"]["modele_du_cas"] is None
+    assert eteint["generate"]["ecrit_pour"]["comptes_des_lignes"] == sorted({manager, lecteur}), "noté même éteint"
+
+
+
+# ── Revue finale du morceau 7 ─────────────────────────────────────────────────────────────────────────────────────────────
+
+def test_falsifiable_l_ecrit_pour_se_verifie_sur_les_lignes_figees_que_le_run_joue(conn, monkeypatch):
+    """Revue finale (bloquant) : campagne lancée avec L2 en Lecteur (figée), puis L2 remise au compte du cas dans la fiche —
+    la porte ne voit plus d'écart, mais le run joue L2 FIGÉE en Lecteur. Le contrôle se refait sur les lignes figées."""
+    from testpilot.api.services import donnees_de_test_service as service
+    from testpilot.store.repositories import ExecutionRepo, RunRepo
+
+    projet, lecteur, _ = _projet_explore(conn, monkeypatch)
+    cas, vid = _cas(conn, projet, ecrit_pour={"compte_id": None, "libelle": "principal", "vue": "principal"},
+                    feature="# language: fr\nFonctionnalité: F\n  Scénario: s\n    Alors la page affiche le texte \"{{resultat_%d}}\"\n"
+                    % 0)
+    conn.execute("UPDATE test_case_version SET feature_content=? WHERE id=?",
+                 (f"# language: fr\nFonctionnalité: F\n  Scénario: s\n    Alors la page affiche le texte \"{{{{resultat_{cas['id']}}}}}\"\n",
+                  vid))
+    conn.commit()
+    _lignes(conn, projet, cas["id"], [("L1", None), ("L2", lecteur)])
+    run_id = RunRepo(conn).create(project_id=projet["id"], name="Nuit", case_ids=[cas["id"]])
+    service.figer_pour_la_campagne(conn, RunRepo(conn).get(run_id))
+    _lignes(conn, projet, cas["id"], [("L1", None), ("L2", None)])   # la fiche ne montre plus d'écart
+    eid = ExecutionRepo(conn).create(test_case_id=cas["id"], version_id=vid)
+    conn.execute("UPDATE execution SET run_id=? WHERE id=?", (run_id, eid))
+    conn.commit()
+    script = service.preparer_le_script(conn, eid, cas["id"], vid, "m")
+    assert script.blocage.startswith("Données de test : la ligne « L2 » est jouée en tant que « Lecteur », le test n'a pas "
+                                     "été écrit pour ce compte"), script.blocage
+    assert script.blocage.endswith("corrigez la fiche, puis créez une nouvelle exécution."), "en campagne : la seule issue"
+
+
+def test_une_ligne_au_compte_supprime_n_est_pas_un_ecart_a92_s_en_charge(conn, monkeypatch):
+    from testpilot.api.services import run_service
+    from testpilot.store.repositories import ProjectAccountRepo
+
+    projet, lecteur, _ = _projet_explore(conn, monkeypatch)
+    cas, vid = _cas(conn, projet, ecrit_pour={"compte_id": None, "libelle": "principal", "vue": "principal"})
+    _lignes(conn, projet, cas["id"], [("L1", None), ("L2", lecteur)])
+    ProjectAccountRepo(conn).supprimer(projet["id"], lecteur)
+    assert not [e for e in run_service.ecarts_cas_test(conn, cas, vid) if "est jouée en tant que" in e]
+
+
+def test_falsifiable_allume_une_ligne_au_compte_supprime_n_appelle_jamais_l_ia(conn, monkeypatch):
+    from testpilot.store.repositories import ProjectAccountRepo
+
+    projet, lecteur, _ = _projet_explore(conn, monkeypatch)
+    cas, _ = _cas(conn, projet)
+    _lignes(conn, projet, cas["id"], [("L1", None), ("L2", lecteur)])
+    ProjectAccountRepo(conn).supprimer(projet["id"], lecteur)
+    monkeypatch.setenv(interrupteurs.ENV_GENERATION_PAR_COMPTE, "1")
+    vus = _automatiser(conn, monkeypatch, cas["id"])
+    assert "generate" not in vus and "connecteur" not in vus
+    assert vus["job"]["error"].startswith("Données de test : la ligne « L2 » est jouée avec un compte supprimé")
+
+
+def test_une_seule_consigne_quand_les_lignes_ont_leur_compte_et_elle_dit_de_qui_sont_les_ecrans():
+    plan = TestPlan(module_name="m", models=[], scenarios=[], personas=["u"], portal_routes=[], risks=[],
+                    connector_type="odoo", cost_usd=0.0, raw_spec="x")
+    message = prompt_mod.build_initial_message(plan, None, comptes_des_lignes=[{"nom": "L1", "libelle": "Lecteur"}],
+                                               ecrans_de="principal")
+    assert "Les écrans mesurés ci-dessus sont ceux de « principal »" in message
+    assert "## Compte avec lequel ce test sera joué" not in message
+
+
+
+def test_falsifiable_l_agent_n_envoie_qu_une_consigne_et_dit_de_qui_sont_les_ecrans(monkeypatch):
+    """Revue (seconde passe) : prouvé en passant par `GenerationAgent.generate` — cas joué en Lecteur (écrans de Lecteur) avec
+    des lignes à compte : la consigne des lignes seule, et « ceux de « Lecteur » »."""
+    from testpilot.generation import agent as agent_mod
+
+    vus = {}
+
+    def _message(*a, **kw):
+        vus.update(kw)
+        raise RuntimeError("arrêt du test")
+    monkeypatch.setattr(agent_mod.prompt_mod, "build_initial_message", _message)
+    cible = mdc.ModeleDuCas(modele={"pages": {}}, compte={"id": 4, "libelle": "Lecteur", "empreinte": "e"}, vue="compte",
+                            comptes_des_lignes=[{"nom": "L1", "libelle": "Manager", "compte_id": 7}])
+    plan = TestPlan(module_name="m", models=[], scenarios=[], personas=["u"], portal_routes=[], risks=[],
+                    connector_type="odoo", cost_usd=0.0, raw_spec="x")
+    agent = agent_mod.GenerationAgent.__new__(agent_mod.GenerationAgent)
+    with pytest.raises(RuntimeError, match="arrêt du test"):
+        agent.generate(plan, projet={"id": 1}, modele_du_cas=cible)
+    assert "compte_du_test" not in vus and vus["ecrans_de"] == "Lecteur"
+    assert vus["comptes_des_lignes"] == cible.comptes_des_lignes
+
+
+def test_falsifiable_allume_une_premiere_ligne_sans_mot_de_passe_n_appelle_jamais_l_ia(conn, monkeypatch):
+    from testpilot.store.repositories import ProjectAccountRepo
+
+    projet, lecteur, manager = _projet_explore(conn, monkeypatch)
+    ProjectAccountRepo(conn).modifier(projet["id"], manager, password="")
+    cas, _ = _cas(conn, projet)
+    _lignes(conn, projet, cas["id"], [("L1", manager), ("L2", lecteur)])
+    monkeypatch.setenv(interrupteurs.ENV_GENERATION_PAR_COMPTE, "1")
+    vus = _automatiser(conn, monkeypatch, cas["id"])
+    assert "generate" not in vus and vus["job"]["error"].startswith("Manager : compte sans mot de passe")
