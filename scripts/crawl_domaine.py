@@ -60,6 +60,8 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 import _base_helpers as H  # noqa: E402
 from testpilot import config  # noqa: E402
 from testpilot.generation import domain_model  # noqa: E402
+from testpilot.generation import familles_de_pages  # noqa: E402
+from testpilot.generation.familles_de_pages import Regroupement  # noqa: E402
 
 RACINES = ["/my/home", "/myservices"]
 
@@ -282,7 +284,7 @@ def _tester_ancre_hash(page, lien, url_avant):
 
 
 def crawler(ctx, nav, base_url, max_pages, *, racines=None, hors_perimetre=None, relogin=None,
-           suivre_ancres_hash=False):
+           suivre_ancres_hash=False, bilan=None, progression=None, arreter=None):
     """BFS sur les routes NORMALISÉES. `ctx.page` peut être recréée : le navigateur crashe.
 
     ⚠️ **Un crawl n'a pas le droit de mourir en route** : il rendrait une mesure tronquée qui
@@ -298,6 +300,12 @@ def crawler(ctx, nav, base_url, max_pages, *, racines=None, hors_perimetre=None,
     `suivre_ancres_hash` (2026-09-11) : `False` par défaut — comportement Odoo STRICTEMENT
     inchangé (un `href="#"` y est TOUJOURS un onglet, jamais une page). `exploration_service.py`
     le passe à `True` uniquement pour le connecteur `web` — voir `_tester_ancre_hash`.
+
+    Étape 4, morceau 6 (A81-A83, porteur 2026-10-21) — `max_pages=None` : AUCUNE limite, l'exploration finit quand tous les
+    modèles de page sont visités (la limite de 60 tronquait : projet 18 arrêté à exactement 60). Les pages sœurs à la
+    structure identique sont regroupées après 3 exemples (`familles_de_pages`). `bilan` (dict rempli ici, facultatif) reçoit
+    `familles` et `arretee` ; `progression(n)` est appelé à chaque page relevée ; `arreter()` vrai = arrêt demandé — la mesure
+    s'arrête là et `bilan["arretee"]` le dit (jamais présentée comme complète). Sans ces arguments : comportement d'avant.
     """
     racines = racines if racines is not None else RACINES
     hors_perimetre = hors_perimetre if hors_perimetre is not None else _HORS_PERIMETRE
@@ -309,11 +317,23 @@ def crawler(ctx, nav, base_url, max_pages, *, racines=None, hors_perimetre=None,
     a_voir = list(racines)
     vus_bruts = set()
     crashes = 0
+    regroupement = Regroupement()
+    source_de = {}                      # chemin → (page qui l'a fait découvrir, adresse parente)
+    soeurs_liees = defaultdict(set)     # (page, adresse parente) → sœurs que cette page liste (A82 : une vraie liste ?)
+    bilan = bilan if bilan is not None else {}
+    bilan["arretee"] = False
+    bilan["interrompue"] = False
 
-    while a_voir and len(pages) < max_pages:
+    while a_voir and (max_pages is None or len(pages) < max_pages):
+        if arreter is not None and arreter():
+            bilan["arretee"] = True
+            break
         chemin = a_voir.pop(0)
         cle = normalise(chemin)
         if cle in pages or chemin in vus_bruts:
+            continue
+        if regroupement.a_ignorer(cle, len(soeurs_liees.get(source_de.get(chemin), ()))):
+            vus_bruts.add(chemin)   # une sœur d'une famille déjà regroupée, trouvée sur une liste : comptée, pas visitée (A82)
             continue
         vus_bruts.add(chemin)
         try:
@@ -333,6 +353,8 @@ def crawler(ctx, nav, base_url, max_pages, *, racines=None, hors_perimetre=None,
                     relogin(ctx)
                 except Exception:
                     print("    [!!] relance impossible — mesure INCOMPLÈTE, à ne pas publier")
+                    # A83 : dit à l'appelant, jamais une mesure tronquée présentée comme complète.
+                    bilan["interrompue"] = True
                     break
             continue
 
@@ -354,6 +376,9 @@ def crawler(ctx, nav, base_url, max_pages, *, racines=None, hors_perimetre=None,
         infos["url_exemple"] = domain_model.retirer_prefixe_langue(
             urlparse(page.url).path or reelle) or reelle
         pages[reelle] = infos
+        regroupement.noter(reelle, infos)
+        if progression is not None:
+            progression(len(pages))
         print(f"  {len(pages):>3}. {reelle:<42} {len(infos['champs']):>2} champs  "
               f"{len(infos['formulaires'])} form")
 
@@ -381,9 +406,14 @@ def crawler(ctx, nav, base_url, max_pages, *, racines=None, hors_perimetre=None,
             cible_norm = normalise(cible.path)
             if cible_norm != reelle:
                 transitions[reelle].add(cible_norm)
+            parente = familles_de_pages.adresse_parente(cible_norm)
+            if parente is not None:
+                soeurs_liees[(reelle, parente)].add(cible_norm)
+                source_de.setdefault(cible.path, (reelle, parente))
             if cible_norm not in pages:
                 a_voir.append(cible.path)
 
+    bilan["familles"] = regroupement.bilan()
     return pages, transitions, onglets_internes
 
 
