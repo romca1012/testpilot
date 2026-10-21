@@ -131,7 +131,9 @@ def test_assemble_copie_les_deux_volets_du_profil_sapian_sous_un_nom_canonique(t
     fichiers = runner._profil_files()
     noms = set(fichiers.values())
     assert noms == {"_profil_generic.py", "_profil_connecteur.py"}
-    sources = {str(src) for src in fichiers}
+    # Chemins comparés en forme « / » : `str()` écrit « \ » sous Windows, et le test échouait sur le poste du porteur
+    # (jamais en CI Linux) alors que les deux fichiers étaient bien assemblés.
+    sources = {Path(src).as_posix() for src in fichiers}
     assert any("generic/profils/sapian.py" in s for s in sources)
     assert any("odoo/profils/sapian.py" in s for s in sources)
 
