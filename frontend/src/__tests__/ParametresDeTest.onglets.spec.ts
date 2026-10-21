@@ -311,18 +311,20 @@ describe('Paramètres de test — onglet État de départ', () => {
     expect(updateProject).toHaveBeenCalledWith(4, { calibration_writes_enabled: true, bac_a_sable_reset: '/remise-a-zero' })
   })
 
-  it('Odoo : pas d\'adresse de remise à zéro, ni à l\'écran ni dans l\'envoi', async () => {
+  // Étape 4 (A71, porteur 2026-10-20) : l'ancienne règle « Odoo : pas d'adresse de remise à zéro » est retirée — Odoo se
+  // remet à zéro par la même adresse déclarée que le web.
+  it('Odoo : l\'adresse de remise à zéro s\'affiche et s\'envoie, comme pour le web', async () => {
     const w = mount(OngletEtatDeDepart, {
       props: { projet: projet({ connector_type: 'odoo', calibration_writes_enabled: false, bac_a_sable_reset: '' }), peutRegler: true },
       global: { stubs } })
 
-    expect(w.find('[data-testid="bac-a-sable-reset"]').exists()).toBe(false)
     await w.get('[data-testid="bac-a-sable-autorise"]').setValue(true)
+    await w.get('[data-testid="bac-a-sable-reset"]').setValue('/__reset')
     await w.get('form').trigger('submit')
     await flushPromises()
 
     // Revue A47 : « Instance de test » n'est envoyée que si on l'a changée (jamais renvoyée telle qu'elle a été lue).
-    expect(updateProject).toHaveBeenCalledWith(4, { calibration_writes_enabled: true })
+    expect(updateProject).toHaveBeenCalledWith(4, { calibration_writes_enabled: true, bac_a_sable_reset: '/__reset' })
   })
 
   it('falsifiable (A45) : Odoo montre « Instance de test », la reprend et l’envoie ; le web ne la montre pas', async () => {
@@ -337,7 +339,8 @@ describe('Paramètres de test — onglet État de départ', () => {
     await w.get('form').trigger('submit')
     await flushPromises()
 
-    expect(updateProject).toHaveBeenCalledWith(4, { calibration_writes_enabled: true, instance_de_test: true })
+    // A71 : l'adresse de remise à zéro part aussi pour Odoo (vide ici : aucune déclaration).
+    expect(updateProject).toHaveBeenCalledWith(4, { calibration_writes_enabled: true, bac_a_sable_reset: '', instance_de_test: true })
     const web = mount(OngletEtatDeDepart, { props: { projet: projet(), peutRegler: true }, global: { stubs } })
     expect(web.find('[data-testid="instance-de-test"]').exists()).toBe(false)
   })
