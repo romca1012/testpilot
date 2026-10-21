@@ -99,12 +99,15 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
   avant d'écrire partout, pas seulement sur le web — c'est l'un des plus gros leviers pour la génération du premier coup.
 - **De toi :** V16 (une exploration par compte ?).
 - **2 à 3 jours — 0 $** (mesuré à l'étape 8)
-- *En cours (2026-10-21)* — tranché : A69 (révisée) à A84. Morceaux 1 à 4 (remise à zéro avant chaque cas, Odoo compris)
-  faits ; morceau 5 (« Joué en tant que » sur le cas) fait, revu en trois passes ; morceau 6 fait (une exploration de
-  l'application par TOUS les comptes, une carte « qui voit quoi », plus de limite de pages, progression, « Arrêter »,
-  application occupée pendant l'exploration ; essai réel sur le banc Odoo 17 : principal + Commercial explorés, mot de passe
-  faux en « connexion impossible », 135 menus dont 98 vus par le manager seul) ; morceau 7 : l'IA écrit pour les écrans du
-  compte du cas (éteint par défaut) **et la colonne `{{compte}}` des lignes de données** pour les tests de droits (A70).
+- *Fait (2026-10-21), commits locaux, non poussé* — tranché : A69 (révisée) à A96. Morceaux 1 à 4 (remise à zéro avant
+  chaque cas, Odoo compris) faits ; morceau 5 (« Joué en tant que » sur le cas) fait, revu en trois passes ; morceau 6 fait
+  (une exploration de l'application par TOUS les comptes, une carte « qui voit quoi », plus de limite de pages, progression,
+  « Arrêter », application occupée pendant l'exploration ; essai réel sur le banc Odoo 17 : principal + Commercial explorés,
+  mot de passe faux en « connexion impossible », 135 menus dont 98 vus par le manager seul) ; morceau 7 fait : l'IA écrit
+  pour les écrans du compte du cas (interrupteur `TESTPILOT_GENERATION_PAR_COMPTE`, éteint par défaut), colonne « Compte »
+  des lignes de données (A90-A94), vérifications faites avec le compte du cas et recoupées par le principal (A96), une
+  ligne jouée avec un compte pour lequel le test n'a pas été écrit est bloquée (vérifié aussi sur les lignes figées d'une
+  campagne).
   À mesurer à l'étape 8 : la section « onglets » du message à l'IA n'a pas de plafond — sans limite de pages, elle peut
   grossir (règle §8 : aucun changement du message sans mesure de coût, crédit indisponible).
 
