@@ -90,4 +90,29 @@ describe('LignesDuCas', () => {
     expect(w.find('[data-testid="nombre-iterations"]').exists()).toBe(false)   // rien ne sera joué : aucun décompte
     expect(w.get('[data-testid="non-joue"]').text()).toBe('Non joué')
   })
+
+  it('A90-A92 : la colonne « Compte » dit avec quel compte chaque ligne sera jouée, et envoie le choix', async () => {
+    getCaseData.mockResolvedValue({
+      ...DONNEES,
+      comptes: [{ id: null, libelle: 'principal' }, { id: 4, libelle: 'Lecteur' }],
+      lignes: [{ id: 7, nom: 'Mineur', valeurs: { '2': '16' }, compte_choisi: false, compte_id: null, compte_joue: 'Lecteur (compte du cas)' },
+               { id: 8, nom: 'Majeur', valeurs: { '2': '18' }, compte_choisi: true, compte_id: 9, compte_joue: 'compte supprimé' }],
+    })
+    const w = await fiche()
+    expect(w.get('[data-testid="colonne-compte"]').text()).toBe('Compte')
+    expect(w.get('[data-testid="compte-0"]').text()).toBe('Lecteur (compte du cas)')
+    expect(w.get('[data-testid="compte-1"] span').classes()).toContain('text-warning')
+
+    await w.get('[data-testid="modifier-lignes"]').trigger('click')
+    await w.get('[data-testid="compte-0"] select').setValue('4')
+    await w.get('[data-testid="compte-1"] select').setValue('principal')
+    await w.get('[data-testid="enregistrer-lignes"]').trigger('click')
+    await flushPromises()
+    expect(setCaseData.mock.calls[0][1].map((l: any) => [l.compte_choisi, l.compte_id])).toEqual([[true, 4], [true, null]])
+  })
+
+  it('sans autre compte que le principal : pas de colonne « Compte », envoi inchangé', async () => {
+    const w = await fiche()
+    expect(w.find('[data-testid="colonne-compte"]').exists()).toBe(false)
+  })
 })

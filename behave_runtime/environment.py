@@ -864,8 +864,14 @@ def before_scenario(context, scenario):
     use_fixture(playwright_browser, context)
     _capturer_reponse_formulaire(context)
     # Lot 07d : réponses réseau, boîtes de dialogue et onglets du scénario (tous onglets), numérotés — il faut observer AVANT l'action.
-    from _base_helpers import armer_garde_de_session, installer_les_observateurs, noter_session_ouverte
+    from _base_helpers import (appliquer_compte_de_l_iteration, armer_garde_de_session, installer_les_observateurs,
+                               noter_session_ouverte)
     installer_les_observateurs(context)
+    # Étape 4, morceau 7 (A90-A92) : le compte de CETTE itération (colonne réservée des Exemples écrits par le serveur).
+    # APRÈS les observateurs (revue, bloquant) : un changement de compte rouvre le contexte, qui les réinstalle UNE fois
+    # sur le nouveau — les réinstaller ensuite doublait le gestionnaire des boîtes de dialogue (un orphelin refusait toute
+    # confirmation : un « Supprimer » accepté par l'application semblait refusé, faux « Passé »).
+    appliquer_compte_de_l_iteration(context, _CONNECTOR_TYPE)
     # Lot VH-04 (V8) : la session chargée par le harnais (`storage_state`) est la référence de la garde de session.
     noter_session_ouverte(context)
     armer_garde_de_session(context, alors=False)

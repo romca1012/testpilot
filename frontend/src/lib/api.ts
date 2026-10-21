@@ -206,7 +206,8 @@ export const api = {
   // A57 : les cas qui ont leurs propres lignes, et les lignes d'un cas (ses classes de valeurs, jouées en itérations).
   casAvecLignes: (id: number | string) => request<number[]>(`/api/projects/${id}/donnees-de-test/cas-avec-lignes`),
   getCaseData: (caseId: number | string) => request<DonneesDuCas>(`/api/cases/${caseId}/donnees-de-test`),
-  setCaseData: (caseId: number | string, lignes: { id?: number; nom: string; valeurs: Record<string, string> }[]) =>
+  setCaseData: (caseId: number | string, lignes: { id?: number; nom: string; valeurs: Record<string, string>;
+                                                   compte_choisi?: boolean; compte_id?: number | null }[]) =>
     request<DonneesDuCas>(`/api/cases/${caseId}/donnees-de-test`, { method: 'PUT', body: JSON.stringify({ lignes }) }),
   testVariableUsages: (id: number | string, variableId: number) =>
     request<{ id: number; title: string }[]>(`/api/projects/${id}/donnees-de-test/variables/${variableId}/usages`),
@@ -709,8 +710,15 @@ export interface Associations {
 export interface ApercuDonnees { jeu: string; texte: string; manques: string[]; valeurs: Record<string, { valeur: string; origine: string }> }
 export interface JeuDeDonnees { id: number; nom: string; est_defaut: boolean; valeurs: Record<string, string> }
 export interface DonneesDeTest { variables: VariableDeTest[]; jeux: JeuDeDonnees[] }
-export interface LigneDuCas { id: number; nom: string; valeurs: Record<string, string> }
-export interface DonneesDuCas { variables: VariableDeTest[]; lignes: LigneDuCas[]; ecarts?: string[] }
+export interface LigneDuCas {
+  id: number; nom: string; valeurs: Record<string, string>
+  // Étape 4, morceau 7 (A90, A91) : le compte de la ligne — non choisi : celui du cas ; `compte_joue` : ce que l'écran affiche.
+  compte_choisi?: boolean; compte_id?: number | null; compte_joue?: string
+}
+export interface DonneesDuCas {
+  variables: VariableDeTest[]; lignes: LigneDuCas[]; ecarts?: string[]
+  comptes?: { id: number | null; libelle: string }[]   // vide : le projet n'a que le principal, la colonne n'est pas montrée
+}
 export interface ProjectAccount {
   id: number | null; label: string; username: string; business_role: string
   has_secret: boolean; principal: boolean

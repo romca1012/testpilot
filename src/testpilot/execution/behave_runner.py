@@ -173,6 +173,9 @@ class BehaveRunner:
         # du `.env` — vide si la connexion ne le fournit pas (`load_dotenv()` ne remplace pas une variable posée, même vide).
         for variable in valeurs_du_projet.JAMAIS_HERITEES:
             env[variable] = self.connection.get(variable, "")
+        # Étape 4, morceau 7 (revue) : le signal « le serveur a écrit le compte de chaque itération » ne vient QUE du serveur,
+        # jamais de l'environnement ni du `.env` (sinon une colonne `tp_compte` écrite par l'agent serait obéie).
+        env["TESTPILOT_COMPTES_PAR_ITERATION"] = self.connection.get("TESTPILOT_COMPTES_PAR_ITERATION", "")
         if module_name:
             env[GENERATED_STEPS_FILE_ENV] = f"{module_name}_steps.py"
         # `src` importable dans le sous-processus : le résolveur déterministe (§2bis) importe

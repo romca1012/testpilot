@@ -661,11 +661,20 @@ class LigneDuCasOut(BaseModel):
     id: int
     nom: str = ""
     valeurs: dict[str, str] = {}
+    # Étape 4, morceau 7 (A90, A91) : le compte de la ligne — `compte_choisi` faux : celui du cas ; vrai : `compte_id`
+    # (None = principal). `compte_joue` : ce que l'écran affiche, le compte avec lequel la ligne SERA jouée
+    # (« Lecteur (compte du cas) », « compte supprimé »).
+    compte_choisi: bool = False
+    compte_id: int | None = None
+    compte_joue: str = ""
 
 
 class DonneesDuCasOut(BaseModel):
     variables: list[VariableOut] = []   # les colonnes possibles : les variables vivantes du projet
     lignes: list[LigneDuCasOut] = []
+    # Étape 4, morceau 7 (A90) : les comptes proposés pour la colonne « Compte » — seulement s'il y en a d'autres que le
+    # principal (sinon la colonne n'est pas montrée).
+    comptes: list[CompteChoixOut] = []
     # Revue du 2026-10-19 : les variables que les lignes font varier et que le test du cas n'emploie pas — il ne se joue
     # pas tant que le test n'est pas régénéré (message montré tel quel).
     ecarts: list[str] = []
@@ -676,6 +685,8 @@ class LigneDuCasIn(BaseModel):
     id: int | None = None   # la ligne existante reprise (ses valeurs d'une variable à la corbeille sont gardées)
     nom: str = ""
     valeurs: dict[str, str] = {}
+    compte_choisi: bool = False   # A91 : faux = la ligne reprend « Joué en tant que » du cas
+    compte_id: int | None = None  # le compte choisi (None = le principal) ; un compte d'un autre projet est refusé (422)
 
 
 class LignesDuCasIn(BaseModel):
