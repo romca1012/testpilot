@@ -99,6 +99,12 @@ class BehaveRunner:
         # non plus — la mémoire du projet (refus, paliers de sélecteurs, menus) sert la génération, qui ne travaille que sur
         # l'environnement par défaut ; une autre version de l'application lui enseignerait des faits qui ne sont pas les siens.
         self.sans_apprentissage = bool(essai or environnement_ajoute)
+        # Étape 4 (A72) : l'adresse de remise à zéro DÉCLARÉE du projet, posée par l'exécution réelle (`run_service`) — chaque
+        # run réel commence par elle, seul sur son application. `None` : le comportement d'avant.
+        self.remise_a_zero_url: str | None = None
+        # Revue de l'étape 4 : une adresse DÉCLARÉE mais périmée (l'application du projet a changé) — le run n'est pas joué
+        # (sens sûr d'A72 : jamais un test sur l'état laissé par le précédent faute de remise à zéro).
+        self.remise_a_zero_refus: str = ""
 
     def _cle_d_application(self) -> str | None:
         """L'application que ce runner vise (origine de son adresse) — deux projets peuvent viser la même. `None` sans
@@ -224,7 +230,14 @@ class BehaveRunner:
             # Lot VH-07 : un run RÉEL n'est jamais joué pendant qu'un essai remet son application à zéro, ni sur une
             # application qu'un essai a laissée dans son état (faux vert possible — voir `guardrails/bac_a_sable.py`).
             # Un essai à blanc ne touche pas l'application ; l'essai lui-même est déjà sous exclusion.
+            if self.remise_a_zero_refus and not (dry_run or self.essai):
+                logger.error("[remise à zéro] run non joué : %s", self.remise_a_zero_refus)
+                return BehaveResult(success=False, returncode=-3, dry_run=dry_run,
+                                    raw_stderr=f"PRÉREQUIS MANQUANT : {self.remise_a_zero_refus}",
+                                    prerequis_manquant=self.remise_a_zero_refus)
             garde = (contextlib.nullcontext() if dry_run or self.essai
+                     else bac_a_sable.execution_remise_a_zero(self._cle_d_application(), self.remise_a_zero_url)
+                     if self.remise_a_zero_url
                      else bac_a_sable.execution_reelle(self._cle_d_application()))
             try:
                 with garde:
@@ -235,7 +248,7 @@ class BehaveRunner:
                 # Rien n'a été joué : code de retour négatif = interruption technique (`derive_verdict`), jamais un verdict.
                 logger.error("[bac à sable] run non joué : %s", exc)
                 return BehaveResult(success=False, returncode=-3, dry_run=dry_run,
-                                    raw_stderr=f"PRÉREQUIS MANQUANT : {exc}")
+                                    raw_stderr=f"PRÉREQUIS MANQUANT : {exc}", prerequis_manquant=str(exc))
             except subprocess.TimeoutExpired:
                 # ⚠️ Un timeout est le cas où la trace est la PLUS utile (« qu'a-t-il fait pendant
                 # 15 minutes ? ») — et c'est justement celui où il n'y a pas de `proc`. On archive

@@ -405,7 +405,8 @@ def test_reset_remet_tout_a_zero_mais_garde_les_defauts():
         nav.post("/panier/ajouter", {"produit": "P002", "quantite": "1"})
         avant = etat(srv.url)
         assert avant["commandes"] and avant["enregistrements"] and avant["panier"]["lignes"]
-        assert appel_json(srv.url, "POST", "/__reset") == (200, {"ok": True})
+        # A75 (2026-10-20) : la remise à zéro le dit — seule preuve acceptée par TestPilot.
+        assert appel_json(srv.url, "POST", "/__reset") == (200, {"ok": True, "remis_a_zero": True})
         assert etat(srv.url) == {
             "commandes": [],
             "panier": {"lignes": [], "remise_pct": "0"},

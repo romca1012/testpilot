@@ -31,6 +31,7 @@ ENV_CAS_DIT_SES_DONNEES = "TESTPILOT_CAS_DIT_SES_DONNEES"
 ENV_FORME_ORACLE = "TESTPILOT_FORME_ORACLE"
 ENV_LIGNES_PROPOSEES = "TESTPILOT_LIGNES_PROPOSEES"
 ENV_CONTROLE_FIN_ECRITURE = "TESTPILOT_CONTROLE_FIN_ECRITURE"
+ENV_ESSAI_TOUS_CONNECTEURS = "TESTPILOT_ESSAI_TOUS_CONNECTEURS"
 
 _VRAI = frozenset({"1", "true", "yes", "oui", "on"})
 _ALLUMES_PAR_DEFAUT = frozenset({ENV_VARIABLES_DE_TEST, ENV_CAS_DIT_SES_DONNEES})
@@ -101,6 +102,13 @@ def controle_fin_ecriture_actif(env: Mapping[str, str] | None = None) -> bool:
     dépendent que du test, `generation/avis_du_test.py`) sont renvoyés à l'IA, qui les corrige avant de rendre la main
     (deux fois au plus). Change ce que l'API reçoit (des tours en plus) : éteint jusqu'à sa mesure (étape 3)."""
     return _actif(ENV_CONTROLE_FIN_ECRITURE, env)
+
+
+def essai_tous_connecteurs_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Étape 4 du plan unique (A71) : l'essai « exécuter puis écrire » (lot VH-07) aussi pour Odoo — avec les mêmes conditions
+    (l'IA peut agir, instance de test déclarée, adresse de remise à zéro déclarée et prouvée). Change ce que l'API reçoit
+    (un outil de plus) : éteint jusqu'à sa mesure (étape 8)."""
+    return _actif(ENV_ESSAI_TOUS_CONNECTEURS, env)
 
 
 def allume(nom: str, env: Mapping[str, str] | None = None) -> bool:

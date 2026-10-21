@@ -656,13 +656,17 @@ def adresse_declaree(base_url: str, declaree: str) -> str:
 def construire(projet: dict | None, dry_runner, connector=None) -> EssaiBacASable | None:
     """Le mode « exécuter puis écrire » de CE projet, ou `None` — auquel cas l'outil n'est pas proposé à l'agent.
 
-    Exige (D26) : calibration en écriture AUTORISÉE par le projet, adresse de remise à zéro DÉCLARÉE pour l'adresse actuelle,
-    connecteur `web` (première version : Odoo n'a pas encore de remise à zéro), et un runner réel. Les essais tournent sans
-    repli par le modèle de langage (D33) : ils ne coûtent aucun appel LLM."""
+    Exige (D26) : calibration en écriture AUTORISÉE par le projet (pour Odoo : instance de test déclarée, A45), adresse de
+    remise à zéro DÉCLARÉE pour l'adresse actuelle, et un runner réel. Connecteur `web` ; Odoo aussi derrière l'interrupteur
+    `TESTPILOT_ESSAI_TOUS_CONNECTEURS` (étape 4, A71 : Odoo se remet à zéro par la même adresse déclarée). Les essais tournent
+    sans repli par le modèle de langage (D33) : ils ne coûtent aucun appel LLM."""
     from testpilot.execution.behave_result import SANS_REPLI_ENV
 
+    from testpilot.generation import interrupteurs
+
     projet = projet or {}
-    if not ia_peut_ecrire(projet) or (projet.get("connector_type") or "").lower() != "web":
+    connecteur = (projet.get("connector_type") or "").lower()
+    if not ia_peut_ecrire(projet) or (connecteur != "web" and not interrupteurs.essai_tous_connecteurs_actif()):
         return None
     try:
         url = adresse_declaree(str(projet.get("base_url") or ""), str(projet.get("bac_a_sable_reset") or ""))
