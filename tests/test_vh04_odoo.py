@@ -53,7 +53,8 @@ class _Record:
 
 
 def _ctx(exc):
-    modele = types.SimpleNamespace(browse=lambda _id: _Record(exc))
+    # A76 : le compte qui agit voit l'enregistrement (sinon le refus serait « non concluant », testé ailleurs).
+    modele = types.SimpleNamespace(browse=lambda _id: _Record(exc), search_count=lambda domaine: 1)
     return types.SimpleNamespace(page=_Page(), odoo_version=(17, 0), last_record_model="sale.order", last_record_ids=[1],
                                  odoo=types.SimpleNamespace(env={"sale.order": modele}))
 
