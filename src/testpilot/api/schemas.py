@@ -183,6 +183,11 @@ class CompteChoixOut(BaseModel):
     """Un compte proposé dans « Joué en tant que » : son libellé, jamais son identifiant ni son mot de passe (D8)."""
     id: int | None = None   # None = le compte principal
     libelle: str
+    # Étape 4, morceau 6 (A80) : ce que la dernière exploration a pu faire avec ce compte — `""` (exploré, ou principal),
+    # `jamais` (pas encore exploré), `echec` (connexion impossible), `erreur` (l'exploration a planté) ou `incomplet`
+    # (arrêtée en route). Affiché sur la fiche du cas.
+    exploration: str = ""
+    exploration_message: str = ""
 
 
 class ReviewOut(BaseModel):
@@ -730,6 +735,20 @@ class ExplorationOut(BaseModel):
     modeles_backoffice: int = 0
     resume: str = ""
     error: str = ""
+    # Étape 4, morceau 6 (A69 révisée, A77-A83) — ce que l'écran du projet dit de l'exploration :
+    # pendant : `{rang, total, libelle, pages, attente}` (« 142 pages vues · compte 2 sur 3 (Lecteur) ») ;
+    progression: dict = {}
+    arret_demande: bool = False
+    # après : « incomplète (arrêtée à N pages) » — jamais présentée comme complète (A83) ;
+    incomplete: str = ""
+    incomplete_pages: int = 0
+    # A84 : une exploration arrêtée qui n'a pas remplacé la carte : `{le, raison, pages, carte_gardee_du}` ;
+    derniere_tentative: dict = {}
+    # les pages sœurs regroupées (A82) : `[{modele, exemples, pages_du_meme_modele}]` ;
+    familles: list[dict] = []
+    # chaque compte : `[{id, libelle, statut: explore|incomplet|connexion_impossible|echec|a_actualiser, message}]` — libellés.
+    comptes_total: int = 0
+    comptes: list[dict] = []
 
 
 class LiveSessionOut(BaseModel):

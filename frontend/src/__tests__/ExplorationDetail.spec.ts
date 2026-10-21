@@ -77,6 +77,20 @@ describe('écran de consultation de la cartographie explorée', () => {
     expect(texte.indexOf('/countryselect')).toBeLessThan(texte.indexOf('/login'))
   })
 
+  it('étape 4 (A82, A83) : dit les pages regroupées et une exploration incomplète', async () => {
+    listProjects.mockResolvedValue([{ id: 4, name: 'boutique', base_url: 'https://x' }])
+    getExploration.mockResolvedValue({ ...ETAT_EXPLORE, incomplete: 'arrêtée', incomplete_pages: 142,
+      familles: [{ modele: '/produit/…', exemples: ['/produit/a', '/produit/b', '/produit/c'], pages_du_meme_modele: 4997 }] })
+    getExplorationPages.mockResolvedValue([
+      { route: '/produit/a', titre: '', url_exemple: '', champs: [], actions: [], liens: [], formulaires: [] },
+    ])
+
+    const wrapper = await monterEcran()
+    const familles = wrapper.get('[data-testid="detail-familles"]').text().replace(/\s+/g, ' ')
+    expect(familles).toBe('/produit/… : 1 modèle, 3 exemples visités, 4997 pages du même modèle')
+    expect(wrapper.get('[data-testid="detail-incomplete"]').text()).toContain('incomplète (arrêtée à 142 pages)')
+  })
+
   it('affiche un état vide explicite quand rien n’a été exploré', async () => {
     listProjects.mockResolvedValue([{ id: 4, name: 'yros', base_url: 'https://x' }])
     getExploration.mockResolvedValue(ETAT_VIDE)

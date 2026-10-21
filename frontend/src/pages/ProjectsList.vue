@@ -331,7 +331,41 @@ async function loadExplorations() {
   for (const p of projects.value) {
     try {
       explorations.value[p.id] = await api.getExploration(p.id)
+      // Une exploration déjà en cours (page rechargée) : on suit sa progression, comme si on venait de la lancer.
+      if (explorations.value[p.id].running && exploring.value === null) {
+        exploring.value = p.id
+        pollExploration(p.id)
+      }
     } catch { /* best-effort : l'état de la carto ne doit jamais casser la liste des projets */ }
+  }
+}
+
+// Étape 4, morceau 6 (A77-A83) : ce que l'exploration fait en ce moment, en une ligne.
+function enCours(e?: Exploration): string {
+  const pr = e?.progression
+  if (!pr || !pr.rang) return 'Exploration en cours…'
+  if (pr.attente) return 'En attente de la fin des tests en cours sur l\'application…'
+  const compte = (pr.total || 1) > 1 ? ` · compte ${pr.rang} sur ${pr.total} (${pr.libelle})` : ''
+  return `Exploration en cours… ${pr.pages || 0} pages vues${compte}${e?.arret_demande ? ' — arrêt demandé' : ''}`
+}
+// A83 : seul un compte exploré JUSQU'AU BOUT compte comme exploré ; arrêté, en échec ou sans connexion : une ligne qui le dit.
+const comptesExplores = (e?: Exploration) => (e?.comptes || []).filter((c) => c.statut === 'explore')
+const comptesEnEchec = (e?: Exploration) =>
+  (e?.comptes || []).filter((c) => ['incomplet', 'connexion_impossible', 'echec'].includes(c.statut))
+const comptesAActualiser = (e?: Exploration) => (e?.comptes || []).filter((c) => c.statut === 'a_actualiser')
+
+// A84 : une phrase par cause, lisible telle quelle.
+function phraseTentative(t: NonNullable<Exploration['derniere_tentative']>): string {
+  const quoi = t.raison === 'arrêtée' ? 'arrêtée' : t.raison === 'interrompue' ? 'interrompue'
+    : 'dont la session s\'est perdue'
+  return `Dernière exploration ${quoi} le ${t.le} à ${t.pages} pages — la carte du ${t.carte_gardee_du} est gardée`
+}
+
+async function stopExploration(p: ProjectSummary) {
+  try {
+    explorations.value[p.id] = await api.stopExploration(p.id)
+  } catch (e: any) {
+    error.value = e?.message || 'Arrêt impossible'
   }
 }
 
@@ -556,7 +590,7 @@ onMounted(async () => { await load(); await loadExplorations() })
           <div class="mt-1 flex items-center gap-2">
           <div class="min-w-0 flex-1 text-xs">
             <template v-if="explorations[p.id]?.running || exploring === p.id">
-              <span class="text-primary">Exploration en cours… (quelques minutes)</span>
+              <span class="text-primary" data-testid="exploration-en-cours">{{ enCours(explorations[p.id]) }}</span>
             </template>
             <template v-else-if="explorations[p.id]?.explored">
               <span class="text-muted-foreground">
@@ -577,6 +611,26 @@ onMounted(async () => { await load(); await loadExplorations() })
                 · {{ explorations[p.id].modeles_backoffice }} modèles back-office
               </span>
               <span class="text-subtle-foreground"> — mesuré le {{ explorations[p.id].mesure_le }}</span>
+              <!-- A83 : une exploration arrêtée ou interrompue le DIT, jamais présentée comme complète. -->
+              <span v-if="explorations[p.id].incomplete" class="text-warning" data-testid="exploration-incomplete">
+                · incomplète ({{ explorations[p.id].incomplete }} à {{ explorations[p.id].incomplete_pages }} pages)
+              </span>
+              <!-- A84 : une exploration arrêtée n'a pas remplacé la carte complète — on le dit, avec les deux dates. -->
+              <div v-if="explorations[p.id].derniere_tentative?.le" class="text-warning" data-testid="exploration-tentative">
+                {{ phraseTentative(explorations[p.id].derniere_tentative!) }}
+              </div>
+              <!-- Étape 4, morceau 6 : seulement si le projet a d'autres comptes que le principal (sinon : l'écran d'avant). -->
+              <span v-if="explorations[p.id].comptes_total" class="text-muted-foreground" data-testid="exploration-comptes">
+                · {{ comptesExplores(explorations[p.id]).length }} compte{{ comptesExplores(explorations[p.id]).length > 1 ? 's' : '' }}
+                exploré{{ comptesExplores(explorations[p.id]).length > 1 ? 's' : '' }} sur {{ explorations[p.id].comptes_total }}
+              </span>
+              <div v-for="c in comptesEnEchec(explorations[p.id])" :key="`e${c.id}`" class="text-destructive"
+                   data-testid="exploration-compte-echec">
+                {{ c.libelle }} : {{ c.message }}
+              </div>
+              <div v-if="comptesAActualiser(explorations[p.id]).length" class="text-warning" data-testid="exploration-a-actualiser">
+                À actualiser : {{ comptesAActualiser(explorations[p.id]).map((c) => `${c.libelle} (${c.message})`).join(', ') }}
+              </div>
             </template>
             <template v-else>
               <span class="text-subtle-foreground">Application non explorée</span>
@@ -591,7 +645,15 @@ onMounted(async () => { await load(); await loadExplorations() })
           >
             Voir le détail
           </RouterLink>
-          <Button
+          <!-- A83 : pendant l'exploration, « Arrêter » remplace « Actualiser » ; ce qui a été vu est gardé. -->
+          <Button v-if="explorations[p.id]?.running || exploring === p.id"
+            variant="secondary" size="sm" :disabled="explorations[p.id]?.arret_demande"
+            title="Arrêter l'exploration : ce qui a été vu est gardé, marqué incomplet"
+            @click.stop="stopExploration(p)"
+          >
+            Arrêter
+          </Button>
+          <Button v-else
             variant="secondary" size="sm"
             :disabled="!p.base_url || explorations[p.id]?.running || exploring === p.id"
             :title="!p.base_url ? 'Renseignez d\'abord la connexion du projet'

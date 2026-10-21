@@ -359,6 +359,17 @@ const compteCourant = computed(() => {
 // même s'il ne reste que le principal — sinon l'écran disait « principal » alors que le cas sort bloqué, sans issue.
 const compteSupprime = computed(() => compteCourant.value !== null && !comptes.value.some((c) => c.id === compteCourant.value))
 const afficherCompte = computed(() => comptes.value.length > 1 || compteSupprime.value)
+// Étape 4, morceau 6 (A80) : le compte du cas n'a pas encore été vu par l'exploration, ou n'a pas pu s'y connecter.
+const explorationDuCompte = computed(() => {
+  const c = comptes.value.find((x) => x.id === compteCourant.value)
+  if (!c || c.id === null) return ''
+  if (c.exploration === 'jamais') return `${c.libelle} pas encore exploré — actualisez l'exploration du projet`
+  // La vraie cause quand le serveur la donne (« le projet ne se connecte pas… », « l'écran de connexion est resté affiché… »).
+  if (c.exploration === 'echec') return `${c.libelle} : ${c.exploration_message || 'connexion impossible lors de l\'exploration — vérifiez son mot de passe'}`
+  if (c.exploration === 'erreur') return `${c.libelle} : l'exploration a échoué pour ce compte — actualisez l'exploration du projet`
+  if (c.exploration === 'incomplet') return `${c.libelle} : exploration incomplète — actualisez l'exploration du projet`
+  return ''
+})
 const libelleDuCompte = computed(() => compteSupprime.value
   ? 'compte supprimé'
   : comptes.value.find((c) => c.id === compteCourant.value)?.libelle ?? 'principal')
@@ -662,6 +673,9 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
 
           <p v-if="afficherCompte" class="mt-4 text-sm text-muted-foreground" data-testid="joue-en-tant-que">
             Joué en tant que : <span class="font-medium text-foreground">{{ libelleDuCompte }}</span>
+          </p>
+          <p v-if="explorationDuCompte" class="mt-1 text-xs text-warning" data-testid="exploration-du-compte">
+            {{ explorationDuCompte }}
           </p>
 
           <!-- A57 : les lignes propres à ce cas, une itération chacune quand on le lance. -->

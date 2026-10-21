@@ -190,9 +190,12 @@ def test_falsifiable_on_ne_choisit_qu_un_compte_du_projet_et_la_fiche_ne_montre_
     assert client.patch(f"/api/cases/{cid}/metier", json={"compte_id": lecteur}).status_code == 200
 
     fiche = client.get(f"/api/cases/{cid}").json()
-    assert fiche["comptes"] == [{"id": None, "libelle": "principal"}, {"id": lecteur, "libelle": "Lecteur"}]
+    # Étape 4, morceau 6 (A80, porteur 2026-10-21) : chaque compte porte aussi l'état de sa dernière exploration.
+    assert [(c["id"], c["libelle"]) for c in fiche["comptes"]] == [(None, "principal"), (lecteur, "Lecteur")]
+    assert fiche["comptes"][1]["exploration"] == "jamais", "jamais exploré : la fiche du cas le dira"
     assert "motdepasse-lecteur" not in json.dumps(fiche), "jamais un mot de passe"
-    assert all(set(c) == {"id", "libelle"} for c in fiche["comptes"]), "jamais un identifiant de connexion (D8)"
+    assert all(set(c) == {"id", "libelle", "exploration", "exploration_message"} for c in fiche["comptes"]),         "jamais un identifiant de connexion (D8)"
+    assert "lecteur" not in json.dumps(fiche["comptes"]).replace("Lecteur", ""), "l'identifiant « lecteur » n'apparaît nulle part"
     courante = next(v for v in fiche["versions"] if v["id"] == fiche["current_version_id"])
     assert courante["compte_id"] == lecteur
     assert client.patch(f"/api/cases/{cid}/metier", json={"compte_id": None}).status_code == 200, "retour au principal"

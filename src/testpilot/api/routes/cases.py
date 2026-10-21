@@ -367,9 +367,19 @@ def _comptes_du_projet(conn, project_id) -> list[schemas.CompteChoixOut]:
     """Étape 4 (A70) : le principal, puis les comptes du projet — libellés seulement (D8)."""
     from testpilot.store.repositories import ProjectAccountRepo
 
+    from testpilot.api.services import exploration_service
+    from testpilot.store.repositories import ProjectRepo
+
     comptes = [schemas.CompteChoixOut(id=None, libelle="principal")]
     if project_id:
-        comptes += [schemas.CompteChoixOut(id=c["id"], libelle=c["label"]) for c in ProjectAccountRepo(conn).liste(project_id)]
+        # Étape 4, morceau 6 (A80) : ce que la dernière exploration a pu faire avec chaque compte, pour la fiche du cas.
+        etats = exploration_service.etat_des_comptes(conn, ProjectRepo(conn).get(project_id))["par_compte"]
+        for c in ProjectAccountRepo(conn).liste(project_id):
+            etat = etats.get(c["id"]) or {}
+            statut = {"connexion_impossible": "echec", "echec": "erreur", "incomplet": "incomplet",
+                      "a_actualiser": "jamais"}.get(etat.get("statut", ""), "")
+            comptes.append(schemas.CompteChoixOut(id=c["id"], libelle=c["label"], exploration=statut,
+                                                  exploration_message=etat.get("message", "") if statut else ""))
     return comptes
 
 
