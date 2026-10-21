@@ -12,6 +12,7 @@ from behave import given, then, when
 # Import à PLAT (layout d'exécution sans package features/ — cf. environment.py), comme les
 # autres fichiers de la bibliothèque.
 from _base_helpers import (
+    enregistrement,
     PreconditionNonRemplieError,
     memorize_record_count, check_count_not_increased, check_count_increased_by_one, no_duplicate,
     validation_error_notification, playwright_login, navigate_menu, constater, se_connecter_en_tant_que,
@@ -122,7 +123,7 @@ def step_record_exists_contains(context, field, value, model):
 def step_field_equals(context, field, model, expected):
     _exiger_enregistrement_en_contexte(
         context, "Aucun enregistrement en contexte. Utilisez d'abord un step 'existe dans le modèle'.")
-    record = context.odoo.env[model].browse(context.last_record_ids[0])
+    record = enregistrement(context.odoo.env[model], context.last_record_ids[0])
     actual = record.read([field])[0][field]
     constater(str(actual) == expected,
               f"Champ '{field}' dans '{model}' : attendu '{expected}', obtenu '{actual}'.")
@@ -133,7 +134,7 @@ def step_field_equals_simple(context, field, expected):
     _exiger_enregistrement_en_contexte(
         context, "Aucun enregistrement en contexte. Utilisez d'abord un step qui crée ou trouve un "
                  "enregistrement.", avec_modele=True)
-    record = context.odoo.env[context.last_record_model].browse(context.last_record_ids[0])
+    record = enregistrement(context.odoo.env[context.last_record_model], context.last_record_ids[0])
     actual = record.read([field])[0][field]
     constater(str(actual) == expected, f"Champ '{field}' : attendu '{expected}', obtenu '{actual}'.")
 
@@ -143,7 +144,7 @@ def step_field_not_empty(context, field):
     _exiger_enregistrement_en_contexte(
         context, "Aucun enregistrement en contexte. Utilisez d'abord un step qui crée ou trouve un "
                  "enregistrement.", avec_modele=True)
-    record = context.odoo.env[context.last_record_model].browse(context.last_record_ids[0])
+    record = enregistrement(context.odoo.env[context.last_record_model], context.last_record_ids[0])
     value = record.read([field])[0][field]
     constater(value not in (False, None, "", []), f"Le champ '{field}' est vide.")
 
@@ -154,12 +155,12 @@ def step_field_m2o_equals(context, field, model, expected):
         context, "Aucun enregistrement en contexte. Utilisez d'abord un step 'existe dans le modèle' — ou "
                  "une vérification de comptage qui en trouve un (0022 A+, 2026-08-07).")
     Model = context.odoo.env[model]
-    record_data = Model.browse(context.last_record_ids[0]).read([field])[0]
+    record_data = enregistrement(Model, context.last_record_ids[0]).read([field])[0]
     actual = record_data[field]
     if isinstance(actual, (list, tuple)) and len(actual) > 0:
         related_id = actual[0]
         related_model_name = Model.fields_get([field])[field]["relation"]
-        actual_name = context.odoo.env[related_model_name].browse(related_id).read(["name"])[0]["name"]
+        actual_name = enregistrement(context.odoo.env[related_model_name], related_id).read(["name"])[0]["name"]
     else:
         actual_name = str(actual)
     constater(actual_name == expected,
@@ -172,12 +173,12 @@ def step_field_m2o_contains(context, field, partial):
         context, "Aucun enregistrement en contexte. Utilisez d'abord un step qui crée ou trouve un "
                  "enregistrement.", avec_modele=True)
     Model = context.odoo.env[context.last_record_model]
-    record_data = Model.browse(context.last_record_ids[0]).read([field])[0]
+    record_data = enregistrement(Model, context.last_record_ids[0]).read([field])[0]
     actual = record_data[field]
     if isinstance(actual, (list, tuple)) and len(actual) > 0:
         related_id = actual[0]
         related_model_name = Model.fields_get([field])[field]["relation"]
-        actual_name = context.odoo.env[related_model_name].browse(related_id).read(["name"])[0]["name"]
+        actual_name = enregistrement(context.odoo.env[related_model_name], related_id).read(["name"])[0]["name"]
     else:
         actual_name = str(actual)
     constater(partial in actual_name,

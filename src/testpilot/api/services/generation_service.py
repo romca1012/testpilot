@@ -773,8 +773,7 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
             intention=_intention_declaree(case, current),
             modele=modele_ecrit if projet else None,
             # Sans projet, pas de contrôle des champs (comme avant) : `verified_fields` à None et aucun annuaire.
-            verified_fields=(json.loads(registry) if registry else None) if projet else None,
-            joue_avec_un_autre_compte=current.get("compte_id") is not None)
+            verified_fields=(json.loads(registry) if registry else None) if projet else None)
 
     # Lot 09 (C9) : `diff_feature` complète `blast_radius` (steps.py) par le `.feature` lui-même
     # — un scénario supprimé, une ligne Alors/Et réécrite, une valeur d'Examples changée. Volontai-
@@ -906,10 +905,7 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
     # d'équivalence) — le relecteur décide ; il retire l'approbation automatique mais ne déclenche AUCUN appel de correction.
     from testpilot.generation.variables_de_test import ALORS_IDENTIQUE
     # Revue A62 : une correction automatique ne peut pas savoir si l'application est juste — pas d'appel non plus.
-    # A89 : « lue par le principal » est à juger par une personne (et se mesure à l'étape 8) — jamais envoyé à la correction.
-    from testpilot.generation.assertion_lint import LU_PAR_LE_PRINCIPAL
-    a_corriger = [w for w in warnings
-                  if w.get("kind") not in (ALORS_IDENTIQUE, VERIFICATION_CHANGEE_APRES_DEFAUT, LU_PAR_LE_PRINCIPAL)]
+    a_corriger = [w for w in warnings if w.get("kind") not in (ALORS_IDENTIQUE, VERIFICATION_CHANGEE_APRES_DEFAUT)]
     # Étape 2 (A61, A63) : l'IA a déjà vu ces points pendant l'écriture (contrôle de fin d'écriture) et a gardé son test —
     # « malgré ses essais » : livré bloqué, pas d'appel de correction de plus.
     deja_vus = _avis_deja_vus_a_l_ecriture(version_rows, version_id)

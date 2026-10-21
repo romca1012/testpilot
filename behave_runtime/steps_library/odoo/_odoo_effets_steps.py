@@ -20,6 +20,7 @@ from pathlib import Path
 from behave import then
 
 from _base_helpers import (
+    enregistrement,
     _dernier_telechargement,
     _texte_du_fichier,
     constater,
@@ -32,7 +33,7 @@ def _record_courant(context):
     _exiger_enregistrement_en_contexte(
         context, "Aucun enregistrement en contexte. Ouvrez ou créez d'abord un document.",
         avec_modele=True)
-    return context.odoo.env[context.last_record_model].browse(context.last_record_ids[0])
+    return enregistrement(context.odoo.env[context.last_record_model], context.last_record_ids[0])
 
 
 @then('l\'état technique de ce document est "{valeur}"')
@@ -54,11 +55,11 @@ def _tolerance_avec_source(context, model_name: str, record_id: int) -> tuple[fl
         Model = context.odoo.env[model_name]
         if "currency_id" not in Model.fields_get(["currency_id"]):
             return 0.01, "repli : le modèle n'a pas de devise"
-        valeur = Model.browse(record_id).read(["currency_id"])[0].get("currency_id")
+        valeur = enregistrement(Model, record_id).read(["currency_id"])[0].get("currency_id")
         if not valeur:
             return 0.01, "repli : aucune devise sur ce document"
         currency_id = valeur[0] if isinstance(valeur, (list, tuple)) else valeur
-        rounding = context.odoo.env["res.currency"].browse(currency_id).read(["rounding"])[0]["rounding"]
+        rounding = enregistrement(context.odoo.env["res.currency"], currency_id).read(["rounding"])[0]["rounding"]
         return float(rounding) / 2, "arrondi de la devise du document"
     except Exception:
         return 0.01, "repli : devise illisible"
@@ -96,7 +97,7 @@ def _lies_sont_a_l_etat(context, modele: str, valeur: str) -> tuple[bool, list]:
             "Aucun document lié en contexte. Utilisez d'abord un step "
             "'ce document a N \"modèle\" lié(s) par \"champ\"'.")
     Model = context.odoo.env[modele]
-    etats = Model.browse(lies).read(["state"])
+    etats = enregistrement(Model, lies).read(["state"])
     obtenus = [e["state"] for e in etats]
     return all(e == valeur for e in obtenus), obtenus
 

@@ -699,6 +699,10 @@ def before_step(context, step):
     # Lot 03 : le type EFFECTIF du step (`Et`/`Mais` héritent) accompagne chaque constat consigné.
     from _base_helpers import definir_etat_constat, nombre_de_constats_reussis, poser_repere_action
     definir_etat_constat(step_type=getattr(step, "step_type", "") or "")
+    # A96 : un « Alors » d'un cas joué avec un compte lit le serveur avec CE compte ; tout autre step, avec le principal.
+    from _base_helpers import poser_la_session_des_verifications
+    context._tp_recoupement_contredit = ""
+    poser_la_session_des_verifications(context, getattr(step, "step_type", "") or "")
     # Q1 (D16) : le nombre de constats AVANT ce step — `after_step` en déduit si ce `Alors` a constaté.
     context._tp_constats_avant_step = nombre_de_constats_reussis()
     # Lot 07d : chaque ACTION pose un repère — « la requête … répond », « un nouvel onglet s'ouvre » ne jugent que ce qui l'a suivi.
@@ -790,12 +794,20 @@ def after_step(context, step):
     Si le contrôle lui-même est IMPOSSIBLE (repère absent, erreur), on ne le laisse jamais disparaître en silence
     (Behave avale la sortie d'un scénario vert) : une ligne `controle_impossible` est consignée dans le sidecar
     et le verdict reste prudent (`indetermine`). Aucune exception ne remonte à Behave."""
+    if getattr(context, "_odoo_principal", None) is not None:
+        context.odoo = context._odoo_principal   # A96 : la session du principal revient après chaque step
     _consigner_page_au_echec(context, step)
     try:
         if (getattr(step, "step_type", "") or "") != "then":
             return
         statut = getattr(step, "status", None)
         if getattr(statut, "name", str(statut)) != "passed":
+            return
+        if getattr(context, "_tp_recoupement_contredit", ""):
+            # A96 (revue) : une lecture du compte contredite par le principal pendant cet « Alors » — même si le step a
+            # avalé l'exception, il n'a rien prouvé : indéterminé, jamais « Passé ».
+            from _base_helpers import consigner_alors_sans_constat
+            consigner_alors_sans_constat(step.name, raison="recoupement_contredit")
             return
         if _est_exempte_non_assertive(_fonction_du_step(context, step)):
             return
@@ -843,8 +855,12 @@ def before_scenario(context, scenario):
             f"PRÉREQUIS MANQUANT : la connexion initiale du run a échoué ({context._erreur_connexion_initiale}) — vérifiez "
             "la stratégie de connexion et ses secrets dans les réglages du projet.")
     context._reconnexion_tentee = False
+    context._odoo_principal = None
+    context._sessions_des_verifications = {}
     if _doit_ouvrir_session_odoo(_CONNECTOR_TYPE):
         use_fixture(odoo_session, context)
+        # A96 : la session du principal, gardée — mise en place, nettoyage, recoupement ; les « Alors » liront avec le compte.
+        context._odoo_principal = context.odoo
     use_fixture(playwright_browser, context)
     _capturer_reponse_formulaire(context)
     # Lot 07d : réponses réseau, boîtes de dialogue et onglets du scénario (tous onglets), numérotés — il faut observer AVANT l'action.

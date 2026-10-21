@@ -630,8 +630,8 @@ def _section_compte_du_test(compte: dict | None) -> str:
         "## Compte avec lequel ce test sera joué", "",
         f"Ce cas est joué en tant que « {compte['libelle']} »{role}. L'outil connecte ce compte avant chaque scénario : "
         f"n'écris pas « je me connecte en tant que » pour lui. {ecrans}",
-        f"Les lectures directes du serveur se font avec le compte principal, qui voit TOUT : ce que « {compte['libelle']} » "
-        "voit ou ne voit pas se vérifie à l'ÉCRAN, jamais par une lecture du serveur."])
+        f"Les vérifications (« Alors ») lisent l'écran ET le serveur avec « {compte['libelle']} » : écris-les du point de vue "
+        "de ce compte. Les données que le test prépare par le serveur le sont avec le compte principal."])
 
 
 def _section_oracle(requetes: list[str] | None) -> str:

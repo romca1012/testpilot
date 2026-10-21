@@ -253,29 +253,3 @@ def _has_assertion(func) -> bool:
 
 def _w(label, line, kind, message) -> LintWarning:
     return LintWarning(step=label, line=line, kind=kind, message=message)
-
-
-LU_PAR_LE_PRINCIPAL = "verification_lue_par_le_principal"
-
-
-def _lit(func, attribut: str) -> bool:
-    return any(isinstance(n, ast.Attribute) and n.attr == attribut and isinstance(n.value, ast.Name)
-               and n.value.id == "context" for n in ast.walk(func))
-
-
-def lint_alors_lu_par_le_principal(content: str) -> list[dict]:
-    """Étape 4, morceau 7 (A89) : pour un cas joué avec un AUTRE compte que le principal, un `@then` écrit pour ce test qui lit
-    le serveur (`context.odoo`, la session du principal, A73) sans rien regarder à l'écran (`context.page`) ne prouve rien de
-    ce que voit ce compte : le principal voit tout (« le lecteur voit la facture » sortait « Passé » même si le lecteur ne la
-    voyait pas). Structure du code (AST), jamais son texte. Les vérifications de la bibliothèque ne sont pas ici."""
-    if not content or not content.strip():
-        return []
-    try:
-        tree = ast.parse(content)
-    except SyntaxError:
-        return []
-    return [LintWarning(step=_step_label(func), line=func.lineno, kind=LU_PAR_LE_PRINCIPAL,
-                        message="Ce step `@then` lit le serveur avec le compte principal, qui voit tout, sans rien vérifier à "
-                                "l'écran : pour un cas joué avec un autre compte, ce que ce compte voit n'est pas prouvé. "
-                                "Vérifiez-le à l'écran.").as_dict()
-            for func in _iter_functions(tree) if _is_then(func) and _lit(func, "odoo") and not _lit(func, "page")]
