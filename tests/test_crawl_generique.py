@@ -222,3 +222,40 @@ def test_une_ancre_hash_sans_id_n_est_jamais_cliquee():
 
     assert set(pages) == {"/"}
     assert onglets["/"] == {"Voir"}
+
+
+# ── Étape 4, morceau 6 (A81-A83, porteur 2026-10-21) : aucune limite de pages, regroupement, arrêt ──────────────────────────
+
+def test_falsifiable_sans_limite_l_exploration_visite_tous_les_modeles_de_page():
+    """La limite de 60 tronquait (projet 18 arrêté à exactement 60). 80 pages distinctes : les 80 sont visitées."""
+    crawl = _charger_crawl()
+    site = {"/": [f"/rubrique-{i}" for i in range(80)], **{f"/rubrique-{i}": [] for i in range(80)}}
+    pages, _t, _o = crawl.crawler(
+        types.SimpleNamespace(page=_FakePage(site)), _FakeNav(), "http://app.local", max_pages=None,
+        racines=["/"], hors_perimetre=crawl._HORS_PERIMETRE_GENERIQUE, relogin=lambda c: None)
+    assert len(pages) == 81
+
+
+def test_falsifiable_des_fiches_soeurs_identiques_sont_regroupees_et_comptees():
+    crawl = _charger_crawl()
+    produits = [f"/produit/article-{i}" for i in range(20)]
+    site = {"/": ["/catalogue"], "/catalogue": produits, **{p: [] for p in produits}}
+    bilan = {}
+    pages, _t, _o = crawl.crawler(
+        types.SimpleNamespace(page=_FakePage(site)), _FakeNav(), "http://app.local", max_pages=None,
+        racines=["/"], hors_perimetre=crawl._HORS_PERIMETRE_GENERIQUE, relogin=lambda c: None, bilan=bilan)
+    assert sorted(p for p in pages if p.startswith("/produit/")) == produits[:3], "3 exemples, puis le même modèle"
+    assert bilan["familles"] == {"/produit/…": {"exemples": produits[:3], "pages_du_meme_modele": 17}}
+    assert bilan["arretee"] is False
+
+
+def test_falsifiable_un_arret_demande_est_dit_jamais_presente_comme_complet():
+    crawl = _charger_crawl()
+    site = {"/": ["/a", "/b", "/c"], "/a": [], "/b": [], "/c": []}
+    vues, bilan = [], {}
+    pages, _t, _o = crawl.crawler(
+        types.SimpleNamespace(page=_FakePage(site)), _FakeNav(), "http://app.local", max_pages=None,
+        racines=["/"], hors_perimetre=crawl._HORS_PERIMETRE_GENERIQUE, relogin=lambda c: None,
+        bilan=bilan, progression=vues.append, arreter=lambda: len(vues) >= 2)
+    assert len(pages) == 2 and vues == [1, 2]
+    assert bilan["arretee"] is True
