@@ -17,6 +17,9 @@ apps:
       - nom: testeur
         identifiant: testeur
         mot_de_passe: motdepasse-test
+      - nom: lecteur            # étape 4 (A70) : compte secondaire, mêmes droits — prouve « joué en tant que »
+        identifiant: lecteur
+        mot_de_passe: motdepasse-lecteur
     remise_a_zero: POST /__reset        # loopback seulement ; ne touche pas aux défauts actifs
     etat_serveur: GET /__etat           # vérification indépendante (commandes, panier, enregistrements)
     defauts_actifs: GET /__defauts      # loopback seulement ; POST /__defauts {"defauts": [...]} pour les changer

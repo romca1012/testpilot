@@ -497,6 +497,8 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             preconditions=version.get('preconditions') or '',
             test_steps=version.get('test_steps') or '',
             expected_result=version.get('expected_result') or '',
+            # Étape 4 (A70) : le compte de la version RÉPARÉE, explicitement — jamais celui d'une version courante changée entre-temps.
+            compte_id=version.get('compte_id'),
             **revision_metadata(version),
         )
         session.attempts += 1
