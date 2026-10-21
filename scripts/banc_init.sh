@@ -37,8 +37,11 @@ echo "== Neutralisation (aucun envoi de courriel, aucun cron externe, aucun paie
 echo "== Comptes de test et langue fr_FR"
 "${COMPOSE[@]}" run --rm -T odoo odoo shell -d banc --no-http --log-level=warn < banc/init_comptes.py
 
+echo "== Base modèle de la remise à zéro (étape 4, A71)"
+"${COMPOSE[@]}" exec -T db psql -U odoo -d postgres -c "CREATE DATABASE banc_modele TEMPLATE banc"
+
 echo "== Démarrage"
-"${COMPOSE[@]}" up -d odoo
+"${COMPOSE[@]}" up -d odoo remise relais
 for _ in $(seq 1 60); do
   if curl -fsS -o /dev/null "http://127.0.0.1:${BANC_PORT}/web/login"; then
     echo "== Banc prêt : http://127.0.0.1:${BANC_PORT} (base « banc », admin / admin)"
