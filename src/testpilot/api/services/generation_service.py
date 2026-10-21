@@ -739,9 +739,9 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
     d'explosion d'une réparation (0017), champs/valeurs absents du domaine mesuré (0021). Extrait
     ici (2026-09-15) pour servir aussi de critère à l'approbation automatique — un seul point de
     calcul, jamais deux qui pourraient diverger sur ce qu'est « un cas propre »."""
-    from testpilot.generation import domain_model, repair_diff
+    from testpilot.api.services import modele_du_cas
+    from testpilot.generation import repair_diff
     from testpilot.generation.avis_du_test import avis_du_test
-    from testpilot.generation.provenance import target_fingerprint
     from testpilot.store.repositories import CaseDataRepo, ProjectRepo
 
     current = next((v for v in version_rows if v["id"] == version_id), None)
@@ -760,17 +760,21 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
         except (TypeError, ValueError):
             ecrit_le = None
         registry = current.get("verified_fields")
+        # Étape 4, morceau 7 : relu avec les écrans et la cible avec lesquels le test a été ÉCRIT (le compte du cas, si
+        # l'interrupteur l'était) — sinon les preuves d'un test écrit pour Lecteur seraient jugées contre le principal.
+        modele_ecrit, cible_ecrite = modele_du_cas.pour_la_relecture(conn, projet, version_rows, current)
         warnings += avis_du_test(
             feature=current.get("feature_content") or "", steps=current.get("steps_content") or "",
             observations=json.loads(evidence) if evidence else None,
-            target_sha256=target_fingerprint(projet), base_url=(projet or {}).get("base_url", ""), reference_time=ecrit_le,
+            target_sha256=cible_ecrite, base_url=(projet or {}).get("base_url", ""), reference_time=ecrit_le,
             variables_des_lignes=(CaseDataRepo(conn).variables_des_lignes(case["id"])
                                   if case.get("id") and (current.get("feature_content") or "") else ()),
             connecteur_web=bool(projet) and (projet.get("connector_type") or "") == "web",
             intention=_intention_declaree(case, current),
-            modele=domain_model.charger_modele(projet) if projet else None,
+            modele=modele_ecrit if projet else None,
             # Sans projet, pas de contrôle des champs (comme avant) : `verified_fields` à None et aucun annuaire.
-            verified_fields=(json.loads(registry) if registry else None) if projet else None)
+            verified_fields=(json.loads(registry) if registry else None) if projet else None,
+            joue_avec_un_autre_compte=current.get("compte_id") is not None)
 
     # Lot 09 (C9) : `diff_feature` complète `blast_radius` (steps.py) par le `.feature` lui-même
     # — un scénario supprimé, une ligne Alors/Et réécrite, une valeur d'Examples changée. Volontai-
@@ -840,12 +844,15 @@ def _auto_approuver(conn, case_id: int, version_id: int | None) -> None:
 _AUTEUR_CORRECTION = "correction-agent"
 
 
-def _modele_du_cas(conn, case: dict) -> dict | None:
-    """L'annuaire du projet du cas (contrôle des littéraux de la correction) ; `None` s'il n'y en a pas, jamais une erreur."""
-    from testpilot.generation import domain_model
+def _modele_du_cas(conn, case: dict, version_rows: list[dict] | None = None, version: dict | None = None) -> dict | None:
+    """L'annuaire du projet du cas (contrôle des littéraux de la correction) ; `None` s'il n'y en a pas, jamais une erreur.
+    Étape 4, morceau 7 : avec la version, celui avec lequel son test a été ÉCRIT (`modele_du_cas.pour_la_relecture`)."""
+    from testpilot.api.services import modele_du_cas
     from testpilot.store.repositories import ProjectRepo
     projet = ProjectRepo(conn).get(case["project_id"]) if case.get("project_id") else None
-    return domain_model.charger_modele(projet) if projet else None
+    if not projet:
+        return None
+    return modele_du_cas.pour_la_relecture(conn, projet, version_rows or [], version)[0]
 
 
 def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
@@ -899,7 +906,10 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
     # d'équivalence) — le relecteur décide ; il retire l'approbation automatique mais ne déclenche AUCUN appel de correction.
     from testpilot.generation.variables_de_test import ALORS_IDENTIQUE
     # Revue A62 : une correction automatique ne peut pas savoir si l'application est juste — pas d'appel non plus.
-    a_corriger = [w for w in warnings if w.get("kind") not in (ALORS_IDENTIQUE, VERIFICATION_CHANGEE_APRES_DEFAUT)]
+    # A89 : « lue par le principal » est à juger par une personne (et se mesure à l'étape 8) — jamais envoyé à la correction.
+    from testpilot.generation.assertion_lint import LU_PAR_LE_PRINCIPAL
+    a_corriger = [w for w in warnings
+                  if w.get("kind") not in (ALORS_IDENTIQUE, VERIFICATION_CHANGEE_APRES_DEFAUT, LU_PAR_LE_PRINCIPAL)]
     # Étape 2 (A61, A63) : l'IA a déjà vu ces points pendant l'écriture (contrôle de fin d'écriture) et a gardé son test —
     # « malgré ses essais » : livré bloqué, pas d'appel de correction de plus.
     deja_vus = _avis_deja_vus_a_l_ecriture(version_rows, version_id)
@@ -924,7 +934,7 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
         dry_runner=dry_runner,
         calibration_writes_enabled=calibration_writes_enabled,
         verified_fields=json.loads(version.get("verified_fields") or "{}"),
-        modele=_modele_du_cas(conn, case))
+        modele=_modele_du_cas(conn, case, version_rows, version))
     _record_generation_cost(conn, case_id=case_id, correction_usd=proposal.cost_usd)
 
     if not proposal.changed:
@@ -1184,14 +1194,51 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
     try:
         module = ModuleRepo(conn).get(module_id)
         project = ProjectRepo(conn).get(module["project_id"]) if module else None
+        # Étape 4, morceau 7 (A85, A86) : le compte avec lequel ce cas est joué, et les écrans avec lesquels l'IA l'écrit.
+        from testpilot.api.services import modele_du_cas
+        from testpilot.generation import interrupteurs
+        courante = VersionRepo(conn).get((CaseRepo(conn).get(case_id) or {}).get("current_version_id") or 0) or {}
+        cible = modele_du_cas.pour_la_generation(conn, project, courante.get("compte_id"))
+        par_compte = interrupteurs.generation_par_compte_actif() and cible.compte is not None
+        if par_compte and cible.refus:
+            # A85 : le run serait bloqué de toute façon — on ne paie pas l'IA pour rien, et l'écran dit quoi faire.
+            GenerationJobRepo(conn).maj(job_id, status="failed", error=cible.refus[:300])
+            return
+        identifiants = {}
+        if par_compte:
+            from testpilot.connectors.runtime_env import identifiants_du_compte
+            compte = identifiants_du_compte(conn, project["id"], cible.compte["id"]) or {}
+            if not compte.get("username") or not compte.get("password"):
+                # Revue : jamais un repli silencieux sur le principal (ses écrans étiquetés « ceux du compte »).
+                GenerationJobRepo(conn).maj(job_id, status="failed", error=(
+                    f"{cible.compte['libelle']} : compte supprimé ou sans mot de passe — complétez-le dans les réglages du "
+                    "projet, ou choisissez un autre compte pour ce cas."))
+                return
+            web = (project.get("connector_type") or "odoo").lower() != "odoo"
+            identifiants = ({"user": compte.get("username", ""), "password": compte.get("password", ""),
+                             "verifier_identite": True} if web
+                            else {"ui_user": compte.get("username", ""), "ui_password": compte.get("password", "")})
         # ⚠️ `build_connector`, jamais `OdooConnector` en dur (bug SauceDemo, 2026-09-11) : le
         # connecteur DOIT suivre `project["connector_type"]`, comme le fait déjà l'exploration.
-        connector = build_connector(project)
+        connector = build_connector(project, **identifiants)
         connector.connect()
+        if par_compte and hasattr(connector, "_run_in_browser"):
+            # Revue : la connexion du compte du cas se prouve AVANT tout appel à l'IA — sinon l'échec arrivait au premier outil,
+            # après des appels payés, et l'IA continuait d'écrire sans écrans.
+            try:
+                connector._run_in_browser(connector._ensure_page)
+            except Exception as exc:
+                GenerationJobRepo(conn).maj(job_id, status="failed", error=(
+                    f"{cible.compte['libelle']} : {exc} — vérifiez son mot de passe dans les réglages du projet.")[:300])
+                return
         runner = BehaveRunner(connection=env_du_projet(conn, project),
                               project_id=(project or {}).get("id"),
                               connector_type=(project or {}).get("connector_type"),
                               profil_instance=(project or {}).get("profil_instance"))
+        if par_compte:
+            # L'essai (et la correction, qui réutilise ce lanceur) se joue avec le compte du cas, comme l'exécution.
+            from testpilot.connectors.runtime_env import ENV_COMPTE_DU_TEST
+            runner.connection[ENV_COMPTE_DU_TEST] = cible.compte["libelle"]
 
         analysis_tracker = CostTracker()
         plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(slug, spec_content)
@@ -1207,6 +1254,8 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
             failure_context=_regeneration_failure_context(conn, case_id) if regeneration else None,
             regeneration=regeneration, valeurs_d_essai=dict(lignes_du_cas[0][1]) if lignes_du_cas else None,
             regeneration_apres_defaut=_dernier_defaut_fonctionnel(conn, case_id) if regeneration else None,
+            # Étape 4, morceau 7 : les écrans du compte du cas (interrupteur allumé seulement) ; pour qui le test est écrit.
+            modele_du_cas=cible if par_compte else None, ecrit_pour=cible.ecrit_pour,
             # Étape 2 (A61) : de quoi calculer, pendant l'écriture, les MÊMES points que sur la version enregistrée.
             variables_des_lignes=CaseDataRepo(conn).variables_des_lignes(case_id),
             intention=_intention_declaree(CaseRepo(conn).get(case_id) or {}, {

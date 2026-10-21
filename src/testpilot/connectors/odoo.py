@@ -116,7 +116,7 @@ class OdooConnector(Connector):
     def __init__(self, url: str, database: str, user: str, password: str, *,
                  headless: bool = True, timeout_ms: int = 15_000, contexte=None,
                  sequence_connexion: list[dict] | None = None,
-                 login_form: dict | None = None) -> None:
+                 login_form: dict | None = None, ui_user: str | None = None, ui_password: str | None = None) -> None:
         from testpilot.connectors.contexte_navigateur import ContexteNavigateur
 
         # Lot 07c : le MÊME contexte (langue, fuseau, fenêtre) que l'exécution — l'agent voit ce que le test verra.
@@ -125,6 +125,11 @@ class OdooConnector(Connector):
         self._database = database
         self._user = user
         self._password = password
+        # Étape 4, morceau 7 : le compte dont le NAVIGATEUR d'observation voit les écrans (le compte du cas) ; la session RPC
+        # reste celle du principal (A73). Absent : le principal, comme avant.
+        self._ui_user = ui_user or user
+        self._ui_password = ui_password if ui_user else password
+        self._echec_identite = ""   # mémorisé : jamais une nouvelle tentative à chaque outil (délai d'Odoo après 5 échecs)
         self._headless = headless
         self._timeout_ms = timeout_ms
         self._client = None       # odoorpc.ODOO — initialisé par connect()
@@ -154,6 +159,8 @@ class OdooConnector(Connector):
             contexte=overrides.get("contexte"),
             sequence_connexion=overrides.get("sequence_connexion"),
             login_form=overrides.get("login_form"),
+            ui_user=overrides.get("ui_user"),
+            ui_password=overrides.get("ui_password"),
         )
 
     @classmethod
@@ -613,6 +620,8 @@ class OdooConnector(Connector):
         """Démarre Playwright + session portail authentifiée (DANS le thread worker)."""
         if self._page is not None:
             return self._page
+        if self._echec_identite:
+            raise RuntimeError(self._echec_identite)
         from playwright.sync_api import sync_playwright
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=self._headless)
@@ -622,10 +631,16 @@ class OdooConnector(Connector):
         from testpilot.connectors.odoo_login import playwright_login
         try:
             playwright_login(SimpleNamespace(page=page, odoo_url=self._url,
-                             odoo_db=self._database, odoo_user=self._user,
-                             odoo_password=self._password,
+                             odoo_db=self._database, odoo_user=self._ui_user,
+                             odoo_password=self._ui_password,
                              sequence_connexion=self._sequence_connexion,
                              login_form=self._login_form))
+            if self._ui_user != self._user:
+                # Jamais des observations faites avec un autre compte que celui du cas : la session ouverte doit être la sienne.
+                raison = self.crawl_identite_confirmee(SimpleNamespace(page=page), self._ui_user)
+                if raison:
+                    self._echec_identite = f"observation avec le compte du cas impossible : {raison}"
+                    raise RuntimeError(self._echec_identite)
         except Exception:
             self._browser.close()
             self._playwright.stop()

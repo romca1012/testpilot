@@ -10,10 +10,14 @@ def fingerprint(value) -> str:
     return hashlib.sha256(data.encode('utf-8')).hexdigest()
 
 
-def target_fingerprint(project: dict | None) -> str:
+def target_fingerprint(project: dict | None, *, compte: str | None = None) -> str:
+    """`compte` (étape 4, morceau 7) : l'empreinte du compte dont les écrans ont été observés — une preuve prise avec le
+    principal ne vaut pas pour un test écrit pour Lecteur (A64 : « même cible »). Sans lui : l'empreinte d'avant, inchangée."""
     p = project or {}
-    return fingerprint({key: p.get(key) for key in (
-        'id', 'base_url', 'database', 'username', 'connector_type', 'connector_version')})
+    cible = {key: p.get(key) for key in ('id', 'base_url', 'database', 'username', 'connector_type', 'connector_version')}
+    if compte:
+        cible['compte'] = compte
+    return fingerprint(cible)
 
 
 def revision_metadata(version: dict | None) -> dict:

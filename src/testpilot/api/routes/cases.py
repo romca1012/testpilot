@@ -360,7 +360,17 @@ def get_case(case_id: int, conn=Depends(get_conn)):
         executions=executions,
         gate=gate,
         comptes=_comptes_du_projet(conn, case.get("project_id")),
+        ecrit_sans_les_ecrans=_ecrit_sans_les_ecrans(version_rows, version_id),
     )
+
+
+def _ecrit_sans_les_ecrans(version_rows: list[dict], version_id: int | None) -> str:
+    """A85 : l'avis consigné à l'écriture (« Écrit sans les écrans de Lecteur (pas encore exploré) — actualisez l'exploration
+    puis régénérez »), tant que le test courant est celui-là."""
+    from testpilot.api.services.modele_du_cas import ecrit_pour_de_la_version
+
+    courante = next((v for v in version_rows if v["id"] == version_id), None)
+    return str(ecrit_pour_de_la_version(version_rows, courante).get("avis") or "") if courante else ""
 
 
 def _comptes_du_projet(conn, project_id) -> list[schemas.CompteChoixOut]:
