@@ -21,7 +21,7 @@ dependencies = [
     "jinja2>=3.1",
     "behave>=1.2.6",
     "playwright>=1.40",
-    "OdooRPC>=0.9",
+    "OdooRPC>=0.10.1",
     "pdfplumber>=0.11",
     # Import des spécifications Word (`spec_extract._docx`). La dépendance était utilisée sans
     # être déclarée : une installation propre réussissait, puis le premier .docx échouait.
