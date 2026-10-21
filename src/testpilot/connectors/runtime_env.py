@@ -39,6 +39,9 @@ logger = logging.getLogger(__name__)
 # Lot 07b-1 (D8) : les comptes SECONDAIRES du projet, `[{"label", "username", "password"}]` en JSON, pour le sous-processus Behave SEUL
 # (le step « je me connecte en tant que "<libellé>" » s'y résout). Le compte principal reste `ODOO_USER` / `WEB_USER`.
 ENV_COMPTES = "TESTPILOT_COMPTES"
+# Étape 4 (A70) : le LIBELLÉ du compte avec lequel le cas est joué (jamais un identifiant ni un mot de passe : ils voyagent dans
+# `TESTPILOT_COMPTES`). Absent : le compte principal, comme avant.
+ENV_COMPTE_DU_TEST = "TESTPILOT_COMPTE_DU_TEST"
 
 # Sous-lot D (« Enregistrement assisté du chemin de connexion ») : la séquence confirmée qui
 # franchit un écran intercalé avant le formulaire de connexion, `[{"role", "name"}]` en JSON —

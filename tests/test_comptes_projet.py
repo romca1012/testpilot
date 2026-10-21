@@ -417,15 +417,19 @@ def test_construire_comptes_ne_taise_jamais_une_liste_illisible_ni_incoherente(H
     assert "pas du json" not in erreur   # jamais le contenu : il porte des secrets
 
 
-def test_odoo_le_step_ouvre_un_nouveau_contexte_se_connecte_et_rouvre_la_session_rpc(H, monkeypatch):
+def test_odoo_le_step_se_connecte_a_l_ecran_et_garde_la_session_rpc_du_principal(H, monkeypatch):
+    """Attendu changé à l'étape 4 (décision A73, porteur 2026-10-20) : la session RPC des vérifications n'est PLUS rouverte
+    avec le compte secondaire — elle reste celle du principal ; le compte est vérifié par une authentification jetable."""
     ctx, journal = _contexte(H)
     monkeypatch.setattr(H, "playwright_login",
                         lambda c: journal.append(("ui", c.odoo_user, c.odoo_password)))
+    monkeypatch.setattr(H, "_verifier_compte_odoo", lambda c, u, p: journal.append(("verifie", u, p)))
 
     H.se_connecter_en_tant_que(ctx, "  commercial ", connecteur="odoo")
 
-    assert journal == [("nouveau_contexte",), ("ui", "banc_commercial", SECRET), ("rpc", "banc_commercial", SECRET),
+    assert journal == [("nouveau_contexte",), ("ui", "banc_commercial", SECRET), ("verifie", "banc_commercial", SECRET),
                        ("goto", "https://odoo.example")]
+    assert not any(e[0] == "rpc" for e in journal), "A73 : la session des vérifications n'est pas basculée"
     assert ctx.compte_courant == "Commercial" and ctx.odoo_user == "banc_commercial"
 
 
@@ -441,8 +445,13 @@ def test_falsifiable_un_compte_inconnu_est_un_prerequis_manquant_sans_toucher_au
 
 
 def test_falsifiable_un_mot_de_passe_refuse_par_le_serveur_bloque_au_lieu_de_juger_l_application(H, monkeypatch):
-    ctx, _ = _contexte(H, echec_rpc=True)
+    ctx, _ = _contexte(H)
     monkeypatch.setattr(H, "playwright_login", lambda c: None)
+
+    def refuse(c, u, p):
+        raise RuntimeError("identifiants refusés par le serveur")
+
+    monkeypatch.setattr(H, "_verifier_compte_odoo", refuse)
 
     with pytest.raises(H.PreconditionNonRemplieError, match="connexion impossible avec le compte « Commercial »") as exc:
         H.se_connecter_en_tant_que(ctx, "Commercial", connecteur="odoo")

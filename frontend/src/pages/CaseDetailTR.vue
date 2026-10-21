@@ -328,7 +328,8 @@ const editing = ref(false)
 const saving = ref(false)
 const saveError = ref('')
 const saveConflict = ref(false)   // true = édition concurrente (409 `conflit_edition`) → bouton Recharger
-const form = ref({ title: '', preconditions: '', steps: [] as string[], expected: '', refs: '', estimate: '' })
+const form = ref({ title: '', preconditions: '', steps: [] as string[], expected: '', refs: '', estimate: '',
+                   compteId: null as number | null })
 // Version consultée à l'OUVERTURE du formulaire (audit 2026-09-07) — envoyée telle quelle au
 // serveur, qui refuse (409 `conflit_edition`) si elle n'est déjà plus la version courante :
 // quelqu'un d'autre a enregistré une édition entre-temps. Sans ça, `save()` écraserait
@@ -345,9 +346,22 @@ function chargeUtile(f: typeof form.value) {
   return JSON.stringify({
     title: f.title, preconditions: f.preconditions,
     test_steps: JSON.stringify(f.steps.map((s) => s.trim()).filter(Boolean)),
-    expected_result: f.expected, refs: f.refs, estimate: f.estimate,
+    expected_result: f.expected, refs: f.refs, estimate: f.estimate, compte_id: f.compteId,
   })
 }
+// Étape 4 (A70) : « Joué en tant que » ne s'affiche que si le projet a d'autres comptes que le principal (écran sobre).
+const comptes = computed(() => detail.value?.comptes ?? [])
+const compteCourant = computed(() => {
+  const v = detail.value?.versions.find((x) => x.id === detail.value?.current_version_id)
+  return v?.compte_id ?? null
+})
+// Revue de l'étape 4 (2026-10-21) : un compte retiré du projet reste VISIBLE (« compte supprimé ») et le choix reste offert,
+// même s'il ne reste que le principal — sinon l'écran disait « principal » alors que le cas sort bloqué, sans issue.
+const compteSupprime = computed(() => compteCourant.value !== null && !comptes.value.some((c) => c.id === compteCourant.value))
+const afficherCompte = computed(() => comptes.value.length > 1 || compteSupprime.value)
+const libelleDuCompte = computed(() => compteSupprime.value
+  ? 'compte supprimé'
+  : comptes.value.find((c) => c.id === compteCourant.value)?.libelle ?? 'principal')
 
 function startEdit() {
   const v = currentVersion.value
@@ -361,6 +375,7 @@ function startEdit() {
     expected: v?.expected_result || derived.value.expected.join(' '),
     refs: c.value?.refs || '',
     estimate: c.value?.estimate || '',
+    compteId: compteCourant.value,
   }
   initialForm.value = { ...form.value, steps: [...form.value.steps] }
   baseVersionId.value = detail.value?.current_version_id ?? null
@@ -390,6 +405,8 @@ async function save() {
       refs: form.value.refs,
       estimate: form.value.estimate,
       base_version_id: baseVersionId.value,
+      // Envoyé seulement s'il a changé : un compte supprimé laissé tel quel serait refusé (422) pour une simple retouche du titre.
+      ...(form.value.compteId !== initialForm.value?.compteId ? { compte_id: form.value.compteId } : {}),
     })
     editing.value = false
     await load()
@@ -643,6 +660,10 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
             <p v-else class="mt-3 text-muted-foreground">Aucun résultat attendu renseigné.</p>
           </section>
 
+          <p v-if="afficherCompte" class="mt-4 text-sm text-muted-foreground" data-testid="joue-en-tant-que">
+            Joué en tant que : <span class="font-medium text-foreground">{{ libelleDuCompte }}</span>
+          </p>
+
           <!-- A57 : les lignes propres à ce cas, une itération chacune quand on le lance. -->
           <LignesDuCas :key="caseId" :case-id="caseId" :peut-modifier="peutModifier" />
 
@@ -732,6 +753,16 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
             <label class="block">
               <span class="text-sm font-medium">Résultat attendu</span>
               <textarea v-model="form.expected" rows="2" class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none"></textarea>
+            </label>
+
+            <!-- Étape 4 (A70) : le compte avec lequel ce cas est joué. -->
+            <label v-if="afficherCompte" class="block max-w-xs">
+              <span class="text-sm font-medium">Joué en tant que</span>
+              <select v-model="form.compteId" data-testid="choix-compte"
+                      class="mt-1 w-full rounded-md bg-surface-raised border border-border px-3 py-2 focus:border-primary outline-none">
+                <option v-if="compteSupprime" :value="compteCourant" disabled>compte supprimé</option>
+                <option v-for="c in comptes" :key="c.id ?? 'principal'" :value="c.id">{{ c.libelle }}</option>
+              </select>
             </label>
 
             <div class="grid grid-cols-2 gap-4">

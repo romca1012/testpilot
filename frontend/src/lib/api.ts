@@ -1000,6 +1000,8 @@ export interface CaseMetierIn {
   // Version consultée à l'ouverture du formulaire (audit 2026-09-07, édition concurrente) — le
   // serveur répond 409 `conflit_edition` si elle n'est déjà plus la version courante du cas.
   base_version_id?: number | null
+  // Étape 4 (A70) : « Joué en tant que » — un compte du projet, `null` = le principal ; absent = inchangé.
+  compte_id?: number | null
 }
 export interface CaseMetierOut {
   case: CaseSummary; version_id: number | null; version_created: boolean
@@ -1089,7 +1091,10 @@ export interface VersionOut {
   // Ce qui a changé et qui l'a fait — `created_by === 'repair-agent'` = version issue d'une
   // réparation automatique (0014), à ratifier.
   change_summary: string; created_by: string
+  // Étape 4 (A70) : le compte avec lequel cette version est jouée ; `null` = le principal.
+  compte_id?: number | null
 }
+export interface CompteChoix { id: number | null; libelle: string }
 export interface ReviewOut {
   id: number; version_id: number; decision: string; reviewer: string; comment: string; decided_at: string
 }
@@ -1129,6 +1134,8 @@ export interface ExecutionSummary {
 export interface CaseDetail {
   case: CaseSummary; project: Ref | null; module: Ref | null; current_version_id: number | null
   versions: VersionOut[]; reviews: ReviewOut[]; executions: ExecutionSummary[]; gate: GateOut | null
+  // Étape 4 (A70) : les comptes du projet pour « Joué en tant que » (libellés seulement).
+  comptes?: CompteChoix[]
 }
 // Un step de la bibliothèque partagée référencé par le `.feature` d'une version (Phase 2, script
 // consultable) — `code` est le décorateur + corps complet, relu depuis son fichier source.

@@ -36,6 +36,11 @@ from . import calcul, defauts as catalogue_defauts, pages
 # Valeurs de TEST fixes (voir `specs/banc_local/apps.yaml`, vérifiées par tests/test_app_banc_web.py).
 IDENTIFIANT_TEST = "testeur"
 MOT_DE_PASSE_TEST = "motdepasse-test"
+# Étape 4 (A70) : un second compte, pour prouver qu'un cas « joué en tant que lecteur » l'est vraiment (la page dit qui est
+# connecté). Mêmes droits que « testeur » : le banc ne mesure pas encore les droits par rôle.
+IDENTIFIANT_LECTEUR = "lecteur"
+MOT_DE_PASSE_LECTEUR = "motdepasse-lecteur"
+_UTILISATEURS = {IDENTIFIANT_TEST: MOT_DE_PASSE_TEST, IDENTIFIANT_LECTEUR: MOT_DE_PASSE_LECTEUR}
 ENV_DEFAUTS = "TP_DEFAUTS"
 COOKIE_SESSION = "tp_session"
 TAILLE_CORPS_MAX = 64 * 1024
@@ -92,7 +97,7 @@ class Etat:
         self.remettre_a_zero()
 
     def remettre_a_zero(self) -> None:
-        self.sessions: set[str] = set()
+        self.sessions: dict[str, str] = {}   # jeton → identifiant connecté
         self.panier: dict[str, int] = {}
         self.remise_pct = Decimal("0")
         self.clients: list[dict] = []
@@ -201,6 +206,11 @@ class _Requete(BaseHTTPRequestHandler):
         morceau = cookie.get(COOKIE_SESSION)
         return morceau is not None and morceau.value in self.server.etat.sessions
 
+    def _utilisateur(self) -> str:
+        """L'identifiant de la session ouverte (affiché « Connecté en tant que … »)."""
+        morceau = SimpleCookie(self.headers.get("Cookie") or "").get(COOKIE_SESSION)
+        return self.server.etat.sessions.get(morceau.value, IDENTIFIANT_TEST) if morceau else IDENTIFIANT_TEST
+
     def _client_autorise(self) -> bool:
         """Contrôle des routes `/__*` : adresse du client ET en-tête Host de bouclage (voir l'en-tête du module)."""
         if not est_hote_loopback(self.client_address[0]):
@@ -259,11 +269,11 @@ class _Requete(BaseHTTPRequestHandler):
             if chemin in _ROUTES_CONNUES or chemin.startswith("/commande/"):
                 return self._rediriger("/connexion")
             return self._envoyer(404, pages.introuvable(None))
-        moi = IDENTIFIANT_TEST
+        moi = self._utilisateur()
         if chemin == "/deconnexion" and methode == "POST":
             self._corps()
             cookie = SimpleCookie(self.headers.get("Cookie") or "")
-            etat.sessions.discard(cookie[COOKIE_SESSION].value)
+            etat.sessions.pop(cookie[COOKIE_SESSION].value, None)
             return self._rediriger(
                 "/connexion", {"Set-Cookie": f"{COOKIE_SESSION}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"}
             )
@@ -302,11 +312,12 @@ class _Requete(BaseHTTPRequestHandler):
         champs = self._formulaire()
         identifiant = champs.get("identifiant", "")
         mot_de_passe = champs.get("mot_de_passe", "")
-        bon_identifiant = hmac.compare_digest(identifiant.encode(), IDENTIFIANT_TEST.encode())
-        bon_mot_de_passe = hmac.compare_digest(mot_de_passe.encode(), MOT_DE_PASSE_TEST.encode())
+        attendu = next((m for u, m in _UTILISATEURS.items() if hmac.compare_digest(identifiant.encode(), u.encode())), None)
+        bon_identifiant = attendu is not None
+        bon_mot_de_passe = bon_identifiant and hmac.compare_digest(mot_de_passe.encode(), attendu.encode())
         if bon_identifiant and (bon_mot_de_passe or defauts.actif("login_accepte_tout")):
             jeton = secrets.token_hex(16)
-            etat.sessions.add(jeton)
+            etat.sessions[jeton] = identifiant
             return self._rediriger(
                 "/produits", {"Set-Cookie": f"{COOKIE_SESSION}={jeton}; Path=/; HttpOnly; SameSite=Lax"}
             )

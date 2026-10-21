@@ -108,6 +108,24 @@ def gate_du_cas(conn, case: dict, version_id: int) -> review_gate.GateDecision:
                                         ecarts_cas_test(conn, case, version_id))
 
 
+def compte_du_test(conn, case_id: int, version_id: int | None) -> tuple[str | None, str]:
+    """`(libellé, refus)`. Le compte avec lequel CETTE version du cas est jouée (A70) : `(None, "")` pour le principal (toute
+    version d'avant) ; le libellé d'un compte du projet ; ou un refus si ce compte n'existe plus — jamais un repli silencieux
+    sur le principal, qui verrait d'autres écrans et d'autres droits."""
+    from testpilot.store.repositories import ProjectAccountRepo
+
+    version = VersionRepo(conn).get(version_id) if version_id else None
+    compte_id = (version or {}).get("compte_id")
+    if compte_id is None:
+        return None, ""
+    cas = CaseRepo(conn).get(case_id) or {}
+    compte = ProjectAccountRepo(conn).lire(cas.get("project_id"), compte_id) if cas.get("project_id") else None
+    if compte is None:
+        return None, ("le compte choisi pour ce cas (« Joué en tant que ») n'existe plus dans le projet : le test n'est pas "
+                      "joué. Choisissez un autre compte sur la fiche du cas.")
+    return compte["label"], ""
+
+
 def adresse_de_remise_avant_test(conn, case_id: int) -> tuple[str | None, str]:
     """`(adresse, refus)`. L'adresse de remise à zéro DÉCLARÉE du projet du cas, si elle vaut encore pour l'adresse actuelle
     du projet (`essai.adresse_declaree` : même application, déclaration complète). Aucune déclaration : `(None, "")`, le
@@ -363,6 +381,12 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
                               profil_instance=resolve_profil_instance(conn, case_id),
                               **({"environnement_ajoute": True} if environnement is not None else {}),
                               **({"generated_dir": script.dossier} if script.dossier is not None else {}))
+        if hasattr(runner, "compte_refus"):
+            # Étape 4 (A70) : le cas se joue avec SON compte (écrans et connexions) ; les vérifications restent au principal (A73).
+            from testpilot.connectors.runtime_env import ENV_COMPTE_DU_TEST
+            libelle, runner.compte_refus = compte_du_test(conn, case_id, version_id)
+            if libelle:
+                runner.connection = {**runner.connection, ENV_COMPTE_DU_TEST: libelle}
         if environnement is None and hasattr(runner, "remise_a_zero_url"):
             # Étape 4 (A72) : un projet qui a déclaré une adresse de remise à zéro y revient avant CHAQUE run réel de ce cas
             # (réparations comprises). Environnement par défaut seulement (A50 : l'adresse déclarée vaut pour lui).

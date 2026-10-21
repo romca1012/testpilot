@@ -697,6 +697,8 @@ def test_apps_yaml_decrit_l_application_telle_qu_elle_est():
     assert app["variable_defauts"] == serveur.ENV_DEFAUTS
     compte = app["comptes"][0]
     assert (compte["identifiant"], compte["mot_de_passe"]) == (serveur.IDENTIFIANT_TEST, serveur.MOT_DE_PASSE_TEST)
+    lecteur = app["comptes"][1]   # étape 4 (A70)
+    assert (lecteur["identifiant"], lecteur["mot_de_passe"]) == (serveur.IDENTIFIANT_LECTEUR, serveur.MOT_DE_PASSE_LECTEUR)
     assert "python -m banc.app_web.serveur" in app["lancement"]
 
 

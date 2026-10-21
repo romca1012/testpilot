@@ -175,6 +175,14 @@ class VersionOut(BaseModel):
     change_summary: str = ""
     created_by: str = ""
     created_at: str = ""
+    # Étape 4 (A70) : le compte avec lequel cette version est jouée (`project_account.id`) ; `None` = le compte principal.
+    compte_id: int | None = None
+
+
+class CompteChoixOut(BaseModel):
+    """Un compte proposé dans « Joué en tant que » : son libellé, jamais son identifiant ni son mot de passe (D8)."""
+    id: int | None = None   # None = le compte principal
+    libelle: str
 
 
 class ReviewOut(BaseModel):
@@ -302,6 +310,8 @@ class CaseDetail(BaseModel):
     reviews: list[ReviewOut] = []
     executions: list[ExecutionSummary] = []
     gate: GateOut | None = None
+    # Étape 4 (A70) : les comptes du projet, pour « Joué en tant que » (le principal d'abord).
+    comptes: list[CompteChoixOut] = []
 
 
 class ReorderCasesIn(BaseModel):
@@ -400,6 +410,8 @@ class CaseMetierIn(BaseModel):
     # Version consultée par l'appelant à l'OUVERTURE du formulaire (audit 2026-09-07, édition
     # concurrente) — `None` désactive le contrôle (compatibilité des anciens clients).
     base_version_id: int | None = None
+    # Étape 4 (A70) : « Joué en tant que » — un compte du projet, `null` = le principal. ABSENT du corps : inchangé.
+    compte_id: int | None = None
 
 
 class CaseMetierOut(BaseModel):
@@ -1654,6 +1666,7 @@ def version_out(row: dict) -> VersionOut:
         preconditions=row.get("preconditions", "") or "",
         test_steps=row.get("test_steps", "") or "",
         expected_result=row.get("expected_result", "") or "",
+        compte_id=row.get("compte_id"),
     )
 
 
