@@ -273,3 +273,30 @@ def verifier_connexion_du_projet(conn, project: dict | None) -> dict[str, str]:
     sequence = project_login_recordings.lire(conn, project["id"]) if a_un_projet else None
     login_form = project_login_recordings.lire_formulaire(conn, project["id"]) if a_un_projet else None
     return verifier_connexion(project, comptes, sequence, login_form)
+
+
+def empreinte_du_compte(compte: dict) -> str:
+    """Ce qui identifie une PERSONNE connectée, sans rien en révéler (étape 4, morceau 6) : un compte dont l'identifiant de
+    connexion change décrit quelqu'un d'autre — son relevé est « à actualiser ». Un mot de passe changé ou un libellé renommé
+    ne changent rien. Jamais l'identifiant lui-même dans un fichier : son empreinte seulement."""
+    import hashlib
+
+    brut = f"{compte.get('id')}|{compte.get('username') or ''}|{compte.get('created_at') or ''}"
+    return hashlib.sha256(brut.encode("utf-8")).hexdigest()[:16]
+
+
+def comptes_pour_l_exploration(conn, project_id: int) -> list[dict]:
+    """Étape 4, morceau 6 (A69 révisée) : les comptes secondaires que l'exploration parcourt, AVEC leur secret — lus au
+    lancement, puis transmis dans les paramètres CHIFFRÉS de la tâche, comme le mot de passe du principal ; jamais écrits
+    dans un fichier de mesure. `[{id, libelle, username, password, empreinte}]`, dans l'ordre des comptes. Seul point de
+    passage autorisé vers `pour_runtime` pour l'exploration (règle D8)."""
+    from testpilot.store.repositories import ProjectAccountRepo
+
+    repo = ProjectAccountRepo(conn)
+    secrets_par_libelle = {c["label"]: c for c in repo.pour_runtime(project_id)}
+    comptes = []
+    for public in repo.liste(project_id):
+        secret = secrets_par_libelle.get(public["label"]) or {}
+        comptes.append({"id": public["id"], "libelle": public["label"], "username": public["username"],
+                        "password": secret.get("password") or "", "empreinte": empreinte_du_compte(public)})
+    return comptes

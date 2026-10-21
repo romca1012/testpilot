@@ -175,6 +175,29 @@ class Connector(ABC):
         connecteur d'un autre — contrairement aux trois méthodes ci-dessus, purement structurelles.
         """
 
+    def crawl_identite_confirmee(self, ctx, identifiant: str) -> str:
+        """Étape 4, morceau 6 (A69 révisée) : la connexion du crawl a-t-elle VRAIMENT ouvert la session de ce compte ? `""` si
+        oui, sinon la raison (« connexion impossible… »). Appelée pour les comptes SECONDAIRES seulement : leur relevé dit
+        « ce compte voit / ne voit pas » — un relevé fait sans être connecté, attribué au compte, serait une fausse observation.
+
+        Défaut : on n'affirme rien — un connecteur qui ne sait pas le vérifier refuse (le compte sort « connexion impossible »,
+        jamais un relevé anonyme présenté comme le sien)."""
+        return "ce type d'application ne permet pas de vérifier quel compte est connecté"
+
+    def menus_visibles(self, page) -> list[dict] | None:
+        """Étape 4, morceau 6 : les menus que le compte CONNECTÉ voit, pour la carte « qui voit quoi » —
+        `[{"cle": identifiant technique stable (sinon le chemin), "chemin": "Ventes / Commandes"}]`. La clé ne dépend pas de la
+        langue de l'utilisateur (deux comptes peuvent avoir deux langues). `None` = on ne sait pas les lire — jamais `[]`, qui
+        ferait conclure « ce compte ne voit aucun menu ». Défaut : `None` (une application sans menus propres)."""
+        return None
+
+    def crawl_session_toujours_ouverte(self, ctx, identifiant: str) -> bool | None:
+        """Étape 4, morceau 6 : en FIN de parcours, la session est-elle toujours celle de ce compte ? `True`/`False`, ou `None`
+        si ce connecteur ne sait pas le vérifier. Une session perdue en route (déconnexion, expiration) rend le parcours
+        incomplet ; un connecteur qui ne sait pas vérifier ne permet jamais de conclure « ce compte ne voit pas » (seulement
+        « il voit »)."""
+        return None
+
     def discover_menus(self, page) -> list[dict]:
         """Modèles métier accessibles au compte connecté via un mécanisme de MENU propre à
         l'application — {menu, model} — au-delà de ce que le crawl atteint par les liens.
