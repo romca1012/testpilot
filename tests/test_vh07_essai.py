@@ -127,6 +127,22 @@ def test_falsifiable_le_mode_n_est_construit_que_si_le_projet_le_declare(projet)
     assert e.construire(projet, SimpleNamespace(connection={})) is None
 
 
+ODOO = {**PROJET, "connector_type": "odoo", "instance_de_test": 1}
+
+
+def test_falsifiable_odoo_n_a_l_essai_que_sous_l_interrupteur_et_avec_ses_trois_conditions(monkeypatch):
+    """Étape 4 (A71) : l'essai Odoo exige l'interrupteur, l'instance de test déclarée (A45) et l'adresse déclarée."""
+    from testpilot.generation import interrupteurs
+
+    runner = SimpleNamespace(connection={"ODOO_URL": "http://app"}, project_id=7, connector_type="odoo", profil_instance=None)
+    assert e.construire(ODOO, runner) is None, "interrupteur éteint : comme avant"
+    monkeypatch.setenv(interrupteurs.ENV_ESSAI_TOUS_CONNECTEURS, "1")
+    assert e.construire(ODOO, runner) is not None
+    assert e.construire({**ODOO, "instance_de_test": 0}, runner) is None, "sans instance de test : jamais (A45)"
+    assert e.construire({**ODOO, "bac_a_sable_reset": ""}, runner) is None, "sans adresse de remise à zéro : jamais"
+    assert e.construire({**ODOO, "calibration_writes_enabled": 0}, runner) is None
+
+
 def test_un_projet_bac_a_sable_construit_le_mode_sans_repli_par_l_ia():
     runner = SimpleNamespace(connection={"WEB_URL": "http://app"}, project_id=7, connector_type="web", profil_instance=None)
     ferme = []
@@ -179,12 +195,13 @@ class _Remise(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-    def _repondre(self, code, entetes=None):
+    def _repondre(self, code, entetes=None, corps=b""):
         self.send_response(code)
         for cle, valeur in (entetes or {}).items():
             self.send_header(cle, valeur)
-        self.send_header("Content-Length", "0")
+        self.send_header("Content-Length", str(len(corps)))
         self.end_headers()
+        self.wfile.write(corps)
 
     def do_GET(self):
         type(self).vus.append(f"GET {self.path}")
@@ -193,8 +210,16 @@ class _Remise(BaseHTTPRequestHandler):
     def do_POST(self):
         self.rfile.read(int(self.headers.get("Content-Length") or 0))
         type(self).vus.append(f"POST {self.path}")
-        if self.path == "/reset":
+        if self.path == "/reset":   # A75 (2026-10-20) : la remise à zéro le DIT
+            return self._repondre(200, {"Content-Type": "application/json"}, b'{"remis_a_zero": true}')
+        if self.path == "/reset-204-vide":
             return self._repondre(204)
+        if self.path == "/reset-page-html":
+            return self._repondre(200, {"Content-Type": "text/html"}, b"<html><body>Accueil</body></html>")
+        if self.path == "/reset-ok-seul":
+            return self._repondre(200, {"Content-Type": "application/json"}, b'{"ok": true}')
+        if self.path == "/reset-faux":
+            return self._repondre(200, {"Content-Type": "application/json"}, b'{"remis_a_zero": false}')
         if self.path == "/reset-vers-connexion":
             return self._repondre(302, {"Location": "/login"})
         if self.path == "/reset-vers-ailleurs":
@@ -225,6 +250,15 @@ def test_falsifiable_une_redirection_ou_une_erreur_ne_prouve_rien(serveur_de_rem
         bac_a_sable.remettre_a_zero(f"{serveur_de_remise}{chemin}")
 
     assert _Remise.vus == [f"POST {chemin}"], "aucune requête n'a suivi la redirection"
+
+
+@pytest.mark.parametrize("chemin", ["/reset-204-vide", "/reset-page-html", "/reset-ok-seul", "/reset-faux"])
+def test_falsifiable_une_reponse_qui_ne_dit_pas_remis_a_zero_ne_prouve_rien(serveur_de_remise, chemin):
+    """Décision A75 (porteur, 2026-10-20) : une adresse mal saisie (« / », une page d'accueil) répond 200 sur la plupart des
+    applications — l'IA aurait essayé ses actions dans de vraies données. Seul `{"remis_a_zero": true}` prouve la remise à
+    zéro (un 204 vide la prouvait avant A75)."""
+    with pytest.raises(RuntimeError, match="remis_a_zero"):
+        bac_a_sable.remettre_a_zero(f"{serveur_de_remise}{chemin}")
 
 
 def test_l_essai_est_encadre_par_deux_remises_a_zero(tmp_path):
@@ -504,7 +538,9 @@ def _runner_sans_sous_processus(tmp_path, monkeypatch, **kw):
     return br, lances, (lambda **plus: br.BehaveRunner(generated_dir=tmp_path, **{**kw, **plus}))
 
 
-def test_falsifiable_le_run_retenu_sort_erreur_technique_jamais_un_verdict(tmp_path, monkeypatch):
+def test_falsifiable_le_run_retenu_sort_bloque_jamais_un_verdict(tmp_path, monkeypatch):
+    """Attendu changé à l'étape 4 (revue, A72) : une application qu'on ne sait pas remettre à zéro est un PRÉREQUIS
+    d'environnement manquant (D1) — « bloqué », plus « erreur technique ». Le sens ne bouge pas : jamais un verdict."""
     from testpilot.execution.executor import ExecutionOutcome
     from testpilot.verdict import status
 
@@ -521,7 +557,7 @@ def test_falsifiable_le_run_retenu_sort_erreur_technique_jamais_un_verdict(tmp_p
     assert lances == [], "Behave n'est pas lancé"
     assert resultat.returncode < 0 and not resultat.success and "PRÉREQUIS MANQUANT" in resultat.raw_stderr
     verdict = status.derive_verdict(ExecutionOutcome(module_name="m", dry_run_passed=True, real_run=resultat))
-    assert (verdict.execution_status, verdict.functional_status) == (status.EXEC_TECHNICAL_ERROR, status.FUNC_INDETERMINE)
+    assert (verdict.execution_status, verdict.functional_status) == (status.EXEC_BLOCKED, status.FUNC_INDETERMINE)
 
 
 def test_le_runner_d_une_execution_reelle_passe_par_l_exclusion_pas_celui_d_un_essai(tmp_path, monkeypatch):

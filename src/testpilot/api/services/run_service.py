@@ -108,6 +108,25 @@ def gate_du_cas(conn, case: dict, version_id: int) -> review_gate.GateDecision:
                                         ecarts_cas_test(conn, case, version_id))
 
 
+def adresse_de_remise_avant_test(conn, case_id: int) -> tuple[str | None, str]:
+    """`(adresse, refus)`. L'adresse de remise à zéro DÉCLARÉE du projet du cas, si elle vaut encore pour l'adresse actuelle
+    du projet (`essai.adresse_declaree` : même application, déclaration complète). Aucune déclaration : `(None, "")`, le
+    comportement d'avant. Déclaration PÉRIMÉE (l'application a changé) : `(None, raison)` — le test n'est pas joué (revue de
+    l'étape 4 : sinon chaque cas jouait sur l'état laissé par le précédent, en silence ; et on ne remet jamais à zéro une
+    autre application que celle du projet)."""
+    from testpilot.generation.tools.essai import adresse_declaree
+
+    cas = CaseRepo(conn).get(case_id) or {}
+    projet = ProjectRepo(conn).get(cas.get("project_id")) if cas.get("project_id") else None
+    if not projet or not (projet.get("bac_a_sable_reset") or "").strip():
+        return None, ""
+    try:
+        return adresse_declaree(projet.get("base_url") or "", projet.get("bac_a_sable_reset") or ""), ""
+    except ValueError as exc:
+        return None, (f"l'adresse de remise à zéro déclarée ne vaut plus pour l'application du projet ({exc}) : le test "
+                      "n'est pas joué. Redéclarez-la (Paramètres de test, État de départ).")
+
+
 def blocage_du_cas(conn, case: dict, version_id: int, avis: list[dict],
                    noms: list[str] | None = None) -> tuple[review_gate.GateDecision, list[str], bool]:
     """Étape 2 (A63, A67) : la décision de `gate_du_cas`, pourquoi la version ne sera pas lancée — recalculé, jamais
@@ -344,6 +363,10 @@ def run_execution(execution_id: int, module_name: str, case_id: int, version_id:
                               profil_instance=resolve_profil_instance(conn, case_id),
                               **({"environnement_ajoute": True} if environnement is not None else {}),
                               **({"generated_dir": script.dossier} if script.dossier is not None else {}))
+        if environnement is None and hasattr(runner, "remise_a_zero_url"):
+            # Étape 4 (A72) : un projet qui a déclaré une adresse de remise à zéro y revient avant CHAQUE run réel de ce cas
+            # (réparations comprises). Environnement par défaut seulement (A50 : l'adresse déclarée vaut pour lui).
+            runner.remise_a_zero_url, runner.remise_a_zero_refus = adresse_de_remise_avant_test(conn, case_id)
         iterations_jouees = len((script.parametres_joues or {}).get("iterations") or [])
         if iterations_jouees > 1 and hasattr(runner, "real_timeout"):
             # A52 : toutes les itérations tournent dans un seul passage de Behave — le délai est celui d'un passage par
@@ -664,6 +687,8 @@ def _persist(conn, execution_id, case_id, verdict, outcome, duration, module_nam
         cost_usd=0.0, iterations=0, duration_seconds=duration,
         field_fallbacks=json.dumps(fallbacks, ensure_ascii=False) if fallbacks else "",
         residus=json.dumps(residus, ensure_ascii=False) if residus else "",
+        # Étape 4 (revue) : un run non joué faute de prérequis (remise à zéro impossible, adresse périmée) dit POURQUOI.
+        error_message=getattr(getattr(outcome, "real_run", None), "prerequis_manquant", "") or "",
         comment=commentaire, confiance=verdict.confiance)
     # Les captures, elles, peuvent s'attacher APRÈS coup sans rompre l'invariant : elles vivent
     # dans `result_attachment`, une table à part (même exception déjà documentée pour

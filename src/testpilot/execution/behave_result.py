@@ -96,6 +96,9 @@ class BehaveResult:
     # au-dessus d'un `max_id` mais jamais enregistrés par le scénario (résidu possible : tiers ou
     # effet de bord). Niveau RUN, même raison que `field_fallbacks`.
     residus: list[str] = field(default_factory=list)
+    # Étape 4 (A72, revue) : le run n'a PAS été joué faute de prérequis de l'environnement (remise à zéro impossible ou
+    # adresse périmée) — « bloqué » (D1), jamais une erreur technique du test ni un verdict sur l'application.
+    prerequis_manquant: str = ""
     # Refus MESURÉS sur l'application pendant le run (§5bis n°1). Niveau RUN, même raison.
     # Ce sont des FAITS, pas un verdict : ils n'influencent aucun statut, ils alimentent
     # l'apprentissage pour que le résolveur ne reproduise plus la valeur refusée.
