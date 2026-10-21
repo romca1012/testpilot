@@ -56,8 +56,13 @@ def _projet(conn, *, lignes, compte_du_cas=False, feature=QUI, base_url="http://
     pid = ProjectRepo(conn).create(name="Droits", connector_type="web", base_url=base_url)
     lecteur = ProjectAccountRepo(conn).create(pid, label="Lecteur", username="lecteur", password="motdepasse-lecteur")
     cid = CaseRepo(conn).create(title="Qui", module_id=ModuleRepo(conn).create(project_id=pid, name="M"), feature_slug="qui")
+    # Le test est réputé écrit pour TOUS les comptes du projet (ce que note une génération faite avec ces lignes) : ces tests
+    # portent sur l'exécution des lignes ; l'écart « écrit pour » a les siens (`test_generation_par_compte.py`).
+    ecrit = {"compte_id": lecteur if compte_du_cas else None, "libelle": "Lecteur" if compte_du_cas else "principal",
+             "vue": "principal", "comptes_des_lignes": [0, lecteur]}
     vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="", feature_content=feature, steps_content="",
-                                   compte_id=lecteur if compte_du_cas else None)
+                                   compte_id=lecteur if compte_du_cas else None,
+                                   generation_provenance=json.dumps({"ecrit_pour": ecrit}))
     conn.execute("UPDATE test_case SET current_version_id=? WHERE id=?", (vid, cid))
     conn.commit()
     ids = {"resultat": TestDataRepo(conn).creer_variable(pid, nom="resultat")}

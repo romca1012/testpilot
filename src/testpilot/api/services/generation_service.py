@@ -1194,12 +1194,30 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
         from testpilot.api.services import modele_du_cas
         from testpilot.generation import interrupteurs
         courante = VersionRepo(conn).get((CaseRepo(conn).get(case_id) or {}).get("current_version_id") or 0) or {}
-        cible = modele_du_cas.pour_la_generation(conn, project, courante.get("compte_id"))
+        cible = modele_du_cas.pour_la_generation(conn, project, courante.get("compte_id"), case_id)
         par_compte = interrupteurs.generation_par_compte_actif() and cible.compte is not None
+        par_lignes = interrupteurs.generation_par_compte_actif() and bool(cible.comptes_des_lignes)
         if par_compte and cible.refus:
             # A85 : le run serait bloqué de toute façon — on ne paie pas l'IA pour rien, et l'écran dit quoi faire.
             GenerationJobRepo(conn).maj(job_id, status="failed", error=cible.refus[:300])
             return
+        if par_lignes:
+            # Revue finale : une ligne au compte supprimé, ou une première ligne (celle de l'essai) sans identifiants — le run
+            # serait bloqué, les essais aussi : refus AVANT tout appel payé, avec le geste à faire.
+            from testpilot.connectors.runtime_env import identifiants_du_compte
+            supprimee = next((l for l in cible.comptes_des_lignes if l.get("supprime")), None)
+            premiere = cible.comptes_des_lignes[0]
+            if supprimee is not None:
+                GenerationJobRepo(conn).maj(job_id, status="failed", error=(
+                    f"Données de test : la ligne « {supprimee['nom']} » est jouée avec un compte supprimé — choisissez-en un "
+                    "autre avant d'écrire ce test.")[:300])
+                return
+            if premiere["compte_id"] is not None and not (identifiants_du_compte(conn, project["id"], premiere["compte_id"])
+                                                          or {}).get("password"):
+                GenerationJobRepo(conn).maj(job_id, status="failed", error=(
+                    f"{premiere['libelle']} : compte sans mot de passe — complétez-le dans les réglages du projet avant "
+                    "d'écrire ce test.")[:300])
+                return
         identifiants = {}
         if par_compte:
             from testpilot.connectors.runtime_env import identifiants_du_compte
@@ -1231,10 +1249,15 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
                               project_id=(project or {}).get("id"),
                               connector_type=(project or {}).get("connector_type"),
                               profil_instance=(project or {}).get("profil_instance"))
-        if par_compte:
-            # L'essai (et la correction, qui réutilise ce lanceur) se joue avec le compte du cas, comme l'exécution.
+        if par_compte or par_lignes:
+            # L'essai (et la correction, qui réutilise ce lanceur) se joue avec le compte du cas, comme l'exécution — ou, si
+            # les lignes ont leur compte, avec celui de la PREMIÈRE ligne (l'essai joue la première ligne, IT-3b).
             from testpilot.connectors.runtime_env import ENV_COMPTE_DU_TEST
-            runner.connection[ENV_COMPTE_DU_TEST] = cible.compte["libelle"]
+            libelle = cible.comptes_des_lignes[0]["libelle"] if par_lignes else cible.compte["libelle"]
+            if libelle == "principal":
+                runner.connection.pop(ENV_COMPTE_DU_TEST, None)
+            else:
+                runner.connection[ENV_COMPTE_DU_TEST] = libelle
 
         analysis_tracker = CostTracker()
         plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(slug, spec_content)
@@ -1251,7 +1274,7 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
             regeneration=regeneration, valeurs_d_essai=dict(lignes_du_cas[0][1]) if lignes_du_cas else None,
             regeneration_apres_defaut=_dernier_defaut_fonctionnel(conn, case_id) if regeneration else None,
             # Étape 4, morceau 7 : les écrans du compte du cas (interrupteur allumé seulement) ; pour qui le test est écrit.
-            modele_du_cas=cible if par_compte else None, ecrit_pour=cible.ecrit_pour,
+            modele_du_cas=cible if (par_compte or par_lignes) else None, ecrit_pour=cible.ecrit_pour,
             # Étape 2 (A61) : de quoi calculer, pendant l'écriture, les MÊMES points que sur la version enregistrée.
             variables_des_lignes=CaseDataRepo(conn).variables_des_lignes(case_id),
             intention=_intention_declaree(CaseRepo(conn).get(case_id) or {}, {
