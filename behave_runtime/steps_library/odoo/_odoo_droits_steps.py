@@ -11,7 +11,8 @@ import re
 
 from behave import given, then, when
 
-from _base_helpers import ElementIntrouvableError, constater, constater_visible
+from _base_helpers import (ConstatNonConcluantError, ElementIntrouvableError, constater, constater_visible,
+                           session_rpc_du_compte_qui_agit)
 from _odoo_steps import _exiger_enregistrement_en_contexte
 from _selecteurs import odoo_attendre_inactif, selecteurs
 
@@ -52,10 +53,24 @@ def step_action_refusee(context, methode):
         # cannot be called remotely », un `AccessError`) — le refus ne prouverait rien sur les droits de CE compte.
         raise RuntimeError(f"« {methode} » est une méthode privée : Odoo la refuse à tout utilisateur, son refus ne prouve "
                            "rien sur les droits. Nommez la méthode publique de l'action (ex. `action_confirm`).")
-    Model = context.odoo.env[context.last_record_model]
+    # A76 : le refus se prouve avec le compte qui AGIT — le principal (A73) réussirait l'appel sur une application saine.
+    Model = session_rpc_du_compte_qui_agit(context).env[context.last_record_model]
+    identifiant = context.last_record_ids[0]
+    # A76 (revue de l'étape 4, 2026-10-21) : depuis A73 l'enregistrement est créé par le principal ; un compte qui ne le VOIT pas
+    # (règle « ses propres documents ») est refusé dès la lecture — ce refus ne dit rien de l'ACTION. Non concluant, jamais vert.
+    try:
+        lisible = bool(Model.search_count([("id", "=", identifiant)]))
+    except Exception as exc:
+        if not _est_un_refus_d_acces(exc):
+            raise
+        lisible = False
+    if not lisible:
+        raise ConstatNonConcluantError(
+            f"Ce compte ne voit pas l'enregistrement {context.last_record_model} #{identifiant} : le refus de '{methode}' ne "
+            "peut pas être attribué à l'action. Créez l'enregistrement avec ce compte (ou un enregistrement qu'il voit).")
     refuse = False
     try:
-        getattr(Model.browse(context.last_record_ids[0]), methode)()
+        getattr(Model.browse(identifiant), methode)()
     except Exception as exc:
         # Lot VH-04 (audit V7) : seul un REFUS DE DROITS du serveur prouve le refus. Avant, TOUTE exception comptait — une
         # méthode mal orthographiée, une panne RPC, un enregistrement verrouillé passaient pour « l'action est refusée ».
