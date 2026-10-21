@@ -52,9 +52,14 @@ class GenericWebConnector(Connector):
     def __init__(self, url: str, user: str = "", password: str = "", *,
                  headless: bool = True, timeout_ms: int = 15_000, contexte=None,
                  sequence_connexion: list[dict] | None = None,
-                 login_form: dict | None = None) -> None:
+                 login_form: dict | None = None, verifier_identite: bool = False) -> None:
         from testpilot.connectors.contexte_navigateur import ContexteNavigateur
 
+        # Étape 4, morceau 7 : observer avec le compte du CAS — la connexion doit être prouvée (`crawl_identite_confirmee`),
+        # jamais des écrans de visiteur étiquetés « ceux du compte ». Faux : comportement d'avant.
+        self._verifier_identite = verifier_identite
+        self._echec_identite = ""   # mémorisé : jamais une nouvelle tentative à chaque outil (compte verrouillé, délais)
+        self._url_avant_connexion = ""
         # Lot 07c : le MÊME contexte (langue, fuseau, fenêtre) que l'exécution — l'agent voit ce que le test verra.
         self._contexte = contexte if contexte is not None else ContexteNavigateur()
         self._url = url.rstrip("/")
@@ -391,6 +396,8 @@ class GenericWebConnector(Connector):
         est détecté (DANS le thread worker) — voir docstring du module."""
         if self._page is not None:
             return self._page
+        if self._echec_identite:
+            raise RuntimeError(self._echec_identite)
         from playwright.sync_api import sync_playwright
 
         from testpilot.connectors.contexte_navigateur import arguments_de_confinement
@@ -401,6 +408,18 @@ class GenericWebConnector(Connector):
         page.goto(self._url)
         page.wait_for_load_state("networkidle")
         self._tenter_connexion_generique(page)
+        if self._verifier_identite:
+            from types import SimpleNamespace
+            # Même référence que l'exploration : l'adresse APRÈS la séquence de franchissement, juste avant la soumission.
+            raison = self.crawl_identite_confirmee(SimpleNamespace(
+                page=page, url_avant_connexion=self._url_avant_connexion,
+                connexion_soumise=self._tentative_connexion_faite), self._user)
+            if raison:
+                self._browser.close()
+                self._playwright.stop()
+                self._browser = self._playwright = None
+                self._echec_identite = f"observation avec le compte du cas impossible : {raison}"
+                raise RuntimeError(self._echec_identite)
         self._page = page
         return page
 
@@ -412,6 +431,7 @@ class GenericWebConnector(Connector):
         Sous-lot D : même séquence de franchissement AVANT la détection que `crawl_relogin_hook`,
         même garde-fou (arrêt net si obsolète, jamais un repli silencieux)."""
         rejouer_sequence_connexion(page, self._sequence_connexion)
+        self._url_avant_connexion = getattr(page, "url", "")
         if self._login_form:
             remplir_et_soumettre_formulaire_connexion(
                 page, self._login_form, self._user, self._password)

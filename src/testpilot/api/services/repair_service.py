@@ -38,7 +38,8 @@ import logging
 from dataclasses import dataclass, field
 
 from testpilot import config
-from testpilot.generation import domain_model, memoire_reparation, repair_agent
+from testpilot.api.services import modele_du_cas
+from testpilot.generation import memoire_reparation, repair_agent
 from testpilot.guardrails.cost_tracker import CostTracker
 from testpilot.guardrails.repair_circuit import CircuitState, evaluate, failure_signature
 from testpilot.store.repositories import (
@@ -440,7 +441,9 @@ def run_repair_loop(conn, *, case_id: int, version_id: int, module_name: str,
             feature_content=version.get("feature_content") or "",
             verified_fields=json.loads(version.get("verified_fields") or "{}"),
             # Lot VH-05 : l'annuaire du projet, pour les MÊMES contrôles des littéraux qu'à la génération.
-            modele=domain_model.charger_modele(projet_du_cas) if projet_du_cas else None,
+            # Étape 4, morceau 7 : l'annuaire avec lequel CE test a été écrit (le compte du cas, si l'interrupteur l'était).
+            modele=(modele_du_cas.pour_la_relecture(conn, projet_du_cas, versions.list_for_case(case_id), version)[0]
+                    if projet_du_cas else None),
             connector=connector,
             connector_type=connector_type,
             connector_version=connector_version,

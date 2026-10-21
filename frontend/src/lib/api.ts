@@ -1156,6 +1156,8 @@ export interface CaseDetail {
   versions: VersionOut[]; reviews: ReviewOut[]; executions: ExecutionSummary[]; gate: GateOut | null
   // Étape 4 (A70) : les comptes du projet pour « Joué en tant que » (libellés seulement).
   comptes?: CompteChoix[]
+  // Étape 4, morceau 7 (A85) : le test a été écrit sans les écrans du compte du cas.
+  ecrit_sans_les_ecrans?: string
 }
 // Un step de la bibliothèque partagée référencé par le `.feature` d'une version (Phase 2, script
 // consultable) — `code` est le décorateur + corps complet, relu depuis son fichier source.

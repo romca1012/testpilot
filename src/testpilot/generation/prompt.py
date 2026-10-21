@@ -615,6 +615,25 @@ def _section_comptes(comptes: list[dict] | None) -> str:
     return "\n".join(lignes)
 
 
+def _section_compte_du_test(compte: dict | None) -> str:
+    """Étape 4, morceau 7 (interrupteur `TESTPILOT_GENERATION_PAR_COMPTE`) : le compte avec lequel CE test sera joué. Son
+    LIBELLÉ et son rôle seulement (D8). `None` (principal, ou interrupteur éteint) : rien, message d'avant."""
+    if not compte:
+        return ""
+    role = f" (rôle : {compte['business_role']})" if compte.get("business_role") else ""
+    if compte.get("vue") == "compte":
+        ecrans = f"Les écrans mesurés ci-dessus sont ceux de « {compte['libelle']} »."
+    else:
+        ecrans = (f"« {compte['libelle']} » n'a pas encore été exploré : les écrans ci-dessus sont ceux du compte principal, "
+                  "qui en voit peut-être davantage.")
+    return "\n".join([
+        "## Compte avec lequel ce test sera joué", "",
+        f"Ce cas est joué en tant que « {compte['libelle']} »{role}. L'outil connecte ce compte avant chaque scénario : "
+        f"n'écris pas « je me connecte en tant que » pour lui. {ecrans}",
+        f"Les lectures directes du serveur se font avec le compte principal, qui voit TOUT : ce que « {compte['libelle']} » "
+        "voit ou ne voit pas se vérifie à l'ÉCRAN, jamais par une lecture du serveur."])
+
+
 def _section_oracle(requetes: list[str] | None) -> str:
     """Les NOMS des requêtes d'oracle déclarées sur le projet (D7) — jamais l'adresse, la méthode ni
     les paramètres : ceux-ci restent dans les réglages du projet, hors de portée de l'agent (même
@@ -657,7 +676,8 @@ def _section_formes_oracle(formes: dict | None) -> str:
 def build_initial_message(plan: TestPlan, modele: dict | None = None,
                           metier: dict | None = None, comptes: list[dict] | None = None,
                           oracle: list[str] | None = None, regeneration: bool = False,
-                          variables: list[dict] | None = None, formes_oracle: dict | None = None) -> str:
+                          variables: list[dict] | None = None, formes_oracle: dict | None = None,
+                          compte_du_test: dict | None = None) -> str:
     """Message utilisateur initial : le plan mis en forme pour la boucle ReAct.
 
     `modele` — l'annuaire du domaine (`domain_model.charger_modele`). Optionnel : sans lui, le
@@ -704,6 +724,10 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None,
     section_comptes = _section_comptes(comptes)
     if section_comptes:
         lines.append("\n" + section_comptes)
+    # Étape 4, morceau 7 (interrupteur) : le compte du test. Absent : rien n'est ajouté, message d'avant.
+    section_compte_du_test = _section_compte_du_test(compte_du_test)
+    if section_compte_du_test:
+        lines.append("\n" + section_compte_du_test)
 
     section_oracle = _section_oracle(oracle)
     if section_oracle:

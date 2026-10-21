@@ -32,6 +32,7 @@ ENV_FORME_ORACLE = "TESTPILOT_FORME_ORACLE"
 ENV_LIGNES_PROPOSEES = "TESTPILOT_LIGNES_PROPOSEES"
 ENV_CONTROLE_FIN_ECRITURE = "TESTPILOT_CONTROLE_FIN_ECRITURE"
 ENV_ESSAI_TOUS_CONNECTEURS = "TESTPILOT_ESSAI_TOUS_CONNECTEURS"
+ENV_GENERATION_PAR_COMPTE = "TESTPILOT_GENERATION_PAR_COMPTE"
 
 _VRAI = frozenset({"1", "true", "yes", "oui", "on"})
 _ALLUMES_PAR_DEFAUT = frozenset({ENV_VARIABLES_DE_TEST, ENV_CAS_DIT_SES_DONNEES})
@@ -109,6 +110,13 @@ def essai_tous_connecteurs_actif(env: Mapping[str, str] | None = None) -> bool:
     (l'IA peut agir, instance de test déclarée, adresse de remise à zéro déclarée et prouvée). Change ce que l'API reçoit
     (un outil de plus) : éteint jusqu'à sa mesure (étape 8)."""
     return _actif(ENV_ESSAI_TOUS_CONNECTEURS, env)
+
+
+def generation_par_compte_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Étape 4, morceau 7 (A85) : l'IA écrit le test avec les écrans du compte du cas (« Joué en tant que »), relevés par
+    l'exploration de ce compte — au lieu de ceux du principal — et l'essai se joue avec lui. Change ce que l'API reçoit :
+    éteint jusqu'à sa mesure (étape 8)."""
+    return _actif(ENV_GENERATION_PAR_COMPTE, env)
 
 
 def allume(nom: str, env: Mapping[str, str] | None = None) -> bool:

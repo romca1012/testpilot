@@ -62,7 +62,8 @@ class GenerationAgent:
                  qualification: bool = False, regeneration: bool = False,
                  valeurs_d_essai: dict | None = None,
                  regeneration_apres_defaut: dict | None = None,
-                 variables_des_lignes=None, intention: str | None = None) -> GenerationResult:
+                 variables_des_lignes=None, intention: str | None = None,
+                 modele_du_cas=None, ecrit_pour: dict | None = None) -> GenerationResult:
         """`metier` — le document métier VALIDÉ (passe 4b de `0022`). Présent, il fixe le périmètre
         du Gherkin et se fige DANS la version, avec lui (décision n°10 : une version = le cas
         entier). Absent, le comportement est celui d'avant (chemin CLI et cas legacy).
@@ -94,7 +95,11 @@ class GenerationAgent:
         # 2026-07-19). Best-effort : absent ⇒ message d'avant, aucune contrainte inventée.
         # ⚠️ Il est propre au PROJET (son instance), plus au type de connecteur : deux projets
         # Odoo distincts n'ont ni les mêmes routes ni les mêmes champs.
-        modele = domain_model.charger_modele(projet)
+        # Étape 4, morceau 7 : `modele_du_cas` (interrupteur allumé, cas joué avec un autre compte) — les écrans de ce compte.
+        # Absent : exactement le modèle d'avant.
+        modele = modele_du_cas.modele if modele_du_cas is not None else domain_model.charger_modele(projet)
+        compte_du_test = ({**modele_du_cas.compte, "vue": modele_du_cas.vue}
+                          if modele_du_cas is not None and modele_du_cas.compte else None)
         # Lot PT-02d : les noms des variables de test (interrupteur éteint : liste vide, message d'avant).
         from testpilot.generation import variables_de_test
         variables, valeurs_par_defaut = variables_de_test.pour_l_agent(projet)
@@ -109,7 +114,8 @@ class GenerationAgent:
                                    plan, modele, metier, comptes=(projet or {}).get("comptes_libelles"),
                                    oracle=(projet or {}).get("oracle_requetes_disponibles"),
                                    regeneration=regeneration, variables=variables,
-                                   formes_oracle=self._formes_oracle(modele, projet))})
+                                   formes_oracle=self._formes_oracle(modele, projet),
+                                   **({"compte_du_test": compte_du_test} if compte_du_test else {}))})
         if failure_context:
             state.messages[0]["content"] = [
                 {"type": "text", "text": state.messages[0]["content"]}, *failure_context]
@@ -161,7 +167,8 @@ class GenerationAgent:
         ctx.controle_du_cas = controle_du_cas
         ctx.variables_du_cas = variables_requises
         from testpilot.generation.provenance import fingerprint, target_fingerprint
-        ctx.target_sha256 = target_fingerprint(projet)
+        ctx.target_sha256 = target_fingerprint(
+            projet, compte=compte_du_test["empreinte"] if compte_du_test and compte_du_test["vue"] == "compte" else None)
         ctx.shared_steps = shared_steps
         ctx.requirements = {'expected_result': (metier or {}).get('expected_result') or plan.raw_spec}
         ctx.requirements.update({f'step:{i}': str(step)
@@ -229,6 +236,11 @@ class GenerationAgent:
             'artifact_sha256': fingerprint([result.feature_content, result.steps_content]),
             'cost_usd': result.cost_usd, 'iterations': result.iterations,
         }
+        # Étape 4, morceau 7 (A86) : pour quel compte ce test a été écrit, et avec quels écrans — relu par l'écart de compte (un
+        # test joué ensuite avec un autre compte est bloqué) et par la relecture (`modele_du_cas`). Sans précision (un cas
+        # neuf) : le principal, avec ses écrans.
+        result.generation_provenance['ecrit_pour'] = dict(ecrit_pour or {
+            'compte_id': None, 'libelle': 'principal', 'empreinte': '', 'vue': 'principal'})
         if regeneration_apres_defaut:
             result.generation_provenance['regeneration_apres_defaut'] = dict(regeneration_apres_defaut)
         if controle is not None:

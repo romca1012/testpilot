@@ -677,6 +677,10 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
           <p v-if="explorationDuCompte" class="mt-1 text-xs text-warning" data-testid="exploration-du-compte">
             {{ explorationDuCompte }}
           </p>
+          <!-- A85 : le test a été écrit avec les écrans du principal — la fiche le dit, sans bloquer. -->
+          <p v-if="detail?.ecrit_sans_les_ecrans" class="mt-1 text-xs text-warning" data-testid="ecrit-sans-les-ecrans">
+            {{ detail.ecrit_sans_les_ecrans }}
+          </p>
 
           <!-- A57 : les lignes propres à ce cas, une itération chacune quand on le lance. -->
           <LignesDuCas :key="caseId" :case-id="caseId" :peut-modifier="peutModifier" />

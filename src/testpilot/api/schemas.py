@@ -317,6 +317,8 @@ class CaseDetail(BaseModel):
     gate: GateOut | None = None
     # Étape 4 (A70) : les comptes du projet, pour « Joué en tant que » (le principal d'abord).
     comptes: list[CompteChoixOut] = []
+    # Étape 4, morceau 7 (A85) : le test a été écrit sans les écrans du compte du cas — ce que la fiche dit, sans bloquer.
+    ecrit_sans_les_ecrans: str = ""
 
 
 class ReorderCasesIn(BaseModel):
