@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 73
+_SCHEMA_VERSION = 74
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -288,6 +288,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_72_lignes_du_cas(conn)
     if version < 73:
         _migrate_73_compte_du_cas(conn)
+    if version < 74:
+        _migrate_74_compte_des_lignes(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -594,6 +596,22 @@ def _migrate_71_iteration_du_scenario(conn: sqlite3.Connection) -> None:
     idempotente."""
     if _table_existe(conn, "scenario_result") and "iterations" not in _column_names(conn, "scenario_result"):
         conn.execute("ALTER TABLE scenario_result ADD COLUMN iterations TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_74_compte_des_lignes(conn: sqlite3.Connection) -> None:
+    """Décisions A90-A92 (porteur, 2026-10-21, étape 4) : le compte avec lequel une LIGNE du cas est jouée — pour les tests de
+    droits (« Lecteur → refusée », « Manager → autorisée »). `compte_choisi` = 0 : la case est vide, la ligne reprend
+    « Joué en tant que » du cas (A91) ; = 1 : `compte_id` est le compte choisi, NULL = le compte principal. Sans clé
+    étrangère à suppression automatique : un compte supprimé bloque le test, jamais un repli sur le principal (A92).
+    Additive, idempotente."""
+    if not _table_existe(conn, "case_data_row"):
+        return
+    colonnes = _column_names(conn, "case_data_row")
+    if "compte_choisi" not in colonnes:
+        conn.execute("ALTER TABLE case_data_row ADD COLUMN compte_choisi INTEGER NOT NULL DEFAULT 0 "
+                     "CHECK (compte_choisi IN (0, 1))")
+    if "compte_id" not in colonnes:
+        conn.execute("ALTER TABLE case_data_row ADD COLUMN compte_id INTEGER")
 
 
 def _migrate_73_compte_du_cas(conn: sqlite3.Connection) -> None:

@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 73
+ALIGNED_WITH_SCHEMA_VERSION = 74
 
 metadata = MetaData()
 
@@ -208,6 +208,10 @@ case_data_row = Table(
     Column("nom", Text, nullable=False, server_default=""),
     Column("rang", Integer, nullable=False, server_default="0"),
     Column("created_at", Text, nullable=False),
+    # Migration 74 (A90-A92) : le compte de la ligne — `compte_choisi` 0 = celui du cas ; 1 = `compte_id` (NULL = principal).
+    Column("compte_choisi", Integer, nullable=False, server_default="0"),
+    Column("compte_id", Integer, nullable=True),
+    CheckConstraint("compte_choisi IN (0, 1)", name="ck_case_data_row_compte_choisi"),
     Index("idx_case_data_row_case", "case_id"),
     sqlite_autoincrement=True,
 )
