@@ -74,6 +74,14 @@ def _projets_a_migrer(conn: sqlite3.Connection) -> list[dict]:
 
 
 def main() -> int:
+    # Une console Windows capturée (cp1252) ne sait pas écrire « → » : le script s'arrêtait en erreur après avoir lu la base
+    # (mesuré le 2026-10-20 — les 4 tests de ce script échouaient sur le poste du porteur, jamais en CI Linux). Un caractère
+    # inaffichable est remplacé, jamais une raison de s'arrêter.
+    for flux in (sys.stdout, sys.stderr):
+        try:
+            flux.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--db", default=None, help="Chemin de la base (défaut : TESTPILOT_DATA_DIR/testpilot.db, "
                                                     "ou data/testpilot.db à la racine du dépôt)")
