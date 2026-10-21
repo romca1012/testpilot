@@ -234,3 +234,91 @@ def test_falsifiable_societe_absente_leve_element_introuvable(monkeypatch):
 
     with pytest.raises(steps.ElementIntrouvableError):
         steps.step_travailler_dans_la_societe(ctx, "Société inexistante")
+
+
+# ── A89 : « cet utilisateur voit / ne voit pas l'enregistrement » — prouvé avec le compte qui agit ──────────────────────────
+
+class _ModeleCompte:
+    def __init__(self, n):
+        self._n = n
+
+    def search_count(self, domaine):
+        if self._n == "refus":
+            raise Exception("AccessError: lecture interdite")
+        return self._n
+
+
+def _ctx_visibilite(monkeypatch, *, principal, lecteur):
+    import _base_helpers
+    monkeypatch.setattr(_base_helpers, "_ouvrir_session_rpc",
+                        lambda ctx, u, p: types.SimpleNamespace(env={"sale.order": _ModeleCompte(lecteur)}))
+    ctx = _ctx_compte_secondaire(_FakeRecordAutorisant())
+    ctx.odoo = types.SimpleNamespace(env={"sale.order": _ModeleCompte(principal)})
+    return ctx
+
+
+def test_falsifiable_a89_voir_se_prouve_avec_le_compte_qui_agit_jamais_avec_le_principal(monkeypatch):
+    steps = _charger_droits_steps()
+    steps.step_utilisateur_voit_enregistrement(_ctx_visibilite(monkeypatch, principal=1, lecteur=1))
+    with pytest.raises(AssertionError):   # le principal le voit, le lecteur non : jamais « il le voit »
+        steps.step_utilisateur_voit_enregistrement(_ctx_visibilite(monkeypatch, principal=1, lecteur=0))
+    with pytest.raises(AssertionError):
+        steps.step_utilisateur_voit_enregistrement(_ctx_visibilite(monkeypatch, principal=1, lecteur="refus"))
+
+
+def test_falsifiable_a89_ne_pas_voir_exige_que_l_enregistrement_existe(monkeypatch):
+    import _base_helpers
+    steps = _charger_droits_steps()
+    steps.step_utilisateur_ne_voit_pas_enregistrement(_ctx_visibilite(monkeypatch, principal=1, lecteur="refus"))
+    with pytest.raises(AssertionError):
+        steps.step_utilisateur_ne_voit_pas_enregistrement(_ctx_visibilite(monkeypatch, principal=1, lecteur=1))
+    with pytest.raises(_base_helpers.ConstatNonConcluantError):   # disparu : « ne le voit pas » ne prouverait rien
+        steps.step_utilisateur_ne_voit_pas_enregistrement(_ctx_visibilite(monkeypatch, principal=0, lecteur=0))
+
+
+
+def test_falsifiable_a89_une_connexion_refusee_n_est_jamais_ne_voit_pas(monkeypatch):
+    """Revue (bloquant) : le délai d'Odoo après 5 échecs de connexion, un mot de passe changé — la session du compte est
+    refusée (`AccessDenied`) : erreur technique, jamais « ne voit pas » conforme."""
+    import _base_helpers
+    steps = _charger_droits_steps()
+    ctx = _ctx_visibilite(monkeypatch, principal=1, lecteur=1)
+
+    class AccessDenied(Exception):
+        pass
+
+    def _refus(*a):
+        raise AccessDenied("Too many login failures")
+    monkeypatch.setattr(_base_helpers, "_ouvrir_session_rpc", _refus)
+    with pytest.raises(AccessDenied):
+        steps.step_utilisateur_ne_voit_pas_enregistrement(ctx)
+
+
+def test_a89_une_autre_erreur_que_les_droits_remonte_telle_quelle(monkeypatch):
+    steps = _charger_droits_steps()
+
+    class _Panne:
+        def search_count(self, d):
+            raise ConnectionError("serveur injoignable")
+    import _base_helpers
+    monkeypatch.setattr(_base_helpers, "_ouvrir_session_rpc",
+                        lambda ctx, u, p: types.SimpleNamespace(env={"sale.order": _Panne()}))
+    ctx = _ctx_compte_secondaire(_FakeRecordAutorisant())
+    ctx.odoo = types.SimpleNamespace(env={"sale.order": _ModeleCompte(1)})
+    with pytest.raises(ConnectionError):
+        steps.step_utilisateur_ne_voit_pas_enregistrement(ctx)
+
+
+def test_a89_voir_un_enregistrement_disparu_n_est_pas_concluant(monkeypatch):
+    import _base_helpers
+    steps = _charger_droits_steps()
+    with pytest.raises(_base_helpers.ConstatNonConcluantError):
+        steps.step_utilisateur_voit_enregistrement(_ctx_visibilite(monkeypatch, principal=0, lecteur=1))
+
+
+def test_falsifiable_a89_le_principal_acteur_qui_voit_n_est_jamais_ne_voit_pas(monkeypatch):
+    steps = _charger_droits_steps()
+    ctx = _ctx_visibilite(monkeypatch, principal=1, lecteur=0)
+    ctx.odoo_user, ctx.odoo_password = "admin", "pw-admin"   # l'acteur EST le principal : la session des vérifications
+    with pytest.raises(AssertionError):
+        steps.step_utilisateur_ne_voit_pas_enregistrement(ctx)
