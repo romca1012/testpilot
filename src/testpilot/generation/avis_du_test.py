@@ -17,13 +17,16 @@ from datetime import datetime
 
 def avis_du_test(*, feature: str, steps: str, observations: list[dict] | None, target_sha256: str, base_url: str,
                  reference_time: datetime | None, variables_des_lignes, connecteur_web: bool, intention: str,
-                 modele: dict | None, verified_fields: dict | None) -> list[dict]:
+                 modele: dict | None, verified_fields: dict | None, joue_avec_un_autre_compte: bool = False) -> list[dict]:
     """`observations` à `None` : la version n'a jamais été instrumentée, la preuve d'écran n'est pas contrôlée.
     `verified_fields` à `None` : aucun registre (version d'avant le registre)."""
     from testpilot.generation import assertion_lint, enregistrement_lint, smoke_check, variables_de_test
     from testpilot.generation.evidence import contextual_warnings
 
     avis = assertion_lint.lint_steps(steps or "")
+    # Étape 4, morceau 7 (A89) : un cas joué avec un autre compte — une vérification qui ne lit que par le principal.
+    if joue_avec_un_autre_compte:
+        avis += assertion_lint.lint_alors_lu_par_le_principal(steps or "")
     if feature:
         # F26, point 1 : filet structurel, sur le Gherkin produit — pas sur ce que le modèle a déclaré avoir fait.
         avis += enregistrement_lint.lint_enregistrements_non_crees(feature)
