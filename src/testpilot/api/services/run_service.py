@@ -95,6 +95,10 @@ def ecarts_cas_test(conn, case: dict, version_id: int | None, noms: list[str] | 
     # ces lignes, une personne les a saisies.
     lignes = CaseDataRepo(conn).variables_des_lignes(case["id"]) if case.get("id") else []
     ecarts = ecart_lignes_test((version or {}).get("feature_content") or "", lignes) if lignes else []
+    # Étape 4, morceau 7 (A86-A88) : écrit pour un compte, joué avec un autre — bloquant, quel que soit l'interrupteur.
+    from testpilot.api.services.modele_du_cas import ecart_de_compte
+    if version and case.get("id"):
+        ecarts = ecart_de_compte(conn, case, VersionRepo(conn).list_for_case(case["id"]), version) + ecarts
     if not interrupteurs.cas_dit_ses_donnees_actif():
         return ecarts
     if noms is None:

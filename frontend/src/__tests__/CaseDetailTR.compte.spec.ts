@@ -136,6 +136,14 @@ describe('CaseDetailTR — Joué en tant que (A70)', () => {
     expect(principal.find('[data-testid="exploration-du-compte"]').exists()).toBe(false)
   })
 
+  it('A85 : dit que le test a été écrit sans les écrans du compte du cas', async () => {
+    const avis = 'Écrit sans les écrans de Lecteur (pas encore exploré) — actualisez l\'exploration puis régénérez'
+    const w = await page({ ...detail(DEUX, 4), ecrit_sans_les_ecrans: avis })
+    expect(w.get('[data-testid="ecrit-sans-les-ecrans"]').text()).toBe(avis)
+    const sans = await page(detail(DEUX, 4))
+    expect(sans.find('[data-testid="ecrit-sans-les-ecrans"]').exists()).toBe(false)
+  })
+
   it('un compte inchangé ne crée aucune version', async () => {
     const w = await page(detail(DEUX, 4))
     await w.get('button').trigger('click')

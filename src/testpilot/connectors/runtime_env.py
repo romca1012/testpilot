@@ -300,3 +300,17 @@ def comptes_pour_l_exploration(conn, project_id: int) -> list[dict]:
         comptes.append({"id": public["id"], "libelle": public["label"], "username": public["username"],
                         "password": secret.get("password") or "", "empreinte": empreinte_du_compte(public)})
     return comptes
+
+
+def identifiants_du_compte(conn, project_id: int, compte_id: int) -> dict | None:
+    """Étape 4, morceau 7 (interrupteur `TESTPILOT_GENERATION_PAR_COMPTE`) : identifiant et mot de passe du compte du cas,
+    pour que le navigateur d'OBSERVATION de la génération voie ses écrans. Ils vont au navigateur, jamais à l'IA (A74).
+    Seul point de passage autorisé vers `pour_runtime` (règle D8). `None` si le compte n'existe plus."""
+    from testpilot.store.repositories import ProjectAccountRepo
+
+    repo = ProjectAccountRepo(conn)
+    public = repo.lire(project_id, compte_id)
+    if public is None:
+        return None
+    secret = next((c for c in repo.pour_runtime(project_id) if c["label"] == public["label"]), None) or {}
+    return {"username": public["username"], "password": secret.get("password") or ""}
