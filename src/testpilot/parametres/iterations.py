@@ -34,6 +34,10 @@ from testpilot.parametres import resolution
 PLAN = "Plan du scénario"
 EXEMPLES = "Exemples"
 ETIQUETTE = "tp_iteration_"
+# Étape 4, morceau 7 (A90-A92) : la colonne des Exemples qui porte le compte avec lequel CETTE itération est jouée — écrite par
+# le serveur, lue par le harnais au début de chaque scénario (`context.active_outline`, behave 1.3.3). Réservée : jamais un
+# nom de variable du projet.
+COLONNE_COMPTE = "tp_compte"
 
 
 class IterationsImpossibles(ValueError):
@@ -129,9 +133,11 @@ def _instances(modele) -> int:
 
 
 def en_plan_de_scenario(feature: str, iters: Sequence[tuple[str, Mapping[str, str]]],
-                        connues: Iterable[str] | None = None) -> str:
+                        connues: Iterable[str] | None = None, toujours: Sequence[str] = ()) -> str:
     """Le Gherkin `feature` (où `{{nom}}` est encore écrit) joué une fois par itération. `connues` : les variables du projet.
-    Lève `IterationsImpossibles`."""
+    `toujours` (étape 4, morceau 7) : des colonnes que CHAQUE scénario emploie même si son texte ne les cite pas — le compte
+    de la ligne. Chaque scénario devient alors un plan, même pour une seule itération : sans sa colonne, une itération serait
+    jouée avec le compte du run, pas celui de sa ligne. Lève `IterationsImpossibles`."""
     from behave.parser import ParserError, parse_feature
 
     if not iters:
@@ -184,7 +190,7 @@ def en_plan_de_scenario(feature: str, iters: Sequence[tuple[str, Mapping[str, st
         sortie += [l for n, l in enumerate(lignes[curseur - 1:debut - 1], start=curseur)
                    if retirer is None or not retirer[0] <= n <= retirer[1]]
         origine, decalage = bloc(lignes, scenario, debut, fin)
-        employes = [n for n in noms if n in resolution.references("\n".join(origine))]
+        employes = [n for n in noms if n in resolution.references("\n".join(origine)) or n in toujours]
         exemples = list(getattr(scenario, "examples", None) or [])
         lignes_d_exemples = sum(len(e.table.rows) for e in exemples if e.table is not None) if exemples else 1
         if not employes:
@@ -192,7 +198,7 @@ def en_plan_de_scenario(feature: str, iters: Sequence[tuple[str, Mapping[str, st
             attendues += lignes_d_exemples
         else:
             propres = _regrouper(iters, employes)
-            if len(propres) == 1:    # mêmes valeurs dans toutes les lignes pour CE scénario : joué une fois, valeurs posées
+            if len(propres) == 1 and not toujours:   # mêmes valeurs pour CE scénario : joué une fois, valeurs posées
                 sortie += _poser("\n".join(origine), propres[0][2], connues).split("\n")
                 attendues += lignes_d_exemples
             else:

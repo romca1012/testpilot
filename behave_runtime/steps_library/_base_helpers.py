@@ -4683,6 +4683,14 @@ def se_connecter_en_tant_que(context, libelle: str, *, connecteur: str) -> None:
     Web : page d'accueil du projet puis connexion. Tout échec (compte inconnu, mot de passe refusé, formulaire introuvable) est un
     `PreconditionNonRemplieError` : le test n'a pas pu entrer, l'application n'a rien « mal fait ». Le compte courant n'est mémorisé
     qu'une fois la connexion RÉUSSIE."""
+    attendu = getattr(context, "compte_de_l_iteration", None)
+    if attendu and _cle_de_libelle(attendu) != _cle_de_libelle(libelle):
+        # Étape 4, morceau 7 (revue) : une ligne jouée avec SON compte ne change pas de compte en route — sinon ses « Alors »
+        # constateraient ce que voit un autre. Levée dans le step de connexion (Soit/Quand) : « bloqué », avec la raison.
+        raise PreconditionNonRemplieError(
+            f"PRÉREQUIS MANQUANT : cette ligne est jouée en tant que « {attendu} » — le test ne peut pas se connecter en tant "
+            f"que « {libelle} » en cours de route : retirez cette connexion du test, le compte de chaque ligne est posé par "
+            "TestPilot.")
     compte = _resoudre_compte(context, libelle)
     # Revue de l'étape 4 (2026-10-21) : une connexion ratée rend les identifiants d'AVANT — sinon `compte_courant` (inchangé)
     # et les identifiants (déjà ceux du compte refusé) divergeaient, et le scénario suivant se jouait avec le mauvais compte.
@@ -4743,6 +4751,29 @@ def refus_du_compte_sans_connexion(connecteur: str, strategie: str, compte_du_te
         return ""
     return (f"PRÉREQUIS MANQUANT : ce cas est joué en tant que « {compte_du_test} », mais le projet ne se connecte pas "
             "(connexion « aucune ») — choisissez une façon de se connecter dans les réglages du projet, ou le compte principal.")
+
+
+COLONNE_COMPTE = "tp_compte"   # dupliqué de `testpilot.parametres.iterations.COLONNE_COMPTE` (le harnais n'importe pas testpilot ici)
+# Posée par le SERVEUR (`run_service`) seulement quand il a lui-même écrit la colonne : sans elle, une colonne `tp_compte`
+# écrite par l'agent dans un plan n'est jamais obéie (décision 0015 : le texte de l'agent n'est pas une source de vérité).
+ENV_COMPTES_PAR_ITERATION = "TESTPILOT_COMPTES_PAR_ITERATION"
+
+
+def appliquer_compte_de_l_iteration(context, connecteur: str) -> None:
+    """Étape 4, morceau 7 (A90-A92) : le compte de CETTE itération, lu dans la ligne d'Exemples que le SERVEUR a écrite
+    (`context.active_outline`, posée par behave 1.3.3 avant `before_scenario`) — jamais dans un texte de l'agent. Un autre
+    compte que celui en place : connexion avec lui (`se_connecter_en_tant_que`, nouveau contexte navigateur) ; un compte
+    inconnu ou une connexion refusée : `PreconditionNonRemplieError`, l'itération sort « bloquée » — jamais jouée avec le
+    compte du run à sa place. Sans colonne : rien (le compte du run)."""
+    context.compte_de_l_iteration = None
+    ligne = getattr(context, "active_outline", None)
+    entetes = list(getattr(ligne, "headings", None) or [])
+    if COLONNE_COMPTE not in entetes or os.environ.get(ENV_COMPTES_PAR_ITERATION) != "1":
+        return
+    libelle = str(ligne[COLONNE_COMPTE] or "").strip()
+    if _cle_de_libelle(libelle) != _cle_de_libelle(getattr(context, "compte_courant", _LIBELLE_PRINCIPAL) or ""):
+        se_connecter_en_tant_que(context, libelle, connecteur=connecteur)
+    context.compte_de_l_iteration = libelle
 
 
 def retablir_le_compte_principal(context) -> None:
