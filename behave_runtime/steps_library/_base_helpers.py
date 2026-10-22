@@ -2144,6 +2144,240 @@ def validation_error_inline(page):
         raise AssertionError("Aucune erreur de validation visible dans le formulaire.")
 
 
+# Étape 5 du plan unique (2026-10-22) : l'erreur RATTACHÉE au champ que le cas désigne, APPARUE depuis le début des actions qui
+# précèdent l'« Alors ». Rattachée = le champ porte une marque d'invalidité (`aria-invalid="true"`, une classe qui finit par
+# « invalid » ou « error » — `is-invalid` Bootstrap, `o_field_invalid` Odoo, `has-error`…, sur lui ou sur son enveloppe), ou un
+# message visible vit dans son ENVELOPPE (le plus grand ancêtre, quatre niveaux au plus, qui ne contient aucun autre champ,
+# sans dépasser le formulaire, le `main` ni un `fieldset`, et jamais le conteneur racine de la page), ou il est désigné par
+# `aria-errormessage`, ou par `aria-describedby` s'il a la forme d'un message d'erreur (une aide « jj/mm/aaaa » ne compte pas).
+# Ne sont PAS des marques : la validation native du navigateur (un champ obligatoire vide est « invalide » avant toute
+# soumission) et les classes d'ÉTAT des frameworks (`ng-invalid`, posée par Angular dès l'affichage d'un champ vide).
+# Apparue (revue du 2026-10-22, deux passes) : chaque signe a une SIGNATURE (champ, marque ou texte du message) ; au début de
+# chaque action, celles de la page sont relevées (`noter_les_erreurs_avant_action`). Le constat compare au PREMIER relevé du
+# bloc d'actions pris dans le même onglet où le champ était affiché, quelle que soit l'adresse (`erreurs_avant_action`) : un formulaire renvoyé, ou une
+# fiche atteinte après une création acceptée, garde sa mention rouge fixe (« Champ obligatoire »), qui ne prouve rien. Sans
+# aucun relevé dans l'onglet (nouvel onglet), tout ce qui est affiché compte.
+_JS_CANDIDATS_ERREUR = r"""
+  const CONTROLES = 'input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=reset]):not([type=image]),'
+    + ' select, textarea, [contenteditable="true"]';
+  const MESSAGES = '[role="alert"], .error, .alert-danger, .is-invalid, .invalid-feedback, .text-danger,'
+    + ' [class*="error"], [class*="invalid"], [class*="bg-red-"], [class*="text-red-"], [class*="border-red-"]';
+  const doc = document;
+  const visible = (e) => {
+    const b = e.getBoundingClientRect(), s = getComputedStyle(e);
+    return b.width > 0 && b.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+  };
+  const texte = (e) => (e.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  const estMessage = (e) => visible(e) && !e.matches(CONTROLES) && !e.querySelector(CONTROLES)
+    && !e.closest('a, button, [role="button"], [role="link"], nav, [role="navigation"], label')
+    && /[A-Za-zÀ-ÿ0-9]{2,}/.test(e.innerText || '');
+  const classeDErreur = (c) => /(^|[_-])(invalid|error)$/i.test(c) && !/^ng-/i.test(c) && !/pristine|untouched/i.test(c);
+  const marques = (e) => [...(e.getAttribute('aria-invalid') === 'true' ? ['aria-invalid'] : []),
+                          ...Array.from(e.classList || []).filter(classeDErreur)];
+  const BORNES = ['FORM', 'BODY', 'HTML', 'MAIN', 'FIELDSET'];
+  // Jamais le conteneur RACINE de la page (`<div id="app">`, enfant direct de `<body>`) : sur une page à un seul champ, il
+  // engloberait tous les bandeaux de la page.
+  const enveloppe = (el) => {
+    let k = el;
+    for (let n = 0; n < 4 && k.parentElement && !BORNES.includes(k.parentElement.tagName)
+         && k.parentElement.getAttribute('role') !== 'main'
+         && !['BODY', 'HTML'].includes((k.parentElement.parentElement || {}).tagName)
+         && k.parentElement.querySelectorAll(CONTROLES).length <= 1; n++) k = k.parentElement;
+    return k;
+  };
+  const designes = (el, attr) => (el.getAttribute(attr) || '').split(/\s+/).filter(Boolean)
+    .map((id) => doc.getElementById(id)).filter(Boolean);
+  // Les SIGNATURES des signes d'erreur rattachés à un champ (marques et messages).
+  const signes = (el) => {
+    const env = enveloppe(el), trouves = [];
+    for (let k = el, n = 0; k; k = k.parentElement, n++) {
+      marques(k).forEach((m) => trouves.push('marque:' + n + ':' + m));
+      if (k === env) break;
+    }
+    env.querySelectorAll(MESSAGES).forEach((e) => { if (estMessage(e)) trouves.push('message:' + texte(e)); });
+    designes(el, 'aria-errormessage').forEach((e) => {
+      if (visible(e) && /[A-Za-zÀ-ÿ0-9]{2,}/.test(e.innerText || '')) trouves.push('message:' + texte(e)); });
+    designes(el, 'aria-describedby').forEach((e) => {
+      if (e.matches(MESSAGES) && estMessage(e)) trouves.push('message:' + texte(e)); });
+    return Array.from(new Set(trouves));
+  };
+  // La clé d'un champ, stable d'un relevé à l'autre ; un champ sans nom ni libellé est repéré par sa POSITION (revue, 3e passe :
+  // sans clé, il n'était jamais comparé et une mention fixe passait).
+  const cle = (c) => c.name || c.getAttribute('data-test') || c.getAttribute('data-testid') || c.getAttribute('aria-label')
+    || c.getAttribute('placeholder') || Array.from(c.labels || []).map(texte).join(' ')
+    || ('#' + Array.from((c.form || doc).querySelectorAll(CONTROLES)).indexOf(c) + ':' + c.tagName.toLowerCase());
+  const controles = Array.from(doc.querySelectorAll(CONTROLES)).filter(visible);
+  const enveloppes = controles.map(enveloppe);
+  const champs = {};
+  controles.forEach((c) => { const k = cle(c); if (k) champs[k] = [...(champs[k] || []), ...signes(c)]; });
+  const bandeaux = Array.from(new Set(Array.from(doc.querySelectorAll(MESSAGES)).filter(estMessage)
+    .filter((m) => !enveloppes.some((k) => k.contains(m))).map(texte)));
+  // Tous les noms par lesquels un test peut désigner chaque champ visible (comme `locate_field`) : un champ vu pendant les
+  // actions puis disparu au constat est un formulaire accepté ou quitté, pas un nom inventé par le test.
+  const noms = controles.flatMap((c) => [c.name, c.getAttribute('aria-label'), c.getAttribute('placeholder'),
+    c.getAttribute('data-test'), c.getAttribute('data-testid'), ...Array.from(c.labels || []).map(texte)]).filter(Boolean);
+"""
+# Revue (5e passe) : chaque contrôle relevé garde, en propriété JavaScript (le DOM n'est pas touché), les numéros des relevés
+# où il figurait — le constat compare au relevé où CET élément était, jamais à une autre page qui aurait un champ de même clé.
+_JS_SIGNES_DE_LA_PAGE = ("(numero) => {" + _JS_CANDIDATS_ERREUR
+                         + "  controles.forEach((c) => { c.__tpReleves = (c.__tpReleves || []).concat([numero]); });\n"
+                         + "  return {champs, bandeaux, noms};\n}")
+_JS_ERREUR_DU_CHAMP = "(cible) => {" + _JS_CANDIDATS_ERREUR + r"""
+  return {cle: cle(cible), cible: signes(cible), champs, bandeaux, releves: cible.__tpReleves || []};
+}"""
+_DELAI_LECTURE_MS = 2000
+
+
+def _signes_de_la_page(page, numero: int = -1) -> dict | None:
+    """`{champs: {clé: [signatures]}, bandeaux: [textes], noms: {noms des champs visibles}}` de tous les cadres, ou None si la
+    page est illisible."""
+    champs: dict[str, set] = {}
+    bandeaux: set = set()
+    noms: set = set()
+    try:
+        cadres = list(page.frames)
+    except Exception:
+        return None
+    for cadre in cadres:
+        try:
+            lu = cadre.evaluate(_JS_SIGNES_DE_LA_PAGE, numero) or {}
+        except Exception:
+            continue  # cadre détaché ou en navigation
+        for cle, sig in (lu.get("champs") or {}).items():
+            champs.setdefault(cle, set()).update(sig)
+        bandeaux.update(lu.get("bandeaux") or [])
+        noms.update(" ".join(str(n).split()).casefold() for n in lu.get("noms") or [])
+    return {"numero": numero, "champs": champs, "bandeaux": bandeaux, "noms": noms}
+
+
+def noter_les_erreurs_avant_action(context) -> None:
+    """Au début de chaque action : les signatures d'erreur de la page, ajoutées aux relevés du BLOC d'actions en cours (remis à
+    zéro à la première action après un « Alors », `fermer_le_bloc_d_actions`). Rien de fatal : sans relevé, l'ancien comportement du constat."""
+    page = getattr(context, "page", None)
+    if page is None:
+        return
+    if getattr(context, "_tp_releves_erreurs", None) is None or getattr(context, "_tp_bloc_ferme", False):
+        context._tp_releves_erreurs = []   # première action du scénario, ou première après un « Alors »
+        context._tp_bloc_ferme = False
+    # Repart à 1 à chaque scénario (couche de contexte du scénario) : sans risque parce que chaque scénario ouvre un NOUVEAU
+    # contexte navigateur (`environment.py`) — les `__tpReleves` d'un scénario précédent ne survivent pas. À revoir si cela change.
+    numero = getattr(context, "_tp_numero_releve", 0) + 1
+    context._tp_numero_releve = numero
+    signes = _signes_de_la_page(page, numero)
+    try:
+        adresse = page.url
+    except Exception:
+        return
+    if signes is not None:
+        context._tp_releves_erreurs.append(
+            (page, adresse, (getattr(context, "navigations", None) or {}).get(page), signes))
+
+
+def fermer_le_bloc_d_actions(context) -> None:
+    """Un « Alors » clôt le bloc d'actions : ses relevés servent encore à ses constats ; la PROCHAINE action en ouvre un nouveau
+    (ses relevés repartent de zéro)."""
+    context._tp_bloc_ferme = True
+
+
+def erreurs_avant_action(context) -> list[dict] | None:
+    """Les relevés du bloc d'actions pris dans l'onglet affiché, dans l'ordre, quelle que soit l'adresse — ou None (aucun). Le
+    constat y cherche le PREMIER où figurait le champ résolu, par SA clé (`_JS_ERREUR_DU_CHAMP`, calculée sur l'élément) : une
+    erreur apparue PENDANT les actions (validation à la sortie du champ) reste nouvelle, et un relevé pris avant que la page
+    ne s'ouvre (« j'ouvre la page ») ne compte pas.
+
+    Revue (3e et 4e passes) : PAS la règle d'A97 — pour une erreur de validation, une nouvelle adresse dit plutôt que la
+    saisie a été ACCEPTÉE ; et jamais le texte cité par le test pour retrouver le champ (« Nom » pour le libellé « Nom * »)."""
+    page = getattr(context, "page", None)
+    tous = getattr(context, "_tp_releves_erreurs", None) or []
+    retenus = [signes for releve_page, _a, _n, signes in tous if releve_page is page]
+    if not retenus and tous:
+        # Revue (6e passe) : des relevés, mais tous dans un AUTRE onglet — rien à quoi comparer : un relevé vide, qui rend le
+        # constat « non concluant » s'il voit un signe (jamais « tout est nouveau »).
+        return [{"numero": None, "champs": {}, "bandeaux": set(), "noms": set()}]
+    return retenus or None
+
+
+def champ_vu_pendant_les_actions(context, field: str) -> bool:
+    """Le champ `field` était-il affiché au début d'une action du bloc en cours ? Même correspondance que `locate_field` (le
+    texte cité est CONTENU dans un nom du champ, casse ignorée : « Nom » pour « Nom * »). Un signal du runtime, jamais le
+    texte du test pour décider d'un verdict : il ne fait que distinguer un formulaire disparu d'un nom introuvable."""
+    cle = " ".join(str(field).split()).casefold()
+    return bool(cle) and any(any(cle in nom for nom in (signes.get("noms") or ()))
+                             for _p, _a, _n, signes in getattr(context, "_tp_releves_erreurs", None) or [])
+
+
+@constat
+def validation_error_for_field(page, field, releves: list[dict] | None = None, vu_pendant_les_actions: bool = False):
+    """« Une erreur de validation est affichée pour le champ X » — rattachée à CE champ (`_JS_ERREUR_DU_CHAMP`) et apparue
+    depuis le début des actions qui précèdent (`avant`, `erreurs_avant_action`), pas seulement visible dans la page.
+
+    Étape 5 du plan unique : « une erreur de validation est affichée dans le formulaire » passait dès qu'UN message
+    d'erreur était visible — l'erreur d'un autre champ suffisait à « prouver » le refus du champ visé. Ici :
+    - un signe NOUVEAU rattaché au champ → réussi ;
+    - rattaché mais déjà là avant, ou un bandeau commun au formulaire → `ConstatNonConcluantError` : rien ne prouve que CES
+      actions ont été refusées pour ce champ ; ni vert, ni accusation de l'application ;
+    - signe nouveau sur d'AUTRES champs seulement → échec : l'application a refusé autre chose que ce champ ;
+    - le champ n'est plus affiché (formulaire accepté, page quittée) → échec : aucune erreur pour lui ;
+    - aucune erreur visible → échec, comme le step sans champ.
+    Une page illisible pendant tout le délai (navigateur fermé) est une panne, jamais un échec de l'application."""
+    champ = locate_field(page, field, timeout=10000)
+    if champ.count() == 0:
+        cle = " ".join(str(field).split()).casefold()
+        # Même correspondance que `champ_vu_pendant_les_actions` (inclusion) : un champ encore là n'accuse jamais l'application.
+        encore = any(cle in nom for nom in ((_signes_de_la_page(page) or {}).get("noms") or ()))
+        # Affiché pendant les actions et DISPARU au constat (relu ici : un champ encore là mais que `locate_field` ne sait pas
+        # résoudre est une erreur du test — revue, 3e passe) : le formulaire a été accepté ou quitté.
+        if vu_pendant_les_actions and not encore:
+            raise AssertionError(f"Le champ '{field}' n'est plus affiché : aucune erreur de validation pour lui (formulaire "
+                                 "accepté, ou page quittée).")
+        raise ElementIntrouvableError(f"Champ '{field}' introuvable sur {page.url}")
+    releves = list(releves or [])
+    panne = {"derniere": None}
+
+    def _lire():
+        try:
+            lu = champ.first.evaluate(_JS_ERREUR_DU_CHAMP, timeout=_DELAI_LECTURE_MS)
+        except Exception as exc:
+            panne["derniere"] = exc
+            try:
+                return {"absent": True} if champ.count() == 0 else None
+            except Exception:
+                return None   # navigateur fermé : panne, si cela dure tout le délai
+        cle = lu.get("cle") or ""
+        # Le premier relevé où CET élément figurait (une erreur apparue pendant les actions reste nouvelle) ; élément neuf
+        # (page renvoyée, fiche atteinte, re-rendu) : le DERNIER relevé qui avait sa clé — celui d'avant l'envoi.
+        presents = set(lu.get("releves") or [])
+        avant = (next((r for r in releves if r.get("numero") in presents), None)
+                 or next((r for r in reversed(releves) if cle in (r.get("champs") or {})), None))
+        if releves and avant is None:
+            # Des relevés, mais aucun où figurait CE champ (sa clé a changé, ou il n'était pas affiché) : rien à quoi comparer
+            # — jamais « tout est nouveau ».
+            return {**lu, "nouveaux": set(), "sans_releve": True, "deja": {}}
+        deja = (avant or {}).get("champs") or {}
+        return {**lu, "nouveaux": set(lu.get("cible") or []) - set(deja.get(cle, ())), "deja": deja}
+
+    trouve, etat = _poll_until(_lire, lambda e: bool(e and e.get("nouveaux")))
+    if trouve:
+        return
+    if etat is None:
+        raise RuntimeError(f"Le champ '{field}' n'a pas pu être relu sur {page.url} : {panne['derniere']}")
+    if etat.get("absent"):
+        raise AssertionError(f"Le champ '{field}' n'est plus affiché : aucune erreur de validation pour lui (formulaire "
+                             "accepté, ou page quittée).")
+    signes_ailleurs = any(sig for cle, sig in (etat.get("champs") or {}).items() if cle != etat.get("cle"))
+    if etat.get("cible") or etat.get("bandeaux") or (etat.get("sans_releve") and signes_ailleurs):
+        raise ConstatNonConcluantError(
+            f"Un message d'erreur est affiché, mais rien ne prouve que les dernières actions l'ont provoqué pour le champ "
+            f"'{field}' (déjà affiché avant, ou bandeau commun au formulaire).")
+    deja = etat.get("deja") or {}
+    autres = [cle for cle, sig in (etat.get("champs") or {}).items()
+              if cle != etat.get("cle") and set(sig) - set(deja.get(cle, ()))][:5]
+    if autres:
+        raise AssertionError(f"Erreur de validation affichée pour {', '.join(map(repr, autres))}, "
+                             f"aucune pour le champ '{field}'.")
+    raise AssertionError(f"Aucune erreur de validation visible pour le champ '{field}'.")
+
+
 def validation_error_notification(page):
     """⚠️ `expect(...).to_be_visible()`, pas `assert ... .is_visible()` (audit fiabilité,
     2026-09-17) : ICI un seul candidat, cas d'école de l'assertion web-first officielle de
@@ -3134,6 +3368,7 @@ def poser_repere_action(context) -> None:
     _, courant = getattr(context, "_tp_reperes", (0, 0))
     context._tp_reperes = (courant, getattr(context, "_tp_sequence", 0))
     noter_le_texte_avant_action(context)
+    noter_les_erreurs_avant_action(context)   # étape 5 : l'erreur d'un champ doit être APPARUE
 
 
 # Étape 5 du plan unique (VH-04, reste 1) : « la page affiche le texte X » ne prouvait rien si X était DÉJÀ à l'écran avant la
