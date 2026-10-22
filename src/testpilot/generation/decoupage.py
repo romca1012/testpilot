@@ -160,8 +160,42 @@ def _data_decoupage(llm, plan: TestPlan, model: str, cost_tracker) -> dict:
         return {}
 
 
+# F27 (étape 5) : la section d'une spécification qui énumère les cas à couvrir. Lue dans la SPÉCIFICATION (écrite par une
+# personne), jamais dans ce que l'IA a répondu.
+_TITRE_CAS_A_COUVRIR = re.compile(r"^\s*(?:#+\s*)?(?:\*\*)?\s*(?:cas|scénarios?|scenarios?)\s+(?:de\s+test\s+)?à\s+couvrir\b",
+                                  re.IGNORECASE)
+_ELEMENT_DE_LISTE = re.compile(r"^\s*(?:[-*•]|\d+\s*[.)])\s+\S")
+_AUTRE_TITRE = re.compile(r"^\s*(?:#+\s+\S|\*\*[^*]+\*\*\s*:?\s*$|[A-ZÉÈÀ][^.!?]{0,80}:\s*$)")
+
+
+def cas_listes_dans_la_spec(spec: str) -> int | None:
+    """F27 : combien de cas la spécification ÉNUMÈRE sous un titre « Cas à couvrir » (ou « Scénarios à couvrir »), toutes
+    sections confondues ; `None` si elle n'en a pas. Un élément de liste de premier niveau compte pour un cas (une
+    sous-puce, plus indentée, en précise un)."""
+    total, dans, indentation = 0, False, None
+    trouve = False
+    for ligne in (spec or "").splitlines():
+        if _TITRE_CAS_A_COUVRIR.match(ligne):
+            dans, indentation, trouve = True, None, True
+            continue
+        if not dans:
+            continue
+        if not ligne.strip():
+            continue
+        if _ELEMENT_DE_LISTE.match(ligne):
+            retrait = len(ligne) - len(ligne.lstrip())
+            if indentation is None:
+                indentation = retrait
+            if retrait <= indentation:
+                total += 1
+            continue
+        if _AUTRE_TITRE.match(ligne) or indentation is not None:
+            dans = False
+    return total if trouve else None
+
+
 def propose_decoupage(plan: TestPlan, *, llm: LLMAdapter | None = None,
-                      cost_tracker=None, model: str = "") -> list[StoryPlan]:
+                      cost_tracker=None, model: str = "", ecartees: list[str] | None = None) -> list[StoryPlan]:
     """Un appel LLM → les user stories de la spec, chacune avec l'ensemble minimal de cas
     planifiés pour la couvrir. Ne persiste rien, ne rédige aucun document métier.
 
@@ -180,6 +214,9 @@ def propose_decoupage(plan: TestPlan, *, llm: LLMAdapter | None = None,
     citation et `plan.raw_spec` sont aplaties (`_aplatir_espaces`) avant comparaison — un retour à
     la ligne de présentation dans la spec source ne doit jamais faire échouer une citation par
     ailleurs réelle. Voir sa docstring pour le détail du défaut que ça ferme.
+
+    `ecartees` (F27, étape 5) : reçoit le nom de chaque user story écartée faute de citation retrouvée — avec elle, TOUS
+    ses cas disparaissaient, et seul le journal serveur le disait (cause possible du cas PI-11 perdu deux fois).
     """
     llm = llm or LLMAdapter()
     data = _data_decoupage(llm, plan, model, cost_tracker)
@@ -200,6 +237,8 @@ def propose_decoupage(plan: TestPlan, *, llm: LLMAdapter | None = None,
             logger.warning(
                 "[decoupage] user story '%s' écartée — citation absente ou introuvable dans la "
                 "spec (%r)", user_story, citation[:80])
+            if ecartees is not None:
+                ecartees.append(user_story)
             continue
         stories.append(StoryPlan(user_story=user_story, cases=cases))
     if not stories:

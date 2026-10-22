@@ -27,7 +27,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQueryClient } from '@tanstack/vue-query'
-import { api, type MetierDraft, type ModuleSummary } from '../lib/api'
+import { api, type CouvertureDuDecoupage, type MetierDraft, type ModuleSummary } from '../lib/api'
 import { MODELE_SPECIFICATION } from '../lib/modeleSpecification'
 import { cles, useGroupes } from '../lib/donnees'
 import Button from '../components/ui/Button.vue'
@@ -98,6 +98,8 @@ watch(moduleId, () => { sectionId.value = null; newSectionName.value = '' })
 // SUPPRESSION d'un cas qui ne sert à rien (§9 : « un cas qui peut être validé par un autre n'est
 // pas intéressant »).
 const cas = ref<MetierDraft[]>([])
+// F27 (étape 5) : ce qui a pu se perdre entre la spécification et les cas proposés — signalé, jamais bloquant.
+const couverture = ref<CouvertureDuDecoupage>({})
 
 // Regroupement PUREMENT VISUEL par user story (repère de lecture, jamais une Section) : les cas
 // arrivent déjà groupés par story consécutive (c'est l'ordre dans lequel `decoupage` les a
@@ -247,6 +249,7 @@ function poll() {
         // indéfiniment sur un job qui n'avancera jamais tout seul. Liste PLATE (étape 3), repliée
         // par défaut (étape 3bis) — la Section est déjà fixée, cet écran ne sert qu'à relire.
         cas.value = job.cases.map((c) => ({ ...c, steps: [...c.steps] }))
+        couverture.value = job.couverture || {}
         deplies.value = new Set()
         etape.value = 'metier'
       } else if (job.status === 'done' && job.case_ids.length) {
@@ -470,6 +473,18 @@ const echecsPartiels = computed(() => avertissementPartiel.value.split('; ').fil
         Aucun cas n'est encore créé, et aucun test technique n'est encore écrit. C'est le moment
         de corriger : après validation, un test sera généré pour chaque cas retenu, dans la
         Section choisie à l'étape précédente.
+      </div>
+
+      <div v-if="couverture.cas_listes || couverture.stories_ecartees?.length" role="status" data-testid="couverture-decoupage"
+           class="mt-3 space-y-1 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+        <p v-if="couverture.cas_listes">
+          La spécification liste {{ couverture.cas_listes }} cas à couvrir ; l'IA en propose {{ couverture.cas_proposes }}.
+          Vérifiez qu'aucun n'a été oublié avant de valider.
+        </p>
+        <p v-if="couverture.stories_ecartees?.length">
+          Écarté{{ couverture.stories_ecartees.length > 1 ? 's' : '' }} faute d'avoir été retrouvé{{ couverture.stories_ecartees.length > 1 ? 's' : '' }} dans la spécification :
+          {{ couverture.stories_ecartees.join(', ') }}.
+        </p>
       </div>
 
       <div class="mt-6 space-y-6">
