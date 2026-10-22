@@ -33,6 +33,7 @@ ENV_LIGNES_PROPOSEES = "TESTPILOT_LIGNES_PROPOSEES"
 ENV_CONTROLE_FIN_ECRITURE = "TESTPILOT_CONTROLE_FIN_ECRITURE"
 ENV_ESSAI_TOUS_CONNECTEURS = "TESTPILOT_ESSAI_TOUS_CONNECTEURS"
 ENV_GENERATION_PAR_COMPTE = "TESTPILOT_GENERATION_PAR_COMPTE"
+ENV_IA_INFORMEE = "TESTPILOT_IA_INFORMEE"
 
 _VRAI = frozenset({"1", "true", "yes", "oui", "on"})
 _ALLUMES_PAR_DEFAUT = frozenset({ENV_VARIABLES_DE_TEST, ENV_CAS_DIT_SES_DONNEES})
@@ -117,6 +118,13 @@ def generation_par_compte_actif(env: Mapping[str, str] | None = None) -> bool:
     l'exploration de ce compte — au lieu de ceux du principal — et l'essai se joue avec lui. Change ce que l'API reçoit :
     éteint jusqu'à sa mesure (étape 8)."""
     return _actif(ENV_GENERATION_PAR_COMPTE, env)
+
+
+def ia_informee_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Étape 5 du plan unique (AV-1, AV-2, AV-5) : l'IA reçoit le VRAI type d'application (un projet web n'est plus annoncé
+    « odoo », à l'analyse comme à l'écriture), la langue de l'interface et le détail des pages que le cas vise (tous leurs
+    champs, boutons et liens relevés par l'exploration). Change ce que l'API reçoit : éteint jusqu'à sa mesure."""
+    return _actif(ENV_IA_INFORMEE, env)
 
 
 def allume(nom: str, env: Mapping[str, str] | None = None) -> bool:
