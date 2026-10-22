@@ -823,6 +823,16 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     refus_secret = _refus_secret_masque(content, "write_feature_file")
     if refus_secret:
         return _outcome(refus_secret, ok=False)
+    # Étape 5 (AV-6, interrupteur `TESTPILOT_GARDE_CONNEXION`) : la connexion déjà faite n'est pas réécrite. BLOQUANT.
+    if getattr(ctx, "garde_connexion", None) is not None:
+        from testpilot.generation import garde_connexion
+        annuaire = getattr(ctx, "annuaire", None)
+        fautes = garde_connexion.refus(
+            content, porte_sur_la_connexion=ctx.garde_connexion.get("porte"), comptes=ctx.garde_connexion.get("comptes"),
+            page_connexion=getattr(annuaire, "page_connexion", None), champs_secrets=garde_connexion.champs_secrets(annuaire))
+        if fautes:
+            return _outcome("[write_feature_file] CONNEXION_REECRITE : " + " ; ".join(fautes[:4])
+                            + ". Retire ces étapes puis rappelle write_feature_file.", ok=False)
     from behave.parser import ParserError, parse_feature
     try:
         feature = parse_feature(content, language="fr")
@@ -915,7 +925,8 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     # Lot VH-05 (D24) : tout champ, bouton ou page cité existe À L'IDENTIQUE dans ce que l'exploration a observé. BLOQUANT.
     indications = ""
     if ctx.annuaire is not None:
-        ecarts = litteraux_observes.controler_feature(content, ctx.annuaire)
+        ecarts = litteraux_observes.controler_feature(
+            content, ctx.annuaire, page_d_arrivee_observee=interrupteurs.page_d_arrivee_observee_actif())
         refus = [e for e in ecarts if e.bloquant]
         if refus:
             return _outcome(_message_litteraux("write_feature_file", refus), ok=False)

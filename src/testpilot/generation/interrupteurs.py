@@ -34,6 +34,9 @@ ENV_CONTROLE_FIN_ECRITURE = "TESTPILOT_CONTROLE_FIN_ECRITURE"
 ENV_ESSAI_TOUS_CONNECTEURS = "TESTPILOT_ESSAI_TOUS_CONNECTEURS"
 ENV_GENERATION_PAR_COMPTE = "TESTPILOT_GENERATION_PAR_COMPTE"
 ENV_IA_INFORMEE = "TESTPILOT_IA_INFORMEE"
+ENV_PAGE_D_ARRIVEE_OBSERVEE = "TESTPILOT_PAGE_D_ARRIVEE_OBSERVEE"
+ENV_GARDE_CONNEXION = "TESTPILOT_GARDE_CONNEXION"
+ENV_CAS_AUX_TERMES_DES_ECRANS = "TESTPILOT_CAS_AUX_TERMES_DES_ECRANS"
 
 _VRAI = frozenset({"1", "true", "yes", "oui", "on"})
 _ALLUMES_PAR_DEFAUT = frozenset({ENV_VARIABLES_DE_TEST, ENV_CAS_DIT_SES_DONNEES})
@@ -125,6 +128,29 @@ def ia_informee_actif(env: Mapping[str, str] | None = None) -> bool:
     « odoo », à l'analyse comme à l'écriture), la langue de l'interface et le détail des pages que le cas vise (tous leurs
     champs, boutons et liens relevés par l'exploration). Change ce que l'API reçoit : éteint jusqu'à sa mesure."""
     return _actif(ENV_IA_INFORMEE, env)
+
+
+def page_d_arrivee_observee_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Étape 5 du plan unique (lot VH-06, point 2 — « un littéral cité sur une route inconnue est refusé ») : après un clic
+    qui peut soumettre, la page atteinte est inconnue de l'exploration ; un champ ou un bouton cité sur elle doit avoir été
+    OBSERVÉ pendant la génération (essai, inspection), plus seulement « exister quelque part dans l'application ». Peut
+    refuser des tests que l'IA ne sait pas encore observer (page d'arrivée dynamique sans bac à sable) : éteint jusqu'à sa
+    mesure (étape 8)."""
+    return _actif(ENV_PAGE_D_ARRIVEE_OBSERVEE, env)
+
+
+def garde_connexion_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Étape 5 du plan unique (AV-6) : la connexion déjà faite n'est pas réécrite — un compte non déclaré, ou une étape de
+    connexion dans un cas qui ne porte pas sur la connexion, est refusé à l'écriture (`generation/garde_connexion.py`).
+    Peut refuser des tests (donc des « Test non livré » de plus, A100) : éteint jusqu'à sa mesure (étape 8)."""
+    return _actif(ENV_GARDE_CONNEXION, env)
+
+
+def cas_aux_termes_des_ecrans_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Étape 5 du plan unique (AV-8, V-AV2) : l'IA qui RÉDIGE les cas reçoit les mots exacts des écrans relevés par
+    l'exploration (« Nouveau client », « Enregistrer »). Change ce que l'API reçoit (une passe que le banc ne mesure pas) :
+    éteint jusqu'à sa mesure (étape 8, comptée à part)."""
+    return _actif(ENV_CAS_AUX_TERMES_DES_ECRANS, env)
 
 
 def allume(nom: str, env: Mapping[str, str] | None = None) -> bool:
