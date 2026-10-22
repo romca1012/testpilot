@@ -21,7 +21,7 @@ from _base_helpers import (
     connexion_web_utilisateur,
     non_assertif, derriere_interrupteur, compare_des_nombres,
     # Vocabulaire universel (lot 07d) — imports au NIVEAU MODULE, jamais différés (`steps/` sort du sys.path après le chargement).
-    ouvrir_page, page_affiche_texte, page_n_affiche_pas_texte, url_contient, tableau_contient_ligne,
+    ouvrir_page, page_affiche_texte, page_n_affiche_pas_texte, url_contient, tableau_contient_ligne, texte_avant_action,
     tableau_compte_lignes, cliquer_dans_ligne, decider_dialogue, telecharger_via, fichier_telecharge_se_nomme,
     fichier_telecharge_contient, cadre, nouvel_onglet_sur, requete_repond,
     # Stratégie de connexion (lot 07b-2) — même discipline d'import.
@@ -293,8 +293,9 @@ def step_ouvrir_page(context, chemin):
 @then('la page affiche le texte "{texte}"')
 def step_page_affiche_texte(context, texte):
     """Le texte doit être affiché TEL QUEL : mot entier, majuscules respectées ; un morceau de mot ou de nombre ne suffit pas
-    (« 129,51 » n'est pas dans « 1 129,51 € »). Recopie le texte exactement comme l'écran l'affiche."""
-    page_affiche_texte(context.page, texte)
+    (« 129,51 » n'est pas dans « 1 129,51 € »). Recopie le texte exactement comme l'écran l'affiche. Le texte doit être
+    APPARU après la dernière action : un texte déjà à l'écran avant (titre fixe, menu) ne prouve rien."""
+    page_affiche_texte(context.page, texte, avant=texte_avant_action(context))
 
 
 @then('la page n\'affiche pas le texte "{texte}"')

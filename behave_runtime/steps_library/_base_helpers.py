@@ -3133,6 +3133,87 @@ def poser_repere_action(context) -> None:
     (réponses, boîtes de dialogue, onglets). `(repère de l'action précédente, repère de l'action courante)`."""
     _, courant = getattr(context, "_tp_reperes", (0, 0))
     context._tp_reperes = (courant, getattr(context, "_tp_sequence", 0))
+    noter_le_texte_avant_action(context)
+
+
+# Étape 5 du plan unique (VH-04, reste 1) : « la page affiche le texte X » ne prouvait rien si X était DÉJÀ à l'écran avant la
+# dernière action (un libellé de menu, un titre fixe : un clic ignoré par l'application sortait « Passé »). Le texte rendu de
+# chaque cadre est relevé au début de chaque action ; le constat exige que X y soit apparu (une occurrence de plus) — SAUF si
+# l'action a mené à une autre page : adresse changée, ou nouvelle page DEMANDÉE (GET : « j'ouvre la page », lien, retour
+# d'une redirection). Le texte de la page atteinte prouve alors où l'action a mené (mesuré : les tests de garde de session et
+# des comptes par ligne rouvrent la page d'accueil de la session — elle affiche son titre, c'est la preuve attendue). Reste
+# exigée l'apparition : un clic sans effet, un formulaire RENVOYÉ (POST) qui réaffiche la même page à la même adresse.
+_JS_TEXTE_RENDU = "() => (document.body ? document.body.innerText : '')"
+
+
+def _methode_d_origine(requete) -> str:
+    """La méthode de la PREMIÈRE requête d'une chaîne de redirections. Revue (seconde passe) : un formulaire envoyé (POST) que le
+    serveur redirige vers la même page (303 puis GET — Django, Rails, Laravel) n'est pas une page demandée."""
+    try:
+        while requete.redirected_from is not None:
+            requete = requete.redirected_from
+        return requete.method
+    except Exception:
+        return ""
+
+
+def noter_le_texte_avant_action(context) -> None:
+    """Le texte rendu de l'onglet courant (document et cadres), au début de l'action. Rien de fatal : sans relevé (pas encore de
+    page, cadre détaché), le constat retombe sur l'ancien comportement — jamais un vert de plus."""
+    page = getattr(context, "page", None)
+    context._tp_texte_avant_action = None
+    if page is None:
+        return
+    textes = []
+    try:
+        for frame in page.frames:
+            try:
+                textes.append(frame.evaluate(_JS_TEXTE_RENDU) or "")
+            except Exception:
+                continue  # un cadre détaché pendant la lecture
+    except Exception:
+        return
+    try:
+        adresse = page.url
+    except Exception:
+        return
+    context._tp_texte_avant_action = (page, textes, adresse, (getattr(context, "navigations", None) or {}).get(page))
+
+
+def texte_avant_action(context):
+    """Les textes relevés au début de la dernière action, si l'« Alors » doit y voir le texte APPARAÎTRE ; sinon None — nouvel
+    onglet (pas d'« avant »), adresse changée, ou nouvelle page demandée (GET) depuis le début de l'action."""
+    releve = getattr(context, "_tp_texte_avant_action", None)
+    page = getattr(context, "page", None)
+    if not releve or releve[0] is not page:
+        return None
+    _, textes, adresse, navigation = releve
+    try:
+        if page.url != adresse:
+            return None
+    except Exception:
+        return None
+    derniere = (getattr(context, "navigations", None) or {}).get(page)
+    if derniere is not None and derniere is not navigation and str(derniere.get("methode") or "").upper() == "GET":
+        return None
+    return textes
+
+
+def _occurrences_dans(textes, texte: str) -> int:
+    """Le nombre d'occurrences du texte (mot entier, casse IGNORÉE : sous `text-transform`, le texte rendu change de casse — le
+    compte avant et après se fait de la même façon, il ne sert qu'à comparer)."""
+    motif = re.compile(_motif_texte_exact(texte), re.IGNORECASE)
+    return sum(len(motif.findall(re.sub(r"\s+", " ", t or ""))) for t in textes)
+
+
+def _occurrences_rendues(page, texte: str) -> int:
+    textes = []
+    for frame in page.frames:
+        try:
+            textes.append(frame.evaluate(_JS_TEXTE_RENDU) or "")
+        except Exception:
+            continue
+    return _occurrences_dans(textes, texte)
 
 
 def _reperes(context) -> tuple[int, int]:
@@ -3173,7 +3254,9 @@ def installer_les_observateurs(context) -> None:
                 # Lot VH-04 (V8) : `redirige` — le document affiché a-t-il été atteint par une REDIRECTION (et non demandé) ? Signal
                 # de la garde de session (`garde_de_session`).
                 context.navigations[reponse.frame.page] = {"url": reponse.url, "statut": int(reponse.status),
-                                                           "redirige": reponse.request.redirected_from is not None}
+                                                           "redirige": reponse.request.redirected_from is not None,
+                                                           # Étape 5 : une page DEMANDÉE (GET) n'est pas un formulaire renvoyé.
+                                                           "methode": _methode_d_origine(reponse.request)}
             # Les ressources statiques (images, css, js) noient la réponse utile sous le plafond : on ne retient que les appels
             # de l'application (`fetch`, `xhr`) et les documents.
             if reponse.request.resource_type not in _TYPES_DE_REQUETE:
@@ -3334,18 +3417,33 @@ def _texte_exact_visible(page, texte: str) -> bool:
 
 
 @constat
-def page_affiche_texte(page, texte: str) -> None:
+def page_affiche_texte(page, texte: str, avant=None) -> None:
     """Le texte est visible dans le document ou l'un de ses cadres (le texte rendu — pas un attribut ni une valeur de champ).
 
     Lot VH-04 (audit V7) : MOT ENTIER et casse respectée (`_texte_exact_visible`). Avant : sous-chaîne sans casse de
     Playwright — « 129,51 » était « affiché » sur une page qui affiche « 1 129,51 € » (un total faux passait pour juste),
-    « Command » dans « Commande ». L'ABSENCE (`page_n_affiche_pas_texte`) garde la lecture large : plus large y est plus sûr."""
+    « Command » dans « Commande ». L'ABSENCE (`page_n_affiche_pas_texte`) garde la lecture large : plus large y est plus sûr.
+
+    Étape 5 (VH-04, reste 1) : `avant` = le texte rendu au début de la dernière action (`texte_avant_action`). Le texte doit
+    y être APPARU (plus d'occurrences qu'avant) ; présent avant et pas davantage après, il ne prouve rien de l'action —
+    « non concluant », jamais « Passé » ni « Échoué » (un titre fixe ou un libellé de menu n'est pas un résultat)."""
     _renseigne(texte, "Le texte à afficher")
+    deja = _occurrences_dans(avant, texte) if avant is not None else 0
     fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
-    while not _texte_exact_visible(page, texte):
+    vu = False  # revue (bloquant) : un texte déjà là qui S'EFFACE pendant l'attente (notification) n'est pas « absent »
+    while True:
+        visible = _texte_exact_visible(page, texte)
+        vu = vu or visible
+        if visible and (not deja or _occurrences_rendues(page, texte) > deja):
+            return
         if time.monotonic() >= fin:
-            raise AssertionError(f"Le texte « {texte} » n'est pas affiché sur {page.url} (mot entier, casse respectée).")
+            break
         time.sleep(0.25)
+    if not vu:
+        raise AssertionError(f"Le texte « {texte} » n'est pas affiché sur {page.url} (mot entier, casse respectée).")
+    raise ConstatNonConcluantError(
+        f"Le texte « {texte} » était déjà affiché avant la dernière action, et il ne l'est pas davantage après : il ne prouve "
+        f"pas que l'action a eu lieu, sur {page.url}. Vérifiez un texte que l'action fait apparaître.")
 
 
 @constat
