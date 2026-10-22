@@ -415,7 +415,8 @@ def get_job(job_id: str, conn=Depends(get_conn)):
     return schemas.GenerationJobOut(
         job_id=job_id, status=job["status"], case_ids=job.get("case_ids") or [],
         error=job["error"],
-        cases=[schemas.MetierDraftOut(**c) for c in cases] if cases else None)
+        cases=[schemas.MetierDraftOut(**c) for c in cases] if cases else None,
+        couverture=(job.get("couverture") or {}) if job["status"] == "awaiting_metier" else {})
 
 
 @router.post("/jobs/{job_id}/metier", response_model=schemas.GenerationJobOut, status_code=202,

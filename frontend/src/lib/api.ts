@@ -1105,6 +1105,11 @@ export interface GenerationJob {
   // « en cours » ferait tourner le formulaire dans le vide indéfiniment.
   job_id: string; status: string; case_ids: number[]; error: string
   cases?: MetierDraft[] | null
+  // F27 (étape 5) : ce qui a pu se perdre au découpage — vide si rien à signaler.
+  couverture?: CouvertureDuDecoupage
+}
+export interface CouvertureDuDecoupage {
+  cas_listes?: number; cas_proposes?: number; stories_ecartees?: string[]
 }
 export interface VersionOut {
   id: number; version_number: number; feature_content: string; steps_content: string
