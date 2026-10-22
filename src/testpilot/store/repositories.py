@@ -1636,9 +1636,9 @@ class VersionRepo:
         """
         if compte_id is ...:
             ligne = self.conn.execute(
-                "SELECT v.compte_id FROM test_case c JOIN test_case_version v ON v.id = c.current_version_id"
+                "SELECT v.compte_id AS compte_id FROM test_case c JOIN test_case_version v ON v.id = c.current_version_id"
                 " WHERE c.id = ?", (test_case_id,)).fetchone()
-            compte_id = ligne[0] if ligne else None
+            compte_id = ligne["compte_id"] if ligne else None
         number = self.conn.execute(
             "SELECT COALESCE(MAX(version_number), 0) + 1 AS n"
             " FROM test_case_version WHERE test_case_id=?",
