@@ -171,6 +171,10 @@ class GenerationAgent:
         ctx.requetes_oracle = (frozenset((projet or {}).get("oracle_requetes_disponibles") or ())
                                if _interrupteurs.forme_oracle_actif() and projet is not None else None)
         ctx.formes_oracle = self._formes_oracle(modele, projet)
+        if _interrupteurs.ia_informee_actif():
+            declarees = set((projet or {}).get("oracle_requetes_disponibles") or ())
+            ctx.formes_oracle_relevees = {nom: f for nom, f in ((modele or {}).get("formes_oracle") or {}).items()
+                                          if nom in declarees} or None
         ctx.variables_de_test = frozenset(v["nom"] for v in variables)
         # IT-3b : l'essai sur le bac à sable joue la PREMIÈRE ligne du cas, posée par-dessus le jeu « Par défaut » — comme
         # l'exécution la jouerait. Masquées dans tout ce qui revient à l'agent (PT-02d).

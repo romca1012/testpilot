@@ -62,6 +62,9 @@ VALEURS_D_ETAPES = frozenset({
     ('la page n\'affiche pas le texte "{texte}"', "texte"),
     ('la valeur affichée pour "{libelle}" est "{valeur}"', "valeur"),
     ('le champ "{chemin}" de l\'oracle "{requete}" vaut "{valeur}"', "valeur"),
+    # Étape 5 (2026-10-22) : la valeur attendue d'un champ de l'élément d'oracle que l'écran désigne.
+    ('l\'élément de la liste "{chemin}" de l\'oracle "{requete}" dont "{cle}" est la valeur affichée pour "{libelle}" a '
+     '"{champ}" qui vaut "{valeur}"', "valeur"),
     ('le champ "{field}" de cet enregistrement contient le nom "{partial}"', "partial"),
     ('le champ "{field}" de cet enregistrement est égal à "{expected}"', "expected"),
     ('le champ "{field}" de cet enregistrement dans le modèle "{model}" est égal à "{expected}"', "expected"),

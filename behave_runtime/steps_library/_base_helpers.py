@@ -4536,6 +4536,123 @@ def oracle_liste_contient_valeur_affichee(context, chemin: str, requete: str, cl
     oracle_liste_contient(context, chemin, requete, cle, valeur)
 
 
+def _element_designe_par_l_ecran(context, chemin: str, requete: str, cle: str, libelle: str):
+    """L'UNIQUE élément de la liste d'oracle dont `cle` vaut ce que l'écran affiche pour `libelle` — écran et oracle relus
+    ensemble jusqu'au délai, comme `oracle_liste_contient_valeur_affichee`. Rend `(élément, valeur affichée)`.
+
+    Aucun élément → UN constat échoué, source oracle (l'écran montre un numéro que le serveur n'a pas : `etat_non_enregistre`).
+    Plusieurs → test mal posé, jamais « le premier ». Clé illisible, valeur non comparable → test mal posé (mêmes refus
+    qu'`oracle_liste_contient`). Rien n'est gardé sur `context`."""
+    cible = _libelle_normalise(libelle)
+    fin = time.monotonic() + _ATTENDRE_UNIVERSELLE_MS / 1000
+    while True:
+        distinctes = _valeurs_affichees(context.page, cible)
+        if len(distinctes) == 1 and distinctes[0] and _l_oracle_porte(context, chemin, requete, cle, distinctes[0]):
+            break
+        if time.monotonic() >= fin:
+            break
+        time.sleep(0.25)
+    valeur = lire_valeur_affichee(context.page, libelle)
+    if not valeur:
+        raise ElementIntrouvableError(f"La valeur affichée pour « {libelle} » est vide : rien à chercher dans l'oracle.")
+    liste = _liste_de_l_oracle(context, chemin, requete)
+    simples = []
+    for element in liste:
+        try:
+            lue = _champ_oracle(element, cle)
+        except (KeyError, IndexError, TypeError):
+            continue
+        if not isinstance(lue, (dict, list)):
+            simples.append((element, lue))
+    if liste and not simples:
+        raise ReponseOracleNonComptableError(
+            f"aucun des {len(liste)} élément(s) du champ « {chemin} » de l'oracle « {requete} » ne porte de valeur simple à la "
+            f"clé « {cle} » : la clé est mal écrite (casse comprise) ou désigne un objet.")
+    nombres = [lue for _, lue in simples if isinstance(lue, (int, float)) and not isinstance(lue, bool)]
+    if simples and len(nombres) == len(simples):
+        try:
+            decimal.Decimal(valeur.strip().replace(",", "."))
+        except decimal.InvalidOperation as exc:
+            raise ReponseOracleNonComptableError(
+                f"la clé « {cle} » de l'oracle « {requete} » porte des nombres ; la valeur affichée « {valeur} » n'en est pas "
+                "un : la comparaison ne dirait rien.") from exc
+    egaux = [element for element, lue in simples if _valeurs_egales(lue, valeur)]
+    if len(egaux) > 1:
+        raise ReponseOracleNonComptableError(
+            f"{len(egaux)} éléments du champ « {chemin} » de l'oracle « {requete} » ont « {cle} » = « {valeur} » : on ne juge "
+            "jamais « le premier ». Choisissez une clé qui désigne un seul élément.")
+    if not egaux:
+        with _source_du_constat("oracle"):
+            constater(False, f"aucun élément du champ « {chemin} » de l'oracle « {requete} » n'a « {cle} » = « {valeur} » "
+                             f"(valeur affichée pour « {libelle} »)")
+    return egaux[0], valeur
+
+
+def _champ_de_l_element(element, champ: str, requete: str):
+    """Le champ demandé de l'élément ; un indice absent (`lignes.0` d'une liste vide) est une ABSENCE observée (`IndexError`,
+    laissée au constat) ; une clé ou une forme qui n'existe pas est un test mal posé — jamais un `non_conforme` (revue du
+    plan, 2026-10-22 : `oracle_champ_vaut` en fait un faux rouge sur une clé mal écrite)."""
+    try:
+        return _champ_oracle(element, champ)
+    except IndexError:
+        raise
+    except (KeyError, TypeError) as exc:
+        raise ReponseOracleNonComptableError(
+            f"le champ « {champ} » n'existe pas dans l'élément de l'oracle « {requete} » ({exc}) : le chemin est mal écrit "
+            "(casse comprise) ou suppose une autre forme.") from exc
+
+
+def oracle_element_affiche_champ_vaut(context, chemin: str, requete: str, cle: str, libelle: str, champ: str,
+                                      valeur: str) -> None:
+    """Étape 5 (2026-10-22) : `Alors l'élément de la liste "<chemin>" de l'oracle "<requête>" dont "<clé>" est la valeur
+    affichée pour "<libellé>" a "<champ>" qui vaut "<valeur>"` — le serveur porte, POUR L'ÉLÉMENT QUE L'ÉCRAN DÉSIGNE (la
+    commande dont le numéro est affiché), la valeur attendue.
+
+    Mesuré (banc du 2026-10-22, `commande_persistance_serveur`) : faute de ce step, l'IA lisait le numéro dans le texte de
+    toute la page avec une expression régulière, attrapait « sContrôle » du menu, et accusait une application saine."""
+    element, affichee = _element_designe_par_l_ecran(context, chemin, requete, cle, libelle)
+    with _source_du_constat("oracle"):
+        try:
+            obtenu = _champ_de_l_element(element, champ, requete)
+        except IndexError as exc:
+            constater(False, f"l'élément dont « {cle} » = « {affichee} » n'a pas « {champ} » ({exc})")
+            return
+        if isinstance(obtenu, (list, dict)):
+            raise ReponseOracleNonComptableError(
+                f"« {champ} » de l'élément de l'oracle « {requete} » n'est pas une valeur simple ({type(obtenu).__name__}) : "
+                "visez un champ simple du chemin, ou comptez la liste (« … qui compte <n> élément(s) »).")
+        if isinstance(obtenu, (int, float)) and not isinstance(obtenu, bool):
+            try:
+                decimal.Decimal(valeur.strip().replace(",", "."))
+            except decimal.InvalidOperation as exc:
+                raise ReponseOracleNonComptableError(
+                    f"« {champ} » porte un nombre ; « {valeur} » n'en est pas un (unité, symbole) : la comparaison ne dirait "
+                    "rien.") from exc
+        constater(_valeurs_egales(obtenu, valeur),
+                  f"l'élément dont « {cle} » = « {affichee} » a « {champ} » = « {obtenu} », « {valeur} » attendu")
+
+
+def oracle_element_affiche_champ_compte(context, chemin: str, requete: str, cle: str, libelle: str, champ: str,
+                                        n: int) -> None:
+    """Étape 5 (2026-10-22) : `… a "<champ>" qui compte <n> élément(s)` — même désignation, une liste de l'élément comptée."""
+    element, affichee = _element_designe_par_l_ecran(context, chemin, requete, cle, libelle)
+    with _source_du_constat("oracle"):
+        try:
+            obtenu = _champ_de_l_element(element, champ, requete)
+        except IndexError as exc:
+            constater(False, f"l'élément dont « {cle} » = « {affichee} » n'a pas « {champ} » ({exc})")
+            return
+        if obtenu is None:
+            constater(False, f"l'élément dont « {cle} » = « {affichee} » a « {champ} » vide (null), {n} élément(s) attendu(s)")
+            return
+        if not isinstance(obtenu, list):
+            raise ReponseOracleNonComptableError(
+                f"« {champ} » de l'élément de l'oracle « {requete} » n'est pas une liste ({type(obtenu).__name__}) : il ne se "
+                "compte pas.")
+        constater(len(obtenu) == n,
+                  f"l'élément dont « {cle} » = « {affichee} » a {len(obtenu)} élément(s) dans « {champ} », {n} attendu(s)")
+
+
 def _l_oracle_porte(context, chemin: str, requete: str, cle: str, valeur: str) -> bool:
     """Sonde SANS constat : un élément de la liste porte-t-il déjà cette valeur ? Toute erreur vaut « pas encore »."""
     try:

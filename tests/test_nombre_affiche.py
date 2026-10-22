@@ -117,8 +117,13 @@ def test_falsifiable_le_registre_des_steps_derriere_un_interrupteur_est_ferme():
 
     # Étape 4, morceau 7 (A89, porteur 2026-10-21) : les deux vérifications « ce que voit le compte du test », montrées à
     # l'IA seulement avec l'écriture par compte (`TESTPILOT_GENERATION_PAR_COMPTE`).
+    # Étape 5 (A99, porteur 2026-10-22) : le détail de l'élément d'oracle que l'écran désigne, montré à l'IA seulement avec
+    # l'IA informée (`TESTPILOT_IA_INFORMEE`).
+    element = ('l\'élément de la liste "{chemin}" de l\'oracle "{requete}" dont "{cle}" est la valeur affichée pour '
+               '"{libelle}" a "{champ}" qui ')
     assert derriere == {_LIBELLE_DU_STEP, "cet utilisateur voit l'enregistrement",
-                        "cet utilisateur ne voit pas l'enregistrement"}
+                        "cet utilisateur ne voit pas l'enregistrement", element + 'vaut "{valeur}"',
+                        element + "compte {n:d} éléments", element + "compte {n:d} élément"}
 
 
 # ── Le helper, sur un vrai Chromium ─────────────────────────────────────────────────────────────────────────────────────
