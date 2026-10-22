@@ -20,6 +20,7 @@ const colonnesBrouillon = ref<string[]>([])
 const enregistrement = ref(false)
 const erreur = ref('')
 const ecarts = ref<string[]>([])   // le test n'emploie pas une variable des lignes : il ne se joue pas
+const aRelire = ref('')            // étape 6 (IT-3d) : le texte du cas a changé depuis l'enregistrement des lignes
 const comptes = ref<{ id: number | null; libelle: string }[]>([])   // vide : pas de colonne « Compte » (écran sobre)
 const COMPTE_DU_CAS = ''
 
@@ -44,6 +45,7 @@ async function charger() {
     lignes.value = d.lignes.map(depuisLeServeur)
     colonnes.value = colonnesDe(lignes.value)
     ecarts.value = d.ecarts ?? []
+    aRelire.value = d.lignes_a_relire ?? ''
     comptes.value = d.comptes ?? []
   } catch { variables.value = [] }   // illisible : la section ne s'affiche pas, la fiche reste utilisable
 }
@@ -84,6 +86,7 @@ async function enregistrer() {
     lignes.value = d.lignes.map(depuisLeServeur)
     colonnes.value = colonnesDe(lignes.value)
     ecarts.value = d.ecarts ?? []
+    aRelire.value = d.lignes_a_relire ?? ''
     edition.value = false
   } catch (e: any) {
     erreur.value = e?.message || 'Enregistrement impossible.'
@@ -106,6 +109,8 @@ onMounted(charger)
       </span>
     </h2>
 
+    <p v-if="!edition && aRelire" class="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm"
+       role="status" data-testid="lignes-a-relire">{{ aRelire }}</p>
     <p v-if="!edition && ecarts.length" class="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm"
        role="status" data-testid="ecarts-lignes">{{ ecarts.join(' ; ') }}. Citez-la dans les étapes ou le résultat attendu du cas puis régénérez le test, ou retirez cette colonne.</p>
     <p v-if="!edition && !lignes.length" class="mt-3 text-muted-foreground">Aucune : le cas est joué avec les valeurs du projet.</p>

@@ -91,6 +91,18 @@ describe('LignesDuCas', () => {
     expect(w.get('[data-testid="non-joue"]').text()).toBe('Non joué')
   })
 
+  it('étape 6 (IT-3d) : le texte du cas a changé depuis l’enregistrement des lignes — l’écran le dit', async () => {
+    getCaseData.mockResolvedValue({ ...DONNEES, lignes_a_relire: 'Le texte du cas a changé depuis l’enregistrement de ses lignes' })
+    const w = await fiche()
+    expect(w.get('[data-testid="lignes-a-relire"]').text()).toContain('Le texte du cas a changé')
+  })
+
+  it('sans changement du texte du cas, aucun signal', async () => {
+    getCaseData.mockResolvedValue({ ...DONNEES })
+    const w = await fiche()
+    expect(w.find('[data-testid="lignes-a-relire"]').exists()).toBe(false)
+  })
+
   it('A90-A92 : la colonne « Compte » dit avec quel compte chaque ligne sera jouée, et envoie le choix', async () => {
     getCaseData.mockResolvedValue({
       ...DONNEES,

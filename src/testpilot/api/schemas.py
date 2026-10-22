@@ -694,6 +694,11 @@ class LigneDuCasOut(BaseModel):
     compte_joue: str = ""
 
 
+class LignesProposeesOut(BaseModel):
+    """Étape 6 (IT-3d) : les lignes que l'IA propose pour le texte du cas d'aujourd'hui — rien n'est enregistré."""
+    lignes: list[dict] = []
+
+
 class DonneesDuCasOut(BaseModel):
     variables: list[VariableOut] = []   # les colonnes possibles : les variables vivantes du projet
     lignes: list[LigneDuCasOut] = []
@@ -703,6 +708,8 @@ class DonneesDuCasOut(BaseModel):
     # Revue du 2026-10-19 : les variables que les lignes font varier et que le test du cas n'emploie pas — il ne se joue
     # pas tant que le test n'est pas régénéré (message montré tel quel).
     ecarts: list[str] = []
+    # Étape 6 (IT-3d) : le texte du cas a changé depuis l'enregistrement de ses lignes — message montré tel quel ; vide : rien.
+    lignes_a_relire: str = ""
 
 
 class LigneDuCasIn(BaseModel):
