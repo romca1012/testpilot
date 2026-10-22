@@ -851,6 +851,7 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     # Lot PT-02f (A39) : le cas fait foi — chaque variable qu'il cite est employée par le test (les autres sont refusées
     # ci-dessus : `variables_de_test` ne contient que celles du cas).
     fautes += variables_de_test.refus_variables_du_cas(content, ctx.variables_du_cas) if ctx.variables_du_cas else []
+    fautes += variables_de_test.refus_preparation_dans_les_alors(content, ctx.variables_de_preparation)
     if ctx.references_figees is not None:   # réparation, correction : les variables du test de référence ne bougent pas
         fautes += variables_de_test.refus_references_changees(content, ctx.references_figees)
     # A61 (porteur, 2026-10-20) : un test qui emploie des données de test doit pouvoir être joué avec plusieurs lignes

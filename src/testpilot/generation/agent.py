@@ -181,6 +181,7 @@ class GenerationAgent:
         ctx.valeurs_de_test = {**valeurs_par_defaut, **{str(n): str(v) for n, v in (valeurs_d_essai or {}).items()}}
         ctx.controle_du_cas = controle_du_cas
         ctx.variables_du_cas = variables_requises
+        ctx.variables_de_preparation = frozenset(v["nom"] for v in variables if v.get("preparation"))
         from testpilot.generation.provenance import fingerprint, target_fingerprint
         ctx.target_sha256 = target_fingerprint(
             projet, compte=compte_du_test["empreinte"] if compte_du_test and compte_du_test["vue"] == "compte" else None)
