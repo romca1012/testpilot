@@ -551,10 +551,14 @@ _AUTEUR_REPARATION = review_gate.AUTEUR_REPARATION
 
 
 def _intention_declaree(case: dict, version: dict) -> str:
-    """Ce que le cas DÉCLARE tester (titre, description, étapes et résultat attendus MÉTIER) — le
-    contenu validé par le métier, pas le Gherkin technique."""
+    """Ce que le cas DÉCLARE tester (titre, préconditions, étapes et résultat attendus MÉTIER) — le contenu validé par le
+    métier, pas le Gherkin technique.
+
+    Jamais la DESCRIPTION du cas (mesuré le 2026-10-22, projet SauceDemo) : un cas généré y porte la spécification ENTIÈRE,
+    commune à tous les cas du lot. Elle parlait de « compte bloqué » et de « mot de passe erroné » : les 10 cas étaient
+    pris pour des tests de connexion, et 5 sortaient bloqués à tort (« Ce test de connexion s'ouvrirait déjà connecté »)."""
     return "\n".join(str(x) for x in (
-        version.get("title") or case.get("title"), case.get("description"),
+        version.get("title") or case.get("title"),
         version.get("preconditions"), version.get("test_steps"), version.get("expected_result")) if x)
 
 
