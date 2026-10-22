@@ -17,7 +17,7 @@ import re
 import unicodedata
 from typing import TYPE_CHECKING
 
-from testpilot.generation import enregistrement_lint, gel_verifications, litteraux_observes, steps_library
+from testpilot.generation import enregistrement_lint, gel_verifications, interrupteurs, litteraux_observes, steps_library
 from testpilot.generation.references import message_refus, verifier_references
 from testpilot.generation.tools import essai as essai_tools
 from testpilot.generation.placeholders import SECRET_MASQUE
@@ -643,6 +643,45 @@ def _forbidden_ecriture_rpc(tree: ast.AST) -> str:
     return ""
 
 
+_SELECTEURS_DE_PAGE_ENTIERE = frozenset({"body", "html", ":root", "*"})
+_LECTURES_DE_TEXTE = frozenset({"inner_text", "text_content", "inner_html", "all_inner_texts", "all_text_contents"})
+
+
+def _lecture_de_page_entiere(tree: ast.AST) -> str:
+    """Étape 5 (2026-10-22, interrupteur `TESTPILOT_IA_INFORMEE`) : un step écrit par l'IA qui lit le texte de TOUTE la page
+    pour y chercher une valeur. Mesuré : `page.inner_text("body")` + `re.search` attrapait « sContrôle » du menu au lieu du
+    numéro de commande — un faux rouge sur une application saine. Refusés : `inner_text`/`text_content`/`inner_html` de
+    `body`/`html`/`:root`/`*` (directement, ou sur `locator(...)`/`query_selector(...)` de ces sélecteurs), `page.content()`,
+    et un `evaluate` dont le JavaScript lit le texte de `document.body`/`document.documentElement`. Limites connues : un
+    conteneur large (`main`, `#app`), une variable intermédiaire, un JavaScript construit ne sont pas vus."""
+    def _constante(noeud) -> str:
+        return noeud.value.strip() if isinstance(noeud, ast.Constant) and isinstance(noeud.value, str) else ""
+
+    for n in ast.walk(tree):
+        if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)):
+            continue
+        methode, recepteur = n.func.attr, n.func.value
+        if methode in _LECTURES_DE_TEXTE and n.args and _constante(n.args[0]) in _SELECTEURS_DE_PAGE_ENTIERE:
+            return f"`{ast.unparse(n)[:70]}`"
+        if (methode in _LECTURES_DE_TEXTE and isinstance(recepteur, ast.Call) and isinstance(recepteur.func, ast.Attribute)
+                and recepteur.func.attr in ("locator", "query_selector") and recepteur.args
+                and _constante(recepteur.args[0]) in _SELECTEURS_DE_PAGE_ENTIERE):
+            return f"`{ast.unparse(n)[:70]}`"
+        if methode == "content" and not n.args and not n.keywords and (
+                (isinstance(recepteur, ast.Attribute) and recepteur.attr in ("page", "frame"))
+                or (isinstance(recepteur, ast.Name) and recepteur.id in ("page", "frame"))):
+            return f"`{ast.unparse(n)[:70]}`"
+        if methode in ("evaluate", "evaluate_handle") and n.args:
+            js = n.args[0]
+            textes = [js.value] if isinstance(js, ast.Constant) and isinstance(js.value, str) else [
+                v.value for v in getattr(js, "values", []) if isinstance(v, ast.Constant) and isinstance(v.value, str)]
+            source = " ".join(textes)
+            if (("document.body" in source or "document.documentElement" in source)
+                    and any(m in source for m in ("innerText", "textContent", "innerHTML", "outerHTML"))):
+                return f"`{ast.unparse(n)[:70]}`"
+    return ""
+
+
 def _forbidden_python(tree: ast.AST) -> str:
     """Imports hors liste blanche, appels dynamiques (`exec`, `eval`, `open`…), introspection du harnais, secrets."""
     for n in ast.walk(tree):
@@ -834,6 +873,16 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
         return _outcome(f"[write_feature_file] ORACLE_INCONNU : requête(s) d'oracle non déclarée(s) sur ce projet : "
                         f"{', '.join(f'« {n} »' for n in inconnues)}. Requêtes disponibles : {disponibles}. "
                         "Puis rappelle write_feature_file.", ok=False)
+    # Étape 5 (2026-10-22) : compter une réponse qui est un OBJET (mesuré dans les deux bras du banc : « l'oracle "etat" renvoie
+    # 0 résultat » → erreur technique à chaque exécution). Refusé ici, avec les listes qu'il contient.
+    objets = requetes_comptees_sur_un_objet(content, ctx.formes_oracle_relevees)
+    if objets:
+        nom, listes = objets[0]
+        conseil = (f"compte une liste qu'il contient : « le champ \"<clé>\" de l'oracle \"{nom}\" compte <n> élément(s) »"
+                   + (f", avec <clé> parmi {', '.join(f'« {c} »' for c in listes)}" if listes else ""))
+        return _outcome(f"[write_feature_file] ORACLE_OBJET_COMPTE : la réponse de l'oracle « {nom} » est un OBJET (relevé de "
+                        f"l'exploration) : « renvoie <n> résultat(s) » ne s'emploie que sur une liste. {conseil}. Puis "
+                        "rappelle write_feature_file.", ok=False)
     refus = verifier_references(content, ctx.options_select, ctx.champs_relationnels, recherche,
                                 ignorer_variables=bool(ctx.variables_de_test or ctx.references_figees
                                                        or ctx.controle_du_cas))
@@ -954,7 +1003,16 @@ def write_steps_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     for code, faute, conseil in (
             ("PYTHON_INTERDIT", _forbidden_python(tree), "Utilise les steps du catalogue et `context.page`."),
             ("ACTION_PAR_RPC", _forbidden_ecriture_rpc(tree), ""),
-            ("CONSTAT_SANS_LECTURE", _constat_sans_lecture(tree, ctx.attributs_contexte or None), "")):
+            ("CONSTAT_SANS_LECTURE", _constat_sans_lecture(tree, ctx.attributs_contexte or None), ""),
+            # Revue : pas en réparation ni en correction (`gel_steps`) — un ancien test approuvé qui lit toute la page y
+            # serait coincé (le gel interdit de changer son « Alors », cette garde de le garder).
+            ("LECTURE_PAGE_ENTIERE", _lecture_de_page_entiere(tree)
+             if interrupteurs.ia_informee_actif() and not ctx.gel_steps else "",
+             "Ce code lit le texte de TOUTE la page (menus compris) : une valeur qu'on y cherche peut venir d'ailleurs. "
+             "Utilise « la valeur affichée pour \"<libellé>\" est … », « la page affiche le texte … » ou « la page affiche "
+             "un texte de la forme … » ; côté serveur, « la liste … contient un élément dont \"<clé>\" est la valeur "
+             "affichée pour \"<libellé>\" » puis « l'élément de la liste … a \"<champ>\" qui vaut … ». Sinon lis un "
+             "élément précis (`get_by_role`, nom observé).")):
         if faute:
             return _outcome(f"[write_steps_file] {code} : {faute}. {conseil}".rstrip() + " Puis rappelle write_steps_file.",
                             ok=False)
@@ -1042,6 +1100,48 @@ def requetes_oracle_inconnues(feature: str, declarees: frozenset[str] | None) ->
                     # Un `<paramètre>` de plan de scénario : ce sont les valeurs de ses Exemples qui sont des requêtes.
                     noms += valeurs.get(nom[1:-1], []) if nom.startswith("<") and nom.endswith(">") else [nom]
     return list(dict.fromkeys(nom for nom in noms if nom not in declarees))
+
+
+_COMPTE_DE_L_ORACLE = re.compile(r"^l'oracle \"([^\"\n]+)\" renvoie \S+ résultats?$")
+
+
+def requetes_comptees_sur_un_objet(feature: str, formes: dict | None) -> list[tuple[str, list[str]]]:
+    """[(requête, clés qui sont des listes)] des requêtes que le test COMPTE (« l'oracle "R" renvoie N résultat(s) ») et dont
+    la réponse relevée à l'exploration est un objet. À l'exécution, ce step lève toujours `ReponseOracleNonComptableError` sur
+    un objet : d'après le relevé de l'exploration, le refus ne rejette pas un test qui aurait marché (une API changée depuis
+    reste possible). Sans forme, forme illisible (requête en échec à l'exploration, revue : prise pour un objet, elle aurait
+    refusé un test juste) ou liste : rien. Les clés montrées sont filtrées comme des noms de champs (A51 : une clé peut être
+    une donnée)."""
+    if not formes:
+        return []
+    from behave.parser import ParserError, parse_feature
+
+    from testpilot.connectors import forme_oracle
+    try:
+        parsed = parse_feature(feature or "", language="fr")
+    except ParserError:
+        return []
+    if parsed is None:
+        return []
+    conteneurs = [parsed, *(getattr(parsed, "rules", None) or [])]
+    noms: list[str] = []
+    for conteneur in conteneurs:
+        fond = getattr(conteneur, "background", None)
+        scenarios = getattr(conteneur, "scenarios", None) or []
+        etapes = [(e, {}) for e in (list(fond.steps) if fond else [])]
+        etapes += [(e, _valeurs_des_exemples(s)) for s in scenarios for e in (getattr(s, "steps", None) or [])]
+        for etape, valeurs in etapes:
+            trouve = _COMPTE_DE_L_ORACLE.match((etape.name or "").strip())
+            if trouve:
+                nom = trouve.group(1)
+                noms += valeurs.get(nom[1:-1], []) if nom.startswith("<") and nom.endswith(">") else [nom]
+    sortie = []
+    for nom in dict.fromkeys(noms):
+        f = formes.get(nom)
+        if isinstance(f, dict) and f and not forme_oracle._est_liste(f) and set(f) != {"illisible"}:
+            sortie.append((nom, [cle for cle, v in f.items()
+                                 if forme_oracle._est_liste(v) and forme_oracle._NOM_DE_CHAMP.match(str(cle))]))
+    return sortie
 
 
 def _valeurs_des_exemples(scenario) -> dict[str, list[str]]:

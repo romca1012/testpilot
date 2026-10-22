@@ -243,7 +243,31 @@ def _inspecter_page(page):
             // `[name]` en dur — cohérent avec la capture élargie, pas seulement les champs nommés.
             champs: f.querySelectorAll('input, select, textarea').length,
         }));
-        return {champs, actions, liens, formulaires, titre: document.title};
+        // Étape 5 (2026-10-22) : les TITRES (h1-h3) et, pour chaque tableau, son NOM (aria-labelledby, aria-label, légende,
+        // title) et ses EN-TÊTES DE COLONNES — jamais une cellule de données ni un en-tête de ligne. Un texte qui contient un
+        // chiffre est écarté (« Commande CMD-0042 » porte une valeur). Mesuré au banc : l'IA nommait le tableau « clients »
+        // quand la page ne connaît que « Clients » et « Liste des clients ».
+        const estVisible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+        const sansChiffre = (t) => !!t && !/[0-9]/.test(t);
+        const titres = Array.from(document.querySelectorAll('h1, h2, h3')).filter(estVisible)
+            .map(h => propre(h.textContent).slice(0, 80)).filter(sansChiffre).slice(0, 12);
+        const tableaux = [];
+        document.querySelectorAll('table').forEach(t => {
+            if (tableaux.length >= 10 || !estVisible(t)) return;
+            let nom = '';
+            const par = t.getAttribute('aria-labelledby');
+            if (par && document.getElementById(par)) nom = propre(document.getElementById(par).textContent);
+            if (!nom && t.getAttribute('aria-label')) nom = propre(t.getAttribute('aria-label'));
+            const legende = t.querySelector(':scope > caption');
+            if (!nom && legende) nom = propre(legende.textContent);
+            if (!nom && t.getAttribute('title')) nom = propre(t.getAttribute('title'));
+            if (!sansChiffre(nom)) nom = '';
+            const colonnes = Array.from(t.querySelectorAll(
+                ':scope > thead > tr > th, :scope > thead > tr > td, th[scope=col]'))
+                .map(c => propre(c.textContent).slice(0, 40)).filter(sansChiffre);
+            tableaux.push({nom: nom.slice(0, 80), colonnes: Array.from(new Set(colonnes)).slice(0, 12)});
+        });
+        return {champs, actions, liens, formulaires, titre: document.title, titres, tableaux};
     }""")
 
 

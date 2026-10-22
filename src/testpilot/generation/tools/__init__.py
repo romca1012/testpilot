@@ -84,6 +84,9 @@ class ToolContext:
     # Lot VH-08 (A51) : la forme des réponses de l'oracle relevée à l'exploration, COMPLÉTÉE par chaque essai (cumul). `None` :
     # interrupteur éteint, aucune forme relevée.
     formes_oracle: dict | None = None
+    # Étape 5 (2026-10-22, interrupteur `TESTPILOT_IA_INFORMEE`) : la forme relevée à l'EXPLORATION, des seules requêtes
+    # déclarées — sert à refuser « l'oracle "R" renvoie N résultat(s) » sur une réponse qui est un objet. `None` : aucun contrôle.
+    formes_oracle_relevees: dict | None = None
 
 
 @dataclass

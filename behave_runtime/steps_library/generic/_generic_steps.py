@@ -22,6 +22,7 @@ from _base_helpers import (
     non_assertif, derriere_interrupteur, compare_des_nombres,
     # Vocabulaire universel (lot 07d) — imports au NIVEAU MODULE, jamais différés (`steps/` sort du sys.path après le chargement).
     ouvrir_page, page_affiche_texte, page_n_affiche_pas_texte, url_contient, tableau_contient_ligne, texte_avant_action,
+    oracle_element_affiche_champ_vaut, oracle_element_affiche_champ_compte,
     tableau_compte_lignes, cliquer_dans_ligne, decider_dialogue, telecharger_via, fichier_telecharge_se_nomme,
     fichier_telecharge_contient, cadre, nouvel_onglet_sur, requete_repond,
     # Stratégie de connexion (lot 07b-2) — même discipline d'import.
@@ -445,3 +446,21 @@ def step_oracle_liste_contient(context, chemin, requete, cle, valeur):
 def step_oracle_liste_contient_valeur_affichee(context, chemin, requete, cle, libelle):
     """Ce que l'écran affiche à côté d'un libellé (un numéro généré, inconnu d'avance) se retrouve dans la liste de l'oracle : l'écran et le serveur concordent."""
     oracle_liste_contient_valeur_affichee(context, chemin, requete, cle, libelle)
+
+
+@then('l\'élément de la liste "{chemin}" de l\'oracle "{requete}" dont "{cle}" est la valeur affichée pour "{libelle}" a '
+      '"{champ}" qui vaut "{valeur}"')
+@derriere_interrupteur("TESTPILOT_IA_INFORMEE")
+def step_oracle_element_affiche_champ_vaut(context, chemin, requete, cle, libelle, champ, valeur):
+    """Un champ de L'élément que l'écran désigne (la commande dont le numéro est affiché) vaut la valeur attendue — chemin dans l'élément : `lignes.0.nom` ; écran et serveur relus dans ce step."""
+    oracle_element_affiche_champ_vaut(context, chemin, requete, cle, libelle, champ, valeur)
+
+
+@then('l\'élément de la liste "{chemin}" de l\'oracle "{requete}" dont "{cle}" est la valeur affichée pour "{libelle}" a '
+      '"{champ}" qui compte {n:d} éléments')
+@then('l\'élément de la liste "{chemin}" de l\'oracle "{requete}" dont "{cle}" est la valeur affichée pour "{libelle}" a '
+      '"{champ}" qui compte {n:d} élément')
+@derriere_interrupteur("TESTPILOT_IA_INFORMEE")
+def step_oracle_element_affiche_champ_compte(context, chemin, requete, cle, libelle, champ, n):
+    """Une liste de L'élément que l'écran désigne compte n éléments (ex. `lignes` de la commande affichée) ; écran et serveur relus dans ce step."""
+    oracle_element_affiche_champ_compte(context, chemin, requete, cle, libelle, champ, n)

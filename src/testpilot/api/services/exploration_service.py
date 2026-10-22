@@ -452,7 +452,9 @@ def _explorer(job_id: str, project_id: int, connexion: dict, comptes: list[dict]
     if incomplete:
         modele["exploration_incomplete"] = {"raison": incomplete, "pages": len(mesure["pages"])}
     from testpilot.generation import interrupteurs
-    if connexion.get("oracle") and interrupteurs.forme_oracle_actif():
+    # Étape 5 (2026-10-22) : relevée aussi avec `TESTPILOT_IA_INFORMEE` — l'écriture refuse alors de COMPTER une réponse qui
+    # est un objet (`ORACLE_OBJET_COMPTE`), sans rien montrer de plus à l'IA.
+    if connexion.get("oracle") and (interrupteurs.forme_oracle_actif() or interrupteurs.ia_informee_actif()):
         # Lot VH-08 (A51, interrupteur) : la forme des réponses de chaque requête GET de l'oracle — jamais une valeur ni
         # un compte. Éteint : l'oracle n'est pas appelé, l'exploration est celle d'avant.
         modele["formes_oracle"] = _relever_l_oracle(connexion["oracle"])
