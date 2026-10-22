@@ -613,12 +613,21 @@ def update_case_script(case_id: int, body: schemas.ScriptEditIn, conn=Depends(ge
     Pas d'auto-approbation (contrairement à `/metier`) : voir `CaseRepo.update_script`.
     """
     cases = CaseRepo(conn)
-    if cases.get(case_id) is None:
+    cas = cases.get(case_id)
+    if cas is None:
         raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
+    # Étape 5 : les contrôles d'écriture de l'IA, rejoués sur le script modifié à la main — consignés, montrés au relecteur
+    # (point de vigilance), jamais un refus : un test écrit à la main peut légitimement sortir de ce que l'IA a le droit
+    # d'écrire (mesuré : les 15 tests figés du banc importent `urllib.parse`).
+    from testpilot.generation.controles_ecriture import refus_hors_generation
+    projet = ProjectRepo(conn).get(cas.get("project_id")) if cas.get("project_id") else None
+    controles = refus_hors_generation(body.feature_content, body.steps_content,
+                                      connector_type=(projet or {}).get("connector_type"),
+                                      profil_instance=(projet or {}).get("profil_instance"))
     try:
         version_id = cases.update_script(
             case_id, feature_content=body.feature_content, steps_content=body.steps_content,
-            editor=body.editor, expected_version_id=body.base_version_id)
+            editor=body.editor, expected_version_id=body.base_version_id, controles_ecriture=controles)
     except VersionConflict as exc:
         raise erreurs.ErreurMetier("conflit_edition", str(exc)) from exc
     cas_a_jour = cases.get(case_id)

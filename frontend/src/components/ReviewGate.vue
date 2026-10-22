@@ -60,6 +60,8 @@ const FAMILLES: Record<string, string> = {
   // signal distinct des autres familles (pas une assertion fragile, pas un risque de réparation,
   // pas une valeur absente du domaine) — un risque d'agir sur une donnée réelle de l'application.
   enregistrement_non_cree_par_le_scenario: 'donnée réelle',
+  // Étape 5 — un script modifié à la main qui ne passe pas les contrôles d'écriture de l'IA.
+  controles_ecriture_contournes: 'édition manuelle',
 }
 
 // Repli explicite : un `kind` inconnu s'affiche quand même. Le taire ferait disparaître un

@@ -153,6 +153,7 @@ RAISONS_DES_AVIS: dict[str, str] = {
     "menu_non_observe": "Un menu du test n'a jamais été vu sur l'application.",
     "connexion_non_testee": "Ce test de connexion s'ouvrirait déjà connecté.",
     "enregistrement_non_cree_par_le_scenario": "Le test agit sur un enregistrement qu'il n'a pas créé.",
+    "controles_ecriture_contournes": "Modifié à la main, le test ne passe pas les contrôles d'écriture.",
 }
 RAISON_AVIS_INCONNU = "Un point de vigilance reste à vérifier."
 # Revue de l'étape 2 : la liste « Cas bloqués » n'affiche que la PREMIÈRE raison — la plus grave d'abord (ce qui touche à

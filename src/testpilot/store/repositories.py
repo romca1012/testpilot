@@ -880,6 +880,19 @@ _CASE_VIVANT = ("tc.deleted_at = ''"
                 " AND (p.id IS NULL OR p.deleted_at = '')")
 
 
+def _avec_edition_manuelle(metadonnees: dict, controles_ecriture: list[str] | None) -> dict:
+    """Étape 5 : ajoute `edition_manuelle` à la provenance d'une version écrite à la main (`CaseRepo.update_script`)."""
+    if controles_ecriture is None:
+        return metadonnees
+    try:
+        provenance = json.loads(metadonnees.get("generation_provenance") or "{}")
+    except ValueError:
+        provenance = {}
+    provenance = provenance if isinstance(provenance, dict) else {}
+    provenance["edition_manuelle"] = {"controles_ecriture": [str(c)[:400] for c in controles_ecriture][:8]}
+    return {**metadonnees, "generation_provenance": json.dumps(provenance, ensure_ascii=False)}
+
+
 class CaseRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -1323,7 +1336,8 @@ class CaseRepo:
 
     def update_script(self, case_id: int, *, feature_content: str, steps_content: str,
                       editor: str = "ui", expected_version_id: int | None = None,
-                      resume: str = "Édition manuelle du script", metier: dict | None = None) -> int | None:
+                      resume: str = "Édition manuelle du script", metier: dict | None = None,
+                      controles_ecriture: list[str] | None = None) -> int | None:
         """Édite directement le SCRIPT généré (Gherkin + Python) → **nouvelle version** (rôle
         Dev, 2026-08-07) — le MIROIR de `update_metier` : ici c'est le contenu MÉTIER qui est
         recopié tel quel, le contenu TECHNIQUE qui change.
@@ -1338,6 +1352,10 @@ class CaseRepo:
 
         `metier` (décision A41, associer d'un clic) : `{preconditions, test_steps, expected_result}` qui changent DANS LA
         MÊME version que le script — le cas et son test restent d'accord. Absent : le métier est recopié, comme avant.
+
+        `controles_ecriture` (étape 5) : les contrôles d'écriture de l'IA que ce script, modifié à la main, ne passe pas
+        (`generation/controles_ecriture.py`) — consignés dans la provenance de la version (`edition_manuelle`), montrés en
+        point de vigilance au relecteur. `None` : rien n'est consigné (association d'un clic, appelants d'avant).
 
         Rend `None` si rien n'a changé (pas de version fantôme) — sinon l'id de la NOUVELLE
         version.
@@ -1369,7 +1387,7 @@ class CaseRepo:
             test_steps=metier.get("test_steps", (current or {}).get("test_steps", "")),
             expected_result=metier.get("expected_result", (current or {}).get("expected_result", "")),
             verified_fields=(current or {}).get("verified_fields", ""),
-            **revision_metadata(current))
+            **_avec_edition_manuelle(revision_metadata(current), controles_ecriture))
         self.set_current_version(case_id, version_id)
 
         # ⚠️ Le RUNNER lit le script SUR DISQUE (`config.GENERATED_DIR/{slug}.feature`), jamais
