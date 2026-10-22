@@ -115,3 +115,26 @@ def test_le_gate_et_le_prompt_connaissent_le_nouvel_avis_et_les_deux_steps():
     assert "connexion_non_testee: 'connexion'" in gate  # aucune valeur brute à l'écran (§4.7)
     assert "j'accède à la page de connexion sans me connecter" in prompt
     assert "n'écris JAMAIS de step de connexion" in prompt
+
+
+_SPEC_COMMUNE = ("Connexion. Un compte bloqué ne se connecte pas : le message « Epic sadface: Sorry, this user has been locked "
+                 "out. » s'affiche. Avec un mot de passe erroné, le message d'erreur s'affiche. Panier. « Add to cart » ajoute "
+                 "un produit.")
+
+
+def test_falsifiable_la_specification_commune_copiee_dans_la_description_ne_fait_pas_un_test_de_connexion():
+    """Mesuré le 2026-10-22 (SauceDemo) : la description d'un cas généré porte la spécification ENTIÈRE ; elle parlait de
+    compte bloqué, et un cas « Ajout au panier » sortait bloqué comme un test de connexion."""
+    intention = gs._intention_declaree(
+        {"title": "Ajout d'un produit au panier", "description": _SPEC_COMMUNE},
+        {"title": "", "preconditions": "L'utilisateur est connecté.", "test_steps": '["Cliquer sur « Add to cart »"]',
+         "expected_result": "Le compteur du panier affiche 1."})
+    assert sc.check_intention_connexion(intention, _FEATURE_CONNECTE) == []
+
+
+def test_un_vrai_cas_de_compte_bloque_reste_repere_avec_la_meme_description():
+    intention = gs._intention_declaree(
+        {"title": "Un compte bloqué ne se connecte pas", "description": _SPEC_COMMUNE},
+        {"title": "", "preconditions": "", "test_steps": '["Saisir locked_out_user"]',
+         "expected_result": "Le message de compte bloqué s'affiche."})
+    assert [a["kind"] for a in sc.check_intention_connexion(intention, _FEATURE_CONNECTE)] == ["connexion_non_testee"]
