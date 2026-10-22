@@ -89,6 +89,14 @@ class ToolContext:
     # Étape 5 (2026-10-22, interrupteur `TESTPILOT_IA_INFORMEE`) : la forme relevée à l'EXPLORATION, des seules requêtes
     # déclarées — sert à refuser « l'oracle "R" renvoie N résultat(s) » sur une réponse qui est un objet. `None` : aucun contrôle.
     formes_oracle_relevees: dict | None = None
+    # Étape 5 (AV-6, interrupteur `TESTPILOT_GARDE_CONNEXION`) : `{"porte": bool | None, "comptes": list[str] | None}` — le
+    # cas porte-t-il sur la connexion (intention déclarée), et les libellés des comptes déclarés. `None` : aucun contrôle.
+    garde_connexion: dict | None = None
+    # Étape 5 (AV-9, interrupteur `TESTPILOT_IA_INFORMEE`) : application web — les outils de données (`inspect_schema`,
+    # `query_data`, `attempt_form_submission`) répondent par ce que l'IA PEUT relever sur ce projet. Faux : comportement
+    # d'avant. `requetes_oracle_declarees` : les NOMS des requêtes d'oracle du projet (jamais leur contenu).
+    outils_web_informes: bool = False
+    requetes_oracle_declarees: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass

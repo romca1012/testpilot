@@ -85,6 +85,8 @@ class Annuaire:
     boutons: dict[str, set[str]] = field(default_factory=dict)
     liens: dict[str, dict[str, str]] = field(default_factory=dict)  # route -> {texte: href}
     page_connexion: str | None = None
+    # Étape 5 (AV-6) : noms et libellés des champs de mot de passe, pour la garde de connexion (`garde_connexion`).
+    champs_mot_de_passe: set[str] = field(default_factory=set)
     # Noms et libellés vus par les outils d'inspection PENDANT la génération : plus frais que l'exploration ; acceptés partout.
     observes_session: set[str] = field(default_factory=set)
 
@@ -107,8 +109,10 @@ def annuaire_depuis_modele(modele: dict) -> Annuaire:
             for cle in ("name", "label"):
                 if champ.get(cle):
                     champs.add(str(champ[cle]).strip())
-            if (champ.get("type") or "") == "password" and annuaire.page_connexion is None:
-                annuaire.page_connexion = route
+            if (champ.get("type") or "") == "password":
+                annuaire.champs_mot_de_passe.update(str(champ[c]).strip() for c in ("name", "label") if champ.get(c))
+                if annuaire.page_connexion is None:
+                    annuaire.page_connexion = route
         boutons = annuaire.boutons.setdefault(route, set())
         for action in page.get("actions") or []:
             if action.get("label"):
@@ -142,27 +146,34 @@ def _normaliser_route(route: str) -> str:
 # ── Le .feature ───────────────────────────────────────────────────────────────────────────────────────────
 
 
-def controler_feature(feature: str, annuaire: Annuaire) -> list[Ecart]:
+def controler_feature(feature: str, annuaire: Annuaire, *, page_d_arrivee_observee: bool = False) -> list[Ecart]:
     """Chaque champ, bouton ou page cité par un step de la bibliothèque doit exister, à l'identique, sur la route courante.
 
     La route courante suit le scénario : `j'ouvre la page` la fixe ; le clic sur un lien observé suit son `href` ; un clic sur
     un bouton (qui peut soumettre) ou l'accueil après connexion la rend inconnue. Route inconnue → le littéral doit exister
-    quelque part dans l'application (contrôle plus faible, jamais un refus à tort)."""
+    quelque part dans l'application (contrôle plus faible, jamais un refus à tort).
+
+    `page_d_arrivee_observee` (étape 5, interrupteur `TESTPILOT_PAGE_D_ARRIVEE_OBSERVEE`, éteint) : la page atteinte APRÈS UN
+    CLIC qui n'a pas suivi un lien observé n'est plus jugée sur « existe quelque part » — le littéral doit avoir été observé
+    pendant la génération (essai, inspection : `observes_session`). Un champ « Quantité » vu sur une autre page ne prouve pas
+    qu'il existe sur la page de confirmation. Le début d'un scénario et l'accueil gardent le contrôle d'avant."""
     ecarts: list[Ecart] = []
     route: str | None = None
+    apres_clic = ""   # le bouton cliqué qui a rendu la route inconnue (vide : route connue, ou inconnue sans clic)
+    depart: str | None = None   # la route connue AVANT ce clic : un formulaire qui reste affiché garde ses champs
     for numero, ligne in enumerate(feature.splitlines(), start=1):
         if DEBUT_SCENARIO.match(ligne) or DEBUT_CONTEXTE.match(ligne) or DEBUT_REGLE.match(ligne):   # étape 2 : `Exemple:`
-            route = None
+            route, apres_clic, depart = None, "", None
             continue
         m = _ETAPE.match(ligne)
         if not m:
             continue
         texte, ou = m.group("texte"), f"ligne {numero}"
         if _CONNEXION.match(texte):
-            route = annuaire.page_connexion
+            route, apres_clic = annuaire.page_connexion, ""
             continue
         if _ACCUEIL.match(texte):
-            route = None
+            route, apres_clic = None, ""
             continue
         page = _PAGE.match(texte)
         if page:
@@ -173,18 +184,42 @@ def controler_feature(feature: str, annuaire: Annuaire) -> list[Ecart]:
                 route = None
             else:
                 route = cible if cible in annuaire.routes else None
+            apres_clic = ""
             continue
         for motif in _CHAMP:
             champ = motif.match(texte)
             if champ:
-                ecarts += _controler(champ.group("champ"), "champ", route, annuaire, ou)
+                ecarts += _controler_ici(champ.group("champ"), "champ", route, annuaire, ou,
+                                         apres_clic if page_d_arrivee_observee else "", depart)
         bouton = _BOUTON.match(texte)
         if bouton:
             libelle = bouton.group("bouton")
-            ecarts += _controler(libelle, "bouton", route, annuaire, ou)
+            ecarts += _controler_ici(libelle, "bouton", route, annuaire, ou, apres_clic if page_d_arrivee_observee else "",
+                                     depart)
             href = (annuaire.liens.get(route) or {}).get(libelle) if route else None
+            if not href and route is not None:
+                depart = route
             route = _normaliser_route(href) if href else None  # un bouton peut soumettre : page d'arrivée inconnue
+            apres_clic = "" if href else libelle
+            if href:
+                depart = None
     return ecarts
+
+
+def _controler_ici(cite: str, quoi: str, route: str | None, annuaire: Annuaire, ou: str, apres_clic: str,
+                   depart: str | None = None) -> list[Ecart]:
+    """`_controler`, plus la règle de la page d'arrivée (`apres_clic` non vide : la route est inconnue parce qu'un clic a pu
+    soumettre). Le littéral doit alors avoir été OBSERVÉ pendant la génération, ou figurer sur la page de DÉPART (revue du
+    2026-10-22 : un formulaire refusé reste affiché avec ses champs) — exister ailleurs dans l'application ne prouve rien
+    sur la page atteinte."""
+    source = annuaire.champs if quoi == "champ" else annuaire.boutons
+    if (not apres_clic or route is not None or ("<" in cite and ">" in cite) or cite in annuaire.observes_session
+            or (depart is not None and cite in (source.get(depart) or set()))):
+        return _controler(cite, quoi, route, annuaire, ou)
+    return [Ecart("page_inconnue", ou, cite,
+                  f"la page atteinte après « {apres_clic} » n'a jamais été observée : rien ne prouve que le {quoi} "
+                  f"« {cite} » y figure — essaie l'action ou inspecte la page atteinte avant de le citer",
+                  _proche(cite, annuaire.observes_session))]
 
 
 def _controler(cite: str, quoi: str, route: str | None, annuaire: Annuaire, ou: str) -> list[Ecart]:
