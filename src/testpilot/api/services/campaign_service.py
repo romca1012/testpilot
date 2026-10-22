@@ -152,7 +152,7 @@ def run_campaign(run_id: int, case_ids: list[int], *, triggered_by: str = "", st
                 # les autres continuent. Mais rester au seul journal serveur (2026-09-15) laissait
                 # le cas « Untested » sans explication à l'écran — `enregistrer_lancement_bloque`
                 # rend le même verdict honnête qu'un plantage technique en cours de run, quand une
-                # version existe pour le porter (`needs_review`/`no_connection`).
+                # version existe pour le porter (`needs_review`/`no_test`/`no_connection`).
                 logger.warning("[campagne %s] cas %s non lancé : %s", run_id, case_id, err.detail)
                 run_service.enregistrer_lancement_bloque(
                     conn, case_id=case_id, code=err.code, message=err.detail, run_id=run_id,
