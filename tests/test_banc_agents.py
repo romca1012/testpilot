@@ -733,6 +733,17 @@ def test_une_generation_sans_essai_a_blanc_ou_incomplete_n_est_pas_jouable(gen):
     assert artefacts.erreur and artefacts.cout_usd == pytest.approx(0.12)  # le coût dépensé reste compté
 
 
+def test_av7_une_generation_qui_n_aboutit_pas_dit_pourquoi():
+    """Étape 5 (AV-7) : 5 générations sur 5 du même cas sans essai à blanc passé, et rien de plus pour l'instruire."""
+    diagnostic = {"arret": "max_iterations", "tours": 25, "feature_ecrite": True, "steps_ecrits": False,
+                  "refus_recents": ["[write_feature_file] LITTERAL_NON_OBSERVE : …"], "dernier_dry_run": ""}
+    erreur = ba.artefacts_depuis_rapport("a", 1, _rapport(success=False, diagnostic_arret=diagnostic)).erreur
+
+    assert erreur.startswith("génération sans essai à blanc passé (arrêt max_iterations après 25 tour(s)")
+    assert "fichiers non écrits : steps" in erreur and "dernier refus : [write_feature_file] LITTERAL_NON_OBSERVE" in erreur
+    assert ba.artefacts_depuis_rapport("a", 1, _rapport(success=False)).erreur == "génération sans essai à blanc passé"
+
+
 def test_un_cout_absent_du_rapport_reste_non_consigne():
     assert ba.artefacts_depuis_rapport("a", 1, _rapport(cost_usd=None)).cout_usd is None
 

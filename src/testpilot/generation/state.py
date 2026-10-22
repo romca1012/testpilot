@@ -28,6 +28,11 @@ class AgentState:
     # Étape 2 (A61) : contrôle de fin d'écriture — tours déjà faits et sortes de points renvoyées à l'IA.
     tours_de_controle: int = 0
     avis_envoyes: list[str] = field(default_factory=list)
+    # Étape 5 (AV-7) : pourquoi une génération s'arrête sans test — les derniers refus d'outil (début du message) et le
+    # dernier diagnostic d'essai à blanc. Mesuré : 5 générations sur 5 du MÊME cas sans essai à blanc passé, et rien de
+    # plus que « génération sans essai à blanc passé » dans les rapports du banc pour l'instruire.
+    refus_recents: list[str] = field(default_factory=list)
+    dernier_dry_run: str = ""
 
 
 @dataclass
@@ -53,3 +58,6 @@ class GenerationResult:
     observation_evidence: list[dict] = field(default_factory=list)
     generation_provenance: dict = field(default_factory=dict)
     technical_plan: dict = field(default_factory=dict)
+    # Étape 5 (AV-7) : rempli seulement quand la génération n'aboutit pas — `{arret, tours, feature_ecrite, steps_ecrits,
+    # refus_recents, dernier_dry_run}`. Lu par le banc (`asdict`) pour instruire les générations qui n'aboutissent pas.
+    diagnostic_arret: dict = field(default_factory=dict)

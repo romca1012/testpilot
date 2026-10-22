@@ -310,6 +310,10 @@ class GenerationAgent:
             spec_hash=spec_hash(plan.raw_spec),
             awaiting_review=success,
             verified_fields=state.verified_fields,
+            diagnostic_arret={} if success else {
+                "arret": state.stopped_reason or "incomplete", "tours": state.iterations,
+                "feature_ecrite": state.feature_written, "steps_ecrits": state.steps_written,
+                "refus_recents": list(state.refus_recents), "dernier_dry_run": state.dernier_dry_run},
         )
 
     def _persist(self, plan: TestPlan, result: GenerationResult, *,
