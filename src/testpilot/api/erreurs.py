@@ -60,6 +60,8 @@ CATALOGUE: dict[str, tuple[int, str]] = {
     "campagne_vide":          (422, "Cette campagne ne contient aucun cas"),
     # Lot PT-02b : le jeu de données choisi pour la campagne est à la corbeille.
     "jeu_de_donnees_indisponible": (409, "Le jeu de données de cette exécution n'est plus disponible"),
+    # Étape 6 (IT-4) : une colonne dont les valeurs viennent de l'application n'a pas pu être remplie au lancement.
+    "colonne_application_impossible": (409, "Une colonne de données n'a pas pu être remplie depuis l'application"),
     # Lot PT-04a (A48) : environnement « Production », supprimé ou illisible — la campagne n'est pas lancée.
     "environnement_refuse": (409, "Cette exécution ne peut pas être jouée sur son environnement"),
     "campagne_en_cours":      (409, "Cette campagne est déjà en cours"),
@@ -116,6 +118,7 @@ _DEPUIS_SERVICE = {
     "invalid_state": "etat_incompatible",
     "empty": "campagne_vide",
     "dataset_missing": "jeu_de_donnees_indisponible",
+    "column_from_app": "colonne_application_impossible",
     "environment_refused": "environnement_refuse",
     "already_running": "campagne_en_cours",
     "archived": "campagne_archivee",

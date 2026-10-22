@@ -54,6 +54,19 @@ def figer_pour_la_campagne(conn, run: dict) -> None:
     figes = _figes_du_projet(conn, run)
     if figes is None:   # projet sans variable : rien à figer, comme avant (R1) — une ligne de cas n'y porte aucune valeur
         return
+    # Étape 6 (IT-4, interrupteur éteint) : les colonnes dont la source est l'application, relevées MAINTENANT sur l'application
+    # de l'environnement de la campagne, et figées avec le reste (A29) — un cas n'en est multiplié qu'au moment de le jouer, si
+    # son test les emploie (`_avec_les_colonnes_de_l_application`). Une colonne vide ou illisible : rien n'est lancé.
+    from testpilot.generation import interrupteurs
+    if interrupteurs.colonne_depuis_l_application_actif():
+        from testpilot.api.services import colonnes_application_service, environnements_service
+        from testpilot.parametres.environnements import projet_sur
+        from testpilot.store.repositories import ProjectRepo
+        projet = projet_sur(ProjectRepo(conn).get(run["project_id"]),
+                            environnements_service.environnement_du_run(conn, run["id"]))
+        colonnes = colonnes_application_service.relever_les_colonnes(conn, projet)
+        if colonnes:
+            figes["colonnes_de_l_application"] = colonnes
     lignes, cas = _lignes_des_cas_de_la_campagne(conn, run)
     figes["cas_figes"] = cas
     if lignes:
@@ -144,6 +157,28 @@ def _compte_du_cas(conn, version: dict, project_id: int | None) -> str:
         return "principal"
     compte = ProjectAccountRepo(conn).lire(project_id, compte_id)
     return compte["label"] if compte else COMPTE_SUPPRIME
+
+
+def _avec_les_colonnes_de_l_application(figes: dict, feature: str, lignes_du_cas) -> dict | str:
+    """Étape 6 (IT-4) : les valeurs figées de CE cas, une itération par valeur relevée des colonnes que SON test emploie et
+    qu'aucune de ses lignes ne fixe — ou le message de blocage. Revue du 2026-10-22 : (B1) un test qui n'emploie pas la
+    variable n'est pas multiplié (trois clients annoncés, un seul joué) ; (B2) une variable relevée dans un « Alors » est
+    refusée — le test comparerait l'application à elle-même et sortirait « conforme » sur un défaut."""
+    from testpilot.generation.variables_de_test import refus_preparation_dans_les_alors
+    from testpilot.parametres import colonne_application as ca
+
+    colonnes = ca.colonnes_a_jouer(figes, feature, _variables_des_lignes(lignes_du_cas or []))
+    if not colonnes:
+        return figes
+    dans_un_alors = refus_preparation_dans_les_alors(feature, set(colonnes))
+    if dans_un_alors:
+        return ("Données de test : " + ", ".join("{{" + n + "}}" for n in sorted(colonnes)) + " vient de l'application — "
+                "elle sert à préparer le test, jamais à vérifier (un « Alors » qui l'emploie comparerait l'application à "
+                "elle-même). Retirez-la de l'« Alors », ou retirez sa source. Le test n'a pas été joué.")
+    try:
+        return ca.etendre_les_figes(figes, colonnes, JEUX_PAR_LANCEMENT_MAX)
+    except ca.ColonneImpossible as exc:
+        return f"Données de test : {exc}. Le test n'a pas été joué."
 
 
 def _avec_les_lignes_du_cas(figes: dict, lignes: list[dict]) -> dict:
@@ -285,6 +320,11 @@ def preparer_le_script(conn, execution_id: int, case_id: int, version_id: int, m
             # les figer maintenant contournerait A29.
             return Script(blocage="Données de test : ce cas a ses propres lignes, ajouté à la campagne après son lancement "
                                   "— elles n'ont pas été figées. Créez une nouvelle exécution. Le test n'a pas été joué.")
+    if campagne and figes.get("colonnes_de_l_application"):
+        refus = _avec_les_colonnes_de_l_application(figes, feature, lignes_du_cas)
+        if isinstance(refus, str):
+            return Script(blocage=refus)
+        figes = refus
     if lignes_du_cas:
         # A57/A58 : les lignes propres au cas, chacune une itération — figées au lancement avec le reste (A29).
         ecart = ecart_lignes_test(feature, _variables_des_lignes(lignes_du_cas))

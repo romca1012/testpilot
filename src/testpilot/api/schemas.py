@@ -650,6 +650,14 @@ class VariableOut(BaseModel):
     id: int
     nom: str
     description: str = ""
+    # Étape 6 (IT-4) : la source de la colonne dans l'application (JSON, `parametres/colonne_application`) ; vide : saisie.
+    source_application: str = ""
+
+
+class SourceDeVariableIn(BaseModel):
+    """Étape 6 (IT-4) : d'où la colonne tire ses valeurs au lancement — `{}` retire la source."""
+    model_config = ConfigDict(extra="forbid")
+    source: dict = {}
 
 
 class JeuDeDonneesIn(BaseModel):
