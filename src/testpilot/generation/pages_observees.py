@@ -26,6 +26,7 @@ MAX_LIENS = 20
 MAX_CARACTERES = 6000
 MAX_TITRES = 6
 MAX_TABLEAUX = 4
+MAX_LIBELLES = 12
 _MOT_MIN = 4
 # Un mot ou un lien présent sur plus de la moitié des pages est de la NAVIGATION COMMUNE (barre de menu, pied de page, suffixe
 # du titre) : il ne dit rien de la page. Mesuré à sec sur le banc web (2026-10-22) : sans ce filtre, la barre de menu
@@ -123,6 +124,10 @@ def section(modele: dict | None, routes, texte_du_cas: str = "", contraintes=lam
         lignes += ["Un tableau se désigne (« le tableau \"<nom>\" … ») par sa légende ou son nom, sinon par le titre qui le "
                    "précède, recopié À L'IDENTIQUE, casse comprise. Un tableau qui n'était pas affiché à l'exploration (aucune "
                    "donnée) n'y figure pas : désigne-le par le titre de sa page.", ""]
+    if any((pages.get(r) or {}).get("tableaux_remplis") for r in choisies):
+        # AV-4 : l'état de départ sert à PRÉPARER (une donnée existe déjà, ou il faut la créer), jamais à VÉRIFIER.
+        lignes += ["« Contenait des lignes » ou « vide » : l'état de la liste au moment de l'exploration, pour savoir s'il "
+                   "faut créer une donnée avant d'agir — jamais un résultat attendu (ce qu'un test vérifie vient du cas).", ""]
     titres_communs = _communs([set((p.get("titres") or [])) for p in pages.values()])
     liens_communs = _communs([set(_liens_internes(p)) for p in pages.values()])
     boutons_communs = _communs([{a.get("label") for a in p.get("actions") or [] if a.get("label")} for p in pages.values()])
@@ -137,11 +142,19 @@ def section(modele: dict | None, routes, texte_du_cas: str = "", contraintes=lam
         titres = [t for t in page.get("titres") or [] if t and t not in titres_communs][:MAX_TITRES]
         if titres:
             lignes.append("- Titres : " + ", ".join(f"« {t} »" for t in titres))
-        tableaux = [t for t in page.get("tableaux") or [] if isinstance(t, dict)][:MAX_TABLEAUX]
-        for tableau in tableaux:
+        # AV-4 : l'état de départ de chaque tableau (des lignes, ou vide) relevé à l'exploration — jamais un nombre.
+        remplis = page.get("tableaux_remplis") or []
+        tableaux = [(t, remplis[i] if i < len(remplis) else None)
+                    for i, t in enumerate(page.get("tableaux") or []) if isinstance(t, dict)][:MAX_TABLEAUX]
+        for tableau, rempli in tableaux:
             colonnes = ", ".join(f"« {c} »" for c in (tableau.get("colonnes") or [])[:12])
             nom = f"« {tableau['nom']} »" if tableau.get("nom") else "sans nom (désigne-le par le titre qui le précède)"
-            lignes.append(f"- Tableau {nom}" + (f" — colonnes {colonnes}" if colonnes else ""))
+            etat = {True: " — contenait des lignes à l'exploration", False: " — vide à l'exploration"}.get(rempli, "")
+            lignes.append(f"- Tableau {nom}" + (f" — colonnes {colonnes}" if colonnes else "") + etat)
+        # AV-3 : les libellés de structure d'une fiche (« Numéro de commande ») — la valeur voisine n'est jamais relevée.
+        libelles = [t for t in page.get("libelles") or [] if t][:MAX_LIBELLES]
+        if libelles:
+            lignes.append("- Libellés : " + ", ".join(f"« {t} »" for t in libelles))
         champs = [c for c in page.get("champs") or [] if c.get("visible", True)][:MAX_CHAMPS]
         if champs:
             lignes.append("- Champs :")
@@ -159,3 +172,36 @@ def section(modele: dict | None, routes, texte_du_cas: str = "", contraintes=lam
     if len(texte) > MAX_CARACTERES:
         texte = texte[:MAX_CARACTERES].rsplit("\n", 1)[0] + "\n(relevé tronqué)"
     return texte
+
+
+MAX_TERMES = 150
+MAX_CARACTERES_TERMES = 4000
+
+
+def termes_des_ecrans(modele: dict | None) -> list[str]:
+    """AV-8 (étape 5, V-AV2 validée le 2026-10-16) : les mots EXACTS des écrans — libellés des champs, boutons, en-têtes de
+    colonnes, libellés de fiche et liens de la NAVIGATION COMMUNE (les menus) — pour l'IA qui RÉDIGE les cas. Les plus
+    fréquents d'abord, sans doublon, sans texte à chiffres, plafonnés. Vide sans cartographie.
+
+    Jamais les titres de page ni les autres liens (revue du 2026-10-22) : sur une liste ou une fiche, ce sont des DONNÉES
+    sans chiffre (« Sauce Labs Backpack », une raison sociale) qui finiraient dans un résultat attendu — un attendu tiré de
+    l'observation (A39)."""
+    pages = [p for p in ((modele or {}).get("pages") or {}).values() if isinstance(p, dict)]
+    menus = {t for t, _h in _communs([set(_liens_internes(p)) for p in pages])}
+    compte: dict[str, int] = {}
+    for page in pages:
+        termes = [*(page.get("libelles") or [])]
+        termes += [c.get("label") or "" for c in page.get("champs") or [] if c.get("visible", True)]
+        termes += [a.get("label") or "" for a in page.get("actions") or [] if a.get("visible", True)]
+        termes += [t for t, _h in _liens_internes(page) if t in menus]
+        termes += [c for t in page.get("tableaux") or [] if isinstance(t, dict) for c in t.get("colonnes") or []]
+        for terme in {" ".join(str(t).split()) for t in termes}:
+            if 2 <= len(terme) <= 60 and not re.search(r"[0-9]", terme):
+                compte[terme] = compte.get(terme, 0) + 1
+    retenus, taille = [], 0
+    for terme in sorted(compte, key=lambda t: (-compte[t], t)):
+        if len(retenus) >= MAX_TERMES or taille + len(terme) + 4 > MAX_CARACTERES_TERMES:
+            break
+        retenus.append(terme)
+        taille += len(terme) + 4
+    return retenus
