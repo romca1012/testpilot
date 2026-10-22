@@ -260,6 +260,22 @@ def _record_generation_cost(conn, *, case_id: int | None, analysis_usd: float = 
                        "test_case_id (comptés au budget §9, imputés à aucun cas)", total)
 
 
+def _type_pour_l_analyse(conn, *, module_id: int | None = None, project: dict | None = None) -> dict:
+    """AV-1 (étape 5, interrupteur `TESTPILOT_IA_INFORMEE`) : l'analyse de la spécification reçoit le type d'application du
+    projet — un projet web n'est plus analysé comme un « système de type odoo » (modèles Odoo suggérés à tort). Éteint : {}
+    (le défaut d'avant)."""
+    from testpilot.generation import interrupteurs
+
+    if not interrupteurs.ia_informee_actif():
+        return {}
+    if project is None and module_id is not None:
+        from testpilot.store.repositories import ProjectRepo
+        module = ModuleRepo(conn).get(module_id) or {}
+        project = ProjectRepo(conn).get(module["project_id"]) if module.get("project_id") else None
+    connector_type = (project or {}).get("connector_type")
+    return {"connector_type": connector_type} if connector_type else {}
+
+
 def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str,
                    author: str, group_id: int | None = None) -> None:
     """PASSE 4a — analyse la spec, la DÉCOUPE en user stories + cas planifiés (§9a), rédige le
@@ -291,7 +307,8 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
         # (MODEL_FAST) invisible sur les deux chemins. Le schéma prévoyait pourtant la phase
         # `analysis` depuis le début. On lui donne donc un tracker, et on écrit ce qu'il mesure.
         analysis_tracker = CostTracker()
-        plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(
+        plan = SpecAnalyzer(cost_tracker=analysis_tracker,
+                            **_type_pour_l_analyse(conn, module_id=module_id)).analyze_spec_content(
             slugify(title), spec_content)
 
         decoupage_tracker = CostTracker()
@@ -1260,7 +1277,8 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
                 runner.connection[ENV_COMPTE_DU_TEST] = libelle
 
         analysis_tracker = CostTracker()
-        plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(slug, spec_content)
+        plan = SpecAnalyzer(cost_tracker=analysis_tracker,
+                            **_type_pour_l_analyse(conn, project=project)).analyze_spec_content(slug, spec_content)
 
         agent = GenerationAgent(dry_runner=runner, connector=connector,
                                 case_repo=CaseRepo(conn), version_repo=VersionRepo(conn))
@@ -1359,7 +1377,8 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
         # chaque cas ouvre désormais LE SIEN, en parallèle — voir plus bas. Un connecteur partagé
         # ouvert ici, jamais utilisé, aurait juste gaspillé un navigateur pour rien.
         analysis_tracker = CostTracker()
-        plan = SpecAnalyzer(cost_tracker=analysis_tracker).analyze_spec_content(
+        plan = SpecAnalyzer(cost_tracker=analysis_tracker,
+                            **_type_pour_l_analyse(conn, project=project)).analyze_spec_content(
             slugify(title), spec_content)
 
         # La Section est celle CHOISIE PAR L'UTILISATEUR avant la génération — plus aucune

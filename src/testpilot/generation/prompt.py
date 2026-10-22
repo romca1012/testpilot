@@ -692,7 +692,7 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None,
                           oracle: list[str] | None = None, regeneration: bool = False,
                           variables: list[dict] | None = None, formes_oracle: dict | None = None,
                           compte_du_test: dict | None = None, comptes_des_lignes: list[dict] | None = None,
-                          ecrans_de: str = "principal") -> str:
+                          ecrans_de: str = "principal", informee: dict | None = None) -> str:
     """Message utilisateur initial : le plan mis en forme pour la boucle ReAct.
 
     `modele` — l'annuaire du domaine (`domain_model.charger_modele`). Optionnel : sans lui, le
@@ -707,11 +707,15 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None,
     reflète jamais une correction propre à CE cas — la joindre recrée exactement le « deux
     périmètres concurrents » que le paragraphe ci-dessous dit vouloir éviter (mesuré sur C131,
     Portail Sapian - Integration : une précondition corrigée réécrite dans le métier était
-    ignorée, la régénération reprenant le contournement dangereux de la spec brute d'origine)."""
+    ignorée, la régénération reprenant le contournement dangereux de la spec brute d'origine).
+
+    `informee` — étape 5 (interrupteur `TESTPILOT_IA_INFORMEE`) : `{connector_type, langue, texte_du_cas}`. Absent : le message
+    d'avant, octet pour octet."""
+    informee = informee or {}
     lines = [
         f"# Génère les tests Behave pour le module « {plan.module_name} »",
         "",
-        f"Type de système : {plan.connector_type}",
+        f"Type de système : {informee.get('connector_type') or plan.connector_type}",
         f"Modèles impliqués : {', '.join(f'`{m}`' for m in plan.models) or '(à découvrir)'}",
         f"Personas : {', '.join(plan.personas)}",
         f"Routes : {', '.join(plan.portal_routes) or '(aucune)'}",
@@ -724,6 +728,10 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None,
         lines.append(f"Rôle requis : {plan.required_role}")
     if plan.risks:
         lines.append("Ambiguïtés signalées : " + "; ".join(plan.risks))
+    if informee.get("langue"):
+        # AV-5 (mesuré : menu cherché en anglais sur une interface française, G7 ; message deviné, cas 97).
+        lines.append(f"Langue de l'interface : {informee['langue']} — écris les libellés (menus, boutons, messages) tels "
+                     "que l'écran les affiche dans cette langue.")
 
     # Les FAITS mesurés d'abord : routes réelles, où vivent les onglets, valeurs des listes. Ils
     # cadrent tout le reste — un scénario écrit contre une route inexistante est perdu quel que
@@ -765,6 +773,13 @@ def build_initial_message(plan: TestPlan, modele: dict | None = None,
     contrainte = _section_champs_requis(plan, modele)
     if contrainte:
         lines.append("\n" + contrainte)
+    if informee:
+        # AV-2 : les pages visées en détail (champs, boutons, liens) — repères pour agir, jamais des résultats attendus.
+        from testpilot.generation import pages_observees
+        section_pages = pages_observees.section(modele, list(plan.portal_routes or []) + [plan.entry_url or ""],
+                                                informee.get("texte_du_cas") or "", _format_contraintes)
+        if section_pages:
+            lines.append("\n" + section_pages)
 
     # Le document métier validé PRIME sur les scénarios déduits par l'analyse : les deux listés
     # ensemble donneraient à l'agent deux périmètres concurrents, et c'est le non-validé qui
