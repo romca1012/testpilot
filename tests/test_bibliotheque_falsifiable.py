@@ -24,6 +24,7 @@ _DELEGUENT_OU_ATTENDENT = {
     "step_wait_form",          # attente (@when + @then), pas une assertion
     "step_no_dup",             # → no_duplicate() : assert len(ids) <= 1
     "step_validation_error",   # → validation_error_inline() : raise AssertionError (via _poll_until)
+    "step_validation_error_for_field",  # → validation_error_for_field() : raise AssertionError (étape 5)
     "step_no_partial_record",  # assertit directement
     "step_notification_error", # → validation_error_notification() : expect(...).to_be_visible()
     "step_validation_error_shown", # idem, _odoo_steps.py — délègue au MÊME helper (audit 2026-09-17)
@@ -163,6 +164,7 @@ def test_chaque_then_partage_assertit_ou_delegue_explicitement():
     # Étape 5.
     ("oracle_element_affiche_champ_vaut", True),
     ("oracle_element_affiche_champ_compte", True),
+    ("validation_error_for_field", True),
 ])
 def test_les_delegations_declarees_assertissent_vraiment(nom_helper, doit_assertir):
     """La liste de délégations ci-dessus n'est une excuse que si les helpers assertissent
