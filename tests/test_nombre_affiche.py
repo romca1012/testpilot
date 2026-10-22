@@ -121,9 +121,12 @@ def test_falsifiable_le_registre_des_steps_derriere_un_interrupteur_est_ferme():
     # l'IA informée (`TESTPILOT_IA_INFORMEE`).
     element = ('l\'élément de la liste "{chemin}" de l\'oracle "{requete}" dont "{cle}" est la valeur affichée pour '
                '"{libelle}" a "{champ}" qui ')
+    # Étape 5, restes (A101, 2026-10-22) : l'erreur rattachée au champ, NOUVELLE vérification — montrée à l'IA seulement avec
+    # l'IA informée, comme A99 (elle n'en retire aucune à l'agent).
     assert derriere == {_LIBELLE_DU_STEP, "cet utilisateur voit l'enregistrement",
                         "cet utilisateur ne voit pas l'enregistrement", element + 'vaut "{valeur}"',
-                        element + "compte {n:d} éléments", element + "compte {n:d} élément"}
+                        element + "compte {n:d} éléments", element + "compte {n:d} élément",
+                        'une erreur de validation est affichée pour le champ "{field}"'}
 
 
 # ── Le helper, sur un vrai Chromium ─────────────────────────────────────────────────────────────────────────────────────

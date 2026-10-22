@@ -713,6 +713,10 @@ def before_step(context, step):
     if ((getattr(step, "step_type", "") or "") in ("given", "when")
             and not _est_exempte_non_assertive(_fonction_du_step(context, step))):
         poser_repere_action(context)
+    elif (getattr(step, "step_type", "") or "") == "then":
+        # Étape 5 : un « Alors » clôt le bloc d'actions — l'erreur d'un champ s'y juge depuis le début du bloc suivant.
+        from _base_helpers import fermer_le_bloc_d_actions
+        fermer_le_bloc_d_actions(context)
     # Lot VH-04 (V8, G4) : une session perdue avant un `Alors` bloque le test — jamais un vert sur la page de connexion. Évaluée
     # ici, appliquée au premier constat du step (voir `armer_garde_de_session` : Behave ne classe pas une erreur de crochet).
     from _base_helpers import armer_garde_de_session, debut_de_step

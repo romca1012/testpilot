@@ -15,7 +15,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from _base_helpers import (
     fill_field, select_field_value, click_button,
     attach_file, leave_field_empty, click_first_actionable,
-    no_error_with_keywords, validation_error_inline,
+    no_error_with_keywords, validation_error_for_field, validation_error_inline, erreurs_avant_action, champ_vu_pendant_les_actions,
     wait_form_submission, remplir_formulaire_valide,
     select_product_in_list, select_product_partial, NavigationImpossibleError,
     connexion_web_utilisateur,
@@ -137,6 +137,15 @@ def step_wait_form(context):
 @then("une erreur de validation est affichée dans le formulaire")
 def step_validation_error(context):
     validation_error_inline(context.page)
+
+
+@then('une erreur de validation est affichée pour le champ "{field}"')
+@derriere_interrupteur("TESTPILOT_IA_INFORMEE")   # montré à l'IA après sa mesure ; exécutable partout (comme A99)
+def step_validation_error_for_field(context, field):
+    """L'erreur est rattachée à CE champ (marque d'invalidité, message dans son enveloppe), pas seulement visible dans la
+    page ; un bandeau commun au formulaire ne prouve rien sur le champ (non concluant)."""
+    validation_error_for_field(context.page, field, erreurs_avant_action(context),
+                               champ_vu_pendant_les_actions(context, field))
 
 
 @then('aucune erreur mentionnant "{kw1}" ou "{kw2}" n\'est affichée dans l\'interface')
