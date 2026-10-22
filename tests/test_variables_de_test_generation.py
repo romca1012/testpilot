@@ -460,6 +460,8 @@ def test_falsifiable_l_echec_renvoye_a_la_regeneration_masque_les_valeurs_jouees
         {"scenario_name": "s", "step_text": 'je renseigne le champ "Client" avec la valeur "Martin SARL"',
          "error_summary": "", "execution_status": "technical_error", "functional_status": ""}])
     monkeypatch.setattr(repositories.RepairRepo, "list_for_execution", lambda self, eid: [])
+    # Étape 5 (revue du 2026-10-22) : le dernier échec est pris sur une version qui porte un test — la version 7 en a un.
+    monkeypatch.setattr(repositories.VersionRepo, "list_for_case", lambda self, cid: [{"id": 7, "feature_content": "# f"}])
 
     texte = generation_service._regeneration_failure_context(None, 1)[0]["text"]
 

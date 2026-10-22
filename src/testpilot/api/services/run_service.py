@@ -219,8 +219,10 @@ def enregistrer_lancement_bloque(conn, *, case_id: int, code: str, message: str,
     « Terminé » comme si tout avait joué. Réutilise `_ecrire_erreur`, le même mécanisme
     d'affichage qu'un plantage technique en cours de run : aucun nouveau composant d'écran.
 
-    Seuls `needs_review` et `no_connection` ont une VERSION réelle à rattacher — le gate n'est
-    évalué qu'après lecture de `current_version_id` (cf. `trigger_run`). Pour `not_found` et
+    Seuls `needs_review`, `no_test` et `no_connection` ont une VERSION réelle à rattacher — le gate n'est
+    évalué qu'après lecture de `current_version_id` (cf. `trigger_run`). `no_test` (« Test non livré »,
+    revue du 2026-10-22) : la version courante n'a pas de test technique — en campagne, le cas restait
+    « Untested » sans un mot, exactement le silence corrigé ici. Pour `not_found` et
     `no_version`, il n'existe ni cas ni version valides à référencer (clé étrangère NOT NULL sur
     `execution.version_id`) ; rend `None` sans rien créer — un cas jamais généré reste
     honnêtement « Untested », l'appelant continue de se contenter du journal serveur.
@@ -230,7 +232,7 @@ def enregistrer_lancement_bloque(conn, *, case_id: int, code: str, message: str,
     toute exécution SANS `run_id` au moment où `finalize` s'exécute (« hors campagne »), donc un
     rattachement fait après coup laisserait le cas retomber dans le même silence qu'on corrige ici.
     """
-    if code not in ("needs_review", "no_connection"):
+    if code not in ("needs_review", "no_test", "no_connection"):
         return None
     case = CaseRepo(conn).get(case_id)
     version_id = (case or {}).get("current_version_id")
@@ -238,7 +240,9 @@ def enregistrer_lancement_bloque(conn, *, case_id: int, code: str, message: str,
         return None
     project = project_du_cas(conn, case_id, environnement)
     execs = ExecutionRepo(conn)
-    trigger = "rerun" if environnement is not None or execs.has_for_version(version_id) else "first_run"
+    # Une version sans test n'a pas de « premier jet » de génération à mesurer (revue du 2026-10-22) : jamais `first_run`.
+    trigger = ("rerun" if code == "no_test" or environnement is not None or execs.has_for_version(version_id)
+               else "first_run")
     eid = execs.create(test_case_id=case_id, version_id=version_id, trigger=trigger,
                        cible=cible_de(project), triggered_by=triggered_by)
     if run_id is not None:

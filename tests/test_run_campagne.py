@@ -455,3 +455,47 @@ def test_un_cas_inclus_dans_un_run_reste_SUPPRIMABLE(conn):
 
     assert CaseRepo(conn).get(c1) is None
     assert repo.case_ids(rid) == [c2], "le run survit, sans le cas supprimé"
+
+
+def test_campagne_avec_un_cas_test_non_livre_laisse_un_verdict_dans_le_run(conn, monkeypatch):
+    """Revue du 2026-10-22 : un cas « Test non livré » (version courante sans test technique, `no_test`) qui atteint
+    `trigger_run` en campagne — devenu non livré PENDANT la campagne (une régénération finit entre le lancement et son
+    tour), ou campagne relancée où il a déjà un résultat — restait sans trace : `enregistrer_lancement_bloque` ignorait
+    `no_test`, et le run gardait l'ANCIEN résultat du cas. Il obtient une exécution `technical_error` / `indetermine`
+    rattachée au run (jamais `conforme`), et il n'est pas joué."""
+    from testpilot.api.services import campaign_service, run_service
+    from testpilot.store.repositories import ReviewRepo, VersionRepo
+    from testpilot.verdict import review_gate
+
+    mid = ensure_default_module(conn, "m")
+    c1, c2 = _cas(conn, mid, "a"), _cas(conn, mid, "b")
+    for cid in (c1, c2):
+        vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="h",
+                                       feature_content="# f", steps_content="# s")
+        CaseRepo(conn).set_current_version(cid, vid)
+        review_gate.auto_approve_metier(ReviewRepo(conn), case_id=cid, version_id=vid)
+    rid = RunRepo(conn).create(project_id=1, name="C", selection_mode="frozen", case_ids=[c1, c2])
+
+    joues: list[int] = []
+    monkeypatch.setattr(run_service, "run_execution",
+                        lambda eid, slug, cid, vid, **kw: joues.append(cid))
+    monkeypatch.setattr(config, "DB_PATH", conn.execute("PRAGMA database_list").fetchone()[2])
+
+    params = campaign_service.start_campaign(conn, rid)
+    # Entre le lancement et son tour, la régénération de c1 n'aboutit pas : « Test non livré » (version sans test).
+    sans_test = VersionRepo(conn).create(test_case_id=c1, spec_content="", spec_hash="h", feature_content="",
+                                         steps_content="", change_summary="Test non livré : …")
+    CaseRepo(conn).set_current_version(c1, sans_test)
+    review_gate.auto_approve_metier(ReviewRepo(conn), case_id=c1, version_id=sans_test)
+    campaign_service.run_campaign(**params)
+
+    assert joues == [c2], "un cas sans test technique n'est jamais joué"
+    conn2 = get_initialized_db(config.DB_PATH)
+    resultat = next(c["result"] for c in RunRepo(conn2).cases_with_results(rid) if c["id"] == c1)
+    assert resultat is not None, "le cas « Test non livré » ne reste plus sans trace dans le run"
+    assert resultat["execution_status"] == "technical_error"
+    assert resultat["functional_status"] == "indetermine"
+    execution = conn2.execute("SELECT error_message FROM execution WHERE run_id=? AND test_case_id=?",
+                              (rid, c1)).fetchone()
+    assert "test technique" in execution["error_message"]
+    conn2.close()
