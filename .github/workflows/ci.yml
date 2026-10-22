@@ -31,7 +31,8 @@ jobs:
           # qu'à un environnement de build isolé, jamais à celui que pip-audit inspecte.
           python -m pip install --upgrade "setuptools>=83.0.0"
           python -m pip install pip-audit
-          python -m pip_audit
+          # Pillow : failles sans correctif pour Python 3.10, tolérées ici seulement (voir le fichier).
+          python -m pip_audit $(grep -v '^#' .github/pip-audit-ignore-py310.txt | sed 's/^/--ignore-vuln /')
 
   postgres:
     name: Backend — runtime PostgreSQL réel
