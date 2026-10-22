@@ -121,6 +121,17 @@ def hypotheses_depuis_plan(technical_plan) -> list[str]:
     return propres[:HYPOTHESES_MAX]
 
 
+def _refus_preuve_inconnue(citee: str, etape: str, connues: set) -> str:
+    """Mesuré le 2026-10-22 (banc, conversations gardées) : « [plan : preuve inconnue] » ne disait ni laquelle ni quoi faire —
+    l'IA le prenait pour un accord, écrivait le reste et s'arrêtait SANS test (2 générations sur 2 reproduites). Elle citait le
+    relevé de l'exploration (« crawl-2026-10-22:/panier ») ou un essai (« essai-actions:/produits ») comme preuve."""
+    valables = ", ".join(sorted(connues)) or "aucune pour l'instant (aucune page inspectée)"
+    return (f"[write_test_plan] REFUSÉ — rien n'a été écrit. Preuve inconnue « {citee} » à l'étape « {etape} ». Une preuve est "
+            "l'identifiant rendu par inspect_page_snapshot (« Preuve UI observation-N ») ; le relevé de l'exploration et les "
+            f"essais n'en sont pas. Preuves valables : {valables}. Corrige evidence_ids (vide si aucune preuve) et renvoie le "
+            "plan.")
+
+
 def write_test_plan(ctx, plan):
     from testpilot.generation.tools import ToolOutcome
     from testpilot.generation.tools.write import write_feature_file
@@ -148,8 +159,9 @@ def write_test_plan(ctx, plan):
                 effective = {'Soit': 'given', 'Quand': 'when', 'Alors': 'then'}[keyword]
             if not effective:
                 return ToolOutcome('[plan : première étape sans type]', ok=False)
-            if not set(step['evidence_ids']) <= known:
-                return ToolOutcome('[plan : preuve inconnue]', ok=False)
+            inconnues = [e for e in step['evidence_ids'] if e not in known]
+            if inconnues:
+                return ToolOutcome(_refus_preuve_inconnue(inconnues[0], text, known), ok=False)
             found = False
             matched = None
             for shared in ctx.shared_steps:

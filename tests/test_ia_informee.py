@@ -98,3 +98,65 @@ def test_la_langue_n_est_annoncee_que_pour_une_application_web(monkeypatch):
     assert agent_mod._informee(_plan(), {"connector_type": "web", "browser_locale": "n'importe quoi"}, METIER)["langue"] == ""
     message = prompt_mod.build_initial_message(_plan(), MODELE, METIER, informee={"connector_type": "odoo", "langue": ""})
     assert "Langue de l'interface" not in message
+
+
+
+def test_le_refus_d_une_preuve_inconnue_dit_laquelle_et_quoi_faire():
+    """Mesuré le 2026-10-22 : « [plan : preuve inconnue] » était pris pour un accord — l'IA s'arrêtait sans test."""
+    from types import SimpleNamespace
+
+    from testpilot.generation import technical_plan
+
+    ctx = SimpleNamespace(observations=[{"id": "observation-1"}], requirements=["r1"], shared_steps=[])
+    plan = {"title": "T", "scenarios": [{"name": "S", "requirement_ids": ["r1"], "steps": [
+        {"keyword": "Soit", "text": "j'ouvre la page \"/panier\"", "evidence_ids": ["crawl-2026-10-22:/panier"]}]}],
+            technical_plan.HYPOTHESES_CLE: []}
+    sortie = technical_plan.write_test_plan(ctx, plan)
+    assert not sortie.ok
+    assert sortie.observation.startswith("[write_test_plan] REFUSÉ — rien n'a été écrit.")
+    assert "« crawl-2026-10-22:/panier »" in sortie.observation and "Preuves valables : observation-1" in sortie.observation
+
+
+
+def test_titres_et_tableaux_sont_montres_sans_aucune_valeur_de_cellule(monkeypatch):
+    modele = {"pages": {"/clients": {"titre": "Clients", "titres": ["Clients"], "tableaux": [
+        {"nom": "Liste des clients", "colonnes": ["Nom", "Ville"]}, {"nom": "", "colonnes": ["Produit"]}],
+        "champs": [], "actions": [], "liens": []}}}
+    texte = pages_observees.section(modele, ["/clients"], "")
+    assert "- Titres : « Clients »" in texte
+    assert "- Tableau « Liste des clients » — colonnes « Nom », « Ville »" in texte
+    assert "- Tableau sans nom (désigne-le par le titre qui le précède) — colonnes « Produit »" in texte
+    assert "recopié À L'IDENTIQUE, casse comprise" in texte
+
+
+def test_une_carte_d_avant_sans_titres_ni_tableaux_donne_la_meme_section():
+    texte = pages_observees.section(MODELE, ["/clients/nouveau"], "")
+    assert "Titres" not in texte and "Tableau" not in texte and "Un tableau se désigne" not in texte
+
+
+@pytest.mark.conformance
+def test_falsifiable_l_exploration_releve_noms_et_en_tetes_jamais_les_cellules():
+    import json
+    import sys
+    from pathlib import Path
+
+    from playwright.sync_api import sync_playwright
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import crawl_domaine as cd
+
+    corps = ("<h1>Clients</h1><h2>Commande CMD-0042</h2><table><caption>Liste des clients</caption><thead><tr>"
+             "<th scope='col'>Nom</th><th scope='col'>Ville</th></tr></thead><tbody><tr><th scope='row'>Dupont SARL</th>"
+             "<td>Lyon</td></tr></tbody></table><table><tr><th scope='row'>Remise (10 %)</th><td>1,00 €</td></tr></table>")
+    with sync_playwright() as p:
+        nav = p.chromium.launch()
+        page = nav.new_page()
+        page.set_content(f"<html><body>{corps}</body></html>")
+        infos = cd._inspecter_page(page)
+        nav.close()
+    assert infos["titres"] == ["Clients"]
+    assert infos["tableaux"][0] == {"nom": "Liste des clients", "colonnes": ["Nom", "Ville"]}
+    assert infos["tableaux"][1] == {"nom": "", "colonnes": []}
+    vu = json.dumps([infos["titres"], infos["tableaux"]], ensure_ascii=False)
+    for valeur in ("Dupont SARL", "Lyon", "10 %", "CMD-0042", "1,00"):
+        assert valeur not in vu, f"« {valeur} » est une valeur de l'application : jamais relevée"

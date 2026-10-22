@@ -57,6 +57,9 @@ _DELEGUENT_OU_ATTENDENT = {
     "step_oracle_liste_contient_valeur_affichee",  # → oracle_liste_contient_valeur_affichee() → oracle_liste_contient()
     # Lot PT-03 : délègue à un helper qui lève une `AssertionError` (falsifiabilité : `tests/test_nombre_affiche.py`).
     "step_nombre_affiche",             # → _nombre_affiche_vaut()
+    # Étape 5 (2026-10-22) : délèguent à un helper qui appelle `constater` (falsifiabilité : `tests/test_oracle_element_designe.py`).
+    "step_oracle_element_affiche_champ_vaut",    # → oracle_element_affiche_champ_vaut()
+    "step_oracle_element_affiche_champ_compte",  # → oracle_element_affiche_champ_compte()
 }
 
 
@@ -157,6 +160,9 @@ def test_chaque_then_partage_assertit_ou_delegue_explicitement():
     ("oracle_liste_contient", True),
     # Lot PT-03.
     ("_nombre_affiche_vaut", True),
+    # Étape 5.
+    ("oracle_element_affiche_champ_vaut", True),
+    ("oracle_element_affiche_champ_compte", True),
 ])
 def test_les_delegations_declarees_assertissent_vraiment(nom_helper, doit_assertir):
     """La liste de délégations ci-dessus n'est une excuse que si les helpers assertissent

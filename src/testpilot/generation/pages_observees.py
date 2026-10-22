@@ -4,7 +4,9 @@ les a relevées : tous leurs champs (nom technique, libellé, type, obligatoire,
 Pourquoi : la cartographie du projet connaissait ces noms exacts, mais ne servait qu'à REFUSER après coup ce que l'IA avait
 inventé (`LITTERAL_NON_OBSERVE` : 8 à 12 refus par campagne, chacun un tour et un coût de plus). On les MONTRE avant qu'elle
 écrive. Règle inchangée (D26, condition 4) : ce qui est OBSERVÉ sert à savoir OÙ aller et QUOI toucher ; ce qu'un test
-VÉRIFIE vient du cas validé — la cartographie ne porte d'ailleurs aucune valeur affichée, seulement des noms de contrôles.
+VÉRIFIE vient du cas validé. La cartographie ne porte que des noms (champs, boutons, liens, titres, en-têtes de colonnes ;
+les textes à chiffres sont écartés à l'exploration) ; un titre sans chiffre peut encore être une valeur (nom d'un produit en
+tête de sa fiche) : même exposition que le texte des liens, déjà montré.
 
 Module PUR : aucune I/O, aucun LLM. Choix des pages : celles que le plan vise (routes, adresse d'entrée — issues de l'analyse
 de la spécification, un modèle de langage) ; à défaut, celles dont les noms rencontrent le TEXTE DU CAS validé par une
@@ -22,6 +24,8 @@ MAX_CHAMPS = 30
 MAX_BOUTONS = 20
 MAX_LIENS = 20
 MAX_CARACTERES = 6000
+MAX_TITRES = 6
+MAX_TABLEAUX = 4
 _MOT_MIN = 4
 # Un mot ou un lien présent sur plus de la moitié des pages est de la NAVIGATION COMMUNE (barre de menu, pied de page, suffixe
 # du titre) : il ne dit rien de la page. Mesuré à sec sur le banc web (2026-10-22) : sans ce filtre, la barre de menu
@@ -113,7 +117,13 @@ def section(modele: dict | None, routes, texte_du_cas: str = "", contraintes=lam
     lignes = ["## Pages observées par l'exploration" + (f" (relevé du {modele['mesure_le']})"
                                                        if (modele or {}).get("mesure_le") else ""), "",
               "Les noms EXACTS des champs, boutons et liens de l'application : emploie-les tels quels. Ce sont des repères "
-              "pour agir, jamais des résultats attendus — ce que le test vérifie vient du cas.", ""]
+              "pour agir, jamais des résultats attendus — ce que le test vérifie vient du cas. Ce relevé n'est pas une "
+              "preuve à citer dans evidence_ids.", ""]
+    if any((pages.get(r) or {}).get("titres") or (pages.get(r) or {}).get("tableaux") for r in choisies):
+        lignes += ["Un tableau se désigne (« le tableau \"<nom>\" … ») par sa légende ou son nom, sinon par le titre qui le "
+                   "précède, recopié À L'IDENTIQUE, casse comprise. Un tableau qui n'était pas affiché à l'exploration (aucune "
+                   "donnée) n'y figure pas : désigne-le par le titre de sa page.", ""]
+    titres_communs = _communs([set((p.get("titres") or [])) for p in pages.values()])
     liens_communs = _communs([set(_liens_internes(p)) for p in pages.values()])
     boutons_communs = _communs([{a.get("label") for a in p.get("actions") or [] if a.get("label")} for p in pages.values()])
     if liens_communs or boutons_communs:
@@ -124,6 +134,14 @@ def section(modele: dict | None, routes, texte_du_cas: str = "", contraintes=lam
         page = pages.get(route) or {}
         titre = page.get("titre") or ""
         lignes.append(f"### {route}" + (f" — « {titre} »" if titre else ""))
+        titres = [t for t in page.get("titres") or [] if t and t not in titres_communs][:MAX_TITRES]
+        if titres:
+            lignes.append("- Titres : " + ", ".join(f"« {t} »" for t in titres))
+        tableaux = [t for t in page.get("tableaux") or [] if isinstance(t, dict)][:MAX_TABLEAUX]
+        for tableau in tableaux:
+            colonnes = ", ".join(f"« {c} »" for c in (tableau.get("colonnes") or [])[:12])
+            nom = f"« {tableau['nom']} »" if tableau.get("nom") else "sans nom (désigne-le par le titre qui le précède)"
+            lignes.append(f"- Tableau {nom}" + (f" — colonnes {colonnes}" if colonnes else ""))
         champs = [c for c in page.get("champs") or [] if c.get("visible", True)][:MAX_CHAMPS]
         if champs:
             lignes.append("- Champs :")
