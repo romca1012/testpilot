@@ -207,3 +207,54 @@ def test_api_c19_avec_technique_accepte_la_regeneration(conn, monkeypatch):
     response = TestClient(app).post(f"/api/cases/{cid}/automate")
     assert response.status_code == 202
     assert response.json()["status"] == "running"
+
+
+def test_falsifiable_relancer_un_test_non_livre_est_une_regeneration(conn):
+    """Revue du 2026-10-22 : la version courante d'un cas « Test non livré » n'a pas de test ; la relancer partait comme
+    une PREMIÈRE génération (`regeneration=False`) — sans le dernier échec, et sans le fait `regeneration_apres_defaut` :
+    un défaut mesuré sur l'ancien test (A65, A66) n'empêchait plus l'approbation automatique du nouveau."""
+    cid, vid, _ = existing_case(conn)
+    defaut = ExecutionRepo(conn).create(test_case_id=cid, version_id=vid)
+    conn.execute("UPDATE execution SET execution_status='success', functional_status='non_conforme' WHERE id=?",
+                 (defaut,))
+    conn.commit()
+    sans_test = VersionRepo(conn).create(
+        test_case_id=cid, spec_content="", spec_hash="h", feature_content="", steps_content="",
+        change_summary=f"{service.TEST_NON_LIVRE} : …", title="Créer équipement", preconditions="DSI",
+        test_steps=json.dumps(["Confirmer"]), expected_result="Équipement créé")
+    CaseRepo(conn).set_current_version(cid, sans_test)
+
+    _, params = service.start_automation(conn, cid)
+
+    assert params["regeneration"] is True
+    assert service._dernier_defaut_fonctionnel(conn, cid) == {"execution_id": defaut, "version_id": vid}
+
+
+def test_un_cas_jamais_automatise_reste_une_premiere_generation(conn):
+    mid = ensure_default_module(conn, "parc")
+    cid = CaseRepo(conn).create(title="Nouveau", module_id=mid)
+    vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="h", feature_content="",
+                                   steps_content="", title="Nouveau", test_steps=json.dumps(["Faire"]),
+                                   expected_result="Fait")
+    CaseRepo(conn).set_current_version(cid, vid)
+    _, params = service.start_automation(conn, cid)
+    assert params["regeneration"] is False
+
+
+def test_le_lancement_bloque_d_un_test_non_livre_ne_masque_pas_le_vrai_dernier_echec(conn):
+    """Revue du 2026-10-22 : la trace `no_test` d'une campagne (version sans test, rien observé) devenait le « dernier échec »
+    montré à l'agent qui régénère — il perdait l'échec réel de l'ancien test. Et elle n'est jamais un premier jet."""
+    from testpilot.api.services import run_service
+
+    cid, vid, _ = existing_case(conn)
+    reel = ExecutionRepo(conn).create(test_case_id=cid, version_id=vid)
+    conn.execute("UPDATE execution SET execution_status='success', functional_status='non_conforme' WHERE id=?", (reel,))
+    conn.commit()
+    sans_test = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="h", feature_content="",
+                                         steps_content="", title="Créer équipement", test_steps=json.dumps(["Confirmer"]),
+                                         expected_result="Équipement créé")
+    CaseRepo(conn).set_current_version(cid, sans_test)
+    bloque = run_service.enregistrer_lancement_bloque(conn, case_id=cid, code="no_test", message="pas de test technique")
+
+    assert ExecutionRepo(conn).get(bloque)["trigger"] == "rerun"
+    assert service._dernier_echec(conn, cid)["id"] == reel

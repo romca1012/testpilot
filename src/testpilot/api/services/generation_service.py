@@ -836,17 +836,6 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
     return warnings
 
 
-def _avis_deja_vus_a_l_ecriture(version_rows: list[dict], version_id: int) -> set[str]:
-    """Les sortes de points que le contrôle de fin d'écriture a renvoyées à l'IA (provenance de la version)."""
-    version = next((v for v in version_rows if v["id"] == version_id), None) or {}
-    try:
-        provenance = json.loads(version.get("generation_provenance") or "{}")
-    except ValueError:
-        return set()
-    controle = provenance.get("controle_fin_ecriture") if isinstance(provenance, dict) else None
-    return set(controle.get("avis_envoyes") or ()) if isinstance(controle, dict) else set()
-
-
 def _auto_approuver(conn, case_id: int, version_id: int | None) -> None:
     """Approuve la version au titre de la validation métier (amendement §4.3, 2026-07-21).
 
@@ -1194,16 +1183,30 @@ def start_automation(conn, case_id: int, *, author: str = "") -> tuple[str, dict
                                   payload={"case_id": case_id, "slug": slug})
     return job_id, {"case_id": case_id, "module_id": case["module_id"], "slug": slug,
                     "spec_content": spec_content, "metier": metier,
-                    "regeneration": bool((version.get("feature_content") or "").strip()),
+                    "regeneration": _a_deja_eu_un_test(conn, case_id),
                     "author": author or "ui"}
 
 
+def _a_deja_eu_un_test(conn, case_id: int) -> bool:
+    """Une automatisation est une RÉGÉNÉRATION dès qu'une version du cas a porté un test technique — pas seulement la
+    version courante. Revue du 2026-10-22 : un cas « Test non livré » (version courante SANS test) relancé partait comme
+    une première génération, sans le dernier échec ni le fait `regeneration_apres_defaut` ; un défaut fonctionnel mesuré
+    sur l'ancien test (A65, A66) n'empêchait plus l'approbation automatique du nouveau, écrit sur l'application fautive."""
+    from testpilot.store.repositories import VersionRepo
+    return any((v.get("feature_content") or "").strip() for v in VersionRepo(conn).list_for_case(case_id))
+
+
 def _dernier_echec(conn, case_id: int) -> dict | None:
-    """La dernière exécution en échec du cas — la MÊME que celle montrée à l'agent qui régénère."""
-    from testpilot.store.repositories import ExecutionRepo
+    """La dernière exécution en échec du cas — la MÊME que celle montrée à l'agent qui régénère.
+
+    Jamais une exécution d'une version SANS test (« Test non livré » arrêté au lancement, `no_test`) : elle n'a rien observé de
+    l'application, et masquait le vrai dernier échec de l'ancien test (revue du 2026-10-22)."""
+    from testpilot.store.repositories import ExecutionRepo, VersionRepo
+    versions = {v["id"]: v for v in VersionRepo(conn).list_for_case(case_id)}
     return next((e for e in reversed(ExecutionRepo(conn).list_for_case(case_id))
-                 if e["execution_status"] in {"technical_error", "blocked"}
-                 or e["functional_status"] in {"non_conforme", "donnee_invalide"}), None)
+                 if ((versions.get(e["version_id"]) or {}).get("feature_content") or "").strip()
+                 and (e["execution_status"] in {"technical_error", "blocked"}
+                      or e["functional_status"] in {"non_conforme", "donnee_invalide"})), None)
 
 
 def _dernier_defaut_fonctionnel(conn, case_id: int) -> dict | None:
