@@ -72,6 +72,8 @@ class ToolContext:
     # est refusée) ; `variables_du_cas` — celles que le test DOIT employer. Éteint : faux et vide, rien ne change.
     controle_du_cas: bool = False
     variables_du_cas: frozenset[str] = field(default_factory=frozenset)
+    # Porteur, 2026-10-22 : les variables du projet que le cas NE cite PAS — permises pour préparer, refusées dans un « Alors ».
+    variables_de_preparation: frozenset[str] = field(default_factory=frozenset)
     # Réparation et correction : les écritures `{{…}}` du test de référence, FIGÉES (ni ajout, ni retrait, ni renommage).
     # `None` hors réparation/correction.
     references_figees: list[str] | None = None
