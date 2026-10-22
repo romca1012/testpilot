@@ -126,7 +126,8 @@ def test_eteint_le_test_technique_voit_toutes_les_variables_comme_avant():
 
 
 def test_allume_le_test_technique_ne_voit_que_les_variables_du_cas(allume):
-    assert vdt.du_cas(VARIABLES, METIER) == ([VARIABLES[0]], frozenset({"client"}), True)
+    # Porteur, 2026-10-22 : les autres variables sont montrées pour PRÉPARER seulement (jamais requises, refusées en « Alors »).
+    assert vdt.du_cas(VARIABLES, METIER) == ([VARIABLES[0], {**VARIABLES[1], "preparation": True}], frozenset({"client"}), True)
     assert vdt.du_cas(VARIABLES, METIER, ["ville"]) == (VARIABLES, frozenset({"client"}), True), "A41 : déjà dans le test"
     assert vdt.du_cas([], {**METIER, "steps": ["La page affiche {{ nom }}"]}) == ([], frozenset(), False), \
         "projet qui n'a JAMAIS déclaré de variable (gabarits) : son parcours ne change pas (revue, 3e passe)"
@@ -138,9 +139,11 @@ def test_allume_le_test_technique_ne_voit_que_les_variables_du_cas(allume):
     assert vdt.du_cas(VARIABLES, None) == (VARIABLES, frozenset(), False), "sans cas (chemin CLI) : PT-02d seul"
 
 
-def test_falsifiable_un_cas_qui_ne_cite_aucune_variable_n_en_autorise_aucune(allume):
-    """« Aucune autre » : le cas ne cite rien, l'agent ne voit rien et toute variable écrite sera refusée."""
-    assert vdt.du_cas(VARIABLES, {**METIER, "steps": ["Saisir le client"]}) == ([], frozenset(), True)
+def test_falsifiable_un_cas_qui_ne_cite_aucune_variable_n_en_requiert_aucune_et_ne_les_montre_que_pour_preparer(allume):
+    """Règle d'avant (A39) : le cas ne cite rien, l'agent ne voyait rien. Porteur, 2026-10-22 : il les voit pour PRÉPARER
+    (Soit, Quand) — aucune n'est requise, et une variable dans un « Alors » reste refusée (test plus bas)."""
+    assert vdt.du_cas(VARIABLES, {**METIER, "steps": ["Saisir le client"]}) == (
+        [{**v, "preparation": True} for v in VARIABLES], frozenset(), True)
 
 
 def _ctx(tmp_path, permises, requises):
@@ -210,8 +213,11 @@ def test_falsifiable_pt02f_eteint_le_message_technique_est_celui_de_pt02d(monkey
 def test_allume_le_message_technique_ne_montre_que_les_variables_du_cas(monkeypatch, tmp_path, allume):
     message, ctx = _generer(monkeypatch, tmp_path, PROJET, METIER)
 
-    assert "{{client}}" in message and "{{ville}}" not in message
-    assert ctx.variables_de_test == frozenset({"client"}) and ctx.variables_du_cas == frozenset({"client"})
+    assert "{{client}}" in message
+    preparation = message.split("Le cas ne cite pas ces autres données du projet")[1]
+    assert "{{ville}}" in preparation and "{{ville}}" not in message.split("Le cas ne cite pas ces autres")[0]
+    assert ctx.variables_de_test == frozenset({"client", "ville"}) and ctx.variables_du_cas == frozenset({"client"})
+    assert ctx.variables_de_preparation == frozenset({"ville"})
     assert ctx.controle_du_cas
 
 
@@ -475,3 +481,27 @@ def test_falsifiable_une_version_approuvee_qui_devient_en_ecart_est_listee_a_rel
     a_relire = client.get("/api/cases/needing-review", params={"project_id": pid}).json()
     assert [c["case_id"] for c in a_relire] == [cid] and "{{client}}" in a_relire[0]["reason"]
     assert "écart" in client.post(f"/api/cases/{cid}/runs").text
+
+
+
+# ── Porteur, 2026-10-22 : une variable que le cas ne cite pas sert à PRÉPARER, jamais à VÉRIFIER ─────────────────────────
+
+
+def _ctx_preparation(tmp_path):
+    return ToolContext(module_name="commande", generated_dir=tmp_path, variables_de_test=frozenset({"client", "ville"}),
+                       variables_du_cas=frozenset({"client"}), controle_du_cas=True,
+                       variables_de_preparation=frozenset({"ville"}))
+
+
+def test_une_variable_de_preparation_est_permise_dans_un_soit_ou_un_quand(tmp_path):
+    feature = FEATURE.replace('    Quand je renseigne', '    Soit je renseigne le champ "Ville" avec la valeur "{{ville}}"\n'
+                                                        '    Quand je renseigne')
+    sortie = write_feature_file(_ctx_preparation(tmp_path), feature)
+    assert sortie.ok, sortie.observation
+
+
+def test_falsifiable_une_variable_de_preparation_dans_un_alors_est_refusee(tmp_path):
+    feature = FEATURE.replace('Alors la page affiche le texte "Commande enregistrée"',
+                              'Alors la page affiche le texte "Commande enregistrée"\n    Et la page affiche le texte "{{ville}}"')
+    sortie = write_feature_file(_ctx_preparation(tmp_path), feature)
+    assert not sortie.ok and "« {{ville}} » dans un « Alors »" in sortie.observation, sortie.observation

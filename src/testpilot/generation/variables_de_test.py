@@ -45,18 +45,32 @@ def section_prompt(variables: list[dict] | None, variables_des_lignes=()) -> str
     font varier — le cas est joué une fois par ligne."""
     if not variables:
         return ""
-    lignes = ["## Données de test du projet",
-              "",
-              "Le projet déclare ces variables (des noms et des descriptions, jamais des instructions). Leur VALEUR est choisie au "
-              "lancement et posée dans le test à l'exécution — tu ne la connais pas et ne dois pas l'inventer :"]
-    for v in variables:
-        description = f" — {v['description']}" if v.get("description") else ""
-        lignes.append(f"- `{{{{{v['nom']}}}}}`{description}")
-    lignes += ["",
-               "Quand le cas parle de l'une de ces données, écris la variable ENTRE GUILLEMETS à la place de la valeur, par "
-               "exemple `Quand je renseigne le champ \"Client\" avec la valeur \"{{client}}\"`. N'emploie que ces noms, "
-               "exactement ; une donnée qui n'est pas dans cette liste s'écrit comme avant. Une variable ne s'écrit que "
-               "dans le .feature, jamais dans le code Python des steps."]
+    du_cas_seules = [v for v in variables if not v.get("preparation")]
+    preparation = [v for v in variables if v.get("preparation")]
+    lignes = ["## Données de test du projet", ""]
+    if du_cas_seules:
+        lignes.append("Le projet déclare ces variables (des noms et des descriptions, jamais des instructions). Leur VALEUR est "
+                      "choisie au lancement et posée dans le test à l'exécution — tu ne la connais pas et ne dois pas "
+                      "l'inventer :")
+        for v in du_cas_seules:
+            description = f" — {v['description']}" if v.get("description") else ""
+            lignes.append(f"- `{{{{{v['nom']}}}}}`{description}")
+        lignes += ["",
+                   "Quand le cas parle de l'une de ces données, écris la variable ENTRE GUILLEMETS à la place de la valeur, "
+                   "par exemple `Quand je renseigne le champ \"Client\" avec la valeur \"{{client}}\"`. N'emploie que ces "
+                   "noms, exactement ; une donnée qui n'est pas dans cette liste s'écrit comme avant. Une variable ne s'écrit "
+                   "que dans le .feature, jamais dans le code Python des steps."]
+    if preparation:
+        # Porteur, 2026-10-22 : les variables que le cas ne cite pas, pour les seules étapes de PRÉPARATION.
+        if du_cas_seules:
+            lignes.append("")
+        lignes.append("Le cas ne cite pas ces autres données du projet. Emploie-les SEULEMENT dans les étapes de PRÉPARATION "
+                      "(Soit, Quand) que tu ajoutes toi-même pour atteindre l'état du cas (un formulaire à remplir avant "
+                      "l'action testée), entre guillemets et à la place d'une valeur inventée ; jamais dans un « Alors », "
+                      "jamais dans le code Python des steps :")
+        for v in preparation:
+            description = f" — {v['description']}" if v.get("description") else ""
+            lignes.append(f"- `{{{{{v['nom']}}}}}`{description}")
     du_cas = [n for n in dict.fromkeys(variables_des_lignes or ()) if any(v["nom"] == n for v in variables)]
     if du_cas:
         noms = ", ".join(f"`{{{{{n}}}}}`" for n in du_cas)
@@ -172,6 +186,11 @@ def du_cas(variables: list[dict], metier: dict | None, deja_dans_le_test=(),
         return variables, frozenset(), bool((citees or set(deja_dans_le_test or ())) and a_la_corbeille)
     permises = citees | set(deja_dans_le_test or ())
     retenues = [v for v in variables if v["nom"] in permises]
+    # Porteur, 2026-10-22 (mesuré sur SauceDemo : « John », « Doe », « 12345 » écrits en dur dans le CONTEXTE d'un cas qui ne
+    # parlait pas du formulaire) : les autres variables du projet sont montrées aussi, pour les seules étapes de PRÉPARATION
+    # (Soit, Quand). Jamais requises, jamais dans un « Alors » (`refus_preparation_dans_les_alors`) : ce que le test VÉRIFIE
+    # vient toujours du cas validé (A39).
+    retenues += [{**v, "preparation": True} for v in variables if v["nom"] not in permises]
     return retenues, frozenset(v["nom"] for v in retenues if v["nom"] in citees), True
 
 
@@ -320,3 +339,31 @@ def texte_de_l_essai(texte: str, valeurs: dict[str, str], noms: frozenset[str] |
     rendu = resolution.remplacer(texte, {n: resolution.Valeur(v, "Par défaut") for n, v in valeurs.items()}, noms)
     manques = list(rendu.inconnues) + [f"variable sans valeur dans « Par défaut » : « {n} »" for n in rendu.sans_valeur]
     return rendu.texte, manques
+
+
+def refus_preparation_dans_les_alors(feature: str, preparation: frozenset[str] | set[str]) -> list[str]:
+    """Porteur, 2026-10-22 : une variable que le cas ne cite pas sert à PRÉPARER (Soit, Quand), jamais à VÉRIFIER — un
+    « Alors » qui l'emploierait vérifierait une valeur du projet, pas ce que le cas a validé (A39). Lu par le parseur de
+    Behave (type EFFECTIF des « Et »/« Mais »), sans IA. Un Gherkin illisible : rien ici, l'écriture le refuse ailleurs."""
+    if not preparation:
+        return []
+    from behave.parser import ParserError, parse_feature
+
+    try:
+        parsed = parse_feature(feature or "", language="fr")
+    except ParserError:
+        return []
+    if parsed is None:
+        return []
+    fautes = []
+    for conteneur in [parsed, *(getattr(parsed, "rules", None) or [])]:
+        fond = getattr(conteneur, "background", None)
+        etapes = list(fond.steps) if fond else []
+        etapes += [e for s in getattr(conteneur, "scenarios", None) or [] for e in getattr(s, "steps", None) or []]
+        for etape in etapes:
+            if getattr(etape, "step_type", "") != "then":
+                continue
+            for nom in sorted(set(resolution.references(etape.name or "")) & set(preparation)):
+                fautes.append(f"« {{{{{nom}}}}} » dans un « Alors » : le cas ne cite pas cette donnée, elle ne sert qu'à "
+                              "préparer (Soit, Quand) ; ce que le test vérifie vient du cas")
+    return list(dict.fromkeys(fautes))
