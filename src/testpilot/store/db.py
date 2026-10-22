@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 74
+_SCHEMA_VERSION = 75
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -290,6 +290,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_73_compte_du_cas(conn)
     if version < 74:
         _migrate_74_compte_des_lignes(conn)
+    if version < 75:
+        _migrate_75_donnees_depuis_l_application(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -596,6 +598,22 @@ def _migrate_71_iteration_du_scenario(conn: sqlite3.Connection) -> None:
     idempotente."""
     if _table_existe(conn, "scenario_result") and "iterations" not in _column_names(conn, "scenario_result"):
         conn.execute("ALTER TABLE scenario_result ADD COLUMN iterations TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_75_donnees_depuis_l_application(conn: sqlite3.Connection) -> None:
+    """Étape 6 du plan unique (IT-4, A55 ; IT-3d, A58 point 5) — deux colonnes, vides par défaut (rien ne change sans elles) :
+
+    - `test_variable.source_application` : d'où une colonne `{{client}}` tire ses valeurs à chaque lancement — des
+      enregistrements qui EXISTENT dans l'application (JSON validé par `parametres/colonne_application.py`) ; vide : la
+      variable garde les valeurs saisies par une personne.
+    - `test_case.lignes_ecrites_pour` : l'empreinte du texte du cas (préconditions, étapes, résultat attendu) quand ses lignes
+      ont été enregistrées ; le cas a changé depuis (18 → 21 ans) : ses lignes sont signalées à relire. Vide : lignes d'avant,
+      jamais signalées sans preuve.
+    Additive, idempotente."""
+    if _table_existe(conn, "test_variable") and "source_application" not in _column_names(conn, "test_variable"):
+        conn.execute("ALTER TABLE test_variable ADD COLUMN source_application TEXT NOT NULL DEFAULT ''")
+    if _table_existe(conn, "test_case") and "lignes_ecrites_pour" not in _column_names(conn, "test_case"):
+        conn.execute("ALTER TABLE test_case ADD COLUMN lignes_ecrites_pour TEXT NOT NULL DEFAULT ''")
 
 
 def _migrate_74_compte_des_lignes(conn: sqlite3.Connection) -> None:
