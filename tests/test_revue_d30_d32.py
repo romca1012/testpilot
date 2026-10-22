@@ -116,8 +116,15 @@ def test_falsifiable_corriger_le_titre_ne_blanchit_pas_une_correction_a_relire(c
 
     v_titre = _editer(conn, cid, title="C (coquille)")
 
-    assert review_gate.evaluate_gate(ReviewRepo(conn), v_titre).allowed is False
-    assert VERIFICATION_AFFAIBLIE in _points(conn, cid), "le signal suit le test recopié"
+    # Porteur, 2026-10-22 (réparation bornée) : la correction affaiblie n'est jamais gardée — le test n'est pas livré.
+    # Retoucher le titre ne « blanchit » rien : aucune version affaiblie n'est approuvée, et la version sans test ne se lance pas.
+    from testpilot.api.services import run_service
+    for v in VersionRepo(conn).list_for_case(cid):
+        if "is_visible()" in (v.get("steps_content") or ""):
+            assert review_gate.evaluate_gate(ReviewRepo(conn), v["id"]).allowed is False
+    assert not (VersionRepo(conn).get(v_titre).get("feature_content") or "").strip()
+    with pytest.raises(run_service.RunError, match="pas de test technique"):
+        run_service.trigger_run(conn, cid)
 
 
 # ── B2 ────────────────────────────────────────────────────────────────────────────────────────────────────

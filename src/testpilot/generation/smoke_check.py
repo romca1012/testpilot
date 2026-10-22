@@ -550,7 +550,7 @@ def check_menus_observes(feature_content: str, modele: dict) -> list[dict]:
 # connecté et ne peut plus tester ce qu'il annonce (il échoue, jamais ne passe à tort : c'est un
 # raté d'ergonomie, pas de verdict).
 #
-# ⚠️ **La détection porte sur l'INTENTION DÉCLARÉE à la génération** (titre, description, étapes
+# ⚠️ **La détection porte sur l'INTENTION DÉCLARÉE à la génération** (titre, préconditions, étapes
 # et résultat attendu MÉTIER du cas, validés par le métier), **jamais sur le Gherkin final** : le
 # texte que l'agent a écrit n'est pas la source de ce qu'il voulait tester (décision 0015). Seule la
 # PRÉSENCE de l'un des deux steps de la bibliothèque est lue dans le `.feature` (un libellé de

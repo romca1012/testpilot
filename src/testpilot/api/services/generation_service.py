@@ -766,6 +766,11 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
     from testpilot.store.repositories import CaseDataRepo, ProjectRepo
 
     current = next((v for v in version_rows if v["id"] == version_id), None)
+    if current is not None and not (current.get("feature_content") or "").strip():
+        # 2026-10-22 (revue) : une version SANS test (cas manuel, test non livré) n'a aucun point de vigilance — elle n'en
+        # héritait que par comparaison avec la version d'avant (« le scénario a disparu »), un avis faux. Elle ne se lance pas
+        # (`run_service.trigger_run`).
+        return []
     # Étape 2 (A61) : les points qui ne dépendent que du TEST — le même calcul que le contrôle de fin d'écriture
     # (`generation/avis_du_test.py`), jamais deux qui pourraient diverger.
     warnings: list[dict] = []
@@ -896,14 +901,11 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
     systématique.
 
     1. Propre → approuvée automatiquement.
-    2. Signalée, correction possible (`module_name`/`dry_runner` fournis par l'appelant — les
-       deux tests unitaires isolés ne les fournissent pas, et c'est très bien : ils veulent la
-       décision de gate, pas un appel LLM) → **UNE** tentative de correction
-       (`correction_agent.propose_correction`, budget confirmé avec le porteur, 2026-09-16),
-       revérifiée à son tour :
-         - propre → approuvée automatiquement, la version CORRIGÉE devient la version courante ;
-         - toujours signalée → reste à relire, mais avec la meilleure tentative de l'IA, pas la
-           version brute — visible dans `GET /api/cases/needing-review`.
+    2. Signalée, correction possible (`module_name`/`dry_runner` fournis par l'appelant) → porteur, 2026-10-22 :
+       réparation bornée (`_reparer_ou_retirer`, REPARATIONS_MAX tentatives, BUDGET_REPARATION_USD) :
+         - propre → approuvée automatiquement, la version RÉPARÉE devient la version courante ;
+         - toujours signalée → le test N'EST PAS LIVRÉ : le cas redevient sans test, avec la raison (jamais « bloqué ») ;
+         - un point qu'une personne doit juger (A65, IT-3b) → reste bloqué, avec sa raison.
     3. Signalée, sans de quoi corriger → reste à relire (comportement de §4.3-bis, inchangé).
     """
     if version_id is None:
@@ -925,79 +927,168 @@ def _finaliser_version_generee(conn, case_id: int, version_id: int | None, *,
     # IT-3b (revue du 2026-10-19) : « même résultat attendu pour toutes les lignes du cas » peut être légitime (classe
     # d'équivalence) — le relecteur décide ; il retire l'approbation automatique mais ne déclenche AUCUN appel de correction.
     from testpilot.generation.variables_de_test import ALORS_IDENTIQUE
-    # Revue A62 : une correction automatique ne peut pas savoir si l'application est juste — pas d'appel non plus.
-    a_corriger = [w for w in warnings if w.get("kind") not in (ALORS_IDENTIQUE, VERIFICATION_CHANGEE_APRES_DEFAUT)]
-    # Étape 2 (A61, A63) : l'IA a déjà vu ces points pendant l'écriture (contrôle de fin d'écriture) et a gardé son test —
-    # « malgré ses essais » : livré bloqué, pas d'appel de correction de plus.
-    deja_vus = _avis_deja_vus_a_l_ecriture(version_rows, version_id)
-    if any(w.get("kind") in deja_vus for w in warnings):
-        a_corriger = []   # un point que l'IA a gardé reste : la correction ne pourrait plus faire approuver la version
-    if not a_corriger:
-        logger.info("[generation] cas %s (version %s) livré bloqué — %d point(s) qu'une correction ne traite pas "
-                    "(déjà vus à l'écriture, ou à juger par une personne)", case_id, version_id, len(warnings))
+    # Revue A62 : une correction automatique ne peut pas savoir si l'application est juste (A65) — pas d'appel non plus.
+    a_juger = [w for w in warnings if w.get("kind") in (ALORS_IDENTIQUE, VERIFICATION_CHANGEE_APRES_DEFAUT)]
+    if a_juger:
+        logger.info("[generation] cas %s (version %s) livré bloqué — %d point(s) qu'une personne doit juger",
+                    case_id, version_id, len(a_juger))
         return
+    _reparer_ou_retirer(conn, case, version_id, warnings, module_name=module_name, connector=connector,
+                        connector_type=connector_type, connector_version=connector_version,
+                        profil_instance=profil_instance, dry_runner=dry_runner,
+                        calibration_writes_enabled=calibration_writes_enabled)
 
-    version = next((v for v in version_rows if v["id"] == version_id), None)
+
+# Porteur, 2026-10-22 : « aucun cas bloqué après une génération ; des réparations, qui ont un coût, mais un budget limité ».
+# Au plus REPARATIONS_MAX tentatives par cas, et BUDGET_REPARATION_USD de dépense de correction (≪ 1 € par cas, §9 du brief).
+REPARATIONS_MAX = 2
+BUDGET_REPARATION_USD = 0.30
+# Le préfixe du résumé d'une version « test non livré » : la fiche du cas le montre à la place du test (frontend).
+TEST_NON_LIVRE = "Test non livré"
+# Le préfixe du résumé quand la régénération d'un cas déjà doté d'un test approuvé n'aboutit pas : l'ancien test est gardé.
+GENERATION_NON_ABOUTIE = "Nouvelle génération non aboutie"
+
+
+def _reparer_ou_retirer(conn, case: dict, version_id: int, warnings: list[dict], *, module_name: str, connector,
+                        connector_type: str | None, connector_version: str, profil_instance: str | None, dry_runner,
+                        calibration_writes_enabled: bool) -> None:
+    """Répare la version signalée (au plus `REPARATIONS_MAX` tentatives, `BUDGET_REPARATION_USD` de dépense) jusqu'à ce
+    qu'elle soit propre — alors approuvée et lançable ; sinon le test N'EST PAS LIVRÉ : le cas redevient un cas sans test
+    (comme un cas saisi à la main), avec la raison — jamais un test « bloqué » laissé dans la liste.
+
+    Réparer ne doit jamais AFFAIBLIR une vérification (D30, faux « Passé ») : une tentative que la relecture juge affaiblie
+    (`VERIFICATION_AFFAIBLIE`) reste dans l'historique mais le cas revient à la version d'avant. Réécrire une vérification qui
+    ne prouvait rien (`assert True`) reste permis — c'est le rôle même de la correction (0008)."""
+    from testpilot.generation import correction_agent
+    from testpilot.generation.repair_diff import VERIFICATION_AFFAIBLIE
+    from testpilot.generation.variables_de_test import ALORS_IDENTIQUE
+    from testpilot.guardrails.cost_tracker import CostTracker
+    from testpilot.store.repositories import CaseRepo, VersionRepo
+
+    case_id = case["id"]
+    courante_id, restants, depense = version_id, warnings, 0.0
+    for tentative in range(1, REPARATIONS_MAX + 1):
+        if depense >= BUDGET_REPARATION_USD:
+            break
+        version_rows = VersionRepo(conn).list_for_case(case_id)
+        version = next((v for v in version_rows if v["id"] == courante_id), None)
+        if version is None:
+            return
+        proposal = correction_agent.propose_correction(
+            module_name=module_name, lint_warnings=restants,
+            feature_content=version.get("feature_content") or "", steps_content=version.get("steps_content") or "",
+            connector=connector, connector_type=connector_type, connector_version=connector_version,
+            profil_instance=profil_instance, dry_runner=dry_runner,
+            calibration_writes_enabled=calibration_writes_enabled,
+            verified_fields=json.loads(version.get("verified_fields") or "{}"),
+            modele=_modele_du_cas(conn, case, version_rows, version),
+            # Revue : le plafond par appel (0,50 $) dépassait le budget de réparation — l'appel reçoit le RESTE du budget.
+            cost_tracker=CostTracker(limit_usd=max(BUDGET_REPARATION_USD - depense, 0.01)))
+        depense += proposal.cost_usd or 0.0
+        _record_generation_cost(conn, case_id=case_id, correction_usd=proposal.cost_usd)
+        if not proposal.changed or proposal.stopped_reason != "done":
+            # Revue : une proposition coupée (budget, refus, troncature) peut être à moitié écrite et n'a pas passé l'essai à
+            # blanc — elle n'est jamais gardée, même sans point de vigilance.
+            logger.info("[generation] cas %s : réparation %d sans proposition aboutie (%s)", case_id, tentative,
+                        proposal.stopped_reason)
+            continue
+        # Revue (bloquant) : l'affaiblissement se juge contre la version d'où part la proposition — jamais contre une tentative
+        # déjà écartée, que la relecture prendrait pour la précédente (une 2e proposition identique passait alors pour propre).
+        if _affaiblissements_de_correction(version, {"feature_content": proposal.feature_content or "",
+                                                     "steps_content": proposal.steps_content or ""}):
+            logger.info("[generation] cas %s : réparation %d écartée, elle affaiblissait une vérification", case_id,
+                        tentative)
+            continue
+        touchees = (gel_verifications.feature_modifiee(version.get("feature_content") or "", proposal.feature_content or "")
+                    + gel_verifications.steps_modifies(version.get("steps_content") or "", proposal.steps_content or ""))
+        mention = ("[VÉRIFICATIONS MODIFIÉES : " + " ; ".join(touchees) + "] ") if touchees else ""
+        nouvelle_id = VersionRepo(conn).create(
+            test_case_id=case_id, spec_content=version.get("spec_content") or "",
+            spec_hash=version.get("spec_hash") or "",
+            feature_content=proposal.feature_content, steps_content=proposal.steps_content,
+            change_summary=(mention + f"Réparation automatique {tentative}/{REPARATIONS_MAX} (points de vigilance) — "
+                            + proposal.summary)[:500],
+            created_by=_AUTEUR_CORRECTION, title=version.get("title") or "",
+            preconditions=version.get("preconditions") or "", test_steps=version.get("test_steps") or "",
+            expected_result=version.get("expected_result") or "",
+            # F26(b), migration 58 : une réparation ne touche jamais le métier — le signal de dépendance est repris tel quel.
+            depend_dun_autre_cas_du_groupe=bool(version.get("depend_dun_autre_cas_du_groupe", False)),
+            etat_a_creer_par_ce_cas=version.get("etat_a_creer_par_ce_cas") or "",
+            verified_fields=json.dumps(proposal.verified_fields, ensure_ascii=False),
+            compte_id=version.get("compte_id"),   # étape 4 (A70) : le compte de la version, explicitement
+            **revision_metadata(version))
+        CaseRepo(conn).set_current_version(case_id, nouvelle_id)
+        apres = lint_warnings_for_version(conn, case, VersionRepo(conn).list_for_case(case_id), nouvelle_id)
+        if any(w.get("kind") == VERIFICATION_AFFAIBLIE for w in apres):
+            logger.info("[generation] cas %s : réparation %d écartée, elle affaiblissait une vérification", case_id,
+                        tentative)
+            CaseRepo(conn).set_current_version(case_id, courante_id)
+            continue
+        courante_id, restants = nouvelle_id, apres
+        if any(w.get("kind") in (ALORS_IDENTIQUE, VERIFICATION_CHANGEE_APRES_DEFAUT) for w in restants):
+            # Revue : un point qu'une personne doit juger (A65, IT-3b) — on s'arrête, la version reste à juger.
+            logger.info("[generation] cas %s : un point à juger par une personne est apparu — réparation arrêtée", case_id)
+            return
+        if not restants:
+            _auto_approuver(conn, case_id, nouvelle_id)
+            return
+    _retirer_le_test(conn, case_id, courante_id, restants, module_name=module_name)
+
+
+def _test_approuve_a_garder(conn, case_id: int, version: dict) -> dict | None:
+    """Le dernier test APPROUVÉ du cas (gate ouvert), s'il vérifie encore ce que dit le cas : même métier (titre,
+    préconditions, étapes, résultat attendu), même compte « Joué en tant que » (A70, `None` compris) et même état de départ
+    (F26) que la version qu'on n'a pas su réparer. Un cas modifié depuis rend l'ancien test faux — revue, 3e passe : un
+    ancien test joué en principal remis en place sur un cas passé en compte restreint sortait « conforme » (A86) — il n'est
+    alors pas gardé, et le cas devient « Test non livré »."""
+    from testpilot.store.repositories import ReviewRepo, VersionRepo
+    from testpilot.verdict import review_gate
+
+    textes = ("title", "preconditions", "test_steps", "expected_result", "etat_a_creer_par_ce_cas")
+    candidates = sorted((v for v in VersionRepo(conn).list_for_case(case_id)
+                         if (v.get("feature_content") or "").strip() and v["id"] != version["id"]
+                         and all((v.get(c) or "") == (version.get(c) or "") for c in textes)
+                         and v.get("compte_id") == version.get("compte_id")
+                         and bool(v.get("depend_dun_autre_cas_du_groupe")) == bool(
+                             version.get("depend_dun_autre_cas_du_groupe"))),
+                        key=lambda v: v["id"], reverse=True)
+    return next((v for v in candidates if review_gate.evaluate_gate(ReviewRepo(conn), v["id"]).allowed), None)
+
+
+def _retirer_le_test(conn, case_id: int, version_id: int, restants: list[dict], *, module_name: str = "") -> None:
+    """Le test n'est pas livré : une nouvelle version garde le cas (métier inchangé) SANS test technique — la fiche montre
+    « Automatiser avec l'IA » et la raison. Les tentatives restent dans l'historique des versions.
+
+    Porteur, 2026-10-22 : si le cas avait déjà un test approuvé qui vérifie le même métier, c'est LUI qui reste la version
+    courante (le cas ne sort pas des campagnes) ; la version sans test ne porte que le message, montré sur la fiche."""
+    from testpilot.store.repositories import CaseRepo, VersionRepo
+    from testpilot.verdict.review_gate import RAISON_AVIS_INCONNU, RAISONS_DES_AVIS
+
+    version = next((v for v in VersionRepo(conn).list_for_case(case_id) if v["id"] == version_id), None)
     if version is None:
         return
-
-    from testpilot.generation import correction_agent
-    proposal = correction_agent.propose_correction(
-        module_name=module_name, lint_warnings=a_corriger,
-        feature_content=version.get("feature_content") or "",
-        steps_content=version.get("steps_content") or "",
-        connector=connector, connector_type=connector_type,
-        connector_version=connector_version, profil_instance=profil_instance,
-        dry_runner=dry_runner,
-        calibration_writes_enabled=calibration_writes_enabled,
-        verified_fields=json.loads(version.get("verified_fields") or "{}"),
-        modele=_modele_du_cas(conn, case, version_rows, version))
-    _record_generation_cost(conn, case_id=case_id, correction_usd=proposal.cost_usd)
-
-    if not proposal.changed:
-        logger.info("[generation] cas %s : aucune correction automatique proposée (%s) — reste "
-                   "à relire avec %d point(s) de vigilance", case_id, proposal.stopped_reason,
-                   len(warnings))
-        return
-
-    # Lot VH-03 : ce que la correction a changé dans la PREUVE (Alors, Exemples, fonctions de vérification) est écrit en tête
-    # du résumé de la version, visible dans l'historique — renforcements compris. L'approbation, elle, suit D30 (2026-10-09) :
-    # un changement d'une vérification RÉELLE est un point de vigilance (`_affaiblissements_de_correction`), la version
-    # corrigée reste alors à relire ci-dessous.
-    verifications_touchees = (
-        gel_verifications.feature_modifiee(version.get("feature_content") or "", proposal.feature_content or "")
-        + gel_verifications.steps_modifies(version.get("steps_content") or "", proposal.steps_content or ""))
-    mention = ("[VÉRIFICATIONS MODIFIÉES : " + " ; ".join(verifications_touchees) + "] ") if verifications_touchees else ""
-    version_corrigee_id = VersionRepo(conn).create(
-        test_case_id=case_id, spec_content=version.get("spec_content") or "",
-        spec_hash=version.get("spec_hash") or "",
-        feature_content=proposal.feature_content, steps_content=proposal.steps_content,
-        change_summary=(mention + "Correction automatique (points de vigilance) — "
-                        + proposal.summary)[:500],
-        created_by=_AUTEUR_CORRECTION, title=version.get("title") or "",
-        preconditions=version.get("preconditions") or "",
-        test_steps=version.get("test_steps") or "",
-        expected_result=version.get("expected_result") or "",
-        # F26(b), migration 58 : une correction ne touche jamais le métier (§4, elle répare le
-        # Gherkin) — le signal de dépendance de la version d'origine est donc repris tel quel.
-        depend_dun_autre_cas_du_groupe=bool(version.get("depend_dun_autre_cas_du_groupe", False)),
-        etat_a_creer_par_ce_cas=version.get("etat_a_creer_par_ce_cas") or "",
-        verified_fields=json.dumps(proposal.verified_fields, ensure_ascii=False),
-        # Étape 4 (A70) : le compte de la version CORRIGÉE, explicitement (une correction ne touche jamais le métier).
-        compte_id=version.get("compte_id"),
-        **revision_metadata(version))
-    CaseRepo(conn).set_current_version(case_id, version_corrigee_id)
-
-    version_rows_apres = VersionRepo(conn).list_for_case(case_id)
-    warnings_apres = lint_warnings_for_version(conn, case, version_rows_apres, version_corrigee_id)
-    if verifications_touchees:
-        logger.info("[generation] cas %s : la correction touche aux vérifications (%s)",
-                   case_id, "; ".join(verifications_touchees))
-    if not warnings_apres:
-        _auto_approuver(conn, case_id, version_corrigee_id)
+    raisons = list(dict.fromkeys(RAISONS_DES_AVIS.get(w.get("kind") or "", RAISON_AVIS_INCONNU) for w in restants))
+    gardee = _test_approuve_a_garder(conn, case_id, version)
+    if gardee is not None:
+        resume = (f"{GENERATION_NON_ABOUTIE} : l'IA n'a pas réussi à écrire un test sûr ({' '.join(raisons)}). Le test "
+                  f"approuvé de la version {gardee.get('version_number')} reste celui qui est joué.")
     else:
-        logger.info("[generation] cas %s : correction tentée, %d point(s) de vigilance "
-                   "restants — reste à relire", case_id, len(warnings_apres))
+        resume = (f"{TEST_NON_LIVRE} : l'IA n'a pas réussi à écrire un test sûr pour ce cas ({' '.join(raisons)}). "
+                  "Relancez « Automatiser avec l'IA ».")
+    sans_test = VersionRepo(conn).create(
+        test_case_id=case_id, spec_content=version.get("spec_content") or "", spec_hash=version.get("spec_hash") or "",
+        feature_content="", steps_content="", change_summary=resume[:500], created_by=_AUTEUR_CORRECTION,
+        title=version.get("title") or "", preconditions=version.get("preconditions") or "",
+        test_steps=version.get("test_steps") or "", expected_result=version.get("expected_result") or "",
+        depend_dun_autre_cas_du_groupe=bool(version.get("depend_dun_autre_cas_du_groupe", False)),
+        etat_a_creer_par_ce_cas=version.get("etat_a_creer_par_ce_cas") or "", compte_id=version.get("compte_id"))
+    CaseRepo(conn).set_current_version(case_id, gardee["id"] if gardee is not None else sans_test)
+    # Revue (bloquant) : le runner lit le test SUR DISQUE ; le dernier écrit (celui qu'on vient de juger non sûr) ne doit
+    # jamais pouvoir être rejoué. L'exécution d'une version sans test est en plus refusée (`run_service`).
+    for nom in ([f"{module_name}.feature", f"{module_name}_steps.py"] if module_name else []):
+        (config.GENERATED_DIR / nom).unlink(missing_ok=True)
+    logger.info("[generation] cas %s : %s après réparation — %s", case_id,
+                "ancien test approuvé gardé" if gardee is not None else "test non livré", "; ".join(raisons))
 
 
 def _spec_from_metier(metier: dict) -> str:

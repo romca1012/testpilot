@@ -182,7 +182,7 @@ def test_regeneration_corrigee_est_approuvee_apres_second_controle(conn, monkeyp
         return [{"kind": "always_true_constant", "message": "assert True"}] if version_id == vid else []
     monkeypatch.setattr(service, "lint_warnings_for_version", lint)
     monkeypatch.setattr("testpilot.generation.correction_agent.propose_correction", lambda **kw: CorrectionProposal(
-        changed=True, feature_content="corrigé", steps_content="corrigé", summary="assertion vérifiée"))
+        changed=True, feature_content="corrigé", steps_content="corrigé", summary="assertion vérifiée", stopped_reason="done"))
     service._finaliser_version_generee(conn, cid, vid, module_name="parc", dry_runner=object())
     current = CaseRepo(conn).get(cid)["current_version_id"]
     assert current != vid

@@ -356,14 +356,22 @@ def refus_preparation_dans_les_alors(feature: str, preparation: frozenset[str] |
     if parsed is None:
         return []
     fautes = []
+    etapes = []
     for conteneur in [parsed, *(getattr(parsed, "rules", None) or [])]:
         fond = getattr(conteneur, "background", None)
-        etapes = list(fond.steps) if fond else []
-        etapes += [e for s in getattr(conteneur, "scenarios", None) or [] for e in getattr(s, "steps", None) or []]
-        for etape in etapes:
-            if getattr(etape, "step_type", "") != "then":
-                continue
-            for nom in sorted(set(resolution.references(etape.name or "")) & set(preparation)):
-                fautes.append(f"« {{{{{nom}}}}} » dans un « Alors » : le cas ne cite pas cette donnée, elle ne sert qu'à "
-                              "préparer (Soit, Quand) ; ce que le test vérifie vient du cas")
+        etapes += list(fond.steps) if fond else []
+    # Revue : les plans de scénario DÉVELOPPÉS (une valeur d'Exemples arrive dans l'« Alors » par `<v>`), et le tableau et le
+    # bloc de texte de chaque étape — pas seulement son libellé.
+    etapes += [e for s in parsed.walk_scenarios() for e in getattr(s, "steps", None) or []]
+    for etape in etapes:
+        if getattr(etape, "step_type", "") != "then":
+            continue
+        texte = [etape.name or "", getattr(etape, "text", None) or ""]
+        table = getattr(etape, "table", None)
+        if table is not None:
+            texte += list(table.headings) + [c for ligne in table.rows for c in ligne.cells]
+        for morceau in texte:
+            for nom in sorted(set(resolution.references(str(morceau))) & set(preparation)):
+                fautes.append(f"« {{{{{nom}}}}} » dans un « Alors » : le cas ne cite pas cette donnée, elle ne sert "
+                              "qu'à préparer (Soit, Quand) ; ce que le test vérifie vient du cas")
     return list(dict.fromkeys(fautes))
