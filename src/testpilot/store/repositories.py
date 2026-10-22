@@ -1636,9 +1636,9 @@ class VersionRepo:
         """
         if compte_id is ...:
             ligne = self.conn.execute(
-                "SELECT v.compte_id FROM test_case c JOIN test_case_version v ON v.id = c.current_version_id"
+                "SELECT v.compte_id AS compte_id FROM test_case c JOIN test_case_version v ON v.id = c.current_version_id"
                 " WHERE c.id = ?", (test_case_id,)).fetchone()
-            compte_id = ligne[0] if ligne else None
+            compte_id = ligne["compte_id"] if ligne else None
         number = self.conn.execute(
             "SELECT COALESCE(MAX(version_number), 0) + 1 AS n"
             " FROM test_case_version WHERE test_case_id=?",
@@ -3666,7 +3666,7 @@ class TestDataRepo:
         return int(cur.lastrowid)
 
     def _rang_suivant(self, table: str, project_id: int) -> int:
-        return int(self.conn.execute(f"SELECT COALESCE(MAX(rang), 0) + 1 FROM {table} WHERE project_id=?", (project_id,)).fetchone()[0])
+        return int(self.conn.execute(f"SELECT COALESCE(MAX(rang), 0) + 1 AS n FROM {table} WHERE project_id=?", (project_id,)).fetchone()["n"])
 
     def creer_variable(self, project_id: int, *, nom: str, description: str = "") -> int:
         if any(v["nom"] == nom for v in self.variables(project_id)):
@@ -3830,8 +3830,8 @@ class ProjectEnvironmentRepo:
         if len(self.liste(project_id)) + 1 >= env.ENVIRONNEMENTS_MAX:
             raise env.EnvironnementInvalide(f"{env.ENVIRONNEMENTS_MAX} environnements au plus par projet")
         self._nom_libre(project_id, champs["nom"])
-        rang = self.conn.execute("SELECT COALESCE(MAX(rang), 0) + 1 FROM project_environment WHERE project_id=?",
-                                 (project_id,)).fetchone()[0]
+        rang = self.conn.execute("SELECT COALESCE(MAX(rang), 0) + 1 AS n FROM project_environment WHERE project_id=?",
+                                 (project_id,)).fetchone()["n"]
         try:
             cur = self.conn.execute(
                 "INSERT INTO project_environment (project_id, nom, base_url, connector_version, database, oracle_base_url,"
@@ -4327,14 +4327,14 @@ class CaseDataRepo:
 
     def variables_des_lignes(self, case_id: int) -> list[str]:
         """Les variables (vivantes) auxquelles les lignes du cas donnent une valeur — une requête."""
-        return [r[0] for r in self.conn.execute(
-            "SELECT DISTINCT tv.nom FROM case_data_row r JOIN case_data_value cv ON cv.row_id = r.id AND cv.valeur <> ''"
+        return [r["nom"] for r in self.conn.execute(
+            "SELECT DISTINCT tv.nom AS nom FROM case_data_row r JOIN case_data_value cv ON cv.row_id = r.id AND cv.valeur <> ''"
             " JOIN test_variable tv ON tv.id = cv.variable_id AND tv.deleted_at = '' WHERE r.case_id=? ORDER BY tv.nom",
             (case_id,))]
 
     def cas_avec_lignes(self, project_id: int) -> list[int]:
-        return [r[0] for r in self.conn.execute(
-            "SELECT DISTINCT r.case_id FROM case_data_row r JOIN test_case tc ON tc.id = r.case_id"
+        return [r["case_id"] for r in self.conn.execute(
+            "SELECT DISTINCT r.case_id AS case_id FROM case_data_row r JOIN test_case tc ON tc.id = r.case_id"
             " JOIN module m ON m.id = tc.module_id WHERE m.project_id=? ORDER BY r.case_id", (project_id,))]
 
     def remplacer(self, case_id: int, project_id: int, lignes: list[dict]) -> None:

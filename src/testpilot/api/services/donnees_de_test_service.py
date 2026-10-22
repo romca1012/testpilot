@@ -205,7 +205,7 @@ def _figes_du_projet(conn, run: dict) -> dict | None:
 def _figes_de_l_execution(conn, execution_id: int) -> dict | None:
     ligne = conn.execute("SELECT r.parametres_figes FROM execution e JOIN test_run r ON r.id = e.run_id WHERE e.id=?",
                          (execution_id,)).fetchone()
-    texte = (ligne[0] if ligne else "") or ""
+    texte = (ligne["parametres_figes"] if ligne else "") or ""
     if not texte.strip():
         return None
     try:
@@ -218,7 +218,7 @@ def _figes_de_l_execution(conn, execution_id: int) -> dict | None:
 def _project_id_du_cas(conn, case_id: int) -> int | None:
     ligne = conn.execute("SELECT m.project_id FROM test_case tc JOIN module m ON m.id = tc.module_id WHERE tc.id=?",
                          (case_id,)).fetchone()
-    return ligne[0] if ligne else None
+    return ligne["project_id"] if ligne else None
 
 
 def _manques(conn, project_id: int | None, rendu: resolution.Remplacement) -> list[str]:
