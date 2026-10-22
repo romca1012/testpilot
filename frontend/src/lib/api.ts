@@ -717,6 +717,8 @@ export interface LigneDuCas {
 }
 export interface DonneesDuCas {
   variables: VariableDeTest[]; lignes: LigneDuCas[]; ecarts?: string[]
+  // Étape 6 (IT-3d) : le texte du cas a changé depuis l'enregistrement de ses lignes — message montré tel quel ; vide : rien.
+  lignes_a_relire?: string
   comptes?: { id: number | null; libelle: string }[]   // vide : le projet n'a que le principal, la colonne n'est pas montrée
 }
 export interface ProjectAccount {
