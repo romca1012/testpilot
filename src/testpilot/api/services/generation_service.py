@@ -776,6 +776,27 @@ def _attente_changee_depuis_le_test(conn, version_rows: list[dict], current: dic
                          "toujours au métier. Jusqu'au prochain run, le cas s'affiche « Retest ».")}]
 
 
+CONTROLES_ECRITURE_CONTOURNES = "controles_ecriture_contournes"
+
+
+def _controles_d_ecriture_contournes(version: dict | None) -> list[str]:
+    """Les contrôles d'écriture non passés par la dernière édition À LA MAIN du script dont dérive `version` (provenance
+    `edition_manuelle`, suivie à travers `origin` : une édition du métier recopie le script sans le revérifier). Une
+    génération repart d'une provenance neuve : rien."""
+    try:
+        provenance = json.loads((version or {}).get("generation_provenance") or "{}")
+    except (TypeError, ValueError):
+        return []
+    for _ in range(50):
+        if not isinstance(provenance, dict):
+            return []
+        edition = provenance.get("edition_manuelle")
+        if isinstance(edition, dict):
+            return [str(c) for c in edition.get("controles_ecriture") or []]
+        provenance = provenance.get("origin")
+    return []
+
+
 def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], version_id: int
                               ) -> list[dict]:
     """Les « points de vigilance » d'UNE version — MÊME calcul que celui affiché sur la fiche du
@@ -823,6 +844,13 @@ def lint_warnings_for_version(conn, case: dict, version_rows: list[dict], versio
             modele=modele_ecrit if projet else None,
             # Sans projet, pas de contrôle des champs (comme avant) : `verified_fields` à None et aucun annuaire.
             verified_fields=(json.loads(registry) if registry else None) if projet else None)
+
+    # Étape 5 : un script modifié à la main qui ne passe pas les contrôles d'écriture de l'IA — le relecteur le voit.
+    controles = _controles_d_ecriture_contournes(current)
+    if controles:
+        warnings.append({"kind": CONTROLES_ECRITURE_CONTOURNES, "step": "script", "line": 0,
+                         "message": "Modifié à la main, ce test ne passe pas les contrôles d'écriture de l'IA : "
+                                    + " ; ".join(" ".join(c.split())[:300] for c in controles[:4])})
 
     # Lot 09 (C9) : `diff_feature` complète `blast_radius` (steps.py) par le `.feature` lui-même
     # — un scénario supprimé, une ligne Alors/Et réécrite, une valeur d'Examples changée. Volontai-

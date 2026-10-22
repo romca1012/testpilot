@@ -139,3 +139,58 @@ def test_un_dev_peut_editer_le_script(client):
                      json={"feature_content": "Fonctionnalité: X", "steps_content": "# s"})
     assert r.status_code == 200
     assert r.json()["version_created"] is True
+
+
+# ── Étape 5 : le test modifié à la main ne contourne plus les contrôles en silence ─────────────────────────────
+
+_FEATURE_PROPRE = ("# language: fr\nFonctionnalité: X\n  Scénario: Y\n"
+                   "    Alors une erreur de validation est affichée dans le formulaire\n")
+
+
+def _avis(client, cid) -> list[dict]:
+    corps = client.get(f"/api/cases/{cid}").json()
+    return corps.get("lint_warnings") or corps.get("avis") or []
+
+
+def test_falsifiable_un_script_modifie_qui_interroge_l_oracle_a_la_main_est_signale(client):
+    """Avant : seule la relecture humaine le gardait, sans savoir quoi regarder. Interroger l'oracle à la main est refusé à
+    l'IA (VH-06 : faux rouge et erreurs du test mesurés) ; écrit à la main, il est désormais SIGNALÉ (jamais refusé)."""
+    _compte_et_connexion(client, "Awa", access.ROLE_DEV)
+    _, cid = _projet_module_cas(client)
+    steps = ("from behave import then\n@then('le serveur a enregistré la commande')\n"
+             "def step(context):\n    constater(context.oracle('etat')['commandes'])\n")
+    r = client.patch(f"/api/cases/{cid}/script", json={"feature_content": _FEATURE_PROPRE, "steps_content": steps})
+    assert r.status_code == 200 and r.json()["version_created"]
+
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        from testpilot.api.services import generation_service
+        cas = CaseRepo(conn).get(cid)
+        versions = VersionRepo(conn).list_for_case(cid)
+        avis = generation_service.lint_warnings_for_version(conn, cas, versions, cas["current_version_id"])
+        signal = [a for a in avis if a["kind"] == "controles_ecriture_contournes"]
+        assert len(signal) == 1 and "oracle" in signal[0]["message"]
+        # Une édition du MÉTIER recopie le script sans le revérifier : le signal suit.
+        vid = CaseRepo(conn).update_metier(cid, title="Cas", preconditions="", test_steps='["a"]',
+                                           expected_result="ok, précisé")
+        versions = VersionRepo(conn).list_for_case(cid)
+        assert any(a["kind"] == "controles_ecriture_contournes"
+                   for a in generation_service.lint_warnings_for_version(conn, CaseRepo(conn).get(cid), versions, vid))
+    finally:
+        conn.close()
+
+
+def test_un_script_modifie_qui_passe_les_controles_n_est_pas_signale(client):
+    _compte_et_connexion(client, "Awa", access.ROLE_DEV)
+    _, cid = _projet_module_cas(client)
+    r = client.patch(f"/api/cases/{cid}/script", json={"feature_content": _FEATURE_PROPRE, "steps_content": ""})
+    assert r.status_code == 200
+    conn = get_initialized_db(config.DB_PATH)
+    try:
+        from testpilot.api.services import generation_service
+        cas = CaseRepo(conn).get(cid)
+        avis = generation_service.lint_warnings_for_version(conn, cas, VersionRepo(conn).list_for_case(cid),
+                                                            cas["current_version_id"])
+        assert not [a for a in avis if a["kind"] == "controles_ecriture_contournes"]
+    finally:
+        conn.close()
