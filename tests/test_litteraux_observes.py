@@ -88,6 +88,35 @@ def test_apres_une_action_qui_peut_soumettre_la_route_est_inconnue_jamais_un_ref
     assert ecarts == []
 
 
+# Étape 5 du plan unique (lot VH-06, point 2) — interrupteur `TESTPILOT_PAGE_D_ARRIVEE_OBSERVEE`, éteint.
+_APRES_SOUMISSION = ('Soit j\'ouvre la page "/clients/nouveau"', 'Quand je clique sur le bouton "Enregistrer"',
+                     'Et je clique sur le bouton "Nouveau client"')
+
+
+def test_falsifiable_page_d_arrivee_observee_un_libelle_vu_ailleurs_ne_suffit_plus(annuaire):
+    """« Nouveau client » existe sur /clients ; rien ne prouve qu'il figure sur la page atteinte après « Enregistrer »."""
+    ecarts = lo.controler_feature(_feature(*_APRES_SOUMISSION), annuaire, page_d_arrivee_observee=True)
+
+    assert [(e.regle, e.cite, e.bloquant) for e in ecarts] == [("page_inconnue", "Nouveau client", True)]
+    assert "après « Enregistrer »" in ecarts[0].raison
+
+
+def test_page_d_arrivee_observee_un_libelle_vu_pendant_la_generation_passe(annuaire):
+    annuaire.observes_session.add("Nouveau client")   # vu par l'essai (ou l'inspection) de la page atteinte
+
+    assert lo.controler_feature(_feature(*_APRES_SOUMISSION), annuaire, page_d_arrivee_observee=True) == []
+
+
+def test_page_d_arrivee_observee_un_lien_observe_garde_sa_route_et_le_debut_du_scenario_reste_inchange(annuaire):
+    """Un lien suit son `href` (route connue) ; le début du scénario et l'accueil gardent « existe dans l'application »."""
+    assert lo.controler_feature(_feature('Soit j\'ouvre la page "/clients"', 'Quand je clique sur le bouton "Nouveau client"',
+                                         'Et je renseigne le champ "nom" avec la valeur "Dupont"'),
+                                annuaire, page_d_arrivee_observee=True) == []
+    assert lo.controler_feature(_feature("Soit j'accède à la page d'accueil de l'application",
+                                         'Quand je clique sur le bouton "Clients"'),
+                                annuaire, page_d_arrivee_observee=True) == []
+
+
 def test_une_page_absente_de_l_annuaire_est_signalee(annuaire):
     ecarts = lo.controler_feature(_feature('Soit j\'ouvre la page "/produit"'), annuaire)
 
@@ -144,3 +173,15 @@ def test_le_harnais_pose_bien_les_attributs_usuels():
     autorises = lo.attributs_du_harnais(Path(config.BEHAVE_RUNTIME_DIR))
 
     assert {"page", "odoo", "created", "table"} <= autorises and "base_url" not in autorises
+
+
+def test_page_d_arrivee_observee_un_formulaire_qui_reste_affiche_garde_ses_champs(annuaire):
+    """Revue du 2026-10-22 : « Enregistrer » refusé laisse le formulaire affiché — ses champs, vus sur la page de départ,
+    ne sont pas refusés. Un champ d'une AUTRE page l'est toujours."""
+    garde = lo.controler_feature(_feature('Soit j\'ouvre la page "/clients/nouveau"', 'Quand je clique sur le bouton "Enregistrer"',
+                                          'Et je laisse le champ "nom" vide'), annuaire, page_d_arrivee_observee=True)
+    autre = lo.controler_feature(_feature('Soit j\'ouvre la page "/clients/nouveau"', 'Quand je clique sur le bouton "Enregistrer"',
+                                          'Et je renseigne le champ "quantite" avec la valeur "2"'),
+                                 annuaire, page_d_arrivee_observee=True)
+    assert garde == []
+    assert [e.regle for e in autre] == ["page_inconnue"]

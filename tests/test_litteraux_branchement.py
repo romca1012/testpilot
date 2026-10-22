@@ -166,3 +166,22 @@ def test_l_agent_branche_l_annuaire_pour_un_projet_web_seulement(connecteur, att
 
     assert (vus["ctx"].annuaire is not None) is attendu
     assert "page" in vus["ctx"].attributs_contexte
+
+
+def test_page_d_arrivee_observee_bloque_a_l_ecriture_seulement_interrupteur_allume(tmp_path, monkeypatch):
+    """Étape 5 (lot VH-06, point 2) : « Quantité … » existe sur /produits, mais la page atteinte après « Se connecter » n'a
+    jamais été observée. Interrupteur éteint (défaut) : écrit, comme avant ; allumé : refusé à l'écriture."""
+    from testpilot.generation import interrupteurs
+
+    feature = _feature("Soit j'accède à la page de connexion sans me connecter",
+                       'Quand je renseigne le champ "identifiant" avec la valeur "testeur"',
+                       'Et je clique sur le bouton "Se connecter"',
+                       'Et je renseigne le champ "Quantité de Clavier mécanique" avec la valeur "2"',
+                       'Alors la page affiche le texte "Produits"')
+    monkeypatch.delenv(interrupteurs.ENV_PAGE_D_ARRIVEE_OBSERVEE, raising=False)
+    assert w.write_feature_file(_ctx(tmp_path), feature).ok
+
+    monkeypatch.setenv(interrupteurs.ENV_PAGE_D_ARRIVEE_OBSERVEE, "1")
+    sortie = w.write_feature_file(_ctx(tmp_path / "allume"), feature)
+    assert not sortie.ok and "LITTERAL_NON_OBSERVE" in sortie.observation
+    assert "après « Se connecter »" in sortie.observation

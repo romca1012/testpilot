@@ -171,8 +171,25 @@ class GenerationAgent:
         ctx.requetes_oracle = (frozenset((projet or {}).get("oracle_requetes_disponibles") or ())
                                if _interrupteurs.forme_oracle_actif() and projet is not None else None)
         ctx.formes_oracle = self._formes_oracle(modele, projet)
+        if _interrupteurs.garde_connexion_actif():
+            # Étape 5 (AV-6) : l'intention DÉCLARÉE du cas (jamais le texte de l'agent) ; sans métier (banc, outil isolé),
+            # inconnue — seule la règle des comptes s'applique, et seulement si le projet est connu.
+            import json as _json_garde
+
+            from testpilot.generation import garde_connexion
+            m = metier or {}
+            declaree = intention if intention is not None else "\n".join(str(x) for x in (
+                m.get("title"), m.get("preconditions"), _json_garde.dumps(m["steps"], ensure_ascii=False) if m.get("steps") else "",
+                m.get("expected_result")) if x)
+            ctx.garde_connexion = {
+                "porte": garde_connexion.porte_sur_la_connexion(declaree) if declaree.strip() else None,
+                "comptes": ([str(c.get("label") or "") for c in projet.get("comptes_libelles") or []]
+                            if projet is not None else None)}
         if _interrupteurs.ia_informee_actif():
             declarees = set((projet or {}).get("oracle_requetes_disponibles") or ())
+            # AV-9 : sur une application web, les outils de données disent ce que l'IA peut relever à la place.
+            ctx.outils_web_informes = projet is not None and (connector_type or "") == "web"
+            ctx.requetes_oracle_declarees = frozenset(declarees)
             ctx.formes_oracle_relevees = {nom: f for nom, f in ((modele or {}).get("formes_oracle") or {}).items()
                                           if nom in declarees} or None
         ctx.variables_de_test = frozenset(v["nom"] for v in variables)
