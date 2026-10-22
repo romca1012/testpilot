@@ -126,6 +126,7 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
 - Quand la spécification change (18 → 21 ans), signaler les lignes d'un cas devenues fausses et proposer les nouvelles.
 - **De toi :** combien d'enregistrements, lesquels montrer.
 - **4 à 5 jours — 0 $** (mesuré à l'étape 8)
+- *Partiellement fait (2026-10-22 au soir), branche `lot-etape6-donnees-clients`, poussée, sans PR* — migration 75 ; colonne remplie depuis l'application (oracle ou Odoo), figée au lancement, derrière `TESTPILOT_COLONNE_DEPUIS_L_APPLICATION` (éteint, proposition A105 à valider : 3 enregistrements, les premiers rendus) ; lignes d'un cas signalées quand son texte change, nouvelles lignes proposées par l'IA derrière `TESTPILOT_LIGNES_PROPOSEES` (A106 : signal ou blocage, à trancher). Restent : l'écran pour déclarer une source et pour relire les lignes proposées, la mesure.
 
 #### Étape 7 — Valeurs attendues calculées et réglages partagés (famille 5, niveau bibliothèque)
 - Vérifier un montant sans l'avoir recopié de la spécification : calcul indépendant, devise et taux sourcés, validé
