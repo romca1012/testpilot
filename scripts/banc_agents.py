@@ -1705,6 +1705,23 @@ def evaluer_pret_a_lancer(case_id: int, gen: Mapping, data_dir: Path) -> tuple[b
     return not sortes, sortes
 
 
+def _sans_essai_a_blanc(diagnostic: Mapping) -> str:
+    """AV-7 (étape 5) : « génération sans essai à blanc passé », avec POURQUOI quand la génération l'a consigné (raison de
+    l'arrêt, fichiers écrits ou non, dernier refus d'outil, dernier diagnostic d'essai à blanc). Sans diagnostic (rapport
+    d'avant) : le message d'avant, à l'identique."""
+    if not diagnostic:
+        return "génération sans essai à blanc passé"
+    morceaux = [f"arrêt {diagnostic.get('arret', '?')} après {diagnostic.get('tours', '?')} tour(s)"]
+    if not (diagnostic.get("feature_ecrite") and diagnostic.get("steps_ecrits")):
+        morceaux.append("fichiers non écrits : " + ", ".join(
+            n for n, ok in ((".feature", diagnostic.get("feature_ecrite")), ("steps", diagnostic.get("steps_ecrits"))) if not ok))
+    if diagnostic.get("refus_recents"):
+        morceaux.append("dernier refus : " + str(diagnostic["refus_recents"][-1])[:120])
+    if diagnostic.get("dernier_dry_run"):
+        morceaux.append("essai à blanc : " + str(diagnostic["dernier_dry_run"])[:120])
+    return "génération sans essai à blanc passé (" + " ; ".join(morceaux) + ")"
+
+
 def artefacts_depuis_rapport(cas: str, essai: int, rapport: Mapping) -> Artefacts:
     """Un rapport d'essai de `campagne.json` → `Artefacts` (pur : testé sur des rapports simulés)."""
     gen = rapport.get("generation") or {}
@@ -1716,7 +1733,7 @@ def artefacts_depuis_rapport(cas: str, essai: int, rapport: Mapping) -> Artefact
         fichiers[f"{module}_steps.py"] = gen["steps_content"]
     jouable = bool(gen.get("success")) and bool(gen.get("dry_run_passed")) and len(fichiers) == 2
     erreur = "" if jouable else str(rapport.get("generation_error") or gen.get("error") or
-                                    "génération sans essai à blanc passé")[:300]
+                                    _sans_essai_a_blanc(gen.get("diagnostic_arret") or {}))[:300]
     return Artefacts(cas=cas, essai=essai, fichiers=fichiers if jouable else {},
                      cout_usd=(float(gen["cost_usd"]) if gen.get("cost_usd") is not None else None),
                      genere_ok=jouable, erreur=erreur, module=module)

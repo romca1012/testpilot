@@ -57,6 +57,8 @@ def _maybe_dry_run(state: AgentState, dry_runner, stall_limit: int) -> str:
         state.stall_count = 0
         return "passed"
 
+    state.dernier_dry_run = (_dryrun_diagnostic(result) or ", ".join(
+        [*result.undefined_steps, *result.ambiguous_steps]))[:300]
     signature = _dryrun_signature(result)
     if state.last_dryrun_signature is not None and signature == state.last_dryrun_signature:
         state.stall_count += 1
@@ -156,6 +158,8 @@ def run_loop(*, llm, system_prompt: str, state: AgentState, ctx: ToolContext,
             for call in resp.tool_calls:
                 outcome = dispatch(call.name, call.input, ctx)
                 _apply_effect(state, call.name, outcome)
+                if not outcome.ok:   # AV-7 : les derniers refus, pour instruire une génération qui n'aboutit pas
+                    state.refus_recents = [*state.refus_recents, outcome.observation[:160]][-5:]
                 results.append({"type": "tool_result", "tool_use_id": call.id,
                                 "content": outcome.observation})
             state.messages.append({"role": "user", "content": results})
