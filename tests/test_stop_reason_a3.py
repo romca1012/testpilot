@@ -48,3 +48,18 @@ def test_un_tour_normal_end_turn_n_est_PAS_intercepte():
     state = _run(LLMResponse(stop_reason="end_turn", raw_stop_reason="end_turn",
                              text_blocks=["fini"]))
     assert state.stopped_reason not in ("max_tokens_truncated", "refusal")
+
+
+def test_av7_les_refus_d_outil_sont_consignes_cinq_au_plus(tmp_path):
+    """Étape 5 (AV-7) : une génération qui n'aboutit pas garde ses derniers refus d'outil pour être instruite."""
+    from testpilot.generation.tools import ToolContext
+    from testpilot.llm.adapter import ToolUseBlock
+
+    appels = [ToolUseBlock(id=str(i), name="write_feature_file", input={"content": ""}) for i in range(7)]
+    resp = LLMResponse(stop_reason="tool_use", tool_calls=appels)
+    state = AgentState(module_name="m", messages=[])
+    react_loop.run_loop(llm=_FakeLLM(resp), system_prompt="sys", state=state,
+                        ctx=ToolContext(module_name="m", generated_dir=tmp_path),
+                        dry_runner=None, cost_tracker=None, max_iterations=1, stall_limit=2)
+    assert len(state.refus_recents) == 5
+    assert all(r.startswith("[write_feature_file] contenu vide") for r in state.refus_recents)
