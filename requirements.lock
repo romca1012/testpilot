@@ -83,8 +83,9 @@ pdfminer-six==20260107
     # via pdfplumber
 pdfplumber==0.11.10
     # via testpilot (pyproject.toml)
-pillow==12.3.0
+pillow==13.0.0
     # via pdfplumber
+    # 13.0.0 (2026-10-22) : corrige 24 failles de 12.3.0 ; exige Python >= 3.11 (image de production : 3.12)
 playwright==1.62.0
     # via testpilot (pyproject.toml)
 prometheus-client==0.26.0
