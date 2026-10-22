@@ -234,6 +234,8 @@ def propose_fix(*, module_name: str, scenarios, failures, steps_content: str = "
         generated_dir=config.GENERATED_DIR,
         connector=connector,
         reserved_steps=frozenset(s.label for s in shared_steps),
+        # Étape 5 (F24) : le contrôle de composition (« cet enregistrement » jamais posé) s'applique ici aussi.
+        shared_steps=shared_steps,
     )
     # Lot VH-03 (V3) : ce que la version de référence VÉRIFIE est gelé pendant la réparation (contrôle à l'écriture).
     ctx.gel_steps = steps_content or None

@@ -904,6 +904,14 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
         touche = gel_verifications.feature_modifiee(ctx.gel_feature, content)
         if touche:
             return _outcome(_message_gel("write_feature_file", touche, ctx.gel_motif), ok=False)
+    # Étape 5 (F24) : un « cet enregistrement » lu sans qu'aucune étape précédente ne l'ait posé. BLOQUANT.
+    from testpilot.generation import composition_scenario
+    sans_enregistrement = composition_scenario.enregistrement_lu_sans_etre_pose(content, ctx.shared_steps)
+    if sans_enregistrement:
+        return _outcome("[write_feature_file] ENREGISTREMENT_NON_POSE : " + " ; ".join(sans_enregistrement[:4])
+                        + ". Crée, ouvre ou cherche d'abord l'enregistrement (une étape « … existe dans le modèle … », "
+                        "« j'ouvre l'enregistrement … », « j'enregistre le document »), puis rappelle write_feature_file.",
+                        ok=False)
     # Lot VH-05 (D24) : tout champ, bouton ou page cité existe À L'IDENTIQUE dans ce que l'exploration a observé. BLOQUANT.
     indications = ""
     if ctx.annuaire is not None:

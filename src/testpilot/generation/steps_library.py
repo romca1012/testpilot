@@ -61,6 +61,10 @@ class SharedStep:
     interrupteur: str = ""
     # Lot PT-03 : `@compare_des_nombres` — la valeur attendue de ce step se compare comme un nombre. Lu par AST.
     compare_des_nombres: bool = False
+    # Étape 5 (F24) : ce step POSE l'enregistrement courant (`context.last_record_ids`, lui-même ou par un helper), ou le
+    # LIT sans le poser (« cet enregistrement »). Lu par AST, point fixe à travers les helpers : le code fait foi.
+    pose_enregistrement: bool = False
+    lit_enregistrement: bool = False
 
 
 # ── Quels noms de la bibliothèque CONSIGNENT un constat ? (déplacé de `tools/write.py`, Q1) ──────────
@@ -112,6 +116,61 @@ def _noms_qui_constatent(chemin: str, mtime: float) -> frozenset[str]:
     return frozenset(noms)
 
 
+_ENREGISTREMENT_COURANT = "last_record_ids"
+
+
+def _touche_l_enregistrement(fonction, mode) -> bool:
+    """`context.last_record_ids` écrit (`ast.Store`) ou lu (`ast.Load`) dans le corps de `fonction`."""
+    return any(isinstance(n, ast.Attribute) and n.attr == _ENREGISTREMENT_COURANT and isinstance(n.ctx, mode)
+               and isinstance(n.value, ast.Name) and n.value.id == "context" for n in ast.walk(fonction))
+
+
+def _point_fixe(fonctions: dict, depart: set[str]) -> set[str]:
+    """`depart` + toute fonction de `fonctions` qui en appelle une (jusqu'à stabilité)."""
+    noms = set(depart)
+    change = True
+    while change:
+        change = False
+        for nom, f in fonctions.items():
+            if nom not in noms and any(isinstance(n, ast.Call) and _nom_appele(n) in noms for n in ast.walk(f)):
+                noms.add(nom)
+                change = True
+    return noms
+
+
+def _poseurs_et_lecteurs(arbre, herites: tuple[frozenset[str], frozenset[str]] = (frozenset(), frozenset())
+                         ) -> tuple[set[str], set[str]]:
+    """F24 : (fonctions qui POSENT l'enregistrement courant, fonctions qui le LISENT) d'un module — elles-mêmes ou par un
+    helper du module ou hérité (`_base_helpers`)."""
+    fonctions = {n.name: n for n in ast.walk(arbre) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    posent = _point_fixe(fonctions, set(herites[0]) | {nom for nom, f in fonctions.items()
+                                                        if _touche_l_enregistrement(f, ast.Store)})
+    lisent = _point_fixe(fonctions, set(herites[1]) | {nom for nom, f in fonctions.items()
+                                                        if _touche_l_enregistrement(f, ast.Load)})
+    return posent, lisent
+
+
+@functools.lru_cache(maxsize=4)
+def _enregistrement_des_helpers(chemin: str, mtime: float) -> tuple[frozenset[str], frozenset[str]]:
+    try:
+        with open(chemin, encoding="utf-8") as handle:
+            arbre = ast.parse(handle.read())
+    except (OSError, SyntaxError):
+        return frozenset(), frozenset()
+    posent, lisent = _poseurs_et_lecteurs(arbre)
+    return frozenset(posent), frozenset(lisent)
+
+
+def helpers_et_enregistrement(directory: Path | None = None) -> tuple[frozenset[str], frozenset[str]]:
+    """F24 : les helpers de `_base_helpers.py` qui posent / lisent l'enregistrement courant (vides si absent)."""
+    chemin = (directory or config.STEPS_LIBRARY_DIR) / "_base_helpers.py"
+    try:
+        mtime = chemin.stat().st_mtime
+    except OSError:
+        return frozenset(), frozenset()
+    return _enregistrement_des_helpers(str(chemin), mtime)
+
+
 def helpers_qui_constatent(directory: Path | None = None) -> frozenset[str] | None:
     """Les noms qui constatent, lus dans `<directory>/_base_helpers.py` ; `None` si ce fichier est
     absent (bibliothèque factice : on ne présume alors rien, voir `SharedStep.asserte`)."""
@@ -132,7 +191,8 @@ def _decorator_name(node: ast.expr) -> str:
 
 
 def extract_steps(source_code: str, source: str = "",
-                  constatent: frozenset[str] | None = None) -> list[SharedStep]:
+                  constatent: frozenset[str] | None = None,
+                  enregistrement: tuple[frozenset[str], frozenset[str]] = (frozenset(), frozenset())) -> list[SharedStep]:
     """Steps déclarés dans un module Python (libellés entiers). Vide si le code est invalide.
 
     `constatent` (Q1, D17) : les noms qui consignent un constat. Fourni, il renseigne
@@ -143,6 +203,7 @@ def extract_steps(source_code: str, source: str = "",
         return []
 
     steps: list[SharedStep] = []
+    posent, lisent = _poseurs_et_lecteurs(tree, enregistrement)
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
@@ -168,7 +229,9 @@ def extract_steps(source_code: str, source: str = "",
                     asserte = bool(appels & constatent)
                 steps.append(SharedStep(keyword=name, label=arg.value.strip(), source=source, note=note,
                                         asserte=asserte, interrupteur=interrupteur,
-                                        compare_des_nombres="compare_des_nombres" in _decorateurs(node)))
+                                        compare_des_nombres="compare_des_nombres" in _decorateurs(node),
+                                        pose_enregistrement=node.name in posent,
+                                        lit_enregistrement=node.name in lisent and node.name not in posent))
     return steps
 
 
@@ -233,12 +296,13 @@ def catalogue(directory: Path | None = None, connector_type: str | None = None,
                  + _sans_profils(directory / connector_type, directory)
                  + _fichiers_profil(directory, connector_type, profil_instance))
     constatent = helpers_qui_constatent(directory)
+    enregistrement = helpers_et_enregistrement(directory)
     steps: list[SharedStep] = []
     for path in sorted(paths):
         try:
             source = str(path.relative_to(directory)).replace("\\", "/")
             steps.extend(extract_steps(path.read_text(encoding="utf-8"), source=source,
-                                       constatent=constatent))
+                                       constatent=constatent, enregistrement=enregistrement))
         except OSError:
             continue
     return steps
