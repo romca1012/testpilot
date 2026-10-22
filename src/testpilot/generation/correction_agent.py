@@ -130,6 +130,8 @@ def propose_correction(*, module_name: str, lint_warnings: list[dict],
         generated_dir=config.GENERATED_DIR,
         connector=connector,
         reserved_steps=frozenset(s.label for s in shared_steps),
+        # Étape 5 (F24) : le contrôle de composition (« cet enregistrement » jamais posé) s'applique ici aussi.
+        shared_steps=shared_steps,
         calibration_writes_enabled=calibration_writes_enabled,
     )
     # Lot PT-02d : les variables `{{…}}` du test corrigé sont figées — une correction ne remplace pas une valeur choisie au
