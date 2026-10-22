@@ -893,6 +893,17 @@ def _avec_edition_manuelle(metadonnees: dict, controles_ecriture: list[str] | No
     return {**metadonnees, "generation_provenance": json.dumps(provenance, ensure_ascii=False)}
 
 
+def empreinte_du_texte_du_cas(version: dict | None) -> str:
+    """Étape 6 (IT-3d) : l'empreinte de ce que le cas DIT (préconditions, étapes, résultat attendu) — le texte validé par une
+    personne, dont les lignes d'un cas dépendent (« moins de 18 ans : refusé »). Le titre n'en fait pas partie."""
+    import hashlib
+
+    version = version or {}
+    texte = json.dumps([version.get("preconditions") or "", version.get("test_steps") or "",
+                        version.get("expected_result") or ""], ensure_ascii=False)
+    return hashlib.sha256(texte.encode("utf-8")).hexdigest()[:16]
+
+
 class CaseRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -1126,6 +1137,10 @@ class CaseRepo:
             if lignes:
                 CaseDataRepo(self.conn).remplacer(new_id, source["project_id"],
                                                   [{"nom": l["nom"], "valeurs": l["valeurs"]} for l in lignes])
+                # Étape 6 (IT-3d, revue) : la copie reprend l'état de relecture de la source — des lignes signalées le restent.
+                self.conn.execute("UPDATE test_case SET lignes_ecrites_pour=? WHERE id=?",
+                                  (CaseDataRepo(self.conn).lignes_ecrites_pour(case_id), new_id))
+                self.conn.commit()
 
         return new_id
 
@@ -4369,6 +4384,12 @@ class CaseDataRepo:
             "SELECT DISTINCT r.case_id AS case_id FROM case_data_row r JOIN test_case tc ON tc.id = r.case_id"
             " JOIN module m ON m.id = tc.module_id WHERE m.project_id=? ORDER BY r.case_id", (project_id,))]
 
+    def lignes_ecrites_pour(self, case_id: int) -> str:
+        """Étape 6 (IT-3d) : l'empreinte du texte du cas quand ses lignes ont été enregistrées (`empreinte_du_texte_du_cas`) ;
+        vide : lignes d'avant la migration 75, ou aucune ligne."""
+        ligne = self.conn.execute("SELECT lignes_ecrites_pour FROM test_case WHERE id=?", (case_id,)).fetchone()
+        return (ligne["lignes_ecrites_pour"] if ligne else "") or ""
+
     def remplacer(self, case_id: int, project_id: int, lignes: list[dict]) -> None:
         """Remplace TOUTES les lignes du cas par `lignes` ([{id?, nom, valeurs: {variable_id: valeur}}], dans l'ordre). Tout
         est vérifié AVANT d'écrire — rien n'est enregistré à moitié : 50 lignes au plus, noms de 60 caractères au plus et
@@ -4415,4 +4436,9 @@ class CaseDataRepo:
                 if valeur != "":
                     self.conn.execute("INSERT INTO case_data_value (row_id, variable_id, valeur) VALUES (?,?,?)",
                                       (row_id, int(variable_id), valeur))
+        # Étape 6 (IT-3d) : les lignes valent pour le texte du cas d'AUJOURD'HUI — s'il change (18 → 21 ans), elles sont signalées.
+        cas = self.conn.execute("SELECT current_version_id FROM test_case WHERE id=?", (case_id,)).fetchone()
+        version = VersionRepo(self.conn).get(cas["current_version_id"]) if cas and cas["current_version_id"] else None
+        self.conn.execute("UPDATE test_case SET lignes_ecrites_pour=? WHERE id=?",
+                          (empreinte_du_texte_du_cas(version) if lignes else "", case_id))
         self.conn.commit()

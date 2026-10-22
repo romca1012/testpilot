@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from testpilot.api import access, schemas
 from testpilot.api.deps import get_conn
-from testpilot.api.services.donnees_de_test_service import ecart_lignes_test
+from testpilot.api.services.donnees_de_test_service import ecart_lignes_test, lignes_a_relire
 from testpilot.parametres import resolution
 from testpilot.store.repositories import (CaseDataRepo, CaseRepo, DonneeDeTestInvalide, ProjectAccountRepo, TestDataRepo,
                                           VersionRepo)
@@ -52,6 +52,7 @@ def _tableau(conn, case_id: int, project_id: int) -> schemas.DonneesDuCasOut:
 
     return schemas.DonneesDuCasOut(
         ecarts=ecart_lignes_test((version or {}).get("feature_content") or "", lignes) if lignes else [],
+        lignes_a_relire=lignes_a_relire(conn, case_id),
         variables=[schemas.VariableOut(**v) for v in TestDataRepo(conn).variables(project_id)],
         lignes=[schemas.LigneDuCasOut(id=l["id"], nom=l["nom"], valeurs={str(k): v for k, v in l["valeurs"].items()},
                                       compte_choisi=bool(l["compte_choisi"]), compte_id=l["compte_id"],
@@ -83,3 +84,28 @@ def ecrire_les_lignes_du_cas(case_id: int, body: schemas.LignesDuCasIn, conn=Dep
     except (resolution.ValeurInvalide, DonneeDeTestInvalide, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _tableau(conn, case_id, project_id)
+
+
+@router.post("/proposition", response_model=schemas.LignesProposeesOut, dependencies=_ACCES_AU_CAS)
+def proposer_des_lignes(case_id: int, conn=Depends(get_conn)):
+    """Étape 6 (IT-3d) : l'IA propose les lignes du cas pour son texte d'aujourd'hui — RIEN n'est enregistré ; l'écran les
+    montre, une personne les relit et les enregistre (A53). Interrupteur `TESTPILOT_LIGNES_PROPOSEES` éteint : refusé."""
+    from testpilot.api.services.donnees_de_test_service import PropositionImpossible, proposer_les_lignes
+
+    from testpilot.api.services.generation_service import _record_generation_cost
+    from testpilot.guardrails.cost_tracker import CostLimitExceeded, CostTracker
+
+    _projet_du_cas(conn, case_id)
+    # Revue (C3) : plafonné (`COST_LIMIT_PER_RUN_USD`) et compté au cas (§9), comme la passe des cas qu'il réutilise.
+    suivi = CostTracker()
+    try:
+        lignes = proposer_les_lignes(conn, case_id, cost_tracker=suivi)
+    except PropositionImpossible as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except CostLimitExceeded as exc:
+        # Revue : le plafond atteint est dit à l'écran (409), pas une erreur 500 sans explication.
+        raise HTTPException(status_code=409, detail=f"plafond de coût atteint : {exc}") from exc
+    finally:
+        if suivi.total_cost:
+            _record_generation_cost(conn, case_id=case_id, metier_usd=suivi.total_cost)
+    return schemas.LignesProposeesOut(lignes=lignes)

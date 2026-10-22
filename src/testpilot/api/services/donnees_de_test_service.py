@@ -534,3 +534,67 @@ def ids_des_jeux(texte: str | None, *, strict: bool = False) -> list[int]:
             raise DonneeDeTestInvalide("les jeux de données de la planification sont illisibles")
         return []
     return ids
+
+
+# ── Étape 6 (IT-3d, A58 point 5) : les lignes d'un cas devenues fausses ─────────────────────────────────────────────────
+
+LIGNES_A_RELIRE = ("Le texte du cas a changé depuis l'enregistrement de ses lignes : relisez-les (valeurs limites, résultat "
+                   "attendu de chaque ligne), puis enregistrez-les.")
+
+
+def lignes_a_relire(conn, case_id: int) -> str:
+    """Le message à montrer quand le texte du cas (préconditions, étapes, résultat attendu) a changé depuis l'enregistrement de
+    ses lignes — « moins de 18 ans » devenu « moins de 21 ans » : la ligne « 20 ans → Bienvenue » est devenue fausse. Vide :
+    pas de ligne, lignes d'avant la migration 75 (aucune empreinte : jamais signalées sans preuve), ou texte inchangé.
+    Signal, pas un blocage (décision du porteur proposée : A106)."""
+    from testpilot.store.repositories import CaseRepo, empreinte_du_texte_du_cas
+
+    depot = CaseDataRepo(conn)
+    ecrites_pour = depot.lignes_ecrites_pour(case_id)
+    if not ecrites_pour or not depot.lignes(case_id):
+        return ""
+    cas = CaseRepo(conn).get(case_id) or {}
+    version = VersionRepo(conn).get(cas["current_version_id"]) if cas.get("current_version_id") else None
+    return LIGNES_A_RELIRE if empreinte_du_texte_du_cas(version) != ecrites_pour else ""
+
+
+class PropositionImpossible(ValueError):
+    """Les nouvelles lignes ne peuvent pas être proposées (interrupteur éteint, cas sans texte, aucune variable)."""
+
+
+def proposer_les_lignes(conn, case_id: int, *, llm=None, cost_tracker=None) -> list[dict]:
+    """IT-3d : l'IA qui rédige les cas PROPOSE les lignes du cas pour son texte d'AUJOURD'HUI (même passe qu'IT-3c, A53, A60 :
+    seulement les variables déclarées). Rien n'est enregistré : une personne relit, corrige et enregistre (A53). Derrière
+    `TESTPILOT_LIGNES_PROPOSEES` (éteint) comme IT-3c — un appel au modèle de langage, payant."""
+    import json as _json
+
+    from testpilot.analysis.plan import TestPlan
+    from testpilot.generation import interrupteurs, metier_writer
+    from testpilot.store.repositories import CaseRepo
+
+    if not interrupteurs.lignes_proposees_actif():
+        raise PropositionImpossible("la proposition des lignes par l'IA n'est pas activée")
+    cas = CaseRepo(conn).get(case_id) or {}
+    version = VersionRepo(conn).get(cas["current_version_id"]) if cas.get("current_version_id") else None
+    if not version:
+        raise PropositionImpossible("ce cas n'a pas de texte")
+    variables = [{"nom": v["nom"], "description": v["description"]}
+                 for v in TestDataRepo(conn).variables(cas.get("project_id"))] if cas.get("project_id") else []
+    if not variables:
+        raise PropositionImpossible("le projet ne déclare aucune variable : il n'y a pas de ligne à proposer")
+    try:
+        etapes = _json.loads(version.get("test_steps") or "[]")
+    except ValueError:
+        etapes = []
+    texte = "\n".join([str(version.get("preconditions") or ""), *(str(e) for e in etapes if e),
+                       str(version.get("expected_result") or "")])
+    # Revue (C6) : seulement le texte du cas d'AUJOURD'HUI — la spécification du groupe peut être l'ancienne (18 ans), et
+    # l'IA la suivrait à côté du texte corrigé (21 ans).
+    plan = TestPlan(module_name=cas.get("feature_slug") or "cas", models=[], scenarios=[], personas=[], portal_routes=[],
+                    risks=[], raw_spec=texte)
+    brouillon = metier_writer.propose_metier(plan, llm=llm, cost_tracker=cost_tracker, variables=variables,
+                                             proposer_lignes=True,
+                                             brief="Propose les lignes de ce cas tel qu'il est écrit ci-dessus (il fait foi).")
+    if not brouillon.lignes:
+        raise PropositionImpossible("l'IA n'a proposé aucune ligne exploitable pour ce cas")
+    return brouillon.lignes
