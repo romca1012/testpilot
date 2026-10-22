@@ -391,7 +391,7 @@ def _texte_metier(conn, execution_id: int) -> str:
     """Le métier VALIDÉ de la version jouée (titre, préconditions, étapes, résultat attendu, spec) — texte HUMAIN, jamais
     le Gherkin ni le code de l'agent (décision 0015). Vide si la version est introuvable : comportement d'avant D32."""
     ligne = conn.execute("SELECT version_id FROM execution WHERE id=?", (execution_id,)).fetchone()
-    version = VersionRepo(conn).get(ligne[0]) if ligne and ligne[0] is not None else None
+    version = VersionRepo(conn).get(ligne["version_id"]) if ligne and ligne["version_id"] is not None else None
     if not version:
         return ""
     return "\n".join(str(version.get(champ) or "") for champ in
@@ -603,7 +603,7 @@ def _rangs_par_ligne(conn, execution_id: int) -> dict[str, list]:
     toutes les itérations (lecture prudente)."""
     ligne = conn.execute("SELECT parametres_joues FROM execution WHERE id=?", (execution_id,)).fetchone()
     try:
-        table = json.loads((ligne[0] if ligne else "") or "{}").get("rangs_par_ligne") or {}
+        table = json.loads((ligne["parametres_joues"] if ligne else "") or "{}").get("rangs_par_ligne") or {}
     except (ValueError, AttributeError):
         return {}
     if not isinstance(table, dict):
@@ -680,7 +680,7 @@ def _persist(conn, execution_id, case_id, verdict, outcome, duration, module_nam
 
 def _version_reparee_non_relue(conn, execution_id) -> bool:
     ligne = conn.execute("SELECT version_id FROM execution WHERE id=?", (execution_id,)).fetchone()
-    version_id = ligne[0] if ligne else None
+    version_id = ligne["version_id"] if ligne else None
     if version_id is None:
         return False
     return review_gate.version_reparee_non_relue(ReviewRepo(conn), VersionRepo(conn).get(version_id))
