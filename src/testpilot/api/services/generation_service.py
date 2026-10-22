@@ -312,7 +312,8 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
             slugify(title), spec_content)
 
         decoupage_tracker = CostTracker()
-        stories = propose_decoupage(plan, cost_tracker=decoupage_tracker)
+        stories_ecartees: list[str] = []
+        stories = propose_decoupage(plan, cost_tracker=decoupage_tracker, ecartees=stories_ecartees)
         if not stories:
             _record_generation_cost(conn, case_id=None,
                                     analysis_usd=analysis_tracker.total_cost,
@@ -424,13 +425,28 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
         # alimente l'agent en matière technique qu'un `TestPlan` ne peut pas porter d'un job à
         # l'autre, non sérialisable).
         GenerationJobRepo(conn).maj(job_id, status="awaiting_metier", cases=cases,
-                                    cost_usd=total_cost)
+                                    cost_usd=total_cost,
+                                    couverture=_couverture_du_decoupage(spec_content, len(cases), stories_ecartees))
     except Exception as exc:  # jamais laisser un job « en cours » sur un plantage
         logger.exception("[generation] job %s (découpage + passe métier) en échec : %s",
                          job_id, exc)
         GenerationJobRepo(conn).maj(job_id, status="failed", error=str(exc)[:300])
     finally:
         conn.close()
+
+
+def _couverture_du_decoupage(spec: str, proposes: int, ecartees: list[str]) -> dict:
+    """F27 (étape 5) : ce qui a pu se perdre entre la spécification et les cas proposés, montré sur l'écran de validation
+    (jamais bloquant : une personne relit). Lu dans la SPÉCIFICATION et dans ce que le découpage a écarté — jamais dans
+    le texte des cas. Vide : rien à signaler."""
+    from testpilot.generation.decoupage import cas_listes_dans_la_spec
+    listes = cas_listes_dans_la_spec(spec or "")
+    couverture: dict = {}
+    if listes is not None and listes > proposes:
+        couverture.update(cas_listes=listes, cas_proposes=proposes)
+    if ecartees:
+        couverture["stories_ecartees"] = list(dict.fromkeys(ecartees))
+    return couverture
 
 
 def refus_des_variables_du_cas(conn, project_id: int | None, metier: dict) -> list[str]:

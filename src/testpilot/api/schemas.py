@@ -517,6 +517,9 @@ class GenerationJobOut(BaseModel):
     # Rempli uniquement en `awaiting_metier` — une liste PLATE (étape 3), plus de regroupement en
     # Sections imposé par l'IA.
     cases: list[MetierDraftOut] | None = None
+    # F27 (étape 5) : ce qui a pu se perdre au découpage — `cas_listes` / `cas_proposes` (la spécification énumère plus de
+    # cas qu'il n'en est proposé), `stories_ecartees` (citation introuvable). Vide : rien à signaler.
+    couverture: dict = {}
 
 
 class ConcurrencyQueueOut(BaseModel):
