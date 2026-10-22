@@ -263,6 +263,26 @@ TOOLS_DEFINITIONS.append({
 OUTILS_OPTIONNELS: dict[str, dict] = {essai_tools.NOM_OUTIL: essai_tools.DEFINITION}
 
 
+_OUTILS_DE_DONNEES = frozenset({"inspect_schema", "query_data", "attempt_form_submission"})
+
+
+def _outil_web_indisponible(name: str, ctx: ToolContext) -> str:
+    """AV-9 (étape 5) : avant, l'agent recevait « [erreur tool query_data : … (inspect_form/discover_route …)] » — une erreur
+    technique qui nommait des outils inexistants ; il supposait ou s'arrêtait. Il reçoit ce qu'il PEUT relever sur CE
+    projet. Les noms des requêtes d'oracle seulement, jamais une réponse : ce qu'un test vérifie vient du cas."""
+    moyens = ["`inspect_page_snapshot` et `inspect_page_form` (ce qu'une page affiche : champs, boutons, liens)"]
+    if getattr(ctx, "essai", None) is not None:
+        moyens.append(f"`{essai_tools.NOM_OUTIL}` (joue tes actions sur le bac à sable du projet et rend la page atteinte, "
+                      "ses messages compris)")
+    requetes = sorted(getattr(ctx, "requetes_oracle_declarees", None) or ())
+    if requetes:
+        moyens.append("l'oracle du projet, lu à l'EXÉCUTION par les étapes « l'oracle \"<requête>\" … » de la bibliothèque "
+                      "— requêtes déclarées : " + ", ".join(f"« {r} »" for r in requetes))
+    return (f"[{name}] indisponible sur une application web : elle n'a pas d'API de données, et l'IA n'y soumet pas de "
+            "formulaire hors du bac à sable. Pour relever ce qui te manque : " + " ; ".join(moyens) + ". Ce que tu relèves "
+            "sert à écrire (où aller, quoi toucher), jamais une valeur attendue : ce que le test vérifie vient du cas.")
+
+
 def outils_optionnels(ctx: ToolContext) -> tuple[str, ...]:
     """Les outils optionnels DISPONIBLES pour ce contexte (ordre stable : le préfixe d'outils ne doit pas bouger en cours de run)."""
     return (essai_tools.NOM_OUTIL,) if getattr(ctx, "essai", None) is not None else ()
@@ -277,6 +297,8 @@ def dispatch(name: str, tool_input: dict, ctx: ToolContext) -> ToolOutcome:
             error = validate_tool_input(tool_input, definition['input_schema'])
             if error:
                 return ToolOutcome(observation=f"[arguments invalides : {error}]", ok=False)
+        if name in _OUTILS_DE_DONNEES and getattr(ctx, "outils_web_informes", False):
+            return ToolOutcome(observation=_outil_web_indisponible(name, ctx), ok=False)
         if name in {'attempt_login', 'attempt_form_submission'}:
             if ctx.qualification:
                 return ToolOutcome(observation='[qualification : calibration métier interdite]', ok=False)

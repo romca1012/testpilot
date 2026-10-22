@@ -339,6 +339,12 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
         # IT-3c (interrupteur, éteint) : l'IA propose aussi les lignes du cas, pour ces seules variables (A60).
         from testpilot.generation import interrupteurs as _interrupteurs
         proposer_lignes = bool(variables_des_cas) and _interrupteurs.lignes_proposees_actif()
+        # AV-8 (étape 5, interrupteur éteint) : les mots exacts des écrans, relevés par l'exploration du projet.
+        termes_des_ecrans: list[str] = []
+        if _interrupteurs.cas_aux_termes_des_ecrans_actif() and module.get("project_id"):
+            from testpilot.generation import domain_model, pages_observees
+            termes_des_ecrans = pages_observees.termes_des_ecrans(
+                domain_model.charger_modele(ProjectRepo(conn).get(module["project_id"])))
         for story in stories:
             for brief in story.cases:
                 # ⚠️ Budget PAR CAS, pas cumulé sur tout le lot (audit 2026-08-07, B2, bloquant) :
@@ -352,7 +358,8 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
                 # Sans variable, l'appel est celui d'avant, à l'argument près (les doublures de test l'attendent tel quel).
                 draft = propose_metier(plan, brief=brief.brief, cost_tracker=case_tracker,
                                        **({"variables": variables_des_cas} if variables_des_cas else {}),
-                                       **({"proposer_lignes": True} if proposer_lignes else {}))
+                                       **({"proposer_lignes": True} if proposer_lignes else {}),
+                                       **({"termes": termes_des_ecrans} if termes_des_ecrans else {}))
                 metier_cost_total += case_tracker.total_cost
                 if not draft.complete:
                     # Titre + étapes + résultat attendu sont obligatoires (`0022` n°3.c). On

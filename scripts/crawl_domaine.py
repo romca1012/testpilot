@@ -251,7 +251,7 @@ def _inspecter_page(page):
         const sansChiffre = (t) => !!t && !/[0-9]/.test(t);
         const titres = Array.from(document.querySelectorAll('h1, h2, h3')).filter(estVisible)
             .map(h => propre(h.textContent).slice(0, 80)).filter(sansChiffre).slice(0, 12);
-        const tableaux = [];
+        const tableaux = [], tableaux_remplis = [], libelles = [];
         document.querySelectorAll('table').forEach(t => {
             if (tableaux.length >= 10 || !estVisible(t)) return;
             let nom = '';
@@ -266,8 +266,28 @@ def _inspecter_page(page):
                 ':scope > thead > tr > th, :scope > thead > tr > td, th[scope=col]'))
                 .map(c => propre(c.textContent).slice(0, 40)).filter(sansChiffre);
             tableaux.push({nom: nom.slice(0, 80), colonnes: Array.from(new Set(colonnes)).slice(0, 12)});
+            // AV-4 (étape 5, 2026-10-23) : l'ÉTAT de départ de la liste — des lignes de données ou aucune, jamais leur
+            // nombre ni leur contenu (un nombre relevé serait recopié comme résultat attendu). Aligné sur `tableaux`.
+            tableaux_remplis.push(Array.from(t.querySelectorAll('tr')).some(
+                tr => !tr.closest('thead') && tr.querySelector(':scope > td')));
+            // AV-3 : une FICHE (aucun en-tête de colonne, des lignes « en-tête | valeur ») — ses en-têtes de ligne sont des
+            // libellés de structure (« Numéro de commande »), jamais la cellule voisine.
+            // Limite assumée : une liste de DEUX colonnes sans en-têtes de colonnes, à en-tête de ligne (« Dupont | Lyon »),
+            // ressemble à une fiche ; ses noms passeraient pour des libellés (sans chiffre seulement).
+            if (!colonnes.length && !t.querySelector(':scope > thead')) {
+                t.querySelectorAll(':scope > tbody > tr > th:first-child, :scope > tr > th:first-child').forEach(th => {
+                    if (th.parentElement.querySelectorAll(':scope > td').length === 1)
+                        libelles.push(propre(th.textContent).slice(0, 60));
+                });
+            }
         });
-        return {champs, actions, liens, formulaires, titre: document.title, titres, tableaux};
+        // AV-3 : les termes d'une liste de définitions (`dt`) sont aussi des libellés de structure.
+        document.querySelectorAll('dl > dt').forEach(dt => {
+            if (estVisible(dt)) libelles.push(propre(dt.textContent).slice(0, 60));
+        });
+        const libelles_de_structure = Array.from(new Set(libelles.filter(sansChiffre))).slice(0, 20);
+        return {champs, actions, liens, formulaires, titre: document.title, titres, tableaux, tableaux_remplis,
+                libelles: libelles_de_structure};
     }""")
 
 

@@ -160,3 +160,50 @@ def test_falsifiable_l_exploration_releve_noms_et_en_tetes_jamais_les_cellules()
     vu = json.dumps([infos["titres"], infos["tableaux"]], ensure_ascii=False)
     for valeur in ("Dupont SARL", "Lyon", "10 %", "CMD-0042", "1,00"):
         assert valeur not in vu, f"« {valeur} » est une valeur de l'application : jamais relevée"
+
+
+def test_etat_de_depart_et_libelles_de_structure_montres_sans_aucun_nombre():
+    """AV-3, AV-4 (étape 5, 2026-10-23) : l'état de chaque tableau (des lignes ou vide) et les libellés d'une fiche — jamais
+    un nombre de lignes, jamais une valeur. Une carte d'avant (sans ces clés) garde la section d'avant."""
+    modele = {"pages": {"/commandes": {"titre": "Commandes", "tableaux": [
+        {"nom": "Commandes", "colonnes": ["Numéro"]}, {"nom": "Brouillons", "colonnes": ["Numéro"]}],
+        "tableaux_remplis": [True, False], "libelles": ["Numéro de commande", "Statut"],
+        "champs": [], "actions": [], "liens": []}}}
+    texte = pages_observees.section(modele, ["/commandes"], "")
+    assert "- Tableau « Commandes » — colonnes « Numéro » — contenait des lignes à l'exploration" in texte
+    assert "- Tableau « Brouillons » — colonnes « Numéro » — vide à l'exploration" in texte
+    assert "- Libellés : « Numéro de commande », « Statut »" in texte
+    assert "jamais un résultat attendu" in texte
+    ancien = {"pages": {"/commandes": {k: v for k, v in modele["pages"]["/commandes"].items()
+                                        if k not in ("tableaux_remplis", "libelles")}}}
+    texte_ancien = pages_observees.section(ancien, ["/commandes"], "")
+    assert "- Tableau « Commandes » — colonnes « Numéro »\n" in texte_ancien
+    assert "Libellés" not in texte_ancien and "jamais un résultat attendu" not in texte_ancien
+
+
+@pytest.mark.conformance
+def test_falsifiable_l_exploration_releve_l_etat_des_listes_et_les_libelles_jamais_les_valeurs():
+    import json
+    import sys
+    from pathlib import Path
+
+    from playwright.sync_api import sync_playwright
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import crawl_domaine as cd
+
+    corps = ("<table><caption>Clients</caption><thead><tr><th>Nom</th></tr></thead><tbody><tr><td>Dupont SARL</td></tr>"
+             "</tbody></table><table><caption>Brouillons</caption><thead><tr><th>Nom</th></tr></thead><tbody></tbody></table>"
+             "<table><tr><th>Numéro de commande</th><td>CMD-0042</td></tr><tr><th>Statut</th><td>Expédiée</td></tr>"
+             "<tr><th>Remise (10 %)</th><td>1,00 €</td></tr></table><dl><dt>Ville</dt><dd>Lyon</dd></dl>")
+    with sync_playwright() as p:
+        nav = p.chromium.launch()
+        page = nav.new_page()
+        page.set_content(f"<html><body>{corps}</body></html>")
+        infos = cd._inspecter_page(page)
+        nav.close()
+    assert infos["tableaux_remplis"] == [True, False, True]
+    assert infos["libelles"] == ["Numéro de commande", "Statut", "Ville"]
+    vu = json.dumps([infos["libelles"], infos["tableaux_remplis"]], ensure_ascii=False)
+    for valeur in ("Dupont SARL", "CMD-0042", "Expédiée", "Lyon", "10 %", "1,00"):
+        assert valeur not in vu, f"« {valeur} » est une valeur de l'application : jamais relevée"
