@@ -1170,7 +1170,14 @@ class _Boutique(BaseHTTPRequestHandler):
         if self.path == "/reset":
             _ETAT_SERVEUR["panier"] = 0
             _ETAT_SERVEUR["resets"] += 1
-            return self._html("ok")
+            # A75 (2026-10-20) : la remise à zéro le DIT — ce serveur répondait « ok » en HTML, refusé depuis (test resté rouge
+            # depuis l'étape 4, relevé à l'étape 5).
+            corps = b'{"remis_a_zero": true}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(corps)))
+            self.end_headers()
+            return self.wfile.write(corps)
         if self.path == "/reset-sans-session":
             self.send_response(302)
             self.send_header("Location", "/produits")
