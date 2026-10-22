@@ -73,6 +73,27 @@ def decrire_une_variable(project_id: int, variable_id: int, body: schemas.Variab
     return _tableau(depot, project_id)
 
 
+@router.put("/variables/{variable_id}/source", response_model=schemas.DonneesDeTestOut, dependencies=_MEMBRE)
+def poser_la_source(project_id: int, variable_id: int, body: schemas.SourceDeVariableIn, conn=Depends(get_conn)):
+    """Étape 6 (IT-4, A55) : la colonne tire ses valeurs d'enregistrements de l'application, relevés à chaque lancement et figés
+    avec lui. Validée ici (requête d'oracle DÉCLARÉE, ou modèle et champ Odoo pour une application Odoo) ; `{}` la retire."""
+    from testpilot.connectors import forme_oracle
+    from testpilot.parametres import colonne_application
+
+    depot = _depot(conn, project_id)
+    projet = ProjectRepo(conn).get(project_id) or {}
+    try:
+        source = colonne_application.valider_source(
+            body.source, connector_type=projet.get("connector_type"),
+            # Revue : seules les requêtes de LECTURE (GET) — une source est jouée à chaque lancement, jamais une écriture.
+            requetes_declarees=forme_oracle.requetes_en_lecture(projet.get("oracle_queries") or "[]"))
+    except colonne_application.SourceInvalide as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not depot.poser_la_source(project_id, variable_id, source):
+        raise HTTPException(status_code=404, detail=f"variable {variable_id} introuvable")
+    return _tableau(depot, project_id)
+
+
 @router.get("/export", dependencies=_MEMBRE)
 def exporter_le_tableau(project_id: int, conn=Depends(get_conn)):
     """Le tableau en Excel — c'est aussi le modèle à remplir pour l'import (A37)."""

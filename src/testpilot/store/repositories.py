@@ -3607,7 +3607,8 @@ class TestDataRepo:
     # ── lecture ──
     def variables(self, project_id: int) -> list[dict]:
         return _rows(self.conn.execute(
-            "SELECT id, nom, description FROM test_variable WHERE project_id=? AND deleted_at='' ORDER BY rang, id", (project_id,)))
+            "SELECT id, nom, description, source_application FROM test_variable WHERE project_id=? AND deleted_at=''"
+            " ORDER BY rang, id", (project_id,)))
 
     def variables_a_la_corbeille(self, project_id: int) -> list[str]:
         """Les noms des variables à la corbeille — pour dire « à la corbeille » plutôt qu'« inconnue » quand un test les écrit."""
@@ -3697,6 +3698,19 @@ class TestDataRepo:
                                  self._rang_suivant("test_variable", project_id), now_iso()))
         self.conn.commit()
         return int(cur.lastrowid)
+
+    def sources_des_variables(self, project_id: int) -> dict[str, str]:
+        """Étape 6 (IT-4) : `{nom: source JSON}` des variables VIVANTES qui déclarent une source dans l'application."""
+        return {l["nom"]: l["source_application"] for l in self.conn.execute(
+            "SELECT nom, source_application FROM test_variable WHERE project_id=? AND deleted_at='' AND source_application<>''"
+            " ORDER BY rang, id", (project_id,))}
+
+    def poser_la_source(self, project_id: int, variable_id: int, source: dict) -> bool:
+        """Étape 6 (IT-4) : la source (déjà validée par `parametres/colonne_application.valider_source`) ; `{}` la retire."""
+        cur = self.conn.execute("UPDATE test_variable SET source_application=? WHERE project_id=? AND id=? AND deleted_at=''",
+                                (json.dumps(source, ensure_ascii=False) if source else "", project_id, variable_id))
+        self.conn.commit()
+        return cur.rowcount > 0
 
     def decrire_variable(self, project_id: int, variable_id: int, description: str) -> bool:
         cur = self.conn.execute("UPDATE test_variable SET description=? WHERE project_id=? AND id=? AND deleted_at=''",

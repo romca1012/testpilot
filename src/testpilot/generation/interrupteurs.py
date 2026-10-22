@@ -37,6 +37,7 @@ ENV_IA_INFORMEE = "TESTPILOT_IA_INFORMEE"
 ENV_PAGE_D_ARRIVEE_OBSERVEE = "TESTPILOT_PAGE_D_ARRIVEE_OBSERVEE"
 ENV_GARDE_CONNEXION = "TESTPILOT_GARDE_CONNEXION"
 ENV_CAS_AUX_TERMES_DES_ECRANS = "TESTPILOT_CAS_AUX_TERMES_DES_ECRANS"
+ENV_COLONNE_DEPUIS_L_APPLICATION = "TESTPILOT_COLONNE_DEPUIS_L_APPLICATION"
 
 _VRAI = frozenset({"1", "true", "yes", "oui", "on"})
 _ALLUMES_PAR_DEFAUT = frozenset({ENV_VARIABLES_DE_TEST, ENV_CAS_DIT_SES_DONNEES})
@@ -151,6 +152,13 @@ def cas_aux_termes_des_ecrans_actif(env: Mapping[str, str] | None = None) -> boo
     l'exploration (« Nouveau client », « Enregistrer »). Change ce que l'API reçoit (une passe que le banc ne mesure pas) :
     éteint jusqu'à sa mesure (étape 8, comptée à part)."""
     return _actif(ENV_CAS_AUX_TERMES_DES_ECRANS, env)
+
+
+def colonne_depuis_l_application_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Étape 6 du plan unique (IT-4, A55) : une colonne de données de test déclarée « depuis l'application » est remplie, au
+    lancement, avec des enregistrements qui existent dans l'application. Éteint tant que le porteur n'a pas tranché combien et
+    lesquels (A105) : une source déclarée est alors ignorée."""
+    return _actif(ENV_COLONNE_DEPUIS_L_APPLICATION, env)
 
 
 def allume(nom: str, env: Mapping[str, str] | None = None) -> bool:
