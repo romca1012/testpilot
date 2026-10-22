@@ -127,6 +127,22 @@ const currentVersion = computed(() => {
 // Un cas MANUEL n'a pas de Gherkin : pas de relecture ni d'exécution tant qu'aucun test
 // technique n'a été généré. `feature_content` vide = pas de test exécutable.
 const hasGherkin = computed(() => !!(currentVersion.value?.feature_content || '').trim())
+// Porteur, 2026-10-22 : un test que la réparation automatique n'a pas su rendre sûr n'est pas livré — le cas redevient sans
+// test, avec la raison (préfixe `TEST_NON_LIVRE` côté serveur), jamais un cas « bloqué ».
+const testNonLivre = computed(() => {
+  const resume = currentVersion.value?.change_summary || ''
+  return !hasGherkin.value && resume.startsWith('Test non livré') ? resume : ''
+})
+// Porteur, 2026-10-22 : une régénération qui échoue garde l'ancien test approuvé ; le message vit dans une version PLUS
+// RÉCENTE que la courante (préfixe `GENERATION_NON_ABOUTIE` côté serveur).
+const generationNonAboutie = computed(() => {
+  const d = detail.value
+  if (!d) return ''
+  const derniere = [...d.versions].sort((a, b) => b.id - a.id)[0]
+  const resume = derniere?.change_summary || ''
+  return derniere && derniere.id > (d.current_version_id || 0) && resume.startsWith('Nouvelle génération non aboutie')
+    ? resume : ''
+})
 
 // ── Onglet Script (2026-08-07) — lecture pour tous, édition réservée au rôle Dev ──────────────
 const { session } = useSession()
@@ -688,11 +704,20 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
           <!-- Cas MANUEL (aucun Gherkin) : le test technique n'existe pas encore. -->
           <section v-if="!hasGherkin" class="mt-8">
             <h2 class="font-semibold pb-2 border-b border-border">Test technique</h2>
-            <div class="mt-3 rounded-lg border border-border bg-primary/5 p-4 text-sm text-muted-foreground">
+            <div v-if="testNonLivre" class="mt-3 rounded-lg border border-border bg-primary/5 p-4 text-sm text-muted-foreground"
+                 data-testid="test-non-livre">
+              {{ testNonLivre }}
+            </div>
+            <div v-else class="mt-3 rounded-lg border border-border bg-primary/5 p-4 text-sm text-muted-foreground">
               Ce cas a été saisi à la main : il décrit ce qui doit être vérifié, mais son test
               technique n'a pas encore été généré (bouton « Automatiser avec l'IA » ci-dessus).
             </div>
           </section>
+          <div v-else-if="generationNonAboutie"
+               class="mt-8 rounded-lg border border-border bg-primary/5 p-4 text-sm text-muted-foreground"
+               data-testid="generation-non-aboutie">
+            {{ generationNonAboutie }}
+          </div>
 
           <!-- ════════ POINTS DE VIGILANCE (info seule, PLUS un gate) ════════
                Amendement §4.3 (2026-07-21) : la validation métier à la création vaut relecture —

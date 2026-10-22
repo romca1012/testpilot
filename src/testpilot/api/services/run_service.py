@@ -181,6 +181,10 @@ def trigger_run(conn, case_id: int, *, triggered_by: str = "",
     gate = gate_du_cas(conn, case, version_id)
     if not gate.allowed:
         raise RunError("needs_review", gate.reason)
+    # Revue (2026-10-22, bloquant) : une version SANS test technique (test non livré, cas manuel) n'est jamais lancée — même
+    # approuvée après une simple retouche du titre ; le runner aurait rejoué le dernier fichier resté sur disque.
+    if not ((VersionRepo(conn).get(version_id) or {}).get("feature_content") or "").strip():
+        raise RunError("no_test", "Ce cas n'a pas de test technique : lancez « Automatiser avec l'IA » avant de l'exécuter.")
 
     # ⚠️ **Savoir contre quoi on teste, AVANT de tester** (2026-07-24). Sans connexion complète, le
     # runtime retombait sur la configuration globale de la machine : l'écran montrait un projet, le
@@ -318,7 +322,11 @@ def _assurer_script_sur_disque(conn, version_id: int, module_name: str, *, execu
     version = VersionRepo(conn).get(version_id)
     feature_content = (version or {}).get("feature_content") or ""
     if not feature_content.strip():
-        return donnees_de_test_service.Script()  # cas sans Gherkin généré : rien à réécrire, le runner le dira lui-même
+        # Revue (2026-10-22, bloquant) : sans test technique, ne JAMAIS laisser le runner rejouer un fichier resté sur disque
+        # (un test jugé non sûr, retiré par `_retirer_le_test`) — le cas n'est pas joué, et l'écran dit pourquoi.
+        return donnees_de_test_service.Script(blocage=(
+            "Ce cas n'a pas de test technique : lancez « Automatiser avec l'IA » avant de l'exécuter. Le test n'a pas été "
+            "joué."))
     config.GENERATED_DIR.mkdir(parents=True, exist_ok=True)
     (config.GENERATED_DIR / f"{module_name}.feature").write_text(feature_content, encoding="utf-8")
     (config.GENERATED_DIR / f"{module_name}_steps.py").write_text(

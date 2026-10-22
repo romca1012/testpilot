@@ -170,9 +170,13 @@ def test_falsifiable_une_correction_qui_affaiblit_un_constat_reel_reste_a_relire
 
     cid, courante = _corriger(conn, monkeypatch, feature=FEATURE, steps=affaiblie)
 
+    # Porteur, 2026-10-22 (réparation bornée) : la correction affaiblie n'est jamais gardée — elle est écartée avant même
+    # d'être enregistrée (`_affaiblissements_de_correction`, VERIFICATION_AFFAIBLIE), et le test n'est pas livré.
     assert not _approuvee(conn, courante)
-    points = generation_service.lint_warnings_for_version(conn, CaseRepo(conn).get(cid),
-                                                          VersionRepo(conn).list_for_case(cid), courante["id"])
+    assert not (courante.get("feature_content") or "").strip()
+    assert all("!= ''" not in (v.get("steps_content") or "") for v in VersionRepo(conn).list_for_case(cid))
+    points = generation_service._affaiblissements_de_correction({"feature_content": FEATURE, "steps_content": STEPS},
+                                                                {"feature_content": FEATURE, "steps_content": affaiblie})
     assert VERIFICATION_AFFAIBLIE in {p["kind"] for p in points}
 
 
