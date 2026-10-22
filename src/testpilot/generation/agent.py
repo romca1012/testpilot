@@ -116,6 +116,7 @@ class GenerationAgent:
             variables, metier,
             (metier or {}).get("variables_deja_dans_le_test") or (),
             (projet or {}).get("variables_de_test_a_la_corbeille") or ())
+        informee = _informee(plan, projet, metier)
         state.messages.append({"role": "user",
                                "content": prompt_mod.build_initial_message(
                                    plan, modele, metier, comptes=(projet or {}).get("comptes_libelles"),
@@ -124,7 +125,8 @@ class GenerationAgent:
                                    formes_oracle=self._formes_oracle(modele, projet),
                                    **({"compte_du_test": compte_du_test} if compte_du_test else {}),
                                    **({"comptes_des_lignes": lignes_a_compte, "ecrans_de": ecrans_de}
-                                      if lignes_a_compte else {}))})
+                                      if lignes_a_compte else {}),
+                                   **({"informee": informee} if informee else {}))})
         if failure_context:
             state.messages[0]["content"] = [
                 {"type": "text", "text": state.messages[0]["content"]}, *failure_context]
@@ -357,3 +359,28 @@ class GenerationAgent:
         result.case_id = case_id
         result.version_id = version_id
         result.awaiting_review = True
+
+
+def _informee(plan: TestPlan, projet: dict | None, metier: dict | None) -> dict:
+    """Étape 5 (interrupteur `TESTPILOT_IA_INFORMEE`, éteint) : le vrai type d'application, la langue de l'interface et le TEXTE
+    DU CAS validé (pour choisir les pages à détailler quand le plan n'en vise aucune). Éteint : {} — message d'avant."""
+    from testpilot.generation import interrupteurs
+
+    if not interrupteurs.ia_informee_actif():
+        return {}
+    from testpilot.connectors.contexte_navigateur import DEFAUT_LOCALE
+
+    projet = projet or {}
+    m = metier or {}
+    texte = " ".join([str(m.get("title") or ""), " ".join(str(e) for e in m.get("steps") or []),
+                      str(m.get("expected_result") or ""), str(m.get("preconditions") or "")])
+    connector_type = projet.get("connector_type") or plan.connector_type
+    # Revue : la langue n'est annoncée que là où elle est CELLE de l'écran — une application web suit la langue du navigateur
+    # du harnais (`browser_locale`, défaut fr-FR) ; sur Odoo, l'écran suit la langue de l'utilisateur Odoo, que rien ne mesure
+    # encore : ne rien dire plutôt qu'une langue fausse (l'inverse de G7).
+    langue = ""
+    if str(connector_type or "").lower() == "web":
+        from testpilot.connectors.contexte_navigateur import _LOCALE_RE
+        candidate = str(projet.get("browser_locale") or "").strip() or DEFAUT_LOCALE
+        langue = candidate if _LOCALE_RE.match(candidate) else ""
+    return {"connector_type": connector_type, "langue": langue, "texte_du_cas": texte.strip()}
