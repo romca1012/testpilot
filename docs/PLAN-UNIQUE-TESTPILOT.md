@@ -118,6 +118,7 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
   sur une page inconnue refusée).
 - Corriger les erreurs de génération relevées à l'étape 3.
 - **3 à 5 jours — 0 $** (mesuré à l'étape 8)
+- *Partiellement fait (2026-10-22), commits locaux, non poussé* — périmètre réduit pour la mesure du jour (décision du porteur : mesure et démo avant 15 h). Fait : texte qui doit être apparu après la dernière action (A97) ; l'IA informée derrière `TESTPILOT_IA_INFORMEE` (A98 : vrai type d'application, langue en web, pages visées en détail). Déjà en place : une vérification constante (`constater(True)`) est refusée à l'écriture. Reste : contrôle d'arrivée après un menu Odoo (F25, il faut le banc Odoo), erreur rattachée au bon champ, valeur citée sur une page inconnue, libellés de structure et état de départ relevés par l'exploration (AV-3, AV-4), garde de connexion réécrite (AV-6), passe des cas (AV-8), outils web (AV-9), F24, F27, instruction d'AV-7, test modifié à la main qui contourne les contrôles.
 
 #### Étape 6 — Données de test : les vrais clients, et des lignes toujours justes (famille 3)
 - Remplir une colonne `{{client}}` avec des enregistrements qui existent déjà dans l'application ; figés au lancement.
