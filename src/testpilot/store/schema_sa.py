@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 74
+ALIGNED_WITH_SCHEMA_VERSION = 75
 
 metadata = MetaData()
 
@@ -142,6 +142,8 @@ test_variable = Table(
     Column("created_at", Text, nullable=False),
     Column("deleted_at", Text, nullable=False, server_default=""),
     Column("deleted_by", Text, nullable=False, server_default=""),
+    # Migration 75 (étape 6, IT-4) : la colonne tire ses valeurs d'enregistrements de l'application (JSON) ; vide : saisies.
+    Column("source_application", Text, nullable=False, server_default=""),
     Index("uq_test_variable_nom", "project_id", "nom", unique=True,
           sqlite_where=Column("deleted_at") == "",
           postgresql_where=Column("deleted_at") == ""),
@@ -334,6 +336,8 @@ test_case = Table(
     Column("deleted_by", Text, nullable=False, server_default=""),
     Column("created_at", Text, nullable=False),
     Column("updated_at", Text, nullable=False),
+    # Migration 75 (étape 6, IT-3d) : l'empreinte du texte du cas quand ses lignes ont été enregistrées ; vide : lignes d'avant.
+    Column("lignes_ecrites_pour", Text, nullable=False, server_default=""),
     CheckConstraint("origin IN ('ia_generated', 'manual_converted')", name="ck_test_case_origin"),
     CheckConstraint("priority IN ('low', 'medium', 'high')", name="ck_test_case_priority"),
     CheckConstraint(
