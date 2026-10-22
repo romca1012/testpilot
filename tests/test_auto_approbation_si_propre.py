@@ -166,9 +166,10 @@ def test_finaliser_version_generee_approuve_apres_une_correction_reussie(conn, m
     assert decision.allowed is True, "la version corrigée, propre, est approuvée automatiquement"
 
 
-def test_finaliser_version_generee_reste_a_relire_si_la_correction_echoue(conn, monkeypatch):
-    """Signal détecté, correction TENTÉE mais toujours signalée après coup → reste à relire, mais
-    avec la MEILLEURE tentative de l'IA (pas la version brute d'origine)."""
+def test_finaliser_version_generee_retire_le_test_si_la_reparation_echoue(conn, monkeypatch):
+    """Porteur, 2026-10-22 (remplace « reste à relire avec la meilleure tentative ») : réparé au plus REPARATIONS_MAX fois,
+    toujours signalé → le test N'EST PAS LIVRÉ, le cas redevient sans test, avec la raison ; les tentatives restent dans
+    l'historique."""
     from testpilot.generation import correction_agent
 
     cid, vid = _cas_avec_version(conn, steps_content=_STEPS_TAUTOLOGIQUES)
@@ -185,16 +186,16 @@ def test_finaliser_version_generee_reste_a_relire_si_la_correction_echoue(conn, 
     generation_service._finaliser_version_generee(
         conn, cid, vid, module_name="c", connector=None, dry_runner=object())
 
-    version_courante = CaseRepo(conn).get(cid)["current_version_id"]
-    assert version_courante != vid, "la tentative de correction devient quand même la courante"
-    decision = review_gate.evaluate_gate(ReviewRepo(conn), version_courante)
-    assert decision.allowed is False
-    assert decision.needs_review is True
+    courante = VersionRepo(conn).get(CaseRepo(conn).get(cid)["current_version_id"])
+    assert courante["feature_content"] == "" and courante["steps_content"] == "", "aucun test livré"
+    assert courante["change_summary"].startswith(generation_service.TEST_NON_LIVRE)
+    assert courante["title"] == VersionRepo(conn).get(vid)["title"], "le cas (métier) est gardé"
+    assert len(VersionRepo(conn).list_for_case(cid)) >= 2, "l'origine reste dans l'historique, la version sans test s'ajoute"
 
 
-def test_finaliser_version_generee_reste_a_relire_si_l_agent_ne_propose_rien(conn, monkeypatch):
-    """L'agent de correction peut avouer ne pas savoir corriger (`changed=False`, cf. son prompt)
-    — aucune version fabriquée dans ce cas, le cas reste sur sa version d'origine, à relire."""
+def test_finaliser_version_generee_retire_le_test_si_l_agent_ne_propose_rien(conn, monkeypatch):
+    """L'agent de correction peut avouer ne pas savoir corriger (`changed=False`) — porteur, 2026-10-22 : le test n'est
+    pas livré (jamais « bloqué ») ; seule la version sans test est fabriquée."""
     from testpilot.generation import correction_agent
 
     cid, vid = _cas_avec_version(conn, steps_content=_STEPS_TAUTOLOGIQUES)
@@ -205,9 +206,9 @@ def test_finaliser_version_generee_reste_a_relire_si_l_agent_ne_propose_rien(con
     generation_service._finaliser_version_generee(
         conn, cid, vid, module_name="c", connector=None, dry_runner=object())
 
-    assert CaseRepo(conn).get(cid)["current_version_id"] == vid, "aucune version fabriquée"
-    assert len(VersionRepo(conn).list_for_case(cid)) == 1
-    assert review_gate.evaluate_gate(ReviewRepo(conn), vid).allowed is False
+    courante = VersionRepo(conn).get(CaseRepo(conn).get(cid)["current_version_id"])
+    assert courante["feature_content"] == "" and courante["change_summary"].startswith(generation_service.TEST_NON_LIVRE)
+    assert len(VersionRepo(conn).list_for_case(cid)) == 2, "seule la version sans test est fabriquée"
 
 
 def test_finaliser_version_generee_ne_tente_pas_de_corriger_sans_dry_runner(conn):
@@ -422,3 +423,63 @@ def test_needing_review_omet_un_cas_manuel_jamais_automatise(client):
 
 def test_needing_review_projet_inconnu_404(client):
     assert client.get("/api/cases/needing-review?project_id=999").status_code == 404
+
+
+
+# ── Porteur, 2026-10-22 : réparer jusqu'à un test lançable, budget borné, jamais en affaiblissant une vérification ────────
+
+
+def test_la_reparation_s_arrete_a_deux_tentatives(conn, monkeypatch):
+    from testpilot.generation import correction_agent
+
+    cid, vid = _cas_avec_version(conn, steps_content=_STEPS_TAUTOLOGIQUES)
+    appels = []
+
+    def rien(**kw):
+        appels.append(1)
+        return correction_agent.CorrectionProposal(changed=False, stopped_reason="incomplete", cost_usd=0.01)
+    monkeypatch.setattr(correction_agent, "propose_correction", rien)
+    generation_service._finaliser_version_generee(conn, cid, vid, module_name="c", connector=None, dry_runner=object())
+    assert len(appels) == generation_service.REPARATIONS_MAX
+
+
+def test_la_reparation_s_arrete_quand_le_budget_est_depense(conn, monkeypatch):
+    from testpilot.generation import correction_agent
+
+    cid2, vid2 = _cas_avec_version(conn, steps_content=_STEPS_TAUTOLOGIQUES)
+    appels = []
+
+    def chere(**kw):
+        appels.append(1)
+        return correction_agent.CorrectionProposal(changed=False, stopped_reason="incomplete",
+                                                   cost_usd=generation_service.BUDGET_REPARATION_USD)
+    monkeypatch.setattr(correction_agent, "propose_correction", chere)
+    generation_service._finaliser_version_generee(conn, cid2, vid2, module_name="c", connector=None, dry_runner=object())
+    assert len(appels) == 1, "budget épuisé : pas de seconde tentative"
+
+
+def test_falsifiable_une_reparation_qui_affaiblit_une_verification_n_est_jamais_gardee(conn, monkeypatch):
+    """Le cas ne doit jamais devenir lançable par une réparation jugée affaiblissante (D30) : la version courante revient à
+    celle d'avant, puis, faute de réparation sûre, le test n'est pas livré."""
+    from testpilot.generation import correction_agent
+    from testpilot.generation.repair_diff import VERIFICATION_AFFAIBLIE
+
+    cid, vid = _cas_avec_version(conn, steps_content=_STEPS_TAUTOLOGIQUES)
+    steps_propres = ('from behave import then\n\n\n@then("truc")\n'
+                     'def s(context):\n    assert context.page.title() == "Attendu"\n')
+    monkeypatch.setattr(correction_agent, "propose_correction", lambda **kw: correction_agent.CorrectionProposal(
+        changed=True, feature_content=kw["feature_content"], steps_content=steps_propres, summary="x", cost_usd=0.01, stopped_reason="done"))
+    vrai_lint = generation_service.lint_warnings_for_version
+
+    def lint(conn_, case, rows, version_id):
+        if version_id != vid:   # toute version réparée est jugée affaiblie
+            return [{"kind": VERIFICATION_AFFAIBLIE, "step": "", "line": 0, "message": "affaiblie"}]
+        return vrai_lint(conn_, case, rows, version_id)
+    monkeypatch.setattr(generation_service, "lint_warnings_for_version", lint)
+
+    generation_service._finaliser_version_generee(conn, cid, vid, module_name="c", connector=None, dry_runner=object())
+
+    courante = VersionRepo(conn).get(CaseRepo(conn).get(cid)["current_version_id"])
+    assert courante["feature_content"] == "" and courante["change_summary"].startswith(generation_service.TEST_NON_LIVRE)
+    for v in VersionRepo(conn).list_for_case(cid):
+        assert not review_gate.evaluate_gate(ReviewRepo(conn), v["id"]).allowed, "aucune version affaiblie approuvée"

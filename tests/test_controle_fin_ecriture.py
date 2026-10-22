@@ -105,16 +105,26 @@ def test_falsifiable_l_ia_recoit_les_points_et_les_corrige_avant_de_rendre_la_ma
     assert evaluate_gate(ReviewRepo(conn), resultat.version_id).allowed, "propre : prête à lancer"
 
 
-def test_falsifiable_si_l_ia_garde_son_test_il_est_livre_bloque_sans_correction_de_plus(conn, monkeypatch):
+def test_falsifiable_si_l_ia_garde_son_test_la_reparation_est_tentee_puis_le_test_n_est_pas_livre(conn, monkeypatch):
+    """Porteur, 2026-10-22 (remplace « livré bloqué sans correction de plus ») : même un point déjà vu à l'écriture passe
+    par la réparation bornée ; sans réparation sûre, le test n'est pas livré — jamais un cas bloqué."""
+    from testpilot.generation import correction_agent
+
     resultat, _ = _generer(conn, [_ecrit(SAISIE), FIN], monkeypatch=monkeypatch)
     assert resultat.success and resultat.feature_content == SAISIE
     assert resultat.generation_provenance["controle_fin_ecriture"]["avis_restants"] == AVIS
     appels = []
-    monkeypatch.setattr("testpilot.generation.correction_agent.propose_correction", lambda **kw: appels.append(kw))
+
+    def rien(**kw):
+        appels.append(kw)
+        return correction_agent.CorrectionProposal(changed=False, stopped_reason="incomplete")
+    monkeypatch.setattr("testpilot.generation.correction_agent.propose_correction", rien)
     service._finaliser_version_generee(conn, resultat.case_id, resultat.version_id, module_name="demo",
                                        dry_runner=_DryRunner())
-    assert appels == [], "l'IA a déjà vu ce point : pas d'appel de correction de plus"
-    assert not evaluate_gate(ReviewRepo(conn), resultat.version_id).allowed, "livré bloqué"
+    assert len(appels) == service.REPARATIONS_MAX
+    assert not evaluate_gate(ReviewRepo(conn), resultat.version_id).allowed, "le test fautif n'est jamais approuvé"
+    courante = VersionRepo(conn).get(CaseRepo(conn).get(resultat.case_id)["current_version_id"])
+    assert courante["feature_content"] == "" and courante["change_summary"].startswith(service.TEST_NON_LIVRE)
 
 
 def test_le_nombre_de_tours_est_borne(conn, monkeypatch):

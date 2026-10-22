@@ -109,6 +109,7 @@ _DEPUIS_SERVICE = {
     "duplicate": "nom_deja_pris",
     "no_connection": "connexion_incomplete",
     "no_version": "aucune_version",
+    "no_test": "aucune_version",   # version courante sans test technique (« Test non livré », 2026-10-22)
     "needs_review": "relecture_requise",
     "invalid_spec": "specification_vide",
     "invalid_metier": "metier_incomplet",
