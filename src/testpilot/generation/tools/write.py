@@ -877,6 +877,13 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
     if fautes:
         return _outcome("[write_feature_file] VARIABLE_DE_TEST : " + " ; ".join(fautes[:5])
                         + ". Puis rappelle write_feature_file.", ok=False)
+    # Étape 7 (A110) : un calcul retenu mal appelé serait bloqué à chaque exécution — refusé ICI, l'agent le corrige.
+    if ctx.calculs or "le résultat calculé" in content:
+        from testpilot.parametres import calcul_au_lancement
+        fautes_calcul = calcul_au_lancement.fautes_d_ecriture(content, ctx.calculs)
+        if fautes_calcul:
+            return _outcome("[write_feature_file] CALCUL : " + " ; ".join(fautes_calcul[:5])
+                            + ". Puis rappelle write_feature_file.", ok=False)
     # Lot VH-08 (A51, interrupteur) : une requête d'oracle que le projet ne déclare pas — l'exécution la bloquerait.
     inconnues = requetes_oracle_inconnues(content, ctx.requetes_oracle)
     if inconnues:

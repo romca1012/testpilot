@@ -309,3 +309,46 @@ def test_falsifiable_le_step_non_reecrit_est_une_panne_jamais_un_constat(monkeyp
 def test_falsifiable_les_saisies_sont_celles_qui_precedent_dans_le_meme_scenario(texte, saisies):
     refus, appels = calcul_au_lancement.analyser_les_appels("# language: fr\nFonctionnalité: F\n" + texte)
     assert refus == "" and appels == [("T", saisies)]
+
+
+# ── Porteur, 2026-10-23 : « fais en sorte qu'il ne soit pas bloqué » — corrigé À L'ÉCRITURE, pas bloqué au lancement ─────
+
+CALCULS = ({"nom": "Total TTC", "entrees": ("quantite", "prix")},)
+
+
+def test_falsifiable_l_agent_est_refuse_a_l_ecriture_tant_que_le_calcul_serait_bloque(tmp_path):
+    from testpilot.generation.tools import ToolContext
+    from testpilot.generation.tools.write import write_feature_file
+
+    ctx = ToolContext(module_name="commande", generated_dir=tmp_path, calculs=CALCULS)
+    en_dur = COMMANDE.replace('"{{quantite}}" articles à "{{prix}}"', '"3" articles à "10"')
+    refuse = write_feature_file(ctx, en_dur)
+    assert not refuse.ok and "CALCUL" in refuse.observation and "{{quantite}}" in refuse.observation
+    assert not (tmp_path / "commande.feature").exists(), "refusé : rien n'est livré"
+
+    accepte = write_feature_file(ctx, COMMANDE)
+    assert accepte.ok, accepte.observation
+
+
+@pytest.mark.parametrize("feature, motif", [
+    (COMMANDE.replace('vaut le résultat calculé "Total TTC"', 'vaut "36,00 €"'), "une personne a retenu le calcul"),
+    (COMMANDE.replace('"Total TTC"', '"Total HT"'), "n'est pas un calcul retenu"),
+])
+def test_l_agent_est_guide_vers_l_appel_juste(feature, motif):
+    assert any(motif in f for f in calcul_au_lancement.fautes_d_ecriture(feature, CALCULS))
+
+
+def test_une_donnee_ecrite_comme_a_l_ecran_est_lue_au_lieu_de_bloquer(base):
+    pid, cid, vid = _projet(base, lignes=(("Trois", "3", "10 €"), ("Deux", "2", "1 000,00")))
+    _eid, script = _preparer(base, pid, cid, vid)
+    assert not script.blocage, script.blocage
+    joue = (script.dossier / "commande.feature").read_text(encoding="utf-8")
+    assert "36,00 EUR" in joue and "2400,00 EUR" in joue
+
+
+def test_une_division_sans_arrondi_final_est_dite_au_choix_de_la_fiche():
+    from testpilot.parametres import calcul
+    fiche = {**FICHE, "etapes": [{"resultat": "total", "operation": "diviser", "valeur": "quantite", "par": "prix"}],
+             "exemples": [{"entrees": {"quantite": "3", "prix": "10"}, "attendu": "0,3"}]}
+    with pytest.raises(calcul.FicheInvalide, match="terminez-le par une étape « arrondir »"):
+        calcul.valider_fiche(fiche)

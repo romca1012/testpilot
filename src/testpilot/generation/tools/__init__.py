@@ -74,6 +74,9 @@ class ToolContext:
     variables_du_cas: frozenset[str] = field(default_factory=frozenset)
     # Porteur, 2026-10-22 : les variables du projet que le cas NE cite PAS — permises pour préparer, refusées dans un « Alors ».
     variables_de_preparation: frozenset[str] = field(default_factory=frozenset)
+    # Étape 7 (A110) : les calculs retenus pour le cas — `({"nom", "entrees"}, …)`. Le test est refusé À L'ÉCRITURE tant qu'il
+    # ne les appelle pas correctement (l'agent le corrige aussitôt) : jamais un test livré qui sortirait « bloqué ».
+    calculs: tuple = ()
     # Réparation et correction : les écritures `{{…}}` du test de référence, FIGÉES (ni ajout, ni retrait, ni renommage).
     # `None` hors réparation/correction.
     references_figees: list[str] | None = None

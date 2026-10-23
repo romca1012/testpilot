@@ -162,6 +162,11 @@ def valider_fiche(fiche, *, proposition: bool = False) -> dict:
     resultat = str(fiche.get("resultat") or "")
     if resultat not in {e["resultat"] for e in etapes}:
         raise FicheInvalide(f"le résultat « {resultat} » n'est produit par aucune étape")
+    finale = next(e for e in etapes if e["resultat"] == resultat)
+    if not proposition and any(e["operation"] == "diviser" for e in etapes) and finale["operation"] != "arrondir":
+        # Porteur, 2026-10-23 : un test ne doit pas sortir « bloqué » — une division sans arrondi final (10 ÷ 3) n'a pas de
+        # valeur affichable ; c'est dit ICI, au choix de la fiche, pas au lancement.
+        raise FicheInvalide("le calcul divise : terminez-le par une étape « arrondir » (combien de décimales, comment)")
     exemples = []
     for i, exemple in enumerate(fiche.get("exemples") or [], start=1):
         if not isinstance(exemple, dict) or not isinstance(exemple.get("entrees", {}), dict):
@@ -266,7 +271,7 @@ def _valider_etape(etape, i: int, connus: set[str]) -> dict:
     return sortie
 
 
-def calculer(fiche: dict, entrees: dict) -> Calcul:
+def calculer(fiche: dict, entrees: dict, *, lire_nombre=None) -> Calcul:
     """Applique la fiche VALIDÉE (`valider_fiche`) aux `entrees` (nom → nombre). Lève `CalculImpossible` si une entrée
     manque ou n'est pas un nombre, ou sur une division par zéro — jamais un résultat approché ou de repli."""
     valeurs: dict[str, Decimal] = {}
@@ -283,7 +288,15 @@ def calculer(fiche: dict, entrees: dict) -> Calcul:
         try:
             valeurs[nom] = _nombre(entrees[nom], f"entrée « {nom} »")
         except FicheInvalide as exc:
-            raise CalculImpossible(str(exc)) from exc
+            # Porteur, 2026-10-23 : limiter les tests bloqués. Une donnée écrite comme à l'écran (« 19,99 € », « 1 234,50 »)
+            # est lue par le lecteur de nombres de l'exécution (`lire_nombre`, fourni par l'appelant) ; seule une écriture
+            # AMBIGUË (« 1,234 ») reste impossible — jamais devinée.
+            try:
+                if lire_nombre is None:
+                    raise ValueError
+                valeurs[nom] = Decimal(lire_nombre(str(entrees[nom])))
+            except Exception:
+                raise CalculImpossible(str(exc)) from exc
         detail.append(f"{nom} = {_ecrire(valeurs[nom])} (source : {element['source']})")
 
     def v(terme: str) -> Decimal:

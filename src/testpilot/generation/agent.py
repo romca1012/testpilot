@@ -199,6 +199,13 @@ class GenerationAgent:
         ctx.controle_du_cas = controle_du_cas
         ctx.variables_du_cas = variables_requises
         ctx.variables_de_preparation = frozenset(v["nom"] for v in variables if v.get("preparation"))
+        # Étape 7 (A110) : les calculs retenus. Leurs entrées sont des données de test que le test DOIT saisir — permises même
+        # si le texte du cas ne les cite pas (« le total » ne nomme pas la quantité).
+        ctx.calculs = tuple({"nom": c.get("nom", ""), "entrees": tuple(c.get("entrees") or ())}
+                            for c in (metier or {}).get("calculs") or [])
+        entrees = frozenset(e for c in ctx.calculs for e in c["entrees"])
+        if entrees and (ctx.variables_de_test or ctx.controle_du_cas):
+            ctx.variables_de_test = ctx.variables_de_test | entrees
         from testpilot.generation.provenance import fingerprint, target_fingerprint
         ctx.target_sha256 = target_fingerprint(
             projet, compte=compte_du_test["empreinte"] if compte_du_test and compte_du_test["vue"] == "compte" else None)

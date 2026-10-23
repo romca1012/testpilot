@@ -105,6 +105,31 @@ def analyser_les_appels(feature: str) -> tuple[str, list[tuple[str, frozenset[st
     return "", appels
 
 
+def fautes_d_ecriture(feature: str, calculs) -> list[str]:
+    """Étape 7 (porteur, 2026-10-23 : « fais en sorte qu'il ne soit pas bloqué ») : ce qui, dans le test que l'agent écrit,
+    le ferait sortir « bloqué » au lancement — dit À L'ÉCRITURE, pour qu'il le corrige avant d'être livré. Mêmes règles que
+    l'exécution (`analyser_les_appels`), exprimées comme une consigne. `calculs` : `({"nom", "entrees"}, …)` retenus."""
+    refus, appels = analyser_les_appels(feature)
+    if refus:
+        return [refus]
+    retenus = {c["nom"]: tuple(c.get("entrees") or ()) for c in calculs or ()}
+    fautes = []
+    for nom, saisies in appels:
+        if nom not in retenus:
+            fautes.append(f"« {nom} » n'est pas un calcul retenu pour ce cas ({', '.join(f'« {n} »' for n in retenus) or 'aucun'})")
+            continue
+        for entree in retenus[nom]:
+            if entree not in saisies:
+                fautes.append(f"le calcul « {nom} » prend {{{{{entree}}}}} : saisis-la dans une action (Soit/Quand/Et) AVANT "
+                              f"la vérification, dans ce même scénario — jamais une valeur écrite en dur")
+    appeles = {nom for nom, _ in appels}
+    for nom in retenus:
+        if nom not in appeles:
+            fautes.append(f"une personne a retenu le calcul « {nom} » : vérifie la valeur avec « Alors le nombre affiché pour "
+                          f"\"<libellé>\" vaut le résultat calculé \"{nom}\" »")
+    return fautes
+
+
 def variables(noms: list[str]) -> dict[str, str]:
     """Nom du calcul → variable réservée qui portera sa valeur (`tp_calcul_1`, `tp_calcul_2`…)."""
     return {nom: f"{PREFIXE}{rang}" for rang, nom in enumerate(noms, start=1)}
@@ -115,8 +140,8 @@ def reecrire(feature: str, par_nom: Mapping[str, str]) -> str:
     return _APPEL.sub(lambda m: m.group(1) + '"{{' + par_nom[m.group(2).strip()] + '}}"', feature)
 
 
-def valeurs(fiches: Mapping[str, dict], par_nom: Mapping[str, str], valeurs_de_l_iteration: Mapping[str, str]
-            ) -> dict[str, tuple[str, str, list[str]]]:
+def valeurs(fiches: Mapping[str, dict], par_nom: Mapping[str, str], valeurs_de_l_iteration: Mapping[str, str],
+            *, lire_nombre=None) -> dict[str, tuple[str, str, list[str]]]:
     """Variable réservée → (valeur écrite avec son unité, origine montrée au rapport, détail du calcul). Lève
     `CalculNonJouable` au premier calcul impossible."""
     sortie = {}
@@ -127,7 +152,7 @@ def valeurs(fiches: Mapping[str, dict], par_nom: Mapping[str, str], valeurs_de_l
                                    "ou régénérez le test")
         entrees = {e: valeurs_de_l_iteration[e] for e in calcul.entrees_attendues(fiche) if e in valeurs_de_l_iteration}
         try:
-            resultat = calcul.calculer(fiche, entrees)
+            resultat = calcul.calculer(fiche, entrees, lire_nombre=lire_nombre)
         except calcul.CalculImpossible as exc:
             raise CalculNonJouable(f"calcul « {nom} » : {exc}") from exc
         texte = format(resultat.resultat, "f").replace(".", ",")

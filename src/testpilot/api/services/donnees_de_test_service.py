@@ -407,6 +407,13 @@ def preparer_le_script(conn, execution_id: int, case_id: int, version_id: int, m
     return Script(dossier=dossier, parametres_joues=joues)
 
 
+def _lire_une_donnee(texte: str):
+    """Une donnée de test écrite comme à l'écran (« 19,99 € ») : le lecteur de nombres de l'exécution, unité ignorée pour
+    le calcul. Ambiguë : `LectureImpossible`, jamais devinée."""
+    from testpilot.api.services.lecteur_de_nombres import lecteur
+    return lecteur().lire_nombre(texte, avec_unite=True).valeur
+
+
 def _avec_les_calculs(conn, case_id: int, feature: str, figes: dict) -> tuple[str, dict] | str:
     """Étape 7 : (test réécrit, valeurs figées complétées des valeurs calculées) — ou le message du blocage. Rien à faire si
     le test n'appelle aucun calcul (le chemin d'avant, octet pour octet)."""
@@ -460,7 +467,7 @@ def _avec_les_calculs(conn, case_id: int, feature: str, figes: dict) -> tuple[st
         valeurs = ligne.setdefault("valeurs", {})
         brutes = {n: str(v.get("valeur", "")) for n, v in valeurs.items() if isinstance(v, dict)}
         try:
-            calculees = calcul_au_lancement.valeurs(fiches, par_nom, brutes)
+            calculees = calcul_au_lancement.valeurs(fiches, par_nom, brutes, lire_nombre=_lire_une_donnee)
         except calcul_au_lancement.CalculNonJouable as exc:
             jeu = ligne.get("jeu") or "Par défaut"
             return f"Données de test (ligne « {jeu} ») : {exc}.{fin}"

@@ -143,7 +143,8 @@ def test_une_entree_manquante_ou_une_division_par_zero_ne_donnent_aucun_resultat
         calcul.calculer(fiche, {"quantite": "3"})
     division = calcul.valider_fiche({
         "nom": "Moyenne", "resultat": "m", "elements": [{"nom": "a", "source": "x"}, {"nom": "n", "source": "x"}],
-        "etapes": [{"resultat": "m", "operation": "diviser", "valeur": "a", "par": "n"}],
+        "etapes": [{"resultat": "q", "operation": "diviser", "valeur": "a", "par": "n"},
+                   {"resultat": "m", "operation": "arrondir", "valeur": "q", "decimales": 2, "mode": "au_plus_proche"}],
         "exemples": [{"entrees": {"a": "10", "n": "0"}, "attendu": "0"}]})
     with pytest.raises(calcul.CalculImpossible, match="division par zéro"):
         calcul.calculer(division, {"a": "10", "n": "0"})
@@ -155,8 +156,9 @@ def test_les_entrees_attendues_sont_les_elements_sans_valeur_fixe():
 
 
 def test_falsifiable_une_division_non_arrondie_ne_donne_pas_de_resultat():
-    """Revue du 2026-10-23 : 10 ÷ 3 comparé à « 3,33 » à l'écran serait un faux défaut de l'application."""
-    fiche = calcul.valider_fiche({
+    """Revue du 2026-10-23 : 10 ÷ 3 comparé à « 3,33 » à l'écran serait un faux défaut de l'application. Une telle fiche est
+    refusée dès son CHOIX (porteur : « pas de test bloqué ») ; le filet du calcul reste, prouvé sur une proposition."""
+    fiche = calcul.valider_fiche(proposition=True, fiche={
         "nom": "Part", "resultat": "r", "elements": [{"nom": "a", "source": "x"}, {"nom": "n", "source": "x"}],
         "etapes": [{"resultat": "r", "operation": "diviser", "valeur": "a", "par": "n"}],
         "exemples": [{"entrees": {"a": "10", "n": "4"}, "attendu": "2,5"}]})
