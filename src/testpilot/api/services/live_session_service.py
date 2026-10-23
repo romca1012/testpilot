@@ -60,7 +60,7 @@ _RELEVE_EVENEMENTS_MS = 50
 _CHAMPS_FORMULAIRE_CONNEXION = ("champ_identifiant", "champ_mdp", "bouton_soumission")
 
 # Les commandes dont `attendre_clics_traites` attend le traitement (étape 7b : un parcours en a quatre).
-_COMMANDES_COMPTEES = frozenset({"clic", "saisie", "choix", "verifier"})
+_COMMANDES_COMPTEES = frozenset({"clic", "saisie", "choix", "verifier", "commencer"})
 
 
 # Étape 7b (A109) : un clic sur un champ ne fait que le désigner — la valeur arrive ensuite par « saisie » ou « choix ».
@@ -84,7 +84,33 @@ _CHAMP_SOUS_LE_POINT_JS = r"""
       || champ.getAttribute('data-testid') || '',
     options: tag === 'select'
       ? Array.from(champ.options).map(o => (o.label || o.textContent || '').trim()).filter(Boolean).slice(0, 200) : [],
+    secret: (champ.getAttribute('type') || '').toLowerCase() === 'password'
+      || /(current|new)-password/.test(champ.getAttribute('autocomplete') || ''),
+    // Une liste à recherche (autocomplétion, many2one…) : remplir le texte ne CHOISIT pas l'enregistrement — l'étape
+    // générique « je renseigne le champ » n'y suffit pas, l'agent écrira l'étape qui convient (revue du 2026-10-23).
+    relation: (champ.getAttribute('role') || '') === 'combobox' || champ.hasAttribute('aria-autocomplete')
+      || !!champ.closest('.o_field_many2one'),
   };
+}
+"""
+
+# Le champ qui reçoit VRAIMENT la saisie est-il un mot de passe (même affiché en clair) ?
+_EST_SECRET_JS = ("el => (el.getAttribute('type') || '').toLowerCase() === 'password'"
+                  " || /(current|new)-password/.test(el.getAttribute('autocomplete') || '')")
+
+# Rôles dont le nom accessible est un LIBELLÉ (texte du bouton, étiquette du champ), pas une valeur affichée. Pour tout
+# autre élément (une cellule, un montant, un statut), le nom accessible EST son contenu : jamais gardé (A39).
+_ROLES_A_LIBELLE = frozenset({"button", "link", "tab", "textbox", "searchbox", "spinbutton", "combobox", "checkbox",
+                              "radio", "switch", "slider", "listbox", "menuitem", "menuitemcheckbox", "menuitemradio"})
+
+# La désignation TECHNIQUE de l'élément visé (ou de son plus proche ancêtre qui en a une) — jamais son texte.
+_DESIGNATION_TECHNIQUE_JS = r"""
+({x, y}) => {
+  const el = document.elementFromPoint(x, y);
+  const porteur = el && el.closest('[data-test], [data-testid], [name], [id]');
+  if (!porteur) return '';
+  return (porteur.getAttribute('data-test') || porteur.getAttribute('data-testid') || porteur.getAttribute('name')
+          || porteur.getAttribute('id') || '').slice(0, 120);
 }
 """
 
@@ -121,6 +147,7 @@ class SessionLive:
         self._connexion = connexion
         self._actions: list[dict] = []
         self._champ_actif: dict | None = None
+        self._capture_parcours = True   # faux après une connexion automatique en échec, jusqu'à « commencer »
         self.entrantes: queue.Queue[dict] = queue.Queue()
         self.sortantes: queue.Queue[dict] = queue.Queue()
         self.pret = threading.Event()
@@ -193,6 +220,7 @@ class SessionLive:
             self._etapes = []
             self._login_form = {}
             self._actions = []
+        self._champ_actif = None
 
     def retirer_action(self, rang: int) -> bool:
         """Étape 7b : la personne retire une action de son parcours (un geste de trop). N'appeler qu'après
@@ -327,8 +355,9 @@ class SessionLive:
 
     def _se_connecter(self, page, contexte_navigateur) -> None:
         """Connexion AUTOMATIQUE avec le compte du projet, la même que l'exploration (`crawl_relogin_hook`) : la personne
-        commence là où le test commencera, et son parcours ne contient jamais la connexion (ni le mot de passe). En échec,
-        elle le voit et peut se connecter à la main (un mot de passe saisi n'est jamais gardé, voir `_saisir`)."""
+        commence là où le test commencera, et son parcours ne contient jamais la connexion. En échec (revue du 2026-10-23),
+        rien n'est capturé tant qu'elle ne dit pas « je suis connecté » (`commencer`) : se connecter à la main n'entre
+        jamais dans le parcours — un identifiant y serait gardé, et le test rejouerait un formulaire déjà franchi."""
         if not self._connexion:
             return
         racine = Path(__file__).resolve().parents[4]
@@ -345,9 +374,12 @@ class SessionLive:
             # Le type d'erreur au journal, jamais son texte à l'écran (il peut citer l'identifiant).
             logger.warning("parcours (projet %s) : connexion automatique impossible (%s)",
                            self._project.get("id"), type(exc).__name__)
+            self._capture_parcours = False
             self.sortantes.put({"type": "connexion_auto", "ok": False})
 
     def _garder(self, page, action: dict) -> None:
+        if not self._capture_parcours:
+            return   # connexion à la main en cours : le geste part à la page, jamais au parcours
         try:
             page.wait_for_load_state("networkidle", timeout=_ATTENTE_APRES_ACTION_MS)
         except PlaywrightTimeoutError:
@@ -368,6 +400,13 @@ class SessionLive:
             self._saisir(page, str(commande.get("valeur") or ""))
         elif type_ == "choix":
             self._choisir(page, str(commande.get("valeur") or ""))
+        elif type_ == "commencer":
+            # « Je suis connecté » : la capture commence ICI, sur une liste vide.
+            with self._verrou_etapes:
+                self._actions = []
+            self._champ_actif = None
+            self._capture_parcours = True
+            self.sortantes.put({"type": "capture_commencee"})
 
     def _parcours_clic(self, page, x: float, y: float) -> None:
         try:
@@ -382,8 +421,8 @@ class SessionLive:
             # ambigu pour AccName reste désignable : l'étape écrite le retrouve par son NOM TECHNIQUE.
             self._champ_actif = {"role": (resolu or {}).get("role") or ("combobox" if champ["tag"] == "select" else "textbox"),
                                  "nom": (resolu or {}).get("name") or champ["nom_technique"],
-                                 "champ": champ["nom_technique"], "secret": champ["type"] == "password",
-                                 "liste": champ["tag"] == "select"}
+                                 "champ": champ["nom_technique"], "secret": champ["secret"],
+                                 "liste": champ["tag"] == "select", "relation": champ["relation"]}
             self.sortantes.put({"type": "champ_designe", "nom": self._champ_actif["nom"],
                                 "secret": self._champ_actif["secret"], "options": champ["options"]})
             return
@@ -397,28 +436,22 @@ class SessionLive:
         self._garder(page, {"action": "clic", "role": resolu["role"], "nom": resolu["name"]})
 
     def _parcours_verifier(self, page, x: float, y: float) -> None:
-        """« C'est ici que je vérifie » : l'élément est désigné, JAMAIS cliqué, et son contenu n'est pas lu — le résultat
-        attendu vient du cas validé (A39 : un bug présent ce jour-là deviendrait l'attendu)."""
+        """« C'est ici que je vérifie » : l'élément est désigné, JAMAIS cliqué, et RIEN de ce qu'il affiche n'est gardé — le
+        résultat attendu vient du cas validé (A39). Revue du 2026-10-23 (bloquant) : le texte d'un montant désigné partait
+        comme « nom » à l'agent, qui l'écrivait comme attendu (un bug du jour devenait conforme). Seuls restent : le nom
+        accessible d'un élément dont le nom est un LIBELLÉ (bouton, champ…), sinon une désignation technique (`data-test`,
+        `name`, `id`)."""
         try:
             resolu = accname.calculer(page, x, y)
-        except accname.ElementIntrouvableError as exc:
-            self.sortantes.put({"type": "clic_ambigu", "detail": str(exc)})
-            return
+        except accname.ElementIntrouvableError:
+            resolu = None   # ambigu par son nom : la désignation technique peut encore le distinguer
+        if resolu is None or resolu["role"] not in _ROLES_A_LIBELLE:
+            technique = page.evaluate(_DESIGNATION_TECHNIQUE_JS, {"x": x, "y": y})
+            resolu = {"role": "element", "name": technique} if technique else None
         if resolu is None:
-            resolu = self._texte_sous_le_point(page, x, y)
-        if resolu is None:
-            self.sortantes.put({"type": "clic_non_enregistre", "raison": "element_non_reconnu"})
+            self.sortantes.put({"type": "clic_non_enregistre", "raison": "element_sans_designation"})
             return
         self._garder(page, {"action": "verifier", "role": resolu["role"], "nom": resolu["name"]})
-
-    @staticmethod
-    def _texte_sous_le_point(page, x: float, y: float) -> dict | None:
-        """Un montant, un statut : rarement un élément interactif. Son libellé le plus proche (texte court de l'élément
-        visé) suffit à le désigner pour l'agent, qui écrit la vérification — jamais une valeur attendue."""
-        texte = page.evaluate("({x, y}) => { const el = document.elementFromPoint(x, y);"
-                              " return el ? (el.innerText || el.textContent || '').trim().slice(0, 120) : ''; }",
-                              {"x": x, "y": y})
-        return {"role": "texte", "name": texte} if texte else None
 
     def _saisir(self, page, valeur: str) -> None:
         champ = self._champ_actif
@@ -429,10 +462,23 @@ class SessionLive:
         if actif is None:
             self.sortantes.put({"type": "erreur", "detail": "aucun_champ_designe"})
             return
-        actif.fill(valeur)
-        # Jamais un secret : la valeur d'un champ mot de passe ne quitte pas cette fonction.
+        # Revue du 2026-10-23 : le secret se décide AUSSI au moment de saisir, sur le champ qui reçoit vraiment la valeur
+        # (mot de passe affiché en clair par un bouton « voir », focus déplacé par la page).
+        secret = champ["secret"] or bool(actif.evaluate(_EST_SECRET_JS))
+        try:
+            actif.fill(valeur)
+        except Exception as exc:
+            # Jamais `logger.exception` : le message de Playwright pourrait citer la valeur.
+            logger.warning("parcours (projet %s) : saisie impossible (%s)", self._project.get("id"), type(exc).__name__)
+            self.sortantes.put({"type": "erreur", "detail": "saisie_impossible"})
+            return
+        if secret:
+            # Un mot de passe n'entre jamais dans le parcours : ni sa valeur, ni l'action (l'agent ne pourrait que l'inventer).
+            self.sortantes.put({"type": "clic_non_enregistre", "raison": "mot_de_passe"})
+            self._champ_actif = None
+            return
         self._garder(page, {"action": "saisie", "role": champ["role"], "nom": champ["nom"], "champ": champ["champ"],
-                            "secret": champ["secret"], "valeur": "" if champ["secret"] else valeur})
+                            "secret": False, "valeur": valeur, "relation": champ["relation"]})
 
     def _choisir(self, page, valeur: str) -> None:
         champ = self._champ_actif
@@ -440,7 +486,12 @@ class SessionLive:
         if champ is None or not champ["liste"] or actif is None:
             self.sortantes.put({"type": "erreur", "detail": "aucune_liste_designee"})
             return
-        actif.select_option(label=valeur)
+        try:
+            actif.select_option(label=valeur)
+        except Exception as exc:
+            logger.warning("parcours (projet %s) : choix impossible (%s)", self._project.get("id"), type(exc).__name__)
+            self.sortantes.put({"type": "erreur", "detail": "choix_impossible"})
+            return
         self._garder(page, {"action": "choix", "role": champ["role"], "nom": champ["nom"], "champ": champ["champ"],
                             "secret": False, "valeur": valeur})
 

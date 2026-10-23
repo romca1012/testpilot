@@ -57,7 +57,7 @@ _TIMEOUT_ATTENTE_CLICS_SECONDES = 10
 
 # Ce que la page envoie au navigateur. `saisie`, `choix`, `verifier` : seulement en mode parcours (étape 7b) — le
 # service de la connexion du projet les ignore.
-COMMANDES_DU_NAVIGATEUR = frozenset({"clic", "saisie", "choix", "verifier"})
+COMMANDES_DU_NAVIGATEUR = frozenset({"clic", "saisie", "choix", "verifier", "commencer"})
 
 
 @router.websocket("/{project_id}/live-session/ws")
@@ -166,8 +166,12 @@ async def _piloter(websocket: WebSocket, service: SessionLive, confirmer) -> Non
             elif type_ == "retirer":
                 if not await _attendre_clics_ou_signaler(websocket, service):
                     continue
-                if service.retirer_action(int(message.get("rang", -1))):
-                    await websocket.send_json({"type": "action_retiree", "rang": int(message["rang"])})
+                rang = message.get("rang")
+                # Un rang mal formé ne fait jamais tomber la session (et perdre le parcours en cours).
+                if isinstance(rang, int) and not isinstance(rang, bool) and service.retirer_action(rang):
+                    await websocket.send_json({"type": "action_retiree", "rang": rang})
+                else:
+                    await websocket.send_json({"type": "erreur", "detail": "rang_invalide"})
             elif type_ == "confirmer":
                 if not await _attendre_clics_ou_signaler(websocket, service):
                     continue

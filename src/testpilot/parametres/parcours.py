@@ -19,6 +19,15 @@ import re
 from testpilot.parametres.calcul_au_lancement import _scenarios
 
 ACTIONS = ("clic", "saisie", "choix", "verifier")
+# Le libellé français de chaque rôle (CONTINUITE §4.7) — tous ceux que la capture peut rendre (`accname._ROLES_INTERACTIFS`,
+# plus `element` : un élément désigné techniquement). Le même tableau côté écran : `EnregistrerParcours.vue`.
+LIBELLES_DES_ROLES = {
+    "button": "bouton", "link": "lien", "tab": "onglet", "textbox": "champ", "searchbox": "champ de recherche",
+    "spinbutton": "champ numérique", "combobox": "liste", "listbox": "liste", "option": "option",
+    "checkbox": "case à cocher", "radio": "bouton radio", "switch": "interrupteur", "slider": "curseur",
+    "menuitem": "menu", "menuitemcheckbox": "menu", "menuitemradio": "menu", "summary": "bloc dépliant",
+    "element": "élément",
+}
 ACTIONS_MAX = 200          # au-delà, ce n'est plus UN cas : un parcours à découper
 _INTERDITS = re.compile(r'["|\r\n]')   # casseraient l'écriture d'une étape (`"…"`, colonne d'un tableau, une ligne)
 
@@ -45,13 +54,19 @@ def normaliser(actions) -> list[dict]:
         action = {"action": brute["action"], "role": _texte(brute.get("role"), 40), "nom": _texte(brute.get("nom")),
                   "page": _texte(brute.get("page"), 300)}
         if brute["action"] in ("saisie", "choix"):
+            if brute.get("secret"):
+                # Jamais un mot de passe : ni sa valeur, ni l'action (revue du 2026-10-23 — l'agent ne pourrait que
+                # l'inventer ; la connexion est faite par TestPilot, hors du parcours).
+                continue
             action["champ"] = _texte(brute.get("champ")) or action["nom"]
-            action["secret"] = bool(brute.get("secret"))
-            # Jamais un secret : la valeur d'un champ mot de passe n'est pas gardée, même si on l'envoie.
-            action["valeur"] = "" if action["secret"] else _texte(brute.get("valeur"), 500)
+            action["secret"] = False
+            action["valeur"] = _texte(brute.get("valeur"), 500)
+            action["relation"] = bool(brute.get("relation"))
         if not (action["nom"] or action.get("champ")):
             raise ParcoursInvalide(f"action {i} : l'élément n'a pas de nom")
         sortie.append(action)
+    if not sortie:
+        raise ParcoursInvalide("le parcours ne contient aucune action")
     return sortie
 
 
@@ -69,7 +84,10 @@ def etape_de_test(action: dict) -> str | None:
         if action["role"] == "tab" and _ecrivable(action["nom"]):
             return f'je clique sur l\'onglet "{action["nom"]}"'
         return None
-    if a == "saisie" and not action.get("secret") and _ecrivable(action["champ"]) and not _INTERDITS.search(action["valeur"]):
+    # Une liste à recherche (autocomplétion, many2one) : remplir le texte ne choisit pas l'enregistrement — l'agent écrit
+    # l'étape propre à l'application (revue du 2026-10-23 : forcer l'étape générique aurait fait échouer le test).
+    if a == "saisie" and not action.get("secret") and not action.get("relation") and _ecrivable(action["champ"]) \
+            and not _INTERDITS.search(action["valeur"]):
         return f'je renseigne le champ "{action["champ"]}" avec la valeur "{action["valeur"]}"'
     if a == "choix" and _ecrivable(action["champ"], action["valeur"]):
         return f'je sélectionne "{action["valeur"]}" dans le champ "{action["champ"]}"'
@@ -92,15 +110,13 @@ def pour_l_agent(actions: list[dict]) -> dict:
 def lire(action: dict) -> str:
     """Une action en français, pour le mode opératoire d'un cas manuel et pour l'agent."""
     a, nom = action["action"], action.get("nom") or action.get("champ") or "?"
-    role = {"button": "bouton", "link": "lien", "tab": "onglet", "textbox": "champ", "combobox": "liste",
-            "checkbox": "case à cocher", "radio": "bouton radio"}.get(action.get("role", ""), action.get("role") or "élément")
+    role = LIBELLES_DES_ROLES.get(action.get("role", ""), "élément")   # jamais un rôle ARIA brut à l'écran (§4.7)
     if a == "clic":
         return f"Cliquer sur « {nom} » ({role})"
-    if a == "saisie":
-        cible = action.get("nom") or action.get("champ")
-        return f"Saisir le mot de passe dans « {cible} »" if action.get("secret") else f"Saisir « {action['valeur']} » dans « {cible} »"
-    if a == "choix":
+    if a == "choix" or (a == "saisie" and action.get("relation")):
         return f"Choisir « {action['valeur']} » dans « {action.get('nom') or action.get('champ')} »"
+    if a == "saisie":
+        return f"Saisir « {action['valeur']} » dans « {action.get('nom') or action.get('champ')} »"
     return f"Vérifier le résultat attendu sur « {nom} » ({role})"
 
 

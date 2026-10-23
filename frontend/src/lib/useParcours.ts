@@ -13,6 +13,7 @@ export interface ChampDesigne { nom: string; secret: boolean; options: string[] 
 type MessageServeur =
   | { type: 'image'; data: string }
   | { type: 'connexion_auto'; ok: boolean }
+  | { type: 'capture_commencee' }
   | ({ type: 'action_capturee'; rang: number } & ActionParcours)
   | { type: 'champ_designe'; nom: string; secret: boolean; options: string[] }
   | { type: 'action_retiree'; rang: number }
@@ -23,7 +24,16 @@ type MessageServeur =
   | { type: 'fermeture'; raison: string }
   | { type: 'confirme'; actions: number; parcours_id: number }
 
+const NON_ENREGISTRE: Record<string, string> = {
+  element_non_reconnu: 'Élément non reconnu : l\'action a été faite mais pas ajoutée au parcours.',
+  element_sans_designation: 'Cet élément n\'a pas d\'identifiant : choisissez-en un autre où lire le résultat.',
+  mot_de_passe: 'Mot de passe saisi, mais jamais enregistré dans le parcours.',
+}
+
 const ERREURS: Record<string, string> = {
+  saisie_impossible: 'La saisie n\'a pas pu se faire dans ce champ.',
+  choix_impossible: 'Ce choix n\'a pas pu se faire.',
+  rang_invalide: 'Action introuvable.',
   aucun_champ_designe: 'Cliquez d\'abord sur le champ à remplir.',
   aucune_liste_designee: 'Cliquez d\'abord sur la liste.',
   clics_en_attente: 'Une action est encore en cours — réessayez dans un instant.',
@@ -36,6 +46,8 @@ export function useParcours(caseId: number | string) {
   const actions = ref<ActionParcours[]>([])
   const champ = ref<ChampDesigne | null>(null)
   const connexionAuto = ref<boolean | null>(null)
+  // Connexion automatique en échec : rien n'est capturé avant « Je suis connecté » (la connexion n'entre jamais au parcours).
+  const captureCommencee = ref(false)
   const avertissement = ref('')        // clic ambigu ou non retenu : dit, jamais silencieux
   const erreur = ref('')
   const avertissementInactivite = ref<number | null>(null)
@@ -72,6 +84,11 @@ export function useParcours(caseId: number | string) {
       case 'connexion_auto':
         connexionAuto.value = m.ok
         break
+      case 'capture_commencee':
+        captureCommencee.value = true
+        actions.value = []
+        champ.value = null
+        break
       case 'action_capturee': {
         const { type: _t, rang: _r, ...action } = m
         actions.value = [...actions.value, action]
@@ -91,7 +108,8 @@ export function useParcours(caseId: number | string) {
         avertissement.value = 'Plusieurs éléments identiques à cet endroit : l\'action n\'a pas été ajoutée.'
         break
       case 'clic_non_enregistre':
-        avertissement.value = 'Élément non reconnu : l\'action a été faite mais pas ajoutée au parcours.'
+        avertissement.value = NON_ENREGISTRE[m.raison] || NON_ENREGISTRE.element_non_reconnu
+        if (m.raison === 'mot_de_passe') champ.value = null
         break
       case 'erreur':
         erreur.value = m.message || ERREURS[m.detail] || m.detail
@@ -123,6 +141,7 @@ export function useParcours(caseId: number | string) {
     actions.value = []
     champ.value = null
     connexionAuto.value = null
+    captureCommencee.value = false
     avertissement.value = ''
     erreur.value = ''
     avertissementInactivite.value = null
@@ -144,6 +163,7 @@ export function useParcours(caseId: number | string) {
   const saisir = (valeur: string) => envoyer({ type: 'saisie', valeur })
   const choisir = (valeur: string) => envoyer({ type: 'choix', valeur })
   const retirer = (rang: number) => envoyer({ type: 'retirer', rang })
+  const commencer = () => envoyer({ type: 'commencer' })
   const enregistrer = () => envoyer({ type: 'confirmer' })   // l'état ne change qu'à l'accusé du serveur
 
   function annuler() {
@@ -156,7 +176,7 @@ export function useParcours(caseId: number | string) {
   onUnmounted(fermerSocket)
 
   return {
-    statut, image, actions, champ, connexionAuto, avertissement, erreur, avertissementInactivite, raisonFermeture,
-    demarrer, clic, verifier, saisir, choisir, retirer, enregistrer, annuler,
+    statut, image, actions, champ, connexionAuto, captureCommencee, avertissement, erreur, avertissementInactivite,
+    raisonFermeture, demarrer, clic, verifier, saisir, choisir, retirer, commencer, enregistrer, annuler,
   }
 }

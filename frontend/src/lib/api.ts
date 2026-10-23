@@ -951,7 +951,7 @@ export function liveSessionWsUrl(projectId: number | string, token: string): str
 export interface ActionParcours {
   action: 'clic' | 'saisie' | 'choix' | 'verifier'
   role: string; nom: string; page: string
-  champ?: string; secret?: boolean; valeur?: string
+  champ?: string; secret?: boolean; valeur?: string; relation?: boolean
 }
 
 export interface ParcoursEnregistre {

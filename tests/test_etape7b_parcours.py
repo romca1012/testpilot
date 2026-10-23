@@ -42,14 +42,28 @@ def test_une_action_que_la_bibliotheque_ne_rejoue_pas_reste_a_ecrire_par_l_agent
     assert sortie["a_verifier"] == [{"role": "cell", "nom": "Total", "page": "/web#commande/7"}]
 
 
-def test_falsifiable_la_valeur_d_un_mot_de_passe_n_est_jamais_gardee():
-    action = parcours.normaliser([{"action": "saisie", "role": "textbox", "nom": "Mot de passe", "champ": "password",
-                                   "valeur": "S3cret!", "secret": True}])[0]
+def test_falsifiable_un_mot_de_passe_n_entre_jamais_dans_le_parcours():
+    actions = parcours.normaliser([_CLIC, {"action": "saisie", "role": "textbox", "nom": "Mot de passe",
+                                           "champ": "password", "valeur": "S3cret!", "secret": True}])
 
-    assert action["valeur"] == ""
-    assert "S3cret" not in repr(action)
-    assert parcours.etape_de_test(action) is None
-    assert parcours.lire(action) == "Saisir le mot de passe dans « Mot de passe »"
+    assert actions == parcours.normaliser([_CLIC])
+    assert "S3cret" not in repr(actions)
+    with pytest.raises(parcours.ParcoursInvalide):   # rien d'autre : le parcours est vide
+        parcours.normaliser([{"action": "saisie", "nom": "Mot de passe", "valeur": "x", "secret": True}])
+
+
+def test_une_liste_a_recherche_n_est_pas_rejouee_par_l_etape_generique():
+    action = parcours.normaliser([{**_SAISIE, "nom": "Client", "champ": "partner_id", "valeur": "Azure",
+                                   "relation": True}])[0]
+
+    assert parcours.etape_de_test(action) is None   # l'agent écrit l'étape propre à l'application
+    assert parcours.lire(action) == "Choisir « Azure » dans « Client »"
+
+
+def test_aucun_role_brut_a_l_ecran():
+    for role in ("spinbutton", "searchbox", "menuitem", "summary", "element", "inconnu"):
+        texte = parcours.lire({"action": "clic", "role": role, "nom": "X"})
+        assert role not in texte, texte
 
 
 @pytest.mark.parametrize("actions", [[], "x", [{"action": "glisser", "nom": "A"}], [{"action": "clic", "nom": ""}],
@@ -64,7 +78,7 @@ def test_le_mode_operatoire_d_un_cas_manuel_se_lit_etape_par_etape():
         "1. Cliquer sur « Nouveau » (bouton)",
         "2. Saisir « 3 » dans « Quantité »",
         "3. Choisir « Azure » dans « Client »",
-        "4. Vérifier le résultat attendu sur « Total » (cell)",
+        "4. Vérifier le résultat attendu sur « Total » (élément)",
     ]
 
 
@@ -163,7 +177,7 @@ def test_l_agent_recoit_les_actions_fixees_et_l_element_a_verifier_jamais_ce_que
 
     assert "Parcours enregistré" not in sans
     assert '`je clique sur le bouton "Nouveau"`' in avec
-    assert "à écrire — Cliquer sur « Ventes » (menuitem)" in avec
+    assert "à écrire — Cliquer sur « Ventes » (menu)" in avec
     assert "« Total »" in avec and "RÉSULTAT ATTENDU du cas" in avec
 
 

@@ -94,4 +94,16 @@ describe('useParcours', () => {
     ws.recevoir({ type: 'erreur', detail: 'aucun_champ_designe' })
     expect(p.erreur.value).toBe('Cliquez d\'abord sur le champ à remplir.')
   })
+  it('connexion à la main : « Je suis connecté » vide la liste et commence la capture', async () => {
+    const p = monter(12)
+    await p.demarrer()
+    const ws = FakeWebSocket.instances[0]
+    ws.recevoir({ type: 'connexion_auto', ok: false })
+    p.commencer()
+    expect(ws.sent.at(-1)).toEqual({ type: 'commencer' })
+    ws.recevoir({ type: 'capture_commencee' })
+    expect(p.captureCommencee.value).toBe(true)
+    ws.recevoir({ type: 'clic_non_enregistre', raison: 'mot_de_passe' })
+    expect(p.avertissement.value).toContain('jamais enregistré')
+  })
 })

@@ -17,8 +17,8 @@ const pid = route.params.pid as string
 const caseId = route.params.id as string
 
 const {
-  statut, image, actions, champ, connexionAuto, avertissement, erreur, avertissementInactivite, raisonFermeture,
-  demarrer, clic, verifier, saisir, choisir, retirer, enregistrer, annuler,
+  statut, image, actions, champ, connexionAuto, captureCommencee, avertissement, erreur, avertissementInactivite,
+  raisonFermeture, demarrer, clic, verifier, saisir, choisir, retirer, commencer, enregistrer, annuler,
 } = useParcours(caseId)
 
 // Le prochain clic sur l'écran : une action, ou « c'est ici que je vérifie » (une fois, puis retour aux actions).
@@ -56,18 +56,21 @@ function envoyerValeur() {
   valeur.value = ''
 }
 
+// Même tableau que `parametres/parcours.py::LIBELLES_DES_ROLES` — jamais un rôle brut à l'écran (§4.7).
 const ROLES: Record<string, string> = {
-  button: 'bouton', link: 'lien', tab: 'onglet', textbox: 'champ', combobox: 'liste', checkbox: 'case à cocher',
-  radio: 'bouton radio', menuitem: 'menu', texte: 'texte',
+  button: 'bouton', link: 'lien', tab: 'onglet', textbox: 'champ', searchbox: 'champ de recherche',
+  spinbutton: 'champ numérique', combobox: 'liste', listbox: 'liste', option: 'option', checkbox: 'case à cocher',
+  radio: 'bouton radio', switch: 'interrupteur', slider: 'curseur', menuitem: 'menu', menuitemcheckbox: 'menu',
+  menuitemradio: 'menu', summary: 'bloc dépliant', element: 'élément',
 }
 
 // Même lecture que `parametres/parcours.py::lire` (le mode opératoire enregistré vient du serveur).
 function lire(a: ActionParcours): string {
   const nom = a.nom || a.champ || '?'
-  const role = ROLES[a.role] || a.role || 'élément'
+  const role = ROLES[a.role] || 'élément'
   if (a.action === 'clic') return `Cliquer sur « ${nom} » (${role})`
-  if (a.action === 'saisie') return a.secret ? `Saisir le mot de passe dans « ${nom} »` : `Saisir « ${a.valeur} » dans « ${nom} »`
-  if (a.action === 'choix') return `Choisir « ${a.valeur} » dans « ${nom} »`
+  if (a.action === 'choix' || (a.action === 'saisie' && a.relation)) return `Choisir « ${a.valeur} » dans « ${nom} »`
+  if (a.action === 'saisie') return `Saisir « ${a.valeur} » dans « ${nom} »`
   return `Vérifier le résultat attendu sur « ${nom} » (${role})`
 }
 
@@ -102,9 +105,11 @@ onMounted(demarrer)
 
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
       <Card :dense="true" class="overflow-hidden">
-        <p v-if="connexionAuto === false" class="mb-3 text-xs text-warning" data-testid="connexion-auto-ko">
-          Connexion automatique impossible : connectez-vous, puis retirez ces actions de la liste.
-        </p>
+        <div v-if="connexionAuto === false && !captureCommencee" class="mb-3 flex items-center justify-between gap-3 text-xs text-warning"
+             data-testid="connexion-auto-ko">
+          <span>Connexion automatique impossible : connectez-vous ici. Rien n'est enregistré pendant ce temps.</span>
+          <Button size="sm" variant="secondary" :disabled="statut !== 'en_direct'" @click="commencer">Je suis connecté</Button>
+        </div>
 
         <div v-if="statut === 'connexion'"
              class="flex aspect-video items-center justify-center rounded-lg border border-dashed border-border bg-surface-raised">
@@ -162,7 +167,7 @@ onMounted(demarrer)
                    :aria-label="`Valeur de ${champ.nom}`" />
             <Button size="sm" type="submit">Saisir</Button>
           </form>
-          <p v-if="champ.secret" class="mt-1 text-xs text-subtle-foreground">Mot de passe : il n'est jamais gardé.</p>
+          <p v-if="champ.secret" class="mt-1 text-xs text-subtle-foreground">Mot de passe : saisi, mais jamais enregistré.</p>
         </div>
 
         <p v-if="!actions.length" class="mt-3 text-xs text-subtle-foreground">

@@ -619,8 +619,12 @@ def _section_parcours(parcours: dict) -> list[str]:
     for rang, etape in enumerate(parcours.get("etapes") or [], start=1):
         lignes.append(f"{rang}. `{etape['etape']}`" if etape.get("etape")
                       else f"{rang}. à écrire — {etape.get('description', '')}")
+    from testpilot.parametres.parcours import LIBELLES_DES_ROLES
+
     for cible in parcours.get("a_verifier") or []:
-        lignes.append(f"- Vérification : la personne regarde « {cible.get('nom', '')} » ({cible.get('role', '')}). Écris "
+        # `nom` : un libellé (bouton, champ) ou une désignation technique — jamais ce que l'élément affichait (A39).
+        role = LIBELLES_DES_ROLES.get(cible.get("role", ""), "élément")
+        lignes.append(f"- Vérification : la personne regarde « {cible.get('nom', '')} » ({role}). Écris "
                       "l'« Alors » sur cet élément, avec le RÉSULTAT ATTENDU du cas ci-dessus.")
     return lignes
 
