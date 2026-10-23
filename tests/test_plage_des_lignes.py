@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from testpilot.api import app as app_mod
 from testpilot.api.services import campaign_service
 from testpilot.api.services import donnees_de_test_service as service
-from testpilot.store.repositories import CaseDataRepo, CaseRepo, ModuleRepo, RunRepo, VersionRepo
+from testpilot.store.repositories import CaseDataRepo, CaseRepo, ModuleRepo, ProjectAccountRepo, RunRepo, VersionRepo
 from tests.test_lignes_du_cas import AGE, _execution, _projet, base  # noqa: F401 (fixture)
 
 
@@ -115,3 +115,24 @@ def test_falsifiable_api_une_plage_qu_un_cas_n_a_pas_est_refusee_en_le_nommant(b
 def test_api_refuse_une_plage_incoherente(base, champs):
     pid, cid, _vid, _ = _projet(base)
     assert _creer(pid, cid, **champs).status_code == 422
+
+
+def test_falsifiable_chaque_ligne_de_la_plage_garde_son_compte(base):
+    """Revue : les comptes sont découpés comme les lignes — sinon la ligne 2 serait jouée avec le compte de la ligne 1."""
+    pid, cid, _vid, ids = _projet(base)
+    comptes = [ProjectAccountRepo(base).create(pid, label=f"Compte {n}", username=f"u{n}", password="p") for n in (1, 2, 3)]
+    lignes = CaseDataRepo(base).lignes(cid)
+    CaseDataRepo(base).remplacer(cid, pid, [{**l, "compte_choisi": True, "compte_id": c} for l, c in zip(lignes, comptes)])
+    run_id = RunRepo(base).create(project_id=pid, name="Nuit", case_ids=[cid], plage_des_lignes=(2, 3))
+    service.figer_pour_la_campagne(base, RunRepo(base).get(run_id))
+
+    figees = json.loads(RunRepo(base).get(run_id)["parametres_figes"])["lignes_des_cas"][str(cid)]
+    assert [(l["jeu"], l["compte_id"]) for l in figees] == [("Limite basse", comptes[1]), ("Majeur", comptes[2])]
+
+
+def test_un_plan_a_plusieurs_environnements_garde_la_plage_sur_chaque_execution(base):
+    pid, cid, _vid, _ = _projet(base)
+    _plan, _premiere, runs = service.creer_les_executions(
+        base, project_id=pid, nom="Nuit", jeux=[], environnements=[None, None], case_ids=[cid], plage_des_lignes=(1, 2))
+    assert len(runs) == 2
+    assert all((RunRepo(base).get(r)["ligne_debut"], RunRepo(base).get(r)["ligne_fin"]) == (1, 2) for r in runs)

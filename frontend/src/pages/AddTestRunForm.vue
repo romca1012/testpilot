@@ -178,8 +178,10 @@ async function submit() {
       case_ids: form.value.selection === 'frozen' ? selected.value : [],
       dataset_ids: form.value.mode === 'automatique' ? jeuxCoches.value : [],
       environment_ids: form.value.mode === 'automatique' ? envsCoches.value : [],
-      lignes_des_cas: lignesDesCas.value,
-      ...(lignesDesCas.value === 'plage' ? { ligne_debut: plageDe.value, ligne_fin: plageA.value } : {}),
+      // Revue : le choix des lignes ne part qu'avec une campagne automatique (le bloc est masqué en manuel).
+      lignes_des_cas: form.value.mode === 'automatique' ? lignesDesCas.value : 'toutes',
+      ...(form.value.mode === 'automatique' && lignesDesCas.value === 'plage'
+        ? { ligne_debut: plageDe.value, ligne_fin: plageA.value } : {}),
     })
     // Plusieurs environnements : les exécutions sont regroupées dans un plan — c'est lui qu'on ouvre, toutes y figurent. Les
     // lignes de données de test sont des itérations de la même exécution (A52).
