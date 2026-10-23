@@ -135,12 +135,11 @@ def start_exploration(conn, project_id: int) -> tuple[str, dict]:
     # plusieurs secondes sur une erreur réseau incompréhensible — ou pire, explorerait l'instance
     # par défaut de la machine et écrirait un annuaire qui ne décrit PAS ce projet (2026-07-24).
     # Le message dit quoi corriger.
-    from testpilot.connectors.runtime_env import ConnexionIncomplete, _config_oracle, verifier_connexion
+    from testpilot.connectors.runtime_env import ConnexionIncomplete, verifier_connexion
     try:
         verifier_connexion(projet)
     except ConnexionIncomplete as err:
         raise ExplorationError("no_connection", err.message()) from err
-    from testpilot.store import project_login_recordings
 
     with _RESERVATION:
         if job_en_cours(project_id):
@@ -153,7 +152,18 @@ def start_exploration(conn, project_id: int) -> tuple[str, dict]:
 
     # Étape 4, morceau 6 : les comptes à parcourir, lus AU LANCEMENT — leurs secrets voyagent comme celui du principal, dans
     # les paramètres CHIFFRÉS de la tâche (`BackgroundJobRepo.creer`), jamais en clair, jamais dans un fichier de mesure.
-    return job_id, {"project_id": project_id, "comptes": comptes_pour_l_exploration(conn, project_id), "connexion": {
+    return job_id, {"project_id": project_id, "comptes": comptes_pour_l_exploration(conn, project_id),
+                    "connexion": connexion_du_projet(conn, projet)}
+
+
+def connexion_du_projet(conn, projet: dict) -> dict:
+    """Ce qu'il faut pour ouvrir une session connectée sur l'application du projet (compte principal) — lu UNE fois, avec
+    `conn`. Partagé par l'exploration et l'enregistrement du parcours d'un cas (étape 7b)."""
+    from testpilot.connectors.runtime_env import _config_oracle
+    from testpilot.store import project_login_recordings
+
+    project_id = projet["id"]
+    return {
         "base_url": projet.get("base_url") or "", "database": projet.get("database") or "",
         "username": projet.get("username") or "", "password": projet.get("password") or "",
         "connector_type": projet.get("connector_type") or "odoo",
@@ -174,7 +184,7 @@ def start_exploration(conn, project_id: int) -> tuple[str, dict]:
         "oracle": _config_oracle(projet),
         # Étape 4, morceau 6 : un projet web qui ne se connecte pas ne peut explorer aucun compte (même règle que l'exécution).
         "auth_strategie": projet.get("auth_strategie") or "",
-    }}
+    }
 
 
 def _nouveau_job(project_id: int) -> dict:

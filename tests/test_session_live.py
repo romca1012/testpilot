@@ -57,7 +57,8 @@ def test_consommer_un_jeton_valide_rend_le_projet_et_l_auteur(conn, projet_et_ad
 
     resultat = live_session_tokens.consommer(conn, jeton)
 
-    assert resultat == {"project_id": project_id, "created_by_user_id": user_id}
+    # `case_id` : étape 7b (A109) — `None` pour un jeton de la connexion du projet.
+    assert resultat == {"project_id": project_id, "created_by_user_id": user_id, "case_id": None}
 
 
 def test_falsifiable_un_jeton_deja_consomme_est_refuse_la_deuxieme_fois(conn, projet_et_admin):

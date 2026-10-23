@@ -291,6 +291,7 @@ def create_app() -> FastAPI:
     app.include_router(calculs.router)
     app.include_router(environnements.router)
     app.include_router(live_session.router)
+    app.include_router(live_session.router_parcours)
     app.include_router(modules.router)
     app.include_router(groups.router)
     app.include_router(runs.router)

@@ -844,6 +844,20 @@ class LiveSessionOut(BaseModel):
     expires_at: str
 
 
+class ParcoursOut(BaseModel):
+    """Étape 7b (A109) : un parcours enregistré — ses actions (jamais un mot de passe) et leur lecture en français."""
+    id: int
+    auteur: str
+    created_at: str
+    version_id: int | None = None
+    actions: list[dict]
+    mode_operatoire: list[str]
+
+
+class ParcoursDuCasOut(BaseModel):
+    parcours: list[ParcoursOut]
+
+
 class ExplorationPageOut(BaseModel):
     """Une page telle que le crawl l'a vue — écran d'investigation (§ »routes explorées«).
 

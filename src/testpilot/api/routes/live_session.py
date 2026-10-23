@@ -20,15 +20,18 @@ import contextlib
 import logging
 import queue as queue_mod
 
-from fastapi import APIRouter, Query, WebSocket
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
 from fastapi.exceptions import WebSocketException
 from starlette.websockets import WebSocketDisconnect
 
+from testpilot.api import access, schemas
+from testpilot.api.deps import get_conn
 from testpilot.api.services.live_session_service import SessionLive
+from testpilot.parametres import parcours
 from testpilot.store import project_login_recordings
 from testpilot.store.db import get_initialized_db
-from testpilot.store.live_session_tokens import consommer
-from testpilot.store.repositories import ProjectRepo
+from testpilot.store.live_session_tokens import consommer, creer
+from testpilot.store.repositories import CaseRepo, ParcoursRepo, ProjectRepo, UserRepo
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +55,18 @@ _TIMEOUT_ATTENTE_FERMETURE_SECONDES = 30
 # traitement d'un clic (CDP + calcul AccName, de l'ordre de quelques dizaines de ms).
 _TIMEOUT_ATTENTE_CLICS_SECONDES = 10
 
+# Ce que la page envoie au navigateur. `saisie`, `choix`, `verifier` : seulement en mode parcours (étape 7b) — le
+# service de la connexion du projet les ignore.
+COMMANDES_DU_NAVIGATEUR = frozenset({"clic", "saisie", "choix", "verifier"})
+
 
 @router.websocket("/{project_id}/live-session/ws")
 async def live_session_ws(websocket: WebSocket, project_id: int, token: str = Query(...)):
     conn = get_initialized_db()
     try:
         jeton_info = consommer(conn, token)
-        if jeton_info is None or jeton_info["project_id"] != project_id:
+        # Étape 7b : un jeton de PARCOURS (`case_id`) n'ouvre jamais l'enregistrement de la connexion du projet.
+        if jeton_info is None or jeton_info["project_id"] != project_id or jeton_info.get("case_id") is not None:
             # Même refus, quelle que soit la raison précise (déjà utilisé, expiré, inventé, ou
             # valide mais pour un AUTRE projet) — aucun indice qui aiderait à deviner un jeton
             # valide, même principe que `live_session_tokens.consommer`.
@@ -73,7 +81,8 @@ async def live_session_ws(websocket: WebSocket, project_id: int, token: str = Qu
     service = SessionLive(project=projet, queue_label=f"session-live:{project_id}:{token[:8]}")
     service.demarrer()
     try:
-        await _piloter(websocket, service, project_id, jeton_info)
+        await _piloter(websocket, service,
+                       lambda: _confirmer(websocket, service, project_id, jeton_info))
     finally:
         service.demander_fermeture()
         await asyncio.to_thread(service.attendre_fermeture, _TIMEOUT_ATTENTE_FERMETURE_SECONDES)
@@ -98,8 +107,9 @@ async def _pousser_sorties(websocket: WebSocket, service: SessionLive) -> None:
             return
 
 
-async def _piloter(websocket: WebSocket, service: SessionLive, project_id: int,
-                   jeton_info: dict) -> None:
+async def _piloter(websocket: WebSocket, service: SessionLive, confirmer) -> None:
+    """La boucle commune aux deux enregistrements ; `confirmer` : la coroutine qui sauvegarde (connexion du projet, ou
+    parcours d'un cas — étape 7b)."""
     boucle = asyncio.get_running_loop()
     fin_absolue = boucle.time() + DUREE_ABSOLUE_SECONDES
     dernier_clic_a = boucle.time()
@@ -143,8 +153,8 @@ async def _piloter(websocket: WebSocket, service: SessionLive, project_id: int,
                 return
 
             type_ = message.get("type")
-            if type_ == "clic":
-                # Un clic réel repousse l'échéance d'inactivité — jamais le plafond absolu, qui
+            if type_ in COMMANDES_DU_NAVIGATEUR:
+                # Un geste réel repousse l'échéance d'inactivité — jamais le plafond absolu, qui
                 # reste un filet de sécurité indépendant de l'activité (étape 6, addendum timeout).
                 dernier_clic_a = boucle.time()
                 avertissement_envoye = False
@@ -153,10 +163,16 @@ async def _piloter(websocket: WebSocket, service: SessionLive, project_id: int,
                 if not await _attendre_clics_ou_signaler(websocket, service):
                     continue
                 service.reinitialiser_etapes()
+            elif type_ == "retirer":
+                if not await _attendre_clics_ou_signaler(websocket, service):
+                    continue
+                if service.retirer_action(int(message.get("rang", -1))):
+                    await websocket.send_json({"type": "action_retiree", "rang": int(message["rang"])})
             elif type_ == "confirmer":
                 if not await _attendre_clics_ou_signaler(websocket, service):
                     continue
-                await _confirmer(websocket, service, project_id, jeton_info)
+                if await confirmer() is False:   # parcours refusé : la personne corrige et réessaie
+                    continue
                 return
             elif type_ == "annuler":
                 return
@@ -203,3 +219,91 @@ async def _confirmer(websocket: WebSocket, service: SessionLive, project_id: int
     await websocket.send_json({
         "type": "confirme", "etapes": len(etapes), "formulaire_connexion": login_form is not None,
     })
+
+
+# ── Étape 7b (A109) : le parcours d'un cas ──────────────────────────────────────────────────────
+
+router_parcours = APIRouter(prefix="/api/cases", tags=["parcours"])
+
+
+@router_parcours.post("/{case_id}/parcours/session", response_model=schemas.LiveSessionOut, status_code=201,
+                      dependencies=[Depends(access.require_project_role_depuis(
+                          "case_id", access.project_id_depuis_case, access.ROLE_TESTEUR))])
+def creer_session_parcours(case_id: int, request: Request, conn=Depends(get_conn)):
+    """Le jeton d'une session d'enregistrement du parcours de CE cas. A109 : testeur, développeur, administrateur — le
+    navigateur se connecte avec le compte du projet ; la personne ne voit jamais son mot de passe."""
+    cas = CaseRepo(conn).get(case_id)
+    if cas is None:
+        raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
+    jeton, expires_at = creer(conn, project_id=cas["project_id"], created_by_user_id=request.state.user["id"],
+                              case_id=case_id)
+    return schemas.LiveSessionOut(token=jeton, expires_at=expires_at)
+
+
+@router_parcours.get("/{case_id}/parcours", response_model=schemas.ParcoursDuCasOut,
+                     dependencies=[Depends(access.require_project_access_depuis(
+                         "case_id", access.project_id_depuis_case))])
+def lire_parcours(case_id: int, conn=Depends(get_conn)):
+    """L'historique des parcours du cas, le plus récent d'abord, chacun avec son mode opératoire lisible."""
+    if CaseRepo(conn).get(case_id) is None:
+        raise HTTPException(status_code=404, detail=f"cas {case_id} introuvable")
+    return schemas.ParcoursDuCasOut(parcours=[
+        schemas.ParcoursOut(id=p["id"], auteur=p["auteur"], created_at=p["created_at"], version_id=p["version_id"],
+                            actions=p["actions"], mode_operatoire=parcours.mode_operatoire(p["actions"]))
+        for p in ParcoursRepo(conn).du_cas(case_id)])
+
+
+@router_parcours.websocket("/{case_id}/parcours/ws")
+async def parcours_ws(websocket: WebSocket, case_id: int, token: str = Query(...)):
+    conn = get_initialized_db()
+    try:
+        jeton_info = consommer(conn, token)
+        cas = CaseRepo(conn).get(case_id)
+        # Même refus quelle que soit la raison : jeton usé, expiré, inventé, d'un autre cas, ou de la connexion du projet.
+        if jeton_info is None or jeton_info.get("case_id") != case_id or cas is None \
+                or cas["project_id"] != jeton_info["project_id"]:
+            raise WebSocketException(code=4401, reason="jeton invalide")
+        projet = ProjectRepo(conn).get(jeton_info["project_id"])
+        if projet is None:
+            raise WebSocketException(code=4404, reason="projet introuvable")
+        from testpilot.api.services.exploration_service import connexion_du_projet
+
+        connexion = connexion_du_projet(conn, projet)
+        auteur = (UserRepo(conn).get(jeton_info["created_by_user_id"]) or {}).get("username") or ""
+    finally:
+        conn.close()
+
+    await websocket.accept()
+    service = SessionLive(project=projet, queue_label=f"parcours:{case_id}:{token[:8]}", mode="parcours",
+                          connexion=connexion)
+    service.demarrer()
+    try:
+        await _piloter(websocket, service,
+                       lambda: _confirmer_parcours(websocket, service, projet["id"], case_id, auteur))
+    finally:
+        service.demander_fermeture()
+        await asyncio.to_thread(service.attendre_fermeture, _TIMEOUT_ATTENTE_FERMETURE_SECONDES)
+        with contextlib.suppress(RuntimeError):
+            await websocket.close()
+
+
+async def _confirmer_parcours(websocket: WebSocket, service: SessionLive, project_id: int, case_id: int,
+                              auteur: str) -> bool:
+    """Rien n'est gardé avant « Enregistrer ». Un nouveau parcours s'ajoute à l'historique, jamais à la place d'un autre."""
+    try:
+        actions = parcours.normaliser(service.actions)
+    except parcours.ParcoursInvalide as exc:
+        await websocket.send_json({"type": "erreur", "detail": "parcours_invalide", "message": str(exc)})
+        return False
+
+    def _ecrire() -> int:
+        conn = get_initialized_db()
+        try:
+            return ParcoursRepo(conn).enregistrer(project_id=project_id, case_id=case_id, actions=actions,
+                                                  auteur=auteur)
+        finally:
+            conn.close()
+
+    parcours_id = await asyncio.to_thread(_ecrire)
+    await websocket.send_json({"type": "confirme", "actions": len(actions), "parcours_id": parcours_id})
+    return True

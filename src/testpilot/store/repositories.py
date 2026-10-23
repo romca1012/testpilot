@@ -4381,6 +4381,37 @@ class FicheDeCalculRepo:
         return [f for f in self.du_cas(case_id) if f["statut"] == "retenue"]
 
 
+class ParcoursRepo:
+    """Étape 7b (A109) : les parcours enregistrés d'un cas — un historique, jamais écrasé. Les actions arrivent DÉJÀ
+    normalisées par `parametres/parcours.normaliser` (valeur d'un mot de passe vidée) : ce dépôt ne valide pas, il garde."""
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def enregistrer(self, *, project_id: int, case_id: int, actions: list[dict], auteur: str = "") -> int:
+        cur = self.conn.execute(
+            "INSERT INTO parcours_enregistre (project_id, case_id, actions, auteur, created_at) VALUES (?,?,?,?,?)",
+            (project_id, case_id, json.dumps(actions, ensure_ascii=False), auteur, now_iso()))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def du_cas(self, case_id: int) -> list[dict]:
+        """Le plus récent d'abord."""
+        lignes = _rows(self.conn.execute(
+            "SELECT * FROM parcours_enregistre WHERE case_id=? ORDER BY id DESC", (case_id,)))
+        for ligne in lignes:
+            ligne["actions"] = json.loads(ligne["actions"] or "[]")
+        return lignes
+
+    def dernier(self, case_id: int) -> dict | None:
+        lignes = self.du_cas(case_id)
+        return lignes[0] if lignes else None
+
+    def rattacher_version(self, parcours_id: int, version_id: int) -> None:
+        self.conn.execute("UPDATE parcours_enregistre SET version_id=? WHERE id=?", (version_id, parcours_id))
+        self.conn.commit()
+
+
 class CaseDataRepo:
     """Les LIGNES PROPRES À UN CAS (migration 72, décisions A57 et A58) : ses classes de valeurs et le résultat attendu de
     chacune, une itération par ligne quand on lance ce cas. Les colonnes sont des variables VIVANTES du projet du cas ; une

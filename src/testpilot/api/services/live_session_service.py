@@ -18,8 +18,11 @@ from __future__ import annotations
 import base64
 import logging
 import queue
+import sys
 import threading
 import time
+import types
+from pathlib import Path
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
@@ -56,6 +59,35 @@ _RELEVE_EVENEMENTS_MS = 50
 # plus : seulement le rôle/nom résolu par AccName, même garde que le reste de la capture.
 _CHAMPS_FORMULAIRE_CONNEXION = ("champ_identifiant", "champ_mdp", "bouton_soumission")
 
+# Les commandes dont `attendre_clics_traites` attend le traitement (étape 7b : un parcours en a quatre).
+_COMMANDES_COMPTEES = frozenset({"clic", "saisie", "choix", "verifier"})
+
+
+# Étape 7b (A109) : un clic sur un champ ne fait que le désigner — la valeur arrive ensuite par « saisie » ou « choix ».
+_ROLES_DE_SAISIE = frozenset({"textbox", "searchbox", "spinbutton", "combobox"})
+# Laisse la page réagir à une action avant d'en relever l'adresse (une navigation déclenchée par un clic n'est pas
+# synchrone). Borné : la page peut ne jamais se stabiliser.
+_ATTENTE_APRES_ACTION_MS = 1500
+# Le champ sous le point : de quoi écrire l'étape de la bibliothèque (`je renseigne le champ "<nom technique>"…` — la
+# cascade `locate_field` cherche d'abord `name`, puis `data-test`) et proposer les choix d'une liste. Un widget Odoo porte
+# son `name` sur le conteneur (`<div name="partner_id"><input…>`) : l'ancêtre le plus proche qui en a un.
+_CHAMP_SOUS_LE_POINT_JS = r"""
+({x, y}) => {
+  const el = document.elementFromPoint(x, y);
+  const champ = el && el.closest('input, textarea, select, [contenteditable="true"]');
+  if (!champ) return null;
+  const tag = champ.tagName.toLowerCase();
+  const porteur = champ.closest('[name]');
+  return {
+    tag, type: (champ.getAttribute('type') || '').toLowerCase(),
+    nom_technique: (porteur && porteur.getAttribute('name')) || champ.getAttribute('data-test')
+      || champ.getAttribute('data-testid') || '',
+    options: tag === 'select'
+      ? Array.from(champ.options).map(o => (o.label || o.textContent || '').trim()).filter(Boolean).slice(0, 200) : [],
+  };
+}
+"""
+
 
 def _mot_de_passe_visible(page) -> bool | None:
     """Dupliqué de `behave_runtime/steps_library/_base_helpers.py::_mot_de_passe_visible` — même
@@ -80,9 +112,15 @@ class SessionLive:
     prévue par ce module.
     """
 
-    def __init__(self, *, project: dict, queue_label: str):
+    def __init__(self, *, project: dict, queue_label: str, mode: str = "connexion", connexion: dict | None = None):
         self._project = project
         self._queue_label = queue_label
+        # Étape 7b (A109) : `parcours` = le chemin d'un CAS, joué après une connexion automatique (`connexion` : les
+        # paramètres du projet, comme l'exploration) ; `connexion` = l'enregistrement du chemin de connexion (historique).
+        self._mode = mode
+        self._connexion = connexion
+        self._actions: list[dict] = []
+        self._champ_actif: dict | None = None
         self.entrantes: queue.Queue[dict] = queue.Queue()
         self.sortantes: queue.Queue[dict] = queue.Queue()
         self.pret = threading.Event()
@@ -154,6 +192,21 @@ class SessionLive:
         with self._verrou_etapes:
             self._etapes = []
             self._login_form = {}
+            self._actions = []
+
+    def retirer_action(self, rang: int) -> bool:
+        """Étape 7b : la personne retire une action de son parcours (un geste de trop). N'appeler qu'après
+        `attendre_clics_traites`, comme `reinitialiser_etapes`."""
+        with self._verrou_etapes:
+            if not 0 <= rang < len(self._actions):
+                return False
+            del self._actions[rang]
+            return True
+
+    @property
+    def actions(self) -> list[dict]:
+        with self._verrou_etapes:
+            return list(self._actions)
 
     @property
     def etapes(self) -> list[dict]:
@@ -211,6 +264,8 @@ class SessionLive:
             except PlaywrightTimeoutError:
                 logger.debug("session live (projet %s) : page jamais « idle » en %s ms — on "
                              "démarre quand même", self._project.get("id"), _ATTENTE_STABILISATION_MS)
+            if self._mode == "parcours":
+                self._se_connecter(page, contexte_navigateur)
             self._cdp = contexte.new_cdp_session(page)
             self._cdp.on("Page.screencastFrame", self._sur_image)
             self._cdp.send("Page.startScreencast", {
@@ -245,7 +300,7 @@ class SessionLive:
                     # Compté même en échec : un clic qui plante ne doit jamais bloquer
                     # `attendre_clics_traites` pour le reste de la session (sinon un seul clic en
                     # erreur empêcherait à jamais toute confirmation/réinitialisation ultérieure).
-                    if commande.get("type") == "clic":
+                    if commande.get("type") in _COMMANDES_COMPTEES:
                         with self._verrou_compteurs:
                             self._clics_traites += 1
         finally:
@@ -263,8 +318,131 @@ class SessionLive:
             pass  # la session peut déjà être en cours de fermeture
 
     def _traiter(self, page, commande: dict) -> None:
-        if commande.get("type") == "clic":
+        if self._mode == "parcours":
+            self._traiter_parcours(page, commande)
+        elif commande.get("type") == "clic":
             self._traiter_clic(page, commande)
+
+    # ── Étape 7b : le parcours d'un cas ─────────────────────────────────────────────────────
+
+    def _se_connecter(self, page, contexte_navigateur) -> None:
+        """Connexion AUTOMATIQUE avec le compte du projet, la même que l'exploration (`crawl_relogin_hook`) : la personne
+        commence là où le test commencera, et son parcours ne contient jamais la connexion (ni le mot de passe). En échec,
+        elle le voit et peut se connecter à la main (un mot de passe saisi n'est jamais gardé, voir `_saisir`)."""
+        if not self._connexion:
+            return
+        racine = Path(__file__).resolve().parents[4]
+        for chemin in (racine / "behave_runtime" / "steps_library",):
+            if str(chemin) not in sys.path:   # même montage que `exploration_service._crawl` (connecteur Odoo)
+                sys.path.insert(0, str(chemin))
+        from testpilot.connectors.factory import build_connector
+
+        try:
+            build_connector(self._connexion).crawl_relogin_hook()(
+                types.SimpleNamespace(page=page, contexte_navigateur=contexte_navigateur.kwargs()))
+            self.sortantes.put({"type": "connexion_auto", "ok": True})
+        except Exception as exc:
+            # Le type d'erreur au journal, jamais son texte à l'écran (il peut citer l'identifiant).
+            logger.warning("parcours (projet %s) : connexion automatique impossible (%s)",
+                           self._project.get("id"), type(exc).__name__)
+            self.sortantes.put({"type": "connexion_auto", "ok": False})
+
+    def _garder(self, page, action: dict) -> None:
+        try:
+            page.wait_for_load_state("networkidle", timeout=_ATTENTE_APRES_ACTION_MS)
+        except PlaywrightTimeoutError:
+            pass
+        action["page"] = page.url
+        with self._verrou_etapes:
+            self._actions.append(action)
+            rang = len(self._actions) - 1
+        self.sortantes.put({"type": "action_capturee", "rang": rang, **action})
+
+    def _traiter_parcours(self, page, commande: dict) -> None:
+        type_ = commande.get("type")
+        if type_ == "clic":
+            self._parcours_clic(page, float(commande["x"]), float(commande["y"]))
+        elif type_ == "verifier":
+            self._parcours_verifier(page, float(commande["x"]), float(commande["y"]))
+        elif type_ == "saisie":
+            self._saisir(page, str(commande.get("valeur") or ""))
+        elif type_ == "choix":
+            self._choisir(page, str(commande.get("valeur") or ""))
+
+    def _parcours_clic(self, page, x: float, y: float) -> None:
+        try:
+            resolu = accname.calculer(page, x, y)
+            ambigu = None
+        except accname.ElementIntrouvableError as exc:
+            resolu, ambigu = None, str(exc)
+        champ = page.evaluate(_CHAMP_SOUS_LE_POINT_JS, {"x": x, "y": y})
+        self._cliquer_reellement(x, y)
+        if champ is not None:
+            # Désigner un champ n'est pas une action du test : la valeur suit (saisie, ou choix pour une liste). Un champ
+            # ambigu pour AccName reste désignable : l'étape écrite le retrouve par son NOM TECHNIQUE.
+            self._champ_actif = {"role": (resolu or {}).get("role") or ("combobox" if champ["tag"] == "select" else "textbox"),
+                                 "nom": (resolu or {}).get("name") or champ["nom_technique"],
+                                 "champ": champ["nom_technique"], "secret": champ["type"] == "password",
+                                 "liste": champ["tag"] == "select"}
+            self.sortantes.put({"type": "champ_designe", "nom": self._champ_actif["nom"],
+                                "secret": self._champ_actif["secret"], "options": champ["options"]})
+            return
+        self._champ_actif = None
+        if ambigu:
+            self.sortantes.put({"type": "clic_ambigu", "detail": ambigu})
+            return
+        if resolu is None:
+            self.sortantes.put({"type": "clic_non_enregistre", "raison": "element_non_reconnu"})
+            return
+        self._garder(page, {"action": "clic", "role": resolu["role"], "nom": resolu["name"]})
+
+    def _parcours_verifier(self, page, x: float, y: float) -> None:
+        """« C'est ici que je vérifie » : l'élément est désigné, JAMAIS cliqué, et son contenu n'est pas lu — le résultat
+        attendu vient du cas validé (A39 : un bug présent ce jour-là deviendrait l'attendu)."""
+        try:
+            resolu = accname.calculer(page, x, y)
+        except accname.ElementIntrouvableError as exc:
+            self.sortantes.put({"type": "clic_ambigu", "detail": str(exc)})
+            return
+        if resolu is None:
+            resolu = self._texte_sous_le_point(page, x, y)
+        if resolu is None:
+            self.sortantes.put({"type": "clic_non_enregistre", "raison": "element_non_reconnu"})
+            return
+        self._garder(page, {"action": "verifier", "role": resolu["role"], "nom": resolu["name"]})
+
+    @staticmethod
+    def _texte_sous_le_point(page, x: float, y: float) -> dict | None:
+        """Un montant, un statut : rarement un élément interactif. Son libellé le plus proche (texte court de l'élément
+        visé) suffit à le désigner pour l'agent, qui écrit la vérification — jamais une valeur attendue."""
+        texte = page.evaluate("({x, y}) => { const el = document.elementFromPoint(x, y);"
+                              " return el ? (el.innerText || el.textContent || '').trim().slice(0, 120) : ''; }",
+                              {"x": x, "y": y})
+        return {"role": "texte", "name": texte} if texte else None
+
+    def _saisir(self, page, valeur: str) -> None:
+        champ = self._champ_actif
+        if champ is None or champ["liste"]:
+            self.sortantes.put({"type": "erreur", "detail": "aucun_champ_designe"})
+            return
+        actif = page.evaluate_handle("() => document.activeElement").as_element()
+        if actif is None:
+            self.sortantes.put({"type": "erreur", "detail": "aucun_champ_designe"})
+            return
+        actif.fill(valeur)
+        # Jamais un secret : la valeur d'un champ mot de passe ne quitte pas cette fonction.
+        self._garder(page, {"action": "saisie", "role": champ["role"], "nom": champ["nom"], "champ": champ["champ"],
+                            "secret": champ["secret"], "valeur": "" if champ["secret"] else valeur})
+
+    def _choisir(self, page, valeur: str) -> None:
+        champ = self._champ_actif
+        actif = page.evaluate_handle("() => document.activeElement").as_element() if champ else None
+        if champ is None or not champ["liste"] or actif is None:
+            self.sortantes.put({"type": "erreur", "detail": "aucune_liste_designee"})
+            return
+        actif.select_option(label=valeur)
+        self._garder(page, {"action": "choix", "role": champ["role"], "nom": champ["nom"], "champ": champ["champ"],
+                            "secret": False, "valeur": valeur})
 
     def _basculer_en_mode_formulaire(self) -> None:
         self._capture_active = False

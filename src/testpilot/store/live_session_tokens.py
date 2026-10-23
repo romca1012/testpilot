@@ -28,15 +28,18 @@ def _hash(jeton: str) -> str:
 
 
 def creer(conn, *, project_id: int, created_by_user_id: int,
-          duree_vie_secondes: int = DUREE_VIE_SECONDES) -> tuple[str, str]:
+          duree_vie_secondes: int = DUREE_VIE_SECONDES, case_id: int | None = None) -> tuple[str, str]:
     """Crée un jeton, rend `(jeton_en_clair, expires_at)` — le jeton en clair n'est JAMAIS relisible
-    depuis la base ensuite, c'est la seule fois qu'il existe sous cette forme."""
+    depuis la base ensuite, c'est la seule fois qu'il existe sous cette forme.
+
+    `case_id` (étape 7b, A109) : le jeton n'ouvre que l'enregistrement du parcours de CE cas ; `None` :
+    l'enregistrement de la connexion du projet. L'un n'ouvre jamais l'autre."""
     jeton = secrets.token_urlsafe(32)
     expires_at = (datetime.now(timezone.utc) + timedelta(seconds=duree_vie_secondes)).isoformat()
     conn.execute(
         "INSERT INTO live_session_token "
-        "(project_id, created_by_user_id, token_hash, created_at, expires_at) VALUES (?,?,?,?,?)",
-        (project_id, created_by_user_id, _hash(jeton), now_iso(), expires_at))
+        "(project_id, created_by_user_id, token_hash, created_at, expires_at, case_id) VALUES (?,?,?,?,?,?)",
+        (project_id, created_by_user_id, _hash(jeton), now_iso(), expires_at, case_id))
     conn.commit()
     return jeton, expires_at
 
@@ -57,6 +60,6 @@ def consommer(conn, jeton: str) -> dict | None:
     if curseur.rowcount != 1:
         return None
     ligne = conn.execute(
-        "SELECT project_id, created_by_user_id FROM live_session_token WHERE token_hash=?",
+        "SELECT project_id, created_by_user_id, case_id FROM live_session_token WHERE token_hash=?",
         (empreinte,)).fetchone()
     return dict(ligne) if ligne else None
