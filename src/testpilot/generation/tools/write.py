@@ -884,6 +884,13 @@ def write_feature_file(ctx: "ToolContext", content: str) -> "ToolOutcome":
         if fautes_calcul:
             return _outcome("[write_feature_file] CALCUL : " + " ; ".join(fautes_calcul[:5])
                             + ". Puis rappelle write_feature_file.", ok=False)
+    # Étape 7b (A109) : le chemin joué par une personne est FIXÉ — l'agent le recopie, il ne le réinvente pas.
+    if ctx.parcours:
+        from testpilot.parametres import parcours
+        fautes_parcours = parcours.fautes_d_ecriture(content, ctx.parcours)
+        if fautes_parcours:
+            return _outcome("[write_feature_file] PARCOURS : " + " ; ".join(fautes_parcours[:5])
+                            + ". Puis rappelle write_feature_file.", ok=False)
     # Lot VH-08 (A51, interrupteur) : une requête d'oracle que le projet ne déclare pas — l'exécution la bloquerait.
     inconnues = requetes_oracle_inconnues(content, ctx.requetes_oracle)
     if inconnues:

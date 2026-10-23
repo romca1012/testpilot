@@ -1250,6 +1250,14 @@ def start_automation(conn, case_id: int, *, author: str = "") -> tuple[str, dict
     calculs = _calculs_pour_l_agent([f["contenu"] for f in FicheDeCalculRepo(conn).retenues(case_id)])
     if calculs:
         metier["calculs"] = calculs
+    # Étape 7b (A109) : le dernier parcours enregistré du cas — ses actions sont recopiées, traduites sans IA ; l'agent n'écrit
+    # que la vérification, avec le résultat attendu du cas. Absent sans parcours : rien ne change.
+    from testpilot.parametres import parcours as _parcours
+    from testpilot.store.repositories import ParcoursRepo
+    dernier_parcours = ParcoursRepo(conn).dernier(case_id)
+    if dernier_parcours:
+        metier["parcours"] = _parcours.pour_l_agent(dernier_parcours["actions"])
+        metier["parcours_id"] = dernier_parcours["id"]
     # Lot PT-02f (A41) : les variables que le test ACTUEL emploie déjà — une régénération les garde même si le texte du cas
     # ne les cite pas (association d'un clic sur une valeur que le cas n'écrivait pas). Absent sans variable : métier d'avant.
     from testpilot.generation import interrupteurs
@@ -1508,6 +1516,9 @@ def run_automation(job_id: str, *, case_id: int, module_id: int, slug: str,
 
         if result.success:
             succes = True
+            if (metier or {}).get("parcours_id"):   # étape 7b : la version écrite à partir de ce parcours
+                from testpilot.store.repositories import ParcoursRepo
+                ParcoursRepo(conn).rattacher_version(metier["parcours_id"], result.version_id)
             _finaliser_version_generee(
                 conn, case_id, result.version_id, module_name=plan.module_name,
                 connector=connector, connector_type=(project or {}).get("connector_type"),

@@ -203,6 +203,7 @@ class GenerationAgent:
         # si le texte du cas ne les cite pas (« le total » ne nomme pas la quantité).
         ctx.calculs = tuple({"nom": c.get("nom", ""), "entrees": tuple(c.get("entrees") or ())}
                             for c in (metier or {}).get("calculs") or [])
+        ctx.parcours = dict((metier or {}).get("parcours") or {})   # étape 7b (A109)
         entrees = frozenset(e for c in ctx.calculs for e in c["entrees"])
         if entrees and (ctx.variables_de_test or ctx.controle_du_cas):
             ctx.variables_de_test = ctx.variables_de_test | entrees

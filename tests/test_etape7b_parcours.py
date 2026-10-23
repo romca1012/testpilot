@@ -127,3 +127,71 @@ def test_chaque_scenario_suit_le_parcours_le_contexte_compte():
 
 def test_un_parcours_sans_action_traduite_ne_contraint_rien():
     assert parcours.fautes_d_ecriture(_feature('je fais autre chose'), _parcours(_VERIF)) == []
+
+
+# ── Écriture du test technique : le parcours est fixé, l'agent le recopie ──────────────────────────────────────────────
+
+def test_falsifiable_l_agent_est_refuse_a_l_ecriture_tant_qu_il_ne_suit_pas_le_parcours(tmp_path):
+    from testpilot.generation.tools import ToolContext
+    from testpilot.generation.tools.write import write_feature_file
+
+    ctx = ToolContext(module_name="commande", generated_dir=tmp_path, parcours=_parcours(_CLIC, _SAISIE))
+    refuse = write_feature_file(ctx, _feature('je clique sur le bouton "Nouveau"'))
+    assert not refuse.ok and "PARCOURS" in refuse.observation and "product_uom_qty" in refuse.observation
+    assert not (tmp_path / "commande.feature").exists(), "refusé : rien n'est livré"
+
+    accepte = write_feature_file(ctx, _feature('je clique sur le bouton "Nouveau"',
+                                               'je renseigne le champ "product_uom_qty" avec la valeur "3"'))
+    assert accepte.ok, accepte.observation
+
+
+def test_sans_parcours_l_ecriture_ne_change_pas(tmp_path):
+    from testpilot.generation.tools import ToolContext
+    from testpilot.generation.tools.write import write_feature_file
+
+    ctx = ToolContext(module_name="commande", generated_dir=tmp_path)
+    assert write_feature_file(ctx, _feature('je clique sur le bouton "Autre"')).ok
+
+
+def test_l_agent_recoit_les_actions_fixees_et_l_element_a_verifier_jamais_ce_que_l_ecran_montrait():
+    from testpilot.generation.prompt import _section_metier
+
+    metier = {"title": "Commande", "steps": ["Créer une commande"], "expected_result": "Le total vaut 30 €"}
+    sans = _section_metier(metier)
+    avec = _section_metier({**metier, "parcours": _parcours(_CLIC, {**_CLIC, "role": "menuitem", "nom": "Ventes"},
+                                                            _VERIF)})
+
+    assert "Parcours enregistré" not in sans
+    assert '`je clique sur le bouton "Nouveau"`' in avec
+    assert "à écrire — Cliquer sur « Ventes » (menuitem)" in avec
+    assert "« Total »" in avec and "RÉSULTAT ATTENDU du cas" in avec
+
+
+def test_falsifiable_automatiser_un_cas_transmet_son_dernier_parcours(tmp_path, monkeypatch):
+    from testpilot import config
+    from testpilot.api.services import generation_service
+    from testpilot.connectors import runtime_env
+    from testpilot.store.db import get_initialized_db
+    from testpilot.store.repositories import CaseRepo, ModuleRepo, ParcoursRepo, ProjectRepo, VersionRepo
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(runtime_env, "verifier_connexion", lambda projet: None)
+    conn = get_initialized_db(tmp_path / "db.sqlite")
+    pid = ProjectRepo(conn).create(name="Boutique", connector_type="web", base_url="http://app")
+    cid = CaseRepo(conn).create(title="Commande", module_id=ModuleRepo(conn).create(project_id=pid, name="M"))
+    vid = VersionRepo(conn).create(test_case_id=cid, spec_content="", spec_hash="", feature_content="", steps_content="",
+                                   title="Commande", test_steps='["Créer"]', expected_result="Total 30 €")
+    conn.execute("UPDATE test_case SET current_version_id=? WHERE id=?", (vid, cid))
+    conn.commit()
+
+    _, sans = generation_service.start_automation(conn, cid)
+    assert "parcours" not in sans["metier"]
+
+    depot = ParcoursRepo(conn)
+    depot.enregistrer(project_id=pid, case_id=cid, actions=parcours.normaliser([{**_CLIC, "nom": "Ancien"}]))
+    dernier = depot.enregistrer(project_id=pid, case_id=cid, actions=parcours.normaliser([_CLIC, _VERIF]))
+    _, avec = generation_service.start_automation(conn, cid)
+
+    assert avec["metier"]["parcours_id"] == dernier
+    assert [e["etape"] for e in avec["metier"]["parcours"]["etapes"]] == ['je clique sur le bouton "Nouveau"']
+    conn.close()

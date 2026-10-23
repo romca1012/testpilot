@@ -77,6 +77,9 @@ class ToolContext:
     # Étape 7 (A110) : les calculs retenus pour le cas — `({"nom", "entrees"}, …)`. Le test est refusé À L'ÉCRITURE tant qu'il
     # ne les appelle pas correctement (l'agent le corrige aussitôt) : jamais un test livré qui sortirait « bloqué ».
     calculs: tuple = ()
+    # Étape 7b (A109) : le parcours enregistré par une personne (`parcours.pour_l_agent`) — ses actions traduites doivent
+    # figurer dans le test, dans l'ordre. Refusé À L'ÉCRITURE sinon. `{}` : aucun parcours, rien ne change.
+    parcours: dict = field(default_factory=dict)
     # Réparation et correction : les écritures `{{…}}` du test de référence, FIGÉES (ni ajout, ni retrait, ni renommage).
     # `None` hors réparation/correction.
     references_figees: list[str] | None = None

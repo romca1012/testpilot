@@ -602,7 +602,27 @@ def _section_metier(metier: dict) -> str:
             entrees = ", ".join("{{" + e + "}}" for e in c.get("entrees") or []) or "aucune (valeurs fixes)"
             unite = f" — en {c['unite']}" if c.get("unite") else ""
             lines.append(f"- « {c.get('nom', '')} »{unite} ; entrées : {entrees}")
+    lines += _section_parcours(metier.get("parcours") or {})
     return "\n".join(lines)
+
+
+def _section_parcours(parcours: dict) -> list[str]:
+    """Étape 7b (A109) : une personne a JOUÉ ce cas dans l'application. Ses actions sont fixées (traduites sans IA) ; l'agent
+    les recopie dans l'ordre et n'écrit que la vérification — avec le résultat attendu DU CAS, jamais ce que l'écran montrait
+    pendant l'enregistrement (rien de l'écran n'est d'ailleurs gardé)."""
+    if not parcours.get("etapes") and not parcours.get("a_verifier"):
+        return []
+    lignes = ["", "**Parcours enregistré** — une personne a joué ce cas dans l'application. Ses actions sont FIXÉES : "
+                  "recopie-les dans l'ordre (Soit/Quand/Et), mot pour mot. Tu peux en intercaler d'autres (attendre une "
+                  "page) ; une valeur saisie peut devenir la variable du cas (`{{quantite}}`). Une action marquée « à "
+                  "écrire » n'a pas d'étape de bibliothèque : écris-la toi-même d'après sa description."]
+    for rang, etape in enumerate(parcours.get("etapes") or [], start=1):
+        lignes.append(f"{rang}. `{etape['etape']}`" if etape.get("etape")
+                      else f"{rang}. à écrire — {etape.get('description', '')}")
+    for cible in parcours.get("a_verifier") or []:
+        lignes.append(f"- Vérification : la personne regarde « {cible.get('nom', '')} » ({cible.get('role', '')}). Écris "
+                      "l'« Alors » sur cet élément, avec le RÉSULTAT ATTENDU du cas ci-dessus.")
+    return lignes
 
 
 def _section_comptes(comptes: list[dict] | None) -> str:
