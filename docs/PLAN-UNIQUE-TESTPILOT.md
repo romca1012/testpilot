@@ -154,7 +154,7 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
   `{{entree}}` dans une action ne prouve pas que la valeur arrive dans le bon champ (relu à l'approbation du test). Reste :
   la mesure (étape 8) ; une page pour revoir ou changer les fiches d'un cas déjà créé.
 
-#### Étape 7b — Enregistrer le parcours d'un cas de test (au choix) — *proposition du 2026-10-23, à valider (A109)*
+#### Étape 7b — Enregistrer le parcours d'un cas de test (au choix) — *A109 validée le 2026-10-23*
 - Idée du porteur : la connexion est un parcours déjà enregistré ; faire de même pour n'importe quel cas. Une personne joue
   le cas dans le navigateur en direct, l'outil retient le parcours, puis en écrit le test technique. Au choix : sans
   enregistrement, la génération reste celle d'aujourd'hui.
