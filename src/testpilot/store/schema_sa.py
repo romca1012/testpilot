@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 77
+ALIGNED_WITH_SCHEMA_VERSION = 78
 
 metadata = MetaData()
 
@@ -987,6 +987,24 @@ live_session_token = Table(
     Column('created_at', Text, nullable=False),
     Column('expires_at', Text, nullable=False),
     Column('used_at', Text, nullable=False, server_default=''),
+    # Migration 78 (étape 7b, A109) : le cas d'une session d'enregistrement de parcours ; NULL : la connexion, comme avant.
+    Column('case_id', Integer, nullable=True),
+    sqlite_autoincrement=True,
+)
+
+# Migration 78 (étape 7b, A109) : le parcours d'un cas joué par une personne — actions et éléments à vérifier (JSON), gardé
+# dans l'historique ; `version_id` : la version de test écrite à partir de lui (sans FK dure, comme `plan_id`).
+parcours_enregistre = Table(
+    "parcours_enregistre",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("project_id", Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False),
+    Column("case_id", Integer, ForeignKey("test_case.id", ondelete="CASCADE"), nullable=False),
+    Column("version_id", Integer, nullable=True),
+    Column("actions", Text, nullable=False, server_default="[]"),
+    Column("auteur", Text, nullable=False, server_default=""),
+    Column("created_at", Text, nullable=False),
+    Index("idx_parcours_enregistre_case", "case_id"),
     sqlite_autoincrement=True,
 )
 

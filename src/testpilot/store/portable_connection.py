@@ -36,6 +36,8 @@ _TABLES_AVEC_ID = {
     "case_data_row",
     # Fiches de calcul (migration 77, étape 7) : `FicheDeCalculRepo.creer` utilise `.lastrowid`.
     "fiche_de_calcul",
+    # Parcours enregistrés (migration 78, étape 7b) : `ParcoursRepo.enregistrer` utilise `.lastrowid`.
+    "parcours_enregistre",
 }
 # Vérifié contre le VRAI schéma (`schema_sa.metadata`), pas retapé à l'œil (2026-09-03) :
 # `generation_attempt`/`test_scenario_result` ne correspondaient à AUCUNE table réelle (noms
@@ -44,7 +46,7 @@ _TABLES_AVEC_ID = {
 # vrai run. `generation_job` reste absente à raison : sa clé primaire est un TEXT (UUID) fourni
 # par l'appelant, jamais un entier généré par la base — `.lastrowid` n'y a jamais de sens.
 _INSERT = re.compile(r"^\s*INSERT\s+INTO\s+[\"']?([a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE)
-ALEMBIC_HEAD = "b8e2f4a6c193"
+ALEMBIC_HEAD = "c3f7a9d2e481"
 _urls_verifiees: set[str] = set()
 _verrou_verification = threading.Lock()
 

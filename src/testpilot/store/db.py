@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 77
+_SCHEMA_VERSION = 78
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -296,6 +296,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_76_plage_des_lignes(conn)
     if version < 77:
         _migrate_77_fiches_de_calcul(conn)
+    if version < 78:
+        _migrate_78_parcours_enregistres(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -602,6 +604,28 @@ def _migrate_71_iteration_du_scenario(conn: sqlite3.Connection) -> None:
     idempotente."""
     if _table_existe(conn, "scenario_result") and "iterations" not in _column_names(conn, "scenario_result"):
         conn.execute("ALTER TABLE scenario_result ADD COLUMN iterations TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_78_parcours_enregistres(conn: sqlite3.Connection) -> None:
+    """Étape 7b du plan unique (A109, porteur, 2026-10-23) : le PARCOURS d'un cas, joué par une personne dans le navigateur
+    en direct — ses actions (clic, saisie, choix ; chacune décrite par le rôle et le nom de l'élément, avec la page atteinte)
+    et les éléments où elle vérifie le résultat. Ni vidéo ni image ; jamais un mot de passe.
+
+    `parcours_enregistre` : rattaché au cas, gardé dans l'historique (jamais écrasé) ; `version_id` : la version de test
+    écrite à partir de lui (NULL : pas encore, ou cas manuel — le parcours sert alors de mode opératoire).
+    `live_session_token.case_id` : le cas d'une session d'enregistrement de parcours (NULL : enregistrement de la connexion,
+    comme avant). Additive, idempotente."""
+    conn.execute('''CREATE TABLE IF NOT EXISTS parcours_enregistre (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+        case_id INTEGER NOT NULL REFERENCES test_case(id) ON DELETE CASCADE,
+        version_id INTEGER,
+        actions TEXT NOT NULL DEFAULT '[]',
+        auteur TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL)''')
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_parcours_enregistre_case ON parcours_enregistre(case_id)")
+    if _table_existe(conn, "live_session_token") and "case_id" not in _column_names(conn, "live_session_token"):
+        conn.execute("ALTER TABLE live_session_token ADD COLUMN case_id INTEGER")
 
 
 def _migrate_77_fiches_de_calcul(conn: sqlite3.Connection) -> None:

@@ -33,8 +33,9 @@ def test_base_neuve_porte_la_table_du_jeton(tmp_path, monkeypatch):
 
     colonnes = {r["name"] for r in conn.execute("PRAGMA table_info(live_session_token)")}
 
+    # `case_id` : ajoutée par la migration 78 (étape 7b, A109 — le cas d'une session d'enregistrement de parcours).
     assert colonnes == {"id", "project_id", "created_by_user_id", "token_hash", "created_at",
-                        "expires_at", "used_at"}
+                        "expires_at", "used_at", "case_id"}
     conn.close()
 
 
