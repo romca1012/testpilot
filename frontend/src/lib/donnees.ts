@@ -104,7 +104,7 @@ export function useModules(pid: Id) {
 /** Une PAGE de cas. Les options font partie de la CLÉ de cache : deux filtres différents sont
  *  deux jeux de données distincts, et les confondre servirait la liste de l'un pour l'autre. */
 export function usePageCas(pid: Id, opts: MaybeRefOrGetter<{
-  module_id?: number; group_id?: number; q?: string; statut?: string; limit?: number
+  module_id?: number; group_id?: number; q?: string; statut?: string; automatise?: boolean; limit?: number
 }> = {}) {
   return useQuery({
     queryKey: computed(() => [...cles.cas(pid), toValue(opts)]),

@@ -204,6 +204,9 @@ async function menuDepotCopier() {
 
 // Tri et filtre CÔTÉ CLIENT (préférences de lecture, pas de rechargement).
 const filterStatus = ref('')  // '' = tous
+// Porteur, 2026-10-23 : '' = tous, 'oui' = avec un test technique, 'non' = cas manuels (sans test technique). Côté SERVEUR,
+// comme le statut : filtré sur la page chargée seule, il mentirait sur l'absence.
+const filterTest = ref<'' | 'oui' | 'non'>('')
 
 // ── Préférences d'affichage, conservées PAR PROJET (lot C) ───────────────────
 // Densité, colonnes et tri sont des préférences de LECTURE : elles n'ont rien à faire dans la
@@ -237,6 +240,7 @@ const PAR_PAGE = 100
 const pageDemandee = ref(PAR_PAGE)
 const requeteServeur = computed(() => ({
   q: recherche.value.trim(), statut: filterStatus.value, limit: pageDemandee.value,
+  ...(filterTest.value ? { automatise: filterTest.value === 'oui' } : {}),
 }))
 const { data: casesData, isLoading: chargeCas } = usePageCas(pid, requeteServeur)
 const cases = computed(() => casesData.value?.items ?? [])
@@ -245,7 +249,7 @@ const resteACharger = computed(() => Math.max(0, totalCas.value - cases.value.le
 function chargerPlus() { pageDemandee.value += PAR_PAGE }
 // Revenir au premier lot dès que le filtre change : garder 400 lignes chargées en changeant de
 // recherche ferait payer un temps de réponse sans rapport avec ce qu'on demande.
-watch([recherche, filterStatus, pid], () => { pageDemandee.value = PAR_PAGE })
+watch([recherche, filterStatus, filterTest, pid], () => { pageDemandee.value = PAR_PAGE })
 
 // ── SÉLECTION MULTIPLE ───────────────────────────────────────────────────────
 const selection = ref<number[]>([])
@@ -261,7 +265,7 @@ function toutSelectionner(ids: number[], coche: boolean) {
 }
 // ⚠️ La sélection est vidée quand la liste change de contenu (filtre, recherche, projet) :
 // garder des cases cochées invisibles ferait agir sur ce qu'on ne voit plus.
-watch([recherche, filterStatus, pid, specFilter], () => { selection.value = [] })
+watch([recherche, filterStatus, filterTest, pid, specFilter], () => { selection.value = [] })
 
 // Le statut vient du SERVEUR (2026-07-24) : c'est la même valeur qui sert à filtrer et à
 // afficher, donc elles ne peuvent pas se contredire.
@@ -285,7 +289,7 @@ function sortRows(rows: CaseSummary[]): CaseSummary[] {
 // actif — sinon un module qu'on vient de créer resterait invisible (et l'écran mentirait sur la
 // structure). Sous un filtre (spec/statut), on masque au contraire ce qui n'a rien à montrer.
 const sections = computed(() => {
-  const filtering = !!specFilter.value || !!filterStatus.value
+  const filtering = !!specFilter.value || !!filterStatus.value || !!filterTest.value
   return modules.value
     .map((m) => {
       const rows = sortRows(visibleCases.value.filter((c) => c.module_id === m.id))
@@ -576,6 +580,13 @@ async function supprimerEnLot() {
           <option value="untested">Untested</option>
         </select>
       </label>
+      <label class="flex items-center gap-1.5">Test :
+        <select v-model="filterTest" data-testid="filtre-test" class="bg-transparent text-foreground border-b border-dotted border-muted-foreground outline-none cursor-pointer">
+          <option value="">Tous</option>
+          <option value="oui">Avec test technique</option>
+          <option value="non">Manuels</option>
+        </select>
+      </label>
       <!-- RECHERCHE : le geste le plus fréquent, donc le plus accessible. -->
       <label class="flex items-center gap-1.5">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
@@ -624,9 +635,9 @@ async function supprimerEnLot() {
 
       <div v-else-if="!sections.length" class="flex flex-col items-center gap-3 pt-16 text-center">
         <p class="text-sm text-muted-foreground">
-          {{ specFilter || filterStatus ? 'Aucun cas de test ne correspond au filtre.' : 'Aucun module dans ce projet.' }}
+          {{ specFilter || filterStatus || filterTest ? 'Aucun cas de test ne correspond au filtre.' : 'Aucun module dans ce projet.' }}
         </p>
-        <Button v-if="peutModifier && !specFilter && !filterStatus" variant="primary" @click="openCreateModule(pid)">Créer le premier module</Button>
+        <Button v-if="peutModifier && !specFilter && !filterStatus && !filterTest" variant="primary" @click="openCreateModule(pid)">Créer le premier module</Button>
       </div>
 
       <!-- ⚠️ On DIT ce qui est chargé sur le total : sans ce compte, une liste tronquée a l'air
