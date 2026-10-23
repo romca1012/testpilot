@@ -142,6 +142,13 @@ def tests_qui_ecrivent_des_variables(project_id: int, conn=Depends(get_conn)):
     return _depot(conn, project_id).cas_qui_ecrivent_des_variables(project_id)
 
 
+@router.get("/lignes-par-cas", response_model=dict[int, int], dependencies=_MEMBRE)
+def lignes_par_cas(project_id: int, conn=Depends(get_conn)):
+    """A107 : le nombre de lignes propres de chaque cas qui en a — l'écran de lancement ne propose qu'une plage qui existe."""
+    _depot(conn, project_id)
+    return CaseDataRepo(conn).nombre_de_lignes_par_cas(project_id)
+
+
 @router.get("/cas-avec-lignes", response_model=list[int], dependencies=_MEMBRE)
 def cas_qui_ont_leurs_lignes(project_id: int, conn=Depends(get_conn)):
     """A57 : les cas du projet qui ont leurs propres lignes — pour que l'écran de lancement propose « toutes leurs lignes »
