@@ -481,6 +481,13 @@ class LigneProposee(BaseModel):
     valeurs: dict[str, str] = {}
 
 
+class FicheChoisie(BaseModel):
+    """Étape 7 (A110) : un calcul choisi sur l'écran de validation — la fiche de l'IA (éventuellement corrigée) ou celle
+    qu'une personne fournit. Son contenu est validé par `parametres/calcul.valider_fiche`."""
+    origine: str            # « ia » | « personne »
+    contenu: dict
+
+
 class MetierDraftOut(BaseModel):
     """Le document métier proposé par l'IA — à valider ou corriger avant l'écriture du Gherkin.
 
@@ -503,6 +510,10 @@ class MetierDraftOut(BaseModel):
     lignes: list[LigneProposee] = []
     depend_dun_autre_cas_du_groupe: bool = False
     etat_a_creer_par_ce_cas: str = ""
+    # Étape 7 (A110) : « Calcul détecté » — pourquoi ce cas attend une valeur calculée (vide : rien de détecté), et les
+    # fiches proposées par l'IA, présentées d'office.
+    calcul_detecte: str = ""
+    fiches_proposees: list[dict] = []
 
 
 class GenerationJobOut(BaseModel):
@@ -555,6 +566,11 @@ class CaseValidationIn(BaseModel):
     lignes: list[LigneProposee] = []   # IT-3c : les lignes validées avec le cas (vide : aucune)
     depend_dun_autre_cas_du_groupe: bool = False
     etat_a_creer_par_ce_cas: str = ""
+    # Étape 7 (A110) : renvoyés par l'écran. `fiches_retenues` vide = pas de calcul (le choix par DÉFAUT) ; choisir une
+    # fiche vaut validation par la personne qui valide.
+    calcul_detecte: str = ""
+    fiches_proposees: list[dict] = []
+    fiches_retenues: list[FicheChoisie] = []
 
 
 class MetierValidationIn(BaseModel):

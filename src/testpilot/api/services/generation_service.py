@@ -463,7 +463,7 @@ def refus_des_variables_du_cas(conn, project_id: int | None, metier: dict) -> li
     return variables_de_test.refus_dans_le_cas(metier, noms)
 
 
-def validate_metier(conn, job_id: str, cases: list[dict]) -> dict:
+def validate_metier(conn, job_id: str, cases: list[dict], *, par: str = "") -> dict:
     """Enregistre les cas VALIDÉS (éventuellement corrigés ou réduits) et prépare la reprise.
 
     `cases` — liste PLATE (étape 3, 2026-08-07) : `[{"title", "preconditions", "steps",
@@ -503,6 +503,15 @@ def validate_metier(conn, job_id: str, cases: list[dict]) -> dict:
             "etat_a_creer_par_ce_cas": str(c.get("etat_a_creer_par_ce_cas", "") or "").strip(),
             **({"lignes": c["lignes"]} if c.get("lignes") else {}),
         })
+        # Étape 7 (A110) : un calcul retenu est vérifié ICI (forme, exemples retrouvés), avant toute dépense de génération.
+        from testpilot.api.services import fiches_de_calcul_service
+        fautes_calcul = fiches_de_calcul_service.fautes_des_fiches(c)
+        if fautes_calcul:
+            raise GenerationError("invalid_metier", f"« {validated[-1]['title']} » : " + " ; ".join(fautes_calcul))
+        validated[-1].update(fiches_de_calcul_service.transporter(c))
+        if validated[-1].get("fiches_retenues"):
+            # Choisir une fiche vaut validation par CETTE personne (V10) : son nom part avec le cas.
+            validated[-1]["valide_par"] = par or "inconnu"
 
     if not validated:
         raise GenerationError("invalid_metier",
@@ -1626,6 +1635,10 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                     # (revue du 2026-10-19 : il faisait échouer tout le lot) ; le cas, déjà créé, reste à relire.
                     try:
                         _enregistrer_les_lignes(conn_tache, result.case_id, (project or {}).get("id"), lignes)
+                        from testpilot.api.services import fiches_de_calcul_service
+                        fiches_de_calcul_service.enregistrer(conn_tache, case_id=result.case_id,
+                                                             project_id=(project or {}).get("id"), cas=case,
+                                                             par=case.get("valide_par", ""))
                     except DonneeDeTestInvalide as exc:
                         return {"erreur": f"« {case['title']} » : ses lignes n'ont pas pu être enregistrées ({exc}) — "
                                           "le cas est créé sans elles, à compléter dans sa fiche"}

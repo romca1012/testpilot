@@ -422,7 +422,7 @@ def get_job(job_id: str, conn=Depends(get_conn)):
 @router.post("/jobs/{job_id}/metier", response_model=schemas.GenerationJobOut, status_code=202,
             dependencies=[Depends(access.require_project_role_depuis(
                 "job_id", access.project_id_depuis_job, access.ROLE_DEV))])
-def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: BackgroundTasks,
+def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: BackgroundTasks, request: Request,
                     conn=Depends(get_conn)):
     """PASSE 4b — l'humain valide (ou corrige, ou réduit) l'ensemble des cas proposés, chacun avec
     la Section qu'il a choisie (ou aucune) ; le Gherkin de chaque cas retenu est alors écrit.
@@ -435,7 +435,7 @@ def validate_metier(job_id: str, body: schemas.MetierValidationIn, background: B
     """
     try:
         cases = [c.model_dump() for c in body.cases]
-        params = generation_service.validate_metier(conn, job_id, cases)
+        params = generation_service.validate_metier(conn, job_id, cases, par=access.utilisateur_de(request))
     except generation_service.GenerationError as err:
         raise erreurs.depuis_service(err.code, err.detail)
 

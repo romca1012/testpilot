@@ -4340,6 +4340,47 @@ def fautes_des_noms_de_lignes(noms: list[str]) -> list[str]:
     return list(dict.fromkeys(fautes))
 
 
+class FicheDeCalculRepo:
+    """Étape 7 (A108, A110) : les fiches de calcul d'un cas — propres au projet, jamais partagées. Le contenu est enregistré
+    tel que `parametres/calcul.valider_fiche` l'a normalisé : ce dépôt ne valide pas, il garde.
+
+    `retenue` = choisie par une personne (cela VAUT validation : `retenue_par`, `retenue_le`) ; `proposee` = présentée, pas
+    utilisée ; `ecartee`. Seules les fiches retenues servent à un test."""
+
+    STATUTS = ("proposee", "retenue", "ecartee")
+    ORIGINES = ("ia", "personne")
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def creer(self, *, project_id: int, case_id: int, contenu: dict, origine: str, statut: str = "proposee",
+              auteur: str = "", retenue_par: str = "") -> int:
+        if origine not in self.ORIGINES or statut not in self.STATUTS:
+            raise ValueError(f"fiche de calcul : origine {origine!r} ou statut {statut!r} inconnu")
+        if statut == "retenue" and not retenue_par.strip():
+            # A110 : une fiche n'est utilisée que si une PERSONNE l'a choisie — jamais retenue sans nom.
+            raise ValueError("une fiche retenue porte le nom de la personne qui l'a choisie")
+        ts = now_iso()
+        cur = self.conn.execute(
+            "INSERT INTO fiche_de_calcul (project_id, case_id, nom, contenu, origine, statut, auteur, retenue_par,"
+            " retenue_le, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (project_id, case_id, str(contenu.get("nom") or ""), json.dumps(contenu, ensure_ascii=False), origine,
+             statut, auteur, retenue_par.strip() if statut == "retenue" else "", ts if statut == "retenue" else "",
+             ts, ts))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def du_cas(self, case_id: int) -> list[dict]:
+        lignes = _rows(self.conn.execute(
+            "SELECT * FROM fiche_de_calcul WHERE case_id=? ORDER BY id", (case_id,)))
+        for ligne in lignes:
+            ligne["contenu"] = json.loads(ligne["contenu"] or "{}")
+        return lignes
+
+    def retenues(self, case_id: int) -> list[dict]:
+        return [f for f in self.du_cas(case_id) if f["statut"] == "retenue"]
+
+
 class CaseDataRepo:
     """Les LIGNES PROPRES À UN CAS (migration 72, décisions A57 et A58) : ses classes de valeurs et le résultat attendu de
     chacune, une itération par ligne quand on lance ce cas. Les colonnes sont des variables VIVANTES du projet du cas ; une
