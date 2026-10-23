@@ -94,6 +94,15 @@ function basculerLigne(l: ExcelImportLigne) {
   retenues.value[l.numero_ligne] = !retenues.value[l.numero_ligne]
 }
 
+// Porteur, 2026-10-23 : une ligne sans étapes ni résultat attendu reconnus est décochée d'office ; quand c'est la colonne qui
+// n'a pas été devinée, TOUTES le sont, et les recocher une à une (100 cas) était le seul moyen. Un geste pour tout.
+const toutesRetenues = computed(() =>
+  !!apercu.value?.lignes.length && apercu.value.lignes.every((l) => retenues.value[l.numero_ligne]))
+function basculerToutes() {
+  const cocher = !toutesRetenues.value
+  retenues.value = Object.fromEntries((apercu.value?.lignes ?? []).map((l) => [l.numero_ligne, cocher]))
+}
+
 const confirmation = ref<{ cree: number; ignore: number; run_id: number | null } | null>(null)
 const confirmantImport = ref(false)
 
@@ -220,9 +229,14 @@ function terminer() {
 
       <!-- Lignes candidates -->
       <div class="mt-5">
-        <h2 class="text-sm font-semibold">
-          Cas détectés — {{ lignesRetenuesCount }} retenu{{ lignesRetenuesCount > 1 ? 's' : '' }} sur {{ apercu.lignes.length }}
-        </h2>
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold">
+            Cas détectés — {{ lignesRetenuesCount }} retenu{{ lignesRetenuesCount > 1 ? 's' : '' }} sur {{ apercu.lignes.length }}
+          </h2>
+          <button type="button" class="text-sm text-primary hover:underline" data-testid="tout-cocher" @click="basculerToutes">
+            {{ toutesRetenues ? 'Tout décocher' : 'Tout cocher' }}
+          </button>
+        </div>
         <div class="mt-2 space-y-2 max-h-[480px] overflow-y-auto">
           <div v-for="l in apercu.lignes" :key="l.numero_ligne"
                class="rounded-lg border border-border p-3"
