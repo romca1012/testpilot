@@ -195,8 +195,14 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
   - « C'est ici que je vérifie » : les éléments ont-ils un identifiant technique, ou est-il souvent refusé ?
   - l'écriture du test par l'IA à partir du parcours (suit-elle les actions, le test passe-t-il ?) et son coût (§9).
   Un défaut trouvé ici se corrige avant d'allumer quoi que ce soit.
-- **De toi :** accord sur le budget.
-- **1 à 2 jours — environ 20 $**
+- **Version réduite, validée par le porteur le 2026-10-23 — plafond strict 10 $** (arrêt dès qu'il est atteint) :
+  1. d'abord ce qui est gratuit : essai de l'enregistrement du parcours, rejeu des tests du banc (aucune écriture par l'IA) ;
+  2. une seule mesure groupée, les mêmes cas toutes options éteintes puis toutes allumées (~6-8 $) ; si le résultat est
+     mitigé, on cherche l'option fautive seulement avec un nouvel accord ;
+  3. l'IA écrit les tests de 5 cas à partir de parcours enregistrés (~2-3 $).
+  Limites acceptées : moins de cas, donc un petit écart peut passer inaperçu ; la mesure groupée ne dit pas quelle option
+  a aidé.
+- **1 à 2 jours — 10 $ au plus**
 
 #### Étape 9 — Clôture des paramètres de test et de la génération
 - Retirer l'ancien écran « Identité et application » ; guide utilisateur des paramètres de test ; guide de test et
