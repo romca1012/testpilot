@@ -32,6 +32,8 @@ body { margin: 0; font: 14px sans-serif; } .p { position: absolute; left: 10px; 
 <div class="p" style="top:250px" id="total">0 EUR</div>
 <input class="p" style="top:300px" type="text" name="mdp_visible" autocomplete="current-password" aria-label="Mot de passe">
 <div class="p" style="top:350px">sans identifiant</div>
+<button class="p" style="top:400px" name="action_view_invoice"><span>3</span> Factures</button>
+<button class="p" style="top:450px"><span>2</span> Avoirs</button>
 </body></html>"""
 
 
@@ -135,22 +137,29 @@ def test_un_parcours_reel_est_enregistre_sans_le_mot_de_passe(client, applicatio
         ws.send_json({"type": "verifier", "x": 50, "y": 265})
         verif = _recevoir_jusqua(ws, _type("action_capturee"))
         assert verif["action"] == "verifier" and verif["nom"] == "total"
-        assert "30" not in repr(verif)
+        assert "EUR" not in repr(verif)
 
         # Un élément sans aucune désignation technique : refusé, jamais désigné par son texte.
         ws.send_json({"type": "verifier", "x": 50, "y": 365})
         assert _recevoir_jusqua(ws, _type("clic_non_enregistre"))["raison"] == "element_sans_designation"
 
+        # Un bouton dont le nom vient de ce qu'il affiche (« 3 Factures ») : son nom technique, jamais son texte.
+        ws.send_json({"type": "verifier", "x": 50, "y": 415})
+        bouton = _recevoir_jusqua(ws, _type("action_capturee"))
+        assert bouton["nom"] == "action_view_invoice" and "Factures" not in repr(bouton)
+        ws.send_json({"type": "verifier", "x": 50, "y": 465})                  # sans nom technique : refusé
+        assert _recevoir_jusqua(ws, _type("clic_non_enregistre"))["raison"] == "element_sans_designation"
+
         ws.send_json({"type": "confirmer"})
         confirme = _recevoir_jusqua(ws, _type("confirme"))
-        assert confirme["actions"] == 4
+        assert confirme["actions"] == 5
 
     conn = get_initialized_db(config.DB_PATH)
     try:
         enregistre = ParcoursRepo(conn).dernier(case_id)
     finally:
         conn.close()
-    assert [a["action"] for a in enregistre["actions"]] == ["clic", "saisie", "choix", "verifier"]
+    assert [a["action"] for a in enregistre["actions"]] == ["clic", "saisie", "choix", "verifier", "verifier"]
     assert "S3cret" not in repr(enregistre) and "30 EUR" not in repr(enregistre)
     assert enregistre["auteur"] == "Root"
 

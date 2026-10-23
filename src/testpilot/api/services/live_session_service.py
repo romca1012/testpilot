@@ -85,7 +85,8 @@ _CHAMP_SOUS_LE_POINT_JS = r"""
     options: tag === 'select'
       ? Array.from(champ.options).map(o => (o.label || o.textContent || '').trim()).filter(Boolean).slice(0, 200) : [],
     secret: (champ.getAttribute('type') || '').toLowerCase() === 'password'
-      || /(current|new)-password/.test(champ.getAttribute('autocomplete') || ''),
+      || /(current|new)-password/.test(champ.getAttribute('autocomplete') || '')
+      || /pass(word|wd)?|mdp|mot.?de.?passe/i.test((champ.getAttribute('name') || '') + ' ' + (champ.id || '')),
     // Une liste à recherche (autocomplétion, many2one…) : remplir le texte ne CHOISIT pas l'enregistrement — l'étape
     // générique « je renseigne le champ » n'y suffit pas, l'agent écrira l'étape qui convient (revue du 2026-10-23).
     relation: (champ.getAttribute('role') || '') === 'combobox' || champ.hasAttribute('aria-autocomplete')
@@ -96,21 +97,25 @@ _CHAMP_SOUS_LE_POINT_JS = r"""
 
 # Le champ qui reçoit VRAIMENT la saisie est-il un mot de passe (même affiché en clair) ?
 _EST_SECRET_JS = ("el => (el.getAttribute('type') || '').toLowerCase() === 'password'"
-                  " || /(current|new)-password/.test(el.getAttribute('autocomplete') || '')")
+                  " || /(current|new)-password/.test(el.getAttribute('autocomplete') || '')"
+                  " || /pass(word|wd)?|mdp|mot.?de.?passe/i.test((el.getAttribute('name') || '') + ' ' + (el.id || ''))")
 
-# Rôles dont le nom accessible est un LIBELLÉ (texte du bouton, étiquette du champ), pas une valeur affichée. Pour tout
-# autre élément (une cellule, un montant, un statut), le nom accessible EST son contenu : jamais gardé (A39).
-_ROLES_A_LIBELLE = frozenset({"button", "link", "tab", "textbox", "searchbox", "spinbutton", "combobox", "checkbox",
-                              "radio", "switch", "slider", "listbox", "menuitem", "menuitemcheckbox", "menuitemradio"})
+# Rôles dont le nom accessible ne vient JAMAIS du contenu (étiquette d'un champ). Revue du 2026-10-23, 2e passe (bloquant,
+# mesuré avec Chromium) : un bouton, un lien, un onglet tirent leur nom de ce qu'ils affichent — le bouton Odoo
+# « 3 Factures », le lien « Panier (2) – 59,90 € » — donc jamais leur nom pour une vérification.
+_ROLES_SANS_CONTENU = frozenset({"textbox", "searchbox", "spinbutton", "combobox", "listbox", "slider"})
 
-# La désignation TECHNIQUE de l'élément visé (ou de son plus proche ancêtre qui en a une) — jamais son texte.
+# La désignation TECHNIQUE de l'élément visé, ou d'un ancêtre PROCHE (3 niveaux au plus) — jamais son texte. Au-delà, on
+# désignerait un conteneur de toute la page (`#wrapwrap` d'Odoo, mesuré) : l'agent devrait deviner, mieux vaut refuser.
 _DESIGNATION_TECHNIQUE_JS = r"""
 ({x, y}) => {
-  const el = document.elementFromPoint(x, y);
-  const porteur = el && el.closest('[data-test], [data-testid], [name], [id]');
-  if (!porteur) return '';
-  return (porteur.getAttribute('data-test') || porteur.getAttribute('data-testid') || porteur.getAttribute('name')
-          || porteur.getAttribute('id') || '').slice(0, 120);
+  let el = document.elementFromPoint(x, y);
+  for (let niveau = 0; el && niveau <= 3; niveau += 1, el = el.parentElement) {
+    const nom = el.getAttribute('data-test') || el.getAttribute('data-testid') || el.getAttribute('name')
+      || el.getAttribute('id');
+    if (nom) return nom.slice(0, 120);
+  }
+  return '';
 }
 """
 
@@ -437,17 +442,19 @@ class SessionLive:
 
     def _parcours_verifier(self, page, x: float, y: float) -> None:
         """« C'est ici que je vérifie » : l'élément est désigné, JAMAIS cliqué, et RIEN de ce qu'il affiche n'est gardé — le
-        résultat attendu vient du cas validé (A39). Revue du 2026-10-23 (bloquant) : le texte d'un montant désigné partait
-        comme « nom » à l'agent, qui l'écrivait comme attendu (un bug du jour devenait conforme). Seuls restent : le nom
-        accessible d'un élément dont le nom est un LIBELLÉ (bouton, champ…), sinon une désignation technique (`data-test`,
-        `name`, `id`)."""
+        résultat attendu vient du cas validé (A39). Revue du 2026-10-23 (bloquant, deux passes) : le texte d'un montant, ou
+        celui d'un bouton « 3 Factures », partait comme « nom » à l'agent, qui l'écrivait comme attendu (un bug du jour
+        devenait conforme). D'abord la désignation technique (`data-test`, `name`, `id`) ; à défaut, l'étiquette d'un CHAMP
+        (`_ROLES_SANS_CONTENU`) ; sinon refusé."""
         try:
             resolu = accname.calculer(page, x, y)
         except accname.ElementIntrouvableError:
             resolu = None   # ambigu par son nom : la désignation technique peut encore le distinguer
-        if resolu is None or resolu["role"] not in _ROLES_A_LIBELLE:
-            technique = page.evaluate(_DESIGNATION_TECHNIQUE_JS, {"x": x, "y": y})
-            resolu = {"role": "element", "name": technique} if technique else None
+        technique = page.evaluate(_DESIGNATION_TECHNIQUE_JS, {"x": x, "y": y})
+        if technique:
+            resolu = {"role": (resolu or {}).get("role") or "element", "name": technique}
+        elif resolu is None or resolu["role"] not in _ROLES_SANS_CONTENU:
+            resolu = None
         if resolu is None:
             self.sortantes.put({"type": "clic_non_enregistre", "raison": "element_sans_designation"})
             return

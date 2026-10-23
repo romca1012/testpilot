@@ -107,7 +107,7 @@ onMounted(demarrer)
       <Card :dense="true" class="overflow-hidden">
         <div v-if="connexionAuto === false && !captureCommencee" class="mb-3 flex items-center justify-between gap-3 text-xs text-warning"
              data-testid="connexion-auto-ko">
-          <span>Connexion automatique impossible : connectez-vous ici. Rien n'est enregistré pendant ce temps.</span>
+          <span>Connexion automatique impossible : connectez-vous ici avec le compte du projet (le test le rejouera avec lui). Rien n'est enregistré pendant ce temps.</span>
           <Button size="sm" variant="secondary" :disabled="statut !== 'en_direct'" @click="commencer">Je suis connecté</Button>
         </div>
 
