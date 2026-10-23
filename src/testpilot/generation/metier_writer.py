@@ -100,9 +100,24 @@ _METIER_AVEC_LIGNES_SCHEMA = {**_METIER_SCHEMA,
                               "required": [*_METIER_SCHEMA["required"], "lignes"]}
 LIGNES_PROPOSEES_MAX = 20   # au-delà, ce ne sont plus des classes de valeurs
 
+# Étape 7 (A110), interrupteur `TESTPILOT_CALCULS` : l'IA dit si le résultat attendu du cas est une valeur CALCULÉE, et
+# pourquoi, en une phrase montrée sur l'écran de validation (« Calcul détecté »). Éteint : le schéma d'avant, inchangé.
+_CALCUL_DETECTE = {"type": "string", "description": "Si le résultat attendu est une valeur qui se DÉDUIT d'autres valeurs "
+                   "(un total, une remise, une taxe, un pourcentage, une échéance, une durée), une phrase qui dit de quoi "
+                   "elle dépend ; sinon chaîne vide."}
+
+
+def _schema(proposer_lignes: bool, proposer_calculs: bool) -> dict:
+    """Le schéma de la réponse : celui d'avant, plus les champs des options allumées — jamais les autres."""
+    if not proposer_calculs:
+        return _METIER_AVEC_LIGNES_SCHEMA if proposer_lignes else _METIER_SCHEMA
+    base = _METIER_AVEC_LIGNES_SCHEMA if proposer_lignes else _METIER_SCHEMA
+    return {**base, "properties": {**base["properties"], "calcul_detecte": _CALCUL_DETECTE},
+            "required": [*base["required"], "calcul_detecte"]}
+
 
 def _data_metier(llm, plan: TestPlan, model: str, cost_tracker, brief: str = "", variables: list[dict] | None = None,
-                 proposer_lignes: bool = False, termes: list[str] | None = None) -> dict:
+                 proposer_lignes: bool = False, termes: list[str] | None = None, proposer_calculs: bool = False) -> dict:
     """Le dict du document métier. Sorties structurées si l'adaptateur les expose (`call_json`),
     sinon parsing tolérant — ce qui garde inchangés les adaptateurs minimaux (fakes de test).
 
@@ -112,12 +127,12 @@ def _data_metier(llm, plan: TestPlan, model: str, cost_tracker, brief: str = "",
     """
     proposer_lignes = bool(proposer_lignes and variables)
     stable = (_build_prompt(plan) + _section_variables(variables) + (_section_lignes() if proposer_lignes else "")
-              + _section_termes(termes))
+              + _section_termes(termes) + (_section_calculs() if proposer_calculs else ""))
     variable = _consigne_cas(brief)
     modele = model or config.MODEL_FAST
     if hasattr(llm, "call_json"):
         return llm.call_json(system_prompt=_SYSTEM, cached_prefix=stable, user_content=variable,
-                             schema=_METIER_AVEC_LIGNES_SCHEMA if proposer_lignes else _METIER_SCHEMA,
+                             schema=_schema(proposer_lignes, proposer_calculs),
                              model=modele, max_tokens=3000 if proposer_lignes else 2000,
                              cost_tracker=cost_tracker, label="metier") or {}
     raw = llm.call_simple(system_prompt=_SYSTEM, cached_prefix=stable, user_content=variable,
@@ -170,7 +185,7 @@ class MetierDraft:
     def __init__(self, *, title: str = "", preconditions: str = "",
                  steps: list[str] | None = None, expected_result: str = "",
                  depend_dun_autre_cas_du_groupe: bool = False,
-                 etat_a_creer_par_ce_cas: str = "", lignes: list[dict] | None = None):
+                 etat_a_creer_par_ce_cas: str = "", lignes: list[dict] | None = None, calcul_detecte: str = ""):
         self.title = title
         self.preconditions = preconditions
         self.steps = steps or []
@@ -180,13 +195,17 @@ class MetierDraft:
         # IT-3c : les lignes PROPOSÉES ([{nom, valeurs: {variable: valeur}}]) — déjà nettoyées (`lignes_propres`), jamais
         # enregistrées avant qu'une personne valide le cas.
         self.lignes = lignes or []
+        # Étape 7 (A110) : pourquoi le résultat attendu est une valeur calculée — vide : rien de détecté.
+        self.calcul_detecte = calcul_detecte
 
     def as_dict(self) -> dict:
         donnees = {"title": self.title, "preconditions": self.preconditions,
                    "steps": list(self.steps), "expected_result": self.expected_result,
                    "depend_dun_autre_cas_du_groupe": self.depend_dun_autre_cas_du_groupe,
                    "etat_a_creer_par_ce_cas": self.etat_a_creer_par_ce_cas}
-        return {**donnees, "lignes": [dict(l) for l in self.lignes]} if self.lignes else donnees
+        if self.lignes:
+            donnees = {**donnees, "lignes": [dict(l) for l in self.lignes]}
+        return {**donnees, "calcul_detecte": self.calcul_detecte} if self.calcul_detecte else donnees
 
     @property
     def complete(self) -> bool:
@@ -294,6 +313,14 @@ def _section_lignes() -> str:
             f"{LIGNES_PROPOSEES_MAX} lignes au plus.")
 
 
+def _section_calculs() -> str:
+    """Étape 7 (A110) : la consigne de détection d'un calcul — à la fin de la partie stable."""
+    return ("\n\n9. VALEUR CALCULÉE (« calcul_detecte ») : si le résultat attendu de ce cas est une valeur qui se DÉDUIT "
+            "d'autres valeurs (un total, une remise, une taxe, un pourcentage, une date d'échéance, une durée), écris en une "
+            "phrase de quoi elle dépend (« le total dépend de la quantité, du prix unitaire et de la remise »). Une valeur "
+            "simplement saisie ou affichée telle quelle n'est pas calculée : chaîne vide. Ne calcule rien toi-même.")
+
+
 def _section_termes(termes: list[str] | None) -> str:
     """AV-8 (étape 5, V-AV2) : les mots exacts des écrans, à la FIN de la partie stable (les mêmes pour tous les cas d'une
     spécification, donc en cache avec elle). Vide sans terme : le prompt est celui d'avant, octet pour octet."""
@@ -380,7 +407,7 @@ est le contexte dans lequel il s'inscrit."""
 def propose_metier(plan: TestPlan, *, llm: LLMAdapter | None = None,
                    cost_tracker=None, model: str = "", brief: str = "",
                    variables: list[dict] | None = None, proposer_lignes: bool = False,
-                   termes: list[str] | None = None) -> MetierDraft:
+                   termes: list[str] | None = None, proposer_calculs: bool = False) -> MetierDraft:
     """Un appel LLM → le document métier d'UN cas. Ne persiste rien.
 
     `brief` — vient du découpage (§9a) : quel cas précis rédiger dans cette spécification, parmi
@@ -394,6 +421,8 @@ def propose_metier(plan: TestPlan, *, llm: LLMAdapter | None = None,
     """
     llm = llm or LLMAdapter()
     avec_termes = {"termes": termes} if termes else {}   # sans terme : l'appel d'avant (doublures de test comprises)
+    if proposer_calculs:
+        avec_termes["proposer_calculs"] = True   # éteint : l'appel d'avant, à l'argument près
     data = (_data_metier(llm, plan, model, cost_tracker, brief, variables, proposer_lignes=True, **avec_termes)
             if proposer_lignes else _data_metier(llm, plan, model, cost_tracker, brief, variables, **avec_termes))
     if not data:
@@ -409,6 +438,7 @@ def propose_metier(plan: TestPlan, *, llm: LLMAdapter | None = None,
         depend_dun_autre_cas_du_groupe=bool(data.get("depend_dun_autre_cas_du_groupe", False)),
         etat_a_creer_par_ce_cas=str(data.get("etat_a_creer_par_ce_cas", "") or "").strip(),
         lignes=lignes_propres(data.get("lignes"), [v.get("nom") for v in variables or []]) if proposer_lignes else [],
+        calcul_detecte=str(data.get("calcul_detecte", "") or "").strip()[:300] if proposer_calculs else "",
     )
 
 

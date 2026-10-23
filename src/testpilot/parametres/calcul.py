@@ -135,7 +135,8 @@ def valider_fiche(fiche, *, proposition: bool = False) -> dict:
             if not _DATE.match(verifie) and (not proposition or verifie):
                 # V8 (A110) : une constante (un taux, un plafond) indique sa source ET sa date de vérification.
                 raise FicheInvalide(f"élément « {nom} » : sa date de vérification manque (AAAA-MM-JJ)")
-            normal["verifie_le"] = verifie
+            if verifie:
+                normal["verifie_le"] = verifie
         if element.get("unite"):
             normal["unite"] = str(element["unite"]).strip()
         connus.add(nom)

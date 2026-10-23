@@ -340,6 +340,8 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
         # IT-3c (interrupteur, éteint) : l'IA propose aussi les lignes du cas, pour ces seules variables (A60).
         from testpilot.generation import interrupteurs as _interrupteurs
         proposer_lignes = bool(variables_des_cas) and _interrupteurs.lignes_proposees_actif()
+        # Étape 7 (interrupteur, éteint) : l'IA dit si le résultat attendu est calculé, et propose alors sa fiche.
+        proposer_calculs = _interrupteurs.calculs_actif()
         # AV-8 (étape 5, interrupteur éteint) : les mots exacts des écrans, relevés par l'exploration du projet.
         termes_des_ecrans: list[str] = []
         if _interrupteurs.cas_aux_termes_des_ecrans_actif() and module.get("project_id"):
@@ -360,7 +362,8 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
                 draft = propose_metier(plan, brief=brief.brief, cost_tracker=case_tracker,
                                        **({"variables": variables_des_cas} if variables_des_cas else {}),
                                        **({"proposer_lignes": True} if proposer_lignes else {}),
-                                       **({"termes": termes_des_ecrans} if termes_des_ecrans else {}))
+                                       **({"termes": termes_des_ecrans} if termes_des_ecrans else {}),
+                                       **({"proposer_calculs": True} if proposer_calculs else {}))
                 metier_cost_total += case_tracker.total_cost
                 if not draft.complete:
                     # Titre + étapes + résultat attendu sont obligatoires (`0022` n°3.c). On
@@ -402,7 +405,22 @@ def run_generation(job_id: str, *, module_id: int, title: str, spec_content: str
                               "génération",
                         cost_usd=cout)
                     return
-                cases.append({**draft.as_dict(), "user_story": story.user_story})
+                fiches_proposees = []
+                if proposer_calculs and draft.calcul_detecte:
+                    # Un appel de plus, pour CE seul cas (§9, mesuré à l'étape 8) ; une panne de cet appel n'arrête pas le
+                    # lot : le cas reste « Calcul détecté », sans proposition — la personne peut fournir le calcul.
+                    from testpilot.generation.fiche_writer import proposer_les_fiches
+                    from testpilot.llm.adapter import LLMAdapter
+                    fiche_tracker = CostTracker()
+                    try:
+                        fiches_proposees = proposer_les_fiches(
+                            LLMAdapter(), specification=spec_content, cas=draft.as_dict(), raison=draft.calcul_detecte,
+                            variables=variables_des_cas, cost_tracker=fiche_tracker)
+                    except Exception:
+                        logger.exception("[generation] proposition de fiche en échec pour « %s »", draft.title)
+                    metier_cost_total += fiche_tracker.total_cost
+                cases.append({**draft.as_dict(), "user_story": story.user_story,
+                              **({"fiches_proposees": fiches_proposees} if fiches_proposees else {})})
                 # ⚠️ Pouls (2026-09-13, bug SauceDemo) : `GenerationJobRepo.get()` réputait un
                 # job "running" MORT (« le serveur a peut-être redémarré ») après
                 # `SEUIL_BLOQUE_SECONDES` (15 min) SANS LA MOINDRE écriture — or cette boucle
