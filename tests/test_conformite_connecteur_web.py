@@ -281,6 +281,23 @@ def test_torture_tenter_connexion_generique_detecte_seule_la_connexion_a_deux_ec
         f"la détection à deux écrans n'a pas abouti (url actuelle : {page.url})")
 
 
+def test_falsifiable_torture_tenter_connexion_generique_trouve_un_identifiant_sans_attribut_type(page):
+    """Cas réel mesuré sur OrangeHRM (demo publique, 2026-10-01) : le champ identifiant n'a AUCUN
+    attribut `type` littéral (`<input name="username">`, sans `type="text"`) — HTML le traite
+    comme texte par défaut, mais un sélecteur `input[type='text']` ne le trouve pas
+    (`getAttribute('type')` rend `null`). `tenter_connexion_generique` journalisait « mot de
+    passe détecté sans champ identifiant » et abandonnait la connexion en silence — ni SauceDemo
+    ni the-internet n'exercent ce cas (étape 1.3 : « attribut technique toujours présent »),
+    d'où la fixture torture dédiée plutôt qu'une 3ᵉ application publique."""
+    page.goto(_page_torture("connexion-sans-type-attribut.html"))
+
+    resultat = tenter_connexion_generique(page, "testpilot", "secret")
+
+    assert resultat is True
+    assert "dashboard.html" in page.url, (
+        f"la connexion sans attribut type n'a pas abouti (url actuelle : {page.url})")
+
+
 # ── Le crawl capture un champ SANS name (audit « Le pari Mabl/Testim », cas réel 2026-09-15) ────
 #
 # Défaut RÉEL trouvé en diagnostiquant un cas généré : le tri du catalogue SauceDemo n'a AUCUN
