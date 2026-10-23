@@ -218,4 +218,16 @@ describe('AddTestRunForm — jeux de données (PT-02b)', () => {
     const w = await formulaire()
     expect(w.find('[data-testid="lignes-plage"]').exists()).toBe(false)
   })
+
+  it('revue : une plage choisie puis une campagne manuelle n’envoie pas la plage', async () => {
+    casAvecLignes.mockResolvedValue([21])
+    lignesParCas.mockResolvedValue({ 21: 3 })
+    const w = await formulaire()
+    await w.get('[data-testid="lignes-plage-choix"]').setValue(true)
+    const manuelle = w.findAll('input[type="radio"]').find((r: any) => (r.element as HTMLInputElement).value === 'manuelle')!
+    await manuelle.setValue(true)
+    await envoyer(w)
+    expect(createRun.mock.calls[0][1]).toMatchObject({ lignes_des_cas: 'toutes' })
+    expect(createRun.mock.calls[0][1].ligne_debut).toBeUndefined()
+  })
 })

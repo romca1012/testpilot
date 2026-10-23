@@ -46,7 +46,12 @@ watchEffect(() => {
   valide.value = coches.value.length <= LIGNES_PAR_LANCEMENT_MAX && plageValide.value
 })
 // Proposée d'emblée « de 1 à la dernière ligne possible », tant que la personne n'a pas choisi la plage.
-watch(plageMax, (max) => { if (lignesDesCas.value !== 'plage') plageA.value = Math.max(1, max) })
+watch(plageMax, (max) => {
+  if (lignesDesCas.value !== 'plage') plageA.value = Math.max(1, max)
+  // Revue : plus aucun cas choisi n'a assez de lignes pour une plage, l'option disparaît — on revient au défaut, jamais un
+  // bouton « Créer » bloqué par un choix devenu invisible.
+  else if (max <= 1) lignesDesCas.value = 'toutes'
+})
 
 function basculerToutes() {
   coches.value = toutes.value ? jeux.value.filter((j) => j.est_defaut).map((j) => j.id) : jeux.value.map((j) => j.id)
