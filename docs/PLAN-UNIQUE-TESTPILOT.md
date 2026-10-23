@@ -186,6 +186,15 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
 - Une seule campagne qui mesure tout ce que les étapes 4 à 7 ont apporté (Odoo compris), plus les options encore
   éteintes (forme de l'oracle, valeurs avec unité, lignes proposées par l'IA si pas encore allumées).
 - On **allume** ce qui a passé sa mesure ; on retire les interrupteurs devenus inutiles.
+- **Essai réel de l'enregistrement du parcours (étape 7b)** — prouvé seulement sur une page de test locale, jamais sur
+  une vraie application (porteur, 2026-10-23 : « c'est différent de l'enregistrement de la connexion »). À vérifier sur
+  Odoo (instance de référence) et sur une application web (SauceDemo), de bout en bout par l'écran :
+  - la connexion automatique avec le compte du projet ;
+  - la saisie de texte (le curseur reste-t-il dans le champ cliqué ?) ;
+  - les listes à recherche d'Odoo (laissées à l'IA) ;
+  - « C'est ici que je vérifie » : les éléments ont-ils un identifiant technique, ou est-il souvent refusé ?
+  - l'écriture du test par l'IA à partir du parcours (suit-elle les actions, le test passe-t-il ?) et son coût (§9).
+  Un défaut trouvé ici se corrige avant d'allumer quoi que ce soit.
 - **De toi :** accord sur le budget.
 - **1 à 2 jours — environ 20 $**
 
