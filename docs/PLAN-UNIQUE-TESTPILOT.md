@@ -128,16 +128,24 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
 - **4 à 5 jours — 0 $** (mesuré à l'étape 8)
 - *Partiellement fait (2026-10-22 au soir), branche `lot-etape6-donnees-clients`, poussée, sans PR* — migration 75 ; colonne remplie depuis l'application (oracle ou Odoo), figée au lancement, derrière `TESTPILOT_COLONNE_DEPUIS_L_APPLICATION` (éteint, proposition A105 à valider : 3 enregistrements, les premiers rendus) ; lignes d'un cas signalées quand son texte change, nouvelles lignes proposées par l'IA derrière `TESTPILOT_LIGNES_PROPOSEES` (A106 : signal ou blocage, à trancher). Restent : l'écran pour déclarer une source et pour relire les lignes proposées, la mesure.
 
-#### Étape 7 — Valeurs attendues calculées et réglages partagés (famille 5, niveau bibliothèque)
-- Vérifier un montant sans l'avoir recopié de la spécification : calcul indépendant, devise et taux sourcés, validé
-  par une personne. **Comment (A108, principe validé le 2026-10-23)** : on ne sait pas à l'avance ce qu'un test devra
-  calculer, donc pas de liste de calculs figée. L'IA dresse d'abord l'**inventaire des facteurs** qui influencent le
-  résultat (chacun avec sa source), puis écrit la **formule** dans un langage de calcul limité ; le **code** l'exécute
-  (exact, rejouable) ; elle doit retrouver les **exemples** de la spécification ; une **personne** valide inventaire et
-  formule. Jamais une valeur calculée par l'IA, jamais une valeur lue dans l'application.
-- Reprendre les réglages d'un autre projet (bibliothèque commune).
-- **De toi :** V5, V6 (bibliothèque), V8, V10 (qui valide un calcul), D22 (atelier de calcul).
-- **3 à 4 jours — 0 $** (mesuré à l'étape 8)
+#### Étape 7 — Valeurs attendues calculées (A108, A110 — validées le 2026-10-23)
+- Vérifier une valeur calculée (total, remise, taxe, échéance…) sans recopier le chiffre de la spécification.
+- **Le calculateur** : du code, sans IA, qui exécute un calcul écrit en étapes simples (pourcentage, arrondi, plafond,
+  barème par tranches, condition), exact, avec le détail ligne par ligne.
+- **La fiche de calcul** (propre au projet, jamais partagée) : les éléments du calcul avec leur source, les étapes, les
+  exemples chiffrés à retrouver (le chiffre écrit dans la spec en devient un), l'origine (IA ou personne, nom, date). Un taux
+  indique sa source et sa date de vérification, rien d'autre.
+- **Sur l'écran de validation des cas, après « Générer » et avant l'écriture des tests techniques** : un cas qui attend une
+  valeur calculée porte la mention **« Calcul détecté »** (avec la raison) ; l'utilisateur choisit (1) la fiche **proposée
+  par l'IA**, déjà présentée, (2) **fournir lui-même** le calcul, ou (3) **ne pas vérifier par calcul** — choix **par
+  défaut** s'il valide sans rien faire, la valeur est vérifiée comme aujourd'hui. Choisir (1) ou (2) vaut validation par
+  cette personne (V10 : rôle testeur ou plus ; nom et date gardés ; l'IA ne valide jamais ; une fiche modifiée redevient
+  à valider). Il peut aussi marquer « Calcul nécessaire » un cas non détecté.
+- **Le test** : « le nombre affiché pour X vaut le résultat calculé "<nom>" », recalculé à chaque exécution ; une fiche
+  qui ne retrouve pas ses exemples n'est jamais utilisée.
+- Abandonné (porteur, 2026-10-23) : la bibliothèque commune entre projets (V5, V6 sans objet) ; un délai d'expiration des
+  taux (V8 : source et date seulement).
+- **3 à 4 jours — 0 $** (coût de la proposition de fiche mesuré à l'étape 8)
 
 #### Étape 7b — Enregistrer le parcours d'un cas de test (au choix) — *proposition du 2026-10-23, à valider (A109)*
 - Idée du porteur : la connexion est un parcours déjà enregistré ; faire de même pour n'importe quel cas. Une personne joue
