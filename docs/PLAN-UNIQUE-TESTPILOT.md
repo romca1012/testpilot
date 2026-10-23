@@ -130,7 +130,11 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
 
 #### Étape 7 — Valeurs attendues calculées et réglages partagés (famille 5, niveau bibliothèque)
 - Vérifier un montant sans l'avoir recopié de la spécification : calcul indépendant, devise et taux sourcés, validé
-  par une personne.
+  par une personne. **Comment (A108, principe validé le 2026-10-23)** : on ne sait pas à l'avance ce qu'un test devra
+  calculer, donc pas de liste de calculs figée. L'IA dresse d'abord l'**inventaire des facteurs** qui influencent le
+  résultat (chacun avec sa source), puis écrit la **formule** dans un langage de calcul limité ; le **code** l'exécute
+  (exact, rejouable) ; elle doit retrouver les **exemples** de la spécification ; une **personne** valide inventaire et
+  formule. Jamais une valeur calculée par l'IA, jamais une valeur lue dans l'application.
 - Reprendre les réglages d'un autre projet (bibliothèque commune).
 - **De toi :** V5, V6 (bibliothèque), V8, V10 (qui valide un calcul), D22 (atelier de calcul).
 - **3 à 4 jours — 0 $** (mesuré à l'étape 8)
