@@ -2043,12 +2043,14 @@ class RunRepo:
                case_ids: list[int] | None = None, strict: bool = False, sans_repli: bool = True,
                dataset_id: int | None = None, seulement_variables: bool = False,
                environment_id: int | None = None, dataset_ids: list[int] | None = None,
-               lignes_des_cas: str = "toutes") -> int:
+               lignes_des_cas: str = "toutes", plage_des_lignes: tuple[int, int] | None = None) -> int:
         """Crée un run en BROUILLON (jamais lancé à la création — `0022` 8.c.1).
 
         `dataset_ids` (A52) : plusieurs lignes de données de test, une ITÉRATION par ligne dans cette même campagne (valeurs
         figées au lancement). Vide : `dataset_id`, comme avant.
         `lignes_des_cas` (A58) : « toutes » les lignes propres de chaque cas (défaut) ou sa « premiere » seulement.
+        `plage_des_lignes` (A107) : (X, Y) — de la ligne X à la ligne Y de chaque cas (1 = la première) ; seulement avec
+        « toutes » (c'est elle qu'on restreint). `None` : pas de plage, comme avant.
         `environment_id` (lot PT-04a) : l'environnement ajouté joué par cette campagne ; `None` = l'environnement par défaut
         (l'adresse du projet, comme avant). Ses valeurs ne sont figées qu'au LANCEMENT (`environnements_service`).
 
@@ -2069,14 +2071,18 @@ class RunRepo:
             raise ValueError(f"mode d'exécution inconnu : {mode!r} — attendu {list(MODES_EXECUTION)}")
         if lignes_des_cas not in ("toutes", "premiere"):
             raise ValueError(f"lignes des cas : « toutes » ou « premiere », pas {lignes_des_cas!r}")
+        debut, fin = plage_des_lignes if plage_des_lignes is not None else (None, None)
+        if plage_des_lignes is not None and (lignes_des_cas != "toutes" or not all(
+                isinstance(n, int) and not isinstance(n, bool) for n in (debut, fin)) or not 1 <= debut <= fin):
+            raise ValueError("plage des lignes : de la ligne X à la ligne Y, 1 ≤ X ≤ Y, à la place de « toutes »")
         ts = now_iso()
         cur = self.conn.execute(
             "INSERT INTO test_run (project_id, name, description, refs, selection_mode, mode,"
             " status, created_at, strict, sans_repli, dataset_id, seulement_variables, environment_id, dataset_ids,"
-            " lignes_des_cas) VALUES (?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?)",
+            " lignes_des_cas, ligne_debut, ligne_fin) VALUES (?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?,?)",
             (project_id, name, description, refs, selection_mode, mode, ts, 1 if strict else 0, 1 if sans_repli else 0,
              dataset_id, 1 if seulement_variables else 0, environment_id,
-             json.dumps(list(dict.fromkeys(dataset_ids))) if dataset_ids else "", lignes_des_cas))
+             json.dumps(list(dict.fromkeys(dataset_ids))) if dataset_ids else "", lignes_des_cas, debut, fin))
         run_id = int(cur.lastrowid)
         if selection_mode == "frozen":
             for cid in dict.fromkeys(case_ids or []):  # dédup en gardant l'ordre

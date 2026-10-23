@@ -103,6 +103,10 @@ def start_campaign(conn, run_id: int, *, triggered_by: str = "") -> dict:
     from testpilot.store.repositories import DonneeDeTestInvalide
     try:
         donnees_de_test_service.figer_pour_la_campagne(conn, run)
+    except donnees_de_test_service.PlageIncomplete as err:
+        # A107 : la plage « de la ligne X à Y » n'existe pas en entier dans un cas (lignes retirées depuis la création) —
+        # rien n'est lancé, plutôt que jouer moins de lignes que celles annoncées.
+        raise CampaignError("range_missing", f"données de test : {err}") from err
     except DonneeDeTestInvalide as err:
         raise CampaignError("dataset_missing", f"le jeu de données de cette exécution n'est plus disponible : {err}") from err
     except ColonneImpossible as err:
