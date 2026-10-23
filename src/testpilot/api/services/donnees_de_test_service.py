@@ -414,15 +414,36 @@ def _avec_les_calculs(conn, case_id: int, feature: str, figes: dict) -> tuple[st
     from testpilot.store.repositories import FicheDeCalculRepo
 
     noms = calcul_au_lancement.noms_appeles(feature)
+    fin = " Le test n'a pas été joué."
+    refus = calcul_au_lancement.refus_des_appels(feature) if (noms or "le résultat calculé" in feature) else ""
+    if refus:
+        return f"Calcul : {refus}.{fin}"
     if not noms:
         return feature, figes
-    fin = " Le test n'a pas été joué."
+    # La fiche retenue LA PLUS RÉCENTE de chaque nom (une ancienne, remplacée, ne bloque rien) — relue et ses exemples
+    # revérifiés à chaque lancement (A110 : une fiche qui ne les retrouve pas n'est jamais utilisée).
+    recentes = {r["nom"]: r for r in FicheDeCalculRepo(conn).retenues(case_id)}
     fiches = {}
-    for retenue in FicheDeCalculRepo(conn).retenues(case_id):
+    for nom in noms:
+        if nom not in recentes:
+            continue   # dit par `calcul_au_lancement.valeurs` : « n'est pas retenu pour ce cas »
         try:
-            fiches[retenue["nom"]] = calcul.valider_fiche(retenue["contenu"])
+            fiche = calcul.valider_fiche(recentes[nom]["contenu"])
         except calcul.FicheInvalide as exc:
-            return f"Calcul « {retenue['nom']} » : {exc}.{fin}"
+            return f"Calcul « {nom} » : {exc}.{fin}"
+        ecarts = calcul.verifier_exemples(fiche)
+        if ecarts:
+            e = ecarts[0]
+            return f"Calcul « {nom} » : l'exemple {e.numero} attend {e.attendu}, le calcul donne {e.obtenu}.{fin}"
+        fiches[nom] = fiche
+    # Revue du 2026-10-23 (bloquant) : chaque entrée d'un calcul doit être SAISIE par le test (`{{entree}}` dans une action) —
+    # sinon la ligne serait calculée avec des valeurs jamais jouées, et l'itération annoncée sans l'avoir été.
+    posees = calcul_au_lancement.entrees_posees(feature)
+    for nom, fiche in fiches.items():
+        absentes = [e for e in calcul.entrees_attendues(fiche) if e not in posees]
+        if absentes:
+            return (f"Calcul « {nom} » : le test ne saisit pas " + ", ".join("{{" + e + "}}" for e in absentes)
+                    + " — le calcul serait fait avec des valeurs que le test ne joue pas. Régénérez le test." + fin)
     par_nom = calcul_au_lancement.variables(noms)
     figes = json.loads(json.dumps(figes or {}))   # une copie : les valeurs figées en base ne portent jamais un calcul
     connues = list(figes.get("connues") or [])

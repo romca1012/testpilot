@@ -531,8 +531,11 @@ def validate_metier(conn, job_id: str, cases: list[dict], *, par: str = "") -> d
             raise GenerationError("invalid_metier", f"« {validated[-1]['title']} » : " + " ; ".join(fautes_calcul))
         validated[-1].update(fiches_de_calcul_service.transporter(c))
         if validated[-1].get("fiches_retenues"):
-            # Choisir une fiche vaut validation par CETTE personne (V10) : son nom part avec le cas.
-            validated[-1]["valide_par"] = par or "inconnu"
+            # Choisir une fiche vaut validation par CETTE personne (V10) : son nom part avec le cas — jamais un nom fictif.
+            if not (par or "").strip():
+                raise GenerationError("invalid_metier", f"« {validated[-1]['title']} » : choisir un calcul vaut validation — "
+                                      "il faut être connecté avec un compte nommé")
+            validated[-1]["valide_par"] = par.strip()
 
     if not validated:
         raise GenerationError("invalid_metier",

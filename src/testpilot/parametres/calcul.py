@@ -43,6 +43,8 @@ ETAPES_MAX = 50          # au-delà, ce n'est plus un calcul qu'une personne rel
 TRANCHES_MAX = 30
 _NOM = re.compile(r"^[a-z_][a-z0-9_]{0,59}$")
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_INTERDITS = re.compile(r'["{}|\r\n]')
+DECIMALES_MAX = 10   # au-delà, une division n'a pas été arrondie : la fiche le dit au lieu de comparer 50 décimales
 # Les arrondis qu'une règle de gestion emploie, nommés comme une personne les dit — jamais un mode implicite : « arrondir à
 # 2 décimales » sans dire comment donne 0,125 → 0,12 ou 0,13 selon l'outil, et le test serait faux une fois sur deux.
 MODES_ARRONDI = {
@@ -114,6 +116,12 @@ def valider_fiche(fiche, *, proposition: bool = False) -> dict:
     nom_fiche = str(fiche.get("nom") or "").strip()
     if not nom_fiche:
         raise FicheInvalide("la fiche n'a pas de nom")
+    # Revue du 2026-10-23 : le nom est écrit entre guillemets dans le test, l'unité à côté de la valeur — un caractère qui
+    # casserait cette écriture ferait lire une AUTRE fiche, ou un test illisible.
+    for quoi, texte in (("le nom", nom_fiche), ("l'unité", str(fiche.get("unite") or ""))):
+        if _INTERDITS.search(texte) or len(texte) > 80:
+            raise FicheInvalide(f"{quoi} « {texte[:80]} » : sans guillemets, accolades, barre verticale ni retour à la "
+                                "ligne, 80 caractères au plus")
     connus: set[str] = set()
     elements = []
     for i, element in enumerate(fiche.get("elements") or [], start=1):
@@ -332,7 +340,13 @@ def calculer(fiche: dict, entrees: dict) -> Calcul:
                       f"alors {etape['alors']} sinon {etape['sinon']}")
             valeurs[nom] = r
             detail.append(f"{nom} = {lu} = {_ecrire(r)}")
-    return Calcul(resultat=valeurs[fiche["resultat"]], unite=fiche["unite"], detail=detail, valeurs=valeurs)
+    resultat = valeurs[fiche["resultat"]]
+    exposant = resultat.normalize().as_tuple().exponent
+    if isinstance(exposant, int) and exposant < -DECIMALES_MAX:
+        # Revue du 2026-10-23 : 10 ÷ 3 sans arrondi comparé à « 3,33 » donnerait un faux défaut de l'application.
+        raise CalculImpossible(f"le résultat {_ecrire(resultat)[:24]}… a plus de {DECIMALES_MAX} décimales : ajoutez une "
+                               "étape « arrondir » à la fin du calcul")
+    return Calcul(resultat=resultat, unite=fiche["unite"], detail=detail, valeurs=valeurs)
 
 
 def _comparer(a: Decimal, comparateur: str, b: Decimal) -> bool:

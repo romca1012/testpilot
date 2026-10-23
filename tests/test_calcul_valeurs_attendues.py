@@ -152,3 +152,20 @@ def test_une_entree_manquante_ou_une_division_par_zero_ne_donnent_aucun_resultat
 
 def test_les_entrees_attendues_sont_les_elements_sans_valeur_fixe():
     assert calcul.entrees_attendues(calcul.valider_fiche(TOTAL)) == ["quantite", "prix"]
+
+
+def test_falsifiable_une_division_non_arrondie_ne_donne_pas_de_resultat():
+    """Revue du 2026-10-23 : 10 ÷ 3 comparé à « 3,33 » à l'écran serait un faux défaut de l'application."""
+    fiche = calcul.valider_fiche({
+        "nom": "Part", "resultat": "r", "elements": [{"nom": "a", "source": "x"}, {"nom": "n", "source": "x"}],
+        "etapes": [{"resultat": "r", "operation": "diviser", "valeur": "a", "par": "n"}],
+        "exemples": [{"entrees": {"a": "10", "n": "4"}, "attendu": "2,5"}]})
+    assert calcul.verifier_exemples(fiche) == []
+    with pytest.raises(calcul.CalculImpossible, match="ajoutez une étape « arrondir »"):
+        calcul.calculer(fiche, {"a": "10", "n": "3"})
+
+
+@pytest.mark.parametrize("champ", ["nom", "unite"])
+def test_un_guillemet_dans_le_nom_ou_l_unite_est_refuse(champ):
+    with pytest.raises(calcul.FicheInvalide, match="sans guillemets"):
+        calcul.valider_fiche({**TOTAL, champ: 'Prix "net"'})

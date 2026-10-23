@@ -127,15 +127,14 @@ def test_falsifiable_vrai_behave_seule_l_iteration_calculee_faux_par_l_applicati
 
 @pytest.mark.parametrize("cas, motif", [
     ("non_retenue", "n'est pas retenu pour ce cas"),
-    ("entree_manquante", "« prix » manque"),
+    # Le prix est saisi par le test, mais n'a de valeur nulle part (ni la ligne du cas, ni le projet).
+    ("entree_sans_valeur", "« prix » manque"),
 ])
 def test_un_calcul_impossible_bloque_le_test_en_le_disant(base, cas, motif):
     if cas == "non_retenue":
         pid, cid, vid = _projet(base, retenir=False)
     else:
-        # Le prix n'a de valeur nulle part (ni dans la ligne du cas, ni dans le projet) : le calcul ne peut pas se faire.
-        feature = COMMANDE.replace(' à "{{prix}}"', ' à "10"')
-        pid, cid, vid = _projet(base, feature=feature, lignes=(("Trois", "3", ""),))
+        pid, cid, vid = _projet(base, lignes=(("Trois", "3", ""),))
     _eid, script = _preparer(base, pid, cid, vid)
     assert script.blocage and motif in script.blocage and "n'a pas été joué" in script.blocage
 
@@ -174,3 +173,49 @@ def test_falsifiable_l_agent_recoit_le_nom_et_les_entrees_jamais_un_chiffre():
 def test_une_fiche_illisible_n_est_pas_proposee_a_l_agent():
     from testpilot.api.services.generation_service import _calculs_pour_l_agent
     assert _calculs_pour_l_agent([{**FICHE, "exemples": []}]) == []
+
+
+# ── Revue du 2026-10-23 ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+def test_falsifiable_une_entree_ecrite_en_dur_bloque_le_test(base):
+    """BLOQUANT de la revue : le test écrit « 3 » et « 10 » en dur — calculer chaque ligne avec SES valeurs annoncerait des
+    itérations jamais jouées (deux lignes fusionnées en un faux « conforme »)."""
+    feature = COMMANDE.replace('"{{quantite}}" articles à "{{prix}}"', '"3" articles à "10"')
+    pid, cid, vid = _projet(base, feature=feature, lignes=())
+    # Les lignes du PROJET cochées au lancement (la garde A59 ne couvre que les lignes propres au cas).
+    depot = TestDataRepo(base)
+    ids = {v["nom"]: v["id"] for v in depot.variables(pid)}
+    jeux = []
+    for nom, q, p in (("Trois", "3", "10"), ("Six", "6", "5")):
+        jeu = depot.creer_jeu(pid, nom=nom)
+        depot.poser_valeurs(pid, jeu, {ids["quantite"]: q, ids["prix"]: p})
+        jeux.append(jeu)
+    run_id = RunRepo(base).create(project_id=pid, name="Nuit", case_ids=[cid], dataset_ids=jeux)
+    service.figer_pour_la_campagne(base, RunRepo(base).get(run_id))
+    eid = ExecutionRepo(base).create(test_case_id=cid, version_id=vid)
+    base.execute("UPDATE execution SET run_id=? WHERE id=?", (run_id, eid))
+    base.commit()
+    script = service.preparer_le_script(base, eid, cid, vid, "commande")
+    assert script.blocage and "ne saisit pas {{quantite}}, {{prix}}" in script.blocage
+
+
+@pytest.mark.parametrize("feature", [
+    # « le résultat calculé » dans une ACTION : la valeur attendue serait saisie dans l'application (une tautologie).
+    COMMANDE.replace('Quand je commande "{{quantite}}" articles à "{{prix}}"',
+                     'Quand je commande "{{quantite}}" articles à "{{prix}}"\n    Et je saisis le résultat calculé "Total TTC"'),
+    COMMANDE + '    # le nombre affiché pour "X" vaut le résultat calculé "Total TTC"\n',
+])
+def test_falsifiable_le_calcul_ne_s_appelle_que_depuis_la_verification(base, feature):
+    pid, cid, vid = _projet(base, feature=feature)
+    _eid, script = _preparer(base, pid, cid, vid)
+    assert script.blocage and "Calcul :" in script.blocage
+
+
+def test_falsifiable_une_fiche_qui_ne_retrouve_plus_ses_exemples_bloque_au_lancement(base):
+    pid, cid, vid = _projet(base)
+    contenu = json.loads(base.execute("SELECT contenu FROM fiche_de_calcul").fetchone()[0])
+    contenu["exemples"][0]["attendu"] = "99"
+    base.execute("UPDATE fiche_de_calcul SET contenu=?", (json.dumps(contenu),))
+    base.commit()
+    _eid, script = _preparer(base, pid, cid, vid)
+    assert script.blocage and "l'exemple 1 attend 99" in script.blocage

@@ -133,3 +133,11 @@ def test_falsifiable_l_ecran_voit_l_ecart_d_un_exemple_et_le_detail(projet):
     assert not client.post("/api/calculs/verifier", json={"fiche": FICHE, "proposition": True}).json()["utilisable"], \
         "une proposition n'est jamais « utilisable » telle quelle : une personne la choisit"
     assert FicheDeCalculRepo(projet[0]).du_cas(projet[2]) == [], "rien n'est enregistré"
+
+
+def test_falsifiable_choisir_un_calcul_sans_compte_nomme_est_refuse(projet):
+    from testpilot.api.services import generation_service
+
+    conn, *_ = projet
+    with pytest.raises(generation_service.GenerationError, match="compte nommé"):
+        generation_service.validate_metier(conn, "j", [_cas(fiches_retenues=[{"origine": "ia", "contenu": FICHE}])], par="")
