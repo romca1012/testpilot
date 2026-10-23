@@ -126,7 +126,10 @@ def test_falsifiable_le_registre_des_steps_derriere_un_interrupteur_est_ferme():
     assert derriere == {_LIBELLE_DU_STEP, "cet utilisateur voit l'enregistrement",
                         "cet utilisateur ne voit pas l'enregistrement", element + 'vaut "{valeur}"',
                         element + "compte {n:d} éléments", element + "compte {n:d} élément",
-                        'une erreur de validation est affichée pour le champ "{field}"'}
+                        'une erreur de validation est affichée pour le champ "{field}"',
+                        # Étape 7 (A108, A110, porteur 2026-10-23) : la valeur CALCULÉE, NOUVELLE vérification — montrée à l'IA
+                        # seulement avec les calculs (`TESTPILOT_CALCULS`) ; elle n'en retire aucune à l'agent.
+                        'le nombre affiché pour "{libelle}" vaut le résultat calculé "{nom}"'}
 
 
 # ── Le helper, sur un vrai Chromium ─────────────────────────────────────────────────────────────────────────────────────

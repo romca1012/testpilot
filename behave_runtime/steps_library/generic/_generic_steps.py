@@ -34,6 +34,7 @@ from _base_helpers import (
     oracle_liste_contient, oracle_liste_contient_valeur_affichee,
     # Lot PT-03 : un nombre affiché, lu avec son unité (monnaie, pourcentage, poids, durée…).
     _nombre_affiche_vaut,
+    resultat_calcule_non_prepare,
 )
 
 # ⚠️ Chaque step d'ACTION ci-dessous est déclaré sous `@given` ET `@when` (bug SauceDemo,
@@ -347,10 +348,7 @@ def step_nombre_affiche(context, libelle, valeur):
 @derriere_interrupteur("TESTPILOT_CALCULS")
 def step_nombre_affiche_calcule(context, libelle, nom):
     """Une valeur que la spécification fait CALCULER (un total, une remise, une taxe) : nomme le calcul retenu pour ce cas, jamais son chiffre — TestPilot le calcule à chaque exécution et compare le nombre affiché, unité comprise."""
-    # Étape 7 (A108, A110) : le serveur réécrit cet appel en valeur calculée AVANT de jouer le test
-    # (`parametres/calcul_au_lancement.py`). L'atteindre ici veut dire que le calcul n'a pas été préparé : une panne du test,
-    # jamais un constat — ni vert ni rouge sur une valeur jamais calculée.
-    raise RuntimeError(f"le calcul « {nom} » n'a pas été préparé par TestPilot : la valeur attendue est inconnue")
+    resultat_calcule_non_prepare(nom)   # réécrit par le serveur avant l'exécution ; atteint tel quel : une panne
 
 
 @then('la page affiche un texte de la forme "{motif}"')

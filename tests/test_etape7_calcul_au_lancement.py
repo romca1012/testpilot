@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from behave.parser import parse_feature
@@ -264,3 +265,47 @@ def test_la_fiche_retenue_la_plus_recente_est_appliquee(base):
     assert not script.blocage, script.blocage
     joue = (script.dossier / "commande.feature").read_text(encoding="utf-8")
     assert "72,0 EUR" in joue or "72 EUR" in joue or "72,00 EUR" in joue, joue
+
+
+def test_falsifiable_le_step_non_reecrit_est_une_panne_jamais_un_constat(monkeypatch):
+    """Atteint tel quel (calcul non préparé), le step lève une PANNE : rien n'est consigné, ni vert ni rouge."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "behave_runtime" / "steps_library"))
+    import _base_helpers as helpers
+
+    consignes = []
+    monkeypatch.setattr(helpers, "_consigner_constat", lambda ok: consignes.append(ok))
+    monkeypatch.setattr(helpers, "_appliquer_garde_de_session", lambda: None)
+    with pytest.raises(RuntimeError, match="n'a pas été préparé"):
+        helpers.resultat_calcule_non_prepare("Total TTC")
+    assert consignes == []
+
+
+@pytest.mark.parametrize("texte, saisies", [
+    # Une saisie APRÈS la vérification ne compte pas.
+    ("""  Scénario: S
+    Alors le nombre affiché pour "Total" vaut le résultat calculé "T"
+    Quand je saisis "{{quantite}}" dans "Qte"
+""", frozenset()),
+    # Le Contexte de la Fonctionnalité est hérité par une Règle sans Contexte.
+    ("""  Contexte:
+    Soit je saisis "{{quantite}}" dans "Qte"
+  Règle: R
+    Scénario: S
+      Alors le nombre affiché pour "Total" vaut le résultat calculé "T"
+""", frozenset({"quantite"})),
+    # Le Contexte d'une AUTRE Règle ne compte pas.
+    ("""  Règle: A
+    Contexte:
+      Soit je saisis "{{quantite}}" dans "Qte"
+    Scénario: SA
+      Quand j'ouvre la page
+  Règle: B
+    Scénario: SB
+      Alors le nombre affiché pour "Total" vaut le résultat calculé "T"
+""", frozenset()),
+])
+def test_falsifiable_les_saisies_sont_celles_qui_precedent_dans_le_meme_scenario(texte, saisies):
+    refus, appels = calcul_au_lancement.analyser_les_appels("# language: fr\nFonctionnalité: F\n" + texte)
+    assert refus == "" and appels == [("T", saisies)]

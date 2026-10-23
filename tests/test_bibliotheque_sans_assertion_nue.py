@@ -17,10 +17,7 @@ _CONSTATER = {"constater", "constater_visible", "constater_texte"}
 
 # Un `Alors` légitimement SANS constat : il attend seulement la fin d'une soumission (aucune
 # vérification) ; un scénario qui n'aurait que lui tombe en `aucun_constat`, ce qui est voulu.
-# Étape 7 (A108, A110) : `step_nombre_affiche_calcule` est RÉÉCRIT par le serveur en « le nombre affiché pour … vaut "<valeur
-# calculée>" » avant de jouer le test (`parametres/calcul_au_lancement.py`) — c'est ce step-là qui constate. Atteint tel quel,
-# il lève une panne (jamais un constat, ni vert ni rouge sur une valeur jamais calculée).
-_ALORS_SANS_CONSTAT = {"step_wait_form", "step_nombre_affiche_calcule"}
+_ALORS_SANS_CONSTAT = {"step_wait_form"}
 
 
 def _arbre(chemin: Path) -> ast.Module:

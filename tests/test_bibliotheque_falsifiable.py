@@ -22,6 +22,10 @@ _LIB = Path("behave_runtime/steps_library")
 # finirait par masquer un vrai.
 _DELEGUENT_OU_ATTENDENT = {
     "step_wait_form",          # attente (@when + @then), pas une assertion
+    # Étape 7 (A108, A110) : jamais joué tel quel — le serveur le RÉÉCRIT en `step_nombre_affiche` (qui assertit) avant
+    # l'exécution ; atteint tel quel, il lève une PANNE, jamais un vert ni un constat (prouvé par
+    # `tests/test_etape7_calcul_au_lancement.py::test_falsifiable_le_step_non_reecrit_est_une_panne_jamais_un_constat`).
+    "step_nombre_affiche_calcule",
     "step_no_dup",             # → no_duplicate() : assert len(ids) <= 1
     "step_validation_error",   # → validation_error_inline() : raise AssertionError (via _poll_until)
     "step_validation_error_for_field",  # → validation_error_for_field() : raise AssertionError (étape 5)

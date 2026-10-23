@@ -87,15 +87,19 @@ def analyser_les_appels(feature: str) -> tuple[str, list[tuple[str, frozenset[st
             if id(step) not in fonds_vus and _mentionne(step):
                 return f"« {step.keyword} {step.name[:80]} » (Contexte) : {hors_verification}", []
             fonds_vus.add(id(step))
-        posees = frozenset(_references_saisies(fond + list(scenario.steps)))
+        # Seules comptent les saisies faites AVANT la vérification (3e passe de la revue) : une valeur saisie après n'a pas
+        # pu produire ce que la vérification lit.
+        avant = list(fond)
         for step in scenario.steps:
             if not _mentionne(step):
+                avant.append(step)
                 continue
             trouve = _APPEL.fullmatch(step.name.strip())
             if step.step_type != "then" or not trouve or step.text or step.table:
                 return f"« {step.keyword} {step.name[:80]} » : {hors_verification}", []
             mentions += 1
-            appels.append((trouve.group(2).strip(), posees))
+            appels.append((trouve.group(2).strip(), frozenset(_references_saisies(avant))))
+            avant.append(step)
     if len(_MENTION.findall(feature)) != mentions:   # une mention hors des steps lus (un commentaire) : jamais réécrite
         return "« le résultat calculé » apparaît ailleurs que dans une vérification (commentaire, texte joint)", []
     return "", appels

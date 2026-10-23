@@ -441,7 +441,7 @@ def _avec_les_calculs(conn, case_id: int, feature: str, figes: dict) -> tuple[st
     # sinon la ligne serait calculée avec des valeurs jamais jouées, et l'itération annoncée sans l'avoir été.
     for nom, posees in appels:
         if nom not in fiches:
-            continue
+            continue   # calcul non retenu : bloqué plus bas par `calcul_au_lancement.valeurs`, qui le dit
         absentes = [e for e in calcul.entrees_attendues(fiches[nom]) if e not in posees]
         if absentes:
             return (f"Calcul « {nom} » : le test ne saisit pas " + ", ".join("{{" + e + "}}" for e in absentes)

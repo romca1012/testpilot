@@ -4178,6 +4178,15 @@ def _juger_nombre(texte_affiche: str, voulu, decimal_du_projet: str | None = Non
     return None, resultat.message
 
 
+@constat
+def resultat_calcule_non_prepare(nom: str) -> None:
+    """Étape 7 (A108, A110) : « … vaut le résultat calculé "<nom>" » est RÉÉCRIT par le serveur en valeur calculée avant de
+    jouer le test (`testpilot/parametres/calcul_au_lancement.py`), puis constaté par `_nombre_affiche_vaut`. L'atteindre tel
+    quel veut dire que le calcul n'a pas été préparé : une PANNE (pas une `AssertionError`), donc aucun constat consigné —
+    ni vert ni rouge sur une valeur jamais calculée."""
+    raise RuntimeError(f"le calcul « {nom} » n'a pas été préparé par TestPilot : la valeur attendue est inconnue")
+
+
 # Nom PRIVÉ, volontairement : un step généré ne peut pas l'importer (`tools/write.py` refuse les noms privés de la
 # bibliothèque). Appelé à la main avec un littéral, il échappait à la garde « valeur recopiée de l'essai » (revue du
 # 2026-10-13, reproduit) — le seul chemin vers ce constat est le step du catalogue, que la garde reconnaît.
