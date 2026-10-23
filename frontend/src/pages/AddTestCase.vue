@@ -27,11 +27,12 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQueryClient } from '@tanstack/vue-query'
-import { api, type CouvertureDuDecoupage, type MetierDraft, type ModuleSummary } from '../lib/api'
+import { api, type CouvertureDuDecoupage, type FicheDeCalcul, type MetierDraft, type ModuleSummary } from '../lib/api'
 import { MODELE_SPECIFICATION } from '../lib/modeleSpecification'
 import { cles, useGroupes } from '../lib/donnees'
 import Button from '../components/ui/Button.vue'
 import IconButton from '../components/ui/IconButton.vue'
+import FicheDeCalcul_ from '../components/case/FicheDeCalcul.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -97,7 +98,12 @@ watch(moduleId, () => { sectionId.value = null; newSectionName.value = '' })
 // envoie fait foi, la proposition de l'IA n'est qu'un point de départ — y compris pour la
 // SUPPRESSION d'un cas qui ne sert à rien (§9 : « un cas qui peut être validé par un autre n'est
 // pas intéressant »).
-const cas = ref<MetierDraft[]>([])
+// Étape 7 (A110) : le choix du calcul, tenu par l'écran pour chaque cas — 'aucun' (le DÉFAUT : la valeur est vérifiée
+// telle qu'elle est écrite), 'ia' (les fiches proposées, présentées d'office), 'personne' (le calcul fourni ici).
+type ChoixCalcul = 'aucun' | 'ia' | 'personne'
+type CasEcran = MetierDraft & { choixCalcul?: ChoixCalcul; fichesEnCours?: FicheDeCalcul[]; utilisables?: boolean[];
+                                 calculNecessaire?: boolean }
+const cas = ref<CasEcran[]>([])
 // F27 (étape 5) : ce qui a pu se perdre entre la spécification et les cas proposés — signalé, jamais bloquant.
 const couverture = ref<CouvertureDuDecoupage>({})
 
@@ -132,7 +138,23 @@ function casComplet(c: MetierDraft): boolean {
 const nbCasRetenus = computed(() => cas.value.length)
 // Valide seulement si AU MOINS un cas subsiste, et que TOUS ceux qui subsistent sont complets —
 // un cas incomplet ne doit jamais partir en génération technique (coûteuse) pour rien.
-const toutValide = computed(() => cas.value.length > 0 && cas.value.every(casComplet))
+// Une fiche choisie doit être prête (exemples retrouvés, taux datés) — sinon le serveur refuserait la validation.
+function calculPret(c: CasEcran): boolean {
+  if (!c.choixCalcul || c.choixCalcul === 'aucun') return true
+  const fiches = c.fichesEnCours ?? []
+  return fiches.length > 0 && fiches.every((_, k) => c.utilisables?.[k] === true)
+}
+const toutValide = computed(() => cas.value.length > 0 && cas.value.every((c) => casComplet(c) && calculPret(c)))
+const FICHE_VIDE = (): FicheDeCalcul => ({ nom: '', resultat: 'resultat', unite: '',
+  elements: [{ nom: '', valeur: '', source: '' }], etapes: [{ resultat: 'resultat', operation: 'multiplier', termes: ['', ''] }],
+  exemples: [{ entrees: {}, attendu: '' }] })
+function choisirCalcul(c: CasEcran, choix: ChoixCalcul) {
+  c.choixCalcul = choix
+  c.utilisables = []
+  // La fiche de l'IA est COPIÉE : la corriger ici ne touche pas la proposition gardée pour l'historique.
+  c.fichesEnCours = choix === 'ia' ? JSON.parse(JSON.stringify(c.fiches_proposees ?? []))
+    : choix === 'personne' ? [FICHE_VIDE()] : []
+}
 
 function addStep(i: number) { cas.value[i].steps.push('') }
 function removeStep(i: number, j: number) { cas.value[i].steps.splice(j, 1) }
@@ -318,9 +340,13 @@ async function validerMetier() {
   if (!toutValide.value) return
   error.value = ''
   etape.value = 'gherkin'
-  const retenus = cas.value.map((c) => ({
+  // Les champs propres à l'écran (le choix du calcul en cours) ne partent jamais au serveur.
+  const retenus = cas.value.map(({ choixCalcul: _ch, fichesEnCours: _f, utilisables: _u, calculNecessaire: _n, ...c }) => ({
     ...c, steps: c.steps.map((s) => s.trim()).filter(Boolean),
     // IT-3c : une case vidée reprendra la valeur du projet ; une ligne vidée entièrement est retirée.
+    // Étape 7 (A110) : sans choix, pas de calcul ; choisir une fiche vaut validation par la personne qui valide.
+    fiches_retenues: _ch && _ch !== 'aucun' ? (_f ?? []).map((f) => ({ origine: _ch as 'ia' | 'personne', contenu: f })) : [],
+    calcul_detecte: c.calcul_detecte || (_n ? 'marqué « Calcul nécessaire » à la validation' : ''),
     lignes: (c.lignes ?? [])
       .map((l) => ({ nom: l.nom.trim(), valeurs: Object.fromEntries(
         Object.entries(l.valeurs).map(([k, v]) => [k, String(v ?? '').trim()]).filter(([, v]) => v)) }))
@@ -505,6 +531,8 @@ const echecsPartiels = computed(() => avertissementPartiel.value.split('; ').fil
                 <span v-if="cas[i].lignes?.length" class="shrink-0 text-xs text-muted-foreground" data-testid="nombre-lignes-proposees">
                   {{ cas[i].lignes!.length }} ligne{{ cas[i].lignes!.length > 1 ? 's' : '' }} proposée{{ cas[i].lignes!.length > 1 ? 's' : '' }}
                 </span>
+                <span v-if="cas[i].calcul_detecte" class="shrink-0 rounded-full bg-primary/10 text-primary text-xs font-semibold px-2 py-0.5"
+                      data-testid="calcul-detecte">Calcul détecté</span>
                 <span v-if="!casComplet(cas[i])"
                       class="shrink-0 rounded-full bg-destructive/15 text-destructive text-xs font-semibold px-2 py-0.5">
                   incomplet
@@ -574,6 +602,29 @@ const echecsPartiels = computed(() => avertissementPartiel.value.split('; ').fil
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              <!-- Étape 7 (A110) : « Calcul détecté » et les trois choix ; « Pas de calcul » est le défaut. -->
+              <div class="space-y-2" data-testid="choix-du-calcul">
+                <p v-if="cas[i].calcul_detecte" class="text-sm"><span class="font-medium">Calcul détecté</span> — {{ cas[i].calcul_detecte }}</p>
+                <label v-else class="flex items-center gap-2 text-sm">
+                  <input v-model="cas[i].calculNecessaire" type="checkbox" data-testid="calcul-necessaire"
+                         @change="!cas[i].calculNecessaire && choisirCalcul(cas[i], 'aucun')" /> Calcul nécessaire
+                </label>
+                <div v-if="cas[i].calcul_detecte || cas[i].calculNecessaire" role="radiogroup" aria-label="Vérification de la valeur"
+                     class="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                  <label class="flex items-center gap-1.5"><input type="radio" :name="`calcul-${i}`" :checked="(cas[i].choixCalcul ?? 'aucun') === 'aucun'"
+                         data-testid="calcul-aucun" @change="choisirCalcul(cas[i], 'aucun')" />Pas de calcul — la valeur est vérifiée telle qu'écrite</label>
+                  <label v-if="cas[i].fiches_proposees?.length" class="flex items-center gap-1.5"><input type="radio" :name="`calcul-${i}`"
+                         :checked="cas[i].choixCalcul === 'ia'" data-testid="calcul-ia" @change="choisirCalcul(cas[i], 'ia')" />La fiche proposée par l'IA</label>
+                  <label class="flex items-center gap-1.5"><input type="radio" :name="`calcul-${i}`" :checked="cas[i].choixCalcul === 'personne'"
+                         data-testid="calcul-personne" @change="choisirCalcul(cas[i], 'personne')" />Fournir le calcul</label>
+                </div>
+                <template v-if="cas[i].choixCalcul === 'ia' || cas[i].choixCalcul === 'personne'">
+                  <FicheDeCalcul_ v-for="(_, k) in cas[i].fichesEnCours" :key="k" v-model="cas[i].fichesEnCours![k]"
+                                  @verifiee="(ok: boolean) => { (cas[i].utilisables ??= [])[k] = ok }" />
+                  <p class="text-xs text-muted-foreground">Choisir ce calcul vaut validation de votre part ; il sera recalculé à chaque exécution.</p>
+                </template>
               </div>
 
               <p v-if="!casComplet(cas[i])" class="text-xs text-muted-foreground">

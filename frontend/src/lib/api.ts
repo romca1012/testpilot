@@ -473,6 +473,9 @@ export const api = {
       method: 'POST', body: JSON.stringify({ spec_content, title, group_id }),
     }),
   getGenerationJob: (jobId: string) => request<GenerationJob>(`/api/modules/jobs/${jobId}`),
+  // Étape 7 : vérifier une fiche de calcul (rien n'est enregistré) — le même calculateur que la validation et l'exécution.
+  verifierFiche: (fiche: FicheDeCalcul, proposition = false) =>
+    request<VerificationFiche>('/api/calculs/verifier', { method: 'POST', body: JSON.stringify({ fiche, proposition }) }),
   // Passe 4b : la liste PLATE des cas validés (corrections, suppressions — étape 3, 2026-08-07)
   // FAIT FOI — c'est elle qui part à la génération du Gherkin, pas la proposition initiale de
   // l'IA. Pas de Section ici (étape 3bis) : elle est déjà fixée depuis `addCase`.
@@ -1106,6 +1109,29 @@ export interface MetierDraft {
   etat_a_creer_par_ce_cas?: string
   // IT-3c (A53) : les lignes proposées pour ce cas — `{nom de variable: valeur}` —, relues et validées avec lui.
   lignes?: { nom: string; valeurs: Record<string, string> }[]
+  // Étape 7 (A110) : « Calcul détecté » (la raison) et les fiches proposées par l'IA, présentées d'office.
+  calcul_detecte?: string
+  fiches_proposees?: FicheDeCalcul[]
+  // Renvoyé à la validation : vide = pas de calcul (le défaut). Choisir une fiche vaut validation par la personne.
+  fiches_retenues?: { origine: 'ia' | 'personne'; contenu: FicheDeCalcul }[]
+}
+// Étape 7 : une fiche de calcul telle que le calculateur du serveur la lit (`parametres/calcul.py`). L'écran ne calcule rien.
+export interface EtapeDeCalcul {
+  resultat: string; operation: string
+  termes?: string[]; valeur?: string; par?: string; de?: string; taux?: string; limite?: string
+  decimales?: number; mode?: string; tranches?: { jusqu_a: string | null; taux: string }[]
+  condition?: { gauche: string; comparateur: string; droite: string }; alors?: string; sinon?: string
+}
+export interface FicheDeCalcul {
+  nom: string; resultat: string; unite: string
+  elements: { nom: string; valeur?: string; source: string; verifie_le?: string }[]
+  etapes: EtapeDeCalcul[]
+  exemples: { entrees: Record<string, string>; attendu: string }[]
+  a_confirmer?: string[]
+}
+export interface VerificationFiche {
+  utilisable: boolean; erreur: string; entrees: string[]; a_confirmer: string[]
+  exemples: { numero: number; attendu: string; obtenu: string; retrouve: boolean; detail: string[] }[]
 }
 export interface GenerationJob {
   // running | awaiting_metier | done | failed
