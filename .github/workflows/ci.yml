@@ -66,6 +66,20 @@ jobs:
           cache: pip
       - name: Installer TestPilot et les dépendances de développement
         run: python -m pip install -e ".[dev]"
+      # Mesuré le 2026-10-23 : le pg_dump livré avec l'image du runner est passé à une version majeure plus récente que le
+      # serveur (17+) ; sa sauvegarde commence par `SET transaction_timeout = 0`, que PostgreSQL 16 refuse à la restauration
+      # (test_cycle_sauvegarde_puis_restauration_complet_sur_postgresql rouge sans aucun changement de code). Les outils
+      # de sauvegarde suivent la version du SERVEUR, comme en production : client 16 explicite.
+      - name: Client PostgreSQL de la même version que le serveur (16)
+        run: |
+          if [ ! -x /usr/lib/postgresql/16/bin/pg_restore ]; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-common
+            sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+            sudo apt-get install -y postgresql-client-16
+          fi
+          echo "TESTPILOT_PG_DUMP_BIN=/usr/lib/postgresql/16/bin/pg_dump" >> "$GITHUB_ENV"
+          echo "TESTPILOT_PG_RESTORE_BIN=/usr/lib/postgresql/16/bin/pg_restore" >> "$GITHUB_ENV"
       - name: Appliquer les migrations Alembic sur la base jetable du service
         run: alembic upgrade head
       - name: Exécuter la preuve du runtime PostgreSQL réel
