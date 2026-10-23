@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from testpilot import config
+from testpilot.parametres import calcul_au_lancement
 from testpilot.parametres import iterations as iterations_mod
 from testpilot.parametres import resolution
 from testpilot.store.repositories import (
@@ -341,7 +342,7 @@ def preparer_le_script(conn, execution_id: int, case_id: int, version_id: int, m
         # Hors campagne figée (un cas lancé seul) : le jeu « Par défaut » du moment, figé pour cette seule exécution.
         project_id = _project_id_du_cas(conn, case_id)
         noms, niveaux = TestDataRepo(conn).niveaux(project_id) if project_id is not None else ([], [])
-        if not noms and not niveaux:
+        if not noms and not niveaux and not calcul_au_lancement.noms_appeles(feature):
             return Script()   # un projet qui n'a jamais déclaré de variable : le chemin d'aujourd'hui, octet pour octet
         figes = {"jeu": niveaux[-1][0] if niveaux else "", "connues": noms,
                  "valeurs": {n: {"valeur": v.valeur, "origine": v.origine} for n, v in resolution.resoudre(niveaux, noms).items()}}
@@ -375,6 +376,13 @@ def preparer_le_script(conn, execution_id: int, case_id: int, version_id: int, m
             return Script(blocage=f"Données de test : {len(figes['jeux'])} itérations pour ce cas, {JEUX_PAR_LANCEMENT_MAX} au "
                                   "plus. Cochez moins de lignes du projet, ou réduisez les lignes du cas. Le test n'a pas été "
                                   "joué.")
+    # Étape 7 (A108, A110) : les calculs appelés par le test, calculés MAINTENANT pour chaque itération avec la fiche retenue
+    # en vigueur (D41) ; l'appel devient une variable réservée qui reçoit la valeur. Impossible : le test n'est pas joué.
+    avec_calculs = _avec_les_calculs(conn, case_id, feature, figes)
+    if isinstance(avec_calculs, str):
+        return Script(blocage=avec_calculs)
+    feature, figes = avec_calculs
+    version = {**version, "feature_content": feature}
     if isinstance(figes.get("jeux"), list):
         return _preparer_les_iterations(conn, execution_id, case_id, module_name, version, figes, campagne)
     valeurs = {n: resolution.Valeur(str(v.get("valeur", "")), str(v.get("origine", ""))) for n, v in (figes.get("valeurs") or {}).items()}
@@ -397,6 +405,46 @@ def preparer_le_script(conn, execution_id: int, case_id: int, version_id: int, m
     (dossier / f"{module_name}.feature").write_text(rendu.texte, encoding="utf-8")
     (dossier / f"{module_name}_steps.py").write_text(version.get("steps_content") or "", encoding="utf-8")
     return Script(dossier=dossier, parametres_joues=joues)
+
+
+def _avec_les_calculs(conn, case_id: int, feature: str, figes: dict) -> tuple[str, dict] | str:
+    """Étape 7 : (test réécrit, valeurs figées complétées des valeurs calculées) — ou le message du blocage. Rien à faire si
+    le test n'appelle aucun calcul (le chemin d'avant, octet pour octet)."""
+    from testpilot.parametres import calcul
+    from testpilot.store.repositories import FicheDeCalculRepo
+
+    noms = calcul_au_lancement.noms_appeles(feature)
+    if not noms:
+        return feature, figes
+    fin = " Le test n'a pas été joué."
+    fiches = {}
+    for retenue in FicheDeCalculRepo(conn).retenues(case_id):
+        try:
+            fiches[retenue["nom"]] = calcul.valider_fiche(retenue["contenu"])
+        except calcul.FicheInvalide as exc:
+            return f"Calcul « {retenue['nom']} » : {exc}.{fin}"
+    par_nom = calcul_au_lancement.variables(noms)
+    figes = json.loads(json.dumps(figes or {}))   # une copie : les valeurs figées en base ne portent jamais un calcul
+    connues = list(figes.get("connues") or [])
+    reservees = sorted(set(par_nom.values()) & set(connues))
+    if reservees:
+        return (f"Données de test : la variable « {reservees[0]} » porte un nom réservé aux calculs de TestPilot — "
+                f"renommez-la.{fin}")
+    lignes = figes["jeux"] if isinstance(figes.get("jeux"), list) else [figes]
+    for ligne in lignes:
+        if not isinstance(ligne, dict):
+            continue
+        valeurs = ligne.setdefault("valeurs", {})
+        brutes = {n: str(v.get("valeur", "")) for n, v in valeurs.items() if isinstance(v, dict)}
+        try:
+            calculees = calcul_au_lancement.valeurs(fiches, par_nom, brutes)
+        except calcul_au_lancement.CalculNonJouable as exc:
+            jeu = ligne.get("jeu") or "Par défaut"
+            return f"Données de test (ligne « {jeu} ») : {exc}.{fin}"
+        for variable, (texte, origine, _detail) in calculees.items():
+            valeurs[variable] = {"valeur": texte, "origine": origine}
+    figes["connues"] = connues + list(par_nom.values())
+    return calcul_au_lancement.reecrire(feature, par_nom), figes
 
 
 def _preparer_les_iterations(conn, execution_id: int, case_id: int, module_name: str, version: dict, figes: dict,

@@ -343,6 +343,16 @@ def step_nombre_affiche(context, libelle, valeur):
     _nombre_affiche_vaut(context.page, libelle, valeur)
 
 
+@then('le nombre affiché pour "{libelle}" vaut le résultat calculé "{nom}"')
+@derriere_interrupteur("TESTPILOT_CALCULS")
+def step_nombre_affiche_calcule(context, libelle, nom):
+    """Une valeur que la spécification fait CALCULER (un total, une remise, une taxe) : nomme le calcul retenu pour ce cas, jamais son chiffre — TestPilot le calcule à chaque exécution et compare le nombre affiché, unité comprise."""
+    # Étape 7 (A108, A110) : le serveur réécrit cet appel en valeur calculée AVANT de jouer le test
+    # (`parametres/calcul_au_lancement.py`). L'atteindre ici veut dire que le calcul n'a pas été préparé : une panne du test,
+    # jamais un constat — ni vert ni rouge sur une valeur jamais calculée.
+    raise RuntimeError(f"le calcul « {nom} » n'a pas été préparé par TestPilot : la valeur attendue est inconnue")
+
+
 @then('la page affiche un texte de la forme "{motif}"')
 def step_texte_de_la_forme(context, motif):
     """Un texte VISIBLE qui suit une expression régulière à PARTIE FIXE (ex. `FAC-[0-9]{4}`), pour une valeur générée ; un motif sans partie fixe est refusé."""

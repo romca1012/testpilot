@@ -38,6 +38,7 @@ ENV_PAGE_D_ARRIVEE_OBSERVEE = "TESTPILOT_PAGE_D_ARRIVEE_OBSERVEE"
 ENV_GARDE_CONNEXION = "TESTPILOT_GARDE_CONNEXION"
 ENV_CAS_AUX_TERMES_DES_ECRANS = "TESTPILOT_CAS_AUX_TERMES_DES_ECRANS"
 ENV_COLONNE_DEPUIS_L_APPLICATION = "TESTPILOT_COLONNE_DEPUIS_L_APPLICATION"
+ENV_CALCULS = "TESTPILOT_CALCULS"
 
 _VRAI = frozenset({"1", "true", "yes", "oui", "on"})
 _ALLUMES_PAR_DEFAUT = frozenset({ENV_VARIABLES_DE_TEST, ENV_CAS_DIT_SES_DONNEES})
@@ -159,6 +160,13 @@ def colonne_depuis_l_application_actif(env: Mapping[str, str] | None = None) -> 
     lancement, avec des enregistrements qui existent dans l'application. Éteint tant que le porteur n'a pas tranché combien et
     lesquels (A105) : une source déclarée est alors ignorée."""
     return _actif(ENV_COLONNE_DEPUIS_L_APPLICATION, env)
+
+
+def calculs_actif(env: Mapping[str, str] | None = None) -> bool:
+    """Étape 7 (A108, A110) : l'IA qui rédige les cas détecte ceux qui attendent une valeur calculée et propose leur fiche ;
+    l'agent technique voit le step « … vaut le résultat calculé "<nom>" ». Change ce que l'IA reçoit et coûte un appel de plus
+    par cas détecté : éteint jusqu'à sa mesure (étape 8). Éteint, une fiche retenue à la main se joue quand même."""
+    return _actif(ENV_CALCULS, env)
 
 
 def allume(nom: str, env: Mapping[str, str] | None = None) -> bool:
