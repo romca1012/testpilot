@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 76
+_SCHEMA_VERSION = 77
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -294,6 +294,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_75_donnees_depuis_l_application(conn)
     if version < 76:
         _migrate_76_plage_des_lignes(conn)
+    if version < 77:
+        _migrate_77_fiches_de_calcul(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -600,6 +602,33 @@ def _migrate_71_iteration_du_scenario(conn: sqlite3.Connection) -> None:
     idempotente."""
     if _table_existe(conn, "scenario_result") and "iterations" not in _column_names(conn, "scenario_result"):
         conn.execute("ALTER TABLE scenario_result ADD COLUMN iterations TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_77_fiches_de_calcul(conn: sqlite3.Connection) -> None:
+    """Étape 7 du plan unique (A108, A110, porteur, 2026-10-23) : les valeurs attendues CALCULÉES.
+
+    `fiche_de_calcul` : une fiche propre à un projet et à un cas (jamais partagée, A110) — son contenu (éléments sourcés,
+    étapes simples, exemples ; JSON validé par `parametres/calcul.py`), son origine (`ia` ou `personne`) et son statut :
+    `proposee` (présentée, pas utilisée), `retenue` (choisie par une personne : cela VAUT validation, nom et date gardés),
+    `ecartee`. Un cas peut en avoir plusieurs (le total, la TVA). `test_case.calcul_detecte` : la raison pour laquelle le
+    cas attend une valeur calculée (« le total dépend de la quantité… ») ; vide = rien de détecté. Sans fiche retenue, le cas
+    se vérifie comme avant (choix par défaut, A110). Additive, idempotente."""
+    conn.execute('''CREATE TABLE IF NOT EXISTS fiche_de_calcul (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+        case_id INTEGER NOT NULL REFERENCES test_case(id) ON DELETE CASCADE,
+        nom TEXT NOT NULL,
+        contenu TEXT NOT NULL DEFAULT '{}',
+        origine TEXT NOT NULL CHECK (origine IN ('ia', 'personne')),
+        statut TEXT NOT NULL DEFAULT 'proposee' CHECK (statut IN ('proposee', 'retenue', 'ecartee')),
+        auteur TEXT NOT NULL DEFAULT '',
+        retenue_par TEXT NOT NULL DEFAULT '',
+        retenue_le TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL)''')
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fiche_de_calcul_case ON fiche_de_calcul(case_id)")
+    if _table_existe(conn, "test_case") and "calcul_detecte" not in _column_names(conn, "test_case"):
+        conn.execute("ALTER TABLE test_case ADD COLUMN calcul_detecte TEXT NOT NULL DEFAULT ''")
 
 
 def _migrate_76_plage_des_lignes(conn: sqlite3.Connection) -> None:

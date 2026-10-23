@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 76
+ALIGNED_WITH_SCHEMA_VERSION = 77
 
 metadata = MetaData()
 
@@ -226,6 +226,29 @@ case_data_value = Table(
     Column("valeur", Text, nullable=False, server_default=""),
 )
 
+# Migration 77 (étape 7, A108, A110) : les fiches de calcul d'un cas — propres au projet ; `retenue` = choisie par une
+# personne (vaut validation).
+fiche_de_calcul = Table(
+    "fiche_de_calcul",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("project_id", Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False),
+    Column("case_id", Integer, ForeignKey("test_case.id", ondelete="CASCADE"), nullable=False),
+    Column("nom", Text, nullable=False),
+    Column("contenu", Text, nullable=False, server_default="{}"),
+    Column("origine", Text, nullable=False),
+    Column("statut", Text, nullable=False, server_default="proposee"),
+    Column("auteur", Text, nullable=False, server_default=""),
+    Column("retenue_par", Text, nullable=False, server_default=""),
+    Column("retenue_le", Text, nullable=False, server_default=""),
+    Column("created_at", Text, nullable=False),
+    Column("updated_at", Text, nullable=False),
+    CheckConstraint("origine IN ('ia', 'personne')", name="ck_fiche_de_calcul_origine"),
+    CheckConstraint("statut IN ('proposee', 'retenue', 'ecartee')", name="ck_fiche_de_calcul_statut"),
+    Index("idx_fiche_de_calcul_case", "case_id"),
+    sqlite_autoincrement=True,
+)
+
 # Migration 63 (lot PT-03) : les unités AJOUTÉES par un projet et leurs autres écritures (liste JSON). `project_id` NULL =
 # bibliothèque commune (lot PT-05) — aucune ligne aujourd'hui.
 test_unit = Table(
@@ -338,6 +361,8 @@ test_case = Table(
     Column("updated_at", Text, nullable=False),
     # Migration 75 (étape 6, IT-3d) : l'empreinte du texte du cas quand ses lignes ont été enregistrées ; vide : lignes d'avant.
     Column("lignes_ecrites_pour", Text, nullable=False, server_default=""),
+    # Migration 77 (étape 7, A110) : pourquoi le cas attend une valeur calculée ; vide : rien de détecté.
+    Column("calcul_detecte", Text, nullable=False, server_default=""),
     CheckConstraint("origin IN ('ia_generated', 'manual_converted')", name="ck_test_case_origin"),
     CheckConstraint("priority IN ('low', 'medium', 'high')", name="ck_test_case_priority"),
     CheckConstraint(
