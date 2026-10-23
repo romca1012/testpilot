@@ -1444,7 +1444,7 @@ class CaseRepo:
         return _rows(self.conn.execute(_CASE_SELECT + where + order, params))
 
     def page(self, *, project_id: int | None = None, module_id: int | None = None,
-             group_id: int | None = None, recherche: str = "", statut: str = "",
+             group_id: int | None = None, recherche: str = "", statut: str = "", automatise: bool | None = None,
              apres: tuple | None = None, limite: int = 100) -> tuple[list[dict], tuple | None, int]:
         """Une PAGE de cas, plus le curseur suivant et le total.
 
@@ -1484,6 +1484,10 @@ class CaseRepo:
         statut_sql = sql_statut_du_cas("tc.last_execution_status", "tc.last_functional_status", _ATTENTE_CHANGEE_SQL)
         if statut:
             clauses.append(f"({statut_sql}) = ?"); params.append(statut)
+        if automatise is not None:
+            # Porteur, 2026-10-23 : voir les cas qui ont un test technique, ou les seuls cas manuels — même définition que la
+            # colonne `automatise` (la version courante porte un Gherkin non vide).
+            clauses.append(("" if automatise else "NOT ") + "(" + _CAS_AUTOMATISE_SQL + ")")
 
         where = " WHERE " + " AND ".join(clauses)
         total = int(self.conn.execute(

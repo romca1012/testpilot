@@ -504,6 +504,8 @@ export const api = {
   // « aucun résultat ». Un filtre qui ment sur l'absence est pire que pas de filtre.
   listCases: (projectId: number | string, opts: {
     module_id?: number; group_id?: number; q?: string; statut?: string
+    // Porteur, 2026-10-23 : true = cas avec un test technique, false = cas manuels ; absent = tous.
+    automatise?: boolean
     cursor?: string | null; limit?: number
   } = {}) => {
     const p = new URLSearchParams({ project_id: String(projectId) })
@@ -511,6 +513,7 @@ export const api = {
     if (opts.group_id != null) p.set('group_id', String(opts.group_id))
     if (opts.q) p.set('q', opts.q)
     if (opts.statut) p.set('statut', opts.statut)
+    if (opts.automatise != null) p.set('automatise', String(opts.automatise))
     if (opts.cursor) p.set('cursor', opts.cursor)
     if (opts.limit) p.set('limit', String(opts.limit))
     return request<PageCas>(`/api/cases?${p.toString()}`)

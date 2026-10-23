@@ -56,7 +56,7 @@ def _decoder_curseur(curseur: str | None) -> tuple | None:
 
 @router.get("", response_model=schemas.PageCas)
 def list_cases(request: Request, project_id: int | None = None, module_id: int | None = None,
-               group_id: int | None = None, q: str = "", statut: str = "",
+               group_id: int | None = None, q: str = "", statut: str = "", automatise: bool | None = None,
                cursor: str | None = None, limit: int = 100, conn=Depends(get_conn)):
     """Les cas, PAGE PAR PAGE.
 
@@ -97,7 +97,7 @@ def list_cases(request: Request, project_id: int | None = None, module_id: int |
     limite = max(1, min(limit, 500))
     lignes, suivant, total = CaseRepo(conn).page(
         project_id=project_id, module_id=module_id, group_id=group_id,
-        recherche=q, statut=statut, apres=_decoder_curseur(cursor), limite=limite)
+        recherche=q, statut=statut, automatise=automatise, apres=_decoder_curseur(cursor), limite=limite)
     return schemas.PageCas(
         items=[schemas.case_summary(r) for r in lignes],
         next_cursor=_CURSEUR_SEP.join(str(x) for x in suivant) if suivant else None,

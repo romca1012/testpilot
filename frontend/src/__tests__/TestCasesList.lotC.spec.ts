@@ -97,6 +97,23 @@ describe('la recherche et le filtre', () => {
     expect(listCases).toHaveBeenCalledWith('1', expect.objectContaining({ statut: 'failed' }))
   })
 
+  // Porteur, 2026-10-23 : voir les cas avec un test technique, ou les cas manuels — filtré par le serveur.
+  it('falsifiable : le filtre « Test » part au serveur, et « Tous » n’envoie rien', async () => {
+    const w = await monterListe()
+    listCases.mockClear()
+    await w.get('[data-testid="filtre-test"]').setValue('non')
+    await flushPromises()
+    expect(listCases).toHaveBeenLastCalledWith('1', expect.objectContaining({ automatise: false }))
+
+    await w.get('[data-testid="filtre-test"]').setValue('oui')
+    await flushPromises()
+    expect(listCases).toHaveBeenLastCalledWith('1', expect.objectContaining({ automatise: true }))
+
+    await w.get('[data-testid="filtre-test"]').setValue('')
+    await flushPromises()
+    expect(listCases.mock.calls.at(-1)![1]).not.toHaveProperty('automatise')
+  })
+
   it('DIT combien de cas sont affichés sur le total', async () => {
     // Sans ce compte, une liste tronquée a l'air complète — et l'utilisateur conclut qu'un cas
     // n'existe pas alors qu'il est simplement au-delà de ce qui a été chargé.
