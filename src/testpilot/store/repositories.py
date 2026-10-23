@@ -4385,6 +4385,12 @@ class CaseDataRepo:
             " JOIN test_variable tv ON tv.id = cv.variable_id AND tv.deleted_at = '' WHERE r.case_id=? ORDER BY tv.nom",
             (case_id,))]
 
+    def nombre_de_lignes_par_cas(self, project_id: int) -> dict[int, int]:
+        """A107 : combien de lignes propres a chaque cas du projet qui en a — l'écran borne « de la ligne X à Y »."""
+        return {r["case_id"]: r["n"] for r in self.conn.execute(
+            "SELECT r.case_id AS case_id, COUNT(*) AS n FROM case_data_row r JOIN test_case tc ON tc.id = r.case_id"
+            " JOIN module m ON m.id = tc.module_id WHERE m.project_id=? GROUP BY r.case_id ORDER BY r.case_id", (project_id,))}
+
     def cas_avec_lignes(self, project_id: int) -> list[int]:
         return [r["case_id"] for r in self.conn.execute(
             "SELECT DISTINCT r.case_id AS case_id FROM case_data_row r JOIN test_case tc ON tc.id = r.case_id"

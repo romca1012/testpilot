@@ -45,7 +45,9 @@ const error = ref('')
 
 // Lot PT-02b (A28, A35) : les jeux de données du projet (`ChoixDesJeux`) — rien n'est proposé à un projet sans variable.
 const jeuxCoches = ref<number[]>([])
-const lignesDesCas = ref<'toutes' | 'premiere'>('toutes')   // A58
+const lignesDesCas = ref<'toutes' | 'premiere' | 'plage'>('toutes')   // A58 ; « plage » : A107
+const plageDe = ref(1)
+const plageA = ref(1)
 const jeuxValides = ref(true)
 // Lot PT-04a : les environnements (`ChoixDesEnvironnements`) — rien n'est proposé à un projet qui n'a que le défaut.
 const envsCoches = ref<number[]>([])
@@ -177,6 +179,7 @@ async function submit() {
       dataset_ids: form.value.mode === 'automatique' ? jeuxCoches.value : [],
       environment_ids: form.value.mode === 'automatique' ? envsCoches.value : [],
       lignes_des_cas: lignesDesCas.value,
+      ...(lignesDesCas.value === 'plage' ? { ligne_debut: plageDe.value, ligne_fin: plageA.value } : {}),
     })
     // Plusieurs environnements : les exécutions sont regroupées dans un plan — c'est lui qu'on ouvre, toutes y figurent. Les
     // lignes de données de test sont des itérations de la même exécution (A52).
@@ -368,7 +371,7 @@ function cancel() { router.push({ name: 'executions', params: { pid } }) }
       <!-- Lot PT-02b (A28, A32) : les jeux de données, pour une campagne automatique d'un projet qui a des variables. -->
       <ChoixDesJeux :masque="form.mode !== 'automatique'" v-model="jeuxCoches" v-model:valide="jeuxValides" :pid="pid"
                     :tests-choisis="testsChoisis" :environnements="envsCoches.length"
-                    v-model:lignes-des-cas="lignesDesCas" avec-lignes-des-cas />
+                    v-model:lignes-des-cas="lignesDesCas" v-model:plage-de="plageDe" v-model:plage-a="plageA" avec-lignes-des-cas />
       <!-- Lot PT-04a : les environnements, pour une campagne automatique d'un projet qui en a plusieurs. -->
       <ChoixDesEnvironnements :masque="form.mode !== 'automatique'" v-model="envsCoches" v-model:valide="envsValides" :pid="pid"
                               :jeux="jeuxCoches.length" />

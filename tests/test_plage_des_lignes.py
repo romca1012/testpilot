@@ -15,7 +15,9 @@ from __future__ import annotations
 import json
 
 import pytest
+from fastapi.testclient import TestClient
 
+from testpilot.api import app as app_mod
 from testpilot.api.services import campaign_service
 from testpilot.api.services import donnees_de_test_service as service
 from testpilot.store.repositories import CaseDataRepo, CaseRepo, ModuleRepo, RunRepo, VersionRepo
@@ -83,3 +85,33 @@ def test_le_depot_refuse_une_plage_incoherente(base, plage, lignes_des_cas):
     pid, cid, _vid, _ = _projet(base)
     with pytest.raises(ValueError, match="plage"):
         RunRepo(base).create(project_id=pid, name="Nuit", case_ids=[cid], plage_des_lignes=plage, lignes_des_cas=lignes_des_cas)
+
+
+def _creer(pid, cid, **champs):
+    return TestClient(app_mod.app).post(f"/api/projects/{pid}/runs", json={
+        "name": "Nuit", "selection_mode": "frozen", "case_ids": [cid], "mode": "automatique", **champs})
+
+
+def test_api_la_plage_est_enregistree_et_le_nombre_de_lignes_est_lu(base):
+    pid, cid, _vid, _ = _projet(base)
+    reponse = _creer(pid, cid, lignes_des_cas="plage", ligne_debut=1, ligne_fin=2)
+    assert reponse.status_code == 201, reponse.text
+    run = RunRepo(base).get(reponse.json()["id"])
+    assert (run["lignes_des_cas"], run["ligne_debut"], run["ligne_fin"]) == ("toutes", 1, 2)
+    assert TestClient(app_mod.app).get(f"/api/projects/{pid}/donnees-de-test/lignes-par-cas").json() == {str(cid): 3}
+
+
+def test_falsifiable_api_une_plage_qu_un_cas_n_a_pas_est_refusee_en_le_nommant(base):
+    pid, cid, _vid, _ = _projet(base)
+    reponse = _creer(pid, cid, lignes_des_cas="plage", ligne_debut=2, ligne_fin=4)
+    assert reponse.status_code == 422 and "Accès" in reponse.json()["detail"]
+    assert base.execute("SELECT COUNT(*) FROM test_run").fetchone()[0] == 0, "rien n'est créé"
+
+
+@pytest.mark.parametrize("champs", [{"lignes_des_cas": "plage", "ligne_debut": 2, "ligne_fin": 1},
+                                    {"lignes_des_cas": "plage", "ligne_debut": 1},
+                                    {"lignes_des_cas": "toutes", "ligne_debut": 1, "ligne_fin": 2},
+                                    {"lignes_des_cas": "plage", "ligne_debut": 1, "ligne_fin": 2, "mode": "manuelle"}])
+def test_api_refuse_une_plage_incoherente(base, champs):
+    pid, cid, _vid, _ = _projet(base)
+    assert _creer(pid, cid, **champs).status_code == 422
