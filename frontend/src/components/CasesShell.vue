@@ -24,7 +24,7 @@ import AccountMenu from './AccountMenu.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { projects, ensureLoaded, projectById } = useProjects()
+const { ensureLoaded, projectById } = useProjects()
 const { session } = useSession()
 const roleProjet = computed(() => currentProject.value?.effective_role || session.value?.role || '')
 const peutModifier = computed(() => roleSuffisant(roleProjet.value, 'testeur'))
@@ -296,10 +296,6 @@ function isActive(key: string) {
 function comingSoon(what: string) {
   window.alert(`${what} — à venir.`)
 }
-function switchProject(id: number) {
-  menuOpen.value = false
-  router.push({ name: 'cases', params: { pid: String(id) } })
-}
 </script>
 
 <template>
@@ -318,15 +314,8 @@ function switchProject(id: number) {
           <svg class="w-4 h-4 text-muted-foreground shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
         </button>
         <div v-if="menuOpen" class="absolute left-3 right-3 z-30 mt-1 rounded-md border border-border bg-surface-overlay py-1 shadow-xl">
-          <button v-for="p in projects" :key="p.id"
-                  class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent/60"
-                  :class="p.id === Number(pid) ? 'text-primary' : 'text-foreground'"
-                  @click="switchProject(p.id)">
-            <span class="truncate">{{ p.name }}</span>
-          </button>
-          <!-- Sans ce lien, la page projets devenait INATTEIGNABLE : on ne pouvait plus créer,
-               renommer ni configurer un projet depuis l'interface. -->
-          <div class="my-1 border-t border-border"></div>
+          <!-- Porteur, 2026-10-23 : plus la liste de chaque projet ici (elle allongeait le menu et doublait « Tous les
+               projets… ») ; on change de projet depuis la page des projets. Sans ce lien, elle devenait INATTEIGNABLE. -->
           <RouterLink to="/projects" class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                       @click="menuOpen = false">Tous les projets…</RouterLink>
           <RouterLink v-if="session?.role === 'admin'" to="/admin/projects" class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
@@ -342,11 +331,7 @@ function switchProject(id: number) {
           <RouterLink v-if="session?.role === 'admin'" :to="{ name: 'settings' }"
                       class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                       @click="menuOpen = false">Réglages…</RouterLink>
-          <!-- Gestion des comptes (2026-08-07) — Admin seulement : le lien lui-même reflète déjà
-               ce que le serveur imposerait de toute façon (403), pas de raison de le proposer. -->
-          <RouterLink v-if="session?.role === 'admin'" :to="{ name: 'utilisateurs' }"
-                      class="block px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                      @click="menuOpen = false">Utilisateurs…</RouterLink>
+          <!-- Porteur, 2026-10-23 : plus de lien « Utilisateurs… » ici — la page est dans Réglages (« Utilisateurs et rôles »). -->
         </div>
       </div>
 
