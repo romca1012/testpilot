@@ -174,12 +174,13 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
 - *Fait (2026-10-23), branche `lot-etape7b-parcours`, poussée, sans PR* — bouton « Enregistrer le parcours » sur la fiche
   du cas (testeur, développeur, administrateur) ; le navigateur se connecte seul avec le compte du projet (en échec : la
   personne se connecte, rien n'est gardé avant « Je suis connecté ») ; retenus : clics, textes saisis, choix dans une
-  liste, page atteinte, et « C'est ici que je vérifie » — l'élément est désigné par son libellé ou son identifiant
-  technique, **jamais par ce qu'il affiche** ; jamais un mot de passe, ni image ni vidéo. Table `parcours_enregistre`
+  liste, page atteinte, et « C'est ici que je vérifie » — l'élément est désigné par son identifiant technique (ou
+  l'étiquette d'un champ), **jamais par ce qu'il affiche** ; jamais un mot de passe, ni image ni vidéo. Table `parcours_enregistre`
   (migration 78), historique gardé, version de test rattachée. Cas automatisé : les actions sont traduites sans IA et
   imposées à l'écriture (refus « PARCOURS ») ; l'IA n'écrit que l'« Alors », avec le résultat attendu du cas ; une liste à
-  recherche (relation) reste à écrire par l'IA. Cas manuel : mode opératoire affiché. Limite : la réparation d'un test
-  n'est pas contrainte par le parcours (seule la génération l'est).
+  recherche (relation) reste à écrire par l'IA. Cas manuel : mode opératoire affiché. Limites : la réparation d'un test
+  n'est pas contrainte par le parcours (seule la génération l'est) ; une saisie de mot de passe n'entre jamais au
+  parcours (un cas « changer son mot de passe » sortira « à refaire », jamais conforme) ; coût du prompt mesuré à l'étape 8.
 
 #### Étape 8 — Mesure de contrôle n°2 et allumage
 - Une seule campagne qui mesure tout ce que les étapes 4 à 7 ont apporté (Odoo compris), plus les options encore

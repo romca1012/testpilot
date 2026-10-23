@@ -86,7 +86,7 @@ _CHAMP_SOUS_LE_POINT_JS = r"""
       ? Array.from(champ.options).map(o => (o.label || o.textContent || '').trim()).filter(Boolean).slice(0, 200) : [],
     secret: (champ.getAttribute('type') || '').toLowerCase() === 'password'
       || /(current|new)-password/.test(champ.getAttribute('autocomplete') || '')
-      || /pass(word|wd)?|mdp|mot.?de.?passe/i.test((champ.getAttribute('name') || '') + ' ' + (champ.id || '')),
+      || /(^|[^a-z])(password|passwd|pwd|mdp|mot.?de.?passe)([^a-z]|$)/i.test((champ.getAttribute('name') || '') + ' ' + (champ.id || '')),
     // Une liste à recherche (autocomplétion, many2one…) : remplir le texte ne CHOISIT pas l'enregistrement — l'étape
     // générique « je renseigne le champ » n'y suffit pas, l'agent écrira l'étape qui convient (revue du 2026-10-23).
     relation: (champ.getAttribute('role') || '') === 'combobox' || champ.hasAttribute('aria-autocomplete')
@@ -98,7 +98,7 @@ _CHAMP_SOUS_LE_POINT_JS = r"""
 # Le champ qui reçoit VRAIMENT la saisie est-il un mot de passe (même affiché en clair) ?
 _EST_SECRET_JS = ("el => (el.getAttribute('type') || '').toLowerCase() === 'password'"
                   " || /(current|new)-password/.test(el.getAttribute('autocomplete') || '')"
-                  " || /pass(word|wd)?|mdp|mot.?de.?passe/i.test((el.getAttribute('name') || '') + ' ' + (el.id || ''))")
+                  " || /(^|[^a-z])(password|passwd|pwd|mdp|mot.?de.?passe)([^a-z]|$)/i.test((el.getAttribute('name') || '') + ' ' + (el.id || ''))")
 
 # Rôles dont le nom accessible ne vient JAMAIS du contenu (étiquette d'un champ). Revue du 2026-10-23, 2e passe (bloquant,
 # mesuré avec Chromium) : un bouton, un lien, un onglet tirent leur nom de ce qu'ils affichent — le bouton Odoo
@@ -111,8 +111,10 @@ _DESIGNATION_TECHNIQUE_JS = r"""
 ({x, y}) => {
   let el = document.elementFromPoint(x, y);
   for (let niveau = 0; el && niveau <= 3; niveau += 1, el = el.parentElement) {
+    // Un `id` qui finit par des chiffres est généré (`partner_id_0` d'Odoo) : il change d'une session à l'autre.
+    const id = el.getAttribute('id') || '';
     const nom = el.getAttribute('data-test') || el.getAttribute('data-testid') || el.getAttribute('name')
-      || el.getAttribute('id');
+      || (/\d$/.test(id) ? '' : id);
     if (nom) return nom.slice(0, 120);
   }
   return '';
