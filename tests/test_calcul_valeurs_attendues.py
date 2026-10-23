@@ -96,9 +96,9 @@ def _bareme(mode):
 
 
 def test_bareme_progressif_et_par_palier_ne_donnent_pas_le_meme_resultat():
-    assert calcul.calculer(_bareme("progressif"), {"montant": "6000"}).resultat == Decimal("600")   # 0 + 400 + 200
-    assert calcul.calculer(_bareme("par_palier"), {"montant": "6000"}).resultat == Decimal("1200")  # 6000 × 20 %
-    assert calcul.calculer(_bareme("par_palier"), {"montant": "1000"}).resultat == Decimal("0"), "la borne est incluse"
+    assert calcul.calculer(_bareme("progressif"), {"montant": "6000"}).resultat == Decimal(600)   # 0 + 400 + 200
+    assert calcul.calculer(_bareme("par_palier"), {"montant": "6000"}).resultat == Decimal(1200)  # 6000 × 20 %
+    assert calcul.calculer(_bareme("par_palier"), {"montant": "1000"}).resultat == Decimal(0), "la borne est incluse"
 
 
 def test_condition_plafond_et_minimum():

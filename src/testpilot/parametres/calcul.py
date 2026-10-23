@@ -28,8 +28,16 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from decimal import (ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, InvalidOperation,
-                     localcontext)
+from decimal import (
+    ROUND_CEILING,
+    ROUND_DOWN,
+    ROUND_FLOOR,
+    ROUND_HALF_EVEN,
+    ROUND_HALF_UP,
+    Decimal,
+    InvalidOperation,
+    localcontext,
+)
 
 ETAPES_MAX = 50          # au-delà, ce n'est plus un calcul qu'une personne relit : une fiche à scinder
 TRANCHES_MAX = 30
