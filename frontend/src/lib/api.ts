@@ -205,6 +205,8 @@ export const api = {
   casAvecVariables: (id: number | string) => request<number[]>(`/api/projects/${id}/donnees-de-test/cas-avec-variables`),
   // A57 : les cas qui ont leurs propres lignes, et les lignes d'un cas (ses classes de valeurs, jouées en itérations).
   casAvecLignes: (id: number | string) => request<number[]>(`/api/projects/${id}/donnees-de-test/cas-avec-lignes`),
+  // A107 : combien de lignes propres a chaque cas — l'écran ne propose qu'une plage « de la ligne X à Y » qui existe.
+  lignesParCas: (id: number | string) => request<Record<string, number>>(`/api/projects/${id}/donnees-de-test/lignes-par-cas`),
   getCaseData: (caseId: number | string) => request<DonneesDuCas>(`/api/cases/${caseId}/donnees-de-test`),
   setCaseData: (caseId: number | string, lignes: { id?: number; nom: string; valeurs: Record<string, string>;
                                                    compte_choisi?: boolean; compte_id?: number | null }[]) =>
@@ -278,8 +280,10 @@ export const api = {
     dataset_ids?: number[]
     // Lot PT-04a : les environnements (0 = par défaut) — une exécution par jeu ET par environnement.
     environment_ids?: number[]
-    // A58 : les lignes propres à chaque cas — toutes (défaut) ou la première seulement.
-    lignes_des_cas?: 'toutes' | 'premiere'
+    // A58 : les lignes propres à chaque cas — toutes (défaut) ou la première seulement ; A107 : ou de la ligne X à Y.
+    lignes_des_cas?: 'toutes' | 'premiere' | 'plage'
+    ligne_debut?: number
+    ligne_fin?: number
   }) => request<RunSummary>(`/api/projects/${projectId}/runs`, {
     method: 'POST', body: JSON.stringify(body),
   }),

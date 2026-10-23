@@ -25,6 +25,7 @@ from testpilot.parametres import iterations as iterations_mod
 from testpilot.parametres import resolution
 from testpilot.store.repositories import (
     CaseDataRepo,
+    CaseRepo,
     DonneeDeTestInvalide,
     PlanRepo,
     RunRepo,
@@ -75,21 +76,57 @@ def figer_pour_la_campagne(conn, run: dict) -> None:
     conn.commit()
 
 
+class PlageIncomplete(ValueError):
+    """A107 : la plage de lignes choisie n'existe pas EXACTEMENT dans un cas de la campagne — rien n'est lancé."""
+
+
+def cas_hors_plage(conn, project_id: int, case_ids, fin: int) -> list[str]:
+    """A107 (porteur, 2026-10-23 : « la plage doit être exactement celle qui existe ») : les titres des cas qui ont leurs
+    propres lignes mais pas la ligne `fin`. Un cas SANS lignes propres n'est pas concerné : il se joue une fois, avec les
+    valeurs du projet, comme avec « la première seulement »."""
+    depot = CaseDataRepo(conn)
+    avec_lignes = set(depot.cas_avec_lignes(project_id))
+    titres = []
+    for case_id in dict.fromkeys(case_ids or []):
+        if case_id in avec_lignes and len(depot.lignes(case_id)) < fin:
+            titres.append((CaseRepo(conn).get(case_id) or {}).get("title") or f"cas {case_id}")
+    return titres
+
+
+def message_hors_plage(titres: list[str], debut: int, fin: int) -> str:
+    return (f"la plage « de la ligne {debut} à {fin} » n'existe pas dans : " + ", ".join(f"« {t} »" for t in titres)
+            + " — choisissez une plage que tous ces cas ont, ou ajoutez-leur des lignes")
+
+
 def _lignes_des_cas_de_la_campagne(conn, run: dict) -> tuple[dict[str, list[dict]], list[int]]:
-    """({case_id: [{jeu, valeurs: {nom: {valeur, origine}}}]} pour les cas qui ont leurs propres lignes — toutes, ou la
-    première seulement (`test_run.lignes_des_cas`, A58) ; les cas de la campagne à cet instant)."""
+    """({case_id: [{jeu, valeurs: {nom: {valeur, origine}}}]} pour les cas qui ont leurs propres lignes — toutes, la
+    première seulement (`test_run.lignes_des_cas`, A58), ou de la ligne X à Y (`ligne_debut`/`ligne_fin`, A107) ; les cas
+    de la campagne à cet instant). Une plage qu'un cas n'a pas en entier : `PlageIncomplete`, jamais une plage raccourcie
+    en silence (l'écran annoncerait des lignes jamais jouées)."""
     depot = CaseDataRepo(conn)
     avec_lignes = set(depot.cas_avec_lignes(run["project_id"]))
     premiere = (run.get("lignes_des_cas") or "toutes") == "premiere"
+    debut, fin = run.get("ligne_debut"), run.get("ligne_fin")
     cas = list(RunRepo(conn).case_ids(run["id"]))
+    if debut is not None and fin is not None:
+        manquants = cas_hors_plage(conn, run["project_id"], cas, fin)
+        if manquants:
+            raise PlageIncomplete(message_hors_plage(manquants, debut, fin))
     figees = {}
     for case_id in cas:
         if case_id not in avec_lignes:
             continue
-        niveaux = depot.niveaux(case_id)[:1] if premiere else depot.niveaux(case_id)
+        niveaux = depot.niveaux(case_id)
+        comptes = _comptes_des_lignes(conn, case_id, run["project_id"])
+        if premiere:
+            niveaux = niveaux[:1]
+        elif debut is not None and fin is not None:
+            # Les comptes suivent les lignes rang pour rang : découpés de la même façon (sinon la ligne 2 prendrait le
+            # compte de la ligne 1).
+            niveaux, comptes = niveaux[debut - 1:fin], comptes[debut - 1:fin]
         if niveaux:
             # Étape 4, morceau 7 : le compte de chaque ligne, figé au lancement avec ses valeurs (A29).
-            figees[str(case_id)] = _lignes_jouables(niveaux, _comptes_des_lignes(conn, case_id, run["project_id"]))
+            figees[str(case_id)] = _lignes_jouables(niveaux, comptes)
     return figees, cas
 
 

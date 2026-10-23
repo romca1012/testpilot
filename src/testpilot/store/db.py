@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 # Version cible du schéma. Incrémentée à chaque migration ajoutée ci-dessous.
-_SCHEMA_VERSION = 75
+_SCHEMA_VERSION = 76
 
 # Horodatage des sauvegardes automatiques — même granularité que les copies manuelles déjà vues
 # dans ce dépôt (`testpilot.db.avant-nettoyage-20260805-104308`).
@@ -292,6 +292,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         _migrate_74_compte_des_lignes(conn)
     if version < 75:
         _migrate_75_donnees_depuis_l_application(conn)
+    if version < 76:
+        _migrate_76_plage_des_lignes(conn)
     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.commit()
 
@@ -598,6 +600,19 @@ def _migrate_71_iteration_du_scenario(conn: sqlite3.Connection) -> None:
     idempotente."""
     if _table_existe(conn, "scenario_result") and "iterations" not in _column_names(conn, "scenario_result"):
         conn.execute("ALTER TABLE scenario_result ADD COLUMN iterations TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_76_plage_des_lignes(conn: sqlite3.Connection) -> None:
+    """Porteur, 2026-10-23 (A107) : « de la ligne X à la ligne Y » pour les lignes propres aux cas, choisi au lancement d'une
+    campagne automatique (comme « Run from row … to row … » du Data Table de QTP/UFT). `test_run.ligne_debut` et
+    `ligne_fin` : numéros de ligne (1 = la première du cas), les deux NULL = pas de plage (« toutes » ou « premiere », comme
+    avant). La plage doit exister EXACTEMENT dans chaque cas qui a des lignes, sinon rien n'est lancé. Additive,
+    idempotente ; la cohérence des deux colonnes est tenue par `RunRepo.create` (SQLite n'ajoute pas de CHECK à deux
+    colonnes par ALTER TABLE) et par la contrainte de `schema_sa` (PostgreSQL)."""
+    if _table_existe(conn, "test_run") and "ligne_debut" not in _column_names(conn, "test_run"):
+        conn.execute("ALTER TABLE test_run ADD COLUMN ligne_debut INTEGER CHECK (ligne_debut IS NULL OR ligne_debut >= 1)")
+    if _table_existe(conn, "test_run") and "ligne_fin" not in _column_names(conn, "test_run"):
+        conn.execute("ALTER TABLE test_run ADD COLUMN ligne_fin INTEGER CHECK (ligne_fin IS NULL OR ligne_fin >= 1)")
 
 
 def _migrate_75_donnees_depuis_l_application(conn: sqlite3.Connection) -> None:

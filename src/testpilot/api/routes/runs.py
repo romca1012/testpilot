@@ -102,6 +102,7 @@ def create_run(project_id: int, body: schemas.RunIn, request: Request, conn=Depe
         # que de les laisser disparaître de la campagne sans un mot.
         _refuser_les_cas_non_automatises(repo, body.case_ids)
     jeux = _jeux_demandes(conn, project_id, body)
+    lignes_des_cas, plage = _plage_demandee(conn, project_id, body)
     environnements = _environnements_demandes(conn, project_id, body)
     # A52 : UNE exécution par environnement, qui joue toutes les lignes choisies (une itération par ligne). Plusieurs
     # environnements (PT-04a) : regroupées dans un plan qui porte le nom demandé ; la réponse décrit la première, son
@@ -110,7 +111,8 @@ def create_run(project_id: int, body: schemas.RunIn, request: Request, conn=Depe
         conn, project_id=project_id, nom=body.name.strip(), jeux=jeux, created_by=access.utilisateur_de(request),
         description=body.description, refs=body.refs, environnements=environnements,
         selection_mode=body.selection_mode, mode=body.mode,
-        case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli, lignes_des_cas=body.lignes_des_cas)
+        case_ids=body.case_ids, strict=body.strict, sans_repli=body.sans_repli, lignes_des_cas=lignes_des_cas,
+        plage_des_lignes=plage)
     return _summary(repo.get(premier), len(repo.case_ids(premier)))
 
 
@@ -128,6 +130,26 @@ def _jeux_demandes(conn, project_id: int, body: schemas.RunIn) -> list[dict]:
         return donnees_de_test_service.jeux_demandes(conn, project_id, body.dataset_ids, maximum=JEUX_PAR_LANCEMENT_MAX)
     except DonneeDeTestInvalide as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _plage_demandee(conn, project_id: int, body: schemas.RunIn) -> tuple[str, tuple[int, int] | None]:
+    """A107 : (`lignes_des_cas` enregistré, plage ou None). « plage » : dans une campagne automatique seulement, 1 ≤ X ≤ Y, et
+    — pour une sélection figée — présente EN ENTIER dans chaque cas qui a ses lignes (sinon 422 qui nomme les cas ; une
+    sélection vivante est vérifiée au lancement)."""
+    if body.lignes_des_cas != "plage":
+        if body.ligne_debut is not None or body.ligne_fin is not None:
+            raise HTTPException(status_code=422, detail="« de la ligne X à Y » se choisit avec l'option « plage »")
+        return body.lignes_des_cas, None
+    if body.mode == MODE_MANUELLE:
+        raise HTTPException(status_code=422, detail="la plage de lignes se joue dans une exécution automatique")
+    debut, fin = body.ligne_debut, body.ligne_fin
+    if debut is None or fin is None or not 1 <= debut <= fin:
+        raise HTTPException(status_code=422, detail="de la ligne X à la ligne Y : 1 ≤ X ≤ Y")
+    if body.selection_mode == "frozen":
+        manquants = donnees_de_test_service.cas_hors_plage(conn, project_id, body.case_ids, fin)
+        if manquants:
+            raise HTTPException(status_code=422, detail=donnees_de_test_service.message_hors_plage(manquants, debut, fin))
+    return "toutes", (debut, fin)
 
 
 def _environnements_demandes(conn, project_id: int, body: schemas.RunIn) -> list[dict | None]:

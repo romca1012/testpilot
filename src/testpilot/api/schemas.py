@@ -952,7 +952,10 @@ class RunIn(BaseModel):
     # par jeu ET par environnement, regroupées dans un plan ; 50 au plus en tout. « Production » : refusé (A48).
     environment_ids: list[int] = []
     # A58 : les lignes propres à chaque cas — « toutes » (défaut : chaque cas joue toutes ses lignes) ou « premiere ».
-    lignes_des_cas: Literal["toutes", "premiere"] = "toutes"
+    lignes_des_cas: Literal["toutes", "premiere", "plage"] = "toutes"
+    # A107 (porteur, 2026-10-23) : avec « plage », de la ligne `ligne_debut` à `ligne_fin` de chaque cas (1 = la première).
+    ligne_debut: int | None = None
+    ligne_fin: int | None = None
 
 
 class IterationDuCas(BaseModel):
