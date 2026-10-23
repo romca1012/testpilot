@@ -206,6 +206,10 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
 #### Étape 10 — Mise en ligne
 - Fusionner la chaîne de branches locales (y compris le nettoyage du lot 06 et le correctif 07b-2 jamais fusionnés),
   migrations 64 à 7x sur PostgreSQL, 4 contrôles de la CI au vert, PR en « rebase and merge ».
+- **Auteur des commits** (porteur, 2026-10-23 : « je suis le seul contributeur ») : réécrire l'historique de master pour
+  que tous les commits soient à son nom (14 commits encore signés Claude), sans changer le code ; la protection de master
+  est levée par le porteur le temps du push, puis remise. Copies locales (poste Windows) à resynchroniser ensuite. Les
+  8 branches de travail en cours sont déjà réécrites (2026-10-23) ; les anciennes branches, à décider avec lui.
 - **De toi :** accord avant chaque fusion ; /staging reste ta décision.
 - **1 à 2 jours — 0 $**
 
