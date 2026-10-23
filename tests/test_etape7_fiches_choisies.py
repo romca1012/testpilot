@@ -109,3 +109,27 @@ def test_falsifiable_une_entree_sans_donnee_de_test_est_refusee(projet):
     with pytest.raises(generation_service.GenerationError, match="l'entrée « remise » n'est pas une donnée de test"):
         generation_service.validate_metier(conn, "j", [_cas(fiches_retenues=[{"origine": "ia", "contenu": fiche}])],
                                            par="marie")
+
+
+# ── Vérifier une fiche depuis l'écran, sans rien enregistrer ──────────────────────────────────────────────────────────────
+
+def test_falsifiable_l_ecran_voit_l_ecart_d_un_exemple_et_le_detail(projet):
+    from fastapi.testclient import TestClient
+
+    from testpilot.api import app as app_mod
+
+    client = TestClient(app_mod.app)
+    bonne = client.post("/api/calculs/verifier", json={"fiche": FICHE}).json()
+    assert bonne["utilisable"] and bonne["entrees"] == ["quantite", "prix"]
+    assert bonne["exemples"][0]["retrouve"] and bonne["exemples"][0]["detail"][-1] == "total = quantite × prix = 30"
+
+    fausse = client.post("/api/calculs/verifier", json={"fiche": {**FICHE, "exemples": [
+        {"entrees": {"quantite": "3", "prix": "10"}, "attendu": "31"}]}}).json()
+    assert not fausse["utilisable"] and fausse["exemples"][0] | {"detail": []} == {
+        "numero": 1, "attendu": "31", "obtenu": "30", "retrouve": False, "detail": []}
+
+    sans_source = client.post("/api/calculs/verifier", json={"fiche": {**FICHE, "elements": [{"nom": "quantite"}]}}).json()
+    assert not sans_source["utilisable"] and "source manque" in sans_source["erreur"]
+    assert not client.post("/api/calculs/verifier", json={"fiche": FICHE, "proposition": True}).json()["utilisable"], \
+        "une proposition n'est jamais « utilisable » telle quelle : une personne la choisit"
+    assert FicheDeCalculRepo(projet[0]).du_cas(projet[2]) == [], "rien n'est enregistré"

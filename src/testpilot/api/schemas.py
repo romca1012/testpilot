@@ -488,6 +488,30 @@ class FicheChoisie(BaseModel):
     contenu: dict
 
 
+class VerificationFicheIn(BaseModel):
+    """Étape 7 : une fiche à vérifier telle que l'écran la tient. `proposition` : vérifiée comme une proposition de l'IA
+    (dates et exemple pas encore exigés) — jamais « utilisable » dans ce mode."""
+    fiche: dict
+    proposition: bool = False
+
+
+class ExempleVerifieOut(BaseModel):
+    numero: int
+    attendu: str
+    obtenu: str
+    retrouve: bool
+    detail: list[str] = []
+
+
+class VerificationFicheOut(BaseModel):
+    """`utilisable` : la fiche peut être retenue telle quelle (bien formée, datée, chaque exemple retrouvé exactement)."""
+    utilisable: bool
+    erreur: str = ""
+    entrees: list[str] = []
+    exemples: list[ExempleVerifieOut] = []
+    a_confirmer: list[str] = []
+
+
 class MetierDraftOut(BaseModel):
     """Le document métier proposé par l'IA — à valider ou corriger avant l'écriture du Gherkin.
 
