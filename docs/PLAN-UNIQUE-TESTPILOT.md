@@ -146,6 +146,13 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
 - Abandonné (porteur, 2026-10-23) : la bibliothèque commune entre projets (V5, V6 sans objet) ; un délai d'expiration des
   taux (V8 : source et date seulement).
 - **3 à 4 jours — 0 $** (coût de la proposition de fiche mesuré à l'étape 8)
+- *Fait (2026-10-23), branche `lot-etape7-calculs`, poussée, sans PR* — calculateur (`parametres/calcul.py`) ; fiches en
+  base (migration 77) ; choix sur l'écran de validation des cas ; calcul fait à chaque exécution, pour chaque itération,
+  avec la fiche retenue la plus récente (exemples revérifiés) ; l'agent technique nomme le calcul, jamais le chiffre ;
+  détection et proposition par l'IA derrière `TESTPILOT_CALCULS` (éteint). Un calcul n'est joué que si le scénario qui le
+  vérifie SAISIT chacune de ses entrées (`{{entree}}`, Contexte compris), sinon « bloqué ». Limite connue : citer
+  `{{entree}}` dans une action ne prouve pas que la valeur arrive dans le bon champ (relu à l'approbation du test). Reste :
+  la mesure (étape 8) ; une page pour revoir ou changer les fiches d'un cas déjà créé.
 
 #### Étape 7b — Enregistrer le parcours d'un cas de test (au choix) — *proposition du 2026-10-23, à valider (A109)*
 - Idée du porteur : la connexion est un parcours déjà enregistré ; faire de même pour n'importe quel cas. Une personne joue
