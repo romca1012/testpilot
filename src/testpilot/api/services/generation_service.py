@@ -505,7 +505,10 @@ def validate_metier(conn, job_id: str, cases: list[dict], *, par: str = "") -> d
         })
         # Étape 7 (A110) : un calcul retenu est vérifié ICI (forme, exemples retrouvés), avant toute dépense de génération.
         from testpilot.api.services import fiches_de_calcul_service
-        fautes_calcul = fiches_de_calcul_service.fautes_des_fiches(c)
+        from testpilot.store.repositories import ModuleRepo as _Modules, TestDataRepo as _Donnees
+        _pid = (_Modules(conn).get(job["module_id"]) or {}).get("project_id")
+        fautes_calcul = fiches_de_calcul_service.fautes_des_fiches(
+            c, {v["nom"] for v in _Donnees(conn).variables(_pid)} if _pid else set())
         if fautes_calcul:
             raise GenerationError("invalid_metier", f"« {validated[-1]['title']} » : " + " ; ".join(fautes_calcul))
         validated[-1].update(fiches_de_calcul_service.transporter(c))

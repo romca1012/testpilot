@@ -16,8 +16,10 @@ from testpilot.store.repositories import FicheDeCalculRepo
 FICHES_PAR_CAS_MAX = 10   # au-delà, ce n'est plus « le total et la TVA » : un cas à découper
 
 
-def fautes_des_fiches(cas: dict) -> list[str]:
-    """Ce qui empêche de retenir les fiches choisies pour ce cas (vide : rien). Ne lit que ce que la personne a validé."""
+def fautes_des_fiches(cas: dict, variables_du_projet=None) -> list[str]:
+    """Ce qui empêche de retenir les fiches choisies pour ce cas (vide : rien). Ne lit que ce que la personne a validé.
+    `variables_du_projet` (noms vivants) : chaque ENTRÉE d'un calcul prend la valeur de la donnée de test du même nom — une
+    entrée sans donnée bloquerait le test à chaque exécution, elle est refusée ici, en le disant."""
     retenues = cas.get("fiches_retenues") or []
     if len(retenues) > FICHES_PAR_CAS_MAX:
         return [f"{len(retenues)} calculs retenus : {FICHES_PAR_CAS_MAX} au plus"]
@@ -35,6 +37,11 @@ def fautes_des_fiches(cas: dict) -> list[str]:
         if fiche["nom"] in noms:
             fautes.append(f"deux calculs retenus s'appellent « {fiche['nom']} »")
         noms.add(fiche["nom"])
+        if variables_du_projet is not None:
+            for entree in calcul.entrees_attendues(fiche):
+                if entree not in variables_du_projet:
+                    fautes.append(f"calcul « {fiche['nom']} » : l'entrée « {entree} » n'est pas une donnée de test du "
+                                  f"projet — créez la variable {{{{{entree}}}}} ou renommez l'entrée")
         for ecart in calcul.verifier_exemples(fiche):
             fautes.append(f"calcul « {fiche['nom']} » : l'exemple {ecart.numero} attend {ecart.attendu}, "
                           f"le calcul donne {ecart.obtenu}")
@@ -55,7 +62,7 @@ def transporter(cas: dict) -> dict:
     proposees = []
     for brute in (cas.get("fiches_proposees") or [])[:FICHES_PAR_CAS_MAX]:
         try:
-            fiche = calcul.valider_fiche(brute)
+            fiche = calcul.valider_fiche(brute, exiger_dates=False)   # une proposition : la date viendra de la personne
         except calcul.FicheInvalide:
             continue   # une proposition mal formée n'a rien à garder : elle n'a jamais pu être choisie
         if fiche["nom"] not in noms_retenus:

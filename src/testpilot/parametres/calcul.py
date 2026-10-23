@@ -101,9 +101,11 @@ def _ecrire(n: Decimal) -> str:
     return texte.replace(".", ",")
 
 
-def valider_fiche(fiche) -> dict:
+def valider_fiche(fiche, *, exiger_dates: bool = True) -> dict:
     """La fiche normalisée, ou `FicheInvalide` avec ce qu'il faut corriger. Vérifie la FORME seulement — les exemples sont
-    vérifiés par `verifier_exemples`, car une fiche bien formée peut calculer faux."""
+    vérifiés par `verifier_exemples`, car une fiche bien formée peut calculer faux. `exiger_dates=False` : une PROPOSITION
+    de l'IA, qui n'a rien vérifié — elle ne date jamais un taux ; la personne qui la choisit le fait (elle ne sera retenue
+    qu'avec ses dates, `exiger_dates=True`)."""
     if not isinstance(fiche, dict):
         raise FicheInvalide("une fiche de calcul est un objet")
     nom_fiche = str(fiche.get("nom") or "").strip()
@@ -127,7 +129,7 @@ def valider_fiche(fiche) -> dict:
         if element.get("valeur") not in (None, ""):
             normal["valeur"] = _ecrire(_nombre(element["valeur"], f"élément « {nom} »"))
             verifie = str(element.get("verifie_le") or "").strip()
-            if not _DATE.match(verifie):
+            if not _DATE.match(verifie) and (exiger_dates or verifie):
                 # V8 (A110) : une constante (un taux, un plafond) indique sa source ET sa date de vérification.
                 raise FicheInvalide(f"élément « {nom} » : sa date de vérification manque (AAAA-MM-JJ)")
             normal["verifie_le"] = verifie
@@ -255,7 +257,8 @@ def calculer(fiche: dict, entrees: dict) -> Calcul:
         nom = element["nom"]
         if "valeur" in element:
             valeurs[nom] = Decimal(element["valeur"].replace(",", "."))
-            detail.append(f"{nom} = {element['valeur']} (source : {element['source']}, vérifié le {element['verifie_le']})")
+            verifie = f", vérifié le {element['verifie_le']}" if element.get("verifie_le") else ", date de vérification à remplir"
+            detail.append(f"{nom} = {element['valeur']} (source : {element['source']}{verifie})")
             continue
         if nom not in entrees:
             raise CalculImpossible(f"l'entrée « {nom} » manque")

@@ -25,7 +25,7 @@ FICHE = {"nom": "Total", "resultat": "total",
 @pytest.fixture
 def projet(tmp_path, monkeypatch):
     from testpilot.store.db import get_initialized_db
-    from testpilot.store.repositories import CaseRepo, GenerationJobRepo, ModuleRepo, ProjectRepo
+    from testpilot.store.repositories import CaseRepo, GenerationJobRepo, ModuleRepo, ProjectRepo, TestDataRepo
 
     db = tmp_path / "db.sqlite"
     monkeypatch.setattr(config, "DB_PATH", db)
@@ -33,6 +33,8 @@ def projet(tmp_path, monkeypatch):
     conn = get_initialized_db(db)
     pid = ProjectRepo(conn).create(name="Boutique", connector_type="web", base_url="http://app")
     mid = ModuleRepo(conn).create(project_id=pid, name="M")
+    for nom in ("quantite", "prix"):
+        TestDataRepo(conn).creer_variable(pid, nom=nom)
     GenerationJobRepo(conn).creer("j", module_id=mid, payload={"title": "T", "spec_content": "spec", "author": "a"})
     conn.execute("UPDATE generation_job SET status='awaiting_metier' WHERE id='j'")
     conn.commit()
@@ -96,3 +98,14 @@ def test_deux_calculs_du_meme_nom_sont_refuses():
     fautes = fiches_de_calcul_service.fautes_des_fiches({"fiches_retenues": [
         {"origine": "ia", "contenu": FICHE}, {"origine": "personne", "contenu": FICHE}]})
     assert any("s'appellent « Total »" in f for f in fautes)
+
+
+def test_falsifiable_une_entree_sans_donnee_de_test_est_refusee(projet):
+    """L'entrée « remise » n'a pas de variable dans le projet : le test serait bloqué à chaque exécution."""
+    from testpilot.api.services import generation_service
+
+    conn, *_ = projet
+    fiche = {**FICHE, "elements": [*FICHE["elements"], {"nom": "remise", "source": "variable {{remise}}"}]}
+    with pytest.raises(generation_service.GenerationError, match="l'entrée « remise » n'est pas une donnée de test"):
+        generation_service.validate_metier(conn, "j", [_cas(fiches_retenues=[{"origine": "ia", "contenu": fiche}])],
+                                           par="marie")
