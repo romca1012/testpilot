@@ -30,6 +30,8 @@ export const routes = [
   // Import d'un cahier de test existant (.xlsx) — aperçu/correction puis écriture (2026-10-01).
   { path: '/projects/:pid/cases/import-excel', name: 'case-import-excel', component: () => import('./pages/ImportExcelCases.vue') },
   { path: '/projects/:pid/cases/:id', name: 'case-detail', component: () => import('./pages/CaseDetailTR.vue') },
+  // Étape 7b (A109) : jouer le cas une fois dans le vrai navigateur.
+  { path: '/projects/:pid/cases/:id/parcours', name: 'case-parcours', component: () => import('./pages/EnregistrerParcours.vue') },
   // La SPÉCIFICATION : le document source, d'où naissent 1 à N cas (décision 0022). Son CRUD
   // existait côté serveur depuis le 2026-07-20 sans qu'aucun écran ne l'appelle — le modèle
   // « une spec → plusieurs cas » était donc inatteignable par l'interface.

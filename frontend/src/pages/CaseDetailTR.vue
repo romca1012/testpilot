@@ -19,6 +19,7 @@ import HistoryTab from '../components/case/HistoryTab.vue'
 import CodeView from '../components/CodeView.vue'
 import ApercuParJeu from '../components/case/ApercuParJeu.vue'
 import LignesDuCas from '../components/case/LignesDuCas.vue'
+import ParcoursDuCas from '../components/case/ParcoursDuCas.vue'
 import InsererVariable from '../components/case/InsererVariable.vue'
 import AssocierDonnees from '../components/case/AssocierDonnees.vue'
 import RefsList from '../components/RefsList.vue'
@@ -700,6 +701,9 @@ onBeforeUnmount(() => { if (autoTimer) window.clearInterval(autoTimer) })
 
           <!-- A57 : les lignes propres à ce cas, une itération chacune quand on le lance. -->
           <LignesDuCas :key="caseId" :case-id="caseId" :peut-modifier="peutModifier" />
+
+          <!-- Étape 7b (A109) : le parcours joué par une personne — mode opératoire, et chemin du test technique. -->
+          <ParcoursDuCas :key="`parcours-${caseId}`" :case-id="caseId" :project-id="pid" :peut-enregistrer="peutModifier" />
 
           <!-- Cas MANUEL (aucun Gherkin) : le test technique n'existe pas encore. -->
           <section v-if="!hasGherkin" class="mt-8">

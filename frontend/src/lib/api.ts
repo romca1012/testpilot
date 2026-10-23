@@ -381,6 +381,11 @@ export const api = {
   // par ce client `request()` générique (fait pour du JSON sur HTTP, pas pour un flux WS).
   createLiveSession: (id: number | string) =>
     request<LiveSessionToken>(`/api/projects/${id}/live-session`, { method: 'POST' }),
+  // Étape 7b (A109) : le parcours d'un cas, enregistré dans le navigateur en direct (testeur et au-dessus).
+  createParcoursSession: (caseId: number | string) =>
+    request<LiveSessionToken>(`/api/cases/${caseId}/parcours/session`, { method: 'POST' }),
+  getParcours: (caseId: number | string) =>
+    request<{ parcours: ParcoursEnregistre[] }>(`/api/cases/${caseId}/parcours`),
   listModules: (projectId: number | string) => request<ModuleSummary[]>(`/api/projects/${projectId}/modules`),
   // ⚠️ Manquait entièrement côté client : le backend savait créer un module, aucun écran ne le
   // demandait. Conséquence — un projet NEUF n'avait aucun module, donc la liste déroulante de
@@ -940,6 +945,24 @@ export function liveSessionWsUrl(projectId: number | string, token: string): str
   const base = API_BASE || window.location.origin
   const ws = base.replace(/^http/, 'ws')
   return `${ws}/api/projects/${projectId}/live-session/ws?token=${encodeURIComponent(token)}`
+}
+
+/** Étape 7b (A109) : une action du parcours d'un cas — jamais la valeur d'un mot de passe (`secret`, `valeur` vide). */
+export interface ActionParcours {
+  action: 'clic' | 'saisie' | 'choix' | 'verifier'
+  role: string; nom: string; page: string
+  champ?: string; secret?: boolean; valeur?: string
+}
+
+export interface ParcoursEnregistre {
+  id: number; auteur: string; created_at: string; version_id: number | null
+  actions: ActionParcours[]
+  mode_operatoire: string[]
+}
+
+export function parcoursWsUrl(caseId: number | string, token: string): string {
+  const base = API_BASE || window.location.origin
+  return `${base.replace(/^http/, 'ws')}/api/cases/${caseId}/parcours/ws?token=${encodeURIComponent(token)}`
 }
 
 /** État de la cartographie d'un projet. `mesure_le` est affiché systématiquement : c'est une
