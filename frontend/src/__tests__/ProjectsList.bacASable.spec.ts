@@ -14,6 +14,16 @@ const listProjects = vi.fn()
 const updateProject = vi.fn()
 const getExploration = vi.fn()
 
+// Porteur, 2026-10-23 : l'organisation « Paramètres de test » est toujours active ; ces rubriques de la fenêtre du projet
+// n'y sont plus affichées (elles vivent dans les onglets, testés par ParametresDeTest.*.spec.ts). Ce fichier garde la preuve
+// de l'ancien écran tant que son code n'est pas retiré : il le monte explicitement « organisation éteinte ».
+vi.mock('../lib/parametresDeTest', async (orig) => {
+  const { ref } = await import('vue')
+  return {
+    ...(await orig<typeof import('../lib/parametresDeTest')>()),
+    useParametresDeTest: () => ({ actifs: ref(false), connu: ref(true) }),
+  }
+})
 vi.mock('../lib/api', () => ({
   api: {
     listProjects: (...a: any[]) => listProjects(...a),

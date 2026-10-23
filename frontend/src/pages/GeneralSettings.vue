@@ -4,7 +4,6 @@ import Button from '../components/ui/Button.vue'
 import { api, type SettingOut, type TimezoneOption } from '../lib/api'
 import { useSession } from '../lib/useSession'
 import { useSettings } from '../lib/useSettings'
-import { CLE_PARAMETRES_DE_TEST, estAllume } from '../lib/parametresDeTest'
 
 const { session } = useSession()
 const { ensureLoaded } = useSettings()
@@ -18,10 +17,7 @@ const form = reactive({
   instance_name: 'TestPilot',
   instance_timezone: 'Europe/Paris',
   date_format: 'DD/MM/YYYY',
-  // Lot PT-00 : '1' = nouvelle organisation « Paramètres de test » ; '0' = l'écran d'avant. Jamais '' : une valeur vide
-  // EFFACE le réglage et rend la main à la variable d'environnement du serveur — si elle vaut « 1 », la case décochée
-  // revenait cochée (revue du 2026-10-13, reproduit).
-  parametres_de_test_enabled: '0',
+  // Porteur, 2026-10-23 : plus de case « Paramètres de test » — l'organisation est toujours active (`lib/parametresDeTest`).
 })
 
 const formats = [
@@ -38,7 +34,6 @@ function appliquer(reglages: SettingOut[]) {
   form.instance_name = valeurs.instance_name || 'TestPilot'
   form.instance_timezone = valeurs.instance_timezone || 'Europe/Paris'
   form.date_format = valeurs.date_format || 'DD/MM/YYYY'
-  form.parametres_de_test_enabled = estAllume(valeurs.parametres_de_test_enabled) ? '1' : '0'
   initial.value = { ...form }
 }
 
@@ -69,9 +64,7 @@ async function enregistrer() {
   erreur.value = ''
   succes.value = ''
   try {
-    // L'interrupteur « Paramètres de test » n'est écrit que s'il a CHANGÉ : le réécrire à chaque enregistrement figerait en
-    // base une valeur venue de la variable d'environnement du serveur.
-    const aEcrire = Object.entries(form).filter(([cle, valeur]) => cle !== CLE_PARAMETRES_DE_TEST || initial.value[cle] !== valeur)
+    const aEcrire = Object.entries(form)
     await Promise.all(aEcrire.map(([cle, valeur]) => api.setSetting(cle, valeur.trim())))
     appliquer(await api.listSettings())
     await ensureLoaded(true)
@@ -133,12 +126,6 @@ onMounted(charger)
             <option v-for="f in formats" :key="f.value" :value="f.value">{{ f.label }} — {{ f.example }}</option>
           </select>
           <span class="mt-1.5 block text-xs text-muted-foreground">Aperçu : {{ formats.find((f) => f.value === form.date_format)?.example }} à 14:35</span>
-        </label>
-        <label class="flex min-h-11 max-w-xl items-center gap-3">
-          <input type="checkbox" :checked="form.parametres_de_test_enabled === '1'" :disabled="!estAdmin"
-                 data-testid="interrupteur-parametres-de-test" class="h-4 w-4"
-                 @change="form.parametres_de_test_enabled = ($event.target as HTMLInputElement).checked ? '1' : '0'" />
-          <span class="text-sm font-medium">Paramètres de test</span>
         </label>
       </div>
 

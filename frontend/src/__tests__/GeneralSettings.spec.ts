@@ -63,36 +63,17 @@ describe('Paramètres généraux de l’instance', () => {
     expect(w.text()).toContain('Paramètres généraux enregistrés.')
   })
 
-  // ── Lot PT-00 : l'interrupteur « Paramètres de test » ──────────────────────────────────────────────────────────────
-  it('interrupteur « Paramètres de test » : éteint par défaut, et écrit seulement quand il change', async () => {
+  // Porteur, 2026-10-23 : la case « Paramètres de test » est retirée (l'organisation est toujours active).
+  it('plus de case « Paramètres de test », et l’enregistrement n’écrit jamais ce réglage', async () => {
     const w = mount(GeneralSettings)
     await flushPromises()
-    const interrupteur = w.get('[data-testid="interrupteur-parametres-de-test"]')
-    expect((interrupteur.element as HTMLInputElement).checked).toBe(false)
+    expect(w.find('[data-testid="interrupteur-parametres-de-test"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('Paramètres de test')
 
-    await interrupteur.setValue(true)
+    await w.get('input').setValue('TestPilot B')
     await w.get('form').trigger('submit')
     await flushPromises()
-
-    expect(setSetting).toHaveBeenCalledWith('parametres_de_test_enabled', '1')
-    expect(setSetting).toHaveBeenCalledTimes(4)
-  })
-
-  it('interrupteur allumé sur le serveur : coché, et le décocher écrit « 0 » (jamais vide)', async () => {
-    // Revue du 2026-10-13 : une valeur vide EFFACE le réglage et rend la main à la variable d'environnement — si elle
-    // allume l'organisation, la case décochée revenait cochée.
-    listSettings.mockResolvedValue([...valeurs,
-      { key: 'parametres_de_test_enabled', value: '1', source: 'db', description: '', admin_only: true, secret: false }])
-    const w = mount(GeneralSettings)
-    await flushPromises()
-    const interrupteur = w.get('[data-testid="interrupteur-parametres-de-test"]')
-    expect((interrupteur.element as HTMLInputElement).checked).toBe(true)
-
-    await interrupteur.setValue(false)
-    await w.get('form').trigger('submit')
-    await flushPromises()
-
-    expect(setSetting).toHaveBeenCalledWith('parametres_de_test_enabled', '0')
+    expect(setSetting.mock.calls.map((c: any[]) => c[0])).not.toContain('parametres_de_test_enabled')
   })
 
   it('reste en consultation seule pour un non-administrateur', async () => {
@@ -102,6 +83,5 @@ describe('Paramètres généraux de l’instance', () => {
     expect(w.text()).toContain('Consultation uniquement')
     expect(w.get('input').attributes('disabled')).toBeDefined()
     expect(w.get('button[type="submit"]').attributes('disabled')).toBeDefined()
-    expect(w.get('[data-testid="interrupteur-parametres-de-test"]').attributes('disabled')).toBeDefined()
   })
 })
