@@ -10,7 +10,7 @@ jobs:
     timeout-minutes: 30   # 2026-10-22 : 15 min ne suffisaient plus (installation de Chromium ~9 min + tests navigateur de l etape 5)
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
