@@ -157,6 +157,23 @@ avant ce qui ajoute des fonctions (vrais clients, valeurs calculées).*
 - **De toi :** accord avant chaque fusion ; /staging reste ta décision.
 - **1 à 2 jours — 0 $**
 
+#### Étape 11 — Enregistrer le parcours d'un cas de test (au choix) — *proposition du 2026-10-23, à valider (A109)*
+- Idée du porteur : la connexion est un parcours déjà enregistré ; faire de même pour n'importe quel cas. Une personne joue
+  le cas dans le navigateur en direct, l'outil retient le parcours, puis en écrit le test technique. Au choix : sans
+  enregistrement, la génération reste celle d'aujourd'hui.
+- Ce que l'enregistrement de la connexion retient aujourd'hui (vérifié dans le code le 2026-10-23) : **aucune vidéo,
+  aucune image** (le flux d'images n'est que relayé à l'écran) ; seulement la **liste des clics**, chacun décrit par le
+  rôle et le nom de l'élément (« bouton Connexion »), et les 3 éléments du formulaire de connexion ; jamais une valeur
+  saisie, jamais un secret ; une seule séquence par projet, remplacée à chaque nouvel enregistrement (pas d'historique).
+- À ajouter pour un cas : saisie de texte et choix dans une liste (valeurs non secrètes, ou reliées à une variable
+  `{{nom}}`) ; page atteinte après chaque action ; les **points à vérifier** désignés par la personne à l'écran ;
+  l'enregistrement rattaché au cas et à sa version, gardé dans l'historique (archivé, jamais écrasé).
+- Règle qui ne change pas : le parcours (les actions) vient de l'enregistrement ; le **résultat attendu vient du cas
+  validé** (A39), jamais de ce que l'écran montrait pendant l'enregistrement — sinon un bug présent ce jour-là deviendrait
+  l'attendu.
+- **De toi :** A109 (périmètre, valeurs saisies, qui écrit le test à partir du parcours).
+- **3 à 5 jours — 0 $ à construire** (moins d'appels à l'IA ensuite : les actions n'ont plus à être devinées).
+
 ### PARTIE C — Après tes priorités
 
 | Sujet | Ce qu'on obtient | Durée | Coût |
