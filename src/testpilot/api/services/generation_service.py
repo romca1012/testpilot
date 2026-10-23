@@ -563,6 +563,20 @@ def _variables_disparues(conn, project_id, lignes: list[dict]) -> list[str]:
     return sorted({n for l in lignes for n in (l.get("valeurs") or {})} - vivantes)
 
 
+def _calculs_pour_l_agent(fiches: list[dict]) -> list[dict]:
+    """Étape 7 : ce que l'agent technique voit d'un calcul retenu — son nom, ses entrées, son unité. Jamais ses constantes ni
+    ses exemples (des chiffres que l'agent pourrait recopier en dur à la place de l'appel)."""
+    from testpilot.parametres import calcul
+    sortie = []
+    for fiche in fiches:
+        try:
+            normale = calcul.valider_fiche(fiche)
+        except calcul.FicheInvalide:
+            continue   # une fiche devenue illisible n'est pas proposée : son appel serait bloqué à l'exécution
+        sortie.append({"nom": normale["nom"], "entrees": calcul.entrees_attendues(normale), "unite": normale["unite"]})
+    return sortie
+
+
 def _enregistrer_les_lignes(conn, case_id: int, project_id, lignes: list[dict]) -> None:
     """IT-3c : les lignes validées avec le cas deviennent SES lignes (A57) — variables vérifiées vivantes juste avant la
     génération (`_variables_disparues`), mêmes règles que la fiche du cas (`CaseDataRepo.remplacer`, qui lève
@@ -1207,6 +1221,11 @@ def start_automation(conn, case_id: int, *, author: str = "") -> tuple[str, dict
     variables_des_lignes = CaseDataRepo(conn).variables_des_lignes(case_id)
     if variables_des_lignes:
         metier["variables_des_lignes"] = variables_des_lignes
+    # Étape 7 (A110) : les calculs retenus pour le cas — l'agent les appelle par leur nom.
+    from testpilot.store.repositories import FicheDeCalculRepo
+    calculs = _calculs_pour_l_agent([f["contenu"] for f in FicheDeCalculRepo(conn).retenues(case_id)])
+    if calculs:
+        metier["calculs"] = calculs
     # Lot PT-02f (A41) : les variables que le test ACTUEL emploie déjà — une régénération les garde même si le texte du cas
     # ne les cite pas (association d'un clic sur une valeur que le cas n'écrivait pas). Absent sans variable : métier d'avant.
     from testpilot.generation import interrupteurs
@@ -1604,6 +1623,10 @@ def resume_generation(job_id: str, *, module_id: int, title: str, spec_content: 
                               "n'a pas été créé ; rétablissez la variable ou relancez la génération"}
                 if lignes:
                     metier["variables_des_lignes"] = sorted({n for l in lignes for n in (l.get("valeurs") or {})})
+                # Étape 7 (A110) : les calculs retenus à la validation — leurs NOMS et entrées, jamais une valeur.
+                calculs = _calculs_pour_l_agent([f["contenu"] for f in case.get("fiches_retenues") or []])
+                if calculs:
+                    metier["calculs"] = calculs
                 try:
                     result = agent_tache.generate(case_plan, group_id=group_id, metier=metier,
                                                   module_id=module_id, title=case["title"],

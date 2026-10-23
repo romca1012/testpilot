@@ -152,3 +152,25 @@ def test_appels_et_reecriture():
     assert calcul_au_lancement.noms_appeles(COMMANDE + COMMANDE) == ["Total TTC"]
     texte = calcul_au_lancement.reecrire(COMMANDE, {"Total TTC": "tp_calcul_1"})
     assert 'vaut "{{tp_calcul_1}}"' in texte
+
+
+# ── L'agent technique reçoit les calculs retenus : des noms, jamais des chiffres ──────────────────────────────────────────
+
+def test_falsifiable_l_agent_recoit_le_nom_et_les_entrees_jamais_un_chiffre():
+    from testpilot.api.services.generation_service import _calculs_pour_l_agent
+    from testpilot.generation.prompt import _section_metier
+
+    metier = {"title": "Commande", "steps": ["Commander"], "expected_result": "Le total TTC s'affiche"}
+    sans = _section_metier(metier)
+    avec = _section_metier({**metier, "calculs": _calculs_pour_l_agent([FICHE])})
+
+    assert avec.startswith(sans), "sans calcul retenu, le métier d'avant octet pour octet"
+    assert 'vaut le résultat calculé "<nom du calcul>"' in avec and "« Total TTC » — en EUR" in avec
+    assert "{{quantite}}, {{prix}}" in avec
+    ajout = avec[len(sans):]
+    assert "20" not in ajout and "36" not in ajout, "ni la constante (TVA) ni l'exemple ne sont montrés"
+
+
+def test_une_fiche_illisible_n_est_pas_proposee_a_l_agent():
+    from testpilot.api.services.generation_service import _calculs_pour_l_agent
+    assert _calculs_pour_l_agent([{**FICHE, "exemples": []}]) == []

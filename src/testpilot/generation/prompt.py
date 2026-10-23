@@ -589,6 +589,19 @@ def _section_metier(metier: dict) -> str:
         lines += ["", f"**Préconditions** (→ `Contexte:`) : {metier['preconditions']}"]
     lines += ["", "**Étapes** (→ les actions du scénario) :", etapes,
               "", f"**Résultat attendu** (→ l'assertion FINALE) : {metier.get('expected_result', '')}"]
+    calculs = metier.get("calculs") or []
+    if calculs:
+        # Étape 7 (A108, A110) : une personne a retenu ces calculs pour le cas. Des NOMS et des noms d'entrées seulement —
+        # jamais une valeur : TestPilot calcule l'attendu à chaque exécution, l'agent ne doit pas le recopier ni le calculer.
+        lines += ["", "**Valeurs calculées** — une personne a retenu ces calculs pour ce cas. Pour vérifier une de ces "
+                      "valeurs, écris EXACTEMENT :",
+                  '`Alors le nombre affiché pour "<libellé à l\'écran>" vaut le résultat calculé "<nom du calcul>"`',
+                  "Jamais le chiffre lui-même (TestPilot le calcule à chaque exécution). Les entrées du calcul se saisissent "
+                  "avec leur variable, du même nom (`{{quantite}}` pour l'entrée `quantite`) :"]
+        for c in calculs:
+            entrees = ", ".join("{{" + e + "}}" for e in c.get("entrees") or []) or "aucune (valeurs fixes)"
+            unite = f" — en {c['unite']}" if c.get("unite") else ""
+            lines.append(f"- « {c.get('nom', '')} »{unite} ; entrées : {entrees}")
     return "\n".join(lines)
 
 
