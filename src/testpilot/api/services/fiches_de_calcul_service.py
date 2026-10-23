@@ -62,7 +62,7 @@ def transporter(cas: dict) -> dict:
     proposees = []
     for brute in (cas.get("fiches_proposees") or [])[:FICHES_PAR_CAS_MAX]:
         try:
-            fiche = calcul.valider_fiche(brute, exiger_dates=False)   # une proposition : la date viendra de la personne
+            fiche = calcul.valider_fiche(brute, proposition=True)   # dates et exemple viendront de la personne
         except calcul.FicheInvalide:
             continue   # une proposition mal formée n'a rien à garder : elle n'a jamais pu être choisie
         if fiche["nom"] not in noms_retenus:

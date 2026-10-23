@@ -101,11 +101,14 @@ def _ecrire(n: Decimal) -> str:
     return texte.replace(".", ",")
 
 
-def valider_fiche(fiche, *, exiger_dates: bool = True) -> dict:
+def valider_fiche(fiche, *, proposition: bool = False) -> dict:
     """La fiche normalisée, ou `FicheInvalide` avec ce qu'il faut corriger. Vérifie la FORME seulement — les exemples sont
-    vérifiés par `verifier_exemples`, car une fiche bien formée peut calculer faux. `exiger_dates=False` : une PROPOSITION
-    de l'IA, qui n'a rien vérifié — elle ne date jamais un taux ; la personne qui la choisit le fait (elle ne sera retenue
-    qu'avec ses dates, `exiger_dates=True`)."""
+    vérifiés par `verifier_exemples`, car une fiche bien formée peut calculer faux.
+
+    `proposition=True` : une PROPOSITION de l'IA, présentée à une personne. L'IA n'a rien vérifié et ne calcule rien : elle
+    ne date jamais un taux, et n'invente pas d'exemple quand la spécification n'en donne pas (un exemple qu'elle calculerait
+    avec sa propre formule ne prouverait rien). Ces manques sont admis dans une proposition et dits dans `a_confirmer` ; une
+    fiche n'est RETENUE qu'avec ses dates et au moins un exemple (`proposition=False`)."""
     if not isinstance(fiche, dict):
         raise FicheInvalide("une fiche de calcul est un objet")
     nom_fiche = str(fiche.get("nom") or "").strip()
@@ -129,7 +132,7 @@ def valider_fiche(fiche, *, exiger_dates: bool = True) -> dict:
         if element.get("valeur") not in (None, ""):
             normal["valeur"] = _ecrire(_nombre(element["valeur"], f"élément « {nom} »"))
             verifie = str(element.get("verifie_le") or "").strip()
-            if not _DATE.match(verifie) and (exiger_dates or verifie):
+            if not _DATE.match(verifie) and (not proposition or verifie):
                 # V8 (A110) : une constante (un taux, un plafond) indique sa source ET sa date de vérification.
                 raise FicheInvalide(f"élément « {nom} » : sa date de vérification manque (AAAA-MM-JJ)")
             normal["verifie_le"] = verifie
@@ -157,11 +160,17 @@ def valider_fiche(fiche, *, exiger_dates: bool = True) -> dict:
         exemples.append({"entrees": {str(k): _ecrire(_nombre(v, f"exemple {i}, « {k} »"))
                                      for k, v in (exemple.get("entrees") or {}).items()},
                          "attendu": _ecrire(_nombre(exemple.get("attendu"), f"exemple {i}, résultat attendu"))})
-    if not exemples:
+    if not exemples and not proposition:
         # A110 : une fiche qui ne retrouve pas d'exemple n'est jamais utilisée — sans exemple, rien ne le prouve.
         raise FicheInvalide("la fiche n'a aucun exemple chiffré à retrouver (ex. 3 articles à 10 € → 30)")
-    return {"nom": nom_fiche, "resultat": resultat, "unite": str(fiche.get("unite") or "").strip(),
-            "elements": elements, "etapes": etapes, "exemples": exemples}
+    normale = {"nom": nom_fiche, "resultat": resultat, "unite": str(fiche.get("unite") or "").strip(),
+               "elements": elements, "etapes": etapes, "exemples": exemples}
+    # Les points qu'une personne doit trancher avant de choisir la fiche (un arrondi que la spécification ne précise pas,
+    # un exemple à fournir) — montrés à l'écran, jamais lus pour calculer.
+    a_confirmer = [str(p).strip()[:300] for p in (fiche.get("a_confirmer") or []) if str(p or "").strip()][:10]
+    if a_confirmer:
+        normale["a_confirmer"] = a_confirmer
+    return normale
 
 
 def _reference(terme, ou: str, connus: set[str]) -> str:
