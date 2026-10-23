@@ -219,3 +219,48 @@ def test_falsifiable_une_fiche_qui_ne_retrouve_plus_ses_exemples_bloque_au_lance
     base.commit()
     _eid, script = _preparer(base, pid, cid, vid)
     assert script.blocage and "l'exemple 1 attend 99" in script.blocage
+
+
+def test_falsifiable_une_entree_saisie_par_un_autre_scenario_ne_compte_pas(base):
+    """2e passe de la revue (bloquant) : le scénario A cite {{quantite}} et {{prix}}, le scénario B — celui qui vérifie le
+    calcul — écrit 3 et 10 en dur ; B serait calculé avec les valeurs de chaque ligne sans jamais les jouer."""
+    feature = COMMANDE + """
+  Scénario: Autre
+    Quand je commande "3" articles à "10"
+    Alors le nombre affiché pour "Total" vaut le résultat calculé "Total TTC"
+"""
+    pid, cid, vid = _projet(base, feature=feature)
+    _eid, script = _preparer(base, pid, cid, vid)
+    assert script.blocage and "ne saisit pas {{quantite}}, {{prix}}" in script.blocage
+
+
+def test_un_plan_de_scenario_n_est_pas_compte_plusieurs_fois():
+    plan = """# language: fr
+Fonctionnalité: Commande
+  Plan du scénario: Total
+    Quand je commande "{{quantite}}" articles à "<prix>"
+    Alors le nombre affiché pour "Total" vaut le résultat calculé "Total TTC"
+    Exemples:
+      | prix |
+      | 10   |
+      | 20   |
+"""
+    refus, appels = calcul_au_lancement.analyser_les_appels(plan)
+    assert refus == "" and appels == [("Total TTC", frozenset({"quantite"}))], "<prix> n'est pas une saisie de {{prix}}"
+
+
+def test_la_fiche_retenue_la_plus_recente_est_appliquee(base):
+    """Une ancienne fiche retenue, devenue invalide, ne bloque plus : c'est la dernière retenue de ce nom qui compte."""
+    pid, cid, vid = _projet(base)
+    base.execute("UPDATE fiche_de_calcul SET contenu=?", (json.dumps({"nom": "Total TTC"}),))   # l'ancienne, cassée
+    base.commit()
+    from testpilot.parametres import calcul
+    double = {**FICHE, "etapes": [*FICHE["etapes"][:-1], {"resultat": "total", "operation": "multiplier",
+                                                            "termes": ["ttc", "2"]}],
+              "exemples": [{"entrees": {"quantite": "3", "prix": "10"}, "attendu": "72"}]}
+    FicheDeCalculRepo(base).creer(project_id=pid, case_id=cid, contenu=calcul.valider_fiche(double), origine="personne",
+                                  statut="retenue", auteur="marie", retenue_par="marie")
+    _eid, script = _preparer(base, pid, cid, vid)
+    assert not script.blocage, script.blocage
+    joue = (script.dossier / "commande.feature").read_text(encoding="utf-8")
+    assert "72,0 EUR" in joue or "72 EUR" in joue or "72,00 EUR" in joue, joue

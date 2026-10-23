@@ -39,52 +39,66 @@ def noms_appeles(feature: str | None) -> list[str]:
     return list(vus)
 
 
-def refus_des_appels(feature: str) -> str:
-    """Pourquoi les appels de calcul de ce test ne sont pas jouables (vide : ils le sont). Lu par l'analyseur de Behave —
-    un signal STRUCTUREL, jamais le seul texte : chaque appel est un step `then` dont la phrase entière est celle de la
-    bibliothèque, et « le résultat calculé » n'apparaît nulle part ailleurs (action, tableau, commentaire)."""
-    from behave.parser import ParserError, parse_feature
-
-    try:
-        modele = parse_feature(feature, language="fr")
-    except ParserError:
-        return "le test n'est pas lisible"
-    appels = 0
-    for scenario in modele.walk_scenarios(with_outlines=True) if modele else []:
-        for step in [*(modele.background.steps if modele.background else []), *scenario.steps]:
-            if not _MENTION.search(step.name) and not _MENTION.search(step.text or "") and not (
-                    step.table and any(_MENTION.search(c) for r in step.table.rows for c in r.cells)):
-                continue
-            if step.step_type != "then" or not _APPEL.fullmatch(step.name.strip()) or step.text or step.table:
-                return (f"« {step.keyword} {step.name[:80]} » : seule une vérification « Alors le nombre affiché pour … vaut "
-                        "le résultat calculé … » peut appeler un calcul")
-            appels += 1
-    if len(_MENTION.findall(feature)) != appels:   # une mention hors des steps lus (un commentaire) : jamais réécrite en silence
-        return "« le résultat calculé » apparaît ailleurs que dans une vérification (commentaire, texte joint)"
-    return ""
+def _scenarios(conteneur, fond: list) -> list[tuple[list, object]]:
+    """(steps du Contexte qui s'applique, scénario TEL QU'ÉCRIT) — un plan compte une fois (jamais ses scénarios générés),
+    une Règle apporte son propre Contexte. Revue du 2026-10-23 (2e passe) : `walk_scenarios` rendait le plan ET ses
+    exemples, comptés plusieurs fois."""
+    fond = fond + list(conteneur.background.steps if getattr(conteneur, "background", None) else [])
+    blocs = [(fond, s) for s in getattr(conteneur, "scenarios", []) or []]
+    for regle in getattr(conteneur, "rules", []) or []:
+        blocs += _scenarios(regle, fond)
+    return blocs
 
 
-def entrees_posees(feature: str) -> set[str]:
-    """Les variables que le test SAISIT : celles écrites `{{nom}}` dans un step `given`/`when` (texte, tableau, texte joint).
-    Une entrée de calcul absente d'ici n'est pas jouée par le test : le calculer avec la valeur de la ligne annoncerait une
-    itération jamais jouée (revue du 2026-10-23, bloquant)."""
-    from behave.parser import ParserError, parse_feature
+def _mentionne(step) -> bool:
+    return bool(_MENTION.search(step.name) or _MENTION.search(step.text or "") or (
+        step.table and any(_MENTION.search(c) for r in step.table.rows for c in r.cells)))
 
+
+def _references_saisies(steps) -> set[str]:
     from testpilot.parametres import resolution
 
+    posees: set[str] = set()
+    for step in steps:
+        if step.step_type in ("given", "when"):
+            for texte in [step.name, step.text or ""] + ([c for r in step.table.rows for c in r.cells] if step.table else []):
+                posees.update(resolution.references(texte))
+    return posees
+
+
+def analyser_les_appels(feature: str) -> tuple[str, list[tuple[str, frozenset[str]]]]:
+    """(refus, appels) — lu par l'analyseur de Behave, un signal STRUCTUREL, jamais le seul texte. Chaque appel est un step
+    `then` dont la phrase ENTIÈRE est celle de la bibliothèque ; « le résultat calculé » n'apparaît nulle part ailleurs
+    (action, tableau, Contexte, commentaire). Chaque appel est rendu avec les variables que SON scénario saisit (Contexte
+    compris) : une entrée de calcul doit être saisie par le scénario même qui vérifie le résultat — un autre scénario qui la
+    cite ne prouve rien (revue du 2026-10-23, 2e passe, bloquant)."""
+    from behave.parser import ParserError, parse_feature
+
     try:
         modele = parse_feature(feature, language="fr")
     except ParserError:
-        return set()
-    posees: set[str] = set()
-    for scenario in modele.walk_scenarios(with_outlines=True) if modele else []:
-        for step in [*(modele.background.steps if modele.background else []), *scenario.steps]:
-            if step.step_type not in ("given", "when"):
+        return "le test n'est pas lisible", []
+    if modele is None:
+        return "", []
+    hors_verification = "seule une vérification « Alors le nombre affiché pour … vaut le résultat calculé … » peut appeler un calcul"
+    mentions, appels, fonds_vus = 0, [], set()
+    for fond, scenario in _scenarios(modele, []):
+        for step in fond:
+            if id(step) not in fonds_vus and _mentionne(step):
+                return f"« {step.keyword} {step.name[:80]} » (Contexte) : {hors_verification}", []
+            fonds_vus.add(id(step))
+        posees = frozenset(_references_saisies(fond + list(scenario.steps)))
+        for step in scenario.steps:
+            if not _mentionne(step):
                 continue
-            textes = [step.name, step.text or ""] + ([c for r in step.table.rows for c in r.cells] if step.table else [])
-            for texte in textes:
-                posees.update(resolution.references(texte))
-    return posees
+            trouve = _APPEL.fullmatch(step.name.strip())
+            if step.step_type != "then" or not trouve or step.text or step.table:
+                return f"« {step.keyword} {step.name[:80]} » : {hors_verification}", []
+            mentions += 1
+            appels.append((trouve.group(2).strip(), posees))
+    if len(_MENTION.findall(feature)) != mentions:   # une mention hors des steps lus (un commentaire) : jamais réécrite
+        return "« le résultat calculé » apparaît ailleurs que dans une vérification (commentaire, texte joint)", []
+    return "", appels
 
 
 def variables(noms: list[str]) -> dict[str, str]:

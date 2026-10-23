@@ -415,7 +415,8 @@ def _avec_les_calculs(conn, case_id: int, feature: str, figes: dict) -> tuple[st
 
     noms = calcul_au_lancement.noms_appeles(feature)
     fin = " Le test n'a pas été joué."
-    refus = calcul_au_lancement.refus_des_appels(feature) if (noms or "le résultat calculé" in feature) else ""
+    refus, appels = (calcul_au_lancement.analyser_les_appels(feature) if (noms or "le résultat calculé" in feature)
+                     else ("", []))
     if refus:
         return f"Calcul : {refus}.{fin}"
     if not noms:
@@ -438,9 +439,10 @@ def _avec_les_calculs(conn, case_id: int, feature: str, figes: dict) -> tuple[st
         fiches[nom] = fiche
     # Revue du 2026-10-23 (bloquant) : chaque entrée d'un calcul doit être SAISIE par le test (`{{entree}}` dans une action) —
     # sinon la ligne serait calculée avec des valeurs jamais jouées, et l'itération annoncée sans l'avoir été.
-    posees = calcul_au_lancement.entrees_posees(feature)
-    for nom, fiche in fiches.items():
-        absentes = [e for e in calcul.entrees_attendues(fiche) if e not in posees]
+    for nom, posees in appels:
+        if nom not in fiches:
+            continue
+        absentes = [e for e in calcul.entrees_attendues(fiches[nom]) if e not in posees]
         if absentes:
             return (f"Calcul « {nom} » : le test ne saisit pas " + ", ".join("{{" + e + "}}" for e in absentes)
                     + " — le calcul serait fait avec des valeurs que le test ne joue pas. Régénérez le test." + fin)
