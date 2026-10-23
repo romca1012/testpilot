@@ -55,4 +55,4 @@ def test_la_revision_alembic_est_chainee_sur_la_tete_precedente():
     spec.loader.exec_module(revision)
 
     assert (revision.revision, revision.down_revision) == ("f4c9a2d7e185", "e8a4c2f6b913")
-    assert portable_connection.ALEMBIC_HEAD == "f4c9a2d7e185"
+    assert portable_connection.ALEMBIC_HEAD != "f4c9a2d7e185"   # avancée depuis (migration 76, A107)

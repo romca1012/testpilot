@@ -54,7 +54,7 @@ from sqlalchemy import (
 # Version de `_SCHEMA_VERSION` (store/db.py) à laquelle ce modèle a été aligné pour la dernière
 # fois. Le garde-fou anti-dérive (`tests/test_schema_sa_portable.py`) échoue bruyamment si la
 # vraie base avance sans que ce fichier ne suive.
-ALIGNED_WITH_SCHEMA_VERSION = 75
+ALIGNED_WITH_SCHEMA_VERSION = 76
 
 metadata = MetaData()
 
@@ -595,7 +595,12 @@ test_run = Table(
     # Migration 70 (A52) : les lignes de données de test jouées, une itération par ligne (liste JSON) ; vide = `dataset_id`.
     Column("dataset_ids", Text, nullable=False, server_default=""),
     Column("lignes_des_cas", Text, nullable=False, server_default="toutes"),   # migration 72 (A58)
+    # Migration 76 (A107) : « de la ligne X à Y » des lignes propres aux cas ; les deux NULL = pas de plage.
+    Column("ligne_debut", Integer, nullable=True),
+    Column("ligne_fin", Integer, nullable=True),
     CheckConstraint("lignes_des_cas IN ('toutes', 'premiere')", name="ck_test_run_lignes_des_cas"),
+    CheckConstraint("(ligne_debut IS NULL AND ligne_fin IS NULL) OR (ligne_debut >= 1 AND ligne_fin >= ligne_debut"
+                    " AND lignes_des_cas = 'toutes')", name="ck_test_run_plage_des_lignes"),
     CheckConstraint("seulement_variables IN (0, 1)", name="ck_test_run_seulement_variables"),
     CheckConstraint("sans_repli IN (0, 1)", name="ck_test_run_sans_repli"),
     CheckConstraint("selection_mode IN ('all', 'frozen')", name="ck_test_run_selection_mode"),
